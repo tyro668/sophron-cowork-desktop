@@ -52,7 +52,7 @@ Metis Cowork 是一款免费开源、专注本地数据处理的 AI Agent 桌面
 
 - **一键安装，开箱即用**：提供 Windows 和 macOS 预构建安装包，无需配置环境，下载即可开始使用。。
 - **本地数据处理**：分析表格、清洗混乱数据集、总结报告、抽取结构化信息，并从工作区文件生成交付物。
-- **灵活模型支持**：支持 **Claude**、**OpenAI 兼容接口**，以及国产大模型 **GLM**、**MiniMax**、**Kimi** 等。使用你的 OpenRouter、Anthropic等API Key，灵活配置。更多模型持续接入中！
+- **灵活模型支持**：内置 **DeepSeek**、**Moonshot**、**Z.AI**、**Anthropic**、**OpenAI**、**OpenRouter** 和 **Ollama** 提供商预设，可灵活使用云端模型或本地模型。
 - **远程控制**：可以接入**飞书**等协作平台和远程服务，实现工作流自动化和跨平台操作。
 - **图形界面操作**：可以控制和操作电脑上的各种桌面 GUI 应用程序。**推荐使用 Gemini-3-Pro 模型**以获得最佳的 GUI 理解和控制效果。
 - **智能文件管理**：可以在工作区内读取、写入和整理文件。
@@ -137,21 +137,23 @@ brew install lima
 
 ### 1. 获取 API Key
 
-你需要一个 API Key 来驱动 Agent。我们支持 **OpenRouter**、**Anthropic** 以及多家高性价比的**国产大模型**。
+云端模型需要配置对应 API Key；本地模型可通过本机 Ollama 服务使用。下表与应用设置中的提供商顺序保持一致。
 
-| 服务商         | 获取 Key / Coding Plan                                                     | Base URL (必填)                          | 推荐模型 Model       |
-| -------------- | -------------------------------------------------------------------------- | ---------------------------------------- | -------------------- |
-| **OpenRouter** | [OpenRouter](https://openrouter.ai/)                                       | `https://openrouter.ai/api`              | `claude-4-5-sonnet`  |
-| **Anthropic**  | [Anthropic Console](https://console.anthropic.com/)                        | 默认                                     | `claude-4-5-sonnet`  |
-| **智谱 AI**    | [GLM Coding Plan](https://bigmodel.cn/glm-coding) (⚡️国产特惠)             | `https://open.bigmodel.cn/api/anthropic` | `glm-4.7`, `glm-4.6` |
-| **MiniMax**    | [MiniMax Coding Plan](https://platform.minimaxi.com/subscribe/coding-plan) | `https://api.minimaxi.com/anthropic`     | `minimax-m2`         |
-| **Kimi**       | [Kimi Coding Plan](https://www.kimi.com/membership/pricing)                | `https://api.kimi.com/coding/`           | `kimi-k2`            |
+| 服务商         | 获取 Key / 配置入口                              | Base URL                         | 推荐模型 Model                                         |
+| -------------- | ------------------------------------------------ | -------------------------------- | ------------------------------------------------------ |
+| **DeepSeek**   | [DeepSeek Platform](https://platform.deepseek.com/) | `https://api.deepseek.com`       | `deepseek-v4-flash`, `deepseek-v4-pro`, `deepseek-chat` |
+| **Moonshot**   | [Moonshot Platform](https://platform.moonshot.ai/) | `https://api.moonshot.ai/v1`     | `kimi-k2.6`, `kimi-k2-thinking`, `moonshot-v1-128k`     |
+| **Z.AI**       | [Z.AI Docs](https://docs.z.ai/)                  | `https://api.z.ai/api/paas/v4`   | `glm-5.1`, `glm-5`, `glm-4.5`                           |
+| **Anthropic**  | [Anthropic Console](https://console.anthropic.com/) | `https://api.anthropic.com`      | `claude-opus-4-6`, `claude-sonnet-4-6`                  |
+| **OpenAI**     | [OpenAI Platform](https://platform.openai.com/)  | `https://api.openai.com/v1`      | `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.3-codex`              |
+| **OpenRouter** | [OpenRouter](https://openrouter.ai/)             | `https://openrouter.ai/api/v1`   | `anthropic/claude-sonnet-4-6`, `openai/gpt-5.4`         |
+| **Ollama**     | [Ollama](https://ollama.com/)                    | `http://localhost:11434/v1`      | 从本机 Ollama 服务自动发现                              |
 
 ### 2. 配置应用
 
 1. 打开应用，点击左下角 ⚙️ **设置**。
 2. 填入你的 **API Key**。
-3. **关键步骤**：根据上表修改 **Base URL** (如使用智谱/MiniMax等)。
+3. **关键步骤**：根据上表设置 **Base URL**，或直接使用提供商预设填入的默认值。
 4. 输入想要使用的 **Model** 名称。
 
 ### 3. 开始协作
@@ -262,7 +264,7 @@ Metis Cowork 是一款免费开源的桌面应用，为用户提供专注数据�
 Metis Cowork 的定位更偏向本地数据处理，而不是通用编码或聊天。它支持多模型、GUI 自动化操作、飞书/Slack 远程控制，以及虚拟机级别的沙盒隔离。详见[功能对比表](#核心特性)。
 
 **支持哪些 AI 模型？**
-支持 Claude（通过 Anthropic 或 OpenRouter）、OpenAI 兼容接口，以及国产大模型包括智谱 GLM、MiniMax、Kimi 等。任何提供 OpenAI 兼容 API 的服务商都可以配置使用。
+当前内置 DeepSeek、Moonshot、Z.AI、Anthropic、OpenAI、OpenRouter 和 Ollama 提供商预设。OpenRouter 可路由更多云端模型，Ollama 可使用本机已安装的本地模型。
 
 **Metis Cowork 免费吗？**
 是的。Metis Cowork 本身完全免费，采用 MIT 开源协议。你只需为所选 AI 模型服务商的 API 调用付费。

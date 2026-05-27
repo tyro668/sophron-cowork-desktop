@@ -52,7 +52,7 @@ It provides a sandboxed workspace where AI can process local data files, generat
 
 - **One-Click Install, Ready to Use**: Pre-built installers for Windows and macOS, no environment setup needed—just download and start using.
 - **Local Data Processing**: Analyze spreadsheets, clean messy datasets, summarize reports, extract structured information, and prepare deliverables from workspace files.
-- **Flexible Model Support**: Supports **Claude**, **OpenAI-compatible APIs**, and Chinese models like **GLM**, **MiniMax**, **Kimi**. Use your OpenRouter, Anthropic, or other API keys with flexible configuration. More models coming soon!
+- **Flexible Model Support**: Supports **DeepSeek**, **Moonshot**, **Z.AI**, **Anthropic**, **OpenAI**, **OpenRouter**, and **Ollama** through dedicated provider presets. Use local or cloud models with flexible configuration.
 - **Remote Control**: Connect to collaboration platforms like **Feishu (Lark)** and other remote services to automate workflows and cross-platform operations.
 - **GUI Operation**: Control and interact with various desktop GUI applications on your computer. **Recommended model: Gemini-3-Pro** for optimal GUI understanding and control.
 - **Smart File Management**: Read, write, and organize files within your workspace.
@@ -139,21 +139,23 @@ brew install lima
 
 ### 1. Get an API Key
 
-You need an API key to power the agent. We support **OpenRouter**, **Anthropic**, and various cost-effective **Chinese Models**.
+You need an API key to power cloud models, or a local Ollama server for local models. The provider list matches the app settings.
 
-| Provider           | Get Key / Coding Plan                                                      | Base URL (Required)                      | Recommended Model    |
-| ------------------ | -------------------------------------------------------------------------- | ---------------------------------------- | -------------------- |
-| **OpenRouter**     | [OpenRouter](https://openrouter.ai/)                                       | `https://openrouter.ai/api`              | `claude-4-5-sonnet`  |
-| **Anthropic**      | [Anthropic Console](https://console.anthropic.com/)                        | (Default)                                | `claude-4-5-sonnet`  |
-| **Zhipu AI (GLM)** | [GLM Coding Plan](https://bigmodel.cn/glm-coding) (⚡️Chinese Deal)         | `https://open.bigmodel.cn/api/anthropic` | `glm-4.7`, `glm-4.6` |
-| **MiniMax**        | [MiniMax Coding Plan](https://platform.minimaxi.com/subscribe/coding-plan) | `https://api.minimaxi.com/anthropic`     | `minimax-m2`         |
-| **Kimi**           | [Kimi Coding Plan](https://www.kimi.com/membership/pricing)                | `https://api.kimi.com/coding/`           | `kimi-k2`            |
+| Provider       | Get Key / Setup                                | Base URL                         | Recommended Models                                      |
+| -------------- | ---------------------------------------------- | -------------------------------- | ------------------------------------------------------- |
+| **DeepSeek**   | [DeepSeek Platform](https://platform.deepseek.com/) | `https://api.deepseek.com`       | `deepseek-v4-flash`, `deepseek-v4-pro`, `deepseek-chat` |
+| **Moonshot**   | [Moonshot Platform](https://platform.moonshot.ai/) | `https://api.moonshot.ai/v1`     | `kimi-k2.6`, `kimi-k2-thinking`, `moonshot-v1-128k`     |
+| **Z.AI**       | [Z.AI Docs](https://docs.z.ai/)                | `https://api.z.ai/api/paas/v4`   | `glm-5.1`, `glm-5`, `glm-4.5`                           |
+| **Anthropic**  | [Anthropic Console](https://console.anthropic.com/) | `https://api.anthropic.com`      | `claude-opus-4-6`, `claude-sonnet-4-6`                  |
+| **OpenAI**     | [OpenAI Platform](https://platform.openai.com/) | `https://api.openai.com/v1`      | `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.3-codex`              |
+| **OpenRouter** | [OpenRouter](https://openrouter.ai/)           | `https://openrouter.ai/api/v1`   | `anthropic/claude-sonnet-4-6`, `openai/gpt-5.4`         |
+| **Ollama**     | [Ollama](https://ollama.com/)                  | `http://localhost:11434/v1`      | Discovered from your local Ollama server                |
 
 ### 2. Configure
 
 1. Open the app and click the ⚙️ **Settings** icon in the bottom left.
 2. Paste your **API Key**.
-3. **Crucial**: Set the **Base URL** according to the table above (especially for Zhipu/MiniMax, etc.).
+3. **Crucial**: Set the **Base URL** according to the table above, or keep the preset value selected by the provider tab.
 4. Enter the **Model** name you want to use.
 
 ### 3. Start Coworking
@@ -266,7 +268,7 @@ Metis Cowork is a free, open-source desktop application that provides a local AI
 Metis Cowork is positioned around local data processing rather than general coding or chat. It adds multi-model support, GUI automation via computer use, remote control through Feishu/Slack, and VM-level sandbox isolation. See the [feature comparison table](#features) for details.
 
 **What AI models does Metis Cowork support?**
-Claude (via Anthropic or OpenRouter), OpenAI-compatible APIs, and Chinese models including GLM (Zhipu AI), MiniMax, and Kimi. Any provider offering an OpenAI-compatible API endpoint can be configured.
+Metis Cowork currently provides dedicated presets for DeepSeek, Moonshot, Z.AI, Anthropic, OpenAI, OpenRouter, and Ollama. OpenRouter can route to additional hosted models, and Ollama can run local models discovered from your machine.
 
 **Is Metis Cowork free?**
 Yes. Metis Cowork itself is completely free and open-source under the MIT license. You only need to pay for the AI model API usage from your chosen provider.
