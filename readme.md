@@ -70,27 +70,13 @@ It provides a sandboxed workspace where AI can process local data files, generat
 
 ## 🎬 Demo
 
-See Metis Cowork in action:
+Demo media is distributed with release materials. Current workflows include:
 
-### 1. Folder Organization & Cleanup 📂
-
-https://github.com/user-attachments/assets/dbeb0337-2d19-4b5d-a438-5220f2a87ca7
-
-### 2. Generate PPT from Files 📊
-
-https://github.com/user-attachments/assets/30299ded-0260-468f-b11d-d282bb9c97f2
-
-### 3. Generate XLSX Spreadsheets 📉
-
-https://github.com/user-attachments/assets/f57b9106-4b2c-4747-aecd-a07f78af5dfc
-
-### 4. GUI Operation🖥
-
-https://github.com/user-attachments/assets/75542c76-210f-414d-8182-1da988c148f2
-
-### 5. Remote control with Feishu(Lark) 🤖
-
-https://github.com/user-attachments/assets/05a703de-c0f5-407b-9a43-18b6a172fd74
+- Folder organization and cleanup
+- Generate PPT from files
+- Generate XLSX spreadsheets
+- GUI operation
+- Remote control with Feishu (Lark)
 
 ---
 
@@ -109,7 +95,7 @@ brew install --cask --no-quarantine metis-cowork
 
 ### Option 2: Download Installer
 
-Get the latest version from our [Releases Page](https://github.com/MetisCoworkAI/metis-cowork/releases).
+Get the latest installer from the official Metis Cowork release channel.
 
 | Platform                  | File Type |
 | ------------------------- | --------- |
@@ -121,7 +107,7 @@ Get the latest version from our [Releases Page](https://github.com/MetisCoworkAI
 For developers who want to contribute or modify the codebase:
 
 ```bash
-git clone https://github.com/MetisCoworkAI/metis-cowork.git
+git clone ssh://git@code.fineres.com:7999/res/metis-cowork.git
 cd metis-cowork
 npm install
 npm run rebuild

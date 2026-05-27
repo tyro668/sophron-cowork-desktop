@@ -70,19 +70,11 @@ Metis Cowork 是一款免费开源、专注本地数据处理的 AI Agent 桌面
 
 ## 🎬 演示
 
-观看 Metis Cowork 实战演示 ：
+演示素材随发布材料提供，当前工作流包括：
 
-### 1. 文件夹收纳整理 📂
-
-https://github.com/user-attachments/assets/dbeb0337-2d19-4b5d-a438-5220f2a87ca7
-
-### 2. 从文件生成 PPT 📊
-
-https://github.com/user-attachments/assets/30299ded-0260-468f-b11d-d282bb9c97f2
-
-### 3. 从文件生成 XLSX 表格 📉
-
-https://github.com/user-attachments/assets/f57b9106-4b2c-4747-aecd-a07f78af5dfc
+- 文件夹收纳整理
+- 从文件生成 PPT
+- 从文件生成 XLSX 表格
 
 ---
 
@@ -101,7 +93,7 @@ brew install --cask --no-quarantine metis-cowork
 
 ### 方式二：下载安装包
 
-请访问我们的 [Release 页面](https://github.com/MetisCoworkAI/metis-cowork/releases) 下载最新版本。
+请通过 Metis Cowork 官方发布渠道下载最新版本。
 
 | 平台                      | 文件类型 |
 | ------------------------- | -------- |
@@ -113,7 +105,7 @@ brew install --cask --no-quarantine metis-cowork
 适合想要贡献代码或进行二次开发的开发者：
 
 ```bash
-git clone https://github.com/MetisCoworkAI/metis-cowork.git
+git clone ssh://git@code.fineres.com:7999/res/metis-cowork.git
 cd metis-cowork
 npm install
 npm run rebuild
