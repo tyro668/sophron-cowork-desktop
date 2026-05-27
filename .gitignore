@@ -109,4 +109,10 @@ website/.vitepress/cache/
 !src/renderer/assets/*.png
 !public/*.png
 !website/public/*.png
+!resources/icon.png
+!resources/logo.png
+!resources/tray-icon.png
+!resources/tray-iconTemplate.png
 !resources/social-preview.png
+!resources/icon.iconset/
+!resources/icon.iconset/*.png

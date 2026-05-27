@@ -630,6 +630,7 @@
     "startFailed": "Failed to start session. Please try again.",
     "disclaimer": "Metis Cowork is AI-powered and may make mistakes. Please double-check responses.",
     "noModel": "No model",
+    "backToTop": "Back to top",
     "connectorCount_one": "{{count}} connector",
     "connectorCount_other": "{{count}} connectors"
   },

@@ -1,5 +1,5 @@
 // Dispatches a single ContentBlock to the appropriate sub-renderer
-import { Suspense, lazy, isValidElement, cloneElement, memo, useMemo } from 'react';
+import { Suspense, lazy, isValidElement, cloneElement, memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../../store';
 import { PanelErrorBoundary } from '../PanelErrorBoundary';
@@ -14,6 +14,7 @@ import {
   resolveLocalFilePathFromHref,
 } from '../../utils/markdown-local-link';
 import { normalizeLatexDelimiters } from '../../utils/latex-delimiters';
+import { isHtmlReportPath } from '../../../shared/report-path';
 import type { ToolUseContent, ToolResultContent, FileAttachmentContent } from '../../types';
 import { FileText } from 'lucide-react';
 import { CodeBlock } from './CodeBlock';
@@ -48,36 +49,46 @@ export const ContentBlockView = memo(function ContentBlockView({
   const currentWorkingDir = activeSession?.cwd || workingDir;
 
   const resolveFilePath = (value: string) => resolvePathAgainstWorkspace(value, currentWorkingDir);
+  const openOrRevealFile = useCallback(
+    async (resolvedPath: string) => {
+      if (typeof window === 'undefined' || !window.electronAPI) {
+        return;
+      }
+
+      try {
+        const api = window.electronAPI;
+        const handled =
+          isHtmlReportPath(resolvedPath) && api.openGeneratedReport
+            ? await api.openGeneratedReport(resolvedPath, currentWorkingDir ?? undefined)
+            : api.showItemInFolder
+              ? await api.showItemInFolder(resolvedPath, currentWorkingDir ?? undefined)
+              : false;
+        if (!handled) {
+          setGlobalNotice({
+            id: `message-card-reveal-failed-${Date.now()}`,
+            type: 'warning',
+            message: t('context.revealFailed'),
+          });
+        }
+      } catch (error) {
+        setGlobalNotice({
+          id: `message-card-reveal-failed-${Date.now()}`,
+          type: 'warning',
+          message:
+            error instanceof Error && error.message ? error.message : t('context.revealFailed'),
+        });
+      }
+    },
+    [currentWorkingDir, setGlobalNotice, t]
+  );
 
   const renderFileButton = (value: string, key?: string) => (
     <button
       key={key}
       type="button"
       onClick={async () => {
-        if (typeof window === 'undefined' || !window.electronAPI?.showItemInFolder) {
-          return;
-        }
         const resolvedPath = resolveFilePath(value);
-        try {
-          const revealed = await window.electronAPI.showItemInFolder(
-            resolvedPath,
-            currentWorkingDir ?? undefined
-          );
-          if (!revealed) {
-            setGlobalNotice({
-              id: `message-card-reveal-failed-${Date.now()}`,
-              type: 'warning',
-              message: t('context.revealFailed'),
-            });
-          }
-        } catch (error) {
-          setGlobalNotice({
-            id: `message-card-reveal-failed-${Date.now()}`,
-            type: 'warning',
-            message:
-              error instanceof Error && error.message ? error.message : t('context.revealFailed'),
-          });
-        }
+        await openOrRevealFile(resolvedPath);
       }}
       className={getFileLinkButtonClassName()}
       title={resolveFilePath(value)}
@@ -119,31 +130,7 @@ export const ContentBlockView = memo(function ContentBlockView({
             <button
               type="button"
               onClick={async () => {
-                if (typeof window === 'undefined' || !window.electronAPI?.showItemInFolder) {
-                  return;
-                }
-                try {
-                  const revealed = await window.electronAPI.showItemInFolder(
-                    localFilePath,
-                    currentWorkingDir ?? undefined
-                  );
-                  if (!revealed) {
-                    setGlobalNotice({
-                      id: `message-card-reveal-failed-${Date.now()}`,
-                      type: 'warning',
-                      message: t('context.revealFailed'),
-                    });
-                  }
-                } catch (error) {
-                  setGlobalNotice({
-                    id: `message-card-reveal-failed-${Date.now()}`,
-                    type: 'warning',
-                    message:
-                      error instanceof Error && error.message
-                        ? error.message
-                        : t('context.revealFailed'),
-                  });
-                }
+                await openOrRevealFile(localFilePath);
               }}
               className={getFileLinkButtonClassName()}
               title={localFilePath}
@@ -248,7 +235,7 @@ export const ContentBlockView = memo(function ContentBlockView({
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [currentWorkingDir, setGlobalNotice, t]
+    [currentWorkingDir, openOrRevealFile]
   );
 
   switch (block.type) {

@@ -87,6 +87,7 @@ import {
 } from './utils/logger';
 import { listRecentWorkspaceFiles } from './utils/recent-workspace-files';
 import { buildDiagnosticsSummary } from './utils/diagnostics-summary';
+import { prepareGeneratedReportForOpen } from './utils/report-viewer';
 
 // Current working directory (persisted between sessions)
 let currentWorkingDir: string | null = null;
@@ -1189,6 +1190,95 @@ ipcMain.handle('shell.openExternal', async (_event, url: string) => {
   return shell.openExternal(url);
 });
 
+function resolveFilePathForShell(filePath: string, cwd?: string, logScope = 'shell.path') {
+  if (!filePath) {
+    return null;
+  }
+
+  const trimInput = filePath.trim();
+  if (!trimInput) {
+    return null;
+  }
+
+  let normalizedPath = decodePathSafely(trimInput);
+
+  if (normalizedPath.startsWith('file://')) {
+    const localPath = localPathFromFileUrl(normalizedPath);
+    if (!localPath) {
+      logWarn(`[${logScope}] could not parse file URL:`, normalizedPath);
+      return null;
+    }
+    normalizedPath = localPath;
+  }
+
+  const baseDir = cwd && isAbsolute(cwd) ? cwd : getWorkingDir() || app.getPath('home');
+  if (
+    !isAbsolute(normalizedPath) &&
+    !isWindowsDrivePath(normalizedPath) &&
+    !isUncPath(normalizedPath)
+  ) {
+    normalizedPath = resolve(baseDir, normalizedPath);
+  }
+
+  if (
+    normalizedPath.startsWith('/workspace/') ||
+    /^[A-Za-z]:[/\\]workspace[/\\]/i.test(normalizedPath)
+  ) {
+    const relativePart = normalizedPath.startsWith('/workspace/')
+      ? normalizedPath.slice('/workspace/'.length)
+      : normalizedPath.replace(/^[A-Za-z]:[/\\]workspace[/\\]/i, '');
+    normalizedPath = resolve(baseDir, relativePart);
+  }
+
+  if (!isUncPath(normalizedPath)) {
+    normalizedPath = resolve(normalizedPath);
+  }
+
+  return normalizedPath;
+}
+
+async function openGeneratedReport(filePath: string, cwd?: string): Promise<boolean> {
+  const normalizedPath = resolveFilePathForShell(filePath, cwd, 'reports.openGeneratedReport');
+  if (!normalizedPath) {
+    return false;
+  }
+
+  log('[reports.openGeneratedReport] request:', { filePath, cwd, resolved: normalizedPath });
+
+  try {
+    if (!fs.existsSync(normalizedPath)) {
+      logWarn('[reports.openGeneratedReport] path does not exist:', normalizedPath);
+      return false;
+    }
+
+    const stat = fs.statSync(normalizedPath);
+    if (stat.isDirectory()) {
+      const openDirResult = await shell.openPath(normalizedPath);
+      if (openDirResult) {
+        logWarn('[reports.openGeneratedReport] openPath directory returned warning:', openDirResult);
+        return false;
+      }
+      return true;
+    }
+
+    const preparation = await prepareGeneratedReportForOpen(normalizedPath);
+    if (preparation.prepared) {
+      log('[reports.openGeneratedReport] prepared report viewer controls:', preparation);
+    }
+
+    const openResult = await shell.openPath(normalizedPath);
+    if (openResult) {
+      logWarn('[reports.openGeneratedReport] openPath returned warning:', openResult);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    logError('[reports.openGeneratedReport] failed:', error);
+    return false;
+  }
+}
+
 async function revealFileInFolder(filePath: string, cwd?: string): Promise<boolean> {
   if (!filePath) {
     return false;
@@ -1351,6 +1441,10 @@ async function revealFileInFolder(filePath: string, cwd?: string): Promise<boole
 
 ipcMain.handle('shell.showItemInFolder', async (_event, filePath: string, cwd?: string) => {
   return revealFileInFolder(filePath, cwd);
+});
+
+ipcMain.handle('reports.openGeneratedReport', async (_event, filePath: string, cwd?: string) => {
+  return openGeneratedReport(filePath, cwd);
 });
 
 ipcMain.handle(

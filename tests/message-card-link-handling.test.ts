@@ -21,8 +21,9 @@ describe('MessageCard local link handling', () => {
       'const localFilePath = resolveLocalFilePathFromHref(href, currentWorkingDir);'
     );
     expect(source).toContain("title={localFilePath}");
-    expect(source).toContain('await window.electronAPI.showItemInFolder(');
-    expect(source).toContain('localFilePath,');
+    expect(source).toContain('api.openGeneratedReport');
+    expect(source).toContain('await api.showItemInFolder(');
+    expect(source).toContain('await openOrRevealFile(localFilePath);');
     expect(source).toContain('currentWorkingDir ?? undefined');
     expect(source).not.toContain('const fallbackUrl = `file://${encodeURI(localFilePath)}`;');
     expect(source).not.toContain('target="_blank"');
@@ -32,7 +33,7 @@ describe('MessageCard local link handling', () => {
     const source = readAllMessageContent();
 
     expect(source).toContain('const setGlobalNotice = useAppStore((s) => s.setGlobalNotice);');
-    expect(source).toContain('if (!revealed) {');
+    expect(source).toContain('if (!handled) {');
     expect(source).toContain("message: t('context.revealFailed')");
   });
 

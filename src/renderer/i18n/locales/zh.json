@@ -630,6 +630,7 @@
     "startFailed": "启动会话失败，请稍后重试。",
     "disclaimer": "Metis Cowork 由 AI 驱动，可能会出错，请务必自行复核结果。",
     "noModel": "无模型",
+    "backToTop": "回到顶部",
     "connectorCount_one": "{{count}} 个连接器",
     "connectorCount_other": "{{count}} 个连接器"
   },

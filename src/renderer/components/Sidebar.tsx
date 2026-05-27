@@ -373,10 +373,13 @@ export function Sidebar() {
                           isSelectMode && isSelected
                             ? 'bg-accent-muted text-accent'
                             : isActive && !isSelectMode
-                              ? 'bg-accent-muted/80 text-accent'
+                              ? 'bg-accent/10'
                               : 'hover:bg-surface-hover/60'
                         }`}
                       >
+                        {isActive && !isSelectMode && (
+                          <span className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r-full bg-accent" />
+                        )}
                         <div className={`flex items-center gap-2 ${!isSelectMode ? 'pr-6' : ''}`}>
                           {isSelectMode && (
                             <div

@@ -5,6 +5,7 @@ import { resolveArtifactPath } from '../utils/artifact-path';
 import { extractFilePathFromToolInput, extractFilePathFromToolOutput } from '../utils/tool-output-path';
 import { getArtifactLabel, getArtifactIconComponent, getArtifactSteps } from '../utils/artifact-steps';
 import { useIPC } from '../hooks/useIPC';
+import { isHtmlReportPath } from '../../shared/report-path';
 import {
   ChevronDown,
   ChevronUp,
@@ -79,6 +80,7 @@ export function ContextPanel() {
   const currentWorkingDir = activeSession?.cwd || workingDir;
   const { displayArtifactSteps } = getArtifactSteps(steps);
   const canShowItemInFolder = typeof window !== 'undefined' && !!window.electronAPI?.showItemInFolder;
+  const canOpenGeneratedReport = typeof window !== 'undefined' && !!window.electronAPI?.openGeneratedReport;
 
   // Session info computations
   const messages = useMemo(
@@ -382,7 +384,10 @@ export function ContextPanel() {
                 {displayArtifacts.map((artifact, index) => {
                   const label = artifact.label || t('context.fileCreated');
                   const artifactPath = artifact.path;
-                  const canClick = Boolean(artifactPath && canShowItemInFolder);
+                  const isReport = isHtmlReportPath(artifactPath || label);
+                  const canClick = Boolean(
+                    artifactPath && (canShowItemInFolder || (isReport && canOpenGeneratedReport))
+                  );
                   const iconComponent = getArtifactIconComponent(label);
                   const IconComponent =
                     iconComponent === 'presentation' ? FilePieChart
@@ -402,8 +407,17 @@ export function ContextPanel() {
                       className={`flex items-center gap-2 px-4 py-1.5 transition-colors ${canClick ? 'cursor-pointer hover:bg-surface-hover' : ''}`}
                       onClick={async () => {
                         if (!canClick) return;
-                        const revealed = await window.electronAPI.showItemInFolder(artifactPath, currentWorkingDir ?? undefined);
-                        if (!revealed) {
+                        const api = window.electronAPI;
+                        const handled =
+                          isReport && api.openGeneratedReport
+                            ? await api.openGeneratedReport(
+                                artifactPath,
+                                currentWorkingDir ?? undefined
+                              )
+                            : api.showItemInFolder
+                              ? await api.showItemInFolder(artifactPath, currentWorkingDir ?? undefined)
+                              : false;
+                        if (!handled) {
                           setGlobalNotice({
                             id: `artifact-reveal-failed-${Date.now()}`,
                             type: 'warning',

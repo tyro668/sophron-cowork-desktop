@@ -16,4 +16,10 @@ describe('ContextPanel recent workspace files integration', () => {
     expect(source).toContain('const displayArtifacts = useMemo(() => {');
     expect(source).toContain('for (const file of recentWorkspaceFiles)');
   });
+
+  it('opens html artifacts through the generated report viewer path', () => {
+    const source = fs.readFileSync(contextPanelPath, 'utf8');
+    expect(source).toContain('isHtmlReportPath(artifactPath || label)');
+    expect(source).toContain('api.openGeneratedReport');
+  });
 });

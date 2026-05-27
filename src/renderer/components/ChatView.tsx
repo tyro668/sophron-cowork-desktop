@@ -14,7 +14,7 @@ import { useAppStore } from '../store';
 import { useIPC } from '../hooks/useIPC';
 import { MessageCard } from './MessageCard';
 import type { Message, ContentBlock } from '../types';
-import { Send, Square, Plus, Loader2, Plug, X, Clock } from 'lucide-react';
+import { Send, Square, Plus, Loader2, Plug, X, Clock, ArrowUp } from 'lucide-react';
 
 type AttachedFile = {
   name: string;
@@ -62,6 +62,8 @@ export function ChatView() {
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRequestRef = useRef<number | null>(null);
   const isScrollingRef = useRef(false);
+  const pendingInitialScrollSessionRef = useRef<string | null>(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
 
   const hasActiveTurn = Boolean(activeTurn);
   const pendingCount = pendingTurns.length;
@@ -131,6 +133,15 @@ export function ChatView() {
       : Math.max(0, (executionClock.endAt ?? clockNow) - executionClock.startAt);
   const timerActive = Boolean(executionClock?.startAt && executionClock.endAt === null);
 
+  const updateScrollState = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    isUserAtBottomRef.current = distanceToBottom <= 80;
+    setShowBackToTop(container.scrollTop > 160 && container.scrollHeight > container.clientHeight);
+  }, []);
+
   // Debounced scroll function to prevent scroll conflicts
   const scrollToBottom = useRef((behavior: ScrollBehavior = 'auto', immediate: boolean = false) => {
     // Cancel any pending scroll requests
@@ -150,6 +161,7 @@ export function ChatView() {
       isScrollingRef.current = true;
 
       messagesEndRef.current?.scrollIntoView({ behavior });
+      updateScrollState();
 
       // Reset scrolling flag after a short delay
       setTimeout(
@@ -170,20 +182,64 @@ export function ChatView() {
     }
   }).current;
 
+  const forceScrollToBottom = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    isScrollingRef.current = true;
+    container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
+    isUserAtBottomRef.current = true;
+    updateScrollState();
+
+    setTimeout(() => {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
+      isUserAtBottomRef.current = true;
+      updateScrollState();
+      isScrollingRef.current = false;
+    }, 80);
+  }, [updateScrollState]);
+
+  const scrollToConversationTop = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    isUserAtBottomRef.current = false;
+    container.scrollTo({ top: 0, behavior: 'smooth' });
+    setShowBackToTop(false);
+  }, []);
+
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
-    const updateScrollState = () => {
-      const distanceToBottom =
-        container.scrollHeight - container.scrollTop - container.clientHeight;
-      isUserAtBottomRef.current = distanceToBottom <= 80;
-    };
     updateScrollState();
     // 用户阅读旧消息时，阻止新消息自动滚动打断视线
     const onScroll = () => updateScrollState();
     container.addEventListener('scroll', onScroll, { passive: true });
     return () => container.removeEventListener('scroll', onScroll);
-  }, []);
+  }, [updateScrollState]);
+
+  useEffect(() => {
+    pendingInitialScrollSessionRef.current = activeSessionId;
+    isUserAtBottomRef.current = true;
+    setShowBackToTop(false);
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    if (
+      !activeSessionId ||
+      pendingInitialScrollSessionRef.current !== activeSessionId ||
+      displayedMessages.length === 0
+    ) {
+      return;
+    }
+
+    const requestId = requestAnimationFrame(() => {
+      forceScrollToBottom();
+      pendingInitialScrollSessionRef.current = null;
+    });
+
+    return () => cancelAnimationFrame(requestId);
+  }, [activeSessionId, displayedMessages.length, forceScrollToBottom]);
 
   useEffect(() => {
     const messageCount = messages.length;
@@ -628,7 +684,7 @@ export function ChatView() {
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-background">
+    <div className="relative flex-1 flex flex-col overflow-hidden bg-background">
       {/* Header */}
       <div
         ref={headerRef}
@@ -668,6 +724,19 @@ export function ChatView() {
           </>
         )}
       </div>
+
+      {showBackToTop && (
+        <div className="pointer-events-none absolute left-0 right-0 top-12 z-20 flex justify-center px-4">
+          <button
+            type="button"
+            onClick={scrollToConversationTop}
+            className="pointer-events-auto mt-3 inline-flex h-9 items-center gap-1.5 rounded-full border border-accent/25 bg-background/92 px-3.5 text-sm font-medium text-accent shadow-soft backdrop-blur-md transition-colors hover:border-accent/45 hover:bg-accent/10"
+          >
+            <ArrowUp className="h-4 w-4" />
+            <span>{t('chat.backToTop')}</span>
+          </button>
+        </div>
+      )}
 
       {/* Messages */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
