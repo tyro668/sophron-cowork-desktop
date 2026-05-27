@@ -5,7 +5,7 @@ describe('working directory display label', () => {
   it('localizes the internal default_working_dir folder name', () => {
     expect(
       getWorkingDirDisplayName(
-        '/Users/demo/Library/Application Support/metis-cowork/default_working_dir',
+        '/Users/demo/Library/Application Support/sophron/default_working_dir',
         '默认工作目录',
         '选择工作文件夹'
       )

@@ -12,11 +12,15 @@ describe('App startup lazy loading', () => {
     expect(source).not.toContain("import { ContextPanel } from './components/ContextPanel';");
     expect(source).not.toContain("import { ConfigModal } from './components/ConfigModal';");
     expect(source).not.toContain("import { SettingsPanel } from './components/SettingsPanel';");
+    expect(source).not.toContain("import { DataView } from './components/DataView';");
+    expect(source).not.toContain("import { SkillsView } from './components/SkillsView';");
 
     expect(source).toContain('const ChatView = lazy(() =>');
     expect(source).toContain('const ContextPanel = lazy(() =>');
     expect(source).toContain('const ConfigModal = lazy(() =>');
     expect(source).toContain('const SettingsPanel = lazy(() =>');
+    expect(source).toContain('const DataView = lazy(() =>');
+    expect(source).toContain('const SkillsView = lazy(() =>');
   });
 
   it('uses suspense boundaries for deferred panels', () => {

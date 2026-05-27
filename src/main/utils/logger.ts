@@ -135,7 +135,7 @@ function initLogFile(): void {
     // Write header
     const header = `
 ================================================================================
-Metis Cowork Application Log
+sophron Application Log
 Started: ${new Date().toISOString()}
 Platform: ${process.platform}
 Arch: ${process.arch}

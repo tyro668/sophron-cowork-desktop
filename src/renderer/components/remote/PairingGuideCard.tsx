@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link2, X } from 'lucide-react';
 
-const DISMISS_KEY = 'metis-cowork-pairing-guide-dismissed';
+const DISMISS_KEY = 'sophron-pairing-guide-dismissed';
 
 const supportsStorage = typeof window !== 'undefined' && window.localStorage;
 

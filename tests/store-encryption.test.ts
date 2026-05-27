@@ -80,7 +80,7 @@ describe('createEncryptedStoreWithKeyRotation', () => {
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'metiscowork-store-'));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-store-'));
     vi.resetModules();
   });
 
@@ -140,7 +140,7 @@ describe('createEncryptedStoreWithKeyRotation', () => {
     const { SECURE_SCRYPT_OPTIONS } = await import('../src/main/utils/store-encryption');
 
     expect(() =>
-      crypto.scryptSync('stable-seed', 'metis-cowork-salt', 32, SECURE_SCRYPT_OPTIONS)
+      crypto.scryptSync('stable-seed', 'sophron-salt', 32, SECURE_SCRYPT_OPTIONS)
     ).not.toThrow();
     expect(SECURE_SCRYPT_OPTIONS.maxmem).toBeGreaterThan(128 * 65536 * 8);
   });

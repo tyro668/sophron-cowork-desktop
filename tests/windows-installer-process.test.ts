@@ -2,15 +2,16 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-describe('windows legacy uninstall remediation', () => {
-  it('uses a custom NSIS include with actionable recovery guidance', () => {
+describe('windows installer process handling', () => {
+  it('only targets the current sophron app names', () => {
     const builderConfig = fs.readFileSync(path.resolve(process.cwd(), 'electron-builder.yml'), 'utf8');
     const installerInclude = fs.readFileSync(path.resolve(process.cwd(), 'resources/installer.nsh'), 'utf8');
 
     expect(builderConfig).toContain('include: installer.nsh');
-    expect(installerInclude).toContain('!macro customUnInstallCheck');
-    expect(installerInclude).toContain('Metis-Cowork-Legacy-Cleanup.cmd');
-    expect(installerInclude).toContain('$LOCALAPPDATA\\Programs\\Metis Cowork');
+    expect(installerInclude).toContain('sophron cowork.exe');
+    expect(installerInclude).toContain('九思助理.exe');
+    expect(installerInclude.includes(['Metis', 'Cowork'].join(' '))).toBe(false);
+    expect(installerInclude).not.toContain('customUnInstallCheck');
   });
 
   it('closes long-lived resources during quit cleanup', () => {

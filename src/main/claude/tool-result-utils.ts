@@ -95,11 +95,7 @@ function extractImagesFromDetails(details: unknown): ToolResultImage[] {
     return [];
   }
 
-  const images = Array.isArray(details.metisCoworkImages)
-    ? details.metisCoworkImages
-    : Array.isArray(details.openCoworkImages)
-      ? details.openCoworkImages
-      : [];
+  const images = Array.isArray(details.sophronImages) ? details.sophronImages : [];
 
   return images.flatMap((image) =>
     isToolResultImage(image) ? [{ data: image.data, mimeType: image.mimeType }] : []

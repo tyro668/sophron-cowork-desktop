@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="resources/logo.png" alt="Metis Cowork Logo" width="280" />
+  <img src="resources/logo.png" alt="sophron cowork Logo" width="280" />
 </p>
 
-<h1 align="center">🚀 Metis Cowork: Your Local Data Agent Desktop App</h1>
+<h1 align="center">🚀 sophron cowork: Your Local Data Agent Desktop App</h1>
 
 <p align="center">
   • Local data processing • One-click install • Sandboxed agent workspace
@@ -25,18 +25,18 @@
 
 ---
 
-Metis Cowork is a free, open-source local data-processing agent for Windows and macOS. It wraps Claude, OpenAI, Gemini, DeepSeek, and other AI models into a desktop workspace that can analyze, clean, transform, summarize, and organize files, spreadsheets, reports, and datasets on your machine. Key capabilities include VM-level sandbox isolation (WSL2 on Windows, Lima on macOS), a built-in Skills system for data reports and document outputs (PPTX, DOCX, XLSX, PDF), MCP integration for browsers, Notion, and other desktop apps, GUI automation via computer use, and remote control through Feishu (Lark) and Slack.
+sophron cowork is a free, open-source local data-processing agent for Windows and macOS. It wraps Claude, OpenAI, Gemini, DeepSeek, and other AI models into a desktop workspace that can analyze, clean, transform, summarize, and organize files, spreadsheets, reports, and datasets on your machine. Key capabilities include VM-level sandbox isolation (WSL2 on Windows, Lima on macOS), a built-in Skills system for data reports and document outputs (PPTX, DOCX, XLSX, PDF), MCP integration for browsers, Notion, and other desktop apps, GUI automation via computer use, and remote control through Feishu (Lark) and Slack.
 
 ---
 
 ## 📖 Introduction
 
-**Metis Cowork** is a local-first agent workspace for data-heavy work, with one-click installers for **Windows** and **macOS**—no coding required.
+**sophron cowork** is a local-first agent workspace for data-heavy work, with one-click installers for **Windows** and **macOS**—no coding required.
 
 It provides a sandboxed workspace where AI can process local data files, generate professional outputs (PPTX, DOCX, XLSX, etc.) through the built-in **Skills** system, and **connect to desktop apps via MCP** (browser, Notion, etc.) when a workflow needs external tools.
 
 > [!WARNING]
-> **Disclaimer**: Metis Cowork is an AI collaboration tool. Please exercise caution with its operations, especially when authorizing file modifications or deletions. We support VM-based sandbox isolation, but some operations may still carry risks.
+> **Disclaimer**: sophron cowork is an AI collaboration tool. Please exercise caution with its operations, especially when authorizing file modifications or deletions. We support VM-based sandbox isolation, but some operations may still carry risks.
 
 ---
 
@@ -44,11 +44,11 @@ It provides a sandboxed workspace where AI can process local data files, generat
 
 ## ✨ Key Features
 
-|               | MCP & Skills | Remote Control | GUI Operation |
-| ------------- | ------------ | -------------- | ------------- |
-| Claude Cowork | ✓            | ✗              | ✗             |
-| OpenClaw      | ✓            | ✓              | ✗             |
-| MetisCowork   | ✓            | ✓              | ✓             |
+|                | MCP & Skills | Remote Control | GUI Operation |
+| -------------- | ------------ | -------------- | ------------- |
+| Claude Cowork  | ✓            | ✗              | ✗             |
+| OpenClaw       | ✓            | ✓              | ✗             |
+| sophron cowork | ✓            | ✓              | ✓             |
 
 - **One-Click Install, Ready to Use**: Pre-built installers for Windows and macOS, no environment setup needed—just download and start using.
 - **Local Data Processing**: Analyze spreadsheets, clean messy datasets, summarize reports, extract structured information, and prepare deliverables from workspace files.
@@ -84,7 +84,7 @@ Demo media is distributed with release materials. Current workflows include:
 
 ### Option 1: Download Installer
 
-Get the latest installer from the official Metis Cowork release channel.
+Get the latest installer from the official sophron cowork release channel.
 
 | Platform                  | File Type |
 | ------------------------- | --------- |
@@ -96,8 +96,8 @@ Get the latest installer from the official Metis Cowork release channel.
 For source-based local builds:
 
 ```bash
-git clone ssh://git@code.fineres.com:7999/res/metis-cowork.git
-cd metis-cowork
+git clone ssh://git@code.fineres.com:7999/res/metis-cowork.git sophron
+cd sophron
 npm install
 npm run rebuild
 npm run dev
@@ -107,7 +107,7 @@ To build the installer locally: `npm run build`
 
 ### Security Configuration: 🔒 Sandbox Support
 
-Metis Cowork provides **multi-level sandbox protection** to keep your system safe:
+sophron cowork provides **multi-level sandbox protection** to keep your system safe:
 
 | Level        | Platform | Technology | Description                                    |
 | ------------ | -------- | ---------- | ---------------------------------------------- |
@@ -128,7 +128,7 @@ Metis Cowork provides **multi-level sandbox protection** to keep your system saf
 
 ```bash
 brew install lima
-# Metis Cowork will automatically create and manage a Lima VM (internal Lima name: 'claude-sandbox')
+# sophron cowork will automatically create and manage a Lima VM (internal Lima name: 'claude-sandbox')
 ```
 
 ---
@@ -141,15 +141,15 @@ brew install lima
 
 You need an API key to power cloud models, or a local Ollama server for local models. The provider list matches the app settings.
 
-| Provider       | Get Key / Setup                                | Base URL                         | Recommended Models                                      |
-| -------------- | ---------------------------------------------- | -------------------------------- | ------------------------------------------------------- |
-| **DeepSeek**   | [DeepSeek Platform](https://platform.deepseek.com/) | `https://api.deepseek.com`       | `deepseek-v4-flash`, `deepseek-v4-pro`, `deepseek-chat` |
-| **Moonshot**   | [Moonshot Platform](https://platform.moonshot.ai/) | `https://api.moonshot.ai/v1`     | `kimi-k2.6`, `kimi-k2-thinking`, `moonshot-v1-128k`     |
-| **Z.AI**       | [Z.AI Docs](https://docs.z.ai/)                | `https://api.z.ai/api/paas/v4`   | `glm-5.1`, `glm-5`, `glm-4.5`                           |
-| **Anthropic**  | [Anthropic Console](https://console.anthropic.com/) | `https://api.anthropic.com`      | `claude-opus-4-6`, `claude-sonnet-4-6`                  |
-| **OpenAI**     | [OpenAI Platform](https://platform.openai.com/) | `https://api.openai.com/v1`      | `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.3-codex`              |
-| **OpenRouter** | [OpenRouter](https://openrouter.ai/)           | `https://openrouter.ai/api/v1`   | `anthropic/claude-sonnet-4-6`, `openai/gpt-5.4`         |
-| **Ollama**     | [Ollama](https://ollama.com/)                  | `http://localhost:11434/v1`      | Discovered from your local Ollama server                |
+| Provider       | Get Key / Setup                                     | Base URL                       | Recommended Models                                      |
+| -------------- | --------------------------------------------------- | ------------------------------ | ------------------------------------------------------- |
+| **DeepSeek**   | [DeepSeek Platform](https://platform.deepseek.com/) | `https://api.deepseek.com`     | `deepseek-v4-flash`, `deepseek-v4-pro`, `deepseek-chat` |
+| **Moonshot**   | [Moonshot Platform](https://platform.moonshot.ai/)  | `https://api.moonshot.ai/v1`   | `kimi-k2.6`, `kimi-k2-thinking`, `moonshot-v1-128k`     |
+| **Z.AI**       | [Z.AI Docs](https://docs.z.ai/)                     | `https://api.z.ai/api/paas/v4` | `glm-5.1`, `glm-5`, `glm-4.5`                           |
+| **Anthropic**  | [Anthropic Console](https://console.anthropic.com/) | `https://api.anthropic.com`    | `claude-opus-4-6`, `claude-sonnet-4-6`                  |
+| **OpenAI**     | [OpenAI Platform](https://platform.openai.com/)     | `https://api.openai.com/v1`    | `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.3-codex`               |
+| **OpenRouter** | [OpenRouter](https://openrouter.ai/)                | `https://openrouter.ai/api/v1` | `anthropic/claude-sonnet-4-6`, `openai/gpt-5.4`         |
+| **Ollama**     | [Ollama](https://ollama.com/)                       | `http://localhost:11434/v1`    | Discovered from your local Ollama server                |
 
 ### 2. Configure
 
@@ -176,7 +176,7 @@ You need an API key to power cloud models, or a local Ollama server for local mo
 
 ## 🧰 Skills Library
 
-Metis Cowork ships with built-in skills under `.claude/skills/`, and supports user-added or custom skills, including:
+sophron cowork ships with built-in skills under `.claude/skills/`, and supports user-added or custom skills, including:
 
 - `pptx` for PowerPoint generation
 - `docx` for Word document processing
@@ -189,7 +189,7 @@ Metis Cowork ships with built-in skills under `.claude/skills/`, and supports us
 ## 🏗️ Architecture
 
 ```
-metis-cowork/
+sophron/
 ├── src/
 │   ├── main/                    # Electron Main Process (Node.js)
 │   │   ├── index.ts             # Main entry point
@@ -261,42 +261,42 @@ See our full **[ROADMAP.md](ROADMAP.md)** for detailed plans.
 
 ## ❓ FAQ
 
-**What is Metis Cowork?**
-Metis Cowork is a free, open-source desktop application that provides a local AI agent workspace for processing data. It helps analyze, clean, transform, summarize, and organize workspace files with one-click installers for Windows and macOS.
+**What is sophron cowork?**
+sophron cowork is a free, open-source desktop application that provides a local AI agent workspace for processing data. It helps analyze, clean, transform, summarize, and organize workspace files with one-click installers for Windows and macOS.
 
-**How is Metis Cowork different from Claude Cowork?**
-Metis Cowork is positioned around local data processing rather than general coding or chat. It adds multi-model support, GUI automation via computer use, remote control through Feishu/Slack, and VM-level sandbox isolation. See the [feature comparison table](#features) for details.
+**How is sophron cowork different from Claude Cowork?**
+sophron cowork is positioned around local data processing rather than general coding or chat. It adds multi-model support, GUI automation via computer use, remote control through Feishu/Slack, and VM-level sandbox isolation. See the [feature comparison table](#features) for details.
 
-**What AI models does Metis Cowork support?**
-Metis Cowork currently provides dedicated presets for DeepSeek, Moonshot, Z.AI, Anthropic, OpenAI, OpenRouter, and Ollama. OpenRouter can route to additional hosted models, and Ollama can run local models discovered from your machine.
+**What AI models does sophron cowork support?**
+sophron cowork currently provides dedicated presets for DeepSeek, Moonshot, Z.AI, Anthropic, OpenAI, OpenRouter, and Ollama. OpenRouter can route to additional hosted models, and Ollama can run local models discovered from your machine.
 
-**Is Metis Cowork free?**
-Yes. Metis Cowork itself is completely free and open-source under the MIT license. You only need to pay for the AI model API usage from your chosen provider.
+**Is sophron cowork free?**
+Yes. sophron cowork itself is completely free and open-source under the MIT license. You only need to pay for the AI model API usage from your chosen provider.
 
-**Does Metis Cowork work on Linux?**
-Currently, Metis Cowork provides pre-built installers for Windows and macOS only. Linux users can build from source — see the [Build from Source](#installation) section.
+**Does sophron cowork work on Linux?**
+Currently, sophron cowork provides pre-built installers for Windows and macOS only. Linux users can build from source — see the [Build from Source](#installation) section.
 
 **How does sandbox isolation work?**
-Metis Cowork offers multi-level protection: basic path-based restrictions on all platforms, and enhanced VM-level isolation using WSL2 (Windows) or Lima (macOS). When a VM is available, all commands execute inside an isolated Linux environment, protecting your host system.
+sophron cowork offers multi-level protection: basic path-based restrictions on all platforms, and enhanced VM-level isolation using WSL2 (Windows) or Lima (macOS). When a VM is available, all commands execute inside an isolated Linux environment, protecting your host system.
 
 **What are Skills and how do I create custom ones?**
-Skills are built-in workflows for specific tasks like generating PPTX, DOCX, PDF, or XLSX files. Metis Cowork ships with default skills under `.claude/skills/` and includes a `skill-creator` tool to help you build your own custom skills.
+Skills are built-in workflows for specific tasks like generating PPTX, DOCX, PDF, or XLSX files. sophron cowork ships with default skills under `.claude/skills/` and includes a `skill-creator` tool to help you build your own custom skills.
 
 **What is MCP and how does it work?**
-MCP (Model Context Protocol) lets AI connect to external tools and services. Metis Cowork supports MCP connectors for browsers, Notion, and other desktop apps — extending the AI's capabilities beyond just file management and code.
+MCP (Model Context Protocol) lets AI connect to external tools and services. sophron cowork supports MCP connectors for browsers, Notion, and other desktop apps — extending the AI's capabilities beyond just file management and code.
 
 **How do I set up remote control via Feishu or Slack?**
-Metis Cowork supports remote control through Feishu (Lark) and Slack integration, allowing you to send commands and receive results from collaboration platforms. Check the app settings for remote control configuration.
+sophron cowork supports remote control through Feishu (Lark) and Slack integration, allowing you to send commands and receive results from collaboration platforms. Check the app settings for remote control configuration.
 
-**Is my data safe? Does Metis Cowork send data to external servers?**
-Metis Cowork runs locally on your machine. Your files stay in your workspace. The only external communication is with the AI model API you configure (e.g., Anthropic, OpenRouter). No data is sent to Metis Cowork servers.
+**Is my data safe? Does sophron cowork send data to external servers?**
+sophron cowork runs locally on your machine. Your files stay in your workspace. The only external communication is with the AI model API you configure (e.g., Anthropic, OpenRouter). No data is sent to sophron cowork servers.
 
 ## 📄 License
 
-MIT © Metis Cowork Team
+MIT © sophron
 
 ---
 
 <p align="center">
-  Made with ❤️ by the Metis Cowork Team with the help of opus4.5
+  Made with ❤️ by the sophron team with the help of opus4.5
 </p>

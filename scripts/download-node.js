@@ -21,9 +21,7 @@ const PLATFORMS = {
 
 const BASE_URL = 'https://nodejs.org/dist';
 const OUTPUT_DIR = path.join(__dirname, '..', 'resources', 'node');
-const DOWNLOAD_ALL_PLATFORMS =
-  process.env.METIS_COWORK_DOWNLOAD_ALL_NODE_BINARIES === '1' ||
-  process.env.OPEN_COWORK_DOWNLOAD_ALL_NODE_BINARIES === '1';
+const DOWNLOAD_ALL_PLATFORMS = process.env.SOPHRON_DOWNLOAD_ALL_NODE_BINARIES === '1';
 const WINDOWS_UNLINK_RETRY_COUNT = 8;
 const WINDOWS_UNLINK_RETRY_DELAY_MS = 500;
 
@@ -83,24 +81,26 @@ function download(url, dest) {
   return new Promise((resolve, reject) => {
     console.log(`Downloading: ${url}`);
     const file = fs.createWriteStream(dest);
-    https.get(url, (response) => {
-      if (response.statusCode === 302 || response.statusCode === 301) {
-        // Follow redirect
-        return download(response.headers.location, dest).then(resolve).catch(reject);
-      }
-      if (response.statusCode !== 200) {
-        reject(new Error(`Failed to download: ${response.statusCode}`));
-        return;
-      }
-      response.pipe(file);
-      file.on('finish', () => {
-        file.close();
-        resolve();
+    https
+      .get(url, (response) => {
+        if (response.statusCode === 302 || response.statusCode === 301) {
+          // Follow redirect
+          return download(response.headers.location, dest).then(resolve).catch(reject);
+        }
+        if (response.statusCode !== 200) {
+          reject(new Error(`Failed to download: ${response.statusCode}`));
+          return;
+        }
+        response.pipe(file);
+        file.on('finish', () => {
+          file.close();
+          resolve();
+        });
+      })
+      .on('error', (err) => {
+        fs.unlink(dest, () => {});
+        reject(err);
       });
-    }).on('error', (err) => {
-      fs.unlink(dest, () => {});
-      reject(err);
-    });
   });
 }
 
@@ -120,8 +120,9 @@ function removeFileWithRetries(filePath) {
       return;
     } catch (error) {
       lastError = error;
-      const isRetryableWindowsError = process.platform === 'win32'
-        && (error.code === 'EPERM' || error.code === 'EBUSY' || error.code === 'ENOTEMPTY');
+      const isRetryableWindowsError =
+        process.platform === 'win32' &&
+        (error.code === 'EPERM' || error.code === 'EBUSY' || error.code === 'ENOTEMPTY');
       if (!isRetryableWindowsError || attempt === WINDOWS_UNLINK_RETRY_COUNT) {
         throw error;
       }
@@ -178,7 +179,10 @@ async function downloadAndExtract(platform, arch) {
       const isWindows = process.platform === 'win32';
       if (isWindows) {
         // PowerShell on Windows
-        execSync(`powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${extractDir}' -Force"`, { stdio: 'inherit' });
+        execSync(
+          `powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${extractDir}' -Force"`,
+          { stdio: 'inherit' }
+        );
       } else {
         // unzip on Unix
         execSync(`unzip -q "${archivePath}" -d "${extractDir}"`, { stdio: 'inherit' });
@@ -187,7 +191,7 @@ async function downloadAndExtract(platform, arch) {
       const innerDir = path.join(extractDir, nodeName);
       if (fs.existsSync(innerDir)) {
         const files = fs.readdirSync(innerDir);
-        files.forEach(file => {
+        files.forEach((file) => {
           fs.renameSync(path.join(innerDir, file), path.join(extractDir, file));
         });
         fs.rmdirSync(innerDir);
@@ -195,7 +199,9 @@ async function downloadAndExtract(platform, arch) {
     } else {
       // Use tar for Unix packages
       // Note: On Windows, extracting Unix tar.gz may fail due to symlinks - that's OK
-      execSync(`tar -xzf "${archivePath}" -C "${extractDir}" --strip-components=1`, { stdio: 'inherit' });
+      execSync(`tar -xzf "${archivePath}" -C "${extractDir}" --strip-components=1`, {
+        stdio: 'inherit',
+      });
     }
 
     // Clean up archive
@@ -259,9 +265,7 @@ async function main() {
   }
 
   for (const [platform, arches] of platformsToDownload) {
-    const archList = DOWNLOAD_ALL_PLATFORMS
-      ? Object.keys(arches)
-      : [process.arch];
+    const archList = DOWNLOAD_ALL_PLATFORMS ? Object.keys(arches) : [process.arch];
 
     for (const arch of archList) {
       downloads.push(downloadAndExtract(platform, arch));

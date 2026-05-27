@@ -15,6 +15,7 @@ import { applySessionUpdate } from '../utils/session-update';
 
 export type GlobalNoticeType = 'info' | 'warning' | 'error' | 'success';
 export type GlobalNoticeAction = 'open_api_settings';
+export type MainView = 'chat' | 'data' | 'skills';
 
 export interface GlobalNotice {
   id: string;
@@ -82,6 +83,7 @@ interface AppState {
 
   // UI state
   isLoading: boolean;
+  mainView: MainView;
   sidebarCollapsed: boolean;
   contextPanelCollapsed: boolean;
   showSettings: boolean;
@@ -148,6 +150,7 @@ interface AppState {
   setTraceSteps: (sessionId: string, steps: TraceStep[]) => void;
 
   setLoading: (loading: boolean) => void;
+  setMainView: (view: MainView) => void;
   toggleSidebar: () => void;
   toggleContextPanel: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -223,6 +226,7 @@ export const useAppStore = create<AppState>((set) => ({
   activeSessionId: null,
   sessionStates: {},
   isLoading: false,
+  mainView: 'chat',
   sidebarCollapsed: false,
   contextPanelCollapsed: false,
   showSettings: false,
@@ -286,7 +290,11 @@ export const useAppStore = create<AppState>((set) => ({
       };
     }),
 
-  setActiveSession: (sessionId) => set({ activeSessionId: sessionId }),
+  setActiveSession: (sessionId) =>
+    set({
+      activeSessionId: sessionId,
+      ...(sessionId ? { mainView: 'chat' as const } : {}),
+    }),
 
   // Message actions
   addMessage: (sessionId, message) =>
@@ -535,6 +543,7 @@ export const useAppStore = create<AppState>((set) => ({
 
   // UI actions
   setLoading: (loading) => set({ isLoading: loading }),
+  setMainView: (view) => set({ mainView: view }),
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
   toggleContextPanel: () =>
     set((state) => ({ contextPanelCollapsed: !state.contextPanelCollapsed })),
@@ -604,6 +613,7 @@ if (typeof window !== 'undefined') {
     const s = useAppStore.getState();
     return {
       showSettings: !!s.showSettings,
+      mainView: s.mainView,
       activeSessionId: s.activeSessionId || null,
       sessionCount: (s.sessions || []).length,
     };
@@ -613,6 +623,15 @@ if (typeof window !== 'undefined') {
     const store = useAppStore.getState();
     if (page === 'welcome') {
       store.setShowSettings(false);
+      store.setMainView('chat');
+      store.setActiveSession(null);
+    } else if (page === 'data') {
+      store.setShowSettings(false);
+      store.setMainView('data');
+      store.setActiveSession(null);
+    } else if (page === 'skills') {
+      store.setShowSettings(false);
+      store.setMainView('skills');
       store.setActiveSession(null);
     } else if (page === 'settings') {
       store.setSettingsTab(tab || 'api');
@@ -622,6 +641,7 @@ if (typeof window !== 'undefined') {
       const exists = store.sessions.some((s) => s.id === sessionId);
       if (!exists) return false;
       store.setShowSettings(false);
+      store.setMainView('chat');
       store.setActiveSession(sessionId);
     }
     return true;

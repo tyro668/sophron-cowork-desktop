@@ -13,11 +13,11 @@ describe('build-windows helper', () => {
     expect(source).toContain('process.exit(0);');
   });
 
-  it('copies legacy cleanup helpers into the Windows release output after a successful build', () => {
+  it('does not include legacy cleanup artifact handling', () => {
     const source = fs.readFileSync(scriptPath, 'utf8');
 
-    expect(source).toContain("const { writeLegacyCleanupArtifacts } = require('./build-windows-artifacts');");
-    expect(source).toContain('writeLegacyCleanupArtifacts({');
-    expect(source).toContain('Added legacy cleanup helper:');
+    expect(source).not.toContain('writeLegacyCleanupArtifacts');
+    expect(source).not.toContain('legacy cleanup helper');
+    expect(source).toContain('SOPHRON_BUILD_ROOT');
   });
 });

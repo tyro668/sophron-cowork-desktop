@@ -12,6 +12,8 @@ import {
   Settings,
   Search as SearchIcon,
   Plus,
+  Layers,
+  Wrench,
   ListChecks,
   Check,
 } from 'lucide-react';
@@ -29,14 +31,17 @@ export function Sidebar() {
   const { t } = useTranslation();
   const sessions = useAppStore((s) => s.sessions);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
+  const mainView = useAppStore((s) => s.mainView);
   const settings = useAppStore((s) => s.settings);
   const setActiveSession = useAppStore((s) => s.setActiveSession);
+  const setMainView = useAppStore((s) => s.setMainView);
   const setMessages = useAppStore((s) => s.setMessages);
   const setTraceSteps = useAppStore((s) => s.setTraceSteps);
   const updateSettings = useAppStore((s) => s.updateSettings);
   const isConfigured = useAppStore((s) => s.isConfigured);
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
+  const showSettings = useAppStore((s) => s.showSettings);
   const setShowSettings = useAppStore((s) => s.setShowSettings);
   const {
     deleteSession,
@@ -99,6 +104,20 @@ export function Sidebar() {
     setShowDeleteConfirm(false);
   }, []);
 
+  const handleDataPage = useCallback(() => {
+    exitSelectMode();
+    setMainView('data');
+    setActiveSession(null);
+    setShowSettings(false);
+  }, [exitSelectMode, setActiveSession, setMainView, setShowSettings]);
+
+  const handleSkillsPage = useCallback(() => {
+    exitSelectMode();
+    setMainView('skills');
+    setActiveSession(null);
+    setShowSettings(false);
+  }, [exitSelectMode, setActiveSession, setMainView, setShowSettings]);
+
   const toggleSelectSession = useCallback((sessionId: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -149,6 +168,7 @@ export function Sidebar() {
   const handleSessionClick = useCallback(
     async (sessionId: string) => {
       setShowSettings(false);
+      setMainView('chat');
 
       if (activeSessionId === sessionId) return;
 
@@ -190,6 +210,7 @@ export function Sidebar() {
       getSessionTraceSteps,
       isElectron,
       setActiveSession,
+      setMainView,
       setMessages,
       setShowSettings,
       setTraceSteps,
@@ -197,6 +218,7 @@ export function Sidebar() {
   );
 
   const handleNewSession = () => {
+    setMainView('chat');
     setActiveSession(null);
     setShowSettings(false);
   };
@@ -220,6 +242,8 @@ export function Sidebar() {
     ) : (
       <Monitor className="w-4 h-4" />
     );
+  const isDataPageActive = mainView === 'data' && !showSettings;
+  const isSkillsPageActive = mainView === 'skills' && !showSettings;
 
   if (sidebarCollapsed) {
     return (
@@ -238,6 +262,28 @@ export function Sidebar() {
             title={t('sidebar.newTask')}
           >
             <Plus className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleDataPage}
+            className={`w-9 h-9 rounded-2xl flex items-center justify-center transition-colors ${
+              isDataPageActive
+                ? 'bg-accent/10 text-accent'
+                : 'text-text-secondary hover:bg-surface-hover'
+            }`}
+            title={t('mainNav.data')}
+          >
+            <Layers className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleSkillsPage}
+            className={`w-9 h-9 rounded-2xl flex items-center justify-center transition-colors ${
+              isSkillsPageActive
+                ? 'bg-accent/10 text-accent'
+                : 'text-text-secondary hover:bg-surface-hover'
+            }`}
+            title={t('mainNav.skills')}
+          >
+            <Wrench className="w-4 h-4" />
           </button>
         </div>
 
@@ -286,7 +332,7 @@ export function Sidebar() {
             />
             <div className="min-w-0">
               <h1 className="text-[1.34rem] leading-none font-semibold tracking-[-0.035em] text-text-primary">
-                Metis Cowork
+                {t('common.appName')}
               </h1>
             </div>
           </div>
@@ -338,9 +384,44 @@ export function Sidebar() {
             </button>
           </div>
         )}
+
+        <nav className="mt-4 space-y-1" aria-label={t('mainNav.label')}>
+          <button
+            onClick={handleDataPage}
+            className={`group flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[13px] font-medium transition-colors ${
+              isDataPageActive
+                ? 'bg-accent/10 text-accent'
+                : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+            }`}
+          >
+            <Layers className="h-4 w-4 flex-shrink-0" />
+            <span className="min-w-0 flex-1 truncate">{t('mainNav.data')}</span>
+          </button>
+          <button
+            onClick={handleSkillsPage}
+            className={`group flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[13px] font-medium transition-colors ${
+              isSkillsPageActive
+                ? 'bg-accent/10 text-accent'
+                : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+            }`}
+          >
+            <Wrench className="h-4 w-4 flex-shrink-0" />
+            <span className="min-w-0 flex-1 truncate">{t('mainNav.skills')}</span>
+          </button>
+        </nav>
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-4">
+        <div
+          className={`mb-3 flex items-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold ${
+            (activeSessionId || mainView === 'chat') && !showSettings
+              ? 'bg-accent/10 text-accent'
+              : 'text-text-primary'
+          }`}
+        >
+          <ListChecks className="h-4 w-4 flex-shrink-0" />
+          <span>{t('mainNav.tasks')}</span>
+        </div>
         {groupedSessions.length === 0 ? (
           <div className="px-3 py-6">
             <p className="text-sm text-text-secondary">{t('sidebar.noTasks')}</p>

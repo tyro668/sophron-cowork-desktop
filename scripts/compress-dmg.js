@@ -33,14 +33,17 @@ module.exports = async function afterAllArtifactBuild(buildResult) {
   }
 
   const { outDir, configuration } = buildResult;
-  const productName = configuration.productName || 'Metis Cowork';
-  const version = buildResult.configuration.buildVersion ||
+  const productName = configuration.productName || 'sophron cowork';
+  const artifactName = path.basename(outDir) || productName;
+  const version =
+    buildResult.configuration.buildVersion ||
     require(path.join(process.cwd(), 'package.json')).version;
 
   // Find the .app directory in the dir target output
-  const macOutDirs = fs.readdirSync(outDir)
-    .filter(d => d.startsWith('mac-'))
-    .map(d => path.join(outDir, d));
+  const macOutDirs = fs
+    .readdirSync(outDir)
+    .filter((d) => d.startsWith('mac-'))
+    .map((d) => path.join(outDir, d));
 
   const createdDmgs = [];
 
@@ -54,7 +57,7 @@ module.exports = async function afterAllArtifactBuild(buildResult) {
       continue;
     }
 
-    const dmgName = `${productName}-${version}-mac-${arch}.dmg`;
+    const dmgName = `${artifactName}-${version}-mac-${arch}.dmg`;
     const dmgPath = path.join(outDir, dmgName);
     const applicationsLink = path.join(macDir, 'Applications');
 
@@ -72,12 +75,14 @@ module.exports = async function afterAllArtifactBuild(buildResult) {
       console.log(`  Creating ULMO DMG (this may take a few minutes)...`);
       execSync(
         `hdiutil create -volname "${productName}" -srcfolder "${macDir}" ` +
-        `-ov -format ULMO -imagekey lzma-level=5 "${dmgPath}"`,
+          `-ov -format ULMO -imagekey lzma-level=5 "${dmgPath}"`,
         { stdio: 'inherit' }
       );
 
       const dmgSize = fs.statSync(dmgPath).size;
-      console.log(`  ✓ DMG created: ${(dmgSize / 1024 / 1024).toFixed(1)}MB (ULMO/LZMA compressed)`);
+      console.log(
+        `  ✓ DMG created: ${(dmgSize / 1024 / 1024).toFixed(1)}MB (ULMO/LZMA compressed)`
+      );
 
       createdDmgs.push(dmgPath);
     } catch (err) {
@@ -92,7 +97,7 @@ module.exports = async function afterAllArtifactBuild(buildResult) {
   }
 
   // Also handle any pre-existing DMGs (if `dmg` target is used on other platforms/configs)
-  const existingDmgs = (buildResult.artifactPaths || []).filter(f => f.endsWith('.dmg'));
+  const existingDmgs = (buildResult.artifactPaths || []).filter((f) => f.endsWith('.dmg'));
   for (const dmgPath of existingDmgs) {
     if (!fs.existsSync(dmgPath) || createdDmgs.includes(dmgPath)) continue;
 
@@ -101,14 +106,15 @@ module.exports = async function afterAllArtifactBuild(buildResult) {
 
     console.log(`\n[compress-dmg] Converting existing DMG to ULMO: ${path.basename(dmgPath)}`);
     try {
-      execSync(
-        `hdiutil convert "${dmgPath}" -format ULMO -imagekey lzma-level=5 -o "${tmpPath}"`,
-        { stdio: 'inherit' }
-      );
+      execSync(`hdiutil convert "${dmgPath}" -format ULMO -imagekey lzma-level=5 -o "${tmpPath}"`, {
+        stdio: 'inherit',
+      });
       fs.unlinkSync(dmgPath);
       fs.renameSync(tmpPath, dmgPath);
       const newSize = fs.statSync(dmgPath).size;
-      console.log(`  ✓ ${(originalSize / 1024 / 1024).toFixed(1)}MB → ${(newSize / 1024 / 1024).toFixed(1)}MB`);
+      console.log(
+        `  ✓ ${(originalSize / 1024 / 1024).toFixed(1)}MB → ${(newSize / 1024 / 1024).toFixed(1)}MB`
+      );
     } catch (err) {
       console.error(`[compress-dmg] Failed: ${err.message}`);
       if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);

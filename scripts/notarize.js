@@ -20,7 +20,7 @@ exports.default = async function afterSign(context) {
     return;
   }
 
-  const appId = 'com.metiscowork.app';
+  const appId = 'com.sophron.app';
   const appName = context.packager.appInfo.productFilename;
   const appPath = `${appOutDir}/${appName}.app`;
 

@@ -57,7 +57,7 @@ class MockTray {
 
 export const app = {
   isPackaged: false,
-  name: 'metis-cowork-test',
+  name: 'sophron-test',
   commandLine: {
     appendSwitch: noop,
   },
@@ -66,9 +66,9 @@ export const app = {
   },
   disableHardwareAcceleration: noop,
   requestSingleInstanceLock: () => true,
-  getPath: (_name: string) => '/tmp/metis-cowork-test',
+  getPath: (_name: string) => '/tmp/sophron-test',
   getVersion: () => '0.0.0-test',
-  getName: () => 'metis-cowork-test',
+  getName: () => 'sophron-test',
   getLocale: () => 'en',
   getAppPath: () => process.cwd(),
   whenReady: () => Promise.resolve(),

@@ -5,10 +5,7 @@
 
 import Store from 'electron-store';
 import { log, logWarn } from '../utils/logger';
-import {
-  createEncryptedStoreWithKeyRotation,
-  getLegacyDerivedKeyHexes,
-} from '../utils/store-encryption';
+import { createEncryptedStoreWithKeyRotation } from '../utils/store-encryption';
 import type {
   RemoteConfig,
   GatewayConfig,
@@ -32,20 +29,11 @@ class RemoteConfigStore {
         unknown
       >;
     this.store = createEncryptedStoreWithKeyRotation<RemoteConfigRecord>({
-      stableKey: 'metis-cowork-remote-stable-v1',
-      legacyKeys: [
-        'open-cowork-remote-stable-v1',
-        'open-cowork-remote-v1',
-        ...getLegacyDerivedKeyHexes({
-          moduleDirname: __dirname,
-          stableSeed: 'open-cowork-remote-stable-v1',
-          legacySeed: 'open-cowork-remote-v1',
-          salt: 'open-cowork-remote-salt',
-        }),
-      ],
+      stableKey: 'sophron-remote-stable-v1',
+      legacyKeys: [],
       storeOptions: {
         name: 'remote-config',
-        projectName: 'metis-cowork',
+        projectName: 'sophron',
         defaults: {
           ...DEFAULT_REMOTE_CONFIG,
           pairedUsers: [],

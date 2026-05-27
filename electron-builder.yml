@@ -1,9 +1,9 @@
-appId: com.metiscowork.app
-productName: Metis Cowork
-copyright: Copyright © 2026 Metis Cowork Team
+appId: com.sophron.app
+productName: sophron cowork
+copyright: Copyright © 2026 sophron
 
 directories:
-  output: release
+  output: release/sophron
   buildResources: resources
 
 npmRebuild: true
@@ -65,7 +65,7 @@ win:
     - target: nsis
       arch:
         - x64
-  artifactName: ${productName}-${version}-win-${arch}.${ext}
+  artifactName: sophron-${version}-win-${arch}.${ext}
   signAndEditExecutable: false
   extraResources:
     - from: .bundle-resources/mcp
@@ -85,7 +85,7 @@ mac:
     - target: dir
       arch:
         - arm64
-  artifactName: ${productName}-${version}-mac-${arch}.${ext}
+  artifactName: sophron-${version}-mac-${arch}.${ext}
   identity: auto
   hardenedRuntime: true
   gatekeeperAssess: true
@@ -93,8 +93,8 @@ mac:
   entitlementsInherit: resources/entitlements.mac.plist
   extendInfo:
     LSApplicationCategoryType: public.app-category.developer-tools
-    NSScreenCaptureUsageDescription: 'Metis Cowork needs screen recording access for GUI automation.'
-    NSAccessibilityUsageDescription: 'Metis Cowork needs accessibility access for GUI automation.'
+    NSScreenCaptureUsageDescription: 'sophron cowork needs screen recording access for GUI automation.'
+    NSAccessibilityUsageDescription: 'sophron cowork needs accessibility access for GUI automation.'
   extraResources:
     - from: .bundle-resources/mcp
       to: mcp
@@ -119,7 +119,7 @@ linux:
     - target: AppImage
       arch:
         - x64
-  artifactName: ${productName}-${version}-linux-${arch}.${ext}
+  artifactName: sophron-${version}-linux-${arch}.${ext}
   extraResources:
     - from: .bundle-resources/mcp
       to: mcp
@@ -152,7 +152,7 @@ dmg:
   contents:
     - x: 150
       y: 220
-      name: 'Metis Cowork.app'
+      name: 'sophron cowork.app'
     - x: 450
       y: 220
       type: link

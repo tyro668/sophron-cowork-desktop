@@ -11,7 +11,7 @@ describe('WelcomeView Claude-style layout', () => {
     expect(source).toContain("t('welcome.title')");
     expect(source).not.toContain('welcomeLogoSrc');
     expect(source).not.toContain("t('welcome.logoAlt')");
-    expect(source).not.toContain('Metis Cowork');
+    expect(source).not.toContain('sophron cowork');
   });
 
   it('uses a softer rounded composer shell instead of the previous generic card class', () => {
@@ -22,7 +22,7 @@ describe('WelcomeView Claude-style layout', () => {
 
   it('shows an inline API setup hint on the welcome screen when config is missing', () => {
     const source = fs.readFileSync(welcomeViewPath, 'utf8');
-    expect(source).toContain("!isConfigured && (");
+    expect(source).toContain('!isConfigured && (');
     expect(source).toContain("t('welcome.apiNotConfigured')");
     expect(source).toContain("setSettingsTab('api');");
     expect(source).toContain('setShowSettings(true);');

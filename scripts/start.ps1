@@ -1,8 +1,8 @@
-# Metis Cowork - Startup Script
+# sophron cowork - Startup Script
 # This script starts the application.
 # Environment variables should be set in .env file or system environment.
 
-Write-Host "Starting Metis Cowork..." -ForegroundColor Cyan
+Write-Host "Starting sophron cowork..." -ForegroundColor Cyan
 Write-Host ""
 
 # Check if .env file exists

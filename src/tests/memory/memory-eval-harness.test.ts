@@ -53,7 +53,7 @@ vi.mock('electron', () => ({
     isPackaged: false,
     getPath: () => '/tmp',
     getVersion: () => '0.0.0-test',
-    getAppPath: () => '/tmp/metis-cowork-test-app',
+    getAppPath: () => '/tmp/sophron-test-app',
   },
 }));
 
@@ -270,7 +270,7 @@ describe('MemoryEvalHarness and MemoryPromptOptimizer', () => {
   const llm = new EvalMockLLM();
 
   beforeEach(() => {
-    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'metis-cowork-memory-eval-'));
+    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-memory-eval-'));
     rawDb = new Database(':memory:');
     createSchema(rawDb);
     service = new MemoryService(createDatabaseInstance(rawDb), { llmClient: llm });

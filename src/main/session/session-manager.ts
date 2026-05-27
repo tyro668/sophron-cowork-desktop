@@ -128,7 +128,7 @@ export class SessionManager {
    */
   private createAgentRunner(): void {
     this.agentRunner = this.createClaudeAgentRunner();
-    log('[SessionManager] Using Metis Cowork agent runner');
+    log('[SessionManager] Using sophron agent runner');
   }
 
   private createClaudeAgentRunner(): ClaudeAgentRunner {

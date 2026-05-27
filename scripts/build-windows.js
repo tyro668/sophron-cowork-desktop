@@ -3,13 +3,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
-const { writeLegacyCleanupArtifacts } = require('./build-windows-artifacts');
 
 const PROJECT_ROOT = path.join(__dirname, '..');
 const CACHE_ROOT = path.resolve(
-  process.env.METIS_COWORK_BUILD_ROOT ||
-    process.env.OPEN_COWORK_BUILD_ROOT ||
-    path.join(PROJECT_ROOT, '.build-cache')
+  process.env.SOPHRON_BUILD_ROOT || path.join(PROJECT_ROOT, '.build-cache')
 );
 
 const DIRS = {
@@ -22,8 +19,6 @@ const DIRS = {
   npmCache: path.join(CACHE_ROOT, 'npm-cache'),
 };
 const LOCAL_ELECTRON_DIST = path.join(PROJECT_ROOT, 'node_modules', 'electron', 'dist');
-const RELEASE_DIR = path.join(PROJECT_ROOT, 'release');
-
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
 }
@@ -68,7 +63,8 @@ function cleanInvalidElectronCache(electronCacheDir) {
     return;
   }
 
-  const zipFiles = fs.readdirSync(electronCacheDir)
+  const zipFiles = fs
+    .readdirSync(electronCacheDir)
     .filter((name) => /^electron-v.+-win32-.+\.zip$/i.test(name))
     .map((name) => path.join(electronCacheDir, name));
 
@@ -136,20 +132,6 @@ function main() {
     if (signal) {
       console.error(`[build:win] Build terminated by signal: ${signal}`);
       process.exit(1);
-    }
-    if (code === 0) {
-      try {
-        const copiedPaths = writeLegacyCleanupArtifacts({
-          projectRoot: PROJECT_ROOT,
-          outputDir: RELEASE_DIR,
-        });
-        copiedPaths.forEach((copiedPath) => {
-          console.log('[build:win] Added legacy cleanup helper:', copiedPath);
-        });
-      } catch (error) {
-        console.error('[build:win] Failed to write legacy cleanup helpers:', error.message);
-        process.exit(1);
-      }
     }
     process.exit(code ?? 1);
   });

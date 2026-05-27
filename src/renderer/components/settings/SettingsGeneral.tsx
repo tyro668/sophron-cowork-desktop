@@ -74,7 +74,9 @@ export function SettingsGeneral() {
       {/* About */}
       {appVer && (
         <div className="pt-4 border-t border-border">
-          <p className="text-xs text-text-muted">Metis Cowork v{appVer}</p>
+          <p className="text-xs text-text-muted">
+            {t('common.appName')} v{appVer}
+          </p>
         </div>
       )}
     </div>

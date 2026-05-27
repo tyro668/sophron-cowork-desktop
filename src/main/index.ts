@@ -65,6 +65,7 @@ import {
   buildScheduledTaskFallbackTitle,
   buildScheduledTaskTitle,
 } from '../shared/schedule/task-title';
+import { APP_INTERNAL_NAME, APP_NAME_EN } from '../shared/branding';
 import {
   isUncPath,
   isWindowsDrivePath,
@@ -117,6 +118,11 @@ let skillsManager: SkillsManager | null = null;
 let pluginRuntimeService: PluginRuntimeService | null = null;
 let memoryService: MemoryService | null = null;
 let scheduledTaskManager: ScheduledTaskManager | null = null;
+
+function getRuntimeAppName(): string {
+  const runtimeName = app.getName();
+  return runtimeName && runtimeName !== APP_INTERNAL_NAME ? runtimeName : APP_NAME_EN;
+}
 
 function sanitizeDiagnosticBaseUrl(value: string | undefined): string | null {
   if (!value) {
@@ -311,7 +317,7 @@ function setupTray() {
   }
 
   tray = new Tray(resolvedIconPath);
-  tray.setToolTip('Metis Cowork');
+  tray.setToolTip(getRuntimeAppName());
 
   const contextMenu = Menu.buildFromTemplate([
     {
@@ -810,10 +816,10 @@ app
     setDevLogsEnabled(enableDevLogs);
 
     // Log environment variables for debugging
-    log('=== Metis Cowork Starting ===');
+    log(`=== ${APP_INTERNAL_NAME} Starting ===`);
     log('Config file:', configStore.getPath());
     log('Is configured:', configStore.isConfigured());
-    log('[Runtime] Using Metis Cowork agent SDK for all providers');
+    log(`[Runtime] Using ${APP_INTERNAL_NAME} agent SDK for all providers`);
     log('Developer logs:', enableDevLogs ? 'Enabled' : 'Disabled');
     log('Environment Variables:');
     log('  ANTHROPIC_AUTH_TOKEN:', process.env.ANTHROPIC_AUTH_TOKEN ? '✓ Set' : '✗ Not set');
@@ -995,7 +1001,10 @@ app
   .catch((error) => {
     logError('[App] Startup failed:', error);
     const message = error instanceof Error ? error.message : 'Unknown startup error';
-    dialog.showErrorBox('Metis Cowork 启动失败', `${message}\n\n请查看日志获取更多信息。`);
+    dialog.showErrorBox(
+      `${getRuntimeAppName()} 启动失败`,
+      `${message}\n\n请查看日志获取更多信息。`
+    );
     app.quit();
   });
 
@@ -1255,7 +1264,10 @@ async function openGeneratedReport(filePath: string, cwd?: string): Promise<bool
     if (stat.isDirectory()) {
       const openDirResult = await shell.openPath(normalizedPath);
       if (openDirResult) {
-        logWarn('[reports.openGeneratedReport] openPath directory returned warning:', openDirResult);
+        logWarn(
+          '[reports.openGeneratedReport] openPath directory returned warning:',
+          openDirResult
+        );
         return false;
       }
       return true;
@@ -2184,7 +2196,7 @@ ipcMain.handle('logs.export', async () => {
     // Show save dialog
     const result = await dialog.showSaveDialog(mainWindow!, {
       title: 'Export Logs',
-      defaultPath: `metiscowork-logs-${new Date().toISOString().split('T')[0]}.zip`,
+      defaultPath: `sophron-logs-${new Date().toISOString().split('T')[0]}.zip`,
       filters: [
         { name: 'ZIP Archive', extensions: ['zip'] },
         { name: 'All Files', extensions: ['*'] },
@@ -2261,7 +2273,7 @@ ipcMain.handle('logs.export', async () => {
       });
       archive.append(
         [
-          'Metis Cowork diagnostic bundle',
+          `${getRuntimeAppName()} diagnostic bundle`,
           `Exported at: ${diagnosticsSummary.exportedAt}`,
           '',
           'Included files:',

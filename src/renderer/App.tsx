@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAppStore } from './store';
 import {
   useActiveSessionId,
@@ -6,6 +7,7 @@ import {
   useSystemDarkMode,
   useSettingsState,
   useLayoutState,
+  useMainView,
   useConfigModalState,
   useGlobalNotice,
   useSandboxSetupState,
@@ -38,6 +40,12 @@ const ConfigModal = lazy(() =>
 const SettingsPanel = lazy(() =>
   import('./components/SettingsPanel').then((module) => ({ default: module.SettingsPanel }))
 );
+const DataView = lazy(() =>
+  import('./components/DataView').then((module) => ({ default: module.DataView }))
+);
+const SkillsView = lazy(() =>
+  import('./components/SkillsView').then((module) => ({ default: module.SkillsView }))
+);
 
 function MainPanelFallback() {
   return (
@@ -57,11 +65,13 @@ function ContextPanelFallback() {
 }
 
 function App() {
+  const { t } = useTranslation();
   // --- Store state via selectors (each subscription is minimally scoped) ---
   const activeSessionId = useActiveSessionId();
   const settings = useSettings();
   const systemDarkMode = useSystemDarkMode();
   const { showSettings } = useSettingsState();
+  const mainView = useMainView();
   const { sidebarCollapsed } = useLayoutState();
   const { showConfigModal, isConfigured, appConfig } = useConfigModalState();
   const globalNotice = useGlobalNotice();
@@ -94,6 +104,10 @@ function App() {
       listSessions();
     }
   }, []); // Empty deps - run once
+
+  useEffect(() => {
+    document.title = t('common.appName');
+  }, [t]);
 
   // Apply theme to document root
   useEffect(() => {
@@ -190,6 +204,16 @@ function App() {
                 <SettingsPanel onClose={() => setShowSettings(false)} />
               </Suspense>
             </PanelErrorBoundary>
+          ) : mainView === 'skills' ? (
+            <PanelErrorBoundary
+              name="SkillsView"
+              resetKey="skills"
+              fallback={<MainPanelFallback />}
+            >
+              <Suspense fallback={<MainPanelFallback />}>
+                <SkillsView />
+              </Suspense>
+            </PanelErrorBoundary>
           ) : activeSessionId ? (
             <PanelErrorBoundary
               name="ChatView"
@@ -200,13 +224,19 @@ function App() {
                 <ChatView />
               </Suspense>
             </PanelErrorBoundary>
+          ) : mainView === 'data' ? (
+            <PanelErrorBoundary name="DataView" resetKey="data" fallback={<MainPanelFallback />}>
+              <Suspense fallback={<MainPanelFallback />}>
+                <DataView />
+              </Suspense>
+            </PanelErrorBoundary>
           ) : (
             <WelcomeView />
           )}
         </main>
 
         {/* Context Panel - only show when in session and not in settings */}
-        {activeSessionId && !showSettings && (
+        {activeSessionId && !showSettings && mainView === 'chat' && (
           <PanelErrorBoundary
             name="ContextPanel"
             resetKey={activeSessionId}

@@ -41,20 +41,17 @@ const execFileAsync = promisify(execFile);
 const PLATFORM = os.platform(); // 'darwin' for macOS, 'win32' for Windows
 writeMCPLog(`Platform detected: ${PLATFORM}`, 'Bootstrap');
 
-// Get Metis Cowork data directory for persistent storage
+// Get sophron data directory for persistent storage
 // Use platform-appropriate paths:
-// - macOS: ~/Library/Application Support/metis-cowork
-// - Windows: %APPDATA%/metis-cowork
-const METIS_COWORK_DATA_DIR =
+// - macOS: ~/Library/Application Support/sophron
+// - Windows: %APPDATA%/sophron
+const SOPHRON_DATA_DIR =
   PLATFORM === 'win32'
-    ? path.join(
-        process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'),
-        'metis-cowork'
-      )
-    : path.join(os.homedir(), 'Library', 'Application Support', 'metis-cowork');
+    ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'sophron')
+    : path.join(os.homedir(), 'Library', 'Application Support', 'sophron');
 
 // Directory for storing GUI operate files (screenshots, etc.)
-const GUI_OPERATE_DIR = path.join(METIS_COWORK_DATA_DIR, 'gui_operate');
+const GUI_OPERATE_DIR = path.join(SOPHRON_DATA_DIR, 'gui_operate');
 const SCREENSHOTS_DIR = path.join(GUI_OPERATE_DIR, 'screenshots');
 const SCREENSHOT_REUSE_WINDOW_MS = 5 * 60_000;
 const OPENAI_PLATFORM_BASE_URL = 'https://api.openai.com/v1';
@@ -133,7 +130,7 @@ const APP_NAME_ALIAS_GROUPS: string[][] = [
 ];
 
 // Base directory for storing app-level data
-const GUI_APPS_DIR = path.join(METIS_COWORK_DATA_DIR, 'gui_apps');
+const GUI_APPS_DIR = path.join(SOPHRON_DATA_DIR, 'gui_apps');
 const GUI_LAST_APP_FILE = path.join(GUI_APPS_DIR, '_last_app.json');
 
 interface LastAppContext {
@@ -838,8 +835,7 @@ function getResourcesDirCandidates(): string[] {
   const candidates: string[] = [];
 
   // If Electron main process passes resourcesPath into env for spawned MCP servers
-  const envResources =
-    process.env.METIS_COWORK_RESOURCES_PATH || process.env.OPEN_COWORK_RESOURCES_PATH;
+  const envResources = process.env.SOPHRON_RESOURCES_PATH;
   if (envResources) candidates.push(envResources);
 
   // Packaged: .../Contents/Resources/mcp -> .../Contents/Resources
@@ -873,8 +869,7 @@ async function resolveCliclickPath(): Promise<string | null> {
   }
 
   // 1) Explicit override (useful for debugging)
-  const envOverride =
-    process.env.METIS_COWORK_CLICLICK_PATH || process.env.OPEN_COWORK_CLICLICK_PATH;
+  const envOverride = process.env.SOPHRON_CLICLICK_PATH;
   if (envOverride && (await pathExists(envOverride))) {
     cachedCliclickPath = envOverride;
     return envOverride;
@@ -1029,8 +1024,8 @@ async function resolvePythonExec(): Promise<PythonExec | null> {
   }
 
   // 1) Explicit override (useful for debugging)
-  const envPython = process.env.METIS_COWORK_PYTHON_PATH || process.env.OPEN_COWORK_PYTHON_PATH;
-  const envPythonHome = process.env.METIS_COWORK_PYTHON_HOME || process.env.OPEN_COWORK_PYTHON_HOME;
+  const envPython = process.env.SOPHRON_PYTHON_PATH;
+  const envPythonHome = process.env.SOPHRON_PYTHON_HOME;
   if (envPython && (await pathExists(envPython))) {
     writeMCPLog(`[resolvePythonExec] Found explicit override: ${envPython}`, 'Python Resolve');
     const pythonRoot = envPythonHome || path.resolve(envPython, '..', '..');
@@ -1787,9 +1782,9 @@ async function executeCliclick(command: string): Promise<{ stdout: string; stder
     if (/Accessibility privileges not enabled/i.test(result.stderr || '')) {
       const hint =
         '\n\nmacOS 权限提示 / Permissions:\n' +
-        '- System Settings → Privacy & Security → Accessibility：允许 Metis Cowork\n' +
+        '- System Settings → Privacy & Security → Accessibility：允许 sophron cowork / 九思助理\n' +
         '- 如果是终端运行：允许 Terminal/iTerm\n' +
-        '- 授权后请重启 Metis Cowork 再重试\n';
+        '- 授权后请重启 sophron cowork / 九思助理 再重试\n';
       throw new Error(
         `cliclick cannot control UI because Accessibility permission is not enabled.${hint}`
       );
@@ -1800,8 +1795,8 @@ async function executeCliclick(command: string): Promise<{ stdout: string; stder
     const baseMessage = error instanceof Error ? error.message : String(error);
     const hint =
       '\n\nmacOS 权限提示 / Permissions:\n' +
-      '- System Settings → Privacy & Security → Accessibility：允许 Metis Cowork\n' +
-      '- System Settings → Privacy & Security → Automation：允许 Metis Cowork 控制 “System Events”\n';
+      '- System Settings → Privacy & Security → Accessibility：允许 sophron cowork / 九思助理\n' +
+      '- System Settings → Privacy & Security → Automation：允许 sophron cowork / 九思助理 控制 “System Events”\n';
     throw new Error(`${baseMessage}${hint}`);
   }
 }
@@ -3824,7 +3819,7 @@ async function takeScreenshot(
     const baseMessage = error instanceof Error ? error.message : String(error);
     const hint =
       '\n\nmacOS 权限提示 / Permissions:\n' +
-      '- System Settings → Privacy & Security → Screen Recording：允许 Metis Cowork\n' +
+      '- System Settings → Privacy & Security → Screen Recording：允许 sophron cowork / 九思助理\n' +
       '- 重新启动应用后再试 / Restart the app and try again\n';
     throw new Error(`${baseMessage}${hint}`);
   }
@@ -3974,9 +3969,7 @@ async function takeScreenshotForDisplay(
     metadata.region = region;
   }
 
-  const disableImageOutput =
-    process.env.METIS_COWORK_DISABLE_IMAGE_TOOL_OUTPUT === '1' ||
-    process.env.OPEN_COWORK_DISABLE_IMAGE_TOOL_OUTPUT === '1';
+  const disableImageOutput = process.env.SOPHRON_DISABLE_IMAGE_TOOL_OUTPUT === '1';
   if (disableImageOutput) {
     metadata.imageOmitted = true;
     metadata.omitReason = 'provider_does_not_support_image';
@@ -4441,7 +4434,7 @@ async function callVisionAPIWithTimeout(
     };
 
     if (isOpenRouter) {
-      headers['X-Title'] = 'Metis Cowork';
+      headers['X-Title'] = 'sophron cowork';
     }
 
     return new Promise<string>((resolve, reject) => {

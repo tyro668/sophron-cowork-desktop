@@ -7,9 +7,15 @@
 
 set -euo pipefail
 
-APP_NAME="Metis Cowork"
+VARIANT="${SOPHRON_BUILD_VARIANT:-sophron}"
+if [ "$VARIANT" = "sophron-cn" ]; then
+  APP_NAME="${SOPHRON_APP_NAME:-九思助理}"
+  ARTIFACT_NAME="${SOPHRON_ARTIFACT_NAME:-sophron-cn-macos}"
+else
+  APP_NAME="${SOPHRON_APP_NAME:-sophron cowork}"
+  ARTIFACT_NAME="${SOPHRON_ARTIFACT_NAME:-sophron-macos}"
+fi
 APP_PATH="/Applications/${APP_NAME}.app"
-ARTIFACT_NAME="metis-cowork-macos"
 
 NO_WAIT=false
 for arg in "$@"; do

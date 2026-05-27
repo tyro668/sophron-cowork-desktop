@@ -963,7 +963,7 @@ async function callVisionAPI(
     };
 
     if (isOpenRouter) {
-      headers['X-Title'] = 'Metis Cowork';
+      headers['X-Title'] = 'sophron cowork';
     }
 
     return new Promise<string>((resolve, reject) => {

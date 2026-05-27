@@ -1,16 +1,16 @@
 import { promises as fs } from 'fs';
 import { isHtmlReportPath } from '../../shared/report-path';
 
-const VIEWER_START = '<!-- metis-report-viewer:start -->';
-const VIEWER_END = '<!-- metis-report-viewer:end -->';
+const VIEWER_START = '<!-- sophron-report-viewer:start -->';
+const VIEWER_END = '<!-- sophron-report-viewer:end -->';
 const VIEWER_BLOCK_PATTERN =
-  /<!-- metis-report-viewer:start -->[\s\S]*?<!-- metis-report-viewer:end -->/;
+  /<!-- sophron-report-viewer:start -->[\s\S]*?<!-- sophron-report-viewer:end -->/;
 const BACK_TO_TOP_LABEL = '\u56de\u5230\u9876\u90e8';
 
 function buildReportViewerBlock(): string {
   return `${VIEWER_START}
-<style data-metis-report-viewer="true">
-  #metis-report-back-to-top {
+<style data-sophron-report-viewer="true">
+  #sophron-report-back-to-top {
     position: fixed;
     top: 16px;
     right: 16px;
@@ -31,19 +31,19 @@ function buildReportViewerBlock(): string {
     -webkit-backdrop-filter: blur(10px);
   }
 
-  #metis-report-back-to-top:hover {
+  #sophron-report-back-to-top:hover {
     border-color: #14b8a6;
     background: #ccfbf1;
     color: #0b5f59;
   }
 
-  #metis-report-back-to-top:focus-visible {
+  #sophron-report-back-to-top:focus-visible {
     outline: 3px solid rgba(20, 184, 166, 0.35);
     outline-offset: 2px;
   }
 
   @media (max-width: 640px) {
-    #metis-report-back-to-top {
+    #sophron-report-back-to-top {
       top: 10px;
       right: 10px;
       min-height: 34px;
@@ -52,8 +52,8 @@ function buildReportViewerBlock(): string {
     }
   }
 </style>
-<button id="metis-report-back-to-top" type="button" data-metis-report-viewer="true" aria-label="${BACK_TO_TOP_LABEL}">${BACK_TO_TOP_LABEL}</button>
-<script data-metis-report-viewer="true">
+<button id="sophron-report-back-to-top" type="button" data-sophron-report-viewer="true" aria-label="${BACK_TO_TOP_LABEL}">${BACK_TO_TOP_LABEL}</button>
+<script data-sophron-report-viewer="true">
 (() => {
   const getDocumentBottom = () => Math.max(
     document.documentElement ? document.documentElement.scrollHeight : 0,
@@ -67,11 +67,11 @@ function buildReportViewerBlock(): string {
   };
 
   const wireBackToTop = () => {
-    const button = document.getElementById('metis-report-back-to-top');
-    if (!button || button.dataset.metisReportViewerBound === 'true') {
+    const button = document.getElementById('sophron-report-back-to-top');
+    if (!button || button.dataset.sophronReportViewerBound === 'true') {
       return;
     }
-    button.dataset.metisReportViewerBound = 'true';
+    button.dataset.sophronReportViewerBound = 'true';
     button.addEventListener('click', () => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });

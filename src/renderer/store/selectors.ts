@@ -17,7 +17,7 @@
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from './index';
 import type { Session, Message, TraceStep, Settings, AppConfig } from '../types';
-import type { GlobalNotice, SessionExecutionClock } from './index';
+import type { GlobalNotice, MainView, SessionExecutionClock } from './index';
 
 // ---------------------------------------------------------------------------
 // Session domain
@@ -200,6 +200,11 @@ export function useSettingsState(): { showSettings: boolean; settingsTab: string
       settingsTab: s.settingsTab,
     }))
   );
+}
+
+/** Returns the active top-level workspace view. */
+export function useMainView(): MainView {
+  return useAppStore((s) => s.mainView);
 }
 
 // ---------------------------------------------------------------------------

@@ -21,16 +21,13 @@ import { parseArgs } from 'node:util';
 // ─── config decryption ───────────────────────────────────────────────────────
 
 function decryptConfig() {
-  const configPath = path.join(
-    os.homedir(),
-    'Library/Application Support/metis-cowork/config.json',
-  );
+  const configPath = path.join(os.homedir(), 'Library/Application Support/sophron/config.json');
   if (!fs.existsSync(configPath)) {
     throw new Error(`Config not found at ${configPath}. Is the app installed?`);
   }
   const data = fs.readFileSync(configPath);
   const iv = data.slice(0, 16);
-  const password = crypto.pbkdf2Sync('metis-cowork-config-v1', iv, 10_000, 32, 'sha512');
+  const password = crypto.pbkdf2Sync('sophron-config-stable-v1', iv, 10_000, 32, 'sha512');
   const decipher = crypto.createDecipheriv('aes-256-cbc', password, iv);
   const dec = Buffer.concat([decipher.update(data.slice(17)), decipher.final()]);
   return JSON.parse(dec.toString('utf8'));
@@ -109,7 +106,7 @@ async function measureOpenAIStreaming(endpoint, apiKey, model, extraHeaders = {}
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
       ...extraHeaders,
     },
     body,
@@ -169,7 +166,11 @@ function resolvePresets(config) {
 
     // Skip providers that need a special proxy (e.g. OpenAI Codex OAuth JWT)
     if (provider === 'openai' && apiKey.startsWith('eyJ')) {
-      presets.push({ name: cs.name, id: cs.id, skip: 'codex OAuth JWT — needs proxy (skip for direct test)' });
+      presets.push({
+        name: cs.name,
+        id: cs.id,
+        skip: 'codex OAuth JWT — needs proxy (skip for direct test)',
+      });
       continue;
     }
 
@@ -194,7 +195,11 @@ function resolvePresets(config) {
         baseUrl,
       });
     } else {
-      presets.push({ name: cs.name, id: cs.id, skip: `unsupported protocol: ${effectiveProtocol}` });
+      presets.push({
+        name: cs.name,
+        id: cs.id,
+        skip: `unsupported protocol: ${effectiveProtocol}`,
+      });
     }
   }
 
@@ -218,7 +223,7 @@ async function main() {
   const { values } = parseArgs({
     args: process.argv.slice(2),
     options: {
-      set:  { type: 'string' },
+      set: { type: 'string' },
       runs: { type: 'string', default: '2' },
     },
     strict: false,

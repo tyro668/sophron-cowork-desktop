@@ -745,7 +745,7 @@ export function ChatView() {
           {displayedMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-28 text-text-muted space-y-3 text-center">
               <p className="text-[11px] uppercase tracking-[0.16em] text-text-muted/80">
-                Metis Cowork
+                {t('common.appName')}
               </p>
               <p className="text-base text-text-secondary">{t('chat.startConversation')}</p>
             </div>

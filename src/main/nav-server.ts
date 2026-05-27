@@ -3,10 +3,10 @@
  *
  * CLI-driven UI navigation server (155 lines).
  *
- * Exposes HTTP endpoints on 127.0.0.1:19888 for external tools (e.g. Claude Code)
+ * Exposes HTTP endpoints on 127.0.0.1:19888 for external tools
  * to control app page navigation programmatically:
  *   GET /status           → current page state
- *   GET /navigate?page=X  → navigate to welcome, settings, or session pages
+ *   GET /navigate?page=X  → navigate to data, skills, settings, or session pages
  *
  * Dependencies: electron (BrowserWindow)
  */
@@ -56,7 +56,8 @@ function execJS(win: BrowserWindow, code: string): Promise<unknown> {
  * Allows CC/Codex to navigate the app to different pages via curl.
  *
  * Routes:
- *   GET /navigate?page=welcome
+ *   GET /navigate?page=data
+ *   GET /navigate?page=skills
  *   GET /navigate?page=settings&tab=api
  *   GET /navigate?page=session&id=xxx
  *   GET /status
@@ -79,10 +80,10 @@ export function startNavServer(getMainWindow: () => BrowserWindow | null): void 
         const tab = url.searchParams.get('tab') || undefined;
         const sessionId = url.searchParams.get('id') || undefined;
 
-        if (!page || !['welcome', 'settings', 'session'].includes(page)) {
+        if (!page || !['welcome', 'data', 'skills', 'settings', 'session'].includes(page)) {
           return json(res, 400, {
             ok: false,
-            error: 'Invalid page. Use: welcome, settings, session',
+            error: 'Invalid page. Use: data, skills, welcome, settings, session',
           });
         }
 
@@ -142,6 +143,9 @@ export function startNavServer(getMainWindow: () => BrowserWindow | null): void 
           let currentPage = 'welcome';
           if (parsed.showSettings) currentPage = 'settings';
           else if (parsed.activeSessionId) currentPage = 'session';
+          else if (parsed.mainView === 'skills') currentPage = 'skills';
+          else if (parsed.mainView === 'data') currentPage = 'data';
+          else if (parsed.mainView === 'chat') currentPage = 'welcome';
 
           return json(res, 200, {
             ok: true,

@@ -4,7 +4,7 @@
  * AI query execution engine (1514 lines).
  *
  * Responsibilities:
- * - Runs AI conversations via the Metis Cowork agent SDK (createAgentSession)
+ * - Runs AI conversations via the sophron agent SDK (createAgentSession)
  * - Routes providers via pi-ai SDK for model resolution
  * - Bridges MCP tools into SDK ToolDefinition format
  * - Streams responses back as ServerEvents (stream.message, stream.partial, trace.step)
@@ -410,7 +410,7 @@ function buildMcpCustomTools(mcpManager: MCPManager): ToolDefinition[] {
             content: [{ type: 'text' as const, text: normalizedResult.text }],
             details:
               normalizedResult.images.length > 0
-                ? { metisCoworkImages: normalizedResult.images }
+                ? { sophronImages: normalizedResult.images }
                 : undefined,
           };
         } catch (err: unknown) {
@@ -890,7 +890,7 @@ ${hints.join('\n')}
     this._skillsAdapter = skillsAdapter;
     this.extensionManager = extensionManager;
 
-    log('[ClaudeAgentRunner] Initialized with Metis Cowork agent SDK');
+    log('[ClaudeAgentRunner] Initialized with sophron agent SDK');
     log('[ClaudeAgentRunner] Skills enabled: settingSources=[user, project], Skill tool enabled');
     if (mcpManager) {
       log('[ClaudeAgentRunner] MCP support enabled');
@@ -1991,8 +1991,7 @@ ${hints.join('\n')}
                 }
 
                 if (!imageCapable) {
-                  serverEnv.METIS_COWORK_DISABLE_IMAGE_TOOL_OUTPUT = '1';
-                  serverEnv.OPEN_COWORK_DISABLE_IMAGE_TOOL_OUTPUT = '1';
+                  serverEnv.SOPHRON_DISABLE_IMAGE_TOOL_OUTPUT = '1';
                 }
 
                 // Resolve path placeholders for presets
@@ -2088,7 +2087,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
             : '';
 
       const coworkAppendPrompt = [
-        'You are Metis Cowork, a local agent focused on data processing. Help users analyze, clean, transform, summarize, and organize files in their workspace. Be concise, accurate, and tool-capable.',
+        'You are sophron cowork (九思助理 in Chinese), a local agent focused on data processing. Help users analyze, clean, transform, summarize, and organize files in their workspace. Be concise, accurate, and tool-capable.',
         `CRITICAL BEHAVIORAL RULES:
 1. CHAT FIRST: By default, respond to the user in plain text within the conversation. Do NOT create, write, or edit files unless the user explicitly asks you to (e.g., "create a file", "write this to...", "edit the code", "save as...", mentions a specific file path, or describes code changes they want applied). For questions, summaries, explanations, analysis, and general conversation — always reply directly in chat text.
 2. When a request is actionable, proceed immediately with reasonable assumptions. If you need clarification, ask briefly in plain text.

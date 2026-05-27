@@ -1,5 +1,6 @@
 {
   "common": {
+    "appName": "sophron cowork",
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete",
@@ -18,7 +19,7 @@
     "disable": "Disable",
     "install": "Install",
     "optional": "optional",
-    "appLogoAlt": "Metis Cowork logo",
+    "appLogoAlt": "sophron cowork logo",
     "pastedImageAlt": "Pasted {{index}}"
   },
   "welcome": {
@@ -38,7 +39,7 @@
     "starting": "Starting...",
     "chromeRequired": "Chrome",
     "notionRequired": "Notion",
-    "logoAlt": "Metis Cowork logo",
+    "logoAlt": "sophron cowork logo",
     "pastedImageAlt": "Pasted {{index}}",
     "quickPromptCreate": "Create a concise data report from the files in my workspace",
     "quickPromptCrunch": "Analyze, clean, and summarize the attached dataset",
@@ -48,6 +49,17 @@
     "quickPromptNotion": "Research three representative data sources related to [Topic], then add structured notes to a Notion page titled \"Data Sources\" with source, scope, fields, update cadence, and caveats.",
     "apiNotConfigured": "API not configured yet. Please go to Settings to set up your API provider and key.",
     "goToSettings": "Go to Settings"
+  },
+  "mainNav": {
+    "label": "Main navigation",
+    "data": "Data",
+    "skills": "Skills",
+    "tasks": "Tasks"
+  },
+  "data": {
+    "pageTitle": "Data",
+    "pageDescription": "The local data workspace is under development.",
+    "comingSoon": "Coming soon"
   },
   "settings": {
     "title": "Settings",
@@ -64,7 +76,7 @@
     "schedule": "Schedules",
     "scheduleDesc": "Alarm-style prompt automation",
     "remote": "Remote Control",
-    "remoteDesc": "Use Metis Cowork from Feishu and other channels",
+    "remoteDesc": "Use sophron cowork from Feishu and other channels",
     "logs": "Logs",
     "logsDesc": "View and export application logs",
     "panelDesc": "Configure your workspace, tools, and account behavior.",
@@ -132,7 +144,7 @@
   },
   "api": {
     "firstRunTitle": "Set Up API",
-    "firstRunSubtitle": "Configure a provider to start processing local data with Metis Cowork",
+    "firstRunSubtitle": "Configure a provider to start processing local data with sophron cowork",
     "settingsTitle": "API Settings",
     "settingsSubtitle": "Manage provider, key, and model settings",
     "configSet": "Config Set",
@@ -517,18 +529,20 @@
     "noEnvVars": "No environment variables configured"
   },
   "skills": {
+    "pageTitle": "Skills",
+    "pageDescription": "Manage Skills, plugins, and capability toggles for local data workflows.",
     "storagePathHint": "Choose where custom skills live and how the app refreshes them.",
     "builtinSkillsDesc": "Built-in skills ship with the app and can be toggled when needed.",
     "pluginsTitle": "Plugins & Imports",
     "pluginsDesc": "Browse marketplace plugins or import custom skills from a local folder.",
-    "title": "📦 Skills",
-    "description": "Skills extend Claude's capabilities with specialized knowledge and tools.",
+    "title": "Skills",
+    "description": "Skills extend sophron cowork's local data capabilities with specialized knowledge and tools.",
     "builtinSkills": "Built-in Skills",
     "customSkills": "Custom Skills",
     "noCustomSkills": "No custom skills installed",
-    "installSkillsDesc": "Install skills to extend Claude's capabilities",
+    "installSkillsDesc": "Install skills to extend local data capabilities",
     "browsePlugins": "Browse Plugins",
-    "pluginListTitle": "Browse Claude Plugin Marketplace",
+    "pluginListTitle": "Browse Plugin Marketplace",
     "pluginSkillCount": "Installable skills: {{count}}",
     "pluginComponents": "Components: skills {{skills}} · commands {{commands}} · agents {{agents}} · hooks {{hooks}} · mcp {{mcp}}",
     "pluginComponentsAvailableAfterInstall": "Component details will be available after installation.",
@@ -629,7 +643,7 @@
     "loadingConversation": "Loading conversation...",
     "startConversation": "Start the conversation",
     "startFailed": "Failed to start session. Please try again.",
-    "disclaimer": "Metis Cowork is AI-powered and may make mistakes. Please double-check responses.",
+    "disclaimer": "sophron cowork is AI-powered and may make mistakes. Please double-check responses.",
     "noModel": "No model",
     "backToTop": "Back to top",
     "connectorCount_one": "{{count}} connector",

@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="resources/logo.png" alt="Metis Cowork Logo" width="280" />
+  <img src="resources/logo.png" alt="九思助理 Logo" width="280" />
 </p>
 
-<h1 align="center">🚀 Metis Cowork: 专注数据处理的本地 Agent 桌面应用</h1>
+<h1 align="center">🚀 九思助理: 专注数据处理的本地 Agent 桌面应用</h1>
 
 <p align="center">
   • 本地数据处理 • 一键安装 • 沙盒化 Agent 工作区
@@ -25,18 +25,18 @@
 
 ---
 
-Metis Cowork 是一款免费开源、专注本地数据处理的 AI Agent 桌面应用，支持 Windows 和 macOS 一键安装，无需任何编程知识。它将 Claude、OpenAI、Gemini、DeepSeek 等多种 AI 模型封装为友好的桌面工作区，帮助你在本机分析、清洗、转换、总结和整理文件、表格、报告与数据集。核心能力包括虚拟机级别沙盒隔离（Windows 使用 WSL2，macOS 使用 Lima）、内置 Skills 技能系统（生成数据报告、PPTX、DOCX、XLSX、PDF）、MCP 协议集成（连接浏览器、Notion 等桌面应用）、GUI 自动化操作，以及通过飞书和 Slack 进行远程控制。
+九思助理 是一款免费开源、专注本地数据处理的 AI Agent 桌面应用，支持 Windows 和 macOS 一键安装，无需任何编程知识。它将 Claude、OpenAI、Gemini、DeepSeek 等多种 AI 模型封装为友好的桌面工作区，帮助你在本机分析、清洗、转换、总结和整理文件、表格、报告与数据集。核心能力包括虚拟机级别沙盒隔离（Windows 使用 WSL2，macOS 使用 Lima）、内置 Skills 技能系统（生成数据报告、PPTX、DOCX、XLSX、PDF）、MCP 协议集成（连接浏览器、Notion 等桌面应用）、GUI 自动化操作，以及通过飞书和 Slack 进行远程控制。
 
 ---
 
 ## 📖 简介
 
-**Metis Cowork** 是一个面向数据密集型工作的本地 Agent 工作区，提供 **Windows** 和 **macOS** 一键安装包，无需任何编程知识。
+**九思助理** 是一个面向数据密集型工作的本地 Agent 工作区，提供 **Windows** 和 **macOS** 一键安装包，无需任何编程知识。
 
 它为 AI 提供了一个沙盒化的工作环境，可以处理本地数据文件、通过内置的 **Skills** 系统生成专业交付物（PPTX、DOCX、XLSX 等），并在需要外部工具时 **通过 MCP 连接桌面 APP**（浏览器、Notion 等）。
 
 > [!WARNING]
-> **免责声明**：Metis Cowork 仅作为一个 AI 协作工具，请对它的操作保持谨慎。特别是在授权文件修改或删除等操作时，请务必自行审查风险，我们支持了基于VM的sandbox隔离，但是某些操作可能仍存风险。
+> **免责声明**：九思助理 仅作为一个 AI 协作工具，请对它的操作保持谨慎。特别是在授权文件修改或删除等操作时，请务必自行审查风险，我们支持了基于VM的sandbox隔离，但是某些操作可能仍存风险。
 
 ---
 
@@ -48,7 +48,7 @@ Metis Cowork 是一款免费开源、专注本地数据处理的 AI Agent 桌面
 | ------------- | ------------ | -------- | ------------ |
 | Claude Cowork | ✓            | ✗        | ✗            |
 | OpenClaw      | ✓            | ✓        | ✗            |
-| MetisCowork   | ✓            | ✓        | ✓            |
+| 九思助理      | ✓            | ✓        | ✓            |
 
 - **一键安装，开箱即用**：提供 Windows 和 macOS 预构建安装包，无需配置环境，下载即可开始使用。。
 - **本地数据处理**：分析表格、清洗混乱数据集、总结报告、抽取结构化信息，并从工作区文件生成交付物。
@@ -82,7 +82,7 @@ Metis Cowork 是一款免费开源、专注本地数据处理的 AI Agent 桌面
 
 ### 方式一：下载安装包
 
-请通过 Metis Cowork 官方发布渠道下载最新版本。
+请通过 九思助理 官方发布渠道下载最新版本。
 
 | 平台                      | 文件类型 |
 | ------------------------- | -------- |
@@ -94,8 +94,8 @@ Metis Cowork 是一款免费开源、专注本地数据处理的 AI Agent 桌面
 适合需要从源码进行本地构建的场景：
 
 ```bash
-git clone ssh://git@code.fineres.com:7999/res/metis-cowork.git
-cd metis-cowork
+git clone ssh://git@code.fineres.com:7999/res/metis-cowork.git sophron
+cd sophron
 npm install
 npm run rebuild
 npm run dev
@@ -105,7 +105,7 @@ npm run dev
 
 ### 安全配置：🔒 沙盒支持
 
-Metis Cowork 提供**多级沙盒保护**，确保系统安全：
+九思助理 提供**多级沙盒保护**，确保系统安全：
 
 | 级别     | 平台    | 技术     | 说明                            |
 | -------- | ------- | -------- | ------------------------------- |
@@ -126,7 +126,7 @@ Metis Cowork 提供**多级沙盒保护**，确保系统安全：
 
 ```bash
 brew install lima
-# Metis Cowork 会自动创建和管理 Lima 虚拟机（内部 Lima 实例名：'claude-sandbox'）
+# 九思助理 会自动创建和管理 Lima 虚拟机（内部 Lima 实例名：'claude-sandbox'）
 ```
 
 ---
@@ -139,15 +139,15 @@ brew install lima
 
 云端模型需要配置对应 API Key；本地模型可通过本机 Ollama 服务使用。下表与应用设置中的提供商顺序保持一致。
 
-| 服务商         | 获取 Key / 配置入口                              | Base URL                         | 推荐模型 Model                                         |
-| -------------- | ------------------------------------------------ | -------------------------------- | ------------------------------------------------------ |
-| **DeepSeek**   | [DeepSeek Platform](https://platform.deepseek.com/) | `https://api.deepseek.com`       | `deepseek-v4-flash`, `deepseek-v4-pro`, `deepseek-chat` |
-| **Moonshot**   | [Moonshot Platform](https://platform.moonshot.ai/) | `https://api.moonshot.ai/v1`     | `kimi-k2.6`, `kimi-k2-thinking`, `moonshot-v1-128k`     |
-| **Z.AI**       | [Z.AI Docs](https://docs.z.ai/)                  | `https://api.z.ai/api/paas/v4`   | `glm-5.1`, `glm-5`, `glm-4.5`                           |
-| **Anthropic**  | [Anthropic Console](https://console.anthropic.com/) | `https://api.anthropic.com`      | `claude-opus-4-6`, `claude-sonnet-4-6`                  |
-| **OpenAI**     | [OpenAI Platform](https://platform.openai.com/)  | `https://api.openai.com/v1`      | `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.3-codex`              |
-| **OpenRouter** | [OpenRouter](https://openrouter.ai/)             | `https://openrouter.ai/api/v1`   | `anthropic/claude-sonnet-4-6`, `openai/gpt-5.4`         |
-| **Ollama**     | [Ollama](https://ollama.com/)                    | `http://localhost:11434/v1`      | 从本机 Ollama 服务自动发现                              |
+| 服务商         | 获取 Key / 配置入口                                 | Base URL                       | 推荐模型 Model                                          |
+| -------------- | --------------------------------------------------- | ------------------------------ | ------------------------------------------------------- |
+| **DeepSeek**   | [DeepSeek Platform](https://platform.deepseek.com/) | `https://api.deepseek.com`     | `deepseek-v4-flash`, `deepseek-v4-pro`, `deepseek-chat` |
+| **Moonshot**   | [Moonshot Platform](https://platform.moonshot.ai/)  | `https://api.moonshot.ai/v1`   | `kimi-k2.6`, `kimi-k2-thinking`, `moonshot-v1-128k`     |
+| **Z.AI**       | [Z.AI Docs](https://docs.z.ai/)                     | `https://api.z.ai/api/paas/v4` | `glm-5.1`, `glm-5`, `glm-4.5`                           |
+| **Anthropic**  | [Anthropic Console](https://console.anthropic.com/) | `https://api.anthropic.com`    | `claude-opus-4-6`, `claude-sonnet-4-6`                  |
+| **OpenAI**     | [OpenAI Platform](https://platform.openai.com/)     | `https://api.openai.com/v1`    | `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.3-codex`               |
+| **OpenRouter** | [OpenRouter](https://openrouter.ai/)                | `https://openrouter.ai/api/v1` | `anthropic/claude-sonnet-4-6`, `openai/gpt-5.4`         |
+| **Ollama**     | [Ollama](https://ollama.com/)                       | `http://localhost:11434/v1`    | 从本机 Ollama 服务自动发现                              |
 
 ### 2. 配置应用
 
@@ -172,7 +172,7 @@ brew install lima
 
 ## 🧰 技能库
 
-Metis Cowork 内置技能位于 `.claude/skills/`，并支持用户自行添加/自定义技能，包含：
+九思助理 内置技能位于 `.claude/skills/`，并支持用户自行添加/自定义技能，包含：
 
 - `pptx`：PowerPoint 生成
 - `docx`：Word 文档处理
@@ -185,7 +185,7 @@ Metis Cowork 内置技能位于 `.claude/skills/`，并支持用户自行添加/
 ## 🏗️ 架构概览
 
 ```
-metis-cowork/
+sophron/
 ├── src/
 │   ├── main/                    # Electron 主进程 (Node.js)
 │   │   ├── index.ts             # 主入口文件
@@ -257,42 +257,42 @@ metis-cowork/
 
 ## ❓ 常见问题
 
-**Metis Cowork 是什么？**
-Metis Cowork 是一款免费开源的桌面应用，为用户提供专注数据处理的本地 AI Agent 工作空间。它可以帮助你分析、清洗、转换、总结和整理工作区内的文件与数据集，并提供 Windows 和 macOS 一键安装包。
+**九思助理 是什么？**
+九思助理 是一款免费开源的桌面应用，为用户提供专注数据处理的本地 AI Agent 工作空间。它可以帮助你分析、清洗、转换、总结和整理工作区内的文件与数据集，并提供 Windows 和 macOS 一键安装包。
 
-**Metis Cowork 和 Claude Cowork 有什么区别？**
-Metis Cowork 的定位更偏向本地数据处理，而不是通用编码或聊天。它支持多模型、GUI 自动化操作、飞书/Slack 远程控制，以及虚拟机级别的沙盒隔离。详见[功能对比表](#核心特性)。
+**九思助理 和 Claude Cowork 有什么区别？**
+九思助理 的定位更偏向本地数据处理，而不是通用编码或聊天。它支持多模型、GUI 自动化操作、飞书/Slack 远程控制，以及虚拟机级别的沙盒隔离。详见[功能对比表](#核心特性)。
 
 **支持哪些 AI 模型？**
 当前内置 DeepSeek、Moonshot、Z.AI、Anthropic、OpenAI、OpenRouter 和 Ollama 提供商预设。OpenRouter 可路由更多云端模型，Ollama 可使用本机已安装的本地模型。
 
-**Metis Cowork 免费吗？**
-是的。Metis Cowork 本身完全免费，采用 MIT 开源协议。你只需为所选 AI 模型服务商的 API 调用付费。
+**九思助理 免费吗？**
+是的。九思助理 本身完全免费，采用 MIT 开源协议。你只需为所选 AI 模型服务商的 API 调用付费。
 
 **支持 Linux 吗？**
 目前提供 Windows 和 macOS 的预构建安装包。Linux 用户可以通过源码编译方式使用，详见[源码编译](#下载与安装)章节。
 
 **沙盒隔离是怎么工作的？**
-Metis Cowork 提供多级安全保护：所有平台均有基础的路径限制，Windows 和 macOS 还支持虚拟机级别隔离（分别使用 WSL2 和 Lima）。启用虚拟机后，所有命令在隔离的 Linux 环境中执行，保护你的宿主机系统安全。
+九思助理 提供多级安全保护：所有平台均有基础的路径限制，Windows 和 macOS 还支持虚拟机级别隔离（分别使用 WSL2 和 Lima）。启用虚拟机后，所有命令在隔离的 Linux 环境中执行，保护你的宿主机系统安全。
 
 **什么是 Skills？如何创建自定义技能？**
-Skills 是内置的工作流模板，用于完成特定任务，如生成 PPTX、DOCX、PDF 或 XLSX 文件。Metis Cowork 在 `.claude/skills/` 目录下预置了默认技能，并提供 `skill-creator` 工具帮助你构建自定义技能。
+Skills 是内置的工作流模板，用于完成特定任务，如生成 PPTX、DOCX、PDF 或 XLSX 文件。九思助理 在 `.claude/skills/` 目录下预置了默认技能，并提供 `skill-creator` 工具帮助你构建自定义技能。
 
 **什么是 MCP？怎么使用？**
-MCP（Model Context Protocol，模型上下文协议）让 AI 能连接外部工具和服务。Metis Cowork 支持 MCP 连接器，可对接浏览器、Notion 等桌面应用，将 AI 的能力扩展到文件管理和编程之外。
+MCP（Model Context Protocol，模型上下文协议）让 AI 能连接外部工具和服务。九思助理 支持 MCP 连接器，可对接浏览器、Notion 等桌面应用，将 AI 的能力扩展到文件管理和编程之外。
 
 **如何设置飞书或 Slack 远程控制？**
-Metis Cowork 支持通过飞书和 Slack 进行远程控制，你可以在协作平台上发送指令并接收执行结果。请在应用设置中查看远程控制配置选项。
+九思助理 支持通过飞书和 Slack 进行远程控制，你可以在协作平台上发送指令并接收执行结果。请在应用设置中查看远程控制配置选项。
 
 **数据安全吗？会不会把数据发送到外部服务器？**
-Metis Cowork 完全在本地运行，你的文件保留在你的工作区内。唯一的外部通信是与你配置的 AI 模型 API（如 Anthropic、OpenRouter）之间的交互。没有任何数据被发送到 Metis Cowork 的服务器。
+九思助理 完全在本地运行，你的文件保留在你的工作区内。唯一的外部通信是与你配置的 AI 模型 API（如 Anthropic、OpenRouter）之间的交互。没有任何数据被发送到 九思助理 的服务器。
 
 ## 📄 许可证
 
-MIT © Metis Cowork Team
+MIT © 九思助理
 
 ---
 
 <p align="center">
-  Made with ❤️ by the Metis Cowork Team with the help of opus4.5
+  Made with ❤️ by the 九思助理 team with the help of opus4.5
 </p>

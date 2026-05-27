@@ -153,7 +153,6 @@ async function raceWithTimeout<T>(
   }
 }
 
-
 function getTrustedWindowsNpxDirectories(
   env: Record<string, string | undefined> = process.env
 ): string[] {
@@ -330,7 +329,7 @@ export class MCPManager {
       );
       if (!preferredNpxPath) {
         throw new Error(
-          'npx is not available. Install Node.js so Metis Cowork can use your system npx.cmd, or reinstall the app to restore the bundled runtime.'
+          'npx is not available. Install Node.js so sophron cowork can use your system npx.cmd, or reinstall the app to restore the bundled runtime.'
         );
       }
 
@@ -876,8 +875,7 @@ export class MCPManager {
 
         // Pass resourcesPath to MCP servers so they can reliably locate bundled tools/resources
         // (Node processes spawned from bundled Node.js do not have process.resourcesPath)
-        env.METIS_COWORK_RESOURCES_PATH = process.resourcesPath || '';
-        env.OPEN_COWORK_RESOURCES_PATH = process.resourcesPath || '';
+        env.SOPHRON_RESOURCES_PATH = process.resourcesPath || '';
       }
 
       log(`[MCPManager] Creating STDIO transport: ${command} ${args.join(' ')}`);
@@ -976,7 +974,7 @@ export class MCPManager {
     // Create MCP client
     const client = new Client(
       {
-        name: 'metis-cowork',
+        name: 'sophron',
         version: '0.1.0',
       },
       {
@@ -1456,9 +1454,7 @@ export class MCPManager {
           const usedToolNames = new Set<string>();
           const tools = sortedTools.map((tool) => {
             const originalToolName =
-              typeof tool.name === 'string' && tool.name.trim().length > 0
-                ? tool.name
-                : 'tool';
+              typeof tool.name === 'string' && tool.name.trim().length > 0 ? tool.name : 'tool';
             const sanitizedToolName = sanitizeMcpToolSegment(originalToolName, 'tool');
             const prefixedName = createUniqueMcpToolName(
               `mcp__${serverKey}__${sanitizedToolName}`,

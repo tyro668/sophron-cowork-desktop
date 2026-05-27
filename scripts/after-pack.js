@@ -31,7 +31,7 @@ function getKoffiPlatformDir(platform, arch) {
 function removeExcept(dir, whitelist) {
   if (!fs.existsSync(dir)) return 0;
   let removed = 0;
-  const whiteSet = new Set(whitelist.map(w => w.toLowerCase()));
+  const whiteSet = new Set(whitelist.map((w) => w.toLowerCase()));
   for (const entry of fs.readdirSync(dir)) {
     if (whiteSet.has(entry.toLowerCase())) continue;
     fs.rmSync(path.join(dir, entry), { recursive: true, force: true });
@@ -83,7 +83,7 @@ module.exports = async function afterPack(context) {
   // Determine the app resources path
   let resourcesDir;
   if (platform === 'darwin') {
-    // macOS: Metis Cowork.app/Contents/Resources/app.asar.unpacked/...
+    // macOS: sophron cowork.app/Contents/Resources/app.asar.unpacked/...
     const appName = `${context.packager.appInfo.productFilename}.app`;
     resourcesDir = path.join(appOutDir, appName, 'Contents', 'Resources');
   } else {
@@ -103,7 +103,8 @@ module.exports = async function afterPack(context) {
     const buildKoffiDir = path.join(koffiDir, 'build', 'koffi');
     if (fs.existsSync(buildKoffiDir)) {
       const removed = removeExcept(buildKoffiDir, [koffiKeep]);
-      if (removed > 0) console.log(`  ✓ koffi: kept ${koffiKeep}, removed ${removed} other platform dirs`);
+      if (removed > 0)
+        console.log(`  ✓ koffi: kept ${koffiKeep}, removed ${removed} other platform dirs`);
     }
     // Also check if koffi dir itself has a build/ child
     if (path.basename(koffiDir) === 'koffi' && fs.existsSync(path.join(koffiDir, 'build'))) {
@@ -124,7 +125,8 @@ module.exports = async function afterPack(context) {
     const buildKoffiDir = path.join(koffiPkg, 'build', 'koffi');
     if (fs.existsSync(buildKoffiDir)) {
       const removed = removeExcept(buildKoffiDir, [koffiKeep]);
-      if (removed > 0) console.log(`  ✓ koffi (nm): kept ${koffiKeep}, removed ${removed} other platform dirs`);
+      if (removed > 0)
+        console.log(`  ✓ koffi (nm): kept ${koffiKeep}, removed ${removed} other platform dirs`);
     }
     for (const sub of ['src', 'vendor', 'doc']) {
       const subPath = path.join(koffiPkg, sub);
@@ -167,7 +169,8 @@ module.exports = async function afterPack(context) {
     // Keep only the current platform dir (e.g. darwin-arm64)
     const keepDir = `${platform === 'darwin' ? 'darwin' : platform === 'win32' ? 'win32' : 'linux'}-${archName.replace('arm64', 'arm64').replace('x64', 'x64')}`;
     const removed = removeExcept(prebuildsDir, [keepDir]);
-    if (removed > 0) console.log(`  ✓ ${pkg}: kept ${keepDir}, removed ${removed} other prebuild dirs`);
+    if (removed > 0)
+      console.log(`  ✓ ${pkg}: kept ${keepDir}, removed ${removed} other prebuild dirs`);
   }
 
   // --- 4. ngrok: remove binary (~28MB, it downloads on-demand anyway) ---
@@ -184,8 +187,14 @@ module.exports = async function afterPack(context) {
   if (platform === 'darwin') {
     const appName = `${context.packager.appInfo.productFilename}.app`;
     const frameworkDir = path.join(
-      appOutDir, appName, 'Contents', 'Frameworks',
-      'Electron Framework.framework', 'Versions', 'A', 'Resources'
+      appOutDir,
+      appName,
+      'Contents',
+      'Frameworks',
+      'Electron Framework.framework',
+      'Versions',
+      'A',
+      'Resources'
     );
     if (fs.existsSync(frameworkDir)) {
       const KEEP_LOCALES = new Set(['en.lproj', 'zh_CN.lproj', 'zh_TW.lproj', 'Base.lproj']);
@@ -196,7 +205,10 @@ module.exports = async function afterPack(context) {
         fs.rmSync(path.join(frameworkDir, entry), { recursive: true, force: true });
         removedLocales++;
       }
-      if (removedLocales > 0) console.log(`  ✓ Electron locales: removed ${removedLocales} .lproj dirs (kept en, zh_CN, zh_TW)`);
+      if (removedLocales > 0)
+        console.log(
+          `  ✓ Electron locales: removed ${removedLocales} .lproj dirs (kept en, zh_CN, zh_TW)`
+        );
     }
   }
 
