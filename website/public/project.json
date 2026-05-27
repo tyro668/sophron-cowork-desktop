@@ -1,0 +1,101 @@
+{
+  "schemaVersion": "1.0",
+  "name": "Metis Cowork",
+  "organization": "MetisCoworkAI",
+  "canonicalUrl": "https://metiscoworkai.github.io/metis-cowork/",
+  "localizedUrls": {
+    "en": "https://metiscoworkai.github.io/metis-cowork/",
+    "zh-CN": "https://metiscoworkai.github.io/metis-cowork/zh/"
+  },
+  "repository": "https://github.com/MetisCoworkAI/metis-cowork",
+  "releases": "https://github.com/MetisCoworkAI/metis-cowork/releases",
+  "issues": "https://github.com/MetisCoworkAI/metis-cowork/issues",
+  "license": {
+    "name": "MIT",
+    "url": "https://github.com/MetisCoworkAI/metis-cowork/blob/main/LICENSE"
+  },
+  "version": "3.3.0",
+  "lastReviewed": "2026-05-01",
+  "description": "Local data-processing AI agent desktop app for Windows and macOS with sandbox isolation, multi-model support, built-in Skills, MCP integration, GUI automation, and remote control.",
+  "applicationCategory": "DeveloperApplication",
+  "platforms": ["Windows", "macOS"],
+  "prebuiltInstallerTypes": {
+    "Windows": ".exe",
+    "macOS": ".dmg"
+  },
+  "sourceBuild": {
+    "node": ">=22",
+    "commands": ["npm install", "npm run rebuild", "npm run dev"]
+  },
+  "install": [
+    {
+      "platform": "macOS",
+      "method": "Homebrew",
+      "commands": ["brew tap MetisCoworkAI/tap", "brew install --cask --no-quarantine metis-cowork"]
+    },
+    {
+      "platform": "Windows and macOS",
+      "method": "GitHub Releases",
+      "url": "https://github.com/MetisCoworkAI/metis-cowork/releases"
+    }
+  ],
+  "capabilities": [
+    "Local data-processing AI agent workspace",
+    "File, spreadsheet, report, and dataset analysis",
+    "Multi-model provider configuration",
+    "Built-in Skills for PPTX, DOCX, XLSX, and PDF workflows",
+    "Model Context Protocol tool integration",
+    "GUI automation through computer use",
+    "Remote control through Feishu (Lark) and Slack",
+    "Workspace path restrictions",
+    "VM sandbox isolation with WSL2 and Lima when available"
+  ],
+  "modelProviders": [
+    {
+      "name": "OpenRouter",
+      "baseUrl": "https://openrouter.ai/api",
+      "recommendedModels": ["claude-4-5-sonnet"]
+    },
+    {
+      "name": "Anthropic",
+      "baseUrl": "default",
+      "recommendedModels": ["claude-4-5-sonnet"]
+    },
+    {
+      "name": "Zhipu AI / GLM",
+      "baseUrl": "https://open.bigmodel.cn/api/anthropic",
+      "recommendedModels": ["glm-4.7", "glm-4.6"]
+    },
+    {
+      "name": "MiniMax",
+      "baseUrl": "https://api.minimaxi.com/anthropic",
+      "recommendedModels": ["minimax-m2"]
+    },
+    {
+      "name": "Kimi",
+      "baseUrl": "https://api.kimi.com/coding/",
+      "recommendedModels": ["kimi-k2"]
+    }
+  ],
+  "securityAndPrivacy": {
+    "localFirst": true,
+    "workspaceBoundary": "File operations are restricted to the selected workspace folder.",
+    "vmIsolation": ["WSL2 on Windows", "Lima on macOS"],
+    "dataPolicy": "Metis Cowork runs locally; the external network path is the AI model API configured by the user. The project website states that Metis Cowork does not send data to Metis Cowork servers."
+  },
+  "machineReadableResources": {
+    "llmsTxt": "https://metiscoworkai.github.io/metis-cowork/llms.txt",
+    "llmsFullTxt": "https://metiscoworkai.github.io/metis-cowork/llms-full.txt",
+    "projectJson": "https://metiscoworkai.github.io/metis-cowork/project.json",
+    "sitemap": "https://metiscoworkai.github.io/metis-cowork/sitemap.xml",
+    "robots": "https://metiscoworkai.github.io/metis-cowork/robots.txt"
+  },
+  "sourcePages": [
+    "https://github.com/MetisCoworkAI/metis-cowork/blob/main/README.md",
+    "https://github.com/MetisCoworkAI/metis-cowork/blob/main/README_zh.md",
+    "https://github.com/MetisCoworkAI/metis-cowork/blob/main/CHANGELOG.md",
+    "https://github.com/MetisCoworkAI/metis-cowork/blob/main/ROADMAP.md",
+    "https://github.com/MetisCoworkAI/metis-cowork/blob/main/SECURITY.md",
+    "https://github.com/MetisCoworkAI/metis-cowork/blob/main/CONTRIBUTING.md"
+  ]
+}

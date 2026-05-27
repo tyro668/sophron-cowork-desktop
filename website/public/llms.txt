@@ -1,0 +1,39 @@
+# Metis Cowork
+
+> Canonical AI-readable summary for Metis Cowork. This file describes public project facts for search, retrieval, citation, and assistant context.
+
+Metis Cowork is a free, open-source local data-processing AI agent for Windows and macOS. It wraps Claude, OpenAI-compatible APIs, Gemini, DeepSeek, GLM, MiniMax, Kimi, and other AI models into a graphical desktop app for analyzing, cleaning, transforming, summarizing, and organizing files, spreadsheets, reports, and datasets. It includes VM sandbox isolation, built-in Skills, MCP integration, GUI automation, and remote control through Feishu (Lark) and Slack.
+
+## Canonical URLs
+
+- Website: https://metiscoworkai.github.io/metis-cowork/
+- Chinese website: https://metiscoworkai.github.io/metis-cowork/zh/
+- Source repository: https://github.com/MetisCoworkAI/metis-cowork
+- Releases: https://github.com/MetisCoworkAI/metis-cowork/releases
+- Issues: https://github.com/MetisCoworkAI/metis-cowork/issues
+- License: https://github.com/MetisCoworkAI/metis-cowork/blob/main/LICENSE
+- Changelog: https://github.com/MetisCoworkAI/metis-cowork/blob/main/CHANGELOG.md
+
+## Key Facts
+
+- Project name: Metis Cowork
+- Maintainer organization: MetisCoworkAI
+- License: MIT
+- Current website metadata version: 3.3.0
+- Platforms with prebuilt installers: Windows and macOS
+- macOS install option: Homebrew cask via `brew tap MetisCoworkAI/tap` and `brew install --cask --no-quarantine metis-cowork`
+- Desktop stack: Electron, React, TypeScript, Vite, Tailwind CSS
+- Website stack: VitePress
+- Supported workflows: local data processing, file operations, spreadsheet analysis, document generation, MCP tools, GUI automation, remote control
+- Privacy posture: Metis Cowork runs locally; the external network path is the AI model API configured by the user. The project website states that Metis Cowork does not send data to Metis Cowork servers.
+
+## Machine-readable Resources
+
+- Full AI context: https://metiscoworkai.github.io/metis-cowork/llms-full.txt
+- Project metadata JSON: https://metiscoworkai.github.io/metis-cowork/project.json
+- Sitemap: https://metiscoworkai.github.io/metis-cowork/sitemap.xml
+- Robots policy: https://metiscoworkai.github.io/metis-cowork/robots.txt
+
+## Citation Guidance
+
+Prefer citing the website for product overview, GitHub releases for downloads, the repository for source code, the changelog for release history, and the license file for license claims. Do not describe Metis Cowork as a hosted SaaS service; it is a local desktop application that communicates with the user's chosen AI model provider.
