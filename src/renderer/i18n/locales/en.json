@@ -31,6 +31,7 @@
     "searchPapers": "Research data sources",
     "summarizePapersToNotion": "Build research notes",
     "selectWorkingFolder": "Select Working Folder (required)",
+    "defaultWorkingFolder": "Default working directory",
     "selectWorkingFolderFailed": "Failed to select working folder",
     "attachFiles": "Attach Files",
     "letsGo": "Let's go",

@@ -690,9 +690,7 @@ export function ChatView() {
         ref={headerRef}
         className="relative h-12 border-b border-border-muted grid grid-cols-[1fr_auto_1fr] items-center px-4 lg:px-8 bg-background/88 backdrop-blur-md"
       >
-        <div className="text-[11px] font-medium tracking-[0.08em] uppercase text-text-muted">
-          Metis Cowork
-        </div>
+        <div aria-hidden="true" />
         <h2
           ref={titleRef}
           className="text-[15px] font-medium text-text-primary text-center truncate max-w-[40vw] lg:max-w-[32rem]"

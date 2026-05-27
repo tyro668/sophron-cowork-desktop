@@ -30,4 +30,13 @@ describe('WelcomeView submit guards', () => {
     expect(source).toContain("message: `${t('welcome.selectWorkingFolderFailed')}: ${result.error}`");
     expect(source).toContain(": t('welcome.selectWorkingFolderFailed')");
   });
+
+  it('uses an i18n display label for the internal default working directory', () => {
+    const source = fs.readFileSync(welcomeViewPath, 'utf8');
+
+    expect(source).toContain('getWorkingDirDisplayName(');
+    expect(source).toContain("t('welcome.defaultWorkingFolder')");
+    expect(source).toContain('<span>{workingDirLabel}</span>');
+    expect(source).not.toContain("workingDir.split(/[/\\\\]/).pop()");
+  });
 });

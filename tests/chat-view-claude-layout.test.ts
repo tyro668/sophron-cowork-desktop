@@ -16,11 +16,12 @@ describe('ChatView Claude-style layout', () => {
     expect(source).toContain('max-w-[920px]');
   });
 
-  it('uses a quieter header treatment with Metis Cowork eyebrow and compact connector badge', () => {
+  it('uses a quieter header treatment without a left app-name label', () => {
     const source = readChatView();
-    expect(source).toContain('Metis Cowork');
+    expect(source).toContain('<div aria-hidden="true" />');
     expect(source).toContain('bg-background/88');
     expect(source).toContain('border-border-muted');
+    expect(source).not.toContain('tracking-[0.08em] uppercase text-text-muted');
   });
 
   it('renders a floating back-to-top trigger below the conversation title', () => {

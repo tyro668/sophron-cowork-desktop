@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
 import { useIPC } from '../hooks/useIPC';
+import { getWorkingDirDisplayName } from '../utils/working-dir-label';
 import type { ContentBlock } from '../types';
 import { getInitialSessionTitle } from '../../shared/session-title';
 import {
@@ -24,8 +25,6 @@ type AttachedFile = {
   inlineDataBase64?: string;
 };
 
-import welcomeLogoSrc from '../assets/logo.png';
-
 export function WelcomeView() {
   const { t } = useTranslation();
   const [prompt, setPrompt] = useState('');
@@ -45,6 +44,11 @@ export function WelcomeView() {
   const setShowSettings = useAppStore((state) => state.setShowSettings);
   const setSettingsTab = useAppStore((state) => state.setSettingsTab);
   const canSubmit = prompt.trim().length > 0 || pastedImages.length > 0 || attachedFiles.length > 0;
+  const workingDirLabel = getWorkingDirDisplayName(
+    workingDir,
+    t('welcome.defaultWorkingFolder'),
+    t('welcome.selectWorkingFolder')
+  );
 
   const handleSelectFolder = async () => {
     try {
@@ -441,22 +445,10 @@ export function WelcomeView() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-5 py-10 md:px-8 md:py-14">
       <div className="max-w-[840px] w-full space-y-7 animate-fade-in">
-        <div className="space-y-4 text-center">
-          <div className="flex items-center justify-center gap-4">
-            <img
-              src={welcomeLogoSrc}
-              alt={t('welcome.logoAlt')}
-              className="w-16 h-16 md:w-20 md:h-20 rounded-[1.4rem] object-contain p-2 border border-border-subtle bg-surface/80 shadow-soft"
-            />
-            <div className="text-left">
-              <h1 className="text-[2.35rem] md:text-[3.1rem] leading-none font-semibold tracking-[-0.05em] text-text-primary">
-                Metis Cowork
-              </h1>
-            </div>
-          </div>
-          <p className="heading-serif text-[1.15rem] md:text-[1.45rem] font-medium tracking-[-0.02em] text-text-secondary text-center">
+        <div className="text-center">
+          <h1 className="heading-serif text-[1.35rem] md:text-[1.7rem] font-medium text-text-secondary text-center">
             {t('welcome.title')}
-          </p>
+          </h1>
         </div>
 
         {/* API Not Configured Hint */}
@@ -518,7 +510,7 @@ export function WelcomeView() {
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`rounded-[1.9rem] border border-border-muted bg-background/95 shadow-card px-5 py-5 space-y-4 transition-colors ${
+          className={`rounded-[1.9rem] border border-border-muted bg-background/95 shadow-soft px-5 py-5 space-y-4 transition-colors ${
             isDragging ? 'ring-2 ring-accent bg-accent/5' : ''
           }`}
         >
@@ -612,9 +604,7 @@ export function WelcomeView() {
                 title={workingDir || t('welcome.selectWorkingFolder')}
               >
                 <FolderOpen className="w-4 h-4" />
-                <span>
-                  {workingDir ? workingDir.split(/[/\\]/).pop() : t('welcome.selectWorkingFolder')}
-                </span>
+                <span>{workingDirLabel}</span>
               </button>
 
               {isElectron && (

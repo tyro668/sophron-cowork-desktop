@@ -5,10 +5,13 @@ import path from 'node:path';
 const welcomeViewPath = path.resolve(process.cwd(), 'src/renderer/components/WelcomeView.tsx');
 
 describe('WelcomeView Claude-style layout', () => {
-  it('uses a narrower editorial landing column with Metis Cowork eyebrow', () => {
+  it('uses a narrower landing column without the app brand or logo in the composer view', () => {
     const source = fs.readFileSync(welcomeViewPath, 'utf8');
     expect(source).toContain('max-w-[840px]');
-    expect(source).toContain('Metis Cowork');
+    expect(source).toContain("t('welcome.title')");
+    expect(source).not.toContain('welcomeLogoSrc');
+    expect(source).not.toContain("t('welcome.logoAlt')");
+    expect(source).not.toContain('Metis Cowork');
   });
 
   it('uses a softer rounded composer shell instead of the previous generic card class', () => {

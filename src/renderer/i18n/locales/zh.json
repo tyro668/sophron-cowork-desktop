@@ -31,6 +31,7 @@
     "searchPapers": "调研数据来源",
     "summarizePapersToNotion": "整理调研笔记",
     "selectWorkingFolder": "选择工作文件夹（必填）",
+    "defaultWorkingFolder": "默认工作目录",
     "selectWorkingFolderFailed": "选择工作文件夹失败",
     "attachFiles": "附加文件",
     "letsGo": "开始",
