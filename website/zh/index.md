@@ -1,21 +1,5 @@
 ---
 layout: home
-head:
-  - - link
-    - rel: canonical
-      href: https://metiscoworkai.github.io/metis-cowork/zh/
-  - - link
-    - rel: alternate
-      hreflang: en
-      href: https://metiscoworkai.github.io/metis-cowork/
-  - - link
-    - rel: alternate
-      hreflang: zh-CN
-      href: https://metiscoworkai.github.io/metis-cowork/zh/
-  - - link
-    - rel: alternate
-      hreflang: x-default
-      href: https://metiscoworkai.github.io/metis-cowork/
 
 hero:
   name: Metis Cowork
@@ -27,15 +11,15 @@ hero:
   actions:
     - theme: brand
       text: 立即下载
-      link: https://github.com/MetisCoworkAI/metis-cowork/releases
+      link: '#quick-install'
     - theme: alt
-      text: GitHub 仓库
-      link: https://github.com/MetisCoworkAI/metis-cowork
+      text: 源码仓库
+      link: ssh://git@code.fineres.com:7999/res/metis-cowork.git
 
 features:
   - icon: 🚀
     title: 一键安装，开箱即用
-    details: 提供 Windows (.exe) 和 macOS (.dmg) 预构建安装包，同时支持 Homebrew 安装。无需终端或编程知识。
+    details: 提供 Windows (.exe) 和 macOS (.dmg) 预构建安装包。无需终端或编程知识。
   - icon: 🤖
     title: 数据处理 Agent
     details: 分析表格、清洗混乱数据集、总结报告、抽取结构化信息，并从工作区文件生成交付物。
@@ -165,18 +149,23 @@ features:
 
 </div>
 
-<div class="install-section">
+<div id="quick-install" class="install-section">
 
 ## 快速安装
 
-**macOS (Homebrew)**
+**Windows / macOS 安装包**
+
+请通过 Metis Cowork 官方发布渠道获取。
+
+**源码构建**
 
 ```bash
-brew tap MetisCoworkAI/tap
-brew install --cask --no-quarantine metis-cowork
+git clone ssh://git@code.fineres.com:7999/res/metis-cowork.git
+cd metis-cowork
+npm install
+npm run rebuild
+npm run dev
 ```
-
-**Windows / macOS** — [前往下载页面 →](https://github.com/MetisCoworkAI/metis-cowork/releases)
 
 </div>
 
@@ -228,7 +217,7 @@ Metis Cowork 在本机运行，你的工作区文件由你控制。唯一的外�
 
 ### 支持 Linux 吗？
 
-目前提供 Windows 和 macOS 的预构建安装包。Linux 用户可以通过源码编译方式使用，详见 [GitHub 仓库](https://github.com/MetisCoworkAI/metis-cowork)。
+目前提供 Windows 和 macOS 的预构建安装包。Linux 用户可以通过上方源码仓库地址进行源码编译。
 
 </div>
 

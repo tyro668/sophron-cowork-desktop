@@ -4441,7 +4441,6 @@ async function callVisionAPIWithTimeout(
     };
 
     if (isOpenRouter) {
-      headers['HTTP-Referer'] = 'https://github.com/MetisCoworkAI/metis-cowork';
       headers['X-Title'] = 'Metis Cowork';
     }
 

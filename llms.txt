@@ -19,22 +19,22 @@ Metis Cowork is a free, open-source desktop application that provides a local AI
 
 ## Links
 
-- Repository: https://github.com/MetisCoworkAI/metis-cowork
-- Issues: https://github.com/MetisCoworkAI/metis-cowork/issues
-- Discussions: https://github.com/MetisCoworkAI/metis-cowork/discussions
-- Discord: https://discord.gg/pynjtQDf
+- Repository: ssh://git@code.fineres.com:7999/res/metis-cowork.git
 - License: MIT
 
 ## Installation
 
-### macOS (Homebrew)
-```
-brew tap MetisCoworkAI/tap
-brew install --cask --no-quarantine metis-cowork
-```
-
 ### Windows / macOS (Installer)
-Download from: https://github.com/MetisCoworkAI/metis-cowork/releases
+Download from the official Metis Cowork release channel.
+
+### Build from source
+```
+git clone ssh://git@code.fineres.com:7999/res/metis-cowork.git
+cd metis-cowork
+npm install
+npm run rebuild
+npm run dev
+```
 
 ## Supported AI Providers
 
@@ -77,6 +77,4 @@ Metis Cowork runs locally on your machine. Your files stay in your workspace. Th
 
 ## Optional
 
-- [Contributing Guide](https://github.com/MetisCoworkAI/metis-cowork/blob/main/CONTRIBUTING.md)
-- [Security Policy](https://github.com/MetisCoworkAI/metis-cowork/blob/main/SECURITY.md)
-- [Code of Conduct](https://github.com/MetisCoworkAI/metis-cowork/blob/main/CODE_OF_CONDUCT.md)
+- Security Policy: SECURITY.md

@@ -450,28 +450,21 @@ export class LimaBridge implements SandboxExecutor {
   }
 
   /**
-   * Install Node.js in Lima via nvm
+   * Install Node.js in Lima
    */
   static async installNodeInLima(): Promise<boolean> {
-    log('[Lima] Installing Node.js via nvm...');
+    log('[Lima] Installing Node.js via apt...');
     try {
-      // Install nvm
-      await execLimaShellWithRetry(
-        'bash -c "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash"',
-        120000
-      );
-
-      // Install Node.js 20
-      await execLimaShellWithRetry(
-        'bash -c "source ~/.nvm/nvm.sh && nvm install 20 && nvm alias default 20"',
-        180000
-      );
+      const commands = [
+        'sudo DEBIAN_FRONTEND=noninteractive apt-get update -y',
+        'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs npm',
+      ];
+      for (const command of commands) {
+        await execLimaShellWithRetry(command, 300000);
+      }
 
       // Verify
-      const { stdout } = await execLimaShellWithRetry(
-        'bash -c "source ~/.nvm/nvm.sh && node --version"',
-        10000
-      );
+      const { stdout } = await execLimaShellWithRetry('node --version', 10000);
       log('[Lima] Node.js installed:', stdout.trim());
       return true;
     } catch (error) {
@@ -556,7 +549,7 @@ export class LimaBridge implements SandboxExecutor {
     log('[Lima] Installing claude-code...');
     try {
       await execLimaShellWithRetry(
-        'bash -c "source ~/.nvm/nvm.sh && npm install -g @anthropic-ai/claude-code"',
+        'bash -c "source ~/.nvm/nvm.sh 2>/dev/null; npm install -g @anthropic-ai/claude-code"',
         180000
       );
       log('[Lima] claude-code installed');

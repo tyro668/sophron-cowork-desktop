@@ -27,13 +27,9 @@
     "slack",
     "multi-model"
   ],
-  "homepage": "https://github.com/MetisCoworkAI/metis-cowork",
   "repository": {
     "type": "git",
-    "url": "https://github.com/MetisCoworkAI/metis-cowork.git"
-  },
-  "bugs": {
-    "url": "https://github.com/MetisCoworkAI/metis-cowork/issues"
+    "url": "ssh://git@code.fineres.com:7999/res/metis-cowork.git"
   },
   "engines": {
     "node": ">=22"
@@ -81,7 +77,6 @@
     "chokidar": "^4.0.1",
     "dotenv": "^17.2.3",
     "electron-store": "^11.0.2",
-    "electron-updater": "^6.3.0",
     "glob": "^13.0.6",
     "highlight.js": "^11.11.1",
     "i18next": "^25.10.1",

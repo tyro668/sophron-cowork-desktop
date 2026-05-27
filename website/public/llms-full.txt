@@ -5,10 +5,8 @@ This file provides a fuller, machine-readable context snapshot for AI assistants
 ## Project Identity
 
 - Name: Metis Cowork
-- Organization: MetisCoworkAI
-- Repository: https://github.com/MetisCoworkAI/metis-cowork
-- Website: https://metiscoworkai.github.io/metis-cowork/
-- Chinese website: https://metiscoworkai.github.io/metis-cowork/zh/
+- Organization: Metis Cowork Team
+- Repository: ssh://git@code.fineres.com:7999/res/metis-cowork.git
 - License: MIT
 - Application category: DeveloperApplication
 - Platforms: Windows and macOS
@@ -49,23 +47,16 @@ Security controls described by the project:
 
 ## Installation
 
-macOS Homebrew:
-
-```bash
-brew tap MetisCoworkAI/tap
-brew install --cask --no-quarantine metis-cowork
-```
-
 Installer downloads:
 
-- Releases page: https://github.com/MetisCoworkAI/metis-cowork/releases
+- Official Metis Cowork release channel
 - Windows installer type: `.exe`
 - macOS installer type: `.dmg`
 
 Build from source:
 
 ```bash
-git clone https://github.com/MetisCoworkAI/metis-cowork.git
+git clone ssh://git@code.fineres.com:7999/res/metis-cowork.git
 cd metis-cowork
 npm install
 npm run rebuild
@@ -84,17 +75,13 @@ The project documentation lists these provider examples:
 
 Any provider with an OpenAI-compatible API can be configured when compatible with the app's model settings.
 
-## Main Public Pages
+## Main Project Files
 
-- English homepage: https://metiscoworkai.github.io/metis-cowork/
-- Chinese homepage: https://metiscoworkai.github.io/metis-cowork/zh/
-- GitHub repository: https://github.com/MetisCoworkAI/metis-cowork
-- README: https://github.com/MetisCoworkAI/metis-cowork/blob/main/README.md
-- Chinese README: https://github.com/MetisCoworkAI/metis-cowork/blob/main/README_zh.md
-- Changelog: https://github.com/MetisCoworkAI/metis-cowork/blob/main/CHANGELOG.md
-- Roadmap: https://github.com/MetisCoworkAI/metis-cowork/blob/main/ROADMAP.md
-- Security policy: https://github.com/MetisCoworkAI/metis-cowork/blob/main/SECURITY.md
-- Contributing: https://github.com/MetisCoworkAI/metis-cowork/blob/main/CONTRIBUTING.md
+- README: README.md
+- Chinese README: README_zh.md
+- Changelog: CHANGELOG.md
+- Roadmap: ROADMAP.md
+- Security policy: SECURITY.md
 
 ## Release Context
 
@@ -122,22 +109,14 @@ The public website and README list prebuilt installers for Windows and macOS. Li
 
 The public website says Metis Cowork runs locally and that the external communication is with the AI model API configured by the user, not Metis Cowork servers.
 
-## Machine-readable Resources
-
-- `llms.txt`: https://metiscoworkai.github.io/metis-cowork/llms.txt
-- `llms-full.txt`: https://metiscoworkai.github.io/metis-cowork/llms-full.txt
-- Project metadata JSON: https://metiscoworkai.github.io/metis-cowork/project.json
-- Sitemap: https://metiscoworkai.github.io/metis-cowork/sitemap.xml
-- Robots policy: https://metiscoworkai.github.io/metis-cowork/robots.txt
-
 ## Crawler And Citation Policy Summary
 
 The website robots policy is intended to allow search engines and AI retrieval/citation tools to discover public project pages. This is a crawling preference only and does not change the MIT license or other legal terms attached to the repository and public assets.
 
 When generating citations:
 
-- Cite the website for product overview.
-- Cite GitHub releases for download availability.
+- Cite local project documentation for product overview.
+- Cite the official release channel for download availability.
 - Cite the repository for source code and development facts.
 - Cite the changelog for release history.
 - Cite the license file for license claims.

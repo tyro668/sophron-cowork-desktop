@@ -21,8 +21,6 @@
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License" />
   <img src="https://img.shields.io/badge/Node.js-18+-brightgreen" alt="Node.js" />
-  <a href="https://discord.gg/pynjtQDf"><img src="https://img.shields.io/discord/1493588403260883078?logo=discord&label=Discord&color=5865F2" alt="Discord" /></a>
-  <a href="#community"><img src="https://img.shields.io/badge/WeChat-微信群-07C160?logo=wechat&logoColor=white" alt="WeChat" /></a>
 </p>
 
 ---
@@ -84,16 +82,7 @@ Demo media is distributed with release materials. Current workflows include:
 
 ## 📦 Installation
 
-### Option 1: Homebrew (macOS, Recommended)
-
-```bash
-brew tap MetisCoworkAI/tap
-brew install --cask --no-quarantine metis-cowork
-```
-
-> The `--no-quarantine` flag bypasses macOS Gatekeeper, so you won't see the "Apple cannot verify this app" warning.
-
-### Option 2: Download Installer
+### Option 1: Download Installer
 
 Get the latest installer from the official Metis Cowork release channel.
 
@@ -102,9 +91,9 @@ Get the latest installer from the official Metis Cowork release channel.
 | **Windows**               | `.exe`    |
 | **macOS** (Apple Silicon) | `.dmg`    |
 
-### Option 3: Build from Source
+### Option 2: Build from Source
 
-For developers who want to contribute or modify the codebase:
+For source-based local builds:
 
 ```bash
 git clone ssh://git@code.fineres.com:7999/res/metis-cowork.git
@@ -175,10 +164,7 @@ You need an API key to power the agent. We support **OpenRouter**, **Anthropic**
 
 ### 📝 Important Notes
 
-1.  **macOS Installation**: If you downloaded the DMG directly (not via Homebrew) and see a security warning, go to **System Settings > Privacy & Security** and click **Open Anyway**. Or install via Homebrew to avoid this entirely:
-    ```bash
-    brew tap MetisCoworkAI/tap && brew install --cask --no-quarantine metis-cowork
-    ```
+1.  **macOS Installation**: If you downloaded the DMG directly and see a security warning, go to **System Settings > Privacy & Security** and click **Open Anyway**.
 2.  **Network Access**: For tools like `WebSearch`, you may need to enable "Virtual Network Interface" (TUN Mode) in your proxy settings to ensure connectivity.
 3.  **Notion Connector**: Besides setting the integration token, you also need to add connections in a root page. See https://www.notion.com/help/add-and-manage-connections-with-the-api for more details.
 
@@ -302,31 +288,6 @@ Metis Cowork supports remote control through Feishu (Lark) and Slack integration
 
 **Is my data safe? Does Metis Cowork send data to external servers?**
 Metis Cowork runs locally on your machine. Your files stay in your workspace. The only external communication is with the AI model API you configure (e.g., Anthropic, OpenRouter). No data is sent to Metis Cowork servers.
-
----
-
-## 🛠️ Contributing
-
-We welcome contributions! Whether it's a new Skill, a UI fix, or a security improvement:
-
-1. Fork the repo.
-2. Create a branch (`git checkout -b feature/NewSkill`).
-3. Submit a PR.
-
----
-
-## 💬 Community
-
-Join our community for support and discussion:
-
-- **Discord**: [Join our Discord server](https://discord.gg/pynjtQDf) — for real-time chat, support, and development discussion.
-- **WeChat**: Scan the QR code below to join our WeChat group (Chinese community).
-
-<p align="center">
-  <img src="resources/WeChat.jpg" alt="WeChat Group" width="200" />
-</p>
-
----
 
 ## 📄 License
 

@@ -5,9 +5,9 @@ All notable changes to the Metis Cowork AI agent desktop app will be documented 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## Unreleased
 
-## [3.3.0] - 2026-04-18
+## 3.3.0 - 2026-04-18
 
 First stable release of the 3.3.x series. Graduated from 9 beta releases with 30+ commits since beta.9.
 
@@ -20,7 +20,7 @@ First stable release of the 3.3.x series. Graduated from 9 beta releases with 30
 - Platform-based issue auto-assignment (#96)
 - ROADMAP.md with versioned planning (v3.4.0+)
 - SEO optimizations — llms.txt, social preview, FAQ
-- Dependency management policy in CONTRIBUTING.md
+- Dependency management policy for production and CI dependencies
 
 ### Fixed
 
@@ -47,12 +47,12 @@ First stable release of the 3.3.x series. Graduated from 9 beta releases with 30
 
 ### Contributors
 
-- [@hqhq1025](https://github.com/hqhq1025)
-- [@Sun-sunshine06](https://github.com/Sun-sunshine06)
-- [@JackXFan](https://github.com/JackXFan)
-- [@andoan16](https://github.com/andoan16)
+- @hqhq1025
+- @Sun-sunshine06
+- @JackXFan
+- @andoan16
 
-## [3.3.0-beta.8] - 2026-03-29
+## 3.3.0-beta.8 - 2026-03-29
 
 ### Added
 
@@ -70,7 +70,7 @@ First stable release of the 3.3.x series. Graduated from 9 beta releases with 30
 - Scrypt `maxmem` parameter for startup key derivation performance
 - CI pipeline stabilization for cross-platform builds
 
-## [3.2.0] - 2026-03-02
+## 3.2.0 - 2026-03-02
 
 ### Added
 
@@ -86,7 +86,7 @@ First stable release of the 3.3.x series. Graduated from 9 beta releases with 30
 
 - Improved `key_press` robustness for GUI automation on Windows and macOS
 
-## [3.1.0] - 2026-02-13
+## 3.1.0 - 2026-02-13
 
 ### Added
 
@@ -101,7 +101,7 @@ First stable release of the 3.3.x series. Graduated from 9 beta releases with 30
 - Sensitive log redaction hardened for API keys and credentials
 - Packaged app version alignment to 3.0.0 for consistent update detection
 
-## [3.0.0] - 2026-02-08
+## 3.0.0 - 2026-02-08
 
 ### Changed
 
@@ -112,22 +112,14 @@ First stable release of the 3.3.x series. Graduated from 9 beta releases with 30
 
 - GUI dock click targeting and verification gating for macOS computer use
 
-## [2.0.0] - 2026-01-25
+## 2.0.0 - 2026-01-25
 
 ### Changed
 
 - Major architecture overhaul: Electron-based desktop app with React UI, sandbox isolation, and Skills system
 
-## [1.0.0] - 2025-12-01
+## 1.0.0 - 2025-12-01
 
 ### Added
 
 - Initial release of Metis Cowork — open-source AI agent desktop app with one-click install for Windows and macOS
-
-[Unreleased]: https://github.com/MetisCoworkAI/metis-cowork/compare/v3.3.0-beta.8...HEAD
-[3.3.0-beta.8]: https://github.com/MetisCoworkAI/metis-cowork/compare/v3.2.0...v3.3.0-beta.8
-[3.2.0]: https://github.com/MetisCoworkAI/metis-cowork/compare/v3.1.0...v3.2.0
-[3.1.0]: https://github.com/MetisCoworkAI/metis-cowork/compare/v3.0.0...v3.1.0
-[3.0.0]: https://github.com/MetisCoworkAI/metis-cowork/compare/v2.0.0...v3.0.0
-[2.0.0]: https://github.com/MetisCoworkAI/metis-cowork/compare/v1.0...v2.0.0
-[1.0.0]: https://github.com/MetisCoworkAI/metis-cowork/releases/tag/v1.0

@@ -351,7 +351,6 @@ export class WSLBridge implements SandboxExecutor {
 
   /**
    * Install Node.js in WSL
-   * Note: Prefers nvm (no sudo required) over apt (requires sudo)
    */
   static async installNodeInWSL(distro: string): Promise<boolean> {
     WSLBridge.validateDistroName(distro);
@@ -365,18 +364,6 @@ export class WSLBridge implements SandboxExecutor {
       return false;
     }
 
-    // Try nvm first - no sudo required, works for all users
-    try {
-      log('[WSL] Trying nvm installation (no sudo required)...');
-      const success = await WSLBridge.installNodeViaNvm(distro);
-      if (success) {
-        return true;
-      }
-    } catch (error) {
-      log('[WSL] nvm installation failed, trying apt...', (error as Error).message);
-    }
-
-    // Fallback to apt if nvm fails and sudo is available
     try {
       // Check if we can run sudo without password
       await execFileAsync('wsl', ['-d', distro, '-e', 'sudo', '-n', 'true'], { timeout: 5000 });
@@ -406,66 +393,6 @@ export class WSLBridge implements SandboxExecutor {
       return true;
     } catch (error) {
       logError('[WSL] Failed to install Node.js:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Install Node.js via nvm (no sudo required)
-   */
-  static async installNodeViaNvm(distro: string): Promise<boolean> {
-    WSLBridge.validateDistroName(distro);
-    log('[WSL] Installing Node.js via nvm (no sudo required)...');
-
-    try {
-      // Step 1: Install nvm
-      log('[WSL] Step 1: Installing nvm...');
-      await execFileAsync(
-        'wsl',
-        [
-          '-d',
-          distro,
-          '-e',
-          'bash',
-          '-c',
-          'curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash',
-        ],
-        { timeout: 120000, encoding: 'utf-8' }
-      );
-
-      // Step 2: Install node using nvm
-      log('[WSL] Step 2: Installing Node.js 20 via nvm...');
-      await execFileAsync(
-        'wsl',
-        [
-          '-d',
-          distro,
-          '-e',
-          'bash',
-          '-c',
-          'source ~/.nvm/nvm.sh && nvm install 20 && nvm alias default 20',
-        ],
-        { timeout: 180000, encoding: 'utf-8' }
-      );
-
-      // Verify installation
-      log('[WSL] Step 3: Verifying installation...');
-      const verifyResult = await execFileAsync(
-        'wsl',
-        ['-d', distro, '-e', 'bash', '-c', 'source ~/.nvm/nvm.sh && node --version'],
-        { timeout: 10000, encoding: 'utf-8' }
-      );
-
-      const version = verifyResult.stdout.trim();
-      if (version.startsWith('v')) {
-        log('[WSL] Node.js installed via nvm:', version);
-        return true;
-      } else {
-        log('[WSL] Node.js installation verification failed:', version);
-        return false;
-      }
-    } catch (error) {
-      logError('[WSL] Failed to install Node.js via nvm:', error);
       return false;
     }
   }

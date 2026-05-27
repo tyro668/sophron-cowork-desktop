@@ -20,7 +20,6 @@ files:
   - node_modules/@larksuiteoapi/**/*
   - node_modules/openai/**/*
   - node_modules/@modelcontextprotocol/**/*
-  - node_modules/electron-updater/**/*
   - node_modules/chokidar/**/*
   - node_modules/archiver/**/*
   - node_modules/ngrok/**/*
@@ -162,8 +161,3 @@ dmg:
 
 extraMetadata:
   main: dist-electron/main/index.js
-
-publish:
-  provider: github
-  owner: MetisCoworkAI
-  repo: metis-cowork

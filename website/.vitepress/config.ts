@@ -1,12 +1,10 @@
 import { defineConfig } from 'vitepress';
 
-const SITE_ORIGIN = 'https://metiscoworkai.github.io';
+const SITE_ORIGIN = 'https://code.fineres.com';
 const SITE_BASE = '/metis-cowork/';
 const SITE_URL = `${SITE_ORIGIN}${SITE_BASE}`;
 const OG_IMAGE = `${SITE_URL}og-image.png`;
-const GITHUB_URL = 'https://github.com/MetisCoworkAI/metis-cowork';
-const RELEASES_URL = `${GITHUB_URL}/releases`;
-const DISCORD_URL = 'https://discord.gg/pynjtQDf';
+const REPOSITORY_URL = 'ssh://git@code.fineres.com:7999/res/metis-cowork.git';
 const PROJECT_DESCRIPTION =
   'Local data-processing AI agent desktop app for Windows and macOS with sandbox isolation, multi-model support, built-in Skills, MCP integration, GUI automation, and remote control.';
 const FEATURE_LIST = [
@@ -53,9 +51,8 @@ const STRUCTURED_DATA = {
     {
       '@type': 'Organization',
       '@id': `${SITE_URL}#organization`,
-      name: 'MetisCoworkAI',
-      url: 'https://github.com/MetisCoworkAI',
-      sameAs: ['https://github.com/MetisCoworkAI', DISCORD_URL],
+      name: 'Metis Cowork Team',
+      url: SITE_URL,
     },
     {
       '@type': 'WebSite',
@@ -74,8 +71,8 @@ const STRUCTURED_DATA = {
       image: OG_IMAGE,
       applicationCategory: 'DeveloperApplication',
       operatingSystem: ['Windows', 'macOS'],
-      codeRepository: GITHUB_URL,
-      downloadUrl: RELEASES_URL,
+      codeRepository: REPOSITORY_URL,
+      downloadUrl: `${SITE_URL}#quick-install`,
       license: 'https://opensource.org/licenses/MIT',
       softwareVersion: '3.3.0',
       isAccessibleForFree: true,
@@ -184,18 +181,15 @@ export default defineConfig({
 
     nav: [
       { text: 'Home', link: '/' },
-      { text: 'Download', link: 'https://github.com/MetisCoworkAI/metis-cowork/releases' },
-      { text: 'GitHub', link: 'https://github.com/MetisCoworkAI/metis-cowork' },
+      { text: 'Download', link: '/#quick-install' },
+      { text: 'Source', link: REPOSITORY_URL },
     ],
 
-    socialLinks: [
-      { icon: 'github', link: 'https://github.com/MetisCoworkAI/metis-cowork' },
-      { icon: 'discord', link: 'https://discord.gg/pynjtQDf' },
-    ],
+    socialLinks: [],
 
     footer: {
       message: 'Released under the MIT License.',
-      copyright: '© 2025-present MetisCoworkAI',
+      copyright: '© 2025-present Metis Cowork Team',
     },
 
     search: { provider: 'local' },
@@ -213,12 +207,12 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: '首页', link: '/zh/' },
-          { text: '下载', link: 'https://github.com/MetisCoworkAI/metis-cowork/releases' },
-          { text: 'GitHub', link: 'https://github.com/MetisCoworkAI/metis-cowork' },
+          { text: '下载', link: '/#quick-install' },
+          { text: '源码', link: REPOSITORY_URL },
         ],
         footer: {
           message: '基于 MIT 协议开源。',
-          copyright: '© 2025-present MetisCoworkAI',
+          copyright: '© 2025-present Metis Cowork Team',
         },
       },
     },

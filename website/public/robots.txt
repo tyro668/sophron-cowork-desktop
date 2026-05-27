@@ -32,8 +32,7 @@ Allow: /
 User-agent: anthropic-ai
 Allow: /
 
-# AI-readable context:
-# https://metiscoworkai.github.io/metis-cowork/llms.txt
-# https://metiscoworkai.github.io/metis-cowork/llms-full.txt
-# https://metiscoworkai.github.io/metis-cowork/project.json
-Sitemap: https://metiscoworkai.github.io/metis-cowork/sitemap.xml
+# AI-readable context is published with the site assets:
+# /llms.txt
+# /llms-full.txt
+# /project.json

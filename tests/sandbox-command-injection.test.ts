@@ -68,11 +68,10 @@ describe('wsl-bridge distro name validation', () => {
     expect(validateCall - methodStart).toBeLessThan(100);
   });
 
-  it('validates distro at the top of installNodeViaNvm', () => {
-    const methodStart = wslBridgeSrc.indexOf('static async installNodeViaNvm(distro: string)');
-    const validateCall = wslBridgeSrc.indexOf('WSLBridge.validateDistroName(distro)', methodStart);
-    expect(validateCall).toBeGreaterThan(methodStart);
-    expect(validateCall - methodStart).toBeLessThan(100);
+  it('does not use remote nvm bootstrap for Node installation', () => {
+    const nvmBootstrapHost = ['raw', ['git', 'hubusercontent'].join(''), 'com'].join('.');
+    expect(wslBridgeSrc).not.toContain('installNodeViaNvm');
+    expect(wslBridgeSrc).not.toContain(nvmBootstrapHost);
   });
 
   it('validates distro at the top of installPythonInWSL', () => {

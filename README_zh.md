@@ -21,8 +21,6 @@
   <img src="https://img.shields.io/badge/平台-Windows%20%7C%20macOS-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/协议-MIT-green" alt="License" />
   <img src="https://img.shields.io/badge/Node.js-18+-brightgreen" alt="Node.js" />
-  <a href="https://discord.gg/pynjtQDf"><img src="https://img.shields.io/discord/1493588403260883078?logo=discord&label=Discord&color=5865F2" alt="Discord" /></a>
-  <a href="#加入社群"><img src="https://img.shields.io/badge/WeChat-微信群-07C160?logo=wechat&logoColor=white" alt="WeChat" /></a>
 </p>
 
 ---
@@ -82,16 +80,7 @@ Metis Cowork 是一款免费开源、专注本地数据处理的 AI Agent 桌面
 
 ## 📦 下载与安装
 
-### 方式一：Homebrew（macOS，推荐）
-
-```bash
-brew tap MetisCoworkAI/tap
-brew install --cask --no-quarantine metis-cowork
-```
-
-> `--no-quarantine` 可跳过 macOS Gatekeeper 验证，避免"无法验证开发者"的弹窗。
-
-### 方式二：下载安装包
+### 方式一：下载安装包
 
 请通过 Metis Cowork 官方发布渠道下载最新版本。
 
@@ -100,9 +89,9 @@ brew install --cask --no-quarantine metis-cowork
 | **Windows**               | `.exe`   |
 | **macOS** (Apple Silicon) | `.dmg`   |
 
-### 方式三：源码编译
+### 方式二：源码编译
 
-适合想要贡献代码或进行二次开发的开发者：
+适合需要从源码进行本地构建的场景：
 
 ```bash
 git clone ssh://git@code.fineres.com:7999/res/metis-cowork.git
@@ -173,11 +162,7 @@ brew install lima
 
 ### 📝 重要提示
 
-1.  **macOS 安装问题**：如果直接下载 DMG 安装后提示”无法验证开发者”，推荐使用 Homebrew 安装以避免此问题：
-    ```bash
-    brew tap MetisCoworkAI/tap && brew install --cask --no-quarantine metis-cowork
-    ```
-    或者前往 **系统设置 > 隐私与安全性** 点击”仍要打开”。
+1.  **macOS 安装问题**：如果直接下载 DMG 安装后提示”无法验证开发者”，前往 **系统设置 > 隐私与安全性** 点击”仍要打开”。
 2.  **网络连接**：对于 `WebSearch` 等联网工具，可能需要开启代理软件的“虚拟网卡 (TUN模式)”功能才能正常访问。
 3.  **Notion连接器使用**: 除了设置Notion token之外，还需要在根页面添加连接。更多指引请看https://www.notion.com/help/add-and-manage-connections-with-the-api。
 
@@ -299,31 +284,6 @@ Metis Cowork 支持通过飞书和 Slack 进行远程控制，你可以在协作
 
 **数据安全吗？会不会把数据发送到外部服务器？**
 Metis Cowork 完全在本地运行，你的文件保留在你的工作区内。唯一的外部通信是与你配置的 AI 模型 API（如 Anthropic、OpenRouter）之间的交互。没有任何数据被发送到 Metis Cowork 的服务器。
-
----
-
-## 🛠️ 贡献指南
-
-欢迎任何形式的贡献！无论是新技能、UI 修复还是安全改进：
-
-1. Fork 本仓库。
-2. 创建分支 (`git checkout -b feature/NewSkill`)。
-3. 提交 PR。
-
----
-
-## 💬 加入社群
-
-欢迎加入我们的社区交流：
-
-- **Discord**：[加入 Discord 服务器](https://discord.gg/pynjtQDf) — 实时聊天、技术支持与开发讨论。
-- **微信**：扫描下方二维码加入微信交流群（中文社区）。
-
-<p align="center">
-  <img src="resources/WeChat.jpg" alt="微信交流群" width="200" />
-</p>
-
----
 
 ## 📄 许可证
 

@@ -900,19 +900,6 @@ app
       }
     });
 
-    // Auto-updater: check for updates in production
-    if (!isDev) {
-      import('electron-updater')
-        .then(({ autoUpdater }) => {
-          autoUpdater.checkForUpdatesAndNotify().catch((err: unknown) => {
-            log('[AutoUpdater] Update check failed:', err);
-          });
-        })
-        .catch((err: unknown) => {
-          log('[AutoUpdater] Failed to load electron-updater:', err);
-        });
-    }
-
     startNavServer(() => mainWindow);
 
     const scheduledTaskStore = createScheduledTaskStore(db);

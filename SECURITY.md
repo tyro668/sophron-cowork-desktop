@@ -9,7 +9,7 @@
 
 ## Reporting a Vulnerability
 
-**Please do not open a public GitHub issue for security vulnerabilities.**
+**Please do not open a public issue tracker entry for security vulnerabilities.**
 
 Report security issues by emailing **security@metiscowork.ai** (or the maintainer contact listed in the repository). Include:
 

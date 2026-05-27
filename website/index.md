@@ -1,21 +1,5 @@
 ---
 layout: home
-head:
-  - - link
-    - rel: canonical
-      href: https://metiscoworkai.github.io/metis-cowork/
-  - - link
-    - rel: alternate
-      hreflang: en
-      href: https://metiscoworkai.github.io/metis-cowork/
-  - - link
-    - rel: alternate
-      hreflang: zh-CN
-      href: https://metiscoworkai.github.io/metis-cowork/zh/
-  - - link
-    - rel: alternate
-      hreflang: x-default
-      href: https://metiscoworkai.github.io/metis-cowork/
 
 hero:
   name: Metis Cowork
@@ -27,15 +11,15 @@ hero:
   actions:
     - theme: brand
       text: Download
-      link: https://github.com/MetisCoworkAI/metis-cowork/releases
+      link: '#quick-install'
     - theme: alt
-      text: View on GitHub
-      link: https://github.com/MetisCoworkAI/metis-cowork
+      text: Source Repository
+      link: ssh://git@code.fineres.com:7999/res/metis-cowork.git
 
 features:
   - icon: 🚀
     title: One-Click Install
-    details: Pre-built installers for Windows (.exe) and macOS (.dmg). Also available via Homebrew. No terminal or coding knowledge required.
+    details: Pre-built installers for Windows (.exe) and macOS (.dmg). No terminal or coding knowledge required.
   - icon: 🤖
     title: Data Processing Agent
     details: Analyze spreadsheets, clean messy datasets, summarize reports, extract structured information, and prepare deliverables from workspace files.
@@ -128,18 +112,23 @@ features:
 
 </div>
 
-<div class="install-section">
+<div id="quick-install" class="install-section">
 
 ## Quick Install
 
-**macOS (Homebrew)**
+**Windows / macOS installers**
+
+Available from the official Metis Cowork release channel.
+
+**Build from source**
 
 ```bash
-brew tap MetisCoworkAI/tap
-brew install --cask --no-quarantine metis-cowork
+git clone ssh://git@code.fineres.com:7999/res/metis-cowork.git
+cd metis-cowork
+npm install
+npm run rebuild
+npm run dev
 ```
-
-**Windows / macOS** — [Download from Releases →](https://github.com/MetisCoworkAI/metis-cowork/releases)
 
 </div>
 
@@ -191,7 +180,7 @@ Metis Cowork runs on your local machine and keeps workspace files under your con
 
 ### Does it work on Linux?
 
-Pre-built installers are available for Windows and macOS. Linux users can build from source — see the [GitHub repository](https://github.com/MetisCoworkAI/metis-cowork) for instructions.
+Pre-built installers are available for Windows and macOS. Linux users can build from source with the repository URL shown in the install section.
 
 </div>
 

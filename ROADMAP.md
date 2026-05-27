@@ -1,6 +1,6 @@
 # 🗺️ Metis Cowork Roadmap
 
-> This document outlines the development direction for Metis Cowork. For feature requests and discussion, see [GitHub Issues](https://github.com/MetisCoworkAI/metis-cowork/issues).
+> This document outlines the development direction for Metis Cowork.
 
 ## ✅ Completed
 
@@ -39,7 +39,7 @@
 
 ### Mid-term (v3.5.0+)
 
-- **Plugin System**: Extensible architecture for community-built integrations
+- **Plugin System**: Extensible architecture for custom integrations
 - **Multi-Agent**: Orchestrate multiple agents for complex workflows
 - **Workspace Templates**: Pre-configured environments for common data use cases (spreadsheet cleanup, report generation, research datasets)
 
@@ -52,4 +52,3 @@
 ---
 
 _Last updated: 2026-05-01_
-_Want to contribute? Check our [Contributing Guide](CONTRIBUTING.md) and pick an issue labeled `good first issue`._
