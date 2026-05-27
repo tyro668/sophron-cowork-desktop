@@ -58,8 +58,94 @@
   },
   "data": {
     "pageTitle": "Data",
-    "pageDescription": "The local data workspace is under development.",
-    "comingSoon": "Coming soon"
+    "pageDescription": "Manage local data cleaning tasks, datasets, and processed outputs with DuckDB.",
+    "searchPlaceholder": "Search ETL tasks...",
+    "newCleaningTask": "New data cleaning task",
+    "newTaskPrompt": "Enter a data cleaning task name",
+    "defaultTaskName": "New data cleaning task",
+    "importDataset": "Import dataset",
+    "deleteTaskConfirm": "Delete \"{{name}}\"?",
+    "deleteTaskNotFound": "The data cleaning task does not exist or has already been deleted",
+    "noSourceFile": "No source file",
+    "emptyTasks": "No data cleaning tasks",
+    "emptyDatasets": "No datasets",
+    "totalCount": "{{count}} total",
+    "rowsPerPage": "{{count}} / page",
+    "comingSoon": "Coming soon",
+    "summary": {
+      "tasks": "Data cleaning tasks",
+      "tasksDesc": "All tasks",
+      "workflowNodes": "Workflow nodes",
+      "workflowNodesDesc": "Total task nodes",
+      "running": "Running",
+      "runningDesc": "Tasks currently running",
+      "todaySchedule": "Today schedule",
+      "todayScheduleDesc": "Planned tasks"
+    },
+    "tabs": {
+      "etl": "ETL Tasks",
+      "datasets": "Datasets"
+    },
+    "columns": {
+      "taskName": "Task name",
+      "datasetName": "Dataset name",
+      "status": "Status",
+      "nodes": "Nodes",
+      "rows": "Rows",
+      "columns": "Columns",
+      "updatedAt": "Updated at",
+      "actions": "Actions"
+    },
+    "status": {
+      "running": "Running",
+      "completed": "Completed",
+      "stopped": "Stopped",
+      "draft": "Draft",
+      "pending": "Not started",
+      "failed": "Failed"
+    },
+    "actions": {
+      "refresh": "Refresh",
+      "edit": "Enter editor",
+      "run": "Run task",
+      "attachSource": "Attach source and run",
+      "delete": "Delete task",
+      "more": "More"
+    },
+    "editor": {
+      "pageTitle": "Data cleaning task",
+      "back": "Back to task list",
+      "subtitle": "Configure the source, cleaning flow, and output result.",
+      "bindSource": "Bind source",
+      "runTask": "Run task",
+      "notGenerated": "Not generated",
+      "source": "Source",
+      "output": "Output table",
+      "rows": "Result rows",
+      "columns": "Result columns",
+      "workflowTitle": "Cleaning flow",
+      "workflowDescription": "This task runs locally in DuckDB, and the processing chain can be extended.",
+      "sourceTitle": "Source configuration",
+      "sourceDescription": "Select a CSV, TSV, JSON, JSONL, NDJSON, or Parquet file as input.",
+      "outputTitle": "Output result",
+      "lastRunAt": "Last run",
+      "error": "Error",
+      "noError": "No error",
+      "nodes": {
+        "input": "Read source",
+        "inputDesc": "Load the source file into a DuckDB staging table",
+        "clean": "Clean nulls",
+        "cleanDesc": "Remove fully empty records and keep valid fields",
+        "dedupe": "Deduplicate",
+        "dedupeDesc": "Remove fully duplicated rows",
+        "output": "Write output",
+        "outputDesc": "Save as a local DuckDB output table"
+      }
+    },
+    "relative": {
+      "today": "Today",
+      "yesterday": "Yesterday"
+    }
   },
   "settings": {
     "title": "Settings",

@@ -58,8 +58,94 @@
   },
   "data": {
     "pageTitle": "数据",
-    "pageDescription": "本地数据处理工作台正在建设中。",
-    "comingSoon": "待开发中"
+    "pageDescription": "使用 DuckDB 在本地管理数据清洗任务、数据集和处理结果。",
+    "searchPlaceholder": "搜索 ETL 任务...",
+    "newCleaningTask": "新建数据清洗任务",
+    "newTaskPrompt": "请输入数据清洗任务名称",
+    "defaultTaskName": "新的数据清洗任务",
+    "importDataset": "导入数据集",
+    "deleteTaskConfirm": "确认删除“{{name}}”？",
+    "deleteTaskNotFound": "数据清洗任务不存在，可能已经被删除",
+    "noSourceFile": "未绑定数据源",
+    "emptyTasks": "暂无数据清洗任务",
+    "emptyDatasets": "暂无数据集",
+    "totalCount": "共 {{count}} 条",
+    "rowsPerPage": "{{count}} 条/页",
+    "comingSoon": "待开发中",
+    "summary": {
+      "tasks": "数据清洗任务",
+      "tasksDesc": "全部任务",
+      "workflowNodes": "工作流节点",
+      "workflowNodesDesc": "全部任务节点总数",
+      "running": "运行中",
+      "runningDesc": "正在运行的任务",
+      "todaySchedule": "今日调度",
+      "todayScheduleDesc": "计划执行任务"
+    },
+    "tabs": {
+      "etl": "ETL 任务",
+      "datasets": "数据集"
+    },
+    "columns": {
+      "taskName": "任务名称",
+      "datasetName": "数据集名称",
+      "status": "状态",
+      "nodes": "节点数",
+      "rows": "行数",
+      "columns": "列数",
+      "updatedAt": "更新时间",
+      "actions": "操作"
+    },
+    "status": {
+      "running": "运行中",
+      "completed": "已完成",
+      "stopped": "已停止",
+      "draft": "草稿",
+      "pending": "未开始",
+      "failed": "失败"
+    },
+    "actions": {
+      "refresh": "刷新",
+      "edit": "进入编辑",
+      "run": "运行任务",
+      "attachSource": "绑定数据源并运行",
+      "delete": "删除任务",
+      "more": "更多"
+    },
+    "editor": {
+      "pageTitle": "数据清洗任务",
+      "back": "返回任务列表",
+      "subtitle": "配置数据源、清洗流程和输出结果。",
+      "bindSource": "绑定数据源",
+      "runTask": "运行任务",
+      "notGenerated": "未生成",
+      "source": "数据源",
+      "output": "输出表",
+      "rows": "结果行数",
+      "columns": "结果列数",
+      "workflowTitle": "清洗流程",
+      "workflowDescription": "当前任务在本地 DuckDB 中执行，处理链路可继续扩展。",
+      "sourceTitle": "数据源配置",
+      "sourceDescription": "选择 CSV、TSV、JSON、JSONL、NDJSON 或 Parquet 文件作为输入。",
+      "outputTitle": "输出结果",
+      "lastRunAt": "最近运行",
+      "error": "错误信息",
+      "noError": "暂无错误",
+      "nodes": {
+        "input": "读取数据源",
+        "inputDesc": "导入源文件到 DuckDB 暂存表",
+        "clean": "清洗空值",
+        "cleanDesc": "移除全空记录并保留有效字段",
+        "dedupe": "去重处理",
+        "dedupeDesc": "对完整重复行进行去重",
+        "output": "写入结果",
+        "outputDesc": "保存为本地 DuckDB 输出表"
+      }
+    },
+    "relative": {
+      "today": "今天",
+      "yesterday": "昨天"
+    }
   },
   "settings": {
     "title": "设置",

@@ -177,6 +177,73 @@ export interface ScheduleUpdateInput {
   lastError?: string | null;
 }
 
+// Data workspace types
+export type DataTaskStatus = 'running' | 'completed' | 'stopped' | 'draft' | 'pending' | 'failed';
+
+export type DataTaskStatusCounts = Record<DataTaskStatus, number>;
+
+export interface DataCleaningTask {
+  id: string;
+  name: string;
+  status: DataTaskStatus;
+  nodeCount: number;
+  sourcePath: string | null;
+  sourceDatasetId: string | null;
+  outputTable: string | null;
+  rowCount: number | null;
+  columnCount: number | null;
+  error: string | null;
+  scheduledFor: number | null;
+  createdAt: number;
+  updatedAt: number;
+  lastRunAt: number | null;
+}
+
+export interface DataDataset {
+  id: string;
+  name: string;
+  sourcePath: string;
+  tableName: string;
+  rowCount: number;
+  columnCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface DataDashboardSummary {
+  taskCount: number;
+  workflowNodeCount: number;
+  runningCount: number;
+  todayScheduleCount: number;
+  statusCounts: DataTaskStatusCounts;
+}
+
+export interface DataDashboard {
+  summary: DataDashboardSummary;
+  tasks: DataCleaningTask[];
+  datasets: DataDataset[];
+  totalTasks: number;
+  totalDatasets: number;
+}
+
+export interface DataDashboardQuery {
+  query?: string;
+}
+
+export interface DataCreateTaskInput {
+  name: string;
+  sourcePath?: string | null;
+}
+
+export interface DataRunTaskInput {
+  sourcePath?: string | null;
+}
+
+export interface DataImportDatasetInput {
+  filePath: string;
+  name?: string;
+}
+
 // Skills types
 export interface Skill {
   id: string;

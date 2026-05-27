@@ -24,8 +24,9 @@ describe('main workspace navigation', () => {
   it('shows a dedicated data placeholder instead of the new chat surface', () => {
     const source = fs.readFileSync(dataViewPath, 'utf8');
 
-    expect(source).toContain("t('data.pageTitle')");
-    expect(source).toContain("t('data.comingSoon')");
+    expect(source).toContain("window.electronAPI.data.getDashboard");
+    expect(source).toContain("t('data.newCleaningTask')");
+    expect(source).toContain("t('data.tabs.etl')");
     expect(source).not.toContain('WelcomeView');
   });
 
@@ -65,6 +66,7 @@ describe('main workspace navigation', () => {
     expect(zh.mainNav.data).toBe('数据');
     expect(zh.mainNav.skills).toBe('技能');
     expect(zh.mainNav.tasks).toBe('任务');
-    expect(zh.data.comingSoon).toBe('待开发中');
+    expect(zh.data.newCleaningTask).toBe('新建数据清洗任务');
+    expect(zh.data.tabs.etl).toBe('ETL 任务');
   });
 });

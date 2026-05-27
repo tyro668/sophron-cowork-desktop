@@ -25,6 +25,13 @@ import type {
   MemoryDebugFileInfo,
   MemoryDebugFileContent,
   MemoryInspectSessionResult,
+  DataCleaningTask,
+  DataCreateTaskInput,
+  DataDashboard,
+  DataDashboardQuery,
+  DataDataset,
+  DataImportDatasetInput,
+  DataRunTaskInput,
 } from '../renderer/types';
 import type { DiagnosticInput, DiagnosticResult } from '../renderer/types';
 import type {
@@ -157,6 +164,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
       limit = 50
     ): Promise<Array<{ path: string; modifiedAt: number; size: number }>> =>
       ipcRenderer.invoke('artifacts.listRecentFiles', cwd, sinceMs, Math.min(limit, 500)),
+  },
+
+  data: {
+    getDashboard: (payload?: DataDashboardQuery): Promise<DataDashboard> =>
+      ipcRenderer.invoke('data.getDashboard', payload),
+    createTask: (payload: DataCreateTaskInput): Promise<DataCleaningTask> =>
+      ipcRenderer.invoke('data.createTask', payload),
+    runTask: (id: string, payload?: DataRunTaskInput): Promise<DataCleaningTask> =>
+      ipcRenderer.invoke('data.runTask', id, payload),
+    importDataset: (payload: DataImportDatasetInput): Promise<DataDataset> =>
+      ipcRenderer.invoke('data.importDataset', payload),
+    deleteTask: (id: string): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke('data.deleteTask', id),
   },
 
   // Config methods
@@ -462,6 +482,13 @@ declare global {
           sinceMs: number,
           limit?: number
         ) => Promise<Array<{ path: string; modifiedAt: number; size: number }>>;
+      };
+      data: {
+        getDashboard: (payload?: DataDashboardQuery) => Promise<DataDashboard>;
+        createTask: (payload: DataCreateTaskInput) => Promise<DataCleaningTask>;
+        runTask: (id: string, payload?: DataRunTaskInput) => Promise<DataCleaningTask>;
+        importDataset: (payload: DataImportDatasetInput) => Promise<DataDataset>;
+        deleteTask: (id: string) => Promise<{ success: boolean }>;
       };
       config: {
         get: () => Promise<AppConfig>;

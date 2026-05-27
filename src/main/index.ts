@@ -18,6 +18,7 @@ import * as fs from 'fs';
 import { execFileSync } from 'child_process';
 import { config } from 'dotenv';
 import { initDatabase, closeDatabase } from './db/database';
+import { createDataTaskStore, type DataTaskStore } from './data/data-task-store';
 import { SessionManager } from './session/session-manager';
 import { SkillsManager } from './skills/skills-manager';
 import { PluginCatalogService } from './skills/plugin-catalog-service';
@@ -50,6 +51,10 @@ import type {
   DiagnosticInput,
   ProviderModelInfo,
   PermissionRule,
+  DataCreateTaskInput,
+  DataDashboardQuery,
+  DataImportDatasetInput,
+  DataRunTaskInput,
 } from '../renderer/types';
 import { remoteManager, type AgentExecutor } from './remote/remote-manager';
 import { remoteConfigStore } from './remote/remote-config-store';
@@ -118,6 +123,7 @@ let skillsManager: SkillsManager | null = null;
 let pluginRuntimeService: PluginRuntimeService | null = null;
 let memoryService: MemoryService | null = null;
 let scheduledTaskManager: ScheduledTaskManager | null = null;
+let dataTaskStore: DataTaskStore | null = null;
 
 function getRuntimeAppName(): string {
   const runtimeName = app.getName();
@@ -807,6 +813,13 @@ app
         log('[SmokeTest] FAIL: better-sqlite3 failed to load:', e);
         process.exit(1);
       }
+      try {
+        require('@duckdb/node-api');
+        log('[SmokeTest] @duckdb/node-api: OK');
+      } catch (e) {
+        log('[SmokeTest] FAIL: @duckdb/node-api failed to load:', e);
+        process.exit(1);
+      }
       log('[SmokeTest] PASSED');
       process.exit(0);
     }
@@ -840,6 +853,7 @@ app
 
     // Initialize database
     const db = initDatabase();
+    dataTaskStore = createDataTaskStore(join(app.getPath('userData'), 'data', 'workspace.duckdb'));
 
     pluginRuntimeService = new PluginRuntimeService(new PluginCatalogService());
     memoryService = new MemoryService(db);
@@ -1090,6 +1104,14 @@ async function cleanupSandboxResources(): Promise<void> {
   }
 
   try {
+    dataTaskStore?.close();
+  } catch (error) {
+    logError('[App] Error closing DuckDB data store:', error);
+  } finally {
+    dataTaskStore = null;
+  }
+
+  try {
     closeDatabase();
   } catch (error) {
     logError('[App] Error closing database:', error);
@@ -1123,6 +1145,12 @@ app.on('before-quit', async (event) => {
     // In dev mode, exit quickly — no need for async sandbox cleanup
     if (process.env.VITE_DEV_SERVER_URL) {
       stopNavServer();
+      try {
+        dataTaskStore?.close();
+        dataTaskStore = null;
+      } catch {
+        /* best-effort */
+      }
       try {
         closeDatabase();
       } catch {
@@ -1480,6 +1508,58 @@ ipcMain.handle('dialog.selectFiles', async () => {
   }
 
   return result.filePaths;
+});
+
+function requireDataTaskStore(): DataTaskStore {
+  if (!dataTaskStore) {
+    dataTaskStore = createDataTaskStore(join(app.getPath('userData'), 'data', 'workspace.duckdb'));
+  }
+  return dataTaskStore;
+}
+
+ipcMain.handle('data.getDashboard', async (_event, payload?: DataDashboardQuery) => {
+  try {
+    return await requireDataTaskStore().getDashboard(payload ?? {});
+  } catch (error) {
+    logError('[Data] Error getting dashboard:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('data.createTask', async (_event, payload: DataCreateTaskInput) => {
+  try {
+    return await requireDataTaskStore().createTask(payload);
+  } catch (error) {
+    logError('[Data] Error creating task:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('data.runTask', async (_event, id: string, payload?: DataRunTaskInput) => {
+  try {
+    return await requireDataTaskStore().runTask(id, payload ?? {});
+  } catch (error) {
+    logError('[Data] Error running task:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('data.importDataset', async (_event, payload: DataImportDatasetInput) => {
+  try {
+    return await requireDataTaskStore().importDataset(payload);
+  } catch (error) {
+    logError('[Data] Error importing dataset:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('data.deleteTask', async (_event, id: string) => {
+  try {
+    return { success: await requireDataTaskStore().deleteTask(id) };
+  } catch (error) {
+    logError('[Data] Error deleting task:', error);
+    throw error;
+  }
 });
 
 // Config IPC handlers
