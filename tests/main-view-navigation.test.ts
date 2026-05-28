@@ -66,7 +66,7 @@ describe('main workspace navigation', () => {
     expect(zh.mainNav.data).toBe('数据');
     expect(zh.mainNav.skills).toBe('技能');
     expect(zh.mainNav.tasks).toBe('任务');
-    expect(zh.data.newCleaningTask).toBe('新建数据清洗任务');
-    expect(zh.data.tabs.etl).toBe('ETL 任务');
+    expect(zh.data.newCleaningTask).toBe('新建任务');
+    expect(zh.data.tabs.etl).toBe('数据任务');
   });
 });

@@ -59,8 +59,8 @@
   "data": {
     "pageTitle": "Data",
     "pageDescription": "Manage local data cleaning tasks, datasets, and processed outputs with DuckDB.",
-    "searchPlaceholder": "Search ETL tasks...",
-    "newCleaningTask": "New data cleaning task",
+    "searchPlaceholder": "Search data tasks...",
+    "newCleaningTask": "New task",
     "newTaskPrompt": "Enter a data cleaning task name",
     "defaultTaskName": "New data cleaning task",
     "importDataset": "Import dataset",
@@ -83,7 +83,7 @@
       "todayScheduleDesc": "Planned tasks"
     },
     "tabs": {
-      "etl": "ETL Tasks",
+      "etl": "Data tasks",
       "datasets": "Datasets"
     },
     "columns": {

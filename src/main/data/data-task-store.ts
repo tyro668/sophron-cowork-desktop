@@ -15,7 +15,6 @@ import type {
 } from '../../renderer/types';
 
 interface DataTaskStoreOptions {
-  seedDemoData?: boolean;
   now?: () => number;
 }
 
@@ -68,87 +67,19 @@ const WORKFLOW_NODE_LABELS = [
   'publish_dataset',
 ];
 
-const DEMO_TASKS: Array<{
-  name: string;
-  status: DataTaskStatus;
-  nodeCount: number;
-  daysAgo: number;
-  hour: number;
-  minute: number;
-  scheduledToday?: boolean;
-}> = [
-  {
-    name: '用户行为数据清洗',
-    status: 'running',
-    nodeCount: 6,
-    daysAgo: 0,
-    hour: 10,
-    minute: 24,
-  },
-  {
-    name: '销售数据汇总',
-    status: 'completed',
-    nodeCount: 5,
-    daysAgo: 1,
-    hour: 16,
-    minute: 45,
-  },
-  {
-    name: '营销数据集成',
-    status: 'stopped',
-    nodeCount: 4,
-    daysAgo: 13,
-    hour: 11,
-    minute: 30,
-  },
-  {
-    name: '日志数据处理',
-    status: 'draft',
-    nodeCount: 3,
-    daysAgo: 14,
-    hour: 9,
-    minute: 12,
-  },
-  {
-    name: '第三方数据加载',
-    status: 'pending',
-    nodeCount: 4,
-    daysAgo: 15,
-    hour: 18,
-    minute: 20,
-    scheduledToday: true,
-  },
-  {
-    name: '客户分群清洗',
-    status: 'running',
-    nodeCount: 2,
-    daysAgo: 18,
-    hour: 14,
-    minute: 10,
-    scheduledToday: true,
-  },
-  {
-    name: '订单异常值处理',
-    status: 'running',
-    nodeCount: 1,
-    daysAgo: 19,
-    hour: 13,
-    minute: 4,
-    scheduledToday: true,
-  },
-  {
-    name: '库存日报清洗',
-    status: 'running',
-    nodeCount: 1,
-    daysAgo: 20,
-    hour: 8,
-    minute: 35,
-  },
+const LEGACY_DEMO_TASK_NAMES = [
+  '用户行为数据清洗',
+  '销售数据汇总',
+  '营销数据集成',
+  '日志数据处理',
+  '第三方数据加载',
+  '客户分群清洗',
+  '订单异常值处理',
+  '库存日报清洗',
 ];
 
 export class DataTaskStore {
   private readonly dbPath: string;
-  private readonly seedDemoData: boolean;
   private readonly now: () => number;
   private instance: DuckDBInstance | null = null;
   private connection: DuckDBConnection | null = null;
@@ -156,7 +87,6 @@ export class DataTaskStore {
 
   constructor(dbPath: string, options: DataTaskStoreOptions = {}) {
     this.dbPath = dbPath;
-    this.seedDemoData = options.seedDemoData ?? false;
     this.now = options.now ?? (() => Date.now());
   }
 
@@ -453,9 +383,7 @@ export class DataTaskStore {
     this.instance = await DuckDBInstance.create(this.dbPath);
     this.connection = await this.instance.connect();
     await this.createSchema();
-    if (this.seedDemoData) {
-      await this.seedDemoRows();
-    }
+    await this.removeLegacyDemoRows();
   }
 
   private async createSchema(): Promise<void> {
@@ -501,71 +429,43 @@ export class DataTaskStore {
     `);
   }
 
-  private async seedDemoRows(): Promise<void> {
-    const rows = await this.queryRows<{ count: number | string }>(
-      'SELECT count(*) AS count FROM data_cleaning_tasks'
+  private async removeLegacyDemoRows(): Promise<void> {
+    const placeholders = LEGACY_DEMO_TASK_NAMES.map((_, index) => `$name${index}`).join(', ');
+    const values = Object.fromEntries(
+      LEGACY_DEMO_TASK_NAMES.map((name, index) => [`name${index}`, name])
     );
-    if (toNumber(rows[0]?.count) > 0) {
-      return;
-    }
-    for (const task of DEMO_TASKS) {
-      const id = uuidv4();
-      const updatedAt = timeOnRelativeDay(this.now(), task.daysAgo, task.hour, task.minute);
-      const scheduledFor = task.scheduledToday ? timeOnRelativeDay(this.now(), 0, 15, 0) : null;
+    const demoTaskRows = await this.queryRows<{ id: string }>(
+      `
+        SELECT id
+        FROM data_cleaning_tasks
+        WHERE name IN (${placeholders})
+          AND source_path IS NULL
+          AND source_dataset_id IS NULL
+          AND output_table IS NULL
+          AND row_count IS NULL
+          AND column_count IS NULL
+          AND error IS NULL
+          AND last_run_at IS NULL
+      `,
+      values
+    );
+    if (demoTaskRows.length > 0) {
       await this.runSql(
         `
-          INSERT INTO data_cleaning_tasks (
-            id, name, status, node_count, source_path, source_dataset_id, output_table,
-            row_count, column_count, error, scheduled_for, created_at, updated_at, last_run_at
-          )
-          VALUES (
-            $id, $name, $status, $nodeCount, NULL, NULL, NULL,
-            NULL, NULL, NULL, $scheduledFor, $createdAt, $updatedAt, NULL
-          )
+          DELETE FROM data_workflow_nodes
+          WHERE task_id IN (${demoTaskRows.map((_, index) => `$id${index}`).join(', ')})
         `,
-        {
-          id,
-          name: task.name,
-          status: task.status,
-          nodeCount: task.nodeCount,
-          scheduledFor,
-          createdAt: updatedAt,
-          updatedAt,
-        }
+        Object.fromEntries(demoTaskRows.map((row, index) => [`id${index}`, row.id]))
       );
-      await this.replaceWorkflowNodes(id, task.nodeCount, updatedAt);
-    }
-
-    const seedDatasets = [
-      { name: '用户行为明细', sourcePath: 'local://samples/user_events.csv', rowCount: 128340, columnCount: 18 },
-      { name: '销售订单汇总', sourcePath: 'local://samples/sales_orders.parquet', rowCount: 53210, columnCount: 22 },
-      { name: '营销线索表', sourcePath: 'local://samples/marketing_leads.csv', rowCount: 18200, columnCount: 14 },
-    ];
-    for (const dataset of seedDatasets) {
-      const id = uuidv4();
-      const tableName = tableNameFromId('demo_dataset', id);
-      const updatedAt = this.now();
       await this.runSql(
         `
-          INSERT INTO data_datasets (
-            id, name, source_path, table_name, row_count, column_count, created_at, updated_at
-          )
-          VALUES (
-            $id, $name, $sourcePath, $tableName, $rowCount, $columnCount, $createdAt, $updatedAt
-          )
+          DELETE FROM data_cleaning_tasks
+          WHERE id IN (${demoTaskRows.map((_, index) => `$id${index}`).join(', ')})
         `,
-        {
-          id,
-          name: dataset.name,
-          sourcePath: dataset.sourcePath,
-          tableName,
-          rowCount: dataset.rowCount,
-          columnCount: dataset.columnCount,
-          createdAt: updatedAt,
-          updatedAt,
-        }
+        Object.fromEntries(demoTaskRows.map((row, index) => [`id${index}`, row.id]))
       );
     }
+    await this.runSql("DELETE FROM data_datasets WHERE source_path LIKE 'local://samples/%'");
   }
 
   private async cleanSourceIntoTaskOutput(
@@ -890,17 +790,5 @@ function datasetNameFromPath(filePath: string): string {
 function startOfToday(timestamp: number): number {
   const date = new Date(timestamp);
   date.setHours(0, 0, 0, 0);
-  return date.getTime();
-}
-
-function timeOnRelativeDay(
-  timestamp: number,
-  daysAgo: number,
-  hour: number,
-  minute: number
-): number {
-  const date = new Date(timestamp);
-  date.setDate(date.getDate() - daysAgo);
-  date.setHours(hour, minute, 0, 0);
   return date.getTime();
 }

@@ -56,7 +56,7 @@ const TASK_ICON_STYLES = [
   { Icon: Cloud, className: 'bg-cyan-500/10 text-cyan-500' },
 ];
 
-const TABLE_PAGE_SIZE = 5;
+const TABLE_PAGE_SIZE = 10;
 
 export function DataView() {
   const { t } = useTranslation();
@@ -70,14 +70,16 @@ export function DataView() {
 
   const isDataApiAvailable = Boolean(window.electronAPI?.data);
 
-  const loadDashboard = useCallback(async (options: { preserveError?: boolean } = {}) => {
+  const loadDashboard = useCallback(async (options: { preserveError?: boolean; query?: string } = {}) => {
     if (!window.electronAPI?.data) return;
     setLoading(true);
     if (!options.preserveError) {
       setError(null);
     }
     try {
-      const nextDashboard = await window.electronAPI.data.getDashboard({ query: searchQuery });
+      const nextDashboard = await window.electronAPI.data.getDashboard({
+        query: options.query ?? searchQuery,
+      });
       setDashboard(nextDashboard);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -143,28 +145,22 @@ export function DataView() {
 
   const handleCreateTask = useCallback(async () => {
     if (!window.electronAPI?.data) return;
-    const name = window.prompt(t('data.newTaskPrompt'), t('data.defaultTaskName'));
-    if (!name?.trim()) return;
     setActionId('create');
     setError(null);
     try {
-      const sourcePath = await selectOneFile();
-      const task = await window.electronAPI.data.createTask({
-        name: name.trim(),
-        sourcePath,
+      setActiveTab('tasks');
+      setSearchQuery('');
+      await window.electronAPI.data.createTask({
+        name: `${t('data.defaultTaskName')} ${dashboard.totalTasks + 1}`,
       });
-      setEditingTaskId(task.id);
-      if (sourcePath) {
-        await window.electronAPI.data.runTask(task.id);
-      }
-      await loadDashboard();
+      await loadDashboard({ query: '' });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      await loadDashboard({ preserveError: true });
+      await loadDashboard({ preserveError: true, query: '' });
     } finally {
       setActionId(null);
     }
-  }, [loadDashboard, selectOneFile, t]);
+  }, [dashboard.totalTasks, loadDashboard, t]);
 
   const handleRunTask = useCallback(
     async (task: DataCleaningTask) => {
@@ -231,28 +227,25 @@ export function DataView() {
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto bg-background">
-      <div className="mx-auto w-full max-w-[1080px] px-8 py-8 lg:px-10">
+      <div className="mx-auto w-full max-w-[1080px] px-7 py-6 lg:px-8">
         {!editingTask && (
-          <header className="mb-7 flex min-h-[2.75rem] flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <h1 className="text-[1.625rem] font-medium leading-[2.5rem] text-text-secondary">
-              {t('data.pageTitle')}
-            </h1>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="relative w-full sm:w-[22rem] xl:w-[24rem]">
-                <Search className="absolute left-4 top-1/2 h-[1.125rem] w-[1.125rem] -translate-y-1/2 text-text-muted" />
+          <header className="mb-5 flex min-h-9 flex-col gap-3 lg:flex-row lg:items-start lg:justify-end">
+            <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
+              <div className="relative w-full sm:w-[20rem] xl:w-[22rem]">
+                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
                 <input
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                   placeholder={t('data.searchPlaceholder')}
-                  className="h-11 w-full rounded-xl border border-border-muted bg-background/94 pl-11 pr-4 text-sm font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  className="h-9 w-full rounded-lg border border-border-muted bg-background/94 pl-9 pr-3 text-[13px] font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
                 />
               </div>
               <button
                 onClick={handleCreateTask}
                 disabled={!isDataApiAvailable || actionId === 'create'}
-                className="inline-flex h-11 shrink-0 items-center justify-center gap-2.5 rounded-xl bg-accent px-5 text-sm font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg bg-accent px-3.5 text-[13px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <Plus className="h-[1.125rem] w-[1.125rem]" />
+                <Plus className="h-4 w-4" />
                 {t('data.newCleaningTask')}
               </button>
             </div>
@@ -260,7 +253,7 @@ export function DataView() {
         )}
 
         {error && (
-          <div className="mb-5 flex items-start gap-2 rounded-xl border border-error/20 bg-error/10 px-4 py-3 text-sm text-error">
+          <div className="mb-4 flex items-start gap-2 rounded-lg border border-error/20 bg-error/10 px-3.5 py-2.5 text-[13px] text-error">
             <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
             <span>{error}</span>
           </div>
@@ -270,7 +263,7 @@ export function DataView() {
           <TaskEditor onBack={() => setEditingTaskId(null)} />
         ) : (
           <>
-            <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {summaryCards.map(({ key, label, description, value, Icon, iconClassName }) => (
                 <StatCard
                   key={key}
@@ -283,9 +276,9 @@ export function DataView() {
               ))}
             </section>
 
-            <section className="mt-7">
-              <div className="mb-2 flex min-h-[3rem] flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <div className="flex items-end gap-7">
+            <section className="mt-5">
+              <div className="mb-2 flex min-h-10 flex-col gap-2.5 sm:flex-row sm:items-end sm:justify-between">
+                <div className="flex items-end gap-5">
                   <TabButton
                     active={activeTab === 'tasks'}
                     onClick={() => setActiveTab('tasks')}
@@ -302,16 +295,16 @@ export function DataView() {
                     <button
                       onClick={handleImportDataset}
                       disabled={actionId === 'import-dataset'}
-                      className="inline-flex h-9 items-center gap-2 rounded-xl border border-border-muted bg-background/94 px-3.5 text-sm font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <UploadCloud className="h-4 w-4" />
+                      <UploadCloud className="h-3.5 w-3.5" />
                       {t('data.importDataset')}
                     </button>
                   )}
                 </div>
               </div>
 
-              <div className="overflow-hidden rounded-2xl border border-border-muted bg-background/90 shadow-card">
+              <div className="overflow-hidden rounded-xl border border-border-muted bg-background/90 shadow-card">
                 {activeTab === 'tasks' ? (
                   <TasksTable
                     tasks={dashboard.tasks}
@@ -343,9 +336,9 @@ function TaskEditor({ onBack }: { onBack: () => void }) {
     <section className="min-h-[28rem]">
       <button
         onClick={onBack}
-        className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border-muted bg-background/94 px-3.5 text-sm font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
       >
-        <ArrowLeft className="h-4 w-4" />
+        <ArrowLeft className="h-3.5 w-3.5" />
         {t('data.editor.back')}
       </button>
     </section>
@@ -366,18 +359,18 @@ function StatCard({
   iconClassName: string;
 }) {
   return (
-    <article className="flex h-[7.25rem] items-center gap-4 rounded-2xl border border-border-muted bg-background/88 px-5 shadow-card">
+    <article className="flex h-[5.75rem] items-center gap-3 rounded-xl border border-border-muted bg-background/88 px-4 shadow-card">
       <div
-        className={`flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-[1.25rem] ${iconClassName}`}
+        className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${iconClassName}`}
       >
-        <Icon className="h-8 w-8" />
+        <Icon className="h-6 w-6" />
       </div>
       <div className="min-w-0">
-        <div className="text-[1.55rem] font-medium leading-none text-text-secondary">{value}</div>
-        <div className="mt-2 whitespace-nowrap text-sm font-medium leading-5 text-text-secondary">
+        <div className="text-[1.25rem] font-medium leading-none text-text-secondary">{value}</div>
+        <div className="mt-1.5 whitespace-nowrap text-[13px] font-medium leading-4 text-text-secondary">
           {label}
         </div>
-        <div className="mt-1 truncate text-xs leading-5 text-text-secondary">
+        <div className="mt-1 truncate text-[11px] leading-4 text-text-secondary">
           {description}
         </div>
       </div>
@@ -397,13 +390,13 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`relative h-12 px-3.5 text-left text-[1rem] font-medium transition-colors ${
+      className={`relative h-9 px-2.5 text-left text-[13px] font-medium transition-colors ${
         active ? 'text-accent' : 'text-text-secondary hover:text-text-primary'
       }`}
     >
       {label}
       {active && (
-        <span className="absolute bottom-0 left-0 h-0.5 w-full rounded-full bg-accent" />
+        <span className="absolute bottom-0 left-0 h-px w-full rounded-full bg-accent" />
       )}
     </button>
   );
@@ -431,14 +424,14 @@ function TasksTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[860px] border-collapse text-left">
+      <table className="w-full min-w-[780px] border-collapse text-left">
         <thead>
-          <tr className="h-12 border-b border-border-muted bg-background/80 text-sm font-medium text-text-muted">
-            <th className="w-[34%] px-7">{t('data.columns.taskName')}</th>
-            <th className="w-[15%] px-6">{t('data.columns.status')}</th>
-            <th className="w-[10%] px-7">{t('data.columns.nodes')}</th>
-            <th className="w-[17%] px-7">{t('data.columns.updatedAt')}</th>
-            <th className="w-[24%] px-7 text-center">{t('data.columns.actions')}</th>
+          <tr className="h-10 border-b border-border-muted bg-background/80 text-xs font-medium text-text-muted">
+            <th className="w-[34%] px-5">{t('data.columns.taskName')}</th>
+            <th className="w-[15%] px-4">{t('data.columns.status')}</th>
+            <th className="w-[10%] px-5">{t('data.columns.nodes')}</th>
+            <th className="w-[17%] px-5">{t('data.columns.updatedAt')}</th>
+            <th className="w-[24%] px-5 text-center">{t('data.columns.actions')}</th>
           </tr>
         </thead>
         <tbody>
@@ -449,60 +442,60 @@ function TasksTable({
             return (
               <tr
                 key={task.id}
-                className={`h-16 border-b border-border-muted/85 last:border-b-0 transition-colors ${
+                className={`h-[3.25rem] border-b border-border-muted/85 last:border-b-0 transition-colors ${
                   index === 0 ? 'bg-accent/5' : 'hover:bg-surface-hover/35'
                 }`}
               >
-                <td className="px-7">
-                  <div className="flex min-w-0 items-center gap-5">
+                <td className="px-5">
+                  <div className="flex min-w-0 items-center gap-3">
                     <div
-                      className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${icon.className}`}
+                      className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${icon.className}`}
                     >
-                      <RowIcon className="h-5 w-5" />
+                      <RowIcon className="h-4 w-4" />
                     </div>
                     <div className="flex min-w-0 items-center gap-1.5">
-                      <span className="truncate text-[0.9375rem] font-medium text-text-secondary">
+                      <span className="truncate text-[13px] font-medium text-text-secondary">
                         {task.name}
                       </span>
-                      <ChevronRight className="h-4 w-4 flex-shrink-0 text-text-muted" />
+                      <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
                     </div>
                   </div>
                 </td>
-                <td className="px-6">
+                <td className="px-4">
                   <StatusBadge status={task.status} />
                 </td>
-                <td className="px-7 text-[0.9375rem] font-medium text-text-secondary">
+                <td className="px-5 text-[13px] font-medium text-text-secondary">
                   {task.nodeCount}
                 </td>
-                <td className="px-7 text-[0.9375rem] font-medium text-text-secondary">
+                <td className="px-5 text-[13px] font-medium text-text-secondary">
                   {formatTimestamp(task.updatedAt, t)}
                 </td>
-                <td className="px-7">
-                  <div className="flex items-center justify-end gap-2.5">
+                <td className="px-5">
+                  <div className="flex items-center justify-end gap-2">
                     <button
                       onClick={() => onEdit(task)}
                       disabled={isBusy}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
                       title={t('data.actions.edit')}
                     >
-                      <PencilLine className="h-4 w-4" />
+                      <PencilLine className="h-3.5 w-3.5" />
                       <span className="sr-only">{t('data.actions.edit')}</span>
                     </button>
                     <button
                       onClick={() => onRun(task)}
                       disabled={isBusy}
-                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
                       title={t('data.actions.run')}
                     >
-                      <Play className="h-4 w-4" />
+                      <Play className="h-3.5 w-3.5" />
                     </button>
                     <button
                       onClick={() => onDelete(task)}
                       disabled={isBusy}
-                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-error/30 hover:bg-error/10 hover:text-error disabled:cursor-not-allowed disabled:opacity-50"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-error/30 hover:bg-error/10 hover:text-error disabled:cursor-not-allowed disabled:opacity-50"
                       title={t('data.actions.delete')}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </td>
@@ -525,54 +518,54 @@ function DatasetsTable({ datasets }: { datasets: DataDataset[] }) {
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[820px] border-collapse text-left">
+      <table className="w-full min-w-[760px] border-collapse text-left">
         <thead>
-          <tr className="h-12 border-b border-border-muted bg-background/80 text-sm font-medium text-text-muted">
-            <th className="w-[38%] px-7">{t('data.columns.datasetName')}</th>
-            <th className="w-[15%] px-7">{t('data.columns.rows')}</th>
-            <th className="w-[15%] px-7">{t('data.columns.columns')}</th>
-            <th className="w-[20%] px-7">{t('data.columns.updatedAt')}</th>
-            <th className="w-[12%] px-7 text-center">{t('data.columns.actions')}</th>
+          <tr className="h-10 border-b border-border-muted bg-background/80 text-xs font-medium text-text-muted">
+            <th className="w-[38%] px-5">{t('data.columns.datasetName')}</th>
+            <th className="w-[15%] px-5">{t('data.columns.rows')}</th>
+            <th className="w-[15%] px-5">{t('data.columns.columns')}</th>
+            <th className="w-[20%] px-5">{t('data.columns.updatedAt')}</th>
+            <th className="w-[12%] px-5 text-center">{t('data.columns.actions')}</th>
           </tr>
         </thead>
         <tbody>
           {visibleDatasets.map((dataset, index) => (
             <tr
               key={dataset.id}
-              className={`h-16 border-b border-border-muted/85 last:border-b-0 transition-colors ${
+              className={`h-[3.25rem] border-b border-border-muted/85 last:border-b-0 transition-colors ${
                 index === 0 ? 'bg-accent/5' : 'hover:bg-surface-hover/35'
               }`}
             >
-              <td className="px-7">
-                <div className="flex min-w-0 items-center gap-5">
-                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
-                    <Table2 className="h-5 w-5" />
+              <td className="px-5">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                    <Table2 className="h-4 w-4" />
                   </div>
                   <div className="min-w-0">
-                    <div className="truncate text-[0.9375rem] font-medium text-text-secondary">
+                    <div className="truncate text-[13px] font-medium text-text-secondary">
                       {dataset.name}
                     </div>
-                    <div className="mt-1 truncate text-xs text-text-muted">
+                    <div className="mt-0.5 truncate text-[11px] text-text-muted">
                       {basenameFromPath(dataset.sourcePath)}
                     </div>
                   </div>
                 </div>
               </td>
-              <td className="px-7 text-[0.9375rem] font-medium text-text-secondary">
+              <td className="px-5 text-[13px] font-medium text-text-secondary">
                 {formatNumber(dataset.rowCount)}
               </td>
-              <td className="px-7 text-[0.9375rem] font-medium text-text-secondary">
+              <td className="px-5 text-[13px] font-medium text-text-secondary">
                 {dataset.columnCount}
               </td>
-              <td className="px-7 text-[0.9375rem] font-medium text-text-secondary">
+              <td className="px-5 text-[13px] font-medium text-text-secondary">
                 {formatTimestamp(dataset.updatedAt, t)}
               </td>
-              <td className="px-7 text-right">
+              <td className="px-5 text-right">
                 <button
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
                   title={t('data.actions.more')}
                 >
-                  <MoreHorizontal className="h-5 w-5" />
+                  <MoreHorizontal className="h-4 w-4" />
                 </button>
               </td>
             </tr>
@@ -587,11 +580,11 @@ function StatusBadge({ status }: { status: DataTaskStatus }) {
   const { t } = useTranslation();
   return (
     <span
-      className={`inline-flex h-7 min-w-[5.25rem] items-center justify-center gap-1.5 rounded-full px-3 text-sm font-medium ${statusBadgeClass(
+      className={`inline-flex h-6 min-w-[4.5rem] items-center justify-center gap-1.5 rounded-full px-2.5 text-xs font-medium ${statusBadgeClass(
         status
       )}`}
     >
-      <span className="h-2 w-2 rounded-full bg-current" />
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
       {t(`data.status.${status}`)}
     </span>
   );
@@ -599,7 +592,7 @@ function StatusBadge({ status }: { status: DataTaskStatus }) {
 
 function EmptyState({ label }: { label: string }) {
   return (
-    <div className="flex min-h-[20rem] items-center justify-center px-6 py-16 text-center text-sm text-text-muted">
+    <div className="flex min-h-[16rem] items-center justify-center px-5 py-12 text-center text-xs text-text-muted">
       {label}
     </div>
   );
@@ -607,27 +600,39 @@ function EmptyState({ label }: { label: string }) {
 
 function PaginationFooter({ count }: { count: number }) {
   const { t } = useTranslation();
+  const pageCount = Math.max(1, Math.ceil(count / TABLE_PAGE_SIZE));
+  const pageNumbers = Array.from({ length: Math.min(pageCount, 3) }, (_, index) => index + 1);
 
   return (
-    <div className="mt-6 flex flex-col items-center justify-end gap-3 text-sm font-medium text-text-secondary sm:flex-row">
+    <div className="mt-5 flex flex-col items-center justify-end gap-2 text-xs font-medium text-text-secondary sm:flex-row">
       <span>{t('data.totalCount', { count })}</span>
-      <button className="inline-flex h-10 min-w-[8rem] items-center justify-center gap-2 rounded-xl border border-border-muted bg-background/94 px-4 text-text-secondary shadow-soft">
-        {t('data.rowsPerPage', { count: 10 })}
-        <ChevronDown className="h-4 w-4" />
+      <button className="inline-flex h-8 min-w-[7rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-text-secondary shadow-soft">
+        {t('data.rowsPerPage', { count: TABLE_PAGE_SIZE })}
+        <ChevronDown className="h-3.5 w-3.5" />
       </button>
-      <div className="flex items-center gap-3">
-        <button className="flex h-10 w-10 items-center justify-center rounded-xl border border-border-muted bg-background/94 text-text-muted shadow-soft">
-          <ChevronLeft className="h-5 w-5" />
-        </button>
-        <button className="flex h-10 w-10 items-center justify-center rounded-xl border border-accent bg-accent/10 text-base font-medium text-accent shadow-soft">
-          1
-        </button>
-        <button className="flex h-10 w-10 items-center justify-center rounded-xl border border-border-muted bg-background/94 text-base font-medium text-text-secondary shadow-soft">
-          2
-        </button>
-        <button className="flex h-10 w-10 items-center justify-center rounded-xl border border-border-muted bg-background/94 text-text-secondary shadow-soft">
-          <ChevronRight className="h-5 w-5" />
-        </button>
+      <div className="flex items-center gap-2">
+        {pageCount > 1 && (
+          <button className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-muted shadow-soft">
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+        )}
+        {pageNumbers.map((pageNumber) => (
+          <button
+            key={pageNumber}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium shadow-soft ${
+              pageNumber === 1
+                ? 'border-accent bg-accent/10 text-accent'
+                : 'border-border-muted bg-background/94 text-text-secondary'
+            }`}
+          >
+            {pageNumber}
+          </button>
+        ))}
+        {pageCount > 1 && (
+          <button className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft">
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        )}
       </div>
     </div>
   );

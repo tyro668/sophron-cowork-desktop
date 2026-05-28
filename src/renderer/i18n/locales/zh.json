@@ -59,8 +59,8 @@
   "data": {
     "pageTitle": "数据",
     "pageDescription": "使用 DuckDB 在本地管理数据清洗任务、数据集和处理结果。",
-    "searchPlaceholder": "搜索 ETL 任务...",
-    "newCleaningTask": "新建数据清洗任务",
+    "searchPlaceholder": "搜索数据任务...",
+    "newCleaningTask": "新建任务",
     "newTaskPrompt": "请输入数据清洗任务名称",
     "defaultTaskName": "新的数据清洗任务",
     "importDataset": "导入数据集",
@@ -83,7 +83,7 @@
       "todayScheduleDesc": "计划执行任务"
     },
     "tabs": {
-      "etl": "ETL 任务",
+      "etl": "数据任务",
       "datasets": "数据集"
     },
     "columns": {

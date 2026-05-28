@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { DuckDBInstance } from '@duckdb/node-api';
 import { createDataTaskStore, type DataTaskStore } from '../src/main/data/data-task-store';
 
 const tempRoots: string[] = [];
@@ -20,6 +21,19 @@ afterEach(() => {
 });
 
 describe('DuckDB data task store', () => {
+  it('starts without demo tasks or demo datasets', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'));
+    stores.push(store);
+
+    const dashboard = await store.getDashboard();
+    expect(dashboard.summary.taskCount).toBe(0);
+    expect(dashboard.summary.workflowNodeCount).toBe(0);
+    expect(dashboard.tasks).toHaveLength(0);
+    expect(dashboard.datasets).toHaveLength(0);
+  });
+
   it('imports datasets and runs a local data cleaning task', async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
     tempRoots.push(tempRoot);
@@ -27,7 +41,6 @@ describe('DuckDB data task store', () => {
     fs.writeFileSync(csvPath, 'id,name\n1,Alice\n1,Alice\n2,Bob\n,\n', 'utf8');
 
     const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'), {
-      seedDemoData: false,
       now: () => 1_780_000_000_000,
     });
     stores.push(store);
@@ -67,7 +80,6 @@ describe('DuckDB data task store', () => {
     const dbPath = path.join(tempRoot, 'workspace.duckdb');
 
     const store = createDataTaskStore(dbPath, {
-      seedDemoData: false,
       now: () => 1_780_000_000_000,
     });
     stores.push(store);
@@ -83,12 +95,58 @@ describe('DuckDB data task store', () => {
 
     stores.pop()?.close();
 
-    const reopenedStore = createDataTaskStore(dbPath, { seedDemoData: false });
+    const reopenedStore = createDataTaskStore(dbPath);
     stores.push(reopenedStore);
     const reopenedDashboard = await reopenedStore.getDashboard();
     expect(reopenedDashboard.summary.taskCount).toBe(1);
     expect(reopenedDashboard.summary.statusCounts.failed).toBe(1);
     expect(reopenedDashboard.tasks[0]?.name).toBe('No source task');
+  });
+
+  it('removes legacy seeded demo rows while keeping real tasks', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const dbPath = path.join(tempRoot, 'workspace.duckdb');
+
+    const initialStore = createDataTaskStore(dbPath);
+    stores.push(initialStore);
+    await initialStore.getDashboard();
+    stores.pop()?.close();
+
+    const instance = await DuckDBInstance.create(dbPath);
+    const connection = await instance.connect();
+    try {
+      await connection.run(`
+        INSERT INTO data_cleaning_tasks (
+          id, name, status, node_count, source_path, source_dataset_id, output_table,
+          row_count, column_count, error, scheduled_for, created_at, updated_at, last_run_at
+        )
+        VALUES
+          ('legacy-demo', '用户行为数据清洗', 'running', 6, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 1, NULL),
+          ('real-task', '用户行为数据清洗', 'draft', 4, '/tmp/real.csv', NULL, NULL, NULL, NULL, NULL, NULL, 2, 2, NULL)
+      `);
+      await connection.run(`
+        INSERT INTO data_workflow_nodes (id, task_id, node_key, label, ordinal, created_at)
+        VALUES ('legacy-node', 'legacy-demo', 'load_source', 'load_source', 1, 1)
+      `);
+      await connection.run(`
+        INSERT INTO data_datasets (
+          id, name, source_path, table_name, row_count, column_count, created_at, updated_at
+        )
+        VALUES ('legacy-dataset', '用户行为明细', 'local://samples/user_events.csv', 'demo_dataset_1', 10, 2, 1, 1)
+      `);
+    } finally {
+      connection.closeSync();
+      instance.closeSync();
+    }
+
+    const store = createDataTaskStore(dbPath);
+    stores.push(store);
+    const dashboard = await store.getDashboard();
+    expect(dashboard.summary.taskCount).toBe(1);
+    expect(dashboard.tasks).toHaveLength(1);
+    expect(dashboard.tasks[0]?.id).toBe('real-task');
+    expect(dashboard.datasets).toHaveLength(0);
   });
 
   it('keeps the DuckDB backend wired into IPC and packaging config', () => {
