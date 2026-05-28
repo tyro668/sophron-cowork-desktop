@@ -52,6 +52,7 @@ import {
   Droplet,
   Filter,
   Folder,
+  GitMerge,
   MoreHorizontal,
   PencilLine,
   Play,
@@ -62,6 +63,7 @@ import {
   Sigma,
   Table2,
   Trash2,
+  Upload,
   UploadCloud,
   Workflow,
   X,
@@ -77,6 +79,15 @@ import type {
   DataWorkflowNode,
   DataWorkflowOperatorType,
 } from '../types';
+import { PrepDslEditor } from './PrepDslEditor';
+import {
+  compilePrepWorkflowToFlow,
+  exportPrepOperatorDsl,
+  exportPrepWorkflowDsl,
+  parsePrepDsl,
+  parsePrepOperatorDsl,
+  type PrepDiagnostic,
+} from '../../shared/prep-dsl';
 
 type DataTab = 'tasks' | 'datasets';
 
@@ -118,6 +129,7 @@ const WORKFLOW_ALIGNMENT_GUIDE_PADDING = 32;
 
 type WorkflowFlowNode = Node<{ workflowNode: DataWorkflowNode }, 'operator'>;
 type WorkflowFlowEdge = Edge<Record<string, never>>;
+type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
 type WorkflowAlignmentLine =
   | { id: string; orientation: 'horizontal'; x1: number; x2: number; y: number }
   | { id: string; orientation: 'vertical'; x: number; y1: number; y2: number };
@@ -187,6 +199,13 @@ const OPERATOR_CATALOG: Array<{
     Icon: ArrowUpDown,
     colorClassName: 'text-success bg-success/10',
     nodeClassName: 'border-success/35 bg-success/5 text-success',
+  },
+  {
+    type: 'join',
+    labelKey: 'data.workflow.operators.join',
+    Icon: GitMerge,
+    colorClassName: 'text-teal-500 bg-teal-500/10',
+    nodeClassName: 'border-teal-500/35 bg-teal-500/5 text-teal-500',
   },
   {
     type: 'aggregate',
@@ -557,6 +576,8 @@ function TaskEditor({
   const [activeInspectorTab, setActiveInspectorTab] = useState<'config' | 'logs'>('config');
   const [saving, setSaving] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [dslMode, setDslMode] = useState<'import' | 'export' | null>(null);
+  const [dslText, setDslText] = useState('');
 
   const loadWorkflow = useCallback(async () => {
     if (!window.electronAPI?.data) return;
@@ -574,8 +595,8 @@ function TaskEditor({
     void loadWorkflow();
   }, [loadWorkflow]);
 
-  const nodes = workflow?.nodes ?? [];
-  const edges = workflow?.edges ?? [];
+  const nodes = useMemo(() => workflow?.nodes ?? [], [workflow?.nodes]);
+  const edges = useMemo(() => workflow?.edges ?? [], [workflow?.edges]);
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selectedNodeId) ?? nodes[0] ?? null,
     [nodes, selectedNodeId]
@@ -763,6 +784,71 @@ function TaskEditor({
     await loadWorkflow();
   }, [loadWorkflow, onRun, saveWorkflow, task]);
 
+  const openImportDsl = useCallback(() => {
+    setLocalError(null);
+    setDslText('');
+    setDslMode('import');
+  }, []);
+
+  const openExportDsl = useCallback(() => {
+    if (!workflow) return;
+    setLocalError(null);
+    setDslText(exportPrepWorkflowDsl(workflow.nodes, workflow.edges));
+    setDslMode('export');
+  }, [workflow]);
+
+  const applyDslImport = useCallback(() => {
+    if (!workflow) return;
+    const parsed = parsePrepDsl(dslText);
+    const diagnostics = [...parsed.diagnostics];
+    if (parsed.ast) {
+      const compiled = compilePrepWorkflowToFlow(parsed.ast);
+      diagnostics.push(...compiled.diagnostics);
+      const errors = diagnostics.filter((item) => item.severity === 'error');
+      if (errors.length > 0) {
+        setLocalError(errors.map((item) => formatPrepDiagnosticForUi(item, t)).join('\n'));
+        return;
+      }
+      const now = Date.now();
+      const nextNodes: DataWorkflowNode[] = compiled.nodes
+        .filter((node) => isWorkflowOperatorType(node.type))
+        .map((node) => ({
+          id: node.id,
+          taskId: task.id,
+          type: node.type as DataWorkflowOperatorType,
+          label: t(getOperatorCatalog(node.type as DataWorkflowOperatorType).labelKey),
+          x: node.x,
+          y: node.y,
+          config: node.config ?? {},
+          createdAt: now,
+          updatedAt: now,
+        }));
+      const nextEdges: DataWorkflowEdge[] = compiled.edges.map((edge) => ({
+        id: edge.id,
+        taskId: task.id,
+        sourceNodeId: edge.sourceNodeId,
+        targetNodeId: edge.targetNodeId,
+        sourceHandle: edge.sourceHandle ?? 'output',
+        targetHandle: edge.targetHandle ?? 'input',
+        createdAt: now,
+      }));
+      setWorkflow({
+        ...workflow,
+        nodes: nextNodes,
+        edges: nextEdges,
+      });
+      setSelectedNodeId(nextNodes[0]?.id ?? null);
+      setDslMode(null);
+      setDslText('');
+      setLocalError(null);
+      return;
+    }
+    setLocalError(
+      diagnostics.map((item) => formatPrepDiagnosticForUi(item, t)).join('\n') ||
+        t('data.workflow.dslInvalid')
+    );
+  }, [dslText, t, task.id, workflow]);
+
   return (
     <section className="flex flex-1 min-h-0 flex-col">
       <div className="mb-3 flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -786,6 +872,22 @@ function TaskEditor({
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={openImportDsl}
+            disabled={isBusy || !workflow}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            <Upload className="h-3.5 w-3.5" />
+            {t('data.workflow.importDsl')}
+          </button>
+          <button
+            onClick={openExportDsl}
+            disabled={isBusy || !workflow}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            <Workflow className="h-3.5 w-3.5" />
+            {t('data.workflow.exportDsl')}
+          </button>
+          <button
             onClick={() => void saveWorkflow()}
             disabled={isBusy || !workflow}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
@@ -808,9 +910,44 @@ function TaskEditor({
       </div>
 
       {localError && (
-        <div className="mb-3 flex shrink-0 items-start gap-2 rounded-lg border border-error/20 bg-error/10 px-3.5 py-2.5 text-[13px] text-error">
+        <div className="mb-3 flex shrink-0 items-start gap-2 whitespace-pre-line rounded-lg border border-error/20 bg-error/10 px-3.5 py-2.5 text-[13px] text-error">
           <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <span>{localError}</span>
+        </div>
+      )}
+
+      {dslMode && (
+        <div className="mb-3 shrink-0 rounded-lg border border-border-muted bg-background/94 p-2.5 shadow-card">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-text-secondary">
+              {dslMode === 'import' ? t('data.workflow.importDsl') : t('data.workflow.exportDsl')}
+            </span>
+            <button
+              onClick={() => setDslMode(null)}
+              className="inline-flex h-7 items-center rounded-lg px-2 text-[11px] font-medium text-text-muted transition-colors hover:bg-surface-active hover:text-text-secondary"
+            >
+              {t('common.close')}
+            </button>
+          </div>
+          <textarea
+            value={dslText}
+            onChange={(event) => setDslText(event.target.value)}
+            readOnly={dslMode === 'export'}
+            spellCheck={false}
+            className="h-32 w-full resize-none rounded-lg border border-border-muted bg-background px-2.5 py-2 font-mono text-[11px] leading-5 text-text-secondary outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            placeholder={t('data.workflow.dslPlaceholder')}
+          />
+          {dslMode === 'import' && (
+            <div className="mt-2 flex justify-end">
+              <button
+                onClick={applyDslImport}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover"
+              >
+                <Workflow className="h-3.5 w-3.5" />
+                {t('data.workflow.applyDsl')}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -1265,12 +1402,31 @@ function WorkflowOperatorNode({ data, selected }: NodeProps<WorkflowFlowNode>) {
         selected ? 'border-accent text-accent ring-2 ring-accent/15' : catalog.nodeClassName
       }`}
     >
-      <Handle
-        id="input"
-        type="target"
-        position={Position.Left}
-        className="workflow-node-handle !left-[-6px] !h-3 !w-3 !rounded-full !border-2 !border-current !bg-background !opacity-100"
-      />
+      {node.type === 'join' ? (
+        <>
+          <Handle
+            id="left"
+            type="target"
+            position={Position.Left}
+            style={{ top: '35%' }}
+            className="workflow-node-handle !left-[-6px] !h-3 !w-3 !rounded-full !border-2 !border-current !bg-background !opacity-100"
+          />
+          <Handle
+            id="right"
+            type="target"
+            position={Position.Left}
+            style={{ top: '65%' }}
+            className="workflow-node-handle !left-[-6px] !h-3 !w-3 !rounded-full !border-2 !border-current !bg-background !opacity-100"
+          />
+        </>
+      ) : (
+        <Handle
+          id="input"
+          type="target"
+          position={Position.Left}
+          className="workflow-node-handle !left-[-6px] !h-3 !w-3 !rounded-full !border-2 !border-current !bg-background !opacity-100"
+        />
+      )}
       <Handle
         id="output"
         type="source"
@@ -1331,6 +1487,81 @@ function WorkflowInspector({
   onNodeChange: (updater: (node: DataWorkflowNode) => DataWorkflowNode) => void;
 }) {
   const { t } = useTranslation();
+  const [operatorDsl, setOperatorDsl] = useState('');
+  const [operatorDslDiagnostics, setOperatorDslDiagnostics] = useState<PrepDiagnostic[]>([]);
+  const [operatorDslStatus, setOperatorDslStatus] = useState<string | null>(null);
+  const [operatorDslEditing, setOperatorDslEditing] = useState(false);
+  const operatorDslNodeKeyRef = useRef('');
+  const usesOperatorDsl = Boolean(node && node.type !== 'input_source' && node.type !== 'output');
+  const editorCompletionLabels = useMemo(
+    () => ({
+      keywords: t('data.workflow.completionGroups.keywords'),
+      snippets: t('data.workflow.completionGroups.snippets'),
+      types: t('data.workflow.completionGroups.types'),
+    }),
+    [t]
+  );
+  const formatEditorDiagnostic = useCallback(
+    (diagnostic: PrepDiagnostic) => formatPrepDiagnosticForUi(diagnostic, t),
+    [t]
+  );
+
+  useEffect(() => {
+    const nextNodeKey = node && usesOperatorDsl ? `${node.id}:${node.type}` : '';
+    if (operatorDslNodeKeyRef.current === nextNodeKey) return;
+    operatorDslNodeKeyRef.current = nextNodeKey;
+    if (!node || !usesOperatorDsl) {
+      setOperatorDsl('');
+      setOperatorDslDiagnostics([]);
+      setOperatorDslStatus(null);
+      setOperatorDslEditing(false);
+      return;
+    }
+    setOperatorDsl(exportPrepOperatorDsl(node));
+    setOperatorDslDiagnostics([]);
+    setOperatorDslStatus(null);
+    setOperatorDslEditing(false);
+  }, [node, node?.id, node?.type, usesOperatorDsl]);
+
+  useEffect(() => {
+    if (!operatorDslStatus) return undefined;
+    const timeoutId = window.setTimeout(() => setOperatorDslStatus(null), 3000);
+    return () => window.clearTimeout(timeoutId);
+  }, [operatorDslStatus]);
+
+  const handleOperatorDslChange = useCallback((value: string) => {
+    setOperatorDsl(value);
+    setOperatorDslStatus(null);
+  }, []);
+
+  const handleEditOperatorDsl = useCallback(() => {
+    if (!node || !usesOperatorDsl) return;
+    setOperatorDsl(exportPrepOperatorDsl(node));
+    setOperatorDslDiagnostics([]);
+    setOperatorDslStatus(null);
+    setOperatorDslEditing(true);
+  }, [node, usesOperatorDsl]);
+
+  const handleApplyOperatorDsl = useCallback(() => {
+    if (!node || !usesOperatorDsl || !operatorDslEditing) return;
+    const result = parsePrepOperatorDsl(operatorDsl, node.type);
+    setOperatorDslDiagnostics(result.diagnostics);
+    const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
+    if (!result.operator || errors.length > 0) {
+      setOperatorDslStatus(null);
+      return;
+    }
+    onNodeChange((current) => ({
+      ...current,
+      config: result.operator?.config ?? current.config,
+      updatedAt: Date.now(),
+    }));
+    setOperatorDsl(result.operator.config.dsl as string);
+    setOperatorDslStatus(t('data.workflow.operatorDslApplied'));
+    setOperatorDslEditing(false);
+    setOperatorDslDiagnostics([]);
+  }, [node, onNodeChange, operatorDsl, operatorDslEditing, t, usesOperatorDsl]);
+
   if (!node) {
     return (
       <aside className="min-h-0 overflow-y-auto rounded-xl border border-border-muted bg-background/90 p-3 text-xs text-text-muted shadow-card">
@@ -1341,7 +1572,10 @@ function WorkflowInspector({
 
   const catalog = getOperatorCatalog(node.type);
   const Icon = catalog.Icon;
-  const rules = getNodeRules(node);
+  const summary = getWorkflowConfigSummary(node, t);
+  const dslSummaryRows = [...summary.primary, ...summary.details].filter(
+    (row) => row.label !== t('data.workflow.summaryLabels.dsl')
+  );
 
   return (
     <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border-muted bg-background/90 shadow-card">
@@ -1391,8 +1625,78 @@ function WorkflowInspector({
           <div className="h-full min-h-0 rounded-lg border border-border-muted bg-background/70 p-2.5 text-xs text-text-muted">
             {t('data.workflow.noLogs')}
           </div>
+        ) : usesOperatorDsl ? (
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(19rem,1.5fr)_minmax(0,1fr)]">
+            <div className="grid content-start gap-3 sm:grid-cols-2 lg:grid-cols-1">
+              <LabeledInput
+                label={t('data.workflow.nodeName')}
+                value={node.label}
+                suffix={`${node.label.length}/50`}
+                onChange={(value) =>
+                  onNodeChange((current) => ({
+                    ...current,
+                    label: value.slice(0, 50),
+                    updatedAt: Date.now(),
+                  }))
+                }
+              />
+              <SelectLike label={t('data.workflow.input')} value={t('data.workflow.previousOutput')} />
+              <SelectLike label={t('data.workflow.output')} value={t(catalog.labelKey)} />
+            </div>
+            <div className="min-w-0">
+              <div className="mb-2 flex min-h-7 items-center justify-end gap-2">
+                {operatorDslStatus && (
+                  <div className="mr-auto flex min-w-0 items-center gap-1.5 rounded-lg border border-success/20 bg-success/5 px-2 text-[11px] text-success">
+                    <CheckCircle2 className="h-3 w-3 flex-shrink-0" />
+                    <span className="truncate">{operatorDslStatus}</span>
+                  </div>
+                )}
+                <button
+                  onClick={handleEditOperatorDsl}
+                  disabled={operatorDslEditing}
+                  className={`inline-flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-medium shadow-soft transition-colors disabled:cursor-not-allowed ${
+                    operatorDslEditing
+                      ? 'border-accent/30 bg-accent/10 text-accent'
+                      : 'border-border-muted bg-background/94 text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
+                  }`}
+                >
+                  <PencilLine className="h-3 w-3" />
+                  {t('common.edit')}
+                </button>
+                <button
+                  onClick={handleApplyOperatorDsl}
+                  disabled={!operatorDslEditing}
+                  className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-[11px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <CheckCircle2 className="h-3 w-3" />
+                  {t('data.workflow.applyOperatorDsl')}
+                </button>
+              </div>
+              <PrepDslEditor
+                value={operatorDsl}
+                operatorType={node.type}
+                placeholderText={t('data.workflow.operatorDslPlaceholder')}
+                completionLabels={editorCompletionLabels}
+                formatDiagnostic={formatEditorDiagnostic}
+                onChange={handleOperatorDslChange}
+                onDiagnosticsChange={setOperatorDslDiagnostics}
+                editable={operatorDslEditing}
+              />
+              {operatorDslEditing && (
+                <WorkflowDslDiagnostics
+                  diagnostics={operatorDslDiagnostics}
+                  formatDiagnostic={formatEditorDiagnostic}
+                />
+              )}
+            </div>
+            <WorkflowSummaryPanel
+              title={t('data.workflow.summary')}
+              rows={dslSummaryRows}
+              emptyText={t('data.workflow.noConfig')}
+            />
+          </div>
         ) : (
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_minmax(18rem,1.35fr)]">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,1.35fr)]">
             <div className="grid content-start gap-3 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <LabeledInput
@@ -1411,45 +1715,16 @@ function WorkflowInspector({
               <SelectLike label={t('data.workflow.input')} value={t('data.workflow.previousOutput')} />
               <SelectLike label={t('data.workflow.output')} value={t(catalog.labelKey)} />
             </div>
-            <div className="grid content-start gap-3">
-              <SelectLike label={t('data.workflow.strategy')} value={t('data.workflow.byColumn')} />
-              <button className="flex h-8 w-full items-center justify-between rounded-lg border border-border-muted bg-background/94 px-2 text-xs font-medium text-text-secondary shadow-soft">
-                <span>{t('data.workflow.advanced')}</span>
-                <ChevronRight className="h-3.5 w-3.5 text-text-muted" />
-              </button>
-            </div>
-            <div className="min-w-0">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-medium text-text-secondary">
-                  {t('data.workflow.rules')}
-                </span>
-                <button className="inline-flex h-7 items-center gap-1 rounded-lg border border-border-muted bg-background/94 px-2 text-[11px] font-medium text-text-secondary shadow-soft">
-                  <Plus className="h-3 w-3" />
-                  {t('data.workflow.addRule')}
-                </button>
-              </div>
-              <div className="max-h-36 overflow-y-auto rounded-lg border border-border-muted text-[11px]">
-                <div className="grid grid-cols-[1fr_4rem_5rem] border-b border-border-muted bg-background/80 text-text-muted">
-                  <div className="px-2 py-1.5">{t('data.workflow.ruleColumn')}</div>
-                  <div className="px-2 py-1.5">{t('data.workflow.ruleRatio')}</div>
-                  <div className="px-2 py-1.5">{t('data.workflow.ruleMethod')}</div>
-                </div>
-                {rules.length > 0 ? (
-                  rules.map((rule) => (
-                    <div
-                      key={rule.column}
-                      className="grid grid-cols-[1fr_4rem_5rem] border-b border-border-muted last:border-b-0 text-text-secondary"
-                    >
-                      <div className="truncate px-2 py-1.5">{rule.column}</div>
-                      <div className="px-2 py-1.5">{rule.ratio}</div>
-                      <div className="px-2 py-1.5">{t(`data.workflow.ruleMethods.${rule.method}`)}</div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="px-2 py-2 text-text-muted">{t('data.workflow.noRules')}</div>
-                )}
-              </div>
-            </div>
+            <WorkflowSummaryPanel
+              title={t('data.workflow.summary')}
+              rows={summary.primary}
+              emptyText={t('data.workflow.noConfig')}
+            />
+            <WorkflowSummaryPanel
+              title={t('data.workflow.details')}
+              rows={summary.details}
+              emptyText={t('data.workflow.noConfig')}
+            />
           </div>
         )}
       </div>
@@ -1498,12 +1773,99 @@ function SelectLike({ label, value }: { label: string; value: string }) {
   );
 }
 
+interface WorkflowSummaryRow {
+  label: string;
+  value: string;
+  mono?: boolean;
+}
+
+function WorkflowSummaryPanel({
+  title,
+  rows,
+  emptyText,
+}: {
+  title: string;
+  rows: WorkflowSummaryRow[];
+  emptyText: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="mb-2 text-xs font-medium text-text-secondary">{title}</div>
+      <div className="max-h-44 overflow-y-auto rounded-lg border border-border-muted text-[11px]">
+        {rows.length > 0 ? (
+          rows.map((row) => (
+            <div
+              key={`${row.label}-${row.value}`}
+              className="grid grid-cols-[5.5rem_minmax(0,1fr)] border-b border-border-muted last:border-b-0"
+            >
+              <div className="bg-background/72 px-2 py-1.5 text-text-muted">{row.label}</div>
+              <div
+                className={`min-w-0 break-words px-2 py-1.5 text-text-secondary ${
+                  row.mono ? 'font-mono text-[10.5px]' : ''
+                }`}
+              >
+                {row.value}
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="px-2 py-2 text-text-muted">{emptyText}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function WorkflowDslDiagnostics({
+  diagnostics,
+  formatDiagnostic,
+}: {
+  diagnostics: PrepDiagnostic[];
+  formatDiagnostic: (diagnostic: PrepDiagnostic) => string;
+}) {
+  const errors = diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
+  const warnings = diagnostics.filter((diagnostic) => diagnostic.severity === 'warning');
+  if (errors.length === 0 && warnings.length === 0) {
+    return null;
+  }
+  return (
+    <div className="mt-2 space-y-1.5">
+      {[...errors, ...warnings].map((diagnostic, index) => (
+        <div
+          key={`${diagnostic.code ?? diagnostic.message}-${index}`}
+          className={`flex items-start gap-1.5 rounded-lg border px-2 py-1.5 text-[11px] ${
+            diagnostic.severity === 'error'
+              ? 'border-error/20 bg-error/10 text-error'
+              : 'border-warning/25 bg-warning/10 text-warning'
+          }`}
+        >
+          <AlertCircle className="mt-0.5 h-3 w-3 flex-shrink-0" />
+          <span>{formatDiagnostic(diagnostic)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function getOperatorCatalog(type: DataWorkflowOperatorType) {
   return OPERATOR_CATALOG.find((operator) => operator.type === type) ?? OPERATOR_CATALOG[0];
 }
 
 function isWorkflowOperatorType(value: string): value is DataWorkflowOperatorType {
   return OPERATOR_CATALOG.some((operator) => operator.type === value);
+}
+
+function formatPrepDiagnosticForUi(
+  diagnostic: PrepDiagnostic,
+  t: (key: string, options?: Record<string, unknown>) => string
+): string {
+  if (!diagnostic.code) {
+    return diagnostic.message;
+  }
+  return t(`data.workflow.dslDiagnostics.${diagnostic.code}`, {
+    defaultValue: diagnostic.message,
+    ...(diagnostic.params ?? {}),
+  });
 }
 
 function getNextWorkflowNodePosition(index: number): { x: number; y: number } {
@@ -1651,26 +2013,335 @@ function getWorkflowConnectionDropTarget(
   return { nodeId, handleId };
 }
 
-function getNodeRules(
-  node: DataWorkflowNode
-): Array<{ column: string; ratio: string; method: string }> {
-  const rules = node.config.rules;
-  if (!Array.isArray(rules)) {
-    return [];
+interface WorkflowConfigSummary {
+  primary: WorkflowSummaryRow[];
+  details: WorkflowSummaryRow[];
+}
+
+function getWorkflowConfigSummary(
+  node: DataWorkflowNode,
+  t: TranslateFn
+): WorkflowConfigSummary {
+  const config = node.config;
+  let summary: WorkflowConfigSummary;
+
+  switch (node.type) {
+    case 'input_source':
+      summary = {
+        primary: [
+          summaryRow(t, 'source', translateWorkflowValue(t, 'sources', stringValue(config.source, 'task'))),
+          summaryRow(t, 'alias', stringValue(config.alias)),
+          summaryRow(t, 'format', stringValue(config.format, 'auto')),
+        ],
+        details: [
+          summaryRow(t, 'dataset', stringValue(config.datasetId)),
+          summaryRow(t, 'file', stringValue(config.filePath), true),
+          summaryRow(t, 'sheet', stringValue(config.sheet)),
+          summaryRow(t, 'encoding', stringValue(config.encoding)),
+        ],
+      };
+      break;
+    case 'field_select':
+      summary = {
+        primary: [
+          summaryRow(t, 'mode', translateWorkflowValue(t, 'selectModes', stringValue(config.mode, 'include'))),
+          summaryRow(t, 'columns', formatCount(stringArray(config.columns).length)),
+        ],
+        details: [summaryRow(t, 'fields', formatList(stringArray(config.columns), t), true)],
+      };
+      break;
+    case 'field_mapping':
+      summary = {
+        primary: [
+          summaryRow(t, 'mappings', formatCount(recordArray(config.mappings).length)),
+          summaryRow(t, 'mode', translateWorkflowValue(t, 'mappingModes', getMappingMode(config))),
+        ],
+        details: [summaryRow(t, 'fields', formatMappings(config.mappings, t), true)],
+      };
+      break;
+    case 'filter':
+      summary = {
+        primary: [summaryRow(t, 'condition', stringValue(config.condition), true)],
+        details: [],
+      };
+      break;
+    case 'deduplicate':
+      summary = {
+        primary: [
+          summaryRow(
+            t,
+            'strategy',
+            translateWorkflowValue(t, 'deduplicateStrategies', stringValue(config.strategy, 'all_columns'))
+          ),
+          summaryRow(t, 'keep', translateWorkflowValue(t, 'keepRules', stringValue(config.keep, 'first'))),
+        ],
+        details: [
+          summaryRow(t, 'columns', formatList(stringArray(config.columns), t), true),
+          summaryRow(t, 'orderBy', formatSortKeys(config.orderBy, t), true),
+        ],
+      };
+      break;
+    case 'missing_value':
+      summary = {
+        primary: [
+          summaryRow(
+            t,
+            'strategy',
+            translateWorkflowValue(t, 'missingStrategies', stringValue(config.strategy, 'by_column'))
+          ),
+          summaryRow(t, 'rules', formatCount(recordArray(config.rules).length)),
+        ],
+        details: [
+          summaryRow(t, 'condition', stringValue(config.condition)),
+          summaryRow(t, 'rules', formatMissingRules(config.rules, t), true),
+        ],
+      };
+      break;
+    case 'type_convert':
+      summary = {
+        primary: [summaryRow(t, 'conversions', formatCount(recordArray(config.conversions).length))],
+        details: [summaryRow(t, 'fields', formatConversions(config.conversions, t), true)],
+      };
+      break;
+    case 'sort':
+      summary = {
+        primary: [summaryRow(t, 'sortKeys', formatCount(recordArray(config.keys).length))],
+        details: [summaryRow(t, 'orderBy', formatSortKeys(config.keys, t), true)],
+      };
+      break;
+    case 'calculate_field':
+      summary = {
+        primary: [summaryRow(t, 'calculations', formatCount(recordArray(config.calculations).length))],
+        details: [summaryRow(t, 'expression', formatCalculations(config.calculations, t), true)],
+      };
+      break;
+    case 'aggregate':
+      summary = {
+        primary: [
+          summaryRow(t, 'groupBy', formatList(stringArray(config.groupBy), t), true),
+          summaryRow(t, 'metrics', formatCount(recordArray(config.metrics).length)),
+        ],
+        details: [summaryRow(t, 'metrics', formatMetrics(config.metrics, t), true)],
+      };
+      break;
+    case 'join':
+      summary = getJoinConfigSummary(config, t);
+      break;
+    case 'output':
+      summary = {
+        primary: [
+          summaryRow(
+            t,
+            'destination',
+            translateWorkflowValue(t, 'destinations', stringValue(config.destination, 'duckdb_table'))
+          ),
+          summaryRow(t, 'mode', translateWorkflowValue(t, 'outputModes', stringValue(config.mode, 'replace'))),
+        ],
+        details: [
+          summaryRow(t, 'table', stringValue(config.table)),
+          summaryRow(t, 'dataset', stringValue(config.dataset)),
+          summaryRow(t, 'file', stringValue(config.filePath), true),
+          summaryRow(t, 'format', stringValue(config.format)),
+        ],
+      };
+      break;
+    default:
+      summary = { primary: [], details: [] };
   }
-  return rules.flatMap((rule) => {
-    if (!rule || typeof rule !== 'object') {
-      return [];
-    }
-    const candidate = rule as Record<string, unknown>;
-    return [
-      {
-        column: String(candidate.column ?? ''),
-        ratio: String(candidate.ratio ?? ''),
-        method: String(candidate.method ?? 'skip'),
-      },
-    ].filter((item) => item.column);
+
+  const dsl = stringValue(config.dsl);
+  return dsl
+    ? {
+        ...summary,
+        details: [...summary.details, summaryRow(t, 'dsl', dsl, true)],
+      }
+    : summary;
+}
+
+function getJoinConfigSummary(
+  config: Record<string, unknown>,
+  t: TranslateFn
+): WorkflowConfigSummary {
+  const joinType = stringValue(config.joinType, 'left');
+  const asof = recordValue(config.asof);
+  const primary = [
+    summaryRow(t, 'joinType', translateWorkflowValue(t, 'joinTypes', joinType)),
+    summaryRow(t, 'rightInput', stringValue(config.rightInput)),
+    summaryRow(t, 'cardinality', stringValue(config.cardinality)),
+  ];
+  const details = [
+    summaryRow(t, 'conditions', joinType === 'asof' ? formatAsof(asof, t) : formatConditions(config.conditions, t), true),
+    summaryRow(t, 'by', formatConditions(asof?.by, t), true),
+    summaryRow(t, 'direction', stringValue(asof?.direction)),
+    summaryRow(t, 'tolerance', stringValue(asof?.tolerance)),
+    summaryRow(t, 'keep', formatJoinKeep(config.keep, t), true),
+    summaryRow(t, 'conflict', formatConflict(config.conflict, t)),
+  ];
+  return { primary, details };
+}
+
+function summaryRow(
+  t: TranslateFn,
+  label: string,
+  value: string,
+  mono = false
+): WorkflowSummaryRow {
+  return {
+    label: t(`data.workflow.summaryLabels.${label}`),
+    value: value || t('data.workflow.values.notSet'),
+    mono,
+  };
+}
+
+function stringValue(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return fallback;
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function recordArray(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value)
+    ? value.filter(
+        (item): item is Record<string, unknown> =>
+          Boolean(item) && typeof item === 'object' && !Array.isArray(item)
+      )
+    : [];
+}
+
+function formatCount(value: number): string {
+  return String(value);
+}
+
+function formatList(values: string[], t: TranslateFn, limit = 6): string {
+  if (values.length === 0) return t('data.workflow.values.notSet');
+  const head = values.slice(0, limit).join(', ');
+  const remaining = values.length - limit;
+  return remaining > 0 ? `${head}, ${t('data.workflow.values.more', { count: remaining })}` : head;
+}
+
+function translateWorkflowValue(
+  t: TranslateFn,
+  group: string,
+  value: string,
+  fallback?: string
+): string {
+  if (!value) return t('data.workflow.values.notSet');
+  return t(`data.workflow.values.${group}.${value}`, { defaultValue: fallback ?? value });
+}
+
+function getMappingMode(config: Record<string, unknown>): string {
+  const dsl = stringValue(config.dsl);
+  return dsl.startsWith('rename ') ? 'rename' : 'map';
+}
+
+function formatMappings(value: unknown, t: TranslateFn): string {
+  const mappings = recordArray(value).map(
+    (item) => `${stringValue(item.source, '?')} -> ${stringValue(item.target, '?')}`
+  );
+  return formatList(mappings, t);
+}
+
+function formatMissingRules(value: unknown, t: TranslateFn): string {
+  const rules = recordArray(value).map((rule) => {
+    const method = stringValue(rule.method, 'skip');
+    const methodLabel = t(`data.workflow.ruleMethods.${method}`, { defaultValue: method });
+    const values = Array.isArray(rule.values)
+      ? ` (${rule.values.map((item) => String(item)).join(', ')})`
+      : '';
+    const fillValue = rule.value === undefined ? '' : ` = ${String(rule.value)}`;
+    return `${stringValue(rule.column, '?')}: ${methodLabel}${values}${fillValue}`;
   });
+  return formatList(rules, t);
+}
+
+function formatConversions(value: unknown, t: TranslateFn): string {
+  const conversions = recordArray(value).map((item) => {
+    const onError = stringValue(item.onError);
+    const suffix = onError ? ` (${onError})` : '';
+    return `${stringValue(item.column, '?')} -> ${stringValue(item.type, '?')}${suffix}`;
+  });
+  return formatList(conversions, t);
+}
+
+function formatSortKeys(value: unknown, t: TranslateFn): string {
+  const keys = recordArray(value).map((item) => {
+    const nulls = stringValue(item.nulls);
+    return `${stringValue(item.field, '?')} ${stringValue(item.direction, 'asc')}${
+      nulls ? ` nulls ${nulls}` : ''
+    }`;
+  });
+  return formatList(keys, t);
+}
+
+function formatCalculations(value: unknown, t: TranslateFn): string {
+  const calculations = recordArray(value).map(
+    (item) => `${stringValue(item.field, '?')} = ${stringValue(item.expression, '?')}`
+  );
+  return formatList(calculations, t, 4);
+}
+
+function formatMetrics(value: unknown, t: TranslateFn): string {
+  const metrics = recordArray(value).map(
+    (item) =>
+      `${stringValue(item.function, 'count')}(${stringValue(item.expression, '*')}) as ${stringValue(
+        item.alias,
+        '?'
+      )}`
+  );
+  return formatList(metrics, t, 4);
+}
+
+function formatConditions(value: unknown, t: TranslateFn): string {
+  const conditions = recordArray(value).map(
+    (item) =>
+      `${stringValue(item.left, '?')} ${stringValue(item.operator, '=')} ${stringValue(item.right, '?')}`
+  );
+  return formatList(conditions, t, 4);
+}
+
+function formatAsof(asof: Record<string, unknown> | null, t: TranslateFn): string {
+  if (!asof) return t('data.workflow.values.notSet');
+  return `${stringValue(asof.leftTime, '?')} ${stringValue(asof.operator, '>=')} ${stringValue(
+    asof.rightTime,
+    '?'
+  )}`;
+}
+
+function formatJoinKeep(value: unknown, t: TranslateFn): string {
+  const keep = recordArray(value).map((item) => {
+    if (item.wildcard) {
+      return `${stringValue(item.side, '?')} *`;
+    }
+    const alias = stringValue(item.alias);
+    return `${stringValue(item.source, '?')}${alias ? ` as ${alias}` : ''}`;
+  });
+  return formatList(keep, t, 4);
+}
+
+function formatConflict(value: unknown, t: TranslateFn): string {
+  const conflict = recordValue(value);
+  if (!conflict) return t('data.workflow.values.notSet');
+  const strategy = stringValue(conflict.strategy, 'right_prefix');
+  if (strategy === 'right_prefix') {
+    return `${strategy}: ${stringValue(conflict.rightPrefix, '')}`;
+  }
+  if (strategy === 'suffix') {
+    return `${strategy}: ${stringValue(conflict.leftSuffix, '_left')} / ${stringValue(
+      conflict.rightSuffix,
+      '_right'
+    )}`;
+  }
+  return strategy;
 }
 
 function StatCard({

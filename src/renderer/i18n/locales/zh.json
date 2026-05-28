@@ -164,8 +164,48 @@
       "ruleMethod": "处理方式",
       "noRules": "暂无规则",
       "advanced": "高级选项",
+      "summary": "配置摘要",
+      "details": "配置明细",
+      "noConfig": "暂无配置",
+      "operatorDsl": "算子 DSL",
+      "operatorDslPlaceholder": "输入当前算子的 DSL...",
+      "applyOperatorDsl": "应用",
+      "operatorDslInvalid": "算子 DSL 校验失败",
+      "operatorDslValid": "DSL 校验通过",
+      "operatorDslApplied": "DSL 已应用",
       "noNodeSelected": "选择一个节点后配置会显示在这里。",
       "emptyCanvas": "从左侧添加算子开始构建流程。",
+      "importDsl": "导入 DSL",
+      "exportDsl": "导出 DSL",
+      "applyDsl": "应用 DSL",
+      "dslPlaceholder": "粘贴数据任务 DSL...",
+      "dslInvalid": "DSL 解析失败",
+      "dslDiagnostics": {
+        "invalidQualifiedField": "字段引用 {{value}} 无效，请使用 [table_name].[field_name]",
+        "emptyDsl": "DSL 内容不能为空",
+        "noCommands": "未找到可解析的 DSL 命令",
+        "multiSourceMissingFrom": "多源任务必须使用 from <alias> 指定主输入源",
+        "missingInputSource": "任务至少需要一个 input source",
+        "unsupportedCommand": "不支持的 DSL 命令：{{value}}",
+        "invalidInputSource": "无法解析输入源：{{value}}",
+        "invalidFieldMapping": "无法解析字段映射：{{value}}",
+        "invalidJoin": "无法解析 join：{{value}}",
+        "invalidAsofJoin": "无法解析 asof join：{{value}}",
+        "inputSourceMissingAlias": "输入源必须声明 as <alias>",
+        "duplicateInputAlias": "输入源 alias 重复：{{alias}}",
+        "mainSourceNotFound": "主输入源不存在：{{alias}}",
+        "joinRightInputNotFound": "join 右侧输入源不存在：{{alias}}",
+        "asofMissingOn": "asof join 必须声明 on 时间近邻条件",
+        "asofNearestMissingTolerance": "asof nearest 必须声明 tolerance",
+        "joinMissingOn": "非 cross join 必须声明 on 条件",
+        "operatorDslTypeMismatch": "当前节点需要 {{expected}} DSL，但输入的是 {{actual}}",
+        "operatorDslMultipleCommands": "单个算子配置只能包含一条 DSL 命令"
+      },
+      "completionGroups": {
+        "keywords": "关键字",
+        "snippets": "片段",
+        "types": "类型"
+      },
       "operators": {
         "input_source": "输入数据源",
         "filter": "筛选",
@@ -174,6 +214,7 @@
         "missing_value": "缺失值处理",
         "type_convert": "类型转换",
         "sort": "排序",
+        "join": "表连接",
         "aggregate": "聚合",
         "calculate_field": "计算字段",
         "field_mapping": "字段映射",
@@ -181,9 +222,99 @@
       },
       "ruleMethods": {
         "skip": "不处理",
+        "nullify_values": "特殊值转空",
+        "literal_fill": "固定值填充",
         "forward_fill": "前向填充",
+        "backward_fill": "后向填充",
+        "mean_fill": "均值填充",
+        "median_fill": "中位数填充",
         "mode_fill": "众数填充",
         "drop": "删除"
+      },
+      "summaryLabels": {
+        "source": "来源",
+        "alias": "别名",
+        "format": "格式",
+        "dataset": "数据集",
+        "file": "文件",
+        "sheet": "Sheet",
+        "encoding": "编码",
+        "mode": "模式",
+        "columns": "字段数",
+        "fields": "字段",
+        "mappings": "映射数",
+        "condition": "条件",
+        "strategy": "策略",
+        "keep": "保留",
+        "orderBy": "排序",
+        "rules": "规则",
+        "conversions": "转换数",
+        "sortKeys": "排序键",
+        "calculations": "计算数",
+        "expression": "表达式",
+        "groupBy": "分组",
+        "metrics": "指标",
+        "joinType": "连接类型",
+        "rightInput": "右表",
+        "cardinality": "基数",
+        "conditions": "条件",
+        "by": "分组键",
+        "direction": "方向",
+        "tolerance": "容忍窗口",
+        "conflict": "冲突",
+        "destination": "目标",
+        "table": "表",
+        "dsl": "DSL"
+      },
+      "values": {
+        "notSet": "未设置",
+        "more": "+{{count}} 项",
+        "sources": {
+          "task": "任务输入",
+          "file": "文件",
+          "dataset": "数据集"
+        },
+        "selectModes": {
+          "include": "保留字段",
+          "exclude": "删除字段"
+        },
+        "mappingModes": {
+          "map": "字段映射",
+          "rename": "字段重命名"
+        },
+        "deduplicateStrategies": {
+          "all_columns": "全字段去重",
+          "by_columns": "按字段去重"
+        },
+        "keepRules": {
+          "first": "第一条",
+          "last": "最后一条"
+        },
+        "missingStrategies": {
+          "by_column": "按列处理",
+          "drop_empty_rows": "删除空行",
+          "drop_rows_by_nulls": "按空值删行"
+        },
+        "joinTypes": {
+          "inner": "内连接",
+          "left": "左连接",
+          "right": "右连接",
+          "full": "全连接",
+          "cross": "交叉连接",
+          "semi": "半连接",
+          "anti": "反连接",
+          "asof": "ASOF 连接"
+        },
+        "destinations": {
+          "duckdb_table": "DuckDB 表",
+          "dataset": "数据集",
+          "file": "文件"
+        },
+        "outputModes": {
+          "replace": "覆盖",
+          "append": "追加",
+          "error_if_exists": "存在时报错"
+        }
       }
     },
     "relative": {

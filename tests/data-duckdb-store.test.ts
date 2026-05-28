@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { DuckDBInstance } from '@duckdb/node-api';
 import { createDataTaskStore, type DataTaskStore } from '../src/main/data/data-task-store';
+import { compilePrepWorkflowToFlow, parsePrepDsl } from '../src/shared/prep-dsl';
 
 const tempRoots: string[] = [];
 const stores: DataTaskStore[] = [];
@@ -154,6 +155,140 @@ describe('DuckDB data task store', () => {
     const reopened = await reopenedStore.getTaskWorkflow(task.id);
     expect(reopened.nodes.map((node) => node.id)).toEqual(['node_source', 'node_missing']);
     expect(reopened.edges[0]?.sourceNodeId).toBe('node_source');
+  });
+
+  it('runs a saved DSL workflow with a left join', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const dbPath = path.join(tempRoot, 'workspace.duckdb');
+    const ordersPath = path.join(tempRoot, 'orders.csv');
+    const customersPath = path.join(tempRoot, 'customers.csv');
+    fs.writeFileSync(
+      ordersPath,
+      'order_id,customer_id,revenue\n1,c1,20\n2,c2,5\n3,c9,30\n',
+      'utf8'
+    );
+    fs.writeFileSync(customersPath, 'customer_id,name\nc1,Alice\nc2,Bob\n', 'utf8');
+
+    const store = createDataTaskStore(dbPath, {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+
+    await store.importDataset({ filePath: customersPath, name: 'customers' });
+    const task = await store.createTask({ name: 'Join orders', sourcePath: ordersPath });
+    const parsed = parsePrepDsl(`
+      input source task as orders
+      input source dataset "customers" as customers
+
+      from orders
+        | cast [revenue] as double on_error null
+        | join left customers
+            on [orders].[customer_id] = [customers].[customer_id]
+            keep left *, [customers].[name] as [customer_name]
+            expect many_to_one
+        | filter [revenue] > 10
+        | output table "orders_joined" mode replace
+    `);
+    expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    expect(compiled.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    await store.saveTaskWorkflow(task.id, {
+      nodes: compiled.nodes,
+      edges: compiled.edges,
+    });
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    expect(completed.outputTable).toBe('orders_joined');
+    expect(completed.rowCount).toBe(2);
+
+    stores.pop()?.close();
+    const instance = await DuckDBInstance.create(dbPath);
+    const connection = await instance.connect();
+    try {
+      const reader = await connection.runAndReadAll(
+        'SELECT order_id, customer_name FROM orders_joined ORDER BY order_id'
+      );
+      expect(reader.getRowObjectsJson()).toEqual([
+        { order_id: '1', customer_name: 'Alice' },
+        { order_id: '3', customer_name: null },
+      ]);
+    } finally {
+      connection.closeSync();
+      instance.closeSync();
+    }
+  });
+
+  it('runs a saved DSL workflow with an asof join', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const dbPath = path.join(tempRoot, 'workspace.duckdb');
+    const eventsPath = path.join(tempRoot, 'events.csv');
+    const statusPath = path.join(tempRoot, 'status.csv');
+    fs.writeFileSync(
+      eventsPath,
+      'event_id,device_id,event_time\n1,d1,2024-01-01 10:00:00\n2,d1,2024-01-01 12:00:00\n3,d2,2024-01-01 10:00:00\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      statusPath,
+      'device_id,snapshot_time,region\n' +
+        'd1,2024-01-01 09:00:00,A\n' +
+        'd1,2024-01-01 11:00:00,B\n' +
+        'd2,2024-01-01 08:00:00,C\n',
+      'utf8'
+    );
+
+    const store = createDataTaskStore(dbPath, {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+
+    await store.importDataset({ filePath: statusPath, name: 'status' });
+    const task = await store.createTask({ name: 'Asof events', sourcePath: eventsPath });
+    const parsed = parsePrepDsl(`
+      input source task as events
+      input source dataset "status" as status
+
+      from events
+        | cast [event_time] as timestamp
+        | join asof status
+            on [events].[event_time] >= [status].[snapshot_time]
+            by [events].[device_id] = [status].[device_id]
+            tolerance 2h
+            keep left *, [status].[region] as [status_region]
+            expect many_to_one
+        | output table "events_with_status" mode replace
+    `);
+    expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    await store.saveTaskWorkflow(task.id, {
+      nodes: compiled.nodes,
+      edges: compiled.edges,
+    });
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    expect(completed.outputTable).toBe('events_with_status');
+    expect(completed.rowCount).toBe(3);
+
+    stores.pop()?.close();
+    const instance = await DuckDBInstance.create(dbPath);
+    const connection = await instance.connect();
+    try {
+      const reader = await connection.runAndReadAll(
+        'SELECT event_id, status_region FROM events_with_status ORDER BY event_id'
+      );
+      expect(reader.getRowObjectsJson()).toEqual([
+        { event_id: '1', status_region: 'A' },
+        { event_id: '2', status_region: 'B' },
+        { event_id: '3', status_region: 'C' },
+      ]);
+    } finally {
+      connection.closeSync();
+      instance.closeSync();
+    }
   });
 
   it('removes previously seeded default workflow graphs', async () => {

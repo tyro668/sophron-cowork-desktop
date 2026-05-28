@@ -256,6 +256,7 @@ export type DataWorkflowOperatorType =
   | 'missing_value'
   | 'type_convert'
   | 'sort'
+  | 'join'
   | 'aggregate'
   | 'calculate_field'
   | 'field_mapping'

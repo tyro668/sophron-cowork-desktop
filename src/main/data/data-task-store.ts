@@ -97,6 +97,7 @@ const WORKFLOW_OPERATOR_TYPES: readonly DataWorkflowOperatorType[] = [
   'missing_value',
   'type_convert',
   'sort',
+  'join',
   'aggregate',
   'calculate_field',
   'field_mapping',
@@ -113,6 +114,7 @@ const DEFAULT_OPERATOR_LABELS: Record<DataWorkflowOperatorType, string> = {
   missing_value: '缺失值处理',
   type_convert: '类型转换',
   sort: '排序',
+  join: '表连接',
   aggregate: '聚合',
   calculate_field: '计算字段',
   field_mapping: '字段映射',
@@ -807,6 +809,12 @@ export class DataTaskStore {
     columnCount: number;
     sourceDatasetId: string;
   }> {
+    const workflowNodes = await this.getWorkflowNodes(task.id);
+    if (workflowNodes.length > 0) {
+      const workflowEdges = await this.getWorkflowEdges(task.id);
+      return this.runWorkflowIntoTaskOutput(task, sourcePath, workflowNodes, workflowEdges);
+    }
+
     const outputTable = task.outputTable || tableNameFromId('clean_task', task.id);
     const rawTable = tableNameFromId('raw_task', uuidv4());
     const relation = readRelationForPath(sourcePath, 'sourcePath');
@@ -848,6 +856,211 @@ export class DataTaskStore {
     } finally {
       await this.dropTableIfExists(rawTable);
     }
+  }
+
+  private async runWorkflowIntoTaskOutput(
+    task: DataCleaningTask,
+    sourcePath: string,
+    nodes: DataWorkflowNode[],
+    edges: DataWorkflowEdge[]
+  ): Promise<{
+    outputTable: string;
+    rowCount: number;
+    columnCount: number;
+    sourceDatasetId: string;
+  }> {
+    const outputNode = nodes.find((node) => node.type === 'output');
+    const outputTable = getOutputTableName(outputNode, task.outputTable || tableNameFromId('clean_task', task.id));
+    const relationByNode = new Map<string, string>();
+    await this.dropTableIfExists(outputTable);
+
+    for (const node of nodes) {
+      if (node.type === 'output') {
+        continue;
+      }
+      if (node.type === 'input_source') {
+        relationByNode.set(node.id, await this.materializeInputSource(node, sourcePath));
+        continue;
+      }
+
+      const outputRelation = tableNameFromId(`workflow_${node.type}`, node.id);
+      await this.dropTableIfExists(outputRelation);
+      const sql = await this.compileWorkflowNodeSql(node, outputRelation, relationByNode, edges);
+      await this.runSql(sql);
+      relationByNode.set(node.id, outputRelation);
+    }
+
+    const finalInputId = outputNode
+      ? this.findIncomingNodeId(outputNode.id, edges, 'input')
+      : findLastMaterializedNodeId(nodes, relationByNode);
+    const finalRelation = finalInputId ? relationByNode.get(finalInputId) : null;
+    if (!finalRelation) {
+      throw new Error('Workflow has no materialized output relation');
+    }
+    await this.runSql(
+      `CREATE TABLE ${quoteIdentifier(outputTable)} AS SELECT * FROM ${quoteIdentifier(finalRelation)}`
+    );
+    const rowCount = await this.countRows(outputTable);
+    const columnCount = (await this.getTableColumns(outputTable)).length;
+    const dataset = await this.upsertDatasetForTaskOutput(
+      task.name,
+      sourcePath,
+      outputTable,
+      rowCount,
+      columnCount
+    );
+    return { outputTable, rowCount, columnCount, sourceDatasetId: dataset.id };
+  }
+
+  private async materializeInputSource(node: DataWorkflowNode, taskSourcePath: string): Promise<string> {
+    const source = typeof node.config.source === 'string' ? node.config.source : 'task';
+    const tableName = tableNameFromId('workflow_source', node.id);
+    await this.dropTableIfExists(tableName);
+    if (source === 'dataset') {
+      const datasetRef = String(node.config.datasetId ?? node.config.name ?? node.config.alias ?? '');
+      const dataset = await this.findDatasetByReference(datasetRef);
+      if (!dataset) {
+        throw new Error(`Dataset source not found: ${datasetRef}`);
+      }
+      await this.runSql(
+        `CREATE TEMP TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${quoteIdentifier(
+          dataset.tableName
+        )}`
+      );
+      return tableName;
+    }
+
+    const filePath =
+      source === 'file' && typeof node.config.filePath === 'string'
+        ? normalizeSourcePath(node.config.filePath)
+        : taskSourcePath;
+    const relation = readRelationForPath(filePath, 'sourcePath');
+    await this.runSql(`CREATE TEMP TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`, {
+      sourcePath: filePath,
+    });
+    return tableName;
+  }
+
+  private async compileWorkflowNodeSql(
+    node: DataWorkflowNode,
+    outputRelation: string,
+    relationByNode: Map<string, string>,
+    edges: DataWorkflowEdge[]
+  ): Promise<string> {
+    if (node.type === 'join') {
+      return this.compileJoinSql(node, outputRelation, relationByNode, edges);
+    }
+    const inputId = this.findIncomingNodeId(node.id, edges, 'input');
+    const inputRelation = inputId ? relationByNode.get(inputId) : null;
+    if (!inputRelation) {
+      throw new Error(`Workflow node has no input: ${node.id}`);
+    }
+    const columns = await this.getTableColumns(inputRelation);
+    const input = quoteIdentifier(inputRelation);
+    const output = quoteIdentifier(outputRelation);
+    switch (node.type) {
+      case 'field_select':
+        return compileFieldSelectSql(output, input, columns, node.config);
+      case 'field_mapping':
+        return compileFieldMappingSql(output, input, columns, node.config);
+      case 'missing_value':
+        return compileMissingValueSql(output, input, columns, node.config);
+      case 'type_convert':
+        return compileTypeConvertSql(output, input, columns, node.config);
+      case 'filter':
+        return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} WHERE ${compileScalarExpression(
+          String(node.config.condition ?? 'true')
+        )}`;
+      case 'deduplicate':
+        return compileDeduplicateSql(output, input, columns, node.config);
+      case 'sort':
+        return compileSortSql(output, input, node.config);
+      case 'calculate_field':
+        return compileCalculateFieldSql(output, input, node.config);
+      case 'aggregate':
+        return compileAggregateSql(output, input, node.config);
+      default:
+        return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input}`;
+    }
+  }
+
+  private async compileJoinSql(
+    node: DataWorkflowNode,
+    outputRelation: string,
+    relationByNode: Map<string, string>,
+    edges: DataWorkflowEdge[]
+  ): Promise<string> {
+    const leftNodeId = this.findIncomingNodeId(node.id, edges, 'left');
+    const rightNodeId = this.findIncomingNodeId(node.id, edges, 'right');
+    const leftRelation = leftNodeId ? relationByNode.get(leftNodeId) : null;
+    const rightRelation = rightNodeId ? relationByNode.get(rightNodeId) : null;
+    if (!leftRelation || !rightRelation) {
+      throw new Error(`Join node requires left and right inputs: ${node.id}`);
+    }
+    const leftColumns = await this.getTableColumns(leftRelation);
+    const rightColumns = await this.getTableColumns(rightRelation);
+    const output = quoteIdentifier(outputRelation);
+    const left = quoteIdentifier(leftRelation);
+    const right = quoteIdentifier(rightRelation);
+    const joinType = String(node.config.joinType ?? 'left');
+    if (joinType === 'semi' || joinType === 'anti') {
+      const existsOperator = joinType === 'semi' ? 'EXISTS' : 'NOT EXISTS';
+      const condition = compileJoinConditionList(node.config.conditions);
+      return `
+        CREATE TEMP TABLE ${output} AS
+        SELECT l.*
+        FROM ${left} l
+        WHERE ${existsOperator} (
+          SELECT 1 FROM ${right} r WHERE ${condition}
+        )
+      `;
+    }
+    if (joinType === 'asof') {
+      return compileAsofJoinSql(output, left, right, leftColumns, rightColumns, node.config);
+    }
+    const condition = joinType === 'cross' ? '' : ` ON ${compileJoinConditionList(node.config.conditions)}`;
+    const sqlJoinType = joinType === 'full' ? 'FULL OUTER' : joinType.toUpperCase();
+    const projection = compileJoinProjection(
+      node.config.keep,
+      leftColumns,
+      rightColumns,
+      node.config.conflict,
+      typeof node.config.rightAlias === 'string' ? node.config.rightAlias : undefined
+    );
+    return `
+      CREATE TEMP TABLE ${output} AS
+      SELECT ${projection}
+      FROM ${left} l
+      ${sqlJoinType} JOIN ${right} r${condition}
+    `;
+  }
+
+  private findIncomingNodeId(
+    nodeId: string,
+    edges: DataWorkflowEdge[],
+    targetHandle: string
+  ): string | null {
+    return (
+      edges.find(
+        (edge) =>
+          edge.targetNodeId === nodeId && (edge.targetHandle ?? 'input') === targetHandle
+      )?.sourceNodeId ?? null
+    );
+  }
+
+  private async findDatasetByReference(reference: string): Promise<DataDataset | null> {
+    const rows = await this.queryRows<DataDatasetRow>(
+      `
+        SELECT *
+        FROM data_datasets
+        WHERE id = $reference
+           OR name = $reference
+           OR table_name = $reference
+        LIMIT 1
+      `,
+      { reference }
+    );
+    return rows[0] ? mapDatasetRow(rows[0]) : null;
   }
 
   private async upsertDatasetForTaskOutput(
@@ -1169,12 +1382,401 @@ function normalizeOperatorType(value: string | null | undefined): DataWorkflowOp
       return 'missing_value';
     case 'deduplicate_rows':
       return 'deduplicate';
+    case 'join_table':
+    case 'asof_join':
+      return 'join';
     case 'write_duckdb_table':
     case 'publish_dataset':
       return 'output';
     default:
       return 'filter';
   }
+}
+
+function getOutputTableName(node: DataWorkflowNode | undefined, fallback: string): string {
+  if (!node) return fallback;
+  const table = node.config.table;
+  return typeof table === 'string' && table.trim() ? table.trim() : fallback;
+}
+
+function findLastMaterializedNodeId(
+  nodes: DataWorkflowNode[],
+  relationByNode: Map<string, string>
+): string | null {
+  for (let index = nodes.length - 1; index >= 0; index -= 1) {
+    const node = nodes[index];
+    if (relationByNode.has(node.id)) return node.id;
+  }
+  return null;
+}
+
+function compileFieldSelectSql(
+  output: string,
+  input: string,
+  columns: string[],
+  config: Record<string, unknown>
+): string {
+  const selected = stringArray(config.columns);
+  const outputColumns =
+    config.mode === 'exclude'
+      ? columns.filter((column) => !selected.includes(column))
+      : selected.length > 0
+        ? selected
+        : columns;
+  return `CREATE TEMP TABLE ${output} AS SELECT ${quoteColumnList(outputColumns)} FROM ${input}`;
+}
+
+function compileFieldMappingSql(
+  output: string,
+  input: string,
+  columns: string[],
+  config: Record<string, unknown>
+): string {
+  const mappings = objectArray(config.mappings);
+  const sourceToTarget = new Map(
+    mappings.flatMap((mapping) =>
+      typeof mapping.source === 'string' && typeof mapping.target === 'string'
+        ? [[mapping.source, mapping.target] as const]
+        : []
+    )
+  );
+  const projections = columns.map((column) => {
+    const target = sourceToTarget.get(column);
+    return target
+      ? `${quoteIdentifier(column)} AS ${quoteIdentifier(target)}`
+      : quoteIdentifier(column);
+  });
+  return `CREATE TEMP TABLE ${output} AS SELECT ${projections.join(', ')} FROM ${input}`;
+}
+
+function compileMissingValueSql(
+  output: string,
+  input: string,
+  columns: string[],
+  config: Record<string, unknown>
+): string {
+  if (config.strategy === 'drop_empty_rows') {
+    const nonEmptyFilter =
+      columns.length > 0
+        ? columns.map((column) => `${quoteIdentifier(column)} IS NOT NULL`).join(' OR ')
+        : 'true';
+    return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} WHERE ${nonEmptyFilter}`;
+  }
+  const rules = objectArray(config.rules);
+  const expressions = new Map(columns.map((column) => [column, quoteIdentifier(column)]));
+  const filters: string[] = [];
+  for (const rule of rules) {
+    if (typeof rule.column !== 'string' || !columns.includes(rule.column)) continue;
+    const current = expressions.get(rule.column) ?? quoteIdentifier(rule.column);
+    switch (rule.method) {
+      case 'nullify_values':
+        expressions.set(
+          rule.column,
+          `CASE WHEN ${current} IN (${unknownArray(rule.values).map(literalToSql).join(', ')}) THEN NULL ELSE ${current} END`
+        );
+        break;
+      case 'literal_fill':
+        expressions.set(rule.column, `COALESCE(${current}, ${literalToSql(rule.value)})`);
+        break;
+      case 'drop':
+        filters.push(`${quoteIdentifier(rule.column)} IS NOT NULL`);
+        break;
+      default:
+        break;
+    }
+  }
+  const projections = columns.map(
+    (column) => `${expressions.get(column) ?? quoteIdentifier(column)} AS ${quoteIdentifier(column)}`
+  );
+  return `CREATE TEMP TABLE ${output} AS SELECT ${projections.join(', ')} FROM ${input}${
+    filters.length > 0 ? ` WHERE ${filters.join(' AND ')}` : ''
+  }`;
+}
+
+function compileTypeConvertSql(
+  output: string,
+  input: string,
+  columns: string[],
+  config: Record<string, unknown>
+): string {
+  const conversions = objectArray(config.conversions);
+  const byColumn = new Map(
+    conversions.flatMap((conversion) =>
+      typeof conversion.column === 'string' && typeof conversion.type === 'string'
+        ? [[conversion.column, conversion.type] as const]
+        : []
+    )
+  );
+  const projections = columns.map((column) => {
+    const targetType = byColumn.get(column);
+    return targetType
+      ? `TRY_CAST(${quoteIdentifier(column)} AS ${duckDbType(targetType)}) AS ${quoteIdentifier(column)}`
+      : quoteIdentifier(column);
+  });
+  return `CREATE TEMP TABLE ${output} AS SELECT ${projections.join(', ')} FROM ${input}`;
+}
+
+function compileDeduplicateSql(
+  output: string,
+  input: string,
+  columns: string[],
+  config: Record<string, unknown>
+): string {
+  const keys = stringArray(config.columns);
+  if (keys.length === 0) {
+    return `CREATE TEMP TABLE ${output} AS SELECT DISTINCT * FROM ${input}`;
+  }
+  const partitionBy = keys.map(quoteIdentifier).join(', ');
+  const orderBy = sortKeysToSql(config.orderBy);
+  return `
+    CREATE TEMP TABLE ${output} AS
+    SELECT ${quoteColumnList(columns)}
+    FROM (
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY ${partitionBy}${orderBy ? ` ORDER BY ${orderBy}` : ''}) AS __rn
+      FROM ${input}
+    )
+    WHERE __rn = 1
+  `;
+}
+
+function compileSortSql(output: string, input: string, config: Record<string, unknown>): string {
+  const orderBy = sortKeysToSql(config.keys);
+  return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input}${orderBy ? ` ORDER BY ${orderBy}` : ''}`;
+}
+
+function compileCalculateFieldSql(
+  output: string,
+  input: string,
+  config: Record<string, unknown>
+): string {
+  const calculations = objectArray(config.calculations);
+  const additions = calculations.flatMap((calculation) =>
+    typeof calculation.field === 'string' && typeof calculation.expression === 'string'
+      ? [`${compileScalarExpression(calculation.expression)} AS ${quoteIdentifier(calculation.field)}`]
+      : []
+  );
+  return `CREATE TEMP TABLE ${output} AS SELECT *${
+    additions.length > 0 ? `, ${additions.join(', ')}` : ''
+  } FROM ${input}`;
+}
+
+function compileAggregateSql(output: string, input: string, config: Record<string, unknown>): string {
+  const groupBy = stringArray(config.groupBy);
+  const metrics = objectArray(config.metrics).flatMap((metric) => {
+    if (
+      typeof metric.function !== 'string' ||
+      typeof metric.expression !== 'string' ||
+      typeof metric.alias !== 'string'
+    ) {
+      return [];
+    }
+    const expression =
+      metric.expression === '*' ? '*' : compileScalarExpression(metric.expression);
+    return [
+      metric.function === 'count_distinct'
+        ? `COUNT(DISTINCT ${expression}) AS ${quoteIdentifier(metric.alias)}`
+        : `${metric.function.toUpperCase()}(${expression}) AS ${quoteIdentifier(metric.alias)}`,
+    ];
+  });
+  const groupProjection = groupBy.map(quoteIdentifier);
+  const projection = [...groupProjection, ...metrics].join(', ') || 'COUNT(*) AS "row_count"';
+  return `CREATE TEMP TABLE ${output} AS SELECT ${projection} FROM ${input}${
+    groupBy.length > 0 ? ` GROUP BY ${groupProjection.join(', ')}` : ''
+  }`;
+}
+
+function compileJoinConditionList(value: unknown): string {
+  const conditions = objectArray(value);
+  return (
+    conditions
+      .flatMap((condition) =>
+        typeof condition.left === 'string' && typeof condition.right === 'string'
+          ? [`l.${quoteIdentifier(lastQualifiedPart(condition.left))} = r.${quoteIdentifier(lastQualifiedPart(condition.right))}`]
+          : []
+      )
+      .join(' AND ') || 'true'
+  );
+}
+
+function compileJoinProjection(
+  keep: unknown,
+  leftColumns: string[],
+  rightColumns: string[],
+  conflict: unknown,
+  rightAlias?: string
+): string {
+  const items = objectArray(keep);
+  if (items.length === 0) {
+    const rightPrefix = getRightPrefix(conflict);
+    return [
+      'l.*',
+      ...rightColumns.map(
+        (column) => `r.${quoteIdentifier(column)} AS ${quoteIdentifier(`${rightPrefix}${column}`)}`
+      ),
+    ].join(', ');
+  }
+  return items
+    .flatMap((item) => {
+      if (item.side === 'left' && item.wildcard) return ['l.*'];
+      if (item.side === 'right' && item.wildcard) return ['r.*'];
+      if (typeof item.source !== 'string') return [];
+      const side =
+        rightAlias && item.source.startsWith(`${rightAlias}.`)
+          ? 'r'
+          : leftColumns.includes(lastQualifiedPart(item.source))
+            ? 'l'
+            : 'r';
+      const alias = typeof item.alias === 'string' ? item.alias : lastQualifiedPart(item.source);
+      return [`${side}.${quoteIdentifier(lastQualifiedPart(item.source))} AS ${quoteIdentifier(alias)}`];
+    })
+    .join(', ');
+}
+
+function compileAsofJoinSql(
+  output: string,
+  left: string,
+  right: string,
+  leftColumns: string[],
+  rightColumns: string[],
+  config: Record<string, unknown>
+): string {
+  const asof = isRecord(config.asof) ? config.asof : {};
+  const leftTime = lastQualifiedPart(String(asof.leftTime ?? ''));
+  const rightTime = lastQualifiedPart(String(asof.rightTime ?? ''));
+  const operator = asof.operator === '<=' ? '>=' : '<=';
+  const direction = asof.operator === '<=' ? 'ASC' : 'DESC';
+  const byConditions = objectArray(asof.by)
+    .flatMap((condition) =>
+      typeof condition.left === 'string' && typeof condition.right === 'string'
+        ? [`r.${quoteIdentifier(lastQualifiedPart(condition.right))} = l.${quoteIdentifier(lastQualifiedPart(condition.left))}`]
+        : []
+    )
+    .join(' AND ');
+  const tolerance = typeof asof.tolerance === 'string' ? asof.tolerance : '';
+  const toleranceClause = tolerance
+    ? ` AND ABS(EPOCH_MS(r.${quoteIdentifier(rightTime)}) - EPOCH_MS(l.${quoteIdentifier(leftTime)})) <= ${durationToMilliseconds(tolerance)}`
+    : '';
+  const projection = compileJoinProjection(
+    config.keep,
+    leftColumns,
+    rightColumns,
+    config.conflict,
+    typeof config.rightAlias === 'string' ? config.rightAlias : undefined
+  );
+  return `
+    CREATE TEMP TABLE ${output} AS
+    SELECT ${projection}
+    FROM ${left} l
+    LEFT JOIN LATERAL (
+      SELECT *
+      FROM ${right} r
+      WHERE r.${quoteIdentifier(rightTime)} ${operator} l.${quoteIdentifier(leftTime)}
+        ${byConditions ? `AND ${byConditions}` : ''}
+        ${toleranceClause}
+      ORDER BY r.${quoteIdentifier(rightTime)} ${direction}
+      LIMIT 1
+    ) r ON true
+  `;
+}
+
+function compileScalarExpression(expression: string): string {
+  return expression.replace(
+    /(\[`(?:[^`\\]|\\.)*`\]|\[[A-Za-z_][A-Za-z0-9_]*\])(?:\.(\[`(?:[^`\\]|\\.)*`\]|\[[A-Za-z_][A-Za-z0-9_]*\]))?/g,
+    (_match, first: string, second: string | undefined) => quoteIdentifier(unwrapFieldToken(second ?? first))
+  );
+}
+
+function sortKeysToSql(value: unknown): string {
+  return objectArray(value)
+    .flatMap((key) =>
+      typeof key.field === 'string'
+        ? [
+            `${quoteIdentifier(key.field)} ${
+              key.direction === 'desc' ? 'DESC' : 'ASC'
+            }${key.nulls === 'first' || key.nulls === 'last' ? ` NULLS ${String(key.nulls).toUpperCase()}` : ''}`,
+          ]
+        : []
+    )
+    .join(', ');
+}
+
+function quoteColumnList(columns: string[]): string {
+  return columns.map(quoteIdentifier).join(', ') || '*';
+}
+
+function literalToSql(value: unknown): string {
+  if (value === null || value === undefined) return 'NULL';
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL';
+  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function duckDbType(type: string): string {
+  switch (type) {
+    case 'string':
+      return 'VARCHAR';
+    case 'int':
+      return 'INTEGER';
+    case 'double':
+      return 'DOUBLE';
+    case 'decimal':
+      return 'DECIMAL(18, 6)';
+    case 'boolean':
+      return 'BOOLEAN';
+    case 'date':
+      return 'DATE';
+    case 'timestamp':
+      return 'TIMESTAMP';
+    default:
+      return type.toUpperCase();
+  }
+}
+
+function lastQualifiedPart(value: string): string {
+  return value.includes('.') ? value.split('.').at(-1) ?? value : value;
+}
+
+function unwrapFieldToken(token: string): string {
+  const inner = token.slice(1, -1);
+  return inner.startsWith('`') && inner.endsWith('`') ? inner.slice(1, -1) : inner;
+}
+
+function getRightPrefix(conflict: unknown): string {
+  if (isRecord(conflict) && typeof conflict.rightPrefix === 'string') {
+    return conflict.rightPrefix;
+  }
+  return 'right_';
+}
+
+function durationToMilliseconds(value: string): number {
+  const match = /^(\d+(?:\.\d+)?)(ms|s|m|h|d)$/.exec(value);
+  if (!match) return 0;
+  const amount = Number(match[1]);
+  const unit = match[2];
+  const multipliers: Record<string, number> = {
+    ms: 1,
+    s: 1_000,
+    m: 60_000,
+    h: 3_600_000,
+    d: 86_400_000,
+  };
+  return amount * (multipliers[unit] ?? 0);
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function unknownArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function objectArray(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function normalizeStatus(value: string): DataTaskStatus {

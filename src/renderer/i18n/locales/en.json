@@ -164,8 +164,48 @@
       "ruleMethod": "Method",
       "noRules": "No rules",
       "advanced": "Advanced options",
+      "summary": "Summary",
+      "details": "Details",
+      "noConfig": "No config",
+      "operatorDsl": "Operator DSL",
+      "operatorDslPlaceholder": "Enter DSL for the current operator...",
+      "applyOperatorDsl": "Apply",
+      "operatorDslInvalid": "Operator DSL validation failed",
+      "operatorDslValid": "DSL is valid",
+      "operatorDslApplied": "DSL applied",
       "noNodeSelected": "Select a node to configure it here.",
       "emptyCanvas": "Add operators from the left to start building the flow.",
+      "importDsl": "Import DSL",
+      "exportDsl": "Export DSL",
+      "applyDsl": "Apply DSL",
+      "dslPlaceholder": "Paste data task DSL...",
+      "dslInvalid": "DSL parse failed",
+      "dslDiagnostics": {
+        "invalidQualifiedField": "Invalid field reference {{value}}; use [table_name].[field_name]",
+        "emptyDsl": "DSL content cannot be empty",
+        "noCommands": "No parseable DSL commands found",
+        "multiSourceMissingFrom": "Multi-source tasks must use from <alias> to choose the main source",
+        "missingInputSource": "At least one input source is required",
+        "unsupportedCommand": "Unsupported DSL command: {{value}}",
+        "invalidInputSource": "Cannot parse input source: {{value}}",
+        "invalidFieldMapping": "Cannot parse field mapping: {{value}}",
+        "invalidJoin": "Cannot parse join: {{value}}",
+        "invalidAsofJoin": "Cannot parse asof join: {{value}}",
+        "inputSourceMissingAlias": "Input source must declare as <alias>",
+        "duplicateInputAlias": "Duplicate input source alias: {{alias}}",
+        "mainSourceNotFound": "Main input source not found: {{alias}}",
+        "joinRightInputNotFound": "Join right input not found: {{alias}}",
+        "asofMissingOn": "ASOF join must declare an on time-neighbor condition",
+        "asofNearestMissingTolerance": "ASOF nearest must declare tolerance",
+        "joinMissingOn": "Non-cross join must declare on conditions",
+        "operatorDslTypeMismatch": "This node expects {{expected}} DSL, but got {{actual}}",
+        "operatorDslMultipleCommands": "A single operator config can contain only one DSL command"
+      },
+      "completionGroups": {
+        "keywords": "Keywords",
+        "snippets": "Snippets",
+        "types": "Types"
+      },
       "operators": {
         "input_source": "Input source",
         "filter": "Filter",
@@ -174,6 +214,7 @@
         "missing_value": "Missing values",
         "type_convert": "Type convert",
         "sort": "Sort",
+        "join": "Join",
         "aggregate": "Aggregate",
         "calculate_field": "Calculated field",
         "field_mapping": "Field mapping",
@@ -181,9 +222,99 @@
       },
       "ruleMethods": {
         "skip": "Skip",
+        "nullify_values": "Nullify values",
+        "literal_fill": "Literal fill",
         "forward_fill": "Forward fill",
+        "backward_fill": "Backward fill",
+        "mean_fill": "Mean fill",
+        "median_fill": "Median fill",
         "mode_fill": "Mode fill",
         "drop": "Drop"
+      },
+      "summaryLabels": {
+        "source": "Source",
+        "alias": "Alias",
+        "format": "Format",
+        "dataset": "Dataset",
+        "file": "File",
+        "sheet": "Sheet",
+        "encoding": "Encoding",
+        "mode": "Mode",
+        "columns": "Columns",
+        "fields": "Fields",
+        "mappings": "Mappings",
+        "condition": "Condition",
+        "strategy": "Strategy",
+        "keep": "Keep",
+        "orderBy": "Order by",
+        "rules": "Rules",
+        "conversions": "Casts",
+        "sortKeys": "Sort keys",
+        "calculations": "Calcs",
+        "expression": "Expression",
+        "groupBy": "Group by",
+        "metrics": "Metrics",
+        "joinType": "Join type",
+        "rightInput": "Right input",
+        "cardinality": "Cardinality",
+        "conditions": "Conditions",
+        "by": "By",
+        "direction": "Direction",
+        "tolerance": "Tolerance",
+        "conflict": "Conflict",
+        "destination": "Destination",
+        "table": "Table",
+        "dsl": "DSL"
+      },
+      "values": {
+        "notSet": "Not set",
+        "more": "+{{count}} more",
+        "sources": {
+          "task": "Task input",
+          "file": "File",
+          "dataset": "Dataset"
+        },
+        "selectModes": {
+          "include": "Include fields",
+          "exclude": "Drop fields"
+        },
+        "mappingModes": {
+          "map": "Field mapping",
+          "rename": "Field rename"
+        },
+        "deduplicateStrategies": {
+          "all_columns": "All columns",
+          "by_columns": "By columns"
+        },
+        "keepRules": {
+          "first": "First",
+          "last": "Last"
+        },
+        "missingStrategies": {
+          "by_column": "By column",
+          "drop_empty_rows": "Drop empty rows",
+          "drop_rows_by_nulls": "Drop rows by nulls"
+        },
+        "joinTypes": {
+          "inner": "Inner",
+          "left": "Left",
+          "right": "Right",
+          "full": "Full",
+          "cross": "Cross",
+          "semi": "Semi",
+          "anti": "Anti",
+          "asof": "ASOF"
+        },
+        "destinations": {
+          "duckdb_table": "DuckDB table",
+          "dataset": "Dataset",
+          "file": "File"
+        },
+        "outputModes": {
+          "replace": "Replace",
+          "append": "Append",
+          "error_if_exists": "Error if exists"
+        }
       }
     },
     "relative": {
