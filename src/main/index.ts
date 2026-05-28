@@ -55,6 +55,7 @@ import type {
   DataDashboardQuery,
   DataImportDatasetInput,
   DataRunTaskInput,
+  DataWorkflowSaveInput,
 } from '../renderer/types';
 import { remoteManager, type AgentExecutor } from './remote/remote-manager';
 import { remoteConfigStore } from './remote/remote-config-store';
@@ -1540,6 +1541,24 @@ ipcMain.handle('data.runTask', async (_event, id: string, payload?: DataRunTaskI
     return await requireDataTaskStore().runTask(id, payload ?? {});
   } catch (error) {
     logError('[Data] Error running task:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('data.getTaskWorkflow', async (_event, id: string) => {
+  try {
+    return await requireDataTaskStore().getTaskWorkflow(id);
+  } catch (error) {
+    logError('[Data] Error getting task workflow:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('data.saveTaskWorkflow', async (_event, id: string, payload: DataWorkflowSaveInput) => {
+  try {
+    return await requireDataTaskStore().saveTaskWorkflow(id, payload);
+  } catch (error) {
+    logError('[Data] Error saving task workflow:', error);
     throw error;
   }
 });

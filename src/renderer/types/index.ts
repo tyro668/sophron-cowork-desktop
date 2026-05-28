@@ -228,6 +228,10 @@ export interface DataDashboard {
 
 export interface DataDashboardQuery {
   query?: string;
+  taskOffset?: number;
+  taskLimit?: number;
+  datasetOffset?: number;
+  datasetLimit?: number;
 }
 
 export interface DataCreateTaskInput {
@@ -242,6 +246,69 @@ export interface DataRunTaskInput {
 export interface DataImportDatasetInput {
   filePath: string;
   name?: string;
+}
+
+export type DataWorkflowOperatorType =
+  | 'input_source'
+  | 'filter'
+  | 'field_select'
+  | 'deduplicate'
+  | 'missing_value'
+  | 'type_convert'
+  | 'sort'
+  | 'aggregate'
+  | 'calculate_field'
+  | 'field_mapping'
+  | 'output';
+
+export interface DataWorkflowNode {
+  id: string;
+  taskId: string;
+  type: DataWorkflowOperatorType;
+  label: string;
+  x: number;
+  y: number;
+  config: Record<string, unknown>;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface DataWorkflowEdge {
+  id: string;
+  taskId: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  sourceHandle: string | null;
+  targetHandle: string | null;
+  createdAt: number;
+}
+
+export interface DataTaskWorkflow {
+  task: DataCleaningTask;
+  nodes: DataWorkflowNode[];
+  edges: DataWorkflowEdge[];
+}
+
+export interface DataWorkflowNodeInput {
+  id: string;
+  type: DataWorkflowOperatorType;
+  label: string;
+  x: number;
+  y: number;
+  config?: Record<string, unknown>;
+}
+
+export interface DataWorkflowEdgeInput {
+  id: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  sourceHandle?: string | null;
+  targetHandle?: string | null;
+}
+
+export interface DataWorkflowSaveInput {
+  nodes: DataWorkflowNodeInput[];
+  edges: DataWorkflowEdgeInput[];
 }
 
 // Skills types

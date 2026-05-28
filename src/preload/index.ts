@@ -32,6 +32,8 @@ import type {
   DataDataset,
   DataImportDatasetInput,
   DataRunTaskInput,
+  DataTaskWorkflow,
+  DataWorkflowSaveInput,
 } from '../renderer/types';
 import type { DiagnosticInput, DiagnosticResult } from '../renderer/types';
 import type {
@@ -173,6 +175,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('data.createTask', payload),
     runTask: (id: string, payload?: DataRunTaskInput): Promise<DataCleaningTask> =>
       ipcRenderer.invoke('data.runTask', id, payload),
+    getTaskWorkflow: (id: string): Promise<DataTaskWorkflow> =>
+      ipcRenderer.invoke('data.getTaskWorkflow', id),
+    saveTaskWorkflow: (id: string, payload: DataWorkflowSaveInput): Promise<DataTaskWorkflow> =>
+      ipcRenderer.invoke('data.saveTaskWorkflow', id, payload),
     importDataset: (payload: DataImportDatasetInput): Promise<DataDataset> =>
       ipcRenderer.invoke('data.importDataset', payload),
     deleteTask: (id: string): Promise<{ success: boolean }> =>
@@ -487,6 +493,11 @@ declare global {
         getDashboard: (payload?: DataDashboardQuery) => Promise<DataDashboard>;
         createTask: (payload: DataCreateTaskInput) => Promise<DataCleaningTask>;
         runTask: (id: string, payload?: DataRunTaskInput) => Promise<DataCleaningTask>;
+        getTaskWorkflow: (id: string) => Promise<DataTaskWorkflow>;
+        saveTaskWorkflow: (
+          id: string,
+          payload: DataWorkflowSaveInput
+        ) => Promise<DataTaskWorkflow>;
         importDataset: (payload: DataImportDatasetInput) => Promise<DataDataset>;
         deleteTask: (id: string) => Promise<{ success: boolean }>;
       };

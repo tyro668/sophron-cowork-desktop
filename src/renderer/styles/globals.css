@@ -152,6 +152,48 @@
   .badge {
     @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
   }
+
+  .workflow-react-flow {
+    --xy-background-color: var(--color-background);
+    --xy-edge-stroke-default: rgba(100, 116, 139, 0.68);
+    --xy-edge-stroke-selected-default: var(--color-accent);
+    --xy-connectionline-stroke-default: var(--color-accent);
+    --xy-connectionline-stroke-width-default: 1.8;
+    --xy-handle-background-color-default: var(--color-background);
+    --xy-handle-border-color-default: rgba(126, 138, 154, 0.7);
+    --xy-minimap-background-color-default: rgba(25, 169, 154, 0.08);
+    --xy-controls-button-background-color-default: var(--color-background);
+    --xy-controls-button-background-color-hover-default: var(--color-surface-hover);
+    --xy-controls-button-color-default: var(--color-text-secondary);
+    --xy-controls-button-border-color-default: var(--color-border-muted);
+  }
+
+  .workflow-react-flow .react-flow__node {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .workflow-react-flow .react-flow__handle {
+    width: 12px;
+    height: 12px;
+  }
+
+  .workflow-react-flow .workflow-node-handle {
+    box-shadow: 0 0 0 2px var(--color-background);
+  }
+
+  .workflow-react-flow .react-flow__controls,
+  .workflow-react-flow .react-flow__minimap {
+    border: 1px solid var(--color-border-muted);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: var(--shadow-soft);
+  }
+
+  .workflow-react-flow .react-flow__controls-button {
+    border-bottom-color: var(--color-border-muted);
+  }
 }
 
 @layer utilities {

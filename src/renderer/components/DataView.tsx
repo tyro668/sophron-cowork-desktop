@@ -1,29 +1,82 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  Background,
+  ConnectionMode,
+  Controls,
+  Handle,
+  MarkerType,
+  MiniMap,
+  Position,
+  ReactFlow,
+  ReactFlowProvider,
+  ViewportPortal,
+  applyEdgeChanges,
+  applyNodeChanges,
+  reconnectEdge,
+  type Connection,
+  type Edge,
+  type EdgeChange,
+  type FinalConnectionState,
+  type HandleType,
+  type Node,
+  type NodeChange,
+  type NodeProps,
+  type OnConnectStartParams,
+  useReactFlow,
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 import {
   AlertCircle,
   ArrowLeft,
+  ArrowUpDown,
   BarChart3,
+  Calculator,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock3,
   Cloud,
+  Columns3,
+  Copy,
   Database,
+  Droplet,
+  Filter,
   Folder,
   MoreHorizontal,
   PencilLine,
   Play,
   Plus,
+  Repeat2,
+  Save,
   Search,
+  Sigma,
   Table2,
   Trash2,
   UploadCloud,
   Workflow,
+  X,
   type LucideIcon,
 } from 'lucide-react';
-import type { DataCleaningTask, DataDashboard, DataDataset, DataTaskStatus } from '../types';
+import type {
+  DataCleaningTask,
+  DataDashboard,
+  DataDataset,
+  DataTaskStatus,
+  DataTaskWorkflow,
+  DataWorkflowEdge,
+  DataWorkflowNode,
+  DataWorkflowOperatorType,
+} from '../types';
 
 type DataTab = 'tasks' | 'datasets';
 
@@ -57,12 +110,125 @@ const TASK_ICON_STYLES = [
 ];
 
 const TABLE_PAGE_SIZE = 10;
+const WORKFLOW_NODE_WIDTH = 116;
+const WORKFLOW_NODE_HEIGHT = 36;
+const WORKFLOW_OPERATOR_MIME = 'application/x-sophron-workflow-operator';
+const WORKFLOW_ALIGNMENT_THRESHOLD = 6;
+const WORKFLOW_ALIGNMENT_GUIDE_PADDING = 32;
+
+type WorkflowFlowNode = Node<{ workflowNode: DataWorkflowNode }, 'operator'>;
+type WorkflowFlowEdge = Edge<Record<string, never>>;
+type WorkflowAlignmentLine =
+  | { id: string; orientation: 'horizontal'; x1: number; x2: number; y: number }
+  | { id: string; orientation: 'vertical'; x: number; y1: number; y2: number };
+
+interface WorkflowAlignmentGuides {
+  horizontal: WorkflowAlignmentLine | null;
+  vertical: WorkflowAlignmentLine | null;
+}
+
+const EMPTY_WORKFLOW_ALIGNMENT_GUIDES: WorkflowAlignmentGuides = {
+  horizontal: null,
+  vertical: null,
+};
+
+const OPERATOR_CATALOG: Array<{
+  type: DataWorkflowOperatorType;
+  labelKey: string;
+  Icon: LucideIcon;
+  colorClassName: string;
+  nodeClassName: string;
+}> = [
+  {
+    type: 'input_source',
+    labelKey: 'data.workflow.operators.input_source',
+    Icon: Database,
+    colorClassName: 'text-success bg-success/10',
+    nodeClassName: 'border-success/35 bg-success/5 text-success',
+  },
+  {
+    type: 'filter',
+    labelKey: 'data.workflow.operators.filter',
+    Icon: Filter,
+    colorClassName: 'text-blue-500 bg-blue-500/10',
+    nodeClassName: 'border-blue-500/35 bg-blue-500/5 text-blue-500',
+  },
+  {
+    type: 'field_select',
+    labelKey: 'data.workflow.operators.field_select',
+    Icon: Columns3,
+    colorClassName: 'text-teal-500 bg-teal-500/10',
+    nodeClassName: 'border-teal-500/35 bg-teal-500/5 text-teal-500',
+  },
+  {
+    type: 'deduplicate',
+    labelKey: 'data.workflow.operators.deduplicate',
+    Icon: Copy,
+    colorClassName: 'text-violet-500 bg-violet-500/10',
+    nodeClassName: 'border-violet-500/35 bg-violet-500/5 text-violet-500',
+  },
+  {
+    type: 'missing_value',
+    labelKey: 'data.workflow.operators.missing_value',
+    Icon: Droplet,
+    colorClassName: 'text-warning bg-warning/10',
+    nodeClassName: 'border-warning/40 bg-warning/5 text-warning',
+  },
+  {
+    type: 'type_convert',
+    labelKey: 'data.workflow.operators.type_convert',
+    Icon: Repeat2,
+    colorClassName: 'text-blue-500 bg-blue-500/10',
+    nodeClassName: 'border-blue-500/35 bg-blue-500/5 text-blue-500',
+  },
+  {
+    type: 'sort',
+    labelKey: 'data.workflow.operators.sort',
+    Icon: ArrowUpDown,
+    colorClassName: 'text-success bg-success/10',
+    nodeClassName: 'border-success/35 bg-success/5 text-success',
+  },
+  {
+    type: 'aggregate',
+    labelKey: 'data.workflow.operators.aggregate',
+    Icon: Sigma,
+    colorClassName: 'text-violet-500 bg-violet-500/10',
+    nodeClassName: 'border-violet-500/35 bg-violet-500/5 text-violet-500',
+  },
+  {
+    type: 'calculate_field',
+    labelKey: 'data.workflow.operators.calculate_field',
+    Icon: Calculator,
+    colorClassName: 'text-violet-500 bg-violet-500/10',
+    nodeClassName: 'border-violet-500/35 bg-violet-500/5 text-violet-500',
+  },
+  {
+    type: 'field_mapping',
+    labelKey: 'data.workflow.operators.field_mapping',
+    Icon: Table2,
+    colorClassName: 'text-teal-500 bg-teal-500/10',
+    nodeClassName: 'border-teal-500/35 bg-teal-500/5 text-teal-500',
+  },
+  {
+    type: 'output',
+    labelKey: 'data.workflow.operators.output',
+    Icon: UploadCloud,
+    colorClassName: 'text-blue-500 bg-blue-500/10',
+    nodeClassName: 'border-blue-500/35 bg-blue-500/5 text-blue-500',
+  },
+];
+
+const WORKFLOW_NODE_TYPES = {
+  operator: WorkflowOperatorNode,
+};
 
 export function DataView() {
   const { t } = useTranslation();
   const [dashboard, setDashboard] = useState<DataDashboard>(EMPTY_DASHBOARD);
   const [activeTab, setActiveTab] = useState<DataTab>('tasks');
   const [searchQuery, setSearchQuery] = useState('');
+  const [taskPage, setTaskPage] = useState(1);
+  const [datasetPage, setDatasetPage] = useState(1);
   const [, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
@@ -70,8 +236,10 @@ export function DataView() {
 
   const isDataApiAvailable = Boolean(window.electronAPI?.data);
 
-  const loadDashboard = useCallback(async (options: { preserveError?: boolean; query?: string } = {}) => {
+  const loadDashboard = useCallback(async (options: { preserveError?: boolean; query?: string; taskPage?: number; datasetPage?: number } = {}) => {
     if (!window.electronAPI?.data) return;
+    const requestedTaskPage = Math.max(1, options.taskPage ?? taskPage);
+    const requestedDatasetPage = Math.max(1, options.datasetPage ?? datasetPage);
     setLoading(true);
     if (!options.preserveError) {
       setError(null);
@@ -79,6 +247,10 @@ export function DataView() {
     try {
       const nextDashboard = await window.electronAPI.data.getDashboard({
         query: options.query ?? searchQuery,
+        taskOffset: (requestedTaskPage - 1) * TABLE_PAGE_SIZE,
+        taskLimit: TABLE_PAGE_SIZE,
+        datasetOffset: (requestedDatasetPage - 1) * TABLE_PAGE_SIZE,
+        datasetLimit: TABLE_PAGE_SIZE,
       });
       setDashboard(nextDashboard);
     } catch (err) {
@@ -86,7 +258,7 @@ export function DataView() {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery]);
+  }, [datasetPage, searchQuery, taskPage]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -94,6 +266,26 @@ export function DataView() {
     }, searchQuery ? 180 : 0);
     return () => window.clearTimeout(timer);
   }, [loadDashboard, searchQuery]);
+
+  useEffect(() => {
+    const pageCount = getTablePageCount(dashboard.totalTasks);
+    if (taskPage > pageCount) {
+      setTaskPage(pageCount);
+    }
+  }, [dashboard.totalTasks, taskPage]);
+
+  useEffect(() => {
+    const pageCount = getTablePageCount(dashboard.totalDatasets);
+    if (datasetPage > pageCount) {
+      setDatasetPage(pageCount);
+    }
+  }, [dashboard.totalDatasets, datasetPage]);
+
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value);
+    setTaskPage(1);
+    setDatasetPage(1);
+  }, []);
 
   const summaryCards = useMemo(
     () => [
@@ -150,17 +342,18 @@ export function DataView() {
     try {
       setActiveTab('tasks');
       setSearchQuery('');
+      setTaskPage(1);
       await window.electronAPI.data.createTask({
-        name: `${t('data.defaultTaskName')} ${dashboard.totalTasks + 1}`,
+        name: `${t('data.defaultTaskName')} ${dashboard.summary.taskCount + 1}`,
       });
-      await loadDashboard({ query: '' });
+      await loadDashboard({ query: '', taskPage: 1 });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       await loadDashboard({ preserveError: true, query: '' });
     } finally {
       setActionId(null);
     }
-  }, [dashboard.totalTasks, loadDashboard, t]);
+  }, [dashboard.summary.taskCount, loadDashboard, t]);
 
   const handleRunTask = useCallback(
     async (task: DataCleaningTask) => {
@@ -226,16 +419,24 @@ export function DataView() {
   );
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-background">
-      <div className="mx-auto w-full max-w-[1080px] px-7 py-6 lg:px-8">
+    <div
+      className={`flex-1 min-h-0 bg-background ${
+        editingTask ? 'overflow-hidden' : 'overflow-y-auto'
+      }`}
+    >
+      <div
+        className={`mx-auto w-full max-w-[1120px] px-3 py-3 sm:px-4 ${
+          editingTask ? 'flex h-full min-h-0 flex-col' : ''
+        }`}
+      >
         {!editingTask && (
-          <header className="mb-5 flex min-h-9 flex-col gap-3 lg:flex-row lg:items-start lg:justify-end">
+          <header className="mb-3 flex min-h-9 flex-col gap-3 lg:flex-row lg:items-start lg:justify-end">
             <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
               <div className="relative w-full sm:w-[20rem] xl:w-[22rem]">
                 <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
                 <input
                   value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
+                  onChange={(event) => handleSearchChange(event.target.value)}
                   placeholder={t('data.searchPlaceholder')}
                   className="h-9 w-full rounded-lg border border-border-muted bg-background/94 pl-9 pr-3 text-[13px] font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
                 />
@@ -253,17 +454,23 @@ export function DataView() {
         )}
 
         {error && (
-          <div className="mb-4 flex items-start gap-2 rounded-lg border border-error/20 bg-error/10 px-3.5 py-2.5 text-[13px] text-error">
+          <div className="mb-4 flex shrink-0 items-start gap-2 rounded-lg border border-error/20 bg-error/10 px-3.5 py-2.5 text-[13px] text-error">
             <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
         {editingTask ? (
-          <TaskEditor onBack={() => setEditingTaskId(null)} />
+          <TaskEditor
+            task={editingTask}
+            actionId={actionId}
+            onBack={() => setEditingTaskId(null)}
+            onRun={handleRunTask}
+            onWorkflowSaved={() => loadDashboard({ preserveError: true })}
+          />
         ) : (
           <>
-            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {summaryCards.map(({ key, label, description, value, Icon, iconClassName }) => (
                 <StatCard
                   key={key}
@@ -276,7 +483,7 @@ export function DataView() {
               ))}
             </section>
 
-            <section className="mt-5">
+            <section className="mt-3">
               <div className="mb-2 flex min-h-10 flex-col gap-2.5 sm:flex-row sm:items-end sm:justify-between">
                 <div className="flex items-end gap-5">
                   <TabButton
@@ -320,6 +527,8 @@ export function DataView() {
 
               <PaginationFooter
                 count={activeTab === 'tasks' ? dashboard.totalTasks : dashboard.totalDatasets}
+                currentPage={activeTab === 'tasks' ? taskPage : datasetPage}
+                onPageChange={activeTab === 'tasks' ? setTaskPage : setDatasetPage}
               />
             </section>
           </>
@@ -329,20 +538,1139 @@ export function DataView() {
   );
 }
 
-function TaskEditor({ onBack }: { onBack: () => void }) {
+function TaskEditor({
+  task,
+  actionId,
+  onBack,
+  onRun,
+  onWorkflowSaved,
+}: {
+  task: DataCleaningTask;
+  actionId: string | null;
+  onBack: () => void;
+  onRun: (task: DataCleaningTask) => void | Promise<void>;
+  onWorkflowSaved: () => void | Promise<void>;
+}) {
   const { t } = useTranslation();
+  const [workflow, setWorkflow] = useState<DataTaskWorkflow | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [activeInspectorTab, setActiveInspectorTab] = useState<'config' | 'logs'>('config');
+  const [saving, setSaving] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const loadWorkflow = useCallback(async () => {
+    if (!window.electronAPI?.data) return;
+    setLocalError(null);
+    try {
+      const nextWorkflow = await window.electronAPI.data.getTaskWorkflow(task.id);
+      setWorkflow(nextWorkflow);
+      setSelectedNodeId((current) => current ?? nextWorkflow.nodes[0]?.id ?? null);
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : String(err));
+    }
+  }, [task.id]);
+
+  useEffect(() => {
+    void loadWorkflow();
+  }, [loadWorkflow]);
+
+  const nodes = workflow?.nodes ?? [];
+  const edges = workflow?.edges ?? [];
+  const selectedNode = useMemo(
+    () => nodes.find((node) => node.id === selectedNodeId) ?? nodes[0] ?? null,
+    [nodes, selectedNodeId]
+  );
+  const isBusy = saving || actionId === task.id;
+
+  const updateSelectedNode = useCallback(
+    (updater: (node: DataWorkflowNode) => DataWorkflowNode) => {
+      if (!selectedNodeId) return;
+      setWorkflow((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          nodes: current.nodes.map((node) => (node.id === selectedNodeId ? updater(node) : node)),
+        };
+      });
+    },
+    [selectedNodeId]
+  );
+
+  const addOperator = useCallback(
+    (type: DataWorkflowOperatorType, position?: { x: number; y: number }) => {
+      const catalog = getOperatorCatalog(type);
+      const createdAt = Date.now();
+      const id = makeLocalId('node');
+      setSelectedNodeId(id);
+      setWorkflow((current) => {
+        if (!current) return current;
+        const fallbackPosition = getNextWorkflowNodePosition(current.nodes.length);
+        const x = Math.max(0, Math.round(position?.x ?? fallbackPosition.x));
+        const y = Math.max(0, Math.round(position?.y ?? fallbackPosition.y));
+        const nextNode: DataWorkflowNode = {
+          id,
+          taskId: task.id,
+          type,
+          label: t(catalog.labelKey),
+          x,
+          y,
+          config: {},
+          createdAt,
+          updatedAt: createdAt,
+        };
+        return {
+          ...current,
+          nodes: [...current.nodes, nextNode],
+        };
+      });
+    },
+    [t, task.id]
+  );
+
+  const moveNode = useCallback((nodeId: string, x: number, y: number) => {
+    setWorkflow((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        nodes: current.nodes.map((node) =>
+          node.id === nodeId
+            ? {
+                ...node,
+                x,
+                y,
+                updatedAt: Date.now(),
+              }
+            : node
+        ),
+      };
+    });
+  }, []);
+
+  const connectNodes = useCallback(
+    (sourceNodeId: string, targetNodeId: string, sourceHandle = 'output', targetHandle = 'input') => {
+      if (sourceNodeId === targetNodeId) return;
+      setWorkflow((current) => {
+        if (!current) return current;
+        const exists = current.edges.some(
+          (edge) =>
+            edge.sourceNodeId === sourceNodeId &&
+            edge.targetNodeId === targetNodeId &&
+            edge.sourceHandle === sourceHandle &&
+            edge.targetHandle === targetHandle
+        );
+        if (exists) return current;
+        return {
+          ...current,
+          edges: [
+            ...current.edges,
+            {
+              id: makeLocalId('edge'),
+              taskId: task.id,
+              sourceNodeId,
+              targetNodeId,
+              sourceHandle,
+              targetHandle,
+              createdAt: Date.now(),
+            },
+          ],
+        };
+      });
+    },
+    [task.id]
+  );
+  const reconnectWorkflowEdge = useCallback((edgeId: string, connection: Connection) => {
+    if (!connection.source || !connection.target || connection.source === connection.target) return;
+    setWorkflow((current) => {
+      if (!current) return current;
+      const duplicate = current.edges.some(
+        (edge) =>
+          edge.id !== edgeId &&
+          edge.sourceNodeId === connection.source &&
+          edge.targetNodeId === connection.target &&
+          edge.sourceHandle === (connection.sourceHandle ?? 'output') &&
+          edge.targetHandle === (connection.targetHandle ?? 'input')
+      );
+      if (duplicate) {
+        return {
+          ...current,
+          edges: current.edges.filter((edge) => edge.id !== edgeId),
+        };
+      }
+      return {
+        ...current,
+        edges: current.edges.map((edge) =>
+          edge.id === edgeId
+            ? {
+                ...edge,
+                sourceNodeId: connection.source,
+                targetNodeId: connection.target,
+                sourceHandle: connection.sourceHandle ?? 'output',
+                targetHandle: connection.targetHandle ?? 'input',
+              }
+            : edge
+        ),
+      };
+    });
+  }, []);
+  const removeWorkflowEdge = useCallback((edgeId: string) => {
+    setWorkflow((current) =>
+      current
+        ? {
+            ...current,
+            edges: current.edges.filter((edge) => edge.id !== edgeId),
+          }
+        : current
+    );
+  }, []);
+
+  const saveWorkflow = useCallback(async (): Promise<DataTaskWorkflow | null> => {
+    if (!workflow || !window.electronAPI?.data) return null;
+    setSaving(true);
+    setLocalError(null);
+    try {
+      const saved = await window.electronAPI.data.saveTaskWorkflow(task.id, {
+        nodes: workflow.nodes.map((node) => ({
+          id: node.id,
+          type: node.type,
+          label: node.label,
+          x: node.x,
+          y: node.y,
+          config: node.config,
+        })),
+        edges: workflow.edges.map((edge) => ({
+          id: edge.id,
+          sourceNodeId: edge.sourceNodeId,
+          targetNodeId: edge.targetNodeId,
+          sourceHandle: edge.sourceHandle,
+          targetHandle: edge.targetHandle,
+        })),
+      });
+      setWorkflow(saved);
+      setSelectedNodeId((current) => current ?? saved.nodes[0]?.id ?? null);
+      await onWorkflowSaved();
+      return saved;
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : String(err));
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  }, [onWorkflowSaved, task.id, workflow]);
+
+  const handleRun = useCallback(async () => {
+    const saved = await saveWorkflow();
+    await onRun(saved?.task ?? task);
+    await loadWorkflow();
+  }, [loadWorkflow, onRun, saveWorkflow, task]);
 
   return (
-    <section className="min-h-[28rem]">
-      <button
-        onClick={onBack}
-        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" />
-        {t('data.editor.back')}
-      </button>
+    <section className="flex flex-1 min-h-0 flex-col">
+      <div className="mb-3 flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-center gap-4">
+          <button
+            onClick={onBack}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            {t('data.editor.back')}
+          </button>
+          <div className="flex min-w-0 items-center gap-2">
+            <h1 className="truncate text-[15px] font-medium text-text-secondary">{task.name}</h1>
+            <button
+              className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent"
+              title={t('common.edit')}
+            >
+              <PencilLine className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => void saveWorkflow()}
+            disabled={isBusy || !workflow}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            <Save className="h-3.5 w-3.5" />
+            {saving ? t('common.saving') : t('common.save')}
+          </button>
+          <button
+            onClick={() => void handleRun()}
+            disabled={isBusy || !workflow}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            <Play className="h-3.5 w-3.5" />
+            {t('data.editor.runTask')}
+          </button>
+          <button className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft">
+            <MoreHorizontal className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      {localError && (
+        <div className="mb-3 flex shrink-0 items-start gap-2 rounded-lg border border-error/20 bg-error/10 px-3.5 py-2.5 text-[13px] text-error">
+          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+          <span>{localError}</span>
+        </div>
+      )}
+
+      {!workflow ? (
+        <div className="flex flex-1 min-h-0 items-center justify-center rounded-xl border border-border-muted bg-background/90 text-xs text-text-muted shadow-card">
+          {t('common.loading')}
+        </div>
+      ) : (
+        <div className="grid flex-1 min-h-0 grid-cols-[13rem_minmax(0,1fr)] items-stretch gap-3">
+          <WorkflowOperatorPalette
+            operators={OPERATOR_CATALOG}
+            onAddOperator={addOperator}
+          />
+          <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_minmax(0,0.56fr)] gap-3">
+            <WorkflowCanvas
+              nodes={nodes}
+              edges={edges}
+              selectedNodeId={selectedNode?.id ?? null}
+              onSelectNode={setSelectedNodeId}
+              onAddNode={addOperator}
+              onMoveNode={moveNode}
+              onConnectNodes={connectNodes}
+              onReconnectEdge={reconnectWorkflowEdge}
+              onRemoveEdge={removeWorkflowEdge}
+            />
+            <WorkflowInspector
+              node={selectedNode}
+              activeTab={activeInspectorTab}
+              onActiveTabChange={setActiveInspectorTab}
+              onNodeChange={updateSelectedNode}
+            />
+          </div>
+        </div>
+      )}
     </section>
   );
+}
+
+function WorkflowOperatorPalette({
+  operators,
+  onAddOperator,
+}: {
+  operators: typeof OPERATOR_CATALOG;
+  onAddOperator: (type: DataWorkflowOperatorType) => void;
+}) {
+  const { t } = useTranslation();
+  const handleDragStart = useCallback(
+    (event: DragEvent<HTMLButtonElement>, type: DataWorkflowOperatorType) => {
+      event.dataTransfer.setData(WORKFLOW_OPERATOR_MIME, type);
+      event.dataTransfer.effectAllowed = 'copy';
+    },
+    []
+  );
+
+  return (
+    <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border-muted bg-background/90 p-2 shadow-card">
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+        {operators.map(({ type, labelKey, Icon, colorClassName }) => (
+          <button
+            key={type}
+            draggable
+            onDragStart={(event) => handleDragStart(event, type)}
+            onClick={() => onAddOperator(type)}
+            className="flex h-9 w-full items-center gap-2 rounded-lg border border-border-muted bg-background/94 px-2.5 text-left text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+          >
+            <span
+              className={`inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md ${colorClassName}`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+            </span>
+            <span className="truncate">{t(labelKey)}</span>
+          </button>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+function WorkflowCanvas({
+  nodes,
+  edges,
+  selectedNodeId,
+  onSelectNode,
+  onAddNode,
+  onMoveNode,
+  onConnectNodes,
+  onReconnectEdge,
+  onRemoveEdge,
+}: {
+  nodes: DataWorkflowNode[];
+  edges: DataWorkflowEdge[];
+  selectedNodeId: string | null;
+  onSelectNode: (id: string) => void;
+  onAddNode: (type: DataWorkflowOperatorType, position?: { x: number; y: number }) => void;
+  onMoveNode: (id: string, x: number, y: number) => void;
+  onConnectNodes: (
+    sourceNodeId: string,
+    targetNodeId: string,
+    sourceHandle?: string,
+    targetHandle?: string
+  ) => void;
+  onReconnectEdge: (edgeId: string, connection: Connection) => void;
+  onRemoveEdge: (edgeId: string) => void;
+}) {
+  return (
+    <ReactFlowProvider>
+      <WorkflowCanvasContent
+        nodes={nodes}
+        edges={edges}
+        selectedNodeId={selectedNodeId}
+        onSelectNode={onSelectNode}
+        onAddNode={onAddNode}
+        onMoveNode={onMoveNode}
+        onConnectNodes={onConnectNodes}
+        onReconnectEdge={onReconnectEdge}
+        onRemoveEdge={onRemoveEdge}
+      />
+    </ReactFlowProvider>
+  );
+}
+
+function WorkflowCanvasContent({
+  nodes,
+  edges,
+  selectedNodeId,
+  onSelectNode,
+  onAddNode,
+  onMoveNode,
+  onConnectNodes,
+  onReconnectEdge,
+  onRemoveEdge,
+}: {
+  nodes: DataWorkflowNode[];
+  edges: DataWorkflowEdge[];
+  selectedNodeId: string | null;
+  onSelectNode: (id: string) => void;
+  onAddNode: (type: DataWorkflowOperatorType, position?: { x: number; y: number }) => void;
+  onMoveNode: (id: string, x: number, y: number) => void;
+  onConnectNodes: (
+    sourceNodeId: string,
+    targetNodeId: string,
+    sourceHandle?: string,
+    targetHandle?: string
+  ) => void;
+  onReconnectEdge: (edgeId: string, connection: Connection) => void;
+  onRemoveEdge: (edgeId: string) => void;
+}) {
+  const { t } = useTranslation();
+  const { screenToFlowPosition } = useReactFlow();
+  const [connectionStart, setConnectionStart] = useState<OnConnectStartParams | null>(null);
+  const mappedFlowNodes = useMemo<WorkflowFlowNode[]>(
+    () =>
+      nodes.map((node) => ({
+        id: node.id,
+        type: 'operator',
+        position: { x: node.x, y: node.y },
+        width: WORKFLOW_NODE_WIDTH,
+        height: WORKFLOW_NODE_HEIGHT,
+        initialWidth: WORKFLOW_NODE_WIDTH,
+        initialHeight: WORKFLOW_NODE_HEIGHT,
+        dragHandle: '.workflow-node-drag-handle',
+        draggable: true,
+        selectable: true,
+        selected: node.id === selectedNodeId,
+        data: { workflowNode: node },
+      })),
+    [nodes, selectedNodeId]
+  );
+  const mappedFlowEdges = useMemo<WorkflowFlowEdge[]>(
+    () =>
+      edges.map((edge) => ({
+        id: edge.id,
+        source: edge.sourceNodeId,
+        target: edge.targetNodeId,
+        sourceHandle: edge.sourceHandle ?? 'output',
+        targetHandle: edge.targetHandle ?? 'input',
+        type: 'smoothstep',
+        reconnectable: true,
+        interactionWidth: 18,
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          width: 16,
+          height: 16,
+          color: 'rgba(100, 116, 139, 0.82)',
+        },
+        style: {
+          stroke: 'rgba(100, 116, 139, 0.68)',
+          strokeWidth: 1.8,
+        },
+      })),
+    [edges]
+  );
+  const [flowNodes, setFlowNodes] = useState<WorkflowFlowNode[]>(mappedFlowNodes);
+  const [flowEdges, setFlowEdges] = useState<WorkflowFlowEdge[]>(mappedFlowEdges);
+  const [alignmentGuides, setAlignmentGuides] = useState<WorkflowAlignmentGuides>(
+    EMPTY_WORKFLOW_ALIGNMENT_GUIDES
+  );
+  const flowNodesRef = useRef<WorkflowFlowNode[]>(mappedFlowNodes);
+  const connectSucceededRef = useRef(false);
+  const reconnectSucceededRef = useRef(false);
+
+  useEffect(() => {
+    flowNodesRef.current = mappedFlowNodes;
+    setFlowNodes(mappedFlowNodes);
+  }, [mappedFlowNodes]);
+
+  useEffect(() => {
+    setFlowEdges(mappedFlowEdges);
+  }, [mappedFlowEdges]);
+
+  const handleNodesChange = useCallback(
+    (changes: NodeChange<WorkflowFlowNode>[]) => {
+      let nextGuides = EMPTY_WORKFLOW_ALIGNMENT_GUIDES;
+      const snappedChanges = changes.map((change) => {
+        if (change.type !== 'position' || !change.dragging || !change.position) {
+          return change;
+        }
+        const snap = getWorkflowAlignmentSnap(
+          change.id,
+          change.position,
+          flowNodesRef.current
+        );
+        nextGuides = snap.guides;
+        return {
+          ...change,
+          position: snap.position,
+          positionAbsolute: snap.position,
+        };
+      });
+      setAlignmentGuides(nextGuides);
+      setFlowNodes((currentNodes) => {
+        const nextNodes = applyNodeChanges(snappedChanges, currentNodes);
+        flowNodesRef.current = nextNodes;
+        for (const change of snappedChanges) {
+          if (change.type === 'select' && change.selected) {
+            onSelectNode(change.id);
+          }
+        }
+        return nextNodes;
+      });
+    },
+    [onSelectNode]
+  );
+
+  const handleEdgesChange = useCallback(
+    (changes: EdgeChange<WorkflowFlowEdge>[]) => {
+      setFlowEdges((currentEdges) => applyEdgeChanges(changes, currentEdges));
+    },
+    []
+  );
+
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target) return;
+      connectSucceededRef.current = true;
+      onConnectNodes(
+        connection.source,
+        connection.target,
+        connection.sourceHandle ?? 'output',
+        connection.targetHandle ?? 'input'
+      );
+      onSelectNode(connection.target);
+    },
+    [onConnectNodes, onSelectNode]
+  );
+  const handleConnectStart = useCallback(
+    (_event: MouseEvent | TouchEvent, params: OnConnectStartParams) => {
+      connectSucceededRef.current = false;
+      setConnectionStart(params);
+    },
+    []
+  );
+  const isValidWorkflowConnection = useCallback(
+    (connection: Edge | Connection) =>
+      Boolean(connection.source && connection.target && connection.source !== connection.target),
+    []
+  );
+  const handleReconnectStart = useCallback(
+    (_event: ReactMouseEvent, _edge: WorkflowFlowEdge, _handleType: HandleType) => {
+      reconnectSucceededRef.current = false;
+    },
+    []
+  );
+  const handleReconnect = useCallback(
+    (oldEdge: WorkflowFlowEdge, newConnection: Connection) => {
+      reconnectSucceededRef.current = true;
+      setFlowEdges((currentEdges) =>
+        reconnectEdge(oldEdge, newConnection, currentEdges, { shouldReplaceId: false })
+      );
+      onReconnectEdge(oldEdge.id, newConnection);
+    },
+    [onReconnectEdge]
+  );
+  const handleReconnectEnd = useCallback(
+    (
+      _event: MouseEvent | TouchEvent,
+      edge: WorkflowFlowEdge,
+      _handleType: HandleType,
+      connectionState: FinalConnectionState
+    ) => {
+      if (!reconnectSucceededRef.current && connectionState.isValid !== true) {
+        setFlowEdges((currentEdges) => currentEdges.filter((item) => item.id !== edge.id));
+        onRemoveEdge(edge.id);
+      }
+      reconnectSucceededRef.current = false;
+    },
+    [onRemoveEdge]
+  );
+  const handleConnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent, connectionState: FinalConnectionState) => {
+      if (connectSucceededRef.current) {
+        connectSucceededRef.current = false;
+        setConnectionStart(null);
+        return;
+      }
+      const sourceNodeId = connectionStart?.nodeId ?? connectionState.fromNode?.id ?? null;
+      if (!sourceNodeId) {
+        setConnectionStart(null);
+        return;
+      }
+      const dropTarget = getWorkflowConnectionDropTarget(event, connectionState);
+      if (dropTarget && dropTarget.nodeId !== sourceNodeId) {
+        onConnectNodes(
+          sourceNodeId,
+          dropTarget.nodeId,
+          connectionStart?.handleId ?? 'output',
+          dropTarget.handleId
+        );
+        onSelectNode(dropTarget.nodeId);
+      }
+      setConnectionStart(null);
+    },
+    [connectionStart, onConnectNodes, onSelectNode]
+  );
+  const handleDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  }, []);
+  const handleDrop = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const type = event.dataTransfer.getData(WORKFLOW_OPERATOR_MIME);
+      if (!isWorkflowOperatorType(type)) return;
+      const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      onAddNode(type, {
+        x: position.x - WORKFLOW_NODE_WIDTH / 2,
+        y: position.y - WORKFLOW_NODE_HEIGHT / 2,
+      });
+    },
+    [onAddNode, screenToFlowPosition]
+  );
+  const handleNodeDragStop = useCallback(
+    (_event: ReactMouseEvent, node: WorkflowFlowNode) => {
+      const currentNode = flowNodesRef.current.find((item) => item.id === node.id);
+      const position = currentNode?.position ?? node.position;
+      const snap = getWorkflowAlignmentSnap(node.id, position, flowNodesRef.current);
+      setAlignmentGuides(EMPTY_WORKFLOW_ALIGNMENT_GUIDES);
+      setFlowNodes((currentNodes) => {
+        const nextNodes = currentNodes.map((item) =>
+          item.id === node.id
+            ? {
+                ...item,
+                position: snap.position,
+              }
+            : item
+        );
+        flowNodesRef.current = nextNodes;
+        return nextNodes;
+      });
+      onMoveNode(node.id, snap.position.x, snap.position.y);
+    },
+    [onMoveNode]
+  );
+
+  return (
+    <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border-muted bg-background/90 shadow-card">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-border-muted px-3">
+        <h2 className="text-[13px] font-medium text-text-secondary">
+          {t('data.workflow.canvasTitle')}
+        </h2>
+      </div>
+      <div className="relative min-h-0 flex-1" onDragOver={handleDragOver} onDrop={handleDrop}>
+        <ReactFlow
+          nodes={flowNodes}
+          edges={flowEdges}
+          nodeTypes={WORKFLOW_NODE_TYPES}
+          onNodesChange={handleNodesChange}
+          onEdgesChange={handleEdgesChange}
+          onConnect={handleConnect}
+          onConnectStart={handleConnectStart}
+          onConnectEnd={handleConnectEnd}
+          onReconnectStart={handleReconnectStart}
+          onReconnect={handleReconnect}
+          onReconnectEnd={handleReconnectEnd}
+          onNodeDragStop={handleNodeDragStop}
+          onNodeClick={(_, node) => onSelectNode(node.id)}
+          defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+          nodesDraggable
+          edgesReconnectable
+          proOptions={{ hideAttribution: true }}
+          connectionMode={ConnectionMode.Loose}
+          connectionRadius={48}
+          reconnectRadius={12}
+          isValidConnection={isValidWorkflowConnection}
+          defaultEdgeOptions={{
+            type: 'smoothstep',
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              width: 16,
+              height: 16,
+              color: 'rgba(100, 116, 139, 0.82)',
+            },
+            style: {
+              stroke: 'rgba(100, 116, 139, 0.68)',
+              strokeWidth: 1.8,
+            },
+          }}
+          className="workflow-react-flow bg-background/90"
+        >
+          <Background color="rgba(148, 163, 184, 0.35)" gap={18} size={1.3} />
+          <Controls showInteractive={false} />
+          <MiniMap
+            pannable
+            zoomable
+            style={{ width: 100, height: 75 }}
+            nodeColor={() => 'rgba(25, 169, 154, 0.36)'}
+            maskColor="rgba(251, 254, 253, 0.72)"
+          />
+          <ViewportPortal>
+            <WorkflowAlignmentGuidesOverlay guides={alignmentGuides} />
+          </ViewportPortal>
+        </ReactFlow>
+        {nodes.length === 0 && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6 text-center text-xs text-text-muted">
+            {t('data.workflow.emptyCanvas')}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function WorkflowOperatorNode({ data, selected }: NodeProps<WorkflowFlowNode>) {
+  const node = data.workflowNode;
+  const catalog = getOperatorCatalog(node.type);
+  const Icon = catalog.Icon;
+  return (
+    <div
+      data-node-id={node.id}
+      style={{ width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT }}
+      className={`workflow-node-drag-handle relative flex items-center gap-2 rounded-lg border bg-background/92 px-2.5 text-left shadow-soft transition-colors ${
+        selected ? 'border-accent text-accent ring-2 ring-accent/15' : catalog.nodeClassName
+      }`}
+    >
+      <Handle
+        id="input"
+        type="target"
+        position={Position.Left}
+        className="workflow-node-handle !left-[-6px] !h-3 !w-3 !rounded-full !border-2 !border-current !bg-background !opacity-100"
+      />
+      <Handle
+        id="output"
+        type="source"
+        position={Position.Right}
+        className="workflow-node-handle !right-[-6px] !h-3 !w-3 !rounded-full !border-2 !border-current !bg-background !opacity-100"
+      />
+      <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+      <span className="min-w-0 truncate text-xs font-medium text-text-secondary">{node.label}</span>
+    </div>
+  );
+}
+
+function WorkflowAlignmentGuidesOverlay({ guides }: { guides: WorkflowAlignmentGuides }) {
+  const lines = [guides.horizontal, guides.vertical].filter(
+    (line): line is WorkflowAlignmentLine => Boolean(line)
+  );
+  if (lines.length === 0) {
+    return null;
+  }
+  return (
+    <div className="pointer-events-none absolute left-0 top-0">
+      {lines.map((line) =>
+        line.orientation === 'vertical' ? (
+          <div
+            key={line.id}
+            className="workflow-alignment-guide absolute border-l border-dashed border-accent/75 shadow-[0_0_0_1px_rgba(25,169,154,0.16)]"
+            style={{
+              left: line.x,
+              top: line.y1,
+              height: Math.max(1, line.y2 - line.y1),
+            }}
+          />
+        ) : (
+          <div
+            key={line.id}
+            className="workflow-alignment-guide absolute border-t border-dashed border-accent/75 shadow-[0_0_0_1px_rgba(25,169,154,0.16)]"
+            style={{
+              left: line.x1,
+              top: line.y,
+              width: Math.max(1, line.x2 - line.x1),
+            }}
+          />
+        )
+      )}
+    </div>
+  );
+}
+
+function WorkflowInspector({
+  node,
+  activeTab,
+  onActiveTabChange,
+  onNodeChange,
+}: {
+  node: DataWorkflowNode | null;
+  activeTab: 'config' | 'logs';
+  onActiveTabChange: (tab: 'config' | 'logs') => void;
+  onNodeChange: (updater: (node: DataWorkflowNode) => DataWorkflowNode) => void;
+}) {
+  const { t } = useTranslation();
+  if (!node) {
+    return (
+      <aside className="min-h-0 overflow-y-auto rounded-xl border border-border-muted bg-background/90 p-3 text-xs text-text-muted shadow-card">
+        {t('data.workflow.noNodeSelected')}
+      </aside>
+    );
+  }
+
+  const catalog = getOperatorCatalog(node.type);
+  const Icon = catalog.Icon;
+  const rules = getNodeRules(node);
+
+  return (
+    <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border-muted bg-background/90 shadow-card">
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-border-muted px-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${catalog.colorClassName}`}
+          >
+            <Icon className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <div className="truncate text-xs font-medium text-text-secondary">{node.label}</div>
+            <div className="text-[11px] text-text-muted">
+              {t('data.workflow.nodeId', { id: node.id.slice(0, 8) })}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-lg bg-surface-active p-0.5 text-xs font-medium">
+            <button
+              onClick={() => onActiveTabChange('config')}
+              className={`h-7 rounded-md px-3 ${
+                activeTab === 'config'
+                  ? 'bg-background text-accent shadow-soft'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {t('data.workflow.config')}
+            </button>
+            <button
+              onClick={() => onActiveTabChange('logs')}
+              className={`h-7 rounded-md px-3 ${
+                activeTab === 'logs'
+                  ? 'bg-background text-accent shadow-soft'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {t('data.workflow.logs')}
+            </button>
+          </div>
+          <X className="h-4 w-4 text-text-muted" />
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
+
+        {activeTab === 'logs' ? (
+          <div className="h-full min-h-0 rounded-lg border border-border-muted bg-background/70 p-2.5 text-xs text-text-muted">
+            {t('data.workflow.noLogs')}
+          </div>
+        ) : (
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_minmax(18rem,1.35fr)]">
+            <div className="grid content-start gap-3 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <LabeledInput
+                  label={t('data.workflow.nodeName')}
+                  value={node.label}
+                  suffix={`${node.label.length}/50`}
+                  onChange={(value) =>
+                    onNodeChange((current) => ({
+                      ...current,
+                      label: value.slice(0, 50),
+                      updatedAt: Date.now(),
+                    }))
+                  }
+                />
+              </div>
+              <SelectLike label={t('data.workflow.input')} value={t('data.workflow.previousOutput')} />
+              <SelectLike label={t('data.workflow.output')} value={t(catalog.labelKey)} />
+            </div>
+            <div className="grid content-start gap-3">
+              <SelectLike label={t('data.workflow.strategy')} value={t('data.workflow.byColumn')} />
+              <button className="flex h-8 w-full items-center justify-between rounded-lg border border-border-muted bg-background/94 px-2 text-xs font-medium text-text-secondary shadow-soft">
+                <span>{t('data.workflow.advanced')}</span>
+                <ChevronRight className="h-3.5 w-3.5 text-text-muted" />
+              </button>
+            </div>
+            <div className="min-w-0">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-medium text-text-secondary">
+                  {t('data.workflow.rules')}
+                </span>
+                <button className="inline-flex h-7 items-center gap-1 rounded-lg border border-border-muted bg-background/94 px-2 text-[11px] font-medium text-text-secondary shadow-soft">
+                  <Plus className="h-3 w-3" />
+                  {t('data.workflow.addRule')}
+                </button>
+              </div>
+              <div className="max-h-36 overflow-y-auto rounded-lg border border-border-muted text-[11px]">
+                <div className="grid grid-cols-[1fr_4rem_5rem] border-b border-border-muted bg-background/80 text-text-muted">
+                  <div className="px-2 py-1.5">{t('data.workflow.ruleColumn')}</div>
+                  <div className="px-2 py-1.5">{t('data.workflow.ruleRatio')}</div>
+                  <div className="px-2 py-1.5">{t('data.workflow.ruleMethod')}</div>
+                </div>
+                {rules.length > 0 ? (
+                  rules.map((rule) => (
+                    <div
+                      key={rule.column}
+                      className="grid grid-cols-[1fr_4rem_5rem] border-b border-border-muted last:border-b-0 text-text-secondary"
+                    >
+                      <div className="truncate px-2 py-1.5">{rule.column}</div>
+                      <div className="px-2 py-1.5">{rule.ratio}</div>
+                      <div className="px-2 py-1.5">{t(`data.workflow.ruleMethods.${rule.method}`)}</div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="px-2 py-2 text-text-muted">{t('data.workflow.noRules')}</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function LabeledInput({
+  label,
+  value,
+  suffix,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  suffix: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-xs font-medium text-text-secondary">{label}</span>
+      <span className="flex h-8 items-center rounded-lg border border-border-muted bg-background/94 px-2 shadow-soft focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20">
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="min-w-0 flex-1 bg-transparent text-xs font-medium text-text-secondary outline-none"
+        />
+        <span className="ml-2 text-[11px] text-text-muted">{suffix}</span>
+      </span>
+    </label>
+  );
+}
+
+function SelectLike({ label, value }: { label: string; value: string }) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-xs font-medium text-text-secondary">{label}</span>
+      <button className="flex h-8 w-full items-center justify-between rounded-lg border border-border-muted bg-background/94 px-2 text-left text-xs font-medium text-text-secondary shadow-soft">
+        <span className="truncate">{value}</span>
+        <span className="flex items-center gap-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+          <ChevronDown className="h-3.5 w-3.5 text-text-muted" />
+        </span>
+      </button>
+    </label>
+  );
+}
+
+function getOperatorCatalog(type: DataWorkflowOperatorType) {
+  return OPERATOR_CATALOG.find((operator) => operator.type === type) ?? OPERATOR_CATALOG[0];
+}
+
+function isWorkflowOperatorType(value: string): value is DataWorkflowOperatorType {
+  return OPERATOR_CATALOG.some((operator) => operator.type === value);
+}
+
+function getNextWorkflowNodePosition(index: number): { x: number; y: number } {
+  return {
+    x: 64 + (index % 4) * 150,
+    y: 72 + Math.floor(index / 4) * 64,
+  };
+}
+
+function getWorkflowAlignmentSnap(
+  nodeId: string,
+  position: { x: number; y: number },
+  nodes: WorkflowFlowNode[]
+): { position: { x: number; y: number }; guides: WorkflowAlignmentGuides } {
+  const otherNodes = nodes.filter((node) => node.id !== nodeId);
+  if (otherNodes.length === 0) {
+    return { position, guides: EMPTY_WORKFLOW_ALIGNMENT_GUIDES };
+  }
+
+  let verticalMatch: { distance: number; x: number; snappedX: number; node: WorkflowFlowNode } | null =
+    null;
+  let horizontalMatch:
+    | { distance: number; y: number; snappedY: number; node: WorkflowFlowNode }
+    | null = null;
+  const activeLeft = position.x;
+  const activeRight = position.x + WORKFLOW_NODE_WIDTH;
+  const activeCenterY = position.y + WORKFLOW_NODE_HEIGHT / 2;
+
+  for (const node of otherNodes) {
+    const otherLeft = node.position.x;
+    const otherRight = node.position.x + WORKFLOW_NODE_WIDTH;
+    const otherCenterY = node.position.y + WORKFLOW_NODE_HEIGHT / 2;
+    const leftDistance = Math.abs(activeLeft - otherLeft);
+    const rightDistance = Math.abs(activeRight - otherRight);
+    const centerYDistance = Math.abs(activeCenterY - otherCenterY);
+
+    if (
+      leftDistance <= WORKFLOW_ALIGNMENT_THRESHOLD &&
+      (!verticalMatch || leftDistance < verticalMatch.distance)
+    ) {
+      verticalMatch = {
+        distance: leftDistance,
+        x: otherLeft,
+        snappedX: otherLeft,
+        node,
+      };
+    }
+    if (
+      rightDistance <= WORKFLOW_ALIGNMENT_THRESHOLD &&
+      (!verticalMatch || rightDistance < verticalMatch.distance)
+    ) {
+      verticalMatch = {
+        distance: rightDistance,
+        x: otherRight,
+        snappedX: otherRight - WORKFLOW_NODE_WIDTH,
+        node,
+      };
+    }
+    if (
+      centerYDistance <= WORKFLOW_ALIGNMENT_THRESHOLD &&
+      (!horizontalMatch || centerYDistance < horizontalMatch.distance)
+    ) {
+      horizontalMatch = {
+        distance: centerYDistance,
+        y: otherCenterY,
+        snappedY: otherCenterY - WORKFLOW_NODE_HEIGHT / 2,
+        node,
+      };
+    }
+  }
+
+  const snappedPosition = {
+    x: verticalMatch ? verticalMatch.snappedX : position.x,
+    y: horizontalMatch ? horizontalMatch.snappedY : position.y,
+  };
+  const guides: WorkflowAlignmentGuides = {
+    horizontal: horizontalMatch
+      ? {
+          id: `horizontal-${horizontalMatch.node.id}`,
+          orientation: 'horizontal',
+          x1:
+            Math.min(snappedPosition.x, horizontalMatch.node.position.x) -
+            WORKFLOW_ALIGNMENT_GUIDE_PADDING,
+          x2:
+            Math.max(
+              snappedPosition.x + WORKFLOW_NODE_WIDTH,
+              horizontalMatch.node.position.x + WORKFLOW_NODE_WIDTH
+            ) + WORKFLOW_ALIGNMENT_GUIDE_PADDING,
+          y: horizontalMatch.y,
+        }
+      : null,
+    vertical: verticalMatch
+      ? {
+          id: `vertical-${verticalMatch.node.id}`,
+          orientation: 'vertical',
+          x: verticalMatch.x,
+          y1:
+            Math.min(snappedPosition.y, verticalMatch.node.position.y) -
+            WORKFLOW_ALIGNMENT_GUIDE_PADDING,
+          y2:
+            Math.max(
+              snappedPosition.y + WORKFLOW_NODE_HEIGHT,
+              verticalMatch.node.position.y + WORKFLOW_NODE_HEIGHT
+            ) + WORKFLOW_ALIGNMENT_GUIDE_PADDING,
+        }
+      : null,
+  };
+
+  return { position: snappedPosition, guides };
+}
+
+function makeLocalId(prefix: string): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return `${prefix}_${crypto.randomUUID()}`;
+  }
+  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function getElementFromConnectEndEvent(event: MouseEvent | TouchEvent): Element | null {
+  if ('changedTouches' in event && event.changedTouches.length > 0) {
+    const touch = event.changedTouches[0];
+    return document.elementFromPoint(touch.clientX, touch.clientY);
+  }
+  return event.target instanceof Element ? event.target : null;
+}
+
+function getWorkflowConnectionDropTarget(
+  event: MouseEvent | TouchEvent,
+  connectionState: FinalConnectionState
+): { nodeId: string; handleId: string } | null {
+  if (connectionState.toNode?.id && connectionState.toHandle?.id) {
+    return {
+      nodeId: connectionState.toNode.id,
+      handleId: connectionState.toHandle.id,
+    };
+  }
+  const targetElement = getElementFromConnectEndEvent(event);
+  const handleElement = targetElement?.closest<HTMLElement>('[data-handleid]');
+  const nodeElement = handleElement?.closest<HTMLElement>('[data-node-id]');
+  const nodeId = nodeElement?.dataset.nodeId;
+  const handleId = handleElement?.dataset.handleid;
+  if (!nodeId || !handleId) {
+    return null;
+  }
+  return { nodeId, handleId };
+}
+
+function getNodeRules(
+  node: DataWorkflowNode
+): Array<{ column: string; ratio: string; method: string }> {
+  const rules = node.config.rules;
+  if (!Array.isArray(rules)) {
+    return [];
+  }
+  return rules.flatMap((rule) => {
+    if (!rule || typeof rule !== 'object') {
+      return [];
+    }
+    const candidate = rule as Record<string, unknown>;
+    return [
+      {
+        column: String(candidate.column ?? ''),
+        ratio: String(candidate.ratio ?? ''),
+        method: String(candidate.method ?? 'skip'),
+      },
+    ].filter((item) => item.column);
+  });
 }
 
 function StatCard({
@@ -359,7 +1687,7 @@ function StatCard({
   iconClassName: string;
 }) {
   return (
-    <article className="flex h-[5.75rem] items-center gap-3 rounded-xl border border-border-muted bg-background/88 px-4 shadow-card">
+    <article className="flex h-[5.75rem] items-center gap-3 rounded-xl border border-border-muted bg-background/88 px-3 shadow-card">
       <div
         className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${iconClassName}`}
       >
@@ -416,7 +1744,7 @@ function TasksTable({
   onDelete: (task: DataCleaningTask) => void;
 }) {
   const { t } = useTranslation();
-  const visibleTasks = tasks.slice(0, TABLE_PAGE_SIZE);
+  const visibleTasks = tasks;
 
   if (visibleTasks.length === 0) {
     return <EmptyState label={t('data.emptyTasks')} />;
@@ -427,11 +1755,11 @@ function TasksTable({
       <table className="w-full min-w-[780px] border-collapse text-left">
         <thead>
           <tr className="h-10 border-b border-border-muted bg-background/80 text-xs font-medium text-text-muted">
-            <th className="w-[34%] px-5">{t('data.columns.taskName')}</th>
+            <th className="w-[34%] px-4">{t('data.columns.taskName')}</th>
             <th className="w-[15%] px-4">{t('data.columns.status')}</th>
-            <th className="w-[10%] px-5">{t('data.columns.nodes')}</th>
-            <th className="w-[17%] px-5">{t('data.columns.updatedAt')}</th>
-            <th className="w-[24%] px-5 text-center">{t('data.columns.actions')}</th>
+            <th className="w-[10%] px-4">{t('data.columns.nodes')}</th>
+            <th className="w-[17%] px-4">{t('data.columns.updatedAt')}</th>
+            <th className="w-[24%] px-4 text-center">{t('data.columns.actions')}</th>
           </tr>
         </thead>
         <tbody>
@@ -446,7 +1774,7 @@ function TasksTable({
                   index === 0 ? 'bg-accent/5' : 'hover:bg-surface-hover/35'
                 }`}
               >
-                <td className="px-5">
+                <td className="px-4">
                   <div className="flex min-w-0 items-center gap-3">
                     <div
                       className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${icon.className}`}
@@ -464,13 +1792,13 @@ function TasksTable({
                 <td className="px-4">
                   <StatusBadge status={task.status} />
                 </td>
-                <td className="px-5 text-[13px] font-medium text-text-secondary">
+                <td className="px-4 text-[13px] font-medium text-text-secondary">
                   {task.nodeCount}
                 </td>
-                <td className="px-5 text-[13px] font-medium text-text-secondary">
+                <td className="px-4 text-[13px] font-medium text-text-secondary">
                   {formatTimestamp(task.updatedAt, t)}
                 </td>
-                <td className="px-5">
+                <td className="px-4">
                   <div className="flex items-center justify-end gap-2">
                     <button
                       onClick={() => onEdit(task)}
@@ -510,7 +1838,7 @@ function TasksTable({
 
 function DatasetsTable({ datasets }: { datasets: DataDataset[] }) {
   const { t } = useTranslation();
-  const visibleDatasets = datasets.slice(0, TABLE_PAGE_SIZE);
+  const visibleDatasets = datasets;
 
   if (visibleDatasets.length === 0) {
     return <EmptyState label={t('data.emptyDatasets')} />;
@@ -521,11 +1849,11 @@ function DatasetsTable({ datasets }: { datasets: DataDataset[] }) {
       <table className="w-full min-w-[760px] border-collapse text-left">
         <thead>
           <tr className="h-10 border-b border-border-muted bg-background/80 text-xs font-medium text-text-muted">
-            <th className="w-[38%] px-5">{t('data.columns.datasetName')}</th>
-            <th className="w-[15%] px-5">{t('data.columns.rows')}</th>
-            <th className="w-[15%] px-5">{t('data.columns.columns')}</th>
-            <th className="w-[20%] px-5">{t('data.columns.updatedAt')}</th>
-            <th className="w-[12%] px-5 text-center">{t('data.columns.actions')}</th>
+            <th className="w-[38%] px-4">{t('data.columns.datasetName')}</th>
+            <th className="w-[15%] px-4">{t('data.columns.rows')}</th>
+            <th className="w-[15%] px-4">{t('data.columns.columns')}</th>
+            <th className="w-[20%] px-4">{t('data.columns.updatedAt')}</th>
+            <th className="w-[12%] px-4 text-center">{t('data.columns.actions')}</th>
           </tr>
         </thead>
         <tbody>
@@ -536,7 +1864,7 @@ function DatasetsTable({ datasets }: { datasets: DataDataset[] }) {
                 index === 0 ? 'bg-accent/5' : 'hover:bg-surface-hover/35'
               }`}
             >
-              <td className="px-5">
+              <td className="px-4">
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
                     <Table2 className="h-4 w-4" />
@@ -551,16 +1879,16 @@ function DatasetsTable({ datasets }: { datasets: DataDataset[] }) {
                   </div>
                 </div>
               </td>
-              <td className="px-5 text-[13px] font-medium text-text-secondary">
+              <td className="px-4 text-[13px] font-medium text-text-secondary">
                 {formatNumber(dataset.rowCount)}
               </td>
-              <td className="px-5 text-[13px] font-medium text-text-secondary">
+              <td className="px-4 text-[13px] font-medium text-text-secondary">
                 {dataset.columnCount}
               </td>
-              <td className="px-5 text-[13px] font-medium text-text-secondary">
+              <td className="px-4 text-[13px] font-medium text-text-secondary">
                 {formatTimestamp(dataset.updatedAt, t)}
               </td>
-              <td className="px-5 text-right">
+              <td className="px-4 text-right">
                 <button
                   className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
                   title={t('data.actions.more')}
@@ -592,19 +1920,28 @@ function StatusBadge({ status }: { status: DataTaskStatus }) {
 
 function EmptyState({ label }: { label: string }) {
   return (
-    <div className="flex min-h-[16rem] items-center justify-center px-5 py-12 text-center text-xs text-text-muted">
+    <div className="flex min-h-[16rem] items-center justify-center px-4 py-10 text-center text-xs text-text-muted">
       {label}
     </div>
   );
 }
 
-function PaginationFooter({ count }: { count: number }) {
+function PaginationFooter({
+  count,
+  currentPage,
+  onPageChange,
+}: {
+  count: number;
+  currentPage: number;
+  onPageChange: (page: number) => void;
+}) {
   const { t } = useTranslation();
-  const pageCount = Math.max(1, Math.ceil(count / TABLE_PAGE_SIZE));
-  const pageNumbers = Array.from({ length: Math.min(pageCount, 3) }, (_, index) => index + 1);
+  const pageCount = getTablePageCount(count);
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
+  const pageNumbers = getVisiblePageNumbers(safeCurrentPage, pageCount);
 
   return (
-    <div className="mt-5 flex flex-col items-center justify-end gap-2 text-xs font-medium text-text-secondary sm:flex-row">
+    <div className="mt-3 flex flex-col items-center justify-end gap-2 text-xs font-medium text-text-secondary sm:flex-row">
       <span>{t('data.totalCount', { count })}</span>
       <button className="inline-flex h-8 min-w-[7rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-text-secondary shadow-soft">
         {t('data.rowsPerPage', { count: TABLE_PAGE_SIZE })}
@@ -612,30 +1949,52 @@ function PaginationFooter({ count }: { count: number }) {
       </button>
       <div className="flex items-center gap-2">
         {pageCount > 1 && (
-          <button className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-muted shadow-soft">
+          <button
+            onClick={() => onPageChange(safeCurrentPage - 1)}
+            disabled={safeCurrentPage <= 1}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-muted shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
+          >
             <ChevronLeft className="h-4 w-4" />
           </button>
         )}
         {pageNumbers.map((pageNumber) => (
           <button
             key={pageNumber}
+            onClick={() => onPageChange(pageNumber)}
+            aria-current={pageNumber === safeCurrentPage ? 'page' : undefined}
             className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium shadow-soft ${
-              pageNumber === 1
+              pageNumber === safeCurrentPage
                 ? 'border-accent bg-accent/10 text-accent'
-                : 'border-border-muted bg-background/94 text-text-secondary'
+                : 'border-border-muted bg-background/94 text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
             }`}
           >
             {pageNumber}
           </button>
         ))}
         {pageCount > 1 && (
-          <button className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft">
+          <button
+            onClick={() => onPageChange(safeCurrentPage + 1)}
+            disabled={safeCurrentPage >= pageCount}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
+          >
             <ChevronRight className="h-4 w-4" />
           </button>
         )}
       </div>
     </div>
   );
+}
+
+function getTablePageCount(count: number): number {
+  return Math.max(1, Math.ceil(count / TABLE_PAGE_SIZE));
+}
+
+function getVisiblePageNumbers(currentPage: number, pageCount: number): number[] {
+  if (pageCount <= 5) {
+    return Array.from({ length: pageCount }, (_, index) => index + 1);
+  }
+  const start = Math.max(1, Math.min(currentPage - 2, pageCount - 4));
+  return Array.from({ length: 5 }, (_, index) => start + index);
 }
 
 function statusBadgeClass(status: DataTaskStatus): string {

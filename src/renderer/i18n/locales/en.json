@@ -142,6 +142,50 @@
         "outputDesc": "Save as a local DuckDB output table"
       }
     },
+    "workflow": {
+      "canvasTitle": "Workflow canvas",
+      "fullscreen": "Fullscreen",
+      "layout": "Layout",
+      "grid": "Grid",
+      "nodeId": "Node ID: {{id}}",
+      "config": "Config",
+      "logs": "Logs",
+      "noLogs": "No run logs yet",
+      "nodeName": "Node name",
+      "input": "Input",
+      "output": "Output",
+      "previousOutput": "Previous output",
+      "strategy": "Strategy",
+      "byColumn": "By column",
+      "rules": "Column rules",
+      "addRule": "Add rule",
+      "ruleColumn": "Column",
+      "ruleRatio": "Missing ratio",
+      "ruleMethod": "Method",
+      "noRules": "No rules",
+      "advanced": "Advanced options",
+      "noNodeSelected": "Select a node to configure it here.",
+      "emptyCanvas": "Add operators from the left to start building the flow.",
+      "operators": {
+        "input_source": "Input source",
+        "filter": "Filter",
+        "field_select": "Field select",
+        "deduplicate": "Deduplicate",
+        "missing_value": "Missing values",
+        "type_convert": "Type convert",
+        "sort": "Sort",
+        "aggregate": "Aggregate",
+        "calculate_field": "Calculated field",
+        "field_mapping": "Field mapping",
+        "output": "Output"
+      },
+      "ruleMethods": {
+        "skip": "Skip",
+        "forward_fill": "Forward fill",
+        "mode_fill": "Mode fill",
+        "drop": "Drop"
+      }
+    },
     "relative": {
       "today": "Today",
       "yesterday": "Yesterday"

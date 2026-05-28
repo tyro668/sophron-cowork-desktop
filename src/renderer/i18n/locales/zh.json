@@ -142,6 +142,50 @@
         "outputDesc": "保存为本地 DuckDB 输出表"
       }
     },
+    "workflow": {
+      "canvasTitle": "工作流画布",
+      "fullscreen": "全屏",
+      "layout": "布局",
+      "grid": "网格",
+      "nodeId": "节点 ID: {{id}}",
+      "config": "配置",
+      "logs": "日志",
+      "noLogs": "暂无运行日志",
+      "nodeName": "节点名称",
+      "input": "输入",
+      "output": "输出",
+      "previousOutput": "上游输出",
+      "strategy": "处理策略",
+      "byColumn": "按列设置",
+      "rules": "列处理规则",
+      "addRule": "添加规则",
+      "ruleColumn": "列名",
+      "ruleRatio": "缺失值占比",
+      "ruleMethod": "处理方式",
+      "noRules": "暂无规则",
+      "advanced": "高级选项",
+      "noNodeSelected": "选择一个节点后配置会显示在这里。",
+      "emptyCanvas": "从左侧添加算子开始构建流程。",
+      "operators": {
+        "input_source": "输入数据源",
+        "filter": "筛选",
+        "field_select": "字段选择",
+        "deduplicate": "去重",
+        "missing_value": "缺失值处理",
+        "type_convert": "类型转换",
+        "sort": "排序",
+        "aggregate": "聚合",
+        "calculate_field": "计算字段",
+        "field_mapping": "字段映射",
+        "output": "输出"
+      },
+      "ruleMethods": {
+        "skip": "不处理",
+        "forward_fill": "前向填充",
+        "mode_fill": "众数填充",
+        "drop": "删除"
+      }
+    },
     "relative": {
       "today": "今天",
       "yesterday": "昨天"
