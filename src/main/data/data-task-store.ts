@@ -113,6 +113,13 @@ interface DataWorkflowEdgeRow {
   created_at: number | string;
 }
 
+interface RuntimeWorkflow {
+  nodes: DataWorkflowNode[];
+  edges: DataWorkflowEdge[];
+}
+
+type WorkflowOutputMode = 'persisted' | 'temporary';
+
 interface DashboardSummaryRow {
   task_count: number | string;
   workflow_node_count: number | string | null;
@@ -485,7 +492,11 @@ export class DataTaskStore {
     const task = await this.requireTask(id);
     const sourcePath = input.sourcePath ? normalizeSourcePath(input.sourcePath) : task.sourcePath;
     const startedAt = this.now();
-    if (!sourcePath) {
+    const runtimeWorkflow = input.workflow
+      ? normalizeRuntimeWorkflowInput(task.id, input.workflow, startedAt)
+      : await this.getRuntimeWorkflow(task.id);
+    const outputMode: WorkflowOutputMode = input.outputMode === 'temporary' ? 'temporary' : 'persisted';
+    if (!sourcePath && workflowRequiresTaskSource(runtimeWorkflow.nodes)) {
       const message = 'Data source file is required before running a cleaning task';
       await this.metaRunSql(
         `
@@ -513,14 +524,12 @@ export class DataTaskStore {
     );
 
     try {
-      const result = sourcePath
-        ? await this.cleanSourceIntoTaskOutput(task, sourcePath)
-        : {
-            outputTable: task.outputTable,
-            rowCount: task.rowCount ?? 0,
-            columnCount: task.columnCount ?? 0,
-            sourceDatasetId: task.sourceDatasetId,
-          };
+      const result = await this.cleanSourceIntoTaskOutput(
+        task,
+        sourcePath,
+        runtimeWorkflow,
+        outputMode
+      );
       const completedAt = this.now();
       const nodeCount = await this.countWorkflowNodes(id);
       await this.metaRunSql(
@@ -703,10 +712,12 @@ export class DataTaskStore {
 
   async createOutputTable(input: DataCreateOutputTableInput = {}): Promise<DataOutputTable> {
     await this.ensureMetadataReady();
+    return this.createOutputTableMetadata(input.name?.trim() || 'Output table', this.now());
+  }
+
+  private async createOutputTableMetadata(name: string, timestamp: number): Promise<DataOutputTable> {
     const id = uuidv4();
     const tableName = tableNameFromId('output', id);
-    const now = this.now();
-    const name = input.name?.trim() || 'Output table';
     await this.metaRunSql(
       `
         INSERT INTO data_datasets (
@@ -724,8 +735,8 @@ export class DataTaskStore {
         sourcePath: `duckdb://outputs/${tableName}`,
         configJson: outputTableConfigJson(),
         tableName,
-        createdAt: now,
-        updatedAt: now,
+        createdAt: timestamp,
+        updatedAt: timestamp,
       }
     );
     return this.requireOutputTable(id);
@@ -951,12 +962,13 @@ export class DataTaskStore {
     await this.ensureMetadataReady();
     await this.requireTask(id);
     const updatedAt = this.now();
-    const nodes = normalizeWorkflowNodeInputs(input.nodes);
+    let nodes = normalizeWorkflowNodeInputs(input.nodes);
     const nodeIds = new Set(nodes.map((node) => node.id));
     const edges = normalizeWorkflowEdgeInputs(input.edges, nodeIds);
 
     await this.metaRunSql('BEGIN TRANSACTION');
     try {
+      nodes = await this.prepareWorkflowOutputNodesForSave(nodes, updatedAt);
       await this.metaRunSql('DELETE FROM data_workflow_edges WHERE task_id = $taskId', { taskId: id });
       await this.metaRunSql('DELETE FROM data_workflow_nodes WHERE task_id = $taskId', { taskId: id });
       for (const [index, node] of nodes.entries()) {
@@ -1023,6 +1035,106 @@ export class DataTaskStore {
     }
 
     return this.getTaskWorkflow(id);
+  }
+
+  private async prepareWorkflowOutputNodesForSave(
+    nodes: DataWorkflowNodeInput[],
+    updatedAt: number
+  ): Promise<DataWorkflowNodeInput[]> {
+    const preparedNodes: DataWorkflowNodeInput[] = [];
+    for (const node of nodes) {
+      if (node.type !== 'output') {
+        preparedNodes.push(node);
+        continue;
+      }
+
+      const config = { ...(node.config ?? {}) };
+      const selectedOutputDatasetId =
+        stringConfigValue(config.outputDatasetId) || stringConfigValue(config.outputTableId);
+      const configuredStrategy = stringConfigValue(config.outputStrategy);
+      const outputStrategy =
+        configuredStrategy === 'auto' || configuredStrategy === 'existing'
+          ? configuredStrategy
+          : selectedOutputDatasetId
+            ? 'existing'
+            : '';
+
+      if (outputStrategy === 'auto') {
+        const outputName = stringConfigValue(config.outputTableName) || stringConfigValue(config.table);
+        if (!outputName) {
+          preparedNodes.push({
+            ...node,
+            config: {
+              ...config,
+              outputStrategy: 'auto',
+              destination: 'duckdb_table',
+              mode: stringConfigValue(config.mode) || 'replace',
+            },
+          });
+          continue;
+        }
+
+        const outputTable = selectedOutputDatasetId
+          ? await this.updateAutoOutputTableMetadata(selectedOutputDatasetId, outputName, updatedAt)
+          : await this.createOutputTableMetadata(outputName, updatedAt);
+        preparedNodes.push({
+          ...node,
+          config: {
+            ...config,
+            outputStrategy: 'existing',
+            outputTableName: outputTable.name,
+            outputDatasetId: outputTable.id,
+            table: outputTable.tableName,
+            destination: 'duckdb_table',
+            mode: stringConfigValue(config.mode) || 'replace',
+          },
+        });
+        continue;
+      }
+
+      if (selectedOutputDatasetId) {
+        const outputTable = await this.requireOutputTable(selectedOutputDatasetId);
+        preparedNodes.push({
+          ...node,
+          config: {
+            ...config,
+            outputStrategy: 'existing',
+            outputTableName: outputTable.name,
+            outputDatasetId: outputTable.id,
+            table: outputTable.tableName,
+            destination: 'duckdb_table',
+            mode: stringConfigValue(config.mode) || 'replace',
+          },
+        });
+        continue;
+      }
+
+      preparedNodes.push(node);
+    }
+    return preparedNodes;
+  }
+
+  private async updateAutoOutputTableMetadata(
+    id: string,
+    name: string,
+    updatedAt: number
+  ): Promise<DataOutputTable> {
+    const outputTable = await this.getOutputTable(id);
+    if (!outputTable) {
+      return this.createOutputTableMetadata(name, updatedAt);
+    }
+    if (outputTable.name !== name) {
+      await this.metaRunSql(
+        `
+          UPDATE data_datasets
+          SET name = $name,
+              updated_at = $updatedAt
+          WHERE id = $id
+        `,
+        { id, name, updatedAt }
+      );
+    }
+    return this.requireOutputTable(id);
   }
 
   close(): void {
@@ -1330,17 +1442,27 @@ export class DataTaskStore {
 
   private async cleanSourceIntoTaskOutput(
     task: DataCleaningTask,
-    sourcePath: string
+    sourcePath: string | null,
+    workflow: RuntimeWorkflow,
+    outputMode: WorkflowOutputMode
   ): Promise<{
     outputTable: string;
     rowCount: number;
     columnCount: number;
     sourceDatasetId: string | null;
   }> {
-    const workflowNodes = await this.getWorkflowNodes(task.id);
-    if (workflowNodes.length > 0) {
-      const workflowEdges = await this.getWorkflowEdges(task.id);
-      return this.runWorkflowIntoTaskOutput(task, sourcePath, workflowNodes, workflowEdges);
+    if (workflow.nodes.length > 0) {
+      return this.runWorkflowIntoTaskOutput(
+        task,
+        sourcePath,
+        workflow.nodes,
+        workflow.edges,
+        outputMode
+      );
+    }
+
+    if (!sourcePath) {
+      throw new Error('Data source file is required before running a cleaning task');
     }
 
     const outputTable = task.outputTable || tableNameFromId('clean_task', task.id);
@@ -1388,52 +1510,97 @@ export class DataTaskStore {
 
   private async runWorkflowIntoTaskOutput(
     task: DataCleaningTask,
-    sourcePath: string,
+    sourcePath: string | null,
     nodes: DataWorkflowNode[],
-    edges: DataWorkflowEdge[]
+    edges: DataWorkflowEdge[],
+    outputMode: WorkflowOutputMode
   ): Promise<{
     outputTable: string;
     rowCount: number;
     columnCount: number;
     sourceDatasetId: string | null;
   }> {
+    const nodeById = new Map(nodes.map((node) => [node.id, node]));
     const outputNode = nodes.find((node) => node.type === 'output');
-    const outputTarget = await this.resolveWorkflowOutputTarget(
-      outputNode,
-      task.outputTable || tableNameFromId('clean_task', task.id)
-    );
+    const outputTarget: { tableName: string; outputDatasetId?: string } =
+      outputMode === 'temporary'
+        ? { tableName: tableNameFromId('temp_task', `${task.id}_${uuidv4()}`) }
+        : await this.resolveWorkflowOutputTarget(
+            outputNode,
+            task.outputTable || tableNameFromId('clean_task', task.id)
+          );
     const outputTable = outputTarget.tableName;
     const relationByNode = new Map<string, string>();
+    const visitingNodeIds = new Set<string>();
     await this.dropTableIfExists(outputTable);
 
-    for (const node of nodes) {
+    const materializeNode = async (nodeId: string): Promise<string> => {
+      const existingRelation = relationByNode.get(nodeId);
+      if (existingRelation) return existingRelation;
+      if (visitingNodeIds.has(nodeId)) {
+        throw new Error(`Workflow contains a cycle at node: ${nodeId}`);
+      }
+      const node = nodeById.get(nodeId);
+      if (!node) {
+        throw new Error(`Workflow node not found: ${nodeId}`);
+      }
       if (node.type === 'output') {
-        continue;
+        const outputInputId = this.findIncomingNodeId(node.id, edges, 'input');
+        if (!outputInputId) {
+          throw new Error(`Output node has no input: ${node.id}`);
+        }
+        return materializeNode(outputInputId);
       }
-      if (node.type === 'input_source') {
-        relationByNode.set(node.id, await this.materializeInputSource(node, sourcePath));
-        continue;
-      }
+      visitingNodeIds.add(nodeId);
+      try {
+        if (node.type === 'input_source') {
+          const relation = await this.materializeInputSource(node, sourcePath);
+          relationByNode.set(node.id, relation);
+          return relation;
+        }
 
-      const outputRelation = tableNameFromId(`workflow_${node.type}`, node.id);
-      await this.dropTableIfExists(outputRelation);
-      const sql = await this.compileWorkflowNodeSql(node, outputRelation, relationByNode, edges);
-      await this.runSql(sql);
-      relationByNode.set(node.id, outputRelation);
-    }
+        if (node.type === 'join') {
+          const leftNodeId = this.findIncomingNodeId(node.id, edges, 'left');
+          const rightNodeId = this.findIncomingNodeId(node.id, edges, 'right');
+          if (!leftNodeId || !rightNodeId) {
+            throw new Error(`Join node requires left and right inputs: ${node.id}`);
+          }
+          await materializeNode(leftNodeId);
+          await materializeNode(rightNodeId);
+        } else {
+          const inputNodeId = this.findIncomingNodeId(node.id, edges, 'input');
+          if (!inputNodeId) {
+            throw new Error(`Workflow node has no input: ${node.id}`);
+          }
+          await materializeNode(inputNodeId);
+        }
+
+        const outputRelation = tableNameFromId(`workflow_${node.type}`, node.id);
+        await this.dropTableIfExists(outputRelation);
+        const sql = await this.compileWorkflowNodeSql(node, outputRelation, relationByNode, edges);
+        await this.runSql(sql);
+        relationByNode.set(node.id, outputRelation);
+        return outputRelation;
+      } finally {
+        visitingNodeIds.delete(nodeId);
+      }
+    };
 
     const finalInputId = outputNode
       ? this.findIncomingNodeId(outputNode.id, edges, 'input')
-      : findLastMaterializedNodeId(nodes, relationByNode);
-    const finalRelation = finalInputId ? relationByNode.get(finalInputId) : null;
-    if (!finalRelation) {
+      : findWorkflowTerminalNodeId(nodes, edges);
+    if (!finalInputId) {
       throw new Error('Workflow has no materialized output relation');
     }
+    const finalRelation = await materializeNode(finalInputId);
     await this.runSql(
       `CREATE TABLE ${quoteIdentifier(outputTable)} AS SELECT * FROM ${quoteIdentifier(finalRelation)}`
     );
     const rowCount = await this.countRows(outputTable);
     const columnCount = (await this.getTableColumns(outputTable)).length;
+    if (outputMode === 'temporary') {
+      return { outputTable, rowCount, columnCount, sourceDatasetId: null };
+    }
     const dataset = await this.upsertDatasetForTaskOutput(
       task.name,
       sourcePath,
@@ -1458,7 +1625,10 @@ export class DataTaskStore {
     return { tableName: getOutputTableName(node, fallback) };
   }
 
-  private async materializeInputSource(node: DataWorkflowNode, taskSourcePath: string): Promise<string> {
+  private async materializeInputSource(
+    node: DataWorkflowNode,
+    taskSourcePath: string | null
+  ): Promise<string> {
     const source = typeof node.config.source === 'string' ? node.config.source : 'task';
     const tableName = tableNameFromId('workflow_source', node.id);
     await this.dropTableIfExists(tableName);
@@ -1480,6 +1650,9 @@ export class DataTaskStore {
       source === 'file' && typeof node.config.filePath === 'string'
         ? normalizeSourcePath(node.config.filePath)
         : taskSourcePath;
+    if (!filePath) {
+      throw new Error('Data source file is required before running a cleaning task');
+    }
     const relation = readRelationForPath(filePath, 'sourcePath');
     await this.runSql(`CREATE TEMP TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`, {
       sourcePath: filePath,
@@ -1611,7 +1784,7 @@ export class DataTaskStore {
 
   private async upsertDatasetForTaskOutput(
     taskName: string,
-    sourcePath: string,
+    sourcePath: string | null,
     tableName: string,
     rowCount: number,
     columnCount: number,
@@ -1683,6 +1856,12 @@ export class DataTaskStore {
       { taskId }
     );
     return rows.map(mapWorkflowEdgeRow);
+  }
+
+  private async getRuntimeWorkflow(taskId: string): Promise<RuntimeWorkflow> {
+    const nodes = await this.getWorkflowNodes(taskId);
+    const edges = nodes.length > 0 ? await this.getWorkflowEdges(taskId) : [];
+    return { nodes, edges };
   }
 
   private async countWorkflowNodes(taskId: string): Promise<number> {
@@ -2237,6 +2416,44 @@ function normalizeWorkflowEdgeInputs(
   return normalized;
 }
 
+function normalizeRuntimeWorkflowInput(
+  taskId: string,
+  input: DataWorkflowSaveInput,
+  timestamp: number
+): RuntimeWorkflow {
+  const nodes = normalizeWorkflowNodeInputs(input.nodes).map<DataWorkflowNode>((node) => ({
+    id: node.id,
+    taskId,
+    type: node.type,
+    label: node.label,
+    x: node.x,
+    y: node.y,
+    config: node.config ?? {},
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }));
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const edges = normalizeWorkflowEdgeInputs(input.edges, nodeIds).map<DataWorkflowEdge>((edge) => ({
+    id: edge.id,
+    taskId,
+    sourceNodeId: edge.sourceNodeId,
+    targetNodeId: edge.targetNodeId,
+    sourceHandle: edge.sourceHandle ?? 'output',
+    targetHandle: edge.targetHandle ?? 'input',
+    createdAt: timestamp,
+  }));
+  return { nodes, edges };
+}
+
+function workflowRequiresTaskSource(nodes: DataWorkflowNode[]): boolean {
+  if (nodes.length === 0) return true;
+  return nodes.some((node) => {
+    if (node.type !== 'input_source') return false;
+    const source = typeof node.config.source === 'string' ? node.config.source : 'task';
+    return source === 'task' || (source === 'file' && !stringConfigValue(node.config.filePath));
+  });
+}
+
 function parseWorkflowConfig(value: string | null): Record<string, unknown> {
   if (!value) {
     return {};
@@ -2286,15 +2503,23 @@ function stringConfigValue(value: unknown): string {
   return typeof value === 'string' && value.trim() ? value.trim() : '';
 }
 
-function findLastMaterializedNodeId(
+function findWorkflowTerminalNodeId(
   nodes: DataWorkflowNode[],
-  relationByNode: Map<string, string>
+  edges: DataWorkflowEdge[]
 ): string | null {
+  const nonOutputIds = new Set(
+    nodes.filter((node) => node.type !== 'output').map((node) => node.id)
+  );
+  const sourceIdsWithOutgoingEdges = new Set(
+    edges
+      .filter((edge) => nonOutputIds.has(edge.sourceNodeId))
+      .map((edge) => edge.sourceNodeId)
+  );
   for (let index = nodes.length - 1; index >= 0; index -= 1) {
     const node = nodes[index];
-    if (relationByNode.has(node.id)) return node.id;
+    if (node.type !== 'output' && !sourceIdsWithOutgoingEdges.has(node.id)) return node.id;
   }
-  return null;
+  return [...nonOutputIds].pop() ?? null;
 }
 
 function compileFieldSelectSql(

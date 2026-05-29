@@ -298,6 +298,8 @@ export interface DataCreateTaskInput {
 
 export interface DataRunTaskInput {
   sourcePath?: string | null;
+  workflow?: DataWorkflowSaveInput | null;
+  outputMode?: 'persisted' | 'temporary';
 }
 
 export interface DataImportDatasetInput {

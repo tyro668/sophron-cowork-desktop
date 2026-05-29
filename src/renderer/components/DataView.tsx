@@ -86,11 +86,13 @@ import type {
   DataInputTablePreview,
   DataInputTableSourceKind,
   DataOutputTable,
+  DataRunTaskInput,
   DataTaskStatus,
   DataTaskWorkflow,
   DataWorkflowEdge,
   DataWorkflowNode,
   DataWorkflowOperatorType,
+  DataWorkflowSaveInput,
 } from '../types';
 import { PrepDslEditor } from './PrepDslEditor';
 import {
@@ -139,6 +141,39 @@ const EMPTY_DASHBOARD: DataDashboard = {
   totalDatasets: 0,
   totalOutputTables: 0,
 };
+
+function toWorkflowSaveInput(workflow: DataTaskWorkflow): DataWorkflowSaveInput {
+  return {
+    nodes: workflow.nodes.map((node) => ({
+      id: node.id,
+      type: node.type,
+      label: node.label,
+      x: node.x,
+      y: node.y,
+      config: node.config,
+    })),
+    edges: workflow.edges.map((edge) => ({
+      id: edge.id,
+      sourceNodeId: edge.sourceNodeId,
+      targetNodeId: edge.targetNodeId,
+      sourceHandle: edge.sourceHandle,
+      targetHandle: edge.targetHandle,
+    })),
+  };
+}
+
+function getWorkflowSaveInputSignature(workflow: DataTaskWorkflow): string {
+  return JSON.stringify(toWorkflowSaveInput(workflow));
+}
+
+function workflowInputRequiresTaskSource(workflow: DataWorkflowSaveInput): boolean {
+  if (workflow.nodes.length === 0) return true;
+  return workflow.nodes.some((node) => {
+    if (node.type !== 'input_source') return false;
+    const source = stringValue(node.config?.source, 'task');
+    return source === 'task' || (source === 'file' && !stringValue(node.config?.filePath));
+  });
+}
 
 const TASK_ICON_STYLES = [
   { Icon: Database, className: 'bg-accent/10 text-accent' },
@@ -647,14 +682,20 @@ export function DataView() {
   }, [dashboard.summary.taskCount, loadDashboard, t]);
 
   const handleRunTask = useCallback(
-    async (task: DataCleaningTask) => {
+    async (task: DataCleaningTask, payload?: DataRunTaskInput) => {
       if (!window.electronAPI?.data) return;
       setActionId(task.id);
       setError(null);
       try {
-        const sourcePath = task.sourcePath ? null : await selectOneFile();
-        if (!task.sourcePath && !sourcePath) return;
-        await window.electronAPI.data.runTask(task.id, { sourcePath });
+        const needsSourcePath =
+          !task.sourcePath &&
+          (!payload?.workflow || workflowInputRequiresTaskSource(payload.workflow));
+        const sourcePath = needsSourcePath ? await selectOneFile() : null;
+        if (needsSourcePath && !sourcePath) return;
+        await window.electronAPI.data.runTask(task.id, {
+          ...payload,
+          sourcePath,
+        });
         await loadDashboard();
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -1182,11 +1223,12 @@ function TaskEditor({
   outputTables: DataOutputTable[];
   actionId: string | null;
   onBack: () => void;
-  onRun: (task: DataCleaningTask) => void | Promise<void>;
+  onRun: (task: DataCleaningTask, payload?: DataRunTaskInput) => void | Promise<void>;
   onWorkflowSaved: () => void | Promise<void>;
 }) {
   const { t } = useTranslation();
   const [workflow, setWorkflow] = useState<DataTaskWorkflow | null>(null);
+  const [savedWorkflowSignature, setSavedWorkflowSignature] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [activeInspectorTab, setActiveInspectorTab] = useState<'config' | 'logs'>('config');
   const [saving, setSaving] = useState(false);
@@ -1201,6 +1243,7 @@ function TaskEditor({
     try {
       const nextWorkflow = await window.electronAPI.data.getTaskWorkflow(task.id);
       setWorkflow(nextWorkflow);
+      setSavedWorkflowSignature(getWorkflowSaveInputSignature(nextWorkflow));
       setSelectedNodeId((current) => current ?? nextWorkflow.nodes[0]?.id ?? null);
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : String(err));
@@ -1242,6 +1285,18 @@ function TaskEditor({
 
   const nodes = useMemo(() => workflow?.nodes ?? [], [workflow?.nodes]);
   const edges = useMemo(() => workflow?.edges ?? [], [workflow?.edges]);
+  const workflowSaveInput = useMemo(
+    () => (workflow ? toWorkflowSaveInput(workflow) : null),
+    [workflow]
+  );
+  const workflowSignature = useMemo(
+    () => (workflowSaveInput ? JSON.stringify(workflowSaveInput) : null),
+    [workflowSaveInput]
+  );
+  const isWorkflowDirty =
+    Boolean(workflowSignature) &&
+    Boolean(savedWorkflowSignature) &&
+    workflowSignature !== savedWorkflowSignature;
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selectedNodeId) ?? nodes[0] ?? null,
     [nodes, selectedNodeId]
@@ -1394,24 +1449,12 @@ function TaskEditor({
     setSaving(true);
     setLocalError(null);
     try {
-      const saved = await window.electronAPI.data.saveTaskWorkflow(task.id, {
-        nodes: workflow.nodes.map((node) => ({
-          id: node.id,
-          type: node.type,
-          label: node.label,
-          x: node.x,
-          y: node.y,
-          config: node.config,
-        })),
-        edges: workflow.edges.map((edge) => ({
-          id: edge.id,
-          sourceNodeId: edge.sourceNodeId,
-          targetNodeId: edge.targetNodeId,
-          sourceHandle: edge.sourceHandle,
-          targetHandle: edge.targetHandle,
-        })),
-      });
+      const saved = await window.electronAPI.data.saveTaskWorkflow(
+        task.id,
+        toWorkflowSaveInput(workflow)
+      );
       setWorkflow(saved);
+      setSavedWorkflowSignature(getWorkflowSaveInputSignature(saved));
       setSelectedNodeId((current) => current ?? saved.nodes[0]?.id ?? null);
       await onWorkflowSaved();
       return saved;
@@ -1424,10 +1467,12 @@ function TaskEditor({
   }, [onWorkflowSaved, task.id, workflow]);
 
   const handleRun = useCallback(async () => {
-    const saved = await saveWorkflow();
-    await onRun(saved?.task ?? task);
-    await loadWorkflow();
-  }, [loadWorkflow, onRun, saveWorkflow, task]);
+    if (!workflowSaveInput) return;
+    await onRun(task, {
+      workflow: workflowSaveInput,
+      outputMode: isWorkflowDirty ? 'temporary' : 'persisted',
+    });
+  }, [isWorkflowDirty, onRun, task, workflowSaveInput]);
 
   const openImportDsl = useCallback(() => {
     setLocalError(null);
@@ -2471,10 +2516,14 @@ function WorkflowOutputConfig({
   const { t } = useTranslation();
   const selectedOutputDatasetId =
     stringValue(node.config.outputDatasetId) || stringValue(node.config.outputTableId);
+  const configuredStrategy = stringValue(node.config.outputStrategy);
   const strategy =
-    selectedOutputDatasetId || stringValue(node.config.outputStrategy) === 'existing'
-      ? 'existing'
-      : 'auto';
+    configuredStrategy === 'auto' || configuredStrategy === 'existing'
+      ? configuredStrategy
+      : selectedOutputDatasetId
+        ? 'existing'
+        : 'auto';
+  const autoOutputTableName = stringValue(node.config.outputTableName) || stringValue(node.config.table);
   const availableOutputTables = outputTables.filter(
     (outputTable) =>
       outputTable.relatedTaskNames.length === 0 || outputTable.id === selectedOutputDatasetId
@@ -2503,6 +2552,7 @@ function WorkflowOutputConfig({
         if (nextStrategy === 'auto') {
           delete nextConfig.outputDatasetId;
           delete nextConfig.outputTableId;
+          delete nextConfig.table;
           return nextConfig;
         }
 
@@ -2530,10 +2580,11 @@ function WorkflowOutputConfig({
           outputStrategy: 'auto',
           destination: 'duckdb_table',
           mode: stringValue(config.mode, 'replace'),
-          table: tableName,
+          outputTableName: tableName,
         };
         delete nextConfig.outputDatasetId;
         delete nextConfig.outputTableId;
+        delete nextConfig.table;
         return nextConfig;
       });
     },
@@ -2555,6 +2606,7 @@ function WorkflowOutputConfig({
         if (selectedOutputTable) {
           nextConfig.outputDatasetId = selectedOutputTable.id;
           nextConfig.table = selectedOutputTable.tableName;
+          nextConfig.outputTableName = selectedOutputTable.name;
         } else {
           delete nextConfig.outputDatasetId;
           delete nextConfig.outputTableId;
@@ -2577,8 +2629,8 @@ function WorkflowOutputConfig({
             onChange={(event) => handleStrategyChange(event.target.value)}
             className="h-8 w-full appearance-none rounded-lg border border-border-muted bg-background/94 px-2 pr-8 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
           >
-            <option value="auto">{t('data.workflow.outputStrategies.auto')}</option>
-            <option value="existing">{t('data.workflow.outputStrategies.existing')}</option>
+            <option value="auto">{t('data.workflow.values.outputStrategies.auto')}</option>
+            <option value="existing">{t('data.workflow.values.outputStrategies.existing')}</option>
           </select>
           <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
         </span>
@@ -2590,7 +2642,7 @@ function WorkflowOutputConfig({
             {t('data.workflow.outputTableName')}
           </span>
           <input
-            value={stringValue(node.config.table)}
+            value={autoOutputTableName}
             onChange={(event) => handleAutoTableNameChange(event.target.value)}
             placeholder={t('data.workflow.autoOutputTable')}
             className="h-8 w-full rounded-lg border border-border-muted bg-background/94 px-2 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
@@ -3194,9 +3246,14 @@ function getWorkflowConfigSummary(
       summary = getJoinConfigSummary(config, t);
       break;
     case 'output': {
-      const outputStrategy = stringValue(config.outputDatasetId) || stringValue(config.outputTableId)
-        ? 'existing'
-        : stringValue(config.outputStrategy, 'auto');
+      const configuredStrategy = stringValue(config.outputStrategy);
+      const outputStrategy =
+        configuredStrategy === 'auto' || configuredStrategy === 'existing'
+          ? configuredStrategy
+          : stringValue(config.outputDatasetId) || stringValue(config.outputTableId)
+            ? 'existing'
+            : 'auto';
+      const outputDisplayName = stringValue(config.outputTableName) || stringValue(config.table);
       summary = {
         primary: [
           summaryRow(
@@ -3209,11 +3266,11 @@ function getWorkflowConfigSummary(
             'destination',
             translateWorkflowValue(t, 'destinations', stringValue(config.destination, 'duckdb_table'))
           ),
-          summaryRow(t, 'outputTable', stringValue(config.table), true),
+          summaryRow(t, 'outputTable', outputDisplayName, true),
         ],
         details: [
           summaryRow(t, 'mode', translateWorkflowValue(t, 'outputModes', stringValue(config.mode, 'replace'))),
-          summaryRow(t, 'table', stringValue(config.table)),
+          summaryRow(t, 'table', outputDisplayName),
           summaryRow(t, 'dataset', stringValue(config.dataset)),
           summaryRow(t, 'file', stringValue(config.filePath), true),
           summaryRow(t, 'format', stringValue(config.format)),
@@ -4319,31 +4376,6 @@ function OutputTableEditor({
 
           <div className="lg:col-start-2">
             <InputTableInfo>{t('data.outputTables.editor.inputTableInfo')}</InputTableInfo>
-          </div>
-
-          <InputTableFormLabel>{t('data.outputTables.editor.physicalTable')}</InputTableFormLabel>
-          <div className="flex h-10 min-w-0 items-center gap-3 rounded-lg border border-border-muted bg-background/86 px-3.5 shadow-soft">
-            <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-blue-500/10 text-blue-500">
-              <UploadCloud className="h-4 w-4" />
-            </span>
-            <div className="min-w-0 truncate font-mono text-[13px] font-medium text-text-secondary">
-              {outputTable.tableName}
-            </div>
-          </div>
-
-          <InputTableFormLabel>{t('data.outputTables.editor.rows')}</InputTableFormLabel>
-          <div className="text-[13px] font-medium text-text-secondary">
-            {formatInteger(outputTable.rowCount)}
-          </div>
-
-          <InputTableFormLabel>{t('data.outputTables.editor.columns')}</InputTableFormLabel>
-          <div className="text-[13px] font-medium text-text-secondary">
-            {formatInteger(outputTable.columnCount)}
-          </div>
-
-          <InputTableFormLabel>{t('data.outputTables.editor.relatedTasks')}</InputTableFormLabel>
-          <div className="text-[13px] font-medium text-text-secondary">
-            {formatOutputTableRelatedTaskNames(outputTable, t)}
           </div>
         </div>
       </div>

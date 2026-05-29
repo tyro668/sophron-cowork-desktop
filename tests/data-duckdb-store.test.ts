@@ -528,6 +528,66 @@ describe('DuckDB data task store', () => {
     expect(reopened.edges[0]?.sourceNodeId).toBe('node_source');
   });
 
+  it('creates an associated output table when saving an automatic output node', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'), {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+
+    const task = await store.createTask({ name: 'Auto publish' });
+    const saved = await store.saveTaskWorkflow(task.id, {
+      nodes: [
+        {
+          id: 'node_output',
+          type: 'output',
+          label: '输出',
+          x: 180,
+          y: 120,
+          config: {
+            outputStrategy: 'auto',
+            outputTableName: 'Sales curated output',
+          },
+        },
+      ],
+      edges: [],
+    });
+
+    const outputNode = saved.nodes.find((node) => node.id === 'node_output');
+    expect(outputNode?.config.outputStrategy).toBe('existing');
+    expect(outputNode?.config.outputTableName).toBe('Sales curated output');
+    expect(outputNode?.config.outputDatasetId).toEqual(expect.any(String));
+    expect(outputNode?.config.table).toEqual(expect.stringMatching(/^output_/));
+
+    const dashboard = await store.getDashboard({
+      includeTasks: false,
+      includeDatasets: false,
+      includeOutputTables: true,
+    });
+    expect(dashboard.outputTables).toHaveLength(1);
+    expect(dashboard.outputTables[0]?.name).toBe('Sales curated output');
+    expect(dashboard.outputTables[0]?.relatedTaskNames).toEqual(['Auto publish']);
+
+    await store.saveTaskWorkflow(task.id, {
+      nodes: saved.nodes.map((node) => ({
+        id: node.id,
+        type: node.type,
+        label: node.label,
+        x: node.x,
+        y: node.y,
+        config: node.config,
+      })),
+      edges: [],
+    });
+    const dashboardAfterResave = await store.getDashboard({
+      includeTasks: false,
+      includeDatasets: false,
+      includeOutputTables: true,
+    });
+    expect(dashboardAfterResave.outputTables).toHaveLength(1);
+  });
+
   it('runs a saved DSL workflow with a left join', async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
     tempRoots.push(tempRoot);
@@ -665,6 +725,167 @@ describe('DuckDB data task store', () => {
       connection.closeSync();
       instance.closeSync();
     }
+  });
+
+  it('runs workflows that only read from configured input tables without a task source file', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const dbPath = path.join(tempRoot, 'workspace.duckdb');
+    const customersPath = path.join(tempRoot, 'customers.csv');
+    fs.writeFileSync(customersPath, 'customer_id,name\nc1,Alice\nc2,Bob\n', 'utf8');
+
+    const store = createDataTaskStore(dbPath, {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+
+    await store.importDataset({ filePath: customersPath, name: 'customers' });
+    const task = await store.createTask({ name: 'Dataset only workflow' });
+    const parsed = parsePrepDsl(`
+      input source dataset "customers" as customers
+
+      from customers
+        | output table "customers_copy" mode replace
+    `);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    await store.saveTaskWorkflow(task.id, {
+      nodes: compiled.nodes,
+      edges: compiled.edges,
+    });
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    expect(completed.outputTable).toBe('customers_copy');
+    expect(completed.rowCount).toBe(2);
+  });
+
+  it('runs unsaved workflow overrides into a temporary table without overwriting the saved output', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const dbPath = path.join(tempRoot, 'workspace.duckdb');
+    const ordersPath = path.join(tempRoot, 'orders.csv');
+    fs.writeFileSync(
+      ordersPath,
+      'order_id,customer_id,revenue\n1,c1,20\n2,c2,5\n3,c3,30\n',
+      'utf8'
+    );
+
+    const store = createDataTaskStore(dbPath, {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+
+    const outputTable = await store.createOutputTable({ name: 'Formal output' });
+    const task = await store.createTask({ name: 'Draft run', sourcePath: ordersPath });
+    const parsed = parsePrepDsl(`
+      input source task as orders
+
+      from orders
+        | cast [revenue] as double on_error null
+        | filter [revenue] > 25
+        | output table "ignored_output" mode replace
+    `);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const saved = await store.saveTaskWorkflow(task.id, {
+      nodes: compiled.nodes.map((node) =>
+        node.type === 'output'
+          ? {
+              ...node,
+              config: {
+                ...node.config,
+                outputDatasetId: outputTable.id,
+              },
+            }
+          : node
+      ),
+      edges: compiled.edges,
+    });
+
+    const formalRun = await store.runTask(task.id);
+    expect(formalRun.outputTable).toBe(outputTable.tableName);
+    expect(formalRun.rowCount).toBe(1);
+
+    const draftNodes = saved.nodes.map((node) =>
+      node.type === 'filter'
+        ? {
+            id: node.id,
+            type: node.type,
+            label: node.label,
+            x: node.x,
+            y: node.y,
+            config: {
+              ...node.config,
+              condition: '[revenue] > 10',
+            },
+          }
+        : {
+            id: node.id,
+            type: node.type,
+            label: node.label,
+            x: node.x,
+            y: node.y,
+            config: node.config,
+          }
+    );
+    const temporaryRun = await store.runTask(task.id, {
+      workflow: {
+        nodes: draftNodes,
+        edges: saved.edges.map((edge) => ({
+          id: edge.id,
+          sourceNodeId: edge.sourceNodeId,
+          targetNodeId: edge.targetNodeId,
+          sourceHandle: edge.sourceHandle,
+          targetHandle: edge.targetHandle,
+        })),
+      },
+      outputMode: 'temporary',
+    });
+    expect(temporaryRun.outputTable).toMatch(/^temp_task_/);
+    expect(temporaryRun.rowCount).toBe(2);
+
+    const persistedWorkflow = await store.getTaskWorkflow(task.id);
+    expect(
+      persistedWorkflow.nodes.find((node) => node.type === 'filter')?.config.condition
+    ).toBe('[revenue] > 25');
+    const formalPreview = await store.previewDataset({ id: outputTable.id });
+    expect(formalPreview.totalRows).toBe(1);
+  });
+
+  it('executes saved workflows by walking backward from the output node', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const dbPath = path.join(tempRoot, 'workspace.duckdb');
+    const ordersPath = path.join(tempRoot, 'orders.csv');
+    fs.writeFileSync(
+      ordersPath,
+      'order_id,revenue\n1,20\n2,5\n3,30\n',
+      'utf8'
+    );
+
+    const store = createDataTaskStore(dbPath, {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+
+    const task = await store.createTask({ name: 'Unordered graph', sourcePath: ordersPath });
+    const parsed = parsePrepDsl(`
+      input source task as orders
+
+      from orders
+        | cast [revenue] as double on_error null
+        | filter [revenue] > 10
+        | output table "unordered_output" mode replace
+    `);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    await store.saveTaskWorkflow(task.id, {
+      nodes: [...compiled.nodes].reverse(),
+      edges: compiled.edges,
+    });
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    expect(completed.outputTable).toBe('unordered_output');
+    expect(completed.rowCount).toBe(2);
   });
 
   it('runs a saved DSL workflow with an asof join', async () => {
