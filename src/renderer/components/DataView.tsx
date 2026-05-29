@@ -6,6 +6,7 @@ import {
   useState,
   type DragEvent,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -46,13 +47,16 @@ import {
   ChevronRight,
   Clock3,
   Cloud,
+  Code2,
   Columns3,
   Copy,
   Database,
   Droplet,
+  FileText,
   Filter,
   Folder,
   GitMerge,
+  MapPin,
   MoreHorizontal,
   PencilLine,
   Play,
@@ -961,7 +965,7 @@ function TaskEditor({
             operators={OPERATOR_CATALOG}
             onAddOperator={addOperator}
           />
-          <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_minmax(0,0.56fr)] gap-3">
+          <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_20rem] gap-3">
             <WorkflowCanvas
               nodes={nodes}
               edges={edges}
@@ -1490,7 +1494,7 @@ function WorkflowInspector({
   const [operatorDsl, setOperatorDsl] = useState('');
   const [operatorDslDiagnostics, setOperatorDslDiagnostics] = useState<PrepDiagnostic[]>([]);
   const [operatorDslStatus, setOperatorDslStatus] = useState<string | null>(null);
-  const [operatorDslEditing, setOperatorDslEditing] = useState(false);
+  const [operatorDslDiagnosticsOpen, setOperatorDslDiagnosticsOpen] = useState(true);
   const operatorDslNodeKeyRef = useRef('');
   const usesOperatorDsl = Boolean(node && node.type !== 'input_source' && node.type !== 'output');
   const editorCompletionLabels = useMemo(
@@ -1514,13 +1518,13 @@ function WorkflowInspector({
       setOperatorDsl('');
       setOperatorDslDiagnostics([]);
       setOperatorDslStatus(null);
-      setOperatorDslEditing(false);
+      setOperatorDslDiagnosticsOpen(true);
       return;
     }
     setOperatorDsl(exportPrepOperatorDsl(node));
     setOperatorDslDiagnostics([]);
     setOperatorDslStatus(null);
-    setOperatorDslEditing(false);
+    setOperatorDslDiagnosticsOpen(true);
   }, [node, node?.id, node?.type, usesOperatorDsl]);
 
   useEffect(() => {
@@ -1532,20 +1536,28 @@ function WorkflowInspector({
   const handleOperatorDslChange = useCallback((value: string) => {
     setOperatorDsl(value);
     setOperatorDslStatus(null);
+    setOperatorDslDiagnosticsOpen(true);
   }, []);
 
-  const handleEditOperatorDsl = useCallback(() => {
+  const handleFormatOperatorDsl = useCallback(() => {
     if (!node || !usesOperatorDsl) return;
-    setOperatorDsl(exportPrepOperatorDsl(node));
-    setOperatorDslDiagnostics([]);
-    setOperatorDslStatus(null);
-    setOperatorDslEditing(true);
-  }, [node, usesOperatorDsl]);
-
-  const handleApplyOperatorDsl = useCallback(() => {
-    if (!node || !usesOperatorDsl || !operatorDslEditing) return;
     const result = parsePrepOperatorDsl(operatorDsl, node.type);
     setOperatorDslDiagnostics(result.diagnostics);
+    setOperatorDslDiagnosticsOpen(true);
+    const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
+    if (!result.operator || errors.length > 0) {
+      setOperatorDslStatus(null);
+      return;
+    }
+    setOperatorDsl(exportPrepOperatorDsl({ id: node.id, type: node.type, config: result.operator.config }));
+    setOperatorDslStatus(null);
+  }, [node, operatorDsl, usesOperatorDsl]);
+
+  const handleApplyOperatorDsl = useCallback(() => {
+    if (!node || !usesOperatorDsl) return;
+    const result = parsePrepOperatorDsl(operatorDsl, node.type);
+    setOperatorDslDiagnostics(result.diagnostics);
+    setOperatorDslDiagnosticsOpen(true);
     const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
     if (!result.operator || errors.length > 0) {
       setOperatorDslStatus(null);
@@ -1558,9 +1570,9 @@ function WorkflowInspector({
     }));
     setOperatorDsl(result.operator.config.dsl as string);
     setOperatorDslStatus(t('data.workflow.operatorDslApplied'));
-    setOperatorDslEditing(false);
     setOperatorDslDiagnostics([]);
-  }, [node, onNodeChange, operatorDsl, operatorDslEditing, t, usesOperatorDsl]);
+    setOperatorDslDiagnosticsOpen(true);
+  }, [node, onNodeChange, operatorDsl, t, usesOperatorDsl]);
 
   if (!node) {
     return (
@@ -1573,24 +1585,39 @@ function WorkflowInspector({
   const catalog = getOperatorCatalog(node.type);
   const Icon = catalog.Icon;
   const summary = getWorkflowConfigSummary(node, t);
-  const dslSummaryRows = [...summary.primary, ...summary.details].filter(
-    (row) => row.label !== t('data.workflow.summaryLabels.dsl')
+  const ruleSummaryItems = getRuleSummaryItems(node, t, Icon);
+  const operatorDslHasErrors = operatorDslDiagnostics.some(
+    (diagnostic) => diagnostic.severity === 'error'
   );
 
   return (
     <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border-muted bg-background/90 shadow-card">
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-border-muted px-3">
+      <div
+        className={`flex shrink-0 items-center justify-between border-b border-border-muted px-3 ${
+          usesOperatorDsl ? 'h-12' : 'h-10'
+        }`}
+      >
         <div className="flex min-w-0 items-center gap-3">
           <span
-            className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${catalog.colorClassName}`}
+            className={`flex flex-shrink-0 items-center justify-center rounded-lg ${
+              usesOperatorDsl ? 'h-8 w-8' : 'h-7 w-7'
+            } ${catalog.colorClassName}`}
           >
-            <Icon className="h-4 w-4" />
+            <Icon className={usesOperatorDsl ? 'h-[18px] w-[18px]' : 'h-4 w-4'} />
           </span>
           <div className="min-w-0">
-            <div className="truncate text-xs font-medium text-text-secondary">{node.label}</div>
-            <div className="text-[11px] text-text-muted">
-              {t('data.workflow.nodeId', { id: node.id.slice(0, 8) })}
+            <div
+              className={`truncate font-medium text-text-secondary ${
+                usesOperatorDsl ? 'text-[15px]' : 'text-xs'
+              }`}
+            >
+              {node.label}
             </div>
+            {!usesOperatorDsl && (
+              <div className="text-[11px] text-text-muted">
+                {t('data.workflow.nodeId', { id: node.id.slice(0, 8) })}
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -1619,17 +1646,18 @@ function WorkflowInspector({
           <X className="h-4 w-4 text-text-muted" />
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
+      <div className="min-h-0 flex-1 overflow-hidden p-2.5">
 
         {activeTab === 'logs' ? (
           <div className="h-full min-h-0 rounded-lg border border-border-muted bg-background/70 p-2.5 text-xs text-text-muted">
             {t('data.workflow.noLogs')}
           </div>
         ) : usesOperatorDsl ? (
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(19rem,1.5fr)_minmax(0,1fr)]">
-            <div className="grid content-start gap-3 sm:grid-cols-2 lg:grid-cols-1">
-              <LabeledInput
-                label={t('data.workflow.nodeName')}
+          <div className="grid h-full min-h-0 gap-2.5 lg:grid-cols-[14rem_minmax(0,1fr)_17rem]">
+            <div className="grid min-h-0 min-w-0 grid-rows-[repeat(3,minmax(0,1fr))] gap-2 overflow-hidden">
+              <WorkflowRuleFieldRow
+                icon={FileText}
+                title={t('data.workflow.ruleName')}
                 value={node.label}
                 suffix={`${node.label.length}/50`}
                 onChange={(value) =>
@@ -1640,35 +1668,40 @@ function WorkflowInspector({
                   }))
                 }
               />
-              <SelectLike label={t('data.workflow.input')} value={t('data.workflow.previousOutput')} />
-              <SelectLike label={t('data.workflow.output')} value={t(catalog.labelKey)} />
+              <WorkflowRuleSelectRow
+                icon={Database}
+                title={t('data.workflow.inputData')}
+                value={t('data.workflow.previousOutput')}
+              />
+              <WorkflowRuleSelectRow
+                icon={Filter}
+                title={t('data.workflow.outputResult')}
+                value={t('data.workflow.operatorResult', { operator: t(catalog.labelKey) })}
+              />
             </div>
-            <div className="min-w-0">
-              <div className="mb-2 flex min-h-7 items-center justify-end gap-2">
+            <div className="flex min-h-0 min-w-0 flex-col rounded-xl border border-border-muted bg-background/95 p-2 shadow-card">
+              <div className="mb-2 grid min-h-8 grid-cols-[1fr_auto_auto] items-center gap-2">
+                <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
+                  {t('data.workflow.dslEditor')}
+                </div>
                 {operatorDslStatus && (
-                  <div className="mr-auto flex min-w-0 items-center gap-1.5 rounded-lg border border-success/20 bg-success/5 px-2 text-[11px] text-success">
+                  <div className="flex h-8 min-w-0 items-center gap-1.5 rounded-lg border border-success/20 bg-success/5 px-2 text-[11px] text-success">
                     <CheckCircle2 className="h-3 w-3 flex-shrink-0" />
                     <span className="truncate">{operatorDslStatus}</span>
                   </div>
                 )}
                 <button
-                  onClick={handleEditOperatorDsl}
-                  disabled={operatorDslEditing}
-                  className={`inline-flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-medium shadow-soft transition-colors disabled:cursor-not-allowed ${
-                    operatorDslEditing
-                      ? 'border-accent/30 bg-accent/10 text-accent'
-                      : 'border-border-muted bg-background/94 text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
-                  }`}
+                  onClick={handleFormatOperatorDsl}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/90 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
                 >
-                  <PencilLine className="h-3 w-3" />
-                  {t('common.edit')}
+                  <Code2 className="h-3.5 w-3.5" />
+                  {t('data.workflow.formatDsl')}
                 </button>
                 <button
                   onClick={handleApplyOperatorDsl}
-                  disabled={!operatorDslEditing}
-                  className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-[11px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-45"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover"
                 >
-                  <CheckCircle2 className="h-3 w-3" />
+                  <CheckCircle2 className="h-3.5 w-3.5" />
                   {t('data.workflow.applyOperatorDsl')}
                 </button>
               </div>
@@ -1680,18 +1713,19 @@ function WorkflowInspector({
                 formatDiagnostic={formatEditorDiagnostic}
                 onChange={handleOperatorDslChange}
                 onDiagnosticsChange={setOperatorDslDiagnostics}
-                editable={operatorDslEditing}
+                height={182}
               />
-              {operatorDslEditing && (
-                <WorkflowDslDiagnostics
-                  diagnostics={operatorDslDiagnostics}
-                  formatDiagnostic={formatEditorDiagnostic}
-                />
-              )}
             </div>
-            <WorkflowSummaryPanel
-              title={t('data.workflow.summary')}
-              rows={dslSummaryRows}
+            <WorkflowRuleSummaryCard
+              title={t('data.workflow.ruleSummary')}
+              items={ruleSummaryItems}
+              syntaxOk={!operatorDslHasErrors}
+              syntaxOkText={t('data.workflow.syntaxOk')}
+              syntaxErrorText={t('data.workflow.syntaxInvalid')}
+              diagnostics={operatorDslDiagnostics}
+              diagnosticsOpen={operatorDslDiagnosticsOpen}
+              onCloseDiagnostics={() => setOperatorDslDiagnosticsOpen(false)}
+              formatDiagnostic={formatEditorDiagnostic}
               emptyText={t('data.workflow.noConfig')}
             />
           </div>
@@ -1773,10 +1807,187 @@ function SelectLike({ label, value }: { label: string; value: string }) {
   );
 }
 
+function WorkflowRuleRowShell({
+  icon: Icon,
+  title,
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="flex min-w-0 flex-col justify-center rounded-xl border border-border-muted bg-background/95 p-2 shadow-card">
+      <div className="mb-1.5 flex h-5 min-w-0 items-center gap-2">
+        <span className="flex h-5 w-5 items-center justify-center rounded-md bg-accent/10 text-accent">
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+        <span className="min-w-0 truncate text-[13px] font-medium text-text-secondary">{title}</span>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function WorkflowRuleFieldRow({
+  icon,
+  title,
+  value,
+  suffix,
+  onChange,
+}: {
+  icon: LucideIcon;
+  title: string;
+  value: string;
+  suffix: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <WorkflowRuleRowShell icon={icon} title={title}>
+      <span className="flex h-8 w-full min-w-0 items-center rounded-lg border border-border-muted bg-background/94 px-2.5 shadow-soft transition-shadow focus-within:border-accent/40 focus-within:ring-2 focus-within:ring-accent/15">
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="min-w-0 flex-1 bg-transparent text-[13px] font-medium text-text-secondary outline-none"
+        />
+        <span className="ml-2 text-xs text-text-muted">{suffix}</span>
+      </span>
+    </WorkflowRuleRowShell>
+  );
+}
+
+function WorkflowRuleSelectRow({
+  icon,
+  title,
+  value,
+}: {
+  icon: LucideIcon;
+  title: string;
+  value: string;
+}) {
+  return (
+    <WorkflowRuleRowShell icon={icon} title={title}>
+      <button className="flex h-8 w-full min-w-0 items-center justify-between rounded-lg border border-border-muted bg-background/94 px-2.5 text-left text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-background/95">
+        <span className="truncate">{value}</span>
+        <span className="flex items-center gap-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+          <ChevronDown className="h-3.5 w-3.5 text-text-muted" />
+        </span>
+      </button>
+    </WorkflowRuleRowShell>
+  );
+}
+
 interface WorkflowSummaryRow {
   label: string;
   value: string;
   mono?: boolean;
+}
+
+interface WorkflowRuleSummaryItem {
+  id: string;
+  label: string;
+  operator?: string;
+  value: string;
+  Icon: LucideIcon;
+}
+
+function WorkflowRuleSummaryCard({
+  title,
+  items,
+  syntaxOk,
+  syntaxOkText,
+  syntaxErrorText,
+  diagnostics,
+  diagnosticsOpen,
+  onCloseDiagnostics,
+  formatDiagnostic,
+  emptyText,
+}: {
+  title: string;
+  items: WorkflowRuleSummaryItem[];
+  syntaxOk: boolean;
+  syntaxOkText: string;
+  syntaxErrorText: string;
+  diagnostics: PrepDiagnostic[];
+  diagnosticsOpen: boolean;
+  onCloseDiagnostics: () => void;
+  formatDiagnostic: (diagnostic: PrepDiagnostic) => string;
+  emptyText: string;
+}) {
+  const visibleDiagnostics = diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
+  return (
+    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border-muted bg-background/95 p-3 shadow-card">
+      <h3 className="mb-2 flex h-8 items-center text-[13px] font-medium text-text-secondary">
+        {title}
+      </h3>
+      <div className="min-h-0 space-y-1.5 overflow-hidden">
+        {items.length > 0 ? (
+          items.map((item) => (
+            <div
+              key={item.id}
+              className="flex min-h-8 items-center gap-2 rounded-lg bg-surface-active/45 px-2.5 py-1.5 text-[13px] text-text-secondary"
+            >
+              <item.Icon className="h-4 w-4 flex-shrink-0 text-accent" />
+              <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
+              {item.operator && (
+                <span className="px-1.5 font-mono text-xs font-medium text-accent">
+                  {item.operator}
+                </span>
+              )}
+              <span className="max-w-[7rem] truncate rounded-md bg-accent/10 px-2 py-1 font-medium text-accent">
+                {item.value}
+              </span>
+            </div>
+          ))
+        ) : (
+          <div className="rounded-lg bg-surface-active/45 px-2.5 py-2 text-xs text-text-muted">
+            {emptyText}
+          </div>
+        )}
+      </div>
+      <div className="mt-auto border-t border-dashed border-border-muted pt-2">
+        <div
+          className={`flex h-8 items-center gap-2 text-[13px] font-medium ${
+            syntaxOk ? 'text-accent' : 'text-error'
+          }`}
+        >
+          {syntaxOk ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+          <span>{syntaxOk ? syntaxOkText : syntaxErrorText}</span>
+        </div>
+        {visibleDiagnostics.length > 0 && diagnosticsOpen && (
+          <div className="mt-2 max-h-20 overflow-y-auto rounded-lg border border-error/15 bg-error/5 p-1.5">
+            <div className="mb-1 flex items-center justify-between gap-2 px-1">
+              <span className="text-[11px] font-medium text-error">
+                {visibleDiagnostics.length}
+              </span>
+              <button
+                onClick={onCloseDiagnostics}
+                className="inline-flex h-5 w-5 items-center justify-center rounded-md text-error/70 transition-colors hover:bg-error/10 hover:text-error"
+                title={formatDiagnostic({
+                  severity: 'warning',
+                  code: 'dismissDiagnostics',
+                  message: 'Dismiss diagnostics',
+                })}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+            <div className="space-y-1">
+              {visibleDiagnostics.map((diagnostic, index) => (
+                <div
+                  key={`${diagnostic.code ?? diagnostic.message}-${index}`}
+                  className="rounded-md bg-background/72 px-2 py-1 text-[11px] leading-4 text-error"
+                >
+                  {formatDiagnostic(diagnostic)}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
 }
 
 function WorkflowSummaryPanel({
@@ -1812,37 +2023,6 @@ function WorkflowSummaryPanel({
           <div className="px-2 py-2 text-text-muted">{emptyText}</div>
         )}
       </div>
-    </div>
-  );
-}
-
-function WorkflowDslDiagnostics({
-  diagnostics,
-  formatDiagnostic,
-}: {
-  diagnostics: PrepDiagnostic[];
-  formatDiagnostic: (diagnostic: PrepDiagnostic) => string;
-}) {
-  const errors = diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
-  const warnings = diagnostics.filter((diagnostic) => diagnostic.severity === 'warning');
-  if (errors.length === 0 && warnings.length === 0) {
-    return null;
-  }
-  return (
-    <div className="mt-2 space-y-1.5">
-      {[...errors, ...warnings].map((diagnostic, index) => (
-        <div
-          key={`${diagnostic.code ?? diagnostic.message}-${index}`}
-          className={`flex items-start gap-1.5 rounded-lg border px-2 py-1.5 text-[11px] ${
-            diagnostic.severity === 'error'
-              ? 'border-error/20 bg-error/10 text-error'
-              : 'border-warning/25 bg-warning/10 text-warning'
-          }`}
-        >
-          <AlertCircle className="mt-0.5 h-3 w-3 flex-shrink-0" />
-          <span>{formatDiagnostic(diagnostic)}</span>
-        </div>
-      ))}
     </div>
   );
 }
@@ -2011,6 +2191,73 @@ function getWorkflowConnectionDropTarget(
     return null;
   }
   return { nodeId, handleId };
+}
+
+function getRuleSummaryItems(
+  node: DataWorkflowNode,
+  t: TranslateFn,
+  fallbackIcon: LucideIcon
+): WorkflowRuleSummaryItem[] {
+  if (node.type === 'filter') {
+    const condition = stringValue(node.config.condition);
+    const parsedConditions = parseFilterSummaryItems(condition);
+    if (parsedConditions.length > 0) {
+      return parsedConditions.map((item, index) => ({
+        id: `condition-${index}`,
+        label: item.label,
+        operator: item.operator,
+        value: item.value,
+        Icon: item.label.toLowerCase().includes('region') ? MapPin : BarChart3,
+      }));
+    }
+  }
+
+  const summary = getWorkflowConfigSummary(node, t);
+  const dslLabel = t('data.workflow.summaryLabels.dsl');
+  const notSet = t('data.workflow.values.notSet');
+  return [...summary.primary, ...summary.details]
+    .filter((row) => row.label !== dslLabel && row.value && row.value !== notSet)
+    .slice(0, 3)
+    .map((row, index) => ({
+      id: `${row.label}-${index}`,
+      label: row.label,
+      value: row.value,
+      Icon: fallbackIcon,
+    }));
+}
+
+function parseFilterSummaryItems(
+  condition: string
+): Array<{ label: string; operator: string; value: string }> {
+  const normalized = condition.replace(/^filter\s+/i, '').trim();
+  if (!normalized) return [];
+  return normalized.split(/\s+and\s+/i).flatMap((part) => {
+    const match = /^\s*(.+?)\s*(>=|<=|!=|=|>|<)\s*(.+?)\s*$/.exec(part);
+    if (!match) return [];
+    return [
+      {
+        label: stripSummaryFieldRef(match[1]),
+        operator: match[2],
+        value: stripSummaryLiteral(match[3]),
+      },
+    ];
+  });
+}
+
+function stripSummaryFieldRef(value: string): string {
+  const pieces = value
+    .trim()
+    .split('.')
+    .map((part) => part.trim().replace(/^\[/, '').replace(/\]$/, '').replace(/^`|`$/g, ''));
+  return pieces[pieces.length - 1] || value.trim();
+}
+
+function stripSummaryLiteral(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return trimmed.slice(1, -1).replace(/\\"/g, '"');
+  }
+  return trimmed;
 }
 
 interface WorkflowConfigSummary {

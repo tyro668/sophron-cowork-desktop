@@ -173,6 +173,16 @@
       "operatorDslInvalid": "Operator DSL validation failed",
       "operatorDslValid": "DSL is valid",
       "operatorDslApplied": "DSL applied",
+      "dslConditionConfig": "DSL condition config",
+      "dslEditor": "DSL editor",
+      "formatDsl": "Format",
+      "ruleName": "Rule name",
+      "inputData": "Input data",
+      "outputResult": "Output result",
+      "operatorResult": "{{operator}} result",
+      "ruleSummary": "Rule summary",
+      "syntaxOk": "Syntax OK",
+      "syntaxInvalid": "Syntax issue",
       "noNodeSelected": "Select a node to configure it here.",
       "emptyCanvas": "Add operators from the left to start building the flow.",
       "importDsl": "Import DSL",
@@ -199,7 +209,8 @@
         "asofNearestMissingTolerance": "ASOF nearest must declare tolerance",
         "joinMissingOn": "Non-cross join must declare on conditions",
         "operatorDslTypeMismatch": "This node expects {{expected}} DSL, but got {{actual}}",
-        "operatorDslMultipleCommands": "A single operator config can contain only one DSL command"
+        "operatorDslMultipleCommands": "A single operator config can contain only one DSL command",
+        "dismissDiagnostics": "Dismiss diagnostics"
       },
       "completionGroups": {
         "keywords": "Keywords",

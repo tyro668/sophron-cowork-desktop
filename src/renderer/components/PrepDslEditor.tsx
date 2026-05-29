@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
+import type { CSSProperties } from 'react';
 import {
   autocompletion,
   type Completion,
@@ -27,6 +28,7 @@ interface PrepDslEditorProps {
   onChange: (value: string) => void;
   onDiagnosticsChange: (diagnostics: PrepDiagnostic[]) => void;
   editable?: boolean;
+  height?: number;
 }
 
 const prepDslLanguage = StreamLanguage.define({
@@ -69,17 +71,17 @@ const prepDslHighlightStyle = HighlightStyle.define([
 
 const prepDslTheme = EditorView.theme({
   '&': {
-    height: '180px',
-    border: '1px solid rgba(148, 163, 184, 0.28)',
-    borderRadius: '0.5rem',
-    backgroundColor: 'rgba(255, 255, 255, 0.82)',
+    height: 'var(--prep-dsl-editor-height, 180px)',
+    border: '1px solid rgba(148, 163, 184, 0.22)',
+    borderRadius: '0.625rem',
+    backgroundColor: 'rgba(255, 255, 255, 0.86)',
     color: '#334155',
     fontSize: '11px',
   },
   '&.cm-focused': {
     outline: 'none',
-    borderColor: 'rgba(25, 169, 154, 0.65)',
-    boxShadow: '0 0 0 2px rgba(25, 169, 154, 0.16)',
+    borderColor: 'rgba(25, 169, 154, 0.62)',
+    boxShadow: '0 0 0 2px rgba(25, 169, 154, 0.12)',
   },
   '.cm-scroller': {
     fontFamily:
@@ -103,15 +105,16 @@ const prepDslTheme = EditorView.theme({
     backgroundColor: 'transparent',
   },
   '.cm-content': {
-    minHeight: '180px',
+    boxSizing: 'border-box',
+    minHeight: '100%',
     padding: '0.5rem 0.625rem',
   },
   '.cm-line': {
     padding: '0 0.125rem',
   },
   '.cm-gutters': {
-    backgroundColor: 'rgba(248, 250, 252, 0.9)',
-    borderRight: '1px solid rgba(148, 163, 184, 0.22)',
+    backgroundColor: 'rgba(248, 250, 252, 0.72)',
+    borderRight: '1px solid rgba(148, 163, 184, 0.16)',
     color: '#94a3b8',
   },
   '.cm-placeholder': {
@@ -142,6 +145,7 @@ export function PrepDslEditor({
   onChange,
   onDiagnosticsChange,
   editable = true,
+  height = 180,
 }: PrepDslEditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -226,7 +230,7 @@ export function PrepDslEditor({
     });
   }, [value]);
 
-  return <div ref={hostRef} />;
+  return <div ref={hostRef} style={{ '--prep-dsl-editor-height': `${height}px` } as CSSProperties} />;
 }
 
 function completePrepDsl(
