@@ -61,6 +61,7 @@ import type {
   DiagnosticInput,
   ProviderModelInfo,
   PermissionRule,
+  DataCreateOutputTableInput,
   DataCreateTaskInput,
   DataDashboardQuery,
   DataInputTableSourceKind,
@@ -68,6 +69,7 @@ import type {
   DataPreviewDatasetInput,
   DataPreviewInputTableInput,
   DataRunTaskInput,
+  DataUpdateOutputTableInput,
   DataUpdateDatasetInput,
   DataWorkflowSaveInput,
 } from '../renderer/types';
@@ -1650,6 +1652,24 @@ ipcMain.handle('data.updateDataset', async (_event, payload: DataUpdateDatasetIn
     return await requireDataTaskStore().updateDataset(payload);
   } catch (error) {
     logError('[Data] Error updating dataset:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('data.createOutputTable', async (_event, payload?: DataCreateOutputTableInput) => {
+  try {
+    return await requireDataTaskStore().createOutputTable(payload ?? {});
+  } catch (error) {
+    logError('[Data] Error creating output table:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('data.updateOutputTable', async (_event, payload: DataUpdateOutputTableInput) => {
+  try {
+    return await requireDataTaskStore().updateOutputTable(payload);
+  } catch (error) {
+    logError('[Data] Error updating output table:', error);
     throw error;
   }
 });

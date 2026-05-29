@@ -93,6 +93,7 @@
     "columns": {
       "taskName": "任务名称",
       "inputTableName": "输入表名称",
+      "outputTableName": "输出表名称",
       "datasetName": "数据集名称",
       "source": "来源",
       "sourceType": "来源类型",
@@ -219,7 +220,32 @@
       }
     },
     "outputTables": {
-      "searchPlaceholder": "搜索输出表..."
+      "searchPlaceholder": "搜索输出表...",
+      "add": "新增输出表",
+      "empty": "暂无输出表",
+      "loading": "正在加载输出表...",
+      "defaultName": "新的输出表",
+      "selection": "选择输出表",
+      "physicalTable": "物理表",
+      "relatedInputTable": "输入表",
+      "deleteConfirm": "确认删除输出表“{{name}}”？",
+      "deleteNotFound": "输出表不存在，可能已经被删除",
+      "status": {
+        "available": "可用"
+      },
+      "editor": {
+        "title": "输出表配置",
+        "back": "返回输出表",
+        "name": "输出表名称",
+        "inputTable": "输入表",
+        "noInputTable": "不绑定输入表",
+        "loadingInputTables": "正在加载输入表...",
+        "inputTableInfo": "可从输入表复制生成输出表，也可以在数据任务的输出算子中选择此输出表作为任务写入目标。",
+        "physicalTable": "物理表",
+        "rows": "行数",
+        "columns": "列数",
+        "relatedTasks": "关联数据任务"
+      }
     },
     "editor": {
       "pageTitle": "数据清洗任务",
@@ -263,6 +289,11 @@
       "nodeName": "节点名称",
       "input": "输入",
       "output": "输出",
+      "outputStrategy": "输出策略",
+      "outputTable": "输出表",
+      "outputTableName": "输出表名称",
+      "autoOutputTable": "自动输出表",
+      "noAvailableOutputTables": "暂无可用输出表",
       "previousOutput": "上游输出",
       "strategy": "处理策略",
       "byColumn": "按列设置",
@@ -383,6 +414,8 @@
         "tolerance": "容忍窗口",
         "conflict": "冲突",
         "destination": "目标",
+        "outputStrategy": "输出策略",
+        "outputTable": "输出表",
         "table": "表",
         "dsl": "DSL"
       },
@@ -434,6 +467,10 @@
           "replace": "覆盖",
           "append": "追加",
           "error_if_exists": "存在时报错"
+        },
+        "outputStrategies": {
+          "auto": "自动",
+          "existing": "输出到已有表"
         }
       }
     },

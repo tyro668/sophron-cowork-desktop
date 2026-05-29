@@ -85,6 +85,7 @@ import type {
   DataInputTableFolderConfig,
   DataInputTablePreview,
   DataInputTableSourceKind,
+  DataOutputTable,
   DataTaskStatus,
   DataTaskWorkflow,
   DataWorkflowEdge,
@@ -112,6 +113,10 @@ interface InputTableDraft {
   updatedAt: number;
 }
 
+type StoredPreviewTarget =
+  | { kind: 'input'; dataset: DataDataset }
+  | { kind: 'output'; outputTable: DataOutputTable };
+
 const EMPTY_DASHBOARD: DataDashboard = {
   summary: {
     taskCount: 0,
@@ -129,8 +134,10 @@ const EMPTY_DASHBOARD: DataDashboard = {
   },
   tasks: [],
   datasets: [],
+  outputTables: [],
   totalTasks: 0,
   totalDatasets: 0,
+  totalOutputTables: 0,
 };
 
 const TASK_ICON_STYLES = [
@@ -143,6 +150,7 @@ const TASK_ICON_STYLES = [
 
 const TABLE_PAGE_SIZE = 10;
 const INPUT_TABLE_PREVIEW_PAGE_SIZE = 100;
+const OUTPUT_TABLE_INPUT_CHOICES_LIMIT = 200;
 const WORKFLOW_NODE_WIDTH = 116;
 const WORKFLOW_NODE_HEIGHT = 36;
 const WORKFLOW_OPERATOR_MIME = 'application/x-sophron-workflow-operator';
@@ -280,51 +288,45 @@ export function DataView() {
   const [inputTableSourceFilter, setInputTableSourceFilter] =
     useState<InputTableSourceFilter>('all');
   const [inputTableDrafts, setInputTableDrafts] = useState<InputTableDraft[]>([]);
+  const [inputTableDatasets, setInputTableDatasets] = useState<DataDataset[]>([]);
+  const [totalInputTableDatasets, setTotalInputTableDatasets] = useState(0);
+  const [inputTablesLoading, setInputTablesLoading] = useState(false);
   const [editingInputTableDraftId, setEditingInputTableDraftId] = useState<string | null>(null);
   const [editingInputTableDatasetId, setEditingInputTableDatasetId] = useState<string | null>(null);
+  const [editingOutputTableId, setEditingOutputTableId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [taskPage, setTaskPage] = useState(1);
   const [datasetPage, setDatasetPage] = useState(1);
+  const [outputPage, setOutputPage] = useState(1);
   const [loadingTab, setLoadingTab] = useState<DataTab | null>('tasks');
+  const [pendingNavigationTab, setPendingNavigationTab] = useState<DataTab | null>('tasks');
   const [error, setError] = useState<string | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [outputEditorInputTables, setOutputEditorInputTables] = useState<DataDataset[]>([]);
+  const [outputEditorInputTablesLoading, setOutputEditorInputTablesLoading] = useState(false);
   const [storedPreviewOpen, setStoredPreviewOpen] = useState(false);
   const [storedPreviewLoading, setStoredPreviewLoading] = useState(false);
   const [storedPreviewError, setStoredPreviewError] = useState<string | null>(null);
   const [storedPreviewData, setStoredPreviewData] = useState<DataInputTablePreview | null>(null);
   const [storedPreviewPage, setStoredPreviewPage] = useState(1);
-  const [storedPreviewDataset, setStoredPreviewDataset] = useState<DataDataset | null>(null);
+  const [storedPreviewTarget, setStoredPreviewTarget] = useState<StoredPreviewTarget | null>(null);
   const dashboardRequestSeq = useRef(0);
+  const inputTablesRequestSeq = useRef(0);
   const hasLoadedDashboardSummary = useRef(false);
-  const pendingNavigationTabRef = useRef<DataTab | null>('tasks');
 
   const isDataApiAvailable = Boolean(window.electronAPI?.data);
 
-  const loadDashboard = useCallback(async (options: { preserveError?: boolean; query?: string; taskPage?: number; datasetPage?: number; tab?: DataTab } = {}) => {
+  const loadDashboard = useCallback(async (options: { preserveError?: boolean; query?: string; taskPage?: number; datasetPage?: number; outputPage?: number; tab?: DataTab } = {}) => {
     if (!window.electronAPI?.data) return;
     const requestSeq = dashboardRequestSeq.current + 1;
     dashboardRequestSeq.current = requestSeq;
     const targetTab = options.tab ?? activeTab;
     const requestedTaskPage = Math.max(1, options.taskPage ?? taskPage);
-    const requestedDatasetPage = Math.max(1, options.datasetPage ?? datasetPage);
+    const requestedOutputPage = Math.max(1, options.outputPage ?? outputPage);
     const shouldLoadTasks = targetTab === 'tasks';
-    const shouldLoadDatasets = targetTab === 'input_tables';
+    const shouldLoadOutputTables = targetTab === 'output_tables';
     const shouldLoadSummary = shouldLoadTasks || !hasLoadedDashboardSummary.current;
-    const visibleDraftCount =
-      shouldLoadDatasets && inputTableSourceFilter === 'all' ? inputTableDrafts.length : 0;
-    const draftStart = (requestedDatasetPage - 1) * TABLE_PAGE_SIZE;
-    const draftsOnRequestedPage = Math.max(
-      0,
-      Math.min(TABLE_PAGE_SIZE, visibleDraftCount - draftStart)
-    );
-    const datasetLimit = shouldLoadDatasets
-      ? Math.max(0, TABLE_PAGE_SIZE - draftsOnRequestedPage)
-      : 0;
-    const datasetOffset = Math.max(
-      0,
-      (requestedDatasetPage - 1) * TABLE_PAGE_SIZE - visibleDraftCount
-    );
     setLoadingTab(targetTab);
     if (!options.preserveError) {
       setError(null);
@@ -334,12 +336,15 @@ export function DataView() {
         query: options.query ?? (shouldLoadTasks ? searchQuery : ''),
         includeSummary: shouldLoadSummary,
         includeTasks: shouldLoadTasks,
-        includeDatasets: shouldLoadDatasets,
+        includeDatasets: false,
+        includeOutputTables: shouldLoadOutputTables,
         taskOffset: (requestedTaskPage - 1) * TABLE_PAGE_SIZE,
         taskLimit: shouldLoadTasks ? TABLE_PAGE_SIZE : 0,
-        datasetOffset,
-        datasetLimit,
-        datasetSourceKind: shouldLoadDatasets ? inputTableSourceFilter : 'all',
+        datasetOffset: 0,
+        datasetLimit: 0,
+        outputOffset: (requestedOutputPage - 1) * TABLE_PAGE_SIZE,
+        outputLimit: shouldLoadOutputTables ? TABLE_PAGE_SIZE : 0,
+        datasetSourceKind: 'all',
       });
       if (requestSeq === dashboardRequestSeq.current) {
         if (shouldLoadSummary) {
@@ -348,10 +353,14 @@ export function DataView() {
         setDashboard((current) => ({
           summary: shouldLoadSummary ? nextDashboard.summary : current.summary,
           tasks: shouldLoadTasks ? nextDashboard.tasks : current.tasks,
-          datasets: shouldLoadDatasets ? nextDashboard.datasets : current.datasets,
+          outputTables: shouldLoadOutputTables ? nextDashboard.outputTables : current.outputTables,
+          datasets: current.datasets,
           totalTasks:
             shouldLoadTasks || shouldLoadSummary ? nextDashboard.totalTasks : current.totalTasks,
-          totalDatasets: shouldLoadDatasets ? nextDashboard.totalDatasets : current.totalDatasets,
+          totalDatasets: current.totalDatasets,
+          totalOutputTables: shouldLoadOutputTables
+            ? nextDashboard.totalOutputTables
+            : current.totalOutputTables,
         }));
       }
     } catch (err) {
@@ -360,27 +369,65 @@ export function DataView() {
       }
     } finally {
       if (requestSeq === dashboardRequestSeq.current) {
-        if (pendingNavigationTabRef.current === targetTab) {
-          pendingNavigationTabRef.current = null;
-        }
+        setPendingNavigationTab((current) => (current === targetTab ? null : current));
         setLoadingTab((current) => (current === targetTab ? null : current));
       }
     }
-  }, [activeTab, datasetPage, inputTableDrafts.length, inputTableSourceFilter, searchQuery, taskPage]);
+  }, [activeTab, outputPage, searchQuery, taskPage]);
+
+  const loadInputTables = useCallback(
+    async (options: { preserveError?: boolean; page?: number; sourceFilter?: InputTableSourceFilter } = {}) => {
+      if (!window.electronAPI?.data) return;
+      const requestSeq = inputTablesRequestSeq.current + 1;
+      inputTablesRequestSeq.current = requestSeq;
+      const requestedPage = Math.max(1, options.page ?? datasetPage);
+      const sourceFilter = options.sourceFilter ?? inputTableSourceFilter;
+      setInputTablesLoading(true);
+      setLoadingTab('input_tables');
+      if (!options.preserveError) {
+        setError(null);
+      }
+      try {
+        const nextDashboard = await window.electronAPI.data.getDashboard({
+          query: '',
+          includeSummary: false,
+          includeTasks: false,
+          includeDatasets: true,
+          includeOutputTables: false,
+          taskLimit: 0,
+          datasetOffset: (requestedPage - 1) * TABLE_PAGE_SIZE,
+          datasetLimit: TABLE_PAGE_SIZE,
+          datasetSourceKind: sourceFilter,
+          outputLimit: 0,
+        });
+        if (requestSeq === inputTablesRequestSeq.current) {
+          setInputTableDatasets(nextDashboard.datasets);
+          setTotalInputTableDatasets(nextDashboard.totalDatasets);
+        }
+      } catch (err) {
+        if (requestSeq === inputTablesRequestSeq.current) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      } finally {
+        if (requestSeq === inputTablesRequestSeq.current) {
+          setPendingNavigationTab((current) =>
+            current === 'input_tables' ? null : current
+          );
+          setLoadingTab((current) => (current === 'input_tables' ? null : current));
+          setInputTablesLoading(false);
+        }
+      }
+    },
+    [datasetPage, inputTableSourceFilter]
+  );
 
   useEffect(() => {
     if (!isDataApiAvailable) {
-      pendingNavigationTabRef.current = null;
+      setPendingNavigationTab(null);
       setLoadingTab(null);
       return;
     }
     dashboardRequestSeq.current += 1;
-    if (activeTab === 'output_tables') {
-      pendingNavigationTabRef.current = null;
-      setLoadingTab(null);
-      return;
-    }
-
     const delay = activeTab === 'tasks' && searchQuery ? 180 : 0;
     let timer: number | null = null;
     let firstFrame = 0;
@@ -388,7 +435,11 @@ export function DataView() {
     firstFrame = window.requestAnimationFrame(() => {
       secondFrame = window.requestAnimationFrame(() => {
         timer = window.setTimeout(() => {
-          void loadDashboard({ tab: activeTab });
+          if (activeTab === 'input_tables') {
+            void loadInputTables();
+          } else {
+            void loadDashboard({ tab: activeTab });
+          }
         }, delay);
       });
     });
@@ -400,7 +451,7 @@ export function DataView() {
         window.clearTimeout(timer);
       }
     };
-  }, [activeTab, isDataApiAvailable, loadDashboard, searchQuery]);
+  }, [activeTab, isDataApiAvailable, loadDashboard, loadInputTables, searchQuery]);
 
   useEffect(() => {
     const pageCount = getTablePageCount(dashboard.totalTasks);
@@ -411,11 +462,18 @@ export function DataView() {
 
   useEffect(() => {
     const draftCount = inputTableSourceFilter === 'all' ? inputTableDrafts.length : 0;
-    const pageCount = getTablePageCount(dashboard.totalDatasets + draftCount);
+    const pageCount = getTablePageCount(totalInputTableDatasets + draftCount);
     if (datasetPage > pageCount) {
       setDatasetPage(pageCount);
     }
-  }, [dashboard.totalDatasets, datasetPage, inputTableDrafts.length, inputTableSourceFilter]);
+  }, [datasetPage, inputTableDrafts.length, inputTableSourceFilter, totalInputTableDatasets]);
+
+  useEffect(() => {
+    const pageCount = getTablePageCount(dashboard.totalOutputTables);
+    if (outputPage > pageCount) {
+      setOutputPage(pageCount);
+    }
+  }, [dashboard.totalOutputTables, outputPage]);
 
   const handleSearchChange = useCallback((value: string) => {
     setLoadingTab('tasks');
@@ -425,6 +483,7 @@ export function DataView() {
 
   const handleInputTableSourceFilterChange = useCallback((value: InputTableSourceFilter) => {
     setLoadingTab('input_tables');
+    setInputTablesLoading(true);
     setInputTableSourceFilter(value);
     setDatasetPage(1);
   }, []);
@@ -432,8 +491,8 @@ export function DataView() {
   const handleTabChange = useCallback((tab: DataTab) => {
     if (tab === activeTab) return;
     dashboardRequestSeq.current += 1;
-    pendingNavigationTabRef.current = tab === 'output_tables' ? null : tab;
-    setLoadingTab(null);
+    setPendingNavigationTab(tab);
+    setLoadingTab(tab);
     setActiveTab(tab);
   }, [activeTab]);
 
@@ -444,7 +503,13 @@ export function DataView() {
 
   const handleDatasetPageChange = useCallback((page: number) => {
     setLoadingTab('input_tables');
+    setInputTablesLoading(true);
     setDatasetPage(page);
+  }, []);
+
+  const handleOutputPageChange = useCallback((page: number) => {
+    setLoadingTab('output_tables');
+    setOutputPage(page);
   }, []);
 
   const summaryCards = useMemo(
@@ -493,16 +558,68 @@ export function DataView() {
     [editingInputTableDraftId, inputTableDrafts]
   );
   const editingInputTableDataset = useMemo(
-    () => dashboard.datasets.find((dataset) => dataset.id === editingInputTableDatasetId) ?? null,
-    [dashboard.datasets, editingInputTableDatasetId]
+    () => inputTableDatasets.find((dataset) => dataset.id === editingInputTableDatasetId) ?? null,
+    [editingInputTableDatasetId, inputTableDatasets]
   );
-  const isDetailEditor = Boolean(editingTask || editingInputTableDraft || editingInputTableDataset);
+  const editingOutputTable = useMemo(
+    () => dashboard.outputTables.find((outputTable) => outputTable.id === editingOutputTableId) ?? null,
+    [dashboard.outputTables, editingOutputTableId]
+  );
+
+  useEffect(() => {
+    if (!editingOutputTableId || !window.electronAPI?.data?.getDashboard) {
+      setOutputEditorInputTables([]);
+      setOutputEditorInputTablesLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setOutputEditorInputTablesLoading(true);
+    void window.electronAPI.data
+      .getDashboard({
+        includeSummary: false,
+        includeTasks: false,
+        includeDatasets: true,
+        includeOutputTables: false,
+        datasetOffset: 0,
+        datasetLimit: OUTPUT_TABLE_INPUT_CHOICES_LIMIT,
+        datasetSourceKind: 'all',
+      })
+      .then((nextDashboard) => {
+        if (!cancelled) {
+          setOutputEditorInputTables(nextDashboard.datasets);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : String(err));
+          setOutputEditorInputTables([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setOutputEditorInputTablesLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editingOutputTableId]);
+
+  const isDetailEditor = Boolean(
+    editingTask || editingInputTableDraft || editingInputTableDataset || editingOutputTable
+  );
   const isTasksLoading =
     loadingTab === 'tasks' ||
-    (activeTab === 'tasks' && pendingNavigationTabRef.current === 'tasks');
+    (activeTab === 'tasks' && pendingNavigationTab === 'tasks');
   const isInputTablesLoading =
+    inputTablesLoading ||
     loadingTab === 'input_tables' ||
-    (activeTab === 'input_tables' && pendingNavigationTabRef.current === 'input_tables');
+    (activeTab === 'input_tables' && pendingNavigationTab === 'input_tables');
+  const isOutputTablesLoading =
+    loadingTab === 'output_tables' ||
+    (activeTab === 'output_tables' && pendingNavigationTab === 'output_tables');
   const selectOneFile = useCallback(async (): Promise<string | null> => {
     if (!window.electronAPI?.selectFiles) return null;
     const files = await window.electronAPI.selectFiles();
@@ -553,7 +670,7 @@ export function DataView() {
     const now = Date.now();
     const draft: InputTableDraft = {
       id: makeLocalId('input_table'),
-      name: `${t('data.inputTables.defaultName')} ${dashboard.totalDatasets + inputTableDrafts.length + 1}`,
+      name: `${t('data.inputTables.defaultName')} ${totalInputTableDatasets + inputTableDrafts.length + 1}`,
       createdAt: now,
       updatedAt: now,
     };
@@ -562,7 +679,7 @@ export function DataView() {
     setActiveTab('input_tables');
     setEditingInputTableDatasetId(null);
     setEditingInputTableDraftId(draft.id);
-  }, [dashboard.totalDatasets, inputTableDrafts.length, t]);
+  }, [inputTableDrafts.length, t, totalInputTableDatasets]);
 
   const handleRenameInputTableDraft = useCallback((id: string, name: string) => {
     setInputTableDrafts((current) =>
@@ -600,16 +717,22 @@ export function DataView() {
         config,
       });
       setInputTableDrafts((current) => current.filter((item) => item.id !== draft.id));
+      setInputTableDatasets((current) => [
+        imported,
+        ...current.filter((dataset) => dataset.id !== imported.id),
+      ]);
+      setTotalInputTableDatasets((current) => current + 1);
       setEditingInputTableDraftId(null);
       setEditingInputTableDatasetId(imported.id);
-      await loadDashboard({ preserveError: true });
+      setDatasetPage(1);
+      await loadInputTables({ preserveError: true, page: 1, sourceFilter: 'all' });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      await loadDashboard({ preserveError: true });
+      await loadInputTables({ preserveError: true });
     } finally {
       setActionId(null);
     }
-  }, [loadDashboard, selectOneFile]);
+  }, [loadInputTables, selectOneFile]);
 
   const handleEditInputTableDataset = useCallback((id: string) => {
     setActiveTab('input_tables');
@@ -626,16 +749,19 @@ export function DataView() {
       setActionId(dataset.id);
       setError(null);
       try {
-        await window.electronAPI.data.updateDataset({ id: dataset.id, name: trimmedName });
-        await loadDashboard({ preserveError: true });
+        const updated = await window.electronAPI.data.updateDataset({ id: dataset.id, name: trimmedName });
+        setInputTableDatasets((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item))
+        );
+        await loadInputTables({ preserveError: true });
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
-        await loadDashboard({ preserveError: true });
+        await loadInputTables({ preserveError: true });
       } finally {
         setActionId(null);
       }
     },
-    [loadDashboard]
+    [loadInputTables]
   );
 
   const handleUpdateInputTableSource = useCallback(
@@ -654,22 +780,25 @@ export function DataView() {
           : { path: await selectOneFile(), kind: 'file' as const };
         const sourcePath = source?.path;
         if (!sourcePath) return;
-        await window.electronAPI.data.updateDataset({
+        const updated = await window.electronAPI.data.updateDataset({
           id: dataset.id,
           filePath: sourcePath,
           name: name?.trim() || dataset.name,
           sourceKind,
           config,
         });
-        await loadDashboard({ preserveError: true });
+        setInputTableDatasets((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item))
+        );
+        await loadInputTables({ preserveError: true });
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
-        await loadDashboard({ preserveError: true });
+        await loadInputTables({ preserveError: true });
       } finally {
         setActionId(null);
       }
     },
-    [loadDashboard, selectOneFile]
+    [loadInputTables, selectOneFile]
   );
 
   const handleUpdateInputTableConfig = useCallback(
@@ -678,21 +807,24 @@ export function DataView() {
       setActionId(dataset.id);
       setError(null);
       try {
-        await window.electronAPI.data.updateDataset({
+        const updated = await window.electronAPI.data.updateDataset({
           id: dataset.id,
           name: name?.trim() || dataset.name,
           sourceKind: config.sourceKind,
           config,
         });
-        await loadDashboard({ preserveError: true });
+        setInputTableDatasets((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item))
+        );
+        await loadInputTables({ preserveError: true });
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
-        await loadDashboard({ preserveError: true });
+        await loadInputTables({ preserveError: true });
       } finally {
         setActionId(null);
       }
     },
-    [loadDashboard]
+    [loadInputTables]
   );
 
   const handleDeleteTask = useCallback(
@@ -733,21 +865,23 @@ export function DataView() {
         if (!result.success) {
           throw new Error(t('data.inputTables.deleteNotFound'));
         }
-        await loadDashboard({ preserveError: true });
+        setInputTableDatasets((current) => current.filter((item) => item.id !== dataset.id));
+        setTotalInputTableDatasets((current) => Math.max(0, current - 1));
+        await loadInputTables({ preserveError: true });
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
-        await loadDashboard({ preserveError: true });
+        await loadInputTables({ preserveError: true });
       } finally {
         setActionId(null);
       }
     },
-    [loadDashboard, t]
+    [loadInputTables, t]
   );
 
   const handlePreviewStoredInputTable = useCallback(async (dataset: DataDataset, page = 1) => {
     if (!window.electronAPI?.data?.previewDataset) return;
     setStoredPreviewOpen(true);
-    setStoredPreviewDataset(dataset);
+    setStoredPreviewTarget({ kind: 'input', dataset });
     setStoredPreviewLoading(true);
     setStoredPreviewError(null);
     setStoredPreviewPage(page);
@@ -764,6 +898,108 @@ export function DataView() {
       setStoredPreviewLoading(false);
     }
   }, []);
+
+  const handlePreviewStoredOutputTable = useCallback(async (outputTable: DataOutputTable, page = 1) => {
+    if (!window.electronAPI?.data?.previewDataset) return;
+    setStoredPreviewOpen(true);
+    setStoredPreviewTarget({ kind: 'output', outputTable });
+    setStoredPreviewLoading(true);
+    setStoredPreviewError(null);
+    setStoredPreviewPage(page);
+    try {
+      const preview = await window.electronAPI.data.previewDataset({
+        id: outputTable.id,
+        limit: INPUT_TABLE_PREVIEW_PAGE_SIZE,
+        offset: (page - 1) * INPUT_TABLE_PREVIEW_PAGE_SIZE,
+      });
+      setStoredPreviewData(preview);
+    } catch (err) {
+      setStoredPreviewError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setStoredPreviewLoading(false);
+    }
+  }, []);
+
+  const handleCreateOutputTable = useCallback(async () => {
+    if (!window.electronAPI?.data?.createOutputTable) return;
+    setActionId('create-output');
+    setError(null);
+    try {
+      setActiveTab('output_tables');
+      setOutputPage(1);
+      const outputTable = await window.electronAPI.data.createOutputTable({
+        name: `${t('data.outputTables.defaultName')} ${dashboard.totalOutputTables + 1}`,
+      });
+      setEditingOutputTableId(outputTable.id);
+      await loadDashboard({ preserveError: true, tab: 'output_tables', outputPage: 1 });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      await loadDashboard({ preserveError: true, tab: 'output_tables' });
+    } finally {
+      setActionId(null);
+    }
+  }, [dashboard.totalOutputTables, loadDashboard, t]);
+
+  const handleUpdateOutputTable = useCallback(
+    async (
+      outputTable: DataOutputTable,
+      name: string,
+      sourceDatasetId: string | null
+    ) => {
+      const trimmedName = name.trim();
+      const nextSourceDatasetId = sourceDatasetId || null;
+      if (
+        !trimmedName ||
+        (trimmedName === outputTable.name &&
+          nextSourceDatasetId === outputTable.sourceDatasetId) ||
+        !window.electronAPI?.data?.updateOutputTable
+      ) {
+        return;
+      }
+      setActionId(outputTable.id);
+      setError(null);
+      try {
+        await window.electronAPI.data.updateOutputTable({
+          id: outputTable.id,
+          name: trimmedName,
+          sourceDatasetId: nextSourceDatasetId,
+        });
+        await loadDashboard({ preserveError: true, tab: 'output_tables' });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        await loadDashboard({ preserveError: true, tab: 'output_tables' });
+      } finally {
+        setActionId(null);
+      }
+    },
+    [loadDashboard]
+  );
+
+  const handleDeleteOutputTable = useCallback(
+    async (outputTable: DataOutputTable) => {
+      if (!window.electronAPI?.data?.deleteDataset) return;
+      const confirmed = window.confirm(t('data.outputTables.deleteConfirm', { name: outputTable.name }));
+      if (!confirmed) return;
+      setActionId(outputTable.id);
+      setError(null);
+      try {
+        const result = await window.electronAPI.data.deleteDataset(outputTable.id);
+        if (!result.success) {
+          throw new Error(t('data.outputTables.deleteNotFound'));
+        }
+        if (editingOutputTableId === outputTable.id) {
+          setEditingOutputTableId(null);
+        }
+        await loadDashboard({ preserveError: true, tab: 'output_tables' });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        await loadDashboard({ preserveError: true, tab: 'output_tables' });
+      } finally {
+        setActionId(null);
+      }
+    },
+    [editingOutputTableId, loadDashboard, t]
+  );
 
   return (
     <div
@@ -786,6 +1022,7 @@ export function DataView() {
         {editingTask ? (
           <TaskEditor
             task={editingTask}
+            outputTables={dashboard.outputTables}
             actionId={actionId}
             onBack={() => setEditingTaskId(null)}
             onRun={handleRunTask}
@@ -807,6 +1044,15 @@ export function DataView() {
             onRenameDataset={handleRenameInputTableDataset}
             onChooseDatasetSource={handleUpdateInputTableSource}
             onUpdateDatasetConfig={handleUpdateInputTableConfig}
+          />
+        ) : editingOutputTable ? (
+          <OutputTableEditor
+            outputTable={editingOutputTable}
+            inputTables={outputEditorInputTables}
+            isInputTablesLoading={outputEditorInputTablesLoading}
+            isBusy={actionId === editingOutputTable.id}
+            onBack={() => setEditingOutputTableId(null)}
+            onSave={handleUpdateOutputTable}
           />
         ) : (
           <>
@@ -861,25 +1107,19 @@ export function DataView() {
                   onDelete={handleDeleteTask}
                 />
               ) : (
-                <div
-                  className={
-                    activeTab === 'input_tables'
-                      ? 'overflow-visible bg-transparent'
-                      : 'overflow-hidden rounded-xl border border-border-muted bg-background/90 shadow-card'
-                  }
-                >
+                <div className="overflow-visible bg-transparent">
                   {activeTab === 'input_tables' ? (
                       <InputTablesPanel
-                        datasets={dashboard.datasets}
+                        datasets={inputTableDatasets}
                         drafts={inputTableDrafts}
-                        totalDatasets={dashboard.totalDatasets}
+                        totalDatasets={totalInputTableDatasets}
                         currentPage={datasetPage}
                         isLoading={isInputTablesLoading}
                         sourceFilter={inputTableSourceFilter}
                         onSourceFilterChange={handleInputTableSourceFilterChange}
                         onPageChange={handleDatasetPageChange}
                         onCreate={handleCreateInputTableDraft}
-                        onRefresh={() => loadDashboard({ preserveError: true })}
+                        onRefresh={() => loadInputTables({ preserveError: true })}
                         onPreviewDataset={handlePreviewStoredInputTable}
                       onDelete={handleDeleteInputTable}
                       onDeleteDraft={handleDeleteInputTableDraft}
@@ -889,7 +1129,20 @@ export function DataView() {
                       actionId={actionId}
                     />
                   ) : (
-                    <BlankDataTableSurface />
+                    <OutputTablesPanel
+                      outputTables={dashboard.outputTables}
+                      totalOutputTables={dashboard.totalOutputTables}
+                      currentPage={outputPage}
+                      isLoading={isOutputTablesLoading}
+                      actionId={actionId}
+                      isCreateDisabled={!isDataApiAvailable || actionId === 'create-output'}
+                      onCreate={handleCreateOutputTable}
+                      onRefresh={() => loadDashboard({ preserveError: true, tab: 'output_tables' })}
+                      onPageChange={handleOutputPageChange}
+                      onPreview={handlePreviewStoredOutputTable}
+                      onEdit={(outputTable) => setEditingOutputTableId(outputTable.id)}
+                      onDelete={handleDeleteOutputTable}
+                    />
                   )}
                 </div>
               )}
@@ -901,8 +1154,10 @@ export function DataView() {
                 error={storedPreviewError}
                 currentPage={storedPreviewPage}
                 onPageChange={(page) => {
-                  if (storedPreviewDataset) {
-                    void handlePreviewStoredInputTable(storedPreviewDataset, page);
+                  if (storedPreviewTarget?.kind === 'input') {
+                    void handlePreviewStoredInputTable(storedPreviewTarget.dataset, page);
+                  } else if (storedPreviewTarget?.kind === 'output') {
+                    void handlePreviewStoredOutputTable(storedPreviewTarget.outputTable, page);
                   }
                 }}
                 onClose={() => setStoredPreviewOpen(false)}
@@ -917,12 +1172,14 @@ export function DataView() {
 
 function TaskEditor({
   task,
+  outputTables,
   actionId,
   onBack,
   onRun,
   onWorkflowSaved,
 }: {
   task: DataCleaningTask;
+  outputTables: DataOutputTable[];
   actionId: string | null;
   onBack: () => void;
   onRun: (task: DataCleaningTask) => void | Promise<void>;
@@ -936,6 +1193,7 @@ function TaskEditor({
   const [localError, setLocalError] = useState<string | null>(null);
   const [dslMode, setDslMode] = useState<'import' | 'export' | null>(null);
   const [dslText, setDslText] = useState('');
+  const [outputTableChoices, setOutputTableChoices] = useState<DataOutputTable[]>(outputTables);
 
   const loadWorkflow = useCallback(async () => {
     if (!window.electronAPI?.data) return;
@@ -952,6 +1210,35 @@ function TaskEditor({
   useEffect(() => {
     void loadWorkflow();
   }, [loadWorkflow]);
+
+  useEffect(() => {
+    setOutputTableChoices(outputTables);
+  }, [outputTables]);
+
+  useEffect(() => {
+    if (!window.electronAPI?.data?.getDashboard) return undefined;
+    let cancelled = false;
+    const loadOutputTableChoices = async () => {
+      try {
+        const dashboard = await window.electronAPI.data.getDashboard({
+          includeSummary: false,
+          includeTasks: false,
+          includeDatasets: false,
+          includeOutputTables: true,
+          outputLimit: OUTPUT_TABLE_INPUT_CHOICES_LIMIT,
+        });
+        if (!cancelled) {
+          setOutputTableChoices(dashboard.outputTables);
+        }
+      } catch {
+        // The workflow editor can still run with the already-loaded choices.
+      }
+    };
+    void loadOutputTableChoices();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const nodes = useMemo(() => workflow?.nodes ?? [], [workflow?.nodes]);
   const edges = useMemo(() => workflow?.edges ?? [], [workflow?.edges]);
@@ -1333,6 +1620,7 @@ function TaskEditor({
             />
             <WorkflowInspector
               node={selectedNode}
+              outputTables={outputTableChoices}
               activeTab={activeInspectorTab}
               onActiveTabChange={setActiveInspectorTab}
               onNodeChange={updateSelectedNode}
@@ -1835,11 +2123,13 @@ function WorkflowAlignmentGuidesOverlay({ guides }: { guides: WorkflowAlignmentG
 
 function WorkflowInspector({
   node,
+  outputTables,
   activeTab,
   onActiveTabChange,
   onNodeChange,
 }: {
   node: DataWorkflowNode | null;
+  outputTables: DataOutputTable[];
   activeTab: 'config' | 'logs';
   onActiveTabChange: (tab: 'config' | 'logs') => void;
   onNodeChange: (updater: (node: DataWorkflowNode) => DataWorkflowNode) => void;
@@ -2101,7 +2391,15 @@ function WorkflowInspector({
                 />
               </div>
               <SelectLike label={t('data.workflow.input')} value={t('data.workflow.previousOutput')} />
-              <SelectLike label={t('data.workflow.output')} value={t(catalog.labelKey)} />
+              {node.type === 'output' ? (
+                <WorkflowOutputConfig
+                  node={node}
+                  outputTables={outputTables}
+                  onNodeChange={onNodeChange}
+                />
+              ) : (
+                <SelectLike label={t('data.workflow.output')} value={t(catalog.labelKey)} />
+              )}
             </div>
             <WorkflowSummaryPanel
               title={t('data.workflow.summary')}
@@ -2158,6 +2456,173 @@ function SelectLike({ label, value }: { label: string; value: string }) {
         </span>
       </button>
     </label>
+  );
+}
+
+function WorkflowOutputConfig({
+  node,
+  outputTables,
+  onNodeChange,
+}: {
+  node: DataWorkflowNode;
+  outputTables: DataOutputTable[];
+  onNodeChange: (updater: (node: DataWorkflowNode) => DataWorkflowNode) => void;
+}) {
+  const { t } = useTranslation();
+  const selectedOutputDatasetId =
+    stringValue(node.config.outputDatasetId) || stringValue(node.config.outputTableId);
+  const strategy =
+    selectedOutputDatasetId || stringValue(node.config.outputStrategy) === 'existing'
+      ? 'existing'
+      : 'auto';
+  const availableOutputTables = outputTables.filter(
+    (outputTable) =>
+      outputTable.relatedTaskNames.length === 0 || outputTable.id === selectedOutputDatasetId
+  );
+
+  const updateOutputConfig = useCallback(
+    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
+      onNodeChange((current) => ({
+        ...current,
+        config: updater(current.config),
+        updatedAt: Date.now(),
+      }));
+    },
+    [onNodeChange]
+  );
+
+  const handleStrategyChange = useCallback(
+    (nextStrategy: string) => {
+      updateOutputConfig((config) => {
+        const nextConfig: Record<string, unknown> = {
+          ...config,
+          outputStrategy: nextStrategy,
+          destination: 'duckdb_table',
+          mode: stringValue(config.mode, 'replace'),
+        };
+        if (nextStrategy === 'auto') {
+          delete nextConfig.outputDatasetId;
+          delete nextConfig.outputTableId;
+          return nextConfig;
+        }
+
+        const selected =
+          availableOutputTables.find((outputTable) => outputTable.id === selectedOutputDatasetId) ??
+          availableOutputTables[0];
+        if (selected) {
+          nextConfig.outputDatasetId = selected.id;
+          nextConfig.table = selected.tableName;
+        } else {
+          delete nextConfig.outputDatasetId;
+          delete nextConfig.outputTableId;
+        }
+        return nextConfig;
+      });
+    },
+    [availableOutputTables, selectedOutputDatasetId, updateOutputConfig]
+  );
+
+  const handleAutoTableNameChange = useCallback(
+    (tableName: string) => {
+      updateOutputConfig((config) => {
+        const nextConfig: Record<string, unknown> = {
+          ...config,
+          outputStrategy: 'auto',
+          destination: 'duckdb_table',
+          mode: stringValue(config.mode, 'replace'),
+          table: tableName,
+        };
+        delete nextConfig.outputDatasetId;
+        delete nextConfig.outputTableId;
+        return nextConfig;
+      });
+    },
+    [updateOutputConfig]
+  );
+
+  const handleOutputTableChange = useCallback(
+    (outputDatasetId: string) => {
+      updateOutputConfig((config) => {
+        const selectedOutputTable = outputTables.find(
+          (outputTable) => outputTable.id === outputDatasetId
+        );
+        const nextConfig: Record<string, unknown> = {
+          ...config,
+          outputStrategy: 'existing',
+          destination: 'duckdb_table',
+          mode: stringValue(config.mode, 'replace'),
+        };
+        if (selectedOutputTable) {
+          nextConfig.outputDatasetId = selectedOutputTable.id;
+          nextConfig.table = selectedOutputTable.tableName;
+        } else {
+          delete nextConfig.outputDatasetId;
+          delete nextConfig.outputTableId;
+        }
+        return nextConfig;
+      });
+    },
+    [outputTables, updateOutputConfig]
+  );
+
+  return (
+    <div className="grid gap-2 sm:col-span-2 sm:grid-cols-2">
+      <label className="block">
+        <span className="mb-1.5 block text-xs font-medium text-text-secondary">
+          {t('data.workflow.outputStrategy')}
+        </span>
+        <span className="relative block">
+          <select
+            value={strategy}
+            onChange={(event) => handleStrategyChange(event.target.value)}
+            className="h-8 w-full appearance-none rounded-lg border border-border-muted bg-background/94 px-2 pr-8 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+          >
+            <option value="auto">{t('data.workflow.outputStrategies.auto')}</option>
+            <option value="existing">{t('data.workflow.outputStrategies.existing')}</option>
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+        </span>
+      </label>
+
+      {strategy === 'auto' ? (
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-medium text-text-secondary">
+            {t('data.workflow.outputTableName')}
+          </span>
+          <input
+            value={stringValue(node.config.table)}
+            onChange={(event) => handleAutoTableNameChange(event.target.value)}
+            placeholder={t('data.workflow.autoOutputTable')}
+            className="h-8 w-full rounded-lg border border-border-muted bg-background/94 px-2 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+          />
+        </label>
+      ) : (
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-medium text-text-secondary">
+            {t('data.workflow.outputTable')}
+          </span>
+          <span className="relative block">
+            <select
+              value={selectedOutputDatasetId}
+              onChange={(event) => handleOutputTableChange(event.target.value)}
+              className="h-8 w-full appearance-none rounded-lg border border-border-muted bg-background/94 px-2 pr-8 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+            >
+              <option value="">{t('data.workflow.noAvailableOutputTables')}</option>
+              {selectedOutputDatasetId &&
+                !availableOutputTables.some((outputTable) => outputTable.id === selectedOutputDatasetId) && (
+                  <option value={selectedOutputDatasetId}>{selectedOutputDatasetId}</option>
+                )}
+              {availableOutputTables.map((outputTable) => (
+                <option key={outputTable.id} value={outputTable.id}>
+                  {outputTable.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+          </span>
+        </label>
+      )}
+    </div>
   );
 }
 
@@ -2728,17 +3193,26 @@ function getWorkflowConfigSummary(
     case 'join':
       summary = getJoinConfigSummary(config, t);
       break;
-    case 'output':
+    case 'output': {
+      const outputStrategy = stringValue(config.outputDatasetId) || stringValue(config.outputTableId)
+        ? 'existing'
+        : stringValue(config.outputStrategy, 'auto');
       summary = {
         primary: [
+          summaryRow(
+            t,
+            'outputStrategy',
+            translateWorkflowValue(t, 'outputStrategies', outputStrategy)
+          ),
           summaryRow(
             t,
             'destination',
             translateWorkflowValue(t, 'destinations', stringValue(config.destination, 'duckdb_table'))
           ),
-          summaryRow(t, 'mode', translateWorkflowValue(t, 'outputModes', stringValue(config.mode, 'replace'))),
+          summaryRow(t, 'outputTable', stringValue(config.table), true),
         ],
         details: [
+          summaryRow(t, 'mode', translateWorkflowValue(t, 'outputModes', stringValue(config.mode, 'replace'))),
           summaryRow(t, 'table', stringValue(config.table)),
           summaryRow(t, 'dataset', stringValue(config.dataset)),
           summaryRow(t, 'file', stringValue(config.filePath), true),
@@ -2746,6 +3220,7 @@ function getWorkflowConfigSummary(
         ],
       };
       break;
+    }
     default:
       summary = { primary: [], details: [] };
   }
@@ -3503,6 +3978,376 @@ function InputTablesPanel({
         )}
       </div>
     </div>
+  );
+}
+
+function OutputTablesPanel({
+  outputTables,
+  totalOutputTables,
+  currentPage,
+  isLoading,
+  actionId,
+  isCreateDisabled,
+  onCreate,
+  onRefresh,
+  onPageChange,
+  onPreview,
+  onEdit,
+  onDelete,
+}: {
+  outputTables: DataOutputTable[];
+  totalOutputTables: number;
+  currentPage: number;
+  isLoading: boolean;
+  actionId: string | null;
+  isCreateDisabled: boolean;
+  onCreate: () => void;
+  onRefresh: () => void;
+  onPageChange: (page: number) => void;
+  onPreview: (outputTable: DataOutputTable) => void;
+  onEdit: (outputTable: DataOutputTable) => void;
+  onDelete: (outputTable: DataOutputTable) => void;
+}) {
+  const { t } = useTranslation();
+  const [selectedOutputTableId, setSelectedOutputTableId] = useState<string | null>(null);
+  const pageCount = getTablePageCount(totalOutputTables);
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
+  const pageNumbers = getVisiblePageNumbers(safeCurrentPage, pageCount);
+  const selectedOutputTable =
+    outputTables.find((outputTable) => outputTable.id === selectedOutputTableId) ?? null;
+  const selectedBusy = selectedOutputTable ? actionId === selectedOutputTable.id : false;
+
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+    if (
+      selectedOutputTableId &&
+      !outputTables.some((outputTable) => outputTable.id === selectedOutputTableId)
+    ) {
+      setSelectedOutputTableId(null);
+    }
+  }, [isLoading, outputTables, selectedOutputTableId]);
+
+  return (
+    <div className="bg-transparent">
+      <div className="mb-3 flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <button
+            onClick={onCreate}
+            disabled={isCreateDisabled}
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t('data.outputTables.add')}
+          </button>
+
+          <div className="mx-1 hidden h-5 w-px bg-border-muted lg:block" />
+          <div className="flex flex-wrap items-center gap-2">
+            <InputTableToolbarButton
+              icon={<Eye className="h-3.5 w-3.5" />}
+              label={t('data.inputTables.actions.preview')}
+              disabled={!selectedOutputTable}
+              onClick={() => {
+                if (selectedOutputTable) {
+                  onPreview(selectedOutputTable);
+                }
+              }}
+            />
+            <InputTableToolbarButton
+              icon={<PencilLine className="h-3.5 w-3.5" />}
+              label={t('data.inputTables.actions.edit')}
+              disabled={!selectedOutputTable}
+              onClick={() => {
+                if (selectedOutputTable) {
+                  onEdit(selectedOutputTable);
+                }
+              }}
+            />
+            <InputTableToolbarButton
+              icon={<Trash2 className="h-3.5 w-3.5" />}
+              label={t('data.inputTables.actions.delete')}
+              disabled={!selectedOutputTable || selectedBusy}
+              danger
+              onClick={() => {
+                if (selectedOutputTable) {
+                  onDelete(selectedOutputTable);
+                }
+              }}
+            />
+          </div>
+        </div>
+
+        <button
+          onClick={onRefresh}
+          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          {t('data.actions.refresh')}
+        </button>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-border-muted bg-background/94">
+        {isLoading ? (
+          <LoadingState label={t('data.outputTables.loading')} />
+        ) : outputTables.length === 0 ? (
+          <EmptyState label={t('data.outputTables.empty')} />
+        ) : (
+          <>
+            <div className="overflow-hidden">
+              <table className="w-full table-fixed border-collapse text-left">
+                <thead>
+                  <tr className="h-10 border-b border-border-muted bg-background/80 text-xs font-medium text-text-muted">
+                    <th className="w-[4%] px-4">
+                      <span className="sr-only">{t('data.outputTables.selection')}</span>
+                    </th>
+                    <th className="w-[34%] whitespace-nowrap px-2">{t('data.columns.outputTableName')}</th>
+                    <th className="w-[30%] whitespace-nowrap px-2">{t('data.columns.relatedTasks')}</th>
+                    <th className="w-[18%] whitespace-nowrap px-2">
+                      <span className="inline-flex items-center gap-1">
+                        {t('data.columns.updatedAt')}
+                        <ArrowUpDown className="h-3 w-3" />
+                      </span>
+                    </th>
+                    <th className="w-[14%] whitespace-nowrap px-2">{t('data.columns.status')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {outputTables.map((outputTable, index) => {
+                    const selected = outputTable.id === selectedOutputTableId;
+                    return (
+                      <tr
+                        key={outputTable.id}
+                        onClick={() => setSelectedOutputTableId(outputTable.id)}
+                        onDoubleClick={() => onEdit(outputTable)}
+                        className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
+                          selected
+                            ? 'bg-accent/10 ring-1 ring-inset ring-accent/20'
+                            : index === 1
+                              ? 'bg-accent/5'
+                              : 'hover:bg-surface-hover/35'
+                        }`}
+                      >
+                        <td className="px-4">
+                          <input
+                            type="radio"
+                            name="output-table-selection"
+                            checked={selected}
+                            onChange={() => setSelectedOutputTableId(outputTable.id)}
+                            onClick={(event) => event.stopPropagation()}
+                            className="h-3.5 w-3.5 accent-accent"
+                            aria-label={outputTable.name}
+                          />
+                        </td>
+                        <td className="px-2">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
+                              <UploadCloud className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
+                              {outputTable.name}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-2">
+                          <div className="truncate text-[13px] font-medium text-text-secondary">
+                            {formatOutputTableRelatedTaskNames(outputTable, t)}
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+                          {formatDateTime(outputTable.updatedAt)}
+                        </td>
+                        <td className="px-2">
+                          <InputTableStatusBadge
+                            label={t('data.outputTables.status.available')}
+                            tone="success"
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex min-h-11 flex-col items-center justify-between gap-2 border-t border-border-muted px-4 py-2.5 text-xs font-medium text-text-secondary sm:flex-row">
+              <span>{t('data.totalCount', { count: totalOutputTables })}</span>
+              <div className="flex items-center gap-2">
+                <button className="inline-flex h-8 min-w-[6.5rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-text-secondary shadow-soft">
+                  {t('data.rowsPerPage', { count: TABLE_PAGE_SIZE })}
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => onPageChange(safeCurrentPage - 1)}
+                  disabled={safeCurrentPage <= 1}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                {pageNumbers.map((pageNumber) => (
+                  <button
+                    key={pageNumber}
+                    onClick={() => onPageChange(pageNumber)}
+                    className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
+                      pageNumber === safeCurrentPage
+                        ? 'bg-accent text-white shadow-soft'
+                        : 'border border-border-muted bg-background/94 text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
+                    }`}
+                  >
+                    {pageNumber}
+                  </button>
+                ))}
+                <button
+                  onClick={() => onPageChange(safeCurrentPage + 1)}
+                  disabled={safeCurrentPage >= pageCount}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OutputTableEditor({
+  outputTable,
+  inputTables,
+  isInputTablesLoading,
+  isBusy,
+  onBack,
+  onSave,
+}: {
+  outputTable: DataOutputTable;
+  inputTables: DataDataset[];
+  isInputTablesLoading: boolean;
+  isBusy: boolean;
+  onBack: () => void;
+  onSave: (
+    outputTable: DataOutputTable,
+    name: string,
+    sourceDatasetId: string | null
+  ) => void | Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [localName, setLocalName] = useState(outputTable.name);
+  const [sourceDatasetId, setSourceDatasetId] = useState(outputTable.sourceDatasetId ?? '');
+  const trimmedName = localName.trim();
+  const canSave = Boolean(
+    trimmedName &&
+      !isBusy &&
+      (trimmedName !== outputTable.name ||
+        (sourceDatasetId || null) !== outputTable.sourceDatasetId)
+  );
+  const inputTableOptions = useMemo(
+    () => {
+      const options = inputTables.map((dataset) => ({
+        value: dataset.id,
+        label: dataset.name,
+      }));
+      if (sourceDatasetId && !options.some((option) => option.value === sourceDatasetId)) {
+        options.unshift({ value: sourceDatasetId, label: sourceDatasetId });
+      }
+      const emptyLabel = isInputTablesLoading
+        ? t('data.outputTables.editor.loadingInputTables')
+        : t('data.outputTables.editor.noInputTable');
+      return [{ value: '', label: emptyLabel }, ...options];
+    },
+    [inputTables, isInputTablesLoading, sourceDatasetId, t]
+  );
+
+  useEffect(() => {
+    setLocalName(outputTable.name);
+    setSourceDatasetId(outputTable.sourceDatasetId ?? '');
+  }, [outputTable.id, outputTable.name, outputTable.sourceDatasetId]);
+
+  return (
+    <section className="flex min-h-0 flex-1 flex-col">
+      <div className="mb-3 flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-center gap-4">
+          <button
+            onClick={onBack}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            {t('data.outputTables.editor.back')}
+          </button>
+          <div className="flex min-w-0 items-center gap-2">
+            <input
+              value={localName}
+              onChange={(event) => setLocalName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.currentTarget.blur();
+                }
+              }}
+              disabled={isBusy}
+              maxLength={50}
+              aria-label={t('data.outputTables.editor.name')}
+              className="h-8 min-w-0 max-w-[18rem] truncate border-0 bg-transparent px-0 text-[15px] font-medium text-text-secondary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-60"
+              placeholder={t('data.outputTables.editor.title')}
+            />
+            <PencilLine className="h-4 w-4 flex-shrink-0 text-text-muted" />
+            <InputTableStatusBadge
+              label={t('data.outputTables.status.available')}
+              tone="success"
+            />
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => void onSave(outputTable, localName, sourceDatasetId || null)}
+          disabled={!canSave}
+          className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Save className="h-3.5 w-3.5" />
+          {isBusy ? t('common.saving') : t('common.save')}
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border-muted bg-background/94 p-4 shadow-card">
+        <div className="grid gap-5 lg:grid-cols-[8rem_minmax(0,1fr)] lg:items-center">
+          <InputTableFormLabel>{t('data.outputTables.editor.inputTable')}</InputTableFormLabel>
+          <InputTableSelect
+            value={sourceDatasetId}
+            options={inputTableOptions}
+            disabled={isBusy || isInputTablesLoading}
+            onChange={setSourceDatasetId}
+          />
+
+          <div className="lg:col-start-2">
+            <InputTableInfo>{t('data.outputTables.editor.inputTableInfo')}</InputTableInfo>
+          </div>
+
+          <InputTableFormLabel>{t('data.outputTables.editor.physicalTable')}</InputTableFormLabel>
+          <div className="flex h-10 min-w-0 items-center gap-3 rounded-lg border border-border-muted bg-background/86 px-3.5 shadow-soft">
+            <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-blue-500/10 text-blue-500">
+              <UploadCloud className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 truncate font-mono text-[13px] font-medium text-text-secondary">
+              {outputTable.tableName}
+            </div>
+          </div>
+
+          <InputTableFormLabel>{t('data.outputTables.editor.rows')}</InputTableFormLabel>
+          <div className="text-[13px] font-medium text-text-secondary">
+            {formatInteger(outputTable.rowCount)}
+          </div>
+
+          <InputTableFormLabel>{t('data.outputTables.editor.columns')}</InputTableFormLabel>
+          <div className="text-[13px] font-medium text-text-secondary">
+            {formatInteger(outputTable.columnCount)}
+          </div>
+
+          <InputTableFormLabel>{t('data.outputTables.editor.relatedTasks')}</InputTableFormLabel>
+          <div className="text-[13px] font-medium text-text-secondary">
+            {formatOutputTableRelatedTaskNames(outputTable, t)}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -4343,10 +5188,6 @@ function InputTableToolbarButton({
   );
 }
 
-function BlankDataTableSurface() {
-  return <div className="h-[24rem] bg-background/90" aria-hidden="true" />;
-}
-
 function StatusBadge({ status }: { status: DataTaskStatus }) {
   const { t } = useTranslation();
   return (
@@ -4530,6 +5371,19 @@ function formatRelatedTaskNames(
 ): string {
   if (names.length === 0) return t('data.inputTables.noRelatedTasks');
   return names.join(', ');
+}
+
+function formatOutputTableRelatedTaskNames(
+  outputTable: DataOutputTable,
+  t: (key: string, options?: Record<string, unknown>) => string
+): string {
+  if (outputTable.relatedTaskNames.length > 0) {
+    return formatRelatedTaskNames(outputTable.relatedTaskNames, t);
+  }
+  if (outputTable.sourceDatasetId) {
+    return t('data.outputTables.relatedInputTable');
+  }
+  return t('data.inputTables.noRelatedTasks');
 }
 
 function formatDisplayPath(filePath: string): string {

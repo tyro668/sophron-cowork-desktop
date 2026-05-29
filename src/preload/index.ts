@@ -26,6 +26,7 @@ import type {
   MemoryDebugFileContent,
   MemoryInspectSessionResult,
   DataCleaningTask,
+  DataCreateOutputTableInput,
   DataCreateTaskInput,
   DataDashboard,
   DataDashboardQuery,
@@ -39,7 +40,9 @@ import type {
   DataRunTaskInput,
   DataTaskWorkflow,
   DataUpdateDatasetInput,
+  DataUpdateOutputTableInput,
   DataWorkflowSaveInput,
+  DataOutputTable,
 } from '../renderer/types';
 import type { DiagnosticInput, DiagnosticResult } from '../renderer/types';
 import type {
@@ -193,6 +196,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('data.importDataset', payload),
     updateDataset: (payload: DataUpdateDatasetInput): Promise<DataDataset> =>
       ipcRenderer.invoke('data.updateDataset', payload),
+    createOutputTable: (payload?: DataCreateOutputTableInput): Promise<DataOutputTable> =>
+      ipcRenderer.invoke('data.createOutputTable', payload),
+    updateOutputTable: (payload: DataUpdateOutputTableInput): Promise<DataOutputTable> =>
+      ipcRenderer.invoke('data.updateOutputTable', payload),
     previewInputTable: (payload: DataPreviewInputTableInput): Promise<DataInputTablePreview> =>
       ipcRenderer.invoke('data.previewInputTable', payload),
     previewDataset: (payload: DataPreviewDatasetInput): Promise<DataInputTablePreview> =>
@@ -521,6 +528,8 @@ declare global {
         ) => Promise<DataTaskWorkflow>;
         importDataset: (payload: DataImportDatasetInput) => Promise<DataDataset>;
         updateDataset: (payload: DataUpdateDatasetInput) => Promise<DataDataset>;
+        createOutputTable: (payload?: DataCreateOutputTableInput) => Promise<DataOutputTable>;
+        updateOutputTable: (payload: DataUpdateOutputTableInput) => Promise<DataOutputTable>;
         previewInputTable: (
           payload: DataPreviewInputTableInput
         ) => Promise<DataInputTablePreview>;

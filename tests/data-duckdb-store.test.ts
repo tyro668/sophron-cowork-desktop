@@ -98,7 +98,14 @@ describe('DuckDB data task store', () => {
     expect(dashboard.summary.statusCounts.completed).toBe(1);
     expect(dashboard.summary.statusCounts.failed).toBe(0);
     expect(dashboard.tasks).toHaveLength(1);
-    expect(dashboard.datasets.length).toBeGreaterThanOrEqual(2);
+    expect(dashboard.datasets).toHaveLength(1);
+
+    const outputDashboard = await store.getDashboard({
+      includeTasks: false,
+      includeDatasets: false,
+      includeOutputTables: true,
+    });
+    expect(outputDashboard.outputTables).toHaveLength(0);
 
     expect(await store.deleteTask(completed.id)).toBe(true);
     const afterDelete = await store.getDashboard({ query: 'Clean events' });
@@ -174,6 +181,34 @@ describe('DuckDB data task store', () => {
     expect(imported.columnCount).toBe(2);
   });
 
+  it('lists Excel input tables without reading the source workbook', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const workbookPath = path.join(tempRoot, 'large-orders.xlsx');
+    writeWorkbookSheets(workbookPath, {
+      Orders: [
+        ['id', 'amount'],
+        [1, 10],
+      ],
+    });
+
+    const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'));
+    stores.push(store);
+
+    const imported = await store.importDataset({ filePath: workbookPath, sourceKind: 'excel' });
+    fs.unlinkSync(workbookPath);
+    fs.mkdirSync(workbookPath);
+
+    const dashboard = await store.getDashboard({
+      includeTasks: false,
+      includeDatasets: true,
+      datasetLimit: 10,
+    });
+    expect(dashboard.datasets).toHaveLength(1);
+    expect(dashboard.datasets[0]?.id).toBe(imported.id);
+    expect(dashboard.datasets[0]?.inputConfig.sourceKind).toBe('excel');
+  });
+
   it('previews input table data using the current configuration', async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
     tempRoots.push(tempRoot);
@@ -232,6 +267,106 @@ describe('DuckDB data task store', () => {
     expect(preview.limit).toBe(1);
     expect(preview.offset).toBe(1);
     expect(preview.totalRows).toBe(3);
+  });
+
+  it('creates and updates output table metadata separately from input tables', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'), {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+
+    const sourcePath = path.join(tempRoot, 'source.csv');
+    fs.writeFileSync(sourcePath, 'id,value\n1,A\n2,B\n', 'utf8');
+    const source = await store.importDataset({ filePath: sourcePath, name: 'Source input' });
+
+    const created = await store.createOutputTable({ name: 'Draft output' });
+    expect(created.name).toBe('Draft output');
+    expect(created.sourceDatasetId).toBeNull();
+    expect(created.tableName).toMatch(/^output_/);
+
+    const renamed = await store.updateOutputTable({
+      id: created.id,
+      name: 'Final output',
+      sourceDatasetId: source.id,
+    });
+    expect(renamed.name).toBe('Final output');
+    expect(renamed.sourceDatasetId).toBe(source.id);
+    expect(renamed.rowCount).toBe(2);
+    expect(renamed.columnCount).toBe(2);
+
+    const dashboard = await store.getDashboard({
+      includeTasks: false,
+      includeDatasets: true,
+      includeOutputTables: true,
+    });
+    expect(dashboard.datasets).toHaveLength(1);
+    expect(dashboard.outputTables).toHaveLength(1);
+    expect(dashboard.outputTables[0]?.name).toBe('Final output');
+    expect(dashboard.outputTables[0]?.sourceDatasetId).toBe(source.id);
+
+    const preview = await store.previewDataset({ id: created.id });
+    expect(preview.rows).toHaveLength(2);
+    expect(preview.totalRows).toBe(2);
+  });
+
+  it('cleans legacy task output metadata from configured output tables', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const dbPath = path.join(tempRoot, 'workspace.duckdb');
+
+    const initialStore = createDataTaskStore(dbPath);
+    stores.push(initialStore);
+    await initialStore.getDashboard();
+    stores.pop()?.close();
+
+    const instance = await DuckDBInstance.create(dbPath);
+    const connection = await instance.connect();
+    try {
+      await connection.run(`
+        INSERT INTO data_datasets (
+          id, name, source_path, source_kind, config_json, file_count,
+          table_name, row_count, column_count, created_at, updated_at
+        )
+        VALUES
+          ('legacy-configured-output', 'Configured output', 'duckdb://outputs/output_legacy', 'output', '{}', 0, 'output_legacy', 0, 0, 1, 1),
+          ('legacy-task-output', 'Task output dirty row', '/tmp/source.csv', 'output', '{}', 0, 'clean_task_legacy', 10, 2, 1, 1)
+      `);
+    } finally {
+      connection.closeSync();
+      instance.closeSync();
+    }
+
+    const store = createDataTaskStore(dbPath);
+    stores.push(store);
+    const dashboard = await store.getDashboard({
+      includeTasks: false,
+      includeDatasets: true,
+      includeOutputTables: true,
+    });
+
+    expect(dashboard.datasets).toHaveLength(0);
+    expect(dashboard.outputTables).toHaveLength(1);
+    expect(dashboard.outputTables[0]?.id).toBe('legacy-configured-output');
+
+    stores.pop()?.close();
+    const verifyInstance = await DuckDBInstance.create(dbPath);
+    const verifyConnection = await verifyInstance.connect();
+    try {
+      const reader = await verifyConnection.runAndReadAll(
+        "SELECT id, config_json FROM data_datasets ORDER BY id"
+      );
+      expect(reader.getRowObjectsJson()).toEqual([
+        {
+          id: 'legacy-configured-output',
+          config_json: '{"kind":"output_table"}',
+        },
+      ]);
+    } finally {
+      verifyConnection.closeSync();
+      verifyInstance.closeSync();
+    }
   });
 
   it('imports a folder by merging Excel and CSV files into one input table', async () => {
@@ -456,6 +591,82 @@ describe('DuckDB data task store', () => {
     }
   });
 
+  it('writes workflow output nodes into selected output tables', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const dbPath = path.join(tempRoot, 'workspace.duckdb');
+    const ordersPath = path.join(tempRoot, 'orders.csv');
+    fs.writeFileSync(
+      ordersPath,
+      'order_id,customer_id,revenue\n1,c1,20\n2,c2,5\n3,c3,30\n',
+      'utf8'
+    );
+
+    const store = createDataTaskStore(dbPath, {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+
+    const outputTable = await store.createOutputTable({ name: 'Orders output' });
+    const task = await store.createTask({ name: 'Publish orders', sourcePath: ordersPath });
+    const parsed = parsePrepDsl(`
+      input source task as orders
+
+      from orders
+        | cast [revenue] as double on_error null
+        | filter [revenue] > 10
+        | output table "ignored_output" mode replace
+    `);
+    expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    await store.saveTaskWorkflow(task.id, {
+      nodes: compiled.nodes.map((node) =>
+        node.type === 'output'
+          ? {
+              ...node,
+              config: {
+                ...node.config,
+                outputDatasetId: outputTable.id,
+                table: 'ignored_output',
+              },
+            }
+          : node
+      ),
+      edges: compiled.edges,
+    });
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    expect(completed.outputTable).toBe(outputTable.tableName);
+    expect(completed.rowCount).toBe(2);
+
+    const dashboard = await store.getDashboard({
+      includeTasks: false,
+      includeDatasets: false,
+      includeOutputTables: true,
+    });
+    expect(dashboard.outputTables).toHaveLength(1);
+    expect(dashboard.outputTables[0]?.name).toBe('Orders output');
+    expect(dashboard.outputTables[0]?.tableName).toBe(outputTable.tableName);
+    expect(dashboard.outputTables[0]?.relatedTaskNames).toEqual(['Publish orders']);
+
+    const preview = await store.previewDataset({ id: outputTable.id });
+    expect(preview.totalRows).toBe(2);
+
+    stores.pop()?.close();
+    const instance = await DuckDBInstance.create(dbPath);
+    const connection = await instance.connect();
+    try {
+      const reader = await connection.runAndReadAll(
+        `SELECT order_id FROM ${outputTable.tableName} ORDER BY order_id`
+      );
+      expect(reader.getRowObjectsJson()).toEqual([{ order_id: '1' }, { order_id: '3' }]);
+    } finally {
+      connection.closeSync();
+      instance.closeSync();
+    }
+  });
+
   it('runs a saved DSL workflow with an asof join', async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
     tempRoots.push(tempRoot);
@@ -665,12 +876,16 @@ describe('DuckDB data task store', () => {
     expect(main).toContain("ipcMain.handle('data.saveTaskWorkflow'");
     expect(main).toContain("ipcMain.handle('data.importDataset'");
     expect(main).toContain("ipcMain.handle('data.updateDataset'");
+    expect(main).toContain("ipcMain.handle('data.createOutputTable'");
+    expect(main).toContain("ipcMain.handle('data.updateOutputTable'");
     expect(main).toContain("ipcMain.handle('data.previewDataset'");
     expect(main).toContain("ipcMain.handle('data.deleteTask'");
     expect(main).toContain("ipcMain.handle('data.deleteDataset'");
     expect(preload).toContain('data: {');
     expect(preload).toContain("ipcRenderer.invoke('data.importDataset'");
     expect(preload).toContain("ipcRenderer.invoke('data.updateDataset'");
+    expect(preload).toContain("ipcRenderer.invoke('data.createOutputTable'");
+    expect(preload).toContain("ipcRenderer.invoke('data.updateOutputTable'");
     expect(preload).toContain("ipcRenderer.invoke('data.previewDataset'");
     expect(preload).toContain("ipcRenderer.invoke('data.deleteDataset'");
     expect(preload).toContain("ipcRenderer.invoke('data.getTaskWorkflow'");

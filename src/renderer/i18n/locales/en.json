@@ -93,6 +93,7 @@
     "columns": {
       "taskName": "Task name",
       "inputTableName": "Input table name",
+      "outputTableName": "Output table name",
       "datasetName": "Dataset name",
       "source": "Source",
       "sourceType": "Source type",
@@ -219,7 +220,32 @@
       }
     },
     "outputTables": {
-      "searchPlaceholder": "Search output tables..."
+      "searchPlaceholder": "Search output tables...",
+      "add": "Add output table",
+      "empty": "No output tables",
+      "loading": "Loading output tables...",
+      "defaultName": "New output table",
+      "selection": "Select output table",
+      "physicalTable": "Physical table",
+      "relatedInputTable": "Input table",
+      "deleteConfirm": "Delete output table \"{{name}}\"?",
+      "deleteNotFound": "The output table does not exist or has already been deleted",
+      "status": {
+        "available": "Available"
+      },
+      "editor": {
+        "title": "Output table config",
+        "back": "Back to output tables",
+        "name": "Output table name",
+        "inputTable": "Input table",
+        "noInputTable": "No bound input table",
+        "loadingInputTables": "Loading input tables...",
+        "inputTableInfo": "Copy from an input table, or select this output table in a data task output operator so the task writes into it.",
+        "physicalTable": "Physical table",
+        "rows": "Rows",
+        "columns": "Columns",
+        "relatedTasks": "Related data tasks"
+      }
     },
     "editor": {
       "pageTitle": "Data cleaning task",
@@ -263,6 +289,11 @@
       "nodeName": "Node name",
       "input": "Input",
       "output": "Output",
+      "outputStrategy": "Output strategy",
+      "outputTable": "Output table",
+      "outputTableName": "Output table name",
+      "autoOutputTable": "Auto output table",
+      "noAvailableOutputTables": "No available output tables",
       "previousOutput": "Previous output",
       "strategy": "Strategy",
       "byColumn": "By column",
@@ -383,6 +414,8 @@
         "tolerance": "Tolerance",
         "conflict": "Conflict",
         "destination": "Destination",
+        "outputStrategy": "Output strategy",
+        "outputTable": "Output table",
         "table": "Table",
         "dsl": "DSL"
       },
@@ -434,6 +467,10 @@
           "replace": "Replace",
           "append": "Append",
           "error_if_exists": "Error if exists"
+        },
+        "outputStrategies": {
+          "auto": "Auto",
+          "existing": "Output to existing table"
         }
       }
     },

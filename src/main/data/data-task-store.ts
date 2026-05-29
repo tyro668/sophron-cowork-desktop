@@ -8,9 +8,11 @@ import type { DatabaseInstance } from '../db/database';
 import type {
   DataCleaningTask,
   DataCreateTaskInput,
+  DataCreateOutputTableInput,
   DataDashboard,
   DataDashboardQuery,
   DataDataset,
+  DataOutputTable,
   DataInputTableConfig,
   DataInputTablePreview,
   DataInputTableCsvConfig,
@@ -25,6 +27,7 @@ import type {
   DataTaskStatusCounts,
   DataTaskWorkflow,
   DataUpdateDatasetInput,
+  DataUpdateOutputTableInput,
   DataWorkflowEdge,
   DataWorkflowEdgeInput,
   DataWorkflowNode,
@@ -37,6 +40,8 @@ interface DataTaskStoreOptions {
   now?: () => number;
   metadataDb?: DatabaseInstance;
 }
+
+const OUTPUT_TABLE_CONFIG_KIND = 'output_table';
 
 interface ParsedWorkbookRows {
   columns: string[];
@@ -259,15 +264,20 @@ export class DataTaskStore {
 
   async getDashboard(query: DataDashboardQuery = {}): Promise<DataDashboard> {
     await this.ensureMetadataReady();
+    if (query.includeOutputTables === true) {
+      await this.cleanupOutputTableMetadata();
+    }
     const normalizedQuery = (query.query ?? '').trim().toLowerCase();
     const like = `%${normalizedQuery.replace(/[%_\\]/g, '\\$&')}%`;
     const includeSummary = query.includeSummary !== false;
     const includeTasks = query.includeTasks !== false;
     const includeDatasets = query.includeDatasets !== false;
+    const includeOutputTables = query.includeOutputTables === true;
     const datasetSourceKind =
       query.datasetSourceKind && query.datasetSourceKind !== 'all' ? query.datasetSourceKind : '';
     const taskWindow = normalizeListWindow(query.taskOffset, query.taskLimit);
     const datasetWindow = normalizeListWindow(query.datasetOffset, query.datasetLimit);
+    const outputWindow = normalizeListWindow(query.outputOffset, query.outputLimit);
     const todayStart = startOfToday(this.now());
     const todayEnd = todayStart + 86_400_000;
     const summaryRows = includeSummary
@@ -335,6 +345,7 @@ export class DataTaskStore {
             WHERE ($query = ''
               OR lower(name) LIKE $like ESCAPE '\\'
               OR lower(source_path) LIKE $like ESCAPE '\\')
+              AND ${storedDatasetSourceKindSql()} <> 'output'
               AND (
                 $sourceKind = ''
                 OR ${storedDatasetSourceKindSql()} = $sourceKind
@@ -346,26 +357,67 @@ export class DataTaskStore {
     const datasetRows = includeDatasets
       ? await this.metaQueryRows<DataDatasetRow>(
           `
+            WITH page AS (
+              SELECT d.*
+              FROM data_datasets d
+              WHERE ($query = ''
+                OR lower(d.name) LIKE $like ESCAPE '\\'
+                OR lower(d.source_path) LIKE $like ESCAPE '\\')
+                AND ${storedDatasetSourceKindSql('d')} <> 'output'
+                AND (
+                  $sourceKind = ''
+                  OR ${storedDatasetSourceKindSql('d')} = $sourceKind
+                )
+              ORDER BY d.updated_at DESC, d.created_at DESC
+              LIMIT ${datasetWindow.limit} OFFSET ${datasetWindow.offset}
+            )
+            SELECT
+              page.*,
+              (
+                SELECT group_concat(name, ${this.relatedTaskNamesSeparatorSql()})
+                FROM (
+                  SELECT t.name
+                  FROM data_cleaning_tasks t
+                  WHERE t.source_dataset_id = page.id
+                  UNION
+                  SELECT t.name
+                  FROM data_cleaning_tasks t
+                  WHERE t.source_path = page.source_path
+                ) related
+              ) AS related_task_names
+            FROM page
+          `,
+          { query: normalizedQuery, like, sourceKind: datasetSourceKind }
+        )
+      : [];
+    const outputCountRows = includeOutputTables
+      ? await this.metaQueryRows<{ count: number | string }>(
+          `
+            SELECT count(*) AS count
+            FROM data_datasets
+            WHERE ($query = ''
+              OR lower(name) LIKE $like ESCAPE '\\'
+              OR lower(table_name) LIKE $like ESCAPE '\\')
+              AND ${outputTableConfigPredicateSql()}
+          `,
+          { query: normalizedQuery, like }
+        )
+      : [{ count: 0 }];
+    const outputRows = includeOutputTables
+      ? await this.metaQueryRows<DataDatasetRow>(
+          `
             SELECT
               d.*,
-              (
-                SELECT group_concat(t.name, ${this.relatedTaskNamesSeparatorSql()})
-                FROM data_cleaning_tasks t
-                WHERE t.source_dataset_id = d.id
-                  OR t.source_path = d.source_path
-              ) AS related_task_names
+              ${this.outputTableRelatedTaskNamesSql('d')} AS related_task_names
             FROM data_datasets d
             WHERE ($query = ''
               OR lower(d.name) LIKE $like ESCAPE '\\'
-              OR lower(d.source_path) LIKE $like ESCAPE '\\')
-              AND (
-                $sourceKind = ''
-                OR ${storedDatasetSourceKindSql('d')} = $sourceKind
-              )
+              OR lower(d.table_name) LIKE $like ESCAPE '\\')
+              AND ${outputTableConfigPredicateSql('d')}
             ORDER BY d.updated_at DESC, d.created_at DESC
-            LIMIT ${datasetWindow.limit} OFFSET ${datasetWindow.offset}
+            LIMIT ${outputWindow.limit} OFFSET ${outputWindow.offset}
           `,
-          { query: normalizedQuery, like, sourceKind: datasetSourceKind }
+          { query: normalizedQuery, like }
         )
       : [];
     const statusCounts: DataTaskStatusCounts = {
@@ -387,8 +439,10 @@ export class DataTaskStore {
       },
       tasks: taskRows.map(mapTaskRow),
       datasets: datasetRows.map(mapDatasetRow),
+      outputTables: outputRows.map(mapOutputTableRow),
       totalTasks: toNumber(taskCountRows[0]?.count),
       totalDatasets: toNumber(datasetCountRows[0]?.count),
+      totalOutputTables: toNumber(outputCountRows[0]?.count),
     };
   }
 
@@ -647,6 +701,126 @@ export class DataTaskStore {
     }
   }
 
+  async createOutputTable(input: DataCreateOutputTableInput = {}): Promise<DataOutputTable> {
+    await this.ensureMetadataReady();
+    const id = uuidv4();
+    const tableName = tableNameFromId('output', id);
+    const now = this.now();
+    const name = input.name?.trim() || 'Output table';
+    await this.metaRunSql(
+      `
+        INSERT INTO data_datasets (
+          id, name, source_path, source_kind, config_json, file_count,
+          table_name, row_count, column_count, created_at, updated_at
+        )
+        VALUES (
+          $id, $name, $sourcePath, 'output', $configJson, 0,
+          $tableName, 0, 0, $createdAt, $updatedAt
+        )
+      `,
+      {
+        id,
+        name,
+        sourcePath: `duckdb://outputs/${tableName}`,
+        configJson: outputTableConfigJson(),
+        tableName,
+        createdAt: now,
+        updatedAt: now,
+      }
+    );
+    return this.requireOutputTable(id);
+  }
+
+  async updateOutputTable(input: DataUpdateOutputTableInput): Promise<DataOutputTable> {
+    await this.ensureMetadataReady();
+    const outputTable = await this.requireOutputTable(input.id);
+    const name = input.name?.trim();
+    const nextName = name && name !== outputTable.name ? name : null;
+    const hasSourceDatasetChange =
+      Object.prototype.hasOwnProperty.call(input, 'sourceDatasetId') &&
+      (input.sourceDatasetId ?? null) !== outputTable.sourceDatasetId;
+
+    if (!nextName && !hasSourceDatasetChange) {
+      return outputTable;
+    }
+
+    if (hasSourceDatasetChange && input.sourceDatasetId) {
+      const sourceDataset = await this.requireInputDataset(input.sourceDatasetId);
+      await this.ensureReady();
+      if (!(await this.physicalTableExists(sourceDataset.tableName))) {
+        throw new Error(`Input table is not materialized: ${sourceDataset.id}`);
+      }
+      await this.dropTableIfExists(outputTable.tableName);
+      await this.runSql(
+        `CREATE TABLE ${quoteIdentifier(outputTable.tableName)} AS SELECT * FROM ${quoteIdentifier(
+          sourceDataset.tableName
+        )}`
+      );
+      const rowCount = await this.countRows(outputTable.tableName);
+      const columnCount = (await this.getTableColumns(outputTable.tableName)).length;
+      await this.metaRunSql(
+        `
+          UPDATE data_datasets
+          SET name = coalesce($name, name),
+              source_path = $sourcePath,
+              source_kind = 'output',
+              config_json = $configJson,
+              file_count = 0,
+              row_count = $rowCount,
+              column_count = $columnCount,
+              updated_at = $updatedAt
+          WHERE id = $id
+        `,
+        {
+          id: outputTable.id,
+          name: nextName,
+          sourcePath: `input-table://${sourceDataset.id}`,
+          configJson: outputTableConfigJson(sourceDataset.id),
+          rowCount,
+          columnCount,
+          updatedAt: this.now(),
+        }
+      );
+      return this.requireOutputTable(input.id);
+    }
+
+    if (hasSourceDatasetChange) {
+      await this.metaRunSql(
+        `
+          UPDATE data_datasets
+          SET name = coalesce($name, name),
+              source_path = $sourcePath,
+              source_kind = 'output',
+              config_json = $configJson,
+              file_count = 0,
+              updated_at = $updatedAt
+          WHERE id = $id
+        `,
+        {
+          id: outputTable.id,
+          name: nextName,
+          sourcePath: `duckdb://outputs/${outputTable.tableName}`,
+          configJson: outputTableConfigJson(),
+          updatedAt: this.now(),
+        }
+      );
+      return this.requireOutputTable(input.id);
+    }
+
+    if (nextName) {
+      await this.metaRunSql(
+        `
+          UPDATE data_datasets
+          SET name = $name,
+              updated_at = $updatedAt
+          WHERE id = $id
+        `,
+        { id: outputTable.id, name: nextName, updatedAt: this.now() }
+      );
+    }
+    return this.requireOutputTable(input.id);
+  }
+
   async previewInputTable(input: DataPreviewInputTableInput): Promise<DataInputTablePreview> {
     await this.ensureReady();
     const sourcePath = normalizeImportSourcePath(input.filePath);
@@ -709,6 +883,16 @@ export class DataTaskStore {
     const limit = normalizePreviewLimit(input.limit);
     const offset = normalizePreviewOffset(input.offset);
     const tableName = quoteIdentifier(dataset.tableName);
+    if (!(await this.physicalTableExists(dataset.tableName))) {
+      return {
+        columns: [],
+        rows: [],
+        fileCount: dataset.fileCount,
+        limit,
+        offset,
+        totalRows: 0,
+      };
+    }
     const countRows = await this.queryRows<{ count: number | string }>(
       `SELECT count(*) AS count FROM ${tableName}`
     );
@@ -928,6 +1112,7 @@ export class DataTaskStore {
     await this.ensureMetadataColumn('data_datasets', 'source_kind', 'VARCHAR');
     await this.ensureMetadataColumn('data_datasets', 'config_json', 'VARCHAR');
     await this.ensureMetadataColumn('data_datasets', 'file_count', 'INTEGER');
+    await this.cleanupOutputTableMetadata();
     await this.metaRunSql(`
       CREATE TABLE IF NOT EXISTS data_workflow_nodes (
         id VARCHAR PRIMARY KEY,
@@ -963,6 +1148,44 @@ export class DataTaskStore {
           config_json = coalesce(config_json, '{}'),
           updated_at = coalesce(updated_at, created_at)
     `);
+  }
+
+  private async cleanupOutputTableMetadata(): Promise<void> {
+    const rows = await this.metaQueryRows<DataDatasetRow>(
+      `
+        SELECT d.*
+        FROM data_datasets d
+        WHERE ${storedDatasetSourceKindSql('d')} = 'output'
+          OR d.table_name IN (
+            SELECT output_table
+            FROM data_cleaning_tasks
+            WHERE output_table IS NOT NULL
+          )
+      `
+    );
+    for (const row of rows) {
+      const id = String(row.id);
+      const config = parseOutputTableConfig(row.config_json);
+      if (config.kind === OUTPUT_TABLE_CONFIG_KIND) {
+        continue;
+      }
+      if (isLegacyExplicitOutputTableRow(row)) {
+        await this.metaRunSql(
+          `
+            UPDATE data_datasets
+            SET config_json = $configJson,
+                file_count = coalesce(file_count, 0)
+            WHERE id = $id
+          `,
+          {
+            id,
+            configJson: outputTableConfigJson(config.sourceDatasetId),
+          }
+        );
+        continue;
+      }
+      await this.metaRunSql('DELETE FROM data_datasets WHERE id = $id', { id });
+    }
   }
 
   private async ensureMetadataColumn(
@@ -1112,7 +1335,7 @@ export class DataTaskStore {
     outputTable: string;
     rowCount: number;
     columnCount: number;
-    sourceDatasetId: string;
+    sourceDatasetId: string | null;
   }> {
     const workflowNodes = await this.getWorkflowNodes(task.id);
     if (workflowNodes.length > 0) {
@@ -1156,7 +1379,7 @@ export class DataTaskStore {
         outputTable,
         rowCount,
         columnCount,
-        sourceDatasetId: dataset.id,
+        sourceDatasetId: dataset?.id ?? task.sourceDatasetId,
       };
     } finally {
       await this.dropTableIfExists(rawTable);
@@ -1172,10 +1395,14 @@ export class DataTaskStore {
     outputTable: string;
     rowCount: number;
     columnCount: number;
-    sourceDatasetId: string;
+    sourceDatasetId: string | null;
   }> {
     const outputNode = nodes.find((node) => node.type === 'output');
-    const outputTable = getOutputTableName(outputNode, task.outputTable || tableNameFromId('clean_task', task.id));
+    const outputTarget = await this.resolveWorkflowOutputTarget(
+      outputNode,
+      task.outputTable || tableNameFromId('clean_task', task.id)
+    );
+    const outputTable = outputTarget.tableName;
     const relationByNode = new Map<string, string>();
     await this.dropTableIfExists(outputTable);
 
@@ -1212,9 +1439,23 @@ export class DataTaskStore {
       sourcePath,
       outputTable,
       rowCount,
-      columnCount
+      columnCount,
+      outputTarget.outputDatasetId
     );
-    return { outputTable, rowCount, columnCount, sourceDatasetId: dataset.id };
+    return { outputTable, rowCount, columnCount, sourceDatasetId: dataset?.id ?? task.sourceDatasetId };
+  }
+
+  private async resolveWorkflowOutputTarget(
+    node: DataWorkflowNode | undefined,
+    fallback: string
+  ): Promise<{ tableName: string; outputDatasetId?: string }> {
+    const outputDatasetId =
+      stringConfigValue(node?.config.outputDatasetId) || stringConfigValue(node?.config.outputTableId);
+    if (outputDatasetId) {
+      const outputTable = await this.requireOutputTable(outputDatasetId);
+      return { tableName: outputTable.tableName, outputDatasetId: outputTable.id };
+    }
+    return { tableName: getOutputTableName(node, fallback) };
   }
 
   private async materializeInputSource(node: DataWorkflowNode, taskSourcePath: string): Promise<string> {
@@ -1373,59 +1614,49 @@ export class DataTaskStore {
     sourcePath: string,
     tableName: string,
     rowCount: number,
-    columnCount: number
-  ): Promise<DataDataset> {
-    const existingRows = await this.metaQueryRows<{ id: string }>(
-      'SELECT id FROM data_datasets WHERE table_name = $tableName LIMIT 1',
-      { tableName }
-    );
-    const now = this.now();
-    const name = `${taskName} cleaned`;
-    if (existingRows[0]?.id) {
+    columnCount: number,
+    outputDatasetId?: string
+  ): Promise<DataDataset | null> {
+    if (outputDatasetId) {
+      const now = this.now();
       await this.metaRunSql(
         `
           UPDATE data_datasets
-          SET name = $name,
-              source_path = $sourcePath,
+          SET source_path = $sourcePath,
+              source_kind = 'output',
+              config_json = $configJson,
+              file_count = 0,
+              table_name = $tableName,
               row_count = $rowCount,
               column_count = $columnCount,
               updated_at = $updatedAt
           WHERE id = $id
         `,
         {
-          id: existingRows[0].id,
-          name,
-          sourcePath,
+          id: outputDatasetId,
+          sourcePath: `duckdb://outputs/${tableName}`,
+          configJson: outputTableConfigJson(),
+          tableName,
           rowCount,
           columnCount,
           updatedAt: now,
         }
       );
-      return this.requireDataset(existingRows[0].id);
+      return this.requireDataset(outputDatasetId);
     }
 
-    const id = uuidv4();
     await this.metaRunSql(
       `
-        INSERT INTO data_datasets (
-          id, name, source_path, table_name, row_count, column_count, created_at, updated_at
-        )
-        VALUES (
-          $id, $name, $sourcePath, $tableName, $rowCount, $columnCount, $createdAt, $updatedAt
-        )
+        DELETE FROM data_datasets
+        WHERE table_name = $tableName
+          AND ${storedDatasetSourceKindSql()} = 'output'
+          AND coalesce(config_json, '') NOT LIKE '%"kind":"${OUTPUT_TABLE_CONFIG_KIND}"%'
       `,
-      {
-        id,
-        name,
-        sourcePath,
-        tableName,
-        rowCount,
-        columnCount,
-        createdAt: now,
-        updatedAt: now,
-      }
+      { tableName }
     );
-    return this.requireDataset(id);
+    void taskName;
+    void sourcePath;
+    return null;
   }
 
   private async getWorkflowNodes(taskId: string): Promise<DataWorkflowNode[]> {
@@ -1492,6 +1723,47 @@ export class DataTaskStore {
       throw new Error(`Dataset not found: ${id}`);
     }
     return dataset;
+  }
+
+  private async requireInputDataset(id: string): Promise<DataDataset> {
+    const rows = await this.metaQueryRows<DataDatasetRow>(
+      `
+        SELECT *
+        FROM data_datasets
+        WHERE id = $id
+          AND ${storedDatasetSourceKindSql()} <> 'output'
+        LIMIT 1
+      `,
+      { id }
+    );
+    if (!rows[0]) {
+      throw new Error(`Input table not found: ${id}`);
+    }
+    return mapDatasetRow(rows[0]);
+  }
+
+  private async getOutputTable(id: string): Promise<DataOutputTable | null> {
+    const rows = await this.metaQueryRows<DataDatasetRow>(
+      `
+        SELECT
+          d.*,
+          ${this.outputTableRelatedTaskNamesSql('d')} AS related_task_names
+        FROM data_datasets d
+        WHERE d.id = $id
+          AND ${outputTableConfigPredicateSql('d')}
+        LIMIT 1
+      `,
+      { id }
+    );
+    return rows[0] ? mapOutputTableRow(rows[0]) : null;
+  }
+
+  private async requireOutputTable(id: string): Promise<DataOutputTable> {
+    const outputTable = await this.getOutputTable(id);
+    if (!outputTable) {
+      throw new Error(`Output table not found: ${id}`);
+    }
+    return outputTable;
   }
 
   private async getTableColumns(tableName: string): Promise<string[]> {
@@ -1640,6 +1912,19 @@ export class DataTaskStore {
     await this.runSql(`DROP TABLE IF EXISTS ${quoteIdentifier(tableName)}`);
   }
 
+  private async physicalTableExists(tableName: string): Promise<boolean> {
+    const rows = await this.queryRows<{ table_name: string }>(
+      `
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_name = $tableName
+        LIMIT 1
+      `,
+      { tableName }
+    );
+    return rows.length > 0;
+  }
+
   private async metaRunSql(
     sql: string,
     values?: Record<string, string | number | null>
@@ -1667,6 +1952,26 @@ export class DataTaskStore {
 
   private relatedTaskNamesSeparatorSql(): string {
     return this.metadataDb ? 'char(31)' : 'chr(31)';
+  }
+
+  private outputTableRelatedTaskNamesSql(outputAlias: string): string {
+    return `
+      (
+        SELECT group_concat(t.name, ${this.relatedTaskNamesSeparatorSql()})
+        FROM data_cleaning_tasks t
+        WHERE t.output_table = ${outputAlias}.table_name
+          OR EXISTS (
+            SELECT 1
+            FROM data_workflow_nodes n
+            WHERE n.task_id = t.id
+              AND coalesce(n.operator_type, n.node_key) IN ('output', 'write_duckdb_table', 'publish_dataset')
+              AND (
+                coalesce(n.config_json, '') LIKE '%"outputDatasetId":"' || ${outputAlias}.id || '"%'
+                OR coalesce(n.config_json, '') LIKE '%"outputTableId":"' || ${outputAlias}.id || '"%'
+              )
+          )
+      )
+    `;
   }
 
   private async runSql(
@@ -1736,6 +2041,39 @@ function mapDatasetRow(row: DataDatasetRow): DataDataset {
   };
 }
 
+function mapOutputTableRow(row: DataDatasetRow): DataOutputTable {
+  const config = parseOutputTableConfig(row.config_json);
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    sourceDatasetId: config.kind === OUTPUT_TABLE_CONFIG_KIND ? config.sourceDatasetId : null,
+    tableName: String(row.table_name),
+    rowCount: toNumber(row.row_count),
+    columnCount: toNumber(row.column_count),
+    relatedTaskNames: parseRelatedTaskNames(row.related_task_names),
+    createdAt: toNumber(row.created_at),
+    updatedAt: toNumber(row.updated_at),
+  };
+}
+
+function parseOutputTableConfig(
+  value: string | null
+): { kind: string | null; sourceDatasetId: string | null } {
+  if (!value) return { kind: null, sourceDatasetId: null };
+  try {
+    const parsed = JSON.parse(value) as { kind?: unknown; sourceDatasetId?: unknown };
+    return {
+      kind: typeof parsed.kind === 'string' && parsed.kind.trim() ? parsed.kind.trim() : null,
+      sourceDatasetId:
+        typeof parsed.sourceDatasetId === 'string' && parsed.sourceDatasetId.trim()
+          ? parsed.sourceDatasetId.trim()
+          : null,
+    };
+  } catch {
+    return { kind: null, sourceDatasetId: null };
+  }
+}
+
 function parseRelatedTaskNames(value: string | null | undefined): string[] {
   if (!value) return [];
   return value.split('\u001F').filter(Boolean).slice(0, 2);
@@ -1770,6 +2108,34 @@ function storedDatasetSourceKindSql(alias?: string): string {
   `;
 }
 
+function outputTableConfigPredicateSql(alias?: string): string {
+  const prefix = alias ? `${alias}.` : '';
+  return `
+    ${storedDatasetSourceKindSql(alias)} = 'output'
+    AND coalesce(${prefix}config_json, '') LIKE '%"kind":"${OUTPUT_TABLE_CONFIG_KIND}"%'
+  `;
+}
+
+function outputTableConfigJson(sourceDatasetId?: string | null): string {
+  const config: { kind: string; sourceDatasetId?: string } = {
+    kind: OUTPUT_TABLE_CONFIG_KIND,
+  };
+  if (sourceDatasetId) {
+    config.sourceDatasetId = sourceDatasetId;
+  }
+  return JSON.stringify(config);
+}
+
+function isLegacyExplicitOutputTableRow(row: DataDatasetRow): boolean {
+  const tableName = String(row.table_name);
+  const sourcePath = String(row.source_path);
+  return (
+    tableName.startsWith('output_') &&
+    (sourcePath === `duckdb://outputs/${tableName}` ||
+      sourcePath.startsWith('input-table://'))
+  );
+}
+
 function parseInputTableConfig(
   value: string | null,
   sourceKind: DataInputTableSourceKind,
@@ -1778,12 +2144,12 @@ function parseInputTableConfig(
   if (value) {
     try {
       const parsed = JSON.parse(value) as DataInputTableConfig;
-      return normalizeInputTableConfig(parsed, sourceKind, sourcePath);
+      return normalizeStoredInputTableConfig(parsed, sourceKind, sourcePath);
     } catch {
-      return normalizeInputTableConfig(undefined, sourceKind, sourcePath);
+      return normalizeStoredInputTableConfig(undefined, sourceKind, sourcePath);
     }
   }
-  return normalizeInputTableConfig(undefined, sourceKind, sourcePath);
+  return normalizeStoredInputTableConfig(undefined, sourceKind, sourcePath);
 }
 
 function mapWorkflowNodeRow(row: DataWorkflowNodeRow): DataWorkflowNode {
@@ -1914,6 +2280,10 @@ function getOutputTableName(node: DataWorkflowNode | undefined, fallback: string
   if (!node) return fallback;
   const table = node.config.table;
   return typeof table === 'string' && table.trim() ? table.trim() : fallback;
+}
+
+function stringConfigValue(value: unknown): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : '';
 }
 
 function findLastMaterializedNodeId(
@@ -2423,6 +2793,42 @@ function normalizeInputTableConfig(
       skipEmptyFiles: config.skipEmptyFiles !== false,
       keepSourceFileName: config.keepSourceFileName !== false,
     };
+  }
+
+  return defaultCsvConfig(config);
+}
+
+function normalizeStoredInputTableConfig(
+  config: DataInputTableConfig | undefined,
+  sourceKind: DataInputTableSourceKind,
+  sourcePath: string
+): DataInputTableConfig {
+  if (sourceKind === 'excel') {
+    const storedSheetNames =
+      config?.sourceKind === 'excel'
+        ? stringArray(config.sheetNames).filter((sheetName) => sheetName.trim())
+        : [];
+    const sheetNames = storedSheetNames.length > 0 ? storedSheetNames : ['Sheet1'];
+    const storedSheetName =
+      config?.sourceKind === 'excel' &&
+      typeof config.sheetName === 'string' &&
+      config.sheetName.trim()
+        ? config.sheetName.trim()
+        : '';
+    return {
+      sourceKind: 'excel',
+      sheetName: storedSheetName || sheetNames[0] || 'Sheet1',
+      sheetNames,
+      headerMode: config?.sourceKind === 'excel' && config.headerMode === 'manual' ? 'manual' : 'auto',
+      headerRow:
+        config?.sourceKind === 'excel'
+          ? Math.max(1, Math.floor(Number(config.headerRow) || 1))
+          : 1,
+    };
+  }
+
+  if (sourceKind === 'folder') {
+    return config?.sourceKind === 'folder' ? normalizeInputTableConfig(config, sourceKind, sourcePath) : defaultFolderConfig();
   }
 
   return defaultCsvConfig(config);

@@ -246,6 +246,18 @@ export interface DataDataset {
   updatedAt: number;
 }
 
+export interface DataOutputTable {
+  id: string;
+  name: string;
+  sourceDatasetId: string | null;
+  tableName: string;
+  rowCount: number;
+  columnCount: number;
+  relatedTaskNames: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface DataDashboardSummary {
   taskCount: number;
   workflowNodeCount: number;
@@ -258,8 +270,10 @@ export interface DataDashboard {
   summary: DataDashboardSummary;
   tasks: DataCleaningTask[];
   datasets: DataDataset[];
+  outputTables: DataOutputTable[];
   totalTasks: number;
   totalDatasets: number;
+  totalOutputTables: number;
 }
 
 export interface DataDashboardQuery {
@@ -267,10 +281,13 @@ export interface DataDashboardQuery {
   includeSummary?: boolean;
   includeTasks?: boolean;
   includeDatasets?: boolean;
+  includeOutputTables?: boolean;
   taskOffset?: number;
   taskLimit?: number;
   datasetOffset?: number;
   datasetLimit?: number;
+  outputOffset?: number;
+  outputLimit?: number;
   datasetSourceKind?: DataInputTableSourceKind | 'all';
 }
 
@@ -296,6 +313,16 @@ export interface DataUpdateDatasetInput {
   name?: string;
   sourceKind?: DataInputTableSourceKind;
   config?: DataInputTableConfig;
+}
+
+export interface DataCreateOutputTableInput {
+  name?: string;
+}
+
+export interface DataUpdateOutputTableInput {
+  id: string;
+  name?: string;
+  sourceDatasetId?: string | null;
 }
 
 export interface DataPreviewInputTableInput {
