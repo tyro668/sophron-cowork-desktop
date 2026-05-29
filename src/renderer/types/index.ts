@@ -199,10 +199,46 @@ export interface DataCleaningTask {
   lastRunAt: number | null;
 }
 
+export type DataInputTableSourceKind = 'excel' | 'csv' | 'folder';
+
+export interface DataInputTableExcelConfig {
+  sourceKind: 'excel';
+  sheetName: string | null;
+  sheetNames: string[];
+  headerMode: 'auto' | 'manual';
+  headerRow: number;
+}
+
+export interface DataInputTableCsvConfig {
+  sourceKind: 'csv';
+  header: 'auto';
+  dataRegion: 'auto';
+  encoding: 'auto';
+  delimiter: 'auto';
+}
+
+export interface DataInputTableFolderConfig {
+  sourceKind: 'folder';
+  mergeMode: 'append_same_schema';
+  schemaStrategy: 'align_by_name';
+  fileRange: 'excel_csv' | 'excel' | 'csv';
+  skipEmptyFiles: boolean;
+  keepSourceFileName: boolean;
+}
+
+export type DataInputTableConfig =
+  | DataInputTableExcelConfig
+  | DataInputTableCsvConfig
+  | DataInputTableFolderConfig;
+
 export interface DataDataset {
   id: string;
   name: string;
   sourcePath: string;
+  sourceKind: DataInputTableSourceKind;
+  inputConfig: DataInputTableConfig;
+  fileCount: number;
+  relatedTaskNames: string[];
   tableName: string;
   rowCount: number;
   columnCount: number;
@@ -228,10 +264,14 @@ export interface DataDashboard {
 
 export interface DataDashboardQuery {
   query?: string;
+  includeSummary?: boolean;
+  includeTasks?: boolean;
+  includeDatasets?: boolean;
   taskOffset?: number;
   taskLimit?: number;
   datasetOffset?: number;
   datasetLimit?: number;
+  datasetSourceKind?: DataInputTableSourceKind | 'all';
 }
 
 export interface DataCreateTaskInput {
@@ -246,6 +286,44 @@ export interface DataRunTaskInput {
 export interface DataImportDatasetInput {
   filePath: string;
   name?: string;
+  sourceKind?: DataInputTableSourceKind;
+  config?: DataInputTableConfig;
+}
+
+export interface DataUpdateDatasetInput {
+  id: string;
+  filePath?: string;
+  name?: string;
+  sourceKind?: DataInputTableSourceKind;
+  config?: DataInputTableConfig;
+}
+
+export interface DataPreviewInputTableInput {
+  filePath: string;
+  sourceKind: DataInputTableSourceKind;
+  config: DataInputTableConfig;
+  limit?: number;
+  offset?: number;
+}
+
+export interface DataPreviewDatasetInput {
+  id: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface DataInputTablePreview {
+  columns: string[];
+  rows: Array<Record<string, string | number | boolean | null>>;
+  fileCount: number;
+  limit: number;
+  offset: number;
+  totalRows: number;
+}
+
+export interface DataInputTableSourceSelection {
+  path: string;
+  kind: DataInputTableSourceKind;
 }
 
 export type DataWorkflowOperatorType =

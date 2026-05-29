@@ -30,9 +30,15 @@ import type {
   DataDashboard,
   DataDashboardQuery,
   DataDataset,
+  DataInputTablePreview,
+  DataInputTableSourceKind,
+  DataInputTableSourceSelection,
   DataImportDatasetInput,
+  DataPreviewDatasetInput,
+  DataPreviewInputTableInput,
   DataRunTaskInput,
   DataTaskWorkflow,
+  DataUpdateDatasetInput,
   DataWorkflowSaveInput,
 } from '../renderer/types';
 import type { DiagnosticInput, DiagnosticResult } from '../renderer/types';
@@ -158,6 +164,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Select files using native dialog
   selectFiles: (): Promise<string[]> => ipcRenderer.invoke('dialog.selectFiles'),
+  selectInputTableSource: (
+    kind?: DataInputTableSourceKind
+  ): Promise<DataInputTableSourceSelection | null> =>
+    ipcRenderer.invoke('dialog.selectInputTableSource', kind),
 
   artifacts: {
     listRecentFiles: (
@@ -181,8 +191,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('data.saveTaskWorkflow', id, payload),
     importDataset: (payload: DataImportDatasetInput): Promise<DataDataset> =>
       ipcRenderer.invoke('data.importDataset', payload),
+    updateDataset: (payload: DataUpdateDatasetInput): Promise<DataDataset> =>
+      ipcRenderer.invoke('data.updateDataset', payload),
+    previewInputTable: (payload: DataPreviewInputTableInput): Promise<DataInputTablePreview> =>
+      ipcRenderer.invoke('data.previewInputTable', payload),
+    previewDataset: (payload: DataPreviewDatasetInput): Promise<DataInputTablePreview> =>
+      ipcRenderer.invoke('data.previewDataset', payload),
     deleteTask: (id: string): Promise<{ success: boolean }> =>
       ipcRenderer.invoke('data.deleteTask', id),
+    deleteDataset: (id: string): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke('data.deleteDataset', id),
   },
 
   // Config methods
@@ -482,6 +500,9 @@ declare global {
       showItemInFolder: (filePath: string, cwd?: string) => Promise<boolean>;
       openGeneratedReport: (filePath: string, cwd?: string) => Promise<boolean>;
       selectFiles: () => Promise<string[]>;
+      selectInputTableSource: (
+        kind?: DataInputTableSourceKind
+      ) => Promise<DataInputTableSourceSelection | null>;
       artifacts: {
         listRecentFiles: (
           cwd: string,
@@ -499,7 +520,13 @@ declare global {
           payload: DataWorkflowSaveInput
         ) => Promise<DataTaskWorkflow>;
         importDataset: (payload: DataImportDatasetInput) => Promise<DataDataset>;
+        updateDataset: (payload: DataUpdateDatasetInput) => Promise<DataDataset>;
+        previewInputTable: (
+          payload: DataPreviewInputTableInput
+        ) => Promise<DataInputTablePreview>;
+        previewDataset: (payload: DataPreviewDatasetInput) => Promise<DataInputTablePreview>;
         deleteTask: (id: string) => Promise<{ success: boolean }>;
+        deleteDataset: (id: string) => Promise<{ success: boolean }>;
       };
       config: {
         get: () => Promise<AppConfig>;

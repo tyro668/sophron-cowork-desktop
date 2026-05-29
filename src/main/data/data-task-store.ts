@@ -1,18 +1,30 @@
 import * as fs from 'fs';
-import { basename, dirname, extname } from 'path';
+import { basename, dirname, extname, join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api';
+import type Database from 'better-sqlite3';
+import * as XLSX from 'xlsx';
+import type { DatabaseInstance } from '../db/database';
 import type {
   DataCleaningTask,
   DataCreateTaskInput,
   DataDashboard,
   DataDashboardQuery,
   DataDataset,
+  DataInputTableConfig,
+  DataInputTablePreview,
+  DataInputTableCsvConfig,
+  DataInputTableExcelConfig,
+  DataInputTableFolderConfig,
+  DataInputTableSourceKind,
   DataImportDatasetInput,
+  DataPreviewDatasetInput,
+  DataPreviewInputTableInput,
   DataRunTaskInput,
   DataTaskStatus,
   DataTaskStatusCounts,
   DataTaskWorkflow,
+  DataUpdateDatasetInput,
   DataWorkflowEdge,
   DataWorkflowEdgeInput,
   DataWorkflowNode,
@@ -23,6 +35,21 @@ import type {
 
 interface DataTaskStoreOptions {
   now?: () => number;
+  metadataDb?: DatabaseInstance;
+}
+
+interface ParsedWorkbookRows {
+  columns: string[];
+  rows: Array<Array<string | number | boolean | null>>;
+  sheetName: string;
+  sheetNames: string[];
+}
+
+interface PreparedInputTableImport {
+  rowCount: number;
+  columnCount: number;
+  fileCount: number;
+  config: DataInputTableConfig;
 }
 
 interface DataTaskRow {
@@ -46,6 +73,10 @@ interface DataDatasetRow {
   id: string;
   name: string;
   source_path: string;
+  source_kind: string | null;
+  config_json: string | null;
+  file_count: number | string | null;
+  related_task_names?: string | null;
   table_name: string;
   row_count: number | string;
   column_count: number | string;
@@ -210,84 +241,53 @@ const LEGACY_DEMO_TASK_NAMES = [
 export class DataTaskStore {
   private readonly dbPath: string;
   private readonly now: () => number;
+  private readonly metadataDb: Database.Database | null;
   private instance: DuckDBInstance | null = null;
   private connection: DuckDBConnection | null = null;
-  private initPromise: Promise<void> | null = null;
+  private metadataInitPromise: Promise<void> | null = null;
+  private duckInitPromise: Promise<void> | null = null;
 
   constructor(dbPath: string, options: DataTaskStoreOptions = {}) {
     this.dbPath = dbPath;
     this.now = options.now ?? (() => Date.now());
+    if (options.metadataDb) {
+      this.metadataDb = options.metadataDb.raw;
+    } else {
+      this.metadataDb = null;
+    }
   }
 
   async getDashboard(query: DataDashboardQuery = {}): Promise<DataDashboard> {
-    await this.ensureReady();
+    await this.ensureMetadataReady();
     const normalizedQuery = (query.query ?? '').trim().toLowerCase();
     const like = `%${normalizedQuery.replace(/[%_\\]/g, '\\$&')}%`;
+    const includeSummary = query.includeSummary !== false;
+    const includeTasks = query.includeTasks !== false;
+    const includeDatasets = query.includeDatasets !== false;
+    const datasetSourceKind =
+      query.datasetSourceKind && query.datasetSourceKind !== 'all' ? query.datasetSourceKind : '';
     const taskWindow = normalizeListWindow(query.taskOffset, query.taskLimit);
     const datasetWindow = normalizeListWindow(query.datasetOffset, query.datasetLimit);
     const todayStart = startOfToday(this.now());
     const todayEnd = todayStart + 86_400_000;
-    const summaryRows = await this.queryRows<DashboardSummaryRow>(
-      `
-        SELECT
-          count(*) AS task_count,
-          coalesce(sum(node_count), 0) AS workflow_node_count,
-          coalesce(sum(CASE WHEN status = 'running' THEN 1 ELSE 0 END), 0) AS running_count,
-          coalesce(sum(CASE WHEN scheduled_for >= $todayStart AND scheduled_for < $todayEnd THEN 1 ELSE 0 END), 0) AS today_schedule_count,
-          coalesce(sum(CASE WHEN status = 'draft' THEN 1 ELSE 0 END), 0) AS draft_count,
-          coalesce(sum(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS pending_count,
-          coalesce(sum(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0) AS completed_count,
-          coalesce(sum(CASE WHEN status = 'stopped' THEN 1 ELSE 0 END), 0) AS stopped_count,
-          coalesce(sum(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failed_count
-        FROM data_cleaning_tasks
-      `,
-      { todayStart, todayEnd }
-    );
-    const taskCountRows = await this.queryRows<{ count: number | string }>(
-      `
-        SELECT count(*) AS count
-        FROM data_cleaning_tasks
-        WHERE $query = ''
-          OR lower(name) LIKE $like ESCAPE '\\'
-          OR lower(coalesce(source_path, '')) LIKE $like ESCAPE '\\'
-      `,
-      { query: normalizedQuery, like }
-    );
-    const taskRows = await this.queryRows<DataTaskRow>(
-      `
-        SELECT *
-        FROM data_cleaning_tasks
-        WHERE $query = ''
-          OR lower(name) LIKE $like ESCAPE '\\'
-          OR lower(coalesce(source_path, '')) LIKE $like ESCAPE '\\'
-        ORDER BY updated_at DESC, created_at DESC
-        LIMIT ${taskWindow.limit} OFFSET ${taskWindow.offset}
-      `,
-      { query: normalizedQuery, like }
-    );
-    const datasetCountRows = await this.queryRows<{ count: number | string }>(
-      `
-        SELECT count(*) AS count
-        FROM data_datasets
-        WHERE $query = ''
-          OR lower(name) LIKE $like ESCAPE '\\'
-          OR lower(source_path) LIKE $like ESCAPE '\\'
-      `,
-      { query: normalizedQuery, like }
-    );
-    const datasetRows = await this.queryRows<DataDatasetRow>(
-      `
-        SELECT *
-        FROM data_datasets
-        WHERE $query = ''
-          OR lower(name) LIKE $like ESCAPE '\\'
-          OR lower(source_path) LIKE $like ESCAPE '\\'
-        ORDER BY updated_at DESC, created_at DESC
-        LIMIT ${datasetWindow.limit} OFFSET ${datasetWindow.offset}
-      `,
-      { query: normalizedQuery, like }
-    );
-
+    const summaryRows = includeSummary
+      ? await this.metaQueryRows<DashboardSummaryRow>(
+          `
+            SELECT
+              count(*) AS task_count,
+              coalesce(sum(node_count), 0) AS workflow_node_count,
+              coalesce(sum(CASE WHEN status = 'running' THEN 1 ELSE 0 END), 0) AS running_count,
+              coalesce(sum(CASE WHEN scheduled_for >= $todayStart AND scheduled_for < $todayEnd THEN 1 ELSE 0 END), 0) AS today_schedule_count,
+              coalesce(sum(CASE WHEN status = 'draft' THEN 1 ELSE 0 END), 0) AS draft_count,
+              coalesce(sum(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS pending_count,
+              coalesce(sum(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0) AS completed_count,
+              coalesce(sum(CASE WHEN status = 'stopped' THEN 1 ELSE 0 END), 0) AS stopped_count,
+              coalesce(sum(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failed_count
+            FROM data_cleaning_tasks
+          `,
+          { todayStart, todayEnd }
+        )
+      : [];
     const summary = summaryRows[0] ?? {
       task_count: 0,
       workflow_node_count: 0,
@@ -299,6 +299,75 @@ export class DataTaskStore {
       stopped_count: 0,
       failed_count: 0,
     };
+    const taskCountRows = includeTasks
+      ? await this.metaQueryRows<{ count: number | string }>(
+          `
+            SELECT count(*) AS count
+            FROM data_cleaning_tasks
+            WHERE $query = ''
+              OR lower(name) LIKE $like ESCAPE '\\'
+              OR lower(coalesce(source_path, '')) LIKE $like ESCAPE '\\'
+          `,
+          { query: normalizedQuery, like }
+        )
+      : [{ count: includeSummary ? summary.task_count : 0 }];
+    const taskRows = includeTasks
+      ? await this.metaQueryRows<DataTaskRow>(
+          `
+            SELECT
+              id, name, status, node_count, source_path, source_dataset_id, output_table,
+              row_count, column_count, error, scheduled_for, created_at, updated_at, last_run_at
+            FROM data_cleaning_tasks
+            WHERE $query = ''
+              OR lower(name) LIKE $like ESCAPE '\\'
+              OR lower(coalesce(source_path, '')) LIKE $like ESCAPE '\\'
+            ORDER BY updated_at DESC, created_at DESC
+            LIMIT ${taskWindow.limit} OFFSET ${taskWindow.offset}
+          `,
+          { query: normalizedQuery, like }
+        )
+      : [];
+    const datasetCountRows = includeDatasets
+      ? await this.metaQueryRows<{ count: number | string }>(
+          `
+            SELECT count(*) AS count
+            FROM data_datasets
+            WHERE ($query = ''
+              OR lower(name) LIKE $like ESCAPE '\\'
+              OR lower(source_path) LIKE $like ESCAPE '\\')
+              AND (
+                $sourceKind = ''
+                OR ${storedDatasetSourceKindSql()} = $sourceKind
+              )
+          `,
+          { query: normalizedQuery, like, sourceKind: datasetSourceKind }
+        )
+      : [{ count: 0 }];
+    const datasetRows = includeDatasets
+      ? await this.metaQueryRows<DataDatasetRow>(
+          `
+            SELECT
+              d.*,
+              (
+                SELECT group_concat(t.name, ${this.relatedTaskNamesSeparatorSql()})
+                FROM data_cleaning_tasks t
+                WHERE t.source_dataset_id = d.id
+                  OR t.source_path = d.source_path
+              ) AS related_task_names
+            FROM data_datasets d
+            WHERE ($query = ''
+              OR lower(d.name) LIKE $like ESCAPE '\\'
+              OR lower(d.source_path) LIKE $like ESCAPE '\\')
+              AND (
+                $sourceKind = ''
+                OR ${storedDatasetSourceKindSql('d')} = $sourceKind
+              )
+            ORDER BY d.updated_at DESC, d.created_at DESC
+            LIMIT ${datasetWindow.limit} OFFSET ${datasetWindow.offset}
+          `,
+          { query: normalizedQuery, like, sourceKind: datasetSourceKind }
+        )
+      : [];
     const statusCounts: DataTaskStatusCounts = {
       running: toNumber(summary.running_count),
       completed: toNumber(summary.completed_count),
@@ -324,7 +393,7 @@ export class DataTaskStore {
   }
 
   async createTask(input: DataCreateTaskInput): Promise<DataCleaningTask> {
-    await this.ensureReady();
+    await this.ensureMetadataReady();
     const name = input.name.trim();
     if (!name) {
       throw new Error('Task name is required');
@@ -333,7 +402,7 @@ export class DataTaskStore {
     const now = this.now();
     const id = uuidv4();
     const status: DataTaskStatus = sourcePath ? 'pending' : 'draft';
-    await this.runSql(
+    await this.metaRunSql(
       `
         INSERT INTO data_cleaning_tasks (
           id, name, status, node_count, source_path, source_dataset_id, output_table,
@@ -364,7 +433,7 @@ export class DataTaskStore {
     const startedAt = this.now();
     if (!sourcePath) {
       const message = 'Data source file is required before running a cleaning task';
-      await this.runSql(
+      await this.metaRunSql(
         `
           UPDATE data_cleaning_tasks
           SET status = 'failed',
@@ -377,7 +446,7 @@ export class DataTaskStore {
       );
       throw new Error(message);
     }
-    await this.runSql(
+    await this.metaRunSql(
       `
         UPDATE data_cleaning_tasks
         SET status = 'running',
@@ -400,7 +469,7 @@ export class DataTaskStore {
           };
       const completedAt = this.now();
       const nodeCount = await this.countWorkflowNodes(id);
-      await this.runSql(
+      await this.metaRunSql(
         `
           UPDATE data_cleaning_tasks
           SET status = 'completed',
@@ -431,7 +500,7 @@ export class DataTaskStore {
     } catch (error) {
       const failedAt = this.now();
       const message = error instanceof Error ? error.message : String(error);
-      await this.runSql(
+      await this.metaRunSql(
         `
           UPDATE data_cleaning_tasks
           SET status = 'failed',
@@ -448,34 +517,40 @@ export class DataTaskStore {
 
   async importDataset(input: DataImportDatasetInput): Promise<DataDataset> {
     await this.ensureReady();
-    const sourcePath = normalizeSourcePath(input.filePath);
+    const sourcePath = normalizeImportSourcePath(input.filePath);
     const id = uuidv4();
     const tableName = tableNameFromId('dataset', id);
-    const relation = readRelationForPath(sourcePath, 'sourcePath');
     try {
-      await this.runSql(`CREATE TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`, {
+      const sourceKind = normalizeInputTableSourceKind(input.sourceKind, sourcePath);
+      const prepared = await this.createDatasetTableFromSource(
+        tableName,
         sourcePath,
-      });
-      const rowCount = await this.countRows(tableName);
-      const columnCount = (await this.getTableColumns(tableName)).length;
+        sourceKind,
+        input.config
+      );
       const now = this.now();
       const name = input.name?.trim() || datasetNameFromPath(sourcePath);
-      await this.runSql(
+      await this.metaRunSql(
         `
           INSERT INTO data_datasets (
-            id, name, source_path, table_name, row_count, column_count, created_at, updated_at
+            id, name, source_path, source_kind, config_json, file_count,
+            table_name, row_count, column_count, created_at, updated_at
           )
           VALUES (
-            $id, $name, $sourcePath, $tableName, $rowCount, $columnCount, $createdAt, $updatedAt
+            $id, $name, $sourcePath, $sourceKind, $configJson, $fileCount,
+            $tableName, $rowCount, $columnCount, $createdAt, $updatedAt
           )
         `,
         {
           id,
           name,
           sourcePath,
+          sourceKind,
+          configJson: JSON.stringify(prepared.config),
+          fileCount: prepared.fileCount,
           tableName,
-          rowCount,
-          columnCount,
+          rowCount: prepared.rowCount,
+          columnCount: prepared.columnCount,
           createdAt: now,
           updatedAt: now,
         }
@@ -487,26 +562,201 @@ export class DataTaskStore {
     }
   }
 
-  async deleteTask(id: string): Promise<boolean> {
+  async updateDataset(input: DataUpdateDatasetInput): Promise<DataDataset> {
+    await this.ensureMetadataReady();
+    const dataset = await this.requireDataset(input.id);
+    const name = input.name?.trim();
+    const shouldReimport =
+      Boolean(input.filePath) || Boolean(input.config) || Boolean(input.sourceKind);
+    const sourcePath = input.filePath
+      ? normalizeImportSourcePath(input.filePath)
+      : shouldReimport
+        ? dataset.sourcePath
+        : null;
+
+    if (!sourcePath) {
+      if (name && name !== dataset.name) {
+        await this.metaRunSql(
+          `
+            UPDATE data_datasets
+            SET name = $name,
+                updated_at = $updatedAt
+            WHERE id = $id
+          `,
+          {
+            id: dataset.id,
+            name,
+            updatedAt: this.now(),
+          }
+        );
+      }
+      return this.requireDataset(dataset.id);
+    }
+
+    const replacementTable = tableNameFromId('dataset_update', uuidv4());
+    try {
+      await this.ensureReady();
+      const sourceKind = normalizeInputTableSourceKind(input.sourceKind ?? dataset.sourceKind, sourcePath);
+      const prepared = await this.createDatasetTableFromSource(
+        replacementTable,
+        sourcePath,
+        sourceKind,
+        input.config ?? dataset.inputConfig
+      );
+      const now = this.now();
+      await this.runSql('BEGIN TRANSACTION');
+      try {
+        await this.dropTableIfExists(dataset.tableName);
+        await this.runSql(
+          `ALTER TABLE ${quoteIdentifier(replacementTable)} RENAME TO ${quoteIdentifier(dataset.tableName)}`
+        );
+        await this.runSql('COMMIT');
+        await this.metaRunSql(
+          `
+            UPDATE data_datasets
+            SET name = $name,
+                source_path = $sourcePath,
+                source_kind = $sourceKind,
+                config_json = $configJson,
+                file_count = $fileCount,
+                row_count = $rowCount,
+                column_count = $columnCount,
+                updated_at = $updatedAt
+            WHERE id = $id
+          `,
+          {
+            id: dataset.id,
+            name: name || dataset.name,
+            sourcePath,
+            sourceKind,
+            configJson: JSON.stringify(prepared.config),
+            fileCount: prepared.fileCount,
+            rowCount: prepared.rowCount,
+            columnCount: prepared.columnCount,
+            updatedAt: now,
+          }
+        );
+      } catch (error) {
+        await this.runSql('ROLLBACK').catch(() => undefined);
+        throw error;
+      }
+      return this.requireDataset(dataset.id);
+    } catch (error) {
+      await this.dropTableIfExists(replacementTable).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async previewInputTable(input: DataPreviewInputTableInput): Promise<DataInputTablePreview> {
     await this.ensureReady();
+    const sourcePath = normalizeImportSourcePath(input.filePath);
+    const sourceKind = normalizeInputTableSourceKind(input.sourceKind, sourcePath);
+    const config = normalizeInputTableConfig(input.config, sourceKind, sourcePath);
+    const limit = normalizePreviewLimit(input.limit);
+    const offset = normalizePreviewOffset(input.offset);
+    const tempTables: string[] = [];
+    try {
+      const importFiles = getImportSourceFiles(sourcePath, sourceKind, config);
+      const forceVarchar = sourceKind === 'folder';
+      for (const [index, filePath] of importFiles.entries()) {
+        const tempTable = tableNameFromId('dataset_preview', `${uuidv4()}_${index}`);
+        tempTables.push(tempTable);
+        await this.createImportTempTable(tempTable, filePath, index, forceVarchar, config);
+        if (sourceKind === 'folder') {
+          const folderConfig = config.sourceKind === 'folder' ? config : defaultFolderConfig();
+          if (folderConfig.skipEmptyFiles && (await this.countRows(tempTable)) === 0) {
+            await this.dropTableIfExists(tempTable);
+            tempTables.pop();
+            continue;
+          }
+          if (folderConfig.keepSourceFileName) {
+            await this.appendSourceFileNameColumn(tempTable, filePath);
+          }
+        }
+      }
+      if (tempTables.length === 0) {
+        throw new Error('No Excel or CSV files were found for the input table');
+      }
+
+      const unionSql = buildUnionSqlFromTempTables(tempTables);
+      const countRows = await this.queryRows<{ count: number | string }>(
+        `SELECT count(*) AS count FROM (${unionSql})`
+      );
+      const totalRows = toNumber(countRows[0]?.count);
+      const rows = await this.queryRows<Record<string, unknown>>(
+        `SELECT * FROM (${unionSql}) LIMIT ${limit} OFFSET ${offset}`
+      );
+      const columns = rows[0] ? Object.keys(rows[0]) : [];
+      return {
+        columns,
+        rows: rows.map(normalizePreviewRow),
+        fileCount: tempTables.length,
+        limit,
+        offset,
+        totalRows,
+      };
+    } finally {
+      for (const tempTable of tempTables) {
+        await this.dropTableIfExists(tempTable).catch(() => undefined);
+      }
+    }
+  }
+
+  async previewDataset(input: DataPreviewDatasetInput): Promise<DataInputTablePreview> {
+    await this.ensureMetadataReady();
+    const dataset = await this.requireDataset(input.id);
+    await this.ensureReady();
+    const limit = normalizePreviewLimit(input.limit);
+    const offset = normalizePreviewOffset(input.offset);
+    const tableName = quoteIdentifier(dataset.tableName);
+    const countRows = await this.queryRows<{ count: number | string }>(
+      `SELECT count(*) AS count FROM ${tableName}`
+    );
+    const rows = await this.queryRows<Record<string, unknown>>(
+      `SELECT * FROM ${tableName} LIMIT ${limit} OFFSET ${offset}`
+    );
+    return {
+      columns: await this.getTableColumns(dataset.tableName),
+      rows: rows.map(normalizePreviewRow),
+      fileCount: dataset.fileCount,
+      limit,
+      offset,
+      totalRows: toNumber(countRows[0]?.count),
+    };
+  }
+
+  async deleteTask(id: string): Promise<boolean> {
+    await this.ensureMetadataReady();
     const task = await this.getTask(id);
     if (!task) {
       return false;
     }
     if (task.outputTable) {
+      await this.ensureReady();
       await this.dropTableIfExists(task.outputTable);
-      await this.runSql('DELETE FROM data_datasets WHERE table_name = $tableName', {
+      await this.metaRunSql('DELETE FROM data_datasets WHERE table_name = $tableName', {
         tableName: task.outputTable,
       });
     }
-    await this.runSql('DELETE FROM data_workflow_edges WHERE task_id = $id', { id });
-    await this.runSql('DELETE FROM data_workflow_nodes WHERE task_id = $id', { id });
-    await this.runSql('DELETE FROM data_cleaning_tasks WHERE id = $id', { id });
+    await this.metaRunSql('DELETE FROM data_workflow_edges WHERE task_id = $id', { id });
+    await this.metaRunSql('DELETE FROM data_workflow_nodes WHERE task_id = $id', { id });
+    await this.metaRunSql('DELETE FROM data_cleaning_tasks WHERE id = $id', { id });
+    return true;
+  }
+
+  async deleteDataset(id: string): Promise<boolean> {
+    await this.ensureReady();
+    const dataset = await this.getDataset(id);
+    if (!dataset) {
+      return false;
+    }
+    await this.dropTableIfExists(dataset.tableName);
+    await this.metaRunSql('DELETE FROM data_datasets WHERE id = $id', { id });
     return true;
   }
 
   async getTaskWorkflow(id: string): Promise<DataTaskWorkflow> {
-    await this.ensureReady();
+    await this.ensureMetadataReady();
     await this.requireTask(id);
     const nodes = await this.getWorkflowNodes(id);
     const edges = await this.getWorkflowEdges(id);
@@ -514,19 +764,19 @@ export class DataTaskStore {
   }
 
   async saveTaskWorkflow(id: string, input: DataWorkflowSaveInput): Promise<DataTaskWorkflow> {
-    await this.ensureReady();
+    await this.ensureMetadataReady();
     await this.requireTask(id);
     const updatedAt = this.now();
     const nodes = normalizeWorkflowNodeInputs(input.nodes);
     const nodeIds = new Set(nodes.map((node) => node.id));
     const edges = normalizeWorkflowEdgeInputs(input.edges, nodeIds);
 
-    await this.runSql('BEGIN TRANSACTION');
+    await this.metaRunSql('BEGIN TRANSACTION');
     try {
-      await this.runSql('DELETE FROM data_workflow_edges WHERE task_id = $taskId', { taskId: id });
-      await this.runSql('DELETE FROM data_workflow_nodes WHERE task_id = $taskId', { taskId: id });
+      await this.metaRunSql('DELETE FROM data_workflow_edges WHERE task_id = $taskId', { taskId: id });
+      await this.metaRunSql('DELETE FROM data_workflow_nodes WHERE task_id = $taskId', { taskId: id });
       for (const [index, node] of nodes.entries()) {
-        await this.runSql(
+        await this.metaRunSql(
           `
             INSERT INTO data_workflow_nodes (
               id, task_id, node_key, label, ordinal, operator_type, x, y,
@@ -553,7 +803,7 @@ export class DataTaskStore {
         );
       }
       for (const edge of edges) {
-        await this.runSql(
+        await this.metaRunSql(
           `
             INSERT INTO data_workflow_edges (
               id, task_id, source_node_id, target_node_id, source_handle, target_handle, created_at
@@ -573,7 +823,7 @@ export class DataTaskStore {
           }
         );
       }
-      await this.runSql(
+      await this.metaRunSql(
         `
           UPDATE data_cleaning_tasks
           SET node_count = $nodeCount,
@@ -582,9 +832,9 @@ export class DataTaskStore {
         `,
         { taskId: id, nodeCount: nodes.length, updatedAt }
       );
-      await this.runSql('COMMIT');
+      await this.metaRunSql('COMMIT');
     } catch (error) {
-      await this.runSql('ROLLBACK').catch(() => undefined);
+      await this.metaRunSql('ROLLBACK').catch(() => undefined);
       throw error;
     }
 
@@ -600,32 +850,52 @@ export class DataTaskStore {
         this.instance?.closeSync();
       } finally {
         this.instance = null;
-        this.initPromise = null;
+        this.duckInitPromise = null;
+        this.metadataInitPromise = null;
       }
     }
   }
 
+  private async ensureMetadataReady(): Promise<void> {
+    if (!this.metadataInitPromise) {
+      this.metadataInitPromise = this.initializeMetadata();
+    }
+    await this.metadataInitPromise;
+  }
+
   private async ensureReady(): Promise<void> {
+    await this.ensureMetadataReady();
+    await this.ensureDuckDbReady();
+  }
+
+  private async ensureDuckDbReady(): Promise<void> {
     if (this.connection) {
       return;
     }
-    if (!this.initPromise) {
-      this.initPromise = this.initialize();
+    if (!this.duckInitPromise) {
+      this.duckInitPromise = this.initializeDuckDb();
     }
-    await this.initPromise;
+    await this.duckInitPromise;
   }
 
-  private async initialize(): Promise<void> {
+  private async initializeDuckDb(): Promise<void> {
     fs.mkdirSync(dirname(this.dbPath), { recursive: true });
     this.instance = await DuckDBInstance.create(this.dbPath);
     this.connection = await this.instance.connect();
+  }
+
+  private async initializeMetadata(): Promise<void> {
+    fs.mkdirSync(dirname(this.dbPath), { recursive: true });
+    if (!this.metadataDb) {
+      await this.ensureDuckDbReady();
+    }
     await this.createSchema();
     await this.removeLegacyDemoRows();
     await this.removeLegacyDefaultWorkflowGraphs();
   }
 
   private async createSchema(): Promise<void> {
-    await this.runSql(`
+    await this.metaRunSql(`
       CREATE TABLE IF NOT EXISTS data_cleaning_tasks (
         id VARCHAR PRIMARY KEY,
         name VARCHAR NOT NULL,
@@ -643,7 +913,7 @@ export class DataTaskStore {
         last_run_at BIGINT
       )
     `);
-    await this.runSql(`
+    await this.metaRunSql(`
       CREATE TABLE IF NOT EXISTS data_datasets (
         id VARCHAR PRIMARY KEY,
         name VARCHAR NOT NULL,
@@ -655,7 +925,10 @@ export class DataTaskStore {
         updated_at BIGINT NOT NULL
       )
     `);
-    await this.runSql(`
+    await this.ensureMetadataColumn('data_datasets', 'source_kind', 'VARCHAR');
+    await this.ensureMetadataColumn('data_datasets', 'config_json', 'VARCHAR');
+    await this.ensureMetadataColumn('data_datasets', 'file_count', 'INTEGER');
+    await this.metaRunSql(`
       CREATE TABLE IF NOT EXISTS data_workflow_nodes (
         id VARCHAR PRIMARY KEY,
         task_id VARCHAR NOT NULL,
@@ -665,12 +938,12 @@ export class DataTaskStore {
         created_at BIGINT NOT NULL
       )
     `);
-    await this.ensureColumn('data_workflow_nodes', 'operator_type', 'VARCHAR');
-    await this.ensureColumn('data_workflow_nodes', 'x', 'DOUBLE');
-    await this.ensureColumn('data_workflow_nodes', 'y', 'DOUBLE');
-    await this.ensureColumn('data_workflow_nodes', 'config_json', 'VARCHAR');
-    await this.ensureColumn('data_workflow_nodes', 'updated_at', 'BIGINT');
-    await this.runSql(`
+    await this.ensureMetadataColumn('data_workflow_nodes', 'operator_type', 'VARCHAR');
+    await this.ensureMetadataColumn('data_workflow_nodes', 'x', 'DOUBLE');
+    await this.ensureMetadataColumn('data_workflow_nodes', 'y', 'DOUBLE');
+    await this.ensureMetadataColumn('data_workflow_nodes', 'config_json', 'VARCHAR');
+    await this.ensureMetadataColumn('data_workflow_nodes', 'updated_at', 'BIGINT');
+    await this.metaRunSql(`
       CREATE TABLE IF NOT EXISTS data_workflow_edges (
         id VARCHAR PRIMARY KEY,
         task_id VARCHAR NOT NULL,
@@ -681,7 +954,8 @@ export class DataTaskStore {
         created_at BIGINT NOT NULL
       )
     `);
-    await this.runSql(`
+    await this.createMetadataIndexes();
+    await this.metaRunSql(`
       UPDATE data_workflow_nodes
       SET operator_type = coalesce(operator_type, node_key),
           x = coalesce(x, 48 + (ordinal - 1) * 142),
@@ -691,7 +965,23 @@ export class DataTaskStore {
     `);
   }
 
-  private async ensureColumn(tableName: string, columnName: string, definition: string): Promise<void> {
+  private async ensureMetadataColumn(
+    tableName: string,
+    columnName: string,
+    definition: string
+  ): Promise<void> {
+    if (this.metadataDb) {
+      const rows = await this.metaQueryRows<{ name: string }>(
+        `PRAGMA table_info(${quoteIdentifier(tableName)})`
+      );
+      if (!rows.some((row) => row.name === columnName)) {
+        await this.metaRunSql(
+          `ALTER TABLE ${quoteIdentifier(tableName)} ADD COLUMN ${quoteIdentifier(columnName)} ${definition}`
+        );
+      }
+      return;
+    }
+
     const rows = await this.queryRows<{ column_name: string }>(
       `
         SELECT column_name
@@ -703,9 +993,24 @@ export class DataTaskStore {
       { tableName, columnName }
     );
     if (rows.length === 0) {
-      await this.runSql(
+      await this.metaRunSql(
         `ALTER TABLE ${quoteIdentifier(tableName)} ADD COLUMN ${quoteIdentifier(columnName)} ${definition}`
       );
+    }
+  }
+
+  private async createMetadataIndexes(): Promise<void> {
+    const indexStatements = [
+      'CREATE INDEX IF NOT EXISTS idx_data_cleaning_tasks_updated_at ON data_cleaning_tasks(updated_at, created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_data_cleaning_tasks_source_dataset_id ON data_cleaning_tasks(source_dataset_id)',
+      'CREATE INDEX IF NOT EXISTS idx_data_cleaning_tasks_source_path ON data_cleaning_tasks(source_path)',
+      'CREATE INDEX IF NOT EXISTS idx_data_datasets_updated_at ON data_datasets(updated_at, created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_data_datasets_source_kind ON data_datasets(source_kind)',
+      'CREATE INDEX IF NOT EXISTS idx_data_workflow_nodes_task_id ON data_workflow_nodes(task_id)',
+      'CREATE INDEX IF NOT EXISTS idx_data_workflow_edges_task_id ON data_workflow_edges(task_id)',
+    ];
+    for (const statement of indexStatements) {
+      await this.metaRunSql(statement);
     }
   }
 
@@ -714,7 +1019,7 @@ export class DataTaskStore {
     const values = Object.fromEntries(
       LEGACY_DEMO_TASK_NAMES.map((name, index) => [`name${index}`, name])
     );
-    const demoTaskRows = await this.queryRows<{ id: string }>(
+    const demoTaskRows = await this.metaQueryRows<{ id: string }>(
       `
         SELECT id
         FROM data_cleaning_tasks
@@ -730,21 +1035,21 @@ export class DataTaskStore {
       values
     );
     if (demoTaskRows.length > 0) {
-      await this.runSql(
+      await this.metaRunSql(
         `
           DELETE FROM data_workflow_edges
           WHERE task_id IN (${demoTaskRows.map((_, index) => `$id${index}`).join(', ')})
         `,
         Object.fromEntries(demoTaskRows.map((row, index) => [`id${index}`, row.id]))
       );
-      await this.runSql(
+      await this.metaRunSql(
         `
           DELETE FROM data_workflow_nodes
           WHERE task_id IN (${demoTaskRows.map((_, index) => `$id${index}`).join(', ')})
         `,
         Object.fromEntries(demoTaskRows.map((row, index) => [`id${index}`, row.id]))
       );
-      await this.runSql(
+      await this.metaRunSql(
         `
           DELETE FROM data_cleaning_tasks
           WHERE id IN (${demoTaskRows.map((_, index) => `$id${index}`).join(', ')})
@@ -752,11 +1057,11 @@ export class DataTaskStore {
         Object.fromEntries(demoTaskRows.map((row, index) => [`id${index}`, row.id]))
       );
     }
-    await this.runSql("DELETE FROM data_datasets WHERE source_path LIKE 'local://samples/%'");
+    await this.metaRunSql("DELETE FROM data_datasets WHERE source_path LIKE 'local://samples/%'");
   }
 
   private async removeLegacyDefaultWorkflowGraphs(): Promise<void> {
-    const workflowRows = await this.queryRows<DataWorkflowNodeRow>(
+    const workflowRows = await this.metaQueryRows<DataWorkflowNodeRow>(
       `
         SELECT *
         FROM data_workflow_nodes
@@ -776,21 +1081,21 @@ export class DataTaskStore {
     }
     const placeholders = taskIds.map((_, index) => `$id${index}`).join(', ');
     const values = Object.fromEntries(taskIds.map((taskId, index) => [`id${index}`, taskId]));
-    await this.runSql(
+    await this.metaRunSql(
       `
         DELETE FROM data_workflow_edges
         WHERE task_id IN (${placeholders})
       `,
       values
     );
-    await this.runSql(
+    await this.metaRunSql(
       `
         DELETE FROM data_workflow_nodes
         WHERE task_id IN (${placeholders})
       `,
       values
     );
-    await this.runSql(
+    await this.metaRunSql(
       `
         UPDATE data_cleaning_tasks
         SET node_count = 0
@@ -1049,7 +1354,7 @@ export class DataTaskStore {
   }
 
   private async findDatasetByReference(reference: string): Promise<DataDataset | null> {
-    const rows = await this.queryRows<DataDatasetRow>(
+    const rows = await this.metaQueryRows<DataDatasetRow>(
       `
         SELECT *
         FROM data_datasets
@@ -1070,14 +1375,14 @@ export class DataTaskStore {
     rowCount: number,
     columnCount: number
   ): Promise<DataDataset> {
-    const existingRows = await this.queryRows<{ id: string }>(
+    const existingRows = await this.metaQueryRows<{ id: string }>(
       'SELECT id FROM data_datasets WHERE table_name = $tableName LIMIT 1',
       { tableName }
     );
     const now = this.now();
     const name = `${taskName} cleaned`;
     if (existingRows[0]?.id) {
-      await this.runSql(
+      await this.metaRunSql(
         `
           UPDATE data_datasets
           SET name = $name,
@@ -1100,7 +1405,7 @@ export class DataTaskStore {
     }
 
     const id = uuidv4();
-    await this.runSql(
+    await this.metaRunSql(
       `
         INSERT INTO data_datasets (
           id, name, source_path, table_name, row_count, column_count, created_at, updated_at
@@ -1124,7 +1429,7 @@ export class DataTaskStore {
   }
 
   private async getWorkflowNodes(taskId: string): Promise<DataWorkflowNode[]> {
-    const rows = await this.queryRows<DataWorkflowNodeRow>(
+    const rows = await this.metaQueryRows<DataWorkflowNodeRow>(
       `
         SELECT *
         FROM data_workflow_nodes
@@ -1137,7 +1442,7 @@ export class DataTaskStore {
   }
 
   private async getWorkflowEdges(taskId: string): Promise<DataWorkflowEdge[]> {
-    const rows = await this.queryRows<DataWorkflowEdgeRow>(
+    const rows = await this.metaQueryRows<DataWorkflowEdgeRow>(
       `
         SELECT *
         FROM data_workflow_edges
@@ -1150,7 +1455,7 @@ export class DataTaskStore {
   }
 
   private async countWorkflowNodes(taskId: string): Promise<number> {
-    const rows = await this.queryRows<{ count: number | string }>(
+    const rows = await this.metaQueryRows<{ count: number | string }>(
       'SELECT count(*) AS count FROM data_workflow_nodes WHERE task_id = $taskId',
       { taskId }
     );
@@ -1158,7 +1463,7 @@ export class DataTaskStore {
   }
 
   private async getTask(id: string): Promise<DataCleaningTask | null> {
-    const rows = await this.queryRows<DataTaskRow>(
+    const rows = await this.metaQueryRows<DataTaskRow>(
       'SELECT * FROM data_cleaning_tasks WHERE id = $id LIMIT 1',
       { id }
     );
@@ -1173,15 +1478,20 @@ export class DataTaskStore {
     return task;
   }
 
-  private async requireDataset(id: string): Promise<DataDataset> {
-    const rows = await this.queryRows<DataDatasetRow>(
+  private async getDataset(id: string): Promise<DataDataset | null> {
+    const rows = await this.metaQueryRows<DataDatasetRow>(
       'SELECT * FROM data_datasets WHERE id = $id LIMIT 1',
       { id }
     );
-    if (!rows[0]) {
+    return rows[0] ? mapDatasetRow(rows[0]) : null;
+  }
+
+  private async requireDataset(id: string): Promise<DataDataset> {
+    const dataset = await this.getDataset(id);
+    if (!dataset) {
       throw new Error(`Dataset not found: ${id}`);
     }
-    return mapDatasetRow(rows[0]);
+    return dataset;
   }
 
   private async getTableColumns(tableName: string): Promise<string[]> {
@@ -1197,6 +1507,128 @@ export class DataTaskStore {
     return rows.map((row) => String(row.column_name));
   }
 
+  private async createDatasetTableFromSource(
+    tableName: string,
+    sourcePath: string,
+    sourceKind: DataInputTableSourceKind,
+    inputConfig?: DataInputTableConfig
+  ): Promise<PreparedInputTableImport> {
+    const config = normalizeInputTableConfig(inputConfig, sourceKind, sourcePath);
+    const tempTables: string[] = [];
+    try {
+      const importFiles = getImportSourceFiles(sourcePath, sourceKind, config);
+      const forceVarchar = sourceKind === 'folder';
+      for (const [index, filePath] of importFiles.entries()) {
+        const tempTable = tableNameFromId('dataset_import', `${uuidv4()}_${index}`);
+        tempTables.push(tempTable);
+        await this.createImportTempTable(tempTable, filePath, index, forceVarchar, config);
+        if (sourceKind === 'folder') {
+          const folderConfig = config.sourceKind === 'folder' ? config : defaultFolderConfig();
+          if (folderConfig.skipEmptyFiles && (await this.countRows(tempTable)) === 0) {
+            await this.dropTableIfExists(tempTable);
+            tempTables.pop();
+            continue;
+          }
+          if (folderConfig.keepSourceFileName) {
+            await this.appendSourceFileNameColumn(tempTable, filePath);
+          }
+        }
+      }
+
+      await this.createDatasetTableFromTempTables(tableName, tempTables);
+      const rowCount = await this.countRows(tableName);
+      const columnCount = (await this.getTableColumns(tableName)).length;
+      return {
+        rowCount,
+        columnCount,
+        fileCount: tempTables.length,
+        config,
+      };
+    } finally {
+      for (const tempTable of tempTables) {
+        await this.dropTableIfExists(tempTable).catch(() => undefined);
+      }
+    }
+  }
+
+  private async createImportTempTable(
+    tableName: string,
+    filePath: string,
+    index: number,
+    forceVarchar: boolean,
+    config: DataInputTableConfig
+  ): Promise<void> {
+    if (isExcelFile(filePath)) {
+      const workbookConfig = config.sourceKind === 'excel' ? config : defaultExcelConfig(filePath);
+      await this.createTempTableFromWorkbookRows(tableName, parseWorkbookRows(filePath, workbookConfig));
+      return;
+    }
+
+    const parameterName = `sourcePath${index}`;
+    const relation = readImportRelationForPath(filePath, parameterName, forceVarchar);
+    await this.runSql(`CREATE TEMP TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`, {
+      [parameterName]: filePath,
+    });
+  }
+
+  private async appendSourceFileNameColumn(tableName: string, filePath: string): Promise<void> {
+    const existingColumns = new Set((await this.getTableColumns(tableName)).map((column) => column.toLowerCase()));
+    let columnName = 'source_file_name';
+    let suffix = 2;
+    while (existingColumns.has(columnName.toLowerCase())) {
+      columnName = `source_file_name_${suffix}`;
+      suffix += 1;
+    }
+    await this.runSql(`ALTER TABLE ${quoteIdentifier(tableName)} ADD COLUMN ${quoteValueIdentifier(columnName)} VARCHAR`);
+    await this.runSql(
+      `UPDATE ${quoteIdentifier(tableName)} SET ${quoteValueIdentifier(columnName)} = $sourceFileName`,
+      { sourceFileName: basename(filePath) }
+    );
+  }
+
+  private async createTempTableFromWorkbookRows(
+    tableName: string,
+    parsed: ParsedWorkbookRows
+  ): Promise<void> {
+    if (parsed.columns.length === 0) {
+      throw new Error('Excel workbook has no readable columns');
+    }
+
+    const columnSql = parsed.columns
+      .map((column) => `${quoteValueIdentifier(column)} VARCHAR`)
+      .join(', ');
+    await this.runSql(`CREATE TEMP TABLE ${quoteIdentifier(tableName)} (${columnSql})`);
+
+    if (parsed.rows.length === 0) {
+      return;
+    }
+
+    const columnList = parsed.columns.map(quoteValueIdentifier).join(', ');
+    const placeholders = parsed.columns.map((_, index) => `$value${index}`).join(', ');
+    const sql = `INSERT INTO ${quoteIdentifier(tableName)} (${columnList}) VALUES (${placeholders})`;
+    for (const row of parsed.rows) {
+      const values: Record<string, string | number | null> = {};
+      for (let index = 0; index < parsed.columns.length; index += 1) {
+        const value = row[index];
+        values[`value${index}`] =
+          value === null || value === undefined ? null : typeof value === 'boolean' ? String(value) : value;
+      }
+      await this.runSql(sql, values);
+    }
+  }
+
+  private async createDatasetTableFromTempTables(
+    tableName: string,
+    tempTables: string[]
+  ): Promise<void> {
+    if (tempTables.length === 0) {
+      throw new Error('No Excel or CSV files were found for the input table');
+    }
+
+    const unionSql = buildUnionSqlFromTempTables(tempTables);
+    await this.runSql(`CREATE TABLE ${quoteIdentifier(tableName)} AS ${unionSql}`);
+  }
+
   private async countRows(tableName: string): Promise<number> {
     const rows = await this.queryRows<{ count: number | string }>(
       `SELECT count(*) AS count FROM ${quoteIdentifier(tableName)}`
@@ -1206,6 +1638,35 @@ export class DataTaskStore {
 
   private async dropTableIfExists(tableName: string): Promise<void> {
     await this.runSql(`DROP TABLE IF EXISTS ${quoteIdentifier(tableName)}`);
+  }
+
+  private async metaRunSql(
+    sql: string,
+    values?: Record<string, string | number | null>
+  ): Promise<void> {
+    if (!this.metadataDb) {
+      await this.runSql(sql, values);
+      return;
+    }
+    if (values) {
+      this.metadataDb.prepare(sql).run(values);
+      return;
+    }
+    this.metadataDb.exec(sql);
+  }
+
+  private async metaQueryRows<T extends object>(
+    sql: string,
+    values?: Record<string, string | number | null>
+  ): Promise<T[]> {
+    if (!this.metadataDb) {
+      return this.queryRows<T>(sql, values);
+    }
+    return this.metadataDb.prepare(sql).all(values ?? {}) as T[];
+  }
+
+  private relatedTaskNamesSeparatorSql(): string {
+    return this.metadataDb ? 'char(31)' : 'chr(31)';
   }
 
   private async runSql(
@@ -1257,16 +1718,72 @@ function mapTaskRow(row: DataTaskRow): DataCleaningTask {
 }
 
 function mapDatasetRow(row: DataDatasetRow): DataDataset {
+  const sourcePath = String(row.source_path);
+  const sourceKind = normalizeStoredInputTableSourceKind(row.source_kind, sourcePath);
   return {
     id: String(row.id),
     name: String(row.name),
-    sourcePath: String(row.source_path),
+    sourcePath,
+    sourceKind,
+    inputConfig: parseInputTableConfig(row.config_json, sourceKind, sourcePath),
+    fileCount: row.file_count === null ? 1 : toNumber(row.file_count),
+    relatedTaskNames: parseRelatedTaskNames(row.related_task_names),
     tableName: String(row.table_name),
     rowCount: toNumber(row.row_count),
     columnCount: toNumber(row.column_count),
     createdAt: toNumber(row.created_at),
     updatedAt: toNumber(row.updated_at),
   };
+}
+
+function parseRelatedTaskNames(value: string | null | undefined): string[] {
+  if (!value) return [];
+  return value.split('\u001F').filter(Boolean).slice(0, 2);
+}
+
+function normalizeStoredInputTableSourceKind(
+  value: string | null,
+  sourcePath: string
+): DataInputTableSourceKind {
+  if (value === 'excel' || value === 'csv' || value === 'folder') {
+    return value;
+  }
+  if (sourcePath.endsWith('/') || !extname(sourcePath)) {
+    return 'folder';
+  }
+  return isExcelFile(sourcePath) ? 'excel' : 'csv';
+}
+
+function storedDatasetSourceKindSql(alias?: string): string {
+  const prefix = alias ? `${alias}.` : '';
+  const sourceKind = `${prefix}source_kind`;
+  const sourcePath = `lower(${prefix}source_path)`;
+  return `
+    coalesce(
+      ${sourceKind},
+      CASE
+        WHEN ${sourcePath} LIKE '%.xlsx' OR ${sourcePath} LIKE '%.xls' THEN 'excel'
+        WHEN ${sourcePath} LIKE '%.csv' OR ${sourcePath} LIKE '%.tsv' OR ${sourcePath} LIKE '%.tab' THEN 'csv'
+        ELSE 'folder'
+      END
+    )
+  `;
+}
+
+function parseInputTableConfig(
+  value: string | null,
+  sourceKind: DataInputTableSourceKind,
+  sourcePath: string
+): DataInputTableConfig {
+  if (value) {
+    try {
+      const parsed = JSON.parse(value) as DataInputTableConfig;
+      return normalizeInputTableConfig(parsed, sourceKind, sourcePath);
+    } catch {
+      return normalizeInputTableConfig(undefined, sourceKind, sourcePath);
+    }
+  }
+  return normalizeInputTableConfig(undefined, sourceKind, sourcePath);
 }
 
 function mapWorkflowNodeRow(row: DataWorkflowNodeRow): DataWorkflowNode {
@@ -1798,7 +2315,8 @@ function normalizeListWindow(
   limit: number | null | undefined
 ): { offset: number; limit: number } {
   const normalizedOffset = Math.max(0, Math.floor(toFiniteNumber(offset, 0)));
-  const normalizedLimit = Math.min(200, Math.max(1, Math.floor(toFiniteNumber(limit, 200))));
+  const normalizedLimit =
+    limit === 0 ? 0 : Math.min(200, Math.max(1, Math.floor(toFiniteNumber(limit, 200))));
   return { offset: normalizedOffset, limit: normalizedLimit };
 }
 
@@ -1836,6 +2354,173 @@ function normalizeSourcePath(filePath: string): string {
   return filePath;
 }
 
+function normalizeImportSourcePath(sourcePath: string): string {
+  if (!sourcePath || !fs.existsSync(sourcePath)) {
+    throw new Error(`Input table source does not exist: ${sourcePath}`);
+  }
+  const stat = fs.statSync(sourcePath);
+  if (stat.isDirectory()) {
+    return sourcePath;
+  }
+  if (!stat.isFile()) {
+    throw new Error(`Input table source is not a file or folder: ${sourcePath}`);
+  }
+  if (!isImportableFile(sourcePath)) {
+    throw new Error(`Unsupported input table source type: ${extname(sourcePath).toLowerCase() || '(none)'}`);
+  }
+  return sourcePath;
+}
+
+function normalizeInputTableSourceKind(
+  requestedKind: DataInputTableSourceKind | undefined,
+  sourcePath: string
+): DataInputTableSourceKind {
+  if (requestedKind) {
+    return requestedKind;
+  }
+  const stat = fs.statSync(sourcePath);
+  if (stat.isDirectory()) {
+    return 'folder';
+  }
+  return isExcelFile(sourcePath) ? 'excel' : 'csv';
+}
+
+function normalizeInputTableConfig(
+  config: DataInputTableConfig | undefined,
+  sourceKind: DataInputTableSourceKind,
+  sourcePath: string
+): DataInputTableConfig {
+  if (sourceKind === 'excel') {
+    const fallback = defaultExcelConfig(sourcePath);
+    if (config?.sourceKind !== 'excel') {
+      return fallback;
+    }
+    const sheetName =
+      config.sheetName && fallback.sheetNames.includes(config.sheetName)
+        ? config.sheetName
+        : fallback.sheetName;
+    return {
+      sourceKind: 'excel',
+      sheetName,
+      sheetNames: fallback.sheetNames,
+      headerMode: config.headerMode === 'manual' ? 'manual' : 'auto',
+      headerRow: Math.max(1, Math.floor(Number(config.headerRow) || 1)),
+    };
+  }
+
+  if (sourceKind === 'folder') {
+    if (config?.sourceKind !== 'folder') {
+      return defaultFolderConfig();
+    }
+    return {
+      sourceKind: 'folder',
+      mergeMode: 'append_same_schema',
+      schemaStrategy: 'align_by_name',
+      fileRange:
+        config.fileRange === 'excel' || config.fileRange === 'csv'
+          ? config.fileRange
+          : 'excel_csv',
+      skipEmptyFiles: config.skipEmptyFiles !== false,
+      keepSourceFileName: config.keepSourceFileName !== false,
+    };
+  }
+
+  return defaultCsvConfig(config);
+}
+
+function defaultExcelConfig(filePath?: string): DataInputTableExcelConfig {
+  const sheetNames =
+    filePath && fs.existsSync(filePath) && isExcelFile(filePath)
+      ? getWorkbookSheetNames(filePath)
+      : ['Sheet1'];
+  return {
+    sourceKind: 'excel',
+    sheetName: sheetNames[0] ?? 'Sheet1',
+    sheetNames,
+    headerMode: 'auto',
+    headerRow: 1,
+  };
+}
+
+function defaultCsvConfig(config?: DataInputTableConfig): DataInputTableCsvConfig {
+  return {
+    sourceKind: 'csv',
+    header: 'auto',
+    dataRegion: 'auto',
+    encoding: 'auto',
+    delimiter: 'auto',
+    ...(config?.sourceKind === 'csv' ? config : {}),
+  };
+}
+
+function defaultFolderConfig(): DataInputTableFolderConfig {
+  return {
+    sourceKind: 'folder',
+    mergeMode: 'append_same_schema',
+    schemaStrategy: 'align_by_name',
+    fileRange: 'excel_csv',
+    skipEmptyFiles: true,
+    keepSourceFileName: true,
+  };
+}
+
+function getWorkbookSheetNames(filePath: string): string[] {
+  const workbookBuffer = fs.readFileSync(filePath);
+  const workbook = XLSX.read(workbookBuffer, {
+    cellDates: false,
+    raw: false,
+    type: 'buffer',
+  });
+  return workbook.SheetNames.length > 0 ? workbook.SheetNames : ['Sheet1'];
+}
+
+function getImportSourceFiles(
+  sourcePath: string,
+  sourceKind: DataInputTableSourceKind,
+  config: DataInputTableConfig
+): string[] {
+  const stat = fs.statSync(sourcePath);
+  if (stat.isFile()) {
+    return [sourcePath];
+  }
+
+  const folderConfig = config.sourceKind === 'folder' ? config : defaultFolderConfig();
+  const files = listImportableFiles(sourcePath, folderConfig.fileRange);
+  if (files.length === 0) {
+    throw new Error(
+      sourceKind === 'folder'
+        ? 'No Excel or CSV files were found in the selected folder'
+        : 'No input table file was found'
+    );
+  }
+  return files;
+}
+
+function listImportableFiles(
+  folderPath: string,
+  fileRange: DataInputTableFolderConfig['fileRange'] = 'excel_csv'
+): string[] {
+  const files: string[] = [];
+  const visit = (directory: string) => {
+    const entries = fs
+      .readdirSync(directory, { withFileTypes: true })
+      .filter((entry) => !entry.name.startsWith('.') && !entry.name.startsWith('~$'))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      const entryPath = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(entryPath);
+        continue;
+      }
+      if (entry.isFile() && isFolderRangeFile(entryPath, fileRange)) {
+        files.push(entryPath);
+      }
+    }
+  };
+  visit(folderPath);
+  return files;
+}
+
 function readRelationForPath(filePath: string, parameterName: string): string {
   const extension = extname(filePath).toLowerCase();
   if (extension === '.csv') {
@@ -1853,11 +2538,181 @@ function readRelationForPath(filePath: string, parameterName: string): string {
   throw new Error(`Unsupported data file type: ${extension || '(none)'}`);
 }
 
+function readImportRelationForPath(filePath: string, parameterName: string, forceVarchar: boolean): string {
+  if (!forceVarchar) {
+    return readRelationForPath(filePath, parameterName);
+  }
+  const extension = extname(filePath).toLowerCase();
+  if (extension === '.csv') {
+    return `read_csv_auto($${parameterName}, header = true, all_varchar = true)`;
+  }
+  if (extension === '.tsv' || extension === '.tab') {
+    return `read_csv_auto($${parameterName}, header = true, delim = '\t', all_varchar = true)`;
+  }
+  return readRelationForPath(filePath, parameterName);
+}
+
+function buildUnionSqlFromTempTables(tempTables: string[]): string {
+  return tempTables
+    .map((tempTable, index) => {
+      const selectSql = `SELECT * FROM ${quoteIdentifier(tempTable)}`;
+      return index === 0 ? selectSql : `UNION ALL BY NAME ${selectSql}`;
+    })
+    .join('\n');
+}
+
+function normalizePreviewLimit(limit: number | undefined): number {
+  if (!Number.isFinite(limit)) {
+    return 100;
+  }
+  return Math.max(1, Math.min(100, Math.floor(Number(limit))));
+}
+
+function normalizePreviewOffset(offset: number | undefined): number {
+  if (!Number.isFinite(offset)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor(Number(offset)));
+}
+
+function normalizePreviewRow(row: Record<string, unknown>): Record<string, string | number | boolean | null> {
+  return Object.fromEntries(
+    Object.entries(row).map(([key, value]) => [key, normalizePreviewCell(value)])
+  );
+}
+
+function normalizePreviewCell(value: unknown): string | number | boolean | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'bigint') {
+    return value.toString();
+  }
+  return String(value);
+}
+
+function isImportableFile(filePath: string): boolean {
+  return isInputTableFile(filePath) || ['.json', '.jsonl', '.ndjson', '.parquet'].includes(extname(filePath).toLowerCase());
+}
+
+function isInputTableFile(filePath: string): boolean {
+  const extension = extname(filePath).toLowerCase();
+  return extension === '.csv' || extension === '.tsv' || extension === '.tab' || isExcelFile(filePath);
+}
+
+function isFolderRangeFile(
+  filePath: string,
+  fileRange: DataInputTableFolderConfig['fileRange']
+): boolean {
+  if (fileRange === 'excel') {
+    return isExcelFile(filePath);
+  }
+  if (fileRange === 'csv') {
+    return isCsvLikeFile(filePath);
+  }
+  return isInputTableFile(filePath);
+}
+
+function isCsvLikeFile(filePath: string): boolean {
+  const extension = extname(filePath).toLowerCase();
+  return extension === '.csv' || extension === '.tsv' || extension === '.tab';
+}
+
+function isExcelFile(filePath: string): boolean {
+  const extension = extname(filePath).toLowerCase();
+  return extension === '.xlsx' || extension === '.xls';
+}
+
+function parseWorkbookRows(
+  filePath: string,
+  config: DataInputTableExcelConfig
+): ParsedWorkbookRows {
+  const workbookBuffer = fs.readFileSync(filePath);
+  const workbook = XLSX.read(workbookBuffer, {
+    cellDates: false,
+    raw: false,
+    type: 'buffer',
+  });
+  const sheetNames = workbook.SheetNames;
+  const sheetName =
+    config.sheetName && sheetNames.includes(config.sheetName)
+      ? config.sheetName
+      : sheetNames[0];
+  if (!sheetName) {
+    throw new Error(`Excel workbook has no sheets: ${filePath}`);
+  }
+  const sheet = workbook.Sheets[sheetName];
+  const matrix = XLSX.utils.sheet_to_json<Array<string | number | boolean | null>>(sheet, {
+    header: 1,
+    blankrows: false,
+    defval: null,
+    raw: false,
+  });
+  const headerIndex =
+    config.headerMode === 'manual'
+      ? Math.max(0, config.headerRow - 1)
+      : matrix.findIndex((row) => row.some(hasCellValue));
+  if (headerIndex < 0) {
+    throw new Error(`Excel workbook has no header row: ${filePath}`);
+  }
+
+  const headerRow = matrix[headerIndex];
+  if (!headerRow) {
+    throw new Error(`Excel header row does not exist: ${filePath}`);
+  }
+
+  const columns = normalizeWorkbookColumns(headerRow);
+  const rows = matrix
+    .slice(headerIndex + 1)
+    .filter((row) => row.some(hasCellValue))
+    .map((row) => columns.map((_, index) => normalizeWorkbookCell(row[index])));
+  return { columns, rows, sheetName, sheetNames };
+}
+
+function normalizeWorkbookColumns(row: Array<string | number | boolean | null>): string[] {
+  const used = new Map<string, number>();
+  return row.map((value, index) => {
+    const rawName = value === null || value === undefined ? '' : String(value).trim();
+    const baseName = rawName || `column_${index + 1}`;
+    const nextCount = (used.get(baseName) ?? 0) + 1;
+    used.set(baseName, nextCount);
+    return nextCount === 1 ? baseName : `${baseName}_${nextCount}`;
+  });
+}
+
+function normalizeWorkbookCell(value: string | number | boolean | null | undefined): string | number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === 'number') {
+    return value;
+  }
+  if (typeof value === 'boolean') {
+    return String(value);
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function hasCellValue(value: string | number | boolean | null | undefined): boolean {
+  if (value === null || value === undefined) {
+    return false;
+  }
+  return typeof value === 'string' ? value.trim().length > 0 : true;
+}
+
 function quoteIdentifier(identifier: string): string {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(identifier)) {
     throw new Error(`Unsafe DuckDB identifier: ${identifier}`);
   }
   return `"${identifier}"`;
+}
+
+function quoteValueIdentifier(identifier: string): string {
+  return `"${identifier.replace(/"/g, '""')}"`;
 }
 
 function tableNameFromId(prefix: string, id: string): string {

@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { DuckDBInstance } from '@duckdb/node-api';
+import * as XLSX from 'xlsx';
 import { createDataTaskStore, type DataTaskStore } from '../src/main/data/data-task-store';
 import { compilePrepWorkflowToFlow, parsePrepDsl } from '../src/shared/prep-dsl';
 
@@ -104,6 +105,241 @@ describe('DuckDB data task store', () => {
     expect(afterDelete.summary.taskCount).toBe(0);
     expect(afterDelete.summary.statusCounts.completed).toBe(0);
     expect(afterDelete.tasks).toHaveLength(0);
+  });
+
+  it('imports an Excel workbook as an input table', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const workbookPath = path.join(tempRoot, 'orders.xlsx');
+    writeWorkbook(workbookPath, [
+      ['id', 'amount'],
+      [1, 10],
+      [2, 20],
+    ]);
+
+    const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'), {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+
+    const imported = await store.importDataset({ filePath: workbookPath });
+    expect(imported.name).toBe('orders');
+    expect(imported.columnCount).toBe(2);
+    expect(imported.rowCount).toBe(2);
+    expect(await store.deleteDataset(imported.id)).toBe(true);
+    const dashboard = await store.getDashboard({ query: 'orders' });
+    expect(dashboard.datasets).toHaveLength(0);
+  });
+
+  it('persists Excel sheet and header-row input table configuration', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const workbookPath = path.join(tempRoot, 'configured-orders.xlsx');
+    writeWorkbookSheets(workbookPath, {
+      Raw: [
+        ['skip'],
+        [1],
+      ],
+      Orders: [
+        ['report title'],
+        ['id', 'amount'],
+        [1, 10],
+        [2, 20],
+      ],
+    });
+
+    const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'), {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+
+    const imported = await store.importDataset({
+      filePath: workbookPath,
+      sourceKind: 'excel',
+      config: {
+        sourceKind: 'excel',
+        sheetName: 'Orders',
+        sheetNames: [],
+        headerMode: 'manual',
+        headerRow: 2,
+      },
+    });
+    expect(imported.sourceKind).toBe('excel');
+    expect(imported.inputConfig.sourceKind).toBe('excel');
+    expect(imported.inputConfig.sheetName).toBe('Orders');
+    expect(imported.inputConfig.headerMode).toBe('manual');
+    expect(imported.inputConfig.headerRow).toBe(2);
+    expect(imported.inputConfig.sheetNames).toEqual(['Raw', 'Orders']);
+    expect(imported.rowCount).toBe(2);
+    expect(imported.columnCount).toBe(2);
+  });
+
+  it('previews input table data using the current configuration', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const workbookPath = path.join(tempRoot, 'preview-orders.xlsx');
+    writeWorkbookSheets(workbookPath, {
+      Raw: [['ignored'], ['x']],
+      Orders: [
+        ['report title'],
+        ['id', 'amount'],
+        [1, 10],
+        [2, 20],
+      ],
+    });
+
+    const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'));
+    stores.push(store);
+
+    const preview = await store.previewInputTable({
+      filePath: workbookPath,
+      sourceKind: 'excel',
+      config: {
+        sourceKind: 'excel',
+        sheetName: 'Orders',
+        sheetNames: [],
+        headerMode: 'manual',
+        headerRow: 2,
+      },
+      limit: 1,
+      offset: 1,
+    });
+
+    expect(preview.columns).toEqual(['id', 'amount']);
+    expect(preview.rows).toEqual([{ id: '2', amount: '20' }]);
+    expect(preview.fileCount).toBe(1);
+    expect(preview.limit).toBe(1);
+    expect(preview.offset).toBe(1);
+    expect(preview.totalRows).toBe(2);
+  });
+
+  it('previews stored input table rows from DuckDB', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const csvPath = path.join(tempRoot, 'stored-customers.csv');
+    fs.writeFileSync(csvPath, 'id,name\n1,Alice\n2,Bob\n3,Carol\n', 'utf8');
+
+    const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'));
+    stores.push(store);
+
+    const imported = await store.importDataset({ filePath: csvPath, name: 'Customers' });
+    const preview = await store.previewDataset({ id: imported.id, limit: 1, offset: 1 });
+
+    expect(preview.columns).toEqual(['id', 'name']);
+    expect(String(preview.rows[0]?.id)).toBe('2');
+    expect(preview.rows[0]?.name).toBe('Bob');
+    expect(preview.fileCount).toBe(1);
+    expect(preview.limit).toBe(1);
+    expect(preview.offset).toBe(1);
+    expect(preview.totalRows).toBe(3);
+  });
+
+  it('imports a folder by merging Excel and CSV files into one input table', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const sourceFolder = path.join(tempRoot, 'monthly-inputs');
+    fs.mkdirSync(sourceFolder);
+    fs.writeFileSync(path.join(sourceFolder, 'customers.csv'), 'id,name\n1,Alice\n', 'utf8');
+    writeWorkbook(path.join(sourceFolder, 'regions.xlsx'), [
+      ['id', 'region'],
+      [2, '华东'],
+    ]);
+
+    const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'), {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+
+    const imported = await store.importDataset({ filePath: sourceFolder });
+    expect(imported.name).toBe('monthly-inputs');
+    expect(imported.sourcePath).toBe(sourceFolder);
+    expect(imported.sourceKind).toBe('folder');
+    expect(imported.fileCount).toBe(2);
+    expect(imported.inputConfig.sourceKind).toBe('folder');
+    expect(imported.columnCount).toBe(4);
+    expect(imported.rowCount).toBe(2);
+  });
+
+  it('loads dashboard task and input-table lists lazily', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const excelPath = path.join(tempRoot, 'orders.xlsx');
+    const csvPath = path.join(tempRoot, 'customers.csv');
+    writeWorkbook(excelPath, [
+      ['id', 'amount'],
+      [1, 10],
+    ]);
+    fs.writeFileSync(csvPath, 'id,name\n1,Alice\n', 'utf8');
+
+    const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'), {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+    await store.createTask({ name: 'Paged task 01' });
+    await store.createTask({ name: 'Paged task 02' });
+    await store.importDataset({ filePath: excelPath });
+    const csvDataset = await store.importDataset({ filePath: csvPath });
+    await store.createTask({ name: 'Uses customers', sourcePath: csvPath });
+
+    const tasksOnly = await store.getDashboard({
+      includeTasks: true,
+      includeDatasets: false,
+      taskOffset: 0,
+      taskLimit: 1,
+    });
+    expect(tasksOnly.tasks).toHaveLength(1);
+    expect(tasksOnly.datasets).toHaveLength(0);
+    expect(tasksOnly.totalTasks).toBe(3);
+    expect(tasksOnly.totalDatasets).toBe(0);
+
+    const csvTablesOnly = await store.getDashboard({
+      includeTasks: false,
+      includeDatasets: true,
+      datasetSourceKind: 'csv',
+      datasetOffset: 0,
+      datasetLimit: 1,
+    });
+    expect(csvTablesOnly.tasks).toHaveLength(0);
+    expect(csvTablesOnly.datasets).toHaveLength(1);
+    expect(csvTablesOnly.datasets[0]?.id).toBe(csvDataset.id);
+    expect(csvTablesOnly.datasets[0]?.relatedTaskNames).toEqual(['Uses customers']);
+    expect(csvTablesOnly.totalTasks).toBe(3);
+    expect(csvTablesOnly.totalDatasets).toBe(1);
+  });
+
+  it('updates an existing input table in place', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const firstCsvPath = path.join(tempRoot, 'first.csv');
+    const nextCsvPath = path.join(tempRoot, 'next.csv');
+    fs.writeFileSync(firstCsvPath, 'id,name\n1,Alice\n', 'utf8');
+    fs.writeFileSync(nextCsvPath, 'id,name,region\n1,Alice,East\n2,Bob,West\n', 'utf8');
+
+    const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'), {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+
+    const imported = await store.importDataset({ filePath: firstCsvPath, name: 'Customers' });
+    const renamed = await store.updateDataset({ id: imported.id, name: 'Customer Inputs' });
+    expect(renamed.id).toBe(imported.id);
+    expect(renamed.tableName).toBe(imported.tableName);
+    expect(renamed.name).toBe('Customer Inputs');
+
+    const updated = await store.updateDataset({
+      id: imported.id,
+      filePath: nextCsvPath,
+      name: 'Customer Inputs 2026',
+    });
+    expect(updated.id).toBe(imported.id);
+    expect(updated.tableName).toBe(imported.tableName);
+    expect(updated.name).toBe('Customer Inputs 2026');
+    expect(updated.sourcePath).toBe(nextCsvPath);
+    expect(updated.rowCount).toBe(2);
+    expect(updated.columnCount).toBe(3);
+
+    const dashboard = await store.getDashboard({ query: 'Customer Inputs' });
+    expect(dashboard.datasets).toHaveLength(1);
   });
 
   it('persists workflow operators and edges', async () => {
@@ -427,9 +663,16 @@ describe('DuckDB data task store', () => {
     expect(main).toContain("ipcMain.handle('data.runTask'");
     expect(main).toContain("ipcMain.handle('data.getTaskWorkflow'");
     expect(main).toContain("ipcMain.handle('data.saveTaskWorkflow'");
+    expect(main).toContain("ipcMain.handle('data.importDataset'");
+    expect(main).toContain("ipcMain.handle('data.updateDataset'");
+    expect(main).toContain("ipcMain.handle('data.previewDataset'");
     expect(main).toContain("ipcMain.handle('data.deleteTask'");
+    expect(main).toContain("ipcMain.handle('data.deleteDataset'");
     expect(preload).toContain('data: {');
     expect(preload).toContain("ipcRenderer.invoke('data.importDataset'");
+    expect(preload).toContain("ipcRenderer.invoke('data.updateDataset'");
+    expect(preload).toContain("ipcRenderer.invoke('data.previewDataset'");
+    expect(preload).toContain("ipcRenderer.invoke('data.deleteDataset'");
     expect(preload).toContain("ipcRenderer.invoke('data.getTaskWorkflow'");
     expect(preload).toContain("ipcRenderer.invoke('data.saveTaskWorkflow'");
     expect(preload).toContain("ipcRenderer.invoke('data.deleteTask'");
@@ -438,3 +681,19 @@ describe('DuckDB data task store', () => {
     expect(builder).toContain("'node_modules/@duckdb/**/*.node'");
   });
 });
+
+function writeWorkbook(filePath: string, rows: unknown[][]): void {
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+  XLSX.writeFile(workbook, filePath);
+}
+
+function writeWorkbookSheets(filePath: string, sheets: Record<string, unknown[][]>): void {
+  const workbook = XLSX.utils.book_new();
+  for (const [sheetName, rows] of Object.entries(sheets)) {
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+  }
+  XLSX.writeFile(workbook, filePath);
+}

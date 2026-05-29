@@ -12,7 +12,17 @@
  * Dependencies: session-manager, config-store, mcp-manager, sandbox-adapter,
  *               skills-manager, scheduled-task-manager, nav-server, remote-manager
  */
-import { app, BrowserWindow, ipcMain, dialog, shell, Menu, nativeTheme, Tray } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  shell,
+  Menu,
+  nativeTheme,
+  Tray,
+  type OpenDialogOptions,
+} from 'electron';
 import { join, resolve, dirname, isAbsolute, basename } from 'path';
 import * as fs from 'fs';
 import { execFileSync } from 'child_process';
@@ -53,8 +63,12 @@ import type {
   PermissionRule,
   DataCreateTaskInput,
   DataDashboardQuery,
+  DataInputTableSourceKind,
   DataImportDatasetInput,
+  DataPreviewDatasetInput,
+  DataPreviewInputTableInput,
   DataRunTaskInput,
+  DataUpdateDatasetInput,
   DataWorkflowSaveInput,
 } from '../renderer/types';
 import { remoteManager, type AgentExecutor } from './remote/remote-manager';
@@ -854,7 +868,9 @@ app
 
     // Initialize database
     const db = initDatabase();
-    dataTaskStore = createDataTaskStore(join(app.getPath('userData'), 'data', 'workspace.duckdb'));
+    dataTaskStore = createDataTaskStore(join(app.getPath('userData'), 'data', 'workspace.duckdb'), {
+      metadataDb: db,
+    });
 
     pluginRuntimeService = new PluginRuntimeService(new PluginCatalogService());
     memoryService = new MemoryService(db);
@@ -1511,9 +1527,66 @@ ipcMain.handle('dialog.selectFiles', async () => {
   return result.filePaths;
 });
 
+ipcMain.handle('dialog.selectInputTableSource', async (_event, kind?: DataInputTableSourceKind) => {
+  const dialogOptions: OpenDialogOptions =
+    kind === 'folder'
+      ? {
+          properties: ['openDirectory'],
+          title: 'Select Input Table Folder',
+        }
+      : kind === 'excel'
+        ? {
+            properties: ['openFile'],
+            title: 'Select Excel Input Table',
+            filters: [
+              { name: 'Excel', extensions: ['xlsx', 'xls'] },
+              { name: 'All Files', extensions: ['*'] },
+            ],
+          }
+        : kind === 'csv'
+          ? {
+              properties: ['openFile'],
+              title: 'Select CSV Input Table',
+              filters: [
+                { name: 'CSV or TSV', extensions: ['csv', 'tsv', 'tab'] },
+                { name: 'All Files', extensions: ['*'] },
+              ],
+            }
+          : {
+              properties: ['openFile', 'openDirectory'],
+              title: 'Select Input Table Source',
+              filters: [
+                { name: 'Excel or CSV', extensions: ['xlsx', 'xls', 'csv', 'tsv', 'tab'] },
+                { name: 'All Files', extensions: ['*'] },
+              ],
+            };
+  const result = await dialog.showOpenDialog({
+    ...dialogOptions,
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+
+  const selectedPath = result.filePaths[0];
+  const stat = await fs.promises.stat(selectedPath);
+  return {
+    path: selectedPath,
+    kind: stat.isDirectory()
+      ? 'folder'
+      : kind === 'excel' || kind === 'csv'
+        ? kind
+        : selectedPath.toLowerCase().match(/\.(xlsx|xls)$/)
+          ? 'excel'
+          : 'csv',
+  };
+});
+
 function requireDataTaskStore(): DataTaskStore {
   if (!dataTaskStore) {
-    dataTaskStore = createDataTaskStore(join(app.getPath('userData'), 'data', 'workspace.duckdb'));
+    dataTaskStore = createDataTaskStore(join(app.getPath('userData'), 'data', 'workspace.duckdb'), {
+      metadataDb: initDatabase(),
+    });
   }
   return dataTaskStore;
 }
@@ -1572,11 +1645,47 @@ ipcMain.handle('data.importDataset', async (_event, payload: DataImportDatasetIn
   }
 });
 
+ipcMain.handle('data.updateDataset', async (_event, payload: DataUpdateDatasetInput) => {
+  try {
+    return await requireDataTaskStore().updateDataset(payload);
+  } catch (error) {
+    logError('[Data] Error updating dataset:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('data.previewInputTable', async (_event, payload: DataPreviewInputTableInput) => {
+  try {
+    return await requireDataTaskStore().previewInputTable(payload);
+  } catch (error) {
+    logError('[Data] Error previewing input table:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('data.previewDataset', async (_event, payload: DataPreviewDatasetInput) => {
+  try {
+    return await requireDataTaskStore().previewDataset(payload);
+  } catch (error) {
+    logError('[Data] Error previewing stored input table:', error);
+    throw error;
+  }
+});
+
 ipcMain.handle('data.deleteTask', async (_event, id: string) => {
   try {
     return { success: await requireDataTaskStore().deleteTask(id) };
   } catch (error) {
     logError('[Data] Error deleting task:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('data.deleteDataset', async (_event, id: string) => {
+  try {
+    return { success: await requireDataTaskStore().deleteDataset(id) };
+  } catch (error) {
+    logError('[Data] Error deleting dataset:', error);
     throw error;
   }
 });

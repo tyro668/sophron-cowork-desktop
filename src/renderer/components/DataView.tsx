@@ -52,16 +52,19 @@ import {
   Copy,
   Database,
   Droplet,
+  Eye,
   FileText,
   Filter,
   Folder,
   GitMerge,
+  Info,
   MapPin,
   MoreHorizontal,
   PencilLine,
   Play,
   Plus,
   Repeat2,
+  RefreshCw,
   Save,
   Search,
   Sigma,
@@ -77,6 +80,11 @@ import type {
   DataCleaningTask,
   DataDashboard,
   DataDataset,
+  DataInputTableConfig,
+  DataInputTableExcelConfig,
+  DataInputTableFolderConfig,
+  DataInputTablePreview,
+  DataInputTableSourceKind,
   DataTaskStatus,
   DataTaskWorkflow,
   DataWorkflowEdge,
@@ -93,7 +101,16 @@ import {
   type PrepDiagnostic,
 } from '../../shared/prep-dsl';
 
-type DataTab = 'tasks' | 'datasets';
+type DataTab = 'tasks' | 'input_tables' | 'output_tables';
+type InputTableSourceFilter = 'all' | 'excel' | 'csv' | 'folder';
+type InputTableSourceKind = Exclude<InputTableSourceFilter, 'all'> | 'file' | 'draft';
+
+interface InputTableDraft {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+}
 
 const EMPTY_DASHBOARD: DataDashboard = {
   summary: {
@@ -125,11 +142,22 @@ const TASK_ICON_STYLES = [
 ];
 
 const TABLE_PAGE_SIZE = 10;
+const INPUT_TABLE_PREVIEW_PAGE_SIZE = 100;
 const WORKFLOW_NODE_WIDTH = 116;
 const WORKFLOW_NODE_HEIGHT = 36;
 const WORKFLOW_OPERATOR_MIME = 'application/x-sophron-workflow-operator';
 const WORKFLOW_ALIGNMENT_THRESHOLD = 6;
 const WORKFLOW_ALIGNMENT_GUIDE_PADDING = 32;
+
+const INPUT_TABLE_SOURCE_FILTERS: Array<{
+  value: InputTableSourceFilter;
+  labelKey: string;
+}> = [
+  { value: 'all', labelKey: 'data.inputTables.sources.all' },
+  { value: 'excel', labelKey: 'data.inputTables.sources.excel' },
+  { value: 'csv', labelKey: 'data.inputTables.sources.csv' },
+  { value: 'folder', labelKey: 'data.inputTables.sources.folder' },
+];
 
 type WorkflowFlowNode = Node<{ workflowNode: DataWorkflowNode }, 'operator'>;
 type WorkflowFlowEdge = Edge<Record<string, never>>;
@@ -249,46 +277,130 @@ export function DataView() {
   const { t } = useTranslation();
   const [dashboard, setDashboard] = useState<DataDashboard>(EMPTY_DASHBOARD);
   const [activeTab, setActiveTab] = useState<DataTab>('tasks');
+  const [inputTableSourceFilter, setInputTableSourceFilter] =
+    useState<InputTableSourceFilter>('all');
+  const [inputTableDrafts, setInputTableDrafts] = useState<InputTableDraft[]>([]);
+  const [editingInputTableDraftId, setEditingInputTableDraftId] = useState<string | null>(null);
+  const [editingInputTableDatasetId, setEditingInputTableDatasetId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [taskPage, setTaskPage] = useState(1);
   const [datasetPage, setDatasetPage] = useState(1);
-  const [, setLoading] = useState(false);
+  const [loadingTab, setLoadingTab] = useState<DataTab | null>('tasks');
   const [error, setError] = useState<string | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [storedPreviewOpen, setStoredPreviewOpen] = useState(false);
+  const [storedPreviewLoading, setStoredPreviewLoading] = useState(false);
+  const [storedPreviewError, setStoredPreviewError] = useState<string | null>(null);
+  const [storedPreviewData, setStoredPreviewData] = useState<DataInputTablePreview | null>(null);
+  const [storedPreviewPage, setStoredPreviewPage] = useState(1);
+  const [storedPreviewDataset, setStoredPreviewDataset] = useState<DataDataset | null>(null);
+  const dashboardRequestSeq = useRef(0);
+  const hasLoadedDashboardSummary = useRef(false);
+  const pendingNavigationTabRef = useRef<DataTab | null>('tasks');
 
   const isDataApiAvailable = Boolean(window.electronAPI?.data);
 
-  const loadDashboard = useCallback(async (options: { preserveError?: boolean; query?: string; taskPage?: number; datasetPage?: number } = {}) => {
+  const loadDashboard = useCallback(async (options: { preserveError?: boolean; query?: string; taskPage?: number; datasetPage?: number; tab?: DataTab } = {}) => {
     if (!window.electronAPI?.data) return;
+    const requestSeq = dashboardRequestSeq.current + 1;
+    dashboardRequestSeq.current = requestSeq;
+    const targetTab = options.tab ?? activeTab;
     const requestedTaskPage = Math.max(1, options.taskPage ?? taskPage);
     const requestedDatasetPage = Math.max(1, options.datasetPage ?? datasetPage);
-    setLoading(true);
+    const shouldLoadTasks = targetTab === 'tasks';
+    const shouldLoadDatasets = targetTab === 'input_tables';
+    const shouldLoadSummary = shouldLoadTasks || !hasLoadedDashboardSummary.current;
+    const visibleDraftCount =
+      shouldLoadDatasets && inputTableSourceFilter === 'all' ? inputTableDrafts.length : 0;
+    const draftStart = (requestedDatasetPage - 1) * TABLE_PAGE_SIZE;
+    const draftsOnRequestedPage = Math.max(
+      0,
+      Math.min(TABLE_PAGE_SIZE, visibleDraftCount - draftStart)
+    );
+    const datasetLimit = shouldLoadDatasets
+      ? Math.max(0, TABLE_PAGE_SIZE - draftsOnRequestedPage)
+      : 0;
+    const datasetOffset = Math.max(
+      0,
+      (requestedDatasetPage - 1) * TABLE_PAGE_SIZE - visibleDraftCount
+    );
+    setLoadingTab(targetTab);
     if (!options.preserveError) {
       setError(null);
     }
     try {
       const nextDashboard = await window.electronAPI.data.getDashboard({
-        query: options.query ?? searchQuery,
+        query: options.query ?? (shouldLoadTasks ? searchQuery : ''),
+        includeSummary: shouldLoadSummary,
+        includeTasks: shouldLoadTasks,
+        includeDatasets: shouldLoadDatasets,
         taskOffset: (requestedTaskPage - 1) * TABLE_PAGE_SIZE,
-        taskLimit: TABLE_PAGE_SIZE,
-        datasetOffset: (requestedDatasetPage - 1) * TABLE_PAGE_SIZE,
-        datasetLimit: TABLE_PAGE_SIZE,
+        taskLimit: shouldLoadTasks ? TABLE_PAGE_SIZE : 0,
+        datasetOffset,
+        datasetLimit,
+        datasetSourceKind: shouldLoadDatasets ? inputTableSourceFilter : 'all',
       });
-      setDashboard(nextDashboard);
+      if (requestSeq === dashboardRequestSeq.current) {
+        if (shouldLoadSummary) {
+          hasLoadedDashboardSummary.current = true;
+        }
+        setDashboard((current) => ({
+          summary: shouldLoadSummary ? nextDashboard.summary : current.summary,
+          tasks: shouldLoadTasks ? nextDashboard.tasks : current.tasks,
+          datasets: shouldLoadDatasets ? nextDashboard.datasets : current.datasets,
+          totalTasks:
+            shouldLoadTasks || shouldLoadSummary ? nextDashboard.totalTasks : current.totalTasks,
+          totalDatasets: shouldLoadDatasets ? nextDashboard.totalDatasets : current.totalDatasets,
+        }));
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (requestSeq === dashboardRequestSeq.current) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
-      setLoading(false);
+      if (requestSeq === dashboardRequestSeq.current) {
+        if (pendingNavigationTabRef.current === targetTab) {
+          pendingNavigationTabRef.current = null;
+        }
+        setLoadingTab((current) => (current === targetTab ? null : current));
+      }
     }
-  }, [datasetPage, searchQuery, taskPage]);
+  }, [activeTab, datasetPage, inputTableDrafts.length, inputTableSourceFilter, searchQuery, taskPage]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadDashboard();
-    }, searchQuery ? 180 : 0);
-    return () => window.clearTimeout(timer);
-  }, [loadDashboard, searchQuery]);
+    if (!isDataApiAvailable) {
+      pendingNavigationTabRef.current = null;
+      setLoadingTab(null);
+      return;
+    }
+    dashboardRequestSeq.current += 1;
+    if (activeTab === 'output_tables') {
+      pendingNavigationTabRef.current = null;
+      setLoadingTab(null);
+      return;
+    }
+
+    const delay = activeTab === 'tasks' && searchQuery ? 180 : 0;
+    let timer: number | null = null;
+    let firstFrame = 0;
+    let secondFrame = 0;
+    firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        timer = window.setTimeout(() => {
+          void loadDashboard({ tab: activeTab });
+        }, delay);
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+      if (timer !== null) {
+        window.clearTimeout(timer);
+      }
+    };
+  }, [activeTab, isDataApiAvailable, loadDashboard, searchQuery]);
 
   useEffect(() => {
     const pageCount = getTablePageCount(dashboard.totalTasks);
@@ -298,16 +410,41 @@ export function DataView() {
   }, [dashboard.totalTasks, taskPage]);
 
   useEffect(() => {
-    const pageCount = getTablePageCount(dashboard.totalDatasets);
+    const draftCount = inputTableSourceFilter === 'all' ? inputTableDrafts.length : 0;
+    const pageCount = getTablePageCount(dashboard.totalDatasets + draftCount);
     if (datasetPage > pageCount) {
       setDatasetPage(pageCount);
     }
-  }, [dashboard.totalDatasets, datasetPage]);
+  }, [dashboard.totalDatasets, datasetPage, inputTableDrafts.length, inputTableSourceFilter]);
 
   const handleSearchChange = useCallback((value: string) => {
+    setLoadingTab('tasks');
     setSearchQuery(value);
     setTaskPage(1);
+  }, []);
+
+  const handleInputTableSourceFilterChange = useCallback((value: InputTableSourceFilter) => {
+    setLoadingTab('input_tables');
+    setInputTableSourceFilter(value);
     setDatasetPage(1);
+  }, []);
+
+  const handleTabChange = useCallback((tab: DataTab) => {
+    if (tab === activeTab) return;
+    dashboardRequestSeq.current += 1;
+    pendingNavigationTabRef.current = tab === 'output_tables' ? null : tab;
+    setLoadingTab(null);
+    setActiveTab(tab);
+  }, [activeTab]);
+
+  const handleTaskPageChange = useCallback((page: number) => {
+    setLoadingTab('tasks');
+    setTaskPage(page);
+  }, []);
+
+  const handleDatasetPageChange = useCallback((page: number) => {
+    setLoadingTab('input_tables');
+    setDatasetPage(page);
   }, []);
 
   const summaryCards = useMemo(
@@ -351,7 +488,21 @@ export function DataView() {
     () => dashboard.tasks.find((task) => task.id === editingTaskId) ?? null,
     [dashboard.tasks, editingTaskId]
   );
-
+  const editingInputTableDraft = useMemo(
+    () => inputTableDrafts.find((draft) => draft.id === editingInputTableDraftId) ?? null,
+    [editingInputTableDraftId, inputTableDrafts]
+  );
+  const editingInputTableDataset = useMemo(
+    () => dashboard.datasets.find((dataset) => dataset.id === editingInputTableDatasetId) ?? null,
+    [dashboard.datasets, editingInputTableDatasetId]
+  );
+  const isDetailEditor = Boolean(editingTask || editingInputTableDraft || editingInputTableDataset);
+  const isTasksLoading =
+    loadingTab === 'tasks' ||
+    (activeTab === 'tasks' && pendingNavigationTabRef.current === 'tasks');
+  const isInputTablesLoading =
+    loadingTab === 'input_tables' ||
+    (activeTab === 'input_tables' && pendingNavigationTabRef.current === 'input_tables');
   const selectOneFile = useCallback(async (): Promise<string | null> => {
     if (!window.electronAPI?.selectFiles) return null;
     const files = await window.electronAPI.selectFiles();
@@ -398,15 +549,60 @@ export function DataView() {
     [loadDashboard, selectOneFile]
   );
 
-  const handleImportDataset = useCallback(async () => {
+  const handleCreateInputTableDraft = useCallback(() => {
+    const now = Date.now();
+    const draft: InputTableDraft = {
+      id: makeLocalId('input_table'),
+      name: `${t('data.inputTables.defaultName')} ${dashboard.totalDatasets + inputTableDrafts.length + 1}`,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setInputTableDrafts((current) => [draft, ...current]);
+    setInputTableSourceFilter('all');
+    setActiveTab('input_tables');
+    setEditingInputTableDatasetId(null);
+    setEditingInputTableDraftId(draft.id);
+  }, [dashboard.totalDatasets, inputTableDrafts.length, t]);
+
+  const handleRenameInputTableDraft = useCallback((id: string, name: string) => {
+    setInputTableDrafts((current) =>
+      current.map((draft) =>
+        draft.id === id ? { ...draft, name, updatedAt: Date.now() } : draft
+      )
+    );
+  }, []);
+
+  const handleDeleteInputTableDraft = useCallback((id: string) => {
+    setInputTableDrafts((current) => current.filter((draft) => draft.id !== id));
+    setEditingInputTableDraftId((current) => (current === id ? null : current));
+  }, []);
+
+  const handleImportInputTableSource = useCallback(async (
+    draft: InputTableDraft,
+    sourceKind: DataInputTableSourceKind,
+    config: DataInputTableConfig,
+    name?: string
+  ) => {
     if (!window.electronAPI?.data) return;
-    setActionId('import-dataset');
+    setActionId(draft.id);
     setError(null);
     try {
-      const sourcePath = await selectOneFile();
+      const source = window.electronAPI.selectInputTableSource
+        ? await window.electronAPI.selectInputTableSource(sourceKind)
+        : { path: await selectOneFile(), kind: 'file' as const };
+      const sourcePath = source?.path;
       if (!sourcePath) return;
-      await window.electronAPI.data.importDataset({ filePath: sourcePath });
-      await loadDashboard();
+      setActiveTab('input_tables');
+      const imported = await window.electronAPI.data.importDataset({
+        filePath: sourcePath,
+        name: name?.trim() || draft.name,
+        sourceKind,
+        config,
+      });
+      setInputTableDrafts((current) => current.filter((item) => item.id !== draft.id));
+      setEditingInputTableDraftId(null);
+      setEditingInputTableDatasetId(imported.id);
+      await loadDashboard({ preserveError: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       await loadDashboard({ preserveError: true });
@@ -414,6 +610,90 @@ export function DataView() {
       setActionId(null);
     }
   }, [loadDashboard, selectOneFile]);
+
+  const handleEditInputTableDataset = useCallback((id: string) => {
+    setActiveTab('input_tables');
+    setEditingInputTableDraftId(null);
+    setEditingInputTableDatasetId(id);
+  }, []);
+
+  const handleRenameInputTableDataset = useCallback(
+    async (dataset: DataDataset, name: string) => {
+      const trimmedName = name.trim();
+      if (!trimmedName || trimmedName === dataset.name || !window.electronAPI?.data?.updateDataset) {
+        return;
+      }
+      setActionId(dataset.id);
+      setError(null);
+      try {
+        await window.electronAPI.data.updateDataset({ id: dataset.id, name: trimmedName });
+        await loadDashboard({ preserveError: true });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        await loadDashboard({ preserveError: true });
+      } finally {
+        setActionId(null);
+      }
+    },
+    [loadDashboard]
+  );
+
+  const handleUpdateInputTableSource = useCallback(
+    async (
+      dataset: DataDataset,
+      sourceKind: DataInputTableSourceKind,
+      config: DataInputTableConfig,
+      name?: string
+    ) => {
+      if (!window.electronAPI?.data?.updateDataset) return;
+      setActionId(dataset.id);
+      setError(null);
+      try {
+        const source = window.electronAPI.selectInputTableSource
+          ? await window.electronAPI.selectInputTableSource(sourceKind)
+          : { path: await selectOneFile(), kind: 'file' as const };
+        const sourcePath = source?.path;
+        if (!sourcePath) return;
+        await window.electronAPI.data.updateDataset({
+          id: dataset.id,
+          filePath: sourcePath,
+          name: name?.trim() || dataset.name,
+          sourceKind,
+          config,
+        });
+        await loadDashboard({ preserveError: true });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        await loadDashboard({ preserveError: true });
+      } finally {
+        setActionId(null);
+      }
+    },
+    [loadDashboard, selectOneFile]
+  );
+
+  const handleUpdateInputTableConfig = useCallback(
+    async (dataset: DataDataset, config: DataInputTableConfig, name?: string) => {
+      if (!window.electronAPI?.data?.updateDataset) return;
+      setActionId(dataset.id);
+      setError(null);
+      try {
+        await window.electronAPI.data.updateDataset({
+          id: dataset.id,
+          name: name?.trim() || dataset.name,
+          sourceKind: config.sourceKind,
+          config,
+        });
+        await loadDashboard({ preserveError: true });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        await loadDashboard({ preserveError: true });
+      } finally {
+        setActionId(null);
+      }
+    },
+    [loadDashboard]
+  );
 
   const handleDeleteTask = useCallback(
     async (task: DataCleaningTask) => {
@@ -441,41 +721,61 @@ export function DataView() {
     [editingTaskId, loadDashboard, t]
   );
 
+  const handleDeleteInputTable = useCallback(
+    async (dataset: DataDataset) => {
+      if (!window.electronAPI?.data?.deleteDataset) return;
+      const confirmed = window.confirm(t('data.inputTables.deleteConfirm', { name: dataset.name }));
+      if (!confirmed) return;
+      setActionId(dataset.id);
+      setError(null);
+      try {
+        const result = await window.electronAPI.data.deleteDataset(dataset.id);
+        if (!result.success) {
+          throw new Error(t('data.inputTables.deleteNotFound'));
+        }
+        await loadDashboard({ preserveError: true });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        await loadDashboard({ preserveError: true });
+      } finally {
+        setActionId(null);
+      }
+    },
+    [loadDashboard, t]
+  );
+
+  const handlePreviewStoredInputTable = useCallback(async (dataset: DataDataset, page = 1) => {
+    if (!window.electronAPI?.data?.previewDataset) return;
+    setStoredPreviewOpen(true);
+    setStoredPreviewDataset(dataset);
+    setStoredPreviewLoading(true);
+    setStoredPreviewError(null);
+    setStoredPreviewPage(page);
+    try {
+      const preview = await window.electronAPI.data.previewDataset({
+        id: dataset.id,
+        limit: INPUT_TABLE_PREVIEW_PAGE_SIZE,
+        offset: (page - 1) * INPUT_TABLE_PREVIEW_PAGE_SIZE,
+      });
+      setStoredPreviewData(preview);
+    } catch (err) {
+      setStoredPreviewError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setStoredPreviewLoading(false);
+    }
+  }, []);
+
   return (
     <div
       className={`flex-1 min-h-0 bg-background ${
-        editingTask ? 'overflow-hidden' : 'overflow-y-auto'
+        isDetailEditor ? 'overflow-hidden' : 'overflow-y-auto'
       }`}
     >
       <div
         className={`mx-auto w-full max-w-[1120px] px-3 py-3 sm:px-4 ${
-          editingTask ? 'flex h-full min-h-0 flex-col' : ''
+          isDetailEditor ? 'flex h-full min-h-0 flex-col' : ''
         }`}
       >
-        {!editingTask && (
-          <header className="mb-3 flex min-h-9 flex-col gap-3 lg:flex-row lg:items-start lg:justify-end">
-            <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
-              <div className="relative w-full sm:w-[20rem] xl:w-[22rem]">
-                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-                <input
-                  value={searchQuery}
-                  onChange={(event) => handleSearchChange(event.target.value)}
-                  placeholder={t('data.searchPlaceholder')}
-                  className="h-9 w-full rounded-lg border border-border-muted bg-background/94 pl-9 pr-3 text-[13px] font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
-                />
-              </div>
-              <button
-                onClick={handleCreateTask}
-                disabled={!isDataApiAvailable || actionId === 'create'}
-                className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg bg-accent px-3.5 text-[13px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <Plus className="h-4 w-4" />
-                {t('data.newCleaningTask')}
-              </button>
-            </div>
-          </header>
-        )}
-
         {error && (
           <div className="mb-4 flex shrink-0 items-start gap-2 rounded-lg border border-error/20 bg-error/10 px-3.5 py-2.5 text-[13px] text-error">
             <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
@@ -490,6 +790,23 @@ export function DataView() {
             onBack={() => setEditingTaskId(null)}
             onRun={handleRunTask}
             onWorkflowSaved={() => loadDashboard({ preserveError: true })}
+          />
+        ) : editingInputTableDraft ? (
+          <InputTableEditor
+            draft={editingInputTableDraft}
+            isBusy={actionId === editingInputTableDraft.id}
+            onBack={() => setEditingInputTableDraftId(null)}
+            onRenameDraft={handleRenameInputTableDraft}
+            onChooseDraftSource={handleImportInputTableSource}
+          />
+        ) : editingInputTableDataset ? (
+          <InputTableEditor
+            dataset={editingInputTableDataset}
+            isBusy={actionId === editingInputTableDataset.id}
+            onBack={() => setEditingInputTableDatasetId(null)}
+            onRenameDataset={handleRenameInputTableDataset}
+            onChooseDatasetSource={handleUpdateInputTableSource}
+            onUpdateDatasetConfig={handleUpdateInputTableConfig}
           />
         ) : (
           <>
@@ -511,49 +828,86 @@ export function DataView() {
                 <div className="flex items-end gap-5">
                   <TabButton
                     active={activeTab === 'tasks'}
-                    onClick={() => setActiveTab('tasks')}
-                    label={t('data.tabs.etl')}
+                    onClick={() => handleTabChange('tasks')}
+                    label={t('data.tabs.tasks')}
                   />
                   <TabButton
-                    active={activeTab === 'datasets'}
-                    onClick={() => setActiveTab('datasets')}
-                    label={t('data.tabs.datasets')}
+                    active={activeTab === 'input_tables'}
+                    onClick={() => handleTabChange('input_tables')}
+                    label={t('data.tabs.inputTables')}
+                  />
+                  <TabButton
+                    active={activeTab === 'output_tables'}
+                    onClick={() => handleTabChange('output_tables')}
+                    label={t('data.tabs.outputTables')}
                   />
                 </div>
-                <div className="flex items-center gap-3">
-                  {activeTab === 'datasets' && (
-                    <button
-                      onClick={handleImportDataset}
-                      disabled={actionId === 'import-dataset'}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <UploadCloud className="h-3.5 w-3.5" />
-                      {t('data.importDataset')}
-                    </button>
+              </div>
+
+              {activeTab === 'tasks' ? (
+                <TasksPanel
+                  tasks={dashboard.tasks}
+                  totalTasks={dashboard.totalTasks}
+                  currentPage={taskPage}
+                  searchQuery={searchQuery}
+                  actionId={actionId}
+                  isLoading={isTasksLoading}
+                  isCreateDisabled={!isDataApiAvailable || actionId === 'create'}
+                  onCreate={handleCreateTask}
+                  onSearchChange={handleSearchChange}
+                  onPageChange={handleTaskPageChange}
+                  onRun={handleRunTask}
+                  onEdit={(task) => setEditingTaskId(task.id)}
+                  onDelete={handleDeleteTask}
+                />
+              ) : (
+                <div
+                  className={
+                    activeTab === 'input_tables'
+                      ? 'overflow-visible bg-transparent'
+                      : 'overflow-hidden rounded-xl border border-border-muted bg-background/90 shadow-card'
+                  }
+                >
+                  {activeTab === 'input_tables' ? (
+                      <InputTablesPanel
+                        datasets={dashboard.datasets}
+                        drafts={inputTableDrafts}
+                        totalDatasets={dashboard.totalDatasets}
+                        currentPage={datasetPage}
+                        isLoading={isInputTablesLoading}
+                        sourceFilter={inputTableSourceFilter}
+                        onSourceFilterChange={handleInputTableSourceFilterChange}
+                        onPageChange={handleDatasetPageChange}
+                        onCreate={handleCreateInputTableDraft}
+                        onRefresh={() => loadDashboard({ preserveError: true })}
+                        onPreviewDataset={handlePreviewStoredInputTable}
+                      onDelete={handleDeleteInputTable}
+                      onDeleteDraft={handleDeleteInputTableDraft}
+                      onEditDraft={setEditingInputTableDraftId}
+                      onEditDataset={handleEditInputTableDataset}
+                      isCreateDisabled={!isDataApiAvailable}
+                      actionId={actionId}
+                    />
+                  ) : (
+                    <BlankDataTableSurface />
                   )}
                 </div>
-              </div>
-
-              <div className="overflow-hidden rounded-xl border border-border-muted bg-background/90 shadow-card">
-                {activeTab === 'tasks' ? (
-                  <TasksTable
-                    tasks={dashboard.tasks}
-                    actionId={actionId}
-                    onRun={handleRunTask}
-                    onEdit={(task) => setEditingTaskId(task.id)}
-                    onDelete={handleDeleteTask}
-                  />
-                ) : (
-                  <DatasetsTable datasets={dashboard.datasets} />
-                )}
-              </div>
-
-              <PaginationFooter
-                count={activeTab === 'tasks' ? dashboard.totalTasks : dashboard.totalDatasets}
-                currentPage={activeTab === 'tasks' ? taskPage : datasetPage}
-                onPageChange={activeTab === 'tasks' ? setTaskPage : setDatasetPage}
-              />
+              )}
             </section>
+            {storedPreviewOpen && (
+              <InputTablePreviewDialog
+                preview={storedPreviewData}
+                isLoading={storedPreviewLoading}
+                error={storedPreviewError}
+                currentPage={storedPreviewPage}
+                onPageChange={(page) => {
+                  if (storedPreviewDataset) {
+                    void handlePreviewStoredInputTable(storedPreviewDataset, page);
+                  }
+                }}
+                onClose={() => setStoredPreviewOpen(false)}
+              />
+            )}
           </>
         )}
       </div>
@@ -2648,21 +3002,99 @@ function TabButton({
   );
 }
 
+function TasksPanel({
+  tasks,
+  totalTasks,
+  currentPage,
+  searchQuery,
+  actionId,
+  isLoading,
+  isCreateDisabled,
+  onCreate,
+  onSearchChange,
+  onPageChange,
+  onRun,
+  onEdit,
+  onDelete,
+}: {
+  tasks: DataCleaningTask[];
+  totalTasks: number;
+  currentPage: number;
+  searchQuery: string;
+  actionId: string | null;
+  isLoading: boolean;
+  isCreateDisabled: boolean;
+  onCreate: () => void;
+  onSearchChange: (value: string) => void;
+  onPageChange: (page: number) => void;
+  onRun: (task: DataCleaningTask) => void;
+  onEdit: (task: DataCleaningTask) => void;
+  onDelete: (task: DataCleaningTask) => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="bg-transparent">
+      <div className="mb-3 flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+        <button
+          onClick={onCreate}
+          disabled={isCreateDisabled}
+          className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {t('data.newCleaningTask')}
+        </button>
+        <div className="relative w-full sm:w-[20rem]">
+          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+          <input
+            value={searchQuery}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder={t('data.searchPlaceholder')}
+            className="h-8 w-full rounded-lg border border-border-muted bg-background/94 pl-8 pr-3 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+          />
+        </div>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-border-muted bg-background/90 shadow-card">
+        <TasksTable
+          tasks={tasks}
+          actionId={actionId}
+          isLoading={isLoading}
+          onRun={onRun}
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />
+        <PaginationFooter
+          count={totalTasks}
+          currentPage={currentPage}
+          onPageChange={onPageChange}
+          embedded
+        />
+      </div>
+    </div>
+  );
+}
+
 function TasksTable({
   tasks,
   actionId,
+  isLoading,
   onRun,
   onEdit,
   onDelete,
 }: {
   tasks: DataCleaningTask[];
   actionId: string | null;
+  isLoading: boolean;
   onRun: (task: DataCleaningTask) => void;
   onEdit: (task: DataCleaningTask) => void;
   onDelete: (task: DataCleaningTask) => void;
 }) {
   const { t } = useTranslation();
   const visibleTasks = tasks;
+
+  if (isLoading) {
+    return <LoadingState label={t('data.loadingTasks')} />;
+  }
 
   if (visibleTasks.length === 0) {
     return <EmptyState label={t('data.emptyTasks')} />;
@@ -2754,72 +3186,1165 @@ function TasksTable({
   );
 }
 
-function DatasetsTable({ datasets }: { datasets: DataDataset[] }) {
+function InputTablesPanel({
+  datasets,
+  drafts,
+  totalDatasets,
+  currentPage,
+  isLoading,
+  sourceFilter,
+  onSourceFilterChange,
+  onPageChange,
+  onCreate,
+  onRefresh,
+  onPreviewDataset,
+  onDelete,
+  onDeleteDraft,
+  onEditDraft,
+  onEditDataset,
+  isCreateDisabled,
+  actionId,
+}: {
+  datasets: DataDataset[];
+  drafts: InputTableDraft[];
+  totalDatasets: number;
+  currentPage: number;
+  isLoading: boolean;
+  sourceFilter: InputTableSourceFilter;
+  onSourceFilterChange: (source: InputTableSourceFilter) => void;
+  onPageChange: (page: number) => void;
+  onCreate: () => void;
+  onRefresh: () => void;
+  onPreviewDataset: (dataset: DataDataset) => void;
+  onDelete: (dataset: DataDataset) => void;
+  onDeleteDraft: (id: string) => void;
+  onEditDraft: (id: string) => void;
+  onEditDataset: (id: string) => void;
+  isCreateDisabled: boolean;
+  actionId: string | null;
+}) {
   const { t } = useTranslation();
-  const visibleDatasets = datasets;
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null);
+  const draftCount = sourceFilter === 'all' ? drafts.length : 0;
+  const totalRows = totalDatasets + draftCount;
+  const pageCount = getTablePageCount(totalRows);
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
+  const draftStart = (safeCurrentPage - 1) * TABLE_PAGE_SIZE;
+  const pageDrafts = useMemo(
+    () =>
+      !isLoading && sourceFilter === 'all'
+        ? drafts.slice(draftStart, draftStart + TABLE_PAGE_SIZE)
+        : [],
+    [draftStart, drafts, isLoading, sourceFilter]
+  );
+  const visibleRows = useMemo(
+    () =>
+      isLoading
+        ? []
+        : [
+            ...pageDrafts.map((draft) => ({ kind: 'draft' as const, id: draft.id, draft })),
+            ...datasets.map((dataset) => ({ kind: 'dataset' as const, id: dataset.id, dataset })),
+          ],
+    [datasets, isLoading, pageDrafts]
+  );
+  const pageRows = visibleRows;
+  const pageNumbers = getVisiblePageNumbers(safeCurrentPage, pageCount);
+  const emptyLabel =
+    sourceFilter === 'all' ? t('data.inputTables.empty') : t('data.inputTables.emptyFiltered');
+  const selectedRow = visibleRows.find((row) => row.id === selectedDatasetId) ?? null;
+  const selectedDataset = selectedRow?.kind === 'dataset' ? selectedRow.dataset : null;
+  const selectedDraft = selectedRow?.kind === 'draft' ? selectedRow.draft : null;
+  const selectedRowBusy = selectedRow ? actionId === selectedRow.id : false;
 
-  if (visibleDatasets.length === 0) {
-    return <EmptyState label={t('data.emptyDatasets')} />;
-  }
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+    if (selectedDatasetId && !visibleRows.some((row) => row.id === selectedDatasetId)) {
+      setSelectedDatasetId(null);
+    }
+  }, [isLoading, selectedDatasetId, visibleRows]);
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[760px] border-collapse text-left">
-        <thead>
-          <tr className="h-10 border-b border-border-muted bg-background/80 text-xs font-medium text-text-muted">
-            <th className="w-[38%] px-4">{t('data.columns.datasetName')}</th>
-            <th className="w-[15%] px-4">{t('data.columns.rows')}</th>
-            <th className="w-[15%] px-4">{t('data.columns.columns')}</th>
-            <th className="w-[20%] px-4">{t('data.columns.updatedAt')}</th>
-            <th className="w-[12%] px-4 text-center">{t('data.columns.actions')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {visibleDatasets.map((dataset, index) => (
-            <tr
-              key={dataset.id}
-              className={`h-[3.25rem] border-b border-border-muted/85 last:border-b-0 transition-colors ${
-                index === 0 ? 'bg-accent/5' : 'hover:bg-surface-hover/35'
-              }`}
+    <div className="bg-transparent">
+      <div className="mb-3 flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={onCreate}
+              disabled={isCreateDisabled}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <td className="px-4">
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
-                    <Table2 className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="truncate text-[13px] font-medium text-text-secondary">
-                      {dataset.name}
-                    </div>
-                    <div className="mt-0.5 truncate text-[11px] text-text-muted">
-                      {basenameFromPath(dataset.sourcePath)}
-                    </div>
-                  </div>
-                </div>
-              </td>
-              <td className="px-4 text-[13px] font-medium text-text-secondary">
-                {formatNumber(dataset.rowCount)}
-              </td>
-              <td className="px-4 text-[13px] font-medium text-text-secondary">
-                {dataset.columnCount}
-              </td>
-              <td className="px-4 text-[13px] font-medium text-text-secondary">
-                {formatTimestamp(dataset.updatedAt, t)}
-              </td>
-              <td className="px-4 text-right">
+              <Plus className="h-3.5 w-3.5" />
+              {t('data.inputTables.add')}
+            </button>
+            <label className="relative block w-32">
+              <span className="sr-only">{t('data.inputTables.sourceFilter')}</span>
+              <select
+                value={sourceFilter}
+                onChange={(event) =>
+                  onSourceFilterChange(event.target.value as InputTableSourceFilter)
+                }
+                className="h-8 w-full appearance-none rounded-lg border border-border-muted bg-background/94 pl-3 pr-8 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent focus:border-accent focus:ring-2 focus:ring-accent/20"
+              >
+                {INPUT_TABLE_SOURCE_FILTERS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {t(option.labelKey)}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+            </label>
+          </div>
+
+          <div className="mx-1 hidden h-5 w-px bg-border-muted lg:block" />
+          <div className="flex flex-wrap items-center gap-2">
+            <InputTableToolbarButton
+              icon={<Eye className="h-3.5 w-3.5" />}
+              label={t('data.inputTables.actions.preview')}
+              disabled={!selectedDataset}
+              onClick={() => {
+                if (selectedDataset) {
+                  onPreviewDataset(selectedDataset);
+                }
+              }}
+            />
+            <InputTableToolbarButton
+              icon={<PencilLine className="h-3.5 w-3.5" />}
+              label={t('data.inputTables.actions.edit')}
+              disabled={!selectedRow}
+              onClick={() => {
+                if (selectedDraft) {
+                  onEditDraft(selectedDraft.id);
+                } else if (selectedDataset) {
+                  onEditDataset(selectedDataset.id);
+                }
+              }}
+            />
+            <InputTableToolbarButton
+              icon={<Trash2 className="h-3.5 w-3.5" />}
+              label={t('data.inputTables.actions.delete')}
+              disabled={!selectedRow || selectedRowBusy}
+              danger
+              onClick={() => {
+                if (selectedDraft) {
+                  onDeleteDraft(selectedDraft.id);
+                } else if (selectedDataset) {
+                  onDelete(selectedDataset);
+                }
+              }}
+            />
+          </div>
+        </div>
+
+        <button
+          onClick={onRefresh}
+          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          {t('data.actions.refresh')}
+        </button>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-border-muted bg-background/94">
+        {isLoading ? (
+          <LoadingState label={t('data.inputTables.loading')} />
+        ) : visibleRows.length === 0 ? (
+          <EmptyState label={emptyLabel} />
+        ) : (
+          <>
+            <div className="overflow-hidden">
+              <table className="w-full table-fixed border-collapse text-left">
+                <thead>
+                  <tr className="h-10 border-b border-border-muted bg-background/80 text-xs font-medium text-text-muted">
+                    <th className="w-[4%] px-4">
+                      <span className="sr-only">{t('data.inputTables.selection')}</span>
+                    </th>
+                    <th className="w-[22%] whitespace-nowrap px-2">{t('data.columns.inputTableName')}</th>
+                    <th className="w-[9%] whitespace-nowrap px-2">{t('data.columns.sourceType')}</th>
+                    <th className="w-[22%] whitespace-nowrap px-2">{t('data.columns.sourceLocation')}</th>
+                    <th className="w-[17%] whitespace-nowrap px-2">{t('data.columns.relatedTasks')}</th>
+                    <th className="w-[16%] whitespace-nowrap px-2">
+                      <span className="inline-flex items-center gap-1">
+                        {t('data.columns.updatedAt')}
+                        <ArrowUpDown className="h-3 w-3" />
+                      </span>
+                    </th>
+                    <th className="w-[10%] whitespace-nowrap px-2">{t('data.columns.status')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageRows.map((row, index) => {
+                    const dataset = row.kind === 'dataset' ? row.dataset : null;
+                    const draft = row.kind === 'draft' ? row.draft : null;
+                    const sourceKind = dataset ? dataset.sourceKind : 'draft';
+                    const sourceMeta = getInputTableSourceMeta(sourceKind);
+                    const SourceIcon = sourceMeta.Icon;
+                    const selected = row.id === selectedDatasetId;
+                    const rowName = dataset?.name ?? draft?.name ?? '';
+                    const rowUpdatedAt = dataset?.updatedAt ?? draft?.updatedAt ?? null;
+                    return (
+                      <tr
+                        key={row.id}
+                        onClick={() => setSelectedDatasetId(row.id)}
+                        onDoubleClick={() => {
+                          if (draft) {
+                            onEditDraft(draft.id);
+                          } else if (dataset) {
+                            onEditDataset(dataset.id);
+                          }
+                        }}
+                        className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
+                          selected
+                            ? 'bg-accent/10 ring-1 ring-inset ring-accent/20'
+                            : index === 1
+                              ? 'bg-accent/5'
+                              : 'hover:bg-surface-hover/35'
+                        }`}
+                      >
+                        <td className="px-4">
+                          <input
+                            type="radio"
+                            name="input-table-selection"
+                            checked={selected}
+                            onChange={() => setSelectedDatasetId(row.id)}
+                            onClick={(event) => event.stopPropagation()}
+                            className="h-3.5 w-3.5 accent-accent"
+                            aria-label={rowName}
+                          />
+                        </td>
+                        <td className="px-2">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <div
+                              className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${sourceMeta.className}`}
+                            >
+                              <SourceIcon className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
+                              {rowName}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-2">
+                          <span
+                            className={`inline-flex h-6 items-center rounded-md px-2 text-xs font-medium ${sourceMeta.badgeClassName}`}
+                          >
+                            {t(sourceMeta.labelKey)}
+                          </span>
+                        </td>
+                        <td className="px-2">
+                          <div className="truncate text-[13px] font-medium text-text-secondary" title={dataset?.sourcePath}>
+                            {dataset ? formatDisplayPath(dataset.sourcePath) : t('data.inputTables.notConfigured')}
+                          </div>
+                        </td>
+                        <td className="px-2">
+                          <div className="truncate text-[13px] font-medium text-text-secondary">
+                            {dataset
+                              ? formatRelatedTaskNames(dataset.relatedTaskNames, t)
+                              : t('data.inputTables.noRelatedTasks')}
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+                          {formatDateTime(rowUpdatedAt)}
+                        </td>
+                        <td className="px-2">
+                          <InputTableStatusBadge
+                            label={
+                              draft
+                                ? t('data.inputTables.status.draft')
+                                : t('data.inputTables.status.available')
+                            }
+                            tone={draft ? 'warning' : 'success'}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          <div className="flex min-h-11 flex-col items-center justify-between gap-2 border-t border-border-muted px-4 py-2.5 text-xs font-medium text-text-secondary sm:flex-row">
+            <span>{t('data.totalCount', { count: totalRows })}</span>
+            <div className="flex items-center gap-2">
+              <button className="inline-flex h-8 min-w-[6.5rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-text-secondary shadow-soft">
+                {t('data.rowsPerPage', { count: TABLE_PAGE_SIZE })}
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => onPageChange(safeCurrentPage - 1)}
+                disabled={safeCurrentPage <= 1}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              {pageNumbers.map((pageNumber) => (
                 <button
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
-                  title={t('data.actions.more')}
+                  key={pageNumber}
+                  onClick={() => onPageChange(pageNumber)}
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
+                    pageNumber === safeCurrentPage
+                      ? 'bg-accent text-white shadow-soft'
+                      : 'border border-border-muted bg-background/94 text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
+                  }`}
                 >
-                  <MoreHorizontal className="h-4 w-4" />
+                  {pageNumber}
                 </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              ))}
+              <button
+                onClick={() => onPageChange(safeCurrentPage + 1)}
+                disabled={safeCurrentPage >= pageCount}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          </>
+        )}
+      </div>
     </div>
   );
+}
+
+function InputTableEditor({
+  draft,
+  dataset,
+  isBusy,
+  onBack,
+  onRenameDraft,
+  onRenameDataset,
+  onChooseDraftSource,
+  onChooseDatasetSource,
+  onUpdateDatasetConfig,
+}: {
+  draft?: InputTableDraft;
+  dataset?: DataDataset;
+  isBusy: boolean;
+  onBack: () => void;
+  onRenameDraft?: (id: string, name: string) => void;
+  onRenameDataset?: (dataset: DataDataset, name: string) => void | Promise<void>;
+  onChooseDraftSource?: (
+    draft: InputTableDraft,
+    sourceKind: DataInputTableSourceKind,
+    config: DataInputTableConfig,
+    name?: string
+  ) => void | Promise<void>;
+  onChooseDatasetSource?: (
+    dataset: DataDataset,
+    sourceKind: DataInputTableSourceKind,
+    config: DataInputTableConfig,
+    name?: string
+  ) => void | Promise<void>;
+  onUpdateDatasetConfig?: (
+    dataset: DataDataset,
+    config: DataInputTableConfig,
+    name?: string
+  ) => void | Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const targetId = draft?.id ?? dataset?.id ?? '';
+  const initialName = draft?.name ?? dataset?.name ?? '';
+  const initialSourceKind = dataset?.sourceKind ?? 'excel';
+  const initialConfig = useMemo(
+    () => dataset?.inputConfig ?? getDefaultInputTableConfig(initialSourceKind),
+    [dataset?.inputConfig, initialSourceKind]
+  );
+  const [localName, setLocalName] = useState(initialName);
+  const [localSourceKind, setLocalSourceKind] =
+    useState<DataInputTableSourceKind>(initialSourceKind);
+  const [localConfig, setLocalConfig] = useState<DataInputTableConfig>(initialConfig);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<DataInputTablePreview | null>(null);
+  const [previewPage, setPreviewPage] = useState(1);
+  const trimmedName = localName.trim();
+  const isConfigured = Boolean(dataset);
+  const sourceMeta = getInputTableSourceMeta(localSourceKind);
+  const SourceIcon = sourceMeta.Icon;
+  const excelConfig =
+    localConfig.sourceKind === 'excel' ? localConfig : getDefaultExcelInputTableConfig();
+  const folderConfig =
+    localConfig.sourceKind === 'folder' ? localConfig : getDefaultFolderInputTableConfig();
+  const sourceName = dataset ? getFileNameFromPath(dataset.sourcePath) : '';
+  const hasNameChanges = Boolean(dataset && trimmedName && trimmedName !== dataset.name);
+  const canSaveConfig =
+    Boolean(dataset) &&
+    localSourceKind === dataset?.sourceKind &&
+    !isInputTableConfigEqual(localConfig, dataset?.inputConfig);
+  const canSave = Boolean(dataset && trimmedName && !isBusy && (hasNameChanges || canSaveConfig));
+  const canPreview = Boolean(
+    dataset &&
+      localSourceKind === dataset.sourceKind &&
+      !isBusy &&
+      window.electronAPI?.data?.previewInputTable
+  );
+
+  useEffect(() => {
+    setLocalName(initialName);
+    setLocalSourceKind(initialSourceKind);
+    setLocalConfig(initialConfig);
+  }, [initialConfig, initialName, initialSourceKind, targetId]);
+
+  const handleNameChange = (value: string) => {
+    setLocalName(value);
+    if (draft && onRenameDraft) {
+      onRenameDraft(draft.id, value);
+    }
+  };
+
+  const chooseSource = (sourceKind: DataInputTableSourceKind, config = localConfig) => {
+    const nextConfig =
+      config.sourceKind === sourceKind ? config : getDefaultInputTableConfig(sourceKind);
+    if (draft && onChooseDraftSource) {
+      void onChooseDraftSource(draft, sourceKind, nextConfig, localName);
+    } else if (dataset && onChooseDatasetSource) {
+      void onChooseDatasetSource(dataset, sourceKind, nextConfig, localName);
+    }
+  };
+
+  const handleSourceKindChange = (sourceKind: DataInputTableSourceKind) => {
+    const nextConfig = getDefaultInputTableConfig(sourceKind);
+    setLocalSourceKind(sourceKind);
+    setLocalConfig(nextConfig);
+  };
+
+  const updateConfig = (config: DataInputTableConfig) => {
+    setLocalConfig(config);
+  };
+
+  const saveInputTable = () => {
+    if (!dataset || !trimmedName) return;
+    if (canSaveConfig && onUpdateDatasetConfig) {
+      void onUpdateDatasetConfig(dataset, localConfig, localName);
+      return;
+    }
+    if (hasNameChanges && onRenameDataset) {
+      void onRenameDataset(dataset, localName);
+    }
+  };
+
+  const loadPreviewPage = async (page: number) => {
+    if (!dataset || !window.electronAPI?.data?.previewInputTable) return;
+    setPreviewOpen(true);
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setPreviewPage(page);
+    try {
+      const nextPreview = await window.electronAPI.data.previewInputTable({
+        filePath: dataset.sourcePath,
+        sourceKind: localSourceKind,
+        config: localConfig,
+        limit: INPUT_TABLE_PREVIEW_PAGE_SIZE,
+        offset: (page - 1) * INPUT_TABLE_PREVIEW_PAGE_SIZE,
+      });
+      setPreviewData(nextPreview);
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const previewInputTable = async () => {
+    setPreviewData(null);
+    await loadPreviewPage(1);
+  };
+
+  return (
+    <>
+    <section className="flex min-h-0 flex-1 flex-col">
+      <div className="mb-3 flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-center gap-4">
+          <button
+            onClick={onBack}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            {t('data.inputTables.editor.back')}
+          </button>
+          <div className="flex min-w-0 items-center gap-2">
+            <input
+              value={localName}
+              onChange={(event) => handleNameChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.currentTarget.blur();
+                }
+              }}
+              disabled={isBusy}
+              maxLength={50}
+              aria-label={t('data.inputTables.editor.name')}
+              className="h-8 min-w-0 max-w-[18rem] truncate border-0 bg-transparent px-0 text-[15px] font-medium text-text-secondary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-60"
+              placeholder={t('data.inputTables.editor.title')}
+            />
+            <PencilLine className="h-4 w-4 flex-shrink-0 text-text-muted" />
+            <InputTableStatusBadge
+              label={
+                isConfigured
+                  ? t('data.inputTables.status.available')
+                  : t('data.inputTables.status.draft')
+              }
+              tone={isConfigured ? 'success' : 'warning'}
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void previewInputTable()}
+            disabled={!canPreview || previewLoading}
+            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {previewLoading ? (
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Eye className="h-3.5 w-3.5" />
+            )}
+            {t('data.inputTables.editor.preview')}
+          </button>
+          <button
+            type="button"
+            onClick={saveInputTable}
+            disabled={!canSave}
+            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Save className="h-3.5 w-3.5" />
+            {isBusy ? t('common.saving') : t('common.save')}
+          </button>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border-muted bg-background/94 p-4 shadow-card">
+        <div className="grid gap-5 lg:grid-cols-[8rem_minmax(0,1fr)] lg:items-center">
+          <InputTableFormLabel>{t('data.inputTables.editor.sourceType')}</InputTableFormLabel>
+          <label className="relative block">
+            <span
+              className={`pointer-events-none absolute left-3 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md ${sourceMeta.className}`}
+            >
+              <SourceIcon className="h-4 w-4" />
+            </span>
+            <select
+              value={localSourceKind}
+              onChange={(event) => handleSourceKindChange(event.target.value as DataInputTableSourceKind)}
+              disabled={isBusy}
+              className="h-10 w-full appearance-none rounded-lg border border-border-muted bg-background/96 pl-12 pr-9 text-[13px] font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <option value="excel">{t('data.inputTables.editor.excel')}</option>
+              <option value="csv">{t('data.inputTables.editor.csv')}</option>
+              <option value="folder">{t('data.inputTables.editor.folder')}</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+          </label>
+
+          <InputTableFormLabel>
+            {localSourceKind === 'folder'
+              ? t('data.inputTables.editor.folderPath')
+              : t('data.inputTables.editor.file')}
+          </InputTableFormLabel>
+          <div className="flex min-w-0 items-stretch">
+            <div className="flex h-10 min-w-0 flex-1 items-center gap-3 rounded-l-lg border border-border-muted bg-background/86 px-3.5 shadow-soft">
+              <span
+                className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md ${sourceMeta.className}`}
+              >
+                <SourceIcon className="h-4 w-4" />
+              </span>
+              <div
+                className="min-w-0 truncate text-[13px] font-medium text-text-secondary"
+                title={dataset?.sourcePath}
+              >
+                {dataset ? formatDisplayPath(dataset.sourcePath) : t('data.inputTables.editor.noSource')}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => chooseSource(localSourceKind)}
+              disabled={isBusy || !trimmedName}
+              className="inline-flex h-10 flex-shrink-0 items-center justify-center rounded-r-lg border border-l-0 border-border-muted bg-background px-4 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+            >
+              {localSourceKind === 'folder'
+                ? t('data.inputTables.editor.changeFolder')
+                : t('data.inputTables.editor.changeFile')}
+            </button>
+          </div>
+
+          {localSourceKind === 'excel' && (
+            <>
+              <InputTableFormLabel>{t('data.inputTables.editor.sheetName')}</InputTableFormLabel>
+              <label className="relative block">
+                <select
+                  value={excelConfig.sheetName ?? ''}
+                  onChange={(event) =>
+                    updateConfig({
+                      ...excelConfig,
+                      sheetName: event.target.value,
+                    })
+                  }
+                  disabled={isBusy || !dataset}
+                  className="h-10 w-full appearance-none rounded-lg border border-border-muted bg-background/96 px-3 pr-9 text-[13px] font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {(excelConfig.sheetNames.length > 0 ? excelConfig.sheetNames : ['Sheet1']).map(
+                    (sheetName) => (
+                      <option key={sheetName} value={sheetName}>
+                        {sheetName}
+                      </option>
+                    )
+                  )}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+              </label>
+
+              <InputTableFormLabel>{t('data.inputTables.editor.headerRow')}</InputTableFormLabel>
+              <div className="flex flex-wrap items-center gap-5 text-[13px] font-medium text-text-secondary">
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="radio"
+                    checked={excelConfig.headerMode === 'auto'}
+                    onChange={() => updateConfig({ ...excelConfig, headerMode: 'auto' })}
+                    disabled={isBusy || !dataset}
+                    className="h-4 w-4 accent-accent"
+                  />
+                  {t('data.inputTables.editor.smartDetect')}
+                  <span className="text-accent">{t('data.inputTables.editor.recommended')}</span>
+                </label>
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="radio"
+                    checked={excelConfig.headerMode === 'manual'}
+                    onChange={() => updateConfig({ ...excelConfig, headerMode: 'manual' })}
+                    disabled={isBusy || !dataset}
+                    className="h-4 w-4 accent-accent"
+                  />
+                  {t('data.inputTables.editor.manualSpecify')}
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={excelConfig.headerRow}
+                  onChange={(event) =>
+                    updateConfig({
+                      ...excelConfig,
+                      headerMode: 'manual',
+                      headerRow: Math.max(1, Number(event.target.value) || 1),
+                    })
+                  }
+                  disabled={isBusy || !dataset}
+                  className="h-9 w-24 rounded-lg border border-border-muted bg-background px-3 text-[13px] font-medium text-text-secondary shadow-soft outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+                <span>{t('data.inputTables.editor.rowUnit')}</span>
+              </div>
+
+              <InputTableInfo className="lg:col-span-2">
+                {t('data.inputTables.editor.excelInfo')}
+              </InputTableInfo>
+            </>
+          )}
+
+          {localSourceKind === 'csv' && (
+            <>
+              <InputTableFormLabel className="self-start pt-1">
+                {t('data.inputTables.editor.autoResult')}
+              </InputTableFormLabel>
+              <div className="overflow-hidden rounded-lg border border-border-muted bg-background/88">
+                {[
+                  ['header', 'data.inputTables.editor.csvHeader'],
+                  ['dataRegion', 'data.inputTables.editor.csvDataRegion'],
+                  ['encoding', 'data.inputTables.editor.csvEncoding'],
+                  ['delimiter', 'data.inputTables.editor.csvDelimiter'],
+                ].map(([key, labelKey]) => (
+                  <div
+                    key={key}
+                    className="grid min-h-9 grid-cols-[12rem_minmax(0,1fr)] border-b border-border-muted px-3 text-xs font-medium last:border-b-0"
+                  >
+                    <div className="flex items-center text-text-secondary">{t(labelKey)}</div>
+                    <div className="flex items-center text-text-muted">
+                      {t('data.inputTables.editor.autoDetected')}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <InputTableInfo className="lg:col-span-2">
+                {t('data.inputTables.editor.csvInfo')}
+              </InputTableInfo>
+            </>
+          )}
+
+          {localSourceKind === 'folder' && (
+            <>
+              <InputTableFormLabel className="self-start pt-1">
+                {t('data.inputTables.editor.folderMergeStrategy')}
+              </InputTableFormLabel>
+              <div className="grid gap-3">
+                <InputTableFieldRow label={t('data.inputTables.editor.mergeMethod')}>
+                  <InputTableSelect
+                    value={folderConfig.mergeMode}
+                    disabled={isBusy || !dataset}
+                    onChange={() => undefined}
+                    options={[
+                      {
+                        value: 'append_same_schema',
+                        label: t('data.inputTables.editor.mergeAppend'),
+                      },
+                    ]}
+                  />
+                </InputTableFieldRow>
+                <InputTableFieldRow label={t('data.inputTables.editor.schemaMismatch')}>
+                  <InputTableSelect
+                    value={folderConfig.schemaStrategy}
+                    disabled={isBusy || !dataset}
+                    onChange={() => undefined}
+                    options={[
+                      {
+                        value: 'align_by_name',
+                        label: t('data.inputTables.editor.schemaAlignByName'),
+                      },
+                    ]}
+                  />
+                </InputTableFieldRow>
+                <InputTableFieldRow label={t('data.inputTables.editor.fileSelectionRange')}>
+                  <InputTableSelect
+                    value={folderConfig.fileRange}
+                    disabled={isBusy || !dataset}
+                    onChange={(value) =>
+                      updateConfig({
+                        ...folderConfig,
+                        fileRange: value as DataInputTableFolderConfig['fileRange'],
+                      })
+                    }
+                    options={[
+                      { value: 'excel_csv', label: t('data.inputTables.editor.includeExcelCsv') },
+                      { value: 'excel', label: t('data.inputTables.editor.includeExcel') },
+                      { value: 'csv', label: t('data.inputTables.editor.includeCsv') },
+                    ]}
+                  />
+                </InputTableFieldRow>
+                <InputTableCheckbox
+                  checked={folderConfig.skipEmptyFiles}
+                  disabled={isBusy || !dataset}
+                  label={t('data.inputTables.editor.skipEmptyFiles')}
+                  onChange={(checked) => updateConfig({ ...folderConfig, skipEmptyFiles: checked })}
+                />
+                <InputTableCheckbox
+                  checked={folderConfig.keepSourceFileName}
+                  disabled={isBusy || !dataset}
+                  label={t('data.inputTables.editor.keepSourceFileName')}
+                  onChange={(checked) =>
+                    updateConfig({ ...folderConfig, keepSourceFileName: checked })
+                  }
+                />
+              </div>
+
+              <InputTableInfo className="lg:col-span-2">
+                {t('data.inputTables.editor.folderInfo')}
+              </InputTableInfo>
+            </>
+          )}
+
+          {dataset && (
+            <InputTableSourceSummary
+              dataset={dataset}
+              sourceMeta={sourceMeta}
+              sourceName={sourceName}
+              t={t}
+            />
+          )}
+        </div>
+      </div>
+    </section>
+    {previewOpen && (
+      <InputTablePreviewDialog
+        preview={previewData}
+        isLoading={previewLoading}
+        error={previewError}
+        currentPage={previewPage}
+        onPageChange={(page) => void loadPreviewPage(page)}
+        onClose={() => setPreviewOpen(false)}
+      />
+    )}
+    </>
+  );
+}
+
+function InputTablePreviewDialog({
+  preview,
+  isLoading,
+  error,
+  currentPage,
+  onPageChange,
+  onClose,
+}: {
+  preview: DataInputTablePreview | null;
+  isLoading: boolean;
+  error: string | null;
+  currentPage: number;
+  onPageChange: (page: number) => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const columns = preview?.columns ?? [];
+  const rows = preview?.rows ?? [];
+  const totalRows = preview?.totalRows ?? 0;
+  const pageSize = preview?.limit ?? INPUT_TABLE_PREVIEW_PAGE_SIZE;
+  const pageCount = Math.max(1, Math.ceil(totalRows / pageSize));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
+  const pageNumbers = getVisiblePageNumbers(safeCurrentPage, pageCount);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/28 px-4 py-6">
+      <div className="flex h-[42rem] max-h-[calc(100vh-3rem)] w-[72rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-muted bg-background shadow-card">
+        <div className="flex h-12 flex-shrink-0 items-center justify-between border-b border-border-muted bg-surface-active/70 px-4 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+          <div className="min-w-0">
+            <div className="text-[14px] font-semibold text-text-primary">
+              {t('data.inputTables.editor.previewTitle')}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent"
+            title={t('common.close')}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background p-3">
+          {isLoading ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center">
+              <LoadingState label={t('data.inputTables.editor.previewLoading')} />
+            </div>
+          ) : error ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-error/15 bg-error/5 px-4 text-center text-xs font-medium text-error">
+              {error}
+            </div>
+          ) : columns.length === 0 || rows.length === 0 ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-border-muted bg-background/70">
+              <EmptyState label={t('data.inputTables.editor.previewEmpty')} />
+            </div>
+          ) : (
+            <>
+              <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-border-muted">
+                <table className="min-w-full border-collapse text-left text-xs">
+                  <thead className="sticky top-0 z-10 bg-background">
+                    <tr className="h-9 border-b border-border-muted text-text-muted">
+                      {columns.map((column) => (
+                        <th
+                          key={column}
+                          className="max-w-[12rem] whitespace-nowrap px-3 font-medium"
+                        >
+                          <span className="block truncate" title={column}>
+                            {column}
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row, rowIndex) => (
+                      <tr
+                        key={rowIndex}
+                        className="h-9 border-b border-border-muted/80 last:border-b-0 hover:bg-surface-hover/35"
+                      >
+                        {columns.map((column) => (
+                          <td
+                            key={column}
+                            className="max-w-[12rem] whitespace-nowrap px-3 text-text-secondary"
+                          >
+                            <span className="block truncate" title={formatPreviewCell(row[column])}>
+                              {formatPreviewCell(row[column])}
+                            </span>
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+        <div className="flex h-12 flex-shrink-0 items-center justify-between gap-3 border-t border-border-muted px-4 text-xs font-medium text-text-secondary">
+          <span>
+            {preview
+              ? t('data.inputTables.editor.previewTotal', { count: totalRows })
+              : t('data.inputTables.editor.previewPageSize', {
+                  count: INPUT_TABLE_PREVIEW_PAGE_SIZE,
+                })}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="mr-2 hidden text-text-muted sm:inline">
+              {t('data.inputTables.editor.previewPageSize', {
+                count: preview?.limit ?? INPUT_TABLE_PREVIEW_PAGE_SIZE,
+              })}
+            </span>
+            <button
+              type="button"
+              onClick={() => onPageChange(safeCurrentPage - 1)}
+              disabled={isLoading || safeCurrentPage <= 1}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            {pageNumbers.map((pageNumber) => (
+              <button
+                key={pageNumber}
+                type="button"
+                onClick={() => onPageChange(pageNumber)}
+                disabled={isLoading}
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                  pageNumber === safeCurrentPage
+                    ? 'bg-accent text-white shadow-soft'
+                    : 'border border-border-muted bg-background/94 text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
+                }`}
+              >
+                {pageNumber}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => onPageChange(safeCurrentPage + 1)}
+              disabled={isLoading || safeCurrentPage >= pageCount}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InputTableFormLabel({
+  children,
+  className = '',
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`text-[13px] font-medium text-text-secondary ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+function InputTableInfo({
+  children,
+  className = '',
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`flex min-h-11 items-center gap-2 rounded-lg border border-blue-500/15 bg-blue-500/5 px-3 text-xs font-medium text-text-muted ${className}`}
+    >
+      <Info className="h-4 w-4 flex-shrink-0 text-blue-500" />
+      <span>{children}</span>
+    </div>
+  );
+}
+
+function InputTableSelect({
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="relative block">
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-10 w-full appearance-none rounded-lg border border-border-muted bg-background/96 px-3 pr-9 text-[13px] font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+    </label>
+  );
+}
+
+function InputTableFieldRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid gap-2 lg:grid-cols-[11rem_minmax(0,1fr)] lg:items-center">
+      <div className="text-xs font-medium text-text-secondary">{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function InputTableCheckbox({
+  checked,
+  disabled,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="inline-flex w-fit items-center gap-2 text-[13px] font-medium text-text-secondary">
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+        className="h-4 w-4 rounded border-border-muted accent-accent disabled:cursor-not-allowed disabled:opacity-60"
+      />
+      {label}
+    </label>
+  );
+}
+
+function InputTableSourceSummary({
+  dataset,
+  sourceMeta,
+  sourceName,
+  t,
+}: {
+  dataset: DataDataset;
+  sourceMeta: ReturnType<typeof getInputTableSourceMeta>;
+  sourceName: string;
+  t: TranslateFn;
+}) {
+  const SourceIcon = sourceMeta.Icon;
+  const items =
+    dataset.sourceKind === 'folder'
+      ? [
+          {
+            label: t('data.columns.sourceType'),
+            value: t(sourceMeta.labelKey),
+            icon: true,
+          },
+          {
+            label: t('data.inputTables.editor.fileCount'),
+            value: formatInteger(dataset.fileCount),
+          },
+          {
+            label: t('data.inputTables.editor.totalRows'),
+            value: formatInteger(dataset.rowCount),
+          },
+          {
+            label: t('data.inputTables.editor.estimatedColumns'),
+            value: formatInteger(dataset.columnCount),
+          },
+        ]
+      : [
+          {
+            label: t('data.columns.sourceType'),
+            value: t(sourceMeta.labelKey),
+            icon: true,
+          },
+          {
+            label: t('data.inputTables.editor.fileName'),
+            value: sourceName,
+          },
+          {
+            label: t('data.inputTables.editor.rows'),
+            value: formatInteger(dataset.rowCount),
+          },
+          {
+            label: t('data.inputTables.editor.columns'),
+            value: formatInteger(dataset.columnCount),
+          },
+        ];
+
+  return (
+    <div className="grid gap-3 rounded-lg border border-border-muted bg-background/80 px-4 py-3 shadow-soft sm:grid-cols-4 lg:col-span-2">
+      {items.map((item, index) => (
+        <div
+          key={item.label}
+          className={`min-w-0 ${
+            index > 0 ? 'border-t border-border-muted pt-3 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0' : ''
+          }`}
+        >
+          <div className="text-xs font-medium text-text-muted">{item.label}</div>
+          <div className="mt-1 flex min-w-0 items-center gap-2 text-[13px] font-medium text-text-secondary">
+            {item.icon && (
+              <span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md ${sourceMeta.className}`}>
+                <SourceIcon className="h-4 w-4" />
+              </span>
+            )}
+            <span className="truncate">{item.value}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function InputTableStatusBadge({
+  label,
+  tone = 'success',
+}: {
+  label: string;
+  tone?: 'success' | 'warning';
+}) {
+  return (
+    <span
+      className={`inline-flex h-6 whitespace-nowrap items-center gap-1.5 rounded-md px-2 text-xs font-medium ${
+        tone === 'warning' ? 'bg-warning/10 text-warning' : 'bg-success/10 text-success'
+      }`}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {label}
+    </span>
+  );
+}
+
+function InputTableToolbarButton({
+  icon,
+  label,
+  disabled,
+  danger,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  disabled?: boolean;
+  danger?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border-muted bg-background/94 px-2.5 text-xs font-medium text-text-secondary shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+        danger
+          ? 'hover:border-error/30 hover:bg-error/10 hover:text-error'
+          : 'hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
+      }`}
+      title={label}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+function BlankDataTableSurface() {
+  return <div className="h-[24rem] bg-background/90" aria-hidden="true" />;
 }
 
 function StatusBadge({ status }: { status: DataTaskStatus }) {
@@ -2844,14 +4369,27 @@ function EmptyState({ label }: { label: string }) {
   );
 }
 
+function LoadingState({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-[16rem] items-center justify-center px-4 py-10 text-center text-xs font-medium text-text-muted">
+      <div className="inline-flex items-center gap-2 rounded-lg border border-border-muted bg-background/90 px-3 py-2 shadow-soft">
+        <RefreshCw className="h-3.5 w-3.5 animate-spin text-accent" />
+        {label}
+      </div>
+    </div>
+  );
+}
+
 function PaginationFooter({
   count,
   currentPage,
   onPageChange,
+  embedded = false,
 }: {
   count: number;
   currentPage: number;
   onPageChange: (page: number) => void;
+  embedded?: boolean;
 }) {
   const { t } = useTranslation();
   const pageCount = getTablePageCount(count);
@@ -2859,45 +4397,51 @@ function PaginationFooter({
   const pageNumbers = getVisiblePageNumbers(safeCurrentPage, pageCount);
 
   return (
-    <div className="mt-3 flex flex-col items-center justify-end gap-2 text-xs font-medium text-text-secondary sm:flex-row">
+    <div
+      className={`flex min-h-11 flex-col items-center justify-between gap-2 px-4 text-xs font-medium text-text-secondary sm:flex-row ${
+        embedded ? 'border-t border-border-muted py-2.5' : 'mt-3'
+      }`}
+    >
       <span>{t('data.totalCount', { count })}</span>
-      <button className="inline-flex h-8 min-w-[7rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-text-secondary shadow-soft">
-        {t('data.rowsPerPage', { count: TABLE_PAGE_SIZE })}
-        <ChevronDown className="h-3.5 w-3.5" />
-      </button>
       <div className="flex items-center gap-2">
-        {pageCount > 1 && (
-          <button
-            onClick={() => onPageChange(safeCurrentPage - 1)}
-            disabled={safeCurrentPage <= 1}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-muted shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-        )}
-        {pageNumbers.map((pageNumber) => (
-          <button
-            key={pageNumber}
-            onClick={() => onPageChange(pageNumber)}
-            aria-current={pageNumber === safeCurrentPage ? 'page' : undefined}
-            className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium shadow-soft ${
-              pageNumber === safeCurrentPage
-                ? 'border-accent bg-accent/10 text-accent'
-                : 'border-border-muted bg-background/94 text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
-            }`}
-          >
-            {pageNumber}
-          </button>
-        ))}
-        {pageCount > 1 && (
-          <button
-            onClick={() => onPageChange(safeCurrentPage + 1)}
-            disabled={safeCurrentPage >= pageCount}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        )}
+        <button className="inline-flex h-8 min-w-[7rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-text-secondary shadow-soft">
+          {t('data.rowsPerPage', { count: TABLE_PAGE_SIZE })}
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
+        <div className="flex items-center gap-2">
+          {pageCount > 1 && (
+            <button
+              onClick={() => onPageChange(safeCurrentPage - 1)}
+              disabled={safeCurrentPage <= 1}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-muted shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+          )}
+          {pageNumbers.map((pageNumber) => (
+            <button
+              key={pageNumber}
+              onClick={() => onPageChange(pageNumber)}
+              aria-current={pageNumber === safeCurrentPage ? 'page' : undefined}
+              className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium shadow-soft ${
+                pageNumber === safeCurrentPage
+                  ? 'border-accent bg-accent/10 text-accent'
+                  : 'border-border-muted bg-background/94 text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
+              }`}
+            >
+              {pageNumber}
+            </button>
+          ))}
+          {pageCount > 1 && (
+            <button
+              onClick={() => onPageChange(safeCurrentPage + 1)}
+              disabled={safeCurrentPage >= pageCount}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -2958,11 +4502,131 @@ function formatTimestamp(timestamp: number | null, t: (key: string) => string): 
   }).format(date);
 }
 
-function basenameFromPath(filePath: string): string {
+function formatDateTime(timestamp: number | null): string {
+  if (!timestamp) return '-';
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(timestamp));
+}
+
+function formatInteger(value: number): string {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value);
+}
+
+function formatPreviewCell(value: string | number | boolean | null | undefined): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  return String(value);
+}
+
+function formatRelatedTaskNames(
+  names: string[],
+  t: (key: string, options?: Record<string, unknown>) => string
+): string {
+  if (names.length === 0) return t('data.inputTables.noRelatedTasks');
+  return names.join(', ');
+}
+
+function formatDisplayPath(filePath: string): string {
   const normalized = filePath.replace(/\\/g, '/');
+  return normalized.replace(/^\/Users\/[^/]+/, '~');
+}
+
+function getFileNameFromPath(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, '/').replace(/\/$/, '');
   return normalized.split('/').filter(Boolean).pop() ?? filePath;
 }
 
-function formatNumber(value: number): string {
-  return new Intl.NumberFormat().format(value);
+function getDefaultInputTableConfig(sourceKind: DataInputTableSourceKind): DataInputTableConfig {
+  if (sourceKind === 'excel') {
+    return getDefaultExcelInputTableConfig();
+  }
+  if (sourceKind === 'folder') {
+    return getDefaultFolderInputTableConfig();
+  }
+  return {
+    sourceKind: 'csv',
+    header: 'auto',
+    dataRegion: 'auto',
+    encoding: 'auto',
+    delimiter: 'auto',
+  };
+}
+
+function getDefaultExcelInputTableConfig(): DataInputTableExcelConfig {
+  return {
+    sourceKind: 'excel',
+    sheetName: 'Sheet1',
+    sheetNames: ['Sheet1'],
+    headerMode: 'auto',
+    headerRow: 1,
+  };
+}
+
+function getDefaultFolderInputTableConfig(): DataInputTableFolderConfig {
+  return {
+    sourceKind: 'folder',
+    mergeMode: 'append_same_schema',
+    schemaStrategy: 'align_by_name',
+    fileRange: 'excel_csv',
+    skipEmptyFiles: true,
+    keepSourceFileName: true,
+  };
+}
+
+function isInputTableConfigEqual(
+  left: DataInputTableConfig,
+  right: DataInputTableConfig | undefined
+): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function getInputTableSourceMeta(kind: InputTableSourceKind): {
+  Icon: LucideIcon;
+  labelKey: string;
+  className: string;
+  badgeClassName: string;
+} {
+  switch (kind) {
+    case 'draft':
+      return {
+        Icon: Table2,
+        labelKey: 'data.inputTables.sources.notConfigured',
+        className: 'bg-warning/10 text-warning',
+        badgeClassName: 'bg-warning/10 text-warning',
+      };
+    case 'excel':
+      return {
+        Icon: Table2,
+        labelKey: 'data.inputTables.sources.excel',
+        className: 'bg-success/10 text-success',
+        badgeClassName: 'bg-success/10 text-success',
+      };
+    case 'csv':
+      return {
+        Icon: FileText,
+        labelKey: 'data.inputTables.sources.csv',
+        className: 'bg-blue-500/10 text-blue-500',
+        badgeClassName: 'bg-blue-500/10 text-blue-500',
+      };
+    case 'folder':
+      return {
+        Icon: Folder,
+        labelKey: 'data.inputTables.sources.folder',
+        className: 'bg-warning/10 text-warning',
+        badgeClassName: 'bg-warning/10 text-warning',
+      };
+    default:
+      return {
+        Icon: FileText,
+        labelKey: 'data.inputTables.sources.file',
+        className: 'bg-violet-500/10 text-violet-500',
+        badgeClassName: 'bg-violet-500/10 text-violet-500',
+      };
+  }
 }
