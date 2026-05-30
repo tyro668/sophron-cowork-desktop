@@ -39,6 +39,7 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowUpDown,
+  Ban,
   BarChart3,
   Calculator,
   CheckCircle2,
@@ -1215,12 +1216,18 @@ function TaskEditor({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [activeInspectorTab, setActiveInspectorTab] = useState<'config' | 'logs'>('config');
   const [saving, setSaving] = useState(false);
+  const [renamingTask, setRenamingTask] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [dslMode, setDslMode] = useState<'import' | 'export' | null>(null);
   const [dslText, setDslText] = useState('');
+  const [dslError, setDslError] = useState<string | null>(null);
+  const [taskTitle, setTaskTitle] = useState(task.name);
+  const [isEditingTaskTitle, setIsEditingTaskTitle] = useState(false);
   const [inputTableChoices, setInputTableChoices] = useState<DataDataset[]>([]);
   const [inputTableChoicesLoading, setInputTableChoicesLoading] = useState(false);
   const [outputTableChoices, setOutputTableChoices] = useState<DataOutputTable[]>(outputTables);
+  const taskTitleInputRef = useRef<HTMLInputElement | null>(null);
+  const skipTaskTitleSaveRef = useRef(false);
 
   const loadWorkflow = useCallback(async () => {
     if (!window.electronAPI?.data) return;
@@ -1238,6 +1245,17 @@ function TaskEditor({
   useEffect(() => {
     void loadWorkflow();
   }, [loadWorkflow]);
+
+  useEffect(() => {
+    setTaskTitle(task.name);
+    setIsEditingTaskTitle(false);
+  }, [task.id, task.name]);
+
+  useEffect(() => {
+    if (!isEditingTaskTitle) return;
+    taskTitleInputRef.current?.focus();
+    taskTitleInputRef.current?.select();
+  }, [isEditingTaskTitle]);
 
   useEffect(() => {
     setOutputTableChoices(outputTables);
@@ -1311,7 +1329,43 @@ function TaskEditor({
     () => nodes.find((node) => node.id === selectedNodeId) ?? nodes[0] ?? null,
     [nodes, selectedNodeId]
   );
-  const isBusy = saving || actionId === task.id;
+  const isBusy = saving || renamingTask || actionId === task.id;
+
+  const saveTaskTitle = useCallback(async () => {
+    if (skipTaskTitleSaveRef.current) {
+      skipTaskTitleSaveRef.current = false;
+      return;
+    }
+    if (!isEditingTaskTitle || renamingTask) return;
+    const nextTitle = taskTitle.trim();
+    if (!nextTitle) {
+      setLocalError(t('data.editor.taskNameRequired'));
+      setTaskTitle(task.name);
+      setIsEditingTaskTitle(false);
+      return;
+    }
+    if (nextTitle === task.name) {
+      setTaskTitle(task.name);
+      setIsEditingTaskTitle(false);
+      return;
+    }
+    if (!window.electronAPI?.data?.updateTask) {
+      setIsEditingTaskTitle(false);
+      return;
+    }
+    setRenamingTask(true);
+    setLocalError(null);
+    try {
+      const updated = await window.electronAPI.data.updateTask({ id: task.id, name: nextTitle });
+      setTaskTitle(updated.name);
+      setIsEditingTaskTitle(false);
+      await onWorkflowSaved();
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRenamingTask(false);
+    }
+  }, [isEditingTaskTitle, onWorkflowSaved, renamingTask, t, task.id, task.name, taskTitle]);
 
   const updateSelectedNode = useCallback(
     (updater: (node: DataWorkflowNode) => DataWorkflowNode) => {
@@ -1454,6 +1508,85 @@ function TaskEditor({
     );
   }, []);
 
+  const configureSelectedNode = useCallback(() => {
+    if (!selectedNode) return;
+    setSelectedNodeId(selectedNode.id);
+    setActiveInspectorTab('config');
+  }, [selectedNode]);
+
+  const duplicateSelectedNode = useCallback(() => {
+    if (!selectedNode) return;
+    const now = Date.now();
+    const id = makeLocalId('node');
+    const nextNode: DataWorkflowNode = {
+      ...selectedNode,
+      id,
+      taskId: task.id,
+      label: `${selectedNode.label} ${t('data.workflow.copySuffix')}`,
+      x: selectedNode.x + 48,
+      y: selectedNode.y + 48,
+      config: cloneWorkflowNodeConfig(selectedNode.config),
+      createdAt: now,
+      updatedAt: now,
+    };
+    setWorkflow((current) =>
+      current
+        ? {
+            ...current,
+            nodes: [...current.nodes, nextNode],
+          }
+        : current
+    );
+    setSelectedNodeId(id);
+    setActiveInspectorTab('config');
+  }, [selectedNode, t, task.id]);
+
+  const toggleSelectedNodeDisabled = useCallback(() => {
+    if (!selectedNode) return;
+    const nextDisabled = selectedNode.config.disabled !== true;
+    setWorkflow((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        nodes: current.nodes.map((node) => {
+          if (node.id !== selectedNode.id) return node;
+          const nextConfig = { ...node.config };
+          if (nextDisabled) {
+            nextConfig.disabled = true;
+          } else {
+            delete nextConfig.disabled;
+          }
+          return {
+            ...node,
+            config: nextConfig,
+            updatedAt: Date.now(),
+          };
+        }),
+      };
+    });
+  }, [selectedNode]);
+
+  const deleteSelectedNode = useCallback(() => {
+    if (!selectedNode) return;
+    const confirmed = window.confirm(
+      t('data.workflow.deleteOperatorConfirm', { name: selectedNode.label })
+    );
+    if (!confirmed) return;
+    setWorkflow((current) =>
+      current
+        ? {
+            ...current,
+            nodes: current.nodes.filter((node) => node.id !== selectedNode.id),
+            edges: current.edges.filter(
+              (edge) =>
+                edge.sourceNodeId !== selectedNode.id && edge.targetNodeId !== selectedNode.id
+            ),
+          }
+        : current
+    );
+    setSelectedNodeId((current) => (current === selectedNode.id ? null : current));
+  }, [selectedNode, t]);
+
   const saveWorkflow = useCallback(async (): Promise<DataTaskWorkflow | null> => {
     if (!workflow || !window.electronAPI?.data) return null;
     setSaving(true);
@@ -1486,6 +1619,7 @@ function TaskEditor({
 
   const openImportDsl = useCallback(() => {
     setLocalError(null);
+    setDslError(null);
     setDslText('');
     setDslMode('import');
   }, []);
@@ -1493,12 +1627,30 @@ function TaskEditor({
   const openExportDsl = useCallback(() => {
     if (!workflow) return;
     setLocalError(null);
+    setDslError(null);
     setDslText(exportPrepWorkflowDsl(workflow.nodes, workflow.edges));
     setDslMode('export');
   }, [workflow]);
 
+  const closeDslDialog = useCallback(() => {
+    setDslMode(null);
+    setDslText('');
+    setDslError(null);
+  }, []);
+
+  const copyDslText = useCallback(() => {
+    if (!dslText) return;
+    void navigator.clipboard?.writeText(dslText);
+  }, [dslText]);
+
+  const updateDslText = useCallback((value: string) => {
+    setDslText(value);
+    setDslError(null);
+  }, []);
+
   const applyDslImport = useCallback(() => {
     if (!workflow) return;
+    setDslError(null);
     const parsed = parsePrepDsl(dslText);
     const diagnostics = [...parsed.diagnostics];
     if (parsed.ast) {
@@ -1506,7 +1658,7 @@ function TaskEditor({
       diagnostics.push(...compiled.diagnostics);
       const errors = diagnostics.filter((item) => item.severity === 'error');
       if (errors.length > 0) {
-        setLocalError(errors.map((item) => formatPrepDiagnosticForUi(item, t)).join('\n'));
+        setDslError(errors.map((item) => formatPrepDiagnosticForUi(item, t)).join('\n'));
         return;
       }
       const now = Date.now();
@@ -1538,16 +1690,15 @@ function TaskEditor({
         edges: nextEdges,
       });
       setSelectedNodeId(nextNodes[0]?.id ?? null);
-      setDslMode(null);
-      setDslText('');
+      closeDslDialog();
       setLocalError(null);
       return;
     }
-    setLocalError(
+    setDslError(
       diagnostics.map((item) => formatPrepDiagnosticForUi(item, t)).join('\n') ||
         t('data.workflow.dslInvalid')
     );
-  }, [dslText, t, task.id, workflow]);
+  }, [closeDslDialog, dslText, t, task.id, workflow]);
 
   return (
     <section className="flex flex-1 min-h-0 flex-col">
@@ -1561,13 +1712,41 @@ function TaskEditor({
             {t('data.editor.back')}
           </button>
           <div className="flex min-w-0 items-center gap-2">
-            <h1 className="truncate text-[15px] font-medium text-text-secondary">{task.name}</h1>
-            <button
-              className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent"
-              title={t('common.edit')}
-            >
-              <PencilLine className="h-3.5 w-3.5" />
-            </button>
+            {isEditingTaskTitle ? (
+              <span className="flex h-8 min-w-0 max-w-[22rem] items-center rounded-lg border border-accent/40 bg-background/95 px-2.5 shadow-soft ring-2 ring-accent/15">
+                <input
+                  ref={taskTitleInputRef}
+                  value={taskTitle}
+                  maxLength={80}
+                  onChange={(event) => setTaskTitle(event.target.value)}
+                  onBlur={() => void saveTaskTitle()}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.currentTarget.blur();
+                    }
+                    if (event.key === 'Escape') {
+                      skipTaskTitleSaveRef.current = true;
+                      setTaskTitle(task.name);
+                      setIsEditingTaskTitle(false);
+                    }
+                  }}
+                  className="min-w-0 flex-1 bg-transparent text-[15px] font-medium text-text-secondary outline-none"
+                />
+              </span>
+            ) : (
+              <h1 className="truncate text-[15px] font-medium text-text-secondary">{taskTitle}</h1>
+            )}
+            {!isEditingTaskTitle && (
+              <button
+                onClick={() => setIsEditingTaskTitle(true)}
+                disabled={isBusy}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+                title={t('common.edit')}
+              >
+                <PencilLine className="h-3.5 w-3.5" />
+                <span className="sr-only">{t('common.edit')}</span>
+              </button>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -1616,41 +1795,6 @@ function TaskEditor({
         </div>
       )}
 
-      {dslMode && (
-        <div className="mb-3 shrink-0 rounded-lg border border-border-muted bg-background/94 p-2.5 shadow-card">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-text-secondary">
-              {dslMode === 'import' ? t('data.workflow.importDsl') : t('data.workflow.exportDsl')}
-            </span>
-            <button
-              onClick={() => setDslMode(null)}
-              className="inline-flex h-7 items-center rounded-lg px-2 text-[11px] font-medium text-text-muted transition-colors hover:bg-surface-active hover:text-text-secondary"
-            >
-              {t('common.close')}
-            </button>
-          </div>
-          <textarea
-            value={dslText}
-            onChange={(event) => setDslText(event.target.value)}
-            readOnly={dslMode === 'export'}
-            spellCheck={false}
-            className="h-32 w-full resize-none rounded-lg border border-border-muted bg-background px-2.5 py-2 font-mono text-[11px] leading-5 text-text-secondary outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-            placeholder={t('data.workflow.dslPlaceholder')}
-          />
-          {dslMode === 'import' && (
-            <div className="mt-2 flex justify-end">
-              <button
-                onClick={applyDslImport}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover"
-              >
-                <Workflow className="h-3.5 w-3.5" />
-                {t('data.workflow.applyDsl')}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
       {!workflow ? (
         <div className="flex flex-1 min-h-0 items-center justify-center rounded-xl border border-border-muted bg-background/90 text-xs text-text-muted shadow-card">
           {t('common.loading')}
@@ -1667,6 +1811,10 @@ function TaskEditor({
               edges={edges}
               selectedNodeId={selectedNode?.id ?? null}
               onSelectNode={setSelectedNodeId}
+              onConfigureNode={configureSelectedNode}
+              onDuplicateNode={duplicateSelectedNode}
+              onToggleNodeDisabled={toggleSelectedNodeDisabled}
+              onDeleteNode={deleteSelectedNode}
               onAddNode={addOperator}
               onMoveNode={moveNode}
               onConnectNodes={connectNodes}
@@ -1685,7 +1833,118 @@ function TaskEditor({
           </div>
         </div>
       )}
+      {dslMode && (
+        <WorkflowDslDialog
+          mode={dslMode}
+          value={dslText}
+          error={dslError}
+          onChange={updateDslText}
+          onApply={applyDslImport}
+          onCopy={copyDslText}
+          onClose={closeDslDialog}
+        />
+      )}
     </section>
+  );
+}
+
+function WorkflowDslDialog({
+  mode,
+  value,
+  error,
+  onChange,
+  onApply,
+  onCopy,
+  onClose,
+}: {
+  mode: 'import' | 'export';
+  value: string;
+  error: string | null;
+  onChange: (value: string) => void;
+  onApply: () => void;
+  onCopy: () => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const isImport = mode === 'import';
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/28 px-4 py-6"
+      role="dialog"
+      aria-modal="true"
+      aria-label={isImport ? t('data.workflow.importDsl') : t('data.workflow.viewExportDsl')}
+    >
+      <div className="flex h-[34rem] max-h-[calc(100vh-3rem)] w-[54rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-muted bg-background shadow-card">
+        <div className="flex h-12 flex-shrink-0 items-center justify-between border-b border-border-muted bg-surface-active/70 px-4 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+              {isImport ? <Upload className="h-3.5 w-3.5" /> : <Workflow className="h-3.5 w-3.5" />}
+            </span>
+            <div className="truncate text-[14px] font-semibold text-text-primary">
+              {isImport ? t('data.workflow.importDsl') : t('data.workflow.viewExportDsl')}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent"
+            title={t('common.close')}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex min-h-0 flex-1 flex-col gap-3 bg-background p-3">
+          <textarea
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            readOnly={!isImport}
+            spellCheck={false}
+            className="min-h-0 flex-1 resize-none rounded-lg border border-border-muted bg-background/95 px-3 py-2.5 font-mono text-[12px] leading-5 text-text-secondary outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 read-only:bg-surface-active/40"
+            placeholder={t('data.workflow.dslPlaceholder')}
+          />
+          {error && (
+            <div className="max-h-24 overflow-y-auto whitespace-pre-line rounded-lg border border-error/20 bg-error/10 px-3 py-2 text-xs font-medium text-error">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                <span>{error}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex h-12 flex-shrink-0 items-center justify-end gap-2 border-t border-border-muted px-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+          >
+            {isImport ? t('common.cancel') : t('common.close')}
+          </button>
+          {isImport ? (
+            <button
+              type="button"
+              onClick={onApply}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover"
+            >
+              <Workflow className="h-3.5 w-3.5" />
+              {t('data.workflow.applyDsl')}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onCopy}
+              disabled={!value}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-55"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              {t('data.workflow.copyDsl')}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1734,6 +1993,10 @@ function WorkflowCanvas({
   edges,
   selectedNodeId,
   onSelectNode,
+  onConfigureNode,
+  onDuplicateNode,
+  onToggleNodeDisabled,
+  onDeleteNode,
   onAddNode,
   onMoveNode,
   onConnectNodes,
@@ -1744,6 +2007,10 @@ function WorkflowCanvas({
   edges: DataWorkflowEdge[];
   selectedNodeId: string | null;
   onSelectNode: (id: string) => void;
+  onConfigureNode: () => void;
+  onDuplicateNode: () => void;
+  onToggleNodeDisabled: () => void;
+  onDeleteNode: () => void;
   onAddNode: (type: DataWorkflowOperatorType, position?: { x: number; y: number }) => void;
   onMoveNode: (id: string, x: number, y: number) => void;
   onConnectNodes: (
@@ -1762,6 +2029,10 @@ function WorkflowCanvas({
         edges={edges}
         selectedNodeId={selectedNodeId}
         onSelectNode={onSelectNode}
+        onConfigureNode={onConfigureNode}
+        onDuplicateNode={onDuplicateNode}
+        onToggleNodeDisabled={onToggleNodeDisabled}
+        onDeleteNode={onDeleteNode}
         onAddNode={onAddNode}
         onMoveNode={onMoveNode}
         onConnectNodes={onConnectNodes}
@@ -1777,6 +2048,10 @@ function WorkflowCanvasContent({
   edges,
   selectedNodeId,
   onSelectNode,
+  onConfigureNode,
+  onDuplicateNode,
+  onToggleNodeDisabled,
+  onDeleteNode,
   onAddNode,
   onMoveNode,
   onConnectNodes,
@@ -1787,6 +2062,10 @@ function WorkflowCanvasContent({
   edges: DataWorkflowEdge[];
   selectedNodeId: string | null;
   onSelectNode: (id: string) => void;
+  onConfigureNode: () => void;
+  onDuplicateNode: () => void;
+  onToggleNodeDisabled: () => void;
+  onDeleteNode: () => void;
   onAddNode: (type: DataWorkflowOperatorType, position?: { x: number; y: number }) => void;
   onMoveNode: (id: string, x: number, y: number) => void;
   onConnectNodes: (
@@ -1801,6 +2080,14 @@ function WorkflowCanvasContent({
   const { t } = useTranslation();
   const { screenToFlowPosition } = useReactFlow();
   const [connectionStart, setConnectionStart] = useState<OnConnectStartParams | null>(null);
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
+  const selectedNode = useMemo(
+    () => nodes.find((node) => node.id === selectedNodeId) ?? null,
+    [nodes, selectedNodeId]
+  );
+  const selectedNodeCatalog = selectedNode ? getOperatorCatalog(selectedNode.type) : null;
+  const SelectedNodeIcon = selectedNodeCatalog?.Icon;
+  const selectedNodeDisabled = selectedNode?.config.disabled === true;
   const mappedFlowNodes = useMemo<WorkflowFlowNode[]>(
     () =>
       nodes.map((node) => ({
@@ -2027,10 +2314,79 @@ function WorkflowCanvasContent({
 
   return (
     <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border-muted bg-background/90 shadow-card">
-      <div className="flex h-12 shrink-0 items-center justify-between border-b border-border-muted px-3">
-        <h2 className="text-[13px] font-medium text-text-secondary">
-          {t('data.workflow.canvasTitle')}
-        </h2>
+      <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border-muted bg-background/94 px-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            {selectedNodeCatalog && SelectedNodeIcon ? (
+              <span
+                className={`inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${selectedNodeCatalog.colorClassName}`}
+              >
+                <SelectedNodeIcon className="h-3.5 w-3.5" />
+              </span>
+            ) : (
+              <span className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-surface-active text-text-muted">
+                <Workflow className="h-3.5 w-3.5" />
+              </span>
+            )}
+            <span className="truncate text-[13px] font-medium text-text-secondary">
+              {selectedNode
+                ? t('data.workflow.selectedOperator', { count: 1, name: selectedNode.label })
+                : t('data.workflow.noOperatorSelected')}
+            </span>
+            {selectedNode && <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />}
+          </div>
+
+          {!toolbarCollapsed && (
+            <>
+              <div className="hidden h-5 w-px flex-shrink-0 bg-border-muted md:block" />
+              <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+                <DataToolbarButton
+                  icon={<PencilLine className="h-3.5 w-3.5" />}
+                  label={t('data.workflow.configureSelected')}
+                  disabled={!selectedNode}
+                  onClick={onConfigureNode}
+                />
+                <DataToolbarButton
+                  icon={<Copy className="h-3.5 w-3.5" />}
+                  label={t('data.workflow.copySelected')}
+                  disabled={!selectedNode}
+                  onClick={onDuplicateNode}
+                />
+                <DataToolbarButton
+                  icon={<Ban className="h-3.5 w-3.5" />}
+                  label={
+                    selectedNodeDisabled
+                      ? t('data.workflow.enableSelected')
+                      : t('data.workflow.disableSelected')
+                  }
+                  disabled={!selectedNode}
+                  onClick={onToggleNodeDisabled}
+                />
+                <DataToolbarButton
+                  icon={<Trash2 className="h-3.5 w-3.5" />}
+                  label={t('data.workflow.deleteSelected')}
+                  disabled={!selectedNode}
+                  danger
+                  onClick={onDeleteNode}
+                />
+              </div>
+            </>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => setToolbarCollapsed((current) => !current)}
+          className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-muted shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+          title={
+            toolbarCollapsed
+              ? t('data.workflow.expandCanvasToolbar')
+              : t('data.workflow.collapseCanvasToolbar')
+          }
+        >
+          <ChevronDown
+            className={`h-4 w-4 transition-transform ${toolbarCollapsed ? '' : 'rotate-180'}`}
+          />
+        </button>
       </div>
       <div className="relative min-h-0 flex-1" onDragOver={handleDragOver} onDrop={handleDrop}>
         <ReactFlow
@@ -2097,13 +2453,14 @@ function WorkflowOperatorNode({ data, selected }: NodeProps<WorkflowFlowNode>) {
   const node = data.workflowNode;
   const catalog = getOperatorCatalog(node.type);
   const Icon = catalog.Icon;
+  const disabled = node.config.disabled === true;
   return (
     <div
       data-node-id={node.id}
       style={{ width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT }}
       className={`workflow-node-drag-handle relative flex items-center gap-2 rounded-lg border bg-background/92 px-2.5 text-left shadow-soft transition-colors ${
         selected ? 'border-accent text-accent ring-2 ring-accent/15' : catalog.nodeClassName
-      }`}
+      } ${disabled ? 'opacity-45 grayscale' : ''}`}
     >
       {node.type === 'join' ? (
         <>
@@ -3336,6 +3693,14 @@ function recordValue(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function cloneWorkflowNodeConfig(config: Record<string, unknown>): Record<string, unknown> {
+  try {
+    return structuredClone(config);
+  } catch {
+    return JSON.parse(JSON.stringify(config)) as Record<string, unknown>;
+  }
+}
+
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
@@ -3562,18 +3927,67 @@ function TasksPanel({
   onDelete: (task: DataCleaningTask) => void;
 }) {
   const { t } = useTranslation();
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const selectedTask = tasks.find((task) => task.id === selectedTaskId) ?? null;
+  const selectedTaskBusy = selectedTask ? actionId === selectedTask.id : false;
+
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+    if (selectedTaskId && !tasks.some((task) => task.id === selectedTaskId)) {
+      setSelectedTaskId(null);
+    }
+  }, [isLoading, selectedTaskId, tasks]);
 
   return (
     <div className="bg-transparent">
       <div className="mb-3 flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
-        <button
-          onClick={onCreate}
-          disabled={isCreateDisabled}
-          className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          {t('data.newCleaningTask')}
-        </button>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <button
+            onClick={onCreate}
+            disabled={isCreateDisabled}
+            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t('data.newCleaningTask')}
+          </button>
+
+          <div className="mx-1 hidden h-5 w-px bg-border-muted lg:block" />
+          <div className="flex flex-wrap items-center gap-2">
+            <DataToolbarButton
+              icon={<PencilLine className="h-3.5 w-3.5" />}
+              label={t('data.actions.edit')}
+              disabled={!selectedTask || selectedTaskBusy}
+              onClick={() => {
+                if (selectedTask) {
+                  onEdit(selectedTask);
+                }
+              }}
+            />
+            <DataToolbarButton
+              icon={<Play className="h-3.5 w-3.5" />}
+              label={t('data.actions.run')}
+              disabled={!selectedTask || selectedTaskBusy}
+              onClick={() => {
+                if (selectedTask) {
+                  onRun(selectedTask);
+                }
+              }}
+            />
+            <DataToolbarButton
+              icon={<Trash2 className="h-3.5 w-3.5" />}
+              label={t('data.actions.delete')}
+              disabled={!selectedTask || selectedTaskBusy}
+              danger
+              onClick={() => {
+                if (selectedTask) {
+                  onDelete(selectedTask);
+                }
+              }}
+            />
+          </div>
+        </div>
         <div className="relative w-full sm:w-[20rem]">
           <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
           <input
@@ -3587,11 +4001,10 @@ function TasksPanel({
       <div className="overflow-hidden rounded-xl border border-border-muted bg-background/90 shadow-card">
         <TasksTable
           tasks={tasks}
-          actionId={actionId}
           isLoading={isLoading}
-          onRun={onRun}
+          selectedTaskId={selectedTaskId}
+          onSelectTask={setSelectedTaskId}
           onEdit={onEdit}
-          onDelete={onDelete}
         />
         <PaginationFooter
           count={totalTasks}
@@ -3606,18 +4019,16 @@ function TasksPanel({
 
 function TasksTable({
   tasks,
-  actionId,
   isLoading,
-  onRun,
+  selectedTaskId,
+  onSelectTask,
   onEdit,
-  onDelete,
 }: {
   tasks: DataCleaningTask[];
-  actionId: string | null;
   isLoading: boolean;
-  onRun: (task: DataCleaningTask) => void;
+  selectedTaskId: string | null;
+  onSelectTask: (taskId: string) => void;
   onEdit: (task: DataCleaningTask) => void;
-  onDelete: (task: DataCleaningTask) => void;
 }) {
   const { t } = useTranslation();
   const visibleTasks = tasks;
@@ -3631,30 +4042,52 @@ function TasksTable({
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[780px] border-collapse text-left">
+    <div className="overflow-hidden">
+      <table className="w-full table-fixed border-collapse text-left">
         <thead>
           <tr className="h-10 border-b border-border-muted bg-background/80 text-xs font-medium text-text-muted">
-            <th className="w-[34%] px-4">{t('data.columns.taskName')}</th>
-            <th className="w-[15%] px-4">{t('data.columns.status')}</th>
-            <th className="w-[10%] px-4">{t('data.columns.nodes')}</th>
-            <th className="w-[17%] px-4">{t('data.columns.updatedAt')}</th>
-            <th className="w-[24%] px-4 text-center">{t('data.columns.actions')}</th>
+            <th className="w-[4%] px-4">
+              <span className="sr-only">{t('data.tasks.selection')}</span>
+            </th>
+            <th className="w-[42%] whitespace-nowrap px-2">{t('data.columns.taskName')}</th>
+            <th className="w-[16%] whitespace-nowrap px-2">{t('data.columns.status')}</th>
+            <th className="w-[12%] whitespace-nowrap px-2">{t('data.columns.nodes')}</th>
+            <th className="w-[26%] whitespace-nowrap px-2">
+              <span className="inline-flex items-center gap-1">
+                {t('data.columns.updatedAt')}
+                <ArrowUpDown className="h-3 w-3" />
+              </span>
+            </th>
           </tr>
         </thead>
         <tbody>
           {visibleTasks.map((task, index) => {
             const icon = TASK_ICON_STYLES[index % TASK_ICON_STYLES.length];
             const RowIcon = icon.Icon;
-            const isBusy = actionId === task.id;
+            const selected = task.id === selectedTaskId;
             return (
               <tr
                 key={task.id}
-                className={`h-[3.25rem] border-b border-border-muted/85 last:border-b-0 transition-colors ${
-                  index === 0 ? 'bg-accent/5' : 'hover:bg-surface-hover/35'
+                onClick={() => onSelectTask(task.id)}
+                onDoubleClick={() => onEdit(task)}
+                className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
+                  selected
+                    ? 'bg-accent/10 ring-1 ring-inset ring-accent/20'
+                    : 'hover:bg-surface-hover/35'
                 }`}
               >
                 <td className="px-4">
+                  <input
+                    type="radio"
+                    name="task-selection"
+                    checked={selected}
+                    onChange={() => onSelectTask(task.id)}
+                    onClick={(event) => event.stopPropagation()}
+                    className="h-3.5 w-3.5 accent-accent"
+                    aria-label={task.name}
+                  />
+                </td>
+                <td className="px-2">
                   <div className="flex min-w-0 items-center gap-3">
                     <div
                       className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${icon.className}`}
@@ -3669,43 +4102,14 @@ function TasksTable({
                     </div>
                   </div>
                 </td>
-                <td className="px-4">
+                <td className="px-2">
                   <StatusBadge status={task.status} />
                 </td>
-                <td className="px-4 text-[13px] font-medium text-text-secondary">
+                <td className="px-2 text-[13px] font-medium text-text-secondary">
                   {task.nodeCount}
                 </td>
-                <td className="px-4 text-[13px] font-medium text-text-secondary">
+                <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
                   {formatTimestamp(task.updatedAt, t)}
-                </td>
-                <td className="px-4">
-                  <div className="flex items-center justify-end gap-2">
-                    <button
-                      onClick={() => onEdit(task)}
-                      disabled={isBusy}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-                      title={t('data.actions.edit')}
-                    >
-                      <PencilLine className="h-3.5 w-3.5" />
-                      <span className="sr-only">{t('data.actions.edit')}</span>
-                    </button>
-                    <button
-                      onClick={() => onRun(task)}
-                      disabled={isBusy}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-                      title={t('data.actions.run')}
-                    >
-                      <Play className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => onDelete(task)}
-                      disabled={isBusy}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-error/30 hover:bg-error/10 hover:text-error disabled:cursor-not-allowed disabled:opacity-50"
-                      title={t('data.actions.delete')}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
                 </td>
               </tr>
             );
@@ -3829,7 +4233,7 @@ function InputTablesPanel({
 
           <div className="mx-1 hidden h-5 w-px bg-border-muted lg:block" />
           <div className="flex flex-wrap items-center gap-2">
-            <InputTableToolbarButton
+            <DataToolbarButton
               icon={<Eye className="h-3.5 w-3.5" />}
               label={t('data.inputTables.actions.preview')}
               disabled={!selectedDataset}
@@ -3839,7 +4243,7 @@ function InputTablesPanel({
                 }
               }}
             />
-            <InputTableToolbarButton
+            <DataToolbarButton
               icon={<PencilLine className="h-3.5 w-3.5" />}
               label={t('data.inputTables.actions.edit')}
               disabled={!selectedRow}
@@ -3851,7 +4255,7 @@ function InputTablesPanel({
                 }
               }}
             />
-            <InputTableToolbarButton
+            <DataToolbarButton
               icon={<Trash2 className="h-3.5 w-3.5" />}
               label={t('data.inputTables.actions.delete')}
               disabled={!selectedRow || selectedRowBusy}
@@ -4099,7 +4503,7 @@ function OutputTablesPanel({
 
           <div className="mx-1 hidden h-5 w-px bg-border-muted lg:block" />
           <div className="flex flex-wrap items-center gap-2">
-            <InputTableToolbarButton
+            <DataToolbarButton
               icon={<Eye className="h-3.5 w-3.5" />}
               label={t('data.inputTables.actions.preview')}
               disabled={!selectedOutputTable}
@@ -4109,7 +4513,7 @@ function OutputTablesPanel({
                 }
               }}
             />
-            <InputTableToolbarButton
+            <DataToolbarButton
               icon={<PencilLine className="h-3.5 w-3.5" />}
               label={t('data.inputTables.actions.edit')}
               disabled={!selectedOutputTable}
@@ -4119,7 +4523,7 @@ function OutputTablesPanel({
                 }
               }}
             />
-            <InputTableToolbarButton
+            <DataToolbarButton
               icon={<Trash2 className="h-3.5 w-3.5" />}
               label={t('data.inputTables.actions.delete')}
               disabled={!selectedOutputTable || selectedBusy}
@@ -5188,7 +5592,7 @@ function InputTableStatusBadge({
   );
 }
 
-function InputTableToolbarButton({
+function DataToolbarButton({
   icon,
   label,
   disabled,

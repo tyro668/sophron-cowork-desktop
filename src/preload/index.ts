@@ -41,6 +41,7 @@ import type {
   DataTaskWorkflow,
   DataUpdateDatasetInput,
   DataUpdateOutputTableInput,
+  DataUpdateTaskInput,
   DataWorkflowSaveInput,
   DataOutputTable,
 } from '../renderer/types';
@@ -186,6 +187,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('data.getDashboard', payload),
     createTask: (payload: DataCreateTaskInput): Promise<DataCleaningTask> =>
       ipcRenderer.invoke('data.createTask', payload),
+    updateTask: (payload: DataUpdateTaskInput): Promise<DataCleaningTask> =>
+      ipcRenderer.invoke('data.updateTask', payload),
     runTask: (id: string, payload?: DataRunTaskInput): Promise<DataCleaningTask> =>
       ipcRenderer.invoke('data.runTask', id, payload),
     getTaskWorkflow: (id: string): Promise<DataTaskWorkflow> =>
@@ -520,6 +523,7 @@ declare global {
       data: {
         getDashboard: (payload?: DataDashboardQuery) => Promise<DataDashboard>;
         createTask: (payload: DataCreateTaskInput) => Promise<DataCleaningTask>;
+        updateTask: (payload: DataUpdateTaskInput) => Promise<DataCleaningTask>;
         runTask: (id: string, payload?: DataRunTaskInput) => Promise<DataCleaningTask>;
         getTaskWorkflow: (id: string) => Promise<DataTaskWorkflow>;
         saveTaskWorkflow: (

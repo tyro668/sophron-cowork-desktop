@@ -64,6 +64,24 @@ describe('DuckDB data task store', () => {
     ]);
   });
 
+  it('updates data task names', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'), {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+
+    const task = await store.createTask({ name: 'Original task' });
+    const updated = await store.updateTask({ id: task.id, name: 'Renamed task' });
+    expect(updated.id).toBe(task.id);
+    expect(updated.name).toBe('Renamed task');
+
+    const dashboard = await store.getDashboard({ query: 'Renamed task' });
+    expect(dashboard.tasks).toHaveLength(1);
+    expect(dashboard.tasks[0]?.name).toBe('Renamed task');
+  });
+
   it('imports datasets and runs a local data cleaning task', async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
     tempRoots.push(tempRoot);
@@ -1093,6 +1111,7 @@ describe('DuckDB data task store', () => {
 
     expect(main).toContain("ipcMain.handle('data.getDashboard'");
     expect(main).toContain("ipcMain.handle('data.runTask'");
+    expect(main).toContain("ipcMain.handle('data.updateTask'");
     expect(main).toContain("ipcMain.handle('data.getTaskWorkflow'");
     expect(main).toContain("ipcMain.handle('data.saveTaskWorkflow'");
     expect(main).toContain("ipcMain.handle('data.importDataset'");
@@ -1103,6 +1122,7 @@ describe('DuckDB data task store', () => {
     expect(main).toContain("ipcMain.handle('data.deleteTask'");
     expect(main).toContain("ipcMain.handle('data.deleteDataset'");
     expect(preload).toContain('data: {');
+    expect(preload).toContain("ipcRenderer.invoke('data.updateTask'");
     expect(preload).toContain("ipcRenderer.invoke('data.importDataset'");
     expect(preload).toContain("ipcRenderer.invoke('data.updateDataset'");
     expect(preload).toContain("ipcRenderer.invoke('data.createOutputTable'");

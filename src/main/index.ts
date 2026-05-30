@@ -70,6 +70,7 @@ import type {
   DataPreviewInputTableInput,
   DataRunTaskInput,
   DataUpdateOutputTableInput,
+  DataUpdateTaskInput,
   DataUpdateDatasetInput,
   DataWorkflowSaveInput,
 } from '../renderer/types';
@@ -1607,6 +1608,15 @@ ipcMain.handle('data.createTask', async (_event, payload: DataCreateTaskInput) =
     return await requireDataTaskStore().createTask(payload);
   } catch (error) {
     logError('[Data] Error creating task:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('data.updateTask', async (_event, payload: DataUpdateTaskInput) => {
+  try {
+    return await requireDataTaskStore().updateTask(payload);
+  } catch (error) {
+    logError('[Data] Error updating task:', error);
     throw error;
   }
 });

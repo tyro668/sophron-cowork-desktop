@@ -10,7 +10,7 @@ import { defaultKeymap, indentWithTab } from '@codemirror/commands';
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from '@codemirror/language';
 import { linter, type Diagnostic as CodeMirrorDiagnostic } from '@codemirror/lint';
 import { EditorState } from '@codemirror/state';
-import { EditorView, drawSelection, keymap, lineNumbers, placeholder } from '@codemirror/view';
+import { EditorView, drawSelection, keymap, placeholder } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
 import type { DataWorkflowOperatorType } from '../types';
 import { parsePrepOperatorDsl, type PrepDiagnostic } from '../../shared/prep-dsl';
@@ -112,11 +112,6 @@ const prepDslTheme = EditorView.theme({
   '.cm-line': {
     padding: '0 0.125rem',
   },
-  '.cm-gutters': {
-    backgroundColor: 'rgba(248, 250, 252, 0.72)',
-    borderRight: '1px solid rgba(148, 163, 184, 0.16)',
-    color: '#94a3b8',
-  },
   '.cm-placeholder': {
     color: '#94a3b8',
   },
@@ -172,7 +167,6 @@ export function PrepDslEditor({
 
   const extensions = useMemo(
     () => [
-      lineNumbers(),
       drawSelection(),
       prepDslLanguage,
       syntaxHighlighting(prepDslHighlightStyle),

@@ -26,6 +26,7 @@ import type {
   DataTaskStatus,
   DataTaskStatusCounts,
   DataTaskWorkflow,
+  DataUpdateTaskInput,
   DataUpdateDatasetInput,
   DataUpdateOutputTableInput,
   DataWorkflowEdge,
@@ -485,6 +486,30 @@ export class DataTaskStore {
       }
     );
     return this.requireTask(id);
+  }
+
+  async updateTask(input: DataUpdateTaskInput): Promise<DataCleaningTask> {
+    await this.ensureMetadataReady();
+    const task = await this.requireTask(input.id);
+    const name = input.name?.trim();
+    if (name !== undefined && !name) {
+      throw new Error('Task name is required');
+    }
+    const updatedAt = this.now();
+    await this.metaRunSql(
+      `
+        UPDATE data_cleaning_tasks
+        SET name = $name,
+            updated_at = $updatedAt
+        WHERE id = $id
+      `,
+      {
+        id: task.id,
+        name: name ?? task.name,
+        updatedAt,
+      }
+    );
+    return this.requireTask(task.id);
   }
 
   async runTask(id: string, input: DataRunTaskInput = {}): Promise<DataCleaningTask> {
@@ -1555,6 +1580,21 @@ export class DataTaskStore {
       try {
         if (node.type === 'input_source') {
           const relation = await this.materializeInputSource(node, sourcePath);
+          relationByNode.set(node.id, relation);
+          return relation;
+        }
+
+        if (node.config.disabled === true) {
+          const passthroughNodeId =
+            node.type === 'join'
+              ? this.findIncomingNodeId(node.id, edges, 'left') ??
+                this.findIncomingNodeId(node.id, edges, 'input') ??
+                this.findIncomingNodeId(node.id, edges, 'right')
+              : this.findIncomingNodeId(node.id, edges, 'input');
+          if (!passthroughNodeId) {
+            throw new Error(`Disabled workflow node has no passthrough input: ${node.id}`);
+          }
+          const relation = await materializeNode(passthroughNodeId);
           relationByNode.set(node.id, relation);
           return relation;
         }

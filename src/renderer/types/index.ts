@@ -296,6 +296,11 @@ export interface DataCreateTaskInput {
   sourcePath?: string | null;
 }
 
+export interface DataUpdateTaskInput {
+  id: string;
+  name?: string;
+}
+
 export interface DataRunTaskInput {
   sourcePath?: string | null;
   workflow?: DataWorkflowSaveInput | null;
