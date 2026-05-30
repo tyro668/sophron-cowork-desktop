@@ -150,7 +150,7 @@ const WORKFLOW_OPERATOR_TYPES: readonly DataWorkflowOperatorType[] = [
 const WORKFLOW_OPERATOR_TYPE_SET = new Set<string>(WORKFLOW_OPERATOR_TYPES);
 
 const DEFAULT_OPERATOR_LABELS: Record<DataWorkflowOperatorType, string> = {
-  input_source: '数据源',
+  input_source: '输入',
   filter: '筛选',
   field_select: '字段选择',
   deduplicate: '去重',
@@ -2364,9 +2364,13 @@ function isLegacyDefaultWorkflow(rows: DataWorkflowNodeRow[]): boolean {
   }
   return rows.every((row, index) => {
     const legacyNode = LEGACY_DEFAULT_WORKFLOW_NODES[index];
+    const normalizedType = normalizeOperatorType(row.operator_type ?? row.node_key);
+    const legacyLabel = String(row.label);
+    const isLegacyInputLabel =
+      legacyNode.type === 'input_source' && (legacyLabel === '数据源' || legacyLabel === '输入数据源');
     return (
-      normalizeOperatorType(row.operator_type ?? row.node_key) === legacyNode.type &&
-      String(row.label) === legacyNode.label &&
+      normalizedType === legacyNode.type &&
+      (legacyLabel === legacyNode.label || isLegacyInputLabel) &&
       Math.abs(toFiniteNumber(row.x, Number.NaN) - legacyNode.x) < 0.001 &&
       Math.abs(toFiniteNumber(row.y, Number.NaN) - legacyNode.y) < 0.001
     );

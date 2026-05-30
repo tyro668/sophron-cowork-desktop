@@ -166,15 +166,6 @@ function getWorkflowSaveInputSignature(workflow: DataTaskWorkflow): string {
   return JSON.stringify(toWorkflowSaveInput(workflow));
 }
 
-function workflowInputRequiresTaskSource(workflow: DataWorkflowSaveInput): boolean {
-  if (workflow.nodes.length === 0) return true;
-  return workflow.nodes.some((node) => {
-    if (node.type !== 'input_source') return false;
-    const source = stringValue(node.config?.source, 'task');
-    return source === 'task' || (source === 'file' && !stringValue(node.config?.filePath));
-  });
-}
-
 const TASK_ICON_STYLES = [
   { Icon: Database, className: 'bg-accent/10 text-accent' },
   { Icon: BarChart3, className: 'bg-blue-500/10 text-blue-500' },
@@ -687,15 +678,7 @@ export function DataView() {
       setActionId(task.id);
       setError(null);
       try {
-        const needsSourcePath =
-          !task.sourcePath &&
-          (!payload?.workflow || workflowInputRequiresTaskSource(payload.workflow));
-        const sourcePath = needsSourcePath ? await selectOneFile() : null;
-        if (needsSourcePath && !sourcePath) return;
-        await window.electronAPI.data.runTask(task.id, {
-          ...payload,
-          sourcePath,
-        });
+        await window.electronAPI.data.runTask(task.id, payload);
         await loadDashboard();
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -704,7 +687,7 @@ export function DataView() {
         setActionId(null);
       }
     },
-    [loadDashboard, selectOneFile]
+    [loadDashboard]
   );
 
   const handleCreateInputTableDraft = useCallback(() => {
@@ -1235,6 +1218,8 @@ function TaskEditor({
   const [localError, setLocalError] = useState<string | null>(null);
   const [dslMode, setDslMode] = useState<'import' | 'export' | null>(null);
   const [dslText, setDslText] = useState('');
+  const [inputTableChoices, setInputTableChoices] = useState<DataDataset[]>([]);
+  const [inputTableChoicesLoading, setInputTableChoicesLoading] = useState(false);
   const [outputTableChoices, setOutputTableChoices] = useState<DataOutputTable[]>(outputTables);
 
   const loadWorkflow = useCallback(async () => {
@@ -1261,6 +1246,30 @@ function TaskEditor({
   useEffect(() => {
     if (!window.electronAPI?.data?.getDashboard) return undefined;
     let cancelled = false;
+    const loadInputTableChoices = async () => {
+      setInputTableChoicesLoading(true);
+      try {
+        const dashboard = await window.electronAPI.data.getDashboard({
+          includeSummary: false,
+          includeTasks: false,
+          includeDatasets: true,
+          includeOutputTables: false,
+          datasetLimit: OUTPUT_TABLE_INPUT_CHOICES_LIMIT,
+          datasetSourceKind: 'all',
+        });
+        if (!cancelled) {
+          setInputTableChoices(dashboard.datasets);
+        }
+      } catch {
+        if (!cancelled) {
+          setInputTableChoices([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setInputTableChoicesLoading(false);
+        }
+      }
+    };
     const loadOutputTableChoices = async () => {
       try {
         const dashboard = await window.electronAPI.data.getDashboard({
@@ -1277,6 +1286,7 @@ function TaskEditor({
         // The workflow editor can still run with the already-loaded choices.
       }
     };
+    void loadInputTableChoices();
     void loadOutputTableChoices();
     return () => {
       cancelled = true;
@@ -1665,6 +1675,8 @@ function TaskEditor({
             />
             <WorkflowInspector
               node={selectedNode}
+              inputTables={inputTableChoices}
+              isInputTablesLoading={inputTableChoicesLoading}
               outputTables={outputTableChoices}
               activeTab={activeInspectorTab}
               onActiveTabChange={setActiveInspectorTab}
@@ -2168,12 +2180,16 @@ function WorkflowAlignmentGuidesOverlay({ guides }: { guides: WorkflowAlignmentG
 
 function WorkflowInspector({
   node,
+  inputTables,
+  isInputTablesLoading,
   outputTables,
   activeTab,
   onActiveTabChange,
   onNodeChange,
 }: {
   node: DataWorkflowNode | null;
+  inputTables: DataDataset[];
+  isInputTablesLoading: boolean;
   outputTables: DataOutputTable[];
   activeTab: 'config' | 'logs';
   onActiveTabChange: (tab: 'config' | 'logs') => void;
@@ -2184,7 +2200,9 @@ function WorkflowInspector({
   const [operatorDslDiagnostics, setOperatorDslDiagnostics] = useState<PrepDiagnostic[]>([]);
   const [operatorDslStatus, setOperatorDslStatus] = useState<string | null>(null);
   const [operatorDslDiagnosticsOpen, setOperatorDslDiagnosticsOpen] = useState(true);
+  const [isEditingNodeTitle, setIsEditingNodeTitle] = useState(false);
   const operatorDslNodeKeyRef = useRef('');
+  const nodeTitleInputRef = useRef<HTMLInputElement | null>(null);
   const usesOperatorDsl = Boolean(node && node.type !== 'input_source' && node.type !== 'output');
   const editorCompletionLabels = useMemo(
     () => ({
@@ -2221,6 +2239,16 @@ function WorkflowInspector({
     const timeoutId = window.setTimeout(() => setOperatorDslStatus(null), 3000);
     return () => window.clearTimeout(timeoutId);
   }, [operatorDslStatus]);
+
+  useEffect(() => {
+    setIsEditingNodeTitle(false);
+  }, [node?.id]);
+
+  useEffect(() => {
+    if (!isEditingNodeTitle) return;
+    nodeTitleInputRef.current?.focus();
+    nodeTitleInputRef.current?.select();
+  }, [isEditingNodeTitle]);
 
   const handleOperatorDslChange = useCallback((value: string) => {
     setOperatorDsl(value);
@@ -2263,6 +2291,17 @@ function WorkflowInspector({
     setOperatorDslDiagnosticsOpen(true);
   }, [node, onNodeChange, operatorDsl, t, usesOperatorDsl]);
 
+  const handleNodeTitleChange = useCallback(
+    (value: string) => {
+      onNodeChange((current) => ({
+        ...current,
+        label: value.slice(0, 50),
+        updatedAt: Date.now(),
+      }));
+    },
+    [onNodeChange]
+  );
+
   if (!node) {
     return (
       <aside className="min-h-0 overflow-y-auto rounded-xl border border-border-muted bg-background/90 p-3 text-xs text-text-muted shadow-card">
@@ -2281,32 +2320,44 @@ function WorkflowInspector({
 
   return (
     <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border-muted bg-background/90 shadow-card">
-      <div
-        className={`flex shrink-0 items-center justify-between border-b border-border-muted px-3 ${
-          usesOperatorDsl ? 'h-12' : 'h-10'
-        }`}
-      >
-        <div className="flex min-w-0 items-center gap-3">
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-border-muted px-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3 pr-2">
           <span
-            className={`flex flex-shrink-0 items-center justify-center rounded-lg ${
-              usesOperatorDsl ? 'h-8 w-8' : 'h-7 w-7'
-            } ${catalog.colorClassName}`}
+            className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${catalog.colorClassName}`}
           >
-            <Icon className={usesOperatorDsl ? 'h-[18px] w-[18px]' : 'h-4 w-4'} />
+            <Icon className="h-4 w-4" />
           </span>
-          <div className="min-w-0">
-            <div
-              className={`truncate font-medium text-text-secondary ${
-                usesOperatorDsl ? 'text-[15px]' : 'text-xs'
-              }`}
-            >
-              {node.label}
-            </div>
-            {!usesOperatorDsl && (
-              <div className="text-[11px] text-text-muted">
-                {t('data.workflow.nodeId', { id: node.id.slice(0, 8) })}
+          <div className="flex min-w-0 items-center gap-1.5">
+            {isEditingNodeTitle ? (
+              <span className="flex h-7 min-w-0 max-w-[16rem] items-center rounded-lg border border-accent/40 bg-background/95 px-2 shadow-soft ring-2 ring-accent/15">
+                <input
+                  ref={nodeTitleInputRef}
+                  value={node.label}
+                  maxLength={50}
+                  onChange={(event) => handleNodeTitleChange(event.target.value)}
+                  onBlur={() => setIsEditingNodeTitle(false)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === 'Escape') {
+                      event.currentTarget.blur();
+                    }
+                  }}
+                  className="min-w-0 flex-1 bg-transparent text-[14px] font-medium text-text-secondary outline-none"
+                />
+                <span className="ml-2 text-[10px] text-text-muted">{node.label.length}/50</span>
+              </span>
+            ) : (
+              <div className="min-w-0 truncate text-[14px] font-medium text-text-secondary">
+                {node.label || t(catalog.labelKey)}
               </div>
             )}
+            <button
+              onClick={() => setIsEditingNodeTitle(true)}
+              className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-accent/10 hover:text-accent"
+              title={t('common.edit')}
+            >
+              <PencilLine className="h-3.5 w-3.5" />
+              <span className="sr-only">{t('common.edit')}</span>
+            </button>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -2342,32 +2393,7 @@ function WorkflowInspector({
             {t('data.workflow.noLogs')}
           </div>
         ) : usesOperatorDsl ? (
-          <div className="grid h-full min-h-0 gap-2.5 lg:grid-cols-[14rem_minmax(0,1fr)_17rem]">
-            <div className="grid min-h-0 min-w-0 grid-rows-[repeat(3,minmax(0,1fr))] gap-2 overflow-hidden">
-              <WorkflowRuleFieldRow
-                icon={FileText}
-                title={t('data.workflow.ruleName')}
-                value={node.label}
-                suffix={`${node.label.length}/50`}
-                onChange={(value) =>
-                  onNodeChange((current) => ({
-                    ...current,
-                    label: value.slice(0, 50),
-                    updatedAt: Date.now(),
-                  }))
-                }
-              />
-              <WorkflowRuleSelectRow
-                icon={Database}
-                title={t('data.workflow.inputData')}
-                value={t('data.workflow.previousOutput')}
-              />
-              <WorkflowRuleSelectRow
-                icon={Filter}
-                title={t('data.workflow.outputResult')}
-                value={t('data.workflow.operatorResult', { operator: t(catalog.labelKey) })}
-              />
-            </div>
+          <div className="grid h-full min-h-0 gap-2.5 lg:grid-cols-[minmax(0,1fr)_17rem]">
             <div className="flex min-h-0 min-w-0 flex-col rounded-xl border border-border-muted bg-background/95 p-2 shadow-card">
               <div className="mb-2 grid min-h-8 grid-cols-[1fr_auto_auto] items-center gap-2">
                 <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
@@ -2421,29 +2447,24 @@ function WorkflowInspector({
         ) : (
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,1.35fr)]">
             <div className="grid content-start gap-3 sm:grid-cols-2">
-              <div className="sm:col-span-2">
-                <LabeledInput
-                  label={t('data.workflow.nodeName')}
-                  value={node.label}
-                  suffix={`${node.label.length}/50`}
-                  onChange={(value) =>
-                    onNodeChange((current) => ({
-                      ...current,
-                      label: value.slice(0, 50),
-                      updatedAt: Date.now(),
-                    }))
-                  }
+              {node.type === 'input_source' ? (
+                <WorkflowInputSourceConfig
+                  node={node}
+                  inputTables={inputTables}
+                  isLoading={isInputTablesLoading}
+                  onNodeChange={onNodeChange}
                 />
-              </div>
-              <SelectLike label={t('data.workflow.input')} value={t('data.workflow.previousOutput')} />
-              {node.type === 'output' ? (
+              ) : node.type === 'output' ? (
                 <WorkflowOutputConfig
                   node={node}
                   outputTables={outputTables}
                   onNodeChange={onNodeChange}
                 />
               ) : (
-                <SelectLike label={t('data.workflow.output')} value={t(catalog.labelKey)} />
+                <>
+                  <SelectLike label={t('data.workflow.input')} value={t('data.workflow.previousOutput')} />
+                  <SelectLike label={t('data.workflow.output')} value={t(catalog.labelKey)} />
+                </>
               )}
             </div>
             <WorkflowSummaryPanel
@@ -2463,32 +2484,6 @@ function WorkflowInspector({
   );
 }
 
-function LabeledInput({
-  label,
-  value,
-  suffix,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  suffix: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-xs font-medium text-text-secondary">{label}</span>
-      <span className="flex h-8 items-center rounded-lg border border-border-muted bg-background/94 px-2 shadow-soft focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20">
-        <input
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          className="min-w-0 flex-1 bg-transparent text-xs font-medium text-text-secondary outline-none"
-        />
-        <span className="ml-2 text-[11px] text-text-muted">{suffix}</span>
-      </span>
-    </label>
-  );
-}
-
 function SelectLike({ label, value }: { label: string; value: string }) {
   return (
     <label className="block">
@@ -2500,6 +2495,86 @@ function SelectLike({ label, value }: { label: string; value: string }) {
           <ChevronDown className="h-3.5 w-3.5 text-text-muted" />
         </span>
       </button>
+    </label>
+  );
+}
+
+function WorkflowInputSourceConfig({
+  node,
+  inputTables,
+  isLoading,
+  onNodeChange,
+}: {
+  node: DataWorkflowNode;
+  inputTables: DataDataset[];
+  isLoading: boolean;
+  onNodeChange: (updater: (node: DataWorkflowNode) => DataWorkflowNode) => void;
+}) {
+  const { t } = useTranslation();
+  const selectedInputTableId = stringValue(node.config.datasetId);
+  const selectedInputTableName = stringValue(node.config.inputTableName) || stringValue(node.config.name);
+  const hasSelectedInputTableInChoices = inputTables.some(
+    (inputTable) => inputTable.id === selectedInputTableId
+  );
+
+  const handleInputTableChange = useCallback(
+    (inputTableId: string) => {
+      const selectedInputTable = inputTables.find((inputTable) => inputTable.id === inputTableId);
+      onNodeChange((current) => {
+        const nextConfig: Record<string, unknown> = { ...current.config };
+        if (selectedInputTable) {
+          nextConfig.source = 'dataset';
+          nextConfig.datasetId = selectedInputTable.id;
+          nextConfig.inputTableName = selectedInputTable.name;
+          nextConfig.name = selectedInputTable.name;
+        } else {
+          delete nextConfig.source;
+          delete nextConfig.datasetId;
+          delete nextConfig.inputTableName;
+          delete nextConfig.name;
+        }
+        delete nextConfig.filePath;
+        delete nextConfig.sheet;
+        delete nextConfig.encoding;
+        return {
+          ...current,
+          config: nextConfig,
+          updatedAt: Date.now(),
+        };
+      });
+    },
+    [inputTables, onNodeChange]
+  );
+
+  return (
+    <label className="block sm:col-span-2">
+      <span className="mb-1.5 block text-xs font-medium text-text-secondary">
+        {t('data.workflow.inputTable')}
+      </span>
+      <span className="relative block">
+        <select
+          value={selectedInputTableId}
+          onChange={(event) => handleInputTableChange(event.target.value)}
+          className="h-8 w-full appearance-none rounded-lg border border-border-muted bg-background/94 px-2 pr-8 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+        >
+          <option value="">
+            {isLoading
+              ? t('data.workflow.loadingInputTables')
+              : t('data.workflow.noAvailableInputTables')}
+          </option>
+          {selectedInputTableId && !hasSelectedInputTableInChoices && (
+            <option value={selectedInputTableId}>
+              {selectedInputTableName || selectedInputTableId}
+            </option>
+          )}
+          {inputTables.map((inputTable) => (
+            <option key={inputTable.id} value={inputTable.id}>
+              {inputTable.name}
+            </option>
+          ))}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+      </span>
     </label>
   );
 }
@@ -2675,77 +2750,6 @@ function WorkflowOutputConfig({
         </label>
       )}
     </div>
-  );
-}
-
-function WorkflowRuleRowShell({
-  icon: Icon,
-  title,
-  children,
-}: {
-  icon: LucideIcon;
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="flex min-w-0 flex-col justify-center rounded-xl border border-border-muted bg-background/95 p-2 shadow-card">
-      <div className="mb-1.5 flex h-5 min-w-0 items-center gap-2">
-        <span className="flex h-5 w-5 items-center justify-center rounded-md bg-accent/10 text-accent">
-          <Icon className="h-3.5 w-3.5" />
-        </span>
-        <span className="min-w-0 truncate text-[13px] font-medium text-text-secondary">{title}</span>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function WorkflowRuleFieldRow({
-  icon,
-  title,
-  value,
-  suffix,
-  onChange,
-}: {
-  icon: LucideIcon;
-  title: string;
-  value: string;
-  suffix: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <WorkflowRuleRowShell icon={icon} title={title}>
-      <span className="flex h-8 w-full min-w-0 items-center rounded-lg border border-border-muted bg-background/94 px-2.5 shadow-soft transition-shadow focus-within:border-accent/40 focus-within:ring-2 focus-within:ring-accent/15">
-        <input
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          className="min-w-0 flex-1 bg-transparent text-[13px] font-medium text-text-secondary outline-none"
-        />
-        <span className="ml-2 text-xs text-text-muted">{suffix}</span>
-      </span>
-    </WorkflowRuleRowShell>
-  );
-}
-
-function WorkflowRuleSelectRow({
-  icon,
-  title,
-  value,
-}: {
-  icon: LucideIcon;
-  title: string;
-  value: string;
-}) {
-  return (
-    <WorkflowRuleRowShell icon={icon} title={title}>
-      <button className="flex h-8 w-full min-w-0 items-center justify-between rounded-lg border border-border-muted bg-background/94 px-2.5 text-left text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-background/95">
-        <span className="truncate">{value}</span>
-        <span className="flex items-center gap-2">
-          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-          <ChevronDown className="h-3.5 w-3.5 text-text-muted" />
-        </span>
-      </button>
-    </WorkflowRuleRowShell>
   );
 }
 
@@ -3144,21 +3148,15 @@ function getWorkflowConfigSummary(
   let summary: WorkflowConfigSummary;
 
   switch (node.type) {
-    case 'input_source':
+    case 'input_source': {
+      const inputTableName =
+        stringValue(config.inputTableName) || stringValue(config.name) || stringValue(config.datasetId);
       summary = {
-        primary: [
-          summaryRow(t, 'source', translateWorkflowValue(t, 'sources', stringValue(config.source, 'task'))),
-          summaryRow(t, 'alias', stringValue(config.alias)),
-          summaryRow(t, 'format', stringValue(config.format, 'auto')),
-        ],
-        details: [
-          summaryRow(t, 'dataset', stringValue(config.datasetId)),
-          summaryRow(t, 'file', stringValue(config.filePath), true),
-          summaryRow(t, 'sheet', stringValue(config.sheet)),
-          summaryRow(t, 'encoding', stringValue(config.encoding)),
-        ],
+        primary: [summaryRow(t, 'inputTable', inputTableName, true)],
+        details: [summaryRow(t, 'dataset', stringValue(config.datasetId), true)],
       };
       break;
+    }
     case 'field_select':
       summary = {
         primary: [
