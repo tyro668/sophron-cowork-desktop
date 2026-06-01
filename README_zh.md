@@ -40,6 +40,14 @@
 
 ---
 
+## 🧭 数据闭环架构图
+
+<p align="center">
+  <img src="resources/sophron-data-closed-loop-architecture.svg" alt="九思助理数据闭环架构图" />
+</p>
+
+---
+
 <a id="核心特性"></a>
 
 ## ✨ 核心特性

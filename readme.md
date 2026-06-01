@@ -40,6 +40,14 @@ It provides a sandboxed workspace where AI can process local data files, generat
 
 ---
 
+## 🧭 Data Closed-Loop Architecture
+
+<p align="center">
+  <img src="resources/sophron-data-closed-loop-architecture.svg" alt="sophron cowork data closed-loop architecture" />
+</p>
+
+---
+
 <a id="features"></a>
 
 ## ✨ Key Features
