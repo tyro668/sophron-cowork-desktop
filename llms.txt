@@ -74,7 +74,3 @@ MCP (Model Context Protocol) lets AI connect to external tools and services. Met
 
 ### Is my data safe?
 Metis Cowork runs locally on your machine. Your files stay in your workspace. The only external communication is with the AI model API you configure. No data is sent to Metis Cowork servers.
-
-## Optional
-
-- Security Policy: SECURITY.md

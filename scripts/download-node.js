@@ -209,7 +209,7 @@ async function downloadAndExtract(platform, arch) {
 
     // Remove files not needed at runtime to reduce bundle size (~65MB savings)
     const CLEANUP_DIRS = ['include', 'share'];
-    const CLEANUP_FILES = ['CHANGELOG.md', 'README.md'];
+    const CLEANUP_FILES = ['README.md'];
     const CLEANUP_NPM_DIRS = ['docs', 'man'];
 
     for (const dir of CLEANUP_DIRS) {

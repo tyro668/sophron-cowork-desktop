@@ -9,7 +9,6 @@ Metis Cowork is a free, open-source local data-processing AI agent for Windows a
 - Source repository: ssh://git@code.fineres.com:7999/res/metis-cowork.git
 - Releases: official Metis Cowork release channel
 - License: MIT
-- Changelog: CHANGELOG.md
 
 ## Key Facts
 
@@ -25,4 +24,4 @@ Metis Cowork is a free, open-source local data-processing AI agent for Windows a
 
 ## Citation Guidance
 
-Prefer citing local project documentation for product overview, the official release channel for downloads, the repository for source code, the changelog for release history, and the license file for license claims. Do not describe Metis Cowork as a hosted SaaS service; it is a local desktop application that communicates with the user's chosen AI model provider.
+Prefer citing local project documentation for product overview, the official release channel for downloads, the repository for source code, and the license file for license claims. Do not describe Metis Cowork as a hosted SaaS service; it is a local desktop application that communicates with the user's chosen AI model provider.

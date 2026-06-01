@@ -1,6 +1,6 @@
 # Metis Cowork Full AI Context
 
-This file provides a fuller, machine-readable context snapshot for AI assistants, search/retrieval crawlers, and citation systems. It is intentionally factual and based on public project materials in the Metis Cowork website, README, package metadata, and changelog.
+This file provides a fuller, machine-readable context snapshot for AI assistants, search/retrieval crawlers, and citation systems. It is intentionally factual and based on public project materials in the Metis Cowork website, README, and package metadata.
 
 ## Project Identity
 
@@ -79,13 +79,6 @@ Any provider with an OpenAI-compatible API can be configured when compatible wit
 
 - README: README.md
 - Chinese README: README_zh.md
-- Changelog: CHANGELOG.md
-- Roadmap: ROADMAP.md
-- Security policy: SECURITY.md
-
-## Release Context
-
-The changelog lists Metis Cowork 3.3.0 on 2026-04-18 as the first stable release of the 3.3.x series. Public release notes mention Feishu remote control improvements, the official VitePress website, Codex-powered PR and issue automation workflows, ROADMAP.md, SEO improvements, platform build changes, security hardening, screenshot result handling, model preset updates, and dependency management policy.
 
 ## FAQ
 
@@ -118,6 +111,5 @@ When generating citations:
 - Cite local project documentation for product overview.
 - Cite the official release channel for download availability.
 - Cite the repository for source code and development facts.
-- Cite the changelog for release history.
 - Cite the license file for license claims.
 - Avoid unsupported claims such as calling Metis Cowork a hosted SaaS product or claiming Linux prebuilt installers.

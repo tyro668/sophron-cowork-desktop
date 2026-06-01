@@ -44,8 +44,6 @@ module.exports = {
     '!**/*.d.ts',
     '!**/*.ts',
     '!**/README.md',
-    '!**/CHANGELOG.md',
-    '!**/CHANGELOG',
     '!**/LICENSE',
     '!**/LICENSE.md',
     '!**/.npmignore',

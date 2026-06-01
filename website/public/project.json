@@ -79,9 +79,6 @@
   },
   "sourcePages": [
     "README.md",
-    "README_zh.md",
-    "CHANGELOG.md",
-    "ROADMAP.md",
-    "SECURITY.md"
+    "README_zh.md"
   ]
 }
