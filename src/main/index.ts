@@ -113,6 +113,7 @@ import {
 import { listRecentWorkspaceFiles } from './utils/recent-workspace-files';
 import { buildDiagnosticsSummary } from './utils/diagnostics-summary';
 import { prepareGeneratedReportForOpen } from './utils/report-viewer';
+import { UpdateService } from './update/update-service';
 
 // Current working directory (persisted between sessions)
 let currentWorkingDir: string | null = null;
@@ -143,6 +144,9 @@ let pluginRuntimeService: PluginRuntimeService | null = null;
 let memoryService: MemoryService | null = null;
 let scheduledTaskManager: ScheduledTaskManager | null = null;
 let dataTaskStore: DataTaskStore | null = null;
+let updateService: UpdateService | null = null;
+let isInstallingUpdate = false;
+let startupUpdateCheckScheduled = false;
 
 function getRuntimeAppName(): string {
   const runtimeName = app.getName();
@@ -584,7 +588,18 @@ function createWindow() {
 
     // Start sandbox bootstrap after window is loaded
     startSandboxBootstrap();
+    scheduleStartupUpdateCheck();
   });
+}
+
+function scheduleStartupUpdateCheck(): void {
+  if (startupUpdateCheckScheduled) return;
+  startupUpdateCheckScheduled = true;
+  setTimeout(() => {
+    void updateService?.checkForUpdate().catch((error) => {
+      logWarn('[Update] Startup update check failed:', error);
+    });
+  }, 1800);
 }
 
 /**
@@ -875,6 +890,14 @@ app
     dataTaskStore = createDataTaskStore(join(app.getPath('userData'), 'data', 'workspace.duckdb'), {
       metadataDb: db,
     });
+    updateService = new UpdateService({
+      getWindow: () => mainWindow,
+      beforeInstall: prepareForUpdateInstall,
+      log,
+      warn: logWarn,
+      error: logError,
+    });
+    updateService.initialize();
 
     pluginRuntimeService = new PluginRuntimeService(new PluginCatalogService());
     memoryService = new MemoryService(db);
@@ -1143,6 +1166,24 @@ async function cleanupSandboxResources(): Promise<void> {
   // pi-ai doesn't need proxy shutdown
 }
 
+async function prepareForUpdateInstall(): Promise<void> {
+  isInstallingUpdate = true;
+  stopNavServer();
+  scheduledTaskManager?.stop();
+  try {
+    dataTaskStore?.close();
+  } catch (error) {
+    logError('[Update] Error closing DuckDB data store before install:', error);
+  } finally {
+    dataTaskStore = null;
+  }
+  try {
+    closeDatabase();
+  } catch (error) {
+    logError('[Update] Error closing database before install:', error);
+  }
+}
+
 // Handle app quit - window-all-closed (primary for Windows/Linux)
 app.on('window-all-closed', async () => {
   if (process.platform !== 'darwin' || process.env.VITE_DEV_SERVER_URL) {
@@ -1162,6 +1203,9 @@ for (const sig of ['SIGTERM', 'SIGINT'] as const) {
 
 // Handle app quit - before-quit (for macOS Cmd+Q and other quit methods)
 app.on('before-quit', async (event) => {
+  if (isInstallingUpdate || updateService?.isInstalling()) {
+    return;
+  }
   if (!isCleaningUp) {
     // In dev mode, exit quickly — no need for async sandbox cleanup
     if (process.env.VITE_DEV_SERVER_URL) {
@@ -1227,6 +1271,15 @@ ipcMain.handle('system.getTheme', () => {
     logError('[IPC] Error getting theme:', error);
     return { shouldUseDarkColors: true };
   }
+});
+
+ipcMain.handle('update.getState', () => updateService?.getState() ?? null);
+
+ipcMain.handle('update.checkAndInstall', async () => {
+  if (!updateService) {
+    throw new Error('Update service is not initialized');
+  }
+  return updateService.checkAndInstall();
 });
 
 ipcMain.handle('shell.openExternal', async (_event, url: string) => {

@@ -45,6 +45,7 @@ import type {
   DataUpdateTaskInput,
   DataWorkflowSaveInput,
   DataOutputTable,
+  AppUpdateState,
 } from '../renderer/types';
 import type { DiagnosticInput, DiagnosticResult } from '../renderer/types';
 import type {
@@ -144,6 +145,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // App info
   getVersion: () => ipcRenderer.invoke('get-version'),
+
+  update: {
+    getState: (): Promise<AppUpdateState | null> => ipcRenderer.invoke('update.getState'),
+    checkAndInstall: (): Promise<AppUpdateState> => ipcRenderer.invoke('update.checkAndInstall'),
+    onState: (callback: (state: AppUpdateState) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, state: AppUpdateState) => callback(state);
+      ipcRenderer.on('update.state', listener);
+      return () => ipcRenderer.removeListener('update.state', listener);
+    },
+  },
 
   // Open links in default browser
   openExternal: (url: string) => {
@@ -512,6 +523,11 @@ declare global {
       platform: NodeJS.Platform;
       getSystemTheme: () => Promise<{ shouldUseDarkColors: boolean }>;
       getVersion: () => Promise<string>;
+      update: {
+        getState: () => Promise<AppUpdateState | null>;
+        checkAndInstall: () => Promise<AppUpdateState>;
+        onState: (callback: (state: AppUpdateState) => void) => () => void;
+      };
       openExternal: (url: string) => Promise<boolean>;
       showItemInFolder: (filePath: string, cwd?: string) => Promise<boolean>;
       openGeneratedReport: (filePath: string, cwd?: string) => Promise<boolean>;

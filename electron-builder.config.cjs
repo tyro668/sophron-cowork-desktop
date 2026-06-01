@@ -3,6 +3,7 @@ const { getBrand } = require('./scripts/sophron-brand.cjs');
 const brand = getBrand();
 
 const artifactPattern = `${brand.artifactName}-\${version}`;
+const updatePublishUrl = process.env.SOPHRON_UPDATE_PUBLISH_URL || 'https://download.sophron.ai/updates/stable';
 
 module.exports = {
   appId: 'com.sophron.app',
@@ -17,6 +18,12 @@ module.exports = {
   npmRebuild: true,
   afterPack: './scripts/after-pack.js',
   afterAllArtifactBuild: './scripts/compress-dmg.js',
+  publish: [
+    {
+      provider: 'generic',
+      url: updatePublishUrl,
+    },
+  ],
 
   files: [
     'dist/**/*',
@@ -35,6 +42,15 @@ module.exports = {
     'node_modules/ws/**/*',
     'node_modules/glob/**/*',
     'node_modules/dotenv/**/*',
+    'node_modules/electron-updater/**/*',
+    'node_modules/builder-util-runtime/**/*',
+    'node_modules/fs-extra/**/*',
+    'node_modules/js-yaml/**/*',
+    'node_modules/lazy-val/**/*',
+    'node_modules/lodash.escaperegexp/**/*',
+    'node_modules/lodash.isequal/**/*',
+    'node_modules/semver/**/*',
+    'node_modules/tiny-typed-emitter/**/*',
     'node_modules/bufferutil/**/*',
     'node_modules/utf-8-validate/**/*',
     '!**/*.js.map',
@@ -88,7 +104,11 @@ module.exports = {
     icon: 'resources/icon.icns',
     target: [
       {
-        target: 'dir',
+        target: 'dmg',
+        arch: ['arm64'],
+      },
+      {
+        target: 'zip',
         arch: ['arm64'],
       },
     ],

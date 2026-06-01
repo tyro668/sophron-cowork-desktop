@@ -528,7 +528,9 @@
     "themeLight": "浅色",
     "themeDark": "深色",
     "themeSystem": "跟随系统",
-    "language": "语言"
+    "language": "语言",
+    "updateAvailableBadge": "有新版本",
+    "updateAvailableBadgeTitle": "下载并安装新版本 {{version}}"
   },
   "memory": {
     "title": "Memory 机制",

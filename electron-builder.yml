@@ -10,6 +10,10 @@ npmRebuild: true
 afterPack: ./scripts/after-pack.js
 afterAllArtifactBuild: ./scripts/compress-dmg.js
 
+publish:
+  - provider: generic
+    url: https://download.sophron.ai/updates/stable
+
 files:
   - dist/**/*
   - dist-electron/**/*
@@ -27,6 +31,15 @@ files:
   - node_modules/ws/**/*
   - node_modules/glob/**/*
   - node_modules/dotenv/**/*
+  - node_modules/electron-updater/**/*
+  - node_modules/builder-util-runtime/**/*
+  - node_modules/fs-extra/**/*
+  - node_modules/js-yaml/**/*
+  - node_modules/lazy-val/**/*
+  - node_modules/lodash.escaperegexp/**/*
+  - node_modules/lodash.isequal/**/*
+  - node_modules/semver/**/*
+  - node_modules/tiny-typed-emitter/**/*
   - node_modules/bufferutil/**/*
   - node_modules/utf-8-validate/**/*
   # Exclude non-essential files from node_modules to reduce bundle size
@@ -85,7 +98,10 @@ win:
 mac:
   icon: resources/icon.icns
   target:
-    - target: dir
+    - target: dmg
+      arch:
+        - arm64
+    - target: zip
       arch:
         - arm64
   artifactName: sophron-${version}-mac-${arch}.${ext}

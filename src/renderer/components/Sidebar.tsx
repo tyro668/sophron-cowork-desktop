@@ -17,7 +17,7 @@ import {
   ListChecks,
   Check,
 } from 'lucide-react';
-import type { Session } from '../types';
+import type { AppUpdateState, Session } from '../types';
 
 import sidebarLogoSrc from '../assets/logo.png';
 
@@ -55,6 +55,7 @@ export function Sidebar() {
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [updateState, setUpdateState] = useState<AppUpdateState | null>(null);
 
   const normalizedQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
   const filteredSessions = useMemo(() => {
@@ -67,6 +68,29 @@ export function Sidebar() {
     () => groupSessionsByDate(filteredSessions, t),
     [filteredSessions, t]
   );
+  const hasAvailableUpdate = updateState?.status === 'available';
+  const updateBadgeTitle = updateState?.availableVersion
+    ? t('general.updateAvailableBadgeTitle', { version: updateState.availableVersion })
+    : t('general.updateAvailableBadge');
+
+  useEffect(() => {
+    let cancelled = false;
+    window.electronAPI?.update
+      ?.getState()
+      .then((state) => {
+        if (!cancelled && state) {
+          setUpdateState(state);
+        }
+      })
+      .catch(() => undefined);
+    const cleanup = window.electronAPI?.update?.onState((state) => {
+      setUpdateState(state);
+    });
+    return () => {
+      cancelled = true;
+      cleanup?.();
+    };
+  }, []);
 
   // Exit select mode when sidebar collapses
   useEffect(() => {
@@ -223,6 +247,17 @@ export function Sidebar() {
     setShowSettings(false);
   };
 
+  const handleUpdateBadgeClick = useCallback(async () => {
+    try {
+      const state = await window.electronAPI?.update?.checkAndInstall();
+      if (state) {
+        setUpdateState(state);
+      }
+    } catch (error) {
+      console.error('[Sidebar] Failed to start update:', error);
+    }
+  }, []);
+
   const handleDeleteSession = (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
     deleteSession(sessionId);
@@ -331,9 +366,21 @@ export function Sidebar() {
               className="w-10 h-10 rounded-2xl object-contain p-1.5 border border-border-subtle bg-background/60 flex-shrink-0"
             />
             <div className="min-w-0">
-              <h1 className="text-[1.34rem] leading-none font-semibold tracking-[-0.035em] text-text-primary">
-                {t('common.appName')}
-              </h1>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <h1 className="min-w-0 truncate text-[1.34rem] leading-none font-semibold tracking-normal text-text-primary">
+                  {t('common.appName')}
+                </h1>
+                {hasAvailableUpdate && (
+                  <button
+                    type="button"
+                    onClick={() => void handleUpdateBadgeClick()}
+                    className="h-5 flex-shrink-0 rounded-full border border-accent/25 bg-accent/10 px-1.5 text-[10px] font-medium leading-none text-accent transition-colors hover:bg-accent hover:text-white"
+                    title={updateBadgeTitle}
+                  >
+                    {t('general.updateAvailableBadge')}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
           <button
