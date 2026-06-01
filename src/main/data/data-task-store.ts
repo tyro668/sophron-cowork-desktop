@@ -44,6 +44,7 @@ interface DataTaskStoreOptions {
 }
 
 const OUTPUT_TABLE_CONFIG_KIND = 'output_table';
+const WORKFLOW_TEMP_CACHE_TTL_MS = 86_400_000;
 
 interface ParsedWorkbookRows {
   columns: string[];
@@ -115,12 +116,25 @@ interface DataWorkflowEdgeRow {
   created_at: number | string;
 }
 
+interface DataWorkflowNodeCacheRow {
+  id: string;
+  task_id: string;
+  node_id: string;
+  node_type: string;
+  table_name: string;
+  cache_scope: string;
+  expires_at: number | string | null;
+  created_at: number | string;
+  updated_at: number | string;
+}
+
 interface RuntimeWorkflow {
   nodes: DataWorkflowNode[];
   edges: DataWorkflowEdge[];
 }
 
 type WorkflowOutputMode = 'persisted' | 'temporary';
+type WorkflowCacheScope = 'permanent' | 'temporary';
 
 interface DashboardSummaryRow {
   task_count: number | string;
@@ -515,6 +529,7 @@ export class DataTaskStore {
 
   async runTask(id: string, input: DataRunTaskInput = {}): Promise<DataCleaningTask> {
     await this.ensureReady();
+    await this.cleanupExpiredWorkflowNodeCaches();
     const task = await this.requireTask(id);
     const sourcePath = input.sourcePath ? normalizeSourcePath(input.sourcePath) : task.sourcePath;
     const startedAt = this.now();
@@ -950,6 +965,7 @@ export class DataTaskStore {
     await this.ensureMetadataReady();
     const task = await this.requireTask(input.taskId);
     await this.ensureReady();
+    await this.cleanupExpiredWorkflowNodeCaches();
     const limit = normalizePreviewLimit(input.limit);
     const offset = normalizePreviewOffset(input.offset);
     const nodeConfig = input.nodeConfig ?? {};
@@ -997,6 +1013,7 @@ export class DataTaskStore {
     await this.ensureMetadataReady();
     const task = await this.requireTask(input.taskId);
     await this.ensureReady();
+    await this.cleanupExpiredWorkflowNodeCaches();
     const nodeConfig = input.nodeConfig ?? {};
     const node: DataWorkflowNode = {
       id: input.nodeId,
@@ -1037,6 +1054,7 @@ export class DataTaskStore {
         tableName: task.outputTable,
       });
     }
+    await this.deleteWorkflowNodeCachesForTask(id);
     await this.metaRunSql('DELETE FROM data_workflow_edges WHERE task_id = $id', { id });
     await this.metaRunSql('DELETE FROM data_workflow_nodes WHERE task_id = $id', { id });
     await this.metaRunSql('DELETE FROM data_cleaning_tasks WHERE id = $id', { id });
@@ -1355,6 +1373,19 @@ export class DataTaskStore {
         created_at BIGINT NOT NULL
       )
     `);
+    await this.metaRunSql(`
+      CREATE TABLE IF NOT EXISTS data_workflow_node_caches (
+        id VARCHAR PRIMARY KEY,
+        task_id VARCHAR NOT NULL,
+        node_id VARCHAR NOT NULL,
+        node_type VARCHAR NOT NULL,
+        table_name VARCHAR NOT NULL,
+        cache_scope VARCHAR NOT NULL,
+        expires_at BIGINT,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL
+      )
+    `);
     await this.createMetadataIndexes();
     await this.metaRunSql(`
       UPDATE data_workflow_nodes
@@ -1447,6 +1478,8 @@ export class DataTaskStore {
       'CREATE INDEX IF NOT EXISTS idx_data_datasets_source_kind ON data_datasets(source_kind)',
       'CREATE INDEX IF NOT EXISTS idx_data_workflow_nodes_task_id ON data_workflow_nodes(task_id)',
       'CREATE INDEX IF NOT EXISTS idx_data_workflow_edges_task_id ON data_workflow_edges(task_id)',
+      'CREATE INDEX IF NOT EXISTS idx_data_workflow_node_caches_task_node ON data_workflow_node_caches(task_id, node_id, updated_at)',
+      'CREATE INDEX IF NOT EXISTS idx_data_workflow_node_caches_expires_at ON data_workflow_node_caches(expires_at)',
     ];
     for (const statement of indexStatements) {
       await this.metaRunSql(statement);
@@ -1636,6 +1669,10 @@ export class DataTaskStore {
     const outputTable = outputTarget.tableName;
     const relationByNode = new Map<string, string>();
     const visitingNodeIds = new Set<string>();
+    const cacheScope: WorkflowCacheScope = outputMode === 'temporary' ? 'temporary' : 'permanent';
+    const cacheRunId = uuidv4();
+    const cacheExpiresAt =
+      cacheScope === 'temporary' ? this.now() + WORKFLOW_TEMP_CACHE_TTL_MS : null;
     await this.dropTableIfExists(outputTable);
 
     const materializeNode = async (nodeId: string): Promise<string> => {
@@ -1657,9 +1694,16 @@ export class DataTaskStore {
       }
       visitingNodeIds.add(nodeId);
       try {
+        const outputRelation = this.getWorkflowNodeCacheTableName(
+          task.id,
+          node,
+          cacheScope,
+          cacheRunId
+        );
         if (node.type === 'input_source') {
-          const relation = await this.materializeInputSource(node, sourcePath);
+          const relation = await this.materializeInputSource(node, sourcePath, outputRelation);
           relationByNode.set(node.id, relation);
+          await this.registerWorkflowNodeCache(node, relation, cacheScope, cacheExpiresAt);
           return relation;
         }
 
@@ -1694,11 +1738,11 @@ export class DataTaskStore {
           await materializeNode(inputNodeId);
         }
 
-        const outputRelation = tableNameFromId(`workflow_${node.type}`, node.id);
         await this.dropTableIfExists(outputRelation);
         const sql = await this.compileWorkflowNodeSql(node, outputRelation, relationByNode, edges);
-        await this.runSql(sql);
+        await this.runSql(toPersistentCreateTableSql(sql));
         relationByNode.set(node.id, outputRelation);
+        await this.registerWorkflowNodeCache(node, outputRelation, cacheScope, cacheExpiresAt);
         return outputRelation;
       } finally {
         visitingNodeIds.delete(nodeId);
@@ -1717,6 +1761,9 @@ export class DataTaskStore {
     );
     const rowCount = await this.countRows(outputTable);
     const columnCount = (await this.getTableColumns(outputTable)).length;
+    if (outputNode) {
+      await this.registerWorkflowNodeCache(outputNode, outputTable, cacheScope, cacheExpiresAt);
+    }
     if (outputMode === 'temporary') {
       return { outputTable, rowCount, columnCount, sourceDatasetId: null };
     }
@@ -1751,6 +1798,10 @@ export class DataTaskStore {
     if (node.config.disabled === true) {
       return null;
     }
+    const cachedTableName = await this.findWorkflowNodeCacheTable(task.id, node.id);
+    if (cachedTableName) {
+      return cachedTableName;
+    }
     if (node.type === 'input_source') {
       return tableNameFromId('workflow_source', node.id);
     }
@@ -1766,6 +1817,122 @@ export class DataTaskStore {
     return tableNameFromId(`workflow_${node.type}`, node.id);
   }
 
+  private getWorkflowNodeCacheTableName(
+    taskId: string,
+    node: DataWorkflowNode,
+    cacheScope: WorkflowCacheScope,
+    cacheRunId: string
+  ): string {
+    const baseId =
+      cacheScope === 'permanent'
+        ? `${taskId}_${node.id}`
+        : `${taskId}_${node.id}_${cacheRunId}`;
+    return tableNameFromId(`workflow_cache_${cacheScope}_${node.type}`, baseId);
+  }
+
+  private async registerWorkflowNodeCache(
+    node: DataWorkflowNode,
+    tableName: string,
+    cacheScope: WorkflowCacheScope,
+    expiresAt: number | null
+  ): Promise<void> {
+    const timestamp = this.now();
+    const id = tableNameFromId('cache', `${node.taskId}_${node.id}_${tableName}`);
+    await this.metaRunSql(
+      `
+        DELETE FROM data_workflow_node_caches
+        WHERE task_id = $taskId
+          AND node_id = $nodeId
+          AND table_name = $tableName
+      `,
+      { taskId: node.taskId, nodeId: node.id, tableName }
+    );
+    await this.metaRunSql(
+      `
+        INSERT INTO data_workflow_node_caches (
+          id, task_id, node_id, node_type, table_name, cache_scope,
+          expires_at, created_at, updated_at
+        )
+        VALUES (
+          $id, $taskId, $nodeId, $nodeType, $tableName, $cacheScope,
+          $expiresAt, $createdAt, $updatedAt
+        )
+      `,
+      {
+        id,
+        taskId: node.taskId,
+        nodeId: node.id,
+        nodeType: node.type,
+        tableName,
+        cacheScope,
+        expiresAt,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }
+    );
+  }
+
+  private async findWorkflowNodeCacheTable(
+    taskId: string,
+    nodeId: string
+  ): Promise<string | null> {
+    const rows = await this.metaQueryRows<DataWorkflowNodeCacheRow>(
+      `
+        SELECT *
+        FROM data_workflow_node_caches
+        WHERE task_id = $taskId
+          AND node_id = $nodeId
+          AND (expires_at IS NULL OR expires_at > $now)
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT 8
+      `,
+      { taskId, nodeId, now: this.now() }
+    );
+    for (const row of rows) {
+      const tableName = String(row.table_name);
+      if (await this.physicalTableExists(tableName)) {
+        return tableName;
+      }
+      await this.metaRunSql(
+        'DELETE FROM data_workflow_node_caches WHERE id = $id',
+        { id: String(row.id) }
+      );
+    }
+    return null;
+  }
+
+  private async cleanupExpiredWorkflowNodeCaches(): Promise<void> {
+    const rows = await this.metaQueryRows<DataWorkflowNodeCacheRow>(
+      `
+        SELECT *
+        FROM data_workflow_node_caches
+        WHERE expires_at IS NOT NULL
+          AND expires_at <= $now
+      `,
+      { now: this.now() }
+    );
+    for (const row of rows) {
+      await this.dropTableIfExists(String(row.table_name)).catch(() => undefined);
+      await this.metaRunSql(
+        'DELETE FROM data_workflow_node_caches WHERE id = $id',
+        { id: String(row.id) }
+      );
+    }
+  }
+
+  private async deleteWorkflowNodeCachesForTask(taskId: string): Promise<void> {
+    const rows = await this.metaQueryRows<DataWorkflowNodeCacheRow>(
+      'SELECT * FROM data_workflow_node_caches WHERE task_id = $taskId',
+      { taskId }
+    );
+    for (const row of rows) {
+      await this.dropTableIfExists(String(row.table_name)).catch(() => undefined);
+    }
+    await this.metaRunSql('DELETE FROM data_workflow_node_caches WHERE task_id = $taskId', {
+      taskId,
+    });
+  }
+
   private async resolveInputSourceColumns(
     node: DataWorkflowNode,
     taskSourcePath: string | null
@@ -1774,7 +1941,17 @@ export class DataTaskStore {
       return null;
     }
 
-    const source = typeof node.config.source === 'string' ? node.config.source : 'task';
+    const source =
+      typeof node.config.source === 'string'
+        ? node.config.source
+        : stringConfigValue(node.config.datasetId)
+          ? 'dataset'
+          : 'task';
+    const cachedTable = await this.findWorkflowNodeCacheTable(node.taskId, node.id);
+    if (cachedTable) {
+      return this.getTableColumns(cachedTable);
+    }
+
     if (source === 'dataset') {
       const datasetRef = String(node.config.datasetId ?? node.config.name ?? node.config.alias ?? '');
       const dataset = await this.findDatasetByReference(datasetRef);
@@ -1813,10 +1990,15 @@ export class DataTaskStore {
 
   private async materializeInputSource(
     node: DataWorkflowNode,
-    taskSourcePath: string | null
+    taskSourcePath: string | null,
+    tableName: string
   ): Promise<string> {
-    const source = typeof node.config.source === 'string' ? node.config.source : 'task';
-    const tableName = tableNameFromId('workflow_source', node.id);
+    const source =
+      typeof node.config.source === 'string'
+        ? node.config.source
+        : stringConfigValue(node.config.datasetId)
+          ? 'dataset'
+          : 'task';
     await this.dropTableIfExists(tableName);
     if (source === 'dataset') {
       const datasetRef = String(node.config.datasetId ?? node.config.name ?? node.config.alias ?? '');
@@ -1825,7 +2007,7 @@ export class DataTaskStore {
         throw new Error(`Dataset source not found: ${datasetRef}`);
       }
       await this.runSql(
-        `CREATE TEMP TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${quoteIdentifier(
+        `CREATE TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${quoteIdentifier(
           dataset.tableName
         )}`
       );
@@ -1840,7 +2022,7 @@ export class DataTaskStore {
       throw new Error('Data source file is required before running a cleaning task');
     }
     const relation = readRelationForPath(filePath, 'sourcePath');
-    await this.runSql(`CREATE TEMP TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`, {
+    await this.runSql(`CREATE TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`, {
       sourcePath: filePath,
     });
     return tableName;
@@ -2639,7 +2821,12 @@ function workflowRequiresTaskSource(nodes: DataWorkflowNode[]): boolean {
   if (nodes.length === 0) return true;
   return nodes.some((node) => {
     if (node.type !== 'input_source') return false;
-    const source = typeof node.config.source === 'string' ? node.config.source : 'task';
+    const source =
+      typeof node.config.source === 'string'
+        ? node.config.source
+        : stringConfigValue(node.config.datasetId)
+          ? 'dataset'
+          : 'task';
     return source === 'task' || (source === 'file' && !stringConfigValue(node.config.filePath));
   });
 }
@@ -2979,6 +3166,10 @@ function compileAsofJoinSql(
       LIMIT 1
     ) r ON true
   `;
+}
+
+function toPersistentCreateTableSql(sql: string): string {
+  return sql.replace(/\bCREATE\s+TEMP\s+TABLE\b/i, 'CREATE TABLE');
 }
 
 const SQL_FIELD_REF_TOKEN_PATTERN = '(?:\\[`(?:[^`\\\\]|\\\\.)*`\\]|\\[[\\p{L}_][\\p{L}\\p{N}_]*\\])';

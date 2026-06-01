@@ -880,7 +880,7 @@ describe('DuckDB data task store', () => {
       'utf8'
     );
 
-    const store = createDataTaskStore(dbPath, {
+    let store = createDataTaskStore(dbPath, {
       now: () => 1_780_000_000_000,
     });
     stores.push(store);
@@ -941,6 +941,73 @@ describe('DuckDB data task store', () => {
     expect(preview.limit).toBe(1);
     expect(preview.offset).toBe(1);
     expect(String(preview.rows[0]?.order_id)).toBe('3');
+
+    stores.pop()?.close();
+    store = createDataTaskStore(dbPath, {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+    const reopenedPreview = await store.previewWorkflowNode({
+      taskId: task.id,
+      nodeId: filterNode!.id,
+      nodeType: filterNode!.type,
+      nodeConfig: filterNode!.config,
+    });
+    expect(reopenedPreview.columns).toEqual(['order_id', 'revenue']);
+    expect(reopenedPreview.totalRows).toBe(2);
+  });
+
+  it('keeps temporary workflow node caches for one day then expires them', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const dbPath = path.join(tempRoot, 'workspace.duckdb');
+    const ordersPath = path.join(tempRoot, 'temporary-cache-orders.csv');
+    fs.writeFileSync(
+      ordersPath,
+      'order_id,revenue\n1,20\n2,5\n3,30\n',
+      'utf8'
+    );
+
+    let now = 1_780_000_000_000;
+    const store = createDataTaskStore(dbPath, {
+      now: () => now,
+    });
+    stores.push(store);
+
+    const task = await store.createTask({ name: 'Temporary cache', sourcePath: ordersPath });
+    const parsed = parsePrepDsl(`
+      input source task as orders
+
+      from orders
+        | filter [revenue] > 10
+        | output table "temporary_cache_output" mode replace
+    `);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const saved = await store.saveTaskWorkflow(task.id, {
+      nodes: compiled.nodes,
+      edges: compiled.edges,
+    });
+    const filterNode = saved.nodes.find((node) => node.type === 'filter');
+    expect(filterNode).toBeTruthy();
+
+    await store.runTask(task.id, { outputMode: 'temporary' });
+    const freshPreview = await store.previewWorkflowNode({
+      taskId: task.id,
+      nodeId: filterNode!.id,
+      nodeType: filterNode!.type,
+      nodeConfig: filterNode!.config,
+    });
+    expect(freshPreview.totalRows).toBe(2);
+
+    now += 86_400_001;
+    const expiredPreview = await store.previewWorkflowNode({
+      taskId: task.id,
+      nodeId: filterNode!.id,
+      nodeType: filterNode!.type,
+      nodeConfig: filterNode!.config,
+    });
+    expect(expiredPreview.totalRows).toBe(0);
+    expect(expiredPreview.columns).toEqual([]);
   });
 
   it('reads input table source columns for workflow field completions before a task run', async () => {

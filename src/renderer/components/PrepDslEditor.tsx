@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import {
   autocompletion,
+  startCompletion,
   type Completion,
   type CompletionContext,
   type CompletionResult,
@@ -159,7 +160,11 @@ export function PrepDslEditor({
 
   useEffect(() => {
     fieldCompletionsRef.current = fieldCompletions;
-  }, [fieldCompletions]);
+    const view = viewRef.current;
+    if (editable && view && isFieldCompletionContext(view)) {
+      startCompletion(view);
+    }
+  }, [editable, fieldCompletions]);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -209,6 +214,9 @@ export function PrepDslEditor({
       EditorView.updateListener.of((update) => {
         if (editable && update.docChanged) {
           onChangeRef.current(update.state.doc.toString());
+          if (isFieldCompletionContext(update.view)) {
+            startCompletion(update.view);
+          }
         }
       }),
     ],
@@ -361,6 +369,12 @@ function formatFieldCompletion(field: string): string {
   return /^[\p{L}_][\p{L}\p{N}_]*$/u.test(field)
     ? `[${field}]`
     : `[\`${field.replace(/`/g, '\\`')}\`]`;
+}
+
+function isFieldCompletionContext(view: EditorView): boolean {
+  const position = view.state.selection.main.head;
+  const line = view.state.doc.lineAt(position);
+  return /\[[^\]\s,()]*$/u.test(line.text.slice(0, position - line.from));
 }
 
 function toCodeMirrorDiagnostic(
