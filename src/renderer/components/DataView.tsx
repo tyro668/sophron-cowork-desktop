@@ -106,6 +106,7 @@ import {
 } from '../../shared/prep-dsl';
 
 type DataTab = 'tasks' | 'input_tables' | 'output_tables';
+type WorkflowInspectorTab = 'config' | 'data' | 'logs';
 type InputTableSourceFilter = 'all' | 'excel' | 'csv' | 'folder';
 type InputTableSourceKind = Exclude<InputTableSourceFilter, 'all'> | 'file' | 'draft';
 
@@ -1214,7 +1215,7 @@ function TaskEditor({
   const [workflow, setWorkflow] = useState<DataTaskWorkflow | null>(null);
   const [savedWorkflowSignature, setSavedWorkflowSignature] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [activeInspectorTab, setActiveInspectorTab] = useState<'config' | 'logs'>('config');
+  const [activeInspectorTab, setActiveInspectorTab] = useState<WorkflowInspectorTab>('config');
   const [saving, setSaving] = useState(false);
   const [renamingTask, setRenamingTask] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -1223,6 +1224,7 @@ function TaskEditor({
   const [dslError, setDslError] = useState<string | null>(null);
   const [taskTitle, setTaskTitle] = useState(task.name);
   const [isEditingTaskTitle, setIsEditingTaskTitle] = useState(false);
+  const [nodeDataRefreshVersion, setNodeDataRefreshVersion] = useState(0);
   const [inputTableChoices, setInputTableChoices] = useState<DataDataset[]>([]);
   const [inputTableChoicesLoading, setInputTableChoicesLoading] = useState(false);
   const [outputTableChoices, setOutputTableChoices] = useState<DataOutputTable[]>(outputTables);
@@ -1508,12 +1510,6 @@ function TaskEditor({
     );
   }, []);
 
-  const configureSelectedNode = useCallback(() => {
-    if (!selectedNode) return;
-    setSelectedNodeId(selectedNode.id);
-    setActiveInspectorTab('config');
-  }, [selectedNode]);
-
   const duplicateSelectedNode = useCallback(() => {
     if (!selectedNode) return;
     const now = Date.now();
@@ -1616,6 +1612,34 @@ function TaskEditor({
       outputMode: isWorkflowDirty ? 'temporary' : 'persisted',
     });
   }, [isWorkflowDirty, onRun, task, workflowSaveInput]);
+
+  const applyAndRunOperatorDsl = useCallback(
+    async (nodeId: string, config: Record<string, unknown>) => {
+      if (!workflow) return;
+      const now = Date.now();
+      const nextWorkflow: DataTaskWorkflow = {
+        ...workflow,
+        nodes: workflow.nodes.map((node) =>
+          node.id === nodeId
+            ? {
+                ...node,
+                config,
+                updatedAt: now,
+              }
+            : node
+        ),
+      };
+      setWorkflow(nextWorkflow);
+      setSelectedNodeId(nodeId);
+      setActiveInspectorTab('data');
+      await onRun(task, {
+        workflow: toWorkflowSaveInput(nextWorkflow),
+        outputMode: 'temporary',
+      });
+      setNodeDataRefreshVersion((current) => current + 1);
+    },
+    [onRun, task, workflow]
+  );
 
   const openImportDsl = useCallback(() => {
     setLocalError(null);
@@ -1811,7 +1835,6 @@ function TaskEditor({
               edges={edges}
               selectedNodeId={selectedNode?.id ?? null}
               onSelectNode={setSelectedNodeId}
-              onConfigureNode={configureSelectedNode}
               onDuplicateNode={duplicateSelectedNode}
               onToggleNodeDisabled={toggleSelectedNodeDisabled}
               onDeleteNode={deleteSelectedNode}
@@ -1823,12 +1846,17 @@ function TaskEditor({
             />
             <WorkflowInspector
               node={selectedNode}
+              workflowNodes={nodes}
+              workflowEdges={edges}
               inputTables={inputTableChoices}
               isInputTablesLoading={inputTableChoicesLoading}
               outputTables={outputTableChoices}
               activeTab={activeInspectorTab}
               onActiveTabChange={setActiveInspectorTab}
               onNodeChange={updateSelectedNode}
+              onApplyOperatorDsl={applyAndRunOperatorDsl}
+              isRunningOperatorDsl={actionId === task.id}
+              nodeDataRefreshVersion={nodeDataRefreshVersion}
             />
           </div>
         </div>
@@ -1993,7 +2021,6 @@ function WorkflowCanvas({
   edges,
   selectedNodeId,
   onSelectNode,
-  onConfigureNode,
   onDuplicateNode,
   onToggleNodeDisabled,
   onDeleteNode,
@@ -2007,7 +2034,6 @@ function WorkflowCanvas({
   edges: DataWorkflowEdge[];
   selectedNodeId: string | null;
   onSelectNode: (id: string) => void;
-  onConfigureNode: () => void;
   onDuplicateNode: () => void;
   onToggleNodeDisabled: () => void;
   onDeleteNode: () => void;
@@ -2029,7 +2055,6 @@ function WorkflowCanvas({
         edges={edges}
         selectedNodeId={selectedNodeId}
         onSelectNode={onSelectNode}
-        onConfigureNode={onConfigureNode}
         onDuplicateNode={onDuplicateNode}
         onToggleNodeDisabled={onToggleNodeDisabled}
         onDeleteNode={onDeleteNode}
@@ -2048,7 +2073,6 @@ function WorkflowCanvasContent({
   edges,
   selectedNodeId,
   onSelectNode,
-  onConfigureNode,
   onDuplicateNode,
   onToggleNodeDisabled,
   onDeleteNode,
@@ -2062,7 +2086,6 @@ function WorkflowCanvasContent({
   edges: DataWorkflowEdge[];
   selectedNodeId: string | null;
   onSelectNode: (id: string) => void;
-  onConfigureNode: () => void;
   onDuplicateNode: () => void;
   onToggleNodeDisabled: () => void;
   onDeleteNode: () => void;
@@ -2341,12 +2364,6 @@ function WorkflowCanvasContent({
               <div className="hidden h-5 w-px flex-shrink-0 bg-border-muted md:block" />
               <div className="flex min-w-0 items-center gap-2 overflow-hidden">
                 <DataToolbarButton
-                  icon={<PencilLine className="h-3.5 w-3.5" />}
-                  label={t('data.workflow.configureSelected')}
-                  disabled={!selectedNode}
-                  onClick={onConfigureNode}
-                />
-                <DataToolbarButton
                   icon={<Copy className="h-3.5 w-3.5" />}
                   label={t('data.workflow.copySelected')}
                   disabled={!selectedNode}
@@ -2537,35 +2554,59 @@ function WorkflowAlignmentGuidesOverlay({ guides }: { guides: WorkflowAlignmentG
 
 function WorkflowInspector({
   node,
+  workflowNodes,
+  workflowEdges,
   inputTables,
   isInputTablesLoading,
   outputTables,
   activeTab,
   onActiveTabChange,
   onNodeChange,
+  onApplyOperatorDsl,
+  isRunningOperatorDsl,
+  nodeDataRefreshVersion,
 }: {
   node: DataWorkflowNode | null;
+  workflowNodes: DataWorkflowNode[];
+  workflowEdges: DataWorkflowEdge[];
   inputTables: DataDataset[];
   isInputTablesLoading: boolean;
   outputTables: DataOutputTable[];
-  activeTab: 'config' | 'logs';
-  onActiveTabChange: (tab: 'config' | 'logs') => void;
+  activeTab: WorkflowInspectorTab;
+  onActiveTabChange: (tab: WorkflowInspectorTab) => void;
   onNodeChange: (updater: (node: DataWorkflowNode) => DataWorkflowNode) => void;
+  onApplyOperatorDsl: (nodeId: string, config: Record<string, unknown>) => Promise<void>;
+  isRunningOperatorDsl: boolean;
+  nodeDataRefreshVersion: number;
 }) {
   const { t } = useTranslation();
   const [operatorDsl, setOperatorDsl] = useState('');
+  const [operatorDslBeforeEdit, setOperatorDslBeforeEdit] = useState('');
+  const [isEditingOperatorDsl, setIsEditingOperatorDsl] = useState(false);
   const [operatorDslDiagnostics, setOperatorDslDiagnostics] = useState<PrepDiagnostic[]>([]);
   const [operatorDslStatus, setOperatorDslStatus] = useState<string | null>(null);
   const [operatorDslDiagnosticsOpen, setOperatorDslDiagnosticsOpen] = useState(true);
+  const [operatorFieldCompletions, setOperatorFieldCompletions] = useState<string[]>([]);
   const [isEditingNodeTitle, setIsEditingNodeTitle] = useState(false);
+  const [nodePreviewData, setNodePreviewData] = useState<DataInputTablePreview | null>(null);
+  const [nodePreviewLoading, setNodePreviewLoading] = useState(false);
+  const [nodePreviewError, setNodePreviewError] = useState<string | null>(null);
+  const [nodePreviewPage, setNodePreviewPage] = useState(1);
   const operatorDslNodeKeyRef = useRef('');
   const nodeTitleInputRef = useRef<HTMLInputElement | null>(null);
+  const nodePreviewRequestSeq = useRef(0);
+  const operatorFieldsRequestSeq = useRef(0);
   const usesOperatorDsl = Boolean(node && node.type !== 'input_source' && node.type !== 'output');
+  const operatorFieldSourceNode = useMemo(
+    () => getWorkflowFieldSourceNode(node, workflowNodes, workflowEdges),
+    [node, workflowEdges, workflowNodes]
+  );
   const editorCompletionLabels = useMemo(
     () => ({
       keywords: t('data.workflow.completionGroups.keywords'),
       snippets: t('data.workflow.completionGroups.snippets'),
       types: t('data.workflow.completionGroups.types'),
+      fields: t('data.workflow.completionGroups.fields'),
     }),
     [t]
   );
@@ -2580,16 +2621,50 @@ function WorkflowInspector({
     operatorDslNodeKeyRef.current = nextNodeKey;
     if (!node || !usesOperatorDsl) {
       setOperatorDsl('');
+      setOperatorDslBeforeEdit('');
+      setIsEditingOperatorDsl(false);
+      setOperatorFieldCompletions([]);
       setOperatorDslDiagnostics([]);
       setOperatorDslStatus(null);
       setOperatorDslDiagnosticsOpen(true);
       return;
     }
-    setOperatorDsl(exportPrepOperatorDsl(node));
+    const nextDsl = exportPrepOperatorDsl(node);
+    setOperatorDsl(nextDsl);
+    setOperatorDslBeforeEdit(nextDsl);
+    setIsEditingOperatorDsl(false);
+    setOperatorFieldCompletions([]);
     setOperatorDslDiagnostics([]);
     setOperatorDslStatus(null);
     setOperatorDslDiagnosticsOpen(true);
   }, [node, node?.id, node?.type, usesOperatorDsl]);
+
+  useEffect(() => {
+    const requestSeq = operatorFieldsRequestSeq.current + 1;
+    operatorFieldsRequestSeq.current = requestSeq;
+    setOperatorFieldCompletions([]);
+
+    if (!node || !usesOperatorDsl || !operatorFieldSourceNode) return;
+    if (!window.electronAPI?.data?.getWorkflowNodeColumns) return;
+
+    void window.electronAPI.data
+      .getWorkflowNodeColumns({
+        taskId: operatorFieldSourceNode.taskId,
+        nodeId: operatorFieldSourceNode.id,
+        nodeType: operatorFieldSourceNode.type,
+        nodeConfig: operatorFieldSourceNode.config,
+      })
+      .then((columns) => {
+        if (requestSeq === operatorFieldsRequestSeq.current) {
+          setOperatorFieldCompletions(columns);
+        }
+      })
+      .catch(() => {
+        if (requestSeq === operatorFieldsRequestSeq.current) {
+          setOperatorFieldCompletions([]);
+        }
+      });
+  }, [node, operatorFieldSourceNode, usesOperatorDsl]);
 
   useEffect(() => {
     if (!operatorDslStatus) return undefined;
@@ -2599,7 +2674,48 @@ function WorkflowInspector({
 
   useEffect(() => {
     setIsEditingNodeTitle(false);
+    setNodePreviewPage(1);
+    setNodePreviewData(null);
+    setNodePreviewError(null);
   }, [node?.id]);
+
+  useEffect(() => {
+    if (activeTab !== 'data' || !node) return;
+    if (!window.electronAPI?.data?.previewWorkflowNode) {
+      setNodePreviewData(null);
+      setNodePreviewError(t('data.workflow.nodeDataUnavailable'));
+      return;
+    }
+    const requestSeq = nodePreviewRequestSeq.current + 1;
+    nodePreviewRequestSeq.current = requestSeq;
+    setNodePreviewLoading(true);
+    setNodePreviewError(null);
+    void window.electronAPI.data
+      .previewWorkflowNode({
+        taskId: node.taskId,
+        nodeId: node.id,
+        nodeType: node.type,
+        nodeConfig: node.config,
+        limit: INPUT_TABLE_PREVIEW_PAGE_SIZE,
+        offset: (nodePreviewPage - 1) * INPUT_TABLE_PREVIEW_PAGE_SIZE,
+      })
+      .then((preview) => {
+        if (requestSeq === nodePreviewRequestSeq.current) {
+          setNodePreviewData(preview);
+        }
+      })
+      .catch((err) => {
+        if (requestSeq === nodePreviewRequestSeq.current) {
+          setNodePreviewData(null);
+          setNodePreviewError(err instanceof Error ? err.message : String(err));
+        }
+      })
+      .finally(() => {
+        if (requestSeq === nodePreviewRequestSeq.current) {
+          setNodePreviewLoading(false);
+        }
+      });
+  }, [activeTab, node, nodeDataRefreshVersion, nodePreviewPage, t]);
 
   useEffect(() => {
     if (!isEditingNodeTitle) return;
@@ -2613,8 +2729,28 @@ function WorkflowInspector({
     setOperatorDslDiagnosticsOpen(true);
   }, []);
 
-  const handleFormatOperatorDsl = useCallback(() => {
+  const handleStartOperatorDslEdit = useCallback(() => {
     if (!node || !usesOperatorDsl) return;
+    setOperatorDslBeforeEdit(operatorDsl);
+    setOperatorDslStatus(null);
+    setOperatorDslDiagnostics([]);
+    setOperatorDslDiagnosticsOpen(true);
+    setIsEditingOperatorDsl(true);
+    onActiveTabChange('config');
+  }, [node, onActiveTabChange, operatorDsl, usesOperatorDsl]);
+
+  const handleCancelOperatorDslEdit = useCallback(() => {
+    if (!node || !usesOperatorDsl) return;
+    const nextDsl = operatorDslBeforeEdit || exportPrepOperatorDsl(node);
+    setOperatorDsl(nextDsl);
+    setOperatorDslStatus(null);
+    setOperatorDslDiagnostics([]);
+    setOperatorDslDiagnosticsOpen(true);
+    setIsEditingOperatorDsl(false);
+  }, [node, operatorDslBeforeEdit, usesOperatorDsl]);
+
+  const handleFormatOperatorDsl = useCallback(() => {
+    if (!node || !usesOperatorDsl || !isEditingOperatorDsl) return;
     const result = parsePrepOperatorDsl(operatorDsl, node.type);
     setOperatorDslDiagnostics(result.diagnostics);
     setOperatorDslDiagnosticsOpen(true);
@@ -2625,10 +2761,10 @@ function WorkflowInspector({
     }
     setOperatorDsl(exportPrepOperatorDsl({ id: node.id, type: node.type, config: result.operator.config }));
     setOperatorDslStatus(null);
-  }, [node, operatorDsl, usesOperatorDsl]);
+  }, [isEditingOperatorDsl, node, operatorDsl, usesOperatorDsl]);
 
-  const handleApplyOperatorDsl = useCallback(() => {
-    if (!node || !usesOperatorDsl) return;
+  const handleApplyOperatorDsl = useCallback(async () => {
+    if (!node || !usesOperatorDsl || !isEditingOperatorDsl || isRunningOperatorDsl) return;
     const result = parsePrepOperatorDsl(operatorDsl, node.type);
     setOperatorDslDiagnostics(result.diagnostics);
     setOperatorDslDiagnosticsOpen(true);
@@ -2637,16 +2773,28 @@ function WorkflowInspector({
       setOperatorDslStatus(null);
       return;
     }
-    onNodeChange((current) => ({
-      ...current,
-      config: result.operator?.config ?? current.config,
-      updatedAt: Date.now(),
-    }));
-    setOperatorDsl(result.operator.config.dsl as string);
+    const nextDsl = result.operator.config.dsl as string;
+    setOperatorDsl(nextDsl);
+    setOperatorDslBeforeEdit(nextDsl);
     setOperatorDslStatus(t('data.workflow.operatorDslApplied'));
     setOperatorDslDiagnostics([]);
     setOperatorDslDiagnosticsOpen(true);
-  }, [node, onNodeChange, operatorDsl, t, usesOperatorDsl]);
+    setIsEditingOperatorDsl(false);
+    setNodePreviewPage(1);
+    setNodePreviewData(null);
+    setNodePreviewError(null);
+    onActiveTabChange('data');
+    await onApplyOperatorDsl(node.id, result.operator.config);
+  }, [
+    isEditingOperatorDsl,
+    isRunningOperatorDsl,
+    node,
+    onActiveTabChange,
+    onApplyOperatorDsl,
+    operatorDsl,
+    t,
+    usesOperatorDsl,
+  ]);
 
   const handleNodeTitleChange = useCallback(
     (value: string) => {
@@ -2730,6 +2878,16 @@ function WorkflowInspector({
               {t('data.workflow.config')}
             </button>
             <button
+              onClick={() => onActiveTabChange('data')}
+              className={`h-7 rounded-md px-3 ${
+                activeTab === 'data'
+                  ? 'bg-background text-accent shadow-soft'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {t('data.workflow.data')}
+            </button>
+            <button
               onClick={() => onActiveTabChange('logs')}
               className={`h-7 rounded-md px-3 ${
                 activeTab === 'logs'
@@ -2749,33 +2907,64 @@ function WorkflowInspector({
           <div className="h-full min-h-0 rounded-lg border border-border-muted bg-background/70 p-2.5 text-xs text-text-muted">
             {t('data.workflow.noLogs')}
           </div>
+        ) : activeTab === 'data' ? (
+          <WorkflowNodeDataPreview
+            preview={nodePreviewData}
+            isLoading={nodePreviewLoading}
+            error={nodePreviewError}
+            currentPage={nodePreviewPage}
+            onPageChange={setNodePreviewPage}
+          />
         ) : usesOperatorDsl ? (
           <div className="grid h-full min-h-0 gap-2.5 lg:grid-cols-[minmax(0,1fr)_17rem]">
             <div className="flex min-h-0 min-w-0 flex-col rounded-xl border border-border-muted bg-background/95 p-2 shadow-card">
-              <div className="mb-2 grid min-h-8 grid-cols-[1fr_auto_auto] items-center gap-2">
+              <div className="mb-2 flex min-h-8 items-center gap-2">
                 <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
                   {t('data.workflow.dslEditor')}
                 </div>
                 {operatorDslStatus && (
-                  <div className="flex h-8 min-w-0 items-center gap-1.5 rounded-lg border border-success/20 bg-success/5 px-2 text-[11px] text-success">
+                  <div className="ml-auto flex h-8 min-w-0 items-center gap-1.5 rounded-lg border border-success/20 bg-success/5 px-2 text-[11px] text-success">
                     <CheckCircle2 className="h-3 w-3 flex-shrink-0" />
                     <span className="truncate">{operatorDslStatus}</span>
                   </div>
                 )}
-                <button
-                  onClick={handleFormatOperatorDsl}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/90 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
-                >
-                  <Code2 className="h-3.5 w-3.5" />
-                  {t('data.workflow.formatDsl')}
-                </button>
-                <button
-                  onClick={handleApplyOperatorDsl}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover"
-                >
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  {t('data.workflow.applyOperatorDsl')}
-                </button>
+                <div className={`${operatorDslStatus ? '' : 'ml-auto'} flex items-center gap-2`}>
+                  {isEditingOperatorDsl ? (
+                    <>
+                      <button
+                        onClick={handleFormatOperatorDsl}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/90 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+                      >
+                        <Code2 className="h-3.5 w-3.5" />
+                        {t('data.workflow.formatDsl')}
+                      </button>
+                      <button
+                        onClick={handleCancelOperatorDslEdit}
+                        disabled={isRunningOperatorDsl}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/90 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        {t('common.cancel')}
+                      </button>
+                      <button
+                        onClick={() => void handleApplyOperatorDsl()}
+                        disabled={isRunningOperatorDsl}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-55"
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        {t('data.workflow.applyOperatorDsl')}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={handleStartOperatorDslEdit}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/90 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+                    >
+                      <PencilLine className="h-3.5 w-3.5" />
+                      {t('data.workflow.configureSelected')}
+                    </button>
+                  )}
+                </div>
               </div>
               <PrepDslEditor
                 value={operatorDsl}
@@ -2785,6 +2974,8 @@ function WorkflowInspector({
                 formatDiagnostic={formatEditorDiagnostic}
                 onChange={handleOperatorDslChange}
                 onDiagnosticsChange={setOperatorDslDiagnostics}
+                fieldCompletions={operatorFieldCompletions}
+                editable={isEditingOperatorDsl}
                 height={182}
               />
             </div>
@@ -2802,7 +2993,7 @@ function WorkflowInspector({
             />
           </div>
         ) : (
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,1.35fr)]">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
             <div className="grid content-start gap-3 sm:grid-cols-2">
               {node.type === 'input_source' ? (
                 <WorkflowInputSourceConfig
@@ -2829,15 +3020,131 @@ function WorkflowInspector({
               rows={summary.primary}
               emptyText={t('data.workflow.noConfig')}
             />
-            <WorkflowSummaryPanel
-              title={t('data.workflow.details')}
-              rows={summary.details}
-              emptyText={t('data.workflow.noConfig')}
-            />
           </div>
         )}
       </div>
     </aside>
+  );
+}
+
+function WorkflowNodeDataPreview({
+  preview,
+  isLoading,
+  error,
+  currentPage,
+  onPageChange,
+}: {
+  preview: DataInputTablePreview | null;
+  isLoading: boolean;
+  error: string | null;
+  currentPage: number;
+  onPageChange: (page: number) => void;
+}) {
+  const { t } = useTranslation();
+  const columns = preview?.columns ?? [];
+  const rows = preview?.rows ?? [];
+  const totalRows = preview?.totalRows ?? 0;
+  const pageSize = preview?.limit ?? INPUT_TABLE_PREVIEW_PAGE_SIZE;
+  const pageCount = Math.max(1, Math.ceil(totalRows / pageSize));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
+  const pageNumbers = getVisiblePageNumbers(safeCurrentPage, pageCount);
+
+  if (isLoading) {
+    return (
+      <div className="flex h-full min-h-0 items-center justify-center rounded-lg border border-border-muted bg-background/70">
+        <LoadingState label={t('data.workflow.nodeDataLoading')} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-full min-h-0 items-center justify-center rounded-lg border border-error/15 bg-error/5 px-4 text-center text-xs font-medium text-error">
+        {error}
+      </div>
+    );
+  }
+
+  if (!preview || columns.length === 0 || rows.length === 0) {
+    return (
+      <div className="flex h-full min-h-0 items-center justify-center rounded-lg border border-border-muted bg-background/70">
+        <EmptyState label={t('data.workflow.nodeDataEmpty')} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-background/95">
+      <div className="min-h-0 flex-1 overflow-auto">
+        <table className="min-w-full border-collapse text-left text-xs">
+          <thead className="sticky top-0 z-10 bg-background">
+            <tr className="h-9 border-b border-border-muted text-text-muted">
+              {columns.map((column) => (
+                <th key={column} className="max-w-[12rem] whitespace-nowrap px-3 font-medium">
+                  <span className="block truncate" title={column}>
+                    {column}
+                  </span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, rowIndex) => (
+              <tr
+                key={rowIndex}
+                className="h-9 border-b border-border-muted/80 last:border-b-0 hover:bg-surface-hover/35"
+              >
+                {columns.map((column) => (
+                  <td key={column} className="max-w-[12rem] whitespace-nowrap px-3 text-text-secondary">
+                    <span className="block truncate" title={formatPreviewCell(row[column])}>
+                      {formatPreviewCell(row[column])}
+                    </span>
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex h-11 flex-shrink-0 items-center justify-between gap-3 border-t border-border-muted px-3 text-xs font-medium text-text-secondary">
+        <span>{t('data.workflow.nodeDataTotal', { count: totalRows })}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="mr-2 hidden text-text-muted sm:inline">
+            {t('data.workflow.nodeDataPageSize', { count: pageSize })}
+          </span>
+          <button
+            type="button"
+            onClick={() => onPageChange(safeCurrentPage - 1)}
+            disabled={safeCurrentPage <= 1}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          {pageNumbers.map((pageNumber) => (
+            <button
+              key={pageNumber}
+              type="button"
+              onClick={() => onPageChange(pageNumber)}
+              className={`inline-flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
+                pageNumber === safeCurrentPage
+                  ? 'bg-accent text-white shadow-soft'
+                  : 'border border-border-muted bg-background/94 text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
+              }`}
+            >
+              {pageNumber}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => onPageChange(safeCurrentPage + 1)}
+            disabled={safeCurrentPage >= pageCount}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -3263,6 +3570,22 @@ function getOperatorCatalog(type: DataWorkflowOperatorType) {
   return OPERATOR_CATALOG.find((operator) => operator.type === type) ?? OPERATOR_CATALOG[0];
 }
 
+function getWorkflowFieldSourceNode(
+  node: DataWorkflowNode | null,
+  nodes: DataWorkflowNode[],
+  edges: DataWorkflowEdge[]
+): DataWorkflowNode | null {
+  if (!node) return null;
+  const preferredHandle = node.type === 'join' ? 'left' : 'input';
+  const edge =
+    edges.find(
+      (item) =>
+        item.targetNodeId === node.id && (item.targetHandle ?? 'input') === preferredHandle
+    ) ?? edges.find((item) => item.targetNodeId === node.id);
+  if (!edge) return null;
+  return nodes.find((item) => item.id === edge.sourceNodeId) ?? null;
+}
+
 function isWorkflowOperatorType(value: string): value is DataWorkflowOperatorType {
   return OPERATOR_CATALOG.some((operator) => operator.type === value);
 }
@@ -3510,7 +3833,7 @@ function getWorkflowConfigSummary(
         stringValue(config.inputTableName) || stringValue(config.name) || stringValue(config.datasetId);
       summary = {
         primary: [summaryRow(t, 'inputTable', inputTableName, true)],
-        details: [summaryRow(t, 'dataset', stringValue(config.datasetId), true)],
+        details: [],
       };
       break;
     }
@@ -3623,13 +3946,7 @@ function getWorkflowConfigSummary(
           ),
           summaryRow(t, 'outputTable', outputDisplayName, true),
         ],
-        details: [
-          summaryRow(t, 'mode', translateWorkflowValue(t, 'outputModes', stringValue(config.mode, 'replace'))),
-          summaryRow(t, 'table', outputDisplayName),
-          summaryRow(t, 'dataset', stringValue(config.dataset)),
-          summaryRow(t, 'file', stringValue(config.filePath), true),
-          summaryRow(t, 'format', stringValue(config.format)),
-        ],
+        details: [],
       };
       break;
     }

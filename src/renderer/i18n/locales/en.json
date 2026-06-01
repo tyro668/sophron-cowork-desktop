@@ -287,8 +287,14 @@
       "layout": "Layout",
       "grid": "Grid",
       "config": "Config",
+      "data": "Data",
       "logs": "Logs",
       "noLogs": "No run logs yet",
+      "nodeDataLoading": "Loading cached step data...",
+      "nodeDataEmpty": "No cached data yet. Run the task first.",
+      "nodeDataUnavailable": "Cached step data is not available in this version.",
+      "nodeDataTotal": "{{count}} rows",
+      "nodeDataPageSize": "{{count}} rows/page",
       "input": "Input",
       "output": "Output",
       "outputStrategy": "Output strategy",
@@ -368,7 +374,8 @@
       "completionGroups": {
         "keywords": "Keywords",
         "snippets": "Snippets",
-        "types": "Types"
+        "types": "Types",
+        "fields": "Fields"
       },
       "operators": {
         "input_source": "Input",

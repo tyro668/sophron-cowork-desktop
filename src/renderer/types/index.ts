@@ -346,6 +346,15 @@ export interface DataPreviewDatasetInput {
   offset?: number;
 }
 
+export interface DataPreviewWorkflowNodeInput {
+  taskId: string;
+  nodeId: string;
+  nodeType: DataWorkflowOperatorType;
+  nodeConfig?: Record<string, unknown>;
+  limit?: number;
+  offset?: number;
+}
+
 export interface DataInputTablePreview {
   columns: string[];
   rows: Array<Record<string, string | number | boolean | null>>;

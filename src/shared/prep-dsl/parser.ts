@@ -42,6 +42,12 @@ interface Clause {
   value: string;
 }
 
+const FIELD_REF_TOKEN_PATTERN = '(?:\\[`(?:[^`\\\\]|\\\\.)*`\\]|\\[[\\p{L}_][\\p{L}\\p{N}_]*\\])';
+const FIELD_REF_PATTERN = new RegExp(
+  `^(${FIELD_REF_TOKEN_PATTERN})(?:\\.(${FIELD_REF_TOKEN_PATTERN}))?`,
+  'u'
+);
+
 export function parsePrepDsl(input: string): PrepParseResult {
   const diagnostics = collectInitialDiagnostics(input);
 
@@ -549,7 +555,7 @@ function parseFieldRefs(value: string): PrepFieldRef[] {
 }
 
 function parseFieldRef(value: string): PrepFieldRef | null {
-  const match = /^(\[`(?:[^`\\]|\\.)*`\]|\[[A-Za-z_][A-Za-z0-9_]*\])(?:\.(\[`(?:[^`\\]|\\.)*`\]|\[[A-Za-z_][A-Za-z0-9_]*\]))?/.exec(value.trim());
+  const match = FIELD_REF_PATTERN.exec(value.trim());
   if (!match) return null;
   const sourceOrName = unwrapFieldName(match[1]);
   const field = match[2] ? unwrapFieldName(match[2]) : undefined;

@@ -42,7 +42,7 @@ export const Slash = createToken({ name: 'Slash', pattern: /\// });
 export const Percent = createToken({ name: 'Percent', pattern: /%/ });
 export const Star = createToken({ name: 'Star', pattern: /\*/ });
 export const BacktickName = createToken({ name: 'BacktickName', pattern: /`(?:[^`\\]|\\.)*`/ });
-export const Identifier = createToken({ name: 'Identifier', pattern: /[A-Za-z_][A-Za-z0-9_]*/ });
+export const Identifier = createToken({ name: 'Identifier', pattern: /[^\s#[\](),.|=!<>+\-/*%"]+/ });
 
 export const prepDslTokens = [
   WhiteSpace,

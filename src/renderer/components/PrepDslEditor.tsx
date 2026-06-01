@@ -23,7 +23,9 @@ interface PrepDslEditorProps {
     keywords: string;
     snippets: string;
     types: string;
+    fields: string;
   };
+  fieldCompletions?: string[];
   formatDiagnostic: (diagnostic: PrepDiagnostic) => string;
   onChange: (value: string) => void;
   onDiagnosticsChange: (diagnostics: PrepDiagnostic[]) => void;
@@ -40,7 +42,7 @@ const prepDslLanguage = StreamLanguage.define({
     if (stream.match(/\[`(?:[^`\\]|\\.)*`\](?:\.\[`(?:[^`\\]|\\.)*`\])?/)) {
       return 'variableName';
     }
-    if (stream.match(/\[[A-Za-z_][A-Za-z0-9_]*\](?:\.\[[A-Za-z_][A-Za-z0-9_]*\])?/)) {
+    if (stream.match(/\[[\p{L}_][\p{L}\p{N}_]*\](?:\.\[[\p{L}_][\p{L}\p{N}_]*\])?/u)) {
       return 'variableName';
     }
     if (stream.match(/-?(?:0|[1-9]\d*)(?:\.\d+)?(?:ms|s|m|h|d)?/)) return 'number';
@@ -136,6 +138,7 @@ export function PrepDslEditor({
   operatorType,
   placeholderText,
   completionLabels,
+  fieldCompletions = [],
   formatDiagnostic,
   onChange,
   onDiagnosticsChange,
@@ -145,6 +148,7 @@ export function PrepDslEditor({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const valueRef = useRef(value);
+  const fieldCompletionsRef = useRef(fieldCompletions);
   const onChangeRef = useRef(onChange);
   const onDiagnosticsChangeRef = useRef(onDiagnosticsChange);
   const formatDiagnosticRef = useRef(formatDiagnostic);
@@ -152,6 +156,10 @@ export function PrepDslEditor({
   useEffect(() => {
     valueRef.current = value;
   }, [value]);
+
+  useEffect(() => {
+    fieldCompletionsRef.current = fieldCompletions;
+  }, [fieldCompletions]);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -177,7 +185,15 @@ export function PrepDslEditor({
       keymap.of([...defaultKeymap, indentWithTab]),
       editable
         ? autocompletion({
-            override: [(context) => completePrepDsl(context, operatorType, completionLabels)],
+            override: [
+              (context) =>
+                completePrepDsl(
+                  context,
+                  operatorType,
+                  completionLabels,
+                  fieldCompletionsRef.current
+                ),
+            ],
           })
         : [],
       editable
@@ -230,8 +246,24 @@ export function PrepDslEditor({
 function completePrepDsl(
   context: CompletionContext,
   operatorType: DataWorkflowOperatorType,
-  completionLabels: PrepDslEditorProps['completionLabels']
+  completionLabels: PrepDslEditorProps['completionLabels'],
+  fieldCompletions: string[]
 ): CompletionResult | null {
+  const fieldRef = context.matchBefore(/\[[^\]\s,()]*/u);
+  if (fieldRef && fieldRef.text.startsWith('[')) {
+    const query = fieldRef.text.slice(1).replace(/^`/, '').toLocaleLowerCase();
+    const options = uniqueFieldCompletions(fieldCompletions)
+      .filter((field) => field.toLocaleLowerCase().includes(query))
+      .map((field) => completion(field, completionLabels.fields, formatFieldCompletion(field), 'variable'));
+    if (options.length > 0) {
+      return {
+        from: fieldRef.from,
+        options,
+        validFor: /^\[[^\]\s,()]*/u,
+      };
+    }
+  }
+
   const word = context.matchBefore(/[A-Za-z_]*/);
   if (!context.explicit && (!word || word.from === word.to)) return null;
   return {
@@ -313,6 +345,22 @@ function completion(
   type: Completion['type'] = 'keyword'
 ): Completion {
   return { label, detail, apply, type };
+}
+
+function uniqueFieldCompletions(fields: string[]): string[] {
+  return Array.from(
+    new Set(
+      fields
+        .map((field) => field.trim())
+        .filter((field) => field.length > 0)
+    )
+  );
+}
+
+function formatFieldCompletion(field: string): string {
+  return /^[\p{L}_][\p{L}\p{N}_]*$/u.test(field)
+    ? `[${field}]`
+    : `[\`${field.replace(/`/g, '\\`')}\`]`;
 }
 
 function toCodeMirrorDiagnostic(

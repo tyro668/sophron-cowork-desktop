@@ -37,6 +37,7 @@ import type {
   DataImportDatasetInput,
   DataPreviewDatasetInput,
   DataPreviewInputTableInput,
+  DataPreviewWorkflowNodeInput,
   DataRunTaskInput,
   DataTaskWorkflow,
   DataUpdateDatasetInput,
@@ -207,6 +208,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('data.previewInputTable', payload),
     previewDataset: (payload: DataPreviewDatasetInput): Promise<DataInputTablePreview> =>
       ipcRenderer.invoke('data.previewDataset', payload),
+    previewWorkflowNode: (
+      payload: DataPreviewWorkflowNodeInput
+    ): Promise<DataInputTablePreview> => ipcRenderer.invoke('data.previewWorkflowNode', payload),
+    getWorkflowNodeColumns: (payload: DataPreviewWorkflowNodeInput): Promise<string[]> =>
+      ipcRenderer.invoke('data.getWorkflowNodeColumns', payload),
     deleteTask: (id: string): Promise<{ success: boolean }> =>
       ipcRenderer.invoke('data.deleteTask', id),
     deleteDataset: (id: string): Promise<{ success: boolean }> =>
@@ -538,6 +544,10 @@ declare global {
           payload: DataPreviewInputTableInput
         ) => Promise<DataInputTablePreview>;
         previewDataset: (payload: DataPreviewDatasetInput) => Promise<DataInputTablePreview>;
+        previewWorkflowNode: (
+          payload: DataPreviewWorkflowNodeInput
+        ) => Promise<DataInputTablePreview>;
+        getWorkflowNodeColumns: (payload: DataPreviewWorkflowNodeInput) => Promise<string[]>;
         deleteTask: (id: string) => Promise<{ success: boolean }>;
         deleteDataset: (id: string) => Promise<{ success: boolean }>;
       };

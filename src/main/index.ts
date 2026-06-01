@@ -68,6 +68,7 @@ import type {
   DataImportDatasetInput,
   DataPreviewDatasetInput,
   DataPreviewInputTableInput,
+  DataPreviewWorkflowNodeInput,
   DataRunTaskInput,
   DataUpdateOutputTableInput,
   DataUpdateTaskInput,
@@ -1698,6 +1699,24 @@ ipcMain.handle('data.previewDataset', async (_event, payload: DataPreviewDataset
     return await requireDataTaskStore().previewDataset(payload);
   } catch (error) {
     logError('[Data] Error previewing stored input table:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('data.previewWorkflowNode', async (_event, payload: DataPreviewWorkflowNodeInput) => {
+  try {
+    return await requireDataTaskStore().previewWorkflowNode(payload);
+  } catch (error) {
+    logError('[Data] Error previewing workflow node cache:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('data.getWorkflowNodeColumns', async (_event, payload: DataPreviewWorkflowNodeInput) => {
+  try {
+    return await requireDataTaskStore().getWorkflowNodeColumns(payload);
+  } catch (error) {
+    logError('[Data] Error reading workflow node cache columns:', error);
     throw error;
   }
 });

@@ -869,6 +869,172 @@ describe('DuckDB data task store', () => {
     expect(formalPreview.totalRows).toBe(1);
   });
 
+  it('previews cached workflow node data after a task run', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const dbPath = path.join(tempRoot, 'workspace.duckdb');
+    const ordersPath = path.join(tempRoot, 'orders.csv');
+    fs.writeFileSync(
+      ordersPath,
+      'order_id,revenue\n1,20\n2,5\n3,30\n',
+      'utf8'
+    );
+
+    const store = createDataTaskStore(dbPath, {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+
+    const task = await store.createTask({ name: 'Preview cached node', sourcePath: ordersPath });
+    const parsed = parsePrepDsl(`
+      input source task as orders
+
+      from orders
+        | cast [revenue] as double on_error null
+        | filter [revenue] > 10
+        | output table "cached_node_output" mode replace
+    `);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const saved = await store.saveTaskWorkflow(task.id, {
+      nodes: compiled.nodes,
+      edges: compiled.edges,
+    });
+    const filterNode = saved.nodes.find((node) => node.type === 'filter');
+    expect(filterNode).toBeTruthy();
+
+    const beforeRun = await store.previewWorkflowNode({
+      taskId: task.id,
+      nodeId: filterNode!.id,
+      nodeType: filterNode!.type,
+      nodeConfig: filterNode!.config,
+    });
+    expect(beforeRun.totalRows).toBe(0);
+    await expect(
+      store.getWorkflowNodeColumns({
+        taskId: task.id,
+        nodeId: filterNode!.id,
+        nodeType: filterNode!.type,
+        nodeConfig: filterNode!.config,
+      })
+    ).resolves.toEqual([]);
+
+    await store.runTask(task.id);
+    await expect(
+      store.getWorkflowNodeColumns({
+        taskId: task.id,
+        nodeId: filterNode!.id,
+        nodeType: filterNode!.type,
+        nodeConfig: filterNode!.config,
+      })
+    ).resolves.toEqual(['order_id', 'revenue']);
+    const preview = await store.previewWorkflowNode({
+      taskId: task.id,
+      nodeId: filterNode!.id,
+      nodeType: filterNode!.type,
+      nodeConfig: filterNode!.config,
+      limit: 1,
+      offset: 1,
+    });
+
+    expect(preview.columns).toEqual(['order_id', 'revenue']);
+    expect(preview.totalRows).toBe(2);
+    expect(preview.limit).toBe(1);
+    expect(preview.offset).toBe(1);
+    expect(String(preview.rows[0]?.order_id)).toBe('3');
+  });
+
+  it('reads input table source columns for workflow field completions before a task run', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const dbPath = path.join(tempRoot, 'workspace.duckdb');
+    const ordersPath = path.join(tempRoot, 'input-orders.csv');
+    fs.writeFileSync(
+      ordersPath,
+      'order_id,revenue\n1,20\n2,5\n',
+      'utf8'
+    );
+
+    const store = createDataTaskStore(dbPath, {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+
+    const dataset = await store.importDataset({ filePath: ordersPath });
+    const task = await store.createTask({ name: 'Input source columns' });
+    const parsed = parsePrepDsl(`
+      input source dataset "${dataset.id}" as orders
+
+      from orders
+        | filter [revenue] > 10
+        | output table "input_source_columns_output" mode replace
+    `);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const saved = await store.saveTaskWorkflow(task.id, {
+      nodes: compiled.nodes,
+      edges: compiled.edges,
+    });
+    const inputNode = saved.nodes.find((node) => node.type === 'input_source');
+    expect(inputNode).toBeTruthy();
+
+    await expect(
+      store.getWorkflowNodeColumns({
+        taskId: task.id,
+        nodeId: inputNode!.id,
+        nodeType: inputNode!.type,
+        nodeConfig: inputNode!.config,
+      })
+    ).resolves.toEqual(['order_id', 'revenue']);
+  });
+
+  it('runs filter expressions with unicode field names and string literals', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const dbPath = path.join(tempRoot, 'workspace.duckdb');
+    const ordersPath = path.join(tempRoot, 'cn-orders.csv');
+    fs.writeFileSync(
+      ordersPath,
+      '订单ID,金额\nA1000001,10\nA1000002,20\n',
+      'utf8'
+    );
+
+    const store = createDataTaskStore(dbPath, {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+
+    const task = await store.createTask({ name: 'Chinese field filter', sourcePath: ordersPath });
+    const parsed = parsePrepDsl(`
+      input source task as orders
+
+      from orders
+        | filter [订单ID]="A1000001"
+        | output table "filtered_cn_orders" mode replace
+    `);
+    expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    expect(compiled.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    const saved = await store.saveTaskWorkflow(task.id, {
+      nodes: compiled.nodes,
+      edges: compiled.edges,
+    });
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    expect(completed.rowCount).toBe(1);
+
+    const filterNode = saved.nodes.find((node) => node.type === 'filter');
+    expect(filterNode).toBeTruthy();
+    const preview = await store.previewWorkflowNode({
+      taskId: task.id,
+      nodeId: filterNode!.id,
+      nodeType: filterNode!.type,
+      nodeConfig: filterNode!.config,
+    });
+    expect(preview.columns).toEqual(['订单ID', '金额']);
+    expect(preview.totalRows).toBe(1);
+    expect(preview.rows[0]?.['订单ID']).toBe('A1000001');
+  });
+
   it('executes saved workflows by walking backward from the output node', async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
     tempRoots.push(tempRoot);

@@ -287,8 +287,14 @@
       "layout": "布局",
       "grid": "网格",
       "config": "配置",
+      "data": "数据",
       "logs": "日志",
       "noLogs": "暂无运行日志",
+      "nodeDataLoading": "正在读取步骤缓存数据...",
+      "nodeDataEmpty": "暂无缓存数据，请先运行任务。",
+      "nodeDataUnavailable": "当前版本暂不支持读取步骤缓存数据。",
+      "nodeDataTotal": "共 {{count}} 行",
+      "nodeDataPageSize": "{{count}} 行/页",
       "input": "输入",
       "output": "输出",
       "outputStrategy": "输出策略",
@@ -368,7 +374,8 @@
       "completionGroups": {
         "keywords": "关键字",
         "snippets": "片段",
-        "types": "类型"
+        "types": "类型",
+        "fields": "字段"
       },
       "operators": {
         "input_source": "输入",

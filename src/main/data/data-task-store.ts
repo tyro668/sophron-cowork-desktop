@@ -22,6 +22,7 @@ import type {
   DataImportDatasetInput,
   DataPreviewDatasetInput,
   DataPreviewInputTableInput,
+  DataPreviewWorkflowNodeInput,
   DataRunTaskInput,
   DataTaskStatus,
   DataTaskStatusCounts,
@@ -945,6 +946,84 @@ export class DataTaskStore {
     };
   }
 
+  async previewWorkflowNode(input: DataPreviewWorkflowNodeInput): Promise<DataInputTablePreview> {
+    await this.ensureMetadataReady();
+    const task = await this.requireTask(input.taskId);
+    await this.ensureReady();
+    const limit = normalizePreviewLimit(input.limit);
+    const offset = normalizePreviewOffset(input.offset);
+    const nodeConfig = input.nodeConfig ?? {};
+    const tableName = await this.resolveWorkflowNodePreviewTable(task, {
+      id: input.nodeId,
+      taskId: task.id,
+      type: input.nodeType,
+      label: '',
+      x: 0,
+      y: 0,
+      config: nodeConfig,
+      createdAt: 0,
+      updatedAt: 0,
+    });
+
+    if (!tableName || !(await this.physicalTableExists(tableName))) {
+      return {
+        columns: [],
+        rows: [],
+        fileCount: 0,
+        limit,
+        offset,
+        totalRows: 0,
+      };
+    }
+
+    const quotedTableName = quoteIdentifier(tableName);
+    const countRows = await this.queryRows<{ count: number | string }>(
+      `SELECT count(*) AS count FROM ${quotedTableName}`
+    );
+    const rows = await this.queryRows<Record<string, unknown>>(
+      `SELECT * FROM ${quotedTableName} LIMIT ${limit} OFFSET ${offset}`
+    );
+    return {
+      columns: await this.getTableColumns(tableName),
+      rows: rows.map(normalizePreviewRow),
+      fileCount: 1,
+      limit,
+      offset,
+      totalRows: toNumber(countRows[0]?.count),
+    };
+  }
+
+  async getWorkflowNodeColumns(input: DataPreviewWorkflowNodeInput): Promise<string[]> {
+    await this.ensureMetadataReady();
+    const task = await this.requireTask(input.taskId);
+    await this.ensureReady();
+    const nodeConfig = input.nodeConfig ?? {};
+    const node: DataWorkflowNode = {
+      id: input.nodeId,
+      taskId: task.id,
+      type: input.nodeType,
+      label: '',
+      x: 0,
+      y: 0,
+      config: nodeConfig,
+      createdAt: 0,
+      updatedAt: 0,
+    };
+
+    const inputSourceColumns = await this.resolveInputSourceColumns(node, task.sourcePath);
+    if (inputSourceColumns) {
+      return inputSourceColumns;
+    }
+
+    const tableName = await this.resolveWorkflowNodePreviewTable(task, node);
+
+    if (!tableName || !(await this.physicalTableExists(tableName))) {
+      return [];
+    }
+
+    return this.getTableColumns(tableName);
+  }
+
   async deleteTask(id: string): Promise<boolean> {
     await this.ensureMetadataReady();
     const task = await this.getTask(id);
@@ -1663,6 +1742,73 @@ export class DataTaskStore {
       return { tableName: outputTable.tableName, outputDatasetId: outputTable.id };
     }
     return { tableName: getOutputTableName(node, fallback) };
+  }
+
+  private async resolveWorkflowNodePreviewTable(
+    task: DataCleaningTask,
+    node: DataWorkflowNode
+  ): Promise<string | null> {
+    if (node.config.disabled === true) {
+      return null;
+    }
+    if (node.type === 'input_source') {
+      return tableNameFromId('workflow_source', node.id);
+    }
+    if (node.type === 'output') {
+      const outputDatasetId =
+        stringConfigValue(node.config.outputDatasetId) || stringConfigValue(node.config.outputTableId);
+      if (outputDatasetId) {
+        const outputTable = await this.getOutputTable(outputDatasetId);
+        return outputTable?.tableName ?? null;
+      }
+      return stringConfigValue(node.config.table) || task.outputTable || tableNameFromId('clean_task', task.id);
+    }
+    return tableNameFromId(`workflow_${node.type}`, node.id);
+  }
+
+  private async resolveInputSourceColumns(
+    node: DataWorkflowNode,
+    taskSourcePath: string | null
+  ): Promise<string[] | null> {
+    if (node.type !== 'input_source' || node.config.disabled === true) {
+      return null;
+    }
+
+    const source = typeof node.config.source === 'string' ? node.config.source : 'task';
+    if (source === 'dataset') {
+      const datasetRef = String(node.config.datasetId ?? node.config.name ?? node.config.alias ?? '');
+      const dataset = await this.findDatasetByReference(datasetRef);
+      if (!dataset || !(await this.physicalTableExists(dataset.tableName))) {
+        return [];
+      }
+      return this.getTableColumns(dataset.tableName);
+    }
+
+    const cachedTableName = tableNameFromId('workflow_source', node.id);
+    if (await this.physicalTableExists(cachedTableName)) {
+      return this.getTableColumns(cachedTableName);
+    }
+
+    const filePath =
+      source === 'file' && typeof node.config.filePath === 'string'
+        ? normalizeSourcePath(node.config.filePath)
+        : taskSourcePath;
+    if (!filePath) {
+      return [];
+    }
+
+    const schemaTableName = tableNameFromId('workflow_schema', node.id);
+    await this.dropTableIfExists(schemaTableName);
+    try {
+      const relation = readRelationForPath(filePath, 'sourcePath');
+      await this.runSql(
+        `CREATE TEMP TABLE ${quoteIdentifier(schemaTableName)} AS SELECT * FROM ${relation} LIMIT 0`,
+        { sourcePath: filePath }
+      );
+      return this.getTableColumns(schemaTableName);
+    } finally {
+      await this.dropTableIfExists(schemaTableName).catch(() => undefined);
+    }
   }
 
   private async materializeInputSource(
@@ -2835,10 +2981,21 @@ function compileAsofJoinSql(
   `;
 }
 
+const SQL_FIELD_REF_TOKEN_PATTERN = '(?:\\[`(?:[^`\\\\]|\\\\.)*`\\]|\\[[\\p{L}_][\\p{L}\\p{N}_]*\\])';
+const SQL_SCALAR_TOKEN_PATTERN = new RegExp(
+  `"(?:[^"\\\\]|\\\\.)*"|(${SQL_FIELD_REF_TOKEN_PATTERN})(?:\\.(${SQL_FIELD_REF_TOKEN_PATTERN}))?`,
+  'gu'
+);
+
 function compileScalarExpression(expression: string): string {
   return expression.replace(
-    /(\[`(?:[^`\\]|\\.)*`\]|\[[A-Za-z_][A-Za-z0-9_]*\])(?:\.(\[`(?:[^`\\]|\\.)*`\]|\[[A-Za-z_][A-Za-z0-9_]*\]))?/g,
-    (_match, first: string, second: string | undefined) => quoteIdentifier(unwrapFieldToken(second ?? first))
+    SQL_SCALAR_TOKEN_PATTERN,
+    (match, first: string | undefined, second: string | undefined) => {
+      if (match.startsWith('"')) {
+        return literalToSql(unquoteDslString(match));
+      }
+      return quoteValueIdentifier(unwrapFieldToken(second ?? first ?? match));
+    }
   );
 }
 
@@ -2895,6 +3052,14 @@ function lastQualifiedPart(value: string): string {
 function unwrapFieldToken(token: string): string {
   const inner = token.slice(1, -1);
   return inner.startsWith('`') && inner.endsWith('`') ? inner.slice(1, -1) : inner;
+}
+
+function unquoteDslString(value: string): string {
+  try {
+    return JSON.parse(value) as string;
+  } catch {
+    return value.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+  }
 }
 
 function getRightPrefix(conflict: unknown): string {
@@ -3380,10 +3545,7 @@ function hasCellValue(value: string | number | boolean | null | undefined): bool
 }
 
 function quoteIdentifier(identifier: string): string {
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(identifier)) {
-    throw new Error(`Unsafe DuckDB identifier: ${identifier}`);
-  }
-  return `"${identifier}"`;
+  return quoteValueIdentifier(identifier);
 }
 
 function quoteValueIdentifier(identifier: string): string {

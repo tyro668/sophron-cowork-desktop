@@ -158,6 +158,14 @@ describe('prep DSL parser and workflow compiler', () => {
     expect(result.diagnostics.some((item) => item.code === 'invalidQualifiedField')).toBe(true);
   });
 
+  it('accepts unicode field names in single-operator expressions', () => {
+    const result = parsePrepOperatorDsl('filter [订单ID]="A1000001"', 'filter');
+
+    expect(result.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    expect(result.operator?.type).toBe('filter');
+    expect(result.operator?.config.condition).toBe('[订单ID]="A1000001"');
+  });
+
   it('exports single operators from saved DSL or structured config', () => {
     expect(
       exportPrepOperatorDsl({
