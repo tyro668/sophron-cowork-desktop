@@ -31,15 +31,15 @@ export function PairingGuideCard() {
   }
 
   return (
-    <div className="p-5 rounded-2xl border border-accent/30 bg-accent/5 relative">
+    <div className="p-4 rounded-lg border border-accent/30 bg-accent/5 relative">
       <button
         onClick={handleDismiss}
         className="absolute top-3 right-3 p-1 rounded-lg hover:bg-accent/10 text-text-secondary transition-colors"
       >
         <X className="w-4 h-4" />
       </button>
-      <h3 className="font-medium text-accent mb-4 flex items-center gap-2">
-        <Link2 className="w-5 h-5" />
+      <h3 className="font-medium text-accent mb-3 flex items-center gap-2">
+        <Link2 className="w-4 h-4" />
         {t('remote.pairingGuideTitle')}
       </h3>
       <ol className="space-y-2 text-sm text-text-secondary">

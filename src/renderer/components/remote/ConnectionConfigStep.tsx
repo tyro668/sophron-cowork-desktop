@@ -35,9 +35,9 @@ export function ConnectionConfigStep({
   const { t } = useTranslation();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
-        <h3 className="text-lg font-medium text-text-primary mb-1">
+        <h3 className="text-base font-medium text-text-primary mb-1">
           {t('remote.connectionTitle')}
         </h3>
         <p className="text-sm text-text-secondary">{t('remote.connectionDesc')}</p>
@@ -46,18 +46,18 @@ export function ConnectionConfigStep({
       {/* Long-connection mode — recommended */}
       <div
         onClick={() => onLongConnectionChange(true)}
-        className={`p-5 rounded-xl border-2 cursor-pointer transition-all ${
+        className={`p-4 rounded-lg border cursor-pointer transition-all ${
           useLongConnection
             ? 'border-success bg-success/5'
             : 'border-border hover:border-success/50'
         }`}
       >
-        <div className="flex items-start gap-4">
+        <div className="flex items-start gap-3">
           <div
             className={`p-2 rounded-lg ${useLongConnection ? 'bg-success/10' : 'bg-surface-active'}`}
           >
             <Zap
-              className={`w-6 h-6 ${useLongConnection ? 'text-success' : 'text-text-muted'}`}
+              className={`w-5 h-5 ${useLongConnection ? 'text-success' : 'text-text-muted'}`}
             />
           </div>
           <div className="flex-1">
@@ -95,16 +95,16 @@ export function ConnectionConfigStep({
       {/* Webhook mode */}
       <div
         onClick={() => onLongConnectionChange(false)}
-        className={`p-5 rounded-xl border-2 cursor-pointer transition-all ${
+        className={`p-4 rounded-lg border cursor-pointer transition-all ${
           !useLongConnection ? 'border-accent bg-accent/5' : 'border-border hover:border-accent/50'
         }`}
       >
-        <div className="flex items-start gap-4">
+        <div className="flex items-start gap-3">
           <div
             className={`p-2 rounded-lg ${!useLongConnection ? 'bg-accent/10' : 'bg-surface-active'}`}
           >
             <Link2
-              className={`w-6 h-6 ${!useLongConnection ? 'text-accent' : 'text-text-muted'}`}
+              className={`w-5 h-5 ${!useLongConnection ? 'text-accent' : 'text-text-muted'}`}
             />
           </div>
           <div className="flex-1">
@@ -122,7 +122,7 @@ export function ConnectionConfigStep({
 
         {/* Webhook URL and ngrok settings — shown only in webhook mode */}
         {!useLongConnection && (
-          <div className="mt-4 pt-4 border-t border-border/50 space-y-4">
+          <div className="mt-4 pt-4 border-t border-border/50 space-y-3">
             <div>
               <label className="block text-xs text-text-muted mb-1">
                 {t('remote.localWebhookUrl')}
@@ -144,7 +144,7 @@ export function ConnectionConfigStep({
             </div>
 
             {/* Built-in ngrok tunnel */}
-            <div className="p-4 rounded-lg bg-surface-hover">
+            <div className="p-3 rounded-lg bg-surface-hover">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm font-medium text-text-primary">
                   {t('remote.useBuiltInNgrok')}
@@ -208,7 +208,7 @@ export function ConnectionConfigStep({
       </div>
 
       {useLongConnection && (
-        <div className="p-4 rounded-xl bg-accent-muted border border-accent/20">
+        <div className="p-3 rounded-lg bg-accent-muted border border-accent/20">
           <p className="text-sm text-accent">{t('remote.longConnectionHint')}</p>
         </div>
       )}

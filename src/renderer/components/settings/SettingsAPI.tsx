@@ -141,7 +141,7 @@ export function SettingsAPI() {
       />
 
       {/* Provider Selection */}
-      <div className="space-y-3 py-5 border-b border-border-muted">
+      <div className="space-y-3 py-4 border-b border-border-muted">
         <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
           <Server className="w-4 h-4" />
           {t('api.provider')}
@@ -166,7 +166,7 @@ export function SettingsAPI() {
       </div>
 
       {/* API Key */}
-      <div className="space-y-3 py-5 border-b border-border-muted">
+      <div className="space-y-3 py-4 border-b border-border-muted">
         <label
           htmlFor="api-key-input"
           className="flex items-center gap-2 text-sm font-medium text-text-primary"
@@ -190,7 +190,7 @@ export function SettingsAPI() {
 
       {/* Custom Protocol */}
       {provider === 'custom' && (
-        <div className="space-y-3 py-5 border-b border-border-muted">
+        <div className="space-y-3 py-4 border-b border-border-muted">
           <label
             id="api-protocol-label"
             className="flex items-center gap-2 text-sm font-medium text-text-primary"
@@ -225,7 +225,7 @@ export function SettingsAPI() {
       )}
 
       {showsBaseUrl && (
-        <div className="space-y-3 py-5 border-b border-border-muted">
+        <div className="space-y-3 py-4 border-b border-border-muted">
           <div className="flex items-center justify-between gap-2">
             <label
               htmlFor="api-base-url-input"
@@ -275,7 +275,7 @@ export function SettingsAPI() {
       )}
 
       {/* Model Selection */}
-      <div className="space-y-3 py-5 border-b border-border-muted">
+      <div className="space-y-3 py-4 border-b border-border-muted">
         <div className="flex items-center justify-between">
           <label
             htmlFor="api-model-input"
@@ -403,7 +403,7 @@ export function SettingsAPI() {
       )}
 
       {/* Enable Thinking Mode */}
-      <div className="space-y-3 py-5 border-b border-border-muted">
+      <div className="space-y-3 py-4 border-b border-border-muted">
         <div className="flex items-start gap-2 text-xs text-text-muted">
           <input
             type="checkbox"
@@ -447,7 +447,7 @@ export function SettingsAPI() {
       />
 
       {/* Save Button */}
-      <div className="space-y-3 py-5 border-b border-border-muted">
+      <div className="space-y-3 py-4 border-b border-border-muted">
         <div className="grid grid-cols-1 gap-2">
           <button
             onClick={() => {

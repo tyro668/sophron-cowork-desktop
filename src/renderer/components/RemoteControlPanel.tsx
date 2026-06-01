@@ -255,16 +255,16 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="w-full space-y-4">
       {/* Notification banners */}
       {error && (
-        <div className="p-4 bg-error/10 border border-error/30 rounded-xl flex items-center gap-3">
+        <div className="p-3 bg-error/10 border border-error/30 rounded-lg flex items-center gap-3">
           <AlertTriangle className="w-5 h-5 text-error flex-shrink-0" />
           <span className="text-error">{error.key ? t(error.key) : error.text}</span>
         </div>
       )}
       {success && (
-        <div className="p-4 bg-success/10 border border-success/30 rounded-xl flex items-center gap-3">
+        <div className="p-3 bg-success/10 border border-success/30 rounded-lg flex items-center gap-3">
           <CheckCircle2 className="w-5 h-5 text-success flex-shrink-0" />
           <span className="text-success">{success.key ? t(success.key) : success.text}</span>
         </div>
@@ -296,7 +296,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
       />
 
       {/* Configuration content */}
-      <div className="p-6 rounded-[2rem] border border-border-subtle bg-background/60">
+      <div className="p-4 rounded-lg border border-border-subtle bg-background/60">
         {activeStep === 'feishu' && (
           <FeishuConfigStep
             feishuAppId={feishuAppId}
@@ -333,11 +333,11 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
         )}
 
         {/* Save button */}
-        <div className="flex justify-end mt-6 pt-6 border-t border-border">
+        <div className="flex justify-end mt-4 pt-4 border-t border-border">
           <button
             onClick={saveConfig}
             disabled={isSaving}
-            className="flex items-center gap-2 px-6 py-2.5 bg-accent hover:bg-accent/90 text-white rounded-xl font-medium transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
           >
             {isSaving ? (
               <Loader2 className="w-4 h-4 animate-spin" />

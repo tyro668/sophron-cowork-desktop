@@ -43,20 +43,20 @@ export function FeishuConfigStep({
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
-        <h3 className="text-lg font-medium text-text-primary mb-1">{t('remote.feishuTitle')}</h3>
+        <h3 className="text-base font-medium text-text-primary mb-1">{t('remote.feishuTitle')}</h3>
         <p className="text-sm text-text-secondary">{t('remote.feishuDesc')}</p>
       </div>
 
-      <div className="grid gap-4">
+      <div className="grid gap-3">
         <div>
           <label className="block text-sm font-medium text-text-secondary mb-2">App ID</label>
           <input
             type="text"
             value={feishuAppId}
             onChange={(e) => onAppIdChange(e.target.value)}
-            className="w-full px-4 py-3 bg-surface-hover border border-border rounded-xl text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all"
+            className="w-full px-3 py-2.5 bg-surface-hover border border-border rounded-lg text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all"
             placeholder="cli_xxxxxxxxxxxxxxxx"
           />
         </div>
@@ -67,7 +67,7 @@ export function FeishuConfigStep({
             type="password"
             value={feishuAppSecret}
             onChange={(e) => onAppSecretChange(e.target.value)}
-            className="w-full px-4 py-3 bg-surface-hover border border-border rounded-xl text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all"
+            className="w-full px-3 py-2.5 bg-surface-hover border border-border rounded-lg text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all"
             placeholder="••••••••••••••••"
           />
         </div>
@@ -81,7 +81,7 @@ export function FeishuConfigStep({
               <button
                 key={option.value}
                 onClick={() => onDmPolicyChange(option.value)}
-                className={`p-3 rounded-xl border-2 text-left transition-all ${
+                className={`p-3 rounded-lg border text-left transition-all ${
                   feishuDmPolicy === option.value
                     ? 'border-accent bg-accent/5'
                     : 'border-border hover:border-accent/50'

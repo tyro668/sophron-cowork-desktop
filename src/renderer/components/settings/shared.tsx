@@ -87,7 +87,7 @@ export function SettingsContentSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="space-y-3 py-5 border-b border-border-muted">
+    <section className="space-y-3 py-4 border-b border-border-muted">
       <div className="space-y-1">
         <h4 className="text-sm font-semibold text-text-primary">{title}</h4>
         {description && <p className="text-xs leading-5 text-text-muted">{description}</p>}

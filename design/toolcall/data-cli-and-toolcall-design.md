@@ -33,6 +33,8 @@
 - 将数据处理能力以 agent custom tools 方式注册给 LLM，必要时也可以作为 MCP server 暴露给外部 agent。
 - 支持 LLM 通过 tool_call 执行以下典型任务：
   - 查询有哪些输入表、输出表、数据任务。
+  - 基于用户选择或授权的本地文件/文件夹创建输入表。
+  - 创建输出表，供后续数据任务写入或复用。
   - 创建或修改数据任务。
   - 为输入算子选择输入表。
   - 修改非输入/输出算子的 DSL。
@@ -680,7 +682,7 @@ MVP 不新增一套孤立的工具调用通道，而是接入当前应用已经�
 
 - 不需要改造 Agent 主循环；agent runner 已经会把 MCP tools 和 extension custom tools 合并后交给 LLM。
 - 可以复用现有 tool trace、远程工具进度、权限确认和工具结果展示链路。
-- 数据工具可以通过 `promptPrefix` 给当前会话补充路由规则，让 LLM 在数据问题中优先使用 `data_*` 工具，而不是临时写脚本读取业务库。
+- 数据工具可以通过 `promptPrefix` 给当前会话补充路由规则，让 LLM 仅在固定/可复用数据处理流程中使用 `data_*` 工具；一次性探索分析不自动创建或运行数据任务。
 - 未来如果需要开放给外部 agent，再把同一组 `DataToolService` 包装成 MCP server。
 
 接入点：
@@ -811,23 +813,34 @@ interface DataConversationContext {
 - 当用户在数据任务编辑页或输入/输出表编辑页发起对话时，可以由 `DataConversationContext` 提供当前选中对象，工具允许传 `current: true` 使用当前对象。
 - 如果用户只给了自然语言表名，LLM 必须先调用 `data_list_input_tables` 或 `data_list_output_tables` 做候选解析，不能直接猜测表 ID。
 - 如果候选超过一个，工具返回 `AMBIGUOUS_DATA_RESOURCE`，由 LLM 追问用户或展示候选。
-- 对复杂数据处理，LLM 应优先构造数据任务 DSL 并调用 `data_run_task` 临时试算，而不是把整表数据拉到对话上下文里分析。
+- 对需要沉淀为固定/可复用流程的复杂数据处理，LLM 应构造数据任务 DSL 并调用 `data_run_task` 临时试算。对一次性探索分析，不应自动创建任务或运行工作流，应先询问用户是否要保存为可复用数据任务。
 
-#### 8.2.4 Prompt Prefix 与工具路由
+#### 8.2.4 Prompt Prefix、工具调用文档与工具路由
 
-`DataAgentRuntimeExtension` 需要追加一段短 prompt，让 LLM 知道什么时候调用数据工具：
+`DataAgentRuntimeExtension` 需要追加一段短 prompt，让 LLM 知道什么时候调用数据工具，以及如何正确创建输入表、输出表和数据任务。
+
+详细注入内容、动态上下文结构、工具调用配方和裁剪策略见：
 
 ```text
-When the user asks to inspect, clean, transform, join, aggregate, validate, or preview local data tables,
-prefer the data_* tools provided by the data module.
+design/toolcall/data-tool-context-injection-design.md
+```
 
-Before referencing a table by name, list matching input/output tables and use the returned IDs.
+最小注入语义如下：
+
+```text
+Use data_* workflow tools only when the user asks to create, manage, save, run, or modify a fixed reusable data-processing workflow.
+Do not automatically create a data task or run a workflow for one-off exploration, casual analysis, or simple questions.
+
+Before referencing a table by name in a fixed workflow, list matching input/output tables and use the returned IDs.
 Do not load entire tables into the chat. Use previews, schema, metadata, and temporary task runs.
-For exploratory transformations, run in temporary mode first. Persist workflow or output tables only when the user asks or confirms.
+For creating input tables, use data_create_input_table only with user-selected or explicitly authorized local files/folders.
+For creating reusable output targets, use data_create_output_table before binding output operators.
+For creating data tasks, use data_create_task, validate workflow DSL with dryRun, then save only after confirmation.
+Within a fixed workflow, run in temporary mode first. Persist workflow or output tables only when the user asks or confirms.
 For write, delete, persisted run, file import, or output overwrite operations, request permission through the normal tool permission flow.
 ```
 
-这段 prompt 只描述工具使用策略，不包含具体业务表内容。具体表、任务、字段都通过工具实时读取，避免 prompt 过大或过期。
+这段 prompt 只描述工具使用策略、核心调用顺序和当前数据上下文，不包含完整业务表内容。具体表、任务、字段都通过工具实时读取，避免 prompt 过大或过期。
 
 #### 8.2.5 权限、Trace 和远程协作
 
@@ -890,11 +903,12 @@ src/renderer/components/message/toolHelpers.tsx
 
 为了让智能会话能准确处理复杂数据，LLM 使用数据工具时必须遵守：
 
-1. 先发现，再处理：涉及表名、字段、任务名时，先通过 list/show/schema/preview 工具确认真实对象。
-2. 样本不是全量：预览数据只能用于理解结构和少量样例，统计、聚合、连接、去重必须通过数据任务执行引擎完成。
-3. 临时优先：用户在探索方案时，默认 `temporary` 运行；用户确认保存后，才写入正式任务和输出表。
-4. 不隐式覆盖：任何正式输出表覆盖、删除、替换物理表都要明确说明影响范围并请求确认。
-5. 结果可追溯：每次 tool_call 写配置或执行任务，都记录 actor、输入参数、任务 ID、输出表 ID、运行 ID 和时间。
+1. 固定流程才使用：只有用户表达创建/保存/运行/修改固定数据处理流程、输出表或数据任务时，才使用工作流写入和执行工具。
+2. 先发现，再处理：固定流程涉及表名、字段、任务名时，先通过 list/show/schema/preview 工具确认真实对象。
+3. 样本不是全量：预览数据只能用于理解结构和少量样例；固定流程中的统计、聚合、连接、去重交给数据任务执行引擎完成。
+4. 固定流程内临时优先：先 dry-run 或 `temporary` 运行；用户确认保存后，才写入正式任务和输出表。
+5. 不隐式覆盖：任何正式输出表覆盖、删除、替换物理表都要明确说明影响范围并请求确认。
+6. 结果可追溯：每次 tool_call 写配置或执行任务，都记录 actor、输入参数、任务 ID、输出表 ID、运行 ID 和时间。
 
 ### 8.3 工具命名
 
@@ -902,6 +916,8 @@ src/renderer/components/message/toolHelpers.tsx
 
 ```text
 data_list_input_tables
+data_create_input_table
+data_update_input_table
 data_preview_table
 data_list_tasks
 data_create_task
@@ -916,6 +932,7 @@ data_run_task
 data_get_run_result
 data_list_output_tables
 data_create_output_table
+data_update_output_table
 ```
 
 ### 8.4 工具权限分级
@@ -923,7 +940,7 @@ data_create_output_table
 | 等级 | 工具 | 默认策略 |
 | --- | --- | --- |
 | read | list、show、preview、export DSL、validate DSL | 可自动批准 |
-| write_config | create/update/delete、save workflow、apply DSL | 需要用户确认或会话授权 |
+| write_config | create/update/delete、save workflow、apply DSL、create input/output/task | 需要用户确认或会话授权 |
 | execute | run task、execute temp DSL | 需要用户确认，临时运行可降低风险 |
 | destructive | delete、overwrite output、replace physical table | 必须确认 |
 | file_access | import local file/folder | 必须确认路径权限 |
@@ -960,6 +977,114 @@ data_create_output_table
 }
 ```
 
+#### data_create_input_table
+
+用途：在对话中基于用户选择或明确授权的本地文件/文件夹创建输入表。
+
+输入：
+
+CSV 文件：
+
+```json
+{
+  "name": "销售明细",
+  "sourceKind": "csv",
+  "filePath": "/authorized/path/sales.csv",
+  "config": {
+    "delimiter": ",",
+    "encoding": "utf8",
+    "header": true
+  },
+  "previewRows": 20
+}
+```
+
+Excel 文件：
+
+```json
+{
+  "name": "客户信息表",
+  "sourceKind": "excel",
+  "filePath": "/authorized/path/customers.xlsx",
+  "config": {
+    "sheetName": "Sheet1",
+    "headerMode": "auto"
+  },
+  "previewRows": 20
+}
+```
+
+文件夹：
+
+```json
+{
+  "name": "订单文件夹",
+  "sourceKind": "folder",
+  "folderPath": "/authorized/path/orders",
+  "config": {
+    "recursive": false,
+    "filePattern": "*.csv"
+  },
+  "previewRows": 20
+}
+```
+
+行为：
+
+1. 校验 `sourceKind` 和来源配置。
+2. 校验文件或文件夹路径权限，未授权时返回 `FILE_ACCESS_DENIED`。
+3. 调用 `DataCommandService.createInputTable`，最终复用 `DataTaskStore.importDataset`。
+4. 返回输入表 ID、名称、来源类型、行列数和受限预览。
+5. 同名输入表不静默覆盖；返回冲突错误或候选，由 LLM 询问用户。
+
+输出：
+
+```json
+{
+  "inputTable": {
+    "id": "dataset_xxx",
+    "name": "销售明细",
+    "sourceKind": "csv",
+    "rowCount": 2468,
+    "columnCount": 18
+  },
+  "preview": {
+    "columns": ["order_id", "region", "gmv"],
+    "rows": []
+  }
+}
+```
+
+权限：
+
+- 该工具同时属于 `write_config` 和 `file_access`。
+- 必须使用用户已选择、已授权或在当前请求中明确给出的路径。
+- 不允许 LLM 自行猜测或遍历本机路径。
+
+#### data_update_input_table
+
+用途：在对话中修改已有输入表名称或来源配置。
+
+输入：
+
+```json
+{
+  "id": "dataset_xxx",
+  "name": "销售明细 v2",
+  "config": {
+    "headerMode": "manual",
+    "headerRow": 2
+  },
+  "previewRows": 20
+}
+```
+
+行为：
+
+- 只能更新已存在输入表。
+- 若修改文件/文件夹路径，必须重新做路径权限确认。
+- 更新后返回新的输入表摘要和受限预览。
+
 #### data_preview_table
 
 用途：预览输入表或输出表数据。
@@ -976,6 +1101,67 @@ data_create_output_table
 ```
 
 输出必须限制行数，默认最多 20 行，绝不返回整表。
+
+#### data_create_output_table
+
+用途：在对话中创建输出表，供输出算子绑定或后续任务复用。
+
+输入：
+
+```json
+{
+  "name": "地区 GMV 汇总",
+  "sourceInputTableId": "dataset_xxx"
+}
+```
+
+也允许先创建空的输出目标配置：
+
+```json
+{
+  "name": "地区 GMV 汇总"
+}
+```
+
+行为：
+
+1. 校验名称。
+2. 如果指定 `sourceInputTableId`，校验输入表存在。
+3. 调用 `DataCommandService.createOutputTable`，最终复用 `DataTaskStore.createOutputTable`。
+4. 同名输出表不静默覆盖；返回冲突错误或候选，由 LLM 询问是否复用。
+
+输出：
+
+```json
+{
+  "outputTable": {
+    "id": "output_xxx",
+    "name": "地区 GMV 汇总",
+    "sourceInputTableId": "dataset_xxx",
+    "rowCount": 0,
+    "columnCount": 0
+  }
+}
+```
+
+#### data_update_output_table
+
+用途：在对话中修改输出表名称或来源输入表配置。
+
+输入：
+
+```json
+{
+  "id": "output_xxx",
+  "name": "地区 GMV 汇总 v2",
+  "sourceInputTableId": "dataset_xxx"
+}
+```
+
+行为：
+
+- 只能更新已存在输出表。
+- 不直接覆盖输出表物理数据；覆盖数据只能通过明确的任务运行和输出策略完成。
 
 #### data_create_task
 
@@ -1143,7 +1329,31 @@ data_create_output_table
 
 ## 9. LLM 数据处理工作流示例
 
-### 9.1 从输入表创建任务并运行
+### 9.1 从本地文件创建输入表、任务和输出表
+
+用户输入：
+
+```text
+把我选择的 sales.csv 建成输入表“销售明细”，按地区汇总 GMV，输出到“地区 GMV 汇总”。
+```
+
+推荐 tool_call 流程：
+
+1. LLM 确认文件路径来自用户选择或当前请求授权。
+2. 调用 `data_create_input_table` 创建输入表并返回预览。
+3. 调用 `data_create_output_table` 创建输出表。
+4. 调用 `data_create_task` 创建数据任务。
+5. 调用 `data_apply_workflow_dsl`，用输入表和输出表生成工作流。
+6. 调用 `data_run_task`，`mode=persisted`。
+7. 调用 `data_preview_table` 预览输出表。
+
+关键约束：
+
+- 创建输入表前必须确认文件/文件夹路径权限。
+- 同名输入表或输出表不能静默覆盖，必须让用户选择复用、改名或取消。
+- 输出表创建只创建配置；正式数据写入发生在 `data_run_task` 中。
+
+### 9.2 从已有输入表创建任务并运行
 
 1. LLM 调用 `data_list_input_tables` 查找输入表。
 2. 调用 `data_create_task` 创建任务。
@@ -1161,7 +1371,7 @@ from sales
 4. 调用 `data_run_task`，`mode=persisted`。
 5. 调用 `data_preview_table` 预览输出表。
 
-### 9.2 临时试算不污染正式输出
+### 9.3 临时试算不污染正式输出
 
 1. LLM 读取已有任务 DSL：`data_export_workflow_dsl`。
 2. 修改筛选条件。
@@ -1169,7 +1379,7 @@ from sales
 4. 返回临时表预览。
 5. 用户确认后，LLM 再调用 `data_apply_workflow_dsl` 保存。
 
-### 9.3 在会话中准确处理复杂数据问题
+### 9.4 在会话中准确处理复杂数据问题
 
 用户输入：
 
@@ -1194,7 +1404,7 @@ from sales
 - 所有聚合、连接、去重和类型转换都交给数据任务执行引擎。
 - 生成正式输出表前，必须让用户知道输出表名称和覆盖策略。
 
-### 9.4 对已有数据任务做会话内修改
+### 9.5 对已有数据任务做会话内修改
 
 用户输入：
 
@@ -1224,6 +1434,7 @@ filter [region] in ("华东", "华南")
 | --- | --- |
 | `INVALID_ARGUMENT` | CLI 或 tool 参数缺失、格式错误 |
 | `RESOURCE_NOT_FOUND` | task/input/output/node/edge 不存在 |
+| `RESOURCE_ALREADY_EXISTS` | 创建输入表、输出表或任务时名称冲突，不能静默覆盖 |
 | `VALIDATION_FAILED` | 数据配置校验失败 |
 | `DSL_PARSE_FAILED` | DSL 解析失败 |
 | `OPERATOR_TYPE_MISMATCH` | 单算子 DSL 类型和节点类型不一致 |
@@ -1342,17 +1553,19 @@ CREATE TABLE data_command_events (
 - 新增 `DataToolService`。
 - 新增 `DataAgentRuntimeExtension`，通过现有 `AgentRuntimeExtensionManager` 注册数据 custom tools。
 - 新增 `buildDataToolPrompt(...)`，把数据工具路由规则注入当前对话 prompt。
+- `buildDataToolPrompt(...)` 必须遵循 `design/toolcall/data-tool-context-injection-design.md`，注入创建输入表、输出表和数据任务的工具调用文档。
 - 使用 TypeBox 定义 `data_*` 工具 schema，保持和现有 custom tools 一致。
 - 接入现有 tool trace、远程工具进度和权限确认链路。
 - 在 `toolHelpers.tsx` 中补充 `data_*` 图标和展示标题。
 - 加工具返回摘要、结构化 `details` 和预览行数限制。
+- 支持通过 tool_call 创建输入表、输出表和数据任务；输入表文件/文件夹导入必须走路径权限确认。
 
 验收：
 
-- LLM 可以通过 tool_call 列出输入表、创建任务、保存 DSL、运行任务、预览输出。
-- LLM 在数据类问题中优先使用 `data_*` 工具，而不是直接读取 SQLite/DuckDB 或本地文件。
+- LLM 可以通过 tool_call 列出输入表、创建输入表、创建输出表、创建任务、保存 DSL、运行任务、预览输出。
+- LLM 只在固定/可复用数据处理流程中使用 `data_*` 工具；一次性探索分析不会自动创建或运行数据任务。
 - 工具调用在对话中显示为数据相关标题，并能看到运行进度。
-- 写操作和运行操作能触发权限确认。
+- 写操作、文件导入和运行操作能触发权限确认。
 
 ### Phase 5：数据处理增强
 
@@ -1395,6 +1608,9 @@ CREATE TABLE data_command_events (
 - `DataAgentRuntimeExtension.beforeSessionRun` 能返回 promptPrefix 和完整 `data_*` tools。
 - agent runner 合并 MCP tools 和 extension custom tools 后，数据工具不会和已有工具重名。
 - 调用 `data_list_input_tables`。
+- 调用 `data_create_input_table` 创建 CSV/Excel/文件夹输入表，未授权路径返回 `FILE_ACCESS_DENIED`。
+- 调用 `data_create_output_table` 创建输出表，同名时返回冲突或候选。
+- 调用 `data_create_task` 创建数据任务。
 - 调用 `data_apply_operator_dsl` 修改 filter。
 - 调用 `data_run_task` 临时运行并返回 preview。
 - `data_preview_table` 默认不超过 20 行，最大不超过 100 行。
@@ -1449,7 +1665,7 @@ from sales
 ## 16. 开放问题
 
 1. CLI 默认 workspace 是否使用 app 的默认 userData，还是要求显式指定。
-2. tool_call 是否允许直接导入任意本地文件，还是只能使用已存在输入表。
+2. tool_call 的文件导入只允许用户选择或明确授权的路径；仍需细化授权来源如何从 UI/会话传入工具。
 3. 外部 MCP server 是否进入首期，还是等 custom tools 稳定后再做。
 4. 运行任务是否需要后台任务队列和取消按钮作为首期能力。
 5. CLI 是否需要支持批量命令文件，例如 `sophron data apply plan.json`。

@@ -52,9 +52,9 @@ export function PairingRequestsSection({
   if (pendingPairings.length === 0 && !showEmpty) return null;
 
   return (
-    <div className="p-5 rounded-2xl border-2 border-warning/30 bg-warning/5">
-      <h3 className="font-medium text-warning mb-4 flex items-center gap-2">
-        <Shield className="w-5 h-5" />
+    <div className="p-4 rounded-lg border border-warning/30 bg-warning/5">
+      <h3 className="font-medium text-warning mb-3 flex items-center gap-2">
+        <Shield className="w-4 h-4" />
         {t('remote.pairingRequests')}
       </h3>
       {pendingPairings.length === 0 ? (
@@ -66,7 +66,7 @@ export function PairingRequestsSection({
           {pendingPairings.map((request) => (
             <div
               key={`${request.channelType}-${request.userId}`}
-              className="flex items-center justify-between p-4 bg-surface rounded-xl"
+              className="flex items-center justify-between p-3 bg-surface rounded-lg"
             >
               <div>
                 <div className="flex items-center gap-2">

@@ -1224,11 +1224,13 @@ function TaskEditor({
   const [dslError, setDslError] = useState<string | null>(null);
   const [taskTitle, setTaskTitle] = useState(task.name);
   const [isEditingTaskTitle, setIsEditingTaskTitle] = useState(false);
+  const [workflowMenuOpen, setWorkflowMenuOpen] = useState(false);
   const [nodeDataRefreshVersion, setNodeDataRefreshVersion] = useState(0);
   const [inputTableChoices, setInputTableChoices] = useState<DataDataset[]>([]);
   const [inputTableChoicesLoading, setInputTableChoicesLoading] = useState(false);
   const [outputTableChoices, setOutputTableChoices] = useState<DataOutputTable[]>(outputTables);
   const taskTitleInputRef = useRef<HTMLInputElement | null>(null);
+  const workflowMenuRef = useRef<HTMLDivElement | null>(null);
   const skipTaskTitleSaveRef = useRef(false);
 
   const loadWorkflow = useCallback(async () => {
@@ -1312,6 +1314,30 @@ function TaskEditor({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!workflowMenuOpen) return undefined;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (
+        event.target instanceof globalThis.Node &&
+        workflowMenuRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      setWorkflowMenuOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setWorkflowMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [workflowMenuOpen]);
 
   const nodes = useMemo(() => workflow?.nodes ?? [], [workflow?.nodes]);
   const edges = useMemo(() => workflow?.edges ?? [], [workflow?.edges]);
@@ -1775,22 +1801,6 @@ function TaskEditor({
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={openImportDsl}
-            disabled={isBusy || !workflow}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
-          >
-            <Upload className="h-3.5 w-3.5" />
-            {t('data.workflow.importDsl')}
-          </button>
-          <button
-            onClick={openExportDsl}
-            disabled={isBusy || !workflow}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
-          >
-            <Workflow className="h-3.5 w-3.5" />
-            {t('data.workflow.exportDsl')}
-          </button>
-          <button
             onClick={() => void saveWorkflow()}
             disabled={isBusy || !workflow}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
@@ -1806,9 +1816,50 @@ function TaskEditor({
             <Play className="h-3.5 w-3.5" />
             {t('data.editor.runTask')}
           </button>
-          <button className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft">
-            <MoreHorizontal className="h-4 w-4" />
-          </button>
+          <div ref={workflowMenuRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setWorkflowMenuOpen((open) => !open)}
+              disabled={isBusy || !workflow}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+              title={t('data.actions.more')}
+              aria-haspopup="menu"
+              aria-expanded={workflowMenuOpen}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+            {workflowMenuOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 top-full z-30 mt-1 w-40 overflow-hidden rounded-lg border border-border-muted bg-background shadow-elevated"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setWorkflowMenuOpen(false);
+                    openImportDsl();
+                  }}
+                  className="flex h-9 w-full items-center gap-2 px-3 text-left text-xs font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  {t('data.workflow.importDsl')}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setWorkflowMenuOpen(false);
+                    openExportDsl();
+                  }}
+                  className="flex h-9 w-full items-center gap-2 px-3 text-left text-xs font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                >
+                  <Workflow className="h-3.5 w-3.5" />
+                  {t('data.workflow.exportDsl')}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

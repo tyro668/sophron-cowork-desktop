@@ -222,7 +222,7 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
 
       {/* Content */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <div className="flex items-center justify-between px-4 lg:px-8 py-4 border-b border-border-muted flex-shrink-0 bg-background/88 backdrop-blur-sm">
+        <div className="flex items-center justify-between px-3 py-3 sm:px-4 border-b border-border-muted flex-shrink-0 bg-background/88 backdrop-blur-sm">
           <div>
             <p className="text-[11px] uppercase tracking-[0.14em] text-text-muted">
               {t('settings.title')}
@@ -243,8 +243,8 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
             <X className="w-5 h-5 text-text-secondary" />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-6 lg:px-8 lg:py-8">
-          <div className="max-w-[860px] w-full min-w-0 mx-auto">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4">
+          <div className="max-w-[1120px] w-full min-w-0 mx-auto">
             <div className="">
               <div className={activeTab === 'api' ? '' : 'hidden'}>
                 {viewedTabs.has('api') && (

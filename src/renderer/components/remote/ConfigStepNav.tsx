@@ -43,12 +43,12 @@ export function ConfigStepNav({
   ];
 
   return (
-    <div className="flex items-center gap-2 p-1 bg-surface rounded-xl">
+    <div className="flex items-center gap-1.5 p-1 bg-surface rounded-lg">
       {steps.map((step) => (
         <button
           key={step.id}
           onClick={() => onStepChange(step.id)}
-          className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg transition-all ${
+          className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md transition-all ${
             activeStep === step.id
               ? 'bg-accent text-white'
               : 'hover:bg-surface-hover text-text-secondary'

@@ -18,16 +18,16 @@ export function AuthorizedUsersSection({ pairedUsers, onRevoke }: Props) {
   if (pairedUsers.length === 0) return null;
 
   return (
-    <div className="p-6 rounded-[2rem] border border-border-subtle bg-background/60">
-      <h3 className="font-medium text-text-primary mb-4 flex items-center gap-2">
-        <Users className="w-5 h-5" />
+    <div className="p-4 rounded-lg border border-border-subtle bg-background/60">
+      <h3 className="font-medium text-text-primary mb-3 flex items-center gap-2">
+        <Users className="w-4 h-4" />
         {t('remote.authorizedUsersTitle', { count: pairedUsers.length })}
       </h3>
       <div className="space-y-2">
         {pairedUsers.map((user) => (
           <div
             key={`${user.channelType}-${user.userId}`}
-            className="flex items-center justify-between p-3 rounded-xl bg-surface-hover"
+            className="flex items-center justify-between p-3 rounded-lg bg-surface-hover"
           >
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
