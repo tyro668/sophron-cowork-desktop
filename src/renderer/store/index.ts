@@ -1,4 +1,9 @@
 import { create } from 'zustand';
+import {
+  DEFAULT_PERMISSION_POLICY,
+  getPermissionRulesForPolicy,
+} from '../../shared/permission-policies';
+import type { DataResourceTarget } from '../../shared/data-resource-link';
 import type {
   Session,
   Message,
@@ -16,6 +21,10 @@ import { applySessionUpdate } from '../utils/session-update';
 export type GlobalNoticeType = 'info' | 'warning' | 'error' | 'success';
 export type GlobalNoticeAction = 'open_api_settings';
 export type MainView = 'chat' | 'data' | 'skills';
+
+export interface PendingDataNavigation extends DataResourceTarget {
+  nonce: number;
+}
 
 export interface GlobalNotice {
   id: string;
@@ -104,6 +113,7 @@ interface AppState {
   showConfigModal: boolean;
   hasSeenInitialConfigStatus: boolean;
   globalNotice: GlobalNotice | null;
+  pendingDataNavigation: PendingDataNavigation | null;
 
   // Working directory
   workingDir: string | null;
@@ -172,6 +182,8 @@ interface AppState {
   markInitialConfigStatusSeen: () => void;
   setGlobalNotice: (notice: GlobalNotice | null) => void;
   clearGlobalNotice: () => void;
+  navigateToDataElement: (target: DataResourceTarget) => void;
+  clearDataNavigation: (nonce?: number) => void;
 
   // Working directory actions
   setWorkingDir: (path: string | null) => void;
@@ -207,18 +219,14 @@ const defaultSettings: Settings = {
     'glob',
     'grep',
   ],
-  permissionRules: [
-    { tool: 'read', action: 'allow' },
-    { tool: 'glob', action: 'allow' },
-    { tool: 'grep', action: 'allow' },
-    { tool: 'write', action: 'ask' },
-    { tool: 'edit', action: 'ask' },
-    { tool: 'bash', action: 'ask' },
-  ],
+  permissionPolicy: DEFAULT_PERMISSION_POLICY,
+  permissionRules: getPermissionRulesForPolicy(DEFAULT_PERMISSION_POLICY),
   globalSkillsPath: '',
   memoryStrategy: 'auto',
   maxContextTokens: 180000,
 };
+
+let dataNavigationSeq = 0;
 
 export const useAppStore = create<AppState>((set) => ({
   // Initial state
@@ -239,6 +247,7 @@ export const useAppStore = create<AppState>((set) => ({
   showConfigModal: false,
   hasSeenInitialConfigStatus: false,
   globalNotice: null,
+  pendingDataNavigation: null,
   workingDir: null,
   sandboxSetupProgress: null,
   isSandboxSetupComplete: false,
@@ -582,6 +591,20 @@ export const useAppStore = create<AppState>((set) => ({
   markInitialConfigStatusSeen: () => set({ hasSeenInitialConfigStatus: true }),
   setGlobalNotice: (notice) => set({ globalNotice: notice }),
   clearGlobalNotice: () => set({ globalNotice: null }),
+  navigateToDataElement: (target) =>
+    set({
+      mainView: 'data',
+      activeSessionId: null,
+      showSettings: false,
+      pendingDataNavigation: { ...target, nonce: ++dataNavigationSeq },
+    }),
+  clearDataNavigation: (nonce) =>
+    set((state) => {
+      if (nonce !== undefined && state.pendingDataNavigation?.nonce !== nonce) {
+        return {};
+      }
+      return { pendingDataNavigation: null };
+    }),
 
   // Working directory actions
   setWorkingDir: (path) => set({ workingDir: path }),

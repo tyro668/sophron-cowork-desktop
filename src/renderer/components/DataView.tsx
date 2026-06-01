@@ -104,6 +104,7 @@ import {
   parsePrepOperatorDsl,
   type PrepDiagnostic,
 } from '../../shared/prep-dsl';
+import { useAppStore } from '../store';
 
 type DataTab = 'tasks' | 'input_tables' | 'output_tables';
 type WorkflowInspectorTab = 'config' | 'data' | 'logs';
@@ -311,6 +312,8 @@ const WORKFLOW_NODE_TYPES = {
 
 export function DataView() {
   const { t } = useTranslation();
+  const pendingDataNavigation = useAppStore((state) => state.pendingDataNavigation);
+  const clearDataNavigation = useAppStore((state) => state.clearDataNavigation);
   const [dashboard, setDashboard] = useState<DataDashboard>(EMPTY_DASHBOARD);
   const [activeTab, setActiveTab] = useState<DataTab>('tasks');
   const [inputTableSourceFilter, setInputTableSourceFilter] =
@@ -339,11 +342,117 @@ export function DataView() {
   const [storedPreviewData, setStoredPreviewData] = useState<DataInputTablePreview | null>(null);
   const [storedPreviewPage, setStoredPreviewPage] = useState(1);
   const [storedPreviewTarget, setStoredPreviewTarget] = useState<StoredPreviewTarget | null>(null);
+  const [focusedTask, setFocusedTask] = useState<DataCleaningTask | null>(null);
+  const [focusedInputTable, setFocusedInputTable] = useState<DataDataset | null>(null);
+  const [focusedOutputTable, setFocusedOutputTable] = useState<DataOutputTable | null>(null);
   const dashboardRequestSeq = useRef(0);
   const inputTablesRequestSeq = useRef(0);
   const hasLoadedDashboardSummary = useRef(false);
 
   const isDataApiAvailable = Boolean(window.electronAPI?.data);
+
+  useEffect(() => {
+    if (!pendingDataNavigation || !isDataApiAvailable || !window.electronAPI?.data) {
+      return undefined;
+    }
+
+    const target = pendingDataNavigation;
+    let cancelled = false;
+
+    const run = async () => {
+      setError(null);
+      setStoredPreviewOpen(false);
+      setEditingTaskId(null);
+      setEditingInputTableDraftId(null);
+      setEditingInputTableDatasetId(null);
+      setEditingOutputTableId(null);
+
+      if (target.kind === 'task') {
+        setActiveTab('tasks');
+        setPendingNavigationTab('tasks');
+        setLoadingTab('tasks');
+        const task = await window.electronAPI?.data?.getTask(target.id);
+        if (cancelled) return;
+        if (!task) {
+          setError(t('data.navigationNotFound'));
+          return;
+        }
+        setFocusedTask(task);
+        setDashboard((current) => ({
+          ...current,
+          tasks: [task, ...current.tasks.filter((item) => item.id !== task.id)],
+          totalTasks: Math.max(current.totalTasks, current.tasks.length + 1),
+        }));
+        setSearchQuery('');
+        setTaskPage(1);
+        setEditingTaskId(task.id);
+        return;
+      }
+
+      if (target.kind === 'input_table') {
+        setActiveTab('input_tables');
+        setPendingNavigationTab('input_tables');
+        setLoadingTab('input_tables');
+        setInputTablesLoading(true);
+        const inputTable = await window.electronAPI?.data?.getInputTable(target.id);
+        if (cancelled) return;
+        if (!inputTable) {
+          setError(t('data.navigationNotFound'));
+          return;
+        }
+        setFocusedInputTable(inputTable);
+        setInputTableSourceFilter('all');
+        setInputTableDatasets((current) => [
+          inputTable,
+          ...current.filter((item) => item.id !== inputTable.id),
+        ]);
+        setTotalInputTableDatasets((current) => Math.max(current, 1));
+        setDatasetPage(1);
+        setEditingInputTableDatasetId(inputTable.id);
+        return;
+      }
+
+      setActiveTab('output_tables');
+      setPendingNavigationTab('output_tables');
+      setLoadingTab('output_tables');
+      const outputTable = await window.electronAPI?.data?.getOutputTable(target.id);
+      if (cancelled) return;
+      if (!outputTable) {
+        setError(t('data.navigationNotFound'));
+        return;
+      }
+      setFocusedOutputTable(outputTable);
+      setDashboard((current) => ({
+        ...current,
+        outputTables: [
+          outputTable,
+          ...current.outputTables.filter((item) => item.id !== outputTable.id),
+        ],
+        totalOutputTables: Math.max(current.totalOutputTables, current.outputTables.length + 1),
+      }));
+      setOutputPage(1);
+      setEditingOutputTableId(outputTable.id);
+    };
+
+    void run()
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setPendingNavigationTab(null);
+          setLoadingTab(null);
+          setInputTablesLoading(false);
+          clearDataNavigation(target.nonce);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clearDataNavigation, isDataApiAvailable, pendingDataNavigation, t]);
 
   const loadDashboard = useCallback(async (options: { preserveError?: boolean; query?: string; taskPage?: number; datasetPage?: number; outputPage?: number; tab?: DataTab } = {}) => {
     if (!window.electronAPI?.data) return;
@@ -578,20 +687,26 @@ export function DataView() {
     [dashboard.summary, t]
   );
   const editingTask = useMemo(
-    () => dashboard.tasks.find((task) => task.id === editingTaskId) ?? null,
-    [dashboard.tasks, editingTaskId]
+    () =>
+      dashboard.tasks.find((task) => task.id === editingTaskId) ??
+      (focusedTask?.id === editingTaskId ? focusedTask : null),
+    [dashboard.tasks, editingTaskId, focusedTask]
   );
   const editingInputTableDraft = useMemo(
     () => inputTableDrafts.find((draft) => draft.id === editingInputTableDraftId) ?? null,
     [editingInputTableDraftId, inputTableDrafts]
   );
   const editingInputTableDataset = useMemo(
-    () => inputTableDatasets.find((dataset) => dataset.id === editingInputTableDatasetId) ?? null,
-    [editingInputTableDatasetId, inputTableDatasets]
+    () =>
+      inputTableDatasets.find((dataset) => dataset.id === editingInputTableDatasetId) ??
+      (focusedInputTable?.id === editingInputTableDatasetId ? focusedInputTable : null),
+    [editingInputTableDatasetId, focusedInputTable, inputTableDatasets]
   );
   const editingOutputTable = useMemo(
-    () => dashboard.outputTables.find((outputTable) => outputTable.id === editingOutputTableId) ?? null,
-    [dashboard.outputTables, editingOutputTableId]
+    () =>
+      dashboard.outputTables.find((outputTable) => outputTable.id === editingOutputTableId) ??
+      (focusedOutputTable?.id === editingOutputTableId ? focusedOutputTable : null),
+    [dashboard.outputTables, editingOutputTableId, focusedOutputTable]
   );
 
   useEffect(() => {
@@ -1175,6 +1290,7 @@ export function DataView() {
             </section>
             {storedPreviewOpen && (
               <InputTablePreviewDialog
+                tableKind={storedPreviewTarget?.kind ?? 'input'}
                 preview={storedPreviewData}
                 isLoading={storedPreviewLoading}
                 error={storedPreviewError}
@@ -5601,6 +5717,7 @@ function InputTableEditor({
     </section>
     {previewOpen && (
       <InputTablePreviewDialog
+        tableKind="input"
         preview={previewData}
         isLoading={previewLoading}
         error={previewError}
@@ -5614,6 +5731,7 @@ function InputTableEditor({
 }
 
 function InputTablePreviewDialog({
+  tableKind = 'input',
   preview,
   isLoading,
   error,
@@ -5621,6 +5739,7 @@ function InputTablePreviewDialog({
   onPageChange,
   onClose,
 }: {
+  tableKind?: 'input' | 'output';
   preview: DataInputTablePreview | null;
   isLoading: boolean;
   error: string | null;
@@ -5636,6 +5755,14 @@ function InputTablePreviewDialog({
   const pageCount = Math.max(1, Math.ceil(totalRows / pageSize));
   const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
   const pageNumbers = getVisiblePageNumbers(safeCurrentPage, pageCount);
+  const previewTitle =
+    tableKind === 'output'
+      ? t('data.outputTables.previewTitle')
+      : t('data.inputTables.editor.previewTitle');
+  const previewEmpty =
+    tableKind === 'output'
+      ? t('data.outputTables.previewEmpty')
+      : t('data.inputTables.editor.previewEmpty');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/28 px-4 py-6">
@@ -5643,7 +5770,7 @@ function InputTablePreviewDialog({
         <div className="flex h-12 flex-shrink-0 items-center justify-between border-b border-border-muted bg-surface-active/70 px-4 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
           <div className="min-w-0">
             <div className="text-[14px] font-semibold text-text-primary">
-              {t('data.inputTables.editor.previewTitle')}
+              {previewTitle}
             </div>
           </div>
           <button
@@ -5667,7 +5794,7 @@ function InputTablePreviewDialog({
             </div>
           ) : columns.length === 0 || rows.length === 0 ? (
             <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-border-muted bg-background/70">
-              <EmptyState label={t('data.inputTables.editor.previewEmpty')} />
+              <EmptyState label={previewEmpty} />
             </div>
           ) : (
             <>

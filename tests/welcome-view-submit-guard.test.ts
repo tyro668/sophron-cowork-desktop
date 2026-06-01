@@ -36,7 +36,7 @@ describe('WelcomeView submit guards', () => {
 
     expect(source).toContain('getWorkingDirDisplayName(');
     expect(source).toContain("t('welcome.defaultWorkingFolder')");
-    expect(source).toContain('<span>{workingDirLabel}</span>');
+    expect(source).toContain('<span className="truncate">{workingDirLabel}</span>');
     expect(source).not.toContain("workingDir.split(/[/\\\\]/).pop()");
   });
 });

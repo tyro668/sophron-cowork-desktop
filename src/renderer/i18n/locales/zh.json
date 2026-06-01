@@ -73,6 +73,7 @@
     "totalCount": "共 {{count}} 条",
     "rowsPerPage": "{{count}} 条/页",
     "comingSoon": "待开发中",
+    "navigationNotFound": "目标数据元素不存在，可能已经被删除",
     "tasks": {
       "selection": "选择数据任务"
     },
@@ -231,6 +232,8 @@
       "selection": "选择输出表",
       "physicalTable": "物理表",
       "relatedInputTable": "输入表",
+      "previewTitle": "输出表数据预览",
+      "previewEmpty": "输出表暂无可预览数据",
       "deleteConfirm": "确认删除输出表“{{name}}”？",
       "deleteNotFound": "输出表不存在，可能已经被删除",
       "status": {
@@ -1080,12 +1083,16 @@
     "sendMessage": "发送消息",
     "stop": "停止",
     "processing": "处理中...",
-    "typeMessage": "输入消息...",
+    "typeMessage": "输入消息， Enter 发送， Shift + Enter 换行",
     "loadingConversation": "加载对话中...",
     "startConversation": "开始对话",
     "startFailed": "启动会话失败，请稍后重试。",
     "disclaimer": "九思助理由 AI 驱动，可能会出错，请务必自行复核结果。",
     "noModel": "无模型",
+    "autoReview": "自动审查",
+    "permissionPolicyDefault": "默认权限",
+    "permissionPolicyAutoReview": "自动审查",
+    "permissionPolicyFullAccess": "完全访问权限",
     "backToTop": "回到顶部",
     "connectorCount_one": "{{count}} 个连接器",
     "connectorCount_other": "{{count}} 个连接器"

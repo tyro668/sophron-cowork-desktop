@@ -1,3 +1,8 @@
+import type {
+  PermissionPolicyId,
+  PermissionRule as SharedPermissionRule,
+} from '../../shared/permission-policies';
+
 // Session types
 export interface Session {
   id: string;
@@ -294,6 +299,8 @@ export interface DataDashboardQuery {
 export interface DataCreateTaskInput {
   name: string;
   sourcePath?: string | null;
+  sourceDatasetId?: string | null;
+  outputTableId?: string | null;
 }
 
 export interface DataUpdateTaskInput {
@@ -720,11 +727,7 @@ export interface QuestionItem {
   multiSelect?: boolean;
 }
 
-export interface PermissionRule {
-  tool: string;
-  pattern?: string;
-  action: 'allow' | 'deny' | 'ask';
-}
+export type PermissionRule = SharedPermissionRule;
 
 // IPC Event types
 export type ClientEvent =
@@ -735,13 +738,19 @@ export type ClientEvent =
         prompt: string;
         cwd?: string;
         allowedTools?: string[];
+        permissionRules?: PermissionRule[];
         content?: ContentBlock[];
         memoryEnabled?: boolean;
       };
     }
   | {
       type: 'session.continue';
-      payload: { sessionId: string; prompt: string; content?: ContentBlock[] };
+      payload: {
+        sessionId: string;
+        prompt: string;
+        permissionRules?: PermissionRule[];
+        content?: ContentBlock[];
+      };
     }
   | { type: 'session.stop'; payload: { sessionId: string } }
   | { type: 'session.delete'; payload: { sessionId: string } }
@@ -829,6 +838,7 @@ export interface Settings {
   theme: AppTheme;
   apiKey?: string;
   defaultTools: string[];
+  permissionPolicy: PermissionPolicyId;
   permissionRules: PermissionRule[];
   globalSkillsPath: string;
   memoryStrategy: 'auto' | 'manual' | 'rolling';

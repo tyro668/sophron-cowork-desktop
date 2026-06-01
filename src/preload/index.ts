@@ -197,6 +197,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   data: {
     getDashboard: (payload?: DataDashboardQuery): Promise<DataDashboard> =>
       ipcRenderer.invoke('data.getDashboard', payload),
+    getTask: (id: string): Promise<DataCleaningTask | null> =>
+      ipcRenderer.invoke('data.getTask', id),
     createTask: (payload: DataCreateTaskInput): Promise<DataCleaningTask> =>
       ipcRenderer.invoke('data.createTask', payload),
     updateTask: (payload: DataUpdateTaskInput): Promise<DataCleaningTask> =>
@@ -209,8 +211,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('data.saveTaskWorkflow', id, payload),
     importDataset: (payload: DataImportDatasetInput): Promise<DataDataset> =>
       ipcRenderer.invoke('data.importDataset', payload),
+    getInputTable: (id: string): Promise<DataDataset | null> =>
+      ipcRenderer.invoke('data.getInputTable', id),
     updateDataset: (payload: DataUpdateDatasetInput): Promise<DataDataset> =>
       ipcRenderer.invoke('data.updateDataset', payload),
+    getOutputTable: (id: string): Promise<DataOutputTable | null> =>
+      ipcRenderer.invoke('data.getOutputTable', id),
     createOutputTable: (payload?: DataCreateOutputTableInput): Promise<DataOutputTable> =>
       ipcRenderer.invoke('data.createOutputTable', payload),
     updateOutputTable: (payload: DataUpdateOutputTableInput): Promise<DataOutputTable> =>
@@ -544,6 +550,7 @@ declare global {
       };
       data: {
         getDashboard: (payload?: DataDashboardQuery) => Promise<DataDashboard>;
+        getTask: (id: string) => Promise<DataCleaningTask | null>;
         createTask: (payload: DataCreateTaskInput) => Promise<DataCleaningTask>;
         updateTask: (payload: DataUpdateTaskInput) => Promise<DataCleaningTask>;
         runTask: (id: string, payload?: DataRunTaskInput) => Promise<DataCleaningTask>;
@@ -553,7 +560,9 @@ declare global {
           payload: DataWorkflowSaveInput
         ) => Promise<DataTaskWorkflow>;
         importDataset: (payload: DataImportDatasetInput) => Promise<DataDataset>;
+        getInputTable: (id: string) => Promise<DataDataset | null>;
         updateDataset: (payload: DataUpdateDatasetInput) => Promise<DataDataset>;
+        getOutputTable: (id: string) => Promise<DataOutputTable | null>;
         createOutputTable: (payload?: DataCreateOutputTableInput) => Promise<DataOutputTable>;
         updateOutputTable: (payload: DataUpdateOutputTableInput) => Promise<DataOutputTable>;
         previewInputTable: (

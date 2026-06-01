@@ -26,7 +26,7 @@ describe('main workspace navigation', () => {
 
     expect(source).toContain("window.electronAPI.data.getDashboard");
     expect(source).toContain("t('data.newCleaningTask')");
-    expect(source).toContain("t('data.tabs.etl')");
+    expect(source).toContain("t('data.tabs.tasks')");
     expect(source).not.toContain('WelcomeView');
   });
 
@@ -67,6 +67,6 @@ describe('main workspace navigation', () => {
     expect(zh.mainNav.skills).toBe('技能');
     expect(zh.mainNav.tasks).toBe('任务');
     expect(zh.data.newCleaningTask).toBe('新建任务');
-    expect(zh.data.tabs.etl).toBe('数据任务');
+    expect(zh.data.tabs.tasks).toBe('数据任务');
   });
 });

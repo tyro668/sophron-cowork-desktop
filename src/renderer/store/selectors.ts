@@ -19,6 +19,10 @@ import { useAppStore } from './index';
 import type { Session, Message, TraceStep, Settings, AppConfig } from '../types';
 import type { GlobalNotice, MainView, SessionExecutionClock } from './index';
 
+const EMPTY_MESSAGES: Message[] = [];
+const EMPTY_STRING_LIST: string[] = [];
+const EMPTY_TRACE_STEPS: TraceStep[] = [];
+
 // ---------------------------------------------------------------------------
 // Session domain
 // ---------------------------------------------------------------------------
@@ -61,7 +65,9 @@ export function useIsSessionRunning(): boolean {
 /** Returns the committed messages for the active session. */
 export function useActiveSessionMessages(): Message[] {
   return useAppStore((s) =>
-    s.activeSessionId ? (s.sessionStates[s.activeSessionId]?.messages ?? []) : []
+    s.activeSessionId
+      ? (s.sessionStates[s.activeSessionId]?.messages ?? EMPTY_MESSAGES)
+      : EMPTY_MESSAGES
   );
 }
 
@@ -70,7 +76,7 @@ export function useActiveSessionMessages(): Message[] {
  * Useful in list components that render session previews.
  */
 export function useSessionMessages(sessionId: string): Message[] {
-  return useAppStore((s) => s.sessionStates[sessionId]?.messages ?? []);
+  return useAppStore((s) => s.sessionStates[sessionId]?.messages ?? EMPTY_MESSAGES);
 }
 
 /** Returns the in-progress (streaming) text of the active session's response. */
@@ -118,7 +124,9 @@ export function useActiveTurn(): { stepId: string; userMessageId: string } | nul
 /** Returns the list of pending turn message IDs for the active session. */
 export function usePendingTurns(): string[] {
   return useAppStore((s) =>
-    s.activeSessionId ? (s.sessionStates[s.activeSessionId]?.pendingTurns ?? []) : []
+    s.activeSessionId
+      ? (s.sessionStates[s.activeSessionId]?.pendingTurns ?? EMPTY_STRING_LIST)
+      : EMPTY_STRING_LIST
   );
 }
 
@@ -139,7 +147,7 @@ export function useActiveSessionExecution(): {
       const isRunning = session?.status === 'running';
       const activeTurn = id ? (s.sessionStates[id]?.activeTurn ?? null) : null;
       const hasActiveTurn = Boolean(activeTurn);
-      const pendingCount = id ? (s.sessionStates[id]?.pendingTurns ?? []).length : 0;
+      const pendingCount = id ? (s.sessionStates[id]?.pendingTurns ?? EMPTY_STRING_LIST).length : 0;
       return {
         isRunning,
         hasActiveTurn,
@@ -164,7 +172,9 @@ export function useActiveExecutionClock(): SessionExecutionClock | undefined {
 /** Returns the trace steps for the active session. */
 export function useActiveTraceSteps(): TraceStep[] {
   return useAppStore((s) =>
-    s.activeSessionId ? (s.sessionStates[s.activeSessionId]?.traceSteps ?? []) : []
+    s.activeSessionId
+      ? (s.sessionStates[s.activeSessionId]?.traceSteps ?? EMPTY_TRACE_STEPS)
+      : EMPTY_TRACE_STEPS
   );
 }
 

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
 import { useIPC } from '../hooks/useIPC';
 import { getWorkingDirDisplayName } from '../utils/working-dir-label';
+import { PermissionPolicySelector } from './PermissionPolicySelector';
 import type { ContentBlock } from '../types';
 import { getInitialSessionTitle } from '../../shared/session-title';
 import {
@@ -12,7 +13,9 @@ import {
   ArrowRight,
   Mail,
   X,
-  Paperclip,
+  Plus,
+  ChevronDown,
+  Check,
   BookOpen,
   FileSearch,
 } from 'lucide-react';
@@ -36,14 +39,33 @@ export function WelcomeView() {
   >([]);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [showModelMenu, setShowModelMenu] = useState(false);
+  const [showPermissionMenu, setShowPermissionMenu] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { startSession, changeWorkingDir, isElectron } = useIPC();
   const workingDir = useAppStore((state) => state.workingDir);
   const setGlobalNotice = useAppStore((state) => state.setGlobalNotice);
   const isConfigured = useAppStore((state) => state.isConfigured);
+  const appConfig = useAppStore((state) => state.appConfig);
+  const setAppConfig = useAppStore((state) => state.setAppConfig);
+  const setIsConfigured = useAppStore((state) => state.setIsConfigured);
   const setShowSettings = useAppStore((state) => state.setShowSettings);
   const setSettingsTab = useAppStore((state) => state.setSettingsTab);
   const canSubmit = prompt.trim().length > 0 || pastedImages.length > 0 || attachedFiles.length > 0;
+  const modelLabel = appConfig?.model?.trim() || t('chat.noModel');
+  const hasConfiguredModel = Boolean(isConfigured && appConfig?.model?.trim());
+  const modelOptions =
+    appConfig?.configSets
+      ?.map((set) => {
+        const model = set.profiles?.[set.activeProfileKey]?.model?.trim() || '';
+        return {
+          id: set.id,
+          name: set.name,
+          model,
+          isActive: set.id === appConfig.activeConfigSetId,
+        };
+      })
+      .filter((option) => option.model) || [];
   const workingDirLabel = getWorkingDirDisplayName(
     workingDir,
     t('welcome.defaultWorkingFolder'),
@@ -68,6 +90,53 @@ export function WelcomeView() {
           error instanceof Error && error.message
             ? `${t('welcome.selectWorkingFolderFailed')}: ${error.message}`
             : t('welcome.selectWorkingFolderFailed'),
+      });
+    }
+  };
+
+  const handleOpenModelSettings = () => {
+    setSettingsTab('api');
+    setShowSettings(true);
+  };
+
+  const handleModelButtonClick = () => {
+    if (!hasConfiguredModel) {
+      handleOpenModelSettings();
+      return;
+    }
+
+    setShowPermissionMenu(false);
+    setShowModelMenu((open) => !open);
+  };
+
+  const handlePermissionMenuOpenChange = (open: boolean) => {
+    setShowPermissionMenu(open);
+    if (open) {
+      setShowModelMenu(false);
+    }
+  };
+
+  const handleModelOptionClick = async (configSetId: string) => {
+    setShowModelMenu(false);
+    if (!appConfig || configSetId === appConfig.activeConfigSetId) {
+      return;
+    }
+
+    if (!isElectron || !window.electronAPI) {
+      return;
+    }
+
+    try {
+      const result = await window.electronAPI.config.switchSet({ id: configSetId });
+      if (result.success) {
+        setAppConfig(result.config);
+        setIsConfigured(Boolean(result.config.isConfigured));
+      }
+    } catch (error) {
+      setGlobalNotice({
+        id: `notice-model-switch-${Date.now()}`,
+        type: 'error',
+        message: error instanceof Error ? error.message : t('api.saveFailed'),
       });
     }
   };
@@ -504,14 +573,14 @@ export function WelcomeView() {
           ))}
         </div>
 
-        {/* Main Input Card - Right aligned */}
+        {/* Main Input Card */}
         <form
           onSubmit={handleSubmit}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`rounded-[1.9rem] border border-border-muted bg-background/95 shadow-soft px-5 py-5 space-y-4 transition-colors ${
-            isDragging ? 'ring-2 ring-accent bg-accent/5' : ''
+          className={`relative rounded-[28px] border border-border-muted bg-background px-5 py-3 shadow-soft transition-colors sm:px-6 sm:py-4 ${
+            isDragging ? 'ring-2 ring-accent bg-accent-muted' : ''
           }`}
         >
           {/* Image previews */}
@@ -575,9 +644,9 @@ export function WelcomeView() {
             }}
             onPaste={handlePaste}
             placeholder={t('welcome.placeholder')}
-            rows={1}
-            style={{ minHeight: '72px', maxHeight: '200px' }}
-            className="w-full resize-none bg-transparent border-none outline-none text-text-primary placeholder:text-text-muted text-base leading-relaxed overflow-hidden"
+            rows={3}
+            style={{ minHeight: '76px', maxHeight: '140px' }}
+            className="w-full resize-none overflow-hidden border-none bg-transparent text-[15px] leading-6 text-text-primary outline-none placeholder:text-text-muted sm:text-base"
             onKeyDown={(e) => {
               // Enter to send, Shift+Enter for new line
               if (e.key === 'Enter' && !e.shiftKey) {
@@ -591,43 +660,93 @@ export function WelcomeView() {
           />
 
           {/* Bottom Actions */}
-          <div className="flex items-center justify-between pt-3 border-t border-border-muted">
-            <div className="flex items-center gap-3">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <button
+                type="button"
+                onClick={handleFileSelect}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+                title={t('welcome.attachFiles')}
+              >
+                <Plus className="h-5 w-5" />
+              </button>
+
+              <PermissionPolicySelector
+                open={showPermissionMenu}
+                onOpenChange={handlePermissionMenuOpenChange}
+                buttonClassName="inline-flex h-10 shrink-0 items-center gap-2 rounded-full px-2.5 text-[14px] font-semibold text-accent transition-colors hover:bg-accent-muted sm:px-3"
+                menuClassName="left-5 sm:left-6"
+              />
+
               <button
                 type="button"
                 onClick={handleSelectFolder}
-                className={`flex items-center gap-2 text-sm transition-colors ${
+                className={`inline-flex h-10 min-w-0 flex-1 items-center gap-2 rounded-full px-2.5 text-[14px] font-semibold transition-colors sm:flex-none sm:px-3 ${
                   workingDir
-                    ? 'text-text-secondary hover:text-text-primary'
-                    : 'text-accent hover:text-accent-hover'
+                    ? 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                    : 'text-accent hover:bg-accent-muted hover:text-accent-hover'
                 }`}
                 title={workingDir || t('welcome.selectWorkingFolder')}
               >
-                <FolderOpen className="w-4 h-4" />
-                <span>{workingDirLabel}</span>
+                <FolderOpen className="h-[18px] w-[18px] shrink-0" />
+                <span className="truncate">{workingDirLabel}</span>
               </button>
-
-              {isElectron && (
-                <button
-                  type="button"
-                  onClick={handleFileSelect}
-                  className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
-                >
-                  <Paperclip className="w-4 h-4" />
-                  <span>{t('welcome.attachFiles')}</span>
-                </button>
-              )}
             </div>
 
-            <button
-              type="submit"
-              disabled={!canSubmit || isSubmitting}
-              className="btn btn-primary px-5 py-2.5 rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <span>{isSubmitting ? t('welcome.starting') : t('welcome.letsGo')}</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
+            <div className="ml-auto flex min-w-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={handleModelButtonClick}
+                aria-haspopup="menu"
+                aria-expanded={showModelMenu}
+                className="inline-flex h-10 min-w-0 max-w-[13rem] items-center gap-2 rounded-full px-3 text-[14px] font-semibold text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                title={modelLabel}
+              >
+                <span className="truncate">{modelLabel}</span>
+                <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" />
+              </button>
+
+              <button
+                type="submit"
+                disabled={!canSubmit || isSubmitting}
+                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-full bg-accent px-4 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:shadow-none"
+              >
+                <span>{isSubmitting ? t('welcome.starting') : t('welcome.letsGo')}</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
+
+          {showModelMenu && hasConfiguredModel && (
+            <div className="absolute bottom-[4.25rem] right-5 z-30 w-[min(18rem,calc(100%-2.5rem))] overflow-hidden rounded-xl border border-border-muted bg-background shadow-elevated sm:right-6">
+              <div className="max-h-56 overflow-y-auto p-1">
+                {modelOptions.length > 0 ? (
+                  modelOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => void handleModelOptionClick(option.id)}
+                      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors ${
+                        option.isActive
+                          ? 'bg-accent-muted text-accent'
+                          : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                      }`}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-semibold">
+                          {option.name}
+                        </span>
+                        <span className="block truncate text-xs opacity-80">{option.model}</span>
+                      </span>
+                      {option.isActive && <Check className="h-4 w-4 shrink-0" />}
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-3 py-2 text-sm text-text-muted">{modelLabel}</div>
+                )}
+              </div>
+            </div>
+          )}
         </form>
       </div>
     </div>

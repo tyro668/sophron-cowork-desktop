@@ -504,6 +504,7 @@ export function useIPC() {
             title,
             prompt,
             cwd,
+            permissionRules: useAppStore.getState().settings.permissionRules,
             content, // Send full content blocks including images
           },
         });
@@ -623,6 +624,7 @@ export function useIPC() {
           payload: {
             sessionId,
             prompt,
+            permissionRules: store.settings.permissionRules,
             content, // Send full content blocks including images
           },
         });

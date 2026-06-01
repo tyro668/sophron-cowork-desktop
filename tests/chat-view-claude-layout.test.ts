@@ -3,6 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const chatViewPath = path.resolve(process.cwd(), 'src/renderer/components/ChatView.tsx');
+const permissionPolicySelectorPath = path.resolve(
+  process.cwd(),
+  'src/renderer/components/PermissionPolicySelector.tsx'
+);
 const zhLocalePath = path.resolve(process.cwd(), 'src/renderer/i18n/locales/zh.json');
 const enLocalePath = path.resolve(process.cwd(), 'src/renderer/i18n/locales/en.json');
 
@@ -11,9 +15,10 @@ function readChatView() {
 }
 
 describe('ChatView Claude-style layout', () => {
-  it('uses a narrower conversation column shared by messages and composer', () => {
+  it('keeps messages compact while allowing the composer to match the wide mockup', () => {
     const source = readChatView();
     expect(source).toContain('max-w-[920px]');
+    expect(source).toContain('max-w-[1040px]');
   });
 
   it('uses a quieter header treatment without a left app-name label', () => {
@@ -37,11 +42,39 @@ describe('ChatView Claude-style layout', () => {
 
     expect(zh.chat.backToTop).toBe('回到顶部');
     expect(en.chat.backToTop).toBe('Back to top');
+    expect(zh.chat.autoReview).toBe('自动审查');
+    expect(en.chat.autoReview).toBe('Auto review');
+    expect(zh.chat.permissionPolicyDefault).toBe('默认权限');
+    expect(zh.chat.permissionPolicyAutoReview).toBe('自动审查');
+    expect(zh.chat.permissionPolicyFullAccess).toBe('完全访问权限');
+    expect(en.chat.permissionPolicyDefault).toBe('Default permissions');
+    expect(en.chat.permissionPolicyAutoReview).toBe('Auto review');
+    expect(en.chat.permissionPolicyFullAccess).toBe('Full access');
   });
 
-  it('uses a softer rounded composer shell instead of the previous heavy input bar', () => {
+  it('uses a compact rounded composer shell with bottom toolbar controls', () => {
     const source = readChatView();
-    expect(source).toContain('rounded-[1.75rem]');
+    expect(source).toContain('min-h-[150px]');
+    expect(source).toContain('sm:min-h-[168px]');
+    expect(source).toContain('rounded-[28px]');
+    expect(source).toContain('bg-background');
     expect(source).toContain('shadow-soft');
+    expect(source).toContain('PermissionPolicySelector');
+    expect(source).toContain('showPermissionMenu');
+    expect(source).toContain('handlePermissionMenuOpenChange');
+    expect(source).toContain('onClick={handleModelButtonClick}');
+    expect(source).toContain('showModelMenu && hasConfiguredModel');
+    expect(source).toContain('handleModelOptionClick(option.id)');
+  });
+
+  it('uses a shared permission policy dropdown with all three modes', () => {
+    const source = fs.readFileSync(permissionPolicySelectorPath, 'utf8');
+    expect(source).toContain("'default'");
+    expect(source).toContain("'auto_review'");
+    expect(source).toContain("'full_access'");
+    expect(source).toContain("t('chat.permissionPolicyDefault')");
+    expect(source).toContain("t('chat.permissionPolicyAutoReview')");
+    expect(source).toContain("t('chat.permissionPolicyFullAccess')");
+    expect(source).toContain('getPermissionRulesForPolicy(policy)');
   });
 });

@@ -14,10 +14,25 @@ describe('WelcomeView Claude-style layout', () => {
     expect(source).not.toContain('sophron cowork');
   });
 
-  it('uses a softer rounded composer shell instead of the previous generic card class', () => {
+  it('uses the shared rounded composer shell treatment with file, directory, model, and start controls', () => {
     const source = fs.readFileSync(welcomeViewPath, 'utf8');
-    expect(source).toContain('rounded-[1.9rem]');
+    expect(source).toContain('rounded-[28px]');
+    expect(source).toContain('bg-background');
     expect(source).toContain('shadow-soft');
+    expect(source).toContain('onClick={handleFileSelect}');
+    expect(source).toContain("t('welcome.attachFiles')");
+    expect(source).toContain('PermissionPolicySelector');
+    expect(source).toContain('showPermissionMenu');
+    expect(source).toContain('handlePermissionMenuOpenChange');
+    expect(source).toContain("t('welcome.selectWorkingFolder')");
+    expect(source).toContain('const hasConfiguredModel = Boolean');
+    expect(source).toContain('const handleModelButtonClick = () => {');
+    expect(source).toContain('if (!hasConfiguredModel) {');
+    expect(source).toContain('handleOpenModelSettings();');
+    expect(source).toContain('setShowModelMenu((open) => !open);');
+    expect(source).toContain('onClick={handleModelButtonClick}');
+    expect(source).toContain('showModelMenu && hasConfiguredModel');
+    expect(source).toContain("t('welcome.letsGo')");
   });
 
   it('shows an inline API setup hint on the welcome screen when config is missing', () => {

@@ -11,6 +11,7 @@ import type { ToolUseContent, ToolResultContent, ContentBlock, Message } from '.
 import { AskUserQuestionBlock } from './AskUserQuestionBlock';
 import { TodoWriteBlock } from './TodoWriteBlock';
 import { getToolIcon, getToolLabel } from './toolHelpers';
+import { DataLinkedText } from './DataLinkedText';
 
 // Only allow safe image MIME types for data: URI rendering
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
@@ -217,13 +218,13 @@ export const ToolUseBlock = memo(function ToolUseBlock({
                   </div>
                 ))}
               {shouldShowOutputText && (
-                <pre
+                <div
                   className={`text-xs font-mono whitespace-pre-wrap break-all rounded-lg p-2.5 border border-border-subtle max-h-[300px] overflow-y-auto ${
                     isError ? 'text-error bg-error/5' : 'text-text-secondary bg-surface-muted'
                   } ${preferImageOutput ? 'mt-2' : ''}`}
                 >
-                  {toolResult.content}
-                </pre>
+                  <DataLinkedText text={toolResult.content} />
+                </div>
               )}
               {!preferImageOutput &&
                 validImages.map((image, index) => (

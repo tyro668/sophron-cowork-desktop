@@ -29,6 +29,9 @@ import { execFileSync } from 'child_process';
 import { config } from 'dotenv';
 import { initDatabase, closeDatabase } from './db/database';
 import { createDataTaskStore, type DataTaskStore } from './data/data-task-store';
+import { DataCommandService } from './data/data-command-service';
+import { DataToolService } from './data/data-tool-service';
+import { createDataAgentRuntimeExtension } from './data/data-agent-extension';
 import { SessionManager } from './session/session-manager';
 import { SkillsManager } from './skills/skills-manager';
 import { PluginCatalogService } from './skills/plugin-catalog-service';
@@ -60,7 +63,6 @@ import type {
   ApiTestResult,
   DiagnosticInput,
   ProviderModelInfo,
-  PermissionRule,
   DataCreateOutputTableInput,
   DataCreateTaskInput,
   DataDashboardQuery,
@@ -887,9 +889,10 @@ app
 
     // Initialize database
     const db = initDatabase();
-    dataTaskStore = createDataTaskStore(join(app.getPath('userData'), 'data', 'workspace.duckdb'), {
+    const initializedDataTaskStore = createDataTaskStore(join(app.getPath('userData'), 'data', 'workspace.duckdb'), {
       metadataDb: db,
     });
+    dataTaskStore = initializedDataTaskStore;
     updateService = new UpdateService({
       getWindow: () => mainWindow,
       beforeInstall: prepareForUpdateInstall,
@@ -901,7 +904,12 @@ app
 
     pluginRuntimeService = new PluginRuntimeService(new PluginCatalogService());
     memoryService = new MemoryService(db);
-    const extensionManager = new AgentRuntimeExtensionManager([new MemoryExtension(memoryService)]);
+    const dataCommandService = new DataCommandService(initializedDataTaskStore);
+    const dataToolService = new DataToolService(dataCommandService);
+    const extensionManager = new AgentRuntimeExtensionManager([
+      new MemoryExtension(memoryService),
+      createDataAgentRuntimeExtension(dataToolService),
+    ]);
 
     // Initialize session manager before creating an interactive window.
     // This avoids session.start racing the startup path and hitting a null manager.
@@ -1657,6 +1665,15 @@ ipcMain.handle('data.getDashboard', async (_event, payload?: DataDashboardQuery)
   }
 });
 
+ipcMain.handle('data.getTask', async (_event, id: string) => {
+  try {
+    return await requireDataTaskStore().getTaskRecord(id);
+  } catch (error) {
+    logError('[Data] Error getting task:', error);
+    throw error;
+  }
+});
+
 ipcMain.handle('data.createTask', async (_event, payload: DataCreateTaskInput) => {
   try {
     return await requireDataTaskStore().createTask(payload);
@@ -1711,11 +1728,29 @@ ipcMain.handle('data.importDataset', async (_event, payload: DataImportDatasetIn
   }
 });
 
+ipcMain.handle('data.getInputTable', async (_event, id: string) => {
+  try {
+    return await requireDataTaskStore().getInputTableRecord(id);
+  } catch (error) {
+    logError('[Data] Error getting input table:', error);
+    throw error;
+  }
+});
+
 ipcMain.handle('data.updateDataset', async (_event, payload: DataUpdateDatasetInput) => {
   try {
     return await requireDataTaskStore().updateDataset(payload);
   } catch (error) {
     logError('[Data] Error updating dataset:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('data.getOutputTable', async (_event, id: string) => {
+  try {
+    return await requireDataTaskStore().getOutputTableRecord(id);
+  } catch (error) {
+    logError('[Data] Error getting output table:', error);
     throw error;
   }
 });
@@ -3094,6 +3129,9 @@ async function handleClientEvent(event: ClientEvent): Promise<unknown> {
         });
         return null;
       }
+      if (Array.isArray(event.payload.permissionRules)) {
+        setPermissionRules(event.payload.permissionRules);
+      }
       return sm.startSession(
         event.payload.title,
         event.payload.prompt,
@@ -3104,6 +3142,9 @@ async function handleClientEvent(event: ClientEvent): Promise<unknown> {
       );
 
     case 'session.continue':
+      if (Array.isArray(event.payload.permissionRules)) {
+        setPermissionRules(event.payload.permissionRules);
+      }
       return sm.continueSession(
         event.payload.sessionId,
         event.payload.prompt,
@@ -3197,9 +3238,7 @@ async function handleClientEvent(event: ClientEvent): Promise<unknown> {
       }
 
       if (Array.isArray((event.payload as { permissionRules?: unknown }).permissionRules)) {
-        setPermissionRules(
-          (event.payload as { permissionRules: PermissionRule[] }).permissionRules
-        );
+        setPermissionRules((event.payload as { permissionRules: unknown[] }).permissionRules);
       }
       return null;
 

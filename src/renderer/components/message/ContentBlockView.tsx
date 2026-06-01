@@ -15,6 +15,7 @@ import {
 } from '../../utils/markdown-local-link';
 import { normalizeLatexDelimiters } from '../../utils/latex-delimiters';
 import { isHtmlReportPath } from '../../../shared/report-path';
+import { parseDataResourceHref } from '../../../shared/data-resource-link';
 import type { ToolUseContent, ToolResultContent, FileAttachmentContent } from '../../types';
 import { FileText } from 'lucide-react';
 import { CodeBlock } from './CodeBlock';
@@ -45,6 +46,7 @@ export const ContentBlockView = memo(function ContentBlockView({
   const sessions = useAppStore((s) => s.sessions);
   const workingDir = useAppStore((s) => s.workingDir);
   const setGlobalNotice = useAppStore((s) => s.setGlobalNotice);
+  const navigateToDataElement = useAppStore((s) => s.navigateToDataElement);
   const activeSession = activeSessionId ? sessions.find((s) => s.id === activeSessionId) : null;
   const currentWorkingDir = activeSession?.cwd || workingDir;
 
@@ -124,6 +126,20 @@ export const ContentBlockView = memo(function ContentBlockView({
   const markdownComponents = useMemo(
     () => ({
       a({ children, href }: { children?: React.ReactNode; href?: string }) {
+        const dataTarget = parseDataResourceHref(href);
+        if (dataTarget) {
+          return (
+            <button
+              type="button"
+              onClick={() => navigateToDataElement(dataTarget)}
+              className="text-accent underline underline-offset-2 hover:text-accent-hover"
+              title={dataTarget.id}
+            >
+              {children}
+            </button>
+          );
+        }
+
         const localFilePath = resolveLocalFilePathFromHref(href, currentWorkingDir);
         if (localFilePath) {
           return (
@@ -235,7 +251,7 @@ export const ContentBlockView = memo(function ContentBlockView({
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [currentWorkingDir, openOrRevealFile]
+    [currentWorkingDir, navigateToDataElement, openOrRevealFile]
   );
 
   switch (block.type) {

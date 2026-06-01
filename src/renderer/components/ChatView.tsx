@@ -13,8 +13,20 @@ import {
 import { useAppStore } from '../store';
 import { useIPC } from '../hooks/useIPC';
 import { MessageCard } from './MessageCard';
+import { PermissionPolicySelector } from './PermissionPolicySelector';
 import type { Message, ContentBlock } from '../types';
-import { Send, Square, Plus, Loader2, Plug, X, Clock, ArrowUp } from 'lucide-react';
+import {
+  Send,
+  Square,
+  Plus,
+  Loader2,
+  Plug,
+  X,
+  Clock,
+  ArrowUp,
+  ChevronDown,
+  Check,
+} from 'lucide-react';
 
 type AttachedFile = {
   name: string;
@@ -36,6 +48,11 @@ export function ChatView() {
   const executionClock = useActiveExecutionClock();
   const appConfig = useAppConfig();
   const setGlobalNotice = useAppStore((s) => s.setGlobalNotice);
+  const isConfigured = useAppStore((s) => s.isConfigured);
+  const setAppConfig = useAppStore((s) => s.setAppConfig);
+  const setIsConfigured = useAppStore((s) => s.setIsConfigured);
+  const setShowSettings = useAppStore((s) => s.setShowSettings);
+  const setSettingsTab = useAppStore((s) => s.setSettingsTab);
   const { continueSession, stopSession, isElectron } = useIPC();
   const [prompt, setPrompt] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -51,6 +68,8 @@ export function ChatView() {
   >([]);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [showModelMenu, setShowModelMenu] = useState(false);
+  const [showPermissionMenu, setShowPermissionMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -69,6 +88,20 @@ export function ChatView() {
   const pendingCount = pendingTurns.length;
   const isSessionRunning = activeSession?.status === 'running';
   const canStop = isSessionRunning || hasActiveTurn || pendingCount > 0;
+  const modelLabel = appConfig?.model?.trim() || t('chat.noModel');
+  const hasConfiguredModel = Boolean(isConfigured && appConfig?.model?.trim());
+  const modelOptions =
+    appConfig?.configSets
+      ?.map((set) => {
+        const model = set.profiles?.[set.activeProfileKey]?.model?.trim() || '';
+        return {
+          id: set.id,
+          name: set.name,
+          model,
+          isActive: set.id === appConfig.activeConfigSetId,
+        };
+      })
+      .filter((option) => option.model) || [];
 
   const displayedMessages = useMemo(() => {
     if (!activeSessionId) return messages;
@@ -675,6 +708,53 @@ export function ChatView() {
     }
   };
 
+  const handleOpenModelSettings = () => {
+    setSettingsTab('api');
+    setShowSettings(true);
+  };
+
+  const handleModelButtonClick = () => {
+    if (!hasConfiguredModel) {
+      handleOpenModelSettings();
+      return;
+    }
+
+    setShowPermissionMenu(false);
+    setShowModelMenu((open) => !open);
+  };
+
+  const handlePermissionMenuOpenChange = (open: boolean) => {
+    setShowPermissionMenu(open);
+    if (open) {
+      setShowModelMenu(false);
+    }
+  };
+
+  const handleModelOptionClick = async (configSetId: string) => {
+    setShowModelMenu(false);
+    if (!appConfig || configSetId === appConfig.activeConfigSetId) {
+      return;
+    }
+
+    if (!isElectron || !window.electronAPI) {
+      return;
+    }
+
+    try {
+      const result = await window.electronAPI.config.switchSet({ id: configSetId });
+      if (result.success) {
+        setAppConfig(result.config);
+        setIsConfigured(Boolean(result.config.isConfigured));
+      }
+    } catch (error) {
+      setGlobalNotice({
+        id: `notice-model-switch-${Date.now()}`,
+        type: 'error',
+        message: error instanceof Error ? error.message : t('api.saveFailed'),
+      });
+    }
+  };
+
   if (!activeSession) {
     return (
       <div className="flex-1 flex items-center justify-center text-text-muted">
@@ -788,8 +868,8 @@ export function ChatView() {
       </div>
 
       {/* Input */}
-      <div className="border-t border-border-muted bg-background/92 backdrop-blur-md">
-        <div className="max-w-[920px] mx-auto px-5 lg:px-8 py-5">
+      <div className="bg-background pb-4 pt-3 backdrop-blur-md">
+        <div className="mx-auto w-full max-w-[1040px] px-4 sm:px-6">
           <form
             onSubmit={handleSubmit}
             onDragOver={handleDragOver}
@@ -843,19 +923,10 @@ export function ChatView() {
             )}
 
             <div
-              className={`flex items-end gap-2 p-3.5 rounded-[1.75rem] bg-background/88 border border-border-muted shadow-soft transition-colors ${
-                isDragging ? 'ring-2 ring-accent bg-accent/5' : ''
+              className={`flex min-h-[150px] flex-col rounded-[28px] border border-border-muted bg-background px-5 py-3 shadow-soft transition-colors sm:min-h-[168px] sm:px-6 sm:py-4 ${
+                isDragging ? 'ring-2 ring-accent bg-accent-muted' : ''
               }`}
             >
-              <button
-                type="button"
-                onClick={handleFileSelect}
-                className="w-9 h-9 rounded-2xl flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
-                title={t('welcome.attachFiles')}
-              >
-                <Plus className="w-5 h-5" />
-              </button>
-
               <textarea
                 ref={textareaRef}
                 value={prompt}
@@ -879,46 +950,100 @@ export function ChatView() {
                 }}
                 placeholder={t('chat.typeMessage')}
                 disabled={isSubmitting}
-                rows={1}
-                className="flex-1 resize-none bg-transparent border-none outline-none text-text-primary placeholder:text-text-muted text-[15px] py-2"
+                rows={3}
+                className="min-h-[68px] flex-1 resize-none overflow-y-auto border-none bg-transparent text-[15px] leading-6 text-text-primary outline-none placeholder:text-text-muted sm:min-h-[76px] sm:text-base"
               />
 
-              <div className="flex items-center gap-2">
-                {/* Model display */}
-                <span className="hidden sm:inline-flex px-2.5 py-1 rounded-full border border-border-subtle bg-background/60 text-xs text-text-muted">
-                  {appConfig?.model || t('chat.noModel')}
-                </span>
-
-                {canStop && (
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2 sm:gap-3">
                   <button
                     type="button"
-                    onClick={handleStop}
-                    className="w-9 h-9 rounded-2xl flex items-center justify-center bg-error/10 text-error hover:bg-error/20 transition-colors"
-                    title={t('chat.stop')}
+                    onClick={handleFileSelect}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+                    title={t('welcome.attachFiles')}
                   >
-                    <Square className="w-4 h-4" />
+                    <Plus className="h-5 w-5" />
                   </button>
-                )}
-                <button
-                  type="submit"
-                  disabled={
-                    (!prompt.trim() &&
-                      !textareaRef.current?.value.trim() &&
-                      pastedImages.length === 0 &&
-                      attachedFiles.length === 0) ||
-                    isSubmitting
-                  }
-                  className="w-9 h-9 rounded-2xl flex items-center justify-center bg-accent text-background disabled:opacity-50 disabled:cursor-not-allowed hover:bg-accent-hover transition-colors"
-                  title={t('chat.sendMessage')}
-                >
-                  <Send className="w-4 h-4" />
-                </button>
+
+                  <PermissionPolicySelector
+                    open={showPermissionMenu}
+                    onOpenChange={handlePermissionMenuOpenChange}
+                    buttonClassName="inline-flex h-9 shrink-0 items-center gap-2 rounded-full px-2.5 text-[14px] font-semibold text-accent transition-colors hover:bg-accent-muted sm:px-3"
+                    menuClassName="left-5 sm:left-6"
+                  />
+                </div>
+
+                <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+                  <button
+                    type="button"
+                    onClick={handleModelButtonClick}
+                    aria-haspopup="menu"
+                    aria-expanded={showModelMenu}
+                    className="hidden min-w-0 max-w-[18rem] items-center gap-2 rounded-full px-3 py-2 text-[15px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary sm:inline-flex"
+                    title={modelLabel}
+                  >
+                    <span className="truncate">{modelLabel}</span>
+                    <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" />
+                  </button>
+
+                  {canStop && (
+                    <button
+                      type="button"
+                      onClick={handleStop}
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-error/10 text-error transition-colors hover:bg-error/20"
+                      title={t('chat.stop')}
+                    >
+                      <Square className="h-4 w-4" />
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={
+                      (!prompt.trim() &&
+                        !textareaRef.current?.value.trim() &&
+                        pastedImages.length === 0 &&
+                        attachedFiles.length === 0) ||
+                      isSubmitting
+                    }
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:shadow-none"
+                    title={t('chat.sendMessage')}
+                  >
+                    <Send className="h-[18px] w-[18px]" />
+                  </button>
+                </div>
               </div>
             </div>
 
-            <p className="text-[11px] text-text-muted/60 text-center mt-2.5">
-              {t('chat.disclaimer')}
-            </p>
+            {showModelMenu && hasConfiguredModel && (
+              <div className="absolute bottom-[4.25rem] right-5 z-30 w-[min(18rem,calc(100%-2.5rem))] overflow-hidden rounded-xl border border-border-muted bg-background shadow-elevated sm:right-6">
+                <div className="max-h-56 overflow-y-auto p-1">
+                  {modelOptions.length > 0 ? (
+                    modelOptions.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => void handleModelOptionClick(option.id)}
+                        className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors ${
+                          option.isActive
+                            ? 'bg-accent-muted text-accent'
+                            : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                        }`}
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13px] font-semibold">
+                            {option.name}
+                          </span>
+                          <span className="block truncate text-xs opacity-80">{option.model}</span>
+                        </span>
+                        {option.isActive && <Check className="h-4 w-4 shrink-0" />}
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-3 py-2 text-sm text-text-muted">{modelLabel}</div>
+                  )}
+                </div>
+              </div>
+            )}
           </form>
         </div>
       </div>

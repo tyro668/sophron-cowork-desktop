@@ -396,18 +396,7 @@ export class DataTaskStore {
             )
             SELECT
               page.*,
-              (
-                SELECT group_concat(name, ${this.relatedTaskNamesSeparatorSql()})
-                FROM (
-                  SELECT t.name
-                  FROM data_cleaning_tasks t
-                  WHERE t.source_dataset_id = page.id
-                  UNION
-                  SELECT t.name
-                  FROM data_cleaning_tasks t
-                  WHERE t.source_path = page.source_path
-                ) related
-              ) AS related_task_names
+              ${this.inputTableRelatedTaskNamesSql('page')} AS related_task_names
             FROM page
           `,
           { query: normalizedQuery, like, sourceKind: datasetSourceKind }
@@ -476,9 +465,15 @@ export class DataTaskStore {
       throw new Error('Task name is required');
     }
     const sourcePath = input.sourcePath ? normalizeSourcePath(input.sourcePath) : null;
+    const sourceDatasetId = input.sourceDatasetId
+      ? (await this.requireInputDataset(input.sourceDatasetId)).id
+      : null;
+    const outputTable = input.outputTableId
+      ? (await this.requireOutputTable(input.outputTableId)).tableName
+      : null;
     const now = this.now();
     const id = uuidv4();
-    const status: DataTaskStatus = sourcePath ? 'pending' : 'draft';
+    const status: DataTaskStatus = sourcePath || sourceDatasetId ? 'pending' : 'draft';
     await this.metaRunSql(
       `
         INSERT INTO data_cleaning_tasks (
@@ -486,7 +481,7 @@ export class DataTaskStore {
           row_count, column_count, error, scheduled_for, created_at, updated_at, last_run_at
         )
         VALUES (
-          $id, $name, $status, $nodeCount, $sourcePath, NULL, NULL,
+          $id, $name, $status, $nodeCount, $sourcePath, $sourceDatasetId, $outputTable,
           NULL, NULL, NULL, NULL, $createdAt, $updatedAt, NULL
         )
       `,
@@ -496,6 +491,8 @@ export class DataTaskStore {
         status,
         nodeCount: 0,
         sourcePath,
+        sourceDatasetId,
+        outputTable,
         createdAt: now,
         updatedAt: now,
       }
@@ -1159,6 +1156,26 @@ export class DataTaskStore {
     return this.getTaskWorkflow(id);
   }
 
+  async getTaskRecord(id: string): Promise<DataCleaningTask | null> {
+    await this.ensureMetadataReady();
+    return this.getTask(id);
+  }
+
+  async getInputTableRecord(id: string): Promise<DataDataset | null> {
+    await this.ensureMetadataReady();
+    try {
+      return await this.requireInputDataset(id);
+    } catch {
+      return null;
+    }
+  }
+
+  async getOutputTableRecord(id: string): Promise<DataOutputTable | null> {
+    await this.ensureMetadataReady();
+    await this.cleanupOutputTableMetadata();
+    return this.getOutputTable(id);
+  }
+
   private async prepareWorkflowOutputNodesForSave(
     nodes: DataWorkflowNodeInput[],
     updatedAt: number
@@ -1767,6 +1784,7 @@ export class DataTaskStore {
     if (outputMode === 'temporary') {
       return { outputTable, rowCount, columnCount, sourceDatasetId: null };
     }
+    const sourceDatasetId = (await this.findWorkflowSourceDatasetId(nodes)) ?? task.sourceDatasetId;
     const dataset = await this.upsertDatasetForTaskOutput(
       task.name,
       sourcePath,
@@ -1775,7 +1793,40 @@ export class DataTaskStore {
       columnCount,
       outputTarget.outputDatasetId
     );
-    return { outputTable, rowCount, columnCount, sourceDatasetId: dataset?.id ?? task.sourceDatasetId };
+    void dataset;
+    return { outputTable, rowCount, columnCount, sourceDatasetId };
+  }
+
+  private async findWorkflowSourceDatasetId(nodes: DataWorkflowNode[]): Promise<string | null> {
+    for (const node of nodes) {
+      if (node.type !== 'input_source' || node.config.disabled === true) {
+        continue;
+      }
+      const source =
+        typeof node.config.source === 'string'
+          ? node.config.source
+          : stringConfigValue(node.config.datasetId) ||
+              stringConfigValue(node.config.inputTableId) ||
+              stringConfigValue(node.config.sourceDatasetId)
+            ? 'dataset'
+            : 'task';
+      if (source !== 'dataset') {
+        continue;
+      }
+
+      const datasetRef =
+        stringConfigValue(node.config.datasetId) ||
+        stringConfigValue(node.config.inputTableId) ||
+        stringConfigValue(node.config.sourceDatasetId);
+      if (!datasetRef) {
+        continue;
+      }
+      const dataset = await this.findDatasetByReference(datasetRef);
+      if (dataset) {
+        return dataset.id;
+      }
+    }
+    return null;
   }
 
   private async resolveWorkflowOutputTarget(
@@ -2501,6 +2552,31 @@ export class DataTaskStore {
     return this.metadataDb ? 'char(31)' : 'chr(31)';
   }
 
+  private inputTableRelatedTaskNamesSql(inputAlias: string): string {
+    return `
+      (
+        SELECT group_concat(t.name, ${this.relatedTaskNamesSeparatorSql()})
+        FROM data_cleaning_tasks t
+        WHERE t.source_dataset_id = ${inputAlias}.id
+          OR t.source_path = ${inputAlias}.source_path
+          OR EXISTS (
+            SELECT 1
+            FROM data_workflow_nodes n
+            WHERE n.task_id = t.id
+              AND coalesce(n.operator_type, n.node_key) IN ('input_source', 'read_source')
+              AND (
+                coalesce(n.config_json, '') LIKE '%"datasetId":"' || ${inputAlias}.id || '"%'
+                OR coalesce(n.config_json, '') LIKE '%"datasetId": "' || ${inputAlias}.id || '"%'
+                OR coalesce(n.config_json, '') LIKE '%"inputTableId":"' || ${inputAlias}.id || '"%'
+                OR coalesce(n.config_json, '') LIKE '%"inputTableId": "' || ${inputAlias}.id || '"%'
+                OR coalesce(n.config_json, '') LIKE '%"sourceDatasetId":"' || ${inputAlias}.id || '"%'
+                OR coalesce(n.config_json, '') LIKE '%"sourceDatasetId": "' || ${inputAlias}.id || '"%'
+              )
+          )
+      )
+    `;
+  }
+
   private outputTableRelatedTaskNamesSql(outputAlias: string): string {
     return `
       (
@@ -2514,7 +2590,9 @@ export class DataTaskStore {
               AND coalesce(n.operator_type, n.node_key) IN ('output', 'write_duckdb_table', 'publish_dataset')
               AND (
                 coalesce(n.config_json, '') LIKE '%"outputDatasetId":"' || ${outputAlias}.id || '"%'
+                OR coalesce(n.config_json, '') LIKE '%"outputDatasetId": "' || ${outputAlias}.id || '"%'
                 OR coalesce(n.config_json, '') LIKE '%"outputTableId":"' || ${outputAlias}.id || '"%'
+                OR coalesce(n.config_json, '') LIKE '%"outputTableId": "' || ${outputAlias}.id || '"%'
               )
           )
       )

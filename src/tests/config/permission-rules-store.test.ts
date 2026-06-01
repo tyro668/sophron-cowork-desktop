@@ -79,6 +79,12 @@ describe('permission-rules-store', () => {
       setPermissionRules([{ tool: 'read', action: 'allow' }]);
       expect(decidePermission(SESSION_A, 'bash', { command: 'ls' })).toBe('ask');
     });
+
+    it('supports wildcard rules for full-access mode', () => {
+      setPermissionRules([{ tool: '*', action: 'allow' }]);
+      expect(decidePermission(SESSION_A, 'bash', { command: 'rm -rf /tmp/x' })).toBe('allow');
+      expect(decidePermission(SESSION_A, 'unknown_tool', {})).toBe('allow');
+    });
   });
 
   describe('pattern matching', () => {

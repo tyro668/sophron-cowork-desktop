@@ -13,23 +13,12 @@
  * unknown / malformed values fall back to `'ask'` so the worst-case is a
  * harmless extra prompt, never an unintended auto-allow.
  */
-import type { PermissionRule } from '../../renderer/types';
-
-// Mirrors the renderer defaults in src/renderer/store/index.ts
-const DEFAULT_RULES: PermissionRule[] = [
-  { tool: 'read', action: 'allow' },
-  { tool: 'glob', action: 'allow' },
-  { tool: 'grep', action: 'allow' },
-  { tool: 'ls', action: 'allow' },
-  { tool: 'find', action: 'allow' },
-  { tool: 'write', action: 'ask' },
-  { tool: 'edit', action: 'ask' },
-  { tool: 'bash', action: 'ask' },
-];
+import { DEFAULT_PERMISSION_RULES } from '../../shared/permission-policies';
+import type { PermissionRule } from '../../shared/permission-policies';
 
 const VALID_ACTIONS: ReadonlySet<PermissionRule['action']> = new Set(['allow', 'deny', 'ask']);
 
-let rules: PermissionRule[] = [...DEFAULT_RULES];
+let rules: PermissionRule[] = [...DEFAULT_PERMISSION_RULES];
 
 /** Session-scoped "always allow" decisions, keyed by sessionId → set of lowercase tool names. */
 const alwaysAllowBySession = new Map<string, Set<string>>();
@@ -63,7 +52,7 @@ function sanitizeRules(input: unknown): PermissionRule[] | null {
 
 export function setPermissionRules(next: unknown): void {
   const sanitized = sanitizeRules(next);
-  rules = sanitized && sanitized.length > 0 ? sanitized : [...DEFAULT_RULES];
+  rules = sanitized && sanitized.length > 0 ? sanitized : [...DEFAULT_PERMISSION_RULES];
 }
 
 export function getPermissionRules(): PermissionRule[] {
@@ -76,9 +65,9 @@ export function getPermissionRules(): PermissionRule[] {
  *
  * Matching order:
  *   1. Session-scoped "always allow" memory
- *   2. First rule whose `tool` matches (case-insensitive) AND whose
- *      optional `pattern` (glob-ish: `*` = any substring) matches the
- *      stringified input
+ *   2. First rule whose `tool` matches (case-insensitive, or `*`) AND
+ *      whose optional `pattern` (glob-ish: `*` = any substring) matches
+ *      the stringified input
  *   3. Default: 'ask' for unknown tools (conservative)
  *
  * Defence-in-depth: even though `setPermissionRules` sanitizes input, we
@@ -99,7 +88,8 @@ export function decidePermission(
   const inputStr = safeStringify(input);
 
   for (const rule of rules) {
-    if (rule.tool.toLowerCase() !== lowered) continue;
+    const tool = rule.tool.toLowerCase();
+    if (tool !== '*' && tool !== lowered) continue;
     if (rule.pattern && !matchesPattern(rule.pattern, inputStr)) continue;
     return VALID_ACTIONS.has(rule.action) ? rule.action : 'ask';
   }

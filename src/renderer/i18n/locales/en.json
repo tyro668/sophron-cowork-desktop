@@ -73,6 +73,7 @@
     "totalCount": "{{count}} total",
     "rowsPerPage": "{{count}} / page",
     "comingSoon": "Coming soon",
+    "navigationNotFound": "The target data item does not exist or has already been deleted",
     "tasks": {
       "selection": "Select data task"
     },
@@ -231,6 +232,8 @@
       "selection": "Select output table",
       "physicalTable": "Physical table",
       "relatedInputTable": "Input table",
+      "previewTitle": "Output table data preview",
+      "previewEmpty": "No output table preview data",
       "deleteConfirm": "Delete output table \"{{name}}\"?",
       "deleteNotFound": "The output table does not exist or has already been deleted",
       "status": {
@@ -1080,12 +1083,16 @@
     "sendMessage": "Send message",
     "stop": "Stop",
     "processing": "Processing...",
-    "typeMessage": "Type a message...",
+    "typeMessage": "Type a message, Enter to send, Shift + Enter for a new line",
     "loadingConversation": "Loading conversation...",
     "startConversation": "Start the conversation",
     "startFailed": "Failed to start session. Please try again.",
     "disclaimer": "sophron cowork is AI-powered and may make mistakes. Please double-check responses.",
     "noModel": "No model",
+    "autoReview": "Auto review",
+    "permissionPolicyDefault": "Default permissions",
+    "permissionPolicyAutoReview": "Auto review",
+    "permissionPolicyFullAccess": "Full access",
     "backToTop": "Back to top",
     "connectorCount_one": "{{count}} connector",
     "connectorCount_other": "{{count}} connectors"

@@ -1,0 +1,55 @@
+export type PermissionRuleAction = 'allow' | 'deny' | 'ask';
+
+export interface PermissionRule {
+  tool: string;
+  pattern?: string;
+  action: PermissionRuleAction;
+}
+
+export const PERMISSION_POLICY_IDS = ['default', 'auto_review', 'full_access'] as const;
+export type PermissionPolicyId = (typeof PERMISSION_POLICY_IDS)[number];
+
+export const DEFAULT_PERMISSION_POLICY: PermissionPolicyId = 'auto_review';
+
+export const DEFAULT_PERMISSION_RULES: PermissionRule[] = [
+  { tool: 'read', action: 'allow' },
+  { tool: 'glob', action: 'allow' },
+  { tool: 'grep', action: 'allow' },
+  { tool: 'ls', action: 'allow' },
+  { tool: 'find', action: 'allow' },
+  { tool: 'data_get_workflow_dsl_reference', action: 'allow' },
+  { tool: 'data_list_input_tables', action: 'allow' },
+  { tool: 'data_list_output_tables', action: 'allow' },
+  { tool: 'data_list_tasks', action: 'allow' },
+  { tool: 'data_preview_table', action: 'allow' },
+  { tool: 'data_get_task_workflow', action: 'allow' },
+  { tool: 'data_export_workflow_dsl', action: 'allow' },
+  { tool: 'data_get_run_result', action: 'allow' },
+  { tool: 'write', action: 'ask' },
+  { tool: 'edit', action: 'ask' },
+  { tool: 'bash', action: 'ask' },
+];
+
+export const AUTO_REVIEW_PERMISSION_RULES: PermissionRule[] = [
+  ...DEFAULT_PERMISSION_RULES,
+  { tool: '*', action: 'ask' },
+];
+
+export const FULL_ACCESS_PERMISSION_RULES: PermissionRule[] = [{ tool: '*', action: 'allow' }];
+
+export function normalizePermissionPolicy(value: unknown): PermissionPolicyId {
+  return PERMISSION_POLICY_IDS.includes(value as PermissionPolicyId)
+    ? (value as PermissionPolicyId)
+    : DEFAULT_PERMISSION_POLICY;
+}
+
+export function getPermissionRulesForPolicy(policy: PermissionPolicyId): PermissionRule[] {
+  const rules =
+    policy === 'full_access'
+      ? FULL_ACCESS_PERMISSION_RULES
+      : policy === 'auto_review'
+        ? AUTO_REVIEW_PERMISSION_RULES
+        : DEFAULT_PERMISSION_RULES;
+
+  return rules.map((rule) => ({ ...rule }));
+}
