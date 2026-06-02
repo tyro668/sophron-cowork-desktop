@@ -63,7 +63,7 @@ export const MessageCard = memo(function MessageCard({ message, isStreaming }: M
         // User message - compact styling with smaller padding and radius
         <div className="flex items-start gap-2 justify-end group">
           <div
-            className={`message-user px-4 py-3 rounded-[1.65rem] max-w-[80%] min-w-0 break-words ${
+            className={`message-user px-3.5 py-2.5 rounded-xl max-w-[80%] min-w-0 break-words ${
               isQueued ? 'opacity-70 border-dashed' : ''
             } ${isCancelled ? 'opacity-60' : ''}`}
           >

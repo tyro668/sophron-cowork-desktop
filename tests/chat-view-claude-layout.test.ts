@@ -17,8 +17,8 @@ function readChatView() {
 describe('ChatView Claude-style layout', () => {
   it('keeps messages compact while allowing the composer to match the wide mockup', () => {
     const source = readChatView();
-    expect(source).toContain('max-w-[920px]');
-    expect(source).toContain('max-w-[1040px]');
+    expect(source).toContain('max-w-[980px]');
+    expect(source).not.toContain('max-w-[1040px]');
   });
 
   it('uses a quieter header treatment without a left app-name label', () => {
@@ -54,9 +54,14 @@ describe('ChatView Claude-style layout', () => {
 
   it('uses a compact rounded composer shell with bottom toolbar controls', () => {
     const source = readChatView();
-    expect(source).toContain('min-h-[150px]');
-    expect(source).toContain('sm:min-h-[168px]');
-    expect(source).toContain('rounded-[28px]');
+    expect(source).toContain('min-h-[96px]');
+    expect(source).toContain('sm:min-h-[104px]');
+    expect(source).toContain('rounded-2xl');
+    expect(source).toContain('min-h-[32px]');
+    expect(source).toContain('sm:min-h-[36px]');
+    expect(source).not.toContain('min-h-[150px]');
+    expect(source).not.toContain('sm:min-h-[168px]');
+    expect(source).not.toContain('rounded-[28px]');
     expect(source).toContain('bg-background');
     expect(source).toContain('shadow-soft');
     expect(source).toContain('PermissionPolicySelector');

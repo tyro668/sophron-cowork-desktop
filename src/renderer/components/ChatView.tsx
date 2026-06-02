@@ -820,7 +820,7 @@ export function ChatView() {
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
         <div
           ref={messagesContainerRef}
-          className="w-full max-w-[920px] mx-auto py-8 px-5 lg:px-8 space-y-5"
+          className="w-full max-w-[980px] mx-auto py-5 px-4 lg:px-6 space-y-3"
         >
           {displayedMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-28 text-text-muted space-y-3 text-center">
@@ -845,9 +845,9 @@ export function ChatView() {
           {hasActiveTurn &&
             (!partialMessage || partialMessage.trim() === '') &&
             !partialThinking && (
-              <div className="flex items-center gap-3 px-4 py-3 rounded-full bg-background/80 border border-border-subtle max-w-fit">
+              <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-background/80 border border-border-subtle max-w-fit">
                 <Loader2 className="w-4 h-4 text-accent animate-spin" />
-                <span className="text-sm text-text-secondary">{t('chat.processing')}</span>
+                <span className="text-[13px] text-text-secondary">{t('chat.processing')}</span>
               </div>
             )}
 
@@ -868,8 +868,8 @@ export function ChatView() {
       </div>
 
       {/* Input */}
-      <div className="bg-background pb-4 pt-3 backdrop-blur-md">
-        <div className="mx-auto w-full max-w-[1040px] px-4 sm:px-6">
+      <div className="bg-background pb-3 pt-2 backdrop-blur-md">
+        <div className="mx-auto w-full max-w-[980px] px-4 sm:px-6">
           <form
             onSubmit={handleSubmit}
             onDragOver={handleDragOver}
@@ -923,7 +923,7 @@ export function ChatView() {
             )}
 
             <div
-              className={`flex min-h-[150px] flex-col rounded-[28px] border border-border-muted bg-background px-5 py-3 shadow-soft transition-colors sm:min-h-[168px] sm:px-6 sm:py-4 ${
+              className={`flex min-h-[96px] flex-col rounded-2xl border border-border-muted bg-background px-4 py-2.5 shadow-soft transition-colors sm:min-h-[104px] sm:py-3 ${
                 isDragging ? 'ring-2 ring-accent bg-accent-muted' : ''
               }`}
             >
@@ -950,36 +950,36 @@ export function ChatView() {
                 }}
                 placeholder={t('chat.typeMessage')}
                 disabled={isSubmitting}
-                rows={3}
-                className="min-h-[68px] flex-1 resize-none overflow-y-auto border-none bg-transparent text-[15px] leading-6 text-text-primary outline-none placeholder:text-text-muted sm:min-h-[76px] sm:text-base"
+                rows={1}
+                className="min-h-[32px] flex-1 resize-none overflow-y-auto border-none bg-transparent text-[14px] leading-5 text-text-primary outline-none placeholder:text-text-muted sm:min-h-[36px] sm:text-[15px]"
               />
 
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+              <div className="mt-2 flex items-center justify-between gap-2.5">
+                <div className="flex min-w-0 items-center gap-2">
                   <button
                     type="button"
                     onClick={handleFileSelect}
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
                     title={t('welcome.attachFiles')}
                   >
-                    <Plus className="h-5 w-5" />
+                    <Plus className="h-4 w-4" />
                   </button>
 
                   <PermissionPolicySelector
                     open={showPermissionMenu}
                     onOpenChange={handlePermissionMenuOpenChange}
-                    buttonClassName="inline-flex h-9 shrink-0 items-center gap-2 rounded-full px-2.5 text-[14px] font-semibold text-accent transition-colors hover:bg-accent-muted sm:px-3"
+                    buttonClassName="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[13px] font-semibold text-accent transition-colors hover:bg-accent-muted sm:px-2.5"
                     menuClassName="left-5 sm:left-6"
                   />
                 </div>
 
-                <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+                <div className="flex min-w-0 items-center gap-2">
                   <button
                     type="button"
                     onClick={handleModelButtonClick}
                     aria-haspopup="menu"
                     aria-expanded={showModelMenu}
-                    className="hidden min-w-0 max-w-[18rem] items-center gap-2 rounded-full px-3 py-2 text-[15px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary sm:inline-flex"
+                    className="hidden h-8 min-w-0 max-w-[18rem] items-center gap-1.5 rounded-lg border border-border-muted px-2.5 text-[13px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary sm:inline-flex"
                     title={modelLabel}
                   >
                     <span className="truncate">{modelLabel}</span>
@@ -990,7 +990,7 @@ export function ChatView() {
                     <button
                       type="button"
                       onClick={handleStop}
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-error/10 text-error transition-colors hover:bg-error/20"
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-error/10 text-error transition-colors hover:bg-error/20"
                       title={t('chat.stop')}
                     >
                       <Square className="h-4 w-4" />
@@ -1005,17 +1005,17 @@ export function ChatView() {
                         attachedFiles.length === 0) ||
                       isSubmitting
                     }
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:shadow-none"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:shadow-none"
                     title={t('chat.sendMessage')}
                   >
-                    <Send className="h-[18px] w-[18px]" />
+                    <Send className="h-4 w-4" />
                   </button>
                 </div>
               </div>
             </div>
 
             {showModelMenu && hasConfiguredModel && (
-              <div className="absolute bottom-[4.25rem] right-5 z-30 w-[min(18rem,calc(100%-2.5rem))] overflow-hidden rounded-xl border border-border-muted bg-background shadow-elevated sm:right-6">
+              <div className="absolute bottom-[3.5rem] right-4 z-30 w-[min(18rem,calc(100%-2rem))] overflow-hidden rounded-lg border border-border-muted bg-background shadow-elevated sm:right-6">
                 <div className="max-h-56 overflow-y-auto p-1">
                   {modelOptions.length > 0 ? (
                     modelOptions.map((option) => (

@@ -102,13 +102,13 @@ export const ToolResultBlock = memo(function ToolResultBlock({
 
   return (
     <div
-      className={`rounded-2xl border overflow-hidden ${
-        block.isError ? 'border-error/25 bg-error/5' : 'border-border-subtle bg-background/40'
+      className={`rounded-xl border overflow-hidden ${
+        block.isError ? 'border-error/25 bg-error/5' : 'border-border-subtle bg-background/45'
       }`}
     >
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-surface-hover/50 transition-colors"
+        className="w-full flex min-h-10 items-center gap-2.5 px-3 py-2 text-left hover:bg-surface-hover/50 transition-colors"
       >
         {block.isError ? (
           <XCircle className="w-3.5 h-3.5 text-error flex-shrink-0" />
@@ -151,7 +151,7 @@ export const ToolResultBlock = memo(function ToolResultBlock({
           )}
           {shouldShowOutputText && (
             <div
-              className={`text-xs font-mono whitespace-pre-wrap break-all rounded-lg p-2.5 border border-border-subtle max-h-[300px] overflow-y-auto ${
+              className={`text-xs font-mono whitespace-pre-wrap break-all rounded-lg p-2 border border-border-subtle max-h-[300px] overflow-y-auto ${
                 block.isError ? 'text-error bg-error/5' : 'text-text-secondary bg-surface-muted'
               } ${preferImageOutput ? 'mt-2' : ''}`}
             >

@@ -59,7 +59,7 @@ export function PermissionPolicySelector({
 
       {open && (
         <div
-          className={`absolute bottom-[4.25rem] z-30 w-[min(15rem,calc(100%-2.5rem))] overflow-hidden rounded-xl border border-border-muted bg-background shadow-elevated ${menuClassName}`}
+          className={`absolute bottom-[3.5rem] z-30 w-[min(15rem,calc(100%-2.5rem))] overflow-hidden rounded-lg border border-border-muted bg-background shadow-elevated ${menuClassName}`}
         >
           <div className="p-1">
             {options.map((option) => (
@@ -67,7 +67,7 @@ export function PermissionPolicySelector({
                 key={option.id}
                 type="button"
                 onClick={() => handleSelect(option.id)}
-                className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] transition-colors ${
+                className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[13px] transition-colors ${
                   option.id === activePolicy
                     ? 'bg-accent-muted text-accent'
                     : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'

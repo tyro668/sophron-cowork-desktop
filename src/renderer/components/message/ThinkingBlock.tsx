@@ -53,7 +53,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({ block }: ThinkingBloc
   const previewNodes = renderThinkingPreview(preview);
 
   return (
-    <div className="rounded-2xl border border-border-subtle bg-background/40 overflow-hidden">
+    <div className="rounded-xl border border-border-subtle bg-background/45 overflow-hidden">
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-surface-hover/50 transition-colors"
@@ -75,7 +75,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({ block }: ThinkingBloc
       </button>
 
       {expanded && (
-        <div className="border-t border-border/50 px-4 py-3 animate-fade-in">
+        <div className="border-t border-border/50 px-3 py-2.5 animate-fade-in">
           <div className="text-sm text-text-secondary leading-relaxed prose-chat max-w-none">
             <PanelErrorBoundary
               name="ThinkingMarkdown"

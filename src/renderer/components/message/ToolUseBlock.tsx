@@ -119,18 +119,18 @@ export const ToolUseBlock = memo(function ToolUseBlock({
 
   return (
     <div
-      className={`rounded-2xl border overflow-hidden transition-colors ${
+      className={`rounded-xl border overflow-hidden transition-colors ${
         isError
           ? 'border-error/25 bg-error/5'
           : isRunning
             ? 'border-accent/15 bg-accent/5'
-            : 'border-border-subtle bg-background/40'
+            : 'border-border-subtle bg-background/45'
       }`}
     >
       {/* Header — always visible */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left hover:bg-surface-hover/50 transition-colors"
+        className="w-full flex min-h-10 items-center gap-2 px-3 py-2 text-left hover:bg-surface-hover/50 transition-colors"
       >
         {/* Status icon */}
         <div
@@ -195,7 +195,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
             <div className="text-[10px] uppercase tracking-wider text-text-muted font-medium mb-1">
               Input
             </div>
-            <pre className="text-xs font-mono text-text-secondary whitespace-pre-wrap break-all bg-surface-muted rounded-lg p-2.5 border border-border-subtle">
+            <pre className="text-xs font-mono text-text-secondary whitespace-pre-wrap break-all bg-surface-muted rounded-lg p-2 border border-border-subtle">
               {JSON.stringify(block.input, null, 2)}
             </pre>
           </div>
@@ -219,7 +219,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
                 ))}
               {shouldShowOutputText && (
                 <div
-                  className={`text-xs font-mono whitespace-pre-wrap break-all rounded-lg p-2.5 border border-border-subtle max-h-[300px] overflow-y-auto ${
+                  className={`text-xs font-mono whitespace-pre-wrap break-all rounded-lg p-2 border border-border-subtle max-h-[300px] overflow-y-auto ${
                     isError ? 'text-error bg-error/5' : 'text-text-secondary bg-surface-muted'
                   } ${preferImageOutput ? 'mt-2' : ''}`}
                 >
