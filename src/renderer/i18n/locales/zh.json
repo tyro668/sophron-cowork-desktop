@@ -65,6 +65,7 @@
     "defaultTaskName": "新的数据清洗任务",
     "importDataset": "导入数据集",
     "deleteTaskConfirm": "确认删除“{{name}}”？",
+    "deleteAllTasksConfirm": "确认删除当前列表中的 {{count}} 个数据任务？此操作不可撤销。",
     "deleteTaskNotFound": "数据清洗任务不存在，可能已经被删除",
     "noSourceFile": "未绑定数据源",
     "emptyTasks": "暂无数据清洗任务",
@@ -124,6 +125,7 @@
       "run": "运行任务",
       "attachSource": "绑定数据源并运行",
       "delete": "删除任务",
+      "deleteAll": "删除全部",
       "more": "更多"
     },
     "inputTables": {
@@ -143,6 +145,7 @@
       "selection": "选择输入表",
       "notConfigured": "未配置",
       "deleteConfirm": "确认删除输入表“{{name}}”？",
+      "deleteAllConfirm": "确认删除当前列表中的 {{count}} 个输入表？此操作不可撤销。",
       "deleteNotFound": "输入表不存在，可能已经被删除",
       "editor": {
         "title": "输入表配置",
@@ -235,6 +238,7 @@
       "previewTitle": "输出表数据预览",
       "previewEmpty": "输出表暂无可预览数据",
       "deleteConfirm": "确认删除输出表“{{name}}”？",
+      "deleteAllConfirm": "确认删除当前列表中的 {{count}} 个输出表？此操作不可撤销。",
       "deleteNotFound": "输出表不存在，可能已经被删除",
       "status": {
         "available": "可用"

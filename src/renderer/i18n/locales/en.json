@@ -65,6 +65,7 @@
     "defaultTaskName": "New data cleaning task",
     "importDataset": "Import dataset",
     "deleteTaskConfirm": "Delete \"{{name}}\"?",
+    "deleteAllTasksConfirm": "Delete {{count}} data task(s) in the current list? This cannot be undone.",
     "deleteTaskNotFound": "The data cleaning task does not exist or has already been deleted",
     "noSourceFile": "No source file",
     "emptyTasks": "No data cleaning tasks",
@@ -124,6 +125,7 @@
       "run": "Run task",
       "attachSource": "Attach source and run",
       "delete": "Delete task",
+      "deleteAll": "Delete all",
       "more": "More"
     },
     "inputTables": {
@@ -143,6 +145,7 @@
       "selection": "Select input table",
       "notConfigured": "Not configured",
       "deleteConfirm": "Delete input table \"{{name}}\"?",
+      "deleteAllConfirm": "Delete {{count}} input table(s) in the current list? This cannot be undone.",
       "deleteNotFound": "The input table does not exist or has already been deleted",
       "editor": {
         "title": "Input table config",
@@ -235,6 +238,7 @@
       "previewTitle": "Output table data preview",
       "previewEmpty": "No output table preview data",
       "deleteConfirm": "Delete output table \"{{name}}\"?",
+      "deleteAllConfirm": "Delete {{count}} output table(s) in the current list? This cannot be undone.",
       "deleteNotFound": "The output table does not exist or has already been deleted",
       "status": {
         "available": "Available"

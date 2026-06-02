@@ -180,6 +180,7 @@ const TASK_ICON_STYLES = [
 const TABLE_PAGE_SIZE = 10;
 const INPUT_TABLE_PREVIEW_PAGE_SIZE = 100;
 const OUTPUT_TABLE_INPUT_CHOICES_LIMIT = 200;
+const DATA_DELETE_BATCH_SIZE = 200;
 const WORKFLOW_NODE_WIDTH = 116;
 const WORKFLOW_NODE_HEIGHT = 36;
 const WORKFLOW_OPERATOR_MIME = 'application/x-sophron-workflow-operator';
@@ -505,7 +506,7 @@ export function DataView() {
     }
     try {
       const nextDashboard = await window.electronAPI.data.getDashboard({
-        query: options.query ?? (shouldLoadTasks ? searchQuery : ''),
+        query: options.query ?? (shouldLoadTasks || shouldLoadOutputTables ? searchQuery : ''),
         includeSummary: shouldLoadSummary,
         includeTasks: shouldLoadTasks,
         includeDatasets: false,
@@ -548,7 +549,7 @@ export function DataView() {
   }, [activeTab, outputPage, searchQuery, taskPage]);
 
   const loadInputTables = useCallback(
-    async (options: { preserveError?: boolean; page?: number; sourceFilter?: InputTableSourceFilter } = {}) => {
+    async (options: { preserveError?: boolean; page?: number; sourceFilter?: InputTableSourceFilter; query?: string } = {}) => {
       if (!window.electronAPI?.data) return;
       const requestSeq = inputTablesRequestSeq.current + 1;
       inputTablesRequestSeq.current = requestSeq;
@@ -561,7 +562,7 @@ export function DataView() {
       }
       try {
         const nextDashboard = await window.electronAPI.data.getDashboard({
-          query: '',
+          query: options.query ?? searchQuery,
           includeSummary: false,
           includeTasks: false,
           includeDatasets: true,
@@ -590,7 +591,7 @@ export function DataView() {
         }
       }
     },
-    [datasetPage, inputTableSourceFilter]
+    [datasetPage, inputTableSourceFilter, searchQuery]
   );
 
   useEffect(() => {
@@ -647,11 +648,21 @@ export function DataView() {
     }
   }, [dashboard.totalOutputTables, outputPage]);
 
-  const handleSearchChange = useCallback((value: string) => {
-    setLoadingTab('tasks');
-    setSearchQuery(value);
-    setTaskPage(1);
-  }, []);
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      setLoadingTab(activeTab);
+      if (activeTab === 'input_tables') {
+        setInputTablesLoading(true);
+        setDatasetPage(1);
+      } else if (activeTab === 'output_tables') {
+        setOutputPage(1);
+      } else {
+        setTaskPage(1);
+      }
+      setSearchQuery(value);
+    },
+    [activeTab]
+  );
 
   const handleInputTableSourceFilterChange = useCallback((value: InputTableSourceFilter) => {
     setLoadingTab('input_tables');
@@ -666,6 +677,7 @@ export function DataView() {
     setPendingNavigationTab(tab);
     setLoadingTab(tab);
     setActiveTab(tab);
+    setSearchQuery('');
   }, [activeTab]);
 
   const handleTaskPageChange = useCallback((page: number) => {
@@ -853,6 +865,7 @@ export function DataView() {
     setInputTableDrafts((current) => [draft, ...current]);
     setInputTableSourceFilter('all');
     setActiveTab('input_tables');
+    setSearchQuery('');
     setEditingInputTableDatasetId(null);
     setEditingInputTableDraftId(draft.id);
   }, [inputTableDrafts.length, t, totalInputTableDatasets]);
@@ -1029,6 +1042,43 @@ export function DataView() {
     [editingTaskId, loadDashboard, t]
   );
 
+  const handleDeleteAllTasks = useCallback(async () => {
+    if (!window.electronAPI?.data) return;
+    const count = dashboard.totalTasks;
+    if (count <= 0) return;
+    const confirmed = window.confirm(t('data.deleteAllTasksConfirm', { count }));
+    if (!confirmed) return;
+    setActionId('delete-all-tasks');
+    setError(null);
+    try {
+      while (true) {
+        const page = await window.electronAPI.data.getDashboard({
+          query: searchQuery,
+          includeSummary: false,
+          includeTasks: true,
+          includeDatasets: false,
+          includeOutputTables: false,
+          taskOffset: 0,
+          taskLimit: DATA_DELETE_BATCH_SIZE,
+          datasetLimit: 0,
+          outputLimit: 0,
+        });
+        if (page.tasks.length === 0) break;
+        for (const task of page.tasks) {
+          await window.electronAPI.data.deleteTask(task.id);
+        }
+      }
+      setEditingTaskId(null);
+      setTaskPage(1);
+      await loadDashboard({ preserveError: true, tab: 'tasks', taskPage: 1 });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      await loadDashboard({ preserveError: true, tab: 'tasks' });
+    } finally {
+      setActionId(null);
+    }
+  }, [dashboard.totalTasks, loadDashboard, searchQuery, t]);
+
   const handleDeleteInputTable = useCallback(
     async (dataset: DataDataset) => {
       if (!window.electronAPI?.data?.deleteDataset) return;
@@ -1053,6 +1103,63 @@ export function DataView() {
     },
     [loadInputTables, t]
   );
+
+  const handleDeleteAllInputTables = useCallback(async () => {
+    if (!window.electronAPI?.data?.deleteDataset) return;
+    const draftIds =
+      inputTableSourceFilter === 'all'
+        ? inputTableDrafts
+            .filter((draft) => matchesSearchText(draft.name, searchQuery))
+            .map((draft) => draft.id)
+        : [];
+    const count = totalInputTableDatasets + draftIds.length;
+    if (count <= 0) return;
+    const confirmed = window.confirm(t('data.inputTables.deleteAllConfirm', { count }));
+    if (!confirmed) return;
+    setActionId('delete-all-input-tables');
+    setError(null);
+    try {
+      if (draftIds.length > 0) {
+        setInputTableDrafts((current) => current.filter((draft) => !draftIds.includes(draft.id)));
+        setEditingInputTableDraftId((current) =>
+          current && draftIds.includes(current) ? null : current
+        );
+      }
+      while (true) {
+        const page = await window.electronAPI.data.getDashboard({
+          query: searchQuery,
+          includeSummary: false,
+          includeTasks: false,
+          includeDatasets: true,
+          includeOutputTables: false,
+          taskLimit: 0,
+          datasetOffset: 0,
+          datasetLimit: DATA_DELETE_BATCH_SIZE,
+          datasetSourceKind: inputTableSourceFilter,
+          outputLimit: 0,
+        });
+        if (page.datasets.length === 0) break;
+        for (const dataset of page.datasets) {
+          await window.electronAPI.data.deleteDataset(dataset.id);
+        }
+      }
+      setEditingInputTableDatasetId(null);
+      setDatasetPage(1);
+      await loadInputTables({ preserveError: true, page: 1 });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      await loadInputTables({ preserveError: true });
+    } finally {
+      setActionId(null);
+    }
+  }, [
+    inputTableDrafts,
+    inputTableSourceFilter,
+    loadInputTables,
+    searchQuery,
+    t,
+    totalInputTableDatasets,
+  ]);
 
   const handlePreviewStoredInputTable = useCallback(async (dataset: DataDataset, page = 1) => {
     if (!window.electronAPI?.data?.previewDataset) return;
@@ -1102,6 +1209,7 @@ export function DataView() {
     setError(null);
     try {
       setActiveTab('output_tables');
+      setSearchQuery('');
       setOutputPage(1);
       const outputTable = await window.electronAPI.data.createOutputTable({
         name: `${t('data.outputTables.defaultName')} ${dashboard.totalOutputTables + 1}`,
@@ -1176,6 +1284,47 @@ export function DataView() {
     },
     [editingOutputTableId, loadDashboard, t]
   );
+
+  const handleDeleteAllOutputTables = useCallback(async () => {
+    if (!window.electronAPI?.data?.deleteDataset) return;
+    const count = dashboard.totalOutputTables;
+    if (count <= 0) return;
+    const confirmed = window.confirm(t('data.outputTables.deleteAllConfirm', { count }));
+    if (!confirmed) return;
+    setActionId('delete-all-output-tables');
+    setError(null);
+    try {
+      while (true) {
+        const page = await window.electronAPI.data.getDashboard({
+          query: searchQuery,
+          includeSummary: false,
+          includeTasks: false,
+          includeDatasets: false,
+          includeOutputTables: true,
+          taskLimit: 0,
+          datasetLimit: 0,
+          outputOffset: 0,
+          outputLimit: DATA_DELETE_BATCH_SIZE,
+        });
+        if (page.outputTables.length === 0) break;
+        for (const outputTable of page.outputTables) {
+          await window.electronAPI.data.deleteDataset(outputTable.id);
+        }
+      }
+      setEditingOutputTableId(null);
+      setOutputPage(1);
+      await loadDashboard({
+        preserveError: true,
+        tab: 'output_tables',
+        outputPage: 1,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      await loadDashboard({ preserveError: true, tab: 'output_tables' });
+    } finally {
+      setActionId(null);
+    }
+  }, [dashboard.totalOutputTables, loadDashboard, searchQuery, t]);
 
   return (
     <div
@@ -1277,10 +1426,12 @@ export function DataView() {
                   isCreateDisabled={!isDataApiAvailable || actionId === 'create'}
                   onCreate={handleCreateTask}
                   onSearchChange={handleSearchChange}
+                  onRefresh={() => loadDashboard({ preserveError: true, tab: 'tasks' })}
                   onPageChange={handleTaskPageChange}
                   onRun={handleRunTask}
                   onEdit={(task) => setEditingTaskId(task.id)}
                   onDelete={handleDeleteTask}
+                  onDeleteAll={handleDeleteAllTasks}
                 />
               ) : (
                 <div className="overflow-visible bg-transparent">
@@ -1290,14 +1441,17 @@ export function DataView() {
                         drafts={inputTableDrafts}
                         totalDatasets={totalInputTableDatasets}
                         currentPage={datasetPage}
+                        searchQuery={searchQuery}
                         isLoading={isInputTablesLoading}
                         sourceFilter={inputTableSourceFilter}
+                        onSearchChange={handleSearchChange}
                         onSourceFilterChange={handleInputTableSourceFilterChange}
                         onPageChange={handleDatasetPageChange}
                         onCreate={handleCreateInputTableDraft}
                         onRefresh={() => loadInputTables({ preserveError: true })}
                         onPreviewDataset={handlePreviewStoredInputTable}
                       onDelete={handleDeleteInputTable}
+                      onDeleteAll={handleDeleteAllInputTables}
                       onDeleteDraft={handleDeleteInputTableDraft}
                       onEditDraft={setEditingInputTableDraftId}
                       onEditDataset={handleEditInputTableDataset}
@@ -1309,15 +1463,18 @@ export function DataView() {
                       outputTables={dashboard.outputTables}
                       totalOutputTables={dashboard.totalOutputTables}
                       currentPage={outputPage}
+                      searchQuery={searchQuery}
                       isLoading={isOutputTablesLoading}
                       actionId={actionId}
                       isCreateDisabled={!isDataApiAvailable || actionId === 'create-output'}
                       onCreate={handleCreateOutputTable}
+                      onSearchChange={handleSearchChange}
                       onRefresh={() => loadDashboard({ preserveError: true, tab: 'output_tables' })}
                       onPageChange={handleOutputPageChange}
                       onPreview={handlePreviewStoredOutputTable}
                       onEdit={(outputTable) => setEditingOutputTableId(outputTable.id)}
                       onDelete={handleDeleteOutputTable}
+                      onDeleteAll={handleDeleteAllOutputTables}
                     />
                   )}
                 </div>
@@ -4477,10 +4634,12 @@ function TasksPanel({
   isCreateDisabled,
   onCreate,
   onSearchChange,
+  onRefresh,
   onPageChange,
   onRun,
   onEdit,
   onDelete,
+  onDeleteAll,
 }: {
   tasks: DataCleaningTask[];
   totalTasks: number;
@@ -4491,15 +4650,18 @@ function TasksPanel({
   isCreateDisabled: boolean;
   onCreate: () => void;
   onSearchChange: (value: string) => void;
+  onRefresh: () => void;
   onPageChange: (page: number) => void;
   onRun: (task: DataCleaningTask) => void;
   onEdit: (task: DataCleaningTask) => void;
   onDelete: (task: DataCleaningTask) => void;
+  onDeleteAll: () => void;
 }) {
   const { t } = useTranslation();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const selectedTask = tasks.find((task) => task.id === selectedTaskId) ?? null;
   const selectedTaskBusy = selectedTask ? actionId === selectedTask.id : false;
+  const bulkBusy = actionId === 'delete-all-tasks';
 
   useEffect(() => {
     if (isLoading) {
@@ -4513,58 +4675,71 @@ function TasksPanel({
   return (
     <div className="bg-transparent">
       <div className="mb-3 flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <button
             onClick={onCreate}
-            disabled={isCreateDisabled}
+            disabled={isCreateDisabled || bulkBusy}
             className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Plus className="h-3.5 w-3.5" />
             {t('data.newCleaningTask')}
           </button>
-
-          <div className="mx-1 hidden h-5 w-px bg-border-muted lg:block" />
-          <div className="flex flex-wrap items-center gap-2">
-            <DataToolbarButton
-              icon={<PencilLine className="h-3.5 w-3.5" />}
-              label={t('data.actions.edit')}
-              disabled={!selectedTask || selectedTaskBusy}
-              onClick={() => {
-                if (selectedTask) {
-                  onEdit(selectedTask);
-                }
-              }}
-            />
-            <DataToolbarButton
-              icon={<Play className="h-3.5 w-3.5" />}
-              label={t('data.actions.run')}
-              disabled={!selectedTask || selectedTaskBusy}
-              onClick={() => {
-                if (selectedTask) {
-                  onRun(selectedTask);
-                }
-              }}
-            />
-            <DataToolbarButton
-              icon={<Trash2 className="h-3.5 w-3.5" />}
-              label={t('data.actions.delete')}
-              disabled={!selectedTask || selectedTaskBusy}
-              danger
-              onClick={() => {
-                if (selectedTask) {
-                  onDelete(selectedTask);
-                }
-              }}
-            />
-          </div>
-        </div>
-        <div className="relative w-full sm:w-[20rem]">
-          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
-          <input
+          <DataTableSearch
             value={searchQuery}
-            onChange={(event) => onSearchChange(event.target.value)}
+            onChange={onSearchChange}
             placeholder={t('data.searchPlaceholder')}
-            className="h-8 w-full rounded-lg border border-border-muted bg-background/94 pl-8 pr-3 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+          />
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <DataToolbarButton
+            icon={<Play className="h-3.5 w-3.5" />}
+            label={t('data.actions.run')}
+            disabled={!selectedTask || selectedTaskBusy || bulkBusy}
+            onClick={() => {
+              if (selectedTask) {
+                onRun(selectedTask);
+              }
+            }}
+          />
+          <DataToolbarButton
+            icon={<PencilLine className="h-3.5 w-3.5" />}
+            label={t('data.actions.edit')}
+            disabled={!selectedTask || selectedTaskBusy || bulkBusy}
+            onClick={() => {
+              if (selectedTask) {
+                onEdit(selectedTask);
+              }
+            }}
+          />
+          <DataToolbarButton
+            icon={<Trash2 className="h-3.5 w-3.5" />}
+            label={t('data.actions.delete')}
+            disabled={!selectedTask || selectedTaskBusy || bulkBusy}
+            danger
+            onClick={() => {
+              if (selectedTask) {
+                onDelete(selectedTask);
+              }
+            }}
+          />
+          <DataMoreMenu
+            items={[
+              {
+                key: 'refresh',
+                label: t('data.actions.refresh'),
+                icon: <RefreshCw className="h-3.5 w-3.5" />,
+                disabled: bulkBusy,
+                onClick: onRefresh,
+              },
+              {
+                key: 'delete-all',
+                label: t('data.actions.deleteAll'),
+                icon: <Trash2 className="h-3.5 w-3.5" />,
+                danger: true,
+                disabled: totalTasks <= 0 || bulkBusy,
+                onClick: onDeleteAll,
+              },
+            ]}
           />
         </div>
       </div>
@@ -4695,14 +4870,17 @@ function InputTablesPanel({
   drafts,
   totalDatasets,
   currentPage,
+  searchQuery,
   isLoading,
   sourceFilter,
+  onSearchChange,
   onSourceFilterChange,
   onPageChange,
   onCreate,
   onRefresh,
   onPreviewDataset,
   onDelete,
+  onDeleteAll,
   onDeleteDraft,
   onEditDraft,
   onEditDataset,
@@ -4713,14 +4891,17 @@ function InputTablesPanel({
   drafts: InputTableDraft[];
   totalDatasets: number;
   currentPage: number;
+  searchQuery: string;
   isLoading: boolean;
   sourceFilter: InputTableSourceFilter;
+  onSearchChange: (value: string) => void;
   onSourceFilterChange: (source: InputTableSourceFilter) => void;
   onPageChange: (page: number) => void;
   onCreate: () => void;
   onRefresh: () => void;
   onPreviewDataset: (dataset: DataDataset) => void;
   onDelete: (dataset: DataDataset) => void;
+  onDeleteAll: () => void;
   onDeleteDraft: (id: string) => void;
   onEditDraft: (id: string) => void;
   onEditDataset: (id: string) => void;
@@ -4729,7 +4910,14 @@ function InputTablesPanel({
 }) {
   const { t } = useTranslation();
   const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null);
-  const draftCount = sourceFilter === 'all' ? drafts.length : 0;
+  const filteredDrafts = useMemo(
+    () =>
+      sourceFilter === 'all'
+        ? drafts.filter((draft) => matchesSearchText(draft.name, searchQuery))
+        : [],
+    [drafts, searchQuery, sourceFilter]
+  );
+  const draftCount = filteredDrafts.length;
   const totalRows = totalDatasets + draftCount;
   const pageCount = getTablePageCount(totalRows);
   const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
@@ -4737,9 +4925,9 @@ function InputTablesPanel({
   const pageDrafts = useMemo(
     () =>
       !isLoading && sourceFilter === 'all'
-        ? drafts.slice(draftStart, draftStart + TABLE_PAGE_SIZE)
+        ? filteredDrafts.slice(draftStart, draftStart + TABLE_PAGE_SIZE)
         : [],
-    [draftStart, drafts, isLoading, sourceFilter]
+    [draftStart, filteredDrafts, isLoading, sourceFilter]
   );
   const visibleRows = useMemo(
     () =>
@@ -4759,6 +4947,7 @@ function InputTablesPanel({
   const selectedDataset = selectedRow?.kind === 'dataset' ? selectedRow.dataset : null;
   const selectedDraft = selectedRow?.kind === 'draft' ? selectedRow.draft : null;
   const selectedRowBusy = selectedRow ? actionId === selectedRow.id : false;
+  const bulkBusy = actionId === 'delete-all-input-tables';
 
   useEffect(() => {
     if (isLoading) {
@@ -4772,82 +4961,96 @@ function InputTablesPanel({
   return (
     <div className="bg-transparent">
       <div className="mb-3 flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={onCreate}
-              disabled={isCreateDisabled}
-              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <button
+            onClick={onCreate}
+            disabled={isCreateDisabled || bulkBusy}
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t('data.inputTables.add')}
+          </button>
+          <DataTableSearch
+            value={searchQuery}
+            onChange={onSearchChange}
+            placeholder={t('data.inputTables.searchPlaceholder')}
+          />
+          <label className="relative block w-32">
+            <span className="sr-only">{t('data.inputTables.sourceFilter')}</span>
+            <select
+              value={sourceFilter}
+              onChange={(event) =>
+                onSourceFilterChange(event.target.value as InputTableSourceFilter)
+              }
+              disabled={bulkBusy}
+              className="h-8 w-full appearance-none rounded-lg border border-border-muted bg-background/94 pl-3 pr-8 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-45"
             >
-              <Plus className="h-3.5 w-3.5" />
-              {t('data.inputTables.add')}
-            </button>
-            <label className="relative block w-32">
-              <span className="sr-only">{t('data.inputTables.sourceFilter')}</span>
-              <select
-                value={sourceFilter}
-                onChange={(event) =>
-                  onSourceFilterChange(event.target.value as InputTableSourceFilter)
-                }
-                className="h-8 w-full appearance-none rounded-lg border border-border-muted bg-background/94 pl-3 pr-8 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent focus:border-accent focus:ring-2 focus:ring-accent/20"
-              >
-                {INPUT_TABLE_SOURCE_FILTERS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {t(option.labelKey)}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
-            </label>
-          </div>
-
-          <div className="mx-1 hidden h-5 w-px bg-border-muted lg:block" />
-          <div className="flex flex-wrap items-center gap-2">
-            <DataToolbarButton
-              icon={<Eye className="h-3.5 w-3.5" />}
-              label={t('data.inputTables.actions.preview')}
-              disabled={!selectedDataset}
-              onClick={() => {
-                if (selectedDataset) {
-                  onPreviewDataset(selectedDataset);
-                }
-              }}
-            />
-            <DataToolbarButton
-              icon={<PencilLine className="h-3.5 w-3.5" />}
-              label={t('data.inputTables.actions.edit')}
-              disabled={!selectedRow}
-              onClick={() => {
-                if (selectedDraft) {
-                  onEditDraft(selectedDraft.id);
-                } else if (selectedDataset) {
-                  onEditDataset(selectedDataset.id);
-                }
-              }}
-            />
-            <DataToolbarButton
-              icon={<Trash2 className="h-3.5 w-3.5" />}
-              label={t('data.inputTables.actions.delete')}
-              disabled={!selectedRow || selectedRowBusy}
-              danger
-              onClick={() => {
-                if (selectedDraft) {
-                  onDeleteDraft(selectedDraft.id);
-                } else if (selectedDataset) {
-                  onDelete(selectedDataset);
-                }
-              }}
-            />
-          </div>
+              {INPUT_TABLE_SOURCE_FILTERS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {t(option.labelKey)}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+          </label>
         </div>
 
-        <button
-          onClick={onRefresh}
-          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-          {t('data.actions.refresh')}
-        </button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <DataToolbarButton
+            icon={<Eye className="h-3.5 w-3.5" />}
+            label={t('data.inputTables.actions.preview')}
+            disabled={!selectedDataset || bulkBusy}
+            onClick={() => {
+              if (selectedDataset) {
+                onPreviewDataset(selectedDataset);
+              }
+            }}
+          />
+          <DataToolbarButton
+            icon={<PencilLine className="h-3.5 w-3.5" />}
+            label={t('data.inputTables.actions.edit')}
+            disabled={!selectedRow || bulkBusy}
+            onClick={() => {
+              if (selectedDraft) {
+                onEditDraft(selectedDraft.id);
+              } else if (selectedDataset) {
+                onEditDataset(selectedDataset.id);
+              }
+            }}
+          />
+          <DataToolbarButton
+            icon={<Trash2 className="h-3.5 w-3.5" />}
+            label={t('data.inputTables.actions.delete')}
+            disabled={!selectedRow || selectedRowBusy || bulkBusy}
+            danger
+            onClick={() => {
+              if (selectedDraft) {
+                onDeleteDraft(selectedDraft.id);
+              } else if (selectedDataset) {
+                onDelete(selectedDataset);
+              }
+            }}
+          />
+          <DataMoreMenu
+            items={[
+              {
+                key: 'refresh',
+                label: t('data.actions.refresh'),
+                icon: <RefreshCw className="h-3.5 w-3.5" />,
+                disabled: bulkBusy,
+                onClick: onRefresh,
+              },
+              {
+                key: 'delete-all',
+                label: t('data.actions.deleteAll'),
+                icon: <Trash2 className="h-3.5 w-3.5" />,
+                danger: true,
+                disabled: totalRows <= 0 || bulkBusy,
+                onClick: onDeleteAll,
+              },
+            ]}
+          />
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border-muted bg-background/94">
@@ -5014,28 +5217,34 @@ function OutputTablesPanel({
   outputTables,
   totalOutputTables,
   currentPage,
+  searchQuery,
   isLoading,
   actionId,
   isCreateDisabled,
   onCreate,
+  onSearchChange,
   onRefresh,
   onPageChange,
   onPreview,
   onEdit,
   onDelete,
+  onDeleteAll,
 }: {
   outputTables: DataOutputTable[];
   totalOutputTables: number;
   currentPage: number;
+  searchQuery: string;
   isLoading: boolean;
   actionId: string | null;
   isCreateDisabled: boolean;
   onCreate: () => void;
+  onSearchChange: (value: string) => void;
   onRefresh: () => void;
   onPageChange: (page: number) => void;
   onPreview: (outputTable: DataOutputTable) => void;
   onEdit: (outputTable: DataOutputTable) => void;
   onDelete: (outputTable: DataOutputTable) => void;
+  onDeleteAll: () => void;
 }) {
   const { t } = useTranslation();
   const [selectedOutputTableId, setSelectedOutputTableId] = useState<string | null>(null);
@@ -5045,6 +5254,7 @@ function OutputTablesPanel({
   const selectedOutputTable =
     outputTables.find((outputTable) => outputTable.id === selectedOutputTableId) ?? null;
   const selectedBusy = selectedOutputTable ? actionId === selectedOutputTable.id : false;
+  const bulkBusy = actionId === 'delete-all-output-tables';
 
   useEffect(() => {
     if (isLoading) {
@@ -5061,59 +5271,73 @@ function OutputTablesPanel({
   return (
     <div className="bg-transparent">
       <div className="mb-3 flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <button
             onClick={onCreate}
-            disabled={isCreateDisabled}
+            disabled={isCreateDisabled || bulkBusy}
             className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Plus className="h-3.5 w-3.5" />
             {t('data.outputTables.add')}
           </button>
-
-          <div className="mx-1 hidden h-5 w-px bg-border-muted lg:block" />
-          <div className="flex flex-wrap items-center gap-2">
-            <DataToolbarButton
-              icon={<Eye className="h-3.5 w-3.5" />}
-              label={t('data.inputTables.actions.preview')}
-              disabled={!selectedOutputTable}
-              onClick={() => {
-                if (selectedOutputTable) {
-                  onPreview(selectedOutputTable);
-                }
-              }}
-            />
-            <DataToolbarButton
-              icon={<PencilLine className="h-3.5 w-3.5" />}
-              label={t('data.inputTables.actions.edit')}
-              disabled={!selectedOutputTable}
-              onClick={() => {
-                if (selectedOutputTable) {
-                  onEdit(selectedOutputTable);
-                }
-              }}
-            />
-            <DataToolbarButton
-              icon={<Trash2 className="h-3.5 w-3.5" />}
-              label={t('data.inputTables.actions.delete')}
-              disabled={!selectedOutputTable || selectedBusy}
-              danger
-              onClick={() => {
-                if (selectedOutputTable) {
-                  onDelete(selectedOutputTable);
-                }
-              }}
-            />
-          </div>
+          <DataTableSearch
+            value={searchQuery}
+            onChange={onSearchChange}
+            placeholder={t('data.outputTables.searchPlaceholder')}
+          />
         </div>
-
-        <button
-          onClick={onRefresh}
-          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-          {t('data.actions.refresh')}
-        </button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <DataToolbarButton
+            icon={<Eye className="h-3.5 w-3.5" />}
+            label={t('data.inputTables.actions.preview')}
+            disabled={!selectedOutputTable || bulkBusy}
+            onClick={() => {
+              if (selectedOutputTable) {
+                onPreview(selectedOutputTable);
+              }
+            }}
+          />
+          <DataToolbarButton
+            icon={<PencilLine className="h-3.5 w-3.5" />}
+            label={t('data.inputTables.actions.edit')}
+            disabled={!selectedOutputTable || bulkBusy}
+            onClick={() => {
+              if (selectedOutputTable) {
+                onEdit(selectedOutputTable);
+              }
+            }}
+          />
+          <DataToolbarButton
+            icon={<Trash2 className="h-3.5 w-3.5" />}
+            label={t('data.inputTables.actions.delete')}
+            disabled={!selectedOutputTable || selectedBusy || bulkBusy}
+            danger
+            onClick={() => {
+              if (selectedOutputTable) {
+                onDelete(selectedOutputTable);
+              }
+            }}
+          />
+          <DataMoreMenu
+            items={[
+              {
+                key: 'refresh',
+                label: t('data.actions.refresh'),
+                icon: <RefreshCw className="h-3.5 w-3.5" />,
+                disabled: bulkBusy,
+                onClick: onRefresh,
+              },
+              {
+                key: 'delete-all',
+                label: t('data.actions.deleteAll'),
+                icon: <Trash2 className="h-3.5 w-3.5" />,
+                danger: true,
+                disabled: totalOutputTables <= 0 || bulkBusy,
+                onClick: onDeleteAll,
+              },
+            ]}
+          />
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border-muted bg-background/94">
@@ -6203,6 +6427,105 @@ function DataToolbarButton({
   );
 }
 
+function DataTableSearch({
+  value,
+  placeholder,
+  onChange,
+}: {
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="relative w-full sm:w-[18rem]">
+      <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="h-8 w-full rounded-lg border border-border-muted bg-background/94 pl-8 pr-3 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+      />
+    </div>
+  );
+}
+
+interface DataMoreMenuItem {
+  key: string;
+  label: string;
+  icon?: ReactNode;
+  danger?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}
+
+function DataMoreMenu({ items }: { items: DataMoreMenuItem[] }) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (event: globalThis.MouseEvent) => {
+      if (event.target instanceof Node && menuRef.current?.contains(event.target)) {
+        return;
+      }
+      setOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={menuRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+        title={t('data.actions.more')}
+        aria-label={t('data.actions.more')}
+        aria-expanded={open}
+      >
+        <MoreHorizontal className="h-4 w-4" />
+      </button>
+      {open && (
+        <div
+          className="absolute right-0 top-9 z-30 w-40 overflow-hidden rounded-lg border border-border-muted bg-background py-1 shadow-elevated"
+          style={{ backgroundColor: 'var(--color-background)' }}
+        >
+          {items.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              disabled={item.disabled}
+              onClick={() => {
+                setOpen(false);
+                item.onClick();
+              }}
+              className={`flex h-8 w-full items-center gap-2 px-3 text-left text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                item.danger
+                  ? 'text-error hover:bg-error/10'
+                  : 'text-text-secondary hover:bg-accent/10 hover:text-accent'
+              }`}
+            >
+              {item.icon}
+              <span className="truncate">{item.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StatusBadge({ status }: { status: DataTaskStatus }) {
   const { t } = useTranslation();
   return (
@@ -6305,6 +6628,12 @@ function PaginationFooter({
 
 function getTablePageCount(count: number): number {
   return Math.max(1, Math.ceil(count / TABLE_PAGE_SIZE));
+}
+
+function matchesSearchText(value: string, query: string): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return true;
+  return value.toLowerCase().includes(normalizedQuery);
 }
 
 function getVisiblePageNumbers(currentPage: number, pageCount: number): number[] {
