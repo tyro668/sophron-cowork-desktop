@@ -33,9 +33,13 @@ describe('main workspace navigation', () => {
   it('uses the reusable skills manager in the skills page', () => {
     const source = fs.readFileSync(skillsViewPath, 'utf8');
 
+    expect(source).toContain("import { Package } from 'lucide-react';");
     expect(source).toContain("import { SettingsSkills } from './settings/SettingsSkills';");
+    expect(source).toContain('<Package className="h-5 w-5 flex-shrink-0 text-accent" />');
     expect(source).toContain('<SettingsSkills isActive={true} />');
     expect(source).toContain("t('skills.pageTitle')");
+    expect(source).not.toContain("t('mainNav.skills')");
+    expect(source).not.toContain("t('skills.pageDescription')");
   });
 
   it('exposes data, skills, and tasks in the sidebar', () => {
@@ -47,6 +51,9 @@ describe('main workspace navigation', () => {
     expect(source).toContain("setMainView('data')");
     expect(source).toContain("setMainView('skills')");
     expect(source).toContain("setMainView('chat')");
+    expect(source).toContain('<Package className="w-4 h-4" />');
+    expect(source).toContain('<Package className="h-4 w-4 flex-shrink-0" />');
+    expect(source).not.toContain('<Wrench className="w-4 h-4" />');
   });
 
   it('stores the selected top-level view and supports nav-server page aliases', () => {

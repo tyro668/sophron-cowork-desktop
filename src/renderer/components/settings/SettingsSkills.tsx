@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import type { Skill, PluginCatalogItemV2, InstalledPlugin, PluginComponentKind } from '../../types';
 import { useAppStore } from '../../store';
-import { SettingsContentSection } from './shared';
 import type { LocalizedBanner } from './shared';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
@@ -409,120 +408,132 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
   return (
     <div className="space-y-4">
       {error && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-error/10 text-error text-sm">
-          <AlertCircle className="w-4 h-4" />
+        <div className="flex items-center gap-2 rounded-lg border border-error/20 bg-error/5 px-3 py-2 text-[13px] text-error">
+          <AlertCircle className="h-4 w-4 flex-shrink-0" />
           {error.key ? t(error.key) : error.text}
         </div>
       )}
       {success && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-success/10 text-success text-sm">
-          <CheckCircle className="w-4 h-4" />
+        <div className="flex items-center gap-2 rounded-lg border border-success/20 bg-success/5 px-3 py-2 text-[13px] text-success">
+          <CheckCircle className="h-4 w-4 flex-shrink-0" />
           {success.key ? t(success.key) : success.text}
         </div>
       )}
 
-      <SettingsContentSection
-        title={t('skills.storagePathTitle')}
-        description={t('skills.storagePathHint')}
-      >
-        <div className="text-xs text-text-muted break-all">
-          {storagePath || t('skills.storagePathUnavailable')}
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          <button
-            onClick={handleSelectStoragePath}
-            disabled={isLoading}
-            className="w-full py-2.5 px-3 rounded-lg border border-border hover:border-accent hover:bg-accent/5 transition-all flex items-center justify-center gap-2 text-text-secondary hover:text-accent disabled:opacity-50"
-          >
-            <FolderOpen className="w-4 h-4" />
-            {t('skills.selectStoragePath')}
-          </button>
-          <button
-            onClick={handleOpenStoragePath}
-            disabled={isLoading}
-            className="w-full py-2.5 px-3 rounded-lg border border-border hover:border-accent hover:bg-accent/5 transition-all flex items-center justify-center gap-2 text-text-secondary hover:text-accent disabled:opacity-50"
-          >
-            <Globe className="w-4 h-4" />
-            {t('skills.openStoragePath')}
-          </button>
-          <button
-            onClick={handleRefreshSkills}
-            disabled={isLoading}
-            className="w-full py-2.5 px-3 rounded-lg border border-border hover:border-accent hover:bg-accent/5 transition-all flex items-center justify-center gap-2 text-text-secondary hover:text-accent disabled:opacity-50"
-          >
-            <RefreshCw className="w-4 h-4" />
-            {t('skills.refreshSkills')}
-          </button>
-        </div>
-      </SettingsContentSection>
-
-      {/* Built-in Skills */}
-      <SettingsContentSection
-        title={t('skills.builtinSkills')}
-        description={t('skills.builtinSkillsDesc')}
-      >
-        {builtinSkills.map((skill) => (
-          <SkillCard
-            key={skill.id}
-            skill={skill}
-            onToggleEnabled={() => handleToggleEnabled(skill)}
-            onDelete={null}
-            isLoading={isLoading}
-          />
-        ))}
-      </SettingsContentSection>
-
-      {/* Custom Skills */}
-      <SettingsContentSection
-        title={t('skills.customSkills')}
-        description={t('skills.installSkillsDesc')}
-      >
-        {customSkills.length === 0 ? (
-          <div className="text-center py-8 text-text-muted">
-            <Package className="w-10 h-10 mx-auto mb-3 opacity-50" />
-            <p>{t('skills.noCustomSkills')}</p>
-            <p className="text-sm mt-1">{t('skills.installSkillsDesc')}</p>
+      <section className="rounded-lg border border-border-muted bg-background/70 px-3 py-3">
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+          <div className="min-w-0">
+            <h2 className="text-[13px] font-medium text-text-primary">
+              {t('skills.storagePathTitle')}
+            </h2>
+            <p className="mt-1 break-all text-[12px] leading-5 text-text-secondary">
+              {storagePath || t('skills.storagePathUnavailable')}
+            </p>
           </div>
-        ) : (
-          customSkills.map((skill) => (
-            <SkillCard
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:flex lg:items-center">
+            <button
+              onClick={handleSelectStoragePath}
+              disabled={isLoading}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border-muted bg-background px-3 text-[13px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
+            >
+              <FolderOpen className="h-4 w-4" />
+              {t('skills.selectStoragePath')}
+            </button>
+            <button
+              onClick={handleOpenStoragePath}
+              disabled={isLoading}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border-muted bg-background px-3 text-[13px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
+            >
+              <Globe className="h-4 w-4" />
+              {t('skills.openStoragePath')}
+            </button>
+            <button
+              onClick={handleRefreshSkills}
+              disabled={isLoading}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border-muted bg-background px-3 text-[13px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              {t('skills.refreshSkills')}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <div className="flex items-center gap-2">
+          <h2 className="text-[15px] font-semibold text-text-primary">
+            {t('skills.builtinSkills')}
+          </h2>
+          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-accent/10 px-1.5 text-xs font-medium text-accent">
+            {builtinSkills.length}
+          </span>
+        </div>
+        <div className="overflow-hidden rounded-lg border border-border-muted bg-background">
+          {builtinSkills.map((skill) => (
+            <SkillRow
               key={skill.id}
               skill={skill}
               onToggleEnabled={() => handleToggleEnabled(skill)}
-              onDelete={() => handleDelete(skill.id, skill.name)}
+              onDelete={null}
               isLoading={isLoading}
             />
-          ))
-        )}
-      </SettingsContentSection>
-
-      <SettingsContentSection
-        title={t('skills.pluginsTitle')}
-        description={t('skills.pluginsDesc')}
-      >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          <button
-            onClick={handleBrowsePlugins}
-            disabled={isLoading || isPluginLoading}
-            className="w-full py-3 px-4 rounded-lg border border-border-subtle hover:border-accent hover:bg-accent/5 transition-all flex items-center justify-center gap-2 text-text-secondary hover:text-accent disabled:opacity-50"
-          >
-            {isPluginLoading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : (
-              <Package className="w-5 h-5" />
-            )}
-            {t('skills.browsePlugins')}
-          </button>
-          <button
-            onClick={handleInstall}
-            disabled={isLoading}
-            className="w-full py-3 px-4 rounded-lg border-2 border-dashed border-border-subtle hover:border-accent hover:bg-accent/5 transition-all flex items-center justify-center gap-2 text-text-secondary hover:text-accent disabled:opacity-50"
-          >
-            <Plus className="w-5 h-5" />
-            {t('skills.installSkillFromFolder')}
-          </button>
+          ))}
         </div>
-      </SettingsContentSection>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-[15px] font-semibold text-text-primary">
+          {t('skills.customSkills')}
+        </h2>
+        <div className="overflow-hidden rounded-lg border border-border-muted bg-background">
+          {customSkills.length === 0 ? (
+            <div className="flex items-center gap-3 px-4 py-3 text-text-muted">
+              <Package className="h-8 w-8 flex-shrink-0 opacity-45" />
+              <div className="min-w-0">
+                <p className="text-[13px] font-medium text-text-primary">
+                  {t('skills.noCustomSkills')}
+                </p>
+                <p className="mt-0.5 text-[12px] leading-5 text-text-muted">
+                  {t('skills.installSkillsDesc')}
+                </p>
+              </div>
+            </div>
+          ) : (
+            customSkills.map((skill) => (
+              <SkillRow
+                key={skill.id}
+                skill={skill}
+                onToggleEnabled={() => handleToggleEnabled(skill)}
+                onDelete={() => handleDelete(skill.id, skill.name)}
+                isLoading={isLoading}
+              />
+            ))
+          )}
+        </div>
+      </section>
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <button
+          onClick={handleBrowsePlugins}
+          disabled={isLoading || isPluginLoading}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border-muted bg-background px-3 text-[13px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
+        >
+          {isPluginLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Package className="h-4 w-4" />
+          )}
+          {t('skills.browsePlugins')}
+        </button>
+        <button
+          onClick={handleInstall}
+          disabled={isLoading}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border-muted bg-background px-3 text-[13px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
+        >
+          <Plus className="h-4 w-4" />
+          {t('skills.installSkillFromFolder')}
+        </button>
+      </div>
 
       {isPluginModalOpen && (
         <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
@@ -742,7 +753,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
   );
 }
 
-function SkillCard({
+function SkillRow({
   skill,
   onToggleEnabled,
   onDelete,
@@ -757,54 +768,56 @@ function SkillCard({
   const isBuiltin = skill.type === 'builtin';
 
   return (
-    <div className="rounded-lg border border-border bg-surface p-4">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <div className="flex items-center gap-3 mb-2">
-            <div
-              className={`w-3 h-3 rounded-full ${skill.enabled ? 'bg-success' : 'bg-text-muted'}`}
-            />
-            <h3 className="font-medium text-text-primary">{skill.name}</h3>
-            <span
-              className={`px-2 py-0.5 text-xs rounded ${
-                isBuiltin
-                  ? 'bg-accent/10 text-accent'
-                  : skill.type === 'mcp'
-                    ? 'bg-mcp/10 text-mcp'
-                    : 'bg-success/10 text-success'
-              }`}
-            >
-              {skill.type.toUpperCase()}
-            </span>
-          </div>
-          {skill.description && (
-            <p className="text-sm text-text-muted ml-6 line-clamp-2">{skill.description}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onToggleEnabled}
-            disabled={isLoading}
-            className={`p-2 rounded-lg transition-colors ${
-              skill.enabled
-                ? 'bg-success/10 text-success hover:bg-success/20'
-                : 'bg-surface-muted text-text-muted hover:bg-surface-active'
+    <div className="flex min-h-[64px] items-center gap-3 border-b border-border-muted px-3 py-2.5 last:border-b-0">
+      <div
+        className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${
+          skill.enabled ? 'bg-success' : 'bg-text-muted'
+        }`}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-2">
+          <h3 className="truncate text-[14px] font-medium text-text-primary">{skill.name}</h3>
+          <span
+            className={`inline-flex h-5 items-center rounded-md border px-1.5 text-[11px] font-semibold leading-none ${
+              isBuiltin
+                ? 'border-accent/20 bg-accent/5 text-accent'
+                : skill.type === 'mcp'
+                  ? 'border-mcp/20 bg-mcp/5 text-mcp'
+                  : 'border-success/20 bg-success/5 text-success'
             }`}
-            title={skill.enabled ? t('common.disable') : t('common.enable')}
           >
-            {skill.enabled ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
-          </button>
-          {onDelete && (
-            <button
-              onClick={onDelete}
-              disabled={isLoading}
-              className="p-2 rounded-lg bg-error/10 text-error hover:bg-error/20 transition-colors"
-              title={t('common.delete')}
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
+            {skill.type.toUpperCase()}
+          </span>
         </div>
+        {skill.description && (
+          <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-text-muted">
+            {skill.description}
+          </p>
+        )}
+      </div>
+      <div className="flex flex-shrink-0 items-center gap-1">
+        <button
+          onClick={onToggleEnabled}
+          disabled={isLoading}
+          className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors disabled:opacity-50 ${
+            skill.enabled
+              ? 'text-success hover:bg-success/10'
+              : 'text-text-muted hover:bg-surface-hover hover:text-text-secondary'
+          }`}
+          title={skill.enabled ? t('common.disable') : t('common.enable')}
+        >
+          {skill.enabled ? <Power className="h-4 w-4" /> : <PowerOff className="h-4 w-4" />}
+        </button>
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            disabled={isLoading}
+            className="flex h-8 w-8 items-center justify-center rounded-md text-error transition-colors hover:bg-error/10 disabled:opacity-50"
+            title={t('common.delete')}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        )}
       </div>
     </div>
   );

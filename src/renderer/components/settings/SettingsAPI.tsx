@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { useApiConfigState } from '../../hooks/useApiConfigState';
 import { ApiConfigSetManager } from '../ApiConfigSetManager';
-import { CommonProviderSetupsCard, GuidanceInlineHint } from '../ProviderGuidance';
+import { CommonProviderSetupsCard } from '../ProviderGuidance';
 import ApiDiagnosticsPanel from '../ApiDiagnosticsPanel';
 import { VISIBLE_API_PROVIDER_OPTIONS } from '../../../shared/api-model-presets';
 
@@ -36,7 +36,6 @@ export function SettingsAPI() {
     contextWindow,
     maxTokens,
     modelInputPlaceholder,
-    modelInputHint,
     presets,
     currentPreset,
     modelOptions,
@@ -49,9 +48,6 @@ export function SettingsAPI() {
     enableThinking,
     isOllamaMode,
     requiresApiKey,
-    protocolGuidanceText,
-    protocolGuidanceTone,
-    baseUrlGuidanceText,
     commonProviderSetups,
     configSets,
     activeConfigSetId,
@@ -146,7 +142,6 @@ export function SettingsAPI() {
           <Server className="w-4 h-4" />
           {t('api.provider')}
         </label>
-        <p className="text-xs leading-5 text-text-muted">{t('api.providerDescription')}</p>
         <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2">
           {providerOptions.map((p) => (
             <button
@@ -174,7 +169,6 @@ export function SettingsAPI() {
           <Key className="w-4 h-4" />
           {t('api.apiKey')}
         </label>
-        <p className="text-xs leading-5 text-text-muted">{t('api.apiKeyDescription')}</p>
         <input
           id="api-key-input"
           type="password"
@@ -183,9 +177,6 @@ export function SettingsAPI() {
           placeholder={currentPreset?.keyPlaceholder || t('api.enterApiKey')}
           className="w-full px-4 py-3 rounded-lg bg-background border border-border text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
         />
-        {currentPreset?.keyHint && (
-          <p className="text-xs text-text-muted">{currentPreset.keyHint}</p>
-        )}
       </div>
 
       {/* Custom Protocol */}
@@ -219,8 +210,6 @@ export function SettingsAPI() {
               </button>
             ))}
           </div>
-          <p className="text-xs text-text-muted">{t('api.selectProtocol')}</p>
-          <GuidanceInlineHint text={protocolGuidanceText} tone={protocolGuidanceTone} />
         </div>
       )}
 
@@ -258,19 +247,6 @@ export function SettingsAPI() {
             placeholder={baseUrlPlaceholder}
             className="w-full px-4 py-3 rounded-lg bg-background border border-border text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
           />
-          <p className="text-xs text-text-muted">
-            {provider === 'ollama'
-              ? t('api.enterOllamaUrl')
-              : customProtocol === 'openai'
-                ? t('api.enterOpenAIUrl')
-                : customProtocol === 'gemini'
-                  ? t('api.enterGeminiUrl')
-                  : t('api.enterAnthropicUrl')}
-          </p>
-          {isOllamaMode && (
-            <p className="text-xs text-text-muted">{t('api.discoverLocalOllamaHint')}</p>
-          )}
-          {provider === 'custom' && <GuidanceInlineHint text={baseUrlGuidanceText} />}
         </div>
       )}
 
@@ -349,7 +325,6 @@ export function SettingsAPI() {
             )}
           </select>
         )}
-        {useCustomModel && <p className="text-xs text-text-muted">{modelInputHint}</p>}
 
         {/* Context Window & Max Tokens — only for non-registry providers */}
         {(provider === 'ollama' || provider === 'custom') && (
@@ -390,7 +365,6 @@ export function SettingsAPI() {
                 className="w-full px-3 py-2 rounded-lg bg-background border border-border text-text-primary text-sm placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
               />
             </div>
-            <p className="col-span-2 text-xs text-text-muted">{t('api.contextWindowHint')}</p>
           </div>
         )}
       </div>
@@ -412,14 +386,8 @@ export function SettingsAPI() {
             onChange={(e) => setEnableThinking(e.target.checked)}
             className="mt-0.5 w-4 h-4 rounded border-border text-accent focus:ring-accent"
           />
-          <label htmlFor="enable-thinking" className="space-y-0.5 flex-1">
+          <label htmlFor="enable-thinking" className="flex-1">
             <div className="text-text-primary font-medium">{t('api.enableThinking')}</div>
-            <div>{t('api.enableThinkingHint')}</div>
-            {isOllamaMode && (
-              <div className="text-amber-500 dark:text-amber-400 text-xs mt-1">
-                {t('api.enableThinkingOllamaHint')}
-              </div>
-            )}
           </label>
         </div>
       </div>

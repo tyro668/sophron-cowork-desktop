@@ -12,21 +12,28 @@ const settingsPanelContent = [
 ].join('\n');
 
 describe('provider guidance UI wiring', () => {
-  it('wires shared guidance UI into ConfigModal', () => {
+  it('keeps common setup guidance in ConfigModal without field-level hints', () => {
     const source = fs.readFileSync(configModalPath, 'utf8');
     expect(source).toContain('CommonProviderSetupsCard');
-    expect(source).toContain('GuidanceInlineHint');
     expect(source).toContain('onApplySetup={applyCommonProviderSetup}');
     expect(source).toContain('friendlyTestDetails');
     expect(source).toContain('VISIBLE_API_PROVIDER_OPTIONS');
+    expect(source).not.toContain('GuidanceInlineHint');
+    expect(source).not.toContain("t('api.selectProtocol')");
+    expect(source).not.toContain("t('api.discoverLocalOllamaHint')");
   });
 
-  it('wires shared guidance UI into SettingsPanel', () => {
+  it('keeps common setup guidance in SettingsPanel without field-level hints', () => {
     expect(settingsPanelContent).toContain('CommonProviderSetupsCard');
-    expect(settingsPanelContent).toContain('GuidanceInlineHint');
     expect(settingsPanelContent).toContain('onApplySetup={applyCommonProviderSetup}');
     expect(settingsPanelContent).toContain('<ApiDiagnosticsPanel');
     expect(settingsPanelContent).toContain('VISIBLE_API_PROVIDER_OPTIONS');
+    expect(settingsPanelContent).not.toContain('GuidanceInlineHint');
+    expect(settingsPanelContent).not.toContain("t('api.providerDescription')");
+    expect(settingsPanelContent).not.toContain("t('api.apiKeyDescription')");
+    expect(settingsPanelContent).not.toContain("t('api.selectProtocol')");
+    expect(settingsPanelContent).not.toContain("t('api.contextWindowHint')");
+    expect(settingsPanelContent).not.toContain("t('api.enableThinkingHint')");
     expect(settingsPanelContent).not.toContain("t('api.moreModels')");
   });
 });

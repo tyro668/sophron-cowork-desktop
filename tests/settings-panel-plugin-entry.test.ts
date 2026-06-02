@@ -2,25 +2,47 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
-// SettingsPanel was split — skills/plugin content lives in settings/SettingsSkills.tsx
 const settingsPanelPath = path.resolve(process.cwd(), 'src/renderer/components/SettingsPanel.tsx');
+const settingsSkillsPath = path.resolve(
+  process.cwd(),
+  'src/renderer/components/settings/SettingsSkills.tsx'
+);
 const settingsDir = path.resolve(process.cwd(), 'src/renderer/components/settings');
+const settingsPanelSource = readFileSync(settingsPanelPath, 'utf8');
+const settingsSkillsSource = readFileSync(settingsSkillsPath, 'utf8');
 const settingsPanelContent = [
-  readFileSync(settingsPanelPath, 'utf8'),
+  settingsPanelSource,
   ...readdirSync(settingsDir).map((f) => readFileSync(path.join(settingsDir, f), 'utf8')),
 ].join('\n');
 
-describe('SettingsPanel skills plugin browse entry', () => {
+describe('Skills page plugin browse entry', () => {
+  it('keeps skills out of the settings tab list', () => {
+    expect(settingsPanelSource).not.toContain("id: 'skills' as TabId");
+    expect(settingsPanelSource).not.toContain("t('settings.skills')");
+    expect(settingsPanelSource).not.toContain("import { SettingsSkills }");
+    expect(settingsPanelSource).not.toContain('<SettingsSkills');
+  });
+
+  it('uses a compact flat skills management layout', () => {
+    expect(settingsSkillsSource).toContain('function SkillRow');
+    expect(settingsSkillsSource).toContain('min-h-[64px]');
+    expect(settingsSkillsSource).toContain('bg-background/70 px-3 py-3');
+    expect(settingsSkillsSource).not.toContain('SettingsContentSection');
+    expect(settingsSkillsSource).not.toContain("t('skills.storagePathHint')");
+    expect(settingsSkillsSource).not.toContain("t('skills.builtinSkillsDesc')");
+    expect(settingsSkillsSource).not.toContain("t('skills.pluginsDesc')");
+  });
+
   it('unit: renders browse plugins action', () => {
-    expect(settingsPanelContent).toContain("t('skills.browsePlugins')");
+    expect(settingsSkillsSource).toContain("t('skills.browsePlugins')");
   });
 
   it('smoke: includes plugin list modal title i18n key', () => {
-    expect(settingsPanelContent).toContain("t('skills.pluginListTitle')");
+    expect(settingsSkillsSource).toContain("t('skills.pluginListTitle')");
   });
 
   it('functional: includes plugin install action i18n key', () => {
-    expect(settingsPanelContent).toContain("t('skills.pluginInstall')");
+    expect(settingsSkillsSource).toContain("t('skills.pluginInstall')");
   });
 
   it('functional: includes skills storage controls', () => {

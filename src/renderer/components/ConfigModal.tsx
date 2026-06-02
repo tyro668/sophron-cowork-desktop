@@ -15,7 +15,7 @@ import { useTranslation } from 'react-i18next';
 import type { AppConfig, ApiTestResult } from '../types';
 import { useApiConfigState } from '../hooks/useApiConfigState';
 import { ApiConfigSetManager } from './ApiConfigSetManager';
-import { CommonProviderSetupsCard, GuidanceInlineHint } from './ProviderGuidance';
+import { CommonProviderSetupsCard } from './ProviderGuidance';
 import { VISIBLE_API_PROVIDER_OPTIONS } from '../../shared/api-model-presets';
 
 interface ConfigModalProps {
@@ -56,7 +56,6 @@ export function ConfigModal({
     customModel,
     useCustomModel,
     modelInputPlaceholder,
-    modelInputHint,
     presets,
     currentPreset,
     modelOptions,
@@ -71,9 +70,6 @@ export function ConfigModal({
     friendlyTestDetails,
     isOllamaMode,
     requiresApiKey,
-    protocolGuidanceText,
-    protocolGuidanceTone,
-    baseUrlGuidanceText,
     commonProviderSetups,
     configSets,
     activeConfigSetId,
@@ -251,9 +247,6 @@ export function ConfigModal({
               placeholder={currentPreset?.keyPlaceholder || t('api.enterApiKey')}
               className="w-full px-4 py-3 rounded-xl bg-background border border-border text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
             />
-            {currentPreset?.keyHint && (
-              <p className="text-xs text-text-muted">{currentPreset.keyHint}</p>
-            )}
           </div>
 
           {/* Custom Protocol */}
@@ -284,8 +277,6 @@ export function ConfigModal({
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-text-muted">{t('api.selectProtocol')}</p>
-              <GuidanceInlineHint text={protocolGuidanceText} tone={protocolGuidanceTone} />
             </div>
           )}
 
@@ -320,19 +311,6 @@ export function ConfigModal({
                 placeholder={baseUrlPlaceholder}
                 className="w-full px-4 py-3 rounded-xl bg-background border border-border text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
               />
-              <p className="text-xs text-text-muted">
-                {provider === 'ollama'
-                  ? t('api.enterOllamaUrl')
-                  : customProtocol === 'openai'
-                    ? t('api.enterOpenAIUrl')
-                    : customProtocol === 'gemini'
-                      ? t('api.enterGeminiUrl')
-                      : t('api.enterAnthropicUrl')}
-              </p>
-              {isOllamaMode && (
-                <p className="text-xs text-text-muted">{t('api.discoverLocalOllamaHint')}</p>
-              )}
-              {provider === 'custom' && <GuidanceInlineHint text={baseUrlGuidanceText} />}
             </div>
           )}
 
@@ -406,7 +384,6 @@ export function ConfigModal({
                 )}
               </select>
             )}
-            {useCustomModel && <p className="text-xs text-text-muted">{modelInputHint}</p>}
           </div>
 
           {provider === 'custom' && (

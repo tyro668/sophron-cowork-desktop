@@ -4,7 +4,6 @@ import {
   Settings,
   Plug,
   Shield,
-  Package,
   Clock3,
   Wifi,
   AlertCircle,
@@ -19,7 +18,6 @@ import { useAppStore } from '../store';
 import { SettingsAPI } from './settings/SettingsAPI';
 import { SettingsSandbox } from './settings/SettingsSandbox';
 import { SettingsConnectors } from './settings/SettingsConnectors';
-import { SettingsSkills } from './settings/SettingsSkills';
 import { SettingsSchedule } from './settings/SettingsSchedule';
 import { SettingsGeneral } from './settings/SettingsGeneral';
 import { SettingsLogs } from './settings/SettingsLogs';
@@ -31,7 +29,6 @@ interface SettingsPanelProps {
     | 'api'
     | 'sandbox'
     | 'connectors'
-    | 'skills'
     | 'memory'
     | 'schedule'
     | 'remote'
@@ -43,7 +40,6 @@ type TabId =
   | 'api'
   | 'sandbox'
   | 'connectors'
-  | 'skills'
   | 'memory'
   | 'schedule'
   | 'remote'
@@ -54,7 +50,6 @@ const VALID_TABS = new Set<TabId>([
   'api',
   'sandbox',
   'connectors',
-  'skills',
   'memory',
   'schedule',
   'remote',
@@ -120,12 +115,6 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
       label: t('settings.connectors'),
       icon: Plug,
       description: t('settings.connectorsDesc'),
-    },
-    {
-      id: 'skills' as TabId,
-      label: t('settings.skills'),
-      icon: Package,
-      description: t('settings.skillsDesc'),
     },
     {
       id: 'memory' as TabId,
@@ -260,9 +249,6 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
                 {viewedTabs.has('connectors') && (
                   <SettingsConnectors isActive={activeTab === 'connectors'} />
                 )}
-              </div>
-              <div className={activeTab === 'skills' ? '' : 'hidden'}>
-                {viewedTabs.has('skills') && <SettingsSkills isActive={activeTab === 'skills'} />}
               </div>
               <div className={activeTab === 'memory' ? '' : 'hidden'}>
                 {viewedTabs.has('memory') && <SettingsMemory />}

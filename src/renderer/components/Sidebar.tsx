@@ -13,7 +13,7 @@ import {
   Search as SearchIcon,
   Plus,
   Layers,
-  Wrench,
+  Package,
   ListChecks,
   Check,
 } from 'lucide-react';
@@ -318,7 +318,7 @@ export function Sidebar() {
             }`}
             title={t('mainNav.skills')}
           >
-            <Wrench className="w-4 h-4" />
+            <Package className="w-4 h-4" />
           </button>
         </div>
 
@@ -452,7 +452,7 @@ export function Sidebar() {
                 : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
             }`}
           >
-            <Wrench className="h-4 w-4 flex-shrink-0" />
+            <Package className="h-4 w-4 flex-shrink-0" />
             <span className="min-w-0 flex-1 truncate">{t('mainNav.skills')}</span>
           </button>
         </nav>
