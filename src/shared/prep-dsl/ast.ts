@@ -10,6 +10,11 @@ export type PrepOperatorType =
   | 'aggregate'
   | 'calculate_field'
   | 'field_mapping'
+  | 'limit'
+  | 'pivot'
+  | 'unpivot'
+  | 'set_op'
+  | 'unnest'
   | 'output';
 
 export type PrepDiagnosticSeverity = 'error' | 'warning';

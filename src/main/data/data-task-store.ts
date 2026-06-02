@@ -160,6 +160,11 @@ const WORKFLOW_OPERATOR_TYPES: readonly DataWorkflowOperatorType[] = [
   'aggregate',
   'calculate_field',
   'field_mapping',
+  'limit',
+  'pivot',
+  'unpivot',
+  'set_op',
+  'unnest',
   'output',
 ];
 
@@ -177,6 +182,11 @@ const DEFAULT_OPERATOR_LABELS: Record<DataWorkflowOperatorType, string> = {
   aggregate: '聚合',
   calculate_field: '计算字段',
   field_mapping: '字段映射',
+  limit: '限制行数',
+  pivot: '透视',
+  unpivot: '反透视',
+  set_op: '集合操作',
+  unnest: '嵌套展开',
   output: '输出',
 };
 
@@ -2088,6 +2098,9 @@ export class DataTaskStore {
     if (node.type === 'join') {
       return this.compileJoinSql(node, outputRelation, relationByNode, edges);
     }
+    if (node.type === 'set_op') {
+      return this.compileSetOpSql(node, outputRelation, relationByNode, edges);
+    }
     const inputId = this.findIncomingNodeId(node.id, edges, 'input');
     const inputRelation = inputId ? relationByNode.get(inputId) : null;
     if (!inputRelation) {
@@ -2117,9 +2130,38 @@ export class DataTaskStore {
         return compileCalculateFieldSql(output, input, node.config);
       case 'aggregate':
         return compileAggregateSql(output, input, node.config);
+      case 'limit':
+        return compileLimitSql(output, input, columns, node.config);
+      case 'pivot':
+        return compilePivotSql(output, input, node.config);
+      case 'unpivot':
+        return compileUnpivotSql(output, input, columns, node.config);
+      case 'unnest':
+        return compileUnnestSql(output, input, node.config);
       default:
         return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input}`;
     }
+  }
+
+  private async compileSetOpSql(
+    node: DataWorkflowNode,
+    outputRelation: string,
+    relationByNode: Map<string, string>,
+    edges: DataWorkflowEdge[]
+  ): Promise<string> {
+    const leftNodeId = this.findIncomingNodeId(node.id, edges, 'left');
+    const rightNodeId = this.findIncomingNodeId(node.id, edges, 'right');
+    const leftRelation = leftNodeId ? relationByNode.get(leftNodeId) : null;
+    const rightRelation = rightNodeId ? relationByNode.get(rightNodeId) : null;
+    if (!leftRelation || !rightRelation) {
+      throw new Error(`Set operation node requires left and right inputs: ${node.id}`);
+    }
+    return compileSetOpSql(
+      quoteIdentifier(outputRelation),
+      quoteIdentifier(leftRelation),
+      quoteIdentifier(rightRelation),
+      node.config
+    );
   }
 
   private async compileJoinSql(
@@ -3152,6 +3194,124 @@ function compileAggregateSql(output: string, input: string, config: Record<strin
   }`;
 }
 
+function compileLimitSql(
+  output: string,
+  input: string,
+  columns: string[],
+  config: Record<string, unknown>
+): string {
+  const limit = positiveNumber(config.limit, 100);
+  if (config.unit === 'percent') {
+    const projection = columns.map((column) => quoteIdentifier(column)).join(', ') || '*';
+    const orderBy = sortKeysToSql(config.orderBy);
+    return `
+      CREATE TEMP TABLE ${output} AS
+      SELECT ${projection}
+      FROM (
+        SELECT *, ROW_NUMBER() OVER (${orderBy ? `ORDER BY ${orderBy}` : ''}) AS __rn, COUNT(*) OVER () AS __total_rows
+        FROM ${input}
+      )
+      WHERE __rn <= CEIL(__total_rows * ${Math.min(limit, 100)} / 100.0)
+    `;
+  }
+  const orderBy = config.mode === 'top' ? sortKeysToSql(config.orderBy) : '';
+  const offset = typeof config.offset === 'number' && config.offset > 0 ? ` OFFSET ${config.offset}` : '';
+  return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input}${
+    orderBy ? ` ORDER BY ${orderBy}` : ''
+  } LIMIT ${Math.floor(limit)}${offset}`;
+}
+
+function compilePivotSql(output: string, input: string, config: Record<string, unknown>): string {
+  const on = stringArray(config.on);
+  const metrics = objectArray(config.using);
+  const groupBy = stringArray(config.groupBy);
+  const values = unknownArray(config.values);
+  if (on.length === 1 && values.length > 0) {
+    const onColumn = quoteIdentifier(on[0]);
+    const groupProjection = groupBy.map(quoteIdentifier);
+    const metric = metrics[0] ?? { function: 'count', expression: '*', alias: 'row_count' };
+    const fn = String(metric.function ?? 'count').toUpperCase();
+    const expression =
+      String(metric.expression ?? '*') === '*'
+        ? '*'
+        : compileScalarExpression(String(metric.expression ?? '*'));
+    const alias = typeof metric.alias === 'string' ? metric.alias : fn.toLowerCase();
+    const pivotColumns = values.map((value) => {
+      const columnName = `${String(value)}_${alias}`;
+      const valueSql = literalToSql(value);
+      const aggregateExpression =
+        expression === '*'
+          ? `${fn}(CASE WHEN ${onColumn} = ${valueSql} THEN 1 ELSE NULL END)`
+          : `${fn}(CASE WHEN ${onColumn} = ${valueSql} THEN ${expression} ELSE NULL END)`;
+      return `${aggregateExpression} AS ${quoteIdentifier(columnName)}`;
+    });
+    return `CREATE TEMP TABLE ${output} AS SELECT ${[...groupProjection, ...pivotColumns].join(
+      ', '
+    )} FROM ${input}${groupProjection.length > 0 ? ` GROUP BY ${groupProjection.join(', ')}` : ''}`;
+  }
+  const onSql = on.map(quoteIdentifier).join(', ') || '1';
+  const usingSql = metrics.map((metric) => formatAggregateCall(metric)).join(', ') || 'count(*)';
+  const groupSql = groupBy.length > 0 ? ` GROUP BY ${groupBy.map(quoteIdentifier).join(', ')}` : '';
+  return `CREATE TEMP TABLE ${output} AS PIVOT ${input} ON ${onSql} USING ${usingSql}${groupSql}`;
+}
+
+function compileUnpivotSql(
+  output: string,
+  input: string,
+  columns: string[],
+  config: Record<string, unknown>
+): string {
+  const configured = stringArray(config.columns);
+  const unpivotColumns =
+    config.mode === 'except'
+      ? columns.filter((column) => !configured.includes(column))
+      : configured.filter((column) => columns.includes(column));
+  const keepColumns = columns.filter((column) => !unpivotColumns.includes(column));
+  const nameColumn = typeof config.nameColumn === 'string' ? config.nameColumn : 'name';
+  const valueColumn = typeof config.valueColumn === 'string' ? config.valueColumn : 'value';
+  const branches = unpivotColumns.map((column) => {
+    const projection = [
+      ...keepColumns.map(quoteIdentifier),
+      `${literalToSql(column)} AS ${quoteIdentifier(nameColumn)}`,
+      `${quoteIdentifier(column)} AS ${quoteIdentifier(valueColumn)}`,
+    ].join(', ');
+    return `SELECT ${projection} FROM ${input}${
+      config.includeNulls ? '' : ` WHERE ${quoteIdentifier(column)} IS NOT NULL`
+    }`;
+  });
+  return `CREATE TEMP TABLE ${output} AS ${branches.join(' UNION ALL ') || `SELECT * FROM ${input}`}`;
+}
+
+function compileSetOpSql(
+  output: string,
+  left: string,
+  right: string,
+  config: Record<string, unknown>
+): string {
+  const operation = String(config.operation ?? 'union').toUpperCase();
+  const mode = config.mode === 'all' ? ' ALL' : '';
+  const byName = operation === 'UNION' && config.match === 'by_name' ? ' BY NAME' : '';
+  return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${left} ${operation}${mode}${byName} SELECT * FROM ${right}`;
+}
+
+function compileUnnestSql(output: string, input: string, config: Record<string, unknown>): string {
+  const column = quoteIdentifier(String(config.column ?? 'items'));
+  const alias = quoteIdentifier(String(config.alias ?? 'item'));
+  if (config.sourceKind === 'json') {
+    const path = literalToSql(config.path ?? '$');
+    return `
+      CREATE TEMP TABLE ${output} AS
+      SELECT base.*, item.value AS ${alias}
+      FROM ${input} base, json_each(base.${column}::JSON, ${path}) AS item
+    `;
+  }
+  return `
+    CREATE TEMP TABLE ${output} AS
+    SELECT base.*, item.${alias} AS ${alias}
+    FROM ${input} base, UNNEST(base.${column}) AS item(${alias})
+  `;
+}
+
 function compileJoinConditionList(value: unknown): string {
   const conditions = objectArray(value);
   return (
@@ -3291,6 +3451,20 @@ function literalToSql(value: unknown): string {
   if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL';
   if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
   return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function positiveNumber(value: unknown, fallback: number): number {
+  const numberValue = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : fallback;
+}
+
+function formatAggregateCall(metric: Record<string, unknown>): string {
+  const fn = String(metric.function ?? 'count').toUpperCase();
+  const expression =
+    String(metric.expression ?? '*') === '*'
+      ? '*'
+      : compileScalarExpression(String(metric.expression ?? '*'));
+  return `${fn}(${expression})`;
 }
 
 function duckDbType(type: string): string {

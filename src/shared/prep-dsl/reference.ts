@@ -6,6 +6,8 @@ export type PrepDslReferenceTopic =
   | 'overview'
   | 'workflow'
   | 'operators'
+  | 'derive_window'
+  | 'reshape'
   | 'examples'
   | 'all';
 
@@ -96,6 +98,41 @@ export const PREP_DSL_OPERATOR_EXAMPLES: PrepDslOperatorExample[] = [
     title: 'Join tables',
     dsl: 'join left customers on [orders].[customer_id] = [customers].[customer_id] keep left *, [customers].[name] as [customer_name]',
   },
+  {
+    type: 'limit',
+    title: 'Limit rows',
+    dsl: 'limit 100',
+  },
+  {
+    type: 'limit',
+    title: 'Top N rows',
+    dsl: 'top 10 by [amount] desc',
+  },
+  {
+    type: 'calculate_field',
+    title: 'Derive window fields',
+    dsl: 'derive [rn] = row_number() over(partition by [region] order by [amount] desc)',
+  },
+  {
+    type: 'pivot',
+    title: 'Pivot table',
+    dsl: 'pivot on [month] using sum([revenue]) as [revenue_sum] group by [region]',
+  },
+  {
+    type: 'unpivot',
+    title: 'Unpivot table',
+    dsl: 'unpivot [jan], [feb], [mar] into name [month] value [sales]',
+  },
+  {
+    type: 'set_op',
+    title: 'Union tables',
+    dsl: 'union returns mode all by name',
+  },
+  {
+    type: 'unnest',
+    title: 'Unnest list field',
+    dsl: 'unnest [items] as [item]',
+  },
 ];
 
 const OVERVIEW = [
@@ -131,6 +168,21 @@ const OPERATORS = [
   '- output table "Result table" mode replace',
   '',
   'Expressions are compiled for DuckDB-like execution. Common functions such as CAST(...) and split_part(...) can be used in derive/filter expressions.',
+  'Window analysis is expressed with derive ... over(...); do not use a standalone window operator.',
+].join('\n');
+
+const DERIVE_WINDOW = [
+  'Window analysis is part of derive/calculate_field DSL:',
+  'derive [rn] = row_number() over(partition by [region] order by [amount] desc)',
+  'derive [running_amount] = sum([amount]) over(partition by [region] order by [created_at] rows between unbounded preceding and current row)',
+].join('\n');
+
+const RESHAPE = [
+  'Reshape operators:',
+  'pivot on [month] using sum([revenue]) as [revenue_sum] group by [region]',
+  'unpivot [jan], [feb], [mar] into name [month] value [sales]',
+  'unnest [items] as [item]',
+  'explode json [payload] path "$.items" as [item]',
 ].join('\n');
 
 const EXAMPLES = [
@@ -150,8 +202,10 @@ const SECTION_BY_TOPIC: Record<PrepDslReferenceTopic, string> = {
   overview: OVERVIEW,
   workflow: WORKFLOW,
   operators: OPERATORS,
+  derive_window: DERIVE_WINDOW,
+  reshape: RESHAPE,
   examples: EXAMPLES,
-  all: [OVERVIEW, WORKFLOW, OPERATORS, EXAMPLES].join('\n\n'),
+  all: [OVERVIEW, WORKFLOW, OPERATORS, DERIVE_WINDOW, RESHAPE, EXAMPLES].join('\n\n'),
 };
 
 export function getPrepDslReference(topic: PrepDslReferenceTopic = 'all'): string {

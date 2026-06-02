@@ -30,7 +30,7 @@ output
 - 每类算子都有结构化配置摘要、基础运行统计和测试覆盖。
 - i18n 在 UI 边界完成，共享 DSL 包只输出稳定诊断码和英文 fallback，不直接内置中文 UI 文案。
 
-v0.2 的目标是打通“DSL 解析 -> 语义校验 -> 工作流保存 -> DuckDB 执行 -> UI 导入导出与摘要”的主链路。高级可视化表单编辑、任意 DAG、reject table 全量审计、复杂质量校验、union/pivot/unpivot 等不进入本轮。
+v0.2 的目标是打通“DSL 解析 -> 语义校验 -> 工作流保存 -> DuckDB 执行 -> UI 导入导出与摘要”的主链路。高级可视化表单编辑、任意 DAG、reject table 全量审计、union/pivot/unpivot 等不进入本轮。
 
 ---
 

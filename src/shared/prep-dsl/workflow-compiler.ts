@@ -25,7 +25,7 @@ export function compilePrepWorkflowToFlow(ast: PrepWorkflowAst): PrepWorkflowCom
   ast.operators.forEach((operator, index) => {
     const id = makeNodeId(operator.type, String(index + 1));
     nodes.push(toNode(operator, id, nodes.length));
-    if (operator.type === 'join') {
+    if (operator.type === 'join' || operator.type === 'set_op') {
       edges.push({
         id: `edge_${currentId}_${id}_left`,
         sourceNodeId: currentId,
@@ -92,4 +92,3 @@ function getAlias(source: PrepOperatorAst): string | null {
 function makeNodeId(prefix: string, key: string): string {
   return `${prefix}_${key}`.replace(/[^A-Za-z0-9_]/g, '_');
 }
-

@@ -29,6 +29,8 @@ export function validatePrepWorkflow(ast: PrepWorkflowAst): PrepDiagnostic[] {
   for (const operator of ast.operators) {
     if (operator.type === 'join') {
       validateJoin(operator, aliases, diagnostics);
+    } else if (operator.type === 'set_op') {
+      validateSetOp(operator, aliases, diagnostics);
     }
   }
   return diagnostics;
@@ -57,6 +59,17 @@ function validateJoin(operator: PrepOperatorAst, aliases: Set<string>, diagnosti
     if (!Array.isArray(conditions) || conditions.length === 0) {
       diagnostics.push(createPrepDiagnostic('joinMissingOn', 'Non-cross join must declare on conditions'));
     }
+  }
+}
+
+function validateSetOp(operator: PrepOperatorAst, aliases: Set<string>, diagnostics: PrepDiagnostic[]): void {
+  const rightInput = operator.config.rightInput;
+  if (typeof rightInput !== 'string' || !aliases.has(rightInput)) {
+    diagnostics.push(
+      createPrepDiagnostic('setOpRightInputNotFound', `Set operation right input not found: ${String(rightInput)}`, {
+        alias: String(rightInput),
+      })
+    );
   }
 }
 

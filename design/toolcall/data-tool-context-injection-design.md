@@ -316,7 +316,7 @@ Use data_run_task:
 - mode=temporary only for validating a fixed workflow before saving or persisted execution.
 - mode=persisted only when the user asks to save/run formally or confirms.
 - Always request confirmation for persisted runs that overwrite or replace output data.
-- After running, summarize row count, output/temporary result ID, and preview only a small sample.
+- After running, summarize row count, output/temporary result ID, and include only a small preview.
 ```
 
 ---

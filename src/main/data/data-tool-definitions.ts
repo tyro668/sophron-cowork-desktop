@@ -38,6 +38,8 @@ export function createDataCustomTools(
             Type.Literal('overview'),
             Type.Literal('workflow'),
             Type.Literal('operators'),
+            Type.Literal('derive_window'),
+            Type.Literal('reshape'),
             Type.Literal('examples'),
             Type.Literal('all'),
           ])
@@ -265,6 +267,11 @@ export function createDataCustomTools(
             Type.Literal('aggregate'),
             Type.Literal('calculate_field'),
             Type.Literal('field_mapping'),
+            Type.Literal('limit'),
+            Type.Literal('pivot'),
+            Type.Literal('unpivot'),
+            Type.Literal('set_op'),
+            Type.Literal('unnest'),
           ])
         ),
         dsl: Type.String({ minLength: 1 }),

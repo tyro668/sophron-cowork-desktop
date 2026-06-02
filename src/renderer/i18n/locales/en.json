@@ -392,6 +392,11 @@
         "aggregate": "Aggregate",
         "calculate_field": "Calculated field",
         "field_mapping": "Field mapping",
+        "limit": "Limit",
+        "pivot": "Pivot",
+        "unpivot": "Unpivot",
+        "set_op": "Set operation",
+        "unnest": "Unnest",
         "output": "Output"
       },
       "ruleMethods": {

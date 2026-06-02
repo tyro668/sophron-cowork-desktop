@@ -47,8 +47,11 @@ function inferMainSource(
     edges.find(
       (edge) =>
         edge.targetNodeId === firstOperator.id &&
-        ((firstOperator.type === 'join' && edge.targetHandle === 'left') ||
-          (firstOperator.type !== 'join' && (edge.targetHandle ?? 'input') === 'input'))
+        (((firstOperator.type === 'join' || firstOperator.type === 'set_op') &&
+          edge.targetHandle === 'left') ||
+          (firstOperator.type !== 'join' &&
+            firstOperator.type !== 'set_op' &&
+            (edge.targetHandle ?? 'input') === 'input'))
     )?.sourceNodeId;
   const source = sources.find((item) => item.id === sourceId) ?? sources[0];
   return getAlias(source) ?? 'source';
@@ -77,6 +80,16 @@ function formatOperator(node: PrepFlowNodeLike): string | null {
       return formatCalculateField(node.config);
     case 'join':
       return formatJoin(node.config);
+    case 'limit':
+      return formatLimit(node.config);
+    case 'pivot':
+      return formatPivot(node.config);
+    case 'unpivot':
+      return formatUnpivot(node.config);
+    case 'set_op':
+      return formatSetOp(node.config);
+    case 'unnest':
+      return formatUnnest(node.config);
     case 'output':
       return `output table "${String(node.config?.table ?? 'clean_result')}" mode ${String(
         node.config?.mode ?? 'replace'
@@ -213,6 +226,68 @@ function formatJoin(config: Record<string, unknown> | undefined): string {
   if (keep) parts.push(`keep ${keep}`);
   if (typeof config?.cardinality === 'string') parts.push(`expect ${config.cardinality}`);
   return parts.join(' ');
+}
+
+function formatLimit(config: Record<string, unknown> | undefined): string {
+  const limit = Number(config?.limit ?? 100);
+  if (config?.mode === 'top') {
+    return `top ${limit} by ${formatSortKeys(config?.orderBy) || '[field] desc'}`;
+  }
+  const unit = config?.unit === 'percent' ? ' percent' : '';
+  const offset = typeof config?.offset === 'number' ? ` offset ${config.offset}` : '';
+  return `limit ${limit}${unit}${offset}`;
+}
+
+function formatPivot(config: Record<string, unknown> | undefined): string {
+  const on = stringArray(config?.on).map(formatFieldRef).join(', ') || '[field]';
+  const values = Array.isArray(config?.values) && config.values.length > 0
+    ? ` in (${config.values.map(literalToDsl).join(', ')})`
+    : '';
+  const using =
+    objectArray(config?.using)
+      .map(formatMetric)
+      .join(', ') || 'count(*)';
+  const groupBy = stringArray(config?.groupBy).map(formatFieldRef).join(', ');
+  return `pivot on ${on}${values} using ${using}${groupBy ? ` group by ${groupBy}` : ''}`;
+}
+
+function formatUnpivot(config: Record<string, unknown> | undefined): string {
+  const includeNulls = config?.includeNulls ? 'include nulls ' : '';
+  const mode = config?.mode === 'except' ? 'columns except ' : '';
+  const columns = stringArray(config?.columns).map(formatFieldRef).join(', ') || '[field]';
+  const nameColumn = formatFieldRef(String(config?.nameColumn ?? 'name'));
+  const valueColumn = formatFieldRef(String(config?.valueColumn ?? 'value'));
+  return `unpivot ${includeNulls}${mode}${columns} into name ${nameColumn} value ${valueColumn}`;
+}
+
+function formatSetOp(config: Record<string, unknown> | undefined): string {
+  const operation = String(config?.operation ?? 'union');
+  const rightInput = String(config?.rightInput ?? 'right_source');
+  const mode = typeof config?.mode === 'string' ? ` mode ${config.mode}` : '';
+  const match =
+    operation === 'union'
+      ? ` by ${config?.match === 'by_name' ? 'name' : 'position'}`
+      : '';
+  return `${operation} ${rightInput}${mode}${match}`;
+}
+
+function formatUnnest(config: Record<string, unknown> | undefined): string {
+  const column = formatFieldRef(String(config?.column ?? 'items'));
+  const alias = formatFieldRef(String(config?.alias ?? 'item'));
+  const withIndex =
+    typeof config?.withIndex === 'string' ? ` with index ${formatFieldRef(config.withIndex)}` : '';
+  const recursive = config?.recursive ? ' recursive true' : '';
+  const maxDepth = typeof config?.maxDepth === 'number' ? ` max_depth ${config.maxDepth}` : '';
+  const keepParentNames = config?.keepParentNames ? ' keep parent names true' : '';
+  if (config?.sourceKind === 'json') {
+    return `explode json ${column} path ${quoteString(String(config.path ?? '$'))} as ${alias}${withIndex}${recursive}${maxDepth}${keepParentNames}`;
+  }
+  return `unnest ${column} as ${alias}${withIndex}${recursive}${maxDepth}${keepParentNames}`;
+}
+
+function formatMetric(item: Record<string, unknown>): string {
+  const alias = typeof item.alias === 'string' ? ` as ${formatFieldRef(item.alias)}` : '';
+  return `${String(item.function ?? 'count')}(${String(item.expression ?? '*')})${alias}`;
 }
 
 function formatSortKeys(value: unknown): string {

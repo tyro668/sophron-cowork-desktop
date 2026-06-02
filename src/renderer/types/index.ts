@@ -388,6 +388,11 @@ export type DataWorkflowOperatorType =
   | 'aggregate'
   | 'calculate_field'
   | 'field_mapping'
+  | 'limit'
+  | 'pivot'
+  | 'unpivot'
+  | 'set_op'
+  | 'unnest'
   | 'output';
 
 export interface DataWorkflowNode {

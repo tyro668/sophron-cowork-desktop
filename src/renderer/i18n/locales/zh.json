@@ -392,6 +392,11 @@
         "aggregate": "聚合",
         "calculate_field": "计算字段",
         "field_mapping": "字段映射",
+        "limit": "限制行数",
+        "pivot": "透视",
+        "unpivot": "反透视",
+        "set_op": "集合操作",
+        "unnest": "嵌套展开",
         "output": "输出"
       },
       "ruleMethods": {

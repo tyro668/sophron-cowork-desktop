@@ -298,6 +298,41 @@ const OPERATOR_CATALOG: Array<{
     nodeClassName: 'border-teal-500/35 bg-teal-500/5 text-teal-500',
   },
   {
+    type: 'limit',
+    labelKey: 'data.workflow.operators.limit',
+    Icon: ArrowUpDown,
+    colorClassName: 'text-success bg-success/10',
+    nodeClassName: 'border-success/35 bg-success/5 text-success',
+  },
+  {
+    type: 'pivot',
+    labelKey: 'data.workflow.operators.pivot',
+    Icon: BarChart3,
+    colorClassName: 'text-violet-500 bg-violet-500/10',
+    nodeClassName: 'border-violet-500/35 bg-violet-500/5 text-violet-500',
+  },
+  {
+    type: 'unpivot',
+    labelKey: 'data.workflow.operators.unpivot',
+    Icon: Columns3,
+    colorClassName: 'text-teal-500 bg-teal-500/10',
+    nodeClassName: 'border-teal-500/35 bg-teal-500/5 text-teal-500',
+  },
+  {
+    type: 'set_op',
+    labelKey: 'data.workflow.operators.set_op',
+    Icon: GitMerge,
+    colorClassName: 'text-blue-500 bg-blue-500/10',
+    nodeClassName: 'border-blue-500/35 bg-blue-500/5 text-blue-500',
+  },
+  {
+    type: 'unnest',
+    labelKey: 'data.workflow.operators.unnest',
+    Icon: Workflow,
+    colorClassName: 'text-teal-500 bg-teal-500/10',
+    nodeClassName: 'border-teal-500/35 bg-teal-500/5 text-teal-500',
+  },
+  {
     type: 'output',
     labelKey: 'data.workflow.operators.output',
     Icon: UploadCloud,
@@ -4089,6 +4124,57 @@ function getWorkflowConfigSummary(
       break;
     case 'join':
       summary = getJoinConfigSummary(config, t);
+      break;
+    case 'limit':
+      summary = {
+        primary: [
+          summaryRow(t, 'mode', stringValue(config.mode, 'limit')),
+          summaryRow(t, 'limit', String(config.limit ?? '')),
+        ],
+        details: [summaryRow(t, 'orderBy', formatSortKeys(config.orderBy, t), true)],
+      };
+      break;
+    case 'pivot':
+      summary = {
+        primary: [
+          summaryRow(t, 'columns', formatList(stringArray(config.on), t), true),
+          summaryRow(t, 'metrics', formatCount(recordArray(config.using).length)),
+        ],
+        details: [summaryRow(t, 'groupBy', formatList(stringArray(config.groupBy), t), true)],
+      };
+      break;
+    case 'unpivot':
+      summary = {
+        primary: [
+          summaryRow(t, 'columns', formatList(stringArray(config.columns), t), true),
+          summaryRow(t, 'mode', stringValue(config.mode, 'include')),
+        ],
+        details: [
+          summaryRow(t, 'name', stringValue(config.nameColumn)),
+          summaryRow(t, 'value', stringValue(config.valueColumn)),
+        ],
+      };
+      break;
+    case 'set_op':
+      summary = {
+        primary: [
+          summaryRow(t, 'operation', stringValue(config.operation, 'union')),
+          summaryRow(t, 'rightInput', stringValue(config.rightInput)),
+        ],
+        details: [
+          summaryRow(t, 'mode', stringValue(config.mode, 'distinct')),
+          summaryRow(t, 'match', stringValue(config.match, 'by_position')),
+        ],
+      };
+      break;
+    case 'unnest':
+      summary = {
+        primary: [
+          summaryRow(t, 'field', stringValue(config.column), true),
+          summaryRow(t, 'alias', stringValue(config.alias), true),
+        ],
+        details: [summaryRow(t, 'mode', stringValue(config.sourceKind, 'list'))],
+      };
       break;
     case 'output': {
       const configuredStrategy = stringValue(config.outputStrategy);

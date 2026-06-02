@@ -664,6 +664,783 @@ sophron data edge add --task task_xxx --from node_customers --to node_join --to-
 sophron data edge delete --task task_xxx --edge edge_xxx --yes
 ```
 
+### 7.6 Prep DSL 算子与 DuckDB 能力设计
+
+CLI、UI 和 LLM tool_call 必须共用同一套 Prep DSL 算子定义。设计文档可以描述目标能力，但运行时不能读取源码目录中的设计文档作为 DSL 参考；打包应用中的 LLM 工具调用文档必须来自运行时内嵌定义，例如 `src/shared/prep-dsl/reference.ts`。后续修改 DSL 语法时，应同时更新：
+
+- `src/shared/prep-dsl/ast.ts`
+- `src/shared/prep-dsl/parser.ts`
+- `src/shared/prep-dsl/exporter.ts`
+- `src/shared/prep-dsl/reference.ts`
+- `src/shared/prep-dsl/validator.ts`
+- `src/main/data/data-task-store.ts`
+- `src/renderer/types/index.ts`
+- `src/renderer/components/DataView.tsx`
+- DSL parser/compiler/exporter/runtime tests
+
+#### 7.6.1 DSL 版本策略
+
+当前运行时版本保持：
+
+```text
+prep-dsl/v1
+```
+
+新增算子优先以向后兼容方式扩展 `prep-dsl/v1`。只有出现破坏性语法调整、字段引用规则调整、执行语义不兼容时，才升级到 `prep-dsl/v2`。
+
+LLM 生成 DSL 时必须遵守：
+
+- 只输出 Prep DSL，不输出 SQL。
+- 字段使用 `[field_name]`，带来源别名时使用 `[alias].[field_name]`。
+- 不使用 `[alias.field_name]`。
+- 先用 `data_get_workflow_dsl_reference` 获取运行时 DSL 文档，再生成 DSL。
+- 不从源码设计文档读取 DSL 语法。
+- 对新建输入表、输出表、数据任务，优先把 `inputTableId`、`outputTableId` 作为 tool 参数传入，避免猜测节点 ID。
+
+#### 7.6.2 目标算子目录
+
+目标算子分为三类：
+
+- `implemented`：当前 DSL/执行层已具备基础能力。
+- `complete-current`：语法已部分支持，但执行层或文档需要补齐。
+- `new`：对齐 DuckDB 能力后建议新增的算子。
+
+| 算子 | 内部类型 | DSL 关键字 | 状态 | DuckDB 映射 |
+| --- | --- | --- | --- | --- |
+| 输入源 | `input_source` | `input source` | implemented | 注册输入 relation |
+| 输出 | `output` | `output` | implemented | 写正式/临时 DuckDB 表或文件 |
+| 字段选择 | `field_select` | `select` / `drop` | implemented | `SELECT cols` / `SELECT * EXCLUDE` |
+| 字段映射 | `field_mapping` | `map` / `rename` | implemented | `SELECT col AS new_col` |
+| 行过滤 | `filter` | `filter` | implemented | `WHERE expr` |
+| 派生字段 | `calculate_field` | `derive` | implemented | `SELECT *, expr AS col` |
+| 类型转换 | `type_convert` | `cast` | complete-current | `CAST` / `TRY_CAST` / `strptime` / `try_strptime` |
+| 缺失值处理 | `missing_value` | `missing value` | complete-current | `COALESCE`、`CASE`、窗口函数、聚合补值 |
+| 去重 | `deduplicate` | `deduplicate` | implemented | `DISTINCT` / `ROW_NUMBER() OVER (...)` |
+| 排序 | `sort` | `sort by` | implemented | `ORDER BY` |
+| 聚合 | `aggregate` | `aggregate` | complete-current | `GROUP BY` + aggregate functions |
+| 连接 | `join` | `join` | implemented | `JOIN` / `EXISTS` / `ASOF` fallback |
+| 限制行数 | `limit` | `limit` / `top` | new | `LIMIT` / `OFFSET` / `ORDER BY ... LIMIT` |
+| 透视 | `pivot` | `pivot` | new | `PIVOT` |
+| 反透视 | `unpivot` | `unpivot` | new | `UNPIVOT` |
+| 集合操作 | `set_op` | `union` / `intersect` / `except` | new | set operations |
+| 嵌套展开 | `unnest` | `unnest` / `explode` | new | `unnest` / JSON table functions |
+| 高级分组 | `aggregate` 扩展 | `grouping sets` / `rollup` / `cube` | new | `GROUPING SETS` / `ROLLUP` / `CUBE` |
+
+字符串清洗、日期拆分、正则提取等能力默认先通过 `derive`、`filter`、`missing value` 和 `cast` 表达；如果后续 UI 需要更低门槛的表单配置，再引入 `text_clean`、`date_time` 这类语法糖算子，但它们仍应编译为表达式型 SQL。
+
+#### 7.6.3 通用 DSL 结构
+
+任务级 DSL：
+
+```text
+input source dataset "<inputTableId-or-name>" as src
+
+from src
+  | <operator>
+  | <operator>
+  | output table "<outputTableId-or-name>" mode replace
+```
+
+多输入任务：
+
+```text
+input source dataset "<ordersInputTableId>" as orders
+input source dataset "<customersInputTableId>" as customers
+
+from orders
+  | join left customers
+      on [orders].[customer_id] = [customers].[customer_id]
+      keep left *, [customers].[name] as [customer_name]
+  | output table "Orders with customers" mode replace
+```
+
+节点级 DSL：
+
+```text
+filter [amount] > 0
+aggregate by [region] metrics sum([amount]) as [total_amount]
+```
+
+表达式规则：
+
+- 字段引用：`[amount]`、`[orders].[customer_id]`。
+- 字符串字面量：`"华东"` 或 `'华东'`，导出时规范化为当前 exporter 的形式。
+- 数值和布尔：`123`、`12.5`、`true`、`false`。
+- 条件：`=`, `!=`, `>`, `>=`, `<`, `<=`, `in (...)`, `is null`, `is not null`, `and`, `or`。
+- 函数：允许 DuckDB 安全标量函数，例如 `split_part`、`regexp_extract`、`regexp_replace`、`date_part`、`date_trunc`、`try_strptime`、`lower`、`trim`。
+- 聚合函数只允许出现在 `aggregate` 中；如果聚合函数带 `over(...)`，可作为窗口聚合出现在 `derive`。
+- 窗口函数不作为独立算子，只允许出现在 `derive [field] = <window_expr> over(...)` 中。
+
+#### 7.6.4 已有算子 DSL 规范
+
+##### input_source
+
+```text
+input source task as src
+input source dataset "<inputTableId-or-name>" as src
+input source file "/authorized/path/file.csv" format csv header true as src
+```
+
+配置：
+
+```json
+{
+  "type": "input_source",
+  "config": {
+    "source": "dataset",
+    "datasetId": "dataset_xxx",
+    "alias": "src"
+  }
+}
+```
+
+约束：
+
+- `file` 来源只允许用户选择或明确授权的路径。
+- 在 LLM tool_call 中，固定任务优先使用 `dataset`，文件导入应先通过 `data_create_input_table`。
+
+##### field_select
+
+```text
+select [order_id], [region], [amount]
+drop [debug_flag], [internal_note]
+```
+
+配置：
+
+```json
+{
+  "type": "field_select",
+  "config": {
+    "mode": "include",
+    "columns": ["order_id", "region", "amount"]
+  }
+}
+```
+
+##### field_mapping
+
+```text
+map [old_name] to [new_name]
+rename [客户编号] as [customer_id], [订单金额] as [amount]
+```
+
+配置：
+
+```json
+{
+  "type": "field_mapping",
+  "config": {
+    "mappings": [
+      { "source": "old_name", "target": "new_name" }
+    ]
+  }
+}
+```
+
+##### filter
+
+```text
+filter [amount] > 0
+filter [region] in ("华东", "华南") and [status] != "refund"
+filter [deleted_at] is null
+```
+
+配置：
+
+```json
+{
+  "type": "filter",
+  "config": {
+    "condition": "[amount] > 0"
+  }
+}
+```
+
+##### calculate_field
+
+```text
+derive [margin] = [profit] / [revenue]
+derive [size_l] = CAST(split_part([包装尺寸CM], 'x', 1) AS INTEGER)
+derive [month] = date_trunc('month', [order_date])
+derive [sku_prefix] = regexp_extract([sku], '^([A-Z]+)-', 1)
+derive [rn] = row_number() over(partition by [region] order by [amount] desc)
+derive [running_amount] = sum([amount]) over(partition by [region] order by [created_at] rows between unbounded preceding and current row)
+```
+
+配置：
+
+```json
+{
+  "type": "calculate_field",
+  "config": {
+    "calculations": [
+      { "field": "margin", "expression": "[profit] / [revenue]" }
+    ]
+  }
+}
+```
+
+窗口分析语法仍使用 `derive ... over(...)`，不新增独立 `window` 算子。推荐支持：
+
+| 类别 | 函数 |
+| --- | --- |
+| 排名 | `row_number`, `rank`, `dense_rank`, `percent_rank`, `cume_dist`, `ntile` |
+| 偏移 | `lag`, `lead`, `first_value`, `last_value`, `nth_value` |
+| 累计 | `sum`, `avg`, `min`, `max`, `count` over window |
+| 补值 | `fill`，以及 `lag/lead ignore nulls` 的前后填充语义 |
+
+执行映射：
+
+```sql
+SELECT
+  *,
+  LAG("amount", 1) OVER (PARTITION BY "customer_id" ORDER BY "order_date" ASC) AS "prev_amount"
+FROM input
+```
+
+##### type_convert
+
+```text
+cast [amount] as double on_error null
+cast [order_date] as date format "%Y-%m-%d" on_error null
+cast [created_at] as timestamp format "%Y-%m-%d %H:%M:%S" timezone "Asia/Shanghai" on_error null
+cast [quantity] as int on_error fail
+```
+
+配置：
+
+```json
+{
+  "type": "type_convert",
+  "config": {
+    "conversions": [
+      {
+        "column": "order_date",
+        "type": "date",
+        "format": "%Y-%m-%d",
+        "onError": "null",
+        "timezone": "Asia/Shanghai"
+      }
+    ]
+  }
+}
+```
+
+执行要求：
+
+- `on_error null` 使用 `TRY_CAST` 或 `try_strptime`。
+- `on_error fail` 使用 `CAST` 或 `strptime`，失败时让任务运行失败。
+- `format` 对 date/timestamp 使用 DuckDB `strptime` / `try_strptime`。
+- `timezone` 只在目标类型和 DuckDB 环境支持时生效，不支持时返回诊断。
+
+##### missing_value
+
+```text
+missing value row drop when all_null
+missing value row drop when any_null in [order_id], [order_date]
+missing value [region] nullify values ("", "N/A", "-")
+missing value [region] fill "UNKNOWN"
+missing value [amount] fill 0
+missing value [event_time] fill forward order by [created_at]
+missing value [event_time] fill backward order by [created_at]
+missing value [score] fill mean
+missing value [score] fill median
+missing value [category] fill mode
+missing value [device_id] drop rows
+```
+
+配置：
+
+```json
+{
+  "type": "missing_value",
+  "config": {
+    "strategy": "by_column",
+    "rules": [
+      {
+        "column": "region",
+        "method": "nullify_values",
+        "values": ["", "N/A", "-"]
+      },
+      {
+        "column": "score",
+        "method": "mean_fill"
+      }
+    ]
+  }
+}
+```
+
+执行要求：
+
+- `literal_fill` 使用 `COALESCE`。
+- `nullify_values` 使用 `CASE WHEN col IN (...) THEN NULL ELSE col END`。
+- `drop rows` 使用 `WHERE col IS NOT NULL`。
+- `mean_fill`、`median_fill`、`mode_fill` 使用聚合子查询或窗口聚合。
+- `forward_fill`、`backward_fill` 使用窗口函数；如果缺少 `order by`，必须返回校验诊断或要求用户指定顺序字段。
+
+##### deduplicate
+
+```text
+deduplicate
+deduplicate by [id] keep first
+deduplicate by [id] keep last order by [updated_at] desc
+```
+
+配置：
+
+```json
+{
+  "type": "deduplicate",
+  "config": {
+    "strategy": "by_columns",
+    "columns": ["id"],
+    "keep": "last",
+    "orderBy": [
+      { "column": "updated_at", "direction": "desc" }
+    ]
+  }
+}
+```
+
+##### sort
+
+```text
+sort by [created_at] desc nulls last
+sort by [region] asc, [amount] desc nulls last
+```
+
+配置：
+
+```json
+{
+  "type": "sort",
+  "config": {
+    "keys": [
+      { "column": "created_at", "direction": "desc", "nulls": "last" }
+    ]
+  }
+}
+```
+
+##### aggregate
+
+```text
+aggregate all metrics count(*) as [row_count]
+aggregate by [region] metrics sum([revenue]) as [total_revenue], count(*) as [row_count]
+aggregate by [region] metrics count_distinct([customer_id]) as [customer_count]
+aggregate by [region] metrics median([amount]) as [median_amount], quantile_cont([amount], 0.9) as [p90_amount]
+aggregate by [region] metrics string_agg([sku], "," order by [sku]) as [sku_list]
+```
+
+配置：
+
+```json
+{
+  "type": "aggregate",
+  "config": {
+    "groupBy": ["region"],
+    "metrics": [
+      {
+        "function": "sum",
+        "expression": "[revenue]",
+        "alias": "total_revenue"
+      }
+    ]
+  }
+}
+```
+
+建议支持的聚合函数：
+
+| 类别 | 函数 |
+| --- | --- |
+| 基础 | `count`, `count_distinct`, `sum`, `avg`, `min`, `max` |
+| 统计 | `median`, `mode`, `quantile_cont`, `quantile_disc`, `stddev_samp`, `stddev_pop`, `var_samp`, `var_pop` |
+| 字符串/列表 | `string_agg`, `list`, `first`, `last` |
+| 近似 | `approx_count_distinct`, `approx_quantile`, `approx_top_k` |
+
+##### aggregate grouping 扩展
+
+高级分组不新增内部类型，作为 `aggregate` 的扩展配置：
+
+```text
+aggregate by rollup([country], [city]) metrics sum([amount]) as [amount_sum]
+aggregate by cube([region], [category]) metrics count(*) as [row_count]
+aggregate by grouping sets (([region], [category]), ([region]), ()) metrics sum([amount]) as [amount_sum]
+```
+
+配置：
+
+```json
+{
+  "type": "aggregate",
+  "config": {
+    "groupingMode": "rollup",
+    "groupBy": ["country", "city"],
+    "metrics": [
+      { "function": "sum", "expression": "[amount]", "alias": "amount_sum" }
+    ]
+  }
+}
+```
+
+##### join
+
+```text
+join inner customers on [orders].[customer_id] = [customers].[customer_id]
+join left customers on [orders].[customer_id] = [customers].[customer_id] keep left *, [customers].[name] as [customer_name]
+join semi blacklist on [orders].[customer_id] = [blacklist].[customer_id]
+join anti blacklist on [orders].[customer_id] = [blacklist].[customer_id]
+join cross regions keep left *, [regions].[region_name] as [region_name]
+```
+
+ASOF join：
+
+```text
+join asof prices
+  on [trades].[trade_time] >= [prices].[price_time]
+  by [trades].[symbol] = [prices].[symbol]
+  tolerance "1 hour"
+  keep left *, [prices].[price] as [latest_price]
+```
+
+配置：
+
+```json
+{
+  "type": "join",
+  "config": {
+    "joinType": "left",
+    "rightInput": "customers",
+    "conditions": [
+      { "left": "orders.customer_id", "operator": "=", "right": "customers.customer_id" }
+    ],
+    "keep": [
+      { "side": "left", "column": "*" },
+      { "side": "right", "column": "name", "alias": "customer_name" }
+    ]
+  }
+}
+```
+
+#### 7.6.5 新增算子 DSL 规范
+
+##### limit / top
+
+```text
+limit 100
+limit 100 offset 200
+limit 10 percent
+top 10 by [amount] desc
+top 5 by [updated_at] desc nulls last
+```
+
+配置：
+
+```json
+{
+  "type": "limit",
+  "config": {
+    "mode": "top",
+    "limit": 10,
+    "orderBy": [
+      { "column": "amount", "direction": "desc" }
+    ]
+  }
+}
+```
+
+执行映射：
+
+```sql
+SELECT * FROM input ORDER BY "amount" DESC LIMIT 10
+```
+
+##### pivot
+
+```text
+pivot on [month] using sum([revenue]) group by [region]
+pivot on [year], [quarter] using sum([amount]) as [amount_sum] group by [category]
+pivot on [status] in ("paid", "refund") using count(*) group by [region]
+```
+
+配置：
+
+```json
+{
+  "type": "pivot",
+  "config": {
+    "on": ["month"],
+    "using": [
+      { "function": "sum", "expression": "[revenue]", "alias": "revenue_sum" }
+    ],
+    "groupBy": ["region"],
+    "values": []
+  }
+}
+```
+
+执行映射：
+
+```sql
+PIVOT input ON "month" USING sum("revenue") GROUP BY "region"
+```
+
+约束：
+
+- 动态 pivot 会让输出列集合依赖数据内容；运行结果必须回写实际 schema。
+- 对 LLM 生成 DSL，优先要求指定 `in (...)`，以减少输出 schema 不稳定。
+
+##### unpivot
+
+```text
+unpivot [jan], [feb], [mar] into name [month] value [sales]
+unpivot columns except [id], [region] into name [metric] value [value]
+unpivot include nulls [q1], [q2], [q3], [q4] into name [quarter] value [amount]
+```
+
+配置：
+
+```json
+{
+  "type": "unpivot",
+  "config": {
+    "columns": ["jan", "feb", "mar"],
+    "nameColumn": "month",
+    "valueColumn": "sales",
+    "includeNulls": false
+  }
+}
+```
+
+执行映射：
+
+```sql
+FROM input
+UNPIVOT (
+  "sales" FOR "month" IN ("jan", "feb", "mar")
+)
+```
+
+##### set_op
+
+集合操作是多输入算子，连接方式类似 `join`，但语义是纵向合并或集合差异。
+
+```text
+union returns mode all by name
+union returns by name
+intersect returns
+except blacklist
+```
+
+更完整语法：
+
+```text
+union <right_alias> [mode all|distinct] [by name|by position]
+intersect <right_alias> [mode all|distinct]
+except <right_alias> [mode all|distinct]
+```
+
+配置：
+
+```json
+{
+  "type": "set_op",
+  "config": {
+    "operation": "union",
+    "rightInput": "returns",
+    "mode": "all",
+    "match": "by_name"
+  }
+}
+```
+
+执行映射：
+
+```sql
+SELECT * FROM left_input
+UNION ALL BY NAME
+SELECT * FROM right_input
+```
+
+约束：
+
+- `by position` 要求左右列数兼容。
+- `by name` 允许缺失列补 `NULL`，适合多文件、多来源追加。
+
+##### unnest / explode
+
+```text
+unnest [items] as [item]
+unnest [items] as [item] with index [item_index]
+unnest [payload_struct] recursive true keep parent names true
+explode json [payload] path "$.items" as [item]
+```
+
+配置：
+
+```json
+{
+  "type": "unnest",
+  "config": {
+    "column": "items",
+    "alias": "item",
+    "withIndex": "item_index",
+    "recursive": false
+  }
+}
+```
+
+执行映射：
+
+```sql
+SELECT *, unnest("items") AS "item"
+FROM input
+```
+
+约束：
+
+- `unnest` 会改变行数，运行统计必须记录 `inputRows`、`outputRows`。
+- 多列同时展开时，要明确 side-by-side 还是笛卡尔展开；MVP 先只支持单列展开。
+
+#### 7.6.6 DuckDB 表达式能力与算子边界
+
+以下 DuckDB 能力不必一开始都新增独立算子，可以作为表达式能力暴露：
+
+| 能力 | 推荐 DSL | 示例 |
+| --- | --- | --- |
+| 文本清洗 | `derive` / `filter` | `derive [sku_clean] = upper(trim([sku]))` |
+| 正则提取 | `derive` | `derive [code] = regexp_extract([text], '([A-Z]+)', 1)` |
+| 正则替换 | `derive` | `derive [name] = regexp_replace([name], '\\s+', ' ', 'g')` |
+| 字符串拆分 | `derive` | `derive [part1] = split_part([size], 'x', 1)` |
+| 日期截断 | `derive` | `derive [month] = date_trunc('month', [order_date])` |
+| 日期部件 | `derive` | `derive [year] = date_part('year', [order_date])` |
+| 日期解析 | `cast` 或 `derive` | `cast [order_date] as date format "%Y-%m-%d"` |
+| 窗口分析 | `derive` | `derive [rn] = row_number() over(partition by [region] order by [amount] desc)` |
+
+新增独立算子的判断标准：
+
+- 会改变行数，例如 `limit`、`unpivot`、`unnest`。
+- 会改变列集合且不适合单表达式描述，例如 `pivot`。
+- 需要多输入边，例如 `join`、`set_op`。
+- 需要 UI 表单配置和 LLM 明确工具文档，例如后续 `text_clean`。
+
+#### 7.6.7 CLI 与 tool_call 的 DSL 操作命令
+
+##### 查看运行时 DSL 文档
+
+```bash
+sophron data workflow dsl-reference
+sophron data workflow dsl-reference --topic operators
+sophron data workflow dsl-reference --topic derive_window --json
+```
+
+对应 LLM 工具：
+
+```text
+data_get_workflow_dsl_reference
+```
+
+返回必须来自运行时内嵌 DSL reference，不读取设计文档或源码 Markdown。
+
+##### 校验 DSL
+
+```bash
+sophron data workflow validate-dsl --file ./workflow.prep --json
+sophron data node validate-dsl --type calculate_field --dsl 'derive [rn] = row_number() over(partition by [id] order by [ts])' --json
+```
+
+输出：
+
+```json
+{
+  "ok": true,
+  "result": {
+    "version": "prep-dsl/v1",
+    "operators": [
+      { "type": "calculate_field", "dsl": "derive [rn] = row_number() over(partition by [id] order by [ts])" }
+    ],
+    "diagnostics": []
+  }
+}
+```
+
+##### 应用 DSL
+
+```bash
+sophron data workflow import-dsl --task task_xxx --file ./workflow.prep --dry-run --json
+sophron data workflow import-dsl --task task_xxx --file ./workflow.prep --json
+sophron data node set-dsl --task task_xxx --node node_derive --dsl 'derive [rn] = row_number() over(partition by [id] order by [ts])'
+```
+
+应用规则：
+
+- `--dry-run` 只解析、校验、编译工作流节点和边，不写库。
+- 非 dry-run 会保存工作流或节点配置。
+- 新增算子未接执行层前，允许解析和导出，但保存时必须返回 `UNSUPPORTED_OPERATOR_EXECUTION` 或要求明确 feature flag。
+- 单节点 DSL 必须和节点类型一致。
+
+##### 导出 DSL
+
+```bash
+sophron data workflow export-dsl --task task_xxx
+sophron data node export-dsl --task task_xxx --node node_derive
+```
+
+导出规则：
+
+- 导出 DSL 使用规范关键字，例如字段计算统一导出为 `derive`。
+- 输出顺序必须稳定。
+- 能往返：导出的 DSL 再导入应得到等价节点和边。
+
+#### 7.6.8 与 DuckDB 官方能力的对应关系
+
+设计依据只使用 DuckDB 官方文档，后续实现时也应按当前打包 DuckDB 版本验证：
+
+| 能力 | DuckDB 官方文档 |
+| --- | --- |
+| Window functions | https://duckdb.org/docs/current/sql/functions/window_functions.html |
+| PIVOT | https://duckdb.org/docs/sql/statements/pivot.html |
+| UNPIVOT | https://duckdb.org/docs/current/sql/statements/unpivot.html |
+| LIMIT/OFFSET | https://duckdb.org/docs/current/sql/query_syntax/limit.html |
+| Set operations | https://duckdb.org/docs/1.3/sql/query_syntax/setops.html |
+| JSON functions | https://duckdb.org/docs/stable/data/json/json_functions |
+| Unnesting | https://duckdb.org/docs/current/sql/query_syntax/unnest.html |
+| Aggregates | https://duckdb.org/docs/stable/sql/functions/aggregates.html |
+| GROUPING SETS / ROLLUP / CUBE | https://duckdb.org/docs/current/sql/query_syntax/grouping_sets |
+| Text functions | https://duckdb.org/docs/current/sql/functions/text.html |
+| Date part functions | https://duckdb.org/docs/current/sql/functions/datepart.html |
+| Timestamp parsing | https://duckdb.org/docs/stable/sql/functions/timestamp |
+
+#### 7.6.9 落地优先级
+
+第一批先补齐当前 DSL 承诺：
+
+- `missing_value` 执行层支持 `forward_fill`、`backward_fill`、`mean_fill`、`median_fill`、`mode_fill`。
+- `type_convert` 执行层支持 `format`、`on_error fail/null`、date/timestamp 解析。
+- `aggregate` 明确函数白名单、参数规则和错误诊断。
+
+第二批新增低成本高价值算子：
+
+- `limit`
+- `top`
+- `derive ... over(...)` 窗口表达式：`row_number`、`rank`、`lag`、`lead`、累计 `sum/avg/count`。
+
+第三批新增结构变换算子：
+
+- `pivot`
+- `unpivot`
+- `aggregate` 的 `rollup`、`cube`、`grouping sets`。
+
+第四批新增复杂数据和多输入能力：
+
+- `set_op`
+- `unnest` / `explode`
+
+每一批都必须同步更新运行时 DSL reference，使 LLM tool_call 和用户文档使用同一套定义。
+
 ---
 
 ## 8. Tool Call 设计
@@ -923,9 +1700,12 @@ data_list_tasks
 data_create_task
 data_update_task
 data_get_task_workflow
+data_get_workflow_dsl_reference
+data_validate_workflow_dsl
 data_apply_workflow_dsl
 data_export_workflow_dsl
 data_configure_input_operator
+data_validate_operator_dsl
 data_apply_operator_dsl
 data_configure_output_operator
 data_run_task
@@ -1185,6 +1965,82 @@ Excel 文件：
 }
 ```
 
+#### data_get_workflow_dsl_reference
+
+用途：让 LLM 获取运行时可用的 Prep DSL 文档、算子目录和示例。该工具必须读取打包在应用内的统一 DSL reference，不能读取源码目录中的 Markdown 设计文档。
+
+输入：
+
+```json
+{
+  "topic": "operators"
+}
+```
+
+`topic` 可选：
+
+| topic | 返回内容 |
+| --- | --- |
+| `overview` | DSL 版本、工作流结构、字段引用规则 |
+| `operators` | 当前运行时支持的完整算子列表 |
+| `input_output` | 输入源和输出语法 |
+| `cleaning` | select/drop/filter/map/cast/missing/deduplicate/sort |
+| `aggregate_join` | aggregate/join/set_op |
+| `derive_window` | `derive ... over(...)` 窗口表达式 |
+| `reshape` | pivot/unpivot/unnest |
+
+输出：
+
+```json
+{
+  "version": "prep-dsl/v1",
+  "topic": "operators",
+  "reference": "Supported pipeline operators:\n- select ...",
+  "operators": [
+    {
+      "type": "filter",
+      "dsl": "filter [amount] > 0",
+      "status": "implemented"
+    }
+  ]
+}
+```
+
+约束：
+
+- LLM 生成数据任务 DSL 前，应先调用该工具读取当前运行时 DSL。
+- 如果某个算子仍处于设计态但运行时未支持，reference 必须明确标记为 `planned` 或不返回该算子，不能让 LLM 误以为可直接调用。
+- 文档应限制长度，复杂示例按 topic 裁剪。
+
+#### data_validate_workflow_dsl
+
+用途：只校验任务级 DSL，不保存工作流。
+
+输入：
+
+```json
+{
+  "dsl": "input source dataset \"orders\" as orders\nfrom orders\n  | filter [amount] > 0\n  | output table \"orders_out\" mode replace",
+  "inputTableId": "dataset_xxx",
+  "outputTableId": "output_xxx"
+}
+```
+
+输出：
+
+```json
+{
+  "ok": true,
+  "version": "prep-dsl/v1",
+  "diagnostics": [],
+  "preview": {
+    "nodes": 3,
+    "edges": 2,
+    "operators": ["input_source", "filter", "output"]
+  }
+}
+```
+
 #### data_apply_workflow_dsl
 
 用途：用任务级 DSL 创建或替换数据任务工作流。
@@ -1257,6 +2113,39 @@ Excel 文件：
 - 调用 `parsePrepOperatorDsl(dsl, node.type)`。
 - 类型不匹配时返回 `OPERATOR_TYPE_MISMATCH`。
 - 保存解析后的 `config`。
+
+#### data_validate_operator_dsl
+
+用途：只校验单节点 DSL，不保存节点配置。LLM 在修改单个算子前应优先使用该工具做 dry-run。
+
+输入：
+
+```json
+{
+  "expectedType": "calculate_field",
+  "dsl": "derive [rn] = row_number() over(partition by [customer_id] order by [order_date])"
+}
+```
+
+输出：
+
+```json
+{
+  "ok": true,
+  "operator": {
+    "type": "calculate_field",
+    "config": {
+      "calculations": [
+        {
+          "field": "rn",
+          "expression": "row_number() over(partition by [customer_id] order by [order_date])"
+        }
+      ]
+    }
+  },
+  "diagnostics": []
+}
+```
 
 #### data_configure_output_operator
 
@@ -1438,6 +2327,7 @@ filter [region] in ("华东", "华南")
 | `VALIDATION_FAILED` | 数据配置校验失败 |
 | `DSL_PARSE_FAILED` | DSL 解析失败 |
 | `OPERATOR_TYPE_MISMATCH` | 单算子 DSL 类型和节点类型不一致 |
+| `UNSUPPORTED_OPERATOR_EXECUTION` | DSL 语法可识别，但当前运行时尚未支持该算子保存或执行 |
 | `AMBIGUOUS_DATA_RESOURCE` | 通过名称匹配到多个任务、输入表、输出表或节点，需要用户确认 |
 | `FILE_ACCESS_DENIED` | 文件或文件夹路径无权限 |
 | `UNSUPPORTED_SOURCE_KIND` | 不支持的输入表来源类型 |
@@ -1573,10 +2463,18 @@ CREATE TABLE data_command_events (
 - 支持节点级预览：执行到指定节点并返回临时预览。
 - 支持运行日志和节点统计。
 - 支持取消长任务。
+- 补齐当前 DSL 已承诺但执行层未完整支持的能力：`missing value fill forward/backward/mean/median/mode`、`cast format/on_error`、聚合函数白名单和诊断。
+- 新增第一批 DuckDB 对齐能力：`limit/top`、`derive ... over(...)` 窗口表达式。
+- 新增第二批结构变换算子：`pivot`、`unpivot`、`aggregate rollup/cube/grouping sets`。
+- 新增第三批复杂数据算子：`set_op`、`unnest/explode`。
+- 每批新增算子都必须同步更新运行时 DSL reference 和 LLM tool 调用文档。
 
 验收：
 
 - LLM 可以先临时试算，再将用户确认后的方案保存为正式任务。
+- LLM 调用 `data_get_workflow_dsl_reference` 后，只会生成当前运行时支持的 DSL 算子。
+- 新增算子可以通过 CLI `validate-dsl`、`import-dsl --dry-run`、`node set-dsl`、`task run --mode temporary` 跑通。
+- 设计态但未实现的算子不会出现在运行时 reference 的可用算子列表中，或会明确标记为 planned 并被保存/执行层拒绝。
 
 ### Phase 6：MCP server 可选输出
 
@@ -1594,6 +2492,12 @@ CREATE TABLE data_command_events (
 - CLI 参数解析。
 - tool schema 校验。
 - DSL 导入、导出、单节点配置。
+- `data_get_workflow_dsl_reference` 返回运行时内嵌 reference，不读取源码 Markdown。
+- DSL reference 中的算子列表和 `PrepOperatorType`、parser、exporter 保持一致。
+- 当前已支持算子均覆盖解析、导出、配置 JSON 生成。
+- `missing_value` 覆盖 literal/nullify/drop/forward/backward/mean/median/mode。
+- `type_convert` 覆盖 `on_error null`、`on_error fail`、date/timestamp `format`。
+- 新增算子和表达式能力分批覆盖：`limit/top`、`derive ... over(...)`、`pivot/unpivot/set_op/unnest`。
 
 ### 14.2 集成测试
 
@@ -1602,11 +2506,17 @@ CREATE TABLE data_command_events (
 - 输出表创建和预览。
 - 工作流运行写正式表。
 - 临时运行不污染正式输出表。
+- CLI `workflow dsl-reference`、`workflow validate-dsl`、`workflow import-dsl --dry-run` 可以跑通。
+- 新增算子用临时 DuckDB 数据库执行端到端验证。
+- 设计态但未实现算子在保存或执行时返回稳定错误码，不静默降级为 `SELECT *`。
 
 ### 14.3 Agent Tool 测试
 
 - `DataAgentRuntimeExtension.beforeSessionRun` 能返回 promptPrefix 和完整 `data_*` tools。
 - agent runner 合并 MCP tools 和 extension custom tools 后，数据工具不会和已有工具重名。
+- 调用 `data_get_workflow_dsl_reference` 获取当前运行时 DSL 文档。
+- 调用 `data_validate_workflow_dsl` 校验任务级 DSL。
+- 调用 `data_validate_operator_dsl` 校验节点级 DSL。
 - 调用 `data_list_input_tables`。
 - 调用 `data_create_input_table` 创建 CSV/Excel/文件夹输入表，未授权路径返回 `FILE_ACCESS_DENIED`。
 - 调用 `data_create_output_table` 创建输出表，同名时返回冲突或候选。
@@ -1617,6 +2527,8 @@ CREATE TABLE data_command_events (
 - 名称匹配多个表时返回 `AMBIGUOUS_DATA_RESOURCE`。
 - 权限拒绝时工具返回 `PERMISSION_REQUIRED` 或用户拒绝错误。
 - `toolHelpers.tsx` 能为 `data_*` 工具返回正确图标和标题。
+- LLM promptPrefix 中只注入固定流程下使用数据工具的路由规则，不注入源码设计文档。
+- LLM 在 reference 未声明某个算子可用时，不应生成该算子的可执行 DSL。
 
 ### 14.4 回归测试
 

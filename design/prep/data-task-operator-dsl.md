@@ -6,7 +6,7 @@
 
 DSL 的核心目标是让 AI 和用户可以用稳定、紧凑、可校验的文本描述一条数据处理流程，并能一一映射到当前应用的 `DataWorkflowNode`、`DataWorkflowEdge` 和节点 `config_json`。
 
-当前应用已有算子类型如下，本文档以它们为内部稳定类型：
+当前运行时已有核心算子类型如下，本文档以它们为内部稳定类型：
 
 ```text
 input_source
@@ -22,13 +22,23 @@ field_mapping
 output
 ```
 
-为支持表连接，本文档新增设计一个内部算子类型：
+为支持表连接，本文档新增并已纳入核心设计的内部算子类型：
 
 ```text
 join
 ```
 
-实现该 DSL 时需要同步扩展 `DataWorkflowOperatorType`、算子目录、节点渲染、配置检查器和后端编译器。
+对齐 DuckDB 能力后，本文档同时补充以下目标扩展算子的 DSL 结构设计：
+
+```text
+limit
+pivot
+unpivot
+set_op
+unnest
+```
+
+这些目标扩展算子应按版本和实现阶段逐步进入运行时。实现任一新算子时，需要同步扩展 `DataWorkflowOperatorType`、算子目录、节点渲染、配置检查器、后端编译器、运行时 DSL reference 和测试用例。运行时给 LLM 的 DSL 文档必须来自应用内嵌 reference，不能读取源码目录中的设计文档。
 
 本文档不设计通用聊天语法、不设计图表语法，也不替代 SQL。DSL 是数据任务算子的可编辑表示和编译输入。
 
@@ -177,14 +187,14 @@ from orders
 
 ### 3.4 图结构扩展
 
-当前数据画布有边模型。v0.1 允许 `join` 形成多输入 DAG；其他任意分支暂保留命名节点语法，MVP 可不实现：
+当前数据画布有边模型。v0.1 允许 `join` 形成多输入 DAG；扩展版本允许 `set_op` 形成二元多输入 DAG。其他任意分支暂保留命名节点语法，MVP 可不实现：
 
 ```text
 node high_value: filter from source where [revenue] >= 10000
 node normal_value: filter from source where [revenue] < 10000
 ```
 
-除 `join` 的 `left/right` 输入外，校验器应拒绝未声明语义的多入边、多出边或不连通图。
+除 `join` 和 `set_op` 的 `left/right` 输入外，校验器应拒绝未声明语义的多入边、多出边或不连通图。
 
 ---
 
@@ -216,6 +226,11 @@ operator_command   := field_select_command
                     | join_command
                     | aggregate_command
                     | calculate_field_command
+                    | limit_command
+                    | pivot_command
+                    | unpivot_command
+                    | set_op_command
+                    | unnest_command
 
 node_command       := input_source_command
                     | operator_command
@@ -934,9 +949,19 @@ join                  --output--> next(input)
 ```ebnf
 aggregate_command := "aggregate" aggregate_group "metrics" metric_item ("," metric_item)*
 
-aggregate_group   := "by" field_ref_list | "all"
+aggregate_group   := "by" field_ref_list
+                   | "by" rollup_group
+                   | "by" cube_group
+                   | "by" grouping_sets_group
+                   | "all"
+rollup_group      := "rollup" "(" field_ref_list ")"
+cube_group        := "cube" "(" field_ref_list ")"
+grouping_sets_group := "grouping" "sets" "(" grouping_set ("," grouping_set)* ")"
+grouping_set      := "(" field_ref_list? ")"
 metric_item       := agg_func_call "as" field_ref
-agg_func_call     := AGG_FUNC "(" (scalar_expr | "*") ")"
+agg_func_call     := AGG_FUNC "(" agg_arg_list? ")"
+agg_arg_list      := (scalar_expr | "*") ("," scalar_expr)* agg_order?
+agg_order         := "order" "by" sort_key ("," sort_key)*
 ```
 
 示例：
@@ -948,6 +973,15 @@ aggregate by [region]
           count(*) as [row_count]
 
 aggregate all metrics count(*) as [row_count]
+
+aggregate by rollup([country], [city])
+  metrics sum([amount]) as [amount_sum]
+
+aggregate by cube([region], [category])
+  metrics count(*) as [row_count]
+
+aggregate by grouping sets (([region], [category]), ([region]), ())
+  metrics sum([amount]) as [amount_sum]
 ```
 
 节点映射：
@@ -984,14 +1018,31 @@ max(expr)
 count(expr)
 count(*)
 count_distinct(expr)
+median(expr)
+mode(expr)
+quantile_cont(expr, pos)
+quantile_disc(expr, pos)
+stddev_samp(expr)
+stddev_pop(expr)
+var_samp(expr)
+var_pop(expr)
+string_agg(expr, separator order by ...)
+list(expr order by ...)
+first(expr order by ...)
+last(expr order by ...)
+approx_count_distinct(expr)
+approx_quantile(expr, pos)
+approx_top_k(expr, k)
 ```
 
 约束：
 
 - `aggregate by` 至少一个字段。
 - `aggregate all` 表示全表聚合。
+- `rollup`、`cube`、`grouping sets` 属于高级分组扩展，执行结果可能包含小计/总计行。
 - 指标别名必须唯一。
 - 聚合函数只能出现在 `metrics` 中。
+- 多参数聚合和 `order by` 聚合必须由函数白名单控制，不能透传任意 SQL。
 
 ### 6.11 calculate_field
 
@@ -1011,7 +1062,9 @@ derive_pair             := field_ref "=" expression
 ```text
 derive [margin] = if [revenue] = 0 then 0 else [profit] / [revenue]
 derive [month] = month([order_date])
+derive [sku_prefix] = regexp_extract([sku], "^([A-Z]+)-", 1)
 derive [rn] = row_number() over(partition by [region] order by [revenue] desc)
+derive [running_revenue] = sum([revenue]) over(partition by [region] order by [order_date] rows between unbounded preceding and current row)
 ```
 
 节点映射：
@@ -1033,9 +1086,10 @@ derive [rn] = row_number() over(partition by [region] order by [revenue] desc)
 
 约束：
 
-- 允许标量表达式和条件表达式。
-- 允许窗口函数，但窗口函数必须带 `over(...)`。
-- 不允许直接使用聚合函数。
+- 允许标量表达式、条件表达式和窗口表达式。
+- 窗口函数必须带 `over(...)`，并整体作为 `derive` 的右侧表达式。
+- `row_number`、`rank`、`dense_rank`、`lag`、`lead` 等排序敏感窗口函数必须在 `over(...)` 中声明 `order by`。
+- 不允许裸聚合函数；`sum`、`avg`、`count` 等聚合函数只有带 `over(...)` 时才可作为窗口聚合出现在 `derive`。
 - 目标字段可以是新字段，也可以覆盖现有字段。覆盖时 UI 应提示。
 
 ### 6.12 output
@@ -1091,6 +1145,278 @@ output file "/path/to/output/clean_orders.parquet" format parquet mode replace
 - `mode` 默认 `replace`。
 - 输出表名必须通过安全标识符校验或由执行层引用转义。
 - `append` 需要目标 schema 与当前 schema 兼容。
+
+### 6.13 扩展算子设计总览
+
+以下算子是对齐 DuckDB 能力后的目标扩展设计。它们可以分批进入运行时，但 DSL 结构必须先固定，避免 CLI、UI、LLM tool_call 各自发明语法。
+
+| 算子 | 内部类型 | 会改变行数 | 会改变列集合 | 多输入 | 主要用途 |
+| --- | --- | ---: | ---: | ---: | --- |
+| 限制/Top N | `limit` | 是 | 否 | 否 | 截取、分页、Top N |
+| 透视 | `pivot` | 是 | 是 | 否 | 长表转宽表 |
+| 反透视 | `unpivot` | 是 | 是 | 否 | 宽表转长表 |
+| 集合操作 | `set_op` | 是 | 可能 | 是 | union/intersect/except |
+| 嵌套展开 | `unnest` | 是 | 是 | 否 | list/struct/JSON array 展开 |
+
+如果某个扩展算子还没有接入执行层，parser 可以识别并返回计划态诊断，但保存或执行时必须返回稳定错误，例如 `UNSUPPORTED_OPERATOR_EXECUTION`，不能静默退化成 `SELECT *`。
+
+窗口分析不作为独立算子。排名、滞后/超前、累计指标和窗口补值都通过 `derive [field] = <window_expr> over(...)` 表达，内部仍映射为 `calculate_field`。
+
+### 6.14 limit
+
+作用：限制输出行数、分页或按排序取 Top N。
+
+语法：
+
+```ebnf
+limit_command := simple_limit_command | top_command
+
+simple_limit_command := "limit" limit_size ["offset" NUMBER]
+limit_size           := NUMBER ["rows" | "percent"]
+
+top_command          := "top" NUMBER "by" sort_key ("," sort_key)*
+```
+
+示例：
+
+```text
+limit 100
+limit 100 offset 200
+limit 10 percent
+top 10 by [revenue] desc
+top 5 by [updated_at] desc nulls last
+```
+
+节点映射：
+
+```json
+{
+  "type": "limit",
+  "label": "限制行数",
+  "config": {
+    "mode": "top",
+    "limit": 10,
+    "unit": "rows",
+    "offset": 0,
+    "orderBy": [
+      { "field": "revenue", "direction": "desc" }
+    ]
+  }
+}
+```
+
+配置字段：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `mode` | `"limit" | "top"` | 普通限制或 Top N |
+| `limit` | `number` | 限制数量 |
+| `unit` | `"rows" | "percent"` | 行数或百分比 |
+| `offset` | `number?` | 分页偏移 |
+| `orderBy` | `SortKey[]?` | Top N 排序字段 |
+
+约束：
+
+- `top` 必须带 `by` 排序。
+- `limit` 不带排序时结果可能依赖输入顺序，校验器应给出提示。
+- `percent` 必须在 `0 < percent <= 100`。
+
+### 6.16 pivot
+
+作用：把长表中的枚举值展开成多个列，常用于交叉表、月度列、状态列。
+
+语法：
+
+```ebnf
+pivot_command := "pivot" "on" pivot_on_list pivot_values? "using" pivot_metric_list pivot_group?
+
+pivot_on_list    := field_ref_list
+pivot_values     := "in" literal_list
+pivot_metric_list := pivot_metric ("," pivot_metric)*
+pivot_metric     := agg_func_call ["as" field_ref]
+pivot_group      := "group" "by" field_ref_list
+```
+
+示例：
+
+```text
+pivot on [month] using sum([revenue]) group by [region]
+pivot on [year], [quarter] using sum([amount]) as [amount_sum] group by [category]
+pivot on [status] in ("paid", "refund") using count(*) group by [region]
+```
+
+节点映射：
+
+```json
+{
+  "type": "pivot",
+  "label": "透视",
+  "config": {
+    "on": ["month"],
+    "values": [],
+    "using": [
+      { "function": "sum", "expression": "[revenue]", "alias": "revenue_sum" }
+    ],
+    "groupBy": ["region"]
+  }
+}
+```
+
+约束：
+
+- 动态 pivot 会让输出列依赖数据内容；正式任务建议显式写 `in (...)` 以固定 schema。
+- `using` 中必须是聚合函数。
+- `group by` 为空时表示全表透视。
+- 输出列名冲突必须按执行层规则重命名或返回诊断。
+
+### 6.17 unpivot
+
+作用：把多个宽表列堆叠成名称列和值列。
+
+语法：
+
+```ebnf
+unpivot_command := "unpivot" ["include" "nulls"] unpivot_column_spec "into" "name" field_ref "value" field_ref
+
+unpivot_column_spec := field_ref_list
+                     | "columns" "except" field_ref_list
+```
+
+示例：
+
+```text
+unpivot [jan], [feb], [mar] into name [month] value [sales]
+unpivot columns except [id], [region] into name [metric] value [value]
+unpivot include nulls [q1], [q2], [q3], [q4] into name [quarter] value [amount]
+```
+
+节点映射：
+
+```json
+{
+  "type": "unpivot",
+  "label": "反透视",
+  "config": {
+    "columns": ["jan", "feb", "mar"],
+    "except": [],
+    "nameColumn": "month",
+    "valueColumn": "sales",
+    "includeNulls": false
+  }
+}
+```
+
+约束：
+
+- `name` 和 `value` 目标字段不能和保留字段冲突。
+- `columns except` 需要基于上游 schema 展开为实际列集合。
+- `include nulls` 默认关闭。
+
+### 6.18 set_op
+
+作用：对两个输入流做集合操作或按列名纵向合并。
+
+语法：
+
+```ebnf
+set_op_command := union_command | intersect_command | except_command
+
+union_command     := "union" IDENTIFIER set_mode? set_match?
+intersect_command := "intersect" IDENTIFIER set_mode?
+except_command    := "except" IDENTIFIER set_mode?
+
+set_mode  := "mode" ("all" | "distinct")
+set_match := "by" ("name" | "position")
+```
+
+示例：
+
+```text
+union returns mode all by name
+union returns by name
+intersect whitelist
+except blacklist
+```
+
+节点映射：
+
+```json
+{
+  "type": "set_op",
+  "label": "集合操作",
+  "config": {
+    "operation": "union",
+    "rightInput": "returns",
+    "mode": "all",
+    "match": "by_name"
+  }
+}
+```
+
+图边映射：
+
+```text
+left_stream(input)  --output--> set_op(left)
+returns(input)      --output--> set_op(right)
+set_op              --output--> next(input)
+```
+
+约束：
+
+- `set_op` 是二元多输入算子，和 `join` 一样需要 `left/right` 输入 handle。
+- `union by name` 允许左右列集合不同，缺失列补 `null`。
+- `union by position`、`intersect`、`except` 需要左右列数和类型兼容。
+- `except` 以左流为主，返回只存在于左流的行。
+
+### 6.20 unnest / explode
+
+作用：展开 list、struct 或 JSON array，使嵌套数据转为行或列。
+
+语法：
+
+```ebnf
+unnest_command := unnest_list_command | unnest_json_command
+
+unnest_list_command := ("unnest" | "explode") field_ref "as" field_ref unnest_options*
+unnest_json_command := "explode" "json" field_ref "path" STRING "as" field_ref unnest_options*
+
+unnest_options := "with" "index" field_ref
+                | "recursive" BOOLEAN
+                | "max_depth" NUMBER
+                | "keep" "parent" "names" BOOLEAN
+```
+
+示例：
+
+```text
+unnest [items] as [item]
+unnest [items] as [item] with index [item_index]
+unnest [payload_struct] as [payload_item] recursive true keep parent names true
+explode json [payload] path "$.items" as [item]
+```
+
+节点映射：
+
+```json
+{
+  "type": "unnest",
+  "label": "嵌套展开",
+  "config": {
+    "column": "items",
+    "alias": "item",
+    "withIndex": "item_index",
+    "recursive": false,
+    "maxDepth": null,
+    "keepParentNames": false
+  }
+}
+```
+
+约束：
+
+- `unnest` 会改变行数，必须记录输入行数、输出行数和展开倍率。
+- MVP 先支持单列展开；多列同时展开需要明确 side-by-side 还是笛卡尔展开。
+- 空 list 和 `null` list 默认展开为 0 行；如需保留原行，应后续新增 `outer true` 选项。
 
 ---
 
@@ -1195,9 +1521,9 @@ parse_number(str [, locale])
 parse_date(str, format)
 ```
 
-### 7.4 窗口函数
+### 7.4 窗口表达式
 
-窗口函数只允许在 `derive` 对应的内部 `calculate_field` 中使用：
+窗口分析不作为独立算子，统一作为 `derive` 的右侧表达式。窗口表达式必须带 `over(...)`，内部节点类型仍是 `calculate_field`。
 
 ```text
 row_number()
@@ -1228,7 +1554,7 @@ derive [rn] = row_number() over(partition by [region] order by [revenue] desc)
 | --- | ---: | ---: | ---: | ---: |
 | `filter` | 是 | 否 | 否 | 是 |
 | `missing value fill` | 是 | 否 | 否 | 是 |
-| `derive` | 是 | 否 | 是 | 是 |
+| `derive` | 是 | 裸聚合否；带 `over(...)` 的窗口聚合是 | 是 | 是 |
 | `aggregate metrics` | 聚合参数可用 | 主函数必须是聚合 | 否 | 是 |
 | `join on` | 否 | 否 | 否 | 否 |
 | `sort by` | 否 | 否 | 否 | 否 |
@@ -1242,7 +1568,14 @@ derive [rn] = row_number() over(partition by [region] order by [revenue] desc)
 解析完整 DSL 后，建议得到以下中间结构：
 
 ```ts
-type PrepOperatorType = DataWorkflowOperatorType | 'join';
+type PrepOperatorType =
+  | DataWorkflowOperatorType
+  | 'join'
+  | 'limit'
+  | 'pivot'
+  | 'unpivot'
+  | 'set_op'
+  | 'unnest';
 
 interface PrepWorkflowAst {
   version: 'prep-dsl/v1';
@@ -1356,6 +1689,9 @@ input source task
 - 字段名必须统一经过 DuckDB 标识符引用。
 - 字符串、数字、布尔、空值必须通过参数化或安全字面量生成。
 - `output table` 默认使用 `CREATE OR REPLACE TABLE` 语义。
+- `join` 和 `set_op` 是二元多输入算子，编译时需要同时解析左输入 relation 和右输入 relation。
+- `pivot`、`unpivot`、`unnest` 会改变 schema 或行数，运行结果必须回写实际输出 schema 和行数统计。
+- parser 已识别但执行层未支持的设计态算子，保存或运行时必须返回 `UNSUPPORTED_OPERATOR_EXECUTION`，不能静默编译为 `SELECT *`。
 
 ---
 
@@ -1367,9 +1703,10 @@ input source task
 - 多输入任务中所有 `input_source` 必须有唯一 alias。
 - `from <alias>` 必须引用已声明输入源。
 - MVP 中最多一个 `output`。
-- 除 `join` 外，每个非源节点必须只有一个入边。
+- 除 `join` 和 `set_op` 外，每个非源节点必须只有一个入边。
 - `join` 节点必须有一个 `left` 输入边和一个 `right` 输入边。
-- 每个非输出节点最多一个主输出边；右表输入源可以同时被多个 `join` 读取。
+- `set_op` 节点必须有一个 `left` 输入边和一个 `right` 输入边。
+- 每个非输出节点最多一个主输出边；右表输入源可以同时被多个 `join` 或 `set_op` 读取。
 - 必须是 DAG，不允许环。
 - 不连通节点不能参与运行。
 
@@ -1383,7 +1720,7 @@ input source task
 ### 10.3 函数位置校验
 
 - 聚合函数只能出现在 `aggregate metrics`。
-- 窗口函数只能出现在 `derive`。
+- 窗口函数只能出现在 `derive` 的右侧表达式中，并且必须带 `over(...)`。
 - `filter`、`missing value fill` 不允许聚合函数和窗口函数。
 - `sort by` 只能引用字段，不能写表达式。
 - `join on` v0.1 只能使用字段等值条件，不能使用函数、窗口函数、聚合函数或任意标量表达式。
@@ -1417,6 +1754,14 @@ input source task
 - `asof` 同时写 `direction` 时，必须与 `on` 运算符一致：`>=` 对应 `backward`，`<=` 对应 `forward`，`nearest` 对应 `nearest`。
 - `asof` 执行前右表应按 `by` 字段和时间字段排序；执行层可以自动排序，但需要在运行日志中记录。
 
+### 10.7 扩展算子校验
+
+- `limit/top`：`limit` 必须为正数；`top` 必须声明排序字段；`percent` 必须在 `0 < percent <= 100`。
+- `pivot`：`on` 至少一个字段；`using` 必须是聚合函数；动态 pivot 应标记 schema 不稳定；显式 `in (...)` 的值不能重复。
+- `unpivot`：待展开列必须存在；`name` 和 `value` 目标字段不能与保留字段冲突；`columns except` 展开后至少保留一个待展开列。
+- `set_op`：右侧输入源必须存在；`union by position`、`intersect`、`except` 要求左右列数兼容；`union by name` 允许缺失列补 `null`。
+- `unnest`：源字段必须存在；目标字段不能与保留字段冲突；MVP 只支持单列展开；需要记录展开前后行数。
+
 ---
 
 ## 11. AI 生成约束
@@ -1432,10 +1777,16 @@ input source task
 - 生成 `join asof` 时，时间近邻条件写在 `on`，业务分组等值条件写在 `by`，优先补充 `tolerance`。
 - 不确定 join key 时不要猜测，应生成待确认诊断或让用户选择字段。
 - 对列名标准化使用 `map`，对类型转换使用 `cast`，对新字段使用 `derive`。
+- 对排名、上一行/下一行、累计指标使用 `derive ... over(...)`，不要生成独立 `window` 算子。
+- 对 Top N 使用 `top`，对简单截断使用 `limit`。
+- 对长表转宽表使用 `pivot`；对宽表月份列、指标列转长表使用 `unpivot`。
+- 对多个输入表纵向追加使用 `union ... by name`；对黑白名单过滤优先使用 `join semi/anti`，只有集合语义明确时才使用 `intersect` 或 `except`。
+- 对 JSON array 或 list 展开使用 `unnest` / `explode`。
 - 不生成 `calculate` 或 `calculator` 关键字；行级计算一律使用 `derive`。
 - `aggregate` 的指标必须写在 `metrics` 后，且每个指标必须有 `as [alias]`。
 - 不确定的源文件使用 `input source task`，不要猜路径。
 - 不确定的输出使用 `output table "<task_name>_clean" mode replace`。
+- 如果运行时 reference 没有声明某个扩展算子可用，AI 不应生成该算子的可执行 DSL，应改用当前可用算子表达或请求用户确认后等待能力实现。
 
 推荐输出模板：
 
@@ -1496,6 +1847,14 @@ input source dataset "clean_orders" as orders
   | output table "top_orders_by_region" mode replace
 ```
 
+全局 Top N 可以直接使用 `top`：
+
+```text
+input source dataset "clean_orders" as orders
+  | top 100 by [revenue] desc
+  | output table "top_100_orders" mode replace
+```
+
 ### 12.4 多表连接清洗
 
 ```text
@@ -1534,6 +1893,31 @@ from events
       expect many_to_one
   | missing value [firmware_version] fill "UNKNOWN"
   | output table "events_with_device_status" mode replace
+```
+
+### 12.6 Pivot 月度宽表
+
+```text
+input source dataset "clean_orders" as orders
+  | derive [month] = date_trunc("month", [order_date])
+  | pivot on [month] using sum([revenue]) as [revenue_sum] group by [region]
+  | output table "region_month_pivot" mode replace
+```
+
+### 12.7 Unpivot 宽表转长表
+
+```text
+input source dataset "monthly_sales_wide" as sales
+  | unpivot [jan], [feb], [mar] into name [month] value [sales_amount]
+  | output table "monthly_sales_long" mode replace
+```
+
+### 12.8 嵌套展开
+
+```text
+input source dataset "api_events" as events
+  | explode json [payload] path "$.items" as [item] with index [item_index]
+  | output table "api_event_items" mode replace
 ```
 
 ---
@@ -1575,7 +1959,7 @@ interface PrepOperatorRunStats {
 {
   "audit": {
     "droppedRows": "count",
-    "sampleSize": 50,
+    "previewRows": 50,
     "reasonField": "_cleaning_reason"
   }
 }
@@ -1587,10 +1971,10 @@ interface PrepOperatorRunStats {
 | --- | --- |
 | `none` | 不保留删除样本，只记录统计 |
 | `count` | 只记录删除行数 |
-| `sample` | 保存删除样本 |
+| `preview` | 保存删除行预览 |
 | `table` | 保存完整 reject table |
 
-v0.1 可以先实现 `count`，后续再支持 `sample` 或 `table`。
+v0.1 可以先实现 `count`，后续再支持 `preview` 或 `table`。
 
 ### 13.3 清洗能力覆盖矩阵
 
@@ -1611,25 +1995,43 @@ v0.1 可以先实现 `count`，后续再支持 `sample` 或 `table`。
 | 黑名单/白名单过滤 | `join anti blacklist on ...` / `join semi whitelist on ...` | `join` |
 | 时间近邻补齐 | `join asof snapshot on ... by ... tolerance ...` | `join` |
 | 汇总质量指标 | `aggregate ... metrics ...` | `aggregate` |
+| Top N | `top 10 by [metric] desc` | `limit` |
+| 组内排名/累计 | `derive [rn] = row_number() over(partition by ... order by ...)` | `calculate_field` |
+| 长表转宽表 | `pivot on ... using ... group by ...` | `pivot` |
+| 宽表转长表 | `unpivot ... into name ... value ...` | `unpivot` |
+| 多表追加 | `union other_table mode all by name` | `set_op` |
+| list/array 展开 | `unnest [items] as [item]` | `unnest` |
 
-### 13.4 暂不进入 v0.1 的候选算子
+### 13.4 扩展算子落地分层
 
-以下能力属于真实数据清洗常见需求，但除本文档已新增设计的 `join` 外，当前内部算子没有独立类型。建议先通过现有算子表达，等产品需要明确后再扩展 `DataWorkflowOperatorType`。
+本文档已经给出扩展算子的 DSL 结构，但运行时可以按优先级分批落地。未落地前，运行时 reference 不应把对应算子标记为可执行。
+
+| 阶段 | 算子 | 说明 |
+| --- | --- | --- |
+| 先补齐 | `missing_value`、`type_convert`、`aggregate` 扩展 | 补齐已承诺语法的执行语义和诊断 |
+| 第一批 | `limit`、`derive ... over(...)` 窗口表达式 | 实现成本较低，且对 Top N、排名/累计价值高 |
+| 第二批 | `pivot`、`unpivot`、`aggregate rollup/cube/grouping sets` | 结构变换和高级汇总 |
+| 第三批 | `set_op`、`unnest` | 多输入和嵌套数据 |
+
+### 13.5 后续候选能力
+
+以下能力仍属于后续候选。它们可以先通过现有表达式、`derive`、`filter` 或组合算子表达；只有当 UI 和 LLM 需要稳定表单/工具文档时，再扩展为独立内部算子。
 
 | 候选能力 | 推荐后续内部类型 | 说明 |
 | --- | --- | --- |
 | 异常值处理 | `outlier` | IQR、Z-score、分位数截尾、winsorize、置空或删除 |
-| 质量校验 | `quality_check` | required、unique、range、regex、enum，不一定改变数据 |
 | 值标准化字典 | `value_standardize` | 分类值归一，例如 `"CN" -> "China"` |
 | schema/profile | `profile_schema` | 字段类型推断、空值率、唯一值、分布摘要 |
-| 行拆分/展开 | `explode` | JSON/list 字段展开，当前不属于清洗 MVP |
+| 文本清洗语法糖 | `text_clean` | trim、case、正则替换、空白标准化的表单化封装 |
+| 日期时间语法糖 | `date_time` | 日期解析、截断、部件提取的表单化封装 |
 
 候选语法示例，仅作为 v0.2 参考：
 
 ```text
 outlier [revenue] method iqr action nullify
-quality check required [order_id], unique [order_id], regex [email] "^[^@]+@[^@]+$"
 standardize [country] using {"CN": "China", "中国": "China", "US": "United States"}
+text clean [name] trim true normalize_space true
+date time [order_date] parse "%Y-%m-%d" extract year as [order_year]
 ```
 
 ---
@@ -1650,11 +2052,20 @@ v0.1 建议实现范围：
 - 支持将 DSL 编译成 `DataWorkflowNodeInput[]` 和 `DataWorkflowEdgeInput[]`。
 - 公共 DSL 中只支持 `derive` 作为行级计算关键字，`calculate`/`calculator` 仅可作为旧草稿迁移输入的兼容别名，不作为保存后的规范形式。
 
+目标扩展范围：
+
+- `limit/top`：限制行数、分页和 Top N。
+- `derive ... over(...)`：排名、偏移、累计指标和窗口补值，内部仍是 `calculate_field`。
+- `pivot/unpivot`：长宽表互转。
+- `set_op`：`union`、`intersect`、`except`。
+- `unnest/explode`：list、struct、JSON array 展开。
+- `aggregate` 扩展：`median`、`mode`、`quantile`、`string_agg`、`rollup`、`cube`、`grouping sets`。
+
 暂不要求：
 
 - 任意多输入图执行，v0.1 仅支持由 `join` 形成的多输入 DAG。
-- union/pivot/unpivot 等当前应用尚未暴露的算子。
+- 已设计但尚未实现的扩展算子进入运行时执行。
 - 完整 SQL 互转。
 - 跨任务变量赋值。
 
-后续版本可以新增 `union`、`pivot` 等算子，但应先扩展 `DataWorkflowOperatorType`，再扩展 DSL。
+后续版本实现扩展算子时，应先扩展 `DataWorkflowOperatorType`、parser、exporter、validator、runtime reference 和执行层，再把该算子标记为运行时可用。若 parser 先识别设计态语法，保存和执行必须返回稳定错误，不能静默降级。

@@ -24,6 +24,11 @@ const OPERATOR_LABELS: Record<PrepOperatorType, string> = {
   aggregate: 'aggregate',
   calculate_field: 'calculate_field',
   field_mapping: 'field_mapping',
+  limit: 'limit',
+  pivot: 'pivot',
+  unpivot: 'unpivot',
+  set_op: 'set_op',
+  unnest: 'unnest',
   output: 'output',
 };
 
@@ -186,6 +191,13 @@ function parseOperator(command: CommandLine, diagnostics: PrepDiagnostic[]): Pre
   if (text.startsWith('join ')) return parseJoin(command, diagnostics);
   if (text.startsWith('aggregate ')) return parseAggregate(text);
   if (text.startsWith('derive ')) return parseDerive(text);
+  if (text.startsWith('limit ') || text.startsWith('top ')) return parseLimit(text);
+  if (text.startsWith('pivot ')) return parsePivot(command, diagnostics);
+  if (text.startsWith('unpivot ')) return parseUnpivot(text);
+  if (text.startsWith('union ') || text.startsWith('intersect ') || text.startsWith('except ')) {
+    return parseSetOp(text);
+  }
+  if (text.startsWith('unnest ') || text.startsWith('explode ')) return parseUnnest(text);
   if (text.startsWith('output ')) return parseOutput(text);
   diagnostics.push({
     ...createPrepDiagnostic('unsupportedCommand', `Unsupported DSL command: ${text}`, { value: text }),
@@ -318,13 +330,7 @@ function parseSort(text: string): PrepOperatorAst {
 function parseAggregate(text: string): PrepOperatorAst {
   const match = /^aggregate\s+(all|by\s+.+?)\s+metrics\s+(.+)$/s.exec(text);
   const groupBy = match?.[1] === 'all' ? [] : parseFieldRefs((match?.[1] ?? '').replace(/^by\s+/, '')).map(toFieldName);
-  const metrics = splitTopLevel(match?.[2] ?? '').flatMap((part) => {
-    const metric = /^([A-Za-z_][A-Za-z0-9_]*)\((.*)\)\s+as\s+(.+)$/.exec(part.trim());
-    const alias = metric ? parseFieldRef(metric[3].trim()) : null;
-    return metric && alias
-      ? [{ function: metric[1], expression: metric[2].trim(), alias: toFieldName(alias) }]
-      : [];
-  });
+  const metrics = parseMetricList(match?.[2] ?? '', true);
   return makeOperator('aggregate', text, { groupBy, metrics });
 }
 
@@ -336,6 +342,106 @@ function parseDerive(text: string): PrepOperatorAst {
     return field ? [{ field: toFieldName(field), expression: part.slice(index + 1).trim() }] : [];
   });
   return makeOperator('calculate_field', text, { calculations });
+}
+
+function parseLimit(text: string): PrepOperatorAst {
+  if (text.startsWith('top ')) {
+    const match = /^top\s+(\d+)\s+by\s+(.+)$/s.exec(text);
+    return makeOperator('limit', text, {
+      mode: 'top',
+      limit: match ? Number(match[1]) : 0,
+      unit: 'rows',
+      orderBy: match ? parseSortKeys(match[2]) : [],
+    });
+  }
+  const match = /^limit\s+(\d+)(?:\s+(rows|percent))?(?:\s+offset\s+(\d+))?$/.exec(text);
+  return makeOperator('limit', text, {
+    mode: 'limit',
+    limit: match ? Number(match[1]) : 0,
+    unit: match?.[2] ?? 'rows',
+    offset: match?.[3] ? Number(match[3]) : undefined,
+  });
+}
+
+function parsePivot(command: CommandLine, diagnostics: PrepDiagnostic[]): PrepOperatorAst | null {
+  const text = command.text;
+  const match = /^pivot\s+on\s+(.+?)\s+using\s+(.+?)(?:\s+group\s+by\s+(.+))?$/s.exec(text);
+  if (!match) {
+    diagnostics.push({
+      ...createPrepDiagnostic('invalidPivot', `Cannot parse pivot: ${text}`, { value: text }),
+      line: command.line,
+    });
+    return null;
+  }
+  const onMatch = /^(.+?)(?:\s+in\s+(\(.+\)))?$/.exec(match[1].trim());
+  return makeOperator('pivot', text, {
+    on: parseFieldRefs(onMatch?.[1] ?? '').map(toFieldName),
+    values: onMatch?.[2] ? parseLiteralList(onMatch[2]) : [],
+    using: parseMetricList(match[2], false),
+    groupBy: match[3] ? parseFieldRefs(match[3]).map(toFieldName) : [],
+  });
+}
+
+function parseUnpivot(text: string): PrepOperatorAst {
+  const includeNulls = text.startsWith('unpivot include nulls ');
+  const body = text.slice(includeNulls ? 'unpivot include nulls '.length : 'unpivot '.length);
+  const match = /^(.+?)\s+into\s+name\s+(.+?)\s+value\s+(.+)$/.exec(body);
+  const columnSpec = match?.[1].trim() ?? '';
+  const nameColumn = match ? parseFieldRef(match[2].trim()) : null;
+  const valueColumn = match ? parseFieldRef(match[3].trim()) : null;
+  const except = columnSpec.startsWith('columns except ');
+  return makeOperator('unpivot', text, {
+    mode: except ? 'except' : 'include',
+    columns: parseFieldRefs(except ? columnSpec.slice('columns except '.length) : columnSpec).map(toFieldName),
+    nameColumn: nameColumn ? toFieldName(nameColumn) : '',
+    valueColumn: valueColumn ? toFieldName(valueColumn) : '',
+    includeNulls,
+  });
+}
+
+function parseSetOp(text: string): PrepOperatorAst {
+  const match = /^(union|intersect|except)\s+([A-Za-z_][A-Za-z0-9_]*)(.*)$/.exec(text);
+  const rest = match?.[3] ?? '';
+  const mode = pickWordOption(rest, 'mode') ?? (match?.[1] === 'union' ? 'distinct' : 'distinct');
+  const byMatch = /\s+by\s+(name|position)\b/.exec(rest);
+  return makeOperator('set_op', text, {
+    operation: match?.[1] ?? 'union',
+    rightInput: match?.[2] ?? '',
+    mode,
+    match: byMatch?.[1] === 'name' ? 'by_name' : 'by_position',
+  });
+}
+
+function parseUnnest(text: string): PrepOperatorAst {
+  const fieldPattern = `${FIELD_REF_TOKEN_PATTERN}(?:\\.${FIELD_REF_TOKEN_PATTERN})?`;
+  const isJson = text.startsWith('explode json ');
+  if (isJson) {
+    const match = new RegExp(
+      `^explode\\s+json\\s+(${fieldPattern})\\s+path\\s+("(?:[^"\\\\]|\\\\.)*")\\s+as\\s+(${fieldPattern})(.*)$`,
+      'u'
+    ).exec(text);
+    const column = match ? parseFieldRef(match[1].trim()) : null;
+    const alias = match ? parseFieldRef(match[3].trim()) : null;
+    return makeOperator('unnest', text, {
+      sourceKind: 'json',
+      column: column ? toFieldName(column) : '',
+      path: match ? unquote(match[2]) : '',
+      alias: alias ? toFieldName(alias) : '',
+      ...parseUnnestOptions(match?.[4] ?? ''),
+    });
+  }
+  const match = new RegExp(
+    `^(unnest|explode)\\s+(${fieldPattern})\\s+as\\s+(${fieldPattern})(.*)$`,
+    'u'
+  ).exec(text);
+  const column = match ? parseFieldRef(match[2].trim()) : null;
+  const alias = match ? parseFieldRef(match[3].trim()) : null;
+  return makeOperator('unnest', text, {
+    sourceKind: 'list',
+    column: column ? toFieldName(column) : '',
+    alias: alias ? toFieldName(alias) : '',
+    ...parseUnnestOptions(match?.[4] ?? ''),
+  });
 }
 
 function parseOutput(text: string): PrepOperatorAst {
@@ -454,6 +560,41 @@ function parseJoinConflict(clauses: Clause[], rightAlias: string): Record<string
     return { strategy: 'suffix', leftSuffix: unquoteMaybe(parts[0] ?? '_left'), rightSuffix: unquoteMaybe(parts[1] ?? '_right') };
   }
   return { strategy: 'right_prefix', rightPrefix: `${rightAlias}_` };
+}
+
+function parseMetricList(value: string, requireAlias: boolean): Array<Record<string, unknown>> {
+  return splitTopLevel(value).flatMap((part) => {
+    const trimmed = part.trim();
+    const metric = /^([A-Za-z_][A-Za-z0-9_]*)\((.*)\)(?:\s+as\s+(.+))?$/.exec(trimmed);
+    if (!metric || (requireAlias && !metric[3])) return [];
+    const alias = metric[3] ? parseFieldRef(metric[3].trim()) : null;
+    return [
+      {
+        function: metric[1],
+        expression: metric[2].trim(),
+        alias: alias ? toFieldName(alias) : defaultMetricAlias(metric[1], metric[2]),
+      },
+    ];
+  });
+}
+
+function defaultMetricAlias(fn: string, expression: string): string {
+  const field = parseFieldRef(expression.trim());
+  return field ? `${fn}_${toFieldName(field)}` : fn;
+}
+
+function parseUnnestOptions(value: string): Record<string, unknown> {
+  const withIndex = /\s+with\s+index\s+(.+?)(?:\s+recursive\s+|\s+max_depth\s+|\s+keep\s+parent\s+names\s+|$)/.exec(value);
+  const indexField = withIndex ? parseFieldRef(withIndex[1].trim()) : null;
+  const recursive = pickWordOption(value, 'recursive');
+  const maxDepth = pickWordOption(value, 'max_depth');
+  const keepParentNames = /keep\s+parent\s+names\s+true/.test(value);
+  return {
+    withIndex: indexField ? toFieldName(indexField) : undefined,
+    recursive: recursive === 'true',
+    maxDepth: maxDepth ? Number(maxDepth) : undefined,
+    keepParentNames,
+  };
 }
 
 function collectInitialDiagnostics(input: string): PrepDiagnostic[] {

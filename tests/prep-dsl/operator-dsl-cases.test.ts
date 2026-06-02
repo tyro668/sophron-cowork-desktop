@@ -1,0 +1,233 @@
+import { describe, expect, it } from 'vitest';
+import {
+  compilePrepWorkflowToFlow,
+  exportPrepOperatorDsl,
+  exportPrepWorkflowDsl,
+  parsePrepDsl,
+  parsePrepOperatorDsl,
+} from '../../src/shared/prep-dsl';
+import type { PrepOperatorType } from '../../src/shared/prep-dsl';
+
+function errorsOf(
+  diagnostics: Array<{ severity: 'error' | 'warning'; message: string; code?: string }>
+) {
+  return diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
+}
+
+const currentOperatorCases: Array<{
+  name: string;
+  type: PrepOperatorType;
+  dsl: string;
+  expectedConfig?: Record<string, unknown>;
+}> = [
+  {
+    name: 'input source',
+    type: 'input_source',
+    dsl: 'input source dataset "orders_input" as orders',
+    expectedConfig: { source: 'dataset', datasetId: 'orders_input', alias: 'orders' },
+  },
+  {
+    name: 'select fields',
+    type: 'field_select',
+    dsl: 'select [order_id], [region], [revenue]',
+    expectedConfig: { mode: 'include', columns: ['order_id', 'region', 'revenue'] },
+  },
+  {
+    name: 'drop fields',
+    type: 'field_select',
+    dsl: 'drop [debug_flag], [internal_note]',
+    expectedConfig: { mode: 'exclude', columns: ['debug_flag', 'internal_note'] },
+  },
+  {
+    name: 'rename fields',
+    type: 'field_mapping',
+    dsl: 'map [dt] to [order_date], [rev] to [revenue]',
+    expectedConfig: {
+      mappings: [
+        { source: 'dt', target: 'order_date' },
+        { source: 'rev', target: 'revenue' },
+      ],
+    },
+  },
+  {
+    name: 'filter rows',
+    type: 'filter',
+    dsl: 'filter [status] in ("PAID", "SHIPPED") and [revenue] > 0',
+    expectedConfig: { condition: '[status] in ("PAID", "SHIPPED") and [revenue] > 0' },
+  },
+  {
+    name: 'deduplicate rows',
+    type: 'deduplicate',
+    dsl: 'deduplicate by [order_id] keep last order by [updated_at] desc',
+    expectedConfig: { strategy: 'by_columns', columns: ['order_id'], keep: 'last' },
+  },
+  {
+    name: 'drop empty rows',
+    type: 'missing_value',
+    dsl: 'missing value row drop when all_null',
+    expectedConfig: { strategy: 'drop_empty_rows', condition: 'all_null' },
+  },
+  {
+    name: 'nullify and fill missing values',
+    type: 'missing_value',
+    dsl: 'missing value [region] nullify values ("", "N/A"), [score] fill median',
+    expectedConfig: { strategy: 'by_column' },
+  },
+  {
+    name: 'convert types',
+    type: 'type_convert',
+    dsl: 'cast [order_date] as date format "%Y-%m-%d" on_error null, [revenue] as double on_error fail',
+    expectedConfig: {
+      conversions: [
+        { column: 'order_date', type: 'date', format: '%Y-%m-%d', onError: 'null' },
+        { column: 'revenue', type: 'double', onError: 'fail' },
+      ],
+    },
+  },
+  {
+    name: 'sort rows',
+    type: 'sort',
+    dsl: 'sort by [order_date] desc nulls last, [order_id] asc',
+  },
+  {
+    name: 'aggregate metrics',
+    type: 'aggregate',
+    dsl: 'aggregate by [region] metrics sum([revenue]) as [total_revenue], count(*) as [row_count]',
+    expectedConfig: { groupBy: ['region'] },
+  },
+  {
+    name: 'derive scalar field',
+    type: 'calculate_field',
+    dsl: 'derive [margin] = [profit] / nullif([revenue], 0)',
+    expectedConfig: {
+      calculations: [{ field: 'margin', expression: '[profit] / nullif([revenue], 0)' }],
+    },
+  },
+  {
+    name: 'derive window field',
+    type: 'calculate_field',
+    dsl: 'derive [rn] = row_number() over(partition by [region] order by [revenue] desc)',
+    expectedConfig: {
+      calculations: [
+        {
+          field: 'rn',
+          expression: 'row_number() over(partition by [region] order by [revenue] desc)',
+        },
+      ],
+    },
+  },
+  {
+    name: 'left join',
+    type: 'join',
+    dsl: 'join left customers on [orders].[customer_id] = [customers].[customer_id] keep left *, [customers].[name] as [customer_name]',
+    expectedConfig: { joinType: 'left', rightInput: 'customers' },
+  },
+  {
+    name: 'asof join',
+    type: 'join',
+    dsl: 'join asof rates on [orders].[order_time] >= [rates].[rate_time] by [orders].[currency] = [rates].[currency] tolerance 1d keep left *, [rates].[rate] as [fx_rate]',
+    expectedConfig: { joinType: 'asof', rightInput: 'rates' },
+  },
+  {
+    name: 'limit rows',
+    type: 'limit',
+    dsl: 'limit 100',
+    expectedConfig: { mode: 'limit', limit: 100, unit: 'rows' },
+  },
+  {
+    name: 'top rows',
+    type: 'limit',
+    dsl: 'top 10 by [revenue] desc',
+    expectedConfig: { mode: 'top', limit: 10, unit: 'rows' },
+  },
+  {
+    name: 'pivot rows',
+    type: 'pivot',
+    dsl: 'pivot on [month] in ("Jan", "Feb") using sum([revenue]) as [revenue_sum] group by [region]',
+    expectedConfig: { on: ['month'], values: ['Jan', 'Feb'], groupBy: ['region'] },
+  },
+  {
+    name: 'unpivot rows',
+    type: 'unpivot',
+    dsl: 'unpivot [jan], [feb], [mar] into name [month] value [sales]',
+    expectedConfig: { mode: 'include', columns: ['jan', 'feb', 'mar'], nameColumn: 'month', valueColumn: 'sales' },
+  },
+  {
+    name: 'union rows',
+    type: 'set_op',
+    dsl: 'union returns mode all by name',
+    expectedConfig: { operation: 'union', rightInput: 'returns', mode: 'all', match: 'by_name' },
+  },
+  {
+    name: 'unnest list',
+    type: 'unnest',
+    dsl: 'unnest [items] as [item]',
+    expectedConfig: { sourceKind: 'list', column: 'items', alias: 'item' },
+  },
+  {
+    name: 'output table',
+    type: 'output',
+    dsl: 'output table "clean_orders" mode replace',
+    expectedConfig: { destination: 'duckdb_table', table: 'clean_orders', mode: 'replace' },
+  },
+];
+
+describe('operator DSL executable cases', () => {
+  it.each(currentOperatorCases)('parses and exports $name', ({ type, dsl, expectedConfig }) => {
+    const parsed = parsePrepOperatorDsl(dsl, type);
+
+    expect(errorsOf(parsed.diagnostics), dsl).toHaveLength(0);
+    expect(parsed.operator?.type).toBe(type);
+    expect(parsed.operator?.config).toMatchObject({ dsl, ...expectedConfig });
+    expect(exportPrepOperatorDsl({ id: `${type}_case`, type, config: parsed.operator!.config })).toBe(
+      dsl
+    );
+  });
+
+  it('compiles and round-trips a workflow that uses every currently executable operator family', () => {
+    const parsed = parsePrepDsl(`
+      input source task as orders
+      input source dataset "customers" as customers
+
+      from orders
+        | select [order_id], [customer_id], [dt], [region], [rev], [profit], [status], [updated_at]
+        | map [dt] to [order_date], [rev] to [revenue]
+        | cast [order_date] as date format "%Y-%m-%d" on_error null, [revenue] as double on_error null, [profit] as double on_error null
+        | missing value [region] nullify values ("", "N/A"), [region] fill "UNKNOWN"
+        | deduplicate by [order_id] keep last order by [updated_at] desc
+        | derive [rn] = row_number() over(partition by [region] order by [revenue] desc)
+        | filter [status] = "PAID" and [revenue] > 0
+        | join left customers
+            on [orders].[customer_id] = [customers].[customer_id]
+            keep left *, [customers].[name] as [customer_name]
+        | aggregate by [region] metrics sum([revenue]) as [total_revenue], count(*) as [row_count]
+        | sort by [total_revenue] desc
+        | output table "operator_case_output" mode replace
+    `);
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.ast).not.toBeNull();
+
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    expect(errorsOf(compiled.diagnostics)).toHaveLength(0);
+    expect(compiled.nodes.map((node) => node.type)).toEqual([
+      'input_source',
+      'input_source',
+      'field_select',
+      'field_mapping',
+      'type_convert',
+      'missing_value',
+      'deduplicate',
+      'calculate_field',
+      'filter',
+      'join',
+      'aggregate',
+      'sort',
+      'output',
+    ]);
+
+    const exported = exportPrepWorkflowDsl(compiled.nodes, compiled.edges);
+    const reparsed = parsePrepDsl(exported);
+    expect(errorsOf(reparsed.diagnostics)).toHaveLength(0);
+  });
+});
