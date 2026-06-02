@@ -147,7 +147,6 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
       description: t('settings.generalDesc'),
     },
   ];
-  const activeTabMeta = tabs.find((tab) => tab.id === activeTab);
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-background">
@@ -155,17 +154,6 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
       <div
         className={`${compactSidebar ? 'w-14' : 'w-52 lg:w-60'} bg-background-secondary/88 border-r border-border-muted flex flex-col flex-shrink-0`}
       >
-        {!compactSidebar && (
-          <div className="px-4 pt-5 pb-4 border-b border-border-muted">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-text-muted">
-              {t('settings.title')}
-            </p>
-            <h2 className="mt-1 text-[1.24rem] font-semibold tracking-[-0.03em] text-text-primary">
-              {t('common.appName')}
-            </h2>
-            <p className="mt-1 text-[11px] leading-4 text-text-muted">{t('settings.panelDesc')}</p>
-          </div>
-        )}
         <div className={`flex-1 ${compactSidebar ? 'p-1.5 space-y-1' : 'p-3 space-y-1.5'}`}>
           {tabs.map((tab) => (
             <button
@@ -211,20 +199,7 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
 
       {/* Content */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <div className="flex items-center justify-between px-3 py-3 sm:px-4 border-b border-border-muted flex-shrink-0 bg-background/88 backdrop-blur-sm">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.14em] text-text-muted">
-              {t('settings.title')}
-            </p>
-            <h3 className="mt-1 text-[1.15rem] font-semibold tracking-[-0.02em] text-text-primary">
-              {activeTabMeta?.label}
-            </h3>
-            {activeTabMeta?.description && (
-              <p className="mt-1 text-sm text-text-muted max-w-[36rem]">
-                {activeTabMeta.description}
-              </p>
-            )}
-          </div>
+        <div className="flex items-center justify-end px-3 py-2 sm:px-4 border-b border-border-muted flex-shrink-0 bg-background/88 backdrop-blur-sm">
           <button
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-surface-hover transition-colors"

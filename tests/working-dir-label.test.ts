@@ -2,7 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { getWorkingDirDisplayName } from '../src/renderer/utils/working-dir-label';
 
 describe('working directory display label', () => {
-  it('localizes the internal default_working_dir folder name', () => {
+  it('localizes the internal DefaultWorkingDir folder name', () => {
+    expect(
+      getWorkingDirDisplayName(
+        '/Users/demo/Library/Application Support/sophron/DefaultWorkingDir',
+        '默认工作目录',
+        '选择工作文件夹'
+      )
+    ).toBe('默认工作目录');
+  });
+
+  it('keeps the legacy default_working_dir folder label compatible', () => {
     expect(
       getWorkingDirDisplayName(
         '/Users/demo/Library/Application Support/sophron/default_working_dir',

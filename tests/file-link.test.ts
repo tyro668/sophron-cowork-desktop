@@ -37,14 +37,14 @@ describe('splitTextByFileMentions', () => {
 
   it('detects absolute paths with spaces', () => {
     const input =
-      '文档已保存为：/Users/haoqing/Library/Application Support/sophron/default_working_dir/word-document/示例文档.docx';
+      '文档已保存为：/Users/haoqing/Library/Application Support/sophron/DefaultWorkingDir/word-document/示例文档.docx';
     const parts = splitTextByFileMentions(input);
     expect(parts).toEqual([
       { type: 'text', value: '文档已保存为：' },
       {
         type: 'file',
         value:
-          '/Users/haoqing/Library/Application Support/sophron/default_working_dir/word-document/示例文档.docx',
+          '/Users/haoqing/Library/Application Support/sophron/DefaultWorkingDir/word-document/示例文档.docx',
       },
     ]);
   });

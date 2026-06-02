@@ -119,6 +119,8 @@ import { UpdateService } from './update/update-service';
 
 // Current working directory (persisted between sessions)
 let currentWorkingDir: string | null = null;
+const DEFAULT_WORKING_DIR_NAME = 'DefaultWorkingDir';
+const LEGACY_DEFAULT_WORKING_DIR_NAME = 'default_working_dir';
 
 // Load .env file from project root (for development)
 const envPath = resolve(__dirname, '../../.env');
@@ -606,13 +608,13 @@ function scheduleStartupUpdateCheck(): void {
 
 /**
  * Initialize default working directory
- * This is always the app's default_working_dir in userData - it never changes
+ * This is always the app's DefaultWorkingDir in userData - it never changes
  * Each session can have its own cwd that differs from this default
  */
 function initializeDefaultWorkingDir(): string {
   // Create default working directory in user data path (this is the permanent global default)
   const userDataPath = app.getPath('userData');
-  const defaultDir = join(userDataPath, 'default_working_dir');
+  const defaultDir = join(userDataPath, DEFAULT_WORKING_DIR_NAME);
 
   if (!fs.existsSync(defaultDir)) {
     fs.mkdirSync(defaultDir, { recursive: true });
@@ -646,7 +648,7 @@ function getWorkspacePathUnsupportedReason(workspacePath?: string): string | nul
  * - If no sessionId: update UI display only (for WelcomeView - will be used when creating new session)
  *
  * Note: The global default (currentWorkingDir) is NEVER changed after initialization.
- * It is always app.getPath('userData')/default_working_dir
+ * It is always app.getPath('userData')/DefaultWorkingDir
  */
 async function setWorkingDir(
   newDir: string,
@@ -1519,7 +1521,8 @@ async function revealFileInFolder(filePath: string, cwd?: string): Promise<boole
     const discoveredPath = findFileByName(fileName, [
       cwd || '',
       defaultWorkingDir,
-      join(app.getPath('userData'), 'default_working_dir'),
+      join(app.getPath('userData'), DEFAULT_WORKING_DIR_NAME),
+      join(app.getPath('userData'), LEGACY_DEFAULT_WORKING_DIR_NAME),
     ]);
 
     if (discoveredPath) {

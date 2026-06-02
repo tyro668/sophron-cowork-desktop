@@ -10,14 +10,14 @@ describe('normalizeLocalFileMarkdownLinks', () => {
     const input = [
       '已创建 Word 文档：',
       '[北京未来一个月天气介绍.docx](',
-      '/Users/haoqing/Library/Application Support/sophron/default_working_dir/北京未来一个月天气介绍.docx',
+      '/Users/haoqing/Library/Application Support/sophron/DefaultWorkingDir/北京未来一个月天气介绍.docx',
       ')',
     ].join('\n');
 
     const output = normalizeLocalFileMarkdownLinks(input);
 
     expect(output).toContain(
-      '[北京未来一个月天气介绍.docx](file:///Users/haoqing/Library/Application%20Support/sophron/default_working_dir/%E5%8C%97%E4%BA%AC%E6%9C%AA%E6%9D%A5%E4%B8%80%E4%B8%AA%E6%9C%88%E5%A4%A9%E6%B0%94%E4%BB%8B%E7%BB%8D.docx)'
+      '[北京未来一个月天气介绍.docx](file:///Users/haoqing/Library/Application%20Support/sophron/DefaultWorkingDir/%E5%8C%97%E4%BA%AC%E6%9C%AA%E6%9D%A5%E4%B8%80%E4%B8%AA%E6%9C%88%E5%A4%A9%E6%B0%94%E4%BB%8B%E7%BB%8D.docx)'
     );
   });
 
@@ -28,10 +28,10 @@ describe('normalizeLocalFileMarkdownLinks', () => {
 
   it('removes accidental line breaks inside local path href', () => {
     const input =
-      '[文档](/Users/haoqing/Library/Application\n Support/sophron/default_working_dir/文档.docx)';
+      '[文档](/Users/haoqing/Library/Application\n Support/sophron/DefaultWorkingDir/文档.docx)';
     const output = normalizeLocalFileMarkdownLinks(input);
     expect(output).toContain(
-      'file:///Users/haoqing/Library/Application%20Support/sophron/default_working_dir/%E6%96%87%E6%A1%A3.docx'
+      'file:///Users/haoqing/Library/Application%20Support/sophron/DefaultWorkingDir/%E6%96%87%E6%A1%A3.docx'
     );
     expect(output).not.toContain('%0A');
   });
@@ -68,10 +68,10 @@ describe('resolveLocalFilePathFromHref', () => {
     expect(
       resolveLocalFilePathFromHref(
         href,
-        '/Users/haoqing/Library/Application Support/sophron/default_working_dir'
+        '/Users/haoqing/Library/Application Support/sophron/DefaultWorkingDir'
       )
     ).toBe(
-      '/Users/haoqing/Library/Application Support/sophron/default_working_dir/reports/北京未来一个月天气介绍.docx'
+      '/Users/haoqing/Library/Application Support/sophron/DefaultWorkingDir/reports/北京未来一个月天气介绍.docx'
     );
   });
 
@@ -80,18 +80,18 @@ describe('resolveLocalFilePathFromHref', () => {
     expect(
       resolveLocalFilePathFromHref(
         href,
-        '/Users/haoqing/Library/Application Support/sophron/default_working_dir'
+        '/Users/haoqing/Library/Application Support/sophron/DefaultWorkingDir'
       )
     ).toBe(
-      '/Users/haoqing/Library/Application Support/sophron/default_working_dir/reports/summary.docx'
+      '/Users/haoqing/Library/Application Support/sophron/DefaultWorkingDir/reports/summary.docx'
     );
   });
 
   it('normalizes line breaks before resolving local href', () => {
     const href =
-      '/Users/haoqing/Library/Application\n Support/sophron/default_working_dir/文档.docx';
+      '/Users/haoqing/Library/Application\n Support/sophron/DefaultWorkingDir/文档.docx';
     expect(resolveLocalFilePathFromHref(href, null)).toBe(
-      '/Users/haoqing/Library/Application Support/sophron/default_working_dir/文档.docx'
+      '/Users/haoqing/Library/Application Support/sophron/DefaultWorkingDir/文档.docx'
     );
   });
 

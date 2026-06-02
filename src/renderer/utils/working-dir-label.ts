@@ -1,4 +1,4 @@
-const DEFAULT_WORKING_DIR_NAME = 'default_working_dir';
+const DEFAULT_WORKING_DIR_NAMES = new Set(['DefaultWorkingDir', 'default_working_dir']);
 
 export function getWorkingDirDisplayName(
   workingDir: string | null | undefined,
@@ -10,7 +10,7 @@ export function getWorkingDirDisplayName(
   }
 
   const folderName = workingDir.split(/[/\\]/).filter(Boolean).pop();
-  if (folderName === DEFAULT_WORKING_DIR_NAME) {
+  if (folderName && DEFAULT_WORKING_DIR_NAMES.has(folderName)) {
     return defaultWorkingDirLabel;
   }
 

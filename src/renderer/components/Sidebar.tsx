@@ -332,17 +332,17 @@ export function Sidebar() {
           </button>
         </div>
 
-        <div className="px-3 py-3 border-t border-border-muted flex flex-col items-center gap-2">
+        <div className="border-t border-border-muted py-2 flex flex-col items-center gap-2">
           <button
             onClick={toggleTheme}
-            className="w-9 h-9 rounded-2xl flex items-center justify-center hover:bg-surface-hover transition-colors text-text-secondary"
+            className="w-full h-9 flex items-center justify-center hover:bg-surface-hover transition-colors text-text-secondary"
             title={t('sidebar.themeToggle')}
           >
             {themeIcon}
           </button>
           <button
             onClick={() => setShowSettings(true)}
-            className="w-9 h-9 rounded-2xl flex items-center justify-center hover:bg-surface-hover transition-colors text-text-secondary relative"
+            className="w-full h-9 flex items-center justify-center hover:bg-surface-hover transition-colors text-text-secondary relative"
             title={t('sidebar.settings')}
           >
             <Settings className="w-4 h-4" />
@@ -601,26 +601,24 @@ export function Sidebar() {
           )}
         </div>
       ) : (
-        <div className="px-3 py-3 border-t border-border-muted">
-          <div className="flex items-center gap-2 rounded-2xl bg-background/72 border border-border-subtle px-3 py-2.5">
+        <div className="border-t border-border-muted">
+          <div className="flex h-16 w-full items-center gap-2 bg-background/92 px-5">
             <button
               onClick={() => setShowSettings(true)}
-              className="flex-1 min-w-0 flex items-center gap-2 text-left text-text-secondary hover:text-text-primary transition-colors"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-2 text-left text-text-secondary transition-colors hover:text-text-primary"
             >
               <Settings className="w-4 h-4 flex-shrink-0" />
-              <div className="min-w-0">
-                <div className="text-[13px] font-medium text-text-primary">
-                  {t('sidebar.settings')}
-                </div>
-                <div className="text-[11px] text-text-muted truncate">
-                  {isConfigured ? t('sidebar.apiConfigured') : t('sidebar.apiNotConfigured')}
-                </div>
-              </div>
+              <span className="min-w-0 flex-shrink-0 text-[13px] font-semibold text-text-primary">
+                {t('sidebar.settings')}
+              </span>
+              <span className="min-w-0 truncate text-[12px] font-medium text-text-muted">
+                {isConfigured ? t('sidebar.apiConfigured') : t('sidebar.apiNotConfigured')}
+              </span>
             </button>
 
             <button
               onClick={toggleTheme}
-              className="w-8 h-8 rounded-xl flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors flex-shrink-0"
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors flex-shrink-0"
               title={t('sidebar.themeToggle')}
             >
               {themeIcon}
