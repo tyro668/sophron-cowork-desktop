@@ -39,7 +39,7 @@ describe('DataToolService', () => {
 
     expect(result.content[0]?.text).toContain('Found 1 of 1 input table');
     expect(result.content[0]?.text).toContain(
-      '[customers](sophron://data/input-tables/dataset_1) (dataset_1)'
+      '[customers](#/data/input-tables/dataset_1) (dataset_1)'
     );
     expect(result.details).toMatchObject({ total: 1, inputTables: [{ id: 'dataset_1' }] });
   });
@@ -92,10 +92,10 @@ describe('DataToolService', () => {
     const taskResult = await service.listTasks({});
 
     expect(outputResult.content[0]?.text).toContain(
-      '[customers output](sophron://data/output-tables/output_1) (output_1)'
+      '[customers output](#/data/output-tables/output_1) (output_1)'
     );
     expect(taskResult.content[0]?.text).toContain(
-      '[customers cleanup](sophron://data/tasks/task_1) (task_1)'
+      '[customers cleanup](#/data/tasks/task_1) (task_1)'
     );
   });
 

@@ -2,7 +2,8 @@ import { memo } from 'react';
 import { parseDataResourceHref } from '../../../shared/data-resource-link';
 import { useAppStore } from '../../store';
 
-const DATA_MARKDOWN_LINK_RE = /\[([^\]\n]+)\]\((sophron:\/\/data\/[^)\s]+)\)/gi;
+const DATA_MARKDOWN_LINK_RE =
+  /\[([^\]\n]+)\]\(((?:#\/data\/|sophron:\/\/data\/)[^)\s]+)\)/gi;
 
 interface DataLinkedTextProps {
   text: string;
@@ -47,7 +48,10 @@ export const DataLinkedText = memo(function DataLinkedText({ text }: DataLinkedT
           <button
             key={index}
             type="button"
-            onClick={() => navigateToDataElement(target)}
+            onClick={(event) => {
+              event.preventDefault();
+              navigateToDataElement(target);
+            }}
             className="inline rounded px-1 text-accent underline underline-offset-2 transition-colors hover:bg-accent-muted hover:text-accent-hover"
             title={target.id}
           >

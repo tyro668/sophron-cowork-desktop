@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import {
   createDataResourceHref,
+  normalizeDataResourceMarkdownLinks,
   parseDataResourceHref,
 } from '../src/shared/data-resource-link';
+import { MessageMarkdown } from '../src/renderer/components/MessageMarkdown';
 
 const contentBlockViewPath = path.resolve(
   process.cwd(),
@@ -18,11 +22,18 @@ const mainIndexPath = path.resolve(process.cwd(), 'src/main/index.ts');
 describe('data resource chat links', () => {
   it('round-trips app data resource hrefs', () => {
     const href = createDataResourceHref('output_table', 'dataset output/1');
-    expect(href).toBe('sophron://data/output-tables/dataset%20output%2F1');
+    expect(href).toBe('#/data/output-tables/dataset%20output%2F1');
     expect(parseDataResourceHref(href)).toEqual({
       kind: 'output_table',
       id: 'dataset output/1',
     });
+    expect(parseDataResourceHref('sophron://data/tasks/task_1')).toEqual({
+      kind: 'task',
+      id: 'task_1',
+    });
+    expect(
+      normalizeDataResourceMarkdownLinks('[task](sophron://data/tasks/task_1)')
+    ).toBe('[task](#/data/tasks/task_1)');
   });
 
   it('wires message markdown links to data navigation', () => {
@@ -30,7 +41,24 @@ describe('data resource chat links', () => {
     const markdown = fs.readFileSync(markdownPath, 'utf8');
     expect(source).toContain('parseDataResourceHref(href)');
     expect(source).toContain('navigateToDataElement(dataTarget)');
+    expect(source).toContain('event.preventDefault();');
+    expect(source).toContain('normalizeDataResourceMarkdownLinks');
     expect(markdown).toContain("'sophron'");
+  });
+
+  it('keeps hash data links available after markdown sanitization', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(MessageMarkdown, {
+        normalizedText: '[customers](#/data/input-tables/dataset_1)',
+        components: {
+          a({ href, children }: { href?: string; children?: React.ReactNode }) {
+            return React.createElement('span', { 'data-href': href }, children);
+          },
+        },
+      })
+    );
+
+    expect(html).toContain('data-href="#/data/input-tables/dataset_1"');
   });
 
   it('lets DataView resolve and open each resource type by id', () => {

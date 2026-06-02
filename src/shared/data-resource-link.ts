@@ -23,12 +23,14 @@ const KIND_BY_PATH: Record<string, DataResourceKind> = {
 };
 
 export function createDataResourceHref(kind: DataResourceKind, id: string): string {
-  return `sophron://data/${PATH_BY_KIND[kind]}/${encodeURIComponent(id)}`;
+  return `#/data/${PATH_BY_KIND[kind]}/${encodeURIComponent(id)}`;
 }
 
 export function parseDataResourceHref(href: string | undefined): DataResourceTarget | null {
   if (!href) return null;
-  const match = href.match(/^sophron:\/\/data\/([^/?#]+)\/([^?#]+)(?:[?#].*)?$/i);
+  const match =
+    href.match(/^#\/data\/([^/?#]+)\/([^?#]+)(?:[?#].*)?$/i) ??
+    href.match(/^sophron:\/\/data\/([^/?#]+)\/([^?#]+)(?:[?#].*)?$/i);
   if (!match) return null;
 
   const kind = KIND_BY_PATH[match[1].toLowerCase()];
@@ -40,4 +42,14 @@ export function parseDataResourceHref(href: string | undefined): DataResourceTar
   } catch {
     return null;
   }
+}
+
+export function normalizeDataResourceMarkdownLinks(markdown: string): string {
+  return markdown.replace(
+    /\[([^\]\n]+)\]\((sophron:\/\/data\/[^)\s]+)\)/gi,
+    (full, label: string, href: string) => {
+      const target = parseDataResourceHref(href);
+      return target ? `[${label}](${createDataResourceHref(target.kind, target.id)})` : full;
+    }
+  );
 }

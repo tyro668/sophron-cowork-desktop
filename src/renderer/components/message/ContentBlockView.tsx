@@ -15,7 +15,10 @@ import {
 } from '../../utils/markdown-local-link';
 import { normalizeLatexDelimiters } from '../../utils/latex-delimiters';
 import { isHtmlReportPath } from '../../../shared/report-path';
-import { parseDataResourceHref } from '../../../shared/data-resource-link';
+import {
+  normalizeDataResourceMarkdownLinks,
+  parseDataResourceHref,
+} from '../../../shared/data-resource-link';
 import type { ToolUseContent, ToolResultContent, FileAttachmentContent } from '../../types';
 import { FileText } from 'lucide-react';
 import { CodeBlock } from './CodeBlock';
@@ -131,7 +134,10 @@ export const ContentBlockView = memo(function ContentBlockView({
           return (
             <button
               type="button"
-              onClick={() => navigateToDataElement(dataTarget)}
+              onClick={(event) => {
+                event.preventDefault();
+                navigateToDataElement(dataTarget);
+              }}
               className="text-accent underline underline-offset-2 hover:text-accent-hover"
               title={dataTarget.id}
             >
@@ -258,8 +264,10 @@ export const ContentBlockView = memo(function ContentBlockView({
     case 'text': {
       const textBlock = block as { type: 'text'; text: string };
       const text = textBlock.text || '';
-      const normalizedText = normalizeCitationMarkdownLinks(
-        normalizeLocalFileMarkdownLinks(normalizeLatexDelimiters(text))
+      const normalizedText = normalizeDataResourceMarkdownLinks(
+        normalizeCitationMarkdownLinks(
+          normalizeLocalFileMarkdownLinks(normalizeLatexDelimiters(text))
+        )
       );
 
       if (!text) {
