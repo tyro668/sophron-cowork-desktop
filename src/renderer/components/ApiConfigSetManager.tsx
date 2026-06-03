@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Layers, Plus, Save, Trash2, Pencil } from 'lucide-react';
 import type { ApiConfigSet } from '../types';
+import { GlassSelect } from './GlassSelect';
 
 type PendingConfigSetAction =
   | { type: 'switch'; targetSetId: string };
@@ -118,18 +119,19 @@ export function ApiConfigSetManager(props: ApiConfigSetManagerProps) {
             className="w-full px-3 py-2.5 rounded-lg bg-background border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent disabled:opacity-60"
           />
         ) : (
-          <select
+          <GlassSelect
             value={activeConfigSetId}
-            onChange={(e) => { void onSwitchSet(e.target.value); }}
+            onValueChange={(value) => {
+              void onSwitchSet(value);
+            }}
+            options={configSets.map((set) => ({
+              value: set.id,
+              label: set.isSystem ? `${set.name} (${t('api.defaultSetTag')})` : set.name,
+            }))}
             disabled={isMutatingConfigSet || hasDialogOpen}
-            className="w-full px-3 py-2.5 rounded-lg bg-background border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent disabled:opacity-60"
-          >
-            {configSets.map((set) => (
-              <option key={set.id} value={set.id}>
-                {set.isSystem ? `${set.name} (${t('api.defaultSetTag')})` : set.name}
-              </option>
-            ))}
-          </select>
+            triggerClassName="h-10 w-full justify-between rounded-lg bg-background px-3 text-text-primary disabled:opacity-60"
+            contentClassName="w-[var(--radix-select-trigger-width)]"
+          />
         )}
         {isInlineRenaming && (
           <p className="text-[11px] text-text-muted">{t('api.renameInlineHint')}</p>

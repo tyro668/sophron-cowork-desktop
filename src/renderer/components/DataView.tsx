@@ -35,6 +35,8 @@ import {
   useReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
+import { GlassSelect } from './GlassSelect';
 import {
   AlertCircle,
   ArrowLeft,
@@ -1538,7 +1540,6 @@ function TaskEditor({
   const [inputTableChoicesLoading, setInputTableChoicesLoading] = useState(false);
   const [outputTableChoices, setOutputTableChoices] = useState<DataOutputTable[]>(outputTables);
   const taskTitleInputRef = useRef<HTMLInputElement | null>(null);
-  const workflowMenuRef = useRef<HTMLDivElement | null>(null);
   const skipTaskTitleSaveRef = useRef(false);
 
   const loadWorkflow = useCallback(async () => {
@@ -1622,30 +1623,6 @@ function TaskEditor({
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (!workflowMenuOpen) return undefined;
-    const handlePointerDown = (event: MouseEvent) => {
-      if (
-        event.target instanceof globalThis.Node &&
-        workflowMenuRef.current?.contains(event.target)
-      ) {
-        return;
-      }
-      setWorkflowMenuOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setWorkflowMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [workflowMenuOpen]);
 
   const nodes = useMemo(() => workflow?.nodes ?? [], [workflow?.nodes]);
   const edges = useMemo(() => workflow?.edges ?? [], [workflow?.edges]);
@@ -2124,50 +2101,29 @@ function TaskEditor({
             <Play className="h-3.5 w-3.5" />
             {t('data.editor.runTask')}
           </button>
-          <div ref={workflowMenuRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setWorkflowMenuOpen((open) => !open)}
-              disabled={isBusy || !workflow}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
-              title={t('data.actions.more')}
-              aria-haspopup="menu"
-              aria-expanded={workflowMenuOpen}
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </button>
-            {workflowMenuOpen && (
-              <div
-                role="menu"
-                className="absolute right-0 top-full z-30 mt-1 w-40 overflow-hidden rounded-lg border border-border-muted bg-[var(--glass-card-strong)] shadow-elevated backdrop-blur-xl"
+          <GlassDropdownMenu
+            open={workflowMenuOpen}
+            onOpenChange={setWorkflowMenuOpen}
+            align="end"
+            contentClassName="w-40"
+            trigger={
+              <button
+                type="button"
+                disabled={isBusy || !workflow}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+                title={t('data.actions.more')}
               >
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setWorkflowMenuOpen(false);
-                    openImportDsl();
-                  }}
-                  className="flex h-9 w-full items-center gap-2 px-3 text-left text-xs font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
-                >
-                  <Upload className="h-3.5 w-3.5" />
-                  {t('data.workflow.importDsl')}
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setWorkflowMenuOpen(false);
-                    openExportDsl();
-                  }}
-                  className="flex h-9 w-full items-center gap-2 px-3 text-left text-xs font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
-                >
-                  <Workflow className="h-3.5 w-3.5" />
-                  {t('data.workflow.exportDsl')}
-                </button>
-              </div>
-            )}
-          </div>
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            }
+          >
+            <GlassMenuItem icon={<Upload className="h-3.5 w-3.5" />} onSelect={openImportDsl}>
+              {t('data.workflow.importDsl')}
+            </GlassMenuItem>
+            <GlassMenuItem icon={<Workflow className="h-3.5 w-3.5" />} onSelect={openExportDsl}>
+              {t('data.workflow.exportDsl')}
+            </GlassMenuItem>
+          </GlassDropdownMenu>
         </div>
       </div>
 
@@ -3574,30 +3530,22 @@ function WorkflowInputSourceConfig({
       <span className="mb-1.5 block text-xs font-medium text-text-secondary">
         {t('data.workflow.inputTable')}
       </span>
-      <span className="relative block">
-        <select
-          value={selectedInputTableId}
-          onChange={(event) => handleInputTableChange(event.target.value)}
-          className="h-8 w-full appearance-none rounded-lg border border-border-muted bg-surface px-2 pr-8 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
-        >
-          <option value="">
-            {isLoading
-              ? t('data.workflow.loadingInputTables')
-              : t('data.workflow.noAvailableInputTables')}
-          </option>
-          {selectedInputTableId && !hasSelectedInputTableInChoices && (
-            <option value={selectedInputTableId}>
-              {selectedInputTableName || selectedInputTableId}
-            </option>
-          )}
-          {inputTables.map((inputTable) => (
-            <option key={inputTable.id} value={inputTable.id}>
-              {inputTable.name}
-            </option>
-          ))}
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
-      </span>
+      <GlassSelect
+        value={selectedInputTableId || undefined}
+        onValueChange={handleInputTableChange}
+        options={[
+          ...(selectedInputTableId && !hasSelectedInputTableInChoices
+            ? [{ value: selectedInputTableId, label: selectedInputTableName || selectedInputTableId }]
+            : []),
+          ...inputTables.map((inputTable) => ({ value: inputTable.id, label: inputTable.name })),
+        ]}
+        placeholder={
+          isLoading ? t('data.workflow.loadingInputTables') : t('data.workflow.noAvailableInputTables')
+        }
+        disabled={isLoading || (!selectedInputTableId && inputTables.length === 0)}
+        triggerClassName="h-8 w-full justify-between rounded-lg bg-surface px-2 text-xs font-medium text-text-secondary"
+        contentClassName="w-[var(--radix-select-trigger-width)]"
+      />
     </label>
   );
 }
@@ -3721,17 +3669,16 @@ function WorkflowOutputConfig({
         <span className="mb-1.5 block text-xs font-medium text-text-secondary">
           {t('data.workflow.outputStrategy')}
         </span>
-        <span className="relative block">
-          <select
+          <GlassSelect
             value={strategy}
-            onChange={(event) => handleStrategyChange(event.target.value)}
-            className="h-8 w-full appearance-none rounded-lg border border-border-muted bg-surface px-2 pr-8 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
-          >
-            <option value="auto">{t('data.workflow.values.outputStrategies.auto')}</option>
-            <option value="existing">{t('data.workflow.values.outputStrategies.existing')}</option>
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
-        </span>
+            onValueChange={handleStrategyChange}
+            options={[
+              { value: 'auto', label: t('data.workflow.values.outputStrategies.auto') },
+              { value: 'existing', label: t('data.workflow.values.outputStrategies.existing') },
+            ]}
+            triggerClassName="h-8 w-full justify-between rounded-lg bg-surface px-2 text-xs font-medium text-text-secondary"
+            contentClassName="w-[var(--radix-select-trigger-width)]"
+          />
       </label>
 
       {strategy === 'auto' ? (
@@ -3751,25 +3698,24 @@ function WorkflowOutputConfig({
           <span className="mb-1.5 block text-xs font-medium text-text-secondary">
             {t('data.workflow.outputTable')}
           </span>
-          <span className="relative block">
-            <select
-              value={selectedOutputDatasetId}
-              onChange={(event) => handleOutputTableChange(event.target.value)}
-              className="h-8 w-full appearance-none rounded-lg border border-border-muted bg-surface px-2 pr-8 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
-            >
-              <option value="">{t('data.workflow.noAvailableOutputTables')}</option>
-              {selectedOutputDatasetId &&
-                !availableOutputTables.some((outputTable) => outputTable.id === selectedOutputDatasetId) && (
-                  <option value={selectedOutputDatasetId}>{selectedOutputDatasetId}</option>
-                )}
-              {availableOutputTables.map((outputTable) => (
-                <option key={outputTable.id} value={outputTable.id}>
-                  {outputTable.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
-          </span>
+          <GlassSelect
+            value={selectedOutputDatasetId || undefined}
+            onValueChange={handleOutputTableChange}
+            options={[
+              ...(selectedOutputDatasetId &&
+              !availableOutputTables.some((outputTable) => outputTable.id === selectedOutputDatasetId)
+                ? [{ value: selectedOutputDatasetId, label: selectedOutputDatasetId }]
+                : []),
+              ...availableOutputTables.map((outputTable) => ({
+                value: outputTable.id,
+                label: outputTable.name,
+              })),
+            ]}
+            placeholder={t('data.workflow.noAvailableOutputTables')}
+            disabled={!selectedOutputDatasetId && availableOutputTables.length === 0}
+            triggerClassName="h-8 w-full justify-between rounded-lg bg-surface px-2 text-xs font-medium text-text-secondary"
+            contentClassName="w-[var(--radix-select-trigger-width)]"
+          />
         </label>
       )}
     </div>
@@ -4975,23 +4921,19 @@ function InputTablesPanel({
             onChange={onSearchChange}
             placeholder={t('data.inputTables.searchPlaceholder')}
           />
-          <label className="relative block w-32">
+          <label className="block w-32">
             <span className="sr-only">{t('data.inputTables.sourceFilter')}</span>
-            <select
+            <GlassSelect
               value={sourceFilter}
-              onChange={(event) =>
-                onSourceFilterChange(event.target.value as InputTableSourceFilter)
-              }
+              onValueChange={(value) => onSourceFilterChange(value as InputTableSourceFilter)}
+              options={INPUT_TABLE_SOURCE_FILTERS.map((option) => ({
+                value: option.value,
+                label: t(option.labelKey),
+              }))}
               disabled={bulkBusy}
-              className="h-8 w-full appearance-none rounded-lg border border-border-muted bg-surface pl-3 pr-8 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              {INPUT_TABLE_SOURCE_FILTERS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {t(option.labelKey)}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+              triggerClassName="h-8 w-full justify-between rounded-lg bg-surface pl-3 text-xs font-medium text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:opacity-45"
+              contentClassName="w-[var(--radix-select-trigger-width)]"
+            />
           </label>
         </div>
 
@@ -5797,17 +5739,18 @@ function InputTableEditor({
             >
               <SourceIcon className="h-4 w-4" />
             </span>
-            <select
+            <GlassSelect
               value={localSourceKind}
-              onChange={(event) => handleSourceKindChange(event.target.value as DataInputTableSourceKind)}
+              onValueChange={(value) => handleSourceKindChange(value as DataInputTableSourceKind)}
+              options={[
+                { value: 'excel', label: t('data.inputTables.editor.excel') },
+                { value: 'csv', label: t('data.inputTables.editor.csv') },
+                { value: 'folder', label: t('data.inputTables.editor.folder') },
+              ]}
               disabled={isBusy}
-              className="h-10 w-full appearance-none rounded-lg border border-border-muted bg-background/50 pl-12 pr-9 text-[13px] font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <option value="excel">{t('data.inputTables.editor.excel')}</option>
-              <option value="csv">{t('data.inputTables.editor.csv')}</option>
-              <option value="folder">{t('data.inputTables.editor.folder')}</option>
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+              triggerClassName="h-10 w-full justify-between rounded-lg bg-background/50 pl-12 text-[13px] font-medium text-text-secondary disabled:opacity-60"
+              contentClassName="w-[var(--radix-select-trigger-width)]"
+            />
           </label>
 
           <InputTableFormLabel>
@@ -5844,27 +5787,23 @@ function InputTableEditor({
           {localSourceKind === 'excel' && (
             <>
               <InputTableFormLabel>{t('data.inputTables.editor.sheetName')}</InputTableFormLabel>
-              <label className="relative block">
-                <select
+              <label className="block">
+                <GlassSelect
                   value={excelConfig.sheetName ?? ''}
-                  onChange={(event) =>
+                  onValueChange={(value) =>
                     updateConfig({
                       ...excelConfig,
-                      sheetName: event.target.value,
+                      sheetName: value,
                     })
                   }
+                  options={(excelConfig.sheetNames.length > 0
+                    ? excelConfig.sheetNames
+                    : ['Sheet1']
+                  ).map((sheetName) => ({ value: sheetName, label: sheetName }))}
                   disabled={isBusy || !dataset}
-                  className="h-10 w-full appearance-none rounded-lg border border-border-muted bg-background/50 px-3 pr-9 text-[13px] font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {(excelConfig.sheetNames.length > 0 ? excelConfig.sheetNames : ['Sheet1']).map(
-                    (sheetName) => (
-                      <option key={sheetName} value={sheetName}>
-                        {sheetName}
-                      </option>
-                    )
-                  )}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+                  triggerClassName="h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[13px] font-medium text-text-secondary disabled:opacity-60"
+                  contentClassName="w-[var(--radix-select-trigger-width)]"
+                />
               </label>
 
               <InputTableFormLabel>{t('data.inputTables.editor.headerRow')}</InputTableFormLabel>
@@ -6243,20 +6182,15 @@ function InputTableSelect({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="relative block">
-      <select
+    <label className="block">
+      <GlassSelect
         value={value}
         disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full appearance-none rounded-lg border border-border-muted bg-background/50 px-3 pr-9 text-[13px] font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+        onValueChange={onChange}
+        options={options}
+        triggerClassName="h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[13px] font-medium text-text-secondary disabled:opacity-60"
+        contentClassName="w-[var(--radix-select-trigger-width)]"
+      />
     </label>
   );
 }
@@ -6461,68 +6395,36 @@ interface DataMoreMenuItem {
 function DataMoreMenu({ items }: { items: DataMoreMenuItem[] }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const handlePointerDown = (event: globalThis.MouseEvent) => {
-      if (event.target instanceof Node && menuRef.current?.contains(event.target)) {
-        return;
-      }
-      setOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [open]);
 
   return (
-    <div ref={menuRef} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
-        title={t('data.actions.more')}
-        aria-label={t('data.actions.more')}
-        aria-expanded={open}
-      >
-        <MoreHorizontal className="h-4 w-4" />
-      </button>
-      {open && (
-        <div
-          className="absolute right-0 top-9 z-30 w-40 overflow-hidden rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl"
-          style={{ backgroundColor: 'var(--color-background)' }}
+    <GlassDropdownMenu
+      open={open}
+      onOpenChange={setOpen}
+      align="end"
+      contentClassName="w-40"
+      trigger={
+        <button
+          type="button"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+          title={t('data.actions.more')}
+          aria-label={t('data.actions.more')}
         >
-          {items.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              disabled={item.disabled}
-              onClick={() => {
-                setOpen(false);
-                item.onClick();
-              }}
-              className={`flex h-8 w-full items-center gap-2 px-3 text-left text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
-                item.danger
-                  ? 'text-error hover:bg-error/10'
-                  : 'text-text-secondary hover:bg-accent/10 hover:text-accent'
-              }`}
-            >
-              {item.icon}
-              <span className="truncate">{item.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+          <MoreHorizontal className="h-4 w-4" />
+        </button>
+      }
+    >
+      {items.map((item) => (
+        <GlassMenuItem
+          key={item.key}
+          disabled={item.disabled}
+          danger={item.danger}
+          icon={item.icon}
+          onSelect={item.onClick}
+        >
+          {item.label}
+        </GlassMenuItem>
+      ))}
+    </GlassDropdownMenu>
   );
 }
 

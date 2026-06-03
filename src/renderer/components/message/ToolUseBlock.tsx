@@ -119,7 +119,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
 
   return (
     <div
-      className={`overflow-hidden rounded-xl border shadow-card backdrop-blur-xl transition-colors ${
+      className={`overflow-hidden rounded-xl border shadow-card transition-colors ${
         isError
           ? 'border-error/25 bg-error/5'
           : isRunning

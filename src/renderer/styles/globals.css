@@ -52,7 +52,7 @@
     --color-error: #f05d68;
     --color-accent-rgb: 34 170 201;
     --color-accent-hover-rgb: 20 141 172;
-    --color-accent-muted-rgb: 34 170 201;
+    --color-accent-muted-rgb: 25 70 86;
     --color-text-primary-rgb: 248 251 253;
     --color-text-secondary-rgb: 216 228 236;
     --color-text-muted-rgb: 169 186 200;
@@ -107,7 +107,7 @@
     --color-error: #dc3f4f;
     --color-accent-rgb: 33 168 198;
     --color-accent-hover-rgb: 22 140 171;
-    --color-accent-muted-rgb: 33 168 198;
+    --color-accent-muted-rgb: 220 244 250;
     --color-text-primary-rgb: 23 34 56;
     --color-text-secondary-rgb: 52 70 92;
     --color-text-muted-rgb: 96 112 132;
@@ -337,13 +337,18 @@
 
   /* Message bubbles */
   .message-user {
-    @apply bg-surface rounded-2xl border border-border-subtle shadow-card backdrop-blur-xl;
+    @apply bg-surface rounded-2xl border border-border-subtle shadow-card;
     width: fit-content;
     margin-left: auto;
-    margin-right: auto;
+    margin-right: 0;
     box-shadow:
       0 1px 1px rgba(255, 255, 255, 0.86) inset,
-      0 10px 28px rgba(74, 106, 138, 0.12);
+      0 2px 8px rgba(74, 106, 138, 0.06);
+  }
+
+  .chat-message-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 120px;
   }
 
   /* Prose styling for assistant messages - compact operations transcript */

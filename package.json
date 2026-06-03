@@ -80,6 +80,8 @@
     "@mariozechner/pi-ai": "^0.60.0",
     "@mariozechner/pi-coding-agent": "^0.60.0",
     "@modelcontextprotocol/sdk": "^1.26.0",
+    "@radix-ui/react-dropdown-menu": "2.1.16",
+    "@radix-ui/react-select": "2.2.6",
     "@slack/bolt": "4.7.0",
     "@slack/web-api": "7.15.1",
     "@xyflow/react": "12.10.2",

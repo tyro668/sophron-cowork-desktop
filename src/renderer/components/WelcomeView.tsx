@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
 import { useIPC } from '../hooks/useIPC';
 import { getWorkingDirDisplayName } from '../utils/working-dir-label';
+import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
 import type { ContentBlock } from '../types';
 import { getInitialSessionTitle } from '../../shared/session-title';
@@ -15,7 +16,6 @@ import {
   X,
   Plus,
   ChevronDown,
-  Check,
   BookOpen,
   FileSearch,
 } from 'lucide-react';
@@ -547,11 +547,11 @@ export function WelcomeView() {
             <button
               key={tag.id}
               onClick={() => handleTagClick(tag.id, tag.prompt)}
-              className={`inline-flex h-8 items-center gap-2 rounded-xl border px-3 text-[13px] font-medium shadow-soft transition-colors ${
-                selectedTag === tag.id
-                  ? 'border-accent/30 bg-accent-muted text-accent'
-                  : 'border-border-muted bg-background/68 text-text-secondary hover:border-accent/25 hover:bg-surface-hover hover:text-text-primary'
-              } ${
+                className={`inline-flex h-8 items-center gap-2 rounded-xl border px-3 text-[13px] font-medium shadow-soft transition-colors ${
+                  selectedTag === tag.id
+                    ? 'border-accent/30 bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/15'
+                    : 'border-border-muted bg-background/68 text-text-secondary hover:border-accent/25 hover:bg-surface-hover hover:text-text-primary'
+                } ${
                 ('requiresChrome' in tag && tag.requiresChrome) ||
                 ('requiresNotion' in tag && tag.requiresNotion)
                   ? 'relative'
@@ -678,7 +678,6 @@ export function WelcomeView() {
                 open={showPermissionMenu}
                 onOpenChange={handlePermissionMenuOpenChange}
                 buttonClassName="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl px-2.5 text-[13px] font-medium text-accent transition-colors hover:bg-accent-muted sm:px-3"
-                menuClassName="left-5 sm:left-6"
               />
 
               <button
@@ -697,17 +696,61 @@ export function WelcomeView() {
             </div>
 
             <div className="ml-auto flex min-w-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={handleModelButtonClick}
-                aria-haspopup="menu"
-                aria-expanded={showModelMenu}
-                className="inline-flex h-9 min-w-0 max-w-[13rem] items-center gap-2 rounded-xl border border-border-muted bg-background/62 px-3 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary"
-                title={modelLabel}
-              >
-                <span className="truncate">{modelLabel}</span>
-                <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" />
-              </button>
+              {hasConfiguredModel ? (
+                <GlassDropdownMenu
+                  open={showModelMenu}
+                  onOpenChange={(open) => {
+                    setShowModelMenu(open);
+                    if (open) {
+                      setShowPermissionMenu(false);
+                    }
+                  }}
+                  side="top"
+                  align="end"
+                  contentClassName="w-[min(18rem,calc(100vw-2rem))]"
+                  trigger={
+                    <button
+                      type="button"
+                      className="inline-flex h-9 min-w-0 max-w-[13rem] items-center gap-2 rounded-xl border border-border-muted bg-background/62 px-3 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary"
+                      title={modelLabel}
+                    >
+                      <span className="truncate">{modelLabel}</span>
+                      <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" />
+                    </button>
+                  }
+                >
+                  <div className="max-h-56 overflow-y-auto">
+                    {modelOptions.length > 0 ? (
+                      modelOptions.map((option) => (
+                        <GlassMenuItem
+                          key={option.id}
+                          selected={option.isActive}
+                          onSelect={() => void handleModelOptionClick(option.id)}
+                        >
+                          <span className="block min-w-0">
+                            <span className="block truncate text-[13px] font-semibold">
+                              {option.name}
+                            </span>
+                            <span className="block truncate text-xs opacity-80">{option.model}</span>
+                          </span>
+                        </GlassMenuItem>
+                      ))
+                    ) : (
+                      <div className="px-3 py-2 text-sm text-text-muted">{modelLabel}</div>
+                    )}
+                  </div>
+                </GlassDropdownMenu>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleModelButtonClick}
+                  className="inline-flex h-9 min-w-0 max-w-[13rem] items-center gap-2 rounded-xl border border-border-muted bg-background/62 px-3 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary"
+                  title={modelLabel}
+                >
+                  <span className="truncate">{modelLabel}</span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" />
+                </button>
+              )}
 
               <button
                 type="submit"
@@ -720,36 +763,6 @@ export function WelcomeView() {
             </div>
           </div>
 
-          {showModelMenu && hasConfiguredModel && (
-            <div className="absolute bottom-[4.25rem] right-5 z-30 w-[min(18rem,calc(100%-2.5rem))] overflow-hidden rounded-xl border border-border-muted bg-background/95 shadow-elevated backdrop-blur-xl sm:right-6">
-              <div className="max-h-56 overflow-y-auto p-1">
-                {modelOptions.length > 0 ? (
-                  modelOptions.map((option) => (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => void handleModelOptionClick(option.id)}
-                      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors ${
-                        option.isActive
-                          ? 'bg-accent-muted text-accent'
-                          : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-                      }`}
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px] font-semibold">
-                          {option.name}
-                        </span>
-                        <span className="block truncate text-xs opacity-80">{option.model}</span>
-                      </span>
-                      {option.isActive && <Check className="h-4 w-4 shrink-0" />}
-                    </button>
-                  ))
-                ) : (
-                  <div className="px-3 py-2 text-sm text-text-muted">{modelLabel}</div>
-                )}
-              </div>
-            </div>
-          )}
         </form>
       </div>
     </div>

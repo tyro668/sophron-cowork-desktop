@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle, CheckCircle, ChevronDown, Plus, X, Check } from 'lucide-react';
+import { AlertCircle, CheckCircle, ChevronDown, Plus, X } from 'lucide-react';
 import type {
   ScheduleConfig,
   ScheduleTask,
@@ -10,6 +10,9 @@ import type {
   ScheduleCreateInput,
   ScheduleUpdateInput,
 } from '../../types';
+import { useDismissibleLayer } from '../../hooks/useDismissibleLayer';
+import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
+import { GlassSelect } from '../GlassSelect';
 import { useAppStore } from '../../store';
 import { formatAppDateTime, joinAppList } from '../../utils/i18n-format';
 import { renderLocalizedBannerMessage, getWeekdayOptions, getScheduleModeOptions } from './shared';
@@ -476,15 +479,17 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
                 onChange={(e) => setRepeatEvery(Math.max(1, Number(e.target.value) || 1))}
                 className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-sm"
               />
-              <select
+              <GlassSelect
                 value={repeatUnit}
-                onChange={(e) => setRepeatUnit(e.target.value as ScheduleRepeatUnit)}
-                className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-sm"
-              >
-                <option value="minute">{t('schedule.repeatUnitMinute')}</option>
-                <option value="hour">{t('schedule.repeatUnitHour')}</option>
-                <option value="day">{t('schedule.repeatUnitDay')}</option>
-              </select>
+                onValueChange={(value) => setRepeatUnit(value as ScheduleRepeatUnit)}
+                options={[
+                  { value: 'minute', label: t('schedule.repeatUnitMinute') },
+                  { value: 'hour', label: t('schedule.repeatUnitHour') },
+                  { value: 'day', label: t('schedule.repeatUnitDay') },
+                ]}
+                triggerClassName="h-10 w-full justify-between rounded-lg bg-surface px-3 text-sm"
+                contentClassName="w-[var(--radix-select-trigger-width)]"
+              />
             </div>
           )}
           {scheduleMode === 'daily' && (
@@ -864,7 +869,6 @@ function ScheduleSelectMenu(props: {
     onToggle,
   } = props;
   const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement | null>(null);
   const isMulti = typeof onToggle === 'function';
   const buttonText =
     summary ||
@@ -878,63 +882,50 @@ function ScheduleSelectMenu(props: {
         : placeholder
       : (options.find((option) => option.value === value)?.label ?? placeholder));
 
-  useEffect(() => {
-    function handlePointerDown(event: MouseEvent) {
-      if (!containerRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener('mousedown', handlePointerDown);
-    return () => document.removeEventListener('mousedown', handlePointerDown);
-  }, []);
-
   return (
-    <div ref={containerRef} className="relative">
+    <div>
       <div className="mb-1 text-xs text-text-muted">{label}</div>
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
-          open
-            ? 'border-accent bg-surface text-text-primary'
-            : 'border-border bg-surface text-text-secondary hover:bg-surface-hover'
-        }`}
+      <GlassDropdownMenu
+        open={open}
+        onOpenChange={setOpen}
+        align="start"
+        contentClassName="max-h-64 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto"
+        trigger={
+          <button
+            type="button"
+            className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+              open
+                ? 'border-accent bg-surface text-text-primary'
+                : 'border-border bg-surface text-text-secondary hover:bg-surface-hover'
+            }`}
+          >
+            <span className="truncate">{buttonText}</span>
+            <ChevronDown
+              className={`h-4 w-4 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+            />
+          </button>
+        }
       >
-        <span className="truncate">{buttonText}</span>
-        <ChevronDown
-          className={`h-4 w-4 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
-        />
-      </button>
-      {open && (
-        <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-20 max-h-64 overflow-y-auto rounded-lg border border-border bg-surface p-1 shadow-elevated">
-          {options.map((option) => {
-            const selected = isMulti ? values.includes(option.value) : option.value === value;
-            return (
-              <button
-                key={String(option.value)}
-                type="button"
-                onClick={() => {
-                  if (isMulti) {
-                    onToggle?.(option.value);
-                    return;
-                  }
-                  onChange?.(option.value);
-                  setOpen(false);
-                }}
-                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
-                  selected
-                    ? 'bg-accent/10 text-accent'
-                    : 'text-text-secondary hover:bg-surface-hover'
-                }`}
-              >
-                <span>{option.label}</span>
-                {selected && <Check className="h-4 w-4" />}
-              </button>
-            );
-          })}
-        </div>
-      )}
+        {options.map((option) => {
+          const selected = isMulti ? values.includes(option.value) : option.value === value;
+          return (
+            <GlassMenuItem
+              key={String(option.value)}
+              selected={selected}
+              closeOnSelect={!isMulti}
+              onSelect={() => {
+                if (isMulti) {
+                  onToggle?.(option.value);
+                  return;
+                }
+                onChange?.(option.value);
+              }}
+            >
+              {option.label}
+            </GlassMenuItem>
+          );
+        })}
+      </GlassDropdownMenu>
     </div>
   );
 }
@@ -962,16 +953,11 @@ function TimeMultiSelectMenu(props: {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const buttonText = summary || (values.length > 0 ? joinAppList(values) : placeholder);
 
-  useEffect(() => {
-    function handlePointerDown(event: MouseEvent) {
-      if (!containerRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener('mousedown', handlePointerDown);
-    return () => document.removeEventListener('mousedown', handlePointerDown);
-  }, []);
+  useDismissibleLayer({
+    open,
+    refs: [containerRef],
+    onDismiss: () => setOpen(false),
+  });
 
   useEffect(() => {
     if (!open) {
@@ -1025,7 +1011,7 @@ function TimeMultiSelectMenu(props: {
       </button>
       {open && (
         <div
-          className={`absolute right-0 z-20 w-[min(22rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-border/70 bg-surface p-3 shadow-[0_24px_60px_rgba(70,101,135,0.13)] ${
+          className={`absolute right-0 z-20 w-[min(22rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] p-3 shadow-elevated backdrop-blur-xl ${
             openUpward ? 'bottom-[calc(100%+8px)]' : 'top-[calc(100%+8px)]'
           }`}
         >

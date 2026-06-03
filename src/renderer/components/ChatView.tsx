@@ -12,6 +12,7 @@ import {
 } from '../store/selectors';
 import { useAppStore } from '../store';
 import { useIPC } from '../hooks/useIPC';
+import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
 import { MessageCard } from './MessageCard';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
 import type { Message, ContentBlock } from '../types';
@@ -25,7 +26,6 @@ import {
   Clock,
   ArrowUp,
   ChevronDown,
-  Check,
 } from 'lucide-react';
 
 type AttachedFile = {
@@ -80,8 +80,10 @@ export function ChatView() {
   const prevPartialLengthRef = useRef(0);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRequestRef = useRef<number | null>(null);
+  const scrollStateFrameRef = useRef<number | null>(null);
   const isScrollingRef = useRef(false);
   const pendingInitialScrollSessionRef = useRef<string | null>(null);
+  const showBackToTopRef = useRef(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
 
   const hasActiveTurn = Boolean(activeTurn);
@@ -156,7 +158,7 @@ export function ChatView() {
     setClockNow(Date.now());
     const interval = setInterval(() => {
       setClockNow(Date.now());
-    }, 100);
+    }, 500);
     return () => clearInterval(interval);
   }, [executionClock?.startAt, executionClock?.endAt]);
 
@@ -172,7 +174,12 @@ export function ChatView() {
 
     const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
     isUserAtBottomRef.current = distanceToBottom <= 80;
-    setShowBackToTop(container.scrollTop > 160 && container.scrollHeight > container.clientHeight);
+    const nextShowBackToTop =
+      container.scrollTop > 160 && container.scrollHeight > container.clientHeight;
+    if (nextShowBackToTop !== showBackToTopRef.current) {
+      showBackToTopRef.current = nextShowBackToTop;
+      setShowBackToTop(nextShowBackToTop);
+    }
   }, []);
 
   // Debounced scroll function to prevent scroll conflicts
@@ -246,14 +253,27 @@ export function ChatView() {
     if (!container) return;
     updateScrollState();
     // 用户阅读旧消息时，阻止新消息自动滚动打断视线
-    const onScroll = () => updateScrollState();
+    const onScroll = () => {
+      if (scrollStateFrameRef.current !== null) return;
+      scrollStateFrameRef.current = requestAnimationFrame(() => {
+        scrollStateFrameRef.current = null;
+        updateScrollState();
+      });
+    };
     container.addEventListener('scroll', onScroll, { passive: true });
-    return () => container.removeEventListener('scroll', onScroll);
+    return () => {
+      container.removeEventListener('scroll', onScroll);
+      if (scrollStateFrameRef.current !== null) {
+        cancelAnimationFrame(scrollStateFrameRef.current);
+        scrollStateFrameRef.current = null;
+      }
+    };
   }, [updateScrollState]);
 
   useEffect(() => {
     pendingInitialScrollSessionRef.current = activeSessionId;
     isUserAtBottomRef.current = true;
+    showBackToTopRef.current = false;
     setShowBackToTop(false);
   }, [activeSessionId]);
 
@@ -331,6 +351,9 @@ export function ChatView() {
       }
       if (scrollRequestRef.current) {
         cancelAnimationFrame(scrollRequestRef.current);
+      }
+      if (scrollStateFrameRef.current) {
+        cancelAnimationFrame(scrollStateFrameRef.current);
       }
     };
   }, []);
@@ -755,6 +778,24 @@ export function ChatView() {
     }
   };
 
+  const messageElements = useMemo(
+    () =>
+      displayedMessages.map((message, index) => {
+        const isStreaming = typeof message.id === 'string' && message.id.startsWith('partial-');
+        const previous = index > 0 ? displayedMessages[index - 1] : null;
+        const startsTurn = message.role === 'user' || previous?.role === 'user';
+        return (
+          <div
+            key={message.id}
+            className={`chat-message-row ${index === 0 ? '' : startsTurn ? 'mt-6' : 'mt-3'}`}
+          >
+            <MessageCard message={message} isStreaming={isStreaming} />
+          </div>
+        );
+      }),
+    [displayedMessages]
+  );
+
   if (!activeSession) {
     return (
       <div className="flex-1 flex items-center justify-center text-text-muted">
@@ -820,7 +861,7 @@ export function ChatView() {
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
         <div
           ref={messagesContainerRef}
-          className="w-full max-w-[980px] mx-auto py-5 px-4 lg:px-6 space-y-3"
+          className="w-full max-w-[980px] mx-auto py-5 px-4 lg:px-6"
         >
           {displayedMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-28 text-text-muted space-y-3 text-center">
@@ -830,15 +871,7 @@ export function ChatView() {
               <p className="text-base text-text-secondary">{t('chat.startConversation')}</p>
             </div>
           ) : (
-            displayedMessages.map((message) => {
-              const isStreaming =
-                typeof message.id === 'string' && message.id.startsWith('partial-');
-              return (
-                <div key={message.id}>
-                  <MessageCard message={message} isStreaming={isStreaming} />
-                </div>
-              );
-            })
+            messageElements
           )}
 
           {/* Processing indicator - show when we have an active turn but no streaming content yet */}
@@ -969,22 +1002,67 @@ export function ChatView() {
                     open={showPermissionMenu}
                     onOpenChange={handlePermissionMenuOpenChange}
                     buttonClassName="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[13px] font-semibold text-accent transition-colors hover:bg-accent-muted sm:px-2.5"
-                    menuClassName="left-5 sm:left-6"
                   />
                 </div>
 
                 <div className="flex min-w-0 items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleModelButtonClick}
-                    aria-haspopup="menu"
-                    aria-expanded={showModelMenu}
-                    className="hidden h-8 min-w-0 max-w-[18rem] items-center gap-1.5 rounded-lg border border-border-muted bg-background/70 px-2.5 text-[13px] text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary sm:inline-flex"
-                    title={modelLabel}
-                  >
-                    <span className="truncate">{modelLabel}</span>
-                    <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" />
-                  </button>
+                  {hasConfiguredModel ? (
+                    <GlassDropdownMenu
+                      open={showModelMenu}
+                      onOpenChange={(open) => {
+                        setShowModelMenu(open);
+                        if (open) {
+                          setShowPermissionMenu(false);
+                        }
+                      }}
+                      side="top"
+                      align="end"
+                      contentClassName="w-[min(18rem,calc(100vw-2rem))]"
+                      trigger={
+                        <button
+                          type="button"
+                          className="hidden h-8 min-w-0 max-w-[18rem] items-center gap-1.5 rounded-lg border border-border-muted bg-background/70 px-2.5 text-[13px] text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary sm:inline-flex"
+                          title={modelLabel}
+                        >
+                          <span className="truncate">{modelLabel}</span>
+                          <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" />
+                        </button>
+                      }
+                    >
+                      <div className="max-h-56 overflow-y-auto">
+                        {modelOptions.length > 0 ? (
+                          modelOptions.map((option) => (
+                            <GlassMenuItem
+                              key={option.id}
+                              selected={option.isActive}
+                              onSelect={() => void handleModelOptionClick(option.id)}
+                            >
+                              <span className="block min-w-0">
+                                <span className="block truncate text-[13px] font-semibold">
+                                  {option.name}
+                                </span>
+                                <span className="block truncate text-xs opacity-80">
+                                  {option.model}
+                                </span>
+                              </span>
+                            </GlassMenuItem>
+                          ))
+                        ) : (
+                          <div className="px-3 py-2 text-sm text-text-muted">{modelLabel}</div>
+                        )}
+                      </div>
+                    </GlassDropdownMenu>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleModelButtonClick}
+                      className="hidden h-8 min-w-0 max-w-[18rem] items-center gap-1.5 rounded-lg border border-border-muted bg-background/70 px-2.5 text-[13px] text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary sm:inline-flex"
+                      title={modelLabel}
+                    >
+                      <span className="truncate">{modelLabel}</span>
+                      <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" />
+                    </button>
+                  )}
 
                   {canStop && (
                     <button
@@ -1014,36 +1092,6 @@ export function ChatView() {
               </div>
             </div>
 
-            {showModelMenu && hasConfiguredModel && (
-              <div className="absolute bottom-[3.5rem] right-4 z-30 w-[min(18rem,calc(100%-2rem))] overflow-hidden rounded-lg border border-border-muted bg-background/95 shadow-elevated backdrop-blur-xl sm:right-6">
-                <div className="max-h-56 overflow-y-auto p-1">
-                  {modelOptions.length > 0 ? (
-                    modelOptions.map((option) => (
-                      <button
-                        key={option.id}
-                        type="button"
-                        onClick={() => void handleModelOptionClick(option.id)}
-                        className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors ${
-                          option.isActive
-                            ? 'bg-accent-muted text-accent'
-                            : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-                        }`}
-                      >
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[13px] font-semibold">
-                            {option.name}
-                          </span>
-                          <span className="block truncate text-xs opacity-80">{option.model}</span>
-                        </span>
-                        {option.isActive && <Check className="h-4 w-4 shrink-0" />}
-                      </button>
-                    ))
-                  ) : (
-                    <div className="px-3 py-2 text-sm text-text-muted">{modelLabel}</div>
-                  )}
-                </div>
-              </div>
-            )}
           </form>
         </div>
       </div>

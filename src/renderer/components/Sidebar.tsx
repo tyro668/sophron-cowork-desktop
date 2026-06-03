@@ -498,9 +498,9 @@ export function Sidebar() {
                         onMouseEnter={() => setHoveredSession(session.id)}
                         onMouseLeave={() => setHoveredSession(null)}
                         className={`group relative cursor-pointer rounded-xl px-2.5 py-1.5 transition-colors ${
-                          isSelectMode && isSelected
-                            ? 'bg-accent-muted text-accent'
-                            : isActive && !isSelectMode
+	                          isSelectMode && isSelected
+	                            ? 'bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/20'
+	                            : isActive && !isSelectMode
                               ? 'bg-accent/10'
                               : 'hover:bg-surface-hover/60'
                         }`}

@@ -102,7 +102,7 @@ export const ToolResultBlock = memo(function ToolResultBlock({
 
   return (
     <div
-      className={`overflow-hidden rounded-xl border shadow-card backdrop-blur-xl ${
+      className={`overflow-hidden rounded-xl border shadow-card ${
         block.isError ? 'border-error/25 bg-error/5' : 'border-border-subtle bg-[var(--glass-card)]'
       }`}
     >

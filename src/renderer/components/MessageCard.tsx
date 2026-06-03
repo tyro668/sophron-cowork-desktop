@@ -60,10 +60,10 @@ export const MessageCard = memo(function MessageCard({ message, isStreaming }: M
   return (
     <div className="animate-fade-in">
       {isUser ? (
-        // User message - centered prompt card, matching the reference layout.
-        <div className="group flex items-start justify-center gap-2">
+        // User message - right-aligned prompt card in the conversation flow.
+        <div className="group flex items-start justify-end gap-2">
           <div
-            className={`message-user mx-auto max-w-[min(44rem,88%)] min-w-0 break-words rounded-xl px-4 py-3 ${
+            className={`message-user max-w-[min(44rem,88%)] min-w-0 break-words rounded-xl px-4 py-3 ${
               isQueued ? 'opacity-70 border-dashed' : ''
             } ${isCancelled ? 'opacity-60' : ''}`}
           >

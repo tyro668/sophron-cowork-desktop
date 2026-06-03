@@ -11,6 +11,7 @@ import type {
   MemorySearchScope,
 } from '../../types';
 import { useAppStore } from '../../store';
+import { GlassSelect } from '../GlassSelect';
 import { SettingsContentSection } from './shared';
 
 type SearchMode = 'workspace' | 'all' | 'global';
@@ -662,27 +663,32 @@ export function SettingsMemory() {
               placeholder={t('memory.searchPlaceholder')}
               className="flex-1 rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-accent"
             />
-            <select
+            <GlassSelect
               value={scope}
-              onChange={(event) => setScope(event.target.value as SearchMode)}
-              className="rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2.5 text-sm text-text-primary outline-none"
-            >
-              {hasWorkspace && <option value="workspace">{t('memory.scopeWorkspace')}</option>}
-              <option value="all">{t('memory.scopeAll')}</option>
-              <option value="global">{t('memory.scopeGlobal')}</option>
-            </select>
-            <select
-              value={sourceWorkspaceFilter}
-              onChange={(event) => setSourceWorkspaceFilter(event.target.value)}
-              className="rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2.5 text-sm text-text-primary outline-none"
-            >
-              <option value="">{t('memory.allSources', '全部来源')}</option>
-              {overview?.topSourceWorkspaces?.map((item) => (
-                <option key={item.workspaceKey} value={item.workspaceKey}>
-                  {item.workspaceKey}
-                </option>
-              ))}
-            </select>
+              onValueChange={(value) => setScope(value as SearchMode)}
+              options={[
+                ...(hasWorkspace
+                  ? [{ value: 'workspace', label: t('memory.scopeWorkspace') }]
+                  : []),
+                { value: 'all', label: t('memory.scopeAll') },
+                { value: 'global', label: t('memory.scopeGlobal') },
+              ]}
+              triggerClassName="h-10 rounded-lg bg-background/42 px-3 text-sm text-text-primary"
+            />
+            <GlassSelect
+              value={sourceWorkspaceFilter || 'all-sources'}
+              onValueChange={(value) =>
+                setSourceWorkspaceFilter(value === 'all-sources' ? '' : value)
+              }
+              options={[
+                { value: 'all-sources', label: t('memory.allSources', '全部来源') },
+                ...(overview?.topSourceWorkspaces?.map((item) => ({
+                  value: item.workspaceKey,
+                  label: item.workspaceKey,
+                })) ?? []),
+              ]}
+              triggerClassName="h-10 rounded-lg bg-background/42 px-3 text-sm text-text-primary"
+            />
             <button
               onClick={() => {
                 void handleSearch();

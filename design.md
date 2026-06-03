@@ -29,6 +29,7 @@ This app follows a compact desktop operations style: a macOS-like glass workspac
 - Status chips are 22px-24px high and use 11px-12px text.
 - Message/tool rows should look like slim capsules, not large cards.
 - The composer uses a frosted rounded rectangle with compact bottom controls.
+- Dropdowns and popover menus close on outside click and Escape. Use `GlassSelect` for single-value selects and `GlassDropdownMenu` / `GlassMenuItem` for action menus. Use a frosted popover surface, readable body text, and `bg-accent/10 text-text-primary` for selected rows.
 
 ## Page Guidance
 

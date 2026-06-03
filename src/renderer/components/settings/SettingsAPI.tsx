@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useApiConfigState } from '../../hooks/useApiConfigState';
 import { ApiConfigSetManager } from '../ApiConfigSetManager';
+import { GlassSelect } from '../GlassSelect';
 import { CommonProviderSetupsCard } from '../ProviderGuidance';
 import ApiDiagnosticsPanel from '../ApiDiagnosticsPanel';
 import { VISIBLE_API_PROVIDER_OPTIONS } from '../../../shared/api-model-presets';
@@ -230,7 +231,7 @@ export function SettingsAPI() {
                   void discoverLocalOllama();
                 }}
                 disabled={isDiscoveringLocalOllama}
-                className="flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors active:scale-95 bg-accent-muted text-accent hover:bg-accent-muted/80 disabled:opacity-50"
+                className="flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors active:scale-95 bg-accent/10 text-text-primary hover:bg-accent/15 disabled:opacity-50"
               >
                 <Plug className="w-3 h-3" />
                 {isDiscoveringLocalOllama
@@ -280,7 +281,7 @@ export function SettingsAPI() {
                 onClick={toggleCustomModel}
                 className={`flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors active:scale-95 ${
                   useCustomModel
-                    ? 'bg-accent-muted text-accent'
+                    ? 'bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/20'
                     : 'border border-border-muted bg-background text-text-secondary hover:bg-surface-hover'
                 }`}
               >
@@ -306,24 +307,19 @@ export function SettingsAPI() {
             className="w-full rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[13px] text-text-primary shadow-soft placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
           />
         ) : (
-          <select
-            id="api-model-input"
+          <GlassSelect
             value={modelOptions.length ? model : ''}
-            onChange={(e) => setModel(e.target.value)}
-            className="w-full rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[13px] text-text-primary shadow-soft focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all appearance-none cursor-pointer"
-          >
-            {modelOptions.length ? (
-              (modelOptions as ModelOptionItem[]).map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))
-            ) : (
-              <option value="" disabled>
-                {t('api.noModelsAvailable')}
-              </option>
-            )}
-          </select>
+            onValueChange={setModel}
+            options={
+              modelOptions.length
+                ? (modelOptions as ModelOptionItem[]).map((m) => ({ value: m.id, label: m.name }))
+                : [{ value: 'no-models', label: t('api.noModelsAvailable'), disabled: true }]
+            }
+            placeholder={t('api.noModelsAvailable')}
+            disabled={!modelOptions.length}
+            triggerClassName="h-9 w-full justify-between rounded-lg bg-background/42 px-3 text-text-primary"
+            contentClassName="w-[var(--radix-select-trigger-width)]"
+          />
         )}
 
         {/* Context Window & Max Tokens — only for non-registry providers */}
