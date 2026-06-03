@@ -1,9 +1,18 @@
 import type {
   DataCleaningTask,
   DataDataset,
+  DataGenerateInputTableNormalizerDraftInput,
+  DataGenerateInputTableNormalizerDraftResult,
+  DataInputTableNormalizerVersionSaveResult,
   DataInputTableConfig,
+  DataListInputTableNormalizerVersionsInput,
+  DataListInputTableNormalizerVersionsResult,
   DataInputTablePreview,
+  DataPublishInputTableNormalizerVersionInput,
+  DataPreviewInputTableNormalizerVersionInput,
+  DataInputTableSourceSummary,
   DataInputTableSourceKind,
+  DataSummarizeInputTableSourceInput,
   DataOutputTable,
   DataTaskWorkflow,
   DataWorkflowOperatorType,
@@ -75,6 +84,30 @@ export interface InputTableResult {
   preview?: DataInputTablePreview;
 }
 
+export type SummarizeInputTableSourceCommand = DataSummarizeInputTableSourceInput;
+
+export interface SummarizeInputTableSourceResult {
+  summary: DataInputTableSourceSummary;
+}
+
+export type GenerateInputTableNormalizerDraftCommand =
+  DataGenerateInputTableNormalizerDraftInput;
+
+export type GenerateInputTableNormalizerDraftResult =
+  DataGenerateInputTableNormalizerDraftResult;
+
+export type PublishInputTableNormalizerVersionCommand =
+  DataPublishInputTableNormalizerVersionInput;
+
+export type PublishInputTableNormalizerVersionResult =
+  DataInputTableNormalizerVersionSaveResult;
+
+export type ListInputTableNormalizerVersionsCommand =
+  DataListInputTableNormalizerVersionsInput;
+
+export type ListInputTableNormalizerVersionsResult =
+  DataListInputTableNormalizerVersionsResult;
+
 export interface ListOutputTablesResult {
   outputTables: DataOutputTable[];
   total: number;
@@ -108,6 +141,13 @@ export interface PreviewTableCommand {
 export interface PreviewTableResult {
   tableKind: 'input' | 'output';
   id: string;
+  preview: DataInputTablePreview;
+}
+
+export type PreviewInputTableNormalizerVersionCommand =
+  DataPreviewInputTableNormalizerVersionInput;
+
+export interface PreviewInputTableNormalizerVersionResult {
   preview: DataInputTablePreview;
 }
 

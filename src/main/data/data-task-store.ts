@@ -1,5 +1,6 @@
 import * as fs from 'fs';
-import { basename, dirname, extname, join } from 'path';
+import * as os from 'os';
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api';
 import type Database from 'better-sqlite3';
@@ -14,19 +15,31 @@ import type {
   DataDataset,
   DataOutputTable,
   DataInputTableConfig,
+  DataInputTableExcelMergedCellSummary,
+  DataInputTableNormalizerArtifact,
+  DataInputTableNormalizerArtifactVersion,
   DataInputTablePreview,
+  DataInputTableSourceFileSummary,
+  DataInputTableSourceSummary,
   DataInputTableCsvConfig,
   DataInputTableExcelConfig,
   DataInputTableFolderConfig,
+  DataInputTableHeaderCandidate,
+  DataInputTableNormalizerVersionSaveResult,
   DataInputTableSourceKind,
   DataImportDatasetInput,
   DataPreviewDatasetInput,
   DataPreviewInputTableInput,
+  DataPreviewInputTableNormalizerVersionInput,
   DataPreviewWorkflowNodeInput,
   DataRunTaskInput,
+  DataSaveInputTableNormalizerDraftInput,
+  DataSummarizeInputTableSourceInput,
   DataTaskStatus,
   DataTaskStatusCounts,
   DataTaskWorkflow,
+  DataNormalizerArtifactVersionStatus,
+  DataNormalizerLanguage,
   DataUpdateTaskInput,
   DataUpdateDatasetInput,
   DataUpdateOutputTableInput,
@@ -37,6 +50,7 @@ import type {
   DataWorkflowOperatorType,
   DataWorkflowSaveInput,
 } from '../../renderer/types';
+import { runInputTableNormalizerProject } from './input-table-normalizer-runner';
 
 interface DataTaskStoreOptions {
   now?: () => number;
@@ -51,6 +65,23 @@ interface ParsedWorkbookRows {
   rows: Array<Array<string | number | boolean | null>>;
   sheetName: string;
   sheetNames: string[];
+}
+
+interface PreparedInputTableNormalizerSourceContext {
+  directory: string;
+  files: PreparedInputTableNormalizerSourceFile[];
+}
+
+interface PreparedInputTableNormalizerSourceFile {
+  path: string;
+  relativePath: string;
+  originalPath: string;
+  originalKind: 'excel' | 'csv';
+  delimiter: ',';
+  sheetName?: string;
+  headerCandidates?: DataInputTableHeaderCandidate[];
+  rowCountEstimate?: number;
+  columnCountEstimate?: number;
 }
 
 interface PreparedInputTableImport {
@@ -90,6 +121,36 @@ interface DataDatasetRow {
   column_count: number | string;
   created_at: number | string;
   updated_at: number | string;
+}
+
+interface DataInputTableNormalizerArtifactRow {
+  id: string;
+  name: string;
+  description: string | null;
+  source_kind: string;
+  primary_language: string;
+  active_version_id: string | null;
+  created_at: number | string;
+  updated_at: number | string;
+}
+
+interface DataInputTableNormalizerArtifactVersionRow {
+  id: string;
+  artifact_id: string;
+  version: number | string;
+  status: string;
+  files_json: string;
+  file_tree_hash: string;
+  rule_prompt: string;
+  source_summary_hash: string | null;
+  entrypoint_json: string;
+  dependency_prepare_json: string | null;
+  runtime_json: string;
+  dependencies_json: string | null;
+  dependency_lock_hash: string | null;
+  created_at: number | string;
+  updated_at: number | string;
+  published_at: number | string | null;
 }
 
 interface DataWorkflowNodeRow {
@@ -295,6 +356,23 @@ export class DataTaskStore {
     }
   }
 
+  private getInputTableNormalizerStorageRoot(): string {
+    return join(dirname(this.dbPath), 'input-table-normalizers');
+  }
+
+  private getInputTableNormalizerProjectDir(artifactId: string, versionId: string): string {
+    return join(
+      this.getInputTableNormalizerStorageRoot(),
+      'projects',
+      sanitizeNormalizerPathSegment(artifactId),
+      sanitizeNormalizerPathSegment(versionId)
+    );
+  }
+
+  private getInputTableNormalizerRunRoot(): string {
+    return join(this.getInputTableNormalizerStorageRoot(), 'runs');
+  }
+
   async getDashboard(query: DataDashboardQuery = {}): Promise<DataDashboard> {
     await this.ensureMetadataReady();
     if (query.includeOutputTables === true) {
@@ -465,6 +543,180 @@ export class DataTaskStore {
       totalTasks: toNumber(taskCountRows[0]?.count),
       totalDatasets: toNumber(datasetCountRows[0]?.count),
       totalOutputTables: toNumber(outputCountRows[0]?.count),
+    };
+  }
+
+  async saveInputTableNormalizerDraft(
+    input: DataSaveInputTableNormalizerDraftInput
+  ): Promise<DataInputTableNormalizerVersionSaveResult> {
+    await this.ensureMetadataReady();
+    const name = input.name.trim();
+    const rulePrompt = input.rulePrompt.trim();
+    const files = input.files.filter(
+      (file) => file.path.trim().length > 0 && file.content !== undefined
+    );
+    if (!name) {
+      throw new Error('Normalizer artifact name is required');
+    }
+    if (!rulePrompt) {
+      throw new Error('Normalizer rule prompt is required');
+    }
+    if (files.length === 0) {
+      throw new Error('Normalizer project files are required');
+    }
+    if (!input.fileTreeHash.trim()) {
+      throw new Error('Normalizer file tree hash is required');
+    }
+
+    const now = this.now();
+    const artifactId = input.artifactId?.trim() || uuidv4();
+    const existingArtifact = input.artifactId
+      ? await this.getInputTableNormalizerArtifact(artifactId)
+      : null;
+    if (input.artifactId && !existingArtifact) {
+      throw new Error(`Normalizer artifact not found: ${artifactId}`);
+    }
+
+    if (existingArtifact) {
+      await this.metaRunSql(
+        `
+          UPDATE data_input_table_normalizer_artifacts
+          SET name = $name,
+              description = $description,
+              source_kind = $sourceKind,
+              primary_language = $primaryLanguage,
+              updated_at = $updatedAt
+          WHERE id = $id
+        `,
+        {
+          id: artifactId,
+          name,
+          description: input.description ?? null,
+          sourceKind: input.sourceKind,
+          primaryLanguage: input.primaryLanguage,
+          updatedAt: now,
+        }
+      );
+    } else {
+      await this.metaRunSql(
+        `
+          INSERT INTO data_input_table_normalizer_artifacts (
+            id, name, description, source_kind, primary_language, active_version_id,
+            created_at, updated_at
+          )
+          VALUES (
+            $id, $name, $description, $sourceKind, $primaryLanguage, NULL,
+            $createdAt, $updatedAt
+          )
+        `,
+        {
+          id: artifactId,
+          name,
+          description: input.description ?? null,
+          sourceKind: input.sourceKind,
+          primaryLanguage: input.primaryLanguage,
+          createdAt: now,
+          updatedAt: now,
+        }
+      );
+    }
+
+    const nextVersionRows = await this.metaQueryRows<{ version: number | string }>(
+      `
+        SELECT coalesce(max(version), 0) + 1 AS version
+        FROM data_input_table_normalizer_artifact_versions
+        WHERE artifact_id = $artifactId
+      `,
+      { artifactId }
+    );
+    const versionNumber = toNumber(nextVersionRows[0]?.version);
+    const versionId = uuidv4();
+    const projectDir = this.getInputTableNormalizerProjectDir(artifactId, versionId);
+    try {
+      writeInputTableNormalizerProjectFiles(projectDir, files);
+      await this.metaRunSql(
+        `
+          INSERT INTO data_input_table_normalizer_artifact_versions (
+            id, artifact_id, version, status, files_json, file_tree_hash, rule_prompt,
+            source_summary_hash, entrypoint_json, dependency_prepare_json, runtime_json,
+            dependencies_json, dependency_lock_hash, created_at, updated_at, published_at
+          )
+          VALUES (
+            $id, $artifactId, $version, 'draft', $filesJson, $fileTreeHash, $rulePrompt,
+            $sourceSummaryHash, $entrypointJson, $dependencyPrepareJson, $runtimeJson,
+            $dependenciesJson, $dependencyLockHash, $createdAt, $updatedAt, NULL
+          )
+        `,
+        {
+          id: versionId,
+          artifactId,
+          version: versionNumber,
+          filesJson: JSON.stringify(files),
+          fileTreeHash: input.fileTreeHash.trim(),
+          rulePrompt,
+          sourceSummaryHash: input.sourceSummaryHash ?? null,
+          entrypointJson: JSON.stringify(input.entrypoint),
+          dependencyPrepareJson: input.dependencyPrepare
+            ? JSON.stringify(input.dependencyPrepare)
+            : null,
+          runtimeJson: JSON.stringify(input.runtime),
+          dependenciesJson: JSON.stringify(input.dependencies ?? []),
+          dependencyLockHash: input.dependencyLockHash ?? null,
+          createdAt: now,
+          updatedAt: now,
+        }
+      );
+    } catch (error) {
+      fs.rmSync(projectDir, { recursive: true, force: true });
+      throw error;
+    }
+
+    return {
+      artifact: await this.requireInputTableNormalizerArtifact(artifactId),
+      version: await this.requireInputTableNormalizerArtifactVersion(versionId),
+    };
+  }
+
+  async publishInputTableNormalizerArtifactVersion(
+    versionId: string
+  ): Promise<DataInputTableNormalizerVersionSaveResult> {
+    await this.ensureMetadataReady();
+    const version = await this.requireInputTableNormalizerArtifactVersion(versionId);
+    const artifact = await this.requireInputTableNormalizerArtifact(version.artifactId);
+    const now = this.now();
+    await this.metaRunSql(
+      `
+        UPDATE data_input_table_normalizer_artifact_versions
+        SET status = 'archived',
+            updated_at = $updatedAt
+        WHERE artifact_id = $artifactId
+          AND status = 'published'
+          AND id <> $versionId
+      `,
+      { artifactId: artifact.id, versionId, updatedAt: now }
+    );
+    await this.metaRunSql(
+      `
+        UPDATE data_input_table_normalizer_artifact_versions
+        SET status = 'published',
+            published_at = coalesce(published_at, $publishedAt),
+            updated_at = $updatedAt
+        WHERE id = $versionId
+      `,
+      { versionId, publishedAt: now, updatedAt: now }
+    );
+    await this.metaRunSql(
+      `
+        UPDATE data_input_table_normalizer_artifacts
+        SET active_version_id = $versionId,
+            updated_at = $updatedAt
+        WHERE id = $artifactId
+      `,
+      { artifactId: artifact.id, versionId, updatedAt: now }
+    );
+    return {
+      artifact: await this.requireInputTableNormalizerArtifact(artifact.id),
+      version: await this.requireInputTableNormalizerArtifactVersion(versionId),
     };
   }
 
@@ -671,6 +923,53 @@ export class DataTaskStore {
       await this.dropTableIfExists(tableName);
       throw error;
     }
+  }
+
+  async summarizeInputTableSource(
+    input: DataSummarizeInputTableSourceInput
+  ): Promise<DataInputTableSourceSummary> {
+    const sourcePath = normalizeImportSourcePath(input.sourcePath);
+    const sourceKind = normalizeInputTableSourceKind(input.sourceKind, sourcePath);
+    const config = normalizeInputTableConfig(input.config, sourceKind, sourcePath);
+    const maxFiles = clampSummaryLimit(input.maxFiles, 1, 20, 8);
+    const maxSheetsPerFile = clampSummaryLimit(input.maxSheetsPerFile, 1, 12, 6);
+    const maxRowsPerSheet = clampSummaryLimit(input.maxRowsPerSheet, 1, 20, 8);
+    const maxColumnsPerRow = clampSummaryLimit(input.maxColumnsPerRow, 1, 80, 16);
+    const allFiles = getImportSourceFiles(sourcePath, sourceKind, config);
+    const sampledFiles = allFiles.slice(0, maxFiles);
+    const files = sampledFiles.map((filePath) =>
+      summarizeInputTableFile(filePath, sourcePath, {
+        maxSheetsPerFile,
+        maxRowsPerSheet,
+        maxColumnsPerRow,
+      })
+    );
+    const notes: string[] = [];
+    if (allFiles.length > sampledFiles.length) {
+      notes.push(`Sampled ${sampledFiles.length} of ${allFiles.length} files.`);
+    }
+    for (const file of files) {
+      if (file.warning) {
+        notes.push(`${file.relativePath}: ${file.warning}`);
+      }
+    }
+    const hashPayload = {
+      sourcePath,
+      sourceKind,
+      fileCount: allFiles.length,
+      files,
+    };
+    return {
+      sourcePath,
+      sourceKind,
+      generatedAt: this.now(),
+      hash: createStableJsonHash(hashPayload),
+      fileCount: allFiles.length,
+      sampledFileCount: files.length,
+      truncated: allFiles.length > sampledFiles.length,
+      notes,
+      files,
+    };
   }
 
   async updateDataset(input: DataUpdateDatasetInput): Promise<DataDataset> {
@@ -887,6 +1186,15 @@ export class DataTaskStore {
     const config = normalizeInputTableConfig(input.config, sourceKind, sourcePath);
     const limit = normalizePreviewLimit(input.limit);
     const offset = normalizePreviewOffset(input.offset);
+    if (config.dataProcessing?.strategy === 'customize') {
+      return this.previewPublishedInputTableNormalizerVersion({
+        sourcePath,
+        sourceKind,
+        config,
+        limit,
+        offset,
+      });
+    }
     const tempTables: string[] = [];
     try {
       const importFiles = getImportSourceFiles(sourcePath, sourceKind, config);
@@ -933,6 +1241,103 @@ export class DataTaskStore {
         await this.dropTableIfExists(tempTable).catch(() => undefined);
       }
     }
+  }
+
+  async previewInputTableNormalizerVersion(
+    input: DataPreviewInputTableNormalizerVersionInput
+  ): Promise<DataInputTablePreview> {
+    await this.ensureReady();
+    const version = await this.requireInputTableNormalizerArtifactVersion(input.versionId);
+    const sourcePath = normalizeImportSourcePath(input.sourcePath);
+    const sourceKind = normalizeInputTableSourceKind(input.sourceKind, sourcePath);
+    const config = normalizeInputTableConfig(input.config, sourceKind, sourcePath);
+    const summary = await this.summarizeInputTableSource({
+      sourcePath,
+      sourceKind,
+      config,
+    });
+    const limit = normalizePreviewLimit(input.limit);
+    const offset = normalizePreviewOffset(input.offset);
+    const tempTable = tableNameFromId('normalizer_preview', uuidv4());
+    let workDir: string | null = null;
+    let cleanupWorkDir = true;
+    let preparedSources: PreparedInputTableNormalizerSourceContext | null = null;
+    try {
+      preparedSources = prepareInputTableNormalizerSources({
+        sourcePath,
+        sourceKind,
+        config,
+        summary,
+      });
+      const result = await runInputTableNormalizerProject({
+        version,
+        prepareDependencies: input.prepareDependencies === true,
+        workspaceRoot: this.getInputTableNormalizerRunRoot(),
+        context: {
+          sourcePath,
+          sourceKind,
+          config,
+          sourceSummary: summary,
+          preparedSources,
+        },
+      });
+      workDir = result.workDir;
+      cleanupWorkDir = result.cleanupWorkDir;
+      const relation = readRelationForPath(result.manifest.output, 'normalizerOutputPath');
+      await this.runSql(
+        `CREATE TEMP TABLE ${quoteIdentifier(tempTable)} AS SELECT * FROM ${relation}`,
+        {
+          normalizerOutputPath: result.manifest.output,
+        }
+      );
+      const countRows = await this.queryRows<{ count: number | string }>(
+        `SELECT count(*) AS count FROM ${quoteIdentifier(tempTable)}`
+      );
+      const rows = await this.queryRows<Record<string, unknown>>(
+        `SELECT * FROM ${quoteIdentifier(tempTable)} LIMIT ${limit} OFFSET ${offset}`
+      );
+      return {
+        columns: await this.getTableColumns(tempTable),
+        rows: rows.map(normalizePreviewRow),
+        fileCount: summary.fileCount,
+        limit,
+        offset,
+        totalRows: toNumber(countRows[0]?.count),
+      };
+    } finally {
+      await this.dropTableIfExists(tempTable).catch(() => undefined);
+      if (workDir && cleanupWorkDir) {
+        fs.rmSync(workDir, { recursive: true, force: true });
+      }
+      if (preparedSources) {
+        fs.rmSync(preparedSources.directory, { recursive: true, force: true });
+      }
+    }
+  }
+
+  private async previewPublishedInputTableNormalizerVersion(input: {
+    sourcePath: string;
+    sourceKind: DataInputTableSourceKind;
+    config: DataInputTableConfig;
+    limit: number;
+    offset: number;
+  }): Promise<DataInputTablePreview> {
+    const processing = input.config.dataProcessing;
+    if (processing?.strategy !== 'customize' || !processing.artifactVersionId) {
+      throw new Error('Published normalizer version is required for custom input table preview');
+    }
+    if (processing.artifactVersionStatus !== 'published') {
+      throw new Error('Custom input table normalizer must be published before standard preview');
+    }
+    return this.previewInputTableNormalizerVersion({
+      versionId: processing.artifactVersionId,
+      sourcePath: input.sourcePath,
+      sourceKind: input.sourceKind,
+      config: input.config,
+      prepareDependencies: false,
+      limit: input.limit,
+      offset: input.offset,
+    });
   }
 
   async previewDataset(input: DataPreviewDatasetInput): Promise<DataInputTablePreview> {
@@ -1375,6 +1780,38 @@ export class DataTaskStore {
     await this.ensureMetadataColumn('data_datasets', 'file_count', 'INTEGER');
     await this.cleanupOutputTableMetadata();
     await this.metaRunSql(`
+      CREATE TABLE IF NOT EXISTS data_input_table_normalizer_artifacts (
+        id VARCHAR PRIMARY KEY,
+        name VARCHAR NOT NULL,
+        description VARCHAR,
+        source_kind VARCHAR NOT NULL,
+        primary_language VARCHAR NOT NULL,
+        active_version_id VARCHAR,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL
+      )
+    `);
+    await this.metaRunSql(`
+      CREATE TABLE IF NOT EXISTS data_input_table_normalizer_artifact_versions (
+        id VARCHAR PRIMARY KEY,
+        artifact_id VARCHAR NOT NULL,
+        version INTEGER NOT NULL,
+        status VARCHAR NOT NULL,
+        files_json VARCHAR NOT NULL,
+        file_tree_hash VARCHAR NOT NULL,
+        rule_prompt VARCHAR NOT NULL,
+        source_summary_hash VARCHAR,
+        entrypoint_json VARCHAR NOT NULL,
+        dependency_prepare_json VARCHAR,
+        runtime_json VARCHAR NOT NULL,
+        dependencies_json VARCHAR,
+        dependency_lock_hash VARCHAR,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        published_at BIGINT
+      )
+    `);
+    await this.metaRunSql(`
       CREATE TABLE IF NOT EXISTS data_workflow_nodes (
         id VARCHAR PRIMARY KEY,
         task_id VARCHAR NOT NULL,
@@ -1503,6 +1940,10 @@ export class DataTaskStore {
       'CREATE INDEX IF NOT EXISTS idx_data_cleaning_tasks_source_path ON data_cleaning_tasks(source_path)',
       'CREATE INDEX IF NOT EXISTS idx_data_datasets_updated_at ON data_datasets(updated_at, created_at)',
       'CREATE INDEX IF NOT EXISTS idx_data_datasets_source_kind ON data_datasets(source_kind)',
+      'CREATE INDEX IF NOT EXISTS idx_input_table_normalizer_artifacts_updated_at ON data_input_table_normalizer_artifacts(updated_at, created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_input_table_normalizer_artifacts_source_kind ON data_input_table_normalizer_artifacts(source_kind)',
+      'CREATE INDEX IF NOT EXISTS idx_input_table_normalizer_versions_artifact ON data_input_table_normalizer_artifact_versions(artifact_id, version)',
+      'CREATE INDEX IF NOT EXISTS idx_input_table_normalizer_versions_status ON data_input_table_normalizer_artifact_versions(status, updated_at)',
       'CREATE INDEX IF NOT EXISTS idx_data_workflow_nodes_task_id ON data_workflow_nodes(task_id)',
       'CREATE INDEX IF NOT EXISTS idx_data_workflow_edges_task_id ON data_workflow_edges(task_id)',
       'CREATE INDEX IF NOT EXISTS idx_data_workflow_node_caches_task_node ON data_workflow_node_caches(task_id, node_id, updated_at)',
@@ -2365,6 +2806,61 @@ export class DataTaskStore {
     return dataset;
   }
 
+  async getInputTableNormalizerArtifact(
+    id: string
+  ): Promise<DataInputTableNormalizerArtifact | null> {
+    const rows = await this.metaQueryRows<DataInputTableNormalizerArtifactRow>(
+      'SELECT * FROM data_input_table_normalizer_artifacts WHERE id = $id LIMIT 1',
+      { id }
+    );
+    return rows[0] ? mapInputTableNormalizerArtifactRow(rows[0]) : null;
+  }
+
+  private async requireInputTableNormalizerArtifact(
+    id: string
+  ): Promise<DataInputTableNormalizerArtifact> {
+    const artifact = await this.getInputTableNormalizerArtifact(id);
+    if (!artifact) {
+      throw new Error(`Normalizer artifact not found: ${id}`);
+    }
+    return artifact;
+  }
+
+  async listInputTableNormalizerArtifactVersions(
+    artifactId: string
+  ): Promise<DataInputTableNormalizerArtifactVersion[]> {
+    const rows = await this.metaQueryRows<DataInputTableNormalizerArtifactVersionRow>(
+      `
+        SELECT *
+        FROM data_input_table_normalizer_artifact_versions
+        WHERE artifact_id = $artifactId
+        ORDER BY version DESC, created_at DESC
+      `,
+      { artifactId }
+    );
+    return rows.map(mapInputTableNormalizerArtifactVersionRow);
+  }
+
+  async getInputTableNormalizerArtifactVersion(
+    id: string
+  ): Promise<DataInputTableNormalizerArtifactVersion | null> {
+    const rows = await this.metaQueryRows<DataInputTableNormalizerArtifactVersionRow>(
+      'SELECT * FROM data_input_table_normalizer_artifact_versions WHERE id = $id LIMIT 1',
+      { id }
+    );
+    return rows[0] ? mapInputTableNormalizerArtifactVersionRow(rows[0]) : null;
+  }
+
+  private async requireInputTableNormalizerArtifactVersion(
+    id: string
+  ): Promise<DataInputTableNormalizerArtifactVersion> {
+    const version = await this.getInputTableNormalizerArtifactVersion(id);
+    if (!version) {
+      throw new Error(`Normalizer artifact version not found: ${id}`);
+    }
+    return version;
+  }
+
   private async requireInputDataset(id: string): Promise<DataDataset> {
     const rows = await this.metaQueryRows<DataDatasetRow>(
       `
@@ -2426,6 +2922,9 @@ export class DataTaskStore {
     inputConfig?: DataInputTableConfig
   ): Promise<PreparedInputTableImport> {
     const config = normalizeInputTableConfig(inputConfig, sourceKind, sourcePath);
+    if (config.dataProcessing?.strategy === 'customize') {
+      return this.createDatasetTableFromPublishedNormalizer(tableName, sourcePath, sourceKind, config);
+    }
     const tempTables: string[] = [];
     try {
       const importFiles = getImportSourceFiles(sourcePath, sourceKind, config);
@@ -2459,6 +2958,77 @@ export class DataTaskStore {
     } finally {
       for (const tempTable of tempTables) {
         await this.dropTableIfExists(tempTable).catch(() => undefined);
+      }
+    }
+  }
+
+  private async createDatasetTableFromPublishedNormalizer(
+    tableName: string,
+    sourcePath: string,
+    sourceKind: DataInputTableSourceKind,
+    config: DataInputTableConfig
+  ): Promise<PreparedInputTableImport> {
+    const processing = config.dataProcessing;
+    if (processing?.strategy !== 'customize' || !processing.artifactVersionId) {
+      throw new Error('Published normalizer version is required for custom input table import');
+    }
+    if (processing.artifactVersionStatus !== 'published') {
+      throw new Error('Custom input table normalizer must be published before import');
+    }
+    const version = await this.requireInputTableNormalizerArtifactVersion(
+      processing.artifactVersionId
+    );
+    if (version.status !== 'published') {
+      throw new Error('Custom input table normalizer version is not published');
+    }
+    const summary = await this.summarizeInputTableSource({
+      sourcePath,
+      sourceKind,
+      config,
+    });
+    let workDir: string | null = null;
+    let cleanupWorkDir = true;
+    let preparedSources: PreparedInputTableNormalizerSourceContext | null = null;
+    try {
+      preparedSources = prepareInputTableNormalizerSources({
+        sourcePath,
+        sourceKind,
+        config,
+        summary,
+      });
+      const result = await runInputTableNormalizerProject({
+        version,
+        prepareDependencies: false,
+        workspaceRoot: this.getInputTableNormalizerRunRoot(),
+        context: {
+          sourcePath,
+          sourceKind,
+          config,
+          sourceSummary: summary,
+          preparedSources,
+        },
+      });
+      workDir = result.workDir;
+      cleanupWorkDir = result.cleanupWorkDir;
+      const relation = readRelationForPath(result.manifest.output, 'normalizerImportOutputPath');
+      await this.runSql(
+        `CREATE TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`,
+        {
+          normalizerImportOutputPath: result.manifest.output,
+        }
+      );
+      return {
+        rowCount: await this.countRows(tableName),
+        columnCount: (await this.getTableColumns(tableName)).length,
+        fileCount: summary.fileCount,
+        config,
+      };
+    } finally {
+      if (workDir && cleanupWorkDir) {
+        fs.rmSync(workDir, { recursive: true, force: true });
+      }
+      if (preparedSources) {
+        fs.rmSync(preparedSources.directory, { recursive: true, force: true });
       }
     }
   }
@@ -2708,6 +3278,61 @@ function mapDatasetRow(row: DataDatasetRow): DataDataset {
   };
 }
 
+function mapInputTableNormalizerArtifactRow(
+  row: DataInputTableNormalizerArtifactRow
+): DataInputTableNormalizerArtifact {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    description: row.description === null ? null : String(row.description),
+    sourceKind: normalizeInputTableNormalizerSourceKind(row.source_kind),
+    primaryLanguage: normalizeNormalizerLanguage(row.primary_language),
+    activeVersionId: row.active_version_id ? String(row.active_version_id) : null,
+    createdAt: toNumber(row.created_at),
+    updatedAt: toNumber(row.updated_at),
+  };
+}
+
+function mapInputTableNormalizerArtifactVersionRow(
+  row: DataInputTableNormalizerArtifactVersionRow
+): DataInputTableNormalizerArtifactVersion {
+  return {
+    id: String(row.id),
+    artifactId: String(row.artifact_id),
+    version: toNumber(row.version),
+    status: normalizeNormalizerVersionStatus(row.status),
+    files: parseJsonField<DataInputTableNormalizerArtifactVersion['files']>(row.files_json, []),
+    fileTreeHash: String(row.file_tree_hash),
+    rulePrompt: String(row.rule_prompt),
+    sourceSummaryHash: row.source_summary_hash ? String(row.source_summary_hash) : null,
+    entrypoint: parseJsonField<DataInputTableNormalizerArtifactVersion['entrypoint']>(
+      row.entrypoint_json,
+      { command: [] }
+    ),
+    dependencyPrepare: row.dependency_prepare_json
+      ? parseJsonField<NonNullable<DataInputTableNormalizerArtifactVersion['dependencyPrepare']>>(
+          row.dependency_prepare_json,
+          { steps: [], lockFiles: [] }
+        )
+      : undefined,
+    runtime: parseJsonField<DataInputTableNormalizerArtifactVersion['runtime']>(
+      row.runtime_json,
+      {
+        language: 'python',
+        environment: 'venv',
+      }
+    ),
+    dependencies: parseJsonField<DataInputTableNormalizerArtifactVersion['dependencies']>(
+      row.dependencies_json,
+      []
+    ),
+    dependencyLockHash: row.dependency_lock_hash ? String(row.dependency_lock_hash) : null,
+    createdAt: toNumber(row.created_at),
+    updatedAt: toNumber(row.updated_at),
+    publishedAt: row.published_at === null ? null : toNumber(row.published_at),
+  };
+}
+
 function mapOutputTableRow(row: DataDatasetRow): DataOutputTable {
   const config = parseOutputTableConfig(row.config_json);
   return {
@@ -2721,6 +3346,36 @@ function mapOutputTableRow(row: DataDatasetRow): DataOutputTable {
     createdAt: toNumber(row.created_at),
     updatedAt: toNumber(row.updated_at),
   };
+}
+
+function parseJsonField<T>(value: string | null, fallback: T): T {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeInputTableNormalizerSourceKind(value: string): DataInputTableSourceKind {
+  if (value === 'excel' || value === 'csv' || value === 'folder') {
+    return value;
+  }
+  return 'excel';
+}
+
+function normalizeNormalizerLanguage(value: string): DataNormalizerLanguage {
+  if (value === 'python' || value === 'node') {
+    return value;
+  }
+  return 'python';
+}
+
+function normalizeNormalizerVersionStatus(value: string): DataNormalizerArtifactVersionStatus {
+  if (value === 'draft' || value === 'published' || value === 'archived') {
+    return value;
+  }
+  return 'draft';
 }
 
 function parseOutputTableConfig(
@@ -3652,6 +4307,7 @@ function normalizeInputTableConfig(
       sheetNames: fallback.sheetNames,
       headerMode: config.headerMode === 'manual' ? 'manual' : 'auto',
       headerRow: Math.max(1, Math.floor(Number(config.headerRow) || 1)),
+      dataProcessing: normalizeInputTableDataProcessing(config.dataProcessing),
     };
   }
 
@@ -3669,6 +4325,7 @@ function normalizeInputTableConfig(
           : 'excel_csv',
       skipEmptyFiles: config.skipEmptyFiles !== false,
       keepSourceFileName: config.keepSourceFileName !== false,
+      dataProcessing: normalizeInputTableDataProcessing(config.dataProcessing),
     };
   }
 
@@ -3701,6 +4358,9 @@ function normalizeStoredInputTableConfig(
         config?.sourceKind === 'excel'
           ? Math.max(1, Math.floor(Number(config.headerRow) || 1))
           : 1,
+      dataProcessing: normalizeInputTableDataProcessing(
+        config?.sourceKind === 'excel' ? config.dataProcessing : undefined
+      ),
     };
   }
 
@@ -3722,6 +4382,7 @@ function defaultExcelConfig(filePath?: string): DataInputTableExcelConfig {
     sheetNames,
     headerMode: 'auto',
     headerRow: 1,
+    dataProcessing: defaultInputTableDataProcessing(),
   };
 }
 
@@ -3733,6 +4394,9 @@ function defaultCsvConfig(config?: DataInputTableConfig): DataInputTableCsvConfi
     encoding: 'auto',
     delimiter: 'auto',
     ...(config?.sourceKind === 'csv' ? config : {}),
+    dataProcessing: normalizeInputTableDataProcessing(
+      config?.sourceKind === 'csv' ? config.dataProcessing : undefined
+    ),
   };
 }
 
@@ -3744,16 +4408,56 @@ function defaultFolderConfig(): DataInputTableFolderConfig {
     fileRange: 'excel_csv',
     skipEmptyFiles: true,
     keepSourceFileName: true,
+    dataProcessing: defaultInputTableDataProcessing(),
   };
 }
 
+function defaultInputTableDataProcessing(): DataInputTableConfig['dataProcessing'] {
+  return { strategy: 'auto' };
+}
+
+function normalizeInputTableDataProcessing(
+  value: DataInputTableConfig['dataProcessing'] | undefined
+): DataInputTableConfig['dataProcessing'] {
+  if (value?.strategy === 'customize') {
+    return {
+      strategy: 'customize',
+      rulePrompt: typeof value.rulePrompt === 'string' ? value.rulePrompt : '',
+      artifactId: typeof value.artifactId === 'string' ? value.artifactId : undefined,
+      artifactVersionId:
+        typeof value.artifactVersionId === 'string' ? value.artifactVersionId : undefined,
+      artifactVersionStatus:
+        value.artifactVersionStatus === 'draft' ||
+        value.artifactVersionStatus === 'published' ||
+        value.artifactVersionStatus === 'archived'
+          ? value.artifactVersionStatus
+          : undefined,
+      fileTreeHash: typeof value.fileTreeHash === 'string' ? value.fileTreeHash : undefined,
+      dependencyLockHash:
+        typeof value.dependencyLockHash === 'string' ? value.dependencyLockHash : undefined,
+      runtime: value.runtime,
+      entrypoint: value.entrypoint,
+      dependencyPrepare: value.dependencyPrepare,
+      projectFiles: Array.isArray(value.projectFiles)
+        ? value.projectFiles
+            .filter(
+              (file) =>
+                file &&
+                typeof file.path === 'string' &&
+                typeof file.content === 'string' &&
+                file.path.trim().length > 0
+            )
+            .map((file) => ({ path: file.path, content: file.content }))
+        : undefined,
+      sourceSummaryHash:
+        typeof value.sourceSummaryHash === 'string' ? value.sourceSummaryHash : undefined,
+    };
+  }
+  return defaultInputTableDataProcessing();
+}
+
 function getWorkbookSheetNames(filePath: string): string[] {
-  const workbookBuffer = fs.readFileSync(filePath);
-  const workbook = XLSX.read(workbookBuffer, {
-    cellDates: false,
-    raw: false,
-    type: 'buffer',
-  });
+  const workbook = readWorkbookFile(filePath);
   return workbook.SheetNames.length > 0 ? workbook.SheetNames : ['Sheet1'];
 }
 
@@ -3777,6 +4481,220 @@ function getImportSourceFiles(
     );
   }
   return files;
+}
+
+function writeInputTableNormalizerProjectFiles(
+  projectDir: string,
+  files: DataSaveInputTableNormalizerDraftInput['files']
+): void {
+  fs.rmSync(projectDir, { recursive: true, force: true });
+  fs.mkdirSync(projectDir, { recursive: true });
+  for (const file of files) {
+    const targetPath = resolveSafeNormalizerProjectPath(projectDir, file.path);
+    fs.mkdirSync(dirname(targetPath), { recursive: true });
+    fs.writeFileSync(targetPath, file.content, 'utf8');
+  }
+}
+
+function resolveSafeNormalizerProjectPath(projectDir: string, filePath: string): string {
+  if (isAbsolute(filePath)) {
+    throw new Error(`Normalizer project file path must be relative: ${filePath}`);
+  }
+  const root = resolve(projectDir);
+  const resolved = resolve(projectDir, filePath);
+  if (!isPathInside(resolved, root)) {
+    throw new Error(`Normalizer project file escapes project root: ${filePath}`);
+  }
+  return resolved;
+}
+
+function isPathInside(childPath: string, rootPath: string): boolean {
+  const child = resolve(childPath);
+  const root = resolve(rootPath);
+  return child === root || child.startsWith(`${root}${process.platform === 'win32' ? '\\' : '/'}`);
+}
+
+function sanitizeNormalizerPathSegment(value: string): string {
+  const sanitized = value.replace(/[^A-Za-z0-9_-]+/g, '_').slice(0, 96);
+  return sanitized || 'unknown';
+}
+
+function prepareInputTableNormalizerSources(input: {
+  sourcePath: string;
+  sourceKind: DataInputTableSourceKind;
+  config: DataInputTableConfig;
+  summary: DataInputTableSourceSummary;
+}): PreparedInputTableNormalizerSourceContext {
+  const directory = fs.mkdtempSync(join(os.tmpdir(), 'sophron-normalizer-input-'));
+  const importFiles = getImportSourceFiles(input.sourcePath, input.sourceKind, input.config);
+  const summaryByPath = new Map(input.summary.files.map((file) => [file.path, file]));
+  const files: PreparedInputTableNormalizerSourceFile[] = [];
+  try {
+    for (const [fileIndex, filePath] of importFiles.entries()) {
+      const summary = summaryByPath.get(filePath);
+      if (isExcelFile(filePath)) {
+        files.push(
+          ...prepareWorkbookNormalizerSources({
+            filePath,
+            sourcePath: input.sourcePath,
+            config: input.config,
+            summary,
+            directory,
+            fileIndex,
+          })
+        );
+        continue;
+      }
+      if (isCsvLikeFile(filePath)) {
+        files.push(
+          prepareDelimitedNormalizerSource({
+            filePath,
+            sourcePath: input.sourcePath,
+            summary,
+            directory,
+            fileIndex,
+          })
+        );
+      }
+    }
+    return { directory, files };
+  } catch (error) {
+    fs.rmSync(directory, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+function prepareWorkbookNormalizerSources(input: {
+  filePath: string;
+  sourcePath: string;
+  config: DataInputTableConfig;
+  summary: DataInputTableSourceFileSummary | undefined;
+  directory: string;
+  fileIndex: number;
+}): PreparedInputTableNormalizerSourceFile[] {
+  const workbook = readWorkbookFile(input.filePath);
+  const selectedSheetNames = selectNormalizerWorkbookSheets(workbook.SheetNames, input.config);
+  return selectedSheetNames.map((sheetName, sheetIndex) => {
+    const sheet = workbook.Sheets[sheetName];
+    const matrix = sheetToExpandedMatrix(sheet);
+    const preparedPath = join(
+      input.directory,
+      createPreparedSourceFileName(input.fileIndex, sheetIndex, input.filePath)
+    );
+    writeCsvRows(preparedPath, matrix);
+    const sheetSummary = input.summary?.sheets?.find((candidate) => candidate.name === sheetName);
+    return {
+      path: preparedPath,
+      relativePath: `${getSourceRelativePath(input.sourcePath, input.filePath)}#${sheetName}`,
+      originalPath: input.filePath,
+      originalKind: 'excel',
+      delimiter: ',',
+      sheetName,
+      headerCandidates: sheetSummary?.headerCandidates ?? detectHeaderCandidates(matrix, 80),
+      rowCountEstimate: sheetSummary?.rowCountEstimate ?? matrix.length,
+      columnCountEstimate:
+        sheetSummary?.columnCountEstimate ?? Math.max(0, ...matrix.map((row) => row.length)),
+    };
+  });
+}
+
+function selectNormalizerWorkbookSheets(
+  sheetNames: string[],
+  config: DataInputTableConfig
+): string[] {
+  if (sheetNames.length === 0) {
+    return [];
+  }
+  if (config.sourceKind === 'excel') {
+    const sheetName =
+      config.sheetName && sheetNames.includes(config.sheetName) ? config.sheetName : sheetNames[0];
+    return sheetName ? [sheetName] : [];
+  }
+  return [sheetNames[0]];
+}
+
+function prepareDelimitedNormalizerSource(input: {
+  filePath: string;
+  sourcePath: string;
+  summary: DataInputTableSourceFileSummary | undefined;
+  directory: string;
+  fileIndex: number;
+}): PreparedInputTableNormalizerSourceFile {
+  const delimiter = extname(input.filePath).toLowerCase() === '.csv' ? ',' : '\t';
+  const rows = parseDelimitedRows(fs.readFileSync(input.filePath, 'utf8'), delimiter);
+  const preparedPath = join(input.directory, createPreparedSourceFileName(input.fileIndex, 0, input.filePath));
+  writeCsvRows(preparedPath, rows);
+  return {
+    path: preparedPath,
+    relativePath: getSourceRelativePath(input.sourcePath, input.filePath),
+    originalPath: input.filePath,
+    originalKind: 'csv',
+    delimiter: ',',
+    headerCandidates: input.summary?.sampleRows
+      ? detectHeaderCandidates(input.summary.sampleRows, 80)
+      : detectHeaderCandidates(rows, 80),
+    rowCountEstimate: rows.length,
+    columnCountEstimate: Math.max(0, ...rows.map((row) => row.length)),
+  };
+}
+
+function createPreparedSourceFileName(fileIndex: number, sheetIndex: number, filePath: string): string {
+  const baseName = basename(filePath, extname(filePath)).replace(/[^A-Za-z0-9_-]+/g, '_') || 'source';
+  return `${String(fileIndex + 1).padStart(3, '0')}_${String(sheetIndex + 1).padStart(3, '0')}_${baseName}.csv`;
+}
+
+function writeCsvRows(filePath: string, rows: Array<Array<string | number | boolean | null>>): void {
+  const content = rows
+    .map((row) => row.map((cell) => escapeCsvCell(cell === null || cell === undefined ? '' : String(cell))).join(','))
+    .join('\n');
+  fs.writeFileSync(filePath, `${content}${content ? '\n' : ''}`, 'utf8');
+}
+
+function parseDelimitedRows(text: string, delimiter: ',' | '\t'): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let inQuotes = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        cell += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (char === delimiter && !inQuotes) {
+      row.push(cell.trim());
+      cell = '';
+      continue;
+    }
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') {
+        index += 1;
+      }
+      row.push(cell.trim());
+      if (row.some((value) => value.trim().length > 0)) {
+        rows.push(row);
+      }
+      row = [];
+      cell = '';
+      continue;
+    }
+    cell += char;
+  }
+  row.push(cell.trim());
+  if (row.some((value) => value.trim().length > 0)) {
+    rows.push(row);
+  }
+  return rows;
+}
+
+function escapeCsvCell(value: string): string {
+  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
 function listImportableFiles(
@@ -3913,12 +4831,7 @@ function parseWorkbookRows(
   filePath: string,
   config: DataInputTableExcelConfig
 ): ParsedWorkbookRows {
-  const workbookBuffer = fs.readFileSync(filePath);
-  const workbook = XLSX.read(workbookBuffer, {
-    cellDates: false,
-    raw: false,
-    type: 'buffer',
-  });
+  const workbook = readWorkbookFile(filePath);
   const sheetNames = workbook.SheetNames;
   const sheetName =
     config.sheetName && sheetNames.includes(config.sheetName)
@@ -3928,12 +4841,7 @@ function parseWorkbookRows(
     throw new Error(`Excel workbook has no sheets: ${filePath}`);
   }
   const sheet = workbook.Sheets[sheetName];
-  const matrix = XLSX.utils.sheet_to_json<Array<string | number | boolean | null>>(sheet, {
-    header: 1,
-    blankrows: false,
-    defval: null,
-    raw: false,
-  });
+  const matrix = sheetToExpandedMatrix(sheet);
   const headerIndex =
     config.headerMode === 'manual'
       ? Math.max(0, config.headerRow - 1)
@@ -3953,6 +4861,241 @@ function parseWorkbookRows(
     .filter((row) => row.some(hasCellValue))
     .map((row) => columns.map((_, index) => normalizeWorkbookCell(row[index])));
   return { columns, rows, sheetName, sheetNames };
+}
+
+function summarizeInputTableFile(
+  filePath: string,
+  sourcePath: string,
+  options: {
+    maxSheetsPerFile: number;
+    maxRowsPerSheet: number;
+    maxColumnsPerRow: number;
+  }
+): DataInputTableSourceFileSummary {
+  const stat = fs.statSync(filePath);
+  const extension = extname(filePath).toLowerCase();
+  const baseSummary: DataInputTableSourceFileSummary = {
+    path: filePath,
+    name: basename(filePath),
+    relativePath: getSourceRelativePath(sourcePath, filePath),
+    extension,
+    kind: isExcelFile(filePath) ? 'excel' : isCsvLikeFile(filePath) ? 'csv' : 'other',
+    sizeBytes: stat.size,
+    modifiedAt: Math.floor(stat.mtimeMs),
+  };
+
+  try {
+    if (isExcelFile(filePath)) {
+      return {
+        ...baseSummary,
+        sheets: summarizeWorkbookSheets(filePath, options),
+      };
+    }
+    if (isCsvLikeFile(filePath)) {
+      const delimiter = extension === '.tsv' || extension === '.tab' ? '\t' : ',';
+      return {
+        ...baseSummary,
+        delimiter,
+        sampleRows: summarizeDelimitedFileRows(filePath, delimiter, options),
+      };
+    }
+    return baseSummary;
+  } catch (error) {
+    return {
+      ...baseSummary,
+      warning: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function summarizeWorkbookSheets(
+  filePath: string,
+  options: {
+    maxSheetsPerFile: number;
+    maxRowsPerSheet: number;
+    maxColumnsPerRow: number;
+  }
+): DataInputTableSourceFileSummary['sheets'] {
+  const workbook = readWorkbookFile(filePath, {
+    sheetRows: Math.max(options.maxRowsPerSheet * 3, 24),
+  });
+  return workbook.SheetNames.slice(0, options.maxSheetsPerFile).map((sheetName) => {
+    const sheet = workbook.Sheets[sheetName];
+    const range = typeof sheet?.['!ref'] === 'string' ? sheet['!ref'] : null;
+    const matrix = sheetToExpandedMatrix(sheet);
+    const normalizedRows = matrix
+      .slice(0, options.maxRowsPerSheet)
+      .map((row) => summarizeRowValues(row, options.maxColumnsPerRow));
+    const decodedRange = range ? XLSX.utils.decode_range(range) : null;
+    const columnCountEstimate = decodedRange
+      ? decodedRange.e.c - decodedRange.s.c + 1
+      : Math.max(0, ...matrix.map((row) => row.length));
+    const rowCountEstimate = decodedRange ? decodedRange.e.r - decodedRange.s.r + 1 : matrix.length;
+    return {
+      name: sheetName,
+      range,
+      mergeCount: Array.isArray(sheet?.['!merges']) ? sheet['!merges'].length : 0,
+      mergedCells: summarizeWorkbookMergedCells(sheet, matrix),
+      rowCountEstimate,
+      columnCountEstimate,
+      headerCandidates: detectHeaderCandidates(matrix, options.maxColumnsPerRow),
+      sampleRows: normalizedRows,
+    };
+  });
+}
+
+function summarizeWorkbookMergedCells(
+  sheet: XLSX.WorkSheet,
+  expandedRows: Array<Array<string | number | boolean | null>>,
+  maxMergedCells = 40
+): DataInputTableExcelMergedCellSummary[] {
+  const merges = Array.isArray(sheet['!merges']) ? sheet['!merges'] : [];
+  return merges.slice(0, maxMergedCells).map((merge) => {
+    const value = expandedRows[merge.s.r]?.[merge.s.c];
+    return {
+      range: XLSX.utils.encode_range(merge),
+      startRow: merge.s.r + 1,
+      endRow: merge.e.r + 1,
+      startColumn: merge.s.c + 1,
+      endColumn: merge.e.c + 1,
+      value: value === null || value === undefined ? '' : String(value).replace(/\s+/g, ' ').trim(),
+    };
+  });
+}
+
+function readWorkbookFile(
+  filePath: string,
+  options: XLSX.ParsingOptions = {}
+): XLSX.WorkBook {
+  return XLSX.read(fs.readFileSync(filePath), {
+    cellDates: false,
+    raw: false,
+    type: 'buffer',
+    ...options,
+  });
+}
+
+function sheetToExpandedMatrix(sheet: XLSX.WorkSheet): Array<Array<string | number | boolean | null>> {
+  const matrix = XLSX.utils.sheet_to_json<Array<string | number | boolean | null>>(sheet, {
+    header: 1,
+    blankrows: false,
+    defval: null,
+    raw: false,
+  });
+  const expanded = matrix.map((row) => [...row]);
+  const merges = Array.isArray(sheet['!merges']) ? sheet['!merges'] : [];
+  for (const merge of merges) {
+    const sourceValue = expanded[merge.s.r]?.[merge.s.c] ?? null;
+    for (let rowIndex = merge.s.r; rowIndex <= merge.e.r; rowIndex += 1) {
+      const row = expanded[rowIndex] ?? [];
+      expanded[rowIndex] = row;
+      for (let columnIndex = merge.s.c; columnIndex <= merge.e.c; columnIndex += 1) {
+        if (row[columnIndex] === null || row[columnIndex] === undefined || row[columnIndex] === '') {
+          row[columnIndex] = sourceValue;
+        }
+      }
+    }
+  }
+  return expanded;
+}
+
+function summarizeDelimitedFileRows(
+  filePath: string,
+  delimiter: string,
+  options: {
+    maxRowsPerSheet: number;
+    maxColumnsPerRow: number;
+  }
+): string[][] {
+  const sampleText = readTextSample(filePath, 65_536);
+  return sampleText
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0)
+    .slice(0, options.maxRowsPerSheet)
+    .map((line) =>
+      line
+        .split(delimiter)
+        .slice(0, options.maxColumnsPerRow)
+        .map((cell) => cell.trim())
+    );
+}
+
+function detectHeaderCandidates(
+  rows: Array<Array<string | number | boolean | null>>,
+  maxColumnsPerRow: number
+): DataInputTableHeaderCandidate[] {
+  return rows
+    .map((row, index) => {
+      const values = summarizeRowValues(row, maxColumnsPerRow);
+      return {
+        rowNumber: index + 1,
+        nonEmptyCellCount: values.filter((value) => value.length > 0).length,
+        values,
+      };
+    })
+    .filter((candidate) => candidate.nonEmptyCellCount > 0)
+    .sort((left, right) => right.nonEmptyCellCount - left.nonEmptyCellCount)
+    .slice(0, 3)
+    .sort((left, right) => left.rowNumber - right.rowNumber);
+}
+
+function summarizeRowValues(
+  row: Array<string | number | boolean | null>,
+  maxColumnsPerRow: number
+): string[] {
+  return row.slice(0, maxColumnsPerRow).map((value) => {
+    if (value === null || value === undefined) return '';
+    const text = String(value).replace(/\s+/g, ' ').trim();
+    return text.length > 80 ? `${text.slice(0, 77)}...` : text;
+  });
+}
+
+function readTextSample(filePath: string, maxBytes: number): string {
+  const handle = fs.openSync(filePath, 'r');
+  try {
+    const buffer = Buffer.alloc(maxBytes);
+    const bytesRead = fs.readSync(handle, buffer, 0, maxBytes, 0);
+    return buffer.subarray(0, bytesRead).toString('utf8');
+  } finally {
+    fs.closeSync(handle);
+  }
+}
+
+function getSourceRelativePath(sourcePath: string, filePath: string): string {
+  const sourceStat = fs.statSync(sourcePath);
+  return sourceStat.isDirectory() ? relative(sourcePath, filePath) || basename(filePath) : basename(filePath);
+}
+
+function clampSummaryLimit(
+  value: number | undefined,
+  min: number,
+  max: number,
+  fallback: number
+): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.floor(Number(value))));
+}
+
+function createStableJsonHash(value: unknown): string {
+  return createStableTextHash(JSON.stringify(value, sortJsonKeys));
+}
+
+function createStableTextHash(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+function sortJsonKeys(_key: string, value: unknown): unknown {
+  if (!isRecord(value)) {
+    return value;
+  }
+  return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)));
 }
 
 function normalizeWorkbookColumns(row: Array<string | number | boolean | null>): string[] {

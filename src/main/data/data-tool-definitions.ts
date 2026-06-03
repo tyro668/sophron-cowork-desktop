@@ -97,6 +97,79 @@ export function createDataCustomTools(
       execute: async (_toolCallId, params) => dataToolService.updateInputTable(params as never),
     },
     {
+      name: 'data_summarize_input_table_source',
+      label: 'Summarize input table source',
+      description:
+        'Use built-in Node readers to create a bounded structural summary for an authorized input file/folder, including Excel sheet samples and merged-cell metadata.',
+      parameters: Type.Object({
+        sourcePath: Type.String({ minLength: 1 }),
+        sourceKind: SourceKindSchema,
+        config: ConfigSchema,
+        maxFiles: Type.Optional(Type.Integer({ minimum: 1, maximum: 20 })),
+        maxSheetsPerFile: Type.Optional(Type.Integer({ minimum: 1, maximum: 12 })),
+        maxRowsPerSheet: Type.Optional(Type.Integer({ minimum: 1, maximum: 20 })),
+        maxColumnsPerRow: Type.Optional(Type.Integer({ minimum: 1, maximum: 80 })),
+      }),
+      execute: async (_toolCallId, params) =>
+        dataToolService.summarizeInputTableSource(params as never),
+    },
+    {
+      name: 'data_generate_input_table_normalizer_draft',
+      label: 'Generate input table normalizer draft',
+      description:
+        'Generate and save a draft Python or Node.js normalizer project. The app first samples the real source with built-in Node readers, asks the LLM to analyze that structure, then generates final processing code from the analysis and rule prompt.',
+      parameters: Type.Object({
+        artifactId: Type.Optional(Type.String()),
+        name: Type.String({ minLength: 1 }),
+        description: Type.Optional(Type.String()),
+        sourcePath: Type.String({ minLength: 1 }),
+        sourceKind: SourceKindSchema,
+        config: ConfigSchema,
+        rulePrompt: Type.String({ minLength: 1 }),
+        primaryLanguage: Type.Optional(Type.Union([Type.Literal('python'), Type.Literal('node')])),
+      }),
+      execute: async (_toolCallId, params) =>
+        dataToolService.generateInputTableNormalizerDraft(params as never),
+    },
+    {
+      name: 'data_preview_input_table_normalizer_version',
+      label: 'Preview input table normalizer version',
+      description:
+        'Run a saved normalizer artifact version against an authorized input source and return a bounded preview of the normalized table.',
+      parameters: Type.Object({
+        versionId: Type.String({ minLength: 1 }),
+        sourcePath: Type.String({ minLength: 1 }),
+        sourceKind: SourceKindSchema,
+        config: ConfigSchema,
+        prepareDependencies: Type.Optional(Type.Boolean()),
+        limit: PreviewRowsSchema,
+        offset: Type.Optional(Type.Integer({ minimum: 0 })),
+      }),
+      execute: async (_toolCallId, params) =>
+        dataToolService.previewInputTableNormalizerVersion(params as never),
+    },
+    {
+      name: 'data_publish_input_table_normalizer_version',
+      label: 'Publish input table normalizer version',
+      description:
+        'Publish a previewed normalizer artifact version. This archives the previously published version for the same artifact.',
+      parameters: Type.Object({
+        versionId: Type.String({ minLength: 1 }),
+      }),
+      execute: async (_toolCallId, params) =>
+        dataToolService.publishInputTableNormalizerVersion(params as never),
+    },
+    {
+      name: 'data_list_input_table_normalizer_versions',
+      label: 'List input table normalizer versions',
+      description: 'List draft, published, and archived versions for a normalizer artifact.',
+      parameters: Type.Object({
+        artifactId: Type.String({ minLength: 1 }),
+      }),
+      execute: async (_toolCallId, params) =>
+        dataToolService.listInputTableNormalizerVersions(params as never),
+    },
+    {
       name: 'data_list_output_tables',
       label: 'List output tables',
       description:

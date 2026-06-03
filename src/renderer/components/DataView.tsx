@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -34,6 +35,15 @@ import {
   type OnConnectStartParams,
   useReactFlow,
 } from '@xyflow/react';
+import {
+  HighlightStyle,
+  StreamLanguage,
+  syntaxHighlighting,
+  type StringStream,
+} from '@codemirror/language';
+import { EditorState } from '@codemirror/state';
+import { EditorView, lineNumbers } from '@codemirror/view';
+import { tags } from '@lezer/highlight';
 import '@xyflow/react/dist/style.css';
 import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
 import { GlassSelect } from './GlassSelect';
@@ -71,6 +81,7 @@ import {
   Save,
   Search,
   Sigma,
+  Sparkles,
   Table2,
   Trash2,
   Upload,
@@ -86,9 +97,13 @@ import type {
   DataInputTableConfig,
   DataInputTableExcelConfig,
   DataInputTableFolderConfig,
+  DataInputTableNormalizerArtifactVersion,
+  DataInputTableProcessingConfig,
+  DataNormalizerLanguage,
   DataInputTablePreview,
   DataInputTableSourceKind,
   DataOutputTable,
+  DataNormalizerProjectFile,
   DataRunTaskInput,
   DataTaskStatus,
   DataTaskWorkflow,
@@ -198,6 +213,199 @@ const INPUT_TABLE_SOURCE_FILTERS: Array<{
   { value: 'csv', labelKey: 'data.inputTables.sources.csv' },
   { value: 'folder', labelKey: 'data.inputTables.sources.folder' },
 ];
+
+type CodePreviewLanguageKind = 'python' | 'javascript' | 'json' | 'toml' | 'markdown' | 'text';
+
+const CODE_PREVIEW_KEYWORDS: Record<Exclude<CodePreviewLanguageKind, 'text'>, Set<string>> = {
+  python: new Set([
+    'and',
+    'as',
+    'async',
+    'await',
+    'break',
+    'class',
+    'continue',
+    'def',
+    'elif',
+    'else',
+    'except',
+    'finally',
+    'for',
+    'from',
+    'if',
+    'import',
+    'in',
+    'is',
+    'lambda',
+    'not',
+    'or',
+    'pass',
+    'raise',
+    'return',
+    'try',
+    'while',
+    'with',
+    'yield',
+  ]),
+  javascript: new Set([
+    'async',
+    'await',
+    'break',
+    'case',
+    'catch',
+    'class',
+    'const',
+    'continue',
+    'default',
+    'else',
+    'export',
+    'extends',
+    'finally',
+    'for',
+    'from',
+    'function',
+    'if',
+    'import',
+    'let',
+    'new',
+    'return',
+    'switch',
+    'throw',
+    'try',
+    'var',
+    'while',
+  ]),
+  json: new Set(['true', 'false', 'null']),
+  toml: new Set(['true', 'false']),
+  markdown: new Set([]),
+};
+
+const codePreviewHighlightStyle = HighlightStyle.define([
+  { tag: tags.keyword, color: '#0f766e', fontWeight: '500' },
+  { tag: tags.string, color: '#9a3412' },
+  { tag: tags.number, color: '#7c3aed' },
+  { tag: tags.atom, color: '#2563eb' },
+  { tag: tags.propertyName, color: '#0369a1' },
+  { tag: tags.variableName, color: '#334155' },
+  { tag: tags.typeName, color: '#0369a1', fontWeight: '500' },
+  { tag: tags.heading, color: '#0f766e', fontWeight: '600' },
+  { tag: tags.strong, color: '#334155', fontWeight: '600' },
+  { tag: tags.comment, color: '#94a3b8', fontStyle: 'italic' },
+]);
+
+const codePreviewTheme = EditorView.theme({
+  '&': {
+    height: '100%',
+    minHeight: '100%',
+    backgroundColor: 'rgba(255, 255, 255, 0.34)',
+    color: '#334155',
+    fontSize: '11px',
+  },
+  '&.cm-focused': {
+    outline: 'none',
+  },
+  '.cm-scroller': {
+    fontFamily:
+      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    lineHeight: '1.55',
+    overflow: 'auto',
+  },
+  '.cm-content': {
+    minHeight: '100%',
+    padding: '0.5rem 1rem 0.75rem 0.25rem',
+  },
+  '.cm-line': {
+    padding: '0 0.125rem',
+  },
+  '.cm-gutters': {
+    borderRight: '1px solid rgba(148, 163, 184, 0.18)',
+    backgroundColor: 'rgba(248, 250, 252, 0.46)',
+    color: '#94a3b8',
+  },
+  '.cm-lineNumbers .cm-gutterElement': {
+    minWidth: '2.75rem',
+    padding: '0 0.75rem 0 0.5rem',
+  },
+  '.cm-activeLine, .cm-activeLineGutter': {
+    backgroundColor: 'transparent',
+  },
+  '.cm-selectionBackground': {
+    backgroundColor: 'rgba(25, 169, 154, 0.16) !important',
+  },
+  '.cm-scroller::-webkit-scrollbar': {
+    width: '8px',
+    height: '8px',
+  },
+  '.cm-scroller::-webkit-scrollbar-thumb': {
+    backgroundColor: 'rgba(148, 163, 184, 0.45)',
+    borderRadius: '999px',
+  },
+  '.cm-scroller::-webkit-scrollbar-track': {
+    backgroundColor: 'transparent',
+  },
+});
+
+const codePreviewLanguages = {
+  python: createCodePreviewStreamLanguage('python'),
+  javascript: createCodePreviewStreamLanguage('javascript'),
+  json: createCodePreviewStreamLanguage('json'),
+  toml: createCodePreviewStreamLanguage('toml'),
+  markdown: createCodePreviewStreamLanguage('markdown'),
+};
+
+function createCodePreviewStreamLanguage(kind: Exclude<CodePreviewLanguageKind, 'text'>) {
+  return StreamLanguage.define({
+    name: kind,
+    token(stream) {
+      return tokenCodePreviewStream(stream, kind);
+    },
+  });
+}
+
+function tokenCodePreviewStream(
+  stream: StringStream,
+  kind: Exclude<CodePreviewLanguageKind, 'text'>
+): string | null {
+  if (stream.eatSpace()) return null;
+  if (kind === 'markdown' && stream.sol() && stream.match(/#{1,6}\s.*/)) return 'heading';
+  if (kind === 'markdown' && stream.match(/\*\*[^*]+\*\*/)) return 'strong';
+  if (kind === 'markdown' && stream.match(/`[^`]+`/)) return 'string';
+  if ((kind === 'python' || kind === 'toml') && stream.match(/#.*/)) return 'comment';
+  if (kind === 'javascript' && stream.match(/\/\/.*/)) return 'comment';
+  if (kind === 'javascript' && stream.match(/\/\*.*?\*\//)) return 'comment';
+  if (stream.match(/"(?:[^"\\]|\\.)*"/)) return 'string';
+  if ((kind === 'python' || kind === 'javascript') && stream.match(/'(?:[^'\\]|\\.)*'/)) {
+    return 'string';
+  }
+  if (kind === 'javascript' && stream.match(/`(?:[^`\\]|\\.)*`/)) return 'string';
+  if (stream.match(/-?(?:0x[\da-f]+|\d+(?:\.\d+)?)(?:e[+-]?\d+)?/i)) return 'number';
+  if ((kind === 'json' || kind === 'toml') && stream.match(/[A-Za-z0-9_.-]+(?=\s*=)/)) {
+    return 'propertyName';
+  }
+  if (kind === 'json' && stream.match(/"(?:[^"\\]|\\.)*"(?=\s*:)/)) return 'propertyName';
+  if (stream.match(/[A-Za-z_$][\w$]*/)) {
+    const token = stream.current();
+    if (CODE_PREVIEW_KEYWORDS[kind].has(token)) {
+      return token === 'true' || token === 'false' || token === 'null' ? 'atom' : 'keyword';
+    }
+    if (/^[A-Z][A-Za-z0-9_]*$/.test(token)) return 'typeName';
+    return 'variableName';
+  }
+  stream.next();
+  return null;
+}
+
+function getCodePreviewLanguage(filePath: string) {
+  const normalized = filePath.toLowerCase();
+  if (/\.(py|pyw)$/.test(normalized)) return codePreviewLanguages.python;
+  if (/\.(js|jsx|mjs|cjs|ts|tsx)$/.test(normalized)) {
+    return codePreviewLanguages.javascript;
+  }
+  if (/\.json$/.test(normalized)) return codePreviewLanguages.json;
+  if (/\.(toml|lock)$/.test(normalized)) return codePreviewLanguages.toml;
+  if (/\.(md|markdown)$/.test(normalized)) return codePreviewLanguages.markdown;
+  return [];
+}
 
 type WorkflowFlowNode = Node<{ workflowNode: DataWorkflowNode }, 'operator'>;
 type WorkflowFlowEdge = Edge<Record<string, never>>;
@@ -802,6 +1010,7 @@ export function DataView() {
   const isDetailEditor = Boolean(
     editingTask || editingInputTableDraft || editingInputTableDataset || editingOutputTable
   );
+  const isInputTableEditor = Boolean(editingInputTableDraft || editingInputTableDataset);
   const isTasksLoading =
     loadingTab === 'tasks' ||
     (activeTab === 'tasks' && pendingNavigationTab === 'tasks');
@@ -1053,7 +1262,8 @@ export function DataView() {
     setActionId('delete-all-tasks');
     setError(null);
     try {
-      while (true) {
+      let hasMoreTasks = true;
+      while (hasMoreTasks) {
         const page = await window.electronAPI.data.getDashboard({
           query: searchQuery,
           includeSummary: false,
@@ -1065,7 +1275,8 @@ export function DataView() {
           datasetLimit: 0,
           outputLimit: 0,
         });
-        if (page.tasks.length === 0) break;
+        hasMoreTasks = page.tasks.length > 0;
+        if (!hasMoreTasks) break;
         for (const task of page.tasks) {
           await window.electronAPI.data.deleteTask(task.id);
         }
@@ -1127,7 +1338,8 @@ export function DataView() {
           current && draftIds.includes(current) ? null : current
         );
       }
-      while (true) {
+      let hasMoreInputTables = true;
+      while (hasMoreInputTables) {
         const page = await window.electronAPI.data.getDashboard({
           query: searchQuery,
           includeSummary: false,
@@ -1140,7 +1352,8 @@ export function DataView() {
           datasetSourceKind: inputTableSourceFilter,
           outputLimit: 0,
         });
-        if (page.datasets.length === 0) break;
+        hasMoreInputTables = page.datasets.length > 0;
+        if (!hasMoreInputTables) break;
         for (const dataset of page.datasets) {
           await window.electronAPI.data.deleteDataset(dataset.id);
         }
@@ -1296,7 +1509,8 @@ export function DataView() {
     setActionId('delete-all-output-tables');
     setError(null);
     try {
-      while (true) {
+      let hasMoreOutputTables = true;
+      while (hasMoreOutputTables) {
         const page = await window.electronAPI.data.getDashboard({
           query: searchQuery,
           includeSummary: false,
@@ -1308,7 +1522,8 @@ export function DataView() {
           outputOffset: 0,
           outputLimit: DATA_DELETE_BATCH_SIZE,
         });
-        if (page.outputTables.length === 0) break;
+        hasMoreOutputTables = page.outputTables.length > 0;
+        if (!hasMoreOutputTables) break;
         for (const outputTable of page.outputTables) {
           await window.electronAPI.data.deleteDataset(outputTable.id);
         }
@@ -1335,9 +1550,9 @@ export function DataView() {
       }`}
     >
       <div
-        className={`mx-auto w-full max-w-[1120px] px-3 py-3 sm:px-4 ${
-          isDetailEditor ? 'flex h-full min-h-0 flex-col' : ''
-        }`}
+        className={`mx-auto w-full px-3 py-3 sm:px-4 ${
+          isInputTableEditor ? 'max-w-[1500px]' : 'max-w-[1120px]'
+        } ${isDetailEditor ? 'flex h-full min-h-0 flex-col' : ''}`}
       >
         {error && (
           <div className="mb-4 flex shrink-0 items-start gap-2 rounded-lg border border-error/20 bg-error/10 px-3.5 py-2.5 text-[13px] text-error">
@@ -5521,17 +5736,7 @@ function OutputTableEditor({
   );
 }
 
-function InputTableEditor({
-  draft,
-  dataset,
-  isBusy,
-  onBack,
-  onRenameDraft,
-  onRenameDataset,
-  onChooseDraftSource,
-  onChooseDatasetSource,
-  onUpdateDatasetConfig,
-}: {
+type InputTableEditorProps = {
   draft?: InputTableDraft;
   dataset?: DataDataset;
   isBusy: boolean;
@@ -5555,7 +5760,21 @@ function InputTableEditor({
     config: DataInputTableConfig,
     name?: string
   ) => void | Promise<void>;
-}) {
+};
+
+type InputTableEditorTab = 'rules' | 'code' | 'versions';
+
+function InputTableEditorWorkbench({
+  draft,
+  dataset,
+  isBusy,
+  onBack,
+  onRenameDraft,
+  onRenameDataset,
+  onChooseDraftSource,
+  onChooseDatasetSource,
+  onUpdateDatasetConfig,
+}: InputTableEditorProps) {
   const { t } = useTranslation();
   const targetId = draft?.id ?? dataset?.id ?? '';
   const initialName = draft?.name ?? dataset?.name ?? '';
@@ -5573,6 +5792,19 @@ function InputTableEditor({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DataInputTablePreview | null>(null);
   const [previewPage, setPreviewPage] = useState(1);
+  const [customizeGenerating, setCustomizeGenerating] = useState(false);
+  const [customizePublishing, setCustomizePublishing] = useState(false);
+  const [customizeVersionActionId, setCustomizeVersionActionId] = useState<string | null>(null);
+  const [expandedNormalizerVersionId, setExpandedNormalizerVersionId] = useState<string | null>(
+    null
+  );
+  const [normalizerVersions, setNormalizerVersions] = useState<
+    DataInputTableNormalizerArtifactVersion[]
+  >([]);
+  const [normalizerVersionsLoading, setNormalizerVersionsLoading] = useState(false);
+  const [customizeGenerationError, setCustomizeGenerationError] = useState<string | null>(null);
+  const [activeEditorTab, setActiveEditorTab] = useState<InputTableEditorTab>('rules');
+  const [selectedNormalizerFilePath, setSelectedNormalizerFilePath] = useState('');
   const trimmedName = localName.trim();
   const isConfigured = Boolean(dataset);
   const sourceMeta = getInputTableSourceMeta(localSourceKind);
@@ -5581,7 +5813,11 @@ function InputTableEditor({
     localConfig.sourceKind === 'excel' ? localConfig : getDefaultExcelInputTableConfig();
   const folderConfig =
     localConfig.sourceKind === 'folder' ? localConfig : getDefaultFolderInputTableConfig();
-  const sourceName = dataset ? getFileNameFromPath(dataset.sourcePath) : '';
+  const dataProcessing = getInputTableDataProcessing(localConfig);
+  const normalizerLanguage: DataNormalizerLanguage =
+    dataProcessing.strategy === 'customize'
+      ? inferNormalizerLanguageFromRulePrompt(dataProcessing.rulePrompt)
+      : 'python';
   const hasNameChanges = Boolean(dataset && trimmedName && trimmedName !== dataset.name);
   const canSaveConfig =
     Boolean(dataset) &&
@@ -5594,12 +5830,71 @@ function InputTableEditor({
       !isBusy &&
       window.electronAPI?.data?.previewInputTable
   );
+  const canGenerateCustomizeDraft = Boolean(
+    dataset &&
+      dataProcessing.strategy === 'customize' &&
+      dataProcessing.rulePrompt.trim() &&
+      !customizeGenerating
+  );
+  const canPublishCustomizeVersion = Boolean(
+    dataset &&
+      dataProcessing.strategy === 'customize' &&
+      dataProcessing.artifactVersionId &&
+      dataProcessing.artifactVersionStatus !== 'published' &&
+      !customizePublishing
+  );
+  const currentNormalizerVersion =
+    dataProcessing.strategy === 'customize'
+      ? normalizerVersions.find((version) => version.id === dataProcessing.artifactVersionId)
+      : undefined;
+  const customizeArtifactId =
+    dataProcessing.strategy === 'customize' ? dataProcessing.artifactId : undefined;
+  const customizeArtifactVersionId =
+    dataProcessing.strategy === 'customize' ? dataProcessing.artifactVersionId : undefined;
+  const normalizerProjectFiles = useMemo(() => {
+    if (dataProcessing.strategy !== 'customize') return [];
+    if (dataProcessing.projectFiles && dataProcessing.projectFiles.length > 0) {
+      return dataProcessing.projectFiles;
+    }
+    return currentNormalizerVersion?.files ?? [];
+  }, [currentNormalizerVersion, dataProcessing]);
+  const normalizerProjectFileSignature = useMemo(
+    () => normalizerProjectFiles.map((file) => file.path).join('\n'),
+    [normalizerProjectFiles]
+  );
+  const selectedNormalizerFile = useMemo(() => {
+    if (normalizerProjectFiles.length === 0) return undefined;
+    return (
+      normalizerProjectFiles.find((file) => file.path === selectedNormalizerFilePath) ??
+      normalizerProjectFiles.find(
+        (file) => file.path === getPreferredNormalizerFilePath(normalizerProjectFiles, normalizerLanguage)
+      ) ??
+      normalizerProjectFiles[0]
+    );
+  }, [normalizerLanguage, normalizerProjectFiles, selectedNormalizerFilePath]);
 
   useEffect(() => {
     setLocalName(initialName);
     setLocalSourceKind(initialSourceKind);
     setLocalConfig(initialConfig);
+    setCustomizeGenerationError(null);
+    setCustomizeGenerating(false);
+    setCustomizePublishing(false);
+    setCustomizeVersionActionId(null);
+    setExpandedNormalizerVersionId(null);
+    setActiveEditorTab('rules');
+    setSelectedNormalizerFilePath('');
   }, [initialConfig, initialName, initialSourceKind, targetId]);
+
+  useEffect(() => {
+    const preferredPath = getPreferredNormalizerFilePath(normalizerProjectFiles, normalizerLanguage);
+    setSelectedNormalizerFilePath((current) => {
+      if (current && normalizerProjectFiles.some((file) => file.path === current)) {
+        return current;
+      }
+      return preferredPath;
+    });
+  }, [normalizerLanguage, normalizerProjectFileSignature, normalizerProjectFiles]);
 
   const handleNameChange = (value: string) => {
     setLocalName(value);
@@ -5626,6 +5921,76 @@ function InputTableEditor({
 
   const updateConfig = (config: DataInputTableConfig) => {
     setLocalConfig(config);
+  };
+
+  const updateDataProcessing = (dataProcessing: DataInputTableProcessingConfig) => {
+    updateConfig(withInputTableDataProcessing(localConfig, dataProcessing));
+  };
+
+  const refreshNormalizerVersions = useCallback(async (artifactId: string | undefined) => {
+    if (!artifactId) {
+      setNormalizerVersions([]);
+      return;
+    }
+    setNormalizerVersionsLoading(true);
+    try {
+      const result = await window.electronAPI.data.listInputTableNormalizerVersions({
+        artifactId,
+      });
+      setNormalizerVersions(result.versions);
+    } catch (err) {
+      setCustomizeGenerationError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setNormalizerVersionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshNormalizerVersions(customizeArtifactId);
+  }, [customizeArtifactId, refreshNormalizerVersions]);
+
+  const generateCustomizeDraft = async () => {
+    if (dataProcessing.strategy !== 'customize') return;
+    const rulePrompt = dataProcessing.rulePrompt.trim();
+    if (!rulePrompt || !dataset) {
+      return;
+    }
+    setCustomizeGenerating(true);
+    setCustomizeGenerationError(null);
+    try {
+      const result = await window.electronAPI.data.generateInputTableNormalizerDraft({
+        artifactId: dataProcessing.artifactId,
+        name: `${dataset.name} normalizer`,
+        sourcePath: dataset.sourcePath,
+        sourceKind: localSourceKind,
+        config: localConfig,
+        rulePrompt,
+        primaryLanguage: normalizerLanguage,
+      });
+      updateDataProcessing({
+        ...dataProcessing,
+        rulePrompt: result.version.rulePrompt,
+        artifactId: result.artifact.id,
+        artifactVersionId: result.version.id,
+        artifactVersionStatus: result.version.status,
+        fileTreeHash: result.version.fileTreeHash,
+        dependencyLockHash: result.version.dependencyLockHash ?? undefined,
+        runtime: result.version.runtime,
+        entrypoint: result.version.entrypoint,
+        dependencyPrepare: result.version.dependencyPrepare,
+        projectFiles: result.version.files,
+        sourceSummaryHash: result.version.sourceSummaryHash ?? result.summary.hash,
+      });
+      setSelectedNormalizerFilePath(
+        getPreferredNormalizerFilePath(result.version.files, result.version.runtime.language)
+      );
+      setActiveEditorTab('code');
+      void refreshNormalizerVersions(result.artifact.id);
+    } catch (err) {
+      setCustomizeGenerationError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCustomizeGenerating(false);
+    }
   };
 
   const saveInputTable = () => {
@@ -5666,316 +6031,959 @@ function InputTableEditor({
     await loadPreviewPage(1);
   };
 
+  const previewCustomizeDraft = async () => {
+    if (
+      dataProcessing.strategy !== 'customize' ||
+      !dataProcessing.artifactVersionId ||
+      !dataset
+    ) {
+      return;
+    }
+    setPreviewOpen(true);
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setPreviewData(null);
+    setPreviewPage(1);
+    try {
+      const result = await window.electronAPI.data.previewInputTableNormalizerVersion({
+        versionId: dataProcessing.artifactVersionId,
+        sourcePath: dataset.sourcePath,
+        sourceKind: localSourceKind,
+        config: localConfig,
+        prepareDependencies: true,
+        limit: INPUT_TABLE_PREVIEW_PAGE_SIZE,
+        offset: 0,
+      });
+      setPreviewData(result.preview);
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const publishCustomizeVersion = async () => {
+    if (
+      dataProcessing.strategy !== 'customize' ||
+      !dataProcessing.artifactVersionId ||
+      !dataset
+    ) {
+      return;
+    }
+    setCustomizePublishing(true);
+    setCustomizeGenerationError(null);
+    try {
+      const result = await window.electronAPI.data.publishInputTableNormalizerVersion({
+        versionId: dataProcessing.artifactVersionId,
+      });
+      updateDataProcessing({
+        ...dataProcessing,
+        artifactId: result.artifact.id,
+        artifactVersionId: result.version.id,
+        artifactVersionStatus: result.version.status,
+        fileTreeHash: result.version.fileTreeHash,
+        dependencyLockHash: result.version.dependencyLockHash ?? undefined,
+        runtime: result.version.runtime,
+        entrypoint: result.version.entrypoint,
+        dependencyPrepare: result.version.dependencyPrepare,
+        projectFiles: result.version.files,
+        sourceSummaryHash: result.version.sourceSummaryHash ?? undefined,
+      });
+      void refreshNormalizerVersions(result.artifact.id);
+    } catch (err) {
+      setCustomizeGenerationError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCustomizePublishing(false);
+    }
+  };
+
+  const publishSpecificNormalizerVersion = async (
+    version: DataInputTableNormalizerArtifactVersion
+  ) => {
+    if (dataProcessing.strategy !== 'customize' || !dataset) {
+      return;
+    }
+    setCustomizeVersionActionId(version.id);
+    setCustomizeGenerationError(null);
+    try {
+      const result = await window.electronAPI.data.publishInputTableNormalizerVersion({
+        versionId: version.id,
+      });
+      updateDataProcessing({
+        ...dataProcessing,
+        artifactId: result.artifact.id,
+        artifactVersionId: result.version.id,
+        artifactVersionStatus: result.version.status,
+        fileTreeHash: result.version.fileTreeHash,
+        dependencyLockHash: result.version.dependencyLockHash ?? undefined,
+        runtime: result.version.runtime,
+        entrypoint: result.version.entrypoint,
+        dependencyPrepare: result.version.dependencyPrepare,
+        projectFiles: result.version.files,
+        sourceSummaryHash: result.version.sourceSummaryHash ?? undefined,
+      });
+      void refreshNormalizerVersions(result.artifact.id);
+    } catch (err) {
+      setCustomizeGenerationError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCustomizeVersionActionId(null);
+    }
+  };
+
+  const editorTabs: Array<{ value: InputTableEditorTab; label: string }> = [
+    { value: 'rules', label: t('data.inputTables.editor.ruleDescription') },
+    { value: 'code', label: t('data.inputTables.editor.codePreview') },
+    { value: 'versions', label: t('data.inputTables.editor.versionHistory') },
+  ];
+
   return (
     <>
-    <section className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-3 flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 items-center gap-4">
-          <button
-            onClick={onBack}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            {t('data.inputTables.editor.back')}
-          </button>
-          <div className="flex min-w-0 items-center gap-2">
-            <input
-              value={localName}
-              onChange={(event) => handleNameChange(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.currentTarget.blur();
-                }
-              }}
-              disabled={isBusy}
-              maxLength={50}
-              aria-label={t('data.inputTables.editor.name')}
-              className="h-8 min-w-0 max-w-[18rem] truncate border-0 bg-transparent px-0 text-[15px] font-medium text-text-secondary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-60"
-              placeholder={t('data.inputTables.editor.title')}
-            />
-            <PencilLine className="h-4 w-4 flex-shrink-0 text-text-muted" />
-            <InputTableStatusBadge
-              label={
-                isConfigured
-                  ? t('data.inputTables.status.available')
-                  : t('data.inputTables.status.draft')
-              }
-              tone={isConfigured ? 'success' : 'warning'}
-            />
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void previewInputTable()}
-            disabled={!canPreview || previewLoading}
-            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {previewLoading ? (
-              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Eye className="h-3.5 w-3.5" />
-            )}
-            {t('data.inputTables.editor.preview')}
-          </button>
-          <button
-            type="button"
-            onClick={saveInputTable}
-            disabled={!canSave}
-            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Save className="h-3.5 w-3.5" />
-            {isBusy ? t('common.saving') : t('common.save')}
-          </button>
-        </div>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border-muted bg-surface p-4 shadow-card">
-        <div className="grid gap-5 lg:grid-cols-[8rem_minmax(0,1fr)] lg:items-center">
-          <InputTableFormLabel>{t('data.inputTables.editor.sourceType')}</InputTableFormLabel>
-          <label className="relative block">
-            <span
-              className={`pointer-events-none absolute left-3 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md ${sourceMeta.className}`}
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="mb-3 flex h-14 shrink-0 items-center justify-between gap-3 px-1">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              onClick={onBack}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border-muted bg-background/62 px-3 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary"
             >
-              <SourceIcon className="h-4 w-4" />
-            </span>
-            <GlassSelect
-              value={localSourceKind}
-              onValueChange={(value) => handleSourceKindChange(value as DataInputTableSourceKind)}
-              options={[
-                { value: 'excel', label: t('data.inputTables.editor.excel') },
-                { value: 'csv', label: t('data.inputTables.editor.csv') },
-                { value: 'folder', label: t('data.inputTables.editor.folder') },
-              ]}
-              disabled={isBusy}
-              triggerClassName="h-10 w-full justify-between rounded-lg bg-background/50 pl-12 text-[13px] font-medium text-text-secondary disabled:opacity-60"
-              contentClassName="w-[var(--radix-select-trigger-width)]"
-            />
-          </label>
-
-          <InputTableFormLabel>
-            {localSourceKind === 'folder'
-              ? t('data.inputTables.editor.folderPath')
-              : t('data.inputTables.editor.file')}
-          </InputTableFormLabel>
-          <div className="flex min-w-0 items-stretch">
-            <div className="flex h-10 min-w-0 flex-1 items-center gap-3 rounded-l-lg border border-border-muted bg-background/86 px-3.5 shadow-soft">
-              <span
-                className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md ${sourceMeta.className}`}
-              >
-                <SourceIcon className="h-4 w-4" />
-              </span>
-              <div
-                className="min-w-0 truncate text-[13px] font-medium text-text-secondary"
-                title={dataset?.sourcePath}
-              >
-                {dataset ? formatDisplayPath(dataset.sourcePath) : t('data.inputTables.editor.noSource')}
-              </div>
+              <ArrowLeft className="h-4 w-4" />
+              {t('data.inputTables.editor.backShort')}
+            </button>
+            <div className="flex min-w-0 items-center gap-2">
+              <input
+                value={localName}
+                onChange={(event) => handleNameChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.currentTarget.blur();
+                  }
+                }}
+                disabled={isBusy}
+                maxLength={50}
+                aria-label={t('data.inputTables.editor.name')}
+                className="h-9 min-w-0 max-w-[22rem] truncate border-0 bg-transparent px-0 text-[18px] font-medium text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-60"
+                placeholder={t('data.inputTables.editor.title')}
+              />
+              <PencilLine className="h-4 w-4 flex-shrink-0 text-text-muted" />
+              <InputTableStatusBadge
+                label={
+                  isConfigured
+                    ? t('data.inputTables.status.available')
+                    : t('data.inputTables.status.draft')
+                }
+                tone={isConfigured ? 'success' : 'warning'}
+              />
             </div>
+          </div>
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => chooseSource(localSourceKind)}
-              disabled={isBusy || !trimmedName}
-              className="inline-flex h-10 flex-shrink-0 items-center justify-center rounded-r-lg border border-l-0 border-border-muted bg-background px-4 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+              onClick={() => void previewInputTable()}
+              disabled={!canPreview || previewLoading}
+              className="inline-flex h-9 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/62 px-4 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {localSourceKind === 'folder'
-                ? t('data.inputTables.editor.changeFolder')
-                : t('data.inputTables.editor.changeFile')}
+              {previewLoading ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Eye className="h-3.5 w-3.5" />
+              )}
+              {t('data.inputTables.editor.preview')}
+            </button>
+            <button
+              type="button"
+              onClick={saveInputTable}
+              disabled={!canSave}
+              className="inline-flex h-9 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/62 px-4 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Save className="h-3.5 w-3.5" />
+              {isBusy ? t('common.saving') : t('common.save')}
             </button>
           </div>
+        </div>
 
-          {localSourceKind === 'excel' && (
-            <>
-              <InputTableFormLabel>{t('data.inputTables.editor.sheetName')}</InputTableFormLabel>
-              <label className="block">
-                <GlassSelect
-                  value={excelConfig.sheetName ?? ''}
-                  onValueChange={(value) =>
-                    updateConfig({
-                      ...excelConfig,
-                      sheetName: value,
-                    })
-                  }
-                  options={(excelConfig.sheetNames.length > 0
-                    ? excelConfig.sheetNames
-                    : ['Sheet1']
-                  ).map((sheetName) => ({ value: sheetName, label: sheetName }))}
-                  disabled={isBusy || !dataset}
-                  triggerClassName="h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[13px] font-medium text-text-secondary disabled:opacity-60"
-                  contentClassName="w-[var(--radix-select-trigger-width)]"
-                />
-              </label>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border-muted bg-[var(--glass-card)] shadow-card backdrop-blur-xl">
+          <div className="grid flex-shrink-0 gap-2 border-b border-border-muted/80 px-5 py-4">
+            <InputTableConfigRow label={t('data.inputTables.editor.sourceType')}>
+              <GlassSelect
+                value={localSourceKind}
+                onValueChange={(value) =>
+                  handleSourceKindChange(value as DataInputTableSourceKind)
+                }
+                options={[
+                  { value: 'excel', label: t('data.inputTables.editor.excel') },
+                  { value: 'csv', label: t('data.inputTables.editor.csv') },
+                  { value: 'folder', label: t('data.inputTables.editor.folder') },
+                ]}
+                disabled={isBusy}
+                triggerIcon={
+                  <span className={`flex h-6 w-6 items-center justify-center rounded-md ${sourceMeta.className}`}>
+                    <SourceIcon className="h-4 w-4" />
+                  </span>
+                }
+                triggerClassName="h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
+                contentClassName="w-[var(--radix-select-trigger-width)]"
+              />
+            </InputTableConfigRow>
 
-              <InputTableFormLabel>{t('data.inputTables.editor.headerRow')}</InputTableFormLabel>
-              <div className="flex flex-wrap items-center gap-5 text-[13px] font-medium text-text-secondary">
-                <label className="inline-flex items-center gap-2">
-                  <input
-                    type="radio"
-                    checked={excelConfig.headerMode === 'auto'}
-                    onChange={() => updateConfig({ ...excelConfig, headerMode: 'auto' })}
-                    disabled={isBusy || !dataset}
-                    className="h-4 w-4 accent-accent"
-                  />
-                  {t('data.inputTables.editor.smartDetect')}
-                  <span className="text-accent">{t('data.inputTables.editor.recommended')}</span>
-                </label>
-                <label className="inline-flex items-center gap-2">
-                  <input
-                    type="radio"
-                    checked={excelConfig.headerMode === 'manual'}
-                    onChange={() => updateConfig({ ...excelConfig, headerMode: 'manual' })}
-                    disabled={isBusy || !dataset}
-                    className="h-4 w-4 accent-accent"
-                  />
-                  {t('data.inputTables.editor.manualSpecify')}
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  value={excelConfig.headerRow}
-                  onChange={(event) =>
-                    updateConfig({
-                      ...excelConfig,
-                      headerMode: 'manual',
-                      headerRow: Math.max(1, Number(event.target.value) || 1),
-                    })
-                  }
-                  disabled={isBusy || !dataset}
-                  className="h-9 w-24 rounded-lg border border-border-muted bg-background px-3 text-[13px] font-medium text-text-secondary shadow-soft outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-                <span>{t('data.inputTables.editor.rowUnit')}</span>
-              </div>
-
-              <InputTableInfo className="lg:col-span-2">
-                {t('data.inputTables.editor.excelInfo')}
-              </InputTableInfo>
-            </>
-          )}
-
-          {localSourceKind === 'csv' && (
-            <>
-              <InputTableFormLabel className="self-start pt-1">
-                {t('data.inputTables.editor.autoResult')}
-              </InputTableFormLabel>
-              <div className="overflow-hidden rounded-lg border border-border-muted bg-background/88">
-                {[
-                  ['header', 'data.inputTables.editor.csvHeader'],
-                  ['dataRegion', 'data.inputTables.editor.csvDataRegion'],
-                  ['encoding', 'data.inputTables.editor.csvEncoding'],
-                  ['delimiter', 'data.inputTables.editor.csvDelimiter'],
-                ].map(([key, labelKey]) => (
+            <InputTableConfigRow
+              label={
+                localSourceKind === 'folder'
+                  ? t('data.inputTables.editor.folderPath')
+                  : t('data.inputTables.editor.file')
+              }
+            >
+              <div className="flex min-w-0 items-stretch">
+                <div className="flex h-10 min-w-0 flex-1 items-center gap-3 rounded-l-lg border border-border-muted bg-background/50 px-3 shadow-soft">
+                  <span className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md ${sourceMeta.className}`}>
+                    <SourceIcon className="h-4 w-4" />
+                  </span>
                   <div
-                    key={key}
-                    className="grid min-h-9 grid-cols-[12rem_minmax(0,1fr)] border-b border-border-muted px-3 text-xs font-medium last:border-b-0"
+                    className="min-w-0 truncate text-[14px] font-medium text-text-primary"
+                    title={dataset?.sourcePath}
                   >
-                    <div className="flex items-center text-text-secondary">{t(labelKey)}</div>
-                    <div className="flex items-center text-text-muted">
-                      {t('data.inputTables.editor.autoDetected')}
+                    {dataset
+                      ? formatDisplayPath(dataset.sourcePath)
+                      : t('data.inputTables.editor.noSource')}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => chooseSource(localSourceKind)}
+                  disabled={isBusy || !trimmedName}
+                  className="inline-flex h-10 flex-shrink-0 items-center justify-center rounded-r-lg border border-l-0 border-border-muted bg-background/62 px-5 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  {localSourceKind === 'folder'
+                    ? t('data.inputTables.editor.changeFolder')
+                    : t('data.inputTables.editor.changeFile')}
+                </button>
+              </div>
+            </InputTableConfigRow>
+
+            <InputTableConfigRow label={t('data.inputTables.editor.processingStrategy')}>
+              <GlassSelect
+                value={dataProcessing.strategy}
+                onValueChange={(value) => {
+                  if (value === 'customize') {
+                    updateDataProcessing({
+                      strategy: 'customize',
+                      rulePrompt:
+                        dataProcessing.strategy === 'customize' ? dataProcessing.rulePrompt : '',
+                    });
+                    setActiveEditorTab('rules');
+                    return;
+                  }
+                  updateDataProcessing({ strategy: 'auto' });
+                }}
+                options={[
+                  { value: 'auto', label: t('data.inputTables.editor.processingAuto') },
+                  { value: 'customize', label: t('data.inputTables.editor.processingCustomize') },
+                ]}
+                disabled={isBusy || !dataset}
+                triggerClassName="h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
+                contentClassName="w-[var(--radix-select-trigger-width)]"
+              />
+            </InputTableConfigRow>
+          </div>
+
+          {dataProcessing.strategy === 'customize' ? (
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="flex h-14 flex-shrink-0 items-end border-b border-border-muted/80 px-5">
+              {editorTabs.map((tab) => (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => setActiveEditorTab(tab.value)}
+                  className={`relative flex h-12 min-w-[8.5rem] items-center justify-center px-4 text-[13px] font-medium transition-colors ${
+                    activeEditorTab === tab.value
+                      ? 'text-accent'
+                      : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  {tab.label}
+                  {activeEditorTab === tab.value ? (
+                    <span className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full bg-accent" />
+                  ) : null}
+                </button>
+              ))}
+            </div>
+
+            <div
+              className={`min-h-0 flex-1 px-7 py-6 ${
+                activeEditorTab === 'code' ? 'overflow-hidden' : 'overflow-y-auto'
+              }`}
+            >
+              {activeEditorTab === 'rules' ? (
+                <div className="mx-auto grid max-w-[70rem] gap-5">
+                  <label className="grid gap-2">
+                    <span className="inline-flex items-center gap-2 text-[13px] font-medium text-text-secondary">
+                      {t('data.inputTables.editor.rulePrompt')}
+                      <Info className="h-3.5 w-3.5 text-text-muted" />
+                    </span>
+                    <textarea
+                      value={dataProcessing.rulePrompt}
+                      onChange={(event) =>
+                        updateDataProcessing({
+                          ...dataProcessing,
+                          rulePrompt: event.target.value,
+                        })
+                      }
+                      disabled={isBusy || !dataset}
+                      rows={6}
+                      maxLength={4000}
+                      placeholder={t('data.inputTables.editor.rulePromptPlaceholder')}
+                      className="min-h-[9rem] w-full resize-y rounded-lg border border-border-muted bg-background/50 px-4 py-3 text-[13px] leading-6 text-text-primary shadow-soft outline-none placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                  </label>
+                  {customizeGenerationError ? (
+                    <div className="rounded-lg border border-danger/20 bg-danger/10 px-3 py-2 text-[12px] font-medium text-danger">
+                      {customizeGenerationError}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {activeEditorTab === 'code' ? (
+                <div className="grid h-[30rem] max-h-full min-h-0 gap-3 overflow-hidden lg:grid-cols-[minmax(0,1fr)_16rem]">
+                  <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-background/50">
+                    <div className="flex h-9 flex-shrink-0 items-center justify-between gap-2 border-b border-border-muted px-3">
+                      <span className="min-w-0 truncate font-mono text-xs font-medium text-text-primary">
+                        {selectedNormalizerFile?.path ?? t('data.inputTables.editor.noProjectFiles')}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={!selectedNormalizerFile}
+                        onClick={() => {
+                          if (selectedNormalizerFile) {
+                            void navigator.clipboard?.writeText(selectedNormalizerFile.content);
+                          }
+                        }}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                        title={t('data.inputTables.editor.copyCode')}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <CodePreview file={selectedNormalizerFile} t={t} />
+                  </div>
+                  <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-background/42">
+                    <div className="flex h-9 items-center border-b border-border-muted px-3 text-xs font-medium text-text-primary">
+                      {t('data.inputTables.editor.projectStructure')}
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-auto p-2">
+                      <NormalizerProjectTree
+                        files={normalizerProjectFiles}
+                        selectedPath={selectedNormalizerFile?.path ?? selectedNormalizerFilePath}
+                        onSelect={setSelectedNormalizerFilePath}
+                        t={t}
+                      />
                     </div>
                   </div>
-                ))}
-              </div>
+                </div>
+              ) : null}
 
-              <InputTableInfo className="lg:col-span-2">
-                {t('data.inputTables.editor.csvInfo')}
-              </InputTableInfo>
-            </>
-          )}
-
-          {localSourceKind === 'folder' && (
-            <>
-              <InputTableFormLabel className="self-start pt-1">
-                {t('data.inputTables.editor.folderMergeStrategy')}
-              </InputTableFormLabel>
-              <div className="grid gap-3">
-                <InputTableFieldRow label={t('data.inputTables.editor.mergeMethod')}>
-                  <InputTableSelect
-                    value={folderConfig.mergeMode}
-                    disabled={isBusy || !dataset}
-                    onChange={() => undefined}
-                    options={[
-                      {
-                        value: 'append_same_schema',
-                        label: t('data.inputTables.editor.mergeAppend'),
-                      },
-                    ]}
-                  />
-                </InputTableFieldRow>
-                <InputTableFieldRow label={t('data.inputTables.editor.schemaMismatch')}>
-                  <InputTableSelect
-                    value={folderConfig.schemaStrategy}
-                    disabled={isBusy || !dataset}
-                    onChange={() => undefined}
-                    options={[
-                      {
-                        value: 'align_by_name',
-                        label: t('data.inputTables.editor.schemaAlignByName'),
-                      },
-                    ]}
-                  />
-                </InputTableFieldRow>
-                <InputTableFieldRow label={t('data.inputTables.editor.fileSelectionRange')}>
-                  <InputTableSelect
-                    value={folderConfig.fileRange}
-                    disabled={isBusy || !dataset}
-                    onChange={(value) =>
-                      updateConfig({
-                        ...folderConfig,
-                        fileRange: value as DataInputTableFolderConfig['fileRange'],
-                      })
-                    }
-                    options={[
-                      { value: 'excel_csv', label: t('data.inputTables.editor.includeExcelCsv') },
-                      { value: 'excel', label: t('data.inputTables.editor.includeExcel') },
-                      { value: 'csv', label: t('data.inputTables.editor.includeCsv') },
-                    ]}
-                  />
-                </InputTableFieldRow>
-                <InputTableCheckbox
-                  checked={folderConfig.skipEmptyFiles}
-                  disabled={isBusy || !dataset}
-                  label={t('data.inputTables.editor.skipEmptyFiles')}
-                  onChange={(checked) => updateConfig({ ...folderConfig, skipEmptyFiles: checked })}
-                />
-                <InputTableCheckbox
-                  checked={folderConfig.keepSourceFileName}
-                  disabled={isBusy || !dataset}
-                  label={t('data.inputTables.editor.keepSourceFileName')}
-                  onChange={(checked) =>
-                    updateConfig({ ...folderConfig, keepSourceFileName: checked })
+              {activeEditorTab === 'versions' ? (
+                <InputTableVersionHistoryPanel
+                  currentVersion={currentNormalizerVersion}
+                  currentVersionId={customizeArtifactVersionId}
+                  embedded
+                  expandedVersionId={expandedNormalizerVersionId}
+                  loading={normalizerVersionsLoading}
+                  onRefresh={() => void refreshNormalizerVersions(customizeArtifactId)}
+                  onToggleExpanded={(versionId) =>
+                    setExpandedNormalizerVersionId(
+                      expandedNormalizerVersionId === versionId ? null : versionId
+                    )
                   }
+                  onPublish={(version) => void publishSpecificNormalizerVersion(version)}
+                  publishingVersionId={customizeVersionActionId}
+                  t={t}
+                  versions={normalizerVersions}
                 />
+              ) : null}
+            </div>
+
+            <div className="flex min-h-16 flex-shrink-0 items-center justify-end gap-3 border-t border-border-muted/80 px-7 py-4">
+              <button
+                type="button"
+                disabled={!canGenerateCustomizeDraft}
+                onClick={() => void generateCustomizeDraft()}
+                className="inline-flex h-10 min-w-[9.5rem] items-center justify-center gap-2 rounded-lg bg-accent px-5 text-[13px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
+                title={t('data.inputTables.editor.generateProjectDisabled')}
+              >
+                {customizeGenerating ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                {customizeGenerating
+                  ? t('data.inputTables.editor.generateProjectDrafting')
+                  : t('data.inputTables.editor.generateProjectDraft')}
+              </button>
+              <button
+                type="button"
+                disabled={!customizeArtifactVersionId || previewLoading || !dataset}
+                onClick={() => void previewCustomizeDraft()}
+                className="inline-flex h-10 min-w-[11.5rem] items-center justify-center gap-2 rounded-lg border border-border-muted bg-background/62 px-5 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {previewLoading ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+                {t('data.inputTables.editor.previewNormalizedDraft')}
+              </button>
+              <button
+                type="button"
+                disabled={!canPublishCustomizeVersion}
+                onClick={() => void publishCustomizeVersion()}
+                className="inline-flex h-10 min-w-[9.5rem] items-center justify-center gap-2 rounded-lg border border-border-muted bg-background/62 px-5 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {customizePublishing ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <UploadCloud className="h-4 w-4" />
+                )}
+                {customizePublishing
+                  ? t('data.inputTables.editor.publishingNormalizer')
+                  : t('data.inputTables.editor.publishNormalizer')}
+              </button>
+            </div>
+          </div>
+          ) : (
+            <div className="min-h-0 flex-1 overflow-y-auto px-7 py-6">
+              <div className="mx-auto grid max-w-[70rem] gap-4">
+                {localSourceKind === 'excel' ? (
+                  <>
+                    <InputTableConfigRow label={t('data.inputTables.editor.sheetName')}>
+                      <GlassSelect
+                        value={excelConfig.sheetName ?? ''}
+                        onValueChange={(value) =>
+                          updateConfig({
+                            ...excelConfig,
+                            sheetName: value,
+                          })
+                        }
+                        options={(excelConfig.sheetNames.length > 0
+                          ? excelConfig.sheetNames
+                          : ['Sheet1']
+                        ).map((sheetName) => ({ value: sheetName, label: sheetName }))}
+                        disabled={isBusy || !dataset}
+                        triggerClassName="h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
+                        contentClassName="w-[var(--radix-select-trigger-width)]"
+                      />
+                    </InputTableConfigRow>
+                    <InputTableConfigRow label={t('data.inputTables.editor.headerRow')}>
+                      <GlassSelect
+                        value={excelConfig.headerMode}
+                        onValueChange={(value) =>
+                          updateConfig({
+                            ...excelConfig,
+                            headerMode: value as DataInputTableExcelConfig['headerMode'],
+                          })
+                        }
+                        options={[
+                          { value: 'auto', label: t('data.inputTables.editor.smartDetect') },
+                          {
+                            value: 'manual',
+                            label: t('data.inputTables.editor.manualSpecify'),
+                          },
+                        ]}
+                        disabled={isBusy || !dataset}
+                        triggerClassName="h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
+                        contentClassName="w-[var(--radix-select-trigger-width)]"
+                      />
+                    </InputTableConfigRow>
+                  </>
+                ) : null}
+
+                {localSourceKind === 'csv' ? (
+                  <div className="grid gap-3">
+                    {[
+                      ['header', 'data.inputTables.editor.csvHeader'],
+                      ['dataRegion', 'data.inputTables.editor.csvDataRegion'],
+                      ['encoding', 'data.inputTables.editor.csvEncoding'],
+                      ['delimiter', 'data.inputTables.editor.csvDelimiter'],
+                    ].map(([key, labelKey]) => (
+                      <InputTableConfigRow key={key} label={t(labelKey)}>
+                        <div className="text-[14px] font-medium text-text-primary">
+                          {t('data.inputTables.editor.autoDetected')}
+                        </div>
+                      </InputTableConfigRow>
+                    ))}
+                  </div>
+                ) : null}
+
+                {localSourceKind === 'folder' ? (
+                  <div className="grid gap-3">
+                    <InputTableConfigRow label={t('data.inputTables.editor.fileSelectionRange')}>
+                      <InputTableSelect
+                        value={folderConfig.fileRange}
+                        disabled={isBusy || !dataset}
+                        onChange={(value) =>
+                          updateConfig({
+                            ...folderConfig,
+                            fileRange: value as DataInputTableFolderConfig['fileRange'],
+                          })
+                        }
+                        options={[
+                          {
+                            value: 'excel_csv',
+                            label: t('data.inputTables.editor.includeExcelCsv'),
+                          },
+                          { value: 'excel', label: t('data.inputTables.editor.includeExcel') },
+                          { value: 'csv', label: t('data.inputTables.editor.includeCsv') },
+                        ]}
+                      />
+                    </InputTableConfigRow>
+                    <div className="flex flex-wrap gap-4 px-1">
+                      <InputTableCheckbox
+                        checked={folderConfig.skipEmptyFiles}
+                        disabled={isBusy || !dataset}
+                        label={t('data.inputTables.editor.skipEmptyFiles')}
+                        onChange={(checked) =>
+                          updateConfig({ ...folderConfig, skipEmptyFiles: checked })
+                        }
+                      />
+                      <InputTableCheckbox
+                        checked={folderConfig.keepSourceFileName}
+                        disabled={isBusy || !dataset}
+                        label={t('data.inputTables.editor.keepSourceFileName')}
+                        onChange={(checked) =>
+                          updateConfig({ ...folderConfig, keepSourceFileName: checked })
+                        }
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                <InputTableInfo>{t('data.inputTables.editor.processingAutoInfo')}</InputTableInfo>
               </div>
-
-              <InputTableInfo className="lg:col-span-2">
-                {t('data.inputTables.editor.folderInfo')}
-              </InputTableInfo>
-            </>
-          )}
-
-          {dataset && (
-            <InputTableSourceSummary
-              dataset={dataset}
-              sourceMeta={sourceMeta}
-              sourceName={sourceName}
-              t={t}
-            />
+            </div>
           )}
         </div>
-      </div>
-    </section>
-    {previewOpen && (
-      <InputTablePreviewDialog
-        tableKind="input"
-        preview={previewData}
-        isLoading={previewLoading}
-        error={previewError}
-        currentPage={previewPage}
-        onPageChange={(page) => void loadPreviewPage(page)}
-        onClose={() => setPreviewOpen(false)}
-      />
-    )}
+      </section>
+      {previewOpen && (
+        <InputTablePreviewDialog
+          tableKind="input"
+          preview={previewData}
+          isLoading={previewLoading}
+          error={previewError}
+          currentPage={previewPage}
+          onPageChange={(page) => void loadPreviewPage(page)}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
     </>
+  );
+}
+
+function InputTableEditor({
+  draft,
+  dataset,
+  isBusy,
+  onBack,
+  onRenameDraft,
+  onRenameDataset,
+  onChooseDraftSource,
+  onChooseDatasetSource,
+  onUpdateDatasetConfig,
+}: {
+  draft?: InputTableDraft;
+  dataset?: DataDataset;
+  isBusy: boolean;
+  onBack: () => void;
+  onRenameDraft?: (id: string, name: string) => void;
+  onRenameDataset?: (dataset: DataDataset, name: string) => void | Promise<void>;
+  onChooseDraftSource?: (
+    draft: InputTableDraft,
+    sourceKind: DataInputTableSourceKind,
+    config: DataInputTableConfig,
+    name?: string
+  ) => void | Promise<void>;
+  onChooseDatasetSource?: (
+    dataset: DataDataset,
+    sourceKind: DataInputTableSourceKind,
+    config: DataInputTableConfig,
+    name?: string
+  ) => void | Promise<void>;
+  onUpdateDatasetConfig?: (
+    dataset: DataDataset,
+    config: DataInputTableConfig,
+    name?: string
+  ) => void | Promise<void>;
+}) {
+  return (
+    <InputTableEditorWorkbench
+      draft={draft}
+      dataset={dataset}
+      isBusy={isBusy}
+      onBack={onBack}
+      onRenameDraft={onRenameDraft}
+      onRenameDataset={onRenameDataset}
+      onChooseDraftSource={onChooseDraftSource}
+      onChooseDatasetSource={onChooseDatasetSource}
+      onUpdateDatasetConfig={onUpdateDatasetConfig}
+    />
+  );
+}
+
+function InputTableConfigRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid min-h-12 items-center gap-3 px-1 py-1 lg:grid-cols-[10rem_minmax(0,1fr)]">
+      <div className="text-[14px] font-medium text-text-primary">{label}</div>
+      <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
+function CodePreview({
+  file,
+  t,
+}: {
+  file?: DataNormalizerProjectFile;
+  t: TranslateFn;
+}) {
+  if (!file) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center px-4 text-center text-xs font-medium text-text-muted">
+        {t('data.inputTables.editor.selectedFileEmpty')}
+      </div>
+    );
+  }
+  return <CodeMirrorFilePreview file={file} />;
+}
+
+function CodeMirrorFilePreview({ file }: { file: DataNormalizerProjectFile }) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const viewRef = useRef<EditorView | null>(null);
+  const language = useMemo(() => getCodePreviewLanguage(file.path), [file.path]);
+  const extensions = useMemo(
+    () => [
+      lineNumbers(),
+      language,
+      syntaxHighlighting(codePreviewHighlightStyle),
+      codePreviewTheme,
+      EditorState.readOnly.of(true),
+      EditorView.editable.of(false),
+      EditorView.lineWrapping,
+    ],
+    [language]
+  );
+
+  useEffect(() => {
+    if (!hostRef.current) return undefined;
+    const view = new EditorView({
+      parent: hostRef.current,
+      state: EditorState.create({ doc: file.content, extensions }),
+    });
+    viewRef.current = view;
+    return () => {
+      view.destroy();
+      viewRef.current = null;
+    };
+  }, [extensions, file.content]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || view.state.doc.toString() === file.content) return;
+    view.dispatch({
+      changes: {
+        from: 0,
+        to: view.state.doc.length,
+        insert: file.content,
+      },
+    });
+  }, [file.content]);
+
+  return <div ref={hostRef} className="min-h-0 flex-1 overflow-hidden" />;
+}
+
+interface NormalizerProjectTreeNode {
+  name: string;
+  path: string;
+  type: 'folder' | 'file';
+  children: NormalizerProjectTreeNode[];
+}
+
+function NormalizerProjectTree({
+  files,
+  selectedPath,
+  onSelect,
+  t,
+  spacious = false,
+}: {
+  files: DataNormalizerProjectFile[];
+  selectedPath: string;
+  onSelect: (path: string) => void;
+  t: TranslateFn;
+  spacious?: boolean;
+}) {
+  const tree = useMemo(() => buildNormalizerProjectTree(files), [files]);
+  if (tree.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-border-muted bg-background/42 px-3 py-4 text-center text-xs font-medium text-text-muted">
+        {t('data.inputTables.editor.noProjectFiles')}
+      </div>
+    );
+  }
+  return (
+    <div className={spacious ? 'space-y-1' : 'space-y-0.5'}>
+      {tree.map((node) => (
+        <NormalizerProjectTreeNodeView
+          key={node.path}
+          node={node}
+          depth={0}
+          selectedPath={selectedPath}
+          onSelect={onSelect}
+          spacious={spacious}
+        />
+      ))}
+    </div>
+  );
+}
+
+function NormalizerProjectTreeNodeView({
+  node,
+  depth,
+  selectedPath,
+  onSelect,
+  spacious,
+}: {
+  node: NormalizerProjectTreeNode;
+  depth: number;
+  selectedPath: string;
+  onSelect: (path: string) => void;
+  spacious: boolean;
+}) {
+  const isFile = node.type === 'file';
+  const isSelected = isFile && node.path === selectedPath;
+  const Icon = isFile ? FileText : Folder;
+  return (
+    <div>
+      <button
+        type="button"
+        disabled={!isFile}
+        onClick={() => {
+          if (isFile) onSelect(node.path);
+        }}
+        className={`flex w-full min-w-0 items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-xs font-medium transition-colors disabled:cursor-default ${
+          isSelected
+            ? 'bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/20'
+            : 'text-text-secondary hover:bg-background/54 hover:text-text-primary'
+        } ${spacious ? 'min-h-8' : 'min-h-7'}`}
+        style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
+      >
+        {node.type === 'folder' ? (
+          <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+        ) : (
+          <span className="h-3.5 w-3.5 flex-shrink-0" />
+        )}
+        <Icon className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+        <span className="min-w-0 truncate">{node.name}</span>
+      </button>
+      {node.children.length > 0 ? (
+        <div>
+          {node.children.map((child) => (
+            <NormalizerProjectTreeNodeView
+              key={child.path}
+              node={child}
+              depth={depth + 1}
+              selectedPath={selectedPath}
+              onSelect={onSelect}
+              spacious={spacious}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function InputTableVersionHistoryPanel({
+  currentVersion,
+  currentVersionId,
+  embedded = false,
+  expandedVersionId,
+  loading,
+  onRefresh,
+  onToggleExpanded,
+  onPublish,
+  publishingVersionId,
+  t,
+  versions,
+}: {
+  currentVersion?: DataInputTableNormalizerArtifactVersion;
+  currentVersionId?: string;
+  embedded?: boolean;
+  expandedVersionId: string | null;
+  loading: boolean;
+  onRefresh: () => void;
+  onToggleExpanded: (versionId: string) => void;
+  onPublish: (version: DataInputTableNormalizerArtifactVersion) => void;
+  publishingVersionId: string | null;
+  t: TranslateFn;
+  versions: DataInputTableNormalizerArtifactVersion[];
+}) {
+  return (
+    <section
+      className={`overflow-hidden rounded-lg border border-border-muted ${
+        embedded
+          ? 'bg-background/42'
+          : 'mt-3 bg-[var(--glass-card)] shadow-soft backdrop-blur-xl'
+      }`}
+    >
+      <div className="flex h-11 items-center justify-between border-b border-border-muted px-3">
+        <div className="text-[13px] font-medium text-text-primary">
+          {t('data.inputTables.editor.versionHistory')}
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={loading}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/62 px-3 text-xs font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+          {t('common.refresh')}
+        </button>
+      </div>
+      {versions.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="min-w-full border-collapse text-left text-xs">
+            <tbody>
+              {versions.map((version) => {
+                const isCurrent = version.id === currentVersionId;
+                const isPublished = version.status === 'published';
+                const isExpanded = expandedVersionId === version.id;
+                const diffDetails = getNormalizerVersionDiffDetails(version, currentVersion);
+                const diffSummary = getNormalizerVersionDiffSummary(version, currentVersion, t);
+                return (
+                  <Fragment key={version.id}>
+                    <tr
+                      className="h-11 border-b border-border-muted/80 text-text-secondary last:border-b-0 hover:bg-background/32"
+                    >
+                      <td className="w-20 px-3 font-mono text-[13px] font-semibold text-text-primary">
+                        {t('data.inputTables.editor.versionNumber', {
+                          version: version.version,
+                        })}
+                      </td>
+                      <td className="w-44 px-3">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {isCurrent ? (
+                            <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent">
+                              {t('data.inputTables.editor.currentVersion')}
+                            </span>
+                          ) : null}
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                              isPublished
+                                ? 'bg-success/10 text-success'
+                                : 'bg-background/58 text-text-secondary'
+                            }`}
+                          >
+                            {isPublished
+                              ? t('data.inputTables.editor.publishedVersion')
+                              : version.status}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="min-w-[13rem] px-3 text-text-muted">
+                        {t('data.inputTables.editor.updatedAt', {
+                          time: formatDateTime(version.updatedAt),
+                        })}
+                      </td>
+                      <td className="min-w-[16rem] max-w-[28rem] px-3">
+                        <span className="line-clamp-1 font-medium text-text-secondary">
+                          {diffSummary || version.rulePrompt || '-'}
+                        </span>
+                      </td>
+                      <td className="w-[17rem] px-3">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onToggleExpanded(version.id)}
+                            className="inline-flex h-7 items-center justify-center rounded-lg border border-border-muted bg-background/62 px-3 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary"
+                          >
+                            {t('data.inputTables.editor.versionDetails')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onToggleExpanded(version.id)}
+                            className="inline-flex h-7 items-center justify-center rounded-lg border border-border-muted bg-background/62 px-3 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary"
+                          >
+                            {t('data.inputTables.editor.compareVersion')}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isPublished || publishingVersionId === version.id}
+                            onClick={() => onPublish(version)}
+                            className="inline-flex h-7 items-center justify-center gap-1 rounded-lg bg-accent px-3 text-[11px] font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
+                          >
+                            {publishingVersionId === version.id ? (
+                              <RefreshCw className="h-3 w-3 animate-spin" />
+                            ) : null}
+                            {isPublished
+                              ? t('data.inputTables.editor.publishedVersion')
+                              : t('data.inputTables.editor.publishVersionAction')}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {isExpanded ? (
+                      <tr key={`${version.id}:details`} className="border-b border-border-muted/80">
+                        <td colSpan={5} className="bg-background/24 px-3 py-3">
+                          <div className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                            <div className="rounded-lg border border-border-muted bg-background/42 p-3">
+                              <div className="mb-1 text-[11px] font-medium text-text-muted">
+                                {t('data.inputTables.editor.versionRule')}
+                              </div>
+                              <div className="line-clamp-4 text-xs font-medium leading-5 text-text-primary">
+                                {version.rulePrompt || '-'}
+                              </div>
+                            </div>
+                            <div className="max-h-36 overflow-y-auto rounded-lg border border-border-muted bg-background/42">
+                              {diffDetails.files.map((file) => (
+                                <div
+                                  key={`${file.status}:${file.path}`}
+                                  className="grid grid-cols-[4.75rem_minmax(0,1fr)] gap-2 border-b border-border-muted/80 px-3 py-1.5 last:border-b-0"
+                                >
+                                  <span
+                                    className={`w-fit rounded px-1.5 py-0.5 text-[10px] font-semibold ${normalizerFileDiffStatusClass(
+                                      file.status
+                                    )}`}
+                                  >
+                                    {t(
+                                      `data.inputTables.editor.versionFileStatus.${file.status}`
+                                    )}
+                                  </span>
+                                  <span className="truncate font-mono text-[11px] text-text-secondary">
+                                    {file.path}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="px-3 py-6 text-center text-xs font-medium text-text-muted">
+          {loading
+            ? t('data.inputTables.editor.loadingVersions')
+            : t('data.inputTables.editor.noVersions')}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -6195,21 +7203,6 @@ function InputTableSelect({
   );
 }
 
-function InputTableFieldRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="grid gap-2 lg:grid-cols-[11rem_minmax(0,1fr)] lg:items-center">
-      <div className="text-xs font-medium text-text-secondary">{label}</div>
-      {children}
-    </div>
-  );
-}
-
 function InputTableCheckbox({
   checked,
   disabled,
@@ -6232,83 +7225,6 @@ function InputTableCheckbox({
       />
       {label}
     </label>
-  );
-}
-
-function InputTableSourceSummary({
-  dataset,
-  sourceMeta,
-  sourceName,
-  t,
-}: {
-  dataset: DataDataset;
-  sourceMeta: ReturnType<typeof getInputTableSourceMeta>;
-  sourceName: string;
-  t: TranslateFn;
-}) {
-  const SourceIcon = sourceMeta.Icon;
-  const items =
-    dataset.sourceKind === 'folder'
-      ? [
-          {
-            label: t('data.columns.sourceType'),
-            value: t(sourceMeta.labelKey),
-            icon: true,
-          },
-          {
-            label: t('data.inputTables.editor.fileCount'),
-            value: formatInteger(dataset.fileCount),
-          },
-          {
-            label: t('data.inputTables.editor.totalRows'),
-            value: formatInteger(dataset.rowCount),
-          },
-          {
-            label: t('data.inputTables.editor.estimatedColumns'),
-            value: formatInteger(dataset.columnCount),
-          },
-        ]
-      : [
-          {
-            label: t('data.columns.sourceType'),
-            value: t(sourceMeta.labelKey),
-            icon: true,
-          },
-          {
-            label: t('data.inputTables.editor.fileName'),
-            value: sourceName,
-          },
-          {
-            label: t('data.inputTables.editor.rows'),
-            value: formatInteger(dataset.rowCount),
-          },
-          {
-            label: t('data.inputTables.editor.columns'),
-            value: formatInteger(dataset.columnCount),
-          },
-        ];
-
-  return (
-    <div className="grid gap-3 rounded-lg border border-border-muted bg-background/80 px-4 py-3 shadow-soft sm:grid-cols-4 lg:col-span-2">
-      {items.map((item, index) => (
-        <div
-          key={item.label}
-          className={`min-w-0 ${
-            index > 0 ? 'border-t border-border-muted pt-3 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0' : ''
-          }`}
-        >
-          <div className="text-xs font-medium text-text-muted">{item.label}</div>
-          <div className="mt-1 flex min-w-0 items-center gap-2 text-[13px] font-medium text-text-secondary">
-            {item.icon && (
-              <span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md ${sourceMeta.className}`}>
-                <SourceIcon className="h-4 w-4" />
-              </span>
-            )}
-            <span className="truncate">{item.value}</span>
-          </div>
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -6600,8 +7516,175 @@ function formatDateTime(timestamp: number | null): string {
   }).format(new Date(timestamp));
 }
 
-function formatInteger(value: number): string {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value);
+function getPreferredNormalizerFilePath(
+  files: DataNormalizerProjectFile[],
+  language: DataNormalizerLanguage
+): string {
+  const preferred = language === 'node' ? 'src/transform.js' : 'normalizer/transform.py';
+  return (
+    files.find((file) => file.path === preferred)?.path ??
+    files.find((file) => file.path.endsWith('/transform.py') || file.path.endsWith('/transform.js'))
+      ?.path ??
+    files[0]?.path ??
+    ''
+  );
+}
+
+function buildNormalizerProjectTree(files: DataNormalizerProjectFile[]): NormalizerProjectTreeNode[] {
+  const roots: NormalizerProjectTreeNode[] = [];
+  const folderMap = new Map<string, NormalizerProjectTreeNode>();
+  const getFolder = (folderPath: string, name: string): NormalizerProjectTreeNode => {
+    const existing = folderMap.get(folderPath);
+    if (existing) return existing;
+    const node: NormalizerProjectTreeNode = {
+      name,
+      path: folderPath,
+      type: 'folder',
+      children: [],
+    };
+    folderMap.set(folderPath, node);
+    const parentPath = folderPath.includes('/')
+      ? folderPath.slice(0, folderPath.lastIndexOf('/'))
+      : '';
+    if (parentPath) {
+      const parentName = parentPath.split('/').pop() ?? parentPath;
+      getFolder(parentPath, parentName).children.push(node);
+    } else {
+      roots.push(node);
+    }
+    return node;
+  };
+
+  for (const file of files) {
+    const parts = file.path.split('/').filter(Boolean);
+    if (parts.length === 0) continue;
+    const fileName = parts[parts.length - 1];
+    const folderParts = parts.slice(0, -1);
+    const fileNode: NormalizerProjectTreeNode = {
+      name: fileName,
+      path: file.path,
+      type: 'file',
+      children: [],
+    };
+    if (folderParts.length === 0) {
+      roots.push(fileNode);
+      continue;
+    }
+    const folderPath = folderParts.join('/');
+    const folder = getFolder(folderPath, folderParts[folderParts.length - 1]);
+    folder.children.push(fileNode);
+  }
+
+  const sortTree = (nodes: NormalizerProjectTreeNode[]) => {
+    nodes.sort(
+      (left, right) =>
+        Number(left.type === 'file') - Number(right.type === 'file') ||
+        left.name.localeCompare(right.name)
+    );
+    nodes.forEach((node) => sortTree(node.children));
+  };
+  sortTree(roots);
+  return roots;
+}
+
+type NormalizerFileDiffStatus = 'added' | 'removed' | 'changed' | 'unchanged';
+
+interface NormalizerFileDiff {
+  path: string;
+  status: NormalizerFileDiffStatus;
+}
+
+function getNormalizerVersionDiffDetails(
+  version: DataInputTableNormalizerArtifactVersion,
+  current: DataInputTableNormalizerArtifactVersion | undefined
+): { files: NormalizerFileDiff[]; ruleChanged: boolean } {
+  if (!current) {
+    return {
+      files: version.files
+        .map((file) => ({ path: file.path, status: 'added' as const }))
+        .sort(compareNormalizerFileDiff),
+      ruleChanged: false,
+    };
+  }
+  const currentFiles = new Map(current.files.map((file) => [file.path, file.content]));
+  const versionFiles = new Map(version.files.map((file) => [file.path, file.content]));
+  const files: NormalizerFileDiff[] = [];
+  for (const [path, content] of versionFiles) {
+    if (!currentFiles.has(path)) {
+      files.push({ path, status: 'added' });
+    } else if (currentFiles.get(path) !== content) {
+      files.push({ path, status: 'changed' });
+    } else {
+      files.push({ path, status: 'unchanged' });
+    }
+  }
+  for (const path of currentFiles.keys()) {
+    if (!versionFiles.has(path)) {
+      files.push({ path, status: 'removed' });
+    }
+  }
+  return {
+    files: files.sort(compareNormalizerFileDiff),
+    ruleChanged: version.rulePrompt !== current.rulePrompt,
+  };
+}
+
+function compareNormalizerFileDiff(left: NormalizerFileDiff, right: NormalizerFileDiff): number {
+  const order: Record<NormalizerFileDiffStatus, number> = {
+    changed: 0,
+    added: 1,
+    removed: 2,
+    unchanged: 3,
+  };
+  return order[left.status] - order[right.status] || left.path.localeCompare(right.path);
+}
+
+function normalizerFileDiffStatusClass(status: NormalizerFileDiffStatus): string {
+  switch (status) {
+    case 'added':
+      return 'bg-success/10 text-success';
+    case 'removed':
+      return 'bg-danger/10 text-danger';
+    case 'changed':
+      return 'bg-warning/10 text-warning';
+    default:
+      return 'bg-surface-active text-text-muted';
+  }
+}
+
+function getNormalizerVersionDiffSummary(
+  version: DataInputTableNormalizerArtifactVersion,
+  current: DataInputTableNormalizerArtifactVersion | undefined,
+  t: TranslateFn
+): string {
+  if (!current || version.id === current.id) {
+    return '';
+  }
+  const currentFiles = new Map(current.files.map((file) => [file.path, file.content]));
+  const versionFiles = new Map(version.files.map((file) => [file.path, file.content]));
+  let added = 0;
+  let removed = 0;
+  let changed = 0;
+  for (const [path, content] of versionFiles) {
+    if (!currentFiles.has(path)) {
+      added += 1;
+    } else if (currentFiles.get(path) !== content) {
+      changed += 1;
+    }
+  }
+  for (const path of currentFiles.keys()) {
+    if (!versionFiles.has(path)) {
+      removed += 1;
+    }
+  }
+  return t('data.inputTables.editor.versionDiffSummary', {
+    changed,
+    added,
+    removed,
+    rule: version.rulePrompt === current.rulePrompt
+      ? t('data.inputTables.editor.versionRuleSame')
+      : t('data.inputTables.editor.versionRuleChanged'),
+  });
 }
 
 function formatPreviewCell(value: string | number | boolean | null | undefined): string {
@@ -6637,9 +7720,12 @@ function formatDisplayPath(filePath: string): string {
   return normalized.replace(/^\/Users\/[^/]+/, '~');
 }
 
-function getFileNameFromPath(filePath: string): string {
-  const normalized = filePath.replace(/\\/g, '/').replace(/\/$/, '');
-  return normalized.split('/').filter(Boolean).pop() ?? filePath;
+function inferNormalizerLanguageFromRulePrompt(rulePrompt: string): DataNormalizerLanguage {
+  const normalized = rulePrompt.toLowerCase();
+  if (/\b(node|node\.js|javascript|typescript|npm|js)\b/.test(normalized)) {
+    return 'node';
+  }
+  return 'python';
 }
 
 function getDefaultInputTableConfig(sourceKind: DataInputTableSourceKind): DataInputTableConfig {
@@ -6655,6 +7741,7 @@ function getDefaultInputTableConfig(sourceKind: DataInputTableSourceKind): DataI
     dataRegion: 'auto',
     encoding: 'auto',
     delimiter: 'auto',
+    dataProcessing: getDefaultInputTableDataProcessing(),
   };
 }
 
@@ -6665,6 +7752,7 @@ function getDefaultExcelInputTableConfig(): DataInputTableExcelConfig {
     sheetNames: ['Sheet1'],
     headerMode: 'auto',
     headerRow: 1,
+    dataProcessing: getDefaultInputTableDataProcessing(),
   };
 }
 
@@ -6676,7 +7764,32 @@ function getDefaultFolderInputTableConfig(): DataInputTableFolderConfig {
     fileRange: 'excel_csv',
     skipEmptyFiles: true,
     keepSourceFileName: true,
+    dataProcessing: getDefaultInputTableDataProcessing(),
   };
+}
+
+function getDefaultInputTableDataProcessing(): DataInputTableProcessingConfig {
+  return { strategy: 'auto' };
+}
+
+function getInputTableDataProcessing(config: DataInputTableConfig): DataInputTableProcessingConfig {
+  if (config.dataProcessing?.strategy === 'customize') {
+    return {
+      ...config.dataProcessing,
+      rulePrompt: config.dataProcessing.rulePrompt ?? '',
+    };
+  }
+  return getDefaultInputTableDataProcessing();
+}
+
+function withInputTableDataProcessing(
+  config: DataInputTableConfig,
+  dataProcessing: DataInputTableProcessingConfig
+): DataInputTableConfig {
+  return {
+    ...config,
+    dataProcessing,
+  } as DataInputTableConfig;
 }
 
 function isInputTableConfigEqual(

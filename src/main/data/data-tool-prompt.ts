@@ -61,6 +61,7 @@ function buildToolGuideSection(): string {
     '- DSL help: data_get_workflow_dsl_reference. Use this tool instead of reading source files such as design/prep/*.md.',
     '- Discover resources: data_list_input_tables, data_list_output_tables, data_list_tasks.',
     '- Create resources for fixed workflows: data_create_input_table, data_create_output_table, data_create_task.',
+    '- For complex Excel/folder inputs that need custom standardization before the DSL, use data_summarize_input_table_source, then data_generate_input_table_normalizer_draft with the user-provided rulePrompt. This generates an executable code project through the configured LLM using the source summary. Preview it with data_preview_input_table_normalizer_version, then publish after validation. Only published versions can be used by production refresh.',
     '- When creating a data task for a known input/output table, pass sourceInputTableId and outputTableId to data_create_task so the task, input table, and output table are visibly linked immediately.',
     '- Inspect data safely: data_preview_table and data_get_task_workflow.',
     '- Save workflow logic: data_apply_workflow_dsl with dryRun=true first, then dryRun=false after validation.',

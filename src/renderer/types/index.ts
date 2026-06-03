@@ -206,12 +206,228 @@ export interface DataCleaningTask {
 
 export type DataInputTableSourceKind = 'excel' | 'csv' | 'folder';
 
+export type DataInputTableProcessingStrategy = 'auto' | 'customize';
+
+export interface DataInputTableAutoProcessingConfig {
+  strategy: 'auto';
+}
+
+export type DataNormalizerRuntime =
+  | { language: 'python'; pythonVersion?: string; environment: 'system' | 'venv'; executable?: string }
+  | { language: 'node'; nodeVersion?: string; environment: 'system' | 'npm'; executable?: string };
+
+export interface DataNormalizerEntrypoint {
+  cwd?: string;
+  command: string[];
+}
+
+export interface DataNormalizerDependencyPrepareConfig {
+  steps: Array<{
+    cwd?: string;
+    command: string[];
+  }>;
+  preparedRuntime?: string;
+  lockFiles: string[];
+}
+
+export interface DataNormalizerProjectFile {
+  path: string;
+  content: string;
+}
+
+export type DataNormalizerLanguage = 'python' | 'node';
+export type DataNormalizerArtifactVersionStatus = 'draft' | 'published' | 'archived';
+
+export interface DataNormalizerDependencySpec {
+  name: string;
+  version?: string;
+  manager?: 'pip' | 'npm';
+  source?: string;
+}
+
+export interface DataInputTableNormalizerArtifact {
+  id: string;
+  name: string;
+  description?: string | null;
+  sourceKind: DataInputTableSourceKind;
+  primaryLanguage: DataNormalizerLanguage;
+  activeVersionId?: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface DataInputTableNormalizerArtifactVersion {
+  id: string;
+  artifactId: string;
+  version: number;
+  status: DataNormalizerArtifactVersionStatus;
+  files: DataNormalizerProjectFile[];
+  fileTreeHash: string;
+  rulePrompt: string;
+  sourceSummaryHash?: string | null;
+  entrypoint: DataNormalizerEntrypoint;
+  dependencyPrepare?: DataNormalizerDependencyPrepareConfig;
+  runtime: DataNormalizerRuntime;
+  dependencies: DataNormalizerDependencySpec[];
+  dependencyLockHash?: string | null;
+  createdAt: number;
+  updatedAt: number;
+  publishedAt?: number | null;
+}
+
+export interface DataSaveInputTableNormalizerDraftInput {
+  artifactId?: string | null;
+  name: string;
+  description?: string | null;
+  sourceKind: DataInputTableSourceKind;
+  primaryLanguage: DataNormalizerLanguage;
+  rulePrompt: string;
+  files: DataNormalizerProjectFile[];
+  fileTreeHash: string;
+  sourceSummaryHash?: string | null;
+  entrypoint: DataNormalizerEntrypoint;
+  dependencyPrepare?: DataNormalizerDependencyPrepareConfig;
+  runtime: DataNormalizerRuntime;
+  dependencies?: DataNormalizerDependencySpec[];
+  dependencyLockHash?: string | null;
+}
+
+export interface DataInputTableNormalizerVersionSaveResult {
+  artifact: DataInputTableNormalizerArtifact;
+  version: DataInputTableNormalizerArtifactVersion;
+}
+
+export interface DataPublishInputTableNormalizerVersionInput {
+  versionId: string;
+}
+
+export interface DataListInputTableNormalizerVersionsInput {
+  artifactId: string;
+}
+
+export interface DataListInputTableNormalizerVersionsResult {
+  versions: DataInputTableNormalizerArtifactVersion[];
+}
+
+export interface DataGenerateInputTableNormalizerDraftInput {
+  artifactId?: string | null;
+  name: string;
+  description?: string | null;
+  sourcePath: string;
+  sourceKind?: DataInputTableSourceKind;
+  config?: DataInputTableConfig;
+  rulePrompt: string;
+  primaryLanguage?: DataNormalizerLanguage;
+}
+
+export interface DataGenerateInputTableNormalizerDraftResult {
+  artifact: DataInputTableNormalizerArtifact;
+  version: DataInputTableNormalizerArtifactVersion;
+  summary: DataInputTableSourceSummary;
+}
+
+export interface DataPreviewInputTableNormalizerVersionInput {
+  versionId: string;
+  sourcePath: string;
+  sourceKind?: DataInputTableSourceKind;
+  config?: DataInputTableConfig;
+  prepareDependencies?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export interface DataSummarizeInputTableSourceInput {
+  sourcePath: string;
+  sourceKind?: DataInputTableSourceKind;
+  config?: DataInputTableConfig;
+  maxFiles?: number;
+  maxSheetsPerFile?: number;
+  maxRowsPerSheet?: number;
+  maxColumnsPerRow?: number;
+}
+
+export interface DataInputTableSourceSummary {
+  sourcePath: string;
+  sourceKind: DataInputTableSourceKind;
+  generatedAt: number;
+  hash: string;
+  fileCount: number;
+  sampledFileCount: number;
+  truncated: boolean;
+  notes: string[];
+  files: DataInputTableSourceFileSummary[];
+}
+
+export interface DataInputTableSourceFileSummary {
+  path: string;
+  name: string;
+  relativePath: string;
+  extension: string;
+  kind: 'excel' | 'csv' | 'other';
+  sizeBytes: number;
+  modifiedAt: number;
+  sheets?: DataInputTableExcelSheetSummary[];
+  sampleRows?: string[][];
+  delimiter?: string;
+  warning?: string;
+}
+
+export interface DataInputTableExcelSheetSummary {
+  name: string;
+  range: string | null;
+  mergeCount: number;
+  mergedCells?: DataInputTableExcelMergedCellSummary[];
+  rowCountEstimate: number;
+  columnCountEstimate: number;
+  headerCandidates: DataInputTableHeaderCandidate[];
+  sampleRows: string[][];
+}
+
+export interface DataInputTableExcelMergedCellSummary {
+  range: string;
+  startRow: number;
+  endRow: number;
+  startColumn: number;
+  endColumn: number;
+  value: string;
+}
+
+export interface DataInputTableHeaderCandidate {
+  rowNumber: number;
+  nonEmptyCellCount: number;
+  values: string[];
+}
+
+export interface DataInputTableCustomizeProcessingConfig {
+  strategy: 'customize';
+  rulePrompt: string;
+  artifactId?: string;
+  artifactVersionId?: string;
+  artifactVersionStatus?: 'draft' | 'published' | 'archived';
+  fileTreeHash?: string;
+  dependencyLockHash?: string;
+  runtime?: DataNormalizerRuntime;
+  entrypoint?: DataNormalizerEntrypoint;
+  dependencyPrepare?: DataNormalizerDependencyPrepareConfig;
+  projectFiles?: DataNormalizerProjectFile[];
+  sourceSummaryHash?: string;
+}
+
+export type DataInputTableProcessingConfig =
+  | DataInputTableAutoProcessingConfig
+  | DataInputTableCustomizeProcessingConfig;
+
+export interface DataInputTableProcessingFields {
+  dataProcessing: DataInputTableProcessingConfig;
+}
+
 export interface DataInputTableExcelConfig {
   sourceKind: 'excel';
   sheetName: string | null;
   sheetNames: string[];
   headerMode: 'auto' | 'manual';
   headerRow: number;
+  dataProcessing?: DataInputTableProcessingConfig;
 }
 
 export interface DataInputTableCsvConfig {
@@ -220,6 +436,7 @@ export interface DataInputTableCsvConfig {
   dataRegion: 'auto';
   encoding: 'auto';
   delimiter: 'auto';
+  dataProcessing?: DataInputTableProcessingConfig;
 }
 
 export interface DataInputTableFolderConfig {
@@ -229,6 +446,7 @@ export interface DataInputTableFolderConfig {
   fileRange: 'excel_csv' | 'excel' | 'csv';
   skipEmptyFiles: boolean;
   keepSourceFileName: boolean;
+  dataProcessing?: DataInputTableProcessingConfig;
 }
 
 export type DataInputTableConfig =

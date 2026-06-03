@@ -31,14 +31,23 @@ import type {
   DataDashboard,
   DataDashboardQuery,
   DataDataset,
+  DataGenerateInputTableNormalizerDraftInput,
+  DataGenerateInputTableNormalizerDraftResult,
   DataInputTablePreview,
+  DataInputTableSourceSummary,
   DataInputTableSourceKind,
   DataInputTableSourceSelection,
   DataImportDatasetInput,
+  DataInputTableNormalizerVersionSaveResult,
+  DataListInputTableNormalizerVersionsInput,
+  DataListInputTableNormalizerVersionsResult,
   DataPreviewDatasetInput,
   DataPreviewInputTableInput,
+  DataPreviewInputTableNormalizerVersionInput,
   DataPreviewWorkflowNodeInput,
+  DataPublishInputTableNormalizerVersionInput,
   DataRunTaskInput,
+  DataSummarizeInputTableSourceInput,
   DataTaskWorkflow,
   DataUpdateDatasetInput,
   DataUpdateOutputTableInput,
@@ -230,6 +239,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ): Promise<DataInputTablePreview> => ipcRenderer.invoke('data.previewWorkflowNode', payload),
     getWorkflowNodeColumns: (payload: DataPreviewWorkflowNodeInput): Promise<string[]> =>
       ipcRenderer.invoke('data.getWorkflowNodeColumns', payload),
+    summarizeInputTableSource: (
+      payload: DataSummarizeInputTableSourceInput
+    ): Promise<DataInputTableSourceSummary> =>
+      ipcRenderer.invoke('data.summarizeInputTableSource', payload),
+    generateInputTableNormalizerDraft: (
+      payload: DataGenerateInputTableNormalizerDraftInput
+    ): Promise<DataGenerateInputTableNormalizerDraftResult> =>
+      ipcRenderer.invoke('data.generateInputTableNormalizerDraft', payload),
+    previewInputTableNormalizerVersion: (
+      payload: DataPreviewInputTableNormalizerVersionInput
+    ): Promise<{ preview: DataInputTablePreview }> =>
+      ipcRenderer.invoke('data.previewInputTableNormalizerVersion', payload),
+    publishInputTableNormalizerVersion: (
+      payload: DataPublishInputTableNormalizerVersionInput
+    ): Promise<DataInputTableNormalizerVersionSaveResult> =>
+      ipcRenderer.invoke('data.publishInputTableNormalizerVersion', payload),
+    listInputTableNormalizerVersions: (
+      payload: DataListInputTableNormalizerVersionsInput
+    ): Promise<DataListInputTableNormalizerVersionsResult> =>
+      ipcRenderer.invoke('data.listInputTableNormalizerVersions', payload),
     deleteTask: (id: string): Promise<{ success: boolean }> =>
       ipcRenderer.invoke('data.deleteTask', id),
     deleteDataset: (id: string): Promise<{ success: boolean }> =>
@@ -573,6 +602,21 @@ declare global {
           payload: DataPreviewWorkflowNodeInput
         ) => Promise<DataInputTablePreview>;
         getWorkflowNodeColumns: (payload: DataPreviewWorkflowNodeInput) => Promise<string[]>;
+        summarizeInputTableSource: (
+          payload: DataSummarizeInputTableSourceInput
+        ) => Promise<DataInputTableSourceSummary>;
+        generateInputTableNormalizerDraft: (
+          payload: DataGenerateInputTableNormalizerDraftInput
+        ) => Promise<DataGenerateInputTableNormalizerDraftResult>;
+        previewInputTableNormalizerVersion: (
+          payload: DataPreviewInputTableNormalizerVersionInput
+        ) => Promise<{ preview: DataInputTablePreview }>;
+        publishInputTableNormalizerVersion: (
+          payload: DataPublishInputTableNormalizerVersionInput
+        ) => Promise<DataInputTableNormalizerVersionSaveResult>;
+        listInputTableNormalizerVersions: (
+          payload: DataListInputTableNormalizerVersionsInput
+        ) => Promise<DataListInputTableNormalizerVersionsResult>;
         deleteTask: (id: string) => Promise<{ success: boolean }>;
         deleteDataset: (id: string) => Promise<{ success: boolean }>;
       };

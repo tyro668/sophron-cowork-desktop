@@ -32,6 +32,7 @@ import { createDataTaskStore, type DataTaskStore } from './data/data-task-store'
 import { DataCommandService } from './data/data-command-service';
 import { DataToolService } from './data/data-tool-service';
 import { createDataAgentRuntimeExtension } from './data/data-agent-extension';
+import { createLlmInputTableNormalizerProjectGenerator } from './data/input-table-normalizer-generator';
 import { SessionManager } from './session/session-manager';
 import { SkillsManager } from './skills/skills-manager';
 import { PluginCatalogService } from './skills/plugin-catalog-service';
@@ -66,12 +67,17 @@ import type {
   DataCreateOutputTableInput,
   DataCreateTaskInput,
   DataDashboardQuery,
+  DataGenerateInputTableNormalizerDraftInput,
   DataInputTableSourceKind,
   DataImportDatasetInput,
+  DataListInputTableNormalizerVersionsInput,
   DataPreviewDatasetInput,
   DataPreviewInputTableInput,
+  DataPreviewInputTableNormalizerVersionInput,
   DataPreviewWorkflowNodeInput,
+  DataPublishInputTableNormalizerVersionInput,
   DataRunTaskInput,
+  DataSummarizeInputTableSourceInput,
   DataUpdateOutputTableInput,
   DataUpdateTaskInput,
   DataUpdateDatasetInput,
@@ -148,6 +154,7 @@ let pluginRuntimeService: PluginRuntimeService | null = null;
 let memoryService: MemoryService | null = null;
 let scheduledTaskManager: ScheduledTaskManager | null = null;
 let dataTaskStore: DataTaskStore | null = null;
+let dataCommandService: DataCommandService | null = null;
 let updateService: UpdateService | null = null;
 let isInstallingUpdate = false;
 let startupUpdateCheckScheduled = false;
@@ -906,7 +913,10 @@ app
 
     pluginRuntimeService = new PluginRuntimeService(new PluginCatalogService());
     memoryService = new MemoryService(db);
-    const dataCommandService = new DataCommandService(initializedDataTaskStore);
+    dataCommandService = new DataCommandService(
+      initializedDataTaskStore,
+      createLlmInputTableNormalizerProjectGenerator(() => configStore.getAll())
+    );
     const dataToolService = new DataToolService(dataCommandService);
     const extensionManager = new AgentRuntimeExtensionManager([
       new MemoryExtension(memoryService),
@@ -1659,6 +1669,16 @@ function requireDataTaskStore(): DataTaskStore {
   return dataTaskStore;
 }
 
+function requireDataCommandService(): DataCommandService {
+  if (!dataCommandService) {
+    dataCommandService = new DataCommandService(
+      requireDataTaskStore(),
+      createLlmInputTableNormalizerProjectGenerator(() => configStore.getAll())
+    );
+  }
+  return dataCommandService;
+}
+
 ipcMain.handle('data.getDashboard', async (_event, payload?: DataDashboardQuery) => {
   try {
     return await requireDataTaskStore().getDashboard(payload ?? {});
@@ -1784,6 +1804,66 @@ ipcMain.handle('data.previewInputTable', async (_event, payload: DataPreviewInpu
     throw error;
   }
 });
+
+ipcMain.handle(
+  'data.summarizeInputTableSource',
+  async (_event, payload: DataSummarizeInputTableSourceInput) => {
+    try {
+      return await requireDataTaskStore().summarizeInputTableSource(payload);
+    } catch (error) {
+      logError('[Data] Error summarizing input table source:', error);
+      throw error;
+    }
+  }
+);
+
+ipcMain.handle(
+  'data.generateInputTableNormalizerDraft',
+  async (_event, payload: DataGenerateInputTableNormalizerDraftInput) => {
+    try {
+      return await requireDataCommandService().generateInputTableNormalizerDraft(payload);
+    } catch (error) {
+      logError('[Data] Error generating input table normalizer draft:', error);
+      throw error;
+    }
+  }
+);
+
+ipcMain.handle(
+  'data.previewInputTableNormalizerVersion',
+  async (_event, payload: DataPreviewInputTableNormalizerVersionInput) => {
+    try {
+      return await requireDataCommandService().previewInputTableNormalizerVersion(payload);
+    } catch (error) {
+      logError('[Data] Error previewing input table normalizer version:', error);
+      throw error;
+    }
+  }
+);
+
+ipcMain.handle(
+  'data.publishInputTableNormalizerVersion',
+  async (_event, payload: DataPublishInputTableNormalizerVersionInput) => {
+    try {
+      return await requireDataCommandService().publishInputTableNormalizerVersion(payload);
+    } catch (error) {
+      logError('[Data] Error publishing input table normalizer version:', error);
+      throw error;
+    }
+  }
+);
+
+ipcMain.handle(
+  'data.listInputTableNormalizerVersions',
+  async (_event, payload: DataListInputTableNormalizerVersionsInput) => {
+    try {
+      return await requireDataCommandService().listInputTableNormalizerVersions(payload);
+    } catch (error) {
+      logError('[Data] Error listing input table normalizer versions:', error);
+      throw error;
+    }
+  }
+);
 
 ipcMain.handle('data.previewDataset', async (_event, payload: DataPreviewDatasetInput) => {
   try {

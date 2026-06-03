@@ -9,11 +9,16 @@ import type {
   CreateOutputTableCommand,
   CreateTaskCommand,
   ExportWorkflowDslCommand,
+  GenerateInputTableNormalizerDraftCommand,
   GetRunResultCommand,
   GetTaskWorkflowCommand,
+  ListInputTableNormalizerVersionsCommand,
   ListInputTablesInput,
   PreviewTableCommand,
+  PreviewInputTableNormalizerVersionCommand,
+  PublishInputTableNormalizerVersionCommand,
   RunTaskCommand,
+  SummarizeInputTableSourceCommand,
   UpdateInputTableCommand,
   UpdateOutputTableCommand,
   UpdateTaskCommand,
@@ -96,6 +101,25 @@ export class DataToolService {
     );
   }
 
+  async summarizeInputTableSource(input: SummarizeInputTableSourceCommand): Promise<DataToolResult> {
+    const result = await this.commandService.summarizeInputTableSource(input);
+    return toolResult(formatInputTableSourceSummary(result.summary), result);
+  }
+
+  async generateInputTableNormalizerDraft(
+    input: GenerateInputTableNormalizerDraftCommand
+  ): Promise<DataToolResult> {
+    const result = await this.commandService.generateInputTableNormalizerDraft(input);
+    return toolResult(
+      [
+        `Generated normalizer draft: artifact=${result.artifact.id} version=${result.version.id} language=${result.artifact.primaryLanguage}`,
+        `Source summary hash=${result.summary.hash} files=${result.summary.sampledFileCount}/${result.summary.fileCount}`,
+        `Project files:\n${result.version.files.map((file) => `- ${file.path}`).join('\n')}`,
+      ].join('\n'),
+      result
+    );
+  }
+
   async listOutputTables(input: ListInputTablesInput): Promise<DataToolResult> {
     const result = await this.commandService.listOutputTables(input);
     const lines = result.outputTables.map(formatOutputTable);
@@ -137,6 +161,37 @@ export class DataToolService {
     const result = await this.commandService.previewTable(input);
     return toolResult(
       `Previewed ${input.tableKind} table ${input.id}.\n\n${formatPreview(result.preview)}`,
+      result
+    );
+  }
+
+  async previewInputTableNormalizerVersion(
+    input: PreviewInputTableNormalizerVersionCommand
+  ): Promise<DataToolResult> {
+    const result = await this.commandService.previewInputTableNormalizerVersion(input);
+    return toolResult(`Previewed normalizer version ${input.versionId}.\n\n${formatPreview(result.preview)}`, result);
+  }
+
+  async publishInputTableNormalizerVersion(
+    input: PublishInputTableNormalizerVersionCommand
+  ): Promise<DataToolResult> {
+    const result = await this.commandService.publishInputTableNormalizerVersion(input);
+    return toolResult(
+      `Published normalizer version: artifact=${result.artifact.id} version=${result.version.id}`,
+      result
+    );
+  }
+
+  async listInputTableNormalizerVersions(
+    input: ListInputTableNormalizerVersionsCommand
+  ): Promise<DataToolResult> {
+    const result = await this.commandService.listInputTableNormalizerVersions(input);
+    const lines = result.versions.map(
+      (version) =>
+        `- v${version.version} id=${version.id} status=${version.status} files=${version.files.length} updatedAt=${version.updatedAt}`
+    );
+    return toolResult(
+      lines.length ? `Normalizer versions:\n${lines.join('\n')}` : 'No normalizer versions found.',
       result
     );
   }
@@ -242,6 +297,29 @@ function toolResult(text: string, details: unknown): DataToolResult {
 
 function formatInputTable(table: DataDataset): string {
   return `- ${formatDataResourceLink('input_table', table.id, table.name)} (${table.id}) kind=${table.sourceKind} rows=${table.rowCount} columns=${table.columnCount}`;
+}
+
+function formatInputTableSourceSummary(
+  summary: Awaited<ReturnType<DataCommandService['summarizeInputTableSource']>>['summary']
+): string {
+  const files = summary.files
+    .slice(0, 8)
+    .map((file) => {
+      const shape = file.sheets?.[0]
+        ? ` sheets=${file.sheets.length} firstSheet=${file.sheets[0].name} rows~${file.sheets[0].rowCountEstimate} cols~${file.sheets[0].columnCountEstimate}`
+        : file.sampleRows
+          ? ` sampleRows=${file.sampleRows.length}`
+          : '';
+      return `- ${file.relativePath} kind=${file.kind} size=${file.sizeBytes}${shape}`;
+    })
+    .join('\n');
+  return [
+    `Input source summary: kind=${summary.sourceKind} hash=${summary.hash} files=${summary.sampledFileCount}/${summary.fileCount}`,
+    files,
+    summary.notes.length ? `Notes:\n${summary.notes.map((note) => `- ${note}`).join('\n')}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function formatOutputTable(table: DataOutputTable): string {

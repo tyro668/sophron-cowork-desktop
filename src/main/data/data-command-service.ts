@@ -27,19 +27,29 @@ import {
   type CreateOutputTableCommand,
   type CreateTaskCommand,
   type ExportWorkflowDslCommand,
+  type GenerateInputTableNormalizerDraftCommand,
+  type GenerateInputTableNormalizerDraftResult,
   type GetRunResultCommand,
   type GetTaskWorkflowCommand,
   type InputTableResult,
+  type ListInputTableNormalizerVersionsCommand,
+  type ListInputTableNormalizerVersionsResult,
   type ListInputTablesInput,
   type ListInputTablesResult,
   type ListOutputTablesResult,
   type ListTasksResult,
   type OutputTableResult,
+  type PreviewInputTableNormalizerVersionCommand,
+  type PreviewInputTableNormalizerVersionResult,
+  type PublishInputTableNormalizerVersionCommand,
+  type PublishInputTableNormalizerVersionResult,
   type PreviewTableCommand,
   type PreviewTableResult,
   type RunResult,
   type RunTaskCommand,
   type RunTaskResult,
+  type SummarizeInputTableSourceCommand,
+  type SummarizeInputTableSourceResult,
   type TaskResult,
   type TextResult,
   type UpdateInputTableCommand,
@@ -48,6 +58,13 @@ import {
   type WorkflowResult,
   type WorkflowSaveShape,
 } from './data-command-types';
+import {
+  createNormalizerDependencyLockHash,
+  createNormalizerFileTreeHash,
+} from '../../shared/input-table-normalizer/templates';
+import type {
+  InputTableNormalizerProjectGenerator,
+} from './input-table-normalizer-generator';
 
 const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 100;
@@ -61,7 +78,10 @@ interface WorkflowResourceBindings {
 }
 
 export class DataCommandService {
-  constructor(private readonly store: DataTaskStore) {}
+  constructor(
+    private readonly store: DataTaskStore,
+    private readonly normalizerProjectGenerator: InputTableNormalizerProjectGenerator
+  ) {}
 
   async listInputTables(input: ListInputTablesInput = {}): Promise<ListInputTablesResult> {
     const window = listWindow(input.limit, input.offset);
@@ -125,6 +145,70 @@ export class DataCommandService {
       return { inputTable, preview };
     } catch (error) {
       throw toCommandError(error, sourcePath ? 'FILE_ACCESS_DENIED' : 'INVALID_ARGUMENT');
+    }
+  }
+
+  async summarizeInputTableSource(
+    input: SummarizeInputTableSourceCommand
+  ): Promise<SummarizeInputTableSourceResult> {
+    try {
+      return {
+        summary: await this.store.summarizeInputTableSource(input),
+      };
+    } catch (error) {
+      throw toCommandError(error, 'FILE_ACCESS_DENIED');
+    }
+  }
+
+  async generateInputTableNormalizerDraft(
+    input: GenerateInputTableNormalizerDraftCommand
+  ): Promise<GenerateInputTableNormalizerDraftResult> {
+    const name = normalizeRequiredName(input.name, 'Normalizer artifact name is required');
+    const rulePrompt = normalizeRequiredName(input.rulePrompt, 'Normalizer rule prompt is required');
+    const primaryLanguage = input.primaryLanguage === 'node' ? 'node' : 'python';
+    let summary: SummarizeInputTableSourceResult['summary'];
+    try {
+      summary = await this.store.summarizeInputTableSource({
+        sourcePath: input.sourcePath,
+        sourceKind: input.sourceKind,
+        config: input.config,
+        maxFiles: 8,
+        maxSheetsPerFile: 12,
+        maxRowsPerSheet: 20,
+        maxColumnsPerRow: 80,
+      });
+    } catch (error) {
+      throw toCommandError(error, 'FILE_ACCESS_DENIED');
+    }
+    try {
+      const template = await this.normalizerProjectGenerator.generate({
+        name,
+        primaryLanguage,
+        rulePrompt,
+        sourceSummary: summary,
+      });
+      const result = await this.store.saveInputTableNormalizerDraft({
+        artifactId: input.artifactId,
+        name,
+        description: input.description,
+        sourceKind: summary.sourceKind,
+        primaryLanguage: template.primaryLanguage,
+        rulePrompt,
+        files: template.files,
+        fileTreeHash: createNormalizerFileTreeHash(template.files),
+        sourceSummaryHash: summary.hash,
+        entrypoint: template.entrypoint,
+        dependencyPrepare: template.dependencyPrepare,
+        runtime: template.runtime,
+        dependencies: template.dependencies,
+        dependencyLockHash: createNormalizerDependencyLockHash(template.files),
+      });
+      return {
+        ...result,
+        summary,
+      };
+    } catch (error) {
+      throw toCommandError(error, 'RUN_FAILED');
     }
   }
 
@@ -198,6 +282,46 @@ export class DataCommandService {
       id: input.id,
       preview: await this.previewDataset(input.id, input.limit, input.offset),
     };
+  }
+
+  async previewInputTableNormalizerVersion(
+    input: PreviewInputTableNormalizerVersionCommand
+  ): Promise<PreviewInputTableNormalizerVersionResult> {
+    try {
+      return {
+        preview: await this.store.previewInputTableNormalizerVersion(input),
+      };
+    } catch (error) {
+      throw toCommandError(error, 'RUN_FAILED');
+    }
+  }
+
+  async publishInputTableNormalizerVersion(
+    input: PublishInputTableNormalizerVersionCommand
+  ): Promise<PublishInputTableNormalizerVersionResult> {
+    if (!input.versionId.trim()) {
+      throw new DataCommandError('INVALID_ARGUMENT', 'Normalizer version id is required');
+    }
+    try {
+      return await this.store.publishInputTableNormalizerArtifactVersion(input.versionId);
+    } catch (error) {
+      throw toCommandError(error, 'INVALID_ARGUMENT');
+    }
+  }
+
+  async listInputTableNormalizerVersions(
+    input: ListInputTableNormalizerVersionsCommand
+  ): Promise<ListInputTableNormalizerVersionsResult> {
+    if (!input.artifactId.trim()) {
+      throw new DataCommandError('INVALID_ARGUMENT', 'Normalizer artifact id is required');
+    }
+    try {
+      return {
+        versions: await this.store.listInputTableNormalizerArtifactVersions(input.artifactId),
+      };
+    } catch (error) {
+      throw toCommandError(error, 'INVALID_ARGUMENT');
+    }
   }
 
   async listTasks(input: ListInputTablesInput = {}): Promise<ListTasksResult> {
