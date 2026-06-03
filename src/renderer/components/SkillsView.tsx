@@ -6,11 +6,11 @@ export function SkillsView() {
   const { t } = useTranslation();
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-background">
-      <div className="mx-auto w-full max-w-[1120px] px-5 py-5 lg:px-7">
-        <header className="mb-4 flex items-center gap-2.5">
-          <Package className="h-5 w-5 flex-shrink-0 text-accent" />
-          <h1 className="text-[22px] font-semibold leading-tight text-text-primary">
+    <div className="flex-1 min-h-0 overflow-y-auto bg-transparent">
+      <div className="mx-auto w-full max-w-[1120px] px-4 py-4 lg:px-6">
+        <header className="mb-3 flex h-10 items-center gap-2.5 border-b border-border-subtle">
+          <Package className="h-4 w-4 flex-shrink-0 text-accent" />
+          <h1 className="text-[16px] font-medium leading-tight text-text-primary">
             {t('skills.pageTitle')}
           </h1>
         </header>

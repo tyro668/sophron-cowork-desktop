@@ -7,59 +7,117 @@
 @layer base {
   /* Define CSS variables for theming */
   :root {
-    /* Dark theme (default) — 九思助理 green data workspace palette */
-    --color-background: #101918;
-    --color-background-secondary: #13201f;
-    --color-surface: #182927;
-    --color-surface-hover: #203432;
-    --color-surface-active: #29413f;
-    --color-surface-muted: #13211f;
-    --color-border: #2d4643;
-    --color-border-muted: #223735;
-    --color-border-subtle: rgba(211, 245, 238, 0.09);
-    --color-mcp: #4fa8c6;
-    --shadow-soft: 0 1px 4px rgba(0, 0, 0, 0.24);
-    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(211, 245, 238, 0.04);
-    --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(211, 245, 238, 0.05);
-    --color-accent: #19a99a;
-    --color-accent-hover: #148f83;
-    --color-accent-muted: rgba(25, 169, 154, 0.15);
-    --color-text-primary: #eef7f5;
-    --color-text-secondary: #b7cbc8;
-    --color-text-muted: #86a09c;
+    /* Dark theme (default) — compact frosted cool operations workspace */
+    --app-backdrop:
+      linear-gradient(135deg, rgba(13, 24, 36, 0.96), rgba(35, 54, 70, 0.88) 48%, rgba(15, 27, 40, 0.94)),
+      linear-gradient(180deg, #111c27 0%, #0d151f 100%);
+    --glass-panel: rgba(25, 37, 51, 0.58);
+    --glass-card: rgba(39, 55, 72, 0.46);
+    --glass-card-strong: rgba(42, 59, 77, 0.66);
+    --color-background: rgba(22, 33, 47, 0.48);
+    --color-background-secondary: rgba(31, 45, 60, 0.5);
+    --color-surface: rgba(45, 62, 80, 0.42);
+    --color-surface-hover: rgba(64, 86, 107, 0.48);
+    --color-surface-active: rgba(70, 99, 122, 0.58);
+    --color-surface-muted: rgba(34, 49, 64, 0.42);
+    --color-border: rgba(188, 212, 232, 0.16);
+    --color-border-muted: rgba(203, 221, 239, 0.1);
+    --color-border-subtle: rgba(235, 245, 255, 0.1);
+    --color-mcp: #67b7d6;
+    --color-background-rgb: 22 33 47;
+    --color-background-secondary-rgb: 31 45 60;
+    --color-surface-rgb: 45 62 80;
+    --color-surface-hover-rgb: 64 86 107;
+    --color-surface-active-rgb: 70 99 122;
+    --color-surface-muted-rgb: 34 49 64;
+    --color-border-rgb: 178 204 226;
+    --color-border-muted-rgb: 196 216 235;
+    --color-border-subtle-rgb: 226 240 252;
+    --color-mcp-rgb: 103 183 214;
+    --shadow-soft: 0 1px 2px rgba(5, 15, 25, 0.14), 0 8px 22px rgba(5, 15, 25, 0.1);
+    --shadow-card:
+      0 1px 1px rgba(255, 255, 255, 0.08) inset,
+      0 10px 28px rgba(2, 12, 22, 0.16);
+    --shadow-elevated:
+      0 1px 1px rgba(255, 255, 255, 0.12) inset,
+      0 18px 42px rgba(2, 12, 22, 0.22);
+    --color-accent: #22aac9;
+    --color-accent-hover: #148dac;
+    --color-accent-muted: rgba(34, 170, 201, 0.16);
+    --color-text-primary: #f8fbfd;
+    --color-text-secondary: #d8e4ec;
+    --color-text-muted: #a9bac8;
     --color-success: #22c55e;
     --color-warning: #f2b84b;
     --color-error: #f05d68;
+    --color-accent-rgb: 34 170 201;
+    --color-accent-hover-rgb: 20 141 172;
+    --color-accent-muted-rgb: 34 170 201;
+    --color-text-primary-rgb: 248 251 253;
+    --color-text-secondary-rgb: 216 228 236;
+    --color-text-muted-rgb: 169 186 200;
+    --color-success-rgb: 34 197 94;
+    --color-warning-rgb: 242 184 75;
+    --color-error-rgb: 240 93 104;
   }
 
-  /* Light theme override — pale green operations workspace */
+  /* Light theme override — frosted cool operations workspace */
   .light {
-    --color-background: #fbfefd;
-    --color-background-secondary: #eef5f7;
-    --color-surface: #f2f7f8;
-    --color-surface-hover: #e8f5f3;
-    --color-surface-active: #d8f1ed;
-    --color-surface-muted: #edf7f5;
-    --color-border: #cfdbe3;
-    --color-border-muted: #dce6ec;
-    --color-border-subtle: rgba(33, 47, 68, 0.08);
-    --color-mcp: #2f8fb8;
-    --shadow-soft: 0 1px 4px rgba(33, 47, 68, 0.06);
-    --shadow-card: 0 1px 3px rgba(33, 47, 68, 0.08), 0 1px 2px rgba(33, 47, 68, 0.04);
-    --shadow-elevated: 0 10px 26px rgba(33, 47, 68, 0.12);
-    --color-accent: #19a99a;
-    --color-accent-hover: #128f84;
-    --color-accent-muted: #dff8f4;
-    --color-text-primary: #243044;
-    --color-text-secondary: #526071;
-    --color-text-muted: #7e8a9a;
+    --app-backdrop:
+      linear-gradient(135deg, rgba(205, 221, 238, 0.92), rgba(246, 251, 255, 0.94) 42%, rgba(215, 235, 248, 0.92)),
+      linear-gradient(180deg, #edf6fb 0%, #d9eafa 100%);
+    --glass-panel: rgba(250, 253, 255, 0.46);
+    --glass-card: rgba(255, 255, 255, 0.48);
+    --glass-card-strong: rgba(255, 255, 255, 0.66);
+    --color-background: rgba(253, 255, 255, 0.42);
+    --color-background-secondary: rgba(239, 247, 253, 0.44);
+    --color-surface: rgba(255, 255, 255, 0.46);
+    --color-surface-hover: rgba(242, 249, 254, 0.62);
+    --color-surface-active: rgba(222, 241, 250, 0.72);
+    --color-surface-muted: rgba(245, 250, 253, 0.48);
+    --color-border: rgba(192, 211, 228, 0.24);
+    --color-border-muted: rgba(208, 225, 240, 0.18);
+    --color-border-subtle: rgba(228, 239, 249, 0.46);
+    --color-mcp: #348aaa;
+    --color-background-rgb: 253 255 255;
+    --color-background-secondary-rgb: 239 247 253;
+    --color-surface-rgb: 255 255 255;
+    --color-surface-hover-rgb: 242 249 254;
+    --color-surface-active-rgb: 222 241 250;
+    --color-surface-muted-rgb: 245 250 253;
+    --color-border-rgb: 206 222 236;
+    --color-border-muted-rgb: 221 233 244;
+    --color-border-subtle-rgb: 235 244 252;
+    --color-mcp-rgb: 52 138 170;
+    --shadow-soft: 0 1px 2px rgba(47, 70, 95, 0.05), 0 8px 22px rgba(80, 113, 145, 0.07);
+    --shadow-card:
+      0 1px 1px rgba(255, 255, 255, 0.82) inset,
+      0 10px 28px rgba(74, 106, 138, 0.08);
+    --shadow-elevated:
+      0 1px 1px rgba(255, 255, 255, 0.9) inset,
+      0 20px 54px rgba(70, 101, 135, 0.13);
+    --color-accent: #21a8c6;
+    --color-accent-hover: #168cab;
+    --color-accent-muted: rgba(33, 168, 198, 0.13);
+    --color-text-primary: #172238;
+    --color-text-secondary: #34465c;
+    --color-text-muted: #607084;
     --color-success: #16a34a;
     --color-warning: #d89b12;
     --color-error: #dc3f4f;
+    --color-accent-rgb: 33 168 198;
+    --color-accent-hover-rgb: 22 140 171;
+    --color-accent-muted-rgb: 33 168 198;
+    --color-text-primary-rgb: 23 34 56;
+    --color-text-secondary-rgb: 52 70 92;
+    --color-text-muted-rgb: 96 112 132;
+    --color-success-rgb: 22 163 74;
+    --color-warning-rgb: 216 155 18;
+    --color-error-rgb: 220 63 79;
   }
 
   * {
-    @apply border-border;
+    @apply border-border-muted;
   }
 
   html,
@@ -73,7 +131,7 @@
   }
 
   body {
-    background-color: var(--color-background);
+    background: var(--app-backdrop);
     color: var(--color-text-primary);
     font-family: -apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -111,7 +169,7 @@
 
   /* Button styles */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-medium transition-all duration-150;
+    @apply inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-[13px] font-medium transition-all duration-150;
     @apply focus:outline-none focus:ring-2 focus:ring-accent focus:ring-opacity-30;
   }
 
@@ -121,7 +179,7 @@
   }
 
   .btn-secondary {
-    @apply bg-surface border border-border hover:bg-surface-hover text-text-primary;
+    @apply bg-surface border border-border-muted hover:bg-surface-hover text-text-secondary hover:text-text-primary shadow-soft;
   }
 
   .btn-ghost {
@@ -130,7 +188,7 @@
 
   /* Input styles */
   .input {
-    @apply w-full px-4 py-3 rounded-xl bg-surface border border-border;
+    @apply w-full px-3 py-2 rounded-xl bg-surface border border-border-muted text-[13px] shadow-soft;
     @apply text-text-primary placeholder:text-text-muted;
     @apply focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent focus:ring-opacity-30;
     @apply transition-all duration-150;
@@ -138,19 +196,88 @@
 
   /* Card styles */
   .card {
-    @apply bg-surface rounded-2xl shadow-card border border-border-subtle;
+    @apply bg-surface rounded-xl shadow-card border border-border-subtle backdrop-blur-xl;
   }
 
   /* Tag/Chip styles - like the quick action buttons */
   .tag {
-    @apply inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface border border-border;
-    @apply text-sm font-medium text-text-primary;
+    @apply inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface border border-border-muted shadow-soft;
+    @apply text-[13px] font-medium text-text-secondary;
     @apply hover:bg-surface-hover hover:shadow-soft cursor-pointer transition-all duration-150;
   }
 
   /* Badge styles */
   .badge {
     @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .page-workspace {
+    @apply flex-1 min-h-0 overflow-hidden;
+    background: transparent;
+  }
+
+  .app-main-panel {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.06)),
+      var(--glass-panel);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 14px;
+    box-shadow: var(--shadow-elevated);
+    backdrop-filter: blur(34px) saturate(1.22);
+    -webkit-backdrop-filter: blur(34px) saturate(1.22);
+    overflow: hidden;
+  }
+
+  .glass-surface {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.05)),
+      var(--glass-panel);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 14px;
+    box-shadow: var(--shadow-card);
+    backdrop-filter: blur(30px) saturate(1.2);
+    -webkit-backdrop-filter: blur(30px) saturate(1.2);
+  }
+
+  .glass-card {
+    background: var(--glass-card);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 10px;
+    box-shadow: var(--shadow-card);
+    backdrop-filter: blur(24px) saturate(1.16);
+    -webkit-backdrop-filter: blur(24px) saturate(1.16);
+  }
+
+  .glass-card-strong {
+    background: var(--glass-card-strong);
+    border: 1px solid var(--color-border-muted);
+    border-radius: 14px;
+    box-shadow: var(--shadow-card);
+    backdrop-filter: blur(28px) saturate(1.2);
+    -webkit-backdrop-filter: blur(28px) saturate(1.2);
+  }
+
+  .glass-panel-header {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.08)),
+      var(--color-background);
+    border-bottom: 1px solid var(--color-border-subtle);
+    backdrop-filter: blur(26px) saturate(1.18);
+    -webkit-backdrop-filter: blur(26px) saturate(1.18);
+  }
+
+  .glass-table {
+    background: var(--glass-card);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 10px;
+    box-shadow: var(--shadow-card);
+    backdrop-filter: blur(24px) saturate(1.14);
+    -webkit-backdrop-filter: blur(24px) saturate(1.14);
+    overflow: hidden;
+  }
+
+  .glass-divider {
+    border-color: var(--color-border-subtle);
   }
 
   .workflow-react-flow {
@@ -210,17 +337,22 @@
 
   /* Message bubbles */
   .message-user {
-    @apply bg-surface rounded-2xl border border-border-subtle;
+    @apply bg-surface rounded-2xl border border-border-subtle shadow-card backdrop-blur-xl;
     width: fit-content;
     margin-left: auto;
+    margin-right: auto;
+    box-shadow:
+      0 1px 1px rgba(255, 255, 255, 0.86) inset,
+      0 10px 28px rgba(74, 106, 138, 0.12);
   }
 
-  /* Prose styling for assistant messages - elegant serif font */
+  /* Prose styling for assistant messages - compact operations transcript */
   .prose-chat {
-    font-family: 'Source Serif 4', Georgia, 'Times New Roman', serif;
-    font-size: 1.0625rem;
-    line-height: 1.625;
-    letter-spacing: -0.01em;
+    font-family: -apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', system-ui, sans-serif;
+    font-size: 0.9375rem;
+    line-height: 1.7;
+    letter-spacing: 0;
+    color: var(--color-text-primary);
   }
 
   .prose-chat p {

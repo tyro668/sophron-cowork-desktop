@@ -512,17 +512,20 @@ export function WelcomeView() {
   ];
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center px-5 py-10 md:px-8 md:py-14">
-      <div className="max-w-[840px] w-full space-y-7 animate-fade-in">
-        <div className="text-center">
-          <h1 className="heading-serif text-[1.35rem] md:text-[1.7rem] font-medium text-text-secondary text-center">
+    <div className="flex-1 flex flex-col items-center justify-center bg-transparent px-4 py-6 md:px-8">
+      <div className="max-w-[880px] w-full space-y-4 animate-fade-in">
+        <div className="flex items-center justify-between gap-3 border-b border-border-subtle pb-3">
+          <h1 className="text-[17px] font-medium text-text-primary">
             {t('welcome.title')}
           </h1>
+          <span className="hidden rounded-full border border-border-subtle bg-background/58 px-3 py-1 text-xs text-text-muted shadow-soft sm:inline-flex">
+            {workingDirLabel}
+          </span>
         </div>
 
         {/* API Not Configured Hint */}
         {!isConfigured && (
-          <p className="text-sm text-text-muted text-center">
+          <p className="rounded-xl border border-warning/20 bg-warning/10 px-3 py-2 text-[13px] text-text-secondary shadow-soft">
             {t('welcome.apiNotConfigured')}{' '}
             <button
               type="button"
@@ -539,15 +542,15 @@ export function WelcomeView() {
         )}
 
         {/* Quick Action Tags */}
-        <div className="flex flex-wrap gap-2 justify-center px-3">
+        <div className="flex flex-wrap gap-2 px-1">
           {quickTags.map((tag) => (
             <button
               key={tag.id}
               onClick={() => handleTagClick(tag.id, tag.prompt)}
-              className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition-colors ${
+              className={`inline-flex h-8 items-center gap-2 rounded-xl border px-3 text-[13px] font-medium shadow-soft transition-colors ${
                 selectedTag === tag.id
                   ? 'border-accent/30 bg-accent-muted text-accent'
-                  : 'border-border-muted bg-background/88 text-text-secondary hover:border-accent/25 hover:bg-surface-hover hover:text-text-primary'
+                  : 'border-border-muted bg-background/68 text-text-secondary hover:border-accent/25 hover:bg-surface-hover hover:text-text-primary'
               } ${
                 ('requiresChrome' in tag && tag.requiresChrome) ||
                 ('requiresNotion' in tag && tag.requiresNotion)
@@ -579,7 +582,7 @@ export function WelcomeView() {
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`relative rounded-[28px] border border-border-muted bg-background px-5 py-3 shadow-soft transition-colors sm:px-6 sm:py-4 ${
+          className={`glass-card-strong relative rounded-2xl px-4 py-3 transition-colors sm:px-5 sm:py-4 ${
             isDragging ? 'ring-2 ring-accent bg-accent-muted' : ''
           }`}
         >
@@ -646,7 +649,7 @@ export function WelcomeView() {
             placeholder={t('welcome.placeholder')}
             rows={3}
             style={{ minHeight: '76px', maxHeight: '140px' }}
-            className="w-full resize-none overflow-hidden border-none bg-transparent text-[15px] leading-6 text-text-primary outline-none placeholder:text-text-muted sm:text-base"
+            className="w-full resize-none overflow-hidden border-none bg-transparent text-[14px] leading-6 text-text-primary outline-none placeholder:text-text-muted sm:text-[15px]"
             onKeyDown={(e) => {
               // Enter to send, Shift+Enter for new line
               if (e.key === 'Enter' && !e.shiftKey) {
@@ -665,7 +668,7 @@ export function WelcomeView() {
               <button
                 type="button"
                 onClick={handleFileSelect}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface text-text-muted shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary"
                 title={t('welcome.attachFiles')}
               >
                 <Plus className="h-5 w-5" />
@@ -674,14 +677,14 @@ export function WelcomeView() {
               <PermissionPolicySelector
                 open={showPermissionMenu}
                 onOpenChange={handlePermissionMenuOpenChange}
-                buttonClassName="inline-flex h-10 shrink-0 items-center gap-2 rounded-full px-2.5 text-[14px] font-semibold text-accent transition-colors hover:bg-accent-muted sm:px-3"
+                buttonClassName="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl px-2.5 text-[13px] font-medium text-accent transition-colors hover:bg-accent-muted sm:px-3"
                 menuClassName="left-5 sm:left-6"
               />
 
               <button
                 type="button"
                 onClick={handleSelectFolder}
-                className={`inline-flex h-10 min-w-0 flex-1 items-center gap-2 rounded-full px-2.5 text-[14px] font-semibold transition-colors sm:flex-none sm:px-3 ${
+                className={`inline-flex h-9 min-w-0 flex-1 items-center gap-2 rounded-xl px-2.5 text-[13px] font-medium transition-colors sm:flex-none sm:px-3 ${
                   workingDir
                     ? 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                     : 'text-accent hover:bg-accent-muted hover:text-accent-hover'
@@ -699,7 +702,7 @@ export function WelcomeView() {
                 onClick={handleModelButtonClick}
                 aria-haspopup="menu"
                 aria-expanded={showModelMenu}
-                className="inline-flex h-10 min-w-0 max-w-[13rem] items-center gap-2 rounded-full px-3 text-[14px] font-semibold text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                className="inline-flex h-9 min-w-0 max-w-[13rem] items-center gap-2 rounded-xl border border-border-muted bg-background/62 px-3 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary"
                 title={modelLabel}
               >
                 <span className="truncate">{modelLabel}</span>
@@ -709,7 +712,7 @@ export function WelcomeView() {
               <button
                 type="submit"
                 disabled={!canSubmit || isSubmitting}
-                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-full bg-accent px-4 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:shadow-none"
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl bg-accent px-4 text-[13px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:shadow-none"
               >
                 <span>{isSubmitting ? t('welcome.starting') : t('welcome.letsGo')}</span>
                 <ArrowRight className="w-4 h-4" />
@@ -718,7 +721,7 @@ export function WelcomeView() {
           </div>
 
           {showModelMenu && hasConfiguredModel && (
-            <div className="absolute bottom-[4.25rem] right-5 z-30 w-[min(18rem,calc(100%-2.5rem))] overflow-hidden rounded-xl border border-border-muted bg-background shadow-elevated sm:right-6">
+            <div className="absolute bottom-[4.25rem] right-5 z-30 w-[min(18rem,calc(100%-2.5rem))] overflow-hidden rounded-xl border border-border-muted bg-background/95 shadow-elevated backdrop-blur-xl sm:right-6">
               <div className="max-h-56 overflow-y-auto p-1">
                 {modelOptions.length > 0 ? (
                   modelOptions.map((option) => (

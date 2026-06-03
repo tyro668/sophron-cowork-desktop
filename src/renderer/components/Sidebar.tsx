@@ -282,25 +282,25 @@ export function Sidebar() {
 
   if (sidebarCollapsed) {
     return (
-      <aside className="w-[4.5rem] bg-background-secondary/96 border-r border-border-muted flex flex-col overflow-hidden">
-        <div className="px-3 pt-4 pb-3 flex flex-col items-center gap-2 border-b border-border-muted">
+      <aside className="glass-surface mr-3 w-[4.25rem] rounded-2xl flex flex-col overflow-hidden">
+        <div className="px-2.5 pt-3 pb-3 flex flex-col items-center gap-2 border-b border-border-subtle">
           <button
             onClick={toggleSidebar}
-            className="w-9 h-9 rounded-2xl flex items-center justify-center hover:bg-surface-hover transition-colors text-text-secondary"
+            className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-surface-hover transition-colors text-text-secondary"
             title={t('context.expandPanel')}
           >
             <ChevronRight className="w-4 h-4" />
           </button>
           <button
             onClick={handleNewSession}
-            className="w-9 h-9 rounded-2xl flex items-center justify-center bg-accent hover:bg-accent-hover transition-colors text-white shadow-soft"
+            className="w-8 h-8 rounded-xl flex items-center justify-center bg-accent hover:bg-accent-hover transition-colors text-white shadow-soft"
             title={t('sidebar.newTask')}
           >
             <Plus className="w-4 h-4" />
           </button>
           <button
             onClick={handleDataPage}
-            className={`w-9 h-9 rounded-2xl flex items-center justify-center transition-colors ${
+            className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
               isDataPageActive
                 ? 'bg-accent/10 text-accent'
                 : 'text-text-secondary hover:bg-surface-hover'
@@ -311,7 +311,7 @@ export function Sidebar() {
           </button>
           <button
             onClick={handleSkillsPage}
-            className={`w-9 h-9 rounded-2xl flex items-center justify-center transition-colors ${
+            className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
               isSkillsPageActive
                 ? 'bg-accent/10 text-accent'
                 : 'text-text-secondary hover:bg-surface-hover'
@@ -332,7 +332,7 @@ export function Sidebar() {
           </button>
         </div>
 
-        <div className="border-t border-border-muted py-2 flex flex-col items-center gap-2">
+        <div className="border-t border-border-subtle py-2 flex flex-col items-center gap-2">
           <button
             onClick={toggleTheme}
             className="w-full h-9 flex items-center justify-center hover:bg-surface-hover transition-colors text-text-secondary"
@@ -356,18 +356,18 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-[17.5rem] bg-background-secondary/96 border-r border-border-muted flex flex-col overflow-hidden">
-      <div className="px-4 pt-5 pb-4 border-b border-border-muted">
+    <aside className="glass-surface mr-3 w-[19rem] rounded-2xl flex flex-col overflow-hidden">
+      <div className="px-3.5 pt-4 pb-3.5 border-b border-border-subtle">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex items-center gap-3">
             <img
               src={sidebarLogoSrc}
               alt={t('common.appLogoAlt')}
-              className="w-10 h-10 rounded-2xl object-contain p-1.5 border border-border-subtle bg-background/60 flex-shrink-0"
+              className="w-10 h-10 rounded-xl object-contain p-1.5 border border-border-subtle bg-background/60 flex-shrink-0 shadow-soft"
             />
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-1.5">
-                <h1 className="min-w-0 truncate text-[1.34rem] leading-none font-semibold tracking-normal text-text-primary">
+                <h1 className="min-w-0 truncate text-[1.08rem] leading-none font-semibold tracking-normal text-text-primary">
                   {t('common.appName')}
                 </h1>
                 {hasAvailableUpdate && (
@@ -385,7 +385,7 @@ export function Sidebar() {
           </div>
           <button
             onClick={toggleSidebar}
-            className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-surface-hover transition-colors text-text-secondary flex-shrink-0"
+            className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-hover transition-colors text-text-secondary flex-shrink-0"
             title={t('context.collapsePanel')}
           >
             <ChevronLeft className="w-4 h-4" />
@@ -394,7 +394,7 @@ export function Sidebar() {
 
         <button
           onClick={handleNewSession}
-          className="mt-3 w-full flex items-center gap-2 rounded-xl bg-accent px-3 py-2.5 text-left text-white hover:bg-accent-hover transition-colors shadow-soft"
+          className="mt-3 w-full flex h-9 items-center gap-2 rounded-xl bg-accent px-3 text-left text-white hover:bg-accent-hover transition-colors shadow-soft"
         >
           <Plus className="w-4 h-4 text-white flex-shrink-0" />
           <span className="text-[13px] font-medium">{t('sidebar.newTask')}</span>
@@ -409,7 +409,7 @@ export function Sidebar() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t('sidebar.search')}
-                className="w-full rounded-xl border border-border-muted bg-background/88 pl-9 pr-3 py-2 text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:bg-background focus:ring-2 focus:ring-accent/20 transition-colors"
+                className="w-full h-9 rounded-xl border border-border-muted bg-background/72 pl-9 pr-3 text-[13px] text-text-primary shadow-soft placeholder:text-text-muted focus:outline-none focus:border-accent focus:bg-background/92 focus:ring-2 focus:ring-accent/20 transition-colors"
               />
             </div>
             <button
@@ -471,7 +471,7 @@ export function Sidebar() {
         </div>
         {groupedSessions.length === 0 ? (
           <div className="px-3 py-6">
-            <p className="text-sm text-text-secondary">{t('sidebar.noTasks')}</p>
+            <p className="text-[13px] text-text-secondary">{t('sidebar.noTasks')}</p>
             <p className="mt-1 text-xs leading-5 text-text-muted">{t('sidebar.noTasksHint')}</p>
           </div>
         ) : (
@@ -497,7 +497,7 @@ export function Sidebar() {
                         }}
                         onMouseEnter={() => setHoveredSession(session.id)}
                         onMouseLeave={() => setHoveredSession(null)}
-                        className={`group relative cursor-pointer rounded-lg px-2.5 py-1.5 transition-colors ${
+                        className={`group relative cursor-pointer rounded-xl px-2.5 py-1.5 transition-colors ${
                           isSelectMode && isSelected
                             ? 'bg-accent-muted text-accent'
                             : isActive && !isSelectMode
@@ -547,7 +547,7 @@ export function Sidebar() {
       </div>
 
       {isSelectMode ? (
-        <div className="px-3 py-3 border-t border-border-muted">
+        <div className="px-3 py-3 border-t border-border-subtle">
           {showDeleteConfirm ? (
             <div className="border border-error/30 bg-error/10 rounded-lg px-3 py-3">
               <p className="text-[13px] text-text-primary mb-3">
@@ -601,8 +601,8 @@ export function Sidebar() {
           )}
         </div>
       ) : (
-        <div className="border-t border-border-muted">
-          <div className="flex h-16 w-full items-center gap-2 bg-background/92 px-5">
+        <div className="border-t border-border-subtle">
+          <div className="flex h-14 w-full items-center gap-2 bg-background/42 px-4 backdrop-blur-xl">
             <button
               onClick={() => setShowSettings(true)}
               className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-2 text-left text-text-secondary transition-colors hover:text-text-primary"

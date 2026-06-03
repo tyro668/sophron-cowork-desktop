@@ -1328,7 +1328,7 @@ export function DataView() {
 
   return (
     <div
-      className={`flex-1 min-h-0 bg-background ${
+      className={`flex-1 min-h-0 bg-transparent ${
         isDetailEditor ? 'overflow-hidden' : 'overflow-y-auto'
       }`}
     >
@@ -2064,14 +2064,14 @@ function TaskEditor({
         <div className="flex min-w-0 items-center gap-4">
           <button
             onClick={onBack}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             {t('data.editor.back')}
           </button>
           <div className="flex min-w-0 items-center gap-2">
             {isEditingTaskTitle ? (
-              <span className="flex h-8 min-w-0 max-w-[22rem] items-center rounded-lg border border-accent/40 bg-background/95 px-2.5 shadow-soft ring-2 ring-accent/15">
+              <span className="flex h-8 min-w-0 max-w-[22rem] items-center rounded-lg border border-accent/40 bg-background/48 px-2.5 shadow-soft ring-2 ring-accent/15">
                 <input
                   ref={taskTitleInputRef}
                   value={taskTitle}
@@ -2111,7 +2111,7 @@ function TaskEditor({
           <button
             onClick={() => void saveWorkflow()}
             disabled={isBusy || !workflow}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
           >
             <Save className="h-3.5 w-3.5" />
             {saving ? t('common.saving') : t('common.save')}
@@ -2129,7 +2129,7 @@ function TaskEditor({
               type="button"
               onClick={() => setWorkflowMenuOpen((open) => !open)}
               disabled={isBusy || !workflow}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
               title={t('data.actions.more')}
               aria-haspopup="menu"
               aria-expanded={workflowMenuOpen}
@@ -2139,7 +2139,7 @@ function TaskEditor({
             {workflowMenuOpen && (
               <div
                 role="menu"
-                className="absolute right-0 top-full z-30 mt-1 w-40 overflow-hidden rounded-lg border border-border-muted bg-background shadow-elevated"
+                className="absolute right-0 top-full z-30 mt-1 w-40 overflow-hidden rounded-lg border border-border-muted bg-[var(--glass-card-strong)] shadow-elevated backdrop-blur-xl"
               >
                 <button
                   type="button"
@@ -2179,7 +2179,7 @@ function TaskEditor({
       )}
 
       {!workflow ? (
-        <div className="flex flex-1 min-h-0 items-center justify-center rounded-xl border border-border-muted bg-background/90 text-xs text-text-muted shadow-card">
+        <div className="flex flex-1 min-h-0 items-center justify-center rounded-xl border border-border-muted bg-background/42 text-xs text-text-muted shadow-card">
           {t('common.loading')}
         </div>
       ) : (
@@ -2262,8 +2262,8 @@ function WorkflowDslDialog({
       aria-modal="true"
       aria-label={isImport ? t('data.workflow.importDsl') : t('data.workflow.viewExportDsl')}
     >
-      <div className="flex h-[34rem] max-h-[calc(100vh-3rem)] w-[54rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-muted bg-background shadow-card">
-        <div className="flex h-12 flex-shrink-0 items-center justify-between border-b border-border-muted bg-surface-active/70 px-4 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+      <div className="flex h-[34rem] max-h-[calc(100vh-3rem)] w-[54rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-muted bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl">
+        <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between px-4">
           <div className="flex min-w-0 items-center gap-2">
             <span className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
               {isImport ? <Upload className="h-3.5 w-3.5" /> : <Workflow className="h-3.5 w-3.5" />}
@@ -2282,13 +2282,13 @@ function WorkflowDslDialog({
           </button>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-3 bg-background p-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 bg-background/24 p-3">
           <textarea
             value={value}
             onChange={(event) => onChange(event.target.value)}
             readOnly={!isImport}
             spellCheck={false}
-            className="min-h-0 flex-1 resize-none rounded-lg border border-border-muted bg-background/95 px-3 py-2.5 font-mono text-[12px] leading-5 text-text-secondary outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 read-only:bg-surface-active/40"
+            className="min-h-0 flex-1 resize-none rounded-lg border border-border-muted bg-background/48 px-3 py-2.5 font-mono text-[12px] leading-5 text-text-secondary outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 read-only:bg-surface-active/40"
             placeholder={t('data.workflow.dslPlaceholder')}
           />
           {error && (
@@ -2305,7 +2305,7 @@ function WorkflowDslDialog({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+            className="inline-flex h-8 items-center justify-center rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
           >
             {isImport ? t('common.cancel') : t('common.close')}
           </button>
@@ -2352,7 +2352,7 @@ function WorkflowOperatorPalette({
   );
 
   return (
-    <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border-muted bg-background/90 p-2 shadow-card">
+    <aside className="glass-card flex min-h-0 flex-col overflow-hidden rounded-xl p-2">
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
         {operators.map(({ type, labelKey, Icon, colorClassName }) => (
           <button
@@ -2360,7 +2360,7 @@ function WorkflowOperatorPalette({
             draggable
             onDragStart={(event) => handleDragStart(event, type)}
             onClick={() => onAddOperator(type)}
-            className="flex h-9 w-full items-center gap-2 rounded-lg border border-border-muted bg-background/94 px-2.5 text-left text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+            className="flex h-9 w-full items-center gap-2 rounded-lg border border-border-muted bg-surface px-2.5 text-left text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
           >
             <span
               className={`inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md ${colorClassName}`}
@@ -2695,8 +2695,8 @@ function WorkflowCanvasContent({
   );
 
   return (
-    <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border-muted bg-background/90 shadow-card">
-      <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border-muted bg-background/94 px-3">
+    <section className="glass-card flex min-h-0 flex-col overflow-hidden rounded-xl">
+      <div className="glass-panel-header flex h-12 shrink-0 items-center justify-between gap-3 px-3">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <div className="flex min-w-0 items-center gap-2">
             {selectedNodeCatalog && SelectedNodeIcon ? (
@@ -2752,7 +2752,7 @@ function WorkflowCanvasContent({
         <button
           type="button"
           onClick={() => setToolbarCollapsed((current) => !current)}
-          className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-muted shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+          className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-muted shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
           title={
             toolbarCollapsed
               ? t('data.workflow.expandCanvasToolbar')
@@ -2800,7 +2800,7 @@ function WorkflowCanvasContent({
               strokeWidth: 1.8,
             },
           }}
-          className="workflow-react-flow bg-background/90"
+          className="workflow-react-flow bg-transparent"
         >
           <Background color="rgba(148, 163, 184, 0.35)" gap={18} size={1.3} />
           <Controls showInteractive={false} />
@@ -2834,7 +2834,7 @@ function WorkflowOperatorNode({ data, selected }: NodeProps<WorkflowFlowNode>) {
     <div
       data-node-id={node.id}
       style={{ width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT }}
-      className={`workflow-node-drag-handle relative flex items-center gap-2 rounded-lg border bg-background/92 px-2.5 text-left shadow-soft transition-colors ${
+      className={`workflow-node-drag-handle relative flex items-center gap-2 rounded-lg border bg-[var(--glass-card-strong)] px-2.5 text-left shadow-soft backdrop-blur-xl transition-colors ${
         selected ? 'border-accent text-accent ring-2 ring-accent/15' : catalog.nodeClassName
       } ${disabled ? 'opacity-45 grayscale' : ''}`}
     >
@@ -3168,7 +3168,7 @@ function WorkflowInspector({
 
   if (!node) {
     return (
-      <aside className="min-h-0 overflow-y-auto rounded-xl border border-border-muted bg-background/90 p-3 text-xs text-text-muted shadow-card">
+      <aside className="glass-card min-h-0 overflow-y-auto rounded-xl p-3 text-xs text-text-muted">
         {t('data.workflow.noNodeSelected')}
       </aside>
     );
@@ -3183,7 +3183,7 @@ function WorkflowInspector({
   );
 
   return (
-    <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border-muted bg-background/90 shadow-card">
+    <aside className="glass-card flex min-h-0 flex-col overflow-hidden rounded-xl">
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-border-muted px-3">
         <div className="flex min-w-0 flex-1 items-center gap-3 pr-2">
           <span
@@ -3193,7 +3193,7 @@ function WorkflowInspector({
           </span>
           <div className="flex min-w-0 items-center gap-1.5">
             {isEditingNodeTitle ? (
-              <span className="flex h-7 min-w-0 max-w-[16rem] items-center rounded-lg border border-accent/40 bg-background/95 px-2 shadow-soft ring-2 ring-accent/15">
+              <span className="flex h-7 min-w-0 max-w-[16rem] items-center rounded-lg border border-accent/40 bg-background/48 px-2 shadow-soft ring-2 ring-accent/15">
                 <input
                   ref={nodeTitleInputRef}
                   value={node.label}
@@ -3263,7 +3263,7 @@ function WorkflowInspector({
       <div className="min-h-0 flex-1 overflow-hidden p-2.5">
 
         {activeTab === 'logs' ? (
-          <div className="h-full min-h-0 rounded-lg border border-border-muted bg-background/70 p-2.5 text-xs text-text-muted">
+          <div className="h-full min-h-0 rounded-lg border border-border-muted bg-background/34 p-2.5 text-xs text-text-muted">
             {t('data.workflow.noLogs')}
           </div>
         ) : activeTab === 'data' ? (
@@ -3276,7 +3276,7 @@ function WorkflowInspector({
           />
         ) : usesOperatorDsl ? (
           <div className="grid h-full min-h-0 gap-2.5 lg:grid-cols-[minmax(0,1fr)_17rem]">
-            <div className="flex min-h-0 min-w-0 flex-col rounded-xl border border-border-muted bg-background/95 p-2 shadow-card">
+            <div className="glass-card flex min-h-0 min-w-0 flex-col rounded-xl p-2">
               <div className="mb-2 flex min-h-8 items-center gap-2">
                 <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
                   {t('data.workflow.dslEditor')}
@@ -3292,7 +3292,7 @@ function WorkflowInspector({
                     <>
                       <button
                         onClick={handleFormatOperatorDsl}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/90 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/42 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
                       >
                         <Code2 className="h-3.5 w-3.5" />
                         {t('data.workflow.formatDsl')}
@@ -3300,7 +3300,7 @@ function WorkflowInspector({
                       <button
                         onClick={handleCancelOperatorDslEdit}
                         disabled={isRunningOperatorDsl}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/90 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/42 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
                       >
                         <X className="h-3.5 w-3.5" />
                         {t('common.cancel')}
@@ -3317,7 +3317,7 @@ function WorkflowInspector({
                   ) : (
                     <button
                       onClick={handleStartOperatorDslEdit}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/90 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/42 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
                     >
                       <PencilLine className="h-3.5 w-3.5" />
                       {t('data.workflow.configureSelected')}
@@ -3433,10 +3433,10 @@ function WorkflowNodeDataPreview({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-background/95">
+    <div className="glass-table flex h-full min-h-0 flex-col rounded-lg">
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="min-w-full border-collapse text-left text-xs">
-          <thead className="sticky top-0 z-10 bg-background">
+          <thead className="sticky top-0 z-10 bg-background/34 backdrop-blur-xl">
             <tr className="h-9 border-b border-border-muted text-text-muted">
               {columns.map((column) => (
                 <th key={column} className="max-w-[12rem] whitespace-nowrap px-3 font-medium">
@@ -3487,7 +3487,7 @@ function WorkflowNodeDataPreview({
               className={`inline-flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
                 pageNumber === safeCurrentPage
                   ? 'bg-accent text-white shadow-soft'
-                  : 'border border-border-muted bg-background/94 text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
+                  : 'border border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
               }`}
             >
               {pageNumber}
@@ -3511,7 +3511,7 @@ function SelectLike({ label, value }: { label: string; value: string }) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-xs font-medium text-text-secondary">{label}</span>
-      <button className="flex h-8 w-full items-center justify-between rounded-lg border border-border-muted bg-background/94 px-2 text-left text-xs font-medium text-text-secondary shadow-soft">
+      <button className="flex h-8 w-full items-center justify-between rounded-lg border border-border-muted bg-surface px-2 text-left text-xs font-medium text-text-secondary shadow-soft">
         <span className="truncate">{value}</span>
         <span className="flex items-center gap-2">
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />
@@ -3578,7 +3578,7 @@ function WorkflowInputSourceConfig({
         <select
           value={selectedInputTableId}
           onChange={(event) => handleInputTableChange(event.target.value)}
-          className="h-8 w-full appearance-none rounded-lg border border-border-muted bg-background/94 px-2 pr-8 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+          className="h-8 w-full appearance-none rounded-lg border border-border-muted bg-surface px-2 pr-8 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
         >
           <option value="">
             {isLoading
@@ -3725,7 +3725,7 @@ function WorkflowOutputConfig({
           <select
             value={strategy}
             onChange={(event) => handleStrategyChange(event.target.value)}
-            className="h-8 w-full appearance-none rounded-lg border border-border-muted bg-background/94 px-2 pr-8 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+            className="h-8 w-full appearance-none rounded-lg border border-border-muted bg-surface px-2 pr-8 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
           >
             <option value="auto">{t('data.workflow.values.outputStrategies.auto')}</option>
             <option value="existing">{t('data.workflow.values.outputStrategies.existing')}</option>
@@ -3743,7 +3743,7 @@ function WorkflowOutputConfig({
             value={autoOutputTableName}
             onChange={(event) => handleAutoTableNameChange(event.target.value)}
             placeholder={t('data.workflow.autoOutputTable')}
-            className="h-8 w-full rounded-lg border border-border-muted bg-background/94 px-2 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+            className="h-8 w-full rounded-lg border border-border-muted bg-surface px-2 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
           />
         </label>
       ) : (
@@ -3755,7 +3755,7 @@ function WorkflowOutputConfig({
             <select
               value={selectedOutputDatasetId}
               onChange={(event) => handleOutputTableChange(event.target.value)}
-              className="h-8 w-full appearance-none rounded-lg border border-border-muted bg-background/94 px-2 pr-8 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
+              className="h-8 w-full appearance-none rounded-lg border border-border-muted bg-surface px-2 pr-8 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
             >
               <option value="">{t('data.workflow.noAvailableOutputTables')}</option>
               {selectedOutputDatasetId &&
@@ -3815,7 +3815,7 @@ function WorkflowRuleSummaryCard({
 }) {
   const visibleDiagnostics = diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
   return (
-    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border-muted bg-background/95 p-3 shadow-card">
+    <section className="glass-card flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-xl p-3">
       <h3 className="mb-2 flex h-8 items-center text-[13px] font-medium text-text-secondary">
         {title}
       </h3>
@@ -4581,7 +4581,7 @@ function StatCard({
   iconClassName: string;
 }) {
   return (
-    <article className="flex h-[5.75rem] items-center gap-3 rounded-xl border border-border-muted bg-background/88 px-3 shadow-card">
+    <article className="glass-card flex h-[5.75rem] items-center gap-3 rounded-xl px-3">
       <div
         className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${iconClassName}`}
       >
@@ -4743,7 +4743,7 @@ function TasksPanel({
           />
         </div>
       </div>
-      <div className="overflow-hidden rounded-xl border border-border-muted bg-background/90 shadow-card">
+      <div className="glass-table">
         <TasksTable
           tasks={tasks}
           isLoading={isLoading}
@@ -4790,7 +4790,7 @@ function TasksTable({
     <div className="overflow-hidden">
       <table className="w-full table-fixed border-collapse text-left">
         <thead>
-          <tr className="h-10 border-b border-border-muted bg-background/80 text-xs font-medium text-text-muted">
+          <tr className="h-10 border-b border-border-muted bg-background/30 text-xs font-medium text-text-muted backdrop-blur-xl">
             <th className="w-[4%] px-4">
               <span className="sr-only">{t('data.tasks.selection')}</span>
             </th>
@@ -4983,7 +4983,7 @@ function InputTablesPanel({
                 onSourceFilterChange(event.target.value as InputTableSourceFilter)
               }
               disabled={bulkBusy}
-              className="h-8 w-full appearance-none rounded-lg border border-border-muted bg-background/94 pl-3 pr-8 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-45"
+              className="h-8 w-full appearance-none rounded-lg border border-border-muted bg-surface pl-3 pr-8 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-45"
             >
               {INPUT_TABLE_SOURCE_FILTERS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -5053,7 +5053,7 @@ function InputTablesPanel({
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border-muted bg-background/94">
+      <div className="glass-table">
         {isLoading ? (
           <LoadingState label={t('data.inputTables.loading')} />
         ) : visibleRows.length === 0 ? (
@@ -5063,7 +5063,7 @@ function InputTablesPanel({
             <div className="overflow-hidden">
               <table className="w-full table-fixed border-collapse text-left">
                 <thead>
-                  <tr className="h-10 border-b border-border-muted bg-background/80 text-xs font-medium text-text-muted">
+                  <tr className="h-10 border-b border-border-muted bg-background/30 text-xs font-medium text-text-muted backdrop-blur-xl">
                     <th className="w-[4%] px-4">
                       <span className="sr-only">{t('data.inputTables.selection')}</span>
                     </th>
@@ -5173,7 +5173,7 @@ function InputTablesPanel({
           <div className="flex min-h-11 flex-col items-center justify-between gap-2 border-t border-border-muted px-4 py-2.5 text-xs font-medium text-text-secondary sm:flex-row">
             <span>{t('data.totalCount', { count: totalRows })}</span>
             <div className="flex items-center gap-2">
-              <button className="inline-flex h-8 min-w-[6.5rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-text-secondary shadow-soft">
+              <button className="inline-flex h-8 min-w-[6.5rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-text-secondary shadow-soft">
                 {t('data.rowsPerPage', { count: TABLE_PAGE_SIZE })}
                 <ChevronDown className="h-3.5 w-3.5" />
               </button>
@@ -5191,7 +5191,7 @@ function InputTablesPanel({
                   className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
                     pageNumber === safeCurrentPage
                       ? 'bg-accent text-white shadow-soft'
-                      : 'border border-border-muted bg-background/94 text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
+                      : 'border border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
                   }`}
                 >
                   {pageNumber}
@@ -5340,7 +5340,7 @@ function OutputTablesPanel({
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border-muted bg-background/94">
+      <div className="glass-table">
         {isLoading ? (
           <LoadingState label={t('data.outputTables.loading')} />
         ) : outputTables.length === 0 ? (
@@ -5350,7 +5350,7 @@ function OutputTablesPanel({
             <div className="overflow-hidden">
               <table className="w-full table-fixed border-collapse text-left">
                 <thead>
-                  <tr className="h-10 border-b border-border-muted bg-background/80 text-xs font-medium text-text-muted">
+                  <tr className="h-10 border-b border-border-muted bg-background/30 text-xs font-medium text-text-muted backdrop-blur-xl">
                     <th className="w-[4%] px-4">
                       <span className="sr-only">{t('data.outputTables.selection')}</span>
                     </th>
@@ -5425,7 +5425,7 @@ function OutputTablesPanel({
             <div className="flex min-h-11 flex-col items-center justify-between gap-2 border-t border-border-muted px-4 py-2.5 text-xs font-medium text-text-secondary sm:flex-row">
               <span>{t('data.totalCount', { count: totalOutputTables })}</span>
               <div className="flex items-center gap-2">
-                <button className="inline-flex h-8 min-w-[6.5rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-text-secondary shadow-soft">
+                <button className="inline-flex h-8 min-w-[6.5rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-text-secondary shadow-soft">
                   {t('data.rowsPerPage', { count: TABLE_PAGE_SIZE })}
                   <ChevronDown className="h-3.5 w-3.5" />
                 </button>
@@ -5443,7 +5443,7 @@ function OutputTablesPanel({
                     className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
                       pageNumber === safeCurrentPage
                         ? 'bg-accent text-white shadow-soft'
-                        : 'border border-border-muted bg-background/94 text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
+                        : 'border border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
                     }`}
                   >
                     {pageNumber}
@@ -5522,7 +5522,7 @@ function OutputTableEditor({
         <div className="flex min-w-0 items-center gap-4">
           <button
             onClick={onBack}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             {t('data.outputTables.editor.back')}
@@ -5553,14 +5553,14 @@ function OutputTableEditor({
           type="button"
           onClick={() => void onSave(outputTable, localName, sourceDatasetId || null)}
           disabled={!canSave}
-          className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Save className="h-3.5 w-3.5" />
           {isBusy ? t('common.saving') : t('common.save')}
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border-muted bg-background/94 p-4 shadow-card">
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border-muted bg-surface p-4 shadow-card">
         <div className="grid gap-5 lg:grid-cols-[8rem_minmax(0,1fr)] lg:items-center">
           <InputTableFormLabel>{t('data.outputTables.editor.inputTable')}</InputTableFormLabel>
           <InputTableSelect
@@ -5731,7 +5731,7 @@ function InputTableEditor({
         <div className="flex min-w-0 items-center gap-4">
           <button
             onClick={onBack}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             {t('data.inputTables.editor.back')}
@@ -5767,7 +5767,7 @@ function InputTableEditor({
             type="button"
             onClick={() => void previewInputTable()}
             disabled={!canPreview || previewLoading}
-            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
           >
             {previewLoading ? (
               <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -5780,7 +5780,7 @@ function InputTableEditor({
             type="button"
             onClick={saveInputTable}
             disabled={!canSave}
-            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Save className="h-3.5 w-3.5" />
             {isBusy ? t('common.saving') : t('common.save')}
@@ -5788,7 +5788,7 @@ function InputTableEditor({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border-muted bg-background/94 p-4 shadow-card">
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border-muted bg-surface p-4 shadow-card">
         <div className="grid gap-5 lg:grid-cols-[8rem_minmax(0,1fr)] lg:items-center">
           <InputTableFormLabel>{t('data.inputTables.editor.sourceType')}</InputTableFormLabel>
           <label className="relative block">
@@ -5801,7 +5801,7 @@ function InputTableEditor({
               value={localSourceKind}
               onChange={(event) => handleSourceKindChange(event.target.value as DataInputTableSourceKind)}
               disabled={isBusy}
-              className="h-10 w-full appearance-none rounded-lg border border-border-muted bg-background/96 pl-12 pr-9 text-[13px] font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+              className="h-10 w-full appearance-none rounded-lg border border-border-muted bg-background/50 pl-12 pr-9 text-[13px] font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <option value="excel">{t('data.inputTables.editor.excel')}</option>
               <option value="csv">{t('data.inputTables.editor.csv')}</option>
@@ -5854,7 +5854,7 @@ function InputTableEditor({
                     })
                   }
                   disabled={isBusy || !dataset}
-                  className="h-10 w-full appearance-none rounded-lg border border-border-muted bg-background/96 px-3 pr-9 text-[13px] font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="h-10 w-full appearance-none rounded-lg border border-border-muted bg-background/50 px-3 pr-9 text-[13px] font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {(excelConfig.sheetNames.length > 0 ? excelConfig.sheetNames : ['Sheet1']).map(
                     (sheetName) => (
@@ -6076,8 +6076,8 @@ function InputTablePreviewDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/28 px-4 py-6">
-      <div className="flex h-[42rem] max-h-[calc(100vh-3rem)] w-[72rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-muted bg-background shadow-card">
-        <div className="flex h-12 flex-shrink-0 items-center justify-between border-b border-border-muted bg-surface-active/70 px-4 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+      <div className="flex h-[42rem] max-h-[calc(100vh-3rem)] w-[72rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-muted bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl">
+        <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between px-4">
           <div className="min-w-0">
             <div className="text-[14px] font-semibold text-text-primary">
               {previewTitle}
@@ -6093,7 +6093,7 @@ function InputTablePreviewDialog({
           </button>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background p-3">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background/24 p-3">
           {isLoading ? (
             <div className="flex min-h-0 flex-1 items-center justify-center">
               <LoadingState label={t('data.inputTables.editor.previewLoading')} />
@@ -6103,14 +6103,14 @@ function InputTablePreviewDialog({
               {error}
             </div>
           ) : columns.length === 0 || rows.length === 0 ? (
-            <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-border-muted bg-background/70">
+            <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-border-muted bg-background/34">
               <EmptyState label={previewEmpty} />
             </div>
           ) : (
             <>
               <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-border-muted">
                 <table className="min-w-full border-collapse text-left text-xs">
-                  <thead className="sticky top-0 z-10 bg-background">
+                  <thead className="sticky top-0 z-10 bg-background/34 backdrop-blur-xl">
                     <tr className="h-9 border-b border-border-muted text-text-muted">
                       {columns.map((column) => (
                         <th
@@ -6179,7 +6179,7 @@ function InputTablePreviewDialog({
                 className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                   pageNumber === safeCurrentPage
                     ? 'bg-accent text-white shadow-soft'
-                    : 'border border-border-muted bg-background/94 text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
+                    : 'border border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
                 }`}
               >
                 {pageNumber}
@@ -6248,7 +6248,7 @@ function InputTableSelect({
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full appearance-none rounded-lg border border-border-muted bg-background/96 px-3 pr-9 text-[13px] font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+        className="h-10 w-full appearance-none rounded-lg border border-border-muted bg-background/50 px-3 pr-9 text-[13px] font-medium text-text-secondary shadow-soft outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -6414,7 +6414,7 @@ function DataToolbarButton({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border-muted bg-background/94 px-2.5 text-xs font-medium text-text-secondary shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+      className={`inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border-muted bg-surface px-2.5 text-xs font-medium text-text-secondary shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
         danger
           ? 'hover:border-error/30 hover:bg-error/10 hover:text-error'
           : 'hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
@@ -6443,7 +6443,7 @@ function DataTableSearch({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="h-8 w-full rounded-lg border border-border-muted bg-background/94 pl-8 pr-3 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+        className="h-8 w-full rounded-lg border border-border-muted bg-surface pl-8 pr-3 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
       />
     </div>
   );
@@ -6489,7 +6489,7 @@ function DataMoreMenu({ items }: { items: DataMoreMenuItem[] }) {
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
         title={t('data.actions.more')}
         aria-label={t('data.actions.more')}
         aria-expanded={open}
@@ -6498,7 +6498,7 @@ function DataMoreMenu({ items }: { items: DataMoreMenuItem[] }) {
       </button>
       {open && (
         <div
-          className="absolute right-0 top-9 z-30 w-40 overflow-hidden rounded-lg border border-border-muted bg-background py-1 shadow-elevated"
+          className="absolute right-0 top-9 z-30 w-40 overflow-hidden rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl"
           style={{ backgroundColor: 'var(--color-background)' }}
         >
           {items.map((item) => (
@@ -6551,7 +6551,7 @@ function EmptyState({ label }: { label: string }) {
 function LoadingState({ label }: { label: string }) {
   return (
     <div className="flex min-h-[16rem] items-center justify-center px-4 py-10 text-center text-xs font-medium text-text-muted">
-      <div className="inline-flex items-center gap-2 rounded-lg border border-border-muted bg-background/90 px-3 py-2 shadow-soft">
+      <div className="inline-flex items-center gap-2 rounded-lg border border-border-muted bg-background/42 px-3 py-2 shadow-soft">
         <RefreshCw className="h-3.5 w-3.5 animate-spin text-accent" />
         {label}
       </div>
@@ -6583,7 +6583,7 @@ function PaginationFooter({
     >
       <span>{t('data.totalCount', { count })}</span>
       <div className="flex items-center gap-2">
-        <button className="inline-flex h-8 min-w-[7rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/94 px-3 text-text-secondary shadow-soft">
+        <button className="inline-flex h-8 min-w-[7rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-text-secondary shadow-soft">
           {t('data.rowsPerPage', { count: TABLE_PAGE_SIZE })}
           <ChevronDown className="h-3.5 w-3.5" />
         </button>
@@ -6592,7 +6592,7 @@ function PaginationFooter({
             <button
               onClick={() => onPageChange(safeCurrentPage - 1)}
               disabled={safeCurrentPage <= 1}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-muted shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-muted shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -6605,7 +6605,7 @@ function PaginationFooter({
               className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium shadow-soft ${
                 pageNumber === safeCurrentPage
                   ? 'border-accent bg-accent/10 text-accent'
-                  : 'border-border-muted bg-background/94 text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
+                  : 'border-border-muted bg-surface text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
               }`}
             >
               {pageNumber}
@@ -6615,7 +6615,7 @@ function PaginationFooter({
             <button
               onClick={() => onPageChange(safeCurrentPage + 1)}
               disabled={safeCurrentPage >= pageCount}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/94 text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
             >
               <ChevronRight className="h-4 w-4" />
             </button>

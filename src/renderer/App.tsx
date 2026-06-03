@@ -49,8 +49,8 @@ const SkillsView = lazy(() =>
 
 function MainPanelFallback() {
   return (
-    <div className="flex-1 min-h-0 bg-background px-6 py-6">
-      <div className="h-full rounded-[1.75rem] border border-border-subtle bg-background/70" />
+    <div className="flex-1 min-h-0 px-3 py-3">
+      <div className="app-main-panel h-full" />
     </div>
   );
 }
@@ -58,7 +58,7 @@ function MainPanelFallback() {
 function ContextPanelFallback() {
   return (
     <div
-      className="hidden xl:block w-[340px] shrink-0 border-l border-border-subtle bg-background/60"
+      className="ml-2 hidden w-[340px] shrink-0 rounded-2xl border border-border-subtle bg-background/55 backdrop-blur-xl xl:block"
       aria-hidden="true"
     />
   );
@@ -181,19 +181,19 @@ function App() {
   const showSandboxSetup = sandboxSetupProgress && !isSandboxSetupComplete;
 
   return (
-    <div className="h-full w-full min-h-0 flex flex-col overflow-hidden bg-background">
+    <div className="h-full w-full min-h-0 flex flex-col overflow-hidden bg-[var(--app-backdrop)] text-text-primary">
       {/* Titlebar - draggable region */}
       <Titlebar />
 
       {/* Main Content */}
-      <div className="flex-1 min-h-0 flex overflow-hidden">
+      <div className="flex-1 min-h-0 flex overflow-hidden px-3 pb-3">
         {/* Sidebar */}
         <PanelErrorBoundary name="Sidebar" fallback={<div className="w-0" />}>
           <Sidebar />
         </PanelErrorBoundary>
 
         {/* Main Content Area */}
-        <main className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden bg-background">
+        <main className="app-main-panel flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
           {showSettings ? (
             <PanelErrorBoundary
               name="SettingsPanel"

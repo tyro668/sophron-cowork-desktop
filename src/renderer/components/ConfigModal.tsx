@@ -160,22 +160,22 @@ export function ConfigModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md">
-      <div className="bg-background rounded-[2rem] shadow-elevated w-full max-w-[880px] mx-4 max-h-[88vh] overflow-hidden border border-border-subtle flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 backdrop-blur-md">
+      <div className="glass-surface rounded-2xl w-full max-w-[880px] mx-4 max-h-[88vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-border-muted bg-background/88">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border-subtle bg-background/30">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl border border-border-subtle bg-background-secondary/88 flex items-center justify-center text-accent">
+            <div className="w-10 h-10 rounded-xl border border-border-subtle bg-background/58 flex items-center justify-center text-accent shadow-soft">
               <Key className="w-5 h-5" />
             </div>
             <div>
               <p className="text-[11px] uppercase tracking-[0.14em] text-text-muted">
                 {t('settings.title')}
               </p>
-              <h2 className="mt-1 text-[1.15rem] font-semibold tracking-[-0.02em] text-text-primary">
+              <h2 className="mt-1 text-[17px] font-medium text-text-primary">
                 {isFirstRun ? t('api.firstRunTitle') : t('api.settingsTitle')}
               </h2>
-              <p className="text-sm text-text-secondary">
+              <p className="text-[13px] text-text-secondary">
                 {isFirstRun ? t('api.firstRunSubtitle') : t('api.settingsSubtitle')}
               </p>
             </div>
@@ -189,7 +189,7 @@ export function ConfigModal({
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-5 flex-1 overflow-y-auto bg-background/70">
+        <div className="p-5 space-y-4 flex-1 overflow-y-auto bg-background/18">
           {/* Config Set Switcher */}
           <ApiConfigSetManager
             configSets={configSets}
@@ -245,7 +245,7 @@ export function ConfigModal({
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder={currentPreset?.keyPlaceholder || t('api.enterApiKey')}
-              className="w-full px-4 py-3 rounded-xl bg-background border border-border text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
+              className="w-full rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[13px] text-text-primary shadow-soft placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
             />
           </div>
 
@@ -309,7 +309,7 @@ export function ConfigModal({
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
                 placeholder={baseUrlPlaceholder}
-                className="w-full px-4 py-3 rounded-xl bg-background border border-border text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
+                className="w-full rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[13px] text-text-primary shadow-soft placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
               />
             </div>
           )}
@@ -363,13 +363,13 @@ export function ConfigModal({
                 value={customModel}
                 onChange={(e) => setCustomModel(e.target.value)}
                 placeholder={modelInputPlaceholder}
-                className="w-full px-4 py-3 rounded-xl bg-background border border-border text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
+                className="w-full rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[13px] text-text-primary shadow-soft placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
               />
             ) : (
               <select
                 value={modelOptions.length ? model : ''}
                 onChange={(e) => setModel(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl bg-background border border-border text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all appearance-none cursor-pointer"
+                className="w-full rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[13px] text-text-primary shadow-soft focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all appearance-none cursor-pointer"
               >
                 {modelOptions.length ? (
                   modelOptions.map((m) => (
@@ -432,7 +432,7 @@ export function ConfigModal({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-surface-hover border-t border-border">
+        <div className="glass-panel-header border-b-0 px-6 py-4">
           {successMessage && (
             <div className="mb-3 flex items-center gap-2 px-4 py-3 rounded-xl bg-success/10 text-success text-sm">
               <CheckCircle className="w-4 h-4 flex-shrink-0" />
@@ -443,7 +443,7 @@ export function ConfigModal({
             <button
               onClick={handleTest}
               disabled={isTesting || (requiresApiKey && !apiKey.trim())}
-              className="w-full py-3 px-4 rounded-xl border border-border bg-surface text-text-primary font-medium hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-border-muted bg-background/42 px-4 py-3 font-medium text-text-primary shadow-soft transition-all hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isTesting ? (
                 <>

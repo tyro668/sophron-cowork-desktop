@@ -44,7 +44,7 @@ export function QuickStartGuide({ permissionScopes, permissionSeparator }: Props
   ];
 
   return (
-    <div className="p-4 rounded-lg border border-border-subtle bg-background/55">
+    <div className="glass-card rounded-xl p-4">
       <h4 className="font-medium text-text-primary mb-3">{t('remote.quickStart')}</h4>
       <ol className="space-y-2 text-sm text-text-secondary">
         {steps.map((step) => (

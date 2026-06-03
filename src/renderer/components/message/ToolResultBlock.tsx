@@ -102,8 +102,8 @@ export const ToolResultBlock = memo(function ToolResultBlock({
 
   return (
     <div
-      className={`rounded-xl border overflow-hidden ${
-        block.isError ? 'border-error/25 bg-error/5' : 'border-border-subtle bg-background/45'
+      className={`overflow-hidden rounded-xl border shadow-card backdrop-blur-xl ${
+        block.isError ? 'border-error/25 bg-error/5' : 'border-border-subtle bg-[var(--glass-card)]'
       }`}
     >
       <button

@@ -22,8 +22,8 @@ export function Titlebar() {
   };
 
   return (
-    <div 
-      className={`h-10 bg-background-secondary border-b border-border flex items-center titlebar-drag shrink-0 ${
+    <div
+      className={`h-8 bg-transparent flex items-center titlebar-drag shrink-0 ${
         isMac ? 'justify-start pl-20' : 'justify-end'
       }`}
     >

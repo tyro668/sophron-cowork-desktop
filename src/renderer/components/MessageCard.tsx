@@ -60,10 +60,10 @@ export const MessageCard = memo(function MessageCard({ message, isStreaming }: M
   return (
     <div className="animate-fade-in">
       {isUser ? (
-        // User message - compact styling with smaller padding and radius
-        <div className="flex items-start gap-2 justify-end group">
+        // User message - centered prompt card, matching the reference layout.
+        <div className="group flex items-start justify-center gap-2">
           <div
-            className={`message-user px-3.5 py-2.5 rounded-xl max-w-[80%] min-w-0 break-words ${
+            className={`message-user mx-auto max-w-[min(44rem,88%)] min-w-0 break-words rounded-xl px-4 py-3 ${
               isQueued ? 'opacity-70 border-dashed' : ''
             } ${isCancelled ? 'opacity-60' : ''}`}
           >
@@ -96,7 +96,7 @@ export const MessageCard = memo(function MessageCard({ message, isStreaming }: M
           </div>
           <button
             onClick={handleCopy}
-            className="mt-1 w-6 h-6 flex items-center justify-center rounded-md bg-surface-muted hover:bg-surface-active transition-all opacity-0 group-hover:opacity-100 flex-shrink-0"
+            className="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md bg-surface-muted opacity-0 transition-all hover:bg-surface-active group-hover:opacity-100"
             title={t('messageCard.copyMessage')}
           >
             {copied ? (

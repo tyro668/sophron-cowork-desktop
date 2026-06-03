@@ -119,12 +119,12 @@ export const ToolUseBlock = memo(function ToolUseBlock({
 
   return (
     <div
-      className={`rounded-xl border overflow-hidden transition-colors ${
+      className={`overflow-hidden rounded-xl border shadow-card backdrop-blur-xl transition-colors ${
         isError
           ? 'border-error/25 bg-error/5'
           : isRunning
             ? 'border-accent/15 bg-accent/5'
-            : 'border-border-subtle bg-background/45'
+            : 'border-border-subtle bg-[var(--glass-card)]'
       }`}
     >
       {/* Header — always visible */}
@@ -189,13 +189,13 @@ export const ToolUseBlock = memo(function ToolUseBlock({
 
       {/* Expanded content */}
       {expanded && (
-        <div className="border-t border-border/50 animate-fade-in bg-background/35">
+        <div className="animate-fade-in border-t border-border/50 bg-background/20">
           {/* Input section */}
           <div className="px-3 py-2">
             <div className="text-[10px] uppercase tracking-wider text-text-muted font-medium mb-1">
               Input
             </div>
-            <pre className="text-xs font-mono text-text-secondary whitespace-pre-wrap break-all bg-surface-muted rounded-lg p-2 border border-border-subtle">
+            <pre className="rounded-lg border border-border-subtle bg-surface-muted/70 p-2 font-mono text-xs text-text-secondary whitespace-pre-wrap break-all">
               {JSON.stringify(block.input, null, 2)}
             </pre>
           </div>

@@ -764,11 +764,11 @@ export function ChatView() {
   }
 
   return (
-    <div className="relative flex-1 flex flex-col overflow-hidden bg-background">
+    <div className="relative flex-1 flex flex-col overflow-hidden bg-transparent">
       {/* Header */}
       <div
         ref={headerRef}
-        className="relative h-12 border-b border-border-muted grid grid-cols-[1fr_auto_1fr] items-center px-4 lg:px-8 bg-background/88 backdrop-blur-md"
+        className="glass-panel-header relative grid h-12 grid-cols-[1fr_auto_1fr] items-center px-4 lg:px-8"
       >
         <div aria-hidden="true" />
         <h2
@@ -791,7 +791,7 @@ export function ChatView() {
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-mcp/8 border border-mcp/15 justify-self-end">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-mcp/10 border border-mcp/20 justify-self-end shadow-soft">
               <Plug className="w-3.5 h-3.5 text-mcp" />
               <span className="text-xs text-mcp font-medium">
                 {showConnectorLabel
@@ -808,7 +808,7 @@ export function ChatView() {
           <button
             type="button"
             onClick={scrollToConversationTop}
-            className="pointer-events-auto mt-3 inline-flex h-9 items-center gap-1.5 rounded-full border border-accent/25 bg-background/92 px-3.5 text-sm font-medium text-accent shadow-soft backdrop-blur-md transition-colors hover:border-accent/45 hover:bg-accent/10"
+            className="pointer-events-auto mt-3 inline-flex h-8 items-center gap-1.5 rounded-full border border-accent/25 bg-background/80 px-3 text-xs font-medium text-accent shadow-soft backdrop-blur-xl transition-colors hover:border-accent/45 hover:bg-accent/10"
           >
             <ArrowUp className="h-4 w-4" />
             <span>{t('chat.backToTop')}</span>
@@ -845,7 +845,7 @@ export function ChatView() {
           {hasActiveTurn &&
             (!partialMessage || partialMessage.trim() === '') &&
             !partialThinking && (
-              <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-background/80 border border-border-subtle max-w-fit">
+              <div className="glass-card flex items-center gap-2.5 px-3 py-2 rounded-xl max-w-fit">
                 <Loader2 className="w-4 h-4 text-accent animate-spin" />
                 <span className="text-[13px] text-text-secondary">{t('chat.processing')}</span>
               </div>
@@ -868,7 +868,7 @@ export function ChatView() {
       </div>
 
       {/* Input */}
-      <div className="bg-background pb-3 pt-2 backdrop-blur-md">
+      <div className="glass-panel-header border-b-0 pb-3 pt-2">
         <div className="mx-auto w-full max-w-[980px] px-4 sm:px-6">
           <form
             onSubmit={handleSubmit}
@@ -905,7 +905,7 @@ export function ChatView() {
                 {attachedFiles.map((file, index) => (
                   <div
                     key={file.path || `attached-file-${index}`}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-muted border border-border group"
+                    className="glass-card flex items-center gap-2 rounded-lg px-3 py-2 group"
                   >
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-text-primary truncate">{file.name}</p>
@@ -923,7 +923,7 @@ export function ChatView() {
             )}
 
             <div
-              className={`flex min-h-[96px] flex-col rounded-2xl border border-border-muted bg-background px-4 py-2.5 shadow-soft transition-colors sm:min-h-[104px] sm:py-3 ${
+              className={`glass-card-strong flex min-h-[96px] flex-col rounded-2xl px-4 py-2.5 transition-colors sm:min-h-[104px] sm:py-3 ${
                 isDragging ? 'ring-2 ring-accent bg-accent-muted' : ''
               }`}
             >
@@ -959,7 +959,7 @@ export function ChatView() {
                   <button
                     type="button"
                     onClick={handleFileSelect}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-surface text-text-muted shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary"
                     title={t('welcome.attachFiles')}
                   >
                     <Plus className="h-4 w-4" />
@@ -979,7 +979,7 @@ export function ChatView() {
                     onClick={handleModelButtonClick}
                     aria-haspopup="menu"
                     aria-expanded={showModelMenu}
-                    className="hidden h-8 min-w-0 max-w-[18rem] items-center gap-1.5 rounded-lg border border-border-muted px-2.5 text-[13px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary sm:inline-flex"
+                    className="hidden h-8 min-w-0 max-w-[18rem] items-center gap-1.5 rounded-lg border border-border-muted bg-background/70 px-2.5 text-[13px] text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary sm:inline-flex"
                     title={modelLabel}
                   >
                     <span className="truncate">{modelLabel}</span>
@@ -1015,7 +1015,7 @@ export function ChatView() {
             </div>
 
             {showModelMenu && hasConfiguredModel && (
-              <div className="absolute bottom-[3.5rem] right-4 z-30 w-[min(18rem,calc(100%-2rem))] overflow-hidden rounded-lg border border-border-muted bg-background shadow-elevated sm:right-6">
+              <div className="absolute bottom-[3.5rem] right-4 z-30 w-[min(18rem,calc(100%-2rem))] overflow-hidden rounded-lg border border-border-muted bg-background/95 shadow-elevated backdrop-blur-xl sm:right-6">
                 <div className="max-h-56 overflow-y-auto p-1">
                   {modelOptions.length > 0 ? (
                     modelOptions.map((option) => (

@@ -149,10 +149,10 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
   ];
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-background">
+    <div className="flex h-full w-full overflow-hidden bg-transparent">
       {/* Sidebar */}
       <div
-        className={`${compactSidebar ? 'w-14' : 'w-52 lg:w-60'} bg-background-secondary/88 border-r border-border-muted flex flex-col flex-shrink-0`}
+        className={`${compactSidebar ? 'w-14' : 'w-52 lg:w-60'} m-2 mr-0 rounded-2xl border border-border-subtle bg-background/46 flex flex-col flex-shrink-0 shadow-card backdrop-blur-xl`}
       >
         <div className={`flex-1 ${compactSidebar ? 'p-1.5 space-y-1' : 'p-3 space-y-1.5'}`}>
           {tabs.map((tab) => (
@@ -162,7 +162,7 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
               title={compactSidebar ? tab.label : undefined}
               className={`w-full flex items-center ${compactSidebar ? 'justify-center p-2.5' : 'gap-3 px-3.5 py-3'} rounded-lg text-left transition-colors active:scale-[0.98] ${
                 activeTab === tab.id
-                  ? 'bg-accent/10 text-text-primary font-medium border-l-2 border-accent'
+                  ? 'bg-accent/10 text-text-primary font-medium shadow-soft'
                   : 'hover:bg-surface-hover text-text-secondary hover:text-text-primary'
               }`}
             >
@@ -181,10 +181,10 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
             </button>
           ))}
         </div>
-        <div className={`${compactSidebar ? 'p-1.5' : 'p-4'} border-t border-border-muted`}>
+        <div className={`${compactSidebar ? 'p-1.5' : 'p-4'} border-t border-border-subtle`}>
           <button
             onClick={onClose}
-            className={`w-full py-2 ${compactSidebar ? 'px-2' : 'px-4'} rounded-lg bg-background hover:bg-background transition-colors text-text-secondary text-sm`}
+            className={`w-full py-2 ${compactSidebar ? 'px-2' : 'px-4'} rounded-lg bg-background/68 hover:bg-surface-hover transition-colors text-text-secondary text-sm shadow-soft`}
             title={compactSidebar ? t('common.close') : undefined}
           >
             {compactSidebar ? <X className="w-4 h-4 mx-auto" /> : t('common.close')}
@@ -199,7 +199,7 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
 
       {/* Content */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <div className="flex items-center justify-end px-3 py-2 sm:px-4 border-b border-border-muted flex-shrink-0 bg-background/88 backdrop-blur-sm">
+        <div className="flex items-center justify-end px-3 py-2 sm:px-4 border-b border-border-subtle flex-shrink-0 bg-background/28 backdrop-blur-xl">
           <button
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-surface-hover transition-colors"

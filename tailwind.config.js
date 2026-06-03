@@ -1,4 +1,6 @@
 /** @type {import('tailwindcss').Config} */
+const colorVar = (name) => `rgb(var(${name}) / <alpha-value>)`;
+
 module.exports = {
   darkMode: 'class',
   content: [
@@ -10,36 +12,36 @@ module.exports = {
       colors: {
         // Use CSS variables for theme-aware colors
         background: {
-          DEFAULT: 'var(--color-background)',
-          secondary: 'var(--color-background-secondary)',
+          DEFAULT: colorVar('--color-background-rgb'),
+          secondary: colorVar('--color-background-secondary-rgb'),
         },
         surface: {
-          DEFAULT: 'var(--color-surface)',
-          hover: 'var(--color-surface-hover)',
-          active: 'var(--color-surface-active)',
-          muted: 'var(--color-surface-muted)',
+          DEFAULT: colorVar('--color-surface-rgb'),
+          hover: colorVar('--color-surface-hover-rgb'),
+          active: colorVar('--color-surface-active-rgb'),
+          muted: colorVar('--color-surface-muted-rgb'),
         },
         border: {
-          DEFAULT: 'var(--color-border)',
-          muted: 'var(--color-border-muted)',
-          subtle: 'var(--color-border-subtle)',
+          DEFAULT: colorVar('--color-border-rgb'),
+          muted: colorVar('--color-border-muted-rgb'),
+          subtle: colorVar('--color-border-subtle-rgb'),
         },
         accent: {
-          DEFAULT: 'var(--color-accent)',
-          hover: 'var(--color-accent-hover)',
-          muted: 'var(--color-accent-muted)',
+          DEFAULT: colorVar('--color-accent-rgb'),
+          hover: colorVar('--color-accent-hover-rgb'),
+          muted: colorVar('--color-accent-muted-rgb'),
         },
         mcp: {
-          DEFAULT: 'var(--color-mcp)',
+          DEFAULT: colorVar('--color-mcp-rgb'),
         },
         text: {
-          primary: 'var(--color-text-primary)',
-          secondary: 'var(--color-text-secondary)',
-          muted: 'var(--color-text-muted)',
+          primary: colorVar('--color-text-primary-rgb'),
+          secondary: colorVar('--color-text-secondary-rgb'),
+          muted: colorVar('--color-text-muted-rgb'),
         },
-        success: 'var(--color-success)',
-        warning: 'var(--color-warning)',
-        error: 'var(--color-error)',
+        success: colorVar('--color-success-rgb'),
+        warning: colorVar('--color-warning-rgb'),
+        error: colorVar('--color-error-rgb'),
       },
       fontFamily: {
         sans: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
@@ -49,6 +51,29 @@ module.exports = {
         'soft': 'var(--shadow-soft)',
         'card': 'var(--shadow-card)',
         'elevated': 'var(--shadow-elevated)',
+      },
+      opacity: {
+        '18': '0.18',
+        '24': '0.24',
+        '28': '0.28',
+        '34': '0.34',
+        '35': '0.35',
+        '38': '0.38',
+        '42': '0.42',
+        '45': '0.45',
+        '46': '0.46',
+        '48': '0.48',
+        '55': '0.55',
+        '58': '0.58',
+        '62': '0.62',
+        '64': '0.64',
+        '68': '0.68',
+        '72': '0.72',
+        '86': '0.86',
+        '88': '0.88',
+        '92': '0.92',
+        '94': '0.94',
+        '96': '0.96',
       },
       borderRadius: {
         'lg': '8px',

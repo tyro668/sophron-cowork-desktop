@@ -26,7 +26,7 @@ export function GatewayControlCard({
   const { t } = useTranslation();
 
   return (
-    <div className="relative overflow-hidden rounded-lg border border-border-subtle bg-background/70">
+    <div className="glass-card relative overflow-hidden rounded-xl">
       <div className="relative p-4">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
@@ -66,15 +66,15 @@ export function GatewayControlCard({
         {/* Status metrics — only shown when running */}
         {status?.running && (
           <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-border/50">
-            <div className="text-center p-3 rounded-lg bg-surface/50">
+            <div className="rounded-lg border border-border-subtle bg-background/38 p-3 text-center shadow-soft">
               <div className="text-xl font-semibold text-accent">{status.activeSessions}</div>
               <div className="text-xs text-text-muted mt-1">{t('remote.activeSessions')}</div>
             </div>
-            <div className="text-center p-3 rounded-lg bg-surface/50">
+            <div className="rounded-lg border border-border-subtle bg-background/38 p-3 text-center shadow-soft">
               <div className="text-xl font-semibold text-success">{pairedUsers.length}</div>
               <div className="text-xs text-text-muted mt-1">{t('remote.authorizedUsers')}</div>
             </div>
-            <div className="text-center p-3 rounded-lg bg-surface/50">
+            <div className="rounded-lg border border-border-subtle bg-background/38 p-3 text-center shadow-soft">
               <div className="text-xl font-semibold text-warning">{pendingPairings.length}</div>
               <div className="text-xs text-text-muted mt-1">{t('remote.pendingApprovals')}</div>
             </div>

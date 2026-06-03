@@ -420,7 +420,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
         </div>
       )}
 
-      <section className="rounded-lg border border-border-muted bg-background/70 px-3 py-3">
+      <section className="glass-card rounded-xl px-3 py-3">
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
           <div className="min-w-0">
             <h2 className="text-[13px] font-medium text-text-primary">
@@ -434,7 +434,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
             <button
               onClick={handleSelectStoragePath}
               disabled={isLoading}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border-muted bg-background px-3 text-[13px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border-muted bg-background/68 px-3 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
             >
               <FolderOpen className="h-4 w-4" />
               {t('skills.selectStoragePath')}
@@ -442,7 +442,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
             <button
               onClick={handleOpenStoragePath}
               disabled={isLoading}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border-muted bg-background px-3 text-[13px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border-muted bg-background/68 px-3 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
             >
               <Globe className="h-4 w-4" />
               {t('skills.openStoragePath')}
@@ -450,7 +450,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
             <button
               onClick={handleRefreshSkills}
               disabled={isLoading}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border-muted bg-background px-3 text-[13px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border-muted bg-background/68 px-3 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
             >
               <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
               {t('skills.refreshSkills')}
@@ -468,7 +468,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
             {builtinSkills.length}
           </span>
         </div>
-        <div className="overflow-hidden rounded-lg border border-border-muted bg-background">
+        <div className="glass-card overflow-hidden rounded-xl">
           {builtinSkills.map((skill) => (
             <SkillRow
               key={skill.id}
@@ -485,7 +485,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
         <h2 className="text-[15px] font-semibold text-text-primary">
           {t('skills.customSkills')}
         </h2>
-        <div className="overflow-hidden rounded-lg border border-border-muted bg-background">
+        <div className="glass-card overflow-hidden rounded-xl">
           {customSkills.length === 0 ? (
             <div className="flex items-center gap-3 px-4 py-3 text-text-muted">
               <Package className="h-8 w-8 flex-shrink-0 opacity-45" />
@@ -516,7 +516,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
         <button
           onClick={handleBrowsePlugins}
           disabled={isLoading || isPluginLoading}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border-muted bg-background px-3 text-[13px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border-muted bg-background/42 px-3 text-[13px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
         >
           {isPluginLoading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -528,7 +528,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
         <button
           onClick={handleInstall}
           disabled={isLoading}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border-muted bg-background px-3 text-[13px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border-muted bg-background/42 px-3 text-[13px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
         >
           <Plus className="h-4 w-4" />
           {t('skills.installSkillFromFolder')}

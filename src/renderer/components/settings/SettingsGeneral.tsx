@@ -30,19 +30,19 @@ export function SettingsGeneral() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {/* Theme */}
-      <div className="space-y-3">
-        <h4 className="text-sm font-medium text-text-primary">{t('general.appearance')}</h4>
+      <div className="glass-card space-y-3 rounded-xl px-4 py-3">
+        <h4 className="text-[13px] font-medium text-text-primary">{t('general.appearance')}</h4>
         <div className="flex gap-2">
           {themeOptions.map((opt) => (
             <button
               key={opt.value}
               onClick={() => updateSettings({ theme: opt.value })}
-              className={`flex-1 px-4 py-2.5 rounded-lg border-2 text-sm font-medium transition-all ${
+              className={`flex-1 rounded-lg border px-3 py-2 text-[13px] font-medium transition-all ${
                 settings.theme === opt.value
-                  ? 'border-accent bg-accent/5 text-text-primary'
-                  : 'border-border bg-surface hover:border-accent/50 text-text-secondary'
+                  ? 'border-accent/40 bg-accent/10 text-text-primary shadow-soft'
+                  : 'border-border-muted bg-background/62 hover:border-accent/40 text-text-secondary shadow-soft'
               }`}
             >
               {opt.label}
@@ -52,17 +52,17 @@ export function SettingsGeneral() {
       </div>
 
       {/* Language */}
-      <div className="space-y-3">
-        <h4 className="text-sm font-medium text-text-primary">{t('general.language')}</h4>
+      <div className="glass-card space-y-3 rounded-xl px-4 py-3">
+        <h4 className="text-[13px] font-medium text-text-primary">{t('general.language')}</h4>
         <div className="flex gap-2">
           {languages.map((lang) => (
             <button
               key={lang.code}
               onClick={() => i18n.changeLanguage(lang.code)}
-              className={`flex-1 px-4 py-2.5 rounded-lg border-2 text-sm font-medium transition-all ${
+              className={`flex-1 rounded-lg border px-3 py-2 text-[13px] font-medium transition-all ${
                 currentLang === lang.code
-                  ? 'border-accent bg-accent/5 text-text-primary'
-                  : 'border-border bg-surface hover:border-accent/50 text-text-secondary'
+                  ? 'border-accent/40 bg-accent/10 text-text-primary shadow-soft'
+                  : 'border-border-muted bg-background/62 hover:border-accent/40 text-text-secondary shadow-soft'
               }`}
             >
               {lang.nativeName}
@@ -73,7 +73,7 @@ export function SettingsGeneral() {
 
       {/* About */}
       {appVer && (
-        <div className="pt-4 border-t border-border">
+        <div className="glass-card rounded-xl px-4 py-3">
           <p className="text-xs text-text-muted">
             {t('common.appName')} v{appVer}
           </p>

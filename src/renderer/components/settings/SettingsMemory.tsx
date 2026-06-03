@@ -346,7 +346,7 @@ export function SettingsMemory() {
   return (
     <div className="space-y-6">
       <SettingsContentSection title={t('memory.title')} description={t('memory.description')}>
-        <div className="flex flex-col gap-3 rounded-xl border border-border-muted bg-background-secondary/60 p-4">
+        <div className="flex flex-col gap-3 glass-card rounded-xl p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-medium text-text-primary">
@@ -424,7 +424,7 @@ export function SettingsMemory() {
           '默认继承当前激活的 API 配置。这里主要调节导航深度、embedding 和落盘目录。'
         )}
       >
-        <div className="space-y-4 rounded-xl border border-border-muted bg-background-secondary/60 p-4">
+        <div className="space-y-4 glass-card rounded-xl p-4">
           <div className="grid gap-4 md:grid-cols-2">
             <LabeledField label={t('memory.storageRoot', '存储根目录')}>
               <input
@@ -433,7 +433,7 @@ export function SettingsMemory() {
                   setRuntimeDraft((prev) => ({ ...prev, storageRoot: event.target.value }))
                 }
                 placeholder={overview?.storageRoot || ''}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
+                className="w-full rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
               />
             </LabeledField>
             <LabeledField label={t('memory.maxNavSteps', '导航步数')}>
@@ -448,7 +448,7 @@ export function SettingsMemory() {
                     maxNavSteps: Number(event.target.value || 0),
                   }))
                 }
-                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
+                className="w-full rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
               />
             </LabeledField>
             <LabeledField label={t('memory.ingestionConcurrency', '重建并发度')}>
@@ -463,7 +463,7 @@ export function SettingsMemory() {
                     ingestionConcurrency: Number(event.target.value || 1),
                   }))
                 }
-                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
+                className="w-full rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
               />
             </LabeledField>
             <ToggleField
@@ -494,7 +494,7 @@ export function SettingsMemory() {
                 onChange={(event) =>
                   setRuntimeDraft((prev) => ({ ...prev, evalArtifactsRoot: event.target.value }))
                 }
-                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
+                className="w-full rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
               />
             </LabeledField>
             <LabeledField label={t('memory.evalMaxRounds', '评测轮数')}>
@@ -509,7 +509,7 @@ export function SettingsMemory() {
                     evalMaxRounds: Number(event.target.value || 12),
                   }))
                 }
-                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
+                className="w-full rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
               />
             </LabeledField>
             <LabeledField label={t('memory.promptIterationRounds', 'Prompt 迭代轮数')}>
@@ -524,12 +524,12 @@ export function SettingsMemory() {
                     promptIterationRounds: Number(event.target.value || 2),
                   }))
                 }
-                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
+                className="w-full rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
               />
             </LabeledField>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-3 rounded-lg border border-border-muted bg-background/80 p-3">
+            <div className="space-y-3 rounded-lg border border-border-muted bg-background/34 p-3">
               <p className="text-sm font-medium text-text-primary">
                 {t('memory.llmConfig', 'Memory LLM')}
               </p>
@@ -553,7 +553,7 @@ export function SettingsMemory() {
                     }))
                   }
                   placeholder={appConfig?.model || ''}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
+                  className="w-full rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
                 />
               </LabeledField>
               <LabeledField label={t('memory.baseUrlOverride', 'Base URL 覆盖')}>
@@ -566,7 +566,7 @@ export function SettingsMemory() {
                     }))
                   }
                   placeholder={appConfig?.baseUrl || ''}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
+                  className="w-full rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
                 />
               </LabeledField>
               <LabeledField label={t('memory.apiKeyOverride', 'API Key 覆盖')}>
@@ -579,11 +579,11 @@ export function SettingsMemory() {
                       llm: { ...prev.llm, apiKey: event.target.value },
                     }))
                   }
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
+                  className="w-full rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
                 />
               </LabeledField>
             </div>
-            <div className="space-y-3 rounded-lg border border-border-muted bg-background/80 p-3">
+            <div className="space-y-3 rounded-lg border border-border-muted bg-background/34 p-3">
               <p className="text-sm font-medium text-text-primary">
                 {t('memory.embeddingConfig', 'Embedding')}
               </p>
@@ -606,7 +606,7 @@ export function SettingsMemory() {
                       embedding: { ...prev.embedding, model: event.target.value },
                     }))
                   }
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
+                  className="w-full rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
                 />
               </LabeledField>
               <LabeledField label={t('memory.baseUrlOverride', 'Base URL 覆盖')}>
@@ -618,7 +618,7 @@ export function SettingsMemory() {
                       embedding: { ...prev.embedding, baseUrl: event.target.value },
                     }))
                   }
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
+                  className="w-full rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
                 />
               </LabeledField>
               <LabeledField label={t('memory.apiKeyOverride', 'API Key 覆盖')}>
@@ -631,7 +631,7 @@ export function SettingsMemory() {
                       embedding: { ...prev.embedding, apiKey: event.target.value },
                     }))
                   }
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
+                  className="w-full rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent"
                 />
               </LabeledField>
             </div>
@@ -654,18 +654,18 @@ export function SettingsMemory() {
         title={t('memory.searchTitle')}
         description={t('memory.searchDescription')}
       >
-        <div className="space-y-3 rounded-xl border border-border-muted bg-background-secondary/60 p-4">
+        <div className="space-y-3 glass-card rounded-xl p-4">
           <div className="flex flex-col gap-3 sm:flex-row">
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={t('memory.searchPlaceholder')}
-              className="flex-1 rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-accent"
+              className="flex-1 rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2.5 text-sm text-text-primary outline-none transition-colors focus:border-accent"
             />
             <select
               value={scope}
               onChange={(event) => setScope(event.target.value as SearchMode)}
-              className="rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text-primary outline-none"
+              className="rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2.5 text-sm text-text-primary outline-none"
             >
               {hasWorkspace && <option value="workspace">{t('memory.scopeWorkspace')}</option>}
               <option value="all">{t('memory.scopeAll')}</option>
@@ -674,7 +674,7 @@ export function SettingsMemory() {
             <select
               value={sourceWorkspaceFilter}
               onChange={(event) => setSourceWorkspaceFilter(event.target.value)}
-              className="rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-text-primary outline-none"
+              className="rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2.5 text-sm text-text-primary outline-none"
             >
               <option value="">{t('memory.allSources', '全部来源')}</option>
               {overview?.topSourceWorkspaces?.map((item) => (
@@ -730,7 +730,7 @@ export function SettingsMemory() {
               />
             </div>
             <div className="space-y-4">
-              <div className="rounded-xl border border-border-muted bg-background/80 p-4">
+              <div className="glass-card rounded-xl p-4">
                 <p className="text-sm font-semibold text-text-primary">{t('memory.detailTitle')}</p>
                 {selected ? (
                   <div className="mt-3 space-y-3">
@@ -751,23 +751,23 @@ export function SettingsMemory() {
                         onClick={() => {
                           void handleInspectSession(selected.sessionId!, selected.sourceWorkspace || selected.workspaceKey);
                         }}
-                        className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium text-text-primary"
+                        className="rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2 text-xs font-medium text-text-primary"
                       >
                         {t('memory.inspectSession', '查看该会话的完整记忆')}
                       </button>
                     )}
                     {selected.details && (
-                      <pre className="max-h-56 overflow-auto rounded-lg bg-background-secondary/80 p-3 text-xs leading-5 text-text-secondary whitespace-pre-wrap">
+                      <pre className="max-h-56 overflow-auto rounded-lg bg-background/34 border border-border-subtle p-3 text-xs leading-5 text-text-secondary whitespace-pre-wrap">
                         {selected.details}
                       </pre>
                     )}
                     {selected.rawText && (
-                      <pre className="max-h-64 overflow-auto rounded-lg bg-background-secondary/80 p-3 text-xs leading-5 text-text-secondary whitespace-pre-wrap">
+                      <pre className="max-h-64 overflow-auto rounded-lg bg-background/34 border border-border-subtle p-3 text-xs leading-5 text-text-secondary whitespace-pre-wrap">
                         {selected.rawText}
                       </pre>
                     )}
                     {selected.sourceExcerpt && (
-                      <div className="rounded-lg border border-border-muted bg-background-secondary/60 p-3 text-xs text-text-secondary whitespace-pre-wrap">
+                      <div className="rounded-lg border border-border-muted bg-background/34 p-3 text-xs text-text-secondary whitespace-pre-wrap">
                         {selected.sourceExcerpt}
                       </div>
                     )}
@@ -777,7 +777,7 @@ export function SettingsMemory() {
                 )}
               </div>
 
-              <div className="rounded-xl border border-border-muted bg-background/80 p-4">
+              <div className="glass-card rounded-xl p-4">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-text-primary">
                     {t('memory.inspectSession', '查看会话记忆')}
@@ -787,7 +787,7 @@ export function SettingsMemory() {
                       onClick={() => {
                         void window.electronAPI.showItemInFolder(inspectedSession.filePath);
                       }}
-                      className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium text-text-primary"
+                      className="rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2 text-xs font-medium text-text-primary"
                     >
                       {t('memory.revealInFinder', '在 Finder 中显示')}
                     </button>
@@ -795,7 +795,7 @@ export function SettingsMemory() {
                 </div>
                 {inspectedSession ? (
                   <div className="mt-3 space-y-3">
-                    <div className="rounded-lg border border-border-muted bg-background-secondary/60 p-3">
+                    <div className="rounded-lg border border-border-muted bg-background/34 p-3">
                       <p className="text-xs text-text-muted">
                         {inspectedSession.sourceWorkspace || t('memory.noWorkspace', '暂无工作区')}
                       </p>
@@ -803,14 +803,14 @@ export function SettingsMemory() {
                         {inspectedSession.session.summary}
                       </p>
                     </div>
-                    <pre className="max-h-48 overflow-auto rounded-lg bg-background-secondary/80 p-3 text-xs leading-5 text-text-secondary whitespace-pre-wrap">
+                    <pre className="max-h-48 overflow-auto rounded-lg bg-background/34 border border-border-subtle p-3 text-xs leading-5 text-text-secondary whitespace-pre-wrap">
                       {JSON.stringify(inspectedSession.session.rawSession, null, 2)}
                     </pre>
                     <div className="space-y-2">
                       {inspectedSession.chunks.map((chunk) => (
                         <div
                           key={chunk.id}
-                          className="rounded-lg border border-border-muted bg-background-secondary/60 p-3"
+                          className="rounded-lg border border-border-muted bg-background/34 p-3"
                         >
                           <p className="text-sm font-medium text-text-primary">{chunk.summary}</p>
                           <p className="mt-1 text-xs text-text-muted">
@@ -841,7 +841,7 @@ export function SettingsMemory() {
           '直接查看实际落盘的 core / unified experience / session_state / eval artifacts。'
         )}
       >
-        <div className="grid gap-4 rounded-xl border border-border-muted bg-background-secondary/60 p-4 lg:grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
+        <div className="grid gap-4 glass-card rounded-xl p-4 lg:grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
@@ -851,7 +851,7 @@ export function SettingsMemory() {
                 onClick={() => {
                   void refreshFiles();
                 }}
-                className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium text-text-primary"
+                className="rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2 text-xs font-medium text-text-primary"
               >
                 {t('memory.refreshFiles', '刷新')}
               </button>
@@ -866,7 +866,7 @@ export function SettingsMemory() {
                   className={`w-full rounded-lg border p-3 text-left transition-colors ${
                     selectedFilePath === file.filePath
                       ? 'border-accent bg-accent/5'
-                      : 'border-border-muted bg-background/80 hover:bg-surface-hover'
+                      : 'border-border-muted bg-background/34 hover:bg-surface-hover'
                   }`}
                 >
                   <p className="text-sm font-medium text-text-primary">{file.label}</p>
@@ -885,7 +885,7 @@ export function SettingsMemory() {
             )}
           </div>
 
-          <div className="rounded-xl border border-border-muted bg-background/80 p-4">
+          <div className="glass-card rounded-xl p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-text-primary">
@@ -900,14 +900,14 @@ export function SettingsMemory() {
                   onClick={() => {
                     void window.electronAPI.showItemInFolder(fileContent.filePath);
                   }}
-                  className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium text-text-primary"
+                  className="rounded-lg border border-border-muted bg-background/42 shadow-soft px-3 py-2 text-xs font-medium text-text-primary"
                 >
                   {t('memory.revealInFinder', '在 Finder 中显示')}
                 </button>
               )}
             </div>
             {fileContent ? (
-              <pre className="mt-3 max-h-[34rem] overflow-auto rounded-lg bg-background-secondary/80 p-3 text-xs leading-5 text-text-secondary whitespace-pre-wrap">
+              <pre className="mt-3 max-h-[34rem] overflow-auto rounded-lg bg-background/34 border border-border-subtle p-3 text-xs leading-5 text-text-secondary whitespace-pre-wrap">
                 {fileContent.parsed
                   ? JSON.stringify(fileContent.parsed, null, 2)
                   : fileContent.text || t('memory.emptyFile', '文件为空')}
@@ -931,7 +931,7 @@ export function SettingsMemory() {
               void handleRebuildWorkspace();
             }}
             disabled={!hasWorkspace || isBusy}
-            className="rounded-lg border border-border bg-background px-4 py-2.5 text-sm font-medium text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-lg border border-border-muted bg-background/42 shadow-soft px-4 py-2.5 text-sm font-medium text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
           >
             {t('memory.rebuildWorkspace')}
           </button>
@@ -940,7 +940,7 @@ export function SettingsMemory() {
               void handleRebuildAll();
             }}
             disabled={isBusy}
-            className="rounded-lg border border-border bg-background px-4 py-2.5 text-sm font-medium text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-lg border border-border-muted bg-background/42 shadow-soft px-4 py-2.5 text-sm font-medium text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
           >
             {t('memory.rebuildAll', '重建全部记忆')}
           </button>
@@ -976,7 +976,7 @@ export function SettingsMemory() {
 
 function MetricCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-lg border border-border-muted bg-background/80 p-3">
+    <div className="rounded-lg border border-border-muted bg-background/34 p-3">
       <p className="text-xs text-text-muted">{label}</p>
       <p className="mt-1 text-lg font-semibold text-text-primary">{value}</p>
     </div>
@@ -993,7 +993,7 @@ function InfoCard({
   secondary?: string;
 }) {
   return (
-    <div className="rounded-lg border border-border-muted bg-background/80 p-3 text-xs text-text-muted">
+    <div className="rounded-lg border border-border-muted bg-background/34 p-3 text-xs text-text-muted">
       <p className="font-medium text-text-secondary">{label}</p>
       <p className="mt-1 break-all">{value}</p>
       {secondary ? <p className="mt-2 break-all text-rose-500">{secondary}</p> : null}
@@ -1026,7 +1026,7 @@ function ToggleField({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex items-center justify-between gap-3 rounded-lg border border-border-muted bg-background/70 px-3 py-2.5">
+    <label className="flex items-center justify-between gap-3 rounded-lg border border-border-muted bg-background/42 px-3 py-2.5">
       <span className="text-sm text-text-primary">{label}</span>
       <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
     </label>
@@ -1060,7 +1060,7 @@ function ResultGroup({
               className={`w-full rounded-lg border p-3 text-left transition-colors ${
                 selectedId === item.id
                   ? 'border-accent bg-accent/5'
-                  : 'border-border-muted bg-background/80 hover:bg-surface-hover'
+                  : 'border-border-muted bg-background/34 hover:bg-surface-hover'
               }`}
             >
               <p className="text-sm font-medium text-text-primary">{item.title}</p>

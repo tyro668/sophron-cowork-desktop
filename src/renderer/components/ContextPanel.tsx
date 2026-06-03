@@ -268,7 +268,7 @@ export function ContextPanel() {
 
   if (contextPanelCollapsed) {
     return (
-      <div className="w-10 bg-background border-l border-border-muted flex items-start justify-center pt-3">
+      <div className="ml-3 w-10 rounded-2xl border border-border-subtle bg-background/48 flex items-start justify-center pt-3 backdrop-blur-xl">
         <button
           onClick={toggleContextPanel}
           className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
@@ -281,9 +281,9 @@ export function ContextPanel() {
   }
 
   return (
-    <div className="w-72 bg-background border-l border-border-muted flex flex-col overflow-hidden text-sm">
+    <div className="glass-surface ml-3 w-80 rounded-2xl flex flex-col overflow-hidden text-sm">
       {/* Header */}
-      <div className="px-3 h-10 flex items-center gap-2 border-b border-border-muted shrink-0">
+      <div className="px-3 h-10 flex items-center gap-2 border-b border-border-subtle shrink-0 bg-background/24">
         <button
           onClick={toggleContextPanel}
           className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
@@ -291,14 +291,14 @@ export function ContextPanel() {
         >
           <ChevronRight className="w-3.5 h-3.5" />
         </button>
-        <span className="text-xs font-medium text-text-muted uppercase tracking-wider">
+        <span className="text-xs font-medium text-text-secondary">
           {t('context.context')}
         </span>
       </div>
 
       {/* Session Stats */}
       {activeSession && (
-        <div className="px-4 py-3 border-b border-border-muted space-y-1.5">
+        <div className="m-2 rounded-xl border border-border-subtle bg-background/46 px-3 py-3 shadow-soft space-y-1.5">
           <div className="flex items-center gap-1.5 text-text-primary font-medium">
             <Cpu className="w-3.5 h-3.5 text-text-muted shrink-0" />
             <span className="truncate">{modelName}</span>
@@ -324,7 +324,7 @@ export function ContextPanel() {
 
       {/* Context Usage */}
       {activeSession && contextUsage && (
-        <div className="px-4 py-2.5 border-b border-border-muted space-y-1.5">
+        <div className="mx-2 mb-2 rounded-xl border border-border-subtle bg-background/46 px-3 py-2.5 shadow-soft space-y-1.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-text-muted uppercase tracking-wider">
               {t('context.contextUsage')}
@@ -357,7 +357,7 @@ export function ContextPanel() {
       )}
 
       {/* Artifacts Section */}
-      <div className="border-b border-border-muted">
+      <div className="mx-2 mb-2 overflow-hidden rounded-xl border border-border-subtle bg-background/46 shadow-soft">
         <button
           onClick={() => setArtifactsOpen(!artifactsOpen)}
           className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-surface-hover transition-colors"
@@ -439,9 +439,9 @@ export function ContextPanel() {
       </div>
 
       {/* Working Directory */}
-      <div className="border-b border-border-muted">
-        <div className="px-4 py-2.5">
-          <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">
+      <div className="mx-2 mb-2 rounded-xl border border-border-subtle bg-background/46 shadow-soft">
+        <div className="px-3 py-2.5">
+          <p className="text-xs font-medium text-text-muted mb-2">
             {t('context.workingDirectory')}
           </p>
           <div className="flex items-center gap-1.5 min-w-0">
@@ -510,8 +510,8 @@ export function ContextPanel() {
 
       {/* MCP Connectors */}
       <div className="flex-1 overflow-y-auto">
-        <div className="px-4 py-2.5">
-          <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">
+        <div className="px-3 py-2.5">
+          <p className="text-xs font-medium text-text-muted mb-2">
             {t('context.mcpConnectors')}
           </p>
           {mcpServers.length === 0 ? (
@@ -580,7 +580,7 @@ function ConnectorItem({
   ).length;
 
   return (
-    <div className="rounded-lg border border-border overflow-hidden">
+    <div className="rounded-lg border border-border-subtle bg-background/42 overflow-hidden shadow-soft">
       <button
         onClick={onToggle}
         className={`w-full px-3 py-2 flex items-center gap-2 transition-colors ${

@@ -368,11 +368,11 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         </div>
       )}
 
-      <div className="rounded-lg border border-border bg-surface p-4 space-y-3">
+      <div className="rounded-lg border border-border glass-card p-4 space-y-3">
         <h4 className="text-sm font-medium text-text-primary">
           {editingId ? t('schedule.editTitle') : t('schedule.createTitle')}
         </h4>
-        <div className="rounded-lg border border-border bg-background px-3 py-2">
+        <div className="rounded-lg border border-border bg-background/42 px-3 py-2">
           <div className="text-xs text-text-muted mb-1">{t('schedule.autoTitleLabel')}</div>
           <div className="text-sm text-text-primary break-all">{previewTitle}</div>
           {editingId && (
@@ -388,15 +388,15 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           onChange={(e) => setPrompt(e.target.value)}
           placeholder={t('schedule.promptPlaceholder')}
           rows={3}
-          className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm"
+          className="w-full px-3 py-2 rounded-lg bg-background/42 border border-border-muted text-sm"
         />
         <input
           value={cwd}
           onChange={(e) => setCwd(e.target.value)}
           placeholder={t('schedule.cwdPlaceholder')}
-          className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm"
+          className="w-full px-3 py-2 rounded-lg bg-background/42 border border-border-muted text-sm"
         />
-        <div className="rounded-lg border border-border bg-background p-3 space-y-3">
+        <div className="rounded-lg border border-border bg-background/42 p-3 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <div>
               <div className="text-sm font-medium text-text-primary">
@@ -1025,7 +1025,7 @@ function TimeMultiSelectMenu(props: {
       </button>
       {open && (
         <div
-          className={`absolute right-0 z-20 w-[min(22rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-border/80 bg-surface p-3 shadow-[0_24px_60px_rgba(0,0,0,0.14)] ${
+          className={`absolute right-0 z-20 w-[min(22rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-border/70 bg-surface p-3 shadow-[0_24px_60px_rgba(70,101,135,0.13)] ${
             openUpward ? 'bottom-[calc(100%+8px)]' : 'top-[calc(100%+8px)]'
           }`}
         >
@@ -1050,7 +1050,7 @@ function TimeMultiSelectMenu(props: {
                   step={60}
                   value={draftTime}
                   onChange={(event) => setDraftTime(event.target.value)}
-                  className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-text-primary"
+                  className="min-w-0 flex-1 rounded-lg border border-border bg-background/42 px-3 py-2 text-sm text-text-primary"
                 />
                 <button
                   type="button"
@@ -1066,7 +1066,7 @@ function TimeMultiSelectMenu(props: {
             <div className="space-y-2">
               <div className="text-xs text-text-muted">{t('schedule.pickerSelectedTimes')}</div>
               {values.length > 0 ? (
-                <div className="flex flex-wrap gap-2 rounded-lg bg-background p-2">
+                <div className="flex flex-wrap gap-2 rounded-lg bg-background/42 p-2">
                   {values.map((time) => (
                     <button
                       key={time}
@@ -1080,7 +1080,7 @@ function TimeMultiSelectMenu(props: {
                   ))}
                 </div>
               ) : (
-                <div className="rounded-lg bg-background px-3 py-2 text-xs text-text-muted">
+                <div className="rounded-lg bg-background/42 px-3 py-2 text-xs text-text-muted">
                   {t('schedule.pickerNone')}
                 </div>
               )}

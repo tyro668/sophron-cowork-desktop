@@ -427,7 +427,7 @@ function ServerCard({
   const [showTools, setShowTools] = useState(false);
 
   return (
-    <div className="rounded-lg border border-border bg-surface overflow-hidden">
+    <div className="rounded-lg border border-border bg-[var(--glass-card)] overflow-hidden backdrop-blur-xl">
       <div className="p-4">
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
@@ -517,7 +517,7 @@ function ServerCard({
                       return (
                         <div
                           key={idx}
-                          className="px-2 py-1.5 rounded bg-background border border-border text-xs text-text-secondary"
+                          className="px-2 py-1.5 rounded bg-background/42 border border-border-muted text-xs text-text-secondary"
                           title={tool.description || tool.name}
                         >
                           <div className="font-mono text-accent break-words whitespace-normal">
@@ -672,7 +672,7 @@ function ServerForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="rounded-lg border border-border bg-surface p-4 space-y-4"
+      className="rounded-lg border border-border glass-card p-4 space-y-4"
     >
       <h3 className="font-medium text-text-primary">
         {server ? t('mcp.editConnector') : t('mcp.addConnectorTitle')}
@@ -685,7 +685,7 @@ function ServerForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={t('mcp.namePlaceholder')}
-          className="w-full px-4 py-2 rounded-lg bg-background border border-border text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30"
+          className="w-full px-4 py-2 rounded-lg bg-background/42 border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30"
           required
         />
       </div>
@@ -740,7 +740,7 @@ function ServerForm({
               value={command}
               onChange={(e) => setCommand(e.target.value)}
               placeholder={t('mcp.commandPlaceholder')}
-              className="w-full px-4 py-2 rounded-lg bg-background border border-border text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 font-mono text-sm"
+              className="w-full px-4 py-2 rounded-lg bg-background/42 border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 font-mono text-sm"
               required
             />
           </div>
@@ -753,7 +753,7 @@ function ServerForm({
               value={args}
               onChange={(e) => setArgs(e.target.value)}
               placeholder={t('mcp.argumentsPlaceholder')}
-              className="w-full px-4 py-2 rounded-lg bg-background border border-border text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 font-mono text-sm"
+              className="w-full px-4 py-2 rounded-lg bg-background/42 border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 font-mono text-sm"
             />
             <p className="text-xs text-text-muted mt-1">{t('mcp.spaceSeparated')}</p>
           </div>
@@ -787,7 +787,7 @@ function ServerForm({
                       value={value}
                       onChange={(e) => handleEnvChange(key, e.target.value)}
                       placeholder={`${t('mcp.envValuePlaceholder')}: ${key}`}
-                      className="flex-1 px-3 py-1.5 rounded bg-background border border-border text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent/30"
+                      className="flex-1 px-3 py-1.5 rounded bg-background/42 border border-border-muted text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent/30"
                     />
                     <button
                       type="button"
@@ -863,7 +863,7 @@ function ServerForm({
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://example.com/mcp"
-            className="w-full px-4 py-2 rounded-lg bg-background border border-border text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 font-mono text-sm"
+            className="w-full px-4 py-2 rounded-lg bg-background/42 border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 font-mono text-sm"
             required
           />
         </div>

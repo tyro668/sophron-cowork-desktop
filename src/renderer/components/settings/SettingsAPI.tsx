@@ -114,7 +114,7 @@ export function SettingsAPI() {
         : currentPreset?.baseUrl || '';
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       {/* Config Set Switcher */}
       <ApiConfigSetManager
         configSets={configSets}
@@ -137,8 +137,8 @@ export function SettingsAPI() {
       />
 
       {/* Provider Selection */}
-      <div className="space-y-3 py-4 border-b border-border-muted">
-        <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
+      <div className="glass-card space-y-3 rounded-xl px-4 py-3">
+        <label className="flex items-center gap-2 text-[13px] font-medium text-text-primary">
           <Server className="w-4 h-4" />
           {t('api.provider')}
         </label>
@@ -148,7 +148,7 @@ export function SettingsAPI() {
               key={p}
               onClick={() => changeProvider(p)}
               disabled={isLoadingConfig}
-              className={`px-3 py-2 rounded-lg text-sm transition-colors border ${
+              className={`px-3 py-2 rounded-lg text-[13px] transition-colors border ${
                 provider === p
                   ? 'border-accent bg-accent/10 text-accent font-medium'
                   : 'border-border-muted text-text-secondary hover:border-border hover:text-text-primary disabled:opacity-50'
@@ -161,10 +161,10 @@ export function SettingsAPI() {
       </div>
 
       {/* API Key */}
-      <div className="space-y-3 py-4 border-b border-border-muted">
+      <div className="glass-card space-y-3 rounded-xl px-4 py-3">
         <label
           htmlFor="api-key-input"
-          className="flex items-center gap-2 text-sm font-medium text-text-primary"
+          className="flex items-center gap-2 text-[13px] font-medium text-text-primary"
         >
           <Key className="w-4 h-4" />
           {t('api.apiKey')}
@@ -175,16 +175,16 @@ export function SettingsAPI() {
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
           placeholder={currentPreset?.keyPlaceholder || t('api.enterApiKey')}
-          className="w-full px-4 py-3 rounded-lg bg-background border border-border text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
+          className="w-full rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[13px] text-text-primary shadow-soft placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
         />
       </div>
 
       {/* Custom Protocol */}
       {provider === 'custom' && (
-        <div className="space-y-3 py-4 border-b border-border-muted">
+        <div className="glass-card space-y-3 rounded-xl px-4 py-3">
           <label
             id="api-protocol-label"
-            className="flex items-center gap-2 text-sm font-medium text-text-primary"
+            className="flex items-center gap-2 text-[13px] font-medium text-text-primary"
           >
             <Server className="w-4 h-4" />
             {t('api.protocol')}
@@ -200,7 +200,7 @@ export function SettingsAPI() {
               <button
                 key={mode.id}
                 onClick={() => changeProtocol(mode.id)}
-                className={`px-3 py-2 rounded-lg text-sm transition-colors border ${
+                className={`px-3 py-2 rounded-lg text-[13px] transition-colors border ${
                   customProtocol === mode.id
                     ? 'border-accent bg-accent/10 text-accent font-medium'
                     : 'border-border-muted text-text-secondary hover:border-border hover:text-text-primary'
@@ -214,11 +214,11 @@ export function SettingsAPI() {
       )}
 
       {showsBaseUrl && (
-        <div className="space-y-3 py-4 border-b border-border-muted">
+        <div className="glass-card space-y-3 rounded-xl px-4 py-3">
           <div className="flex items-center justify-between gap-2">
             <label
               htmlFor="api-base-url-input"
-              className="flex items-center gap-2 text-sm font-medium text-text-primary"
+              className="flex items-center gap-2 text-[13px] font-medium text-text-primary"
             >
               <Server className="w-4 h-4" />
               {t('api.baseUrl')}
@@ -245,17 +245,17 @@ export function SettingsAPI() {
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
             placeholder={baseUrlPlaceholder}
-            className="w-full px-4 py-3 rounded-lg bg-background border border-border text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
+            className="w-full rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[13px] text-text-primary shadow-soft placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
           />
         </div>
       )}
 
       {/* Model Selection */}
-      <div className="space-y-3 py-4 border-b border-border-muted">
+      <div className="glass-card space-y-3 rounded-xl px-4 py-3">
         <div className="flex items-center justify-between">
           <label
             htmlFor="api-model-input"
-            className="flex items-center gap-2 text-sm font-medium text-text-primary"
+            className="flex items-center gap-2 text-[13px] font-medium text-text-primary"
           >
             <Cpu className="w-4 h-4" />
             {t('api.model')}
@@ -303,14 +303,14 @@ export function SettingsAPI() {
             value={customModel}
             onChange={(e) => setCustomModel(e.target.value)}
             placeholder={modelInputPlaceholder}
-            className="w-full px-4 py-3 rounded-lg bg-background border border-border text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
+            className="w-full rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[13px] text-text-primary shadow-soft placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
           />
         ) : (
           <select
             id="api-model-input"
             value={modelOptions.length ? model : ''}
             onChange={(e) => setModel(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg bg-background border border-border text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all appearance-none cursor-pointer"
+            className="w-full rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[13px] text-text-primary shadow-soft focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all appearance-none cursor-pointer"
           >
             {modelOptions.length ? (
               (modelOptions as ModelOptionItem[]).map((m) => (
@@ -344,7 +344,7 @@ export function SettingsAPI() {
                 placeholder={t('api.contextWindowPlaceholder')}
                 min={1024}
                 step={1024}
-                className="w-full px-3 py-2 rounded-lg bg-background border border-border text-text-primary text-sm placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
+                className="w-full rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[13px] text-text-primary shadow-soft placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
               />
             </div>
             <div>
@@ -362,7 +362,7 @@ export function SettingsAPI() {
                 placeholder={t('api.maxOutputTokensPlaceholder')}
                 min={256}
                 step={256}
-                className="w-full px-3 py-2 rounded-lg bg-background border border-border text-text-primary text-sm placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
+                className="w-full rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[13px] text-text-primary shadow-soft placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
               />
             </div>
           </div>
@@ -377,7 +377,7 @@ export function SettingsAPI() {
       )}
 
       {/* Enable Thinking Mode */}
-      <div className="space-y-3 py-4 border-b border-border-muted">
+      <div className="glass-card space-y-3 rounded-xl px-4 py-3">
         <div className="flex items-start gap-2 text-xs text-text-muted">
           <input
             type="checkbox"
@@ -415,7 +415,7 @@ export function SettingsAPI() {
       />
 
       {/* Save Button */}
-      <div className="space-y-3 py-4 border-b border-border-muted">
+      <div className="space-y-3 py-2">
         <div className="grid grid-cols-1 gap-2">
           <button
             onClick={() => {

@@ -167,7 +167,7 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
       )}
 
       {/* Developer Logs Toggle */}
-      <section className="rounded-lg border border-border-subtle bg-background px-4 py-4">
+      <section className="glass-card rounded-xl px-4 py-4">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
             <h4 className="text-sm font-semibold text-text-primary">{t('logs.enableDevLogs')}</h4>
@@ -195,12 +195,12 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
         description={t('logs.inventoryDescription')}
       >
         <div className="grid grid-cols-2 gap-3">
-          <div className="p-4 rounded-lg bg-background border border-border-subtle">
-            <div className="text-2xl font-bold text-text-primary">{logFiles.length}</div>
+          <div className="glass-card rounded-lg p-4">
+            <div className="text-[20px] font-medium text-text-primary">{logFiles.length}</div>
             <div className="text-sm text-text-muted">{t('logs.logFiles')}</div>
           </div>
-          <div className="p-4 rounded-lg bg-background border border-border-subtle">
-            <div className="text-2xl font-bold text-text-primary">{formatFileSize(totalSize)}</div>
+          <div className="glass-card rounded-lg p-4">
+            <div className="text-[20px] font-medium text-text-primary">{formatFileSize(totalSize)}</div>
             <div className="text-sm text-text-muted">{t('logs.totalSize')}</div>
           </div>
         </div>
@@ -218,7 +218,7 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
             {logFiles.map((file) => (
               <div
                 key={file.path}
-                className="p-3 rounded-lg bg-background border border-border-subtle"
+                className="glass-card rounded-lg p-3"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
@@ -240,7 +240,7 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
           title={t('logs.logsDirectory')}
           description={t('logs.directoryDescription')}
         >
-          <div className="p-3 rounded-lg bg-background border border-border-subtle">
+          <div className="glass-card rounded-lg p-3">
             <div className="text-xs text-text-muted mb-1">{t('logs.logsDirectory')}</div>
             <div className="flex items-start gap-2">
               <button
@@ -283,7 +283,7 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
           <button
             onClick={handleOpen}
             disabled={isLoading}
-            className="py-3 px-4 rounded-lg bg-background border border-border-subtle text-text-primary font-medium hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors active:scale-[0.98] flex items-center justify-center gap-2"
+            className="glass-card flex items-center justify-center gap-2 rounded-lg px-4 py-3 font-medium text-text-primary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.98]"
           >
             <Globe className="w-4 h-4" />
             <span className="text-sm">{t('logs.openFolder')}</span>
