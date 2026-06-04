@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { DataCommandService } from '../src/main/data/data-command-service';
+import { createDataCustomTools } from '../src/main/data/data-tool-definitions';
 import { DataToolService } from '../src/main/data/data-tool-service';
 import type {
   DataCleaningTask,
@@ -177,6 +178,82 @@ describe('DataToolService', () => {
       inputTable: { id: 'dataset_2' },
       normalizer: { artifact: { id: 'artifact_1' } },
     });
+  });
+
+  it('normalizes tool-call strategy JSON strings and workspace-relative source paths', async () => {
+    const preview: DataInputTablePreview = {
+      columns: ['id'],
+      rows: [{ id: '1' }],
+      fileCount: 1,
+      limit: 20,
+      offset: 0,
+      totalRows: 1,
+    };
+    const inputTable: DataDataset = {
+      id: 'dataset_3',
+      name: 'normalized excel',
+      sourcePath: '/workspace/.tmp/source.xlsx',
+      sourceKind: 'excel',
+      inputConfig: {
+        sourceKind: 'excel',
+        sheetName: 'Sheet1',
+        sheetNames: ['Sheet1'],
+        headerMode: 'auto',
+        headerRow: 1,
+        dataProcessing: {
+          strategy: 'customize',
+          rulePrompt: 'normalize',
+          artifactId: 'artifact_1',
+          artifactVersionId: 'version_1',
+          artifactVersionStatus: 'published',
+        },
+      },
+      fileCount: 1,
+      relatedTaskNames: [],
+      tableName: 'dataset_3',
+      rowCount: 1,
+      columnCount: 1,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const createInputTableWithProcessingStrategy = vi.fn(async () => ({
+      processingStrategy: 'customize',
+      inputTable,
+      preview,
+    }));
+    const commandService = {
+      createInputTableWithProcessingStrategy,
+    } as unknown as DataCommandService;
+    const service = new DataToolService(commandService);
+    const tool = createDataCustomTools(service, {
+      sessionId: 'session_1',
+      workspacePath: '/workspace',
+      capabilities: {
+        canCreateInputTable: true,
+        canCreateOutputTable: true,
+        canCreateTask: true,
+        canRunTask: true,
+        canImportLocalFiles: true,
+      },
+    }).find((item) => item.name === 'data_create_input_table_with_processing_strategy');
+
+    const result = await tool?.execute('call_1', {
+      name: 'normalized excel',
+      sourceKind: 'excel',
+      filePath: '.tmp/source.xlsx',
+      processingStrategy: '{"strategy":"customize","rulePrompt":"normalize"}',
+    });
+
+    expect(result?.content[0]?.text).toContain('Created input table with customize processing');
+    expect(createInputTableWithProcessingStrategy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filePath: '/workspace/.tmp/source.xlsx',
+        processingStrategy: {
+          strategy: 'customize',
+          rulePrompt: 'normalize',
+        },
+      })
+    );
   });
 
   it('returns embedded workflow DSL reference without relying on source docs', async () => {

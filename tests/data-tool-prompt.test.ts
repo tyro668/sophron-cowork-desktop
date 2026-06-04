@@ -23,6 +23,7 @@ describe('data tool prompt', () => {
     expect(prompt).toContain('data_create_input_table');
     expect(prompt).toContain('data_create_input_table_with_processing_strategy');
     expect(prompt).toContain('processingStrategy.strategy="customize"');
+    expect(prompt).toContain('Never write pseudo tool markup');
     expect(prompt).toContain('data_create_output_table');
     expect(prompt).toContain('data_create_task');
     expect(prompt).toContain('sourceInputTableId and outputTableId');

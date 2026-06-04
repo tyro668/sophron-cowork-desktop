@@ -1,4 +1,5 @@
 import { Type } from '@sinclair/typebox';
+import { isAbsolute, join } from 'path';
 import type { DataToolPromptContext, DataToolDefinition } from './data-tool-types';
 import type { DataToolService } from './data-tool-service';
 
@@ -22,9 +23,32 @@ const ListSchema = Type.Object({
 
 const PreviewRowsSchema = Type.Optional(Type.Integer({ minimum: 1, maximum: 100 }));
 
+const ProcessingStrategySchema = Type.Union([
+  Type.Object({
+    strategy: Type.Literal('auto'),
+  }),
+  Type.Object({
+    strategy: Type.Literal('customize'),
+    rulePrompt: Type.String({
+      minLength: 1,
+      description:
+        'User rule prompt describing how to transform the authorized source into a standard two-dimensional table.',
+    }),
+    artifactId: Type.Optional(Type.String()),
+    artifactName: Type.Optional(Type.String()),
+    artifactDescription: Type.Optional(Type.String()),
+    primaryLanguage: Type.Optional(Type.Union([Type.Literal('python'), Type.Literal('node')])),
+    prepareDependencies: Type.Optional(Type.Boolean()),
+  }),
+  Type.String({
+    description:
+      'Compatibility fallback for models that accidentally serialize processingStrategy as a JSON string. Prefer passing an object.',
+  }),
+]);
+
 export function createDataCustomTools(
   dataToolService: DataToolService,
-  _context?: DataToolPromptContext
+  context?: DataToolPromptContext
 ): DataToolDefinition[] {
   return [
     {
@@ -79,7 +103,8 @@ export function createDataCustomTools(
         config: ConfigSchema,
         previewRows: PreviewRowsSchema,
       }),
-      execute: async (_toolCallId, params) => dataToolService.createInputTable(params as never),
+      execute: async (_toolCallId, params) =>
+        dataToolService.createInputTable(resolveLocalSourcePathParams(params, context) as never),
     },
     {
       name: 'data_create_input_table_with_processing_strategy',
@@ -93,29 +118,12 @@ export function createDataCustomTools(
         folderPath: Type.Optional(Type.String({ description: 'Authorized local folder path.' })),
         config: ConfigSchema,
         previewRows: PreviewRowsSchema,
-        processingStrategy: Type.Union([
-          Type.Object({
-            strategy: Type.Literal('auto'),
-          }),
-          Type.Object({
-            strategy: Type.Literal('customize'),
-            rulePrompt: Type.String({
-              minLength: 1,
-              description:
-                'User rule prompt describing how to transform the authorized source into a standard two-dimensional table.',
-            }),
-            artifactId: Type.Optional(Type.String()),
-            artifactName: Type.Optional(Type.String()),
-            artifactDescription: Type.Optional(Type.String()),
-            primaryLanguage: Type.Optional(
-              Type.Union([Type.Literal('python'), Type.Literal('node')])
-            ),
-            prepareDependencies: Type.Optional(Type.Boolean()),
-          }),
-        ]),
+        processingStrategy: ProcessingStrategySchema,
       }),
       execute: async (_toolCallId, params) =>
-        dataToolService.createInputTableWithProcessingStrategy(params as never),
+        dataToolService.createInputTableWithProcessingStrategy(
+          normalizeProcessingStrategyParams(resolveLocalSourcePathParams(params, context)) as never
+        ),
     },
     {
       name: 'data_update_input_table',
@@ -130,7 +138,8 @@ export function createDataCustomTools(
         config: ConfigSchema,
         previewRows: PreviewRowsSchema,
       }),
-      execute: async (_toolCallId, params) => dataToolService.updateInputTable(params as never),
+      execute: async (_toolCallId, params) =>
+        dataToolService.updateInputTable(resolveLocalSourcePathParams(params, context) as never),
     },
     {
       name: 'data_summarize_input_table_source',
@@ -147,7 +156,9 @@ export function createDataCustomTools(
         maxColumnsPerRow: Type.Optional(Type.Integer({ minimum: 1, maximum: 80 })),
       }),
       execute: async (_toolCallId, params) =>
-        dataToolService.summarizeInputTableSource(params as never),
+        dataToolService.summarizeInputTableSource(
+          resolveLocalSourcePathParams(params, context) as never
+        ),
     },
     {
       name: 'data_generate_input_table_normalizer_draft',
@@ -165,7 +176,9 @@ export function createDataCustomTools(
         primaryLanguage: Type.Optional(Type.Union([Type.Literal('python'), Type.Literal('node')])),
       }),
       execute: async (_toolCallId, params) =>
-        dataToolService.generateInputTableNormalizerDraft(params as never),
+        dataToolService.generateInputTableNormalizerDraft(
+          resolveLocalSourcePathParams(params, context) as never
+        ),
     },
     {
       name: 'data_preview_input_table_normalizer_version',
@@ -182,7 +195,9 @@ export function createDataCustomTools(
         offset: Type.Optional(Type.Integer({ minimum: 0 })),
       }),
       execute: async (_toolCallId, params) =>
-        dataToolService.previewInputTableNormalizerVersion(params as never),
+        dataToolService.previewInputTableNormalizerVersion(
+          resolveLocalSourcePathParams(params, context) as never
+        ),
     },
     {
       name: 'data_publish_input_table_normalizer_version',
@@ -433,4 +448,43 @@ export function createDataCustomTools(
       execute: async (_toolCallId, params) => dataToolService.getRunResult(params as never),
     },
   ];
+}
+
+function resolveLocalSourcePathParams(
+  params: unknown,
+  context: DataToolPromptContext | undefined
+): unknown {
+  if (!params || typeof params !== 'object') {
+    return params;
+  }
+  const record = { ...(params as Record<string, unknown>) };
+  for (const key of ['filePath', 'folderPath', 'sourcePath'] as const) {
+    if (typeof record[key] === 'string') {
+      record[key] = resolveWorkspaceRelativePath(record[key], context?.workspacePath);
+    }
+  }
+  return record;
+}
+
+function resolveWorkspaceRelativePath(value: string, workspacePath: string | undefined): string {
+  const trimmed = value.trim();
+  if (!trimmed || isAbsolute(trimmed) || !workspacePath?.trim()) {
+    return trimmed;
+  }
+  return join(workspacePath.trim(), trimmed);
+}
+
+function normalizeProcessingStrategyParams(params: unknown): unknown {
+  if (!params || typeof params !== 'object') {
+    return params;
+  }
+  const record = { ...(params as Record<string, unknown>) };
+  if (typeof record.processingStrategy === 'string') {
+    try {
+      record.processingStrategy = JSON.parse(record.processingStrategy);
+    } catch {
+      throw new Error('processingStrategy must be an object or a valid JSON object string');
+    }
+  }
+  return record;
 }

@@ -59,6 +59,7 @@ export async function runInputTableNormalizerProject(
     writeProjectFiles(projectDir, input.version.files);
     fs.writeFileSync(contextPath, JSON.stringify(input.context, null, 2), 'utf8');
 
+    const shouldPrepareDependencies = shouldPrepareNormalizerDependencies(input.version, input);
     const variables = createCommandVariables({
       projectDir,
       workDir: projectDir,
@@ -68,12 +69,12 @@ export async function runInputTableNormalizerProject(
       manifestPath,
       runtime: input.version.runtime,
       dependencyPrepare: input.version.dependencyPrepare,
-      usePreparedRuntime: input.prepareDependencies === true,
+      usePreparedRuntime: shouldPrepareDependencies,
     });
     let stdout = '';
     let stderr = '';
     const steps: InputTableNormalizerRunStep[] = [];
-    if (input.prepareDependencies && input.version.dependencyPrepare) {
+    if (shouldPrepareDependencies && input.version.dependencyPrepare) {
       for (const step of input.version.dependencyPrepare.steps) {
         const command = interpolateCommand(step.command, variables);
         const cwd = resolveProjectCwd(projectDir, step.cwd);
@@ -121,6 +122,29 @@ export async function runInputTableNormalizerProject(
     cleanupNormalizerWorkDir(workDirState);
     throw error;
   }
+}
+
+function shouldPrepareNormalizerDependencies(
+  version: DataInputTableNormalizerArtifactVersion,
+  input: RunInputTableNormalizerProjectInput
+): boolean {
+  if (input.prepareDependencies !== true || !version.dependencyPrepare) return false;
+  if (version.runtime.language !== 'python') return true;
+  return hasInstallablePythonRequirements(version);
+}
+
+function hasInstallablePythonRequirements(version: DataInputTableNormalizerArtifactVersion): boolean {
+  const requirementFiles = new Set(version.dependencyPrepare?.lockFiles ?? ['requirements.lock']);
+  const files = version.files.filter((file) => requirementFiles.has(file.path));
+  if (files.length === 0) return false;
+  return files.some((file) =>
+    file.content
+      .split(/\r?\n/)
+      .some((line) => {
+        const trimmed = line.trim();
+        return trimmed.length > 0 && !trimmed.startsWith('#');
+      })
+  );
 }
 
 function cleanupNormalizerWorkDir(workDirState: NormalizerWorkDirState): void {

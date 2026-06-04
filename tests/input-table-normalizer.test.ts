@@ -303,6 +303,65 @@ describe('input table normalizer runner', () => {
     }
   });
 
+  it('skips Python venv preparation when requirements are empty', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-normalizer-python-test-'));
+    const sourcePath = path.join(tempRoot, 'source.csv');
+    const workspaceRoot = path.join(tempRoot, 'data', 'input-table-normalizers', 'runs');
+    fs.writeFileSync(sourcePath, 'id,name\n1,Alice\n', 'utf8');
+    const template = createInputTableNormalizerProjectTemplate('python', 'Normalize CSV.');
+    const files = template.files.map((file) =>
+      file.path === 'normalizer/transform.py'
+        ? { ...file, content: GENERATED_PYTHON_NORMALIZER_TRANSFORM }
+        : file
+    );
+    const version: DataInputTableNormalizerArtifactVersion = {
+      id: 'version_python',
+      artifactId: 'artifact_python',
+      version: 1,
+      status: 'draft',
+      files,
+      fileTreeHash: createNormalizerFileTreeHash(files),
+      rulePrompt: 'Normalize CSV.',
+      sourceSummaryHash: 'summary_hash',
+      entrypoint: template.entrypoint,
+      dependencyPrepare: template.dependencyPrepare,
+      runtime: template.runtime,
+      dependencies: template.dependencies,
+      dependencyLockHash: createNormalizerDependencyLockHash(files),
+      createdAt: 1,
+      updatedAt: 1,
+      publishedAt: null,
+    };
+
+    try {
+      const result = await runInputTableNormalizerProject({
+        version,
+        workspaceRoot,
+        prepareDependencies: true,
+        timeoutMs: 15_000,
+        context: {
+          sourcePath,
+          sourceKind: 'csv',
+        },
+      });
+      expect(result.steps).toHaveLength(1);
+      expect(result.steps[0]?.command).toEqual(
+        expect.arrayContaining(['-m', 'normalizer.cli'])
+      );
+      expect(result.steps[0]?.command).not.toEqual(expect.arrayContaining(['venv']));
+      expect(result.manifest).toMatchObject({
+        format: 'csv',
+        rowCount: 1,
+        columns: [
+          { name: 'id', type: 'string' },
+          { name: 'name', type: 'string' },
+        ],
+      });
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('prepares Node dependencies in the persisted project directory', async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-normalizer-project-test-'));
     const sourcePath = path.join(tempRoot, 'source.csv');
@@ -368,6 +427,33 @@ describe('input table normalizer runner', () => {
     }
   });
 });
+
+const GENERATED_PYTHON_NORMALIZER_TRANSFORM = String.raw`
+from __future__ import annotations
+
+import csv
+from pathlib import Path
+from typing import Any
+
+
+def transform(context: dict[str, Any], output_dir: Path) -> dict[str, Any]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "normalized.csv"
+    with open(context["sourcePath"], newline="", encoding="utf-8") as source:
+        rows = list(csv.reader(source))
+    columns = rows[0] if rows else []
+    records = rows[1:]
+    with open(output_path, "w", newline="", encoding="utf-8") as target:
+        writer = csv.writer(target)
+        writer.writerow(columns)
+        writer.writerows(records)
+    return {
+        "output": "normalized.csv",
+        "format": "csv",
+        "rowCount": len(records),
+        "columns": [{"name": column, "type": "string"} for column in columns],
+    }
+`;
 
 const GENERATED_NODE_NORMALIZER_TRANSFORM = String.raw`
 import { readFile } from "node:fs/promises";

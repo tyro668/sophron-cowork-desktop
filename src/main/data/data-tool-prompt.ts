@@ -20,6 +20,7 @@ function buildRoutingSection(): string {
     'Do not automatically create a data task for one-off exploration, casual analysis, simple questions, or requests that explicitly ask you to use Python.',
     'If the user has not asked for a fixed/reusable workflow, ask whether they want to save the processing as a reusable data task before using write or execute data tools.',
     'Never read the app SQLite database, DuckDB files, or raw local data files directly for data processing. Use data_* tools instead.',
+    'Never write pseudo tool markup such as <tool_use>...</tool_use> in assistant text. If a data operation is needed, call the actual data_* tool.',
     'Never search or read source-tree design docs for workflow DSL syntax. Packaged apps may not include source docs. Use the embedded prompt guide or data_get_workflow_dsl_reference.',
     'Do not load entire tables into chat. Use preview tools with bounded limits.',
     'Before referencing a table, output table, or task by name, call the relevant list tool and use returned IDs. If multiple resources match, ask the user to choose.',
