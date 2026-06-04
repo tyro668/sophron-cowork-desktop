@@ -203,6 +203,31 @@ describe('DataCommandService', () => {
     });
   });
 
+  it('emits progress while generating a custom normalizer draft', async () => {
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'customers.csv');
+    fs.writeFileSync(csvPath, 'id,name\n1,Alice\n', 'utf8');
+    const progressEvents: Array<{ phase: string; kind: string; text: string }> = [];
+
+    await service.generateInputTableNormalizerDraft({
+      name: 'customers normalizer',
+      sourcePath: csvPath,
+      sourceKind: 'csv',
+      rulePrompt: 'Normalize the customer CSV into a standard table.',
+      primaryLanguage: 'node',
+      onProgress: (event) => progressEvents.push(event),
+    });
+
+    expect(progressEvents.map((event) => event.phase)).toEqual(
+      expect.arrayContaining(['source_summary', 'code_generation', 'saving', 'complete'])
+    );
+    expect(progressEvents).toContainEqual({
+      phase: 'code_generation',
+      kind: 'delta',
+      text: 'fake generated project delta',
+    });
+  });
+
   it('generates a custom normalizer that flattens irregular Excel tables and dedupes headers', async () => {
     const { service, tempRoot } = createService();
     const excelPath = path.join(tempRoot, 'irregular.xlsx');
@@ -320,6 +345,34 @@ describe('DataCommandService', () => {
       '手淘搜索-访客数': '159',
       '手淘搜索-支付人数': '38',
       '手淘搜索-转化率': '23.90%',
+    });
+  });
+
+  it('previews normalizer CSV output with quoted multiline headers', async () => {
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'source.csv');
+    fs.writeFileSync(csvPath, 'id,name\n1,Alice\n', 'utf8');
+    const draft = await service.generateInputTableNormalizerDraft({
+      name: '多行表头输出 normalizer',
+      sourcePath: csvPath,
+      sourceKind: 'csv',
+      rulePrompt: 'quoted multiline header output',
+      primaryLanguage: 'node',
+    });
+
+    const preview = await service.previewInputTableNormalizerVersion({
+      versionId: draft.version.id,
+      sourcePath: csvPath,
+      sourceKind: 'csv',
+      prepareDependencies: false,
+      limit: 5,
+    });
+
+    expect(preview.preview.totalRows).toBe(1);
+    expect(preview.preview.columns).toEqual(['时间\n顺着填', '整体数据-总支付\n人数']);
+    expect(preview.preview.rows[0]).toMatchObject({
+      '时间\n顺着填': '5/1/26',
+      '整体数据-总支付\n人数': '223',
     });
   });
 
@@ -467,11 +520,21 @@ function createFakeNormalizerGenerator(): InputTableNormalizerProjectGenerator {
   return {
     async generate(input) {
       const template = createInputTableNormalizerProjectTemplate(input.primaryLanguage, input.rulePrompt);
+      input.onProgress?.({
+        phase: 'code_generation',
+        kind: 'delta',
+        text: 'fake generated project delta',
+      });
       return {
         ...template,
         files: template.files.map((file) =>
           file.path === 'src/transform.js'
-            ? { ...file, content: GENERATED_NODE_NORMALIZER_TRANSFORM }
+            ? {
+                ...file,
+                content: input.rulePrompt.includes('quoted multiline header output')
+                  ? GENERATED_NODE_MULTILINE_HEADER_OUTPUT_TRANSFORM
+                  : GENERATED_NODE_NORMALIZER_TRANSFORM,
+              }
             : file
         ),
       };
@@ -633,6 +696,24 @@ function normalizeHeader(value) {
 function escapeCsvCell(value) {
   const text = String(value ?? "");
   return /[",\n\r]/.test(text) ? "\"" + text.replace(/"/g, "\"\"") + "\"" : text;
+}
+`;
+
+const GENERATED_NODE_MULTILINE_HEADER_OUTPUT_TRANSFORM = String.raw`
+export async function transform(_context, outputDir) {
+  await outputDir.mkdir({ recursive: true });
+  const outputPath = outputDir.join("normalized.csv");
+  await outputPath.writeFile('"时间\n顺着填","整体数据-总支付\n人数"\n5/1/26,223\n', "utf8");
+  return {
+    output: outputPath.toString(),
+    format: "csv",
+    rowCount: 1,
+    columns: [
+      { name: "时间\n顺着填", type: "string" },
+      { name: "整体数据-总支付\n人数", type: "string" },
+    ],
+    warnings: [],
+  };
 }
 `;
 

@@ -16,9 +16,25 @@ export interface GenerateInputTableNormalizerProjectInput {
   primaryLanguage: DataNormalizerLanguage;
   rulePrompt: string;
   sourceSummary: DataInputTableSourceSummary;
+  onProgress?: InputTableNormalizerProjectProgressCallback;
 }
 
 export type InputTableNormalizerSourceStructureAnalysis = Record<string, unknown>;
+export type InputTableNormalizerProjectProgressPhase =
+  | 'source_summary'
+  | 'source_analysis'
+  | 'code_generation'
+  | 'saving'
+  | 'complete'
+  | 'error';
+export interface InputTableNormalizerProjectProgressEvent {
+  phase: InputTableNormalizerProjectProgressPhase;
+  kind: 'message' | 'delta';
+  text: string;
+}
+export type InputTableNormalizerProjectProgressCallback = (
+  event: InputTableNormalizerProjectProgressEvent
+) => void;
 
 export interface InputTableNormalizerProjectGenerator {
   generate(
@@ -36,24 +52,50 @@ export function createLlmInputTableNormalizerProjectGenerator(
         input.rulePrompt
       );
       const sourceSummary = compactSourceSummary(input.sourceSummary);
-      const analysisResponse = await runPiAiOneShot(
-        buildSourceAnalysisUserPrompt(input, sourceSummary),
-        buildSourceAnalysisSystemPrompt(),
-        getConfig(),
-        {
-          temperature: 0,
-          maxTokens: 8_000,
-        }
+      emitProgress(input, {
+        phase: 'source_analysis',
+        kind: 'message',
+        text: '\n\n**结构分析输出**\n\n```json\n',
+      });
+      const analysisResponse = await runWithProgressFence(input, 'source_analysis', () =>
+        runPiAiOneShot(
+          buildSourceAnalysisUserPrompt(input, sourceSummary),
+          buildSourceAnalysisSystemPrompt(),
+          getConfig(),
+          {
+            temperature: 0,
+            maxTokens: 8_000,
+            onTextDelta: (delta) =>
+              emitProgress(input, {
+                phase: 'source_analysis',
+                kind: 'delta',
+                text: delta,
+              }),
+          }
+        )
       );
       const sourceStructureAnalysis = parseSourceStructureAnalysis(analysisResponse.text);
-      const response = await runPiAiOneShot(
-        buildCodeGenerationUserPrompt(input, template, sourceSummary, sourceStructureAnalysis),
-        buildCodeGenerationSystemPrompt(input.primaryLanguage),
-        getConfig(),
-        {
-          temperature: 0.1,
-          maxTokens: 16_000,
-        }
+      emitProgress(input, {
+        phase: 'code_generation',
+        kind: 'message',
+        text: '\n\n**项目文件输出**\n\n```json\n',
+      });
+      const response = await runWithProgressFence(input, 'code_generation', () =>
+        runPiAiOneShot(
+          buildCodeGenerationUserPrompt(input, template, sourceSummary, sourceStructureAnalysis),
+          buildCodeGenerationSystemPrompt(input.primaryLanguage),
+          getConfig(),
+          {
+            temperature: 0.1,
+            maxTokens: 16_000,
+            onTextDelta: (delta) =>
+              emitProgress(input, {
+                phase: 'code_generation',
+                kind: 'delta',
+                text: delta,
+              }),
+          }
+        )
       );
       const generatedFiles = parseGeneratedProjectFiles(response.text);
       const files = mergeGeneratedProjectFiles(
@@ -78,6 +120,29 @@ export function createLlmInputTableNormalizerProjectGenerator(
       };
     },
   };
+}
+
+function emitProgress(
+  input: GenerateInputTableNormalizerProjectInput,
+  event: InputTableNormalizerProjectProgressEvent
+): void {
+  input.onProgress?.(event);
+}
+
+async function runWithProgressFence<T>(
+  input: GenerateInputTableNormalizerProjectInput,
+  phase: InputTableNormalizerProjectProgressPhase,
+  run: () => Promise<T>
+): Promise<T> {
+  try {
+    return await run();
+  } finally {
+    emitProgress(input, {
+      phase,
+      kind: 'message',
+      text: '\n```\n',
+    });
+  }
 }
 
 function buildSourceAnalysisSystemPrompt(): string {

@@ -1283,7 +1283,10 @@ export class DataTaskStore {
       });
       workDir = result.workDir;
       cleanupWorkDir = result.cleanupWorkDir;
-      const relation = readRelationForPath(result.manifest.output, 'normalizerOutputPath');
+      const relation = readNormalizerOutputRelationForPath(
+        result.manifest.output,
+        'normalizerOutputPath'
+      );
       await this.runSql(
         `CREATE TEMP TABLE ${quoteIdentifier(tempTable)} AS SELECT * FROM ${relation}`,
         {
@@ -3010,7 +3013,10 @@ export class DataTaskStore {
       });
       workDir = result.workDir;
       cleanupWorkDir = result.cleanupWorkDir;
-      const relation = readRelationForPath(result.manifest.output, 'normalizerImportOutputPath');
+      const relation = readNormalizerOutputRelationForPath(
+        result.manifest.output,
+        'normalizerImportOutputPath'
+      );
       await this.runSql(
         `CREATE TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`,
         {
@@ -4737,6 +4743,14 @@ function readRelationForPath(filePath: string, parameterName: string): string {
     return `read_parquet($${parameterName})`;
   }
   throw new Error(`Unsupported data file type: ${extension || '(none)'}`);
+}
+
+function readNormalizerOutputRelationForPath(filePath: string, parameterName: string): string {
+  const extension = extname(filePath).toLowerCase();
+  if (extension === '.csv') {
+    return `read_csv($${parameterName}, header = true, delim = ',', quote = '"', escape = '"', all_varchar = true, strict_mode = false, null_padding = true)`;
+  }
+  return readRelationForPath(filePath, parameterName);
 }
 
 function readImportRelationForPath(filePath: string, parameterName: string, forceVarchar: boolean): string {

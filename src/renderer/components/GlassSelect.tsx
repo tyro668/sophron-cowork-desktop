@@ -6,6 +6,8 @@ function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
 }
 
+const EMPTY_SELECT_VALUE = '__sophron_glass_select_empty_value__';
+
 export interface GlassSelectOption {
   value: string;
   label: string;
@@ -43,10 +45,16 @@ export function GlassSelect({
   align = 'start',
   sideOffset = 8,
 }: GlassSelectProps) {
+  const normalizedValue = value === undefined ? undefined : normalizeSelectValue(value);
+  const normalizedOptions = options.map((option) => ({
+    ...option,
+    value: normalizeSelectValue(option.value),
+  }));
+
   return (
     <Select.Root
-      value={value}
-      onValueChange={onValueChange}
+      value={normalizedValue}
+      onValueChange={(nextValue) => onValueChange(denormalizeSelectValue(nextValue))}
       open={open}
       onOpenChange={onOpenChange}
       disabled={disabled}
@@ -76,7 +84,7 @@ export function GlassSelect({
           )}
         >
           <Select.Viewport className="p-1">
-            {options.map((option) => (
+            {normalizedOptions.map((option) => (
               <Select.Item
                 key={option.value}
                 value={option.value}
@@ -96,4 +104,12 @@ export function GlassSelect({
       </Select.Portal>
     </Select.Root>
   );
+}
+
+function normalizeSelectValue(value: string): string {
+  return value === '' ? EMPTY_SELECT_VALUE : value;
+}
+
+function denormalizeSelectValue(value: string): string {
+  return value === EMPTY_SELECT_VALUE ? '' : value;
 }

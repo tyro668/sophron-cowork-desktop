@@ -46,7 +46,9 @@ import { EditorView, lineNumbers } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
 import '@xyflow/react/dist/style.css';
 import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
+import { GlassDataGridPreview } from './GlassDataGridPreview';
 import { GlassSelect } from './GlassSelect';
+import { MessageCard } from './MessageCard';
 import {
   AlertCircle,
   ArrowLeft,
@@ -97,6 +99,7 @@ import type {
   DataInputTableConfig,
   DataInputTableExcelConfig,
   DataInputTableFolderConfig,
+  DataInputTableNormalizerDraftProgressEvent,
   DataInputTableNormalizerArtifactVersion,
   DataInputTableProcessingConfig,
   DataNormalizerLanguage,
@@ -111,6 +114,7 @@ import type {
   DataWorkflowNode,
   DataWorkflowOperatorType,
   DataWorkflowSaveInput,
+  Message,
 } from '../types';
 import { PrepDslEditor } from './PrepDslEditor';
 import {
@@ -3571,110 +3575,22 @@ function WorkflowNodeDataPreview({
   onPageChange: (page: number) => void;
 }) {
   const { t } = useTranslation();
-  const columns = preview?.columns ?? [];
-  const rows = preview?.rows ?? [];
-  const totalRows = preview?.totalRows ?? 0;
-  const pageSize = preview?.limit ?? INPUT_TABLE_PREVIEW_PAGE_SIZE;
-  const pageCount = Math.max(1, Math.ceil(totalRows / pageSize));
-  const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
-  const pageNumbers = getVisiblePageNumbers(safeCurrentPage, pageCount);
-
-  if (isLoading) {
-    return (
-      <div className="flex h-full min-h-0 items-center justify-center rounded-lg border border-border-muted bg-background/70">
-        <LoadingState label={t('data.workflow.nodeDataLoading')} />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex h-full min-h-0 items-center justify-center rounded-lg border border-error/15 bg-error/5 px-4 text-center text-xs font-medium text-error">
-        {error}
-      </div>
-    );
-  }
-
-  if (!preview || columns.length === 0 || rows.length === 0) {
-    return (
-      <div className="flex h-full min-h-0 items-center justify-center rounded-lg border border-border-muted bg-background/70">
-        <EmptyState label={t('data.workflow.nodeDataEmpty')} />
-      </div>
-    );
-  }
-
   return (
-    <div className="glass-table flex h-full min-h-0 flex-col rounded-lg">
-      <div className="min-h-0 flex-1 overflow-auto">
-        <table className="min-w-full border-collapse text-left text-xs">
-          <thead className="sticky top-0 z-10 bg-background/34 backdrop-blur-xl">
-            <tr className="h-9 border-b border-border-muted text-text-muted">
-              {columns.map((column) => (
-                <th key={column} className="max-w-[12rem] whitespace-nowrap px-3 font-medium">
-                  <span className="block truncate" title={column}>
-                    {column}
-                  </span>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, rowIndex) => (
-              <tr
-                key={rowIndex}
-                className="h-9 border-b border-border-muted/80 last:border-b-0 hover:bg-surface-hover/35"
-              >
-                {columns.map((column) => (
-                  <td key={column} className="max-w-[12rem] whitespace-nowrap px-3 text-text-secondary">
-                    <span className="block truncate" title={formatPreviewCell(row[column])}>
-                      {formatPreviewCell(row[column])}
-                    </span>
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="flex h-11 flex-shrink-0 items-center justify-between gap-3 border-t border-border-muted px-3 text-xs font-medium text-text-secondary">
-        <span>{t('data.workflow.nodeDataTotal', { count: totalRows })}</span>
-        <div className="flex items-center gap-1.5">
-          <span className="mr-2 hidden text-text-muted sm:inline">
-            {t('data.workflow.nodeDataPageSize', { count: pageSize })}
-          </span>
-          <button
-            type="button"
-            onClick={() => onPageChange(safeCurrentPage - 1)}
-            disabled={safeCurrentPage <= 1}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          {pageNumbers.map((pageNumber) => (
-            <button
-              key={pageNumber}
-              type="button"
-              onClick={() => onPageChange(pageNumber)}
-              className={`inline-flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
-                pageNumber === safeCurrentPage
-                  ? 'bg-accent text-white shadow-soft'
-                  : 'border border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
-              }`}
-            >
-              {pageNumber}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => onPageChange(safeCurrentPage + 1)}
-            disabled={safeCurrentPage >= pageCount}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-    </div>
+    <GlassDataGridPreview
+      preview={preview}
+      isLoading={isLoading}
+      error={error}
+      currentPage={currentPage}
+      onPageChange={onPageChange}
+      labels={{
+        loading: t('data.workflow.nodeDataLoading'),
+        empty: t('data.workflow.nodeDataEmpty'),
+        total: (count) => t('data.workflow.nodeDataTotal', { count }),
+        pageSize: (count) => t('data.workflow.nodeDataPageSize', { count }),
+      }}
+      rowHeight={32}
+      headerHeight={34}
+    />
   );
 }
 
@@ -5643,7 +5559,9 @@ function OutputTableEditor({
 }) {
   const { t } = useTranslation();
   const [localName, setLocalName] = useState(outputTable.name);
+  const [isNameEditing, setIsNameEditing] = useState(false);
   const [sourceDatasetId, setSourceDatasetId] = useState(outputTable.sourceDatasetId ?? '');
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
   const trimmedName = localName.trim();
   const canSave = Boolean(
     trimmedName &&
@@ -5670,8 +5588,15 @@ function OutputTableEditor({
 
   useEffect(() => {
     setLocalName(outputTable.name);
+    setIsNameEditing(false);
     setSourceDatasetId(outputTable.sourceDatasetId ?? '');
   }, [outputTable.id, outputTable.name, outputTable.sourceDatasetId]);
+
+  useEffect(() => {
+    if (!isNameEditing) return;
+    nameInputRef.current?.focus();
+    nameInputRef.current?.select();
+  }, [isNameEditing]);
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
@@ -5685,21 +5610,45 @@ function OutputTableEditor({
             {t('data.outputTables.editor.back')}
           </button>
           <div className="flex min-w-0 items-center gap-2">
-            <input
-              value={localName}
-              onChange={(event) => setLocalName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.currentTarget.blur();
-                }
-              }}
-              disabled={isBusy}
-              maxLength={50}
-              aria-label={t('data.outputTables.editor.name')}
-              className="h-8 min-w-0 max-w-[18rem] truncate border-0 bg-transparent px-0 text-[15px] font-medium text-text-secondary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-60"
-              placeholder={t('data.outputTables.editor.title')}
-            />
-            <PencilLine className="h-4 w-4 flex-shrink-0 text-text-muted" />
+            {isNameEditing ? (
+              <input
+                ref={nameInputRef}
+                value={localName}
+                onChange={(event) => setLocalName(event.target.value)}
+                onBlur={() => setIsNameEditing(false)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.currentTarget.blur();
+                  }
+                  if (event.key === 'Escape') {
+                    setLocalName(outputTable.name);
+                    setIsNameEditing(false);
+                  }
+                }}
+                disabled={isBusy}
+                maxLength={50}
+                aria-label={t('data.outputTables.editor.name')}
+                className="h-8 min-w-0 max-w-[18rem] truncate border-0 bg-transparent px-0 text-[15px] font-medium text-text-secondary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-60"
+                placeholder={t('data.outputTables.editor.title')}
+              />
+            ) : (
+              <div
+                className="flex h-8 min-w-0 max-w-[18rem] items-center truncate text-[15px] font-medium text-text-secondary"
+                title={localName || t('data.outputTables.editor.title')}
+              >
+                {localName || t('data.outputTables.editor.title')}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsNameEditing(true)}
+              disabled={isBusy || isNameEditing}
+              className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-45"
+              aria-label={t('common.edit')}
+              title={t('common.edit')}
+            >
+              <PencilLine className="h-4 w-4" />
+            </button>
             <InputTableStatusBadge
               label={t('data.outputTables.status.available')}
               tone="success"
@@ -5784,6 +5733,7 @@ function InputTableEditorWorkbench({
     [dataset?.inputConfig, initialSourceKind]
   );
   const [localName, setLocalName] = useState(initialName);
+  const [isNameEditing, setIsNameEditing] = useState(false);
   const [localSourceKind, setLocalSourceKind] =
     useState<DataInputTableSourceKind>(initialSourceKind);
   const [localConfig, setLocalConfig] = useState<DataInputTableConfig>(initialConfig);
@@ -5793,6 +5743,7 @@ function InputTableEditorWorkbench({
   const [previewData, setPreviewData] = useState<DataInputTablePreview | null>(null);
   const [previewPage, setPreviewPage] = useState(1);
   const [customizeGenerating, setCustomizeGenerating] = useState(false);
+  const [customizeGenerationOutput, setCustomizeGenerationOutput] = useState('');
   const [customizePublishing, setCustomizePublishing] = useState(false);
   const [customizeVersionActionId, setCustomizeVersionActionId] = useState<string | null>(null);
   const [expandedNormalizerVersionId, setExpandedNormalizerVersionId] = useState<string | null>(
@@ -5805,6 +5756,7 @@ function InputTableEditorWorkbench({
   const [customizeGenerationError, setCustomizeGenerationError] = useState<string | null>(null);
   const [activeEditorTab, setActiveEditorTab] = useState<InputTableEditorTab>('rules');
   const [selectedNormalizerFilePath, setSelectedNormalizerFilePath] = useState('');
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
   const trimmedName = localName.trim();
   const isConfigured = Boolean(dataset);
   const sourceMeta = getInputTableSourceMeta(localSourceKind);
@@ -5875,9 +5827,11 @@ function InputTableEditorWorkbench({
 
   useEffect(() => {
     setLocalName(initialName);
+    setIsNameEditing(false);
     setLocalSourceKind(initialSourceKind);
     setLocalConfig(initialConfig);
     setCustomizeGenerationError(null);
+    setCustomizeGenerationOutput('');
     setCustomizeGenerating(false);
     setCustomizePublishing(false);
     setCustomizeVersionActionId(null);
@@ -5885,6 +5839,12 @@ function InputTableEditorWorkbench({
     setActiveEditorTab('rules');
     setSelectedNormalizerFilePath('');
   }, [initialConfig, initialName, initialSourceKind, targetId]);
+
+  useEffect(() => {
+    if (!isNameEditing) return;
+    nameInputRef.current?.focus();
+    nameInputRef.current?.select();
+  }, [isNameEditing]);
 
   useEffect(() => {
     const preferredPath = getPreferredNormalizerFilePath(normalizerProjectFiles, normalizerLanguage);
@@ -5927,6 +5887,14 @@ function InputTableEditorWorkbench({
     updateConfig(withInputTableDataProcessing(localConfig, dataProcessing));
   };
 
+  const appendGenerationOutput = useCallback((line: string) => {
+    setCustomizeGenerationOutput((current) => `${current}${current ? '\n' : ''}${line}`);
+  }, []);
+
+  const appendGenerationOutputChunk = useCallback((chunk: string) => {
+    setCustomizeGenerationOutput((current) => `${current}${chunk}`);
+  }, []);
+
   const refreshNormalizerVersions = useCallback(async (artifactId: string | undefined) => {
     if (!artifactId) {
       setNormalizerVersions([]);
@@ -5955,8 +5923,30 @@ function InputTableEditorWorkbench({
     if (!rulePrompt || !dataset) {
       return;
     }
+    setActiveEditorTab('rules');
+    setCustomizeGenerationOutput(
+      buildNormalizerGenerationStartOutput({
+        inputTableName: dataset.name,
+        sourceKind: localSourceKind,
+        language: normalizerLanguage,
+        rulePrompt,
+        t,
+      })
+    );
     setCustomizeGenerating(true);
     setCustomizeGenerationError(null);
+    const progressId = createNormalizerGenerationProgressId();
+    const unsubscribeProgress =
+      window.electronAPI.data.onInputTableNormalizerDraftProgress?.(
+        (event: DataInputTableNormalizerDraftProgressEvent) => {
+          if (event.progressId !== progressId) return;
+          if (event.kind === 'delta') {
+            appendGenerationOutputChunk(event.text);
+          } else {
+            appendGenerationOutput(event.text);
+          }
+        }
+      );
     try {
       const result = await window.electronAPI.data.generateInputTableNormalizerDraft({
         artifactId: dataProcessing.artifactId,
@@ -5966,6 +5956,7 @@ function InputTableEditorWorkbench({
         config: localConfig,
         rulePrompt,
         primaryLanguage: normalizerLanguage,
+        progressId,
       });
       updateDataProcessing({
         ...dataProcessing,
@@ -5984,11 +5975,24 @@ function InputTableEditorWorkbench({
       setSelectedNormalizerFilePath(
         getPreferredNormalizerFilePath(result.version.files, result.version.runtime.language)
       );
-      setActiveEditorTab('code');
       void refreshNormalizerVersions(result.artifact.id);
+      appendGenerationOutput(
+        buildNormalizerGenerationSuccessOutput({
+          artifactId: result.artifact.id,
+          versionNumber: result.version.version,
+          files: result.version.files,
+          language: result.artifact.primaryLanguage,
+          t,
+        })
+      );
     } catch (err) {
-      setCustomizeGenerationError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      setCustomizeGenerationError(message);
+      appendGenerationOutput(
+        `${t('data.inputTables.editor.generationOutputFailed')}\n\n${message}`
+      );
     } finally {
+      unsubscribeProgress?.();
       setCustomizeGenerating(false);
     }
   };
@@ -6149,21 +6153,47 @@ function InputTableEditorWorkbench({
               {t('data.inputTables.editor.backShort')}
             </button>
             <div className="flex min-w-0 items-center gap-2">
-              <input
-                value={localName}
-                onChange={(event) => handleNameChange(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.currentTarget.blur();
-                  }
-                }}
-                disabled={isBusy}
-                maxLength={50}
-                aria-label={t('data.inputTables.editor.name')}
-                className="h-9 min-w-0 max-w-[22rem] truncate border-0 bg-transparent px-0 text-[18px] font-medium text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-60"
-                placeholder={t('data.inputTables.editor.title')}
-              />
-              <PencilLine className="h-4 w-4 flex-shrink-0 text-text-muted" />
+              {isNameEditing ? (
+                <input
+                  ref={nameInputRef}
+                  value={localName}
+                  onChange={(event) => handleNameChange(event.target.value)}
+                  onBlur={() => setIsNameEditing(false)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.currentTarget.blur();
+                    }
+                    if (event.key === 'Escape') {
+                      if (dataset) {
+                        setLocalName(dataset.name);
+                      }
+                      setIsNameEditing(false);
+                    }
+                  }}
+                  disabled={isBusy}
+                  maxLength={50}
+                  aria-label={t('data.inputTables.editor.name')}
+                  className="h-9 min-w-0 max-w-[22rem] truncate border-0 bg-transparent px-0 text-[18px] font-medium text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-60"
+                  placeholder={t('data.inputTables.editor.title')}
+                />
+              ) : (
+                <div
+                  className="flex h-9 min-w-0 max-w-[22rem] items-center truncate text-[18px] font-medium text-text-primary"
+                  title={localName || t('data.inputTables.editor.title')}
+                >
+                  {localName || t('data.inputTables.editor.title')}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsNameEditing(true)}
+                disabled={isBusy || isNameEditing}
+                className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-45"
+                aria-label={t('common.edit')}
+                title={t('common.edit')}
+              >
+                <PencilLine className="h-4 w-4" />
+              </button>
               <InputTableStatusBadge
                 label={
                   isConfigured
@@ -6308,12 +6338,12 @@ function InputTableEditorWorkbench({
 
             <div
               className={`min-h-0 flex-1 px-7 py-6 ${
-                activeEditorTab === 'code' ? 'overflow-hidden' : 'overflow-y-auto'
+                activeEditorTab === 'versions' ? 'overflow-y-auto' : 'overflow-hidden'
               }`}
             >
               {activeEditorTab === 'rules' ? (
-                <div className="mx-auto grid max-w-[70rem] gap-5">
-                  <label className="grid gap-2">
+                <div className="mx-auto flex h-full min-h-0 max-w-[70rem] flex-col gap-4">
+                  <label className="grid flex-shrink-0 gap-2">
                     <span className="inline-flex items-center gap-2 text-[13px] font-medium text-text-secondary">
                       {t('data.inputTables.editor.rulePrompt')}
                       <Info className="h-3.5 w-3.5 text-text-muted" />
@@ -6327,14 +6357,19 @@ function InputTableEditorWorkbench({
                         })
                       }
                       disabled={isBusy || !dataset}
-                      rows={6}
+                      rows={4}
                       maxLength={4000}
                       placeholder={t('data.inputTables.editor.rulePromptPlaceholder')}
-                      className="min-h-[9rem] w-full resize-y rounded-lg border border-border-muted bg-background/50 px-4 py-3 text-[13px] leading-6 text-text-primary shadow-soft outline-none placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="h-24 min-h-24 w-full resize-none rounded-lg border border-border-muted bg-background/50 px-4 py-3 text-[13px] leading-6 text-text-primary shadow-soft outline-none placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
                     />
                   </label>
+                  <InputTableGenerationOutputPanel
+                    isStreaming={customizeGenerating}
+                    output={customizeGenerationOutput}
+                    t={t}
+                  />
                   {customizeGenerationError ? (
-                    <div className="rounded-lg border border-danger/20 bg-danger/10 px-3 py-2 text-[12px] font-medium text-danger">
+                    <div className="flex-shrink-0 rounded-lg border border-danger/20 bg-danger/10 px-3 py-2 text-[12px] font-medium text-danger">
                       {customizeGenerationError}
                     </div>
                   ) : null}
@@ -6637,6 +6672,63 @@ function InputTableConfigRow({
     <div className="grid min-h-12 items-center gap-3 px-1 py-1 lg:grid-cols-[10rem_minmax(0,1fr)]">
       <div className="text-[14px] font-medium text-text-primary">{label}</div>
       <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
+function InputTableGenerationOutputPanel({
+  output,
+  isStreaming,
+  t,
+}: {
+  output: string;
+  isStreaming: boolean;
+  t: TranslateFn;
+}) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const message = useMemo<Message>(
+    () => ({
+      id: 'input-table-normalizer-generation-output',
+      sessionId: 'data-input-table-normalizer',
+      role: 'assistant',
+      content: [{ type: 'text', text: output }],
+      timestamp: Date.now(),
+    }),
+    [output]
+  );
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
+  }, [isStreaming, output]);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border-muted bg-background/42 shadow-soft">
+      <div className="flex h-10 flex-shrink-0 items-center justify-between gap-3 border-b border-border-muted px-3">
+        <div className="inline-flex min-w-0 items-center gap-2 text-[13px] font-medium text-text-primary">
+          {isStreaming ? (
+            <RefreshCw className="h-3.5 w-3.5 animate-spin text-accent" />
+          ) : (
+            <Code2 className="h-3.5 w-3.5 text-accent" />
+          )}
+          <span className="truncate">{t('data.inputTables.editor.generationOutputTitle')}</span>
+        </div>
+        <span className="text-[11px] font-medium text-text-muted">
+          {isStreaming
+            ? t('data.inputTables.editor.generationOutputStreaming')
+            : t('data.inputTables.editor.generationOutputIdle')}
+        </span>
+      </div>
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto px-4 py-3">
+        {output ? (
+          <MessageCard message={message} isStreaming={isStreaming} />
+        ) : (
+          <div className="flex h-full min-h-28 items-center justify-center rounded-lg border border-dashed border-border-muted bg-background/30 px-4 text-center text-[13px] font-medium text-text-muted">
+            {t('data.inputTables.editor.generatedStatusEmpty')}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -7005,13 +7097,6 @@ function InputTablePreviewDialog({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const columns = preview?.columns ?? [];
-  const rows = preview?.rows ?? [];
-  const totalRows = preview?.totalRows ?? 0;
-  const pageSize = preview?.limit ?? INPUT_TABLE_PREVIEW_PAGE_SIZE;
-  const pageCount = Math.max(1, Math.ceil(totalRows / pageSize));
-  const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
-  const pageNumbers = getVisiblePageNumbers(safeCurrentPage, pageCount);
   const previewTitle =
     tableKind === 'output'
       ? t('data.outputTables.previewTitle')
@@ -7040,107 +7125,21 @@ function InputTablePreviewDialog({
           </button>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background/24 p-3">
-          {isLoading ? (
-            <div className="flex min-h-0 flex-1 items-center justify-center">
-              <LoadingState label={t('data.inputTables.editor.previewLoading')} />
-            </div>
-          ) : error ? (
-            <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-error/15 bg-error/5 px-4 text-center text-xs font-medium text-error">
-              {error}
-            </div>
-          ) : columns.length === 0 || rows.length === 0 ? (
-            <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-border-muted bg-background/34">
-              <EmptyState label={previewEmpty} />
-            </div>
-          ) : (
-            <>
-              <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-border-muted">
-                <table className="min-w-full border-collapse text-left text-xs">
-                  <thead className="sticky top-0 z-10 bg-background/34 backdrop-blur-xl">
-                    <tr className="h-9 border-b border-border-muted text-text-muted">
-                      {columns.map((column) => (
-                        <th
-                          key={column}
-                          className="max-w-[12rem] whitespace-nowrap px-3 font-medium"
-                        >
-                          <span className="block truncate" title={column}>
-                            {column}
-                          </span>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((row, rowIndex) => (
-                      <tr
-                        key={rowIndex}
-                        className="h-9 border-b border-border-muted/80 last:border-b-0 hover:bg-surface-hover/35"
-                      >
-                        {columns.map((column) => (
-                          <td
-                            key={column}
-                            className="max-w-[12rem] whitespace-nowrap px-3 text-text-secondary"
-                          >
-                            <span className="block truncate" title={formatPreviewCell(row[column])}>
-                              {formatPreviewCell(row[column])}
-                            </span>
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </div>
-        <div className="flex h-12 flex-shrink-0 items-center justify-between gap-3 border-t border-border-muted px-4 text-xs font-medium text-text-secondary">
-          <span>
-            {preview
-              ? t('data.inputTables.editor.previewTotal', { count: totalRows })
-              : t('data.inputTables.editor.previewPageSize', {
-                  count: INPUT_TABLE_PREVIEW_PAGE_SIZE,
-                })}
-          </span>
-          <div className="flex items-center gap-1.5">
-            <span className="mr-2 hidden text-text-muted sm:inline">
-              {t('data.inputTables.editor.previewPageSize', {
-                count: preview?.limit ?? INPUT_TABLE_PREVIEW_PAGE_SIZE,
-              })}
-            </span>
-            <button
-              type="button"
-              onClick={() => onPageChange(safeCurrentPage - 1)}
-              disabled={isLoading || safeCurrentPage <= 1}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            {pageNumbers.map((pageNumber) => (
-              <button
-                key={pageNumber}
-                type="button"
-                onClick={() => onPageChange(pageNumber)}
-                disabled={isLoading}
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                  pageNumber === safeCurrentPage
-                    ? 'bg-accent text-white shadow-soft'
-                    : 'border border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
-                }`}
-              >
-                {pageNumber}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => onPageChange(safeCurrentPage + 1)}
-              disabled={isLoading || safeCurrentPage >= pageCount}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background/24">
+          <GlassDataGridPreview
+            preview={preview}
+            isLoading={isLoading}
+            error={error}
+            currentPage={currentPage}
+            onPageChange={onPageChange}
+            edgeToEdge
+            labels={{
+              loading: t('data.inputTables.editor.previewLoading'),
+              empty: previewEmpty,
+              total: (count) => t('data.inputTables.editor.previewTotal', { count }),
+              pageSize: (count) => t('data.inputTables.editor.previewPageSize', { count }),
+            }}
+          />
         </div>
       </div>
     </div>
@@ -7530,6 +7529,67 @@ function getPreferredNormalizerFilePath(
   );
 }
 
+function createNormalizerGenerationProgressId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `normalizer-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function buildNormalizerGenerationStartOutput(input: {
+  inputTableName: string;
+  sourceKind: DataInputTableSourceKind;
+  language: DataNormalizerLanguage;
+  rulePrompt: string;
+  t: TranslateFn;
+}): string {
+  return [
+    `**${input.t('data.inputTables.editor.generationOutputStartTitle')}**`,
+    '',
+    `- ${input.t('data.inputTables.editor.generationOutputInputTable')}: ${input.inputTableName}`,
+    `- ${input.t('data.inputTables.editor.generationOutputSourceKind')}: ${input.sourceKind}`,
+    `- ${input.t('data.inputTables.editor.generationOutputLanguage')}: ${input.language === 'node' ? 'Node.js' : 'Python'}`,
+    `- ${input.t('data.inputTables.editor.rulePrompt')}: ${truncateGenerationLogText(input.rulePrompt, 220)}`,
+    '',
+    '```text',
+    input.t('data.inputTables.editor.generationOutputPreparing'),
+    '```',
+  ].join('\n');
+}
+
+function buildNormalizerGenerationSuccessOutput(input: {
+  artifactId: string;
+  versionNumber: number;
+  files: DataNormalizerProjectFile[];
+  language: DataNormalizerLanguage;
+  t: TranslateFn;
+}): string {
+  const fileLines = input.files.slice(0, 12).map((file) => `- ${file.path}`);
+  const extraCount = Math.max(0, input.files.length - fileLines.length);
+  if (extraCount > 0) {
+    fileLines.push(`- ... +${extraCount}`);
+  }
+  return [
+    '```text',
+    `[4/4] ${input.t('data.inputTables.editor.generatedStatusReady')}`,
+    `artifact=${input.artifactId}`,
+    `version=v${input.versionNumber}`,
+    `language=${input.language}`,
+    '```',
+    '',
+    `**${input.t('data.inputTables.editor.generatedDraftFiles', {
+      count: input.files.length,
+    })}**`,
+    '',
+    ...fileLines,
+  ].join('\n');
+}
+
+function truncateGenerationLogText(value: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 3)}...` : normalized;
+}
+
 function buildNormalizerProjectTree(files: DataNormalizerProjectFile[]): NormalizerProjectTreeNode[] {
   const roots: NormalizerProjectTreeNode[] = [];
   const folderMap = new Map<string, NormalizerProjectTreeNode>();
@@ -7685,13 +7745,6 @@ function getNormalizerVersionDiffSummary(
       ? t('data.inputTables.editor.versionRuleSame')
       : t('data.inputTables.editor.versionRuleChanged'),
   });
-}
-
-function formatPreviewCell(value: string | number | boolean | null | undefined): string {
-  if (value === null || value === undefined) {
-    return '';
-  }
-  return String(value);
 }
 
 function formatRelatedTaskNames(

@@ -33,6 +33,7 @@ import type {
   DataDataset,
   DataGenerateInputTableNormalizerDraftInput,
   DataGenerateInputTableNormalizerDraftResult,
+  DataInputTableNormalizerDraftProgressEvent,
   DataInputTablePreview,
   DataInputTableSourceSummary,
   DataInputTableSourceKind,
@@ -247,6 +248,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
       payload: DataGenerateInputTableNormalizerDraftInput
     ): Promise<DataGenerateInputTableNormalizerDraftResult> =>
       ipcRenderer.invoke('data.generateInputTableNormalizerDraft', payload),
+    onInputTableNormalizerDraftProgress: (
+      callback: (event: DataInputTableNormalizerDraftProgressEvent) => void
+    ) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        data: DataInputTableNormalizerDraftProgressEvent
+      ) => callback(data);
+      ipcRenderer.on('data.inputTableNormalizerDraftProgress', listener);
+      return () => ipcRenderer.removeListener('data.inputTableNormalizerDraftProgress', listener);
+    },
     previewInputTableNormalizerVersion: (
       payload: DataPreviewInputTableNormalizerVersionInput
     ): Promise<{ preview: DataInputTablePreview }> =>
@@ -608,6 +619,9 @@ declare global {
         generateInputTableNormalizerDraft: (
           payload: DataGenerateInputTableNormalizerDraftInput
         ) => Promise<DataGenerateInputTableNormalizerDraftResult>;
+        onInputTableNormalizerDraftProgress: (
+          callback: (event: DataInputTableNormalizerDraftProgressEvent) => void
+        ) => () => void;
         previewInputTableNormalizerVersion: (
           payload: DataPreviewInputTableNormalizerVersionInput
         ) => Promise<{ preview: DataInputTablePreview }>;

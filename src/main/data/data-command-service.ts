@@ -168,6 +168,11 @@ export class DataCommandService {
     const primaryLanguage = input.primaryLanguage === 'node' ? 'node' : 'python';
     let summary: SummarizeInputTableSourceResult['summary'];
     try {
+      input.onProgress?.({
+        phase: 'source_summary',
+        kind: 'message',
+        text: '\n\n**内置读取源文件摘要**\n\n正在读取文件/文件夹信息，并抽取前 20 行左右样本用于结构分析。\n',
+      });
       summary = await this.store.summarizeInputTableSource({
         sourcePath: input.sourcePath,
         sourceKind: input.sourceKind,
@@ -176,6 +181,11 @@ export class DataCommandService {
         maxSheetsPerFile: 12,
         maxRowsPerSheet: 20,
         maxColumnsPerRow: 80,
+      });
+      input.onProgress?.({
+        phase: 'source_summary',
+        kind: 'message',
+        text: `已完成源文件摘要：${summary.fileCount} 个文件，hash ${summary.hash}。\n`,
       });
     } catch (error) {
       throw toCommandError(error, 'FILE_ACCESS_DENIED');
@@ -186,6 +196,12 @@ export class DataCommandService {
         primaryLanguage,
         rulePrompt,
         sourceSummary: summary,
+        onProgress: input.onProgress,
+      });
+      input.onProgress?.({
+        phase: 'saving',
+        kind: 'message',
+        text: '\n\n**保存项目草稿**\n\n正在写入项目文件和版本记录。\n',
       });
       const result = await this.store.saveInputTableNormalizerDraft({
         artifactId: input.artifactId,
@@ -203,11 +219,21 @@ export class DataCommandService {
         dependencies: template.dependencies,
         dependencyLockHash: createNormalizerDependencyLockHash(template.files),
       });
+      input.onProgress?.({
+        phase: 'complete',
+        kind: 'message',
+        text: `草稿已保存：v${result.version.version}，共 ${result.version.files.length} 个项目文件。\n`,
+      });
       return {
         ...result,
         summary,
       };
     } catch (error) {
+      input.onProgress?.({
+        phase: 'error',
+        kind: 'message',
+        text: error instanceof Error ? error.message : String(error),
+      });
       throw toCommandError(error, 'RUN_FAILED');
     }
   }

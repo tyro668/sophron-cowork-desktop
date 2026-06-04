@@ -1819,9 +1819,20 @@ ipcMain.handle(
 
 ipcMain.handle(
   'data.generateInputTableNormalizerDraft',
-  async (_event, payload: DataGenerateInputTableNormalizerDraftInput) => {
+  async (event, payload: DataGenerateInputTableNormalizerDraftInput) => {
     try {
-      return await requireDataCommandService().generateInputTableNormalizerDraft(payload);
+      const progressId = payload.progressId?.trim();
+      return await requireDataCommandService().generateInputTableNormalizerDraft({
+        ...payload,
+        onProgress: progressId
+          ? (progress) => {
+              event.sender.send('data.inputTableNormalizerDraftProgress', {
+                progressId,
+                ...progress,
+              });
+            }
+          : undefined,
+      });
     } catch (error) {
       logError('[Data] Error generating input table normalizer draft:', error);
       throw error;

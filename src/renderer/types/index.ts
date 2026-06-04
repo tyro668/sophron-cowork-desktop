@@ -318,12 +318,28 @@ export interface DataGenerateInputTableNormalizerDraftInput {
   config?: DataInputTableConfig;
   rulePrompt: string;
   primaryLanguage?: DataNormalizerLanguage;
+  progressId?: string;
 }
 
 export interface DataGenerateInputTableNormalizerDraftResult {
   artifact: DataInputTableNormalizerArtifact;
   version: DataInputTableNormalizerArtifactVersion;
   summary: DataInputTableSourceSummary;
+}
+
+export type DataInputTableNormalizerDraftProgressPhase =
+  | 'source_summary'
+  | 'source_analysis'
+  | 'code_generation'
+  | 'saving'
+  | 'complete'
+  | 'error';
+
+export interface DataInputTableNormalizerDraftProgressEvent {
+  progressId: string;
+  phase: DataInputTableNormalizerDraftProgressPhase;
+  kind: 'message' | 'delta';
+  text: string;
 }
 
 export interface DataPreviewInputTableNormalizerVersionInput {

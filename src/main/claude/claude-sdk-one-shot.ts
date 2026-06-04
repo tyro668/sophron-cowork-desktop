@@ -1,4 +1,8 @@
-import { completeSimple, type UserMessage as PiUserMessage } from '@mariozechner/pi-ai';
+import {
+  completeSimple,
+  streamSimple,
+  type UserMessage as PiUserMessage,
+} from '@mariozechner/pi-ai';
 import type { ApiTestInput, ApiTestResult } from '../../renderer/types';
 import { PROVIDER_PRESETS, type AppConfig, type CustomProtocolType } from '../config/config-store';
 import {
@@ -166,6 +170,8 @@ export async function runPiAiOneShot(
     temperature?: number;
     maxTokens?: number;
     signal?: AbortSignal;
+    onTextDelta?: (delta: string) => void;
+    onThinkingDelta?: (delta: string) => void;
   }
 ): Promise<{ text: string; hasThinking: boolean; durationMs: number }> {
   const modelString = resolvePiModelString(config);
@@ -247,14 +253,19 @@ export async function runPiAiOneShot(
     'api:',
     resolvedModel.api
   );
-  const response = await completeSimple(
-    resolvedModel,
-    {
-      systemPrompt,
-      messages: [userMsg],
-    },
-    { ...options, apiKey: apiKey || undefined }
-  );
+  const { onTextDelta, onThinkingDelta, ...requestOptions } = options ?? {};
+  const context = {
+    systemPrompt,
+    messages: [userMsg],
+  };
+  const requestOptionsWithAuth = { ...requestOptions, apiKey: apiKey || undefined };
+  const response =
+    onTextDelta || onThinkingDelta
+      ? await streamPiAiOneShotResponse(resolvedModel, context, requestOptionsWithAuth, {
+          onTextDelta,
+          onThinkingDelta,
+        })
+      : await completeSimple(resolvedModel, context, requestOptionsWithAuth);
 
   // pi-ai resolves (not rejects) on provider errors — the error details
   // live in stopReason/errorMessage on the response object.  Surface them
@@ -285,6 +296,28 @@ export async function runPiAiOneShot(
     thinkingBlocks.length
   );
   return { text, hasThinking, durationMs: Date.now() - start };
+}
+
+async function streamPiAiOneShotResponse(
+  model: Parameters<typeof streamSimple>[0],
+  context: Parameters<typeof streamSimple>[1],
+  options: Parameters<typeof streamSimple>[2],
+  callbacks: {
+    onTextDelta?: (delta: string) => void;
+    onThinkingDelta?: (delta: string) => void;
+  }
+): Promise<Awaited<ReturnType<typeof completeSimple>>> {
+  const stream = streamSimple(model, context, options);
+  for await (const event of stream) {
+    if (event.type === 'text_delta') {
+      callbacks.onTextDelta?.(event.delta);
+    } else if (event.type === 'thinking_delta') {
+      callbacks.onThinkingDelta?.(event.delta);
+    } else if (event.type === 'error') {
+      logWarn('[OneShot] Streaming provider error-as-event:', event.reason, event.error.errorMessage);
+    }
+  }
+  return stream.result();
 }
 
 function normalizeProbeAck(raw: string): string {

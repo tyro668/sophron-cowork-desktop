@@ -3,6 +3,7 @@ import type {
   DataDataset,
   DataGenerateInputTableNormalizerDraftInput,
   DataGenerateInputTableNormalizerDraftResult,
+  DataInputTableNormalizerDraftProgressEvent,
   DataInputTableNormalizerVersionSaveResult,
   DataInputTableConfig,
   DataListInputTableNormalizerVersionsInput,
@@ -90,8 +91,14 @@ export interface SummarizeInputTableSourceResult {
   summary: DataInputTableSourceSummary;
 }
 
+export type GenerateInputTableNormalizerDraftProgressCallback = (
+  event: Omit<DataInputTableNormalizerDraftProgressEvent, 'progressId'>
+) => void;
+
 export type GenerateInputTableNormalizerDraftCommand =
-  DataGenerateInputTableNormalizerDraftInput;
+  DataGenerateInputTableNormalizerDraftInput & {
+    onProgress?: GenerateInputTableNormalizerDraftProgressCallback;
+  };
 
 export type GenerateInputTableNormalizerDraftResult =
   DataGenerateInputTableNormalizerDraftResult;
