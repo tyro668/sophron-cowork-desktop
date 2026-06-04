@@ -76,6 +76,7 @@ describe('auth-utils', () => {
       'openrouter',
       'deepseek',
       'moonshot',
+      'aliyun',
       'zai',
       'ollama',
     ] as const) {

@@ -802,6 +802,10 @@
           "name": "Moonshot / Kimi",
           "note": "优先使用专用的 Moonshot 配置入口，按 Kimi API 文档填写精确模型 ID。"
         },
+        "aliyun": {
+          "name": "Aliyun / DashScope",
+          "note": "优先使用专用的 Aliyun 配置入口；DashScope OpenAI 兼容接口使用 /compatible-mode/v1，示例模型为 qwen3-max。"
+        },
         "kimi": {
           "name": "Kimi Coding",
           "note": "推荐对 coding endpoint 使用 Anthropic 兼容协议，并按 Moonshot 文档确认精确的 coding 模型 ID。"

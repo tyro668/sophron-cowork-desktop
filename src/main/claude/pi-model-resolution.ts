@@ -8,6 +8,7 @@ const OPENAI_COMPATIBLE_ROUTE_PROVIDERS = new Set([
   'openrouter',
   'deepseek',
   'moonshot',
+  'aliyun',
   'zai',
   'ollama',
 ]);
@@ -184,6 +185,7 @@ export function resolveSyntheticPiModelFallback(
       input.rawProvider === 'custom' ||
       input.rawProvider === 'deepseek' ||
       input.rawProvider === 'moonshot' ||
+      input.rawProvider === 'aliyun' ||
       input.rawProvider === 'zai' ||
       (input.rawProvider === 'openai' && !!baseUrl && !isOfficialOpenAIBaseUrl(baseUrl))) &&
     input.routeProtocol === 'openai';

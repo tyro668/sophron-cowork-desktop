@@ -96,23 +96,8 @@ export function SettingsAPI() {
   }
 
   const providerOptions = VISIBLE_API_PROVIDER_OPTIONS;
-  const showsBaseUrl =
-    provider === 'custom' ||
-    provider === 'ollama' ||
-    provider === 'openrouter' ||
-    provider === 'deepseek' ||
-    provider === 'moonshot' ||
-    provider === 'zai';
-  const baseUrlPlaceholder =
-    provider === 'ollama'
-      ? 'http://localhost:11434/v1'
-      : provider === 'custom'
-        ? customProtocol === 'openai'
-          ? 'https://api.openai.com/v1'
-          : customProtocol === 'gemini'
-            ? 'https://generativelanguage.googleapis.com'
-            : currentPreset?.baseUrl || 'https://api.anthropic.com'
-        : currentPreset?.baseUrl || '';
+  const showsBaseUrl = provider === 'ollama';
+  const baseUrlPlaceholder = 'http://localhost:11434/v1';
 
   return (
     <div className="space-y-3">
@@ -143,7 +128,7 @@ export function SettingsAPI() {
           <Server className="w-4 h-4" />
           {t('api.provider')}
         </label>
-        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2">
           {providerOptions.map((p) => (
             <button
               key={p}

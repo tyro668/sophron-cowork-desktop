@@ -5743,7 +5743,6 @@ function InputTableEditorWorkbench({
   const [previewPage, setPreviewPage] = useState(1);
   const [customizeGenerating, setCustomizeGenerating] = useState(false);
   const [customizeGenerationOutput, setCustomizeGenerationOutput] = useState('');
-  const [customizePublishing, setCustomizePublishing] = useState(false);
   const [customizeVersionActionId, setCustomizeVersionActionId] = useState<string | null>(null);
   const [deletingNormalizerVersionId, setDeletingNormalizerVersionId] = useState<string | null>(
     null
@@ -5787,13 +5786,6 @@ function InputTableEditorWorkbench({
       dataProcessing.rulePrompt.trim() &&
       !customizeGenerating
   );
-  const canPublishCustomizeVersion = Boolean(
-    dataset &&
-      dataProcessing.strategy === 'customize' &&
-      dataProcessing.artifactVersionId &&
-      dataProcessing.artifactVersionStatus !== 'published' &&
-      !customizePublishing
-  );
   const currentNormalizerVersion =
     dataProcessing.strategy === 'customize'
       ? normalizerVersions.find((version) => version.id === dataProcessing.artifactVersionId)
@@ -5832,7 +5824,6 @@ function InputTableEditorWorkbench({
     setCustomizeGenerationError(null);
     setCustomizeGenerationOutput('');
     setCustomizeGenerating(false);
-    setCustomizePublishing(false);
     setCustomizeVersionActionId(null);
     setDeletingNormalizerVersionId(null);
     setActiveEditorTab('rules');
@@ -6063,41 +6054,6 @@ function InputTableEditorWorkbench({
       setPreviewError(err instanceof Error ? err.message : String(err));
     } finally {
       setPreviewLoading(false);
-    }
-  };
-
-  const publishCustomizeVersion = async () => {
-    if (
-      dataProcessing.strategy !== 'customize' ||
-      !dataProcessing.artifactVersionId ||
-      !dataset
-    ) {
-      return;
-    }
-    setCustomizePublishing(true);
-    setCustomizeGenerationError(null);
-    try {
-      const result = await window.electronAPI.data.publishInputTableNormalizerVersion({
-        versionId: dataProcessing.artifactVersionId,
-      });
-      updateDataProcessing({
-        ...dataProcessing,
-        artifactId: result.artifact.id,
-        artifactVersionId: result.version.id,
-        artifactVersionStatus: result.version.status,
-        fileTreeHash: result.version.fileTreeHash,
-        dependencyLockHash: result.version.dependencyLockHash ?? undefined,
-        runtime: result.version.runtime,
-        entrypoint: result.version.entrypoint,
-        dependencyPrepare: result.version.dependencyPrepare,
-        projectFiles: result.version.files,
-        sourceSummaryHash: result.version.sourceSummaryHash ?? undefined,
-      });
-      void refreshNormalizerVersions(result.artifact.id);
-    } catch (err) {
-      setCustomizeGenerationError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setCustomizePublishing(false);
     }
   };
 
@@ -6506,21 +6462,6 @@ function InputTableEditorWorkbench({
                   <Eye className="h-4 w-4" />
                 )}
                 {t('data.inputTables.editor.previewNormalizedDraft')}
-              </button>
-              <button
-                type="button"
-                disabled={!canPublishCustomizeVersion}
-                onClick={() => void publishCustomizeVersion()}
-                className="inline-flex h-10 min-w-[9.5rem] items-center justify-center gap-2 rounded-lg border border-border-muted bg-background/62 px-5 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {customizePublishing ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <UploadCloud className="h-4 w-4" />
-                )}
-                {customizePublishing
-                  ? t('data.inputTables.editor.publishingNormalizer')
-                  : t('data.inputTables.editor.publishNormalizer')}
               </button>
             </div>
           </div>

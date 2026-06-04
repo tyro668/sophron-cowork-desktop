@@ -38,6 +38,7 @@ export type ProviderType =
   | 'openai'
   | 'deepseek'
   | 'moonshot'
+  | 'aliyun'
   | 'zai'
   | 'gemini'
   | 'ollama';
@@ -49,6 +50,7 @@ export type ProviderProfileKey =
   | 'openai'
   | 'deepseek'
   | 'moonshot'
+  | 'aliyun'
   | 'zai'
   | 'gemini'
   | 'ollama'
@@ -208,6 +210,11 @@ const defaultProfiles: Record<ProviderProfileKey, ProviderProfile> = {
     baseUrl: 'https://api.moonshot.ai/v1',
     model: 'kimi-k2.6',
   },
+  aliyun: {
+    apiKey: '',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    model: 'qwen3-max',
+  },
   zai: {
     apiKey: '',
     baseUrl: 'https://api.z.ai/api/paas/v4',
@@ -360,6 +367,7 @@ const PROFILE_KEYS: ProviderProfileKey[] = [
   'openai',
   'deepseek',
   'moonshot',
+  'aliyun',
   'zai',
   'gemini',
   'ollama',
@@ -377,6 +385,7 @@ function isProviderType(value: unknown): value is ProviderType {
     value === 'openai' ||
     value === 'deepseek' ||
     value === 'moonshot' ||
+    value === 'aliyun' ||
     value === 'zai' ||
     value === 'gemini' ||
     value === 'ollama'
@@ -503,6 +512,9 @@ function profileKeyToProvider(profileKey: ProviderProfileKey): {
   if (profileKey === 'moonshot') {
     return { provider: 'moonshot', customProtocol: 'openai' };
   }
+  if (profileKey === 'aliyun') {
+    return { provider: 'aliyun', customProtocol: 'openai' };
+  }
   if (profileKey === 'zai') {
     return { provider: 'zai', customProtocol: 'openai' };
   }
@@ -547,6 +559,7 @@ function defaultProtocolForProvider(provider: ProviderType): CustomProtocolType 
     provider === 'openrouter' ||
     provider === 'deepseek' ||
     provider === 'moonshot' ||
+    provider === 'aliyun' ||
     provider === 'zai' ||
     provider === 'ollama'
   ) {

@@ -22,6 +22,7 @@ describe('api config state helpers', () => {
     expect(VISIBLE_API_PROVIDER_OPTIONS).toEqual([
       'deepseek',
       'moonshot',
+      'aliyun',
       'zai',
       'anthropic',
       'openai',
@@ -35,6 +36,7 @@ describe('api config state helpers', () => {
     expect(profileKeyFromProvider('openrouter')).toBe('openrouter');
     expect(profileKeyFromProvider('deepseek')).toBe('deepseek');
     expect(profileKeyFromProvider('moonshot')).toBe('moonshot');
+    expect(profileKeyFromProvider('aliyun')).toBe('aliyun');
     expect(profileKeyFromProvider('zai')).toBe('zai');
     expect(profileKeyFromProvider('ollama')).toBe('ollama');
     expect(profileKeyFromProvider('custom', 'openai')).toBe('custom:openai');
@@ -57,6 +59,10 @@ describe('api config state helpers', () => {
     });
     expect(profileKeyToProvider('moonshot')).toEqual({
       provider: 'moonshot',
+      customProtocol: 'openai',
+    });
+    expect(profileKeyToProvider('aliyun')).toEqual({
+      provider: 'aliyun',
       customProtocol: 'openai',
     });
     expect(profileKeyToProvider('zai')).toEqual({
@@ -149,6 +155,20 @@ describe('api config state helpers', () => {
     expect(FALLBACK_PROVIDER_PRESETS.moonshot.baseUrl).toBe('https://api.moonshot.ai/v1');
     expect(FALLBACK_PROVIDER_PRESETS.moonshot.models.map((item) => item.id)).toContain('kimi-k2.6');
     expect(getModelInputGuidance('moonshot').placeholder).toContain('kimi-k2.6');
+
+    expect(FALLBACK_PROVIDER_PRESETS.aliyun.baseUrl).toBe(
+      'https://dashscope.aliyuncs.com/compatible-mode/v1'
+    );
+    expect(FALLBACK_PROVIDER_PRESETS.aliyun.models.map((item) => item.id)).toEqual([
+      'qwen3-max',
+      'deepseek-v4-pro',
+      'glm-5.1',
+      'kimi-k2.6',
+    ]);
+    expect(getModelInputGuidance('aliyun').placeholder).toContain('qwen3-max');
+    expect(getModelInputGuidance('aliyun').placeholder).toContain('deepseek-v4-pro');
+    expect(getModelInputGuidance('aliyun').placeholder).toContain('glm-5.1');
+    expect(getModelInputGuidance('aliyun').placeholder).toContain('kimi-k2.6');
 
     expect(FALLBACK_PROVIDER_PRESETS.zai.baseUrl).toBe('https://api.z.ai/api/paas/v4');
     expect(FALLBACK_PROVIDER_PRESETS.zai.models.map((item) => item.id)).toContain('glm-5.1');

@@ -71,6 +71,7 @@ const PROFILE_KEYS: ProviderProfileKey[] = [
   'openai',
   'deepseek',
   'moonshot',
+  'aliyun',
   'zai',
   'gemini',
   'ollama',
@@ -91,6 +92,7 @@ function isProviderType(value: unknown): value is ProviderType {
     value === 'openai' ||
     value === 'deepseek' ||
     value === 'moonshot' ||
+    value === 'aliyun' ||
     value === 'zai' ||
     value === 'gemini' ||
     value === 'ollama'
@@ -144,6 +146,9 @@ export function profileKeyToProvider(profileKey: ProviderProfileKey): {
   }
   if (profileKey === 'moonshot') {
     return { provider: 'moonshot', customProtocol: 'openai' };
+  }
+  if (profileKey === 'aliyun') {
+    return { provider: 'aliyun', customProtocol: 'openai' };
   }
   if (profileKey === 'zai') {
     return { provider: 'zai', customProtocol: 'openai' };
@@ -1583,7 +1588,6 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     activeProfileKey,
     apiKey,
     baseUrl,
-    presets,
     provider,
     clearError,
     showErrorKey,

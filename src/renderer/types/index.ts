@@ -1117,6 +1117,7 @@ export type ProviderType =
   | 'openai'
   | 'deepseek'
   | 'moonshot'
+  | 'aliyun'
   | 'zai'
   | 'gemini'
   | 'ollama';
@@ -1128,6 +1129,7 @@ export type ProviderProfileKey =
   | 'openai'
   | 'deepseek'
   | 'moonshot'
+  | 'aliyun'
   | 'zai'
   | 'gemini'
   | 'ollama'
@@ -1224,6 +1226,7 @@ export interface ProviderPresets {
   openai: ProviderPreset;
   deepseek: ProviderPreset;
   moonshot: ProviderPreset;
+  aliyun: ProviderPreset;
   zai: ProviderPreset;
   gemini: ProviderPreset;
   ollama: ProviderPreset;

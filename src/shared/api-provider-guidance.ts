@@ -4,6 +4,7 @@ export type CommonProviderSetupId =
   | 'openrouter'
   | 'deepseek'
   | 'moonshot'
+  | 'aliyun'
   | 'kimi-coding'
   | 'glm-anthropic'
   | 'zai'
@@ -88,6 +89,21 @@ export const COMMON_PROVIDER_SETUPS: CommonProviderSetup[] = [
     matcher: {
       hosts: ['api.moonshot.ai'],
       pathPrefixes: ['/v1'],
+    },
+  },
+  {
+    id: 'aliyun',
+    nameKey: 'api.guidance.setups.aliyun.name',
+    noteKey: 'api.guidance.setups.aliyun.note',
+    applyProvider: 'aliyun',
+    recommendedProtocol: 'openai',
+    recommendedBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    exampleModel: 'qwen3-max',
+    protocolLabel: 'Aliyun',
+    preferProviderTab: 'aliyun',
+    matcher: {
+      hosts: ['dashscope.aliyuncs.com'],
+      pathPrefixes: ['/compatible-mode', '/compatible-mode/v1'],
     },
   },
   {

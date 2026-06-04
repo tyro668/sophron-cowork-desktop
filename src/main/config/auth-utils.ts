@@ -44,6 +44,7 @@ export function isOpenAIProvider(config: Pick<AppConfig, 'provider' | 'customPro
     config.provider === 'openrouter' ||
     config.provider === 'deepseek' ||
     config.provider === 'moonshot' ||
+    config.provider === 'aliyun' ||
     config.provider === 'zai' ||
     config.provider === 'ollama' ||
     (config.provider === 'custom' && config.customProtocol === 'openai')

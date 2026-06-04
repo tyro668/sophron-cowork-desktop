@@ -802,6 +802,10 @@
           "name": "Moonshot / Kimi",
           "note": "Prefer the dedicated Moonshot provider tab and copy the exact model ID from Kimi API docs."
         },
+        "aliyun": {
+          "name": "Aliyun / DashScope",
+          "note": "Prefer the dedicated Aliyun provider tab. Use /compatible-mode/v1 for the DashScope OpenAI-compatible API; example model: qwen3-max."
+        },
         "kimi": {
           "name": "Kimi Coding",
           "note": "Use the coding endpoint with Anthropic-compatible mode. Double-check the exact coding model ID from Moonshot docs."

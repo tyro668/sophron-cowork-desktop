@@ -28,7 +28,14 @@ interface ConfigModalProps {
 }
 
 const PROVIDER_LABELS: Record<
-  'anthropic' | 'openai' | 'openrouter' | 'deepseek' | 'moonshot' | 'zai' | 'ollama',
+  | 'anthropic'
+  | 'openai'
+  | 'openrouter'
+  | 'deepseek'
+  | 'moonshot'
+  | 'aliyun'
+  | 'zai'
+  | 'ollama',
   string
 > = {
   anthropic: 'Anthropic',
@@ -36,6 +43,7 @@ const PROVIDER_LABELS: Record<
   openrouter: 'OpenRouter',
   deepseek: 'DeepSeek',
   moonshot: 'Moonshot',
+  aliyun: 'Aliyun',
   zai: 'Z.AI',
   ollama: 'Ollama',
 };
@@ -119,23 +127,8 @@ export function ConfigModal({
   if (!isOpen) return null;
 
   const providerOptions = VISIBLE_API_PROVIDER_OPTIONS;
-  const showsBaseUrl =
-    provider === 'custom' ||
-    provider === 'ollama' ||
-    provider === 'openrouter' ||
-    provider === 'deepseek' ||
-    provider === 'moonshot' ||
-    provider === 'zai';
-  const baseUrlPlaceholder =
-    provider === 'ollama'
-      ? 'http://localhost:11434/v1'
-      : provider === 'custom'
-        ? customProtocol === 'openai'
-          ? 'https://api.openai.com/v1'
-          : customProtocol === 'gemini'
-            ? 'https://generativelanguage.googleapis.com'
-            : currentPreset?.baseUrl || 'https://api.anthropic.com'
-        : currentPreset?.baseUrl || '';
+  const showsBaseUrl = provider === 'ollama';
+  const baseUrlPlaceholder = 'http://localhost:11434/v1';
 
   const testErrorMessage = (result: ApiTestResult) => {
     switch (result.errorType) {

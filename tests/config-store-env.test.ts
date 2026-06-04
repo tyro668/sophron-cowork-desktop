@@ -184,7 +184,7 @@ describe('ConfigStore applyToEnv', () => {
 
   it('exports requested dedicated providers through OpenAI-compatible env vars', () => {
     const cases: Array<{
-      provider: Extract<ProviderType, 'deepseek' | 'moonshot' | 'zai' | 'openrouter'>;
+      provider: Extract<ProviderType, 'deepseek' | 'moonshot' | 'aliyun' | 'zai' | 'openrouter'>;
       profileKey: ProviderProfileKey;
       baseUrl: string;
       model: string;
@@ -200,6 +200,12 @@ describe('ConfigStore applyToEnv', () => {
         profileKey: 'moonshot',
         baseUrl: 'https://api.moonshot.ai/v1',
         model: 'kimi-k2.6',
+      },
+      {
+        provider: 'aliyun',
+        profileKey: 'aliyun',
+        baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        model: 'qwen3-max',
       },
       {
         provider: 'zai',

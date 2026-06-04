@@ -68,6 +68,7 @@ vi.mock('../src/main/claude/pi-model-resolution', () => ({
       provider === 'openrouter' ||
       provider === 'deepseek' ||
       provider === 'moonshot' ||
+      provider === 'aliyun' ||
       provider === 'zai'
     ) {
       return 'openai';
@@ -115,7 +116,7 @@ vi.mock('../src/main/claude/pi-model-resolution', () => ({
     const parts = resolved.split('/');
     const strippedModelId = parts.length >= 2 ? parts.slice(1).join('/') : resolved;
     const preserve =
-      ['openrouter', 'custom', 'deepseek', 'moonshot', 'zai'].includes(rawProvider || '') &&
+      ['openrouter', 'custom', 'deepseek', 'moonshot', 'aliyun', 'zai'].includes(rawProvider || '') &&
       routeProtocol === 'openai' &&
       raw.includes('/');
     return {
@@ -476,6 +477,46 @@ describe('probeWithClaudeSdk', () => {
     );
     expect(mocks.completeSimple.mock.calls[0]?.[2]).toEqual({
       apiKey: 'sk-deepseek',
+    });
+  });
+
+  it('uses OpenAI-compatible routing for dedicated Aliyun provider probes', async () => {
+    mocks.resolvePiRegistryModel.mockReturnValue(undefined);
+    mocks.buildSyntheticPiModel.mockReturnValue({
+      id: 'qwen3-max',
+      provider: 'aliyun',
+      api: 'openai-completions',
+      baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    });
+
+    const result = await probeWithClaudeSdk(
+      {
+        provider: 'aliyun',
+        customProtocol: 'openai',
+        apiKey: 'sk-aliyun',
+        model: 'qwen3-max',
+        baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      },
+      createConfig({
+        provider: 'aliyun',
+        customProtocol: 'openai',
+        apiKey: 'sk-aliyun',
+        baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        model: 'qwen3-max',
+        activeProfileKey: 'aliyun',
+      })
+    );
+
+    expect(result.ok).toBe(true);
+    expect(mocks.buildSyntheticPiModel).toHaveBeenCalledWith(
+      'qwen3-max',
+      'aliyun',
+      'openai',
+      'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      'openai-completions'
+    );
+    expect(mocks.completeSimple.mock.calls[0]?.[2]).toEqual({
+      apiKey: 'sk-aliyun',
     });
   });
 

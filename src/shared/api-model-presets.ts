@@ -5,6 +5,7 @@ export type SharedProviderType =
   | 'openai'
   | 'deepseek'
   | 'moonshot'
+  | 'aliyun'
   | 'zai'
   | 'gemini'
   | 'ollama';
@@ -15,6 +16,7 @@ export type VisibleApiProviderType = Exclude<SharedProviderType, 'custom' | 'gem
 export const VISIBLE_API_PROVIDER_OPTIONS = [
   'deepseek',
   'moonshot',
+  'aliyun',
   'zai',
   'anthropic',
   'openai',
@@ -37,6 +39,7 @@ export interface SharedProviderPresets {
   openai: SharedProviderPreset;
   deepseek: SharedProviderPreset;
   moonshot: SharedProviderPreset;
+  aliyun: SharedProviderPreset;
   zai: SharedProviderPreset;
   gemini: SharedProviderPreset;
   ollama: SharedProviderPreset;
@@ -117,6 +120,18 @@ export const API_PROVIDER_PRESETS: SharedProviderPresets = {
     ],
     keyPlaceholder: 'sk-...',
     keyHint: '从 platform.kimi.ai / platform.moonshot.ai 获取',
+  },
+  aliyun: {
+    name: 'Aliyun',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    models: [
+      { id: 'qwen3-max', name: 'Qwen3-Max' },
+      { id: 'deepseek-v4-pro', name: 'DeepSeek-V4-Pro' },
+      { id: 'glm-5.1', name: 'GLM-5.1' },
+      { id: 'kimi-k2.6', name: 'Kimi-K2.6' },
+    ],
+    keyPlaceholder: 'sk-...',
+    keyHint: '从阿里云百炼控制台 / DashScope 获取',
   },
   zai: {
     name: 'Z.AI',
@@ -215,6 +230,10 @@ export const PI_AI_CURATED_PRESETS: Record<string, { piProvider: string; pick: s
     piProvider: 'zai',
     pick: ['glm-5', 'glm-4.5', 'glm-4.5-air'],
   },
+  aliyun: {
+    piProvider: 'aliyun',
+    pick: ['qwen3-max', 'deepseek-v4-pro', 'glm-5.1', 'kimi-k2.6'],
+  },
   gemini: {
     piProvider: 'google',
     pick: [
@@ -277,6 +296,13 @@ export function getModelInputGuidance(
   if (provider === 'moonshot') {
     return {
       placeholder: 'kimi-k2.6, kimi-k2.5, kimi-k2-thinking',
+      hint: 'Use the exact model ID for the selected protocol or endpoint.',
+    };
+  }
+
+  if (provider === 'aliyun') {
+    return {
+      placeholder: 'qwen3-max, deepseek-v4-pro, glm-5.1, kimi-k2.6',
       hint: 'Use the exact model ID for the selected protocol or endpoint.',
     };
   }
