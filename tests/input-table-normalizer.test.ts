@@ -133,10 +133,7 @@ describe('input table normalizer manifest', () => {
       output: 'normalized.csv',
       format: 'csv',
       rowCount: 2,
-      columns: [
-        { name: ' id ', type: 'integer', nullable: false },
-        { name: 'name' },
-      ],
+      columns: [{ name: ' id ', type: 'integer', nullable: false }, { name: 'name' }],
       warnings: ['draft output'],
     });
 
@@ -300,6 +297,71 @@ describe('input table normalizer runner', () => {
       expect(result.cleanupWorkDir).toBe(false);
       expect(result.workDir.startsWith(workspaceRoot)).toBe(true);
       expect(fs.existsSync(path.join(result.workDir, 'src', 'cli.js'))).toBe(true);
+      expect(fs.existsSync(path.join(result.workDir, 'output', 'normalized.csv'))).toBe(true);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('prepares Node dependencies in the persisted project directory', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-normalizer-project-test-'));
+    const sourcePath = path.join(tempRoot, 'source.csv');
+    const workspaceRoot = path.join(tempRoot, 'data', 'input-table-normalizers', 'runs');
+    const projectRoot = path.join(
+      tempRoot,
+      'data',
+      'input-table-normalizers',
+      'projects',
+      'artifact_project',
+      'version_project'
+    );
+    fs.writeFileSync(sourcePath, 'id,name\n1,Alice\n', 'utf8');
+    const template = createInputTableNormalizerProjectTemplate('node', 'Normalize CSV.');
+    const files = template.files.map((file) =>
+      file.path === 'src/transform.js'
+        ? { ...file, content: GENERATED_NODE_NORMALIZER_TRANSFORM }
+        : file
+    );
+    const version: DataInputTableNormalizerArtifactVersion = {
+      id: 'version_project',
+      artifactId: 'artifact_project',
+      version: 1,
+      status: 'draft',
+      files,
+      fileTreeHash: createNormalizerFileTreeHash(files),
+      rulePrompt: 'Normalize CSV.',
+      sourceSummaryHash: 'summary_hash',
+      entrypoint: template.entrypoint,
+      dependencyPrepare: template.dependencyPrepare,
+      runtime: template.runtime,
+      dependencies: template.dependencies,
+      dependencyLockHash: createNormalizerDependencyLockHash(files),
+      createdAt: 1,
+      updatedAt: 1,
+      publishedAt: null,
+    };
+
+    try {
+      const result = await runInputTableNormalizerProject({
+        version,
+        projectRoot,
+        workspaceRoot,
+        prepareDependencies: true,
+        timeoutMs: 30_000,
+        context: {
+          sourcePath,
+          sourceKind: 'csv',
+        },
+      });
+      expect(result.projectDir).toBe(projectRoot);
+      expect(result.workDir.startsWith(workspaceRoot)).toBe(true);
+      expect(result.workDir).not.toBe(projectRoot);
+      expect(result.steps[0]).toMatchObject({
+        command: ['npm', 'ci'],
+        cwd: projectRoot,
+      });
+      expect(result.steps[1].cwd).toBe(projectRoot);
+      expect(fs.existsSync(path.join(result.workDir, 'node_modules'))).toBe(false);
       expect(fs.existsSync(path.join(result.workDir, 'output', 'normalized.csv'))).toBe(true);
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });

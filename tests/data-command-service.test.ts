@@ -240,6 +240,35 @@ describe('DataCommandService', () => {
     expect(versionsAfterDelete.versions[0]?.id).toBe(published.version.id);
   });
 
+  it('creates an input table through the custom processing strategy DSL', async () => {
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'customers.csv');
+    fs.writeFileSync(csvPath, 'id,name\n1,Alice\n2,Bob\n', 'utf8');
+
+    const result = await service.createInputTableWithProcessingStrategy({
+      name: 'customers normalized',
+      sourceKind: 'csv',
+      filePath: csvPath,
+      previewRows: 2,
+      processingStrategy: {
+        strategy: 'customize',
+        rulePrompt: 'Normalize the customer CSV into a standard two-dimensional table.',
+        primaryLanguage: 'node',
+      },
+    });
+
+    expect(result.processingStrategy).toBe('customize');
+    expect(result.normalizer?.publishedVersion.status).toBe('published');
+    expect(result.inputTable.inputConfig.dataProcessing).toMatchObject({
+      strategy: 'customize',
+      artifactId: result.normalizer?.artifact.id,
+      artifactVersionId: result.normalizer?.publishedVersion.id,
+      artifactVersionStatus: 'published',
+    });
+    expect(result.preview?.columns).toEqual(['id', 'name']);
+    expect(result.preview?.totalRows).toBe(2);
+  });
+
   it('emits progress while generating a custom normalizer draft', async () => {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'customers.csv');

@@ -45,6 +45,7 @@ describe('data agent extension', () => {
       expect.arrayContaining([
         'data_get_workflow_dsl_reference',
         'data_create_input_table',
+        'data_create_input_table_with_processing_strategy',
         'data_create_output_table',
         'data_create_task',
         'data_apply_workflow_dsl',

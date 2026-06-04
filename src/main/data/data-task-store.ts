@@ -1303,6 +1303,7 @@ export class DataTaskStore {
       const result = await runInputTableNormalizerProject({
         version,
         prepareDependencies: input.prepareDependencies === true,
+        projectRoot: this.getInputTableNormalizerProjectDir(version.artifactId, version.id),
         workspaceRoot: this.getInputTableNormalizerRunRoot(),
         context: {
           sourcePath,
@@ -3033,6 +3034,7 @@ export class DataTaskStore {
       const result = await runInputTableNormalizerProject({
         version,
         prepareDependencies: false,
+        projectRoot: this.getInputTableNormalizerProjectDir(version.artifactId, version.id),
         workspaceRoot: this.getInputTableNormalizerRunRoot(),
         context: {
           sourcePath,

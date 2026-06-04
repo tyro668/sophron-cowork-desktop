@@ -60,8 +60,10 @@ function buildToolGuideSection(): string {
     'Core tool guide:',
     '- DSL help: data_get_workflow_dsl_reference. Use this tool instead of reading source files such as design/prep/*.md.',
     '- Discover resources: data_list_input_tables, data_list_output_tables, data_list_tasks.',
-    '- Create resources for fixed workflows: data_create_input_table, data_create_output_table, data_create_task.',
-    '- For complex Excel/folder inputs that need custom standardization before the DSL, use data_summarize_input_table_source, then data_generate_input_table_normalizer_draft with the user-provided rulePrompt. This generates an executable code project through the configured LLM using the source summary. Preview it with data_preview_input_table_normalizer_version, then publish after validation. Only published versions can be used by production refresh.',
+    '- Create resources for fixed workflows: data_create_input_table_with_processing_strategy, data_create_input_table, data_create_output_table, data_create_task.',
+    '- Prefer data_create_input_table_with_processing_strategy when creating an input table. Pass processingStrategy.strategy="auto" for normal built-in import. Pass processingStrategy.strategy="customize" and the user-provided rulePrompt for complex Excel/CSV/folder standardization before workflow DSL.',
+    '- For customize processing, data_create_input_table_with_processing_strategy samples the real source with built-in Node readers, generates an executable normalizer project through the configured LLM, previews it, publishes the validated version, and imports the input table bound to that published strategy.',
+    '- The lower-level normalizer tools data_summarize_input_table_source, data_generate_input_table_normalizer_draft, data_preview_input_table_normalizer_version, and data_publish_input_table_normalizer_version are for step-by-step inspection or retrying a failed generated project.',
     '- When creating a data task for a known input/output table, pass sourceInputTableId and outputTableId to data_create_task so the task, input table, and output table are visibly linked immediately.',
     '- Inspect data safely: data_preview_table and data_get_task_workflow.',
     '- Save workflow logic: data_apply_workflow_dsl with dryRun=true first, then dryRun=false after validation.',
@@ -85,7 +87,7 @@ function buildDslReferenceSection(): string {
 function buildWorkflowRecipesSection(): string {
   return [
     'Standard fixed-workflow recipes:',
-    '1. From a user-authorized file/folder: call data_create_input_table, inspect the preview, create an output table if needed, create a task with sourceInputTableId/outputTableId, apply text workflow DSL with inputTableId/outputTableId and dryRun=true, then save and temporary run.',
+    '1. From a user-authorized file/folder: call data_create_input_table_with_processing_strategy, using strategy=customize when the source needs LLM-generated standardization code and strategy=auto otherwise. Inspect the preview, create an output table if needed, create a task with sourceInputTableId/outputTableId, apply text workflow DSL with inputTableId/outputTableId and dryRun=true, then save and temporary run.',
     '2. From existing tables: list matching input/output tables, preview schemas, create or select a task with sourceInputTableId/outputTableId, apply text DSL using returned IDs, then temporary run.',
     '3. To publish formal output: configure the output operator with outputTableId, run mode=temporary for validation, then run mode=persisted only after the user confirms.',
     '4. If the user only asks to explore or analyze once, do not create a task automatically. Ask whether to turn it into a reusable data task.',

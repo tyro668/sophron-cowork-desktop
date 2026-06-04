@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import { spawn } from 'child_process';
-import { basename, dirname, isAbsolute, join, resolve } from 'path';
+import { basename, delimiter, dirname, isAbsolute, join, resolve } from 'path';
 import type {
   DataInputTableNormalizerArtifactVersion,
   DataNormalizerDependencyPrepareConfig,
@@ -17,11 +17,13 @@ export interface RunInputTableNormalizerProjectInput {
   context: Record<string, unknown>;
   prepareDependencies?: boolean;
   timeoutMs?: number;
+  projectRoot?: string;
   workspaceRoot?: string;
 }
 
 export interface RunInputTableNormalizerProjectResult {
   workDir: string;
+  projectDir: string;
   cleanupWorkDir: boolean;
   outputDir: string;
   manifestPath: string;
@@ -45,18 +47,22 @@ export async function runInputTableNormalizerProject(
   input: RunInputTableNormalizerProjectInput
 ): Promise<RunInputTableNormalizerProjectResult> {
   const workDirState = createNormalizerWorkDir(input);
-  const workDir = workDirState.workDir;
+  const projectDir = workDirState.projectDir;
+  const workDir = workDirState.runDir;
   const outputDir = join(workDir, 'output');
   const contextPath = join(workDir, 'context.json');
   const manifestPath = join(workDir, 'manifest.json');
   const startedAt = Date.now();
+  fs.mkdirSync(projectDir, { recursive: true });
   fs.mkdirSync(outputDir, { recursive: true });
   try {
-    writeProjectFiles(workDir, input.version.files);
+    writeProjectFiles(projectDir, input.version.files);
     fs.writeFileSync(contextPath, JSON.stringify(input.context, null, 2), 'utf8');
 
     const variables = createCommandVariables({
-      workDir,
+      projectDir,
+      workDir: projectDir,
+      runDir: workDir,
       outputDir,
       contextPath,
       manifestPath,
@@ -70,12 +76,8 @@ export async function runInputTableNormalizerProject(
     if (input.prepareDependencies && input.version.dependencyPrepare) {
       for (const step of input.version.dependencyPrepare.steps) {
         const command = interpolateCommand(step.command, variables);
-        const cwd = resolveProjectCwd(workDir, step.cwd);
-        const result = await runCommand(
-          command,
-          cwd,
-          input.timeoutMs
-        );
+        const cwd = resolveProjectCwd(projectDir, step.cwd);
+        const result = await runCommand(command, cwd, input.timeoutMs);
         steps.push({ command, cwd, ...result });
         stdout += result.stdout;
         stderr += result.stderr;
@@ -83,12 +85,8 @@ export async function runInputTableNormalizerProject(
     }
 
     const entrypointCommand = interpolateCommand(input.version.entrypoint.command, variables);
-    const entrypointCwd = resolveProjectCwd(workDir, input.version.entrypoint.cwd);
-    const entrypointResult = await runCommand(
-      entrypointCommand,
-      entrypointCwd,
-      input.timeoutMs
-    );
+    const entrypointCwd = resolveProjectCwd(projectDir, input.version.entrypoint.cwd);
+    const entrypointResult = await runCommand(entrypointCommand, entrypointCwd, input.timeoutMs);
     steps.push({ command: entrypointCommand, cwd: entrypointCwd, ...entrypointResult });
     stdout += entrypointResult.stdout;
     stderr += entrypointResult.stderr;
@@ -106,6 +104,7 @@ export async function runInputTableNormalizerProject(
 
     return {
       workDir,
+      projectDir,
       cleanupWorkDir: workDirState.cleanupWorkDir,
       outputDir,
       manifestPath,
@@ -119,36 +118,78 @@ export async function runInputTableNormalizerProject(
       durationMs: Date.now() - startedAt,
     };
   } catch (error) {
-    if (workDirState.cleanupWorkDir) {
-      fs.rmSync(workDir, { recursive: true, force: true });
-    }
+    cleanupNormalizerWorkDir(workDirState);
     throw error;
   }
 }
 
-function createNormalizerWorkDir(input: RunInputTableNormalizerProjectInput): {
-  workDir: string;
+function cleanupNormalizerWorkDir(workDirState: NormalizerWorkDirState): void {
+  if (workDirState.cleanupProjectDir) {
+    fs.rmSync(workDirState.projectDir, { recursive: true, force: true });
+  } else if (workDirState.cleanupWorkDir) {
+    fs.rmSync(workDirState.runDir, { recursive: true, force: true });
+  }
+}
+
+interface NormalizerWorkDirState {
+  projectDir: string;
+  runDir: string;
+  cleanupProjectDir: boolean;
   cleanupWorkDir: boolean;
-} {
-  if (!input.workspaceRoot) {
+}
+
+function createNormalizerWorkDir(
+  input: RunInputTableNormalizerProjectInput
+): NormalizerWorkDirState {
+  if (input.projectRoot) {
+    const projectDir = input.projectRoot;
+    const runDir = input.workspaceRoot
+      ? createVersionRunDir(input.workspaceRoot, input.version)
+      : fs.mkdtempSync(join(os.tmpdir(), 'sophron-normalizer-run-'));
     return {
-      workDir: fs.mkdtempSync(join(os.tmpdir(), 'sophron-normalizer-')),
+      projectDir,
+      runDir,
+      cleanupProjectDir: false,
+      cleanupWorkDir: !input.workspaceRoot,
+    };
+  }
+
+  if (!input.workspaceRoot) {
+    const projectDir = fs.mkdtempSync(join(os.tmpdir(), 'sophron-normalizer-'));
+    return {
+      projectDir,
+      runDir: projectDir,
+      cleanupProjectDir: true,
       cleanupWorkDir: true,
     };
   }
-  const versionRoot = join(
-    input.workspaceRoot,
-    sanitizePathSegment(input.version.artifactId),
-    sanitizePathSegment(input.version.id)
-  );
-  fs.mkdirSync(versionRoot, { recursive: true });
+
+  const projectDir = createVersionRunDir(input.workspaceRoot, input.version);
   return {
-    workDir: fs.mkdtempSync(join(versionRoot, `${Date.now()}-`)),
+    projectDir,
+    runDir: projectDir,
+    cleanupProjectDir: false,
     cleanupWorkDir: false,
   };
 }
 
-function writeProjectFiles(workDir: string, files: DataInputTableNormalizerArtifactVersion['files']) {
+function createVersionRunDir(
+  workspaceRoot: string,
+  version: DataInputTableNormalizerArtifactVersion
+): string {
+  const versionRoot = join(
+    workspaceRoot,
+    sanitizePathSegment(version.artifactId),
+    sanitizePathSegment(version.id)
+  );
+  fs.mkdirSync(versionRoot, { recursive: true });
+  return fs.mkdtempSync(join(versionRoot, `${Date.now()}-`));
+}
+
+function writeProjectFiles(
+  workDir: string,
+  files: DataInputTableNormalizerArtifactVersion['files']
+) {
   for (const file of files) {
     const targetPath = resolveSafeProjectPath(workDir, file.path);
     fs.mkdirSync(dirname(targetPath), { recursive: true });
@@ -161,7 +202,10 @@ function resolveSafeProjectPath(workDir: string, filePath: string): string {
     throw new Error(`Normalizer project file path must be relative: ${filePath}`);
   }
   const resolved = resolve(workDir, filePath);
-  if (!resolved.startsWith(`${resolve(workDir)}${pathSeparator()}`) && resolved !== resolve(workDir)) {
+  if (
+    !resolved.startsWith(`${resolve(workDir)}${pathSeparator()}`) &&
+    resolved !== resolve(workDir)
+  ) {
     throw new Error(`Normalizer project file escapes project root: ${filePath}`);
   }
   return resolved;
@@ -181,7 +225,9 @@ function resolveManifestOutputPath(outputDir: string, output: string): string {
 }
 
 function createCommandVariables(input: {
+  projectDir: string;
   workDir: string;
+  runDir: string;
   outputDir: string;
   contextPath: string;
   manifestPath: string;
@@ -190,17 +236,19 @@ function createCommandVariables(input: {
   usePreparedRuntime: boolean;
 }): Record<string, string> {
   const runtime = input.runtime.executable ?? input.runtime.language;
-  const envDir = join(input.workDir, '.normalizer-env');
+  const envDir = join(input.projectDir, '.normalizer-env');
   const envPython =
     process.platform === 'win32'
       ? join(envDir, 'Scripts', 'python.exe')
       : join(envDir, 'bin', 'python');
   const preparedRuntime = input.usePreparedRuntime
-    ? normalizePreparedRuntime(input.dependencyPrepare?.preparedRuntime, envPython) ?? runtime
+    ? (normalizePreparedRuntime(input.dependencyPrepare?.preparedRuntime, envPython) ?? runtime)
     : runtime;
   return {
     runtime,
     preparedRuntime,
+    projectDir: input.projectDir,
+    runDir: input.runDir,
     envDir,
     envPython,
     context: input.contextPath,
@@ -209,7 +257,10 @@ function createCommandVariables(input: {
   };
 }
 
-function normalizePreparedRuntime(value: string | undefined, envPython: string): string | undefined {
+function normalizePreparedRuntime(
+  value: string | undefined,
+  envPython: string
+): string | undefined {
   if (!value) return undefined;
   return value.replace(/\$\{envPython\}/g, envPython);
 }
@@ -232,7 +283,7 @@ async function runCommand(
     const startedAt = Date.now();
     const child = spawn(command[0], command.slice(1), {
       cwd,
-      env: process.env,
+      env: createNormalizerCommandEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stdout = '';
@@ -264,6 +315,82 @@ async function runCommand(
         );
       }
     });
+  });
+}
+
+function createNormalizerCommandEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  const bundledBinDirs = resolveBundledRuntimeBinDirs();
+  if (bundledBinDirs.length === 0) return env;
+
+  const currentPath = env.PATH || '';
+  const existingPaths = currentPath.split(delimiter).filter((part) => part.trim().length > 0);
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const entry of [...bundledBinDirs, ...existingPaths]) {
+    const key = process.platform === 'win32' ? entry.toLowerCase() : entry;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(entry);
+  }
+  env.PATH = merged.join(delimiter);
+  return env;
+}
+
+function resolveBundledRuntimeBinDirs(): string[] {
+  const candidates: Array<string | null> = [];
+  const resourcesPath = process.resourcesPath;
+  if (resourcesPath) {
+    candidates.push(resolveBundledNodeBinDir(join(resourcesPath, 'node')));
+    candidates.push(resolveBundledPythonBinDir(join(resourcesPath, 'python')));
+  }
+
+  for (const projectRoot of resolveProjectRootCandidates()) {
+    const platformArch = resolveBundledRuntimePlatformArch();
+    candidates.push(resolveBundledNodeBinDir(join(projectRoot, 'resources', 'node', platformArch)));
+    candidates.push(
+      resolveBundledPythonBinDir(join(projectRoot, 'resources', 'python', platformArch))
+    );
+  }
+
+  const seen = new Set<string>();
+  return candidates.flatMap((candidate) => {
+    if (!candidate || seen.has(candidate)) return [];
+    seen.add(candidate);
+    return [candidate];
+  });
+}
+
+function resolveBundledNodeBinDir(nodeRoot: string): string | null {
+  const binDir = process.platform === 'win32' ? nodeRoot : join(nodeRoot, 'bin');
+  const nodePath = join(binDir, process.platform === 'win32' ? 'node.exe' : 'node');
+  return fs.existsSync(nodePath) ? binDir : null;
+}
+
+function resolveBundledPythonBinDir(pythonRoot: string): string | null {
+  const binDir = process.platform === 'win32' ? pythonRoot : join(pythonRoot, 'bin');
+  const pythonPath = join(binDir, process.platform === 'win32' ? 'python.exe' : 'python3');
+  return fs.existsSync(pythonPath) ? binDir : null;
+}
+
+function resolveBundledRuntimePlatformArch(): string {
+  const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
+  if (process.platform === 'win32') return `win32-${arch}`;
+  if (process.platform === 'darwin') return `darwin-${arch}`;
+  return `linux-${arch}`;
+}
+
+function resolveProjectRootCandidates(): string[] {
+  const candidates = [
+    process.cwd(),
+    resolve(__dirname, '..', '..'),
+    resolve(__dirname, '..', '..', '..'),
+  ];
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    if (seen.has(candidate)) return false;
+    seen.add(candidate);
+    return true;
   });
 }
 

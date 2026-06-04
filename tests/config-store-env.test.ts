@@ -193,7 +193,7 @@ describe('ConfigStore applyToEnv', () => {
         provider: 'deepseek',
         profileKey: 'deepseek',
         baseUrl: 'https://api.deepseek.com',
-        model: 'deepseek-v4-flash',
+        model: 'deepseek-v4-pro',
       },
       {
         provider: 'moonshot',

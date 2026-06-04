@@ -6,6 +6,7 @@ import type {
   ConfigureInputOperatorCommand,
   ConfigureOutputOperatorCommand,
   CreateInputTableCommand,
+  CreateInputTableWithProcessingStrategyCommand,
   CreateOutputTableCommand,
   CreateTaskCommand,
   ExportWorkflowDslCommand,
@@ -80,6 +81,30 @@ export class DataToolService {
     return toolResult(
       [
         `Created input table: ${formatInputTable(result.inputTable)}`,
+        formatPreview(result.preview),
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
+      result
+    );
+  }
+
+  async createInputTableWithProcessingStrategy(
+    input: CreateInputTableWithProcessingStrategyCommand
+  ): Promise<DataToolResult> {
+    const result = await this.commandService.createInputTableWithProcessingStrategy(input);
+    const normalizer = result.normalizer
+      ? [
+          `Normalizer: artifact=${result.normalizer.artifact.id} version=${result.normalizer.publishedVersion.id} status=${result.normalizer.publishedVersion.status}`,
+          formatPreview(result.normalizer.preview),
+        ]
+          .filter(Boolean)
+          .join('\n')
+      : '';
+    return toolResult(
+      [
+        `Created input table with ${result.processingStrategy} processing: ${formatInputTable(result.inputTable)}`,
+        normalizer,
         formatPreview(result.preview),
       ]
         .filter(Boolean)

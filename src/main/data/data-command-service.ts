@@ -1,4 +1,5 @@
 import type { DataTaskStore } from './data-task-store';
+import { extname } from 'path';
 import {
   compilePrepWorkflowToFlow,
   exportPrepWorkflowDsl,
@@ -8,7 +9,10 @@ import {
 } from '../../shared/prep-dsl';
 import type {
   DataCleaningTask,
+  DataInputTableConfig,
   DataInputTablePreview,
+  DataInputTableProcessingConfig,
+  DataInputTableSourceKind,
   DataRunTaskInput,
   DataTaskWorkflow,
   DataWorkflowEdge,
@@ -24,6 +28,8 @@ import {
   type ConfigureInputOperatorCommand,
   type ConfigureOutputOperatorCommand,
   type CreateInputTableCommand,
+  type CreateInputTableWithProcessingStrategyCommand,
+  type CreateInputTableWithProcessingStrategyResult,
   type CreateOutputTableCommand,
   type CreateTaskCommand,
   type DeleteInputTableNormalizerVersionCommand,
@@ -123,6 +129,94 @@ export class DataCommandService {
     } catch (error) {
       throw toCommandError(error, 'FILE_ACCESS_DENIED');
     }
+  }
+
+  async createInputTableWithProcessingStrategy(
+    input: CreateInputTableWithProcessingStrategyCommand
+  ): Promise<CreateInputTableWithProcessingStrategyResult> {
+    const sourcePath = normalizeSourcePathInput(input);
+    const sourceKind = resolveInputSourceKindForCommand(input, sourcePath);
+    const baseConfig = withInputTableDataProcessing(input.config, sourceKind, { strategy: 'auto' });
+
+    if (input.processingStrategy.strategy === 'auto') {
+      const result = await this.createInputTable({
+        ...input,
+        sourceKind,
+        filePath: input.folderPath ? undefined : sourcePath,
+        folderPath: input.folderPath ? sourcePath : undefined,
+        config: baseConfig,
+      });
+      return {
+        ...result,
+        processingStrategy: 'auto',
+      };
+    }
+
+    const rulePrompt = normalizeRequiredName(
+      input.processingStrategy.rulePrompt,
+      'Normalizer rule prompt is required for custom processing'
+    );
+    const artifactName =
+      normalizeOptionalName(input.processingStrategy.artifactName) ||
+      `${normalizeOptionalName(input.name) || 'input table'} normalizer`;
+
+    if (input.name) {
+      await this.ensureUniqueInputTableName(input.name);
+    }
+
+    const draft = await this.generateInputTableNormalizerDraft({
+      artifactId: input.processingStrategy.artifactId,
+      name: artifactName,
+      description: input.processingStrategy.artifactDescription,
+      sourcePath,
+      sourceKind,
+      config: baseConfig,
+      rulePrompt,
+      primaryLanguage: input.processingStrategy.primaryLanguage,
+    });
+    const normalizerPreview = await this.previewInputTableNormalizerVersion({
+      versionId: draft.version.id,
+      sourcePath,
+      sourceKind,
+      config: baseConfig,
+      prepareDependencies: input.processingStrategy.prepareDependencies,
+      limit: input.previewRows,
+    });
+    const published = await this.publishInputTableNormalizerVersion({
+      versionId: draft.version.id,
+    });
+    const customConfig = withInputTableDataProcessing(input.config, sourceKind, {
+      strategy: 'customize',
+      rulePrompt,
+      artifactId: published.artifact.id,
+      artifactVersionId: published.version.id,
+      artifactVersionStatus: published.version.status,
+      fileTreeHash: published.version.fileTreeHash,
+      dependencyLockHash: published.version.dependencyLockHash ?? undefined,
+      runtime: published.version.runtime,
+      entrypoint: published.version.entrypoint,
+      dependencyPrepare: published.version.dependencyPrepare,
+      projectFiles: published.version.files,
+      sourceSummaryHash: published.version.sourceSummaryHash ?? undefined,
+    });
+    const result = await this.createInputTable({
+      ...input,
+      sourceKind,
+      filePath: input.folderPath ? undefined : sourcePath,
+      folderPath: input.folderPath ? sourcePath : undefined,
+      config: customConfig,
+    });
+    return {
+      ...result,
+      processingStrategy: 'customize',
+      normalizer: {
+        artifact: published.artifact,
+        draftVersion: draft.version,
+        publishedVersion: published.version,
+        sourceSummary: draft.summary,
+        preview: normalizerPreview.preview,
+      },
+    };
   }
 
   async updateInputTable(input: UpdateInputTableCommand): Promise<InputTableResult> {
@@ -937,6 +1031,64 @@ function normalizeSourcePathInput(input: CreateInputTableCommand): string {
     );
   }
   return sourcePath.trim();
+}
+
+function resolveInputSourceKindForCommand(
+  input: Pick<CreateInputTableCommand, 'sourceKind' | 'folderPath'>,
+  sourcePath: string
+): DataInputTableSourceKind {
+  if (input.sourceKind === 'excel' || input.sourceKind === 'csv' || input.sourceKind === 'folder') {
+    return input.sourceKind;
+  }
+  if (input.folderPath) {
+    return 'folder';
+  }
+  const extension = extname(sourcePath).toLowerCase();
+  return extension === '.xlsx' || extension === '.xls' || extension === '.xlsm' || extension === '.xlsb'
+    ? 'excel'
+    : 'csv';
+}
+
+function withInputTableDataProcessing(
+  config: DataInputTableConfig | undefined,
+  sourceKind: DataInputTableSourceKind,
+  dataProcessing: DataInputTableProcessingConfig
+): DataInputTableConfig {
+  if (sourceKind === 'excel') {
+    const excelConfig = config?.sourceKind === 'excel' ? config : undefined;
+    return {
+      sourceKind: 'excel',
+      sheetName: excelConfig?.sheetName ?? null,
+      sheetNames: excelConfig?.sheetNames ?? [],
+      headerMode: excelConfig?.headerMode === 'manual' ? 'manual' : 'auto',
+      headerRow: excelConfig?.headerRow ?? 1,
+      dataProcessing,
+    };
+  }
+
+  if (sourceKind === 'folder') {
+    const folderConfig = config?.sourceKind === 'folder' ? config : undefined;
+    return {
+      sourceKind: 'folder',
+      mergeMode: 'append_same_schema',
+      schemaStrategy: 'align_by_name',
+      fileRange: folderConfig?.fileRange ?? 'excel_csv',
+      skipEmptyFiles: folderConfig?.skipEmptyFiles !== false,
+      keepSourceFileName: folderConfig?.keepSourceFileName !== false,
+      dataProcessing,
+    };
+  }
+
+  const csvConfig = config?.sourceKind === 'csv' ? config : undefined;
+  return {
+    sourceKind: 'csv',
+    header: 'auto',
+    dataRegion: 'auto',
+    encoding: 'auto',
+    delimiter: 'auto',
+    ...csvConfig,
+    dataProcessing,
+  };
 }
 
 function normalizeOptionalName(name: string | undefined): string | undefined {

@@ -8,6 +8,7 @@ import {
   resolvePiRouteProtocol,
   resolveSyntheticPiModelFallback,
 } from '../src/main/claude/pi-model-resolution';
+import { API_PROVIDER_PRESETS } from '../src/shared/api-model-presets';
 
 describe('pi model resolution helpers', () => {
   it('skips invalid custom raw provider lookups and deduplicates candidates', () => {
@@ -366,6 +367,49 @@ describe('pi model resolution helpers', () => {
       128000
     );
     expect(explicitOverride.contextWindow).toBe(128000);
+  });
+
+  it('uses 200k context window defaults for Qwen3-Max before generic qwen3 matching', () => {
+    const qwen3Max = buildSyntheticPiModel(
+      'qwen3-max',
+      'aliyun',
+      'openai',
+      'https://dashscope.aliyuncs.com/compatible-mode/v1'
+    );
+    expect(qwen3Max.contextWindow).toBe(200000);
+
+    const explicitOverride = buildSyntheticPiModel(
+      'qwen3-max',
+      'aliyun',
+      'openai',
+      'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      undefined,
+      undefined,
+      128000
+    );
+    expect(explicitOverride.contextWindow).toBe(128000);
+  });
+
+  it('uses at least 200k defaults for built-in preset models and 1M for DeepSeek', () => {
+    const providerEntries = Object.entries(API_PROVIDER_PRESETS);
+
+    for (const [provider, preset] of providerEntries) {
+      for (const modelOption of preset.models) {
+        const model = buildSyntheticPiModel(
+          modelOption.id,
+          provider,
+          provider === 'anthropic' ? 'anthropic' : 'openai',
+          preset.baseUrl
+        );
+        if (modelOption.id.toLowerCase().includes('deepseek')) {
+          expect(model.contextWindow, `${provider}/${modelOption.id}`).toBe(1_000_000);
+        } else {
+          expect(model.contextWindow, `${provider}/${modelOption.id}`).toBeGreaterThanOrEqual(
+            200_000
+          );
+        }
+      }
+    }
   });
 
   it('allows explicit reasoning override in buildSyntheticPiModel', () => {

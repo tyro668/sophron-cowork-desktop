@@ -71,6 +71,13 @@ describe('api config state helpers', () => {
     });
   });
 
+  it('defaults first-run API config to DeepSeek V4 Pro', () => {
+    const snapshot = buildApiConfigSnapshot(undefined, FALLBACK_PROVIDER_PRESETS);
+
+    expect(snapshot.activeProfileKey).toBe('deepseek');
+    expect(snapshot.profiles.deepseek.model).toBe('deepseek-v4-pro');
+  });
+
   it('conservatively upgrades legacy localhost ollama config into the ollama profile', () => {
     const config = {
       provider: 'custom',
@@ -147,10 +154,13 @@ describe('api config state helpers', () => {
 
   it('exposes dedicated provider presets and guidance', () => {
     expect(FALLBACK_PROVIDER_PRESETS.deepseek.baseUrl).toBe('https://api.deepseek.com');
-    expect(FALLBACK_PROVIDER_PRESETS.deepseek.models.map((item) => item.id)).toContain(
-      'deepseek-v4-flash'
-    );
+    expect(FALLBACK_PROVIDER_PRESETS.deepseek.models.map((item) => item.id)).toEqual([
+      'deepseek-v4-pro',
+      'deepseek-v4-flash',
+    ]);
     expect(getModelInputGuidance('deepseek').placeholder).toContain('deepseek-v4-flash');
+    expect(getModelInputGuidance('deepseek').placeholder).toContain('deepseek-v4-pro');
+    expect(getModelInputGuidance('deepseek').placeholder).not.toContain('deepseek-chat');
 
     expect(FALLBACK_PROVIDER_PRESETS.moonshot.baseUrl).toBe('https://api.moonshot.ai/v1');
     expect(FALLBACK_PROVIDER_PRESETS.moonshot.models.map((item) => item.id)).toContain('kimi-k2.6');

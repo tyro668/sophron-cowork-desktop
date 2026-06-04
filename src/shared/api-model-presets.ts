@@ -99,10 +99,8 @@ export const API_PROVIDER_PRESETS: SharedProviderPresets = {
     name: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com',
     models: [
-      { id: 'deepseek-v4-flash', name: 'deepseek-v4-flash' },
       { id: 'deepseek-v4-pro', name: 'deepseek-v4-pro' },
-      { id: 'deepseek-chat', name: 'deepseek-chat' },
-      { id: 'deepseek-reasoner', name: 'deepseek-reasoner' },
+      { id: 'deepseek-v4-flash', name: 'deepseek-v4-flash' },
     ],
     keyPlaceholder: 'sk-...',
     keyHint: '从 platform.deepseek.com 获取',
@@ -226,6 +224,10 @@ export const PI_AI_CURATED_PRESETS: Record<string, { piProvider: string; pick: s
       'o4-mini',
     ],
   },
+  deepseek: {
+    piProvider: 'deepseek',
+    pick: ['deepseek-v4-pro', 'deepseek-v4-flash'],
+  },
   zai: {
     piProvider: 'zai',
     pick: ['glm-5', 'glm-4.5', 'glm-4.5-air'],
@@ -288,7 +290,7 @@ export function getModelInputGuidance(
 
   if (provider === 'deepseek') {
     return {
-      placeholder: 'deepseek-v4-flash, deepseek-v4-pro, deepseek-chat',
+      placeholder: 'deepseek-v4-pro, deepseek-v4-flash',
       hint: 'Use the exact model ID for the selected protocol or endpoint.',
     };
   }

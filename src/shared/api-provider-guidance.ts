@@ -68,7 +68,7 @@ export const COMMON_PROVIDER_SETUPS: CommonProviderSetup[] = [
     applyProvider: 'deepseek',
     recommendedProtocol: 'openai',
     recommendedBaseUrl: 'https://api.deepseek.com',
-    exampleModel: 'deepseek-v4-flash',
+    exampleModel: 'deepseek-v4-pro',
     protocolLabel: 'DeepSeek',
     preferProviderTab: 'deepseek',
     matcher: {

@@ -5,6 +5,8 @@ import type {
   DataDeleteInputTableNormalizerVersionResult,
   DataGenerateInputTableNormalizerDraftInput,
   DataGenerateInputTableNormalizerDraftResult,
+  DataInputTableNormalizerArtifact,
+  DataInputTableNormalizerArtifactVersion,
   DataInputTableNormalizerDraftProgressEvent,
   DataInputTableNormalizerVersionSaveResult,
   DataInputTableConfig,
@@ -70,6 +72,37 @@ export interface CreateInputTableCommand {
   folderPath?: string;
   config?: DataInputTableConfig;
   previewRows?: number;
+}
+
+export type CreateInputTableProcessingStrategyCommand =
+  | {
+      strategy: 'auto';
+    }
+  | {
+      strategy: 'customize';
+      rulePrompt: string;
+      artifactId?: string | null;
+      artifactName?: string;
+      artifactDescription?: string | null;
+      primaryLanguage?: 'python' | 'node';
+      prepareDependencies?: boolean;
+    };
+
+export interface CreateInputTableWithProcessingStrategyCommand
+  extends Omit<CreateInputTableCommand, 'config'> {
+  config?: DataInputTableConfig;
+  processingStrategy: CreateInputTableProcessingStrategyCommand;
+}
+
+export interface CreateInputTableWithProcessingStrategyResult extends InputTableResult {
+  processingStrategy: 'auto' | 'customize';
+  normalizer?: {
+    artifact: DataInputTableNormalizerArtifact;
+    draftVersion: DataInputTableNormalizerArtifactVersion;
+    publishedVersion: DataInputTableNormalizerArtifactVersion;
+    sourceSummary: DataInputTableSourceSummary;
+    preview: DataInputTablePreview;
+  };
 }
 
 export interface UpdateInputTableCommand {

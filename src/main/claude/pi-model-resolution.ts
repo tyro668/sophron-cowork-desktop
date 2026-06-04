@@ -102,6 +102,7 @@ export function inferPiApi(protocol: string): string {
   }
 }
 
+const DEFAULT_SYNTHETIC_CONTEXT_WINDOW = 200_000;
 const DEEPSEEK_CONTEXT_WINDOW = 1_000_000;
 
 /**
@@ -110,33 +111,54 @@ const DEEPSEEK_CONTEXT_WINDOW = 1_000_000;
  */
 const KNOWN_MODEL_SPECS: Record<string, { contextWindow: number; maxTokens: number }> = {
   'qwen3.5': { contextWindow: 258048, maxTokens: 32768 },
-  qwen3: { contextWindow: 40960, maxTokens: 8192 },
-  'qwen2.5': { contextWindow: 131072, maxTokens: 8192 },
-  llama3: { contextWindow: 131072, maxTokens: 4096 },
-  'llama3.1': { contextWindow: 131072, maxTokens: 4096 },
-  'llama3.2': { contextWindow: 131072, maxTokens: 4096 },
-  'llama3.3': { contextWindow: 131072, maxTokens: 4096 },
-  'deepseek-r1': { contextWindow: 65536, maxTokens: 8192 },
-  'deepseek-v3': { contextWindow: 65536, maxTokens: 8192 },
+  'qwen3-max': { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 8192 },
+  qwen3: { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 8192 },
+  'qwen2.5': { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 8192 },
+  'qwen-max': { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 8192 },
+  llama3: { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 4096 },
+  'llama3.1': { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 4096 },
+  'llama3.2': { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 4096 },
+  'llama3.3': { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 4096 },
+  'deepseek-r1': { contextWindow: DEEPSEEK_CONTEXT_WINDOW, maxTokens: 16384 },
+  'deepseek-v3': { contextWindow: DEEPSEEK_CONTEXT_WINDOW, maxTokens: 16384 },
   'deepseek-v4': { contextWindow: DEEPSEEK_CONTEXT_WINDOW, maxTokens: 16384 },
   deepseek: { contextWindow: DEEPSEEK_CONTEXT_WINDOW, maxTokens: 16384 },
-  gemma2: { contextWindow: 8192, maxTokens: 4096 },
-  gemma3: { contextWindow: 131072, maxTokens: 8192 },
-  phi3: { contextWindow: 131072, maxTokens: 4096 },
-  phi4: { contextWindow: 16384, maxTokens: 4096 },
-  mistral: { contextWindow: 32768, maxTokens: 4096 },
-  mixtral: { contextWindow: 32768, maxTokens: 4096 },
-  codellama: { contextWindow: 16384, maxTokens: 4096 },
-  'command-r': { contextWindow: 131072, maxTokens: 4096 },
+  claude: { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 16384 },
+  'gpt-5': { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 16384 },
+  o3: { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 16384 },
+  'o4-mini': { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 16384 },
+  gemini: { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 16384 },
+  kimi: { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 16384 },
+  'moonshot-v1': { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 8192 },
+  glm: { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 16384 },
+  'minimax-m': { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 16384 },
+  'grok-code': { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 16384 },
+  gemma2: { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 4096 },
+  gemma3: { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 8192 },
+  phi3: { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 4096 },
+  phi4: { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 4096 },
+  mistral: { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 4096 },
+  mixtral: { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 4096 },
+  codellama: { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 4096 },
+  'command-r': { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 4096 },
 };
+
+function matchesKnownModelSpec(key: string, lowerModelId: string): boolean {
+  return lowerModelId === key || lowerModelId.startsWith(key + ':') || lowerModelId.startsWith(key + '-');
+}
 
 function lookupModelSpecs(
   modelId: string
 ): { contextWindow: number; maxTokens: number } | undefined {
   const lower = modelId.toLowerCase();
+  const normalizedIds = [lower];
+  const slashIndex = lower.indexOf('/');
+  if (slashIndex >= 0 && slashIndex < lower.length - 1) {
+    normalizedIds.push(lower.slice(slashIndex + 1));
+  }
   // Match by prefix: "qwen3.5:0.8b" → "qwen3.5", "deepseek-r1-distill" → "deepseek-r1"
   for (const [key, specs] of Object.entries(KNOWN_MODEL_SPECS)) {
-    if (lower === key || lower.startsWith(key + ':') || lower.startsWith(key + '-')) {
+    if (normalizedIds.some((id) => matchesKnownModelSpec(key, id))) {
       return specs;
     }
   }
@@ -165,7 +187,7 @@ export function buildSyntheticPiModel(
     reasoning: autoReasoning,
     input: ['text', 'image'],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: contextWindow ?? knownSpecs?.contextWindow ?? 128000,
+    contextWindow: contextWindow ?? knownSpecs?.contextWindow ?? DEFAULT_SYNTHETIC_CONTEXT_WINDOW,
     maxTokens: maxTokens ?? knownSpecs?.maxTokens ?? 16384,
   } as Model<Api>;
 }

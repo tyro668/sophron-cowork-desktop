@@ -82,6 +82,42 @@ export function createDataCustomTools(
       execute: async (_toolCallId, params) => dataToolService.createInputTable(params as never),
     },
     {
+      name: 'data_create_input_table_with_processing_strategy',
+      label: 'Create input table with processing strategy',
+      description:
+        'Create an input table using an explicit data-processing strategy. Use strategy=auto for built-in import. Use strategy=customize for complex Excel/CSV/folder standardization: the app samples the source, generates a normalizer project through the configured LLM, previews it, publishes the version, then imports the input table bound to that published strategy.',
+      parameters: Type.Object({
+        name: Type.Optional(Type.String({ minLength: 1 })),
+        sourceKind: SourceKindSchema,
+        filePath: Type.Optional(Type.String({ description: 'Authorized local file path.' })),
+        folderPath: Type.Optional(Type.String({ description: 'Authorized local folder path.' })),
+        config: ConfigSchema,
+        previewRows: PreviewRowsSchema,
+        processingStrategy: Type.Union([
+          Type.Object({
+            strategy: Type.Literal('auto'),
+          }),
+          Type.Object({
+            strategy: Type.Literal('customize'),
+            rulePrompt: Type.String({
+              minLength: 1,
+              description:
+                'User rule prompt describing how to transform the authorized source into a standard two-dimensional table.',
+            }),
+            artifactId: Type.Optional(Type.String()),
+            artifactName: Type.Optional(Type.String()),
+            artifactDescription: Type.Optional(Type.String()),
+            primaryLanguage: Type.Optional(
+              Type.Union([Type.Literal('python'), Type.Literal('node')])
+            ),
+            prepareDependencies: Type.Optional(Type.Boolean()),
+          }),
+        ]),
+      }),
+      execute: async (_toolCallId, params) =>
+        dataToolService.createInputTableWithProcessingStrategy(params as never),
+    },
+    {
       name: 'data_update_input_table',
       label: 'Update input table',
       description: 'Rename or re-import an existing input table.',

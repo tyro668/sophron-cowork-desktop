@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { DataCommandService } from '../src/main/data/data-command-service';
 import { DataToolService } from '../src/main/data/data-tool-service';
-import type { DataCleaningTask, DataDataset, DataOutputTable } from '../src/renderer/types';
+import type {
+  DataCleaningTask,
+  DataDataset,
+  DataInputTablePreview,
+  DataOutputTable,
+} from '../src/renderer/types';
 
 describe('DataToolService', () => {
   it('formats command results as short tool content with structured details', async () => {
@@ -97,6 +102,81 @@ describe('DataToolService', () => {
     expect(taskResult.content[0]?.text).toContain(
       '[customers cleanup](#/data/tasks/task_1) (task_1)'
     );
+  });
+
+  it('formats input table processing strategy creation results', async () => {
+    const preview: DataInputTablePreview = {
+      columns: ['id', 'name'],
+      rows: [{ id: '1', name: 'Alice' }],
+      fileCount: 1,
+      limit: 20,
+      offset: 0,
+      totalRows: 1,
+    };
+    const inputTable: DataDataset = {
+      id: 'dataset_2',
+      name: 'customers normalized',
+      sourcePath: '/tmp/customers.csv',
+      sourceKind: 'csv',
+      inputConfig: {
+        sourceKind: 'csv',
+        header: 'auto',
+        dataRegion: 'auto',
+        encoding: 'auto',
+        delimiter: 'auto',
+        dataProcessing: {
+          strategy: 'customize',
+          rulePrompt: 'normalize',
+          artifactId: 'artifact_1',
+          artifactVersionId: 'version_1',
+          artifactVersionStatus: 'published',
+        },
+      },
+      fileCount: 1,
+      relatedTaskNames: [],
+      tableName: 'dataset_2',
+      rowCount: 1,
+      columnCount: 2,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const commandService = {
+      createInputTableWithProcessingStrategy: vi.fn(async () => ({
+        processingStrategy: 'customize',
+        inputTable,
+        preview,
+        normalizer: {
+          artifact: {
+            id: 'artifact_1',
+            name: 'customers normalizer',
+            sourceKind: 'csv',
+            primaryLanguage: 'node',
+            activeVersionId: 'version_1',
+            createdAt: 1,
+            updatedAt: 1,
+          },
+          draftVersion: { id: 'version_1', status: 'published', files: [] },
+          publishedVersion: { id: 'version_1', status: 'published', files: [] },
+          sourceSummary: { hash: 'hash_1' },
+          preview,
+        },
+      })),
+    } as unknown as DataCommandService;
+    const service = new DataToolService(commandService);
+
+    const result = await service.createInputTableWithProcessingStrategy({
+      name: 'customers normalized',
+      filePath: '/tmp/customers.csv',
+      processingStrategy: { strategy: 'customize', rulePrompt: 'normalize' },
+    });
+
+    expect(result.content[0]?.text).toContain('Created input table with customize processing');
+    expect(result.content[0]?.text).toContain('Normalizer: artifact=artifact_1 version=version_1');
+    expect(result.details).toMatchObject({
+      processingStrategy: 'customize',
+      inputTable: { id: 'dataset_2' },
+      normalizer: { artifact: { id: 'artifact_1' } },
+    });
   });
 
   it('returns embedded workflow DSL reference without relying on source docs', async () => {

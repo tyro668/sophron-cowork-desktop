@@ -300,7 +300,7 @@ export function buildApiConfigSnapshot(
   presets: ProviderPresets
 ): ConfigStateSnapshot {
   const migratedToOllama = config?.provider === 'ollama' || isLegacyOllamaConfig(config);
-  const provider = migratedToOllama ? 'ollama' : config?.provider || 'openrouter';
+  const provider = migratedToOllama ? 'ollama' : config?.provider || 'deepseek';
   const customProtocol: CustomProtocolType = migratedToOllama
     ? 'openai'
     : config?.customProtocol === 'openai'
@@ -917,7 +917,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
   }>({
     activeProfileKey,
     baseUrl: '',
-    provider: 'openrouter',
+    provider: 'deepseek',
   });
   const ollamaDiscoverRequestIdRef = useRef(0);
 

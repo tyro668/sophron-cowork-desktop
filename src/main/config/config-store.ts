@@ -203,7 +203,7 @@ const defaultProfiles: Record<ProviderProfileKey, ProviderProfile> = {
   deepseek: {
     apiKey: '',
     baseUrl: 'https://api.deepseek.com',
-    model: 'deepseek-v4-flash',
+    model: 'deepseek-v4-pro',
   },
   moonshot: {
     apiKey: '',
@@ -251,9 +251,9 @@ const defaultConfigSet: ApiConfigSet = {
   id: DEFAULT_CONFIG_SET_ID,
   name: '默认方案',
   isSystem: true,
-  provider: 'openrouter',
+  provider: 'deepseek',
   customProtocol: 'openai',
-  activeProfileKey: 'openrouter',
+  activeProfileKey: 'deepseek',
   profiles: defaultProfiles,
   enableThinking: false,
   updatedAt: '1970-01-01T00:00:00.000Z',
@@ -261,10 +261,10 @@ const defaultConfigSet: ApiConfigSet = {
 
 const defaultConfig: AppConfig = {
   provider: defaultConfigSet.provider,
-  apiKey: defaultProfiles.openrouter.apiKey,
-  baseUrl: defaultProfiles.openrouter.baseUrl,
+  apiKey: defaultProfiles.deepseek.apiKey,
+  baseUrl: defaultProfiles.deepseek.baseUrl,
   customProtocol: defaultConfigSet.customProtocol,
-  model: defaultProfiles.openrouter.model,
+  model: defaultProfiles.deepseek.model,
   activeProfileKey: defaultConfigSet.activeProfileKey,
   profiles: defaultProfiles,
   activeConfigSetId: DEFAULT_CONFIG_SET_ID,
