@@ -67,6 +67,7 @@ import type {
   DataCreateOutputTableInput,
   DataCreateTaskInput,
   DataDashboardQuery,
+  DataDeleteInputTableNormalizerVersionInput,
   DataGenerateInputTableNormalizerDraftInput,
   DataInputTableSourceKind,
   DataImportDatasetInput,
@@ -1860,6 +1861,18 @@ ipcMain.handle(
       return await requireDataCommandService().publishInputTableNormalizerVersion(payload);
     } catch (error) {
       logError('[Data] Error publishing input table normalizer version:', error);
+      throw error;
+    }
+  }
+);
+
+ipcMain.handle(
+  'data.deleteInputTableNormalizerVersion',
+  async (_event, payload: DataDeleteInputTableNormalizerVersionInput) => {
+    try {
+      return await requireDataCommandService().deleteInputTableNormalizerVersion(payload);
+    } catch (error) {
+      logError('[Data] Error deleting input table normalizer version:', error);
       throw error;
     }
   }

@@ -720,6 +720,37 @@ export class DataTaskStore {
     };
   }
 
+  async deleteInputTableNormalizerArtifactVersion(
+    versionId: string
+  ): Promise<{ success: boolean }> {
+    await this.ensureMetadataReady();
+    const version = await this.requireInputTableNormalizerArtifactVersion(versionId);
+    if (version.status === 'published') {
+      throw new Error('Published normalizer versions cannot be deleted');
+    }
+    const now = this.now();
+    await this.metaRunSql(
+      `
+        DELETE FROM data_input_table_normalizer_artifact_versions
+        WHERE id = $versionId
+      `,
+      { versionId }
+    );
+    await this.metaRunSql(
+      `
+        UPDATE data_input_table_normalizer_artifacts
+        SET updated_at = $updatedAt
+        WHERE id = $artifactId
+      `,
+      { artifactId: version.artifactId, updatedAt: now }
+    );
+    fs.rmSync(this.getInputTableNormalizerProjectDir(version.artifactId, version.id), {
+      recursive: true,
+      force: true,
+    });
+    return { success: true };
+  }
+
   async createTask(input: DataCreateTaskInput): Promise<DataCleaningTask> {
     await this.ensureMetadataReady();
     const name = input.name.trim();

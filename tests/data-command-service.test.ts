@@ -201,6 +201,43 @@ describe('DataCommandService', () => {
       id: draft.version.id,
       status: 'published',
     });
+
+    const secondDraft = await service.generateInputTableNormalizerDraft({
+      artifactId: draft.artifact.id,
+      name: 'customers normalizer',
+      sourcePath: csvPath,
+      sourceKind: 'csv',
+      rulePrompt: 'Normalize the customer CSV into a standard table with a second draft.',
+      primaryLanguage: 'node',
+    });
+    expect(secondDraft.version.status).toBe('draft');
+    const secondDraftProjectDir = path.join(
+      tempRoot,
+      'input-table-normalizers',
+      'projects',
+      secondDraft.artifact.id,
+      secondDraft.version.id
+    );
+    expect(fs.existsSync(secondDraftProjectDir)).toBe(true);
+
+    await expect(
+      service.deleteInputTableNormalizerVersion({
+        versionId: published.version.id,
+      })
+    ).rejects.toThrow('Published normalizer versions cannot be deleted');
+
+    await expect(
+      service.deleteInputTableNormalizerVersion({
+        versionId: secondDraft.version.id,
+      })
+    ).resolves.toEqual({ success: true });
+    expect(fs.existsSync(secondDraftProjectDir)).toBe(false);
+
+    const versionsAfterDelete = await service.listInputTableNormalizerVersions({
+      artifactId: draft.artifact.id,
+    });
+    expect(versionsAfterDelete.versions).toHaveLength(1);
+    expect(versionsAfterDelete.versions[0]?.id).toBe(published.version.id);
   });
 
   it('emits progress while generating a custom normalizer draft', async () => {

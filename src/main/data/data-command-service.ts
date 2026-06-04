@@ -26,6 +26,8 @@ import {
   type CreateInputTableCommand,
   type CreateOutputTableCommand,
   type CreateTaskCommand,
+  type DeleteInputTableNormalizerVersionCommand,
+  type DeleteInputTableNormalizerVersionResult,
   type ExportWorkflowDslCommand,
   type GenerateInputTableNormalizerDraftCommand,
   type GenerateInputTableNormalizerDraftResult,
@@ -41,10 +43,10 @@ import {
   type OutputTableResult,
   type PreviewInputTableNormalizerVersionCommand,
   type PreviewInputTableNormalizerVersionResult,
-  type PublishInputTableNormalizerVersionCommand,
-  type PublishInputTableNormalizerVersionResult,
   type PreviewTableCommand,
   type PreviewTableResult,
+  type PublishInputTableNormalizerVersionCommand,
+  type PublishInputTableNormalizerVersionResult,
   type RunResult,
   type RunTaskCommand,
   type RunTaskResult,
@@ -330,6 +332,19 @@ export class DataCommandService {
     }
     try {
       return await this.store.publishInputTableNormalizerArtifactVersion(input.versionId);
+    } catch (error) {
+      throw toCommandError(error, 'INVALID_ARGUMENT');
+    }
+  }
+
+  async deleteInputTableNormalizerVersion(
+    input: DeleteInputTableNormalizerVersionCommand
+  ): Promise<DeleteInputTableNormalizerVersionResult> {
+    if (!input.versionId.trim()) {
+      throw new DataCommandError('INVALID_ARGUMENT', 'Normalizer version id is required');
+    }
+    try {
+      return await this.store.deleteInputTableNormalizerArtifactVersion(input.versionId);
     } catch (error) {
       throw toCommandError(error, 'INVALID_ARGUMENT');
     }

@@ -31,6 +31,8 @@ import type {
   DataDashboard,
   DataDashboardQuery,
   DataDataset,
+  DataDeleteInputTableNormalizerVersionInput,
+  DataDeleteInputTableNormalizerVersionResult,
   DataGenerateInputTableNormalizerDraftInput,
   DataGenerateInputTableNormalizerDraftResult,
   DataInputTableNormalizerDraftProgressEvent,
@@ -266,6 +268,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       payload: DataPublishInputTableNormalizerVersionInput
     ): Promise<DataInputTableNormalizerVersionSaveResult> =>
       ipcRenderer.invoke('data.publishInputTableNormalizerVersion', payload),
+    deleteInputTableNormalizerVersion: (
+      payload: DataDeleteInputTableNormalizerVersionInput
+    ): Promise<DataDeleteInputTableNormalizerVersionResult> =>
+      ipcRenderer.invoke('data.deleteInputTableNormalizerVersion', payload),
     listInputTableNormalizerVersions: (
       payload: DataListInputTableNormalizerVersionsInput
     ): Promise<DataListInputTableNormalizerVersionsResult> =>
@@ -628,6 +634,9 @@ declare global {
         publishInputTableNormalizerVersion: (
           payload: DataPublishInputTableNormalizerVersionInput
         ) => Promise<DataInputTableNormalizerVersionSaveResult>;
+        deleteInputTableNormalizerVersion: (
+          payload: DataDeleteInputTableNormalizerVersionInput
+        ) => Promise<DataDeleteInputTableNormalizerVersionResult>;
         listInputTableNormalizerVersions: (
           payload: DataListInputTableNormalizerVersionsInput
         ) => Promise<DataListInputTableNormalizerVersionsResult>;

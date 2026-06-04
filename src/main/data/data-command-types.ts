@@ -1,6 +1,8 @@
 import type {
   DataCleaningTask,
   DataDataset,
+  DataDeleteInputTableNormalizerVersionInput,
+  DataDeleteInputTableNormalizerVersionResult,
   DataGenerateInputTableNormalizerDraftInput,
   DataGenerateInputTableNormalizerDraftResult,
   DataInputTableNormalizerDraftProgressEvent,
@@ -108,6 +110,12 @@ export type PublishInputTableNormalizerVersionCommand =
 
 export type PublishInputTableNormalizerVersionResult =
   DataInputTableNormalizerVersionSaveResult;
+
+export type DeleteInputTableNormalizerVersionCommand =
+  DataDeleteInputTableNormalizerVersionInput;
+
+export type DeleteInputTableNormalizerVersionResult =
+  DataDeleteInputTableNormalizerVersionResult;
 
 export type ListInputTableNormalizerVersionsCommand =
   DataListInputTableNormalizerVersionsInput;

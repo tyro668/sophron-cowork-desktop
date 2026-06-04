@@ -1,5 +1,4 @@
 import {
-  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -5746,7 +5745,7 @@ function InputTableEditorWorkbench({
   const [customizeGenerationOutput, setCustomizeGenerationOutput] = useState('');
   const [customizePublishing, setCustomizePublishing] = useState(false);
   const [customizeVersionActionId, setCustomizeVersionActionId] = useState<string | null>(null);
-  const [expandedNormalizerVersionId, setExpandedNormalizerVersionId] = useState<string | null>(
+  const [deletingNormalizerVersionId, setDeletingNormalizerVersionId] = useState<string | null>(
     null
   );
   const [normalizerVersions, setNormalizerVersions] = useState<
@@ -5835,7 +5834,7 @@ function InputTableEditorWorkbench({
     setCustomizeGenerating(false);
     setCustomizePublishing(false);
     setCustomizeVersionActionId(null);
-    setExpandedNormalizerVersionId(null);
+    setDeletingNormalizerVersionId(null);
     setActiveEditorTab('rules');
     setSelectedNormalizerFilePath('');
   }, [initialConfig, initialName, initialSourceKind, targetId]);
@@ -6135,6 +6134,51 @@ function InputTableEditorWorkbench({
     }
   };
 
+  const deleteSpecificNormalizerVersion = async (
+    version: DataInputTableNormalizerArtifactVersion
+  ) => {
+    if (dataProcessing.strategy !== 'customize' || !dataset) {
+      return;
+    }
+    if (version.status === 'published') {
+      setCustomizeGenerationError(t('data.inputTables.editor.deletePublishedVersionBlocked'));
+      return;
+    }
+    const confirmed = window.confirm(
+      t('data.inputTables.editor.deleteVersionConfirm', {
+        version: version.version,
+      })
+    );
+    if (!confirmed) return;
+    setDeletingNormalizerVersionId(version.id);
+    setCustomizeGenerationError(null);
+    try {
+      await window.electronAPI.data.deleteInputTableNormalizerVersion({
+        versionId: version.id,
+      });
+      if (dataProcessing.artifactVersionId === version.id) {
+        updateDataProcessing({
+          ...dataProcessing,
+          artifactVersionId: undefined,
+          artifactVersionStatus: undefined,
+          fileTreeHash: undefined,
+          dependencyLockHash: undefined,
+          runtime: undefined,
+          entrypoint: undefined,
+          dependencyPrepare: undefined,
+          projectFiles: undefined,
+          sourceSummaryHash: undefined,
+        });
+        setSelectedNormalizerFilePath('');
+      }
+      void refreshNormalizerVersions(dataProcessing.artifactId);
+    } catch (err) {
+      setCustomizeGenerationError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeletingNormalizerVersionId(null);
+    }
+  };
+
   const editorTabs: Array<{ value: InputTableEditorTab; label: string }> = [
     { value: 'rules', label: t('data.inputTables.editor.ruleDescription') },
     { value: 'code', label: t('data.inputTables.editor.codePreview') },
@@ -6420,15 +6464,11 @@ function InputTableEditorWorkbench({
                 <InputTableVersionHistoryPanel
                   currentVersion={currentNormalizerVersion}
                   currentVersionId={customizeArtifactVersionId}
+                  deletingVersionId={deletingNormalizerVersionId}
                   embedded
-                  expandedVersionId={expandedNormalizerVersionId}
                   loading={normalizerVersionsLoading}
                   onRefresh={() => void refreshNormalizerVersions(customizeArtifactId)}
-                  onToggleExpanded={(versionId) =>
-                    setExpandedNormalizerVersionId(
-                      expandedNormalizerVersionId === versionId ? null : versionId
-                    )
-                  }
+                  onDelete={(version) => void deleteSpecificNormalizerVersion(version)}
                   onPublish={(version) => void publishSpecificNormalizerVersion(version)}
                   publishingVersionId={customizeVersionActionId}
                   t={t}
@@ -6900,11 +6940,11 @@ function NormalizerProjectTreeNodeView({
 function InputTableVersionHistoryPanel({
   currentVersion,
   currentVersionId,
+  deletingVersionId,
   embedded = false,
-  expandedVersionId,
   loading,
   onRefresh,
-  onToggleExpanded,
+  onDelete,
   onPublish,
   publishingVersionId,
   t,
@@ -6912,11 +6952,11 @@ function InputTableVersionHistoryPanel({
 }: {
   currentVersion?: DataInputTableNormalizerArtifactVersion;
   currentVersionId?: string;
+  deletingVersionId: string | null;
   embedded?: boolean;
-  expandedVersionId: string | null;
   loading: boolean;
   onRefresh: () => void;
-  onToggleExpanded: (versionId: string) => void;
+  onDelete: (version: DataInputTableNormalizerArtifactVersion) => void;
   onPublish: (version: DataInputTableNormalizerArtifactVersion) => void;
   publishingVersionId: string | null;
   t: TranslateFn;
@@ -6951,119 +6991,85 @@ function InputTableVersionHistoryPanel({
               {versions.map((version) => {
                 const isCurrent = version.id === currentVersionId;
                 const isPublished = version.status === 'published';
-                const isExpanded = expandedVersionId === version.id;
-                const diffDetails = getNormalizerVersionDiffDetails(version, currentVersion);
                 const diffSummary = getNormalizerVersionDiffSummary(version, currentVersion, t);
                 return (
-                  <Fragment key={version.id}>
-                    <tr
-                      className="h-11 border-b border-border-muted/80 text-text-secondary last:border-b-0 hover:bg-background/32"
-                    >
-                      <td className="w-20 px-3 font-mono text-[13px] font-semibold text-text-primary">
-                        {t('data.inputTables.editor.versionNumber', {
-                          version: version.version,
-                        })}
-                      </td>
-                      <td className="w-44 px-3">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {isCurrent ? (
-                            <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent">
-                              {t('data.inputTables.editor.currentVersion')}
-                            </span>
-                          ) : null}
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                              isPublished
-                                ? 'bg-success/10 text-success'
-                                : 'bg-background/58 text-text-secondary'
-                            }`}
-                          >
-                            {isPublished
-                              ? t('data.inputTables.editor.publishedVersion')
-                              : version.status}
+                  <tr
+                    key={version.id}
+                    className="h-11 border-b border-border-muted/80 text-text-secondary last:border-b-0 hover:bg-background/32"
+                  >
+                    <td className="w-20 px-3 font-mono text-[13px] font-semibold text-text-primary">
+                      {t('data.inputTables.editor.versionNumber', {
+                        version: version.version,
+                      })}
+                    </td>
+                    <td className="w-44 px-3">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {isCurrent ? (
+                          <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent">
+                            {t('data.inputTables.editor.currentVersion')}
                           </span>
-                        </div>
-                      </td>
-                      <td className="min-w-[13rem] px-3 text-text-muted">
-                        {t('data.inputTables.editor.updatedAt', {
-                          time: formatDateTime(version.updatedAt),
-                        })}
-                      </td>
-                      <td className="min-w-[16rem] max-w-[28rem] px-3">
-                        <span className="line-clamp-1 font-medium text-text-secondary">
-                          {diffSummary || version.rulePrompt || '-'}
+                        ) : null}
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                            isPublished
+                              ? 'bg-success/10 text-success'
+                              : 'bg-background/58 text-text-secondary'
+                          }`}
+                        >
+                          {isPublished
+                            ? t('data.inputTables.editor.publishedVersion')
+                            : version.status}
                         </span>
-                      </td>
-                      <td className="w-[17rem] px-3">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => onToggleExpanded(version.id)}
-                            className="inline-flex h-7 items-center justify-center rounded-lg border border-border-muted bg-background/62 px-3 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary"
-                          >
-                            {t('data.inputTables.editor.versionDetails')}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onToggleExpanded(version.id)}
-                            className="inline-flex h-7 items-center justify-center rounded-lg border border-border-muted bg-background/62 px-3 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary"
-                          >
-                            {t('data.inputTables.editor.compareVersion')}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isPublished || publishingVersionId === version.id}
-                            onClick={() => onPublish(version)}
-                            className="inline-flex h-7 items-center justify-center gap-1 rounded-lg bg-accent px-3 text-[11px] font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
-                          >
-                            {publishingVersionId === version.id ? (
-                              <RefreshCw className="h-3 w-3 animate-spin" />
-                            ) : null}
-                            {isPublished
-                              ? t('data.inputTables.editor.publishedVersion')
-                              : t('data.inputTables.editor.publishVersionAction')}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                    {isExpanded ? (
-                      <tr key={`${version.id}:details`} className="border-b border-border-muted/80">
-                        <td colSpan={5} className="bg-background/24 px-3 py-3">
-                          <div className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                            <div className="rounded-lg border border-border-muted bg-background/42 p-3">
-                              <div className="mb-1 text-[11px] font-medium text-text-muted">
-                                {t('data.inputTables.editor.versionRule')}
-                              </div>
-                              <div className="line-clamp-4 text-xs font-medium leading-5 text-text-primary">
-                                {version.rulePrompt || '-'}
-                              </div>
-                            </div>
-                            <div className="max-h-36 overflow-y-auto rounded-lg border border-border-muted bg-background/42">
-                              {diffDetails.files.map((file) => (
-                                <div
-                                  key={`${file.status}:${file.path}`}
-                                  className="grid grid-cols-[4.75rem_minmax(0,1fr)] gap-2 border-b border-border-muted/80 px-3 py-1.5 last:border-b-0"
-                                >
-                                  <span
-                                    className={`w-fit rounded px-1.5 py-0.5 text-[10px] font-semibold ${normalizerFileDiffStatusClass(
-                                      file.status
-                                    )}`}
-                                  >
-                                    {t(
-                                      `data.inputTables.editor.versionFileStatus.${file.status}`
-                                    )}
-                                  </span>
-                                  <span className="truncate font-mono text-[11px] text-text-secondary">
-                                    {file.path}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : null}
-                  </Fragment>
+                      </div>
+                    </td>
+                    <td className="min-w-[13rem] px-3 text-text-muted">
+                      {t('data.inputTables.editor.updatedAt', {
+                        time: formatDateTime(version.updatedAt),
+                      })}
+                    </td>
+                    <td className="min-w-[16rem] max-w-[28rem] px-3">
+                      <span className="line-clamp-1 font-medium text-text-secondary">
+                        {diffSummary || version.rulePrompt || '-'}
+                      </span>
+                    </td>
+                    <td className="w-[13rem] px-3">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          disabled={isPublished || publishingVersionId === version.id}
+                          onClick={() => onPublish(version)}
+                          className="inline-flex h-7 min-w-[4.25rem] items-center justify-center gap-1 rounded-lg bg-accent px-3 text-[11px] font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
+                        >
+                          {publishingVersionId === version.id ? (
+                            <RefreshCw className="h-3 w-3 animate-spin" />
+                          ) : null}
+                          {isPublished
+                            ? t('data.inputTables.editor.publishedVersion')
+                            : t('data.inputTables.editor.publishVersionAction')}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isPublished || deletingVersionId === version.id}
+                          onClick={() => onDelete(version)}
+                          title={
+                            isPublished
+                              ? t('data.inputTables.editor.deletePublishedVersionBlocked')
+                              : undefined
+                          }
+                          className="inline-flex h-7 min-w-[4.25rem] items-center justify-center gap-1 rounded-lg border border-danger/20 bg-danger/10 px-3 text-[11px] font-medium text-danger transition-colors hover:border-danger/40 hover:bg-danger/20 disabled:cursor-not-allowed disabled:border-border-muted disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
+                        >
+                          {deletingVersionId === version.id ? (
+                            <RefreshCw className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3 w-3" />
+                          )}
+                          {deletingVersionId === version.id
+                            ? t('data.inputTables.editor.deletingVersionAction')
+                            : t('data.inputTables.editor.deleteVersionAction')}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
                 );
               })}
             </tbody>
@@ -7646,71 +7652,6 @@ function buildNormalizerProjectTree(files: DataNormalizerProjectFile[]): Normali
   };
   sortTree(roots);
   return roots;
-}
-
-type NormalizerFileDiffStatus = 'added' | 'removed' | 'changed' | 'unchanged';
-
-interface NormalizerFileDiff {
-  path: string;
-  status: NormalizerFileDiffStatus;
-}
-
-function getNormalizerVersionDiffDetails(
-  version: DataInputTableNormalizerArtifactVersion,
-  current: DataInputTableNormalizerArtifactVersion | undefined
-): { files: NormalizerFileDiff[]; ruleChanged: boolean } {
-  if (!current) {
-    return {
-      files: version.files
-        .map((file) => ({ path: file.path, status: 'added' as const }))
-        .sort(compareNormalizerFileDiff),
-      ruleChanged: false,
-    };
-  }
-  const currentFiles = new Map(current.files.map((file) => [file.path, file.content]));
-  const versionFiles = new Map(version.files.map((file) => [file.path, file.content]));
-  const files: NormalizerFileDiff[] = [];
-  for (const [path, content] of versionFiles) {
-    if (!currentFiles.has(path)) {
-      files.push({ path, status: 'added' });
-    } else if (currentFiles.get(path) !== content) {
-      files.push({ path, status: 'changed' });
-    } else {
-      files.push({ path, status: 'unchanged' });
-    }
-  }
-  for (const path of currentFiles.keys()) {
-    if (!versionFiles.has(path)) {
-      files.push({ path, status: 'removed' });
-    }
-  }
-  return {
-    files: files.sort(compareNormalizerFileDiff),
-    ruleChanged: version.rulePrompt !== current.rulePrompt,
-  };
-}
-
-function compareNormalizerFileDiff(left: NormalizerFileDiff, right: NormalizerFileDiff): number {
-  const order: Record<NormalizerFileDiffStatus, number> = {
-    changed: 0,
-    added: 1,
-    removed: 2,
-    unchanged: 3,
-  };
-  return order[left.status] - order[right.status] || left.path.localeCompare(right.path);
-}
-
-function normalizerFileDiffStatusClass(status: NormalizerFileDiffStatus): string {
-  switch (status) {
-    case 'added':
-      return 'bg-success/10 text-success';
-    case 'removed':
-      return 'bg-danger/10 text-danger';
-    case 'changed':
-      return 'bg-warning/10 text-warning';
-    default:
-      return 'bg-surface-active text-text-muted';
-  }
 }
 
 function getNormalizerVersionDiffSummary(

@@ -301,6 +301,14 @@ export interface DataPublishInputTableNormalizerVersionInput {
   versionId: string;
 }
 
+export interface DataDeleteInputTableNormalizerVersionInput {
+  versionId: string;
+}
+
+export interface DataDeleteInputTableNormalizerVersionResult {
+  success: boolean;
+}
+
 export interface DataListInputTableNormalizerVersionsInput {
   artifactId: string;
 }
