@@ -5940,6 +5940,7 @@ function InputTableEditorWorkbench({
       window.electronAPI.data.onInputTableNormalizerDraftProgress?.(
         (event: DataInputTableNormalizerDraftProgressEvent) => {
           if (event.progressId !== progressId) return;
+          if (typeof event.text !== 'string' || event.text.length === 0) return;
           if (event.kind === 'delta') {
             appendGenerationOutputChunk(event.text);
           } else {
@@ -7107,8 +7108,8 @@ function InputTablePreviewDialog({
       : t('data.inputTables.editor.previewEmpty');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/28 px-4 py-6">
-      <div className="flex h-[42rem] max-h-[calc(100vh-3rem)] w-[72rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-muted bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-sky-950/18 px-4 py-6">
+      <div className="flex h-[42rem] max-h-[calc(100vh-3rem)] w-[72rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-sky-200/55 bg-[#edf7fd]/86 shadow-card backdrop-blur-xl">
         <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between px-4">
           <div className="min-w-0">
             <div className="text-[14px] font-semibold text-text-primary">
@@ -7125,7 +7126,7 @@ function InputTablePreviewDialog({
           </button>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background/24">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#f4faff]">
           <GlassDataGridPreview
             preview={preview}
             isLoading={isLoading}

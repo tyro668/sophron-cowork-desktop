@@ -1826,6 +1826,7 @@ ipcMain.handle(
         ...payload,
         onProgress: progressId
           ? (progress) => {
+              if (typeof progress.text !== 'string' || progress.text.length === 0) return;
               event.sender.send('data.inputTableNormalizerDraftProgress', {
                 progressId,
                 ...progress,

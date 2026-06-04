@@ -310,14 +310,20 @@ async function streamPiAiOneShotResponse(
   const stream = streamSimple(model, context, options);
   for await (const event of stream) {
     if (event.type === 'text_delta') {
-      callbacks.onTextDelta?.(event.delta);
+      const delta = normalizeStreamDelta(event.delta);
+      if (delta) callbacks.onTextDelta?.(delta);
     } else if (event.type === 'thinking_delta') {
-      callbacks.onThinkingDelta?.(event.delta);
+      const delta = normalizeStreamDelta(event.delta);
+      if (delta) callbacks.onThinkingDelta?.(delta);
     } else if (event.type === 'error') {
       logWarn('[OneShot] Streaming provider error-as-event:', event.reason, event.error.errorMessage);
     }
   }
   return stream.result();
+}
+
+function normalizeStreamDelta(delta: unknown): string {
+  return typeof delta === 'string' ? delta : '';
 }
 
 function normalizeProbeAck(raw: string): string {

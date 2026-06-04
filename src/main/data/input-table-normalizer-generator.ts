@@ -52,50 +52,38 @@ export function createLlmInputTableNormalizerProjectGenerator(
         input.rulePrompt
       );
       const sourceSummary = compactSourceSummary(input.sourceSummary);
-      emitProgress(input, {
-        phase: 'source_analysis',
-        kind: 'message',
-        text: '\n\n**结构分析输出**\n\n```json\n',
-      });
-      const analysisResponse = await runWithProgressFence(input, 'source_analysis', () =>
-        runPiAiOneShot(
-          buildSourceAnalysisUserPrompt(input, sourceSummary),
-          buildSourceAnalysisSystemPrompt(),
-          getConfig(),
-          {
-            temperature: 0,
-            maxTokens: 8_000,
-            onTextDelta: (delta) =>
-              emitProgress(input, {
-                phase: 'source_analysis',
-                kind: 'delta',
-                text: delta,
-              }),
-          }
-        )
+      const analysisProgress = createJsonProgressWriter(input, 'source_analysis', '结构分析输出');
+      const analysisResponse = await runWithProgressBlock(
+        () =>
+          runPiAiOneShot(
+            buildSourceAnalysisUserPrompt(input, sourceSummary),
+            buildSourceAnalysisSystemPrompt(),
+            getConfig(),
+            {
+              temperature: 0,
+              maxTokens: 8_000,
+              onTextDelta: analysisProgress.append,
+            }
+          ),
+        (result) => analysisProgress.fallback(result.text),
+        analysisProgress.close
       );
       const sourceStructureAnalysis = parseSourceStructureAnalysis(analysisResponse.text);
-      emitProgress(input, {
-        phase: 'code_generation',
-        kind: 'message',
-        text: '\n\n**项目文件输出**\n\n```json\n',
-      });
-      const response = await runWithProgressFence(input, 'code_generation', () =>
-        runPiAiOneShot(
-          buildCodeGenerationUserPrompt(input, template, sourceSummary, sourceStructureAnalysis),
-          buildCodeGenerationSystemPrompt(input.primaryLanguage),
-          getConfig(),
-          {
-            temperature: 0.1,
-            maxTokens: 16_000,
-            onTextDelta: (delta) =>
-              emitProgress(input, {
-                phase: 'code_generation',
-                kind: 'delta',
-                text: delta,
-              }),
-          }
-        )
+      const codeProgress = createJsonProgressWriter(input, 'code_generation', '项目文件输出');
+      const response = await runWithProgressBlock(
+        () =>
+          runPiAiOneShot(
+            buildCodeGenerationUserPrompt(input, template, sourceSummary, sourceStructureAnalysis),
+            buildCodeGenerationSystemPrompt(input.primaryLanguage),
+            getConfig(),
+            {
+              temperature: 0.1,
+              maxTokens: 16_000,
+              onTextDelta: codeProgress.append,
+            }
+          ),
+        (result) => codeProgress.fallback(result.text),
+        codeProgress.close
       );
       const generatedFiles = parseGeneratedProjectFiles(response.text);
       const files = mergeGeneratedProjectFiles(
@@ -126,22 +114,68 @@ function emitProgress(
   input: GenerateInputTableNormalizerProjectInput,
   event: InputTableNormalizerProjectProgressEvent
 ): void {
+  if (typeof event.text !== 'string' || event.text.length === 0) return;
   input.onProgress?.(event);
 }
 
-async function runWithProgressFence<T>(
+function createJsonProgressWriter(
   input: GenerateInputTableNormalizerProjectInput,
   phase: InputTableNormalizerProjectProgressPhase,
-  run: () => Promise<T>
-): Promise<T> {
-  try {
-    return await run();
-  } finally {
+  title: string
+): {
+  append: (delta: string) => void;
+  fallback: (finalText: string) => void;
+  close: () => void;
+} {
+  let opened = false;
+  let streamedText = '';
+  const open = () => {
+    if (opened) return;
+    opened = true;
     emitProgress(input, {
       phase,
       kind: 'message',
-      text: '\n```\n',
+      text: `\n\n**${title}**\n\n\`\`\`json\n`,
     });
+  };
+  const append = (delta: string) => {
+    if (typeof delta !== 'string' || delta.length === 0) return;
+    open();
+    streamedText += delta;
+    emitProgress(input, {
+      phase,
+      kind: 'delta',
+      text: delta,
+    });
+  };
+  return {
+    append,
+    fallback(finalText) {
+      if (streamedText.trim().length > 0 || !finalText.trim()) return;
+      append(finalText);
+    },
+    close() {
+      if (!opened) return;
+      emitProgress(input, {
+        phase,
+        kind: 'message',
+        text: '\n```\n',
+      });
+    },
+  };
+}
+
+async function runWithProgressBlock<T>(
+  run: () => Promise<T>,
+  beforeClose: ((result: T) => void) | undefined,
+  close: () => void
+): Promise<T> {
+  try {
+    const result = await run();
+    beforeClose?.(result);
+    return result;
+  } finally {
+    close();
   }
 }
 

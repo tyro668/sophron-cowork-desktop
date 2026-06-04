@@ -405,11 +405,11 @@ function clamp(value: number, min: number, max: number): number {
 const INPUT_TABLE_FALLBACK_PAGE_SIZE = 20;
 const EMPTY_COLUMNS: string[] = [];
 const EMPTY_ROWS: Array<Record<string, string | number | boolean | null>> = [];
-const PREVIEW_GRID_HEADER_SURFACE = '#f7fbff';
-const PREVIEW_GRID_CELL_SURFACE = '#ffffff';
-const PREVIEW_GRID_CELL_MUTED = '#f8fbfe';
-const PREVIEW_GRID_ICON_SURFACE = '#edf8fc';
-const PREVIEW_GRID_BORDER = 'rgba(202, 221, 238, 0.62)';
+const PREVIEW_GRID_HEADER_SURFACE = '#eef7fd';
+const PREVIEW_GRID_CELL_SURFACE = '#f7fbff';
+const PREVIEW_GRID_CELL_MUTED = '#eff8fe';
+const PREVIEW_GRID_ICON_SURFACE = '#e2f4fb';
+const PREVIEW_GRID_BORDER = 'rgba(179, 210, 234, 0.66)';
 const PREVIEW_GRID_TEXT_PRIMARY = '#172238';
 const PREVIEW_GRID_TEXT_SECONDARY = '#34465c';
 const PREVIEW_GRID_TEXT_MUTED = '#607084';
