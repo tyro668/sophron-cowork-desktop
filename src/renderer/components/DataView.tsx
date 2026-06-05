@@ -1010,9 +1010,6 @@ export function DataView() {
     };
   }, [editingOutputTableId]);
 
-  const isDetailEditor = Boolean(
-    editingTask || editingInputTableDraft || editingInputTableDataset || editingOutputTable
-  );
   const isInputTableEditor = Boolean(editingInputTableDraft || editingInputTableDataset);
   const isTasksLoading =
     loadingTab === 'tasks' ||
@@ -1548,14 +1545,12 @@ export function DataView() {
 
   return (
     <div
-      className={`flex-1 min-h-0 bg-transparent ${
-        isDetailEditor ? 'overflow-hidden' : 'overflow-y-auto'
-      }`}
+      className="flex-1 min-h-0 overflow-hidden bg-transparent"
     >
       <div
         className={`mx-auto w-full px-3 py-3 sm:px-4 ${
           isInputTableEditor ? 'max-w-[1500px]' : 'max-w-[1120px]'
-        } ${isDetailEditor ? 'flex h-full min-h-0 flex-col' : ''}`}
+        } flex h-full min-h-0 flex-col`}
       >
         {error && (
           <div className="mb-4 flex shrink-0 items-start gap-2 rounded-lg border border-error/20 bg-error/10 px-3.5 py-2.5 text-[13px] text-error">
@@ -1600,8 +1595,8 @@ export function DataView() {
             onSave={handleUpdateOutputTable}
           />
         ) : (
-          <>
-            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="flex min-h-0 flex-1 flex-col">
+            <section className="grid flex-shrink-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {summaryCards.map(({ key, label, description, value, Icon, iconClassName }) => (
                 <StatCard
                   key={key}
@@ -1614,8 +1609,8 @@ export function DataView() {
               ))}
             </section>
 
-            <section className="mt-3">
-              <div className="mb-2 flex min-h-10 flex-col gap-2.5 sm:flex-row sm:items-end sm:justify-between">
+            <section className="mt-3 flex min-h-0 flex-1 flex-col">
+              <div className="mb-2 flex min-h-10 flex-shrink-0 flex-col gap-2.5 sm:flex-row sm:items-end sm:justify-between">
                 <div className="flex items-end gap-5">
                   <TabButton
                     active={activeTab === 'tasks'}
@@ -1654,22 +1649,22 @@ export function DataView() {
                   onDeleteAll={handleDeleteAllTasks}
                 />
               ) : (
-                <div className="overflow-visible bg-transparent">
+                <div className="min-h-0 flex-1 bg-transparent">
                   {activeTab === 'input_tables' ? (
-                      <InputTablesPanel
-                        datasets={inputTableDatasets}
-                        drafts={inputTableDrafts}
-                        totalDatasets={totalInputTableDatasets}
-                        currentPage={datasetPage}
-                        searchQuery={searchQuery}
-                        isLoading={isInputTablesLoading}
-                        sourceFilter={inputTableSourceFilter}
-                        onSearchChange={handleSearchChange}
-                        onSourceFilterChange={handleInputTableSourceFilterChange}
-                        onPageChange={handleDatasetPageChange}
-                        onCreate={handleCreateInputTableDraft}
-                        onRefresh={() => loadInputTables({ preserveError: true })}
-                        onPreviewDataset={handlePreviewStoredInputTable}
+                    <InputTablesPanel
+                      datasets={inputTableDatasets}
+                      drafts={inputTableDrafts}
+                      totalDatasets={totalInputTableDatasets}
+                      currentPage={datasetPage}
+                      searchQuery={searchQuery}
+                      isLoading={isInputTablesLoading}
+                      sourceFilter={inputTableSourceFilter}
+                      onSearchChange={handleSearchChange}
+                      onSourceFilterChange={handleInputTableSourceFilterChange}
+                      onPageChange={handleDatasetPageChange}
+                      onCreate={handleCreateInputTableDraft}
+                      onRefresh={() => loadInputTables({ preserveError: true })}
+                      onPreviewDataset={handlePreviewStoredInputTable}
                       onDelete={handleDeleteInputTable}
                       onDeleteAll={handleDeleteAllInputTables}
                       onDeleteDraft={handleDeleteInputTableDraft}
@@ -1717,7 +1712,7 @@ export function DataView() {
                 onClose={() => setStoredPreviewOpen(false)}
               />
             )}
-          </>
+          </div>
         )}
       </div>
     </div>
@@ -4749,8 +4744,8 @@ function TasksPanel({
   }, [isLoading, selectedTaskId, tasks]);
 
   return (
-    <div className="bg-transparent">
-      <div className="mb-3 flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+    <div className="flex h-full min-h-0 flex-col bg-transparent">
+      <div className="mb-3 flex flex-shrink-0 flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <button
             onClick={onCreate}
@@ -4819,14 +4814,16 @@ function TasksPanel({
           />
         </div>
       </div>
-      <div className="glass-table">
-        <TasksTable
-          tasks={tasks}
-          isLoading={isLoading}
-          selectedTaskId={selectedTaskId}
-          onSelectTask={setSelectedTaskId}
-          onEdit={onEdit}
-        />
+      <div className="glass-table flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-auto">
+          <TasksTable
+            tasks={tasks}
+            isLoading={isLoading}
+            selectedTaskId={selectedTaskId}
+            onSelectTask={setSelectedTaskId}
+            onEdit={onEdit}
+          />
+        </div>
         <PaginationFooter
           count={totalTasks}
           currentPage={currentPage}
@@ -4863,7 +4860,7 @@ function TasksTable({
   }
 
   return (
-    <div className="overflow-hidden">
+    <div className="min-w-full overflow-x-auto">
       <table className="w-full table-fixed border-collapse text-left">
         <thead>
           <tr className="h-10 border-b border-border-muted bg-background/30 text-xs font-medium text-text-muted backdrop-blur-xl">
@@ -5015,7 +5012,6 @@ function InputTablesPanel({
     [datasets, isLoading, pageDrafts]
   );
   const pageRows = visibleRows;
-  const pageNumbers = getVisiblePageNumbers(safeCurrentPage, pageCount);
   const emptyLabel =
     sourceFilter === 'all' ? t('data.inputTables.empty') : t('data.inputTables.emptyFiltered');
   const selectedRow = visibleRows.find((row) => row.id === selectedDatasetId) ?? null;
@@ -5034,8 +5030,8 @@ function InputTablesPanel({
   }, [isLoading, selectedDatasetId, visibleRows]);
 
   return (
-    <div className="bg-transparent">
-      <div className="mb-3 flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+    <div className="flex h-full min-h-0 flex-col bg-transparent">
+      <div className="mb-3 flex flex-shrink-0 flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <button
             onClick={onCreate}
@@ -5124,14 +5120,14 @@ function InputTablesPanel({
         </div>
       </div>
 
-      <div className="glass-table">
-        {isLoading ? (
-          <LoadingState label={t('data.inputTables.loading')} />
-        ) : visibleRows.length === 0 ? (
-          <EmptyState label={emptyLabel} />
-        ) : (
-          <>
-            <div className="overflow-hidden">
+      <div className="glass-table flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-auto">
+          {isLoading ? (
+            <LoadingState label={t('data.inputTables.loading')} />
+          ) : visibleRows.length === 0 ? (
+            <EmptyState label={emptyLabel} />
+          ) : (
+            <div className="min-w-full overflow-x-auto">
               <table className="w-full table-fixed border-collapse text-left">
                 <thead>
                   <tr className="h-10 border-b border-border-muted bg-background/30 text-xs font-medium text-text-muted backdrop-blur-xl">
@@ -5241,44 +5237,14 @@ function InputTablesPanel({
                 </tbody>
               </table>
             </div>
-          <div className="flex min-h-11 flex-col items-center justify-between gap-2 border-t border-border-muted px-4 py-2.5 text-xs font-medium text-text-secondary sm:flex-row">
-            <span>{t('data.totalCount', { count: totalRows })}</span>
-            <div className="flex items-center gap-2">
-              <button className="inline-flex h-8 min-w-[6.5rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-text-secondary shadow-soft">
-                {t('data.rowsPerPage', { count: TABLE_PAGE_SIZE })}
-                <ChevronDown className="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={() => onPageChange(safeCurrentPage - 1)}
-                disabled={safeCurrentPage <= 1}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              {pageNumbers.map((pageNumber) => (
-                <button
-                  key={pageNumber}
-                  onClick={() => onPageChange(pageNumber)}
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
-                    pageNumber === safeCurrentPage
-                      ? 'bg-accent text-white shadow-soft'
-                      : 'border border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
-                  }`}
-                >
-                  {pageNumber}
-                </button>
-              ))}
-              <button
-                onClick={() => onPageChange(safeCurrentPage + 1)}
-                disabled={safeCurrentPage >= pageCount}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-          </>
-        )}
+          )}
+        </div>
+        <PaginationFooter
+          count={totalRows}
+          currentPage={safeCurrentPage}
+          onPageChange={onPageChange}
+          embedded
+        />
       </div>
     </div>
   );
@@ -5319,9 +5285,6 @@ function OutputTablesPanel({
 }) {
   const { t } = useTranslation();
   const [selectedOutputTableId, setSelectedOutputTableId] = useState<string | null>(null);
-  const pageCount = getTablePageCount(totalOutputTables);
-  const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
-  const pageNumbers = getVisiblePageNumbers(safeCurrentPage, pageCount);
   const selectedOutputTable =
     outputTables.find((outputTable) => outputTable.id === selectedOutputTableId) ?? null;
   const selectedBusy = selectedOutputTable ? actionId === selectedOutputTable.id : false;
@@ -5340,8 +5303,8 @@ function OutputTablesPanel({
   }, [isLoading, outputTables, selectedOutputTableId]);
 
   return (
-    <div className="bg-transparent">
-      <div className="mb-3 flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+    <div className="flex h-full min-h-0 flex-col bg-transparent">
+      <div className="mb-3 flex flex-shrink-0 flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <button
             onClick={onCreate}
@@ -5411,14 +5374,14 @@ function OutputTablesPanel({
         </div>
       </div>
 
-      <div className="glass-table">
-        {isLoading ? (
-          <LoadingState label={t('data.outputTables.loading')} />
-        ) : outputTables.length === 0 ? (
-          <EmptyState label={t('data.outputTables.empty')} />
-        ) : (
-          <>
-            <div className="overflow-hidden">
+      <div className="glass-table flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-auto">
+          {isLoading ? (
+            <LoadingState label={t('data.outputTables.loading')} />
+          ) : outputTables.length === 0 ? (
+            <EmptyState label={t('data.outputTables.empty')} />
+          ) : (
+            <div className="min-w-full overflow-x-auto">
               <table className="w-full table-fixed border-collapse text-left">
                 <thead>
                   <tr className="h-10 border-b border-border-muted bg-background/30 text-xs font-medium text-text-muted backdrop-blur-xl">
@@ -5493,44 +5456,14 @@ function OutputTablesPanel({
                 </tbody>
               </table>
             </div>
-            <div className="flex min-h-11 flex-col items-center justify-between gap-2 border-t border-border-muted px-4 py-2.5 text-xs font-medium text-text-secondary sm:flex-row">
-              <span>{t('data.totalCount', { count: totalOutputTables })}</span>
-              <div className="flex items-center gap-2">
-                <button className="inline-flex h-8 min-w-[6.5rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-text-secondary shadow-soft">
-                  {t('data.rowsPerPage', { count: TABLE_PAGE_SIZE })}
-                  <ChevronDown className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  onClick={() => onPageChange(safeCurrentPage - 1)}
-                  disabled={safeCurrentPage <= 1}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                {pageNumbers.map((pageNumber) => (
-                  <button
-                    key={pageNumber}
-                    onClick={() => onPageChange(pageNumber)}
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
-                      pageNumber === safeCurrentPage
-                        ? 'bg-accent text-white shadow-soft'
-                        : 'border border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
-                    }`}
-                  >
-                    {pageNumber}
-                  </button>
-                ))}
-                <button
-                  onClick={() => onPageChange(safeCurrentPage + 1)}
-                  disabled={safeCurrentPage >= pageCount}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          </>
-        )}
+          )}
+        </div>
+        <PaginationFooter
+          count={totalOutputTables}
+          currentPage={currentPage}
+          onPageChange={onPageChange}
+          embedded
+        />
       </div>
     </div>
   );
