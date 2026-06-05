@@ -12,6 +12,8 @@ function makeSession(overrides: Partial<Session>): Session {
     id: overrides.id ?? 'session',
     title: overrides.title ?? 'Untitled',
     status: overrides.status ?? 'idle',
+    projectId: overrides.projectId,
+    projectName: overrides.projectName,
     cwd: overrides.cwd,
     mountedPaths: overrides.mountedPaths ?? [],
     allowedTools: overrides.allowedTools ?? [],
@@ -65,6 +67,33 @@ describe('sidebar project grouping', () => {
     expect(groups[0].key).toBe(key);
     expect(groups[0].defaultLabel).toBe('sophron');
     expect(groups[0].label).toBe('Customer Ops');
+  });
+
+  it('groups sessions by persisted project id before falling back to cwd', () => {
+    const groups = buildSessionProjectGroups(
+      [
+        makeSession({
+          id: 'first',
+          projectId: 'project-1',
+          projectName: 'Customer Ops',
+          cwd: '/old/workspace',
+          updatedAt: 10,
+        }),
+        makeSession({
+          id: 'second',
+          projectId: 'project-1',
+          projectName: 'Customer Ops',
+          cwd: '/new/workspace',
+          updatedAt: 20,
+        }),
+      ],
+      { noWorkspaceLabel: 'No workspace' }
+    );
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].key).toBe('project:project-1');
+    expect(groups[0].label).toBe('Customer Ops');
+    expect(groups[0].sessions.map((session) => session.id)).toEqual(['second', 'first']);
   });
 
   it('lets project name or path search show all tasks in the matching project', () => {

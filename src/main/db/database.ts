@@ -7,6 +7,7 @@ import Database from 'better-sqlite3';
 import { app } from 'electron';
 import { join } from 'path';
 import { existsSync, mkdirSync, statSync, renameSync, openSync, readSync, closeSync } from 'fs';
+import { randomUUID } from 'crypto';
 import { log, logError, logWarn } from '../utils/logger';
 
 export interface DatabaseInstance {
@@ -19,6 +20,16 @@ export interface DatabaseInstance {
     update: (id: string, updates: Partial<SessionRow>) => void;
     get: (id: string) => SessionRow | undefined;
     getAll: () => SessionRow[];
+    delete: (id: string) => void;
+  };
+
+  projects?: {
+    create: (project: ProjectRow) => void;
+    update: (id: string, updates: Partial<ProjectRow>) => ProjectRow | undefined;
+    get: (id: string) => ProjectRow | undefined;
+    getByPathKey: (pathKey: string) => ProjectRow | undefined;
+    getAll: () => ProjectRow[];
+    ensureForCwd: (cwd: string, name?: string | null) => ProjectRow;
     delete: (id: string) => void;
   };
 
@@ -59,11 +70,22 @@ export interface SessionRow {
   claude_session_id: string | null;
   openai_thread_id: string | null;
   status: string;
+  project_id?: string | null;
+  project_name?: string | null;
   cwd: string | null;
   mounted_paths: string; // JSON string
   allowed_tools: string; // JSON string
   memory_enabled: number;
   model: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ProjectRow {
+  id: string;
+  name: string | null;
+  cwd: string;
+  path_key: string;
   created_at: number;
   updated_at: number;
 }
@@ -113,6 +135,35 @@ export interface ScheduledTaskRow {
 
 let db: DatabaseInstance | null = null;
 const SQLITE_HEADER = Buffer.from('SQLite format 3\0', 'utf8');
+
+export function normalizeProjectPathKey(cwd: string): string {
+  const trimmed = cwd.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  let normalized = trimmed.replace(/\\/g, '/');
+  if (/^\/+$/.test(normalized)) {
+    return '/';
+  }
+
+  normalized = normalized.replace(/\/+$/g, '');
+  if (!normalized) {
+    return '';
+  }
+
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+function getDefaultProjectName(cwd: string): string {
+  const trimmed = cwd.trim();
+  if (!trimmed) return 'Workspace';
+  if (/^[\\/]+$/.test(trimmed)) return trimmed.replace(/\\/g, '/');
+
+  const normalized = trimmed.replace(/\\/g, '/').replace(/\/+$/g, '');
+  const folderName = normalized.split('/').filter(Boolean).pop();
+  return folderName || normalized || 'Workspace';
+}
 
 function buildBackupPath(targetPath: string, suffix: string): string {
   return `${targetPath}.${suffix}-${Date.now()}`;
@@ -195,6 +246,81 @@ function prepareDatabaseDirectory(userDataPath: string): string {
   return dbDir;
 }
 
+function ensureProjectForCwdInDatabase(
+  database: Database.Database,
+  cwd: string,
+  name?: string | null
+): ProjectRow {
+  const trimmedCwd = cwd.trim();
+  if (!trimmedCwd) {
+    throw new Error('Project cwd cannot be empty');
+  }
+
+  const pathKey = normalizeProjectPathKey(trimmedCwd);
+  if (!pathKey) {
+    throw new Error('Project cwd cannot be empty');
+  }
+
+  const existing = database
+    .prepare('SELECT * FROM projects WHERE path_key = ? LIMIT 1')
+    .get(pathKey) as ProjectRow | undefined;
+  if (existing) {
+    const nextName = typeof name === 'string' && name.trim() ? name.trim() : existing.name;
+    if (existing.cwd !== trimmedCwd || nextName !== existing.name) {
+      database
+        .prepare('UPDATE projects SET cwd = ?, name = ?, updated_at = ? WHERE id = ?')
+        .run(trimmedCwd, nextName, Date.now(), existing.id);
+      return database.prepare('SELECT * FROM projects WHERE id = ?').get(existing.id) as ProjectRow;
+    }
+    return existing;
+  }
+
+  const now = Date.now();
+  const project: ProjectRow = {
+    id: randomUUID(),
+    name: typeof name === 'string' && name.trim() ? name.trim() : null,
+    cwd: trimmedCwd,
+    path_key: pathKey,
+    created_at: now,
+    updated_at: now,
+  };
+  database
+    .prepare(
+      'INSERT INTO projects (id, name, cwd, path_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    )
+    .run(project.id, project.name, project.cwd, project.path_key, project.created_at, project.updated_at);
+  return project;
+}
+
+function migrateLegacySessionProjects(database: Database.Database): void {
+  const rows = database
+    .prepare(
+      "SELECT id, cwd FROM sessions WHERE project_id IS NULL AND cwd IS NOT NULL AND TRIM(cwd) <> ''"
+    )
+    .all() as Array<{ id: string; cwd: string }>;
+
+  if (rows.length === 0) {
+    return;
+  }
+
+  const updateSessionProject = database.prepare(
+    'UPDATE sessions SET project_id = ?, cwd = NULL WHERE id = ?'
+  );
+
+  database.transaction(() => {
+    for (const row of rows) {
+      const project = ensureProjectForCwdInDatabase(
+        database,
+        row.cwd,
+        getDefaultProjectName(row.cwd)
+      );
+      updateSessionProject.run(project.id, row.id);
+    }
+  })();
+
+  log('[Database] Migrated legacy session workdirs into projects:', rows.length);
+}
+
 /**
  * Get the database file path
  */
@@ -221,6 +347,22 @@ function initializeSchema(database: Database.Database): void {
     // Enable WAL mode for better performance
     database.pragma('journal_mode = WAL');
 
+    database.exec(`
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY,
+      name TEXT,
+      cwd TEXT NOT NULL,
+      path_key TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `);
+
+    database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_projects_updated_at
+    ON projects(updated_at DESC)
+  `);
+
     // Create sessions table
     database.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
@@ -229,17 +371,21 @@ function initializeSchema(database: Database.Database): void {
       claude_session_id TEXT,
       openai_thread_id TEXT,
       status TEXT NOT NULL DEFAULT 'idle',
+      project_id TEXT,
       cwd TEXT,
       mounted_paths TEXT NOT NULL DEFAULT '[]',
       allowed_tools TEXT NOT NULL DEFAULT '[]',
       memory_enabled INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
     )
   `);
 
     ensureColumn(database, 'sessions', 'openai_thread_id', 'openai_thread_id TEXT');
     ensureColumn(database, 'sessions', 'model', 'model TEXT');
+    ensureColumn(database, 'sessions', 'project_id', 'project_id TEXT');
+    migrateLegacySessionProjects(database);
 
     // Create messages table
     database.exec(`
@@ -432,8 +578,8 @@ export function initDatabase(): DatabaseInstance {
   // Prepare statements for better performance
   const insertSession = rawDb.prepare(`
     INSERT OR REPLACE INTO sessions
-    (id, title, claude_session_id, openai_thread_id, status, cwd, mounted_paths, allowed_tools, memory_enabled, model, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, title, claude_session_id, openai_thread_id, status, project_id, cwd, mounted_paths, allowed_tools, memory_enabled, model, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   // Note: Dynamic update queries are built in sessions.update() for flexibility
@@ -442,15 +588,70 @@ export function initDatabase(): DatabaseInstance {
   // `);
 
   const getSessionStmt = rawDb.prepare(`
-    SELECT * FROM sessions WHERE id = ?
+    SELECT
+      s.id,
+      s.title,
+      s.claude_session_id,
+      s.openai_thread_id,
+      s.status,
+      s.project_id,
+      p.name AS project_name,
+      COALESCE(p.cwd, s.cwd) AS cwd,
+      s.mounted_paths,
+      s.allowed_tools,
+      s.memory_enabled,
+      s.model,
+      s.created_at,
+      s.updated_at
+    FROM sessions s
+    LEFT JOIN projects p ON p.id = s.project_id
+    WHERE s.id = ?
   `);
 
   const getAllSessionsStmt = rawDb.prepare(`
-    SELECT * FROM sessions ORDER BY updated_at DESC
+    SELECT
+      s.id,
+      s.title,
+      s.claude_session_id,
+      s.openai_thread_id,
+      s.status,
+      s.project_id,
+      p.name AS project_name,
+      COALESCE(p.cwd, s.cwd) AS cwd,
+      s.mounted_paths,
+      s.allowed_tools,
+      s.memory_enabled,
+      s.model,
+      s.created_at,
+      s.updated_at
+    FROM sessions s
+    LEFT JOIN projects p ON p.id = s.project_id
+    ORDER BY s.updated_at DESC
   `);
 
   const deleteSessionStmt = rawDb.prepare(`
     DELETE FROM sessions WHERE id = ?
+  `);
+
+  const insertProject = rawDb.prepare(`
+    INSERT OR REPLACE INTO projects (id, name, cwd, path_key, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+
+  const getProjectStmt = rawDb.prepare(`
+    SELECT * FROM projects WHERE id = ?
+  `);
+
+  const getProjectByPathKeyStmt = rawDb.prepare(`
+    SELECT * FROM projects WHERE path_key = ?
+  `);
+
+  const getAllProjectsStmt = rawDb.prepare(`
+    SELECT * FROM projects ORDER BY updated_at DESC
+  `);
+
+  const deleteProjectStmt = rawDb.prepare(`
+    DELETE FROM projects WHERE id = ?
   `);
 
   const insertMessage = rawDb.prepare(`
@@ -511,6 +712,69 @@ export function initDatabase(): DatabaseInstance {
   db = {
     raw: rawDb,
 
+    projects: {
+      create: (project: ProjectRow) => {
+        insertProject.run(
+          project.id,
+          project.name,
+          project.cwd,
+          project.path_key || normalizeProjectPathKey(project.cwd),
+          project.created_at,
+          project.updated_at
+        );
+      },
+
+      update: (id: string, updates: Partial<ProjectRow>): ProjectRow | undefined => {
+        const setClauses: string[] = [];
+        const values: unknown[] = [];
+
+        for (const [key, value] of Object.entries(updates)) {
+          if (value === undefined || key === 'id' || key === 'created_at') {
+            continue;
+          }
+          validateIdentifier(key);
+          setClauses.push(`${key} = ?`);
+          values.push(key === 'name' && typeof value === 'string' ? value.trim() || null : value);
+
+          if (key === 'cwd' && typeof value === 'string') {
+            setClauses.push('path_key = ?');
+            values.push(normalizeProjectPathKey(value));
+          }
+        }
+
+        if (setClauses.length > 0) {
+          setClauses.push('updated_at = ?');
+          values.push(Date.now());
+          values.push(id);
+
+          const sql = `UPDATE projects SET ${setClauses.join(', ')} WHERE id = ?`;
+          rawDb.prepare(sql).run(...values);
+        }
+
+        return getProjectStmt.get(id) as ProjectRow | undefined;
+      },
+
+      get: (id: string): ProjectRow | undefined => {
+        return getProjectStmt.get(id) as ProjectRow | undefined;
+      },
+
+      getByPathKey: (pathKey: string): ProjectRow | undefined => {
+        return getProjectByPathKeyStmt.get(pathKey) as ProjectRow | undefined;
+      },
+
+      getAll: (): ProjectRow[] => {
+        return getAllProjectsStmt.all() as ProjectRow[];
+      },
+
+      ensureForCwd: (cwd: string, name?: string | null): ProjectRow => {
+        return ensureProjectForCwdInDatabase(rawDb, cwd, name);
+      },
+
+      delete: (id: string) => {
+        deleteProjectStmt.run(id);
+      },
+    },
+
     sessions: {
       create: (session: SessionRow) => {
         insertSession.run(
@@ -519,6 +783,7 @@ export function initDatabase(): DatabaseInstance {
           session.claude_session_id,
           session.openai_thread_id,
           session.status,
+          session.project_id ?? null,
           session.cwd,
           session.mounted_paths,
           session.allowed_tools,

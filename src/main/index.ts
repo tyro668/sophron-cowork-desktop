@@ -27,7 +27,7 @@ import { join, resolve, dirname, isAbsolute, basename } from 'path';
 import * as fs from 'fs';
 import { execFileSync } from 'child_process';
 import { config } from 'dotenv';
-import { initDatabase, closeDatabase } from './db/database';
+import { initDatabase, closeDatabase, type DatabaseInstance, type ProjectRow } from './db/database';
 import { createDataTaskStore, type DataTaskStore } from './data/data-task-store';
 import { DataCommandService } from './data/data-command-service';
 import { DataToolService } from './data/data-tool-service';
@@ -60,6 +60,7 @@ import type { MCPServerConfig } from './mcp/mcp-manager';
 import type {
   ClientEvent,
   ServerEvent,
+  Project,
   ApiTestInput,
   ApiTestResult,
   DiagnosticInput,
@@ -150,6 +151,7 @@ app.disableHardwareAcceleration();
 
 let mainWindow: BrowserWindow | null = null;
 let sessionManager: SessionManager | null = null;
+let appDatabase: DatabaseInstance | null = null;
 let skillsManager: SkillsManager | null = null;
 let pluginRuntimeService: PluginRuntimeService | null = null;
 let memoryService: MemoryService | null = null;
@@ -197,6 +199,20 @@ async function resolveScheduledTaskTitle(
     logWarn('[Schedule] Failed to generate title via session title flow, using fallback', error);
     return fallback;
   }
+}
+
+function mapProjectRow(row: ProjectRow): Project {
+  return {
+    id: row.id,
+    name: row.name || null,
+    cwd: row.cwd,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function listProjectsForRenderer(): Project[] {
+  return appDatabase?.projects?.getAll().map(mapProjectRow) ?? [];
 }
 
 async function waitForDevServer(url: string, maxAttempts = 30, intervalMs = 500): Promise<boolean> {
@@ -617,7 +633,8 @@ function scheduleStartupUpdateCheck(): void {
 /**
  * Initialize default working directory
  * This is always the app's DefaultWorkingDir in userData - it never changes
- * Each session can have its own cwd that differs from this default
+ * User-selected workspace directories are persisted as projects and sessions
+ * reference those projects.
  */
 function initializeDefaultWorkingDir(): string {
   // Create default working directory in user data path (this is the permanent global default)
@@ -652,8 +669,8 @@ function getWorkspacePathUnsupportedReason(workspacePath?: string): string | nul
 
 /**
  * Set working directory
- * - If sessionId is provided: update only that session's cwd (for switching directories within a chat)
- * - If no sessionId: update UI display only (for WelcomeView - will be used when creating new session)
+ * - If sessionId is provided: move that session to the project for the selected directory
+ * - If no sessionId: persist/activate a project for the WelcomeView's next session
  *
  * Note: The global default (currentWorkingDir) is NEVER changed after initialization.
  * It is always app.getPath('userData')/DefaultWorkingDir
@@ -680,6 +697,12 @@ async function setWorkingDir(
     SandboxSync.clearSession(sessionId);
     const { LimaSync } = await import('./sandbox/lima-sync');
     LimaSync.clearSession(sessionId);
+  } else if (appDatabase?.projects) {
+    const project = appDatabase.projects.ensureForCwd(newDir);
+    sendToRenderer({
+      type: 'project.update',
+      payload: { project: mapProjectRow(project) },
+    });
   }
 
   // Notify renderer of workdir change (for UI display)
@@ -899,6 +922,7 @@ app
 
     // Initialize database
     const db = initDatabase();
+    appDatabase = db;
     const initializedDataTaskStore = createDataTaskStore(join(app.getPath('userData'), 'data', 'workspace.duckdb'), {
       metadataDb: db,
     });
@@ -1180,6 +1204,8 @@ async function cleanupSandboxResources(): Promise<void> {
     closeDatabase();
   } catch (error) {
     logError('[App] Error closing database:', error);
+  } finally {
+    appDatabase = null;
   }
 
   closeLogFile();
@@ -1202,6 +1228,8 @@ async function prepareForUpdateInstall(): Promise<void> {
     closeDatabase();
   } catch (error) {
     logError('[Update] Error closing database before install:', error);
+  } finally {
+    appDatabase = null;
   }
 }
 
@@ -1241,6 +1269,8 @@ app.on('before-quit', async (event) => {
         closeDatabase();
       } catch {
         /* best-effort */
+      } finally {
+        appDatabase = null;
       }
       closeLogFile();
       tray?.destroy();
@@ -3272,8 +3302,37 @@ async function handleClientEvent(event: ClientEvent): Promise<unknown> {
 
     case 'session.list': {
       const sessions = sm.listSessions();
-      sendToRenderer({ type: 'session.list', payload: { sessions } });
+      sendToRenderer({
+        type: 'session.list',
+        payload: { sessions, projects: listProjectsForRenderer() },
+      });
       return sessions;
+    }
+
+    case 'project.rename': {
+      const db = appDatabase;
+      if (!db?.projects) {
+        throw new Error('Project store not initialized');
+      }
+      const updated = db.projects.update(event.payload.projectId, {
+        name: event.payload.name?.trim() || null,
+      });
+      if (!updated) {
+        return null;
+      }
+      const project = mapProjectRow(updated);
+      sendToRenderer({ type: 'project.update', payload: { project } });
+      return project;
+    }
+
+    case 'project.delete': {
+      const db = appDatabase;
+      if (!db?.projects) {
+        throw new Error('Project store not initialized');
+      }
+      db.projects.delete(event.payload.projectId);
+      sendToRenderer({ type: 'project.delete', payload: { projectId: event.payload.projectId } });
+      return { success: true };
     }
 
     case 'session.getMessages':

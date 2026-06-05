@@ -10,6 +10,8 @@ export interface Session {
   claudeSessionId?: string;
   openaiThreadId?: string;
   status: SessionStatus;
+  projectId?: string;
+  projectName?: string;
   cwd?: string;
   mountedPaths: MountedPath[];
   allowedTools: string[];
@@ -24,6 +26,14 @@ export type SessionStatus = 'idle' | 'running' | 'completed' | 'error';
 export interface MountedPath {
   virtual: string;
   real: string;
+}
+
+export interface Project {
+  id: string;
+  name: string | null;
+  cwd: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 // Message types
@@ -1005,6 +1015,8 @@ export type ClientEvent =
   | { type: 'session.list'; payload: Record<string, never> }
   | { type: 'session.getMessages'; payload: { sessionId: string } }
   | { type: 'session.getTraceSteps'; payload: { sessionId: string } }
+  | { type: 'project.rename'; payload: { projectId: string; name: string | null } }
+  | { type: 'project.delete'; payload: { projectId: string } }
   | { type: 'permission.response'; payload: { toolUseId: string; result: PermissionResult } }
   | { type: 'sudo.password.response'; payload: { toolUseId: string; password: string | null } }
   | { type: 'settings.update'; payload: Record<string, unknown> }
@@ -1058,7 +1070,10 @@ export type ServerEvent =
   | { type: 'stream.executionTime'; payload: { sessionId: string; messageId: string; executionTimeMs: number } }
   | { type: 'session.status'; payload: { sessionId: string; status: SessionStatus; error?: string } }
   | { type: 'session.update'; payload: { sessionId: string; updates: Partial<Session> } }
-  | { type: 'session.list'; payload: { sessions: Session[] } }
+  | { type: 'session.list'; payload: { sessions: Session[]; projects?: Project[] } }
+  | { type: 'project.list'; payload: { projects: Project[] } }
+  | { type: 'project.update'; payload: { project: Project } }
+  | { type: 'project.delete'; payload: { projectId: string } }
   | { type: 'permission.request'; payload: PermissionRequest }
   | { type: 'permission.dismiss'; payload: { toolUseId: string } }
   | { type: 'sudo.password.request'; payload: SudoPasswordRequest }

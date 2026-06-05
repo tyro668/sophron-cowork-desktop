@@ -24,7 +24,7 @@ import type {
   TraceStep,
   FileAttachmentContent,
 } from '../../renderer/types';
-import type { DatabaseInstance, TraceStepRow } from '../db/database';
+import type { DatabaseInstance, ProjectRow, SessionRow, TraceStepRow } from '../db/database';
 import { PathResolver } from '../sandbox/path-resolver';
 import {
   SandboxAdapter,
@@ -274,6 +274,52 @@ export class SessionManager {
     return [{ virtual: WORKSPACE_MOUNT_VIRTUAL_PATH, real: cwd }];
   }
 
+  private ensureProject(cwd?: string): ProjectRow | undefined {
+    const trimmed = cwd?.trim();
+    if (!trimmed || !this.db.projects?.ensureForCwd) {
+      return undefined;
+    }
+    return this.db.projects.ensureForCwd(trimmed);
+  }
+
+  private parseStoredMountedPaths(row: SessionRow): Session['mountedPaths'] {
+    try {
+      return JSON.parse(row.mounted_paths);
+    } catch (e) {
+      logError('[SessionManager] Failed to parse mounted_paths:', e);
+      return [];
+    }
+  }
+
+  private parseAllowedTools(row: SessionRow): string[] {
+    try {
+      return JSON.parse(row.allowed_tools);
+    } catch (e) {
+      logError('[SessionManager] Failed to parse allowed_tools:', e);
+      return [];
+    }
+  }
+
+  private rowToSession(row: SessionRow): Session {
+    const cwd = row.cwd || undefined;
+    return {
+      id: row.id,
+      title: row.title,
+      claudeSessionId: row.claude_session_id || undefined,
+      openaiThreadId: row.openai_thread_id || undefined,
+      status: row.status as Session['status'],
+      projectId: row.project_id || undefined,
+      projectName: row.project_name || undefined,
+      cwd,
+      mountedPaths: cwd ? this.buildMountedPaths(cwd) : this.parseStoredMountedPaths(row),
+      allowedTools: this.parseAllowedTools(row),
+      memoryEnabled: row.memory_enabled === 1,
+      model: row.model || undefined,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
   private createSession(
     title: string,
     cwd?: string,
@@ -284,6 +330,7 @@ export class SessionManager {
     // Prefer frontend-provided cwd; fallback to env vars if provided
     const envCwd = process.env.COWORK_WORKDIR || process.env.WORKDIR || process.env.DEFAULT_CWD;
     const effectiveCwd = cwd || envCwd;
+    const project = this.ensureProject(effectiveCwd);
     const resolvedMemoryEnabled =
       typeof memoryEnabled === 'boolean'
         ? memoryEnabled
@@ -292,6 +339,8 @@ export class SessionManager {
       id: uuidv4(),
       title,
       status: 'idle',
+      projectId: project?.id,
+      projectName: project?.name || undefined,
       cwd: effectiveCwd,
       mountedPaths: this.buildMountedPaths(effectiveCwd),
       allowedTools: allowedTools || [
@@ -322,7 +371,8 @@ export class SessionManager {
       claude_session_id: session.claudeSessionId || null,
       openai_thread_id: session.openaiThreadId || null,
       status: session.status,
-      cwd: session.cwd || null,
+      project_id: session.projectId || null,
+      cwd: session.projectId ? null : session.cwd || null,
       mounted_paths: JSON.stringify(session.mountedPaths),
       allowed_tools: JSON.stringify(session.allowedTools),
       memory_enabled: session.memoryEnabled ? 1 : 0,
@@ -336,75 +386,14 @@ export class SessionManager {
   private loadSession(sessionId: string): Session | null {
     const row = this.db.sessions.get(sessionId);
     if (!row) return null;
-
-    let mountedPaths;
-    try {
-      mountedPaths = JSON.parse(row.mounted_paths);
-    } catch (e) {
-      logError('[SessionManager] Failed to parse mounted_paths:', e);
-      mountedPaths = [];
-    }
-
-    let allowedTools;
-    try {
-      allowedTools = JSON.parse(row.allowed_tools);
-    } catch (e) {
-      logError('[SessionManager] Failed to parse allowed_tools:', e);
-      allowedTools = [];
-    }
-
-    return {
-      id: row.id,
-      title: row.title,
-      claudeSessionId: row.claude_session_id || undefined,
-      openaiThreadId: row.openai_thread_id || undefined,
-      status: row.status as Session['status'],
-      cwd: row.cwd || undefined,
-      mountedPaths,
-      allowedTools,
-      memoryEnabled: row.memory_enabled === 1,
-      model: row.model || undefined,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    };
+    return this.rowToSession(row);
   }
 
   // List all sessions
   listSessions(): Session[] {
     const rows = this.db.sessions.getAll();
 
-    return rows.map((row) => {
-      let mountedPaths;
-      try {
-        mountedPaths = JSON.parse(row.mounted_paths);
-      } catch (e) {
-        logError('[SessionManager] Failed to parse mounted_paths:', e);
-        mountedPaths = [];
-      }
-
-      let allowedTools;
-      try {
-        allowedTools = JSON.parse(row.allowed_tools);
-      } catch (e) {
-        logError('[SessionManager] Failed to parse allowed_tools:', e);
-        allowedTools = [];
-      }
-
-      return {
-        id: row.id,
-        title: row.title,
-        claudeSessionId: row.claude_session_id || undefined,
-        openaiThreadId: row.openai_thread_id || undefined,
-        status: row.status as Session['status'],
-        cwd: row.cwd || undefined,
-        mountedPaths,
-        allowedTools,
-        memoryEnabled: row.memory_enabled === 1,
-        model: row.model || undefined,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      };
-    });
+    return rows.map((row) => this.rowToSession(row));
   }
 
   // Continue an existing session
@@ -1057,11 +1046,14 @@ export class SessionManager {
       );
       this.stopSession(sessionId);
     }
+    const project = this.ensureProject(cwd);
+    const projectId = project?.id;
     const mountedPaths = this.buildMountedPaths(cwd);
     // Clear claude_session_id in DB so next query creates a new SDK session
     // (Claude SDK sessions cannot change cwd mid-session)
     this.db.sessions.update(sessionId, {
-      cwd,
+      project_id: projectId || null,
+      cwd: projectId ? null : cwd,
       mounted_paths: JSON.stringify(mountedPaths),
       claude_session_id: null,
       openai_thread_id: null,
@@ -1075,10 +1067,20 @@ export class SessionManager {
 
     this.sendToRenderer({
       type: 'session.update',
-      payload: { sessionId, updates: { cwd, mountedPaths } },
+      payload: {
+        sessionId,
+        updates: { projectId, projectName: project?.name || undefined, cwd, mountedPaths },
+      },
     });
 
-    log('[SessionManager] Session cwd updated:', sessionId, '->', cwd, '(SDK session cleared)');
+    log(
+      '[SessionManager] Session project/workdir updated:',
+      sessionId,
+      '->',
+      cwd,
+      projectId ? `(project: ${projectId})` : '(no project)',
+      '(SDK session cleared)'
+    );
   }
 
   clearAllCachedAgentSessions(): void {
