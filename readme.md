@@ -14,7 +14,8 @@
   <a href="#demo">Demo</a> •
   <a href="#installation">Downloads</a> •
   <a href="#quick-start">Quick Start</a> •
-  <a href="#skills">Skills Library</a>
+  <a href="#skills">Skills Library</a> •
+  <a href="#developer-onboarding">Developer Onboarding</a>
 </p>
 
 <p align="center">
@@ -254,6 +255,26 @@ sophron/
 ├── vite.config.ts               # Vite bundler config
 └── package.json                 # Dependencies & scripts
 ```
+
+---
+
+<a id="developer-onboarding"></a>
+
+## 🛠️ Developer Onboarding
+
+New contributors should start from the development documentation entry:
+[docs/development/README.md](docs/development/README.md).
+
+The onboarding docs link to the module-level guides under `docs/development/`, including:
+
+- [Overall architecture](docs/development/architecture-overview.md)
+- [Session and Agent runtime](docs/development/runtime-and-sessions.md)
+- [Renderer workspace UI](docs/development/renderer-ui.md)
+- [Data workspace](docs/development/data-workspace.md)
+- [Sandbox, MCP, Skills, and plugins](docs/development/capabilities-sandbox-mcp-skills.md)
+- [Remote control, scheduled tasks, and memory](docs/development/remote-schedule-memory.md)
+- [Config, storage, updates, and startup helpers](docs/development/config-storage-update.md)
+- [Testing and maintenance guide](docs/development/testing-maintenance.md)
 
 ---
 

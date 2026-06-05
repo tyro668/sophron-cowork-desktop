@@ -12,10 +12,16 @@ export type PermissionPolicyId = (typeof PERMISSION_POLICY_IDS)[number];
 export const DEFAULT_PERMISSION_POLICY: PermissionPolicyId = 'auto_review';
 
 export const DEFAULT_PERMISSION_RULES: PermissionRule[] = [
+  { tool: 'askuserquestion', action: 'allow' },
+  { tool: 'todoread', action: 'allow' },
+  { tool: 'todowrite', action: 'allow' },
+  { tool: 'webfetch', action: 'allow' },
+  { tool: 'websearch', action: 'allow' },
   { tool: 'read', action: 'allow' },
   { tool: 'glob', action: 'allow' },
   { tool: 'grep', action: 'allow' },
   { tool: 'ls', action: 'allow' },
+  { tool: 'list_directory', action: 'allow' },
   { tool: 'find', action: 'allow' },
   { tool: 'data_get_workflow_dsl_reference', action: 'allow' },
   { tool: 'data_list_input_tables', action: 'allow' },
@@ -31,7 +37,9 @@ export const DEFAULT_PERMISSION_RULES: PermissionRule[] = [
 ];
 
 export const AUTO_REVIEW_PERMISSION_RULES: PermissionRule[] = [
-  ...DEFAULT_PERMISSION_RULES,
+  ...DEFAULT_PERMISSION_RULES.map((rule) =>
+    rule.action === 'ask' ? { ...rule, action: 'allow' as const } : rule
+  ),
   { tool: '*', action: 'ask' },
 ];
 

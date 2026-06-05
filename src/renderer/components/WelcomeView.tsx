@@ -515,9 +515,7 @@ export function WelcomeView() {
     <div className="flex-1 flex flex-col items-center justify-center bg-transparent px-4 py-6 md:px-8">
       <div className="max-w-[880px] w-full space-y-4 animate-fade-in">
         <div className="flex items-center justify-between gap-3 border-b border-border-subtle pb-3">
-          <h1 className="text-[17px] font-medium text-text-primary">
-            {t('welcome.title')}
-          </h1>
+          <h1 className="text-[17px] font-medium text-text-primary">{t('welcome.title')}</h1>
           <span className="hidden rounded-full border border-border-subtle bg-background/58 px-3 py-1 text-xs text-text-muted shadow-soft sm:inline-flex">
             {workingDirLabel}
           </span>
@@ -547,11 +545,11 @@ export function WelcomeView() {
             <button
               key={tag.id}
               onClick={() => handleTagClick(tag.id, tag.prompt)}
-                className={`inline-flex h-8 items-center gap-2 rounded-xl border px-3 text-[13px] font-medium shadow-soft transition-colors ${
-                  selectedTag === tag.id
-                    ? 'border-accent/30 bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/15'
-                    : 'border-border-muted bg-background/68 text-text-secondary hover:border-accent/25 hover:bg-surface-hover hover:text-text-primary'
-                } ${
+              className={`inline-flex h-8 items-center gap-2 rounded-xl border px-3 text-[13px] font-medium shadow-soft transition-colors ${
+                selectedTag === tag.id
+                  ? 'border-accent/30 bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/15'
+                  : 'border-border-muted bg-background/68 text-text-secondary hover:border-accent/25 hover:bg-surface-hover hover:text-text-primary'
+              } ${
                 ('requiresChrome' in tag && tag.requiresChrome) ||
                 ('requiresNotion' in tag && tag.requiresNotion)
                   ? 'relative'
@@ -582,7 +580,7 @@ export function WelcomeView() {
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`glass-card-strong relative rounded-2xl px-4 py-3 transition-colors sm:px-5 sm:py-4 ${
+          className={`chat-composer-panel relative px-4 py-3 transition-colors sm:px-5 sm:py-4 ${
             isDragging ? 'ring-2 ring-accent bg-accent-muted' : ''
           }`}
         >
@@ -668,7 +666,7 @@ export function WelcomeView() {
               <button
                 type="button"
                 onClick={handleFileSelect}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface text-text-muted shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary"
+                className="composer-flat-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
                 title={t('welcome.attachFiles')}
               >
                 <Plus className="h-5 w-5" />
@@ -677,16 +675,14 @@ export function WelcomeView() {
               <PermissionPolicySelector
                 open={showPermissionMenu}
                 onOpenChange={handlePermissionMenuOpenChange}
-                buttonClassName="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl px-2.5 text-[13px] font-medium text-accent transition-colors hover:bg-accent-muted sm:px-3"
+                buttonClassName="composer-flat-pill inline-flex h-9 shrink-0 items-center gap-2 rounded-full px-3 text-[13px] font-medium"
               />
 
               <button
                 type="button"
                 onClick={handleSelectFolder}
-                className={`inline-flex h-9 min-w-0 flex-1 items-center gap-2 rounded-xl px-2.5 text-[13px] font-medium transition-colors sm:flex-none sm:px-3 ${
-                  workingDir
-                    ? 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-                    : 'text-accent hover:bg-accent-muted hover:text-accent-hover'
+                className={`composer-flat-pill inline-flex h-9 min-w-0 flex-1 items-center gap-2 rounded-full px-3 text-[13px] font-medium sm:flex-none ${
+                  workingDir ? '' : 'text-accent hover:text-accent-hover'
                 }`}
                 title={workingDir || t('welcome.selectWorkingFolder')}
               >
@@ -711,7 +707,7 @@ export function WelcomeView() {
                   trigger={
                     <button
                       type="button"
-                      className="inline-flex h-9 min-w-0 max-w-[13rem] items-center gap-2 rounded-xl border border-border-muted bg-background/62 px-3 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary"
+                      className="composer-flat-pill inline-flex h-9 min-w-0 max-w-[13rem] items-center gap-2 rounded-full px-3 text-[13px] font-medium"
                       title={modelLabel}
                     >
                       <span className="truncate">{modelLabel}</span>
@@ -728,10 +724,12 @@ export function WelcomeView() {
                           onSelect={() => void handleModelOptionClick(option.id)}
                         >
                           <span className="block min-w-0">
-                            <span className="block truncate text-[13px] font-semibold">
+                            <span className="block truncate text-[13px] font-medium">
                               {option.name}
                             </span>
-                            <span className="block truncate text-xs opacity-80">{option.model}</span>
+                            <span className="block truncate text-xs opacity-80">
+                              {option.model}
+                            </span>
                           </span>
                         </GlassMenuItem>
                       ))
@@ -744,7 +742,7 @@ export function WelcomeView() {
                 <button
                   type="button"
                   onClick={handleModelButtonClick}
-                  className="inline-flex h-9 min-w-0 max-w-[13rem] items-center gap-2 rounded-xl border border-border-muted bg-background/62 px-3 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary"
+                  className="composer-flat-pill inline-flex h-9 min-w-0 max-w-[13rem] items-center gap-2 rounded-full px-3 text-[13px] font-medium"
                   title={modelLabel}
                 >
                   <span className="truncate">{modelLabel}</span>
@@ -755,14 +753,13 @@ export function WelcomeView() {
               <button
                 type="submit"
                 disabled={!canSubmit || isSubmitting}
-                className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl bg-accent px-4 text-[13px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:shadow-none"
+                className="composer-flat-pill inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-full px-3 text-[13px] font-medium text-accent disabled:cursor-not-allowed disabled:text-text-muted"
               >
                 <span>{isSubmitting ? t('welcome.starting') : t('welcome.letsGo')}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           </div>
-
         </form>
       </div>
     </div>

@@ -80,7 +80,7 @@ export function PairingRequestsSection({
                 <div className="flex items-center gap-3 text-sm text-text-secondary mt-1">
                   <span>
                     {t('remote.pairingCode')}:{' '}
-                    <span className="font-mono text-warning font-bold">{request.code}</span>
+                    <span className="font-mono text-warning font-medium">{request.code}</span>
                   </span>
                   <Countdown expiresAt={request.expiresAt} />
                 </div>

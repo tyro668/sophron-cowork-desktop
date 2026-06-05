@@ -2,8 +2,7 @@ import { memo } from 'react';
 import { parseDataResourceHref } from '../../../shared/data-resource-link';
 import { useAppStore } from '../../store';
 
-const DATA_MARKDOWN_LINK_RE =
-  /\[([^\]\n]+)\]\(((?:#\/data\/|sophron:\/\/data\/)[^)\s]+)\)/gi;
+const DATA_MARKDOWN_LINK_RE = /\[([^\]\n]+)\]\(((?:#\/data\/|sophron:\/\/data\/)[^)\s]+)\)/gi;
 
 interface DataLinkedTextProps {
   text: string;
@@ -11,8 +10,9 @@ interface DataLinkedTextProps {
 
 export const DataLinkedText = memo(function DataLinkedText({ text }: DataLinkedTextProps) {
   const navigateToDataElement = useAppStore((state) => state.navigateToDataElement);
-  const parts: Array<{ type: 'text'; text: string } | { type: 'link'; text: string; href: string }> =
-    [];
+  const parts: Array<
+    { type: 'text'; text: string } | { type: 'link'; text: string; href: string }
+  > = [];
   let lastIndex = 0;
 
   for (const match of text.matchAll(DATA_MARKDOWN_LINK_RE)) {
@@ -52,7 +52,7 @@ export const DataLinkedText = memo(function DataLinkedText({ text }: DataLinkedT
               event.preventDefault();
               navigateToDataElement(target);
             }}
-            className="inline rounded px-1 text-accent underline underline-offset-2 transition-colors hover:bg-accent-muted hover:text-accent-hover"
+            className="prose-accent-link inline rounded px-1 underline underline-offset-2 hover:bg-accent-muted"
             title={target.id}
           >
             {part.text}

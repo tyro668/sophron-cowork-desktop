@@ -899,9 +899,12 @@ app
 
     // Initialize database
     const db = initDatabase();
-    const initializedDataTaskStore = createDataTaskStore(join(app.getPath('userData'), 'data', 'workspace.duckdb'), {
-      metadataDb: db,
-    });
+    const initializedDataTaskStore = createDataTaskStore(
+      join(app.getPath('userData'), 'data', 'workspace.duckdb'),
+      {
+        metadataDb: db,
+      }
+    );
     dataTaskStore = initializedDataTaskStore;
     updateService = new UpdateService({
       getWindow: () => mainWindow,
@@ -1734,14 +1737,17 @@ ipcMain.handle('data.getTaskWorkflow', async (_event, id: string) => {
   }
 });
 
-ipcMain.handle('data.saveTaskWorkflow', async (_event, id: string, payload: DataWorkflowSaveInput) => {
-  try {
-    return await requireDataTaskStore().saveTaskWorkflow(id, payload);
-  } catch (error) {
-    logError('[Data] Error saving task workflow:', error);
-    throw error;
+ipcMain.handle(
+  'data.saveTaskWorkflow',
+  async (_event, id: string, payload: DataWorkflowSaveInput) => {
+    try {
+      return await requireDataTaskStore().saveTaskWorkflow(id, payload);
+    } catch (error) {
+      logError('[Data] Error saving task workflow:', error);
+      throw error;
+    }
   }
-});
+);
 
 ipcMain.handle('data.importDataset', async (_event, payload: DataImportDatasetInput) => {
   try {
@@ -1899,23 +1905,29 @@ ipcMain.handle('data.previewDataset', async (_event, payload: DataPreviewDataset
   }
 });
 
-ipcMain.handle('data.previewWorkflowNode', async (_event, payload: DataPreviewWorkflowNodeInput) => {
-  try {
-    return await requireDataTaskStore().previewWorkflowNode(payload);
-  } catch (error) {
-    logError('[Data] Error previewing workflow node cache:', error);
-    throw error;
+ipcMain.handle(
+  'data.previewWorkflowNode',
+  async (_event, payload: DataPreviewWorkflowNodeInput) => {
+    try {
+      return await requireDataTaskStore().previewWorkflowNode(payload);
+    } catch (error) {
+      logError('[Data] Error previewing workflow node cache:', error);
+      throw error;
+    }
   }
-});
+);
 
-ipcMain.handle('data.getWorkflowNodeColumns', async (_event, payload: DataPreviewWorkflowNodeInput) => {
-  try {
-    return await requireDataTaskStore().getWorkflowNodeColumns(payload);
-  } catch (error) {
-    logError('[Data] Error reading workflow node cache columns:', error);
-    throw error;
+ipcMain.handle(
+  'data.getWorkflowNodeColumns',
+  async (_event, payload: DataPreviewWorkflowNodeInput) => {
+    try {
+      return await requireDataTaskStore().getWorkflowNodeColumns(payload);
+    } catch (error) {
+      logError('[Data] Error reading workflow node cache columns:', error);
+      throw error;
+    }
   }
-});
+);
 
 ipcMain.handle('data.deleteTask', async (_event, id: string) => {
   try {
@@ -2980,7 +2992,9 @@ ipcMain.handle('schedule.create', async (_event, payload: ScheduledTaskCreateInp
     throw new Error(unsupportedReason);
   }
   const normalizedPrompt = payload.prompt.trim();
-  const title = await resolveScheduledTaskTitle(normalizedPrompt, payload.cwd, payload.title);
+  const title = payload.title
+    ? buildScheduledTaskTitle(payload.title)
+    : await resolveScheduledTaskTitle(normalizedPrompt, payload.cwd);
   return scheduledTaskManager.create({
     ...payload,
     prompt: normalizedPrompt,
@@ -3005,14 +3019,14 @@ ipcMain.handle('schedule.update', async (_event, id: string, updates: ScheduledT
     prompt: normalizedPrompt,
   };
 
-  if (updates.prompt !== undefined) {
+  if (updates.title !== undefined) {
+    normalizedUpdates.title = buildScheduledTaskTitle(updates.title);
+  } else if (updates.prompt !== undefined) {
     normalizedUpdates.title = await resolveScheduledTaskTitle(
       normalizedPrompt,
       updates.cwd ?? existing.cwd,
-      updates.title ?? existing.title
+      existing.title
     );
-  } else if (updates.title !== undefined) {
-    normalizedUpdates.title = buildScheduledTaskTitle(updates.title);
   }
 
   return scheduledTaskManager.update(id, normalizedUpdates);

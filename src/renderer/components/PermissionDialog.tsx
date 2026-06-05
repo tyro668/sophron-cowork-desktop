@@ -69,7 +69,7 @@ export function PermissionDialog({ permission }: PermissionDialogProps) {
             <span className="text-[13px] font-medium text-text-primary">
               {t('permission.toolLabel')}
             </span>
-            <span className="rounded-lg border border-accent/20 bg-accent/10 px-3 py-1 font-mono text-[12px] font-semibold text-accent shadow-soft">
+            <span className="rounded-lg border border-accent/20 bg-accent/10 px-3 py-1 font-mono text-[12px] font-medium text-accent shadow-soft">
               {permission.toolName}
             </span>
           </div>
@@ -83,7 +83,7 @@ export function PermissionDialog({ permission }: PermissionDialogProps) {
                 }`}
               >
                 {preview.isCommand && (
-                  <span className="flex-shrink-0 font-semibold text-accent">$</span>
+                  <span className="flex-shrink-0 font-medium text-accent">$</span>
                 )}
                 <span
                   className={`min-w-0 text-text-primary ${
@@ -125,7 +125,9 @@ export function PermissionDialog({ permission }: PermissionDialogProps) {
             <div className="mt-4 rounded-xl border border-warning/20 bg-warning/10 px-4 py-3">
               <div className="flex items-center gap-3">
                 <AlertTriangle className="h-5 w-5 flex-shrink-0 text-warning" strokeWidth={1.9} />
-                <p className="text-[13px] leading-5 text-text-secondary">{t('permission.warning')}</p>
+                <p className="text-[13px] leading-5 text-text-secondary">
+                  {t('permission.warning')}
+                </p>
               </div>
             </div>
           )}
@@ -144,14 +146,14 @@ export function PermissionDialog({ permission }: PermissionDialogProps) {
               <button
                 type="button"
                 onClick={() => respondToPermission(permission.toolUseId, 'deny')}
-                className="h-10 rounded-xl border border-border-muted bg-background/42 text-[13px] font-semibold text-text-primary shadow-soft transition-colors hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-accent/25"
+                className="h-10 rounded-xl border border-border-muted bg-background/42 text-[13px] font-medium text-text-primary shadow-soft transition-colors hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-accent/25"
               >
                 {t('permission.deny')}
               </button>
               <button
                 type="button"
                 onClick={() => respondToPermission(permission.toolUseId, allowResult)}
-                className="h-10 rounded-xl bg-accent text-[13px] font-semibold text-white shadow-soft transition-colors hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent/30"
+                className="h-10 rounded-xl bg-accent text-[13px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent/30"
               >
                 {t('permission.allow')}
               </button>
