@@ -4915,11 +4915,10 @@ function TasksTable({
                     >
                       <RowIcon className="h-4 w-4" />
                     </div>
-                    <div className="flex min-w-0 items-center gap-1.5">
+                    <div className="flex min-w-0 items-center">
                       <span className="truncate text-[13px] font-medium text-text-secondary">
                         {task.name}
                       </span>
-                      <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
                     </div>
                   </div>
                 </td>

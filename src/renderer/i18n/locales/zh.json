@@ -122,10 +122,10 @@
     },
     "actions": {
       "refresh": "刷新",
-      "edit": "进入编辑",
-      "run": "运行任务",
+      "edit": "编辑",
+      "run": "运行",
       "attachSource": "绑定数据源并运行",
-      "delete": "删除任务",
+      "delete": "删除",
       "deleteAll": "删除全部",
       "more": "更多"
     },
@@ -342,7 +342,7 @@
       "subtitle": "配置数据源、清洗流程和输出结果。",
       "taskNameRequired": "数据任务名称不能为空",
       "bindSource": "绑定数据源",
-      "runTask": "运行任务",
+      "runTask": "运行",
       "notGenerated": "未生成",
       "source": "数据源",
       "output": "输出表",

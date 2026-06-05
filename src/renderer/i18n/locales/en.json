@@ -122,10 +122,10 @@
     },
     "actions": {
       "refresh": "Refresh",
-      "edit": "Enter editor",
-      "run": "Run task",
+      "edit": "Edit",
+      "run": "Run",
       "attachSource": "Attach source and run",
-      "delete": "Delete task",
+      "delete": "Delete",
       "deleteAll": "Delete all",
       "more": "More"
     },
@@ -342,7 +342,7 @@
       "subtitle": "Configure the source, cleaning flow, and output result.",
       "taskNameRequired": "Task name is required",
       "bindSource": "Bind source",
-      "runTask": "Run task",
+      "runTask": "Run",
       "notGenerated": "Not generated",
       "source": "Source",
       "output": "Output table",
