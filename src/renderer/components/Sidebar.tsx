@@ -14,6 +14,7 @@ import {
   Plus,
   Layers,
   Package,
+  Clock3,
   ListChecks,
   Check,
 } from 'lucide-react';
@@ -138,6 +139,13 @@ export function Sidebar() {
   const handleSkillsPage = useCallback(() => {
     exitSelectMode();
     setMainView('skills');
+    setActiveSession(null);
+    setShowSettings(false);
+  }, [exitSelectMode, setActiveSession, setMainView, setShowSettings]);
+
+  const handleAutomationPage = useCallback(() => {
+    exitSelectMode();
+    setMainView('automation');
     setActiveSession(null);
     setShowSettings(false);
   }, [exitSelectMode, setActiveSession, setMainView, setShowSettings]);
@@ -279,6 +287,7 @@ export function Sidebar() {
     );
   const isDataPageActive = mainView === 'data' && !showSettings;
   const isSkillsPageActive = mainView === 'skills' && !showSettings;
+  const isAutomationPageActive = mainView === 'automation' && !showSettings;
 
   if (sidebarCollapsed) {
     return (
@@ -319,6 +328,17 @@ export function Sidebar() {
             title={t('mainNav.skills')}
           >
             <Package className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleAutomationPage}
+            className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
+              isAutomationPageActive
+                ? 'bg-accent/10 text-accent'
+                : 'text-text-secondary hover:bg-surface-hover'
+            }`}
+            title={t('mainNav.automation')}
+          >
+            <Clock3 className="w-4 h-4" />
           </button>
         </div>
 
@@ -454,6 +474,17 @@ export function Sidebar() {
           >
             <Package className="h-4 w-4 flex-shrink-0" />
             <span className="min-w-0 flex-1 truncate">{t('mainNav.skills')}</span>
+          </button>
+          <button
+            onClick={handleAutomationPage}
+            className={`group flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[13px] font-medium transition-colors ${
+              isAutomationPageActive
+                ? 'bg-accent/10 text-accent'
+                : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+            }`}
+          >
+            <Clock3 className="h-4 w-4 flex-shrink-0" />
+            <span className="min-w-0 flex-1 truncate">{t('mainNav.automation')}</span>
           </button>
         </nav>
       </div>

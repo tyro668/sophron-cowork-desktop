@@ -6,7 +6,7 @@
  * Exposes HTTP endpoints on 127.0.0.1:19888 for external tools
  * to control app page navigation programmatically:
  *   GET /status           → current page state
- *   GET /navigate?page=X  → navigate to data, skills, settings, or session pages
+ *   GET /navigate?page=X  → navigate to data, skills, automation, settings, or session pages
  *
  * Dependencies: electron (BrowserWindow)
  */
@@ -18,16 +18,7 @@ import { log, logError, logWarn } from './utils/logger';
 const PORT = 19888;
 const HOST = '127.0.0.1';
 const EXEC_TIMEOUT_MS = 3000;
-const VALID_TABS = new Set([
-  'api',
-  'sandbox',
-  'connectors',
-  'skills',
-  'schedule',
-  'remote',
-  'logs',
-  'general',
-]);
+const VALID_TABS = new Set(['api', 'sandbox', 'connectors', 'skills', 'remote', 'logs', 'general']);
 
 let server: http.Server | null = null;
 
@@ -58,6 +49,7 @@ function execJS(win: BrowserWindow, code: string): Promise<unknown> {
  * Routes:
  *   GET /navigate?page=data
  *   GET /navigate?page=skills
+ *   GET /navigate?page=automation
  *   GET /navigate?page=settings&tab=api
  *   GET /navigate?page=session&id=xxx
  *   GET /status
@@ -80,10 +72,13 @@ export function startNavServer(getMainWindow: () => BrowserWindow | null): void 
         const tab = url.searchParams.get('tab') || undefined;
         const sessionId = url.searchParams.get('id') || undefined;
 
-        if (!page || !['welcome', 'data', 'skills', 'settings', 'session'].includes(page)) {
+        if (
+          !page ||
+          !['welcome', 'data', 'skills', 'automation', 'settings', 'session'].includes(page)
+        ) {
           return json(res, 400, {
             ok: false,
-            error: 'Invalid page. Use: data, skills, welcome, settings, session',
+            error: 'Invalid page. Use: data, skills, automation, welcome, settings, session',
           });
         }
 
@@ -144,6 +139,7 @@ export function startNavServer(getMainWindow: () => BrowserWindow | null): void 
           if (parsed.showSettings) currentPage = 'settings';
           else if (parsed.activeSessionId) currentPage = 'session';
           else if (parsed.mainView === 'skills') currentPage = 'skills';
+          else if (parsed.mainView === 'automation') currentPage = 'automation';
           else if (parsed.mainView === 'data') currentPage = 'data';
           else if (parsed.mainView === 'chat') currentPage = 'welcome';
 

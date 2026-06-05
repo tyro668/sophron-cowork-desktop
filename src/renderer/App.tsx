@@ -46,6 +46,9 @@ const DataView = lazy(() =>
 const SkillsView = lazy(() =>
   import('./components/SkillsView').then((module) => ({ default: module.SkillsView }))
 );
+const AutomationView = lazy(() =>
+  import('./components/AutomationView').then((module) => ({ default: module.AutomationView }))
+);
 
 function MainPanelFallback() {
   return (
@@ -212,6 +215,16 @@ function App() {
             >
               <Suspense fallback={<MainPanelFallback />}>
                 <SkillsView />
+              </Suspense>
+            </PanelErrorBoundary>
+          ) : mainView === 'automation' ? (
+            <PanelErrorBoundary
+              name="AutomationView"
+              resetKey="automation"
+              fallback={<MainPanelFallback />}
+            >
+              <Suspense fallback={<MainPanelFallback />}>
+                <AutomationView />
               </Suspense>
             </PanelErrorBoundary>
           ) : activeSessionId ? (

@@ -881,7 +881,7 @@ export function ChatView() {
             onClick={scrollToConversationTop}
             aria-label={t('chat.backToTop')}
             title={t('chat.backToTop')}
-            className="pointer-events-auto mt-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-white text-accent shadow-soft backdrop-blur-xl transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent-hover"
+            className="pointer-events-auto mt-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-[var(--glass-card-strong)] text-accent shadow-soft backdrop-blur-xl transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent-hover"
           >
             <ArrowUp className="h-4 w-4" />
           </button>
@@ -895,7 +895,7 @@ export function ChatView() {
             onClick={scrollToConversationBottom}
             aria-label={t('chat.scrollToBottom')}
             title={t('chat.scrollToBottom')}
-            className="pointer-events-auto inline-flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-white text-accent shadow-soft backdrop-blur-xl transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent-hover"
+            className="pointer-events-auto inline-flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-[var(--glass-card-strong)] text-accent shadow-soft backdrop-blur-xl transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent-hover"
           >
             <ArrowDown className="h-4 w-4" />
           </button>

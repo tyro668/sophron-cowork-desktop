@@ -193,7 +193,7 @@ const TASK_ICON_STYLES = [
   { Icon: Database, className: 'bg-accent/10 text-accent' },
   { Icon: BarChart3, className: 'bg-[#E9F7F5] text-[#238C80]' },
   { Icon: Folder, className: 'bg-warning/10 text-warning' },
-  { Icon: UploadCloud, className: 'bg-[#F2F7F4] text-[#6A8F7B]' },
+  { Icon: UploadCloud, className: 'bg-surface-active/70 text-text-secondary' },
   { Icon: Cloud, className: 'bg-[#E7F8EF] text-success' },
 ];
 
@@ -284,24 +284,24 @@ const CODE_PREVIEW_KEYWORDS: Record<Exclude<CodePreviewLanguageKind, 'text'>, Se
 };
 
 const codePreviewHighlightStyle = HighlightStyle.define([
-  { tag: tags.keyword, color: '#0f766e', fontWeight: '500' },
-  { tag: tags.string, color: '#9a3412' },
-  { tag: tags.number, color: '#7c3aed' },
-  { tag: tags.atom, color: '#2563eb' },
-  { tag: tags.propertyName, color: '#0369a1' },
-  { tag: tags.variableName, color: '#334155' },
-  { tag: tags.typeName, color: '#0369a1', fontWeight: '500' },
-  { tag: tags.heading, color: '#0f766e', fontWeight: '600' },
-  { tag: tags.strong, color: '#334155', fontWeight: '600' },
-  { tag: tags.comment, color: '#94a3b8', fontStyle: 'italic' },
+  { tag: tags.keyword, color: 'var(--code-token-keyword)', fontWeight: '500' },
+  { tag: tags.string, color: 'var(--code-token-string)' },
+  { tag: tags.number, color: 'var(--code-token-number)' },
+  { tag: tags.atom, color: 'var(--code-token-atom)' },
+  { tag: tags.propertyName, color: 'var(--code-token-property)' },
+  { tag: tags.variableName, color: 'var(--code-token-variable)' },
+  { tag: tags.typeName, color: 'var(--code-token-property)', fontWeight: '500' },
+  { tag: tags.heading, color: 'var(--code-token-keyword)', fontWeight: '600' },
+  { tag: tags.strong, color: 'var(--code-token-variable)', fontWeight: '500' },
+  { tag: tags.comment, color: 'var(--code-token-comment)', fontStyle: 'italic' },
 ]);
 
 const codePreviewTheme = EditorView.theme({
   '&': {
     height: '100%',
     minHeight: '100%',
-    backgroundColor: 'rgba(255, 255, 255, 0.34)',
-    color: '#334155',
+    backgroundColor: 'var(--code-preview-background)',
+    color: 'var(--code-preview-text)',
     fontSize: '11px',
   },
   '&.cm-focused': {
@@ -321,9 +321,9 @@ const codePreviewTheme = EditorView.theme({
     padding: '0 0.125rem',
   },
   '.cm-gutters': {
-    borderRight: '1px solid rgba(148, 163, 184, 0.18)',
-    backgroundColor: 'rgba(248, 250, 252, 0.46)',
-    color: '#94a3b8',
+    borderRight: '1px solid var(--code-preview-gutter-border)',
+    backgroundColor: 'var(--code-preview-gutter-background)',
+    color: 'var(--code-preview-muted)',
   },
   '.cm-lineNumbers .cm-gutterElement': {
     minWidth: '2.75rem',
@@ -333,14 +333,14 @@ const codePreviewTheme = EditorView.theme({
     backgroundColor: 'transparent',
   },
   '.cm-selectionBackground': {
-    backgroundColor: 'rgba(25, 169, 154, 0.16) !important',
+    backgroundColor: 'var(--code-preview-selection) !important',
   },
   '.cm-scroller::-webkit-scrollbar': {
     width: '8px',
     height: '8px',
   },
   '.cm-scroller::-webkit-scrollbar-thumb': {
-    backgroundColor: 'rgba(148, 163, 184, 0.45)',
+    backgroundColor: 'var(--code-preview-muted)',
     borderRadius: '999px',
   },
   '.cm-scroller::-webkit-scrollbar-track': {
@@ -459,8 +459,8 @@ const OPERATOR_CATALOG: Array<{
     type: 'deduplicate',
     labelKey: 'data.workflow.operators.deduplicate',
     Icon: Copy,
-    colorClassName: 'text-[#7B8F84] bg-[#F2F7F4]',
-    nodeClassName: 'border-[#DCECE3] bg-[#F7FCF8] text-[#7B8F84]',
+    colorClassName: 'text-text-secondary bg-surface-active/70',
+    nodeClassName: 'border-border-muted bg-[var(--glass-card-strong)] text-text-secondary',
   },
   {
     type: 'missing_value',
@@ -494,15 +494,15 @@ const OPERATOR_CATALOG: Array<{
     type: 'aggregate',
     labelKey: 'data.workflow.operators.aggregate',
     Icon: Sigma,
-    colorClassName: 'text-[#7B8F84] bg-[#F2F7F4]',
-    nodeClassName: 'border-[#DCECE3] bg-[#F7FCF8] text-[#7B8F84]',
+    colorClassName: 'text-text-secondary bg-surface-active/70',
+    nodeClassName: 'border-border-muted bg-[var(--glass-card-strong)] text-text-secondary',
   },
   {
     type: 'calculate_field',
     labelKey: 'data.workflow.operators.calculate_field',
     Icon: Calculator,
-    colorClassName: 'text-[#7B8F84] bg-[#F2F7F4]',
-    nodeClassName: 'border-[#DCECE3] bg-[#F7FCF8] text-[#7B8F84]',
+    colorClassName: 'text-text-secondary bg-surface-active/70',
+    nodeClassName: 'border-border-muted bg-[var(--glass-card-strong)] text-text-secondary',
   },
   {
     type: 'field_mapping',
@@ -522,8 +522,8 @@ const OPERATOR_CATALOG: Array<{
     type: 'pivot',
     labelKey: 'data.workflow.operators.pivot',
     Icon: BarChart3,
-    colorClassName: 'text-[#7B8F84] bg-[#F2F7F4]',
-    nodeClassName: 'border-[#DCECE3] bg-[#F7FCF8] text-[#7B8F84]',
+    colorClassName: 'text-text-secondary bg-surface-active/70',
+    nodeClassName: 'border-border-muted bg-[var(--glass-card-strong)] text-text-secondary',
   },
   {
     type: 'unpivot',
@@ -933,7 +933,7 @@ export function DataView() {
         description: t('data.summary.runningDesc'),
         value: dashboard.summary.runningCount,
         Icon: CheckCircle2,
-        iconClassName: 'bg-[#F2F7F4] text-[#7B8F84]',
+        iconClassName: 'bg-surface-active/70 text-text-secondary',
       },
       {
         key: 'todayScheduleCount',
@@ -2962,23 +2962,23 @@ function WorkflowCanvasContent({
               type: MarkerType.ArrowClosed,
               width: 16,
               height: 16,
-              color: 'rgba(100, 116, 139, 0.82)',
+              color: 'var(--workflow-edge)',
             },
             style: {
-              stroke: 'rgba(100, 116, 139, 0.68)',
+              stroke: 'var(--workflow-edge)',
               strokeWidth: 1.8,
             },
           }}
           className="workflow-react-flow bg-transparent"
         >
-          <Background color="rgba(148, 163, 184, 0.35)" gap={18} size={1.3} />
+          <Background color="var(--workflow-canvas-dot)" gap={18} size={1.3} />
           <Controls showInteractive={false} />
           <MiniMap
             pannable
             zoomable
             style={{ width: 100, height: 75 }}
-            nodeColor={() => 'rgba(25, 169, 154, 0.36)'}
-            maskColor="rgba(255, 255, 255, 0.9)"
+            nodeColor={() => 'var(--workflow-minimap-node)'}
+            maskColor="var(--workflow-minimap-mask)"
           />
           <ViewportPortal>
             <WorkflowAlignmentGuidesOverlay guides={alignmentGuides} />
@@ -4863,7 +4863,7 @@ function TasksTable({
     <div className="min-w-full overflow-x-auto">
       <table className="w-full table-fixed border-collapse text-left">
         <thead>
-          <tr className="h-10 border-b border-border-muted bg-[#F2FAF5] text-xs font-medium text-text-muted backdrop-blur-xl">
+          <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted backdrop-blur-xl">
             <th className="w-[4%] px-4">
               <span className="sr-only">{t('data.tasks.selection')}</span>
             </th>
@@ -5130,7 +5130,7 @@ function InputTablesPanel({
             <div className="min-w-full overflow-x-auto">
               <table className="w-full table-fixed border-collapse text-left">
                 <thead>
-                  <tr className="h-10 border-b border-border-muted bg-[#F2FAF5] text-xs font-medium text-text-muted backdrop-blur-xl">
+                  <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted backdrop-blur-xl">
                     <th className="w-[4%] px-4">
                       <span className="sr-only">{t('data.inputTables.selection')}</span>
                     </th>
@@ -5384,7 +5384,7 @@ function OutputTablesPanel({
             <div className="min-w-full overflow-x-auto">
               <table className="w-full table-fixed border-collapse text-left">
                 <thead>
-                  <tr className="h-10 border-b border-border-muted bg-[#F2FAF5] text-xs font-medium text-text-muted backdrop-blur-xl">
+                  <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted backdrop-blur-xl">
                     <th className="w-[4%] px-4">
                       <span className="sr-only">{t('data.outputTables.selection')}</span>
                     </th>
@@ -6987,8 +6987,8 @@ function InputTablePreviewDialog({
       : t('data.inputTables.editor.previewEmpty');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#163526]/16 px-4 py-6">
-      <div className="flex h-[42rem] max-h-[calc(100vh-3rem)] w-[72rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-subtle bg-white shadow-card backdrop-blur-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#163526]/16 px-4 py-6 dark:bg-black/50">
+      <div className="flex h-[42rem] max-h-[calc(100vh-3rem)] w-[72rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl">
         <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between px-4">
           <div className="min-w-0">
             <div className="text-[14px] font-semibold text-text-primary">
@@ -7005,7 +7005,7 @@ function InputTablePreviewDialog({
           </button>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--data-grid-cell-surface)]">
           <GlassDataGridPreview
             preview={preview}
             isLoading={isLoading}
@@ -7706,8 +7706,8 @@ function getInputTableSourceMeta(kind: InputTableSourceKind): {
       return {
         Icon: FileText,
         labelKey: 'data.inputTables.sources.file',
-        className: 'bg-[#F2F7F4] text-[#7B8F84]',
-        badgeClassName: 'bg-[#F2F7F4] text-[#7B8F84]',
+        className: 'bg-surface-active/70 text-text-secondary',
+        badgeClassName: 'bg-surface-active/70 text-text-secondary',
       };
   }
 }
