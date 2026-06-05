@@ -25,6 +25,7 @@ import {
   X,
   Clock,
   ArrowUp,
+  ArrowDown,
   ChevronDown,
 } from 'lucide-react';
 
@@ -84,7 +85,9 @@ export function ChatView() {
   const isScrollingRef = useRef(false);
   const pendingInitialScrollSessionRef = useRef<string | null>(null);
   const showBackToTopRef = useRef(false);
+  const showScrollToBottomRef = useRef(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
   const hasActiveTurn = Boolean(activeTurn);
   const pendingCount = pendingTurns.length;
@@ -176,9 +179,15 @@ export function ChatView() {
     isUserAtBottomRef.current = distanceToBottom <= 80;
     const nextShowBackToTop =
       container.scrollTop > 160 && container.scrollHeight > container.clientHeight;
+    const nextShowScrollToBottom =
+      distanceToBottom > 80 && container.scrollHeight > container.clientHeight;
     if (nextShowBackToTop !== showBackToTopRef.current) {
       showBackToTopRef.current = nextShowBackToTop;
       setShowBackToTop(nextShowBackToTop);
+    }
+    if (nextShowScrollToBottom !== showScrollToBottomRef.current) {
+      showScrollToBottomRef.current = nextShowScrollToBottom;
+      setShowScrollToBottom(nextShowScrollToBottom);
     }
   }, []);
 
@@ -246,7 +255,26 @@ export function ChatView() {
     isUserAtBottomRef.current = false;
     container.scrollTo({ top: 0, behavior: 'smooth' });
     setShowBackToTop(false);
+    showBackToTopRef.current = false;
+    showScrollToBottomRef.current = true;
+    setShowScrollToBottom(true);
   }, []);
+
+  const scrollToConversationBottom = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    isScrollingRef.current = true;
+    isUserAtBottomRef.current = true;
+    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    showScrollToBottomRef.current = false;
+    setShowScrollToBottom(false);
+
+    setTimeout(() => {
+      updateScrollState();
+      isScrollingRef.current = false;
+    }, 320);
+  }, [updateScrollState]);
 
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -274,7 +302,9 @@ export function ChatView() {
     pendingInitialScrollSessionRef.current = activeSessionId;
     isUserAtBottomRef.current = true;
     showBackToTopRef.current = false;
+    showScrollToBottomRef.current = false;
     setShowBackToTop(false);
+    setShowScrollToBottom(false);
   }, [activeSessionId]);
 
   useEffect(() => {
@@ -849,10 +879,25 @@ export function ChatView() {
           <button
             type="button"
             onClick={scrollToConversationTop}
-            className="pointer-events-auto mt-3 inline-flex h-8 items-center gap-1.5 rounded-full border border-accent/25 bg-background/80 px-3 text-xs font-medium text-accent shadow-soft backdrop-blur-xl transition-colors hover:border-accent/45 hover:bg-accent/10"
+            aria-label={t('chat.backToTop')}
+            title={t('chat.backToTop')}
+            className="pointer-events-auto mt-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-[var(--glass-card-strong)] text-accent shadow-soft backdrop-blur-xl transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent-hover"
           >
             <ArrowUp className="h-4 w-4" />
-            <span>{t('chat.backToTop')}</span>
+          </button>
+        </div>
+      )}
+
+      {showScrollToBottom && (
+        <div className="pointer-events-none absolute bottom-[9.5rem] left-0 right-0 z-20 flex justify-center px-4">
+          <button
+            type="button"
+            onClick={scrollToConversationBottom}
+            aria-label={t('chat.scrollToBottom')}
+            title={t('chat.scrollToBottom')}
+            className="pointer-events-auto inline-flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-[var(--glass-card-strong)] text-accent shadow-soft backdrop-blur-xl transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent-hover"
+          >
+            <ArrowDown className="h-4 w-4" />
           </button>
         </div>
       )}
@@ -956,7 +1001,7 @@ export function ChatView() {
             )}
 
             <div
-              className={`glass-card-strong flex min-h-[96px] flex-col rounded-2xl px-4 py-2.5 transition-colors sm:min-h-[104px] sm:py-3 ${
+              className={`chat-composer-panel flex min-h-[120px] flex-col px-4 py-3 transition-colors sm:min-h-[132px] sm:py-3.5 ${
                 isDragging ? 'ring-2 ring-accent bg-accent-muted' : ''
               }`}
             >
@@ -987,12 +1032,12 @@ export function ChatView() {
                 className="min-h-[32px] flex-1 resize-none overflow-y-auto border-none bg-transparent text-[14px] leading-5 text-text-primary outline-none placeholder:text-text-muted sm:min-h-[36px] sm:text-[15px]"
               />
 
-              <div className="mt-2 flex items-center justify-between gap-2.5">
+              <div className="mt-3 flex items-center justify-between gap-2.5">
                 <div className="flex min-w-0 items-center gap-2">
                   <button
                     type="button"
                     onClick={handleFileSelect}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-surface text-text-muted shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary"
+                    className="composer-flat-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
                     title={t('welcome.attachFiles')}
                   >
                     <Plus className="h-4 w-4" />
@@ -1001,7 +1046,7 @@ export function ChatView() {
                   <PermissionPolicySelector
                     open={showPermissionMenu}
                     onOpenChange={handlePermissionMenuOpenChange}
-                    buttonClassName="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[13px] font-semibold text-accent transition-colors hover:bg-accent-muted sm:px-2.5"
+                    buttonClassName="composer-flat-pill inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium"
                   />
                 </div>
 
@@ -1014,14 +1059,14 @@ export function ChatView() {
                         if (open) {
                           setShowPermissionMenu(false);
                         }
-                      }}
-                      side="top"
-                      align="end"
-                      contentClassName="w-[min(18rem,calc(100vw-2rem))]"
-                      trigger={
-                        <button
-                          type="button"
-                          className="hidden h-8 min-w-0 max-w-[18rem] items-center gap-1.5 rounded-lg border border-border-muted bg-background/70 px-2.5 text-[13px] text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary sm:inline-flex"
+                        }}
+                        side="top"
+                        align="end"
+                        contentClassName="w-[min(18rem,calc(100vw-2rem))]"
+                        trigger={
+                          <button
+                            type="button"
+                          className="composer-flat-pill hidden h-9 min-w-0 max-w-[18rem] items-center gap-1.5 rounded-full px-3 text-[13px] sm:inline-flex"
                           title={modelLabel}
                         >
                           <span className="truncate">{modelLabel}</span>
@@ -1038,7 +1083,7 @@ export function ChatView() {
                               onSelect={() => void handleModelOptionClick(option.id)}
                             >
                               <span className="block min-w-0">
-                                <span className="block truncate text-[13px] font-semibold">
+                                <span className="block truncate text-[13px] font-medium">
                                   {option.name}
                                 </span>
                                 <span className="block truncate text-xs opacity-80">
@@ -1056,7 +1101,7 @@ export function ChatView() {
                     <button
                       type="button"
                       onClick={handleModelButtonClick}
-                      className="hidden h-8 min-w-0 max-w-[18rem] items-center gap-1.5 rounded-lg border border-border-muted bg-background/70 px-2.5 text-[13px] text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary sm:inline-flex"
+                      className="composer-flat-pill hidden h-9 min-w-0 max-w-[18rem] items-center gap-1.5 rounded-full px-3 text-[13px] sm:inline-flex"
                       title={modelLabel}
                     >
                       <span className="truncate">{modelLabel}</span>
@@ -1068,7 +1113,7 @@ export function ChatView() {
                     <button
                       type="button"
                       onClick={handleStop}
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-error/10 text-error transition-colors hover:bg-error/20"
+                      className="composer-flat-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-error hover:bg-error/10 hover:text-error"
                       title={t('chat.stop')}
                     >
                       <Square className="h-4 w-4" />
@@ -1083,7 +1128,7 @@ export function ChatView() {
                         attachedFiles.length === 0) ||
                       isSubmitting
                     }
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:shadow-none"
+                    className="composer-flat-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-accent disabled:cursor-not-allowed disabled:text-text-muted"
                     title={t('chat.sendMessage')}
                   >
                     <Send className="h-4 w-4" />

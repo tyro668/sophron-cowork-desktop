@@ -191,10 +191,10 @@ function getWorkflowSaveInputSignature(workflow: DataTaskWorkflow): string {
 
 const TASK_ICON_STYLES = [
   { Icon: Database, className: 'bg-accent/10 text-accent' },
-  { Icon: BarChart3, className: 'bg-blue-500/10 text-blue-500' },
+  { Icon: BarChart3, className: 'bg-[#E9F7F5] text-[#238C80]' },
   { Icon: Folder, className: 'bg-warning/10 text-warning' },
-  { Icon: UploadCloud, className: 'bg-violet-500/10 text-violet-500' },
-  { Icon: Cloud, className: 'bg-cyan-500/10 text-cyan-500' },
+  { Icon: UploadCloud, className: 'bg-surface-active/70 text-text-secondary' },
+  { Icon: Cloud, className: 'bg-[#E7F8EF] text-success' },
 ];
 
 const TABLE_PAGE_SIZE = 10;
@@ -284,24 +284,24 @@ const CODE_PREVIEW_KEYWORDS: Record<Exclude<CodePreviewLanguageKind, 'text'>, Se
 };
 
 const codePreviewHighlightStyle = HighlightStyle.define([
-  { tag: tags.keyword, color: '#0f766e', fontWeight: '500' },
-  { tag: tags.string, color: '#9a3412' },
-  { tag: tags.number, color: '#7c3aed' },
-  { tag: tags.atom, color: '#2563eb' },
-  { tag: tags.propertyName, color: '#0369a1' },
-  { tag: tags.variableName, color: '#334155' },
-  { tag: tags.typeName, color: '#0369a1', fontWeight: '500' },
-  { tag: tags.heading, color: '#0f766e', fontWeight: '600' },
-  { tag: tags.strong, color: '#334155', fontWeight: '600' },
-  { tag: tags.comment, color: '#94a3b8', fontStyle: 'italic' },
+  { tag: tags.keyword, color: 'var(--code-token-keyword)', fontWeight: '500' },
+  { tag: tags.string, color: 'var(--code-token-string)' },
+  { tag: tags.number, color: 'var(--code-token-number)' },
+  { tag: tags.atom, color: 'var(--code-token-atom)' },
+  { tag: tags.propertyName, color: 'var(--code-token-property)' },
+  { tag: tags.variableName, color: 'var(--code-token-variable)' },
+  { tag: tags.typeName, color: 'var(--code-token-property)', fontWeight: '500' },
+  { tag: tags.heading, color: 'var(--code-token-keyword)', fontWeight: '600' },
+  { tag: tags.strong, color: 'var(--code-token-variable)', fontWeight: '500' },
+  { tag: tags.comment, color: 'var(--code-token-comment)', fontStyle: 'italic' },
 ]);
 
 const codePreviewTheme = EditorView.theme({
   '&': {
     height: '100%',
     minHeight: '100%',
-    backgroundColor: 'rgba(255, 255, 255, 0.34)',
-    color: '#334155',
+    backgroundColor: 'var(--code-preview-background)',
+    color: 'var(--code-preview-text)',
     fontSize: '11px',
   },
   '&.cm-focused': {
@@ -321,9 +321,9 @@ const codePreviewTheme = EditorView.theme({
     padding: '0 0.125rem',
   },
   '.cm-gutters': {
-    borderRight: '1px solid rgba(148, 163, 184, 0.18)',
-    backgroundColor: 'rgba(248, 250, 252, 0.46)',
-    color: '#94a3b8',
+    borderRight: '1px solid var(--code-preview-gutter-border)',
+    backgroundColor: 'var(--code-preview-gutter-background)',
+    color: 'var(--code-preview-muted)',
   },
   '.cm-lineNumbers .cm-gutterElement': {
     minWidth: '2.75rem',
@@ -333,14 +333,14 @@ const codePreviewTheme = EditorView.theme({
     backgroundColor: 'transparent',
   },
   '.cm-selectionBackground': {
-    backgroundColor: 'rgba(25, 169, 154, 0.16) !important',
+    backgroundColor: 'var(--code-preview-selection) !important',
   },
   '.cm-scroller::-webkit-scrollbar': {
     width: '8px',
     height: '8px',
   },
   '.cm-scroller::-webkit-scrollbar-thumb': {
-    backgroundColor: 'rgba(148, 163, 184, 0.45)',
+    backgroundColor: 'var(--code-preview-muted)',
     borderRadius: '999px',
   },
   '.cm-scroller::-webkit-scrollbar-track': {
@@ -445,8 +445,8 @@ const OPERATOR_CATALOG: Array<{
     type: 'filter',
     labelKey: 'data.workflow.operators.filter',
     Icon: Filter,
-    colorClassName: 'text-blue-500 bg-blue-500/10',
-    nodeClassName: 'border-blue-500/35 bg-blue-500/5 text-blue-500',
+    colorClassName: 'text-accent bg-accent/10',
+    nodeClassName: 'border-accent/35 bg-accent/5 text-accent',
   },
   {
     type: 'field_select',
@@ -459,8 +459,8 @@ const OPERATOR_CATALOG: Array<{
     type: 'deduplicate',
     labelKey: 'data.workflow.operators.deduplicate',
     Icon: Copy,
-    colorClassName: 'text-violet-500 bg-violet-500/10',
-    nodeClassName: 'border-violet-500/35 bg-violet-500/5 text-violet-500',
+    colorClassName: 'text-text-secondary bg-surface-active/70',
+    nodeClassName: 'border-border-muted bg-[var(--glass-card-strong)] text-text-secondary',
   },
   {
     type: 'missing_value',
@@ -473,8 +473,8 @@ const OPERATOR_CATALOG: Array<{
     type: 'type_convert',
     labelKey: 'data.workflow.operators.type_convert',
     Icon: Repeat2,
-    colorClassName: 'text-blue-500 bg-blue-500/10',
-    nodeClassName: 'border-blue-500/35 bg-blue-500/5 text-blue-500',
+    colorClassName: 'text-accent bg-accent/10',
+    nodeClassName: 'border-accent/35 bg-accent/5 text-accent',
   },
   {
     type: 'sort',
@@ -494,15 +494,15 @@ const OPERATOR_CATALOG: Array<{
     type: 'aggregate',
     labelKey: 'data.workflow.operators.aggregate',
     Icon: Sigma,
-    colorClassName: 'text-violet-500 bg-violet-500/10',
-    nodeClassName: 'border-violet-500/35 bg-violet-500/5 text-violet-500',
+    colorClassName: 'text-text-secondary bg-surface-active/70',
+    nodeClassName: 'border-border-muted bg-[var(--glass-card-strong)] text-text-secondary',
   },
   {
     type: 'calculate_field',
     labelKey: 'data.workflow.operators.calculate_field',
     Icon: Calculator,
-    colorClassName: 'text-violet-500 bg-violet-500/10',
-    nodeClassName: 'border-violet-500/35 bg-violet-500/5 text-violet-500',
+    colorClassName: 'text-text-secondary bg-surface-active/70',
+    nodeClassName: 'border-border-muted bg-[var(--glass-card-strong)] text-text-secondary',
   },
   {
     type: 'field_mapping',
@@ -522,8 +522,8 @@ const OPERATOR_CATALOG: Array<{
     type: 'pivot',
     labelKey: 'data.workflow.operators.pivot',
     Icon: BarChart3,
-    colorClassName: 'text-violet-500 bg-violet-500/10',
-    nodeClassName: 'border-violet-500/35 bg-violet-500/5 text-violet-500',
+    colorClassName: 'text-text-secondary bg-surface-active/70',
+    nodeClassName: 'border-border-muted bg-[var(--glass-card-strong)] text-text-secondary',
   },
   {
     type: 'unpivot',
@@ -536,8 +536,8 @@ const OPERATOR_CATALOG: Array<{
     type: 'set_op',
     labelKey: 'data.workflow.operators.set_op',
     Icon: GitMerge,
-    colorClassName: 'text-blue-500 bg-blue-500/10',
-    nodeClassName: 'border-blue-500/35 bg-blue-500/5 text-blue-500',
+    colorClassName: 'text-accent bg-accent/10',
+    nodeClassName: 'border-accent/35 bg-accent/5 text-accent',
   },
   {
     type: 'unnest',
@@ -550,8 +550,8 @@ const OPERATOR_CATALOG: Array<{
     type: 'output',
     labelKey: 'data.workflow.operators.output',
     Icon: UploadCloud,
-    colorClassName: 'text-blue-500 bg-blue-500/10',
-    nodeClassName: 'border-blue-500/35 bg-blue-500/5 text-blue-500',
+    colorClassName: 'text-accent bg-accent/10',
+    nodeClassName: 'border-accent/35 bg-accent/5 text-accent',
   },
 ];
 
@@ -925,7 +925,7 @@ export function DataView() {
         description: t('data.summary.workflowNodesDesc'),
         value: dashboard.summary.workflowNodeCount,
         Icon: Workflow,
-        iconClassName: 'bg-blue-500/10 text-blue-500',
+        iconClassName: 'bg-accent/10 text-accent',
       },
       {
         key: 'runningCount',
@@ -933,7 +933,7 @@ export function DataView() {
         description: t('data.summary.runningDesc'),
         value: dashboard.summary.runningCount,
         Icon: CheckCircle2,
-        iconClassName: 'bg-violet-500/10 text-violet-500',
+        iconClassName: 'bg-surface-active/70 text-text-secondary',
       },
       {
         key: 'todayScheduleCount',
@@ -1010,9 +1010,6 @@ export function DataView() {
     };
   }, [editingOutputTableId]);
 
-  const isDetailEditor = Boolean(
-    editingTask || editingInputTableDraft || editingInputTableDataset || editingOutputTable
-  );
   const isInputTableEditor = Boolean(editingInputTableDraft || editingInputTableDataset);
   const isTasksLoading =
     loadingTab === 'tasks' ||
@@ -1548,14 +1545,12 @@ export function DataView() {
 
   return (
     <div
-      className={`flex-1 min-h-0 bg-transparent ${
-        isDetailEditor ? 'overflow-hidden' : 'overflow-y-auto'
-      }`}
+      className="flex-1 min-h-0 overflow-hidden bg-transparent"
     >
       <div
         className={`mx-auto w-full px-3 py-3 sm:px-4 ${
           isInputTableEditor ? 'max-w-[1500px]' : 'max-w-[1120px]'
-        } ${isDetailEditor ? 'flex h-full min-h-0 flex-col' : ''}`}
+        } flex h-full min-h-0 flex-col`}
       >
         {error && (
           <div className="mb-4 flex shrink-0 items-start gap-2 rounded-lg border border-error/20 bg-error/10 px-3.5 py-2.5 text-[13px] text-error">
@@ -1600,8 +1595,8 @@ export function DataView() {
             onSave={handleUpdateOutputTable}
           />
         ) : (
-          <>
-            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="flex min-h-0 flex-1 flex-col">
+            <section className="grid flex-shrink-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {summaryCards.map(({ key, label, description, value, Icon, iconClassName }) => (
                 <StatCard
                   key={key}
@@ -1614,8 +1609,8 @@ export function DataView() {
               ))}
             </section>
 
-            <section className="mt-3">
-              <div className="mb-2 flex min-h-10 flex-col gap-2.5 sm:flex-row sm:items-end sm:justify-between">
+            <section className="mt-3 flex min-h-0 flex-1 flex-col">
+              <div className="mb-2 flex min-h-10 flex-shrink-0 flex-col gap-2.5 sm:flex-row sm:items-end sm:justify-between">
                 <div className="flex items-end gap-5">
                   <TabButton
                     active={activeTab === 'tasks'}
@@ -1654,22 +1649,22 @@ export function DataView() {
                   onDeleteAll={handleDeleteAllTasks}
                 />
               ) : (
-                <div className="overflow-visible bg-transparent">
+                <div className="min-h-0 flex-1 bg-transparent">
                   {activeTab === 'input_tables' ? (
-                      <InputTablesPanel
-                        datasets={inputTableDatasets}
-                        drafts={inputTableDrafts}
-                        totalDatasets={totalInputTableDatasets}
-                        currentPage={datasetPage}
-                        searchQuery={searchQuery}
-                        isLoading={isInputTablesLoading}
-                        sourceFilter={inputTableSourceFilter}
-                        onSearchChange={handleSearchChange}
-                        onSourceFilterChange={handleInputTableSourceFilterChange}
-                        onPageChange={handleDatasetPageChange}
-                        onCreate={handleCreateInputTableDraft}
-                        onRefresh={() => loadInputTables({ preserveError: true })}
-                        onPreviewDataset={handlePreviewStoredInputTable}
+                    <InputTablesPanel
+                      datasets={inputTableDatasets}
+                      drafts={inputTableDrafts}
+                      totalDatasets={totalInputTableDatasets}
+                      currentPage={datasetPage}
+                      searchQuery={searchQuery}
+                      isLoading={isInputTablesLoading}
+                      sourceFilter={inputTableSourceFilter}
+                      onSearchChange={handleSearchChange}
+                      onSourceFilterChange={handleInputTableSourceFilterChange}
+                      onPageChange={handleDatasetPageChange}
+                      onCreate={handleCreateInputTableDraft}
+                      onRefresh={() => loadInputTables({ preserveError: true })}
+                      onPreviewDataset={handlePreviewStoredInputTable}
                       onDelete={handleDeleteInputTable}
                       onDeleteAll={handleDeleteAllInputTables}
                       onDeleteDraft={handleDeleteInputTableDraft}
@@ -1717,7 +1712,7 @@ export function DataView() {
                 onClose={() => setStoredPreviewOpen(false)}
               />
             )}
-          </>
+          </div>
         )}
       </div>
     </div>
@@ -2314,7 +2309,7 @@ function TaskEditor({
           <button
             onClick={() => void handleRun()}
             disabled={isBusy || !workflow}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-55"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-55"
           >
             <Play className="h-3.5 w-3.5" />
             {t('data.editor.runTask')}
@@ -2487,7 +2482,7 @@ function WorkflowDslDialog({
             <button
               type="button"
               onClick={onApply}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors"
             >
               <Workflow className="h-3.5 w-3.5" />
               {t('data.workflow.applyDsl')}
@@ -2497,7 +2492,7 @@ function WorkflowDslDialog({
               type="button"
               onClick={onCopy}
               disabled={!value}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-55"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-55"
             >
               <Copy className="h-3.5 w-3.5" />
               {t('data.workflow.copyDsl')}
@@ -2967,23 +2962,23 @@ function WorkflowCanvasContent({
               type: MarkerType.ArrowClosed,
               width: 16,
               height: 16,
-              color: 'rgba(100, 116, 139, 0.82)',
+              color: 'var(--workflow-edge)',
             },
             style: {
-              stroke: 'rgba(100, 116, 139, 0.68)',
+              stroke: 'var(--workflow-edge)',
               strokeWidth: 1.8,
             },
           }}
           className="workflow-react-flow bg-transparent"
         >
-          <Background color="rgba(148, 163, 184, 0.35)" gap={18} size={1.3} />
+          <Background color="var(--workflow-canvas-dot)" gap={18} size={1.3} />
           <Controls showInteractive={false} />
           <MiniMap
             pannable
             zoomable
             style={{ width: 100, height: 75 }}
-            nodeColor={() => 'rgba(25, 169, 154, 0.36)'}
-            maskColor="rgba(251, 254, 253, 0.72)"
+            nodeColor={() => 'var(--workflow-minimap-node)'}
+            maskColor="var(--workflow-minimap-mask)"
           />
           <ViewportPortal>
             <WorkflowAlignmentGuidesOverlay guides={alignmentGuides} />
@@ -3482,7 +3477,7 @@ function WorkflowInspector({
                       <button
                         onClick={() => void handleApplyOperatorDsl()}
                         disabled={isRunningOperatorDsl}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-55"
+                        className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-55"
                       >
                         <CheckCircle2 className="h-3.5 w-3.5" />
                         {t('data.workflow.applyOperatorDsl')}
@@ -4749,13 +4744,13 @@ function TasksPanel({
   }, [isLoading, selectedTaskId, tasks]);
 
   return (
-    <div className="bg-transparent">
-      <div className="mb-3 flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+    <div className="flex h-full min-h-0 flex-col bg-transparent">
+      <div className="mb-3 flex flex-shrink-0 flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <button
             onClick={onCreate}
             disabled={isCreateDisabled || bulkBusy}
-            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Plus className="h-3.5 w-3.5" />
             {t('data.newCleaningTask')}
@@ -4819,14 +4814,16 @@ function TasksPanel({
           />
         </div>
       </div>
-      <div className="glass-table">
-        <TasksTable
-          tasks={tasks}
-          isLoading={isLoading}
-          selectedTaskId={selectedTaskId}
-          onSelectTask={setSelectedTaskId}
-          onEdit={onEdit}
-        />
+      <div className="glass-table flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-auto">
+          <TasksTable
+            tasks={tasks}
+            isLoading={isLoading}
+            selectedTaskId={selectedTaskId}
+            onSelectTask={setSelectedTaskId}
+            onEdit={onEdit}
+          />
+        </div>
         <PaginationFooter
           count={totalTasks}
           currentPage={currentPage}
@@ -4863,10 +4860,10 @@ function TasksTable({
   }
 
   return (
-    <div className="overflow-hidden">
+    <div className="min-w-full overflow-x-auto">
       <table className="w-full table-fixed border-collapse text-left">
         <thead>
-          <tr className="h-10 border-b border-border-muted bg-background/30 text-xs font-medium text-text-muted backdrop-blur-xl">
+          <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted backdrop-blur-xl">
             <th className="w-[4%] px-4">
               <span className="sr-only">{t('data.tasks.selection')}</span>
             </th>
@@ -5015,7 +5012,6 @@ function InputTablesPanel({
     [datasets, isLoading, pageDrafts]
   );
   const pageRows = visibleRows;
-  const pageNumbers = getVisiblePageNumbers(safeCurrentPage, pageCount);
   const emptyLabel =
     sourceFilter === 'all' ? t('data.inputTables.empty') : t('data.inputTables.emptyFiltered');
   const selectedRow = visibleRows.find((row) => row.id === selectedDatasetId) ?? null;
@@ -5034,13 +5030,13 @@ function InputTablesPanel({
   }, [isLoading, selectedDatasetId, visibleRows]);
 
   return (
-    <div className="bg-transparent">
-      <div className="mb-3 flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+    <div className="flex h-full min-h-0 flex-col bg-transparent">
+      <div className="mb-3 flex flex-shrink-0 flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <button
             onClick={onCreate}
             disabled={isCreateDisabled || bulkBusy}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Plus className="h-3.5 w-3.5" />
             {t('data.inputTables.add')}
@@ -5124,17 +5120,17 @@ function InputTablesPanel({
         </div>
       </div>
 
-      <div className="glass-table">
-        {isLoading ? (
-          <LoadingState label={t('data.inputTables.loading')} />
-        ) : visibleRows.length === 0 ? (
-          <EmptyState label={emptyLabel} />
-        ) : (
-          <>
-            <div className="overflow-hidden">
+      <div className="glass-table flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-auto">
+          {isLoading ? (
+            <LoadingState label={t('data.inputTables.loading')} />
+          ) : visibleRows.length === 0 ? (
+            <EmptyState label={emptyLabel} />
+          ) : (
+            <div className="min-w-full overflow-x-auto">
               <table className="w-full table-fixed border-collapse text-left">
                 <thead>
-                  <tr className="h-10 border-b border-border-muted bg-background/30 text-xs font-medium text-text-muted backdrop-blur-xl">
+                  <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted backdrop-blur-xl">
                     <th className="w-[4%] px-4">
                       <span className="sr-only">{t('data.inputTables.selection')}</span>
                     </th>
@@ -5241,44 +5237,14 @@ function InputTablesPanel({
                 </tbody>
               </table>
             </div>
-          <div className="flex min-h-11 flex-col items-center justify-between gap-2 border-t border-border-muted px-4 py-2.5 text-xs font-medium text-text-secondary sm:flex-row">
-            <span>{t('data.totalCount', { count: totalRows })}</span>
-            <div className="flex items-center gap-2">
-              <button className="inline-flex h-8 min-w-[6.5rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-text-secondary shadow-soft">
-                {t('data.rowsPerPage', { count: TABLE_PAGE_SIZE })}
-                <ChevronDown className="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={() => onPageChange(safeCurrentPage - 1)}
-                disabled={safeCurrentPage <= 1}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              {pageNumbers.map((pageNumber) => (
-                <button
-                  key={pageNumber}
-                  onClick={() => onPageChange(pageNumber)}
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
-                    pageNumber === safeCurrentPage
-                      ? 'bg-accent text-white shadow-soft'
-                      : 'border border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
-                  }`}
-                >
-                  {pageNumber}
-                </button>
-              ))}
-              <button
-                onClick={() => onPageChange(safeCurrentPage + 1)}
-                disabled={safeCurrentPage >= pageCount}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-          </>
-        )}
+          )}
+        </div>
+        <PaginationFooter
+          count={totalRows}
+          currentPage={safeCurrentPage}
+          onPageChange={onPageChange}
+          embedded
+        />
       </div>
     </div>
   );
@@ -5319,9 +5285,6 @@ function OutputTablesPanel({
 }) {
   const { t } = useTranslation();
   const [selectedOutputTableId, setSelectedOutputTableId] = useState<string | null>(null);
-  const pageCount = getTablePageCount(totalOutputTables);
-  const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
-  const pageNumbers = getVisiblePageNumbers(safeCurrentPage, pageCount);
   const selectedOutputTable =
     outputTables.find((outputTable) => outputTable.id === selectedOutputTableId) ?? null;
   const selectedBusy = selectedOutputTable ? actionId === selectedOutputTable.id : false;
@@ -5340,13 +5303,13 @@ function OutputTablesPanel({
   }, [isLoading, outputTables, selectedOutputTableId]);
 
   return (
-    <div className="bg-transparent">
-      <div className="mb-3 flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+    <div className="flex h-full min-h-0 flex-col bg-transparent">
+      <div className="mb-3 flex flex-shrink-0 flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <button
             onClick={onCreate}
             disabled={isCreateDisabled || bulkBusy}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Plus className="h-3.5 w-3.5" />
             {t('data.outputTables.add')}
@@ -5411,17 +5374,17 @@ function OutputTablesPanel({
         </div>
       </div>
 
-      <div className="glass-table">
-        {isLoading ? (
-          <LoadingState label={t('data.outputTables.loading')} />
-        ) : outputTables.length === 0 ? (
-          <EmptyState label={t('data.outputTables.empty')} />
-        ) : (
-          <>
-            <div className="overflow-hidden">
+      <div className="glass-table flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-auto">
+          {isLoading ? (
+            <LoadingState label={t('data.outputTables.loading')} />
+          ) : outputTables.length === 0 ? (
+            <EmptyState label={t('data.outputTables.empty')} />
+          ) : (
+            <div className="min-w-full overflow-x-auto">
               <table className="w-full table-fixed border-collapse text-left">
                 <thead>
-                  <tr className="h-10 border-b border-border-muted bg-background/30 text-xs font-medium text-text-muted backdrop-blur-xl">
+                  <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted backdrop-blur-xl">
                     <th className="w-[4%] px-4">
                       <span className="sr-only">{t('data.outputTables.selection')}</span>
                     </th>
@@ -5465,7 +5428,7 @@ function OutputTablesPanel({
                         </td>
                         <td className="px-2">
                           <div className="flex min-w-0 items-center gap-3">
-                            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
+                            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
                               <UploadCloud className="h-4 w-4" />
                             </div>
                             <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
@@ -5493,44 +5456,14 @@ function OutputTablesPanel({
                 </tbody>
               </table>
             </div>
-            <div className="flex min-h-11 flex-col items-center justify-between gap-2 border-t border-border-muted px-4 py-2.5 text-xs font-medium text-text-secondary sm:flex-row">
-              <span>{t('data.totalCount', { count: totalOutputTables })}</span>
-              <div className="flex items-center gap-2">
-                <button className="inline-flex h-8 min-w-[6.5rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-text-secondary shadow-soft">
-                  {t('data.rowsPerPage', { count: TABLE_PAGE_SIZE })}
-                  <ChevronDown className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  onClick={() => onPageChange(safeCurrentPage - 1)}
-                  disabled={safeCurrentPage <= 1}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                {pageNumbers.map((pageNumber) => (
-                  <button
-                    key={pageNumber}
-                    onClick={() => onPageChange(pageNumber)}
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
-                      pageNumber === safeCurrentPage
-                        ? 'bg-accent text-white shadow-soft'
-                        : 'border border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
-                    }`}
-                  >
-                    {pageNumber}
-                  </button>
-                ))}
-                <button
-                  onClick={() => onPageChange(safeCurrentPage + 1)}
-                  disabled={safeCurrentPage >= pageCount}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          </>
-        )}
+          )}
+        </div>
+        <PaginationFooter
+          count={totalOutputTables}
+          currentPage={currentPage}
+          onPageChange={onPageChange}
+          embedded
+        />
       </div>
     </div>
   );
@@ -6437,7 +6370,7 @@ function InputTableEditorWorkbench({
                 type="button"
                 disabled={!canGenerateCustomizeDraft}
                 onClick={() => void generateCustomizeDraft()}
-                className="inline-flex h-10 min-w-[9.5rem] items-center justify-center gap-2 rounded-lg bg-accent px-5 text-[13px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
+                className="inline-flex h-10 min-w-[9.5rem] items-center justify-center gap-2 rounded-lg jade-primary-button px-5 text-[13px] font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
                 title={t('data.inputTables.editor.generateProjectDisabled')}
               >
                 {customizeGenerating ? (
@@ -6937,7 +6870,7 @@ function InputTableVersionHistoryPanel({
                     key={version.id}
                     className="h-11 border-b border-border-muted/80 text-text-secondary last:border-b-0 hover:bg-background/32"
                   >
-                    <td className="w-20 px-3 font-mono text-[13px] font-semibold text-text-primary">
+                    <td className="w-20 px-3 font-mono text-[13px] font-medium text-text-primary">
                       {t('data.inputTables.editor.versionNumber', {
                         version: version.version,
                       })}
@@ -6978,7 +6911,7 @@ function InputTableVersionHistoryPanel({
                           type="button"
                           disabled={isPublished || publishingVersionId === version.id}
                           onClick={() => onPublish(version)}
-                          className="inline-flex h-7 min-w-[4.25rem] items-center justify-center gap-1 rounded-lg bg-accent px-3 text-[11px] font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
+                          className="inline-flex h-7 min-w-[4.25rem] items-center justify-center gap-1 rounded-lg jade-primary-button px-3 text-[11px] font-medium text-white transition-colors disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
                         >
                           {publishingVersionId === version.id ? (
                             <RefreshCw className="h-3 w-3 animate-spin" />
@@ -7054,8 +6987,8 @@ function InputTablePreviewDialog({
       : t('data.inputTables.editor.previewEmpty');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-sky-950/18 px-4 py-6">
-      <div className="flex h-[42rem] max-h-[calc(100vh-3rem)] w-[72rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-sky-200/55 bg-[#edf7fd]/86 shadow-card backdrop-blur-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#163526]/16 px-4 py-6 dark:bg-black/50">
+      <div className="flex h-[42rem] max-h-[calc(100vh-3rem)] w-[72rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl">
         <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between px-4">
           <div className="min-w-0">
             <div className="text-[14px] font-semibold text-text-primary">
@@ -7072,7 +7005,7 @@ function InputTablePreviewDialog({
           </button>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#f4faff]">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--data-grid-cell-surface)]">
           <GlassDataGridPreview
             preview={preview}
             isLoading={isLoading}
@@ -7116,9 +7049,9 @@ function InputTableInfo({
 }) {
   return (
     <div
-      className={`flex min-h-11 items-center gap-2 rounded-lg border border-blue-500/15 bg-blue-500/5 px-3 text-xs font-medium text-text-muted ${className}`}
+      className={`flex min-h-11 items-center gap-2 rounded-lg border border-accent/15 bg-accent/5 px-3 text-xs font-medium text-text-muted ${className}`}
     >
-      <Info className="h-4 w-4 flex-shrink-0 text-blue-500" />
+      <Info className="h-4 w-4 flex-shrink-0 text-accent" />
       <span>{children}</span>
     </div>
   );
@@ -7413,7 +7346,7 @@ function statusBadgeClass(status: DataTaskStatus): string {
     case 'running':
       return 'bg-success/10 text-success';
     case 'completed':
-      return 'bg-blue-500/10 text-blue-500';
+      return 'bg-accent/10 text-accent';
     case 'stopped':
       return 'bg-text-muted/10 text-text-muted';
     case 'pending':
@@ -7759,8 +7692,8 @@ function getInputTableSourceMeta(kind: InputTableSourceKind): {
       return {
         Icon: FileText,
         labelKey: 'data.inputTables.sources.csv',
-        className: 'bg-blue-500/10 text-blue-500',
-        badgeClassName: 'bg-blue-500/10 text-blue-500',
+        className: 'bg-accent/10 text-accent',
+        badgeClassName: 'bg-accent/10 text-accent',
       };
     case 'folder':
       return {
@@ -7773,8 +7706,8 @@ function getInputTableSourceMeta(kind: InputTableSourceKind): {
       return {
         Icon: FileText,
         labelKey: 'data.inputTables.sources.file',
-        className: 'bg-violet-500/10 text-violet-500',
-        badgeClassName: 'bg-violet-500/10 text-violet-500',
+        className: 'bg-surface-active/70 text-text-secondary',
+        badgeClassName: 'bg-surface-active/70 text-text-secondary',
       };
   }
 }

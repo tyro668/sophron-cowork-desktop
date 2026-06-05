@@ -114,16 +114,16 @@ export function GlassDataGridPreview({
       <div
         className="flex h-11 flex-shrink-0 items-center justify-between gap-3 border-t px-3 text-xs font-medium"
         style={{
-          background: PREVIEW_GRID_HEADER_SURFACE,
-          borderColor: PREVIEW_GRID_BORDER,
-          color: PREVIEW_GRID_TEXT_PRIMARY,
+          background: 'var(--data-grid-header-surface)',
+          borderColor: 'var(--data-grid-border)',
+          color: 'var(--data-grid-text-primary)',
         }}
       >
         <span className="min-w-0 truncate">
           {preview ? labels.total(totalRows) : labels.pageSize(INPUT_TABLE_FALLBACK_PAGE_SIZE)}
         </span>
         <div className="flex flex-shrink-0 items-center gap-1.5">
-          <span className="mr-2 hidden sm:inline" style={{ color: PREVIEW_GRID_TEXT_SECONDARY }}>
+          <span className="mr-2 hidden sm:inline" style={{ color: 'var(--data-grid-text-secondary)' }}>
             {labels.pageSize(preview?.limit ?? INPUT_TABLE_FALLBACK_PAGE_SIZE)}
           </span>
           <button
@@ -143,7 +143,7 @@ export function GlassDataGridPreview({
               className={`inline-flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                 pageNumber === safeCurrentPage
                   ? 'bg-accent text-white shadow-soft'
-                  : 'border border-border-muted bg-white/70 text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary'
+                  : 'border border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary'
               }`}
             >
               {pageNumber}
@@ -360,40 +360,49 @@ function readGlassDataGridTheme(): Partial<Theme> {
 
 function buildGlassDataGridTheme(readColor: (name: string) => string): Partial<Theme> {
   const color = (name: string, fallback: string) => readColor(name) || fallback;
+  const gridHeaderSurface = color('--data-grid-header-surface', PREVIEW_GRID_HEADER_SURFACE);
+  const gridCellSurface = color('--data-grid-cell-surface', PREVIEW_GRID_CELL_SURFACE);
+  const gridCellMuted = color('--data-grid-cell-muted', PREVIEW_GRID_CELL_MUTED);
+  const gridIconSurface = color('--data-grid-icon-surface', PREVIEW_GRID_ICON_SURFACE);
+  const gridBorder = color('--data-grid-border', PREVIEW_GRID_BORDER);
+  const gridTextPrimary = color('--data-grid-text-primary', PREVIEW_GRID_TEXT_PRIMARY);
+  const gridTextSecondary = color('--data-grid-text-secondary', PREVIEW_GRID_TEXT_SECONDARY);
+  const gridTextMuted = color('--data-grid-text-muted', PREVIEW_GRID_TEXT_MUTED);
   return {
-    accentColor: color('--color-accent', '#22aac9'),
+    accentColor: color('--color-accent', '#62c99a'),
     accentFg: '#ffffff',
-    accentLight: color('--color-accent-muted', 'rgba(34, 170, 201, 0.16)'),
-    textDark: PREVIEW_GRID_TEXT_PRIMARY,
-    textMedium: PREVIEW_GRID_TEXT_SECONDARY,
-    textLight: PREVIEW_GRID_TEXT_MUTED,
-    textBubble: PREVIEW_GRID_TEXT_PRIMARY,
-    textHeader: PREVIEW_GRID_TEXT_PRIMARY,
-    textHeaderSelected: PREVIEW_GRID_TEXT_PRIMARY,
-    bgIconHeader: PREVIEW_GRID_ICON_SURFACE,
-    fgIconHeader: color('--color-accent', '#22aac9'),
-    bgCell: PREVIEW_GRID_CELL_SURFACE,
-    bgCellMedium: PREVIEW_GRID_CELL_MUTED,
-    bgHeader: PREVIEW_GRID_HEADER_SURFACE,
-    bgHeaderHasFocus: PREVIEW_GRID_HEADER_SURFACE,
-    bgHeaderHovered: PREVIEW_GRID_HEADER_SURFACE,
-    bgBubble: PREVIEW_GRID_CELL_MUTED,
-    bgBubbleSelected: color('--color-accent-muted', 'rgba(33, 168, 198, 0.13)'),
-    bgSearchResult: color('--color-accent-muted', 'rgba(33, 168, 198, 0.13)'),
-    borderColor: PREVIEW_GRID_BORDER,
-    horizontalBorderColor: PREVIEW_GRID_BORDER,
-    headerBottomBorderColor: PREVIEW_GRID_BORDER,
-    drilldownBorder: PREVIEW_GRID_BORDER,
-    linkColor: color('--color-accent', '#22aac9'),
+    accentLight: color('--color-accent-muted', 'rgba(98, 201, 154, 0.14)'),
+    textDark: gridTextPrimary,
+    textMedium: gridTextSecondary,
+    textLight: gridTextMuted,
+    textBubble: gridTextPrimary,
+    textHeader: gridTextPrimary,
+    textHeaderSelected: gridTextPrimary,
+    bgIconHeader: gridIconSurface,
+    fgIconHeader: color('--color-accent', '#3baf7a'),
+    bgCell: gridCellSurface,
+    bgCellMedium: gridCellMuted,
+    bgHeader: gridHeaderSurface,
+    bgHeaderHasFocus: gridHeaderSurface,
+    bgHeaderHovered: gridHeaderSurface,
+    bgBubble: gridCellMuted,
+    bgBubbleSelected: color('--color-accent-muted', 'rgba(98, 201, 154, 0.14)'),
+    bgSearchResult: color('--color-accent-muted', 'rgba(98, 201, 154, 0.14)'),
+    borderColor: gridBorder,
+    horizontalBorderColor: gridBorder,
+    headerBottomBorderColor: gridBorder,
+    drilldownBorder: gridBorder,
+    linkColor: color('--color-accent', '#3baf7a'),
     cellHorizontalPadding: 10,
     cellVerticalPadding: 0,
     headerFontStyle: '600 12px',
     baseFontStyle: '13px',
     markerFontStyle: '12px',
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', system-ui, sans-serif",
+    fontFamily:
+      "'PingFang SC', 'Inter', 'SF Pro Text', 'Microsoft YaHei UI', 'Noto Sans SC', sans-serif",
     editorFontSize: '13px',
     lineHeight: 1.35,
-    resizeIndicatorColor: color('--color-accent', '#22aac9'),
+    resizeIndicatorColor: color('--color-accent', '#3baf7a'),
     roundingRadius: 8,
   };
 }
@@ -405,11 +414,11 @@ function clamp(value: number, min: number, max: number): number {
 const INPUT_TABLE_FALLBACK_PAGE_SIZE = 20;
 const EMPTY_COLUMNS: string[] = [];
 const EMPTY_ROWS: Array<Record<string, string | number | boolean | null>> = [];
-const PREVIEW_GRID_HEADER_SURFACE = '#eef7fd';
-const PREVIEW_GRID_CELL_SURFACE = '#f7fbff';
-const PREVIEW_GRID_CELL_MUTED = '#eff8fe';
-const PREVIEW_GRID_ICON_SURFACE = '#e2f4fb';
-const PREVIEW_GRID_BORDER = 'rgba(179, 210, 234, 0.66)';
-const PREVIEW_GRID_TEXT_PRIMARY = '#172238';
-const PREVIEW_GRID_TEXT_SECONDARY = '#34465c';
-const PREVIEW_GRID_TEXT_MUTED = '#607084';
+const PREVIEW_GRID_HEADER_SURFACE = '#F2FAF5';
+const PREVIEW_GRID_CELL_SURFACE = '#FFFFFF';
+const PREVIEW_GRID_CELL_MUTED = '#F3FBF6';
+const PREVIEW_GRID_ICON_SURFACE = '#E7F8EF';
+const PREVIEW_GRID_BORDER = 'rgba(220, 236, 227, 0.82)';
+const PREVIEW_GRID_TEXT_PRIMARY = '#263B33';
+const PREVIEW_GRID_TEXT_SECONDARY = '#49685A';
+const PREVIEW_GRID_TEXT_MUTED = '#8AA99A';

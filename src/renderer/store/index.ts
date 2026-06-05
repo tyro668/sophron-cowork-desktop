@@ -20,7 +20,7 @@ import { applySessionUpdate } from '../utils/session-update';
 
 export type GlobalNoticeType = 'info' | 'warning' | 'error' | 'success';
 export type GlobalNoticeAction = 'open_api_settings';
-export type MainView = 'chat' | 'data' | 'skills';
+export type MainView = 'chat' | 'data' | 'skills' | 'automation';
 
 export interface PendingDataNavigation extends DataResourceTarget {
   nonce: number;
@@ -655,6 +655,10 @@ if (typeof window !== 'undefined') {
     } else if (page === 'skills') {
       store.setShowSettings(false);
       store.setMainView('skills');
+      store.setActiveSession(null);
+    } else if (page === 'automation') {
+      store.setShowSettings(false);
+      store.setMainView('automation');
       store.setActiveSession(null);
     } else if (page === 'settings') {
       store.setSettingsTab(tab || 'api');

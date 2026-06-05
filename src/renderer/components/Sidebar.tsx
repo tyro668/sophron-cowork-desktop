@@ -14,6 +14,7 @@ import {
   Plus,
   Layers,
   Package,
+  Clock3,
   ListChecks,
   Check,
 } from 'lucide-react';
@@ -138,6 +139,13 @@ export function Sidebar() {
   const handleSkillsPage = useCallback(() => {
     exitSelectMode();
     setMainView('skills');
+    setActiveSession(null);
+    setShowSettings(false);
+  }, [exitSelectMode, setActiveSession, setMainView, setShowSettings]);
+
+  const handleAutomationPage = useCallback(() => {
+    exitSelectMode();
+    setMainView('automation');
     setActiveSession(null);
     setShowSettings(false);
   }, [exitSelectMode, setActiveSession, setMainView, setShowSettings]);
@@ -279,6 +287,7 @@ export function Sidebar() {
     );
   const isDataPageActive = mainView === 'data' && !showSettings;
   const isSkillsPageActive = mainView === 'skills' && !showSettings;
+  const isAutomationPageActive = mainView === 'automation' && !showSettings;
 
   if (sidebarCollapsed) {
     return (
@@ -293,7 +302,7 @@ export function Sidebar() {
           </button>
           <button
             onClick={handleNewSession}
-            className="w-8 h-8 rounded-xl flex items-center justify-center bg-accent hover:bg-accent-hover transition-colors text-white shadow-soft"
+            className="w-8 h-8 rounded-xl flex items-center justify-center jade-primary-button transition-colors text-white shadow-soft"
             title={t('sidebar.newTask')}
           >
             <Plus className="w-4 h-4" />
@@ -319,6 +328,17 @@ export function Sidebar() {
             title={t('mainNav.skills')}
           >
             <Package className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleAutomationPage}
+            className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
+              isAutomationPageActive
+                ? 'bg-accent/10 text-accent'
+                : 'text-text-secondary hover:bg-surface-hover'
+            }`}
+            title={t('mainNav.automation')}
+          >
+            <Clock3 className="w-4 h-4" />
           </button>
         </div>
 
@@ -394,7 +414,7 @@ export function Sidebar() {
 
         <button
           onClick={handleNewSession}
-          className="mt-3 w-full flex h-9 items-center gap-2 rounded-xl bg-accent px-3 text-left text-white hover:bg-accent-hover transition-colors shadow-soft"
+          className="mt-3 w-full flex h-9 items-center gap-2 rounded-xl jade-primary-button px-3 text-left text-white transition-colors shadow-soft"
         >
           <Plus className="w-4 h-4 text-white flex-shrink-0" />
           <span className="text-[13px] font-medium">{t('sidebar.newTask')}</span>
@@ -455,12 +475,23 @@ export function Sidebar() {
             <Package className="h-4 w-4 flex-shrink-0" />
             <span className="min-w-0 flex-1 truncate">{t('mainNav.skills')}</span>
           </button>
+          <button
+            onClick={handleAutomationPage}
+            className={`group flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[13px] font-medium transition-colors ${
+              isAutomationPageActive
+                ? 'bg-accent/10 text-accent'
+                : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+            }`}
+          >
+            <Clock3 className="h-4 w-4 flex-shrink-0" />
+            <span className="min-w-0 flex-1 truncate">{t('mainNav.automation')}</span>
+          </button>
         </nav>
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-4">
         <div
-          className={`mb-3 flex items-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold ${
+          className={`mb-3 flex items-center gap-2 rounded-xl px-3 py-2 text-[13px] font-medium ${
             (activeSessionId || mainView === 'chat') && !showSettings
               ? 'bg-accent/10 text-accent'
               : 'text-text-primary'
@@ -498,9 +529,9 @@ export function Sidebar() {
                         onMouseEnter={() => setHoveredSession(session.id)}
                         onMouseLeave={() => setHoveredSession(null)}
                         className={`group relative cursor-pointer rounded-xl px-2.5 py-1.5 transition-colors ${
-	                          isSelectMode && isSelected
-	                            ? 'bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/20'
-	                            : isActive && !isSelectMode
+                          isSelectMode && isSelected
+                            ? 'bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/20'
+                            : isActive && !isSelectMode
                               ? 'bg-accent/10'
                               : 'hover:bg-surface-hover/60'
                         }`}
@@ -608,7 +639,7 @@ export function Sidebar() {
               className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-2 text-left text-text-secondary transition-colors hover:text-text-primary"
             >
               <Settings className="w-4 h-4 flex-shrink-0" />
-              <span className="min-w-0 flex-shrink-0 text-[13px] font-semibold text-text-primary">
+              <span className="min-w-0 flex-shrink-0 text-[13px] font-medium text-text-primary">
                 {t('sidebar.settings')}
               </span>
               <span className="min-w-0 truncate text-[12px] font-medium text-text-muted">

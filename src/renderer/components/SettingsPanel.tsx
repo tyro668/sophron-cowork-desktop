@@ -4,7 +4,6 @@ import {
   Settings,
   Plug,
   Shield,
-  Clock3,
   Wifi,
   AlertCircle,
   Globe,
@@ -18,7 +17,6 @@ import { useAppStore } from '../store';
 import { SettingsAPI } from './settings/SettingsAPI';
 import { SettingsSandbox } from './settings/SettingsSandbox';
 import { SettingsConnectors } from './settings/SettingsConnectors';
-import { SettingsSchedule } from './settings/SettingsSchedule';
 import { SettingsGeneral } from './settings/SettingsGeneral';
 import { SettingsLogs } from './settings/SettingsLogs';
 import { SettingsMemory } from './settings/SettingsMemory';
@@ -30,7 +28,6 @@ interface SettingsPanelProps {
     | 'sandbox'
     | 'connectors'
     | 'memory'
-    | 'schedule'
     | 'remote'
     | 'logs'
     | 'general';
@@ -41,7 +38,6 @@ type TabId =
   | 'sandbox'
   | 'connectors'
   | 'memory'
-  | 'schedule'
   | 'remote'
   | 'logs'
   | 'general';
@@ -51,7 +47,6 @@ const VALID_TABS = new Set<TabId>([
   'sandbox',
   'connectors',
   'memory',
-  'schedule',
   'remote',
   'logs',
   'general',
@@ -121,12 +116,6 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
       label: t('settings.memory'),
       icon: BrainCircuit,
       description: t('settings.memoryDesc'),
-    },
-    {
-      id: 'schedule' as TabId,
-      label: t('settings.schedule'),
-      icon: Clock3,
-      description: t('settings.scheduleDesc'),
     },
     {
       id: 'remote' as TabId,
@@ -227,11 +216,6 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
               </div>
               <div className={activeTab === 'memory' ? '' : 'hidden'}>
                 {viewedTabs.has('memory') && <SettingsMemory />}
-              </div>
-              <div className={activeTab === 'schedule' ? '' : 'hidden'}>
-                {viewedTabs.has('schedule') && (
-                  <SettingsSchedule isActive={activeTab === 'schedule'} />
-                )}
               </div>
               <div className={activeTab === 'remote' ? '' : 'hidden'}>
                 {viewedTabs.has('remote') && (

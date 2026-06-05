@@ -2980,7 +2980,9 @@ ipcMain.handle('schedule.create', async (_event, payload: ScheduledTaskCreateInp
     throw new Error(unsupportedReason);
   }
   const normalizedPrompt = payload.prompt.trim();
-  const title = await resolveScheduledTaskTitle(normalizedPrompt, payload.cwd, payload.title);
+  const title = payload.title
+    ? buildScheduledTaskTitle(payload.title)
+    : await resolveScheduledTaskTitle(normalizedPrompt, payload.cwd);
   return scheduledTaskManager.create({
     ...payload,
     prompt: normalizedPrompt,
@@ -3005,14 +3007,14 @@ ipcMain.handle('schedule.update', async (_event, id: string, updates: ScheduledT
     prompt: normalizedPrompt,
   };
 
-  if (updates.prompt !== undefined) {
+  if (updates.title !== undefined) {
+    normalizedUpdates.title = buildScheduledTaskTitle(updates.title);
+  } else if (updates.prompt !== undefined) {
     normalizedUpdates.title = await resolveScheduledTaskTitle(
       normalizedPrompt,
       updates.cwd ?? existing.cwd,
-      updates.title ?? existing.title
+      existing.title
     );
-  } else if (updates.title !== undefined) {
-    normalizedUpdates.title = buildScheduledTaskTitle(updates.title);
   }
 
   return scheduledTaskManager.update(id, normalizedUpdates);

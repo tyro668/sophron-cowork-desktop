@@ -38,7 +38,7 @@ export function AskUserQuestionBlock({ block }: AskUserQuestionBlockProps) {
         {questions.map((q, qIdx) => (
           <div key={qIdx} className="space-y-2">
             {q.header && (
-              <span className="inline-block px-2 py-0.5 bg-accent/10 text-accent text-xs font-semibold rounded uppercase tracking-wide">
+              <span className="inline-block px-2 py-0.5 bg-accent/10 text-accent text-xs font-medium rounded uppercase tracking-wide">
                 {q.header}
               </span>
             )}
@@ -51,7 +51,7 @@ export function AskUserQuestionBlock({ block }: AskUserQuestionBlockProps) {
                     className="w-full p-3 rounded-lg border border-border-subtle bg-surface-muted text-left"
                   >
                     <div className="flex items-start gap-2.5">
-                      <div className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0 text-xs font-semibold bg-border-subtle text-text-secondary">
+                      <div className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0 text-xs font-medium bg-border-subtle text-text-secondary">
                         {getOptionLetter(optIdx)}
                       </div>
                       <div className="flex-1 min-w-0">

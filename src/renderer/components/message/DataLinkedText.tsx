@@ -52,7 +52,7 @@ export const DataLinkedText = memo(function DataLinkedText({ text }: DataLinkedT
               event.preventDefault();
               navigateToDataElement(target);
             }}
-            className="inline rounded px-1 text-accent underline underline-offset-2 transition-colors hover:bg-accent-muted hover:text-accent-hover"
+            className="prose-accent-link inline rounded px-1 underline underline-offset-2 hover:bg-accent-muted"
             title={target.id}
           >
             {part.text}
