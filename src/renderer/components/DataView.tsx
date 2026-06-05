@@ -2978,7 +2978,7 @@ function WorkflowCanvasContent({
             zoomable
             style={{ width: 100, height: 75 }}
             nodeColor={() => 'rgba(25, 169, 154, 0.36)'}
-            maskColor="rgba(251, 254, 253, 0.72)"
+            maskColor="rgba(255, 255, 255, 0.9)"
           />
           <ViewportPortal>
             <WorkflowAlignmentGuidesOverlay guides={alignmentGuides} />
@@ -6988,7 +6988,7 @@ function InputTablePreviewDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#163526]/16 px-4 py-6">
-      <div className="flex h-[42rem] max-h-[calc(100vh-3rem)] w-[72rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-subtle bg-[#FBFEFC]/86 shadow-card backdrop-blur-xl">
+      <div className="flex h-[42rem] max-h-[calc(100vh-3rem)] w-[72rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-subtle bg-white shadow-card backdrop-blur-xl">
         <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between px-4">
           <div className="min-w-0">
             <div className="text-[14px] font-semibold text-text-primary">
@@ -7005,7 +7005,7 @@ function InputTablePreviewDialog({
           </button>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#F7FCF8]">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
           <GlassDataGridPreview
             preview={preview}
             isLoading={isLoading}
