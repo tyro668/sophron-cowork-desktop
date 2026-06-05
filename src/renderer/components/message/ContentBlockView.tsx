@@ -224,7 +224,7 @@ export const ContentBlockView = memo(function ContentBlockView({
       th({ children, style }: { children?: React.ReactNode; style?: React.CSSProperties }) {
         return (
           <th
-            className="border border-border px-3 py-2 text-sm font-semibold text-text-primary bg-surface-muted"
+            className="border border-border px-3 py-2 text-sm font-medium text-text-primary bg-surface-muted"
             style={style}
           >
             {children}

@@ -19,6 +19,7 @@ import {
   rememberAlwaysAllow,
   setPermissionRules,
 } from '../../main/config/permission-rules-store';
+import { getPermissionRulesForPolicy } from '../../shared/permission-policies';
 
 const SESSION_A = 'session-a';
 const SESSION_B = 'session-b';
@@ -84,6 +85,15 @@ describe('permission-rules-store', () => {
       setPermissionRules([{ tool: '*', action: 'allow' }]);
       expect(decidePermission(SESSION_A, 'bash', { command: 'rm -rf /tmp/x' })).toBe('allow');
       expect(decidePermission(SESSION_A, 'unknown_tool', {})).toBe('allow');
+    });
+
+    it('allows built-in write/edit/bash tools in auto-review mode but still asks for unknown tools', () => {
+      setPermissionRules(getPermissionRulesForPolicy('auto_review'));
+
+      expect(decidePermission(SESSION_A, 'write', { path: '/tmp/out.txt' })).toBe('allow');
+      expect(decidePermission(SESSION_A, 'edit', { path: '/tmp/out.txt' })).toBe('allow');
+      expect(decidePermission(SESSION_A, 'bash', { command: 'npm test' })).toBe('allow');
+      expect(decidePermission(SESSION_A, 'unknown_tool', {})).toBe('ask');
     });
   });
 

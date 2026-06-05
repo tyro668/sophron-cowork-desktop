@@ -460,7 +460,7 @@ export function Sidebar() {
 
       <div className="flex-1 overflow-y-auto px-3 py-4">
         <div
-          className={`mb-3 flex items-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold ${
+          className={`mb-3 flex items-center gap-2 rounded-xl px-3 py-2 text-[13px] font-medium ${
             (activeSessionId || mainView === 'chat') && !showSettings
               ? 'bg-accent/10 text-accent'
               : 'text-text-primary'
@@ -608,7 +608,7 @@ export function Sidebar() {
               className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-2 text-left text-text-secondary transition-colors hover:text-text-primary"
             >
               <Settings className="w-4 h-4 flex-shrink-0" />
-              <span className="min-w-0 flex-shrink-0 text-[13px] font-semibold text-text-primary">
+              <span className="min-w-0 flex-shrink-0 text-[13px] font-medium text-text-primary">
                 {t('sidebar.settings')}
               </span>
               <span className="min-w-0 truncate text-[12px] font-medium text-text-muted">

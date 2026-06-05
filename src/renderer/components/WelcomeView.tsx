@@ -728,7 +728,7 @@ export function WelcomeView() {
                           onSelect={() => void handleModelOptionClick(option.id)}
                         >
                           <span className="block min-w-0">
-                            <span className="block truncate text-[13px] font-semibold">
+                            <span className="block truncate text-[13px] font-medium">
                               {option.name}
                             </span>
                             <span className="block truncate text-xs opacity-80">{option.model}</span>

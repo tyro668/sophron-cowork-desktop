@@ -21,7 +21,7 @@ function renderThinkingPreview(raw: string): React.ReactNode[] {
       parts.push(raw.slice(lastIndex, match.index));
     }
     parts.push(
-      <strong key={key++} className="font-semibold not-italic">
+      <strong key={key++} className="font-medium not-italic">
         {match[1]}
       </strong>
     );

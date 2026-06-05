@@ -6870,7 +6870,7 @@ function InputTableVersionHistoryPanel({
                     key={version.id}
                     className="h-11 border-b border-border-muted/80 text-text-secondary last:border-b-0 hover:bg-background/32"
                   >
-                    <td className="w-20 px-3 font-mono text-[13px] font-semibold text-text-primary">
+                    <td className="w-20 px-3 font-mono text-[13px] font-medium text-text-primary">
                       {t('data.inputTables.editor.versionNumber', {
                         version: version.version,
                       })}

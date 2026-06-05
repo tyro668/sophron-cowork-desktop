@@ -44,7 +44,14 @@ module.exports = {
         error: colorVar('--color-error-rgb'),
       },
       fontFamily: {
-        sans: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+        sans: [
+          'PingFang SC',
+          'Inter',
+          'SF Pro Text',
+          'Microsoft YaHei UI',
+          'Noto Sans SC',
+          'sans-serif',
+        ],
         mono: ['JetBrains Mono', 'SF Mono', 'Menlo', 'monospace'],
       },
       boxShadow: {

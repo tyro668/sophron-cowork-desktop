@@ -778,7 +778,7 @@ function SkillRow({
         <div className="flex min-w-0 items-center gap-2">
           <h3 className="truncate text-[14px] font-medium text-text-primary">{skill.name}</h3>
           <span
-            className={`inline-flex h-5 items-center rounded-md border px-1.5 text-[11px] font-semibold leading-none ${
+            className={`inline-flex h-5 items-center rounded-md border px-1.5 text-[11px] font-medium leading-none ${
               isBuiltin
                 ? 'border-accent/20 bg-accent/5 text-accent'
                 : skill.type === 'mcp'
