@@ -582,7 +582,7 @@ export function WelcomeView() {
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`glass-card-strong relative rounded-2xl px-4 py-3 transition-colors sm:px-5 sm:py-4 ${
+          className={`chat-composer-panel relative px-4 py-3 transition-colors sm:px-5 sm:py-4 ${
             isDragging ? 'ring-2 ring-accent bg-accent-muted' : ''
           }`}
         >
@@ -668,7 +668,7 @@ export function WelcomeView() {
               <button
                 type="button"
                 onClick={handleFileSelect}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface text-text-muted shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary"
+                className="composer-flat-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
                 title={t('welcome.attachFiles')}
               >
                 <Plus className="h-5 w-5" />
@@ -677,16 +677,16 @@ export function WelcomeView() {
               <PermissionPolicySelector
                 open={showPermissionMenu}
                 onOpenChange={handlePermissionMenuOpenChange}
-                buttonClassName="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl px-2.5 text-[13px] font-medium text-accent transition-colors hover:bg-accent-muted sm:px-3"
+                buttonClassName="composer-flat-pill inline-flex h-9 shrink-0 items-center gap-2 rounded-full px-3 text-[13px] font-medium"
               />
 
               <button
                 type="button"
                 onClick={handleSelectFolder}
-                className={`inline-flex h-9 min-w-0 flex-1 items-center gap-2 rounded-xl px-2.5 text-[13px] font-medium transition-colors sm:flex-none sm:px-3 ${
+                className={`composer-flat-pill inline-flex h-9 min-w-0 flex-1 items-center gap-2 rounded-full px-3 text-[13px] font-medium sm:flex-none ${
                   workingDir
-                    ? 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-                    : 'text-accent hover:bg-accent-muted hover:text-accent-hover'
+                    ? ''
+                    : 'text-accent hover:text-accent-hover'
                 }`}
                 title={workingDir || t('welcome.selectWorkingFolder')}
               >
@@ -711,7 +711,7 @@ export function WelcomeView() {
                   trigger={
                     <button
                       type="button"
-                      className="inline-flex h-9 min-w-0 max-w-[13rem] items-center gap-2 rounded-xl border border-border-muted bg-background/62 px-3 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary"
+                      className="composer-flat-pill inline-flex h-9 min-w-0 max-w-[13rem] items-center gap-2 rounded-full px-3 text-[13px] font-medium"
                       title={modelLabel}
                     >
                       <span className="truncate">{modelLabel}</span>
@@ -744,7 +744,7 @@ export function WelcomeView() {
                 <button
                   type="button"
                   onClick={handleModelButtonClick}
-                  className="inline-flex h-9 min-w-0 max-w-[13rem] items-center gap-2 rounded-xl border border-border-muted bg-background/62 px-3 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary"
+                  className="composer-flat-pill inline-flex h-9 min-w-0 max-w-[13rem] items-center gap-2 rounded-full px-3 text-[13px] font-medium"
                   title={modelLabel}
                 >
                   <span className="truncate">{modelLabel}</span>
@@ -755,7 +755,7 @@ export function WelcomeView() {
               <button
                 type="submit"
                 disabled={!canSubmit || isSubmitting}
-                className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl bg-accent px-4 text-[13px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:shadow-none"
+                className="composer-flat-pill inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-full px-3 text-[13px] font-medium text-accent disabled:cursor-not-allowed disabled:text-text-muted"
               >
                 <span>{isSubmitting ? t('welcome.starting') : t('welcome.letsGo')}</span>
                 <ArrowRight className="w-4 h-4" />

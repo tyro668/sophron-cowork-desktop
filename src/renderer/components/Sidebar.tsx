@@ -293,7 +293,7 @@ export function Sidebar() {
           </button>
           <button
             onClick={handleNewSession}
-            className="w-8 h-8 rounded-xl flex items-center justify-center bg-accent hover:bg-accent-hover transition-colors text-white shadow-soft"
+            className="w-8 h-8 rounded-xl flex items-center justify-center jade-primary-button transition-colors text-white shadow-soft"
             title={t('sidebar.newTask')}
           >
             <Plus className="w-4 h-4" />
@@ -394,7 +394,7 @@ export function Sidebar() {
 
         <button
           onClick={handleNewSession}
-          className="mt-3 w-full flex h-9 items-center gap-2 rounded-xl bg-accent px-3 text-left text-white hover:bg-accent-hover transition-colors shadow-soft"
+          className="mt-3 w-full flex h-9 items-center gap-2 rounded-xl jade-primary-button px-3 text-left text-white transition-colors shadow-soft"
         >
           <Plus className="w-4 h-4 text-white flex-shrink-0" />
           <span className="text-[13px] font-medium">{t('sidebar.newTask')}</span>
@@ -498,9 +498,9 @@ export function Sidebar() {
                         onMouseEnter={() => setHoveredSession(session.id)}
                         onMouseLeave={() => setHoveredSession(null)}
                         className={`group relative cursor-pointer rounded-xl px-2.5 py-1.5 transition-colors ${
-	                          isSelectMode && isSelected
-	                            ? 'bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/20'
-	                            : isActive && !isSelectMode
+                          isSelectMode && isSelected
+                            ? 'bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/20'
+                            : isActive && !isSelectMode
                               ? 'bg-accent/10'
                               : 'hover:bg-surface-hover/60'
                         }`}

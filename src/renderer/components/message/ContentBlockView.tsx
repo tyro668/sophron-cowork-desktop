@@ -138,7 +138,7 @@ export const ContentBlockView = memo(function ContentBlockView({
                 event.preventDefault();
                 navigateToDataElement(dataTarget);
               }}
-              className="text-accent underline underline-offset-2 hover:text-accent-hover"
+              className="prose-accent-link underline underline-offset-2"
               title={dataTarget.id}
             >
               {children}
@@ -173,7 +173,7 @@ export const ContentBlockView = memo(function ContentBlockView({
                 void window.electronAPI.openExternal(safeHref);
               }
             }}
-            className="text-accent hover:text-accent-hover"
+            className="prose-accent-link"
           >
             {children}
           </a>
@@ -198,7 +198,7 @@ export const ContentBlockView = memo(function ContentBlockView({
           }
           return (
             <code
-              className="px-1.5 py-0.5 rounded bg-surface-muted text-accent font-mono text-sm"
+              className="prose-accent-inline px-1.5 py-0.5 rounded bg-surface-muted font-mono text-sm"
               {...props}
             >
               {children}

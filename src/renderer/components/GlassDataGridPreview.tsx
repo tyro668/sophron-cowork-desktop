@@ -361,9 +361,9 @@ function readGlassDataGridTheme(): Partial<Theme> {
 function buildGlassDataGridTheme(readColor: (name: string) => string): Partial<Theme> {
   const color = (name: string, fallback: string) => readColor(name) || fallback;
   return {
-    accentColor: color('--color-accent', '#22aac9'),
+    accentColor: color('--color-accent', '#62c99a'),
     accentFg: '#ffffff',
-    accentLight: color('--color-accent-muted', 'rgba(34, 170, 201, 0.16)'),
+    accentLight: color('--color-accent-muted', 'rgba(98, 201, 154, 0.14)'),
     textDark: PREVIEW_GRID_TEXT_PRIMARY,
     textMedium: PREVIEW_GRID_TEXT_SECONDARY,
     textLight: PREVIEW_GRID_TEXT_MUTED,
@@ -371,20 +371,20 @@ function buildGlassDataGridTheme(readColor: (name: string) => string): Partial<T
     textHeader: PREVIEW_GRID_TEXT_PRIMARY,
     textHeaderSelected: PREVIEW_GRID_TEXT_PRIMARY,
     bgIconHeader: PREVIEW_GRID_ICON_SURFACE,
-    fgIconHeader: color('--color-accent', '#22aac9'),
+    fgIconHeader: color('--color-accent', '#3baf7a'),
     bgCell: PREVIEW_GRID_CELL_SURFACE,
     bgCellMedium: PREVIEW_GRID_CELL_MUTED,
     bgHeader: PREVIEW_GRID_HEADER_SURFACE,
     bgHeaderHasFocus: PREVIEW_GRID_HEADER_SURFACE,
     bgHeaderHovered: PREVIEW_GRID_HEADER_SURFACE,
     bgBubble: PREVIEW_GRID_CELL_MUTED,
-    bgBubbleSelected: color('--color-accent-muted', 'rgba(33, 168, 198, 0.13)'),
-    bgSearchResult: color('--color-accent-muted', 'rgba(33, 168, 198, 0.13)'),
+    bgBubbleSelected: color('--color-accent-muted', 'rgba(98, 201, 154, 0.14)'),
+    bgSearchResult: color('--color-accent-muted', 'rgba(98, 201, 154, 0.14)'),
     borderColor: PREVIEW_GRID_BORDER,
     horizontalBorderColor: PREVIEW_GRID_BORDER,
     headerBottomBorderColor: PREVIEW_GRID_BORDER,
     drilldownBorder: PREVIEW_GRID_BORDER,
-    linkColor: color('--color-accent', '#22aac9'),
+    linkColor: color('--color-accent', '#3baf7a'),
     cellHorizontalPadding: 10,
     cellVerticalPadding: 0,
     headerFontStyle: '600 12px',
@@ -393,7 +393,7 @@ function buildGlassDataGridTheme(readColor: (name: string) => string): Partial<T
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', system-ui, sans-serif",
     editorFontSize: '13px',
     lineHeight: 1.35,
-    resizeIndicatorColor: color('--color-accent', '#22aac9'),
+    resizeIndicatorColor: color('--color-accent', '#3baf7a'),
     roundingRadius: 8,
   };
 }
@@ -405,11 +405,11 @@ function clamp(value: number, min: number, max: number): number {
 const INPUT_TABLE_FALLBACK_PAGE_SIZE = 20;
 const EMPTY_COLUMNS: string[] = [];
 const EMPTY_ROWS: Array<Record<string, string | number | boolean | null>> = [];
-const PREVIEW_GRID_HEADER_SURFACE = '#eef7fd';
-const PREVIEW_GRID_CELL_SURFACE = '#f7fbff';
-const PREVIEW_GRID_CELL_MUTED = '#eff8fe';
-const PREVIEW_GRID_ICON_SURFACE = '#e2f4fb';
-const PREVIEW_GRID_BORDER = 'rgba(179, 210, 234, 0.66)';
-const PREVIEW_GRID_TEXT_PRIMARY = '#172238';
-const PREVIEW_GRID_TEXT_SECONDARY = '#34465c';
-const PREVIEW_GRID_TEXT_MUTED = '#607084';
+const PREVIEW_GRID_HEADER_SURFACE = '#F2FAF5';
+const PREVIEW_GRID_CELL_SURFACE = '#FBFEFC';
+const PREVIEW_GRID_CELL_MUTED = '#F3FBF6';
+const PREVIEW_GRID_ICON_SURFACE = '#E7F8EF';
+const PREVIEW_GRID_BORDER = 'rgba(220, 236, 227, 0.82)';
+const PREVIEW_GRID_TEXT_PRIMARY = '#263B33';
+const PREVIEW_GRID_TEXT_SECONDARY = '#49685A';
+const PREVIEW_GRID_TEXT_MUTED = '#8AA99A';

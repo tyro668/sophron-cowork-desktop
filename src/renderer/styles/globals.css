@@ -7,112 +7,126 @@
 @layer base {
   /* Define CSS variables for theming */
   :root {
-    /* Dark theme (default) — compact frosted cool operations workspace */
+    /* Dark theme (default) — compact frosted jade operations workspace */
     --app-backdrop:
-      linear-gradient(135deg, rgba(13, 24, 36, 0.96), rgba(35, 54, 70, 0.88) 48%, rgba(15, 27, 40, 0.94)),
-      linear-gradient(180deg, #111c27 0%, #0d151f 100%);
-    --glass-panel: rgba(25, 37, 51, 0.58);
-    --glass-card: rgba(39, 55, 72, 0.46);
-    --glass-card-strong: rgba(42, 59, 77, 0.66);
-    --color-background: rgba(22, 33, 47, 0.48);
-    --color-background-secondary: rgba(31, 45, 60, 0.5);
-    --color-surface: rgba(45, 62, 80, 0.42);
-    --color-surface-hover: rgba(64, 86, 107, 0.48);
-    --color-surface-active: rgba(70, 99, 122, 0.58);
-    --color-surface-muted: rgba(34, 49, 64, 0.42);
-    --color-border: rgba(188, 212, 232, 0.16);
-    --color-border-muted: rgba(203, 221, 239, 0.1);
-    --color-border-subtle: rgba(235, 245, 255, 0.1);
-    --color-mcp: #67b7d6;
-    --color-background-rgb: 22 33 47;
-    --color-background-secondary-rgb: 31 45 60;
-    --color-surface-rgb: 45 62 80;
-    --color-surface-hover-rgb: 64 86 107;
-    --color-surface-active-rgb: 70 99 122;
-    --color-surface-muted-rgb: 34 49 64;
-    --color-border-rgb: 178 204 226;
-    --color-border-muted-rgb: 196 216 235;
-    --color-border-subtle-rgb: 226 240 252;
-    --color-mcp-rgb: 103 183 214;
-    --shadow-soft: 0 1px 2px rgba(5, 15, 25, 0.14), 0 8px 22px rgba(5, 15, 25, 0.1);
+      linear-gradient(135deg, rgba(11, 30, 24, 0.96), rgba(31, 58, 46, 0.88) 48%, rgba(11, 30, 24, 0.94)),
+      linear-gradient(180deg, #10231c 0%, #0b1914 100%);
+    --glass-panel: rgba(25, 48, 39, 0.58);
+    --glass-card: rgba(39, 66, 55, 0.46);
+    --glass-card-strong: rgba(43, 72, 60, 0.66);
+    --color-background: rgba(21, 43, 35, 0.48);
+    --color-background-secondary: rgba(31, 57, 47, 0.5);
+    --color-surface: rgba(45, 76, 63, 0.42);
+    --color-surface-hover: rgba(64, 102, 84, 0.48);
+    --color-surface-active: rgba(75, 122, 100, 0.58);
+    --color-surface-muted: rgba(34, 58, 48, 0.42);
+    --color-border: rgba(188, 225, 206, 0.16);
+    --color-border-muted: rgba(203, 232, 217, 0.1);
+    --color-border-subtle: rgba(235, 249, 242, 0.1);
+    --color-mcp: #78c7a3;
+    --color-background-rgb: 21 43 35;
+    --color-background-secondary-rgb: 31 57 47;
+    --color-surface-rgb: 45 76 63;
+    --color-surface-hover-rgb: 64 102 84;
+    --color-surface-active-rgb: 75 122 100;
+    --color-surface-muted-rgb: 34 58 48;
+    --color-border-rgb: 188 225 206;
+    --color-border-muted-rgb: 203 232 217;
+    --color-border-subtle-rgb: 235 249 242;
+    --color-mcp-rgb: 120 199 163;
+    --shadow-soft: 0 1px 2px rgba(5, 22, 15, 0.14), 0 8px 22px rgba(5, 22, 15, 0.1);
     --shadow-card:
       0 1px 1px rgba(255, 255, 255, 0.08) inset,
-      0 10px 28px rgba(2, 12, 22, 0.16);
+      0 10px 28px rgba(2, 18, 12, 0.16);
     --shadow-elevated:
       0 1px 1px rgba(255, 255, 255, 0.12) inset,
-      0 18px 42px rgba(2, 12, 22, 0.22);
-    --color-accent: #22aac9;
-    --color-accent-hover: #148dac;
-    --color-accent-muted: rgba(34, 170, 201, 0.16);
-    --color-text-primary: #f8fbfd;
-    --color-text-secondary: #d8e4ec;
-    --color-text-muted: #a9bac8;
-    --color-success: #22c55e;
-    --color-warning: #f2b84b;
+      0 18px 42px rgba(2, 18, 12, 0.22);
+    --color-accent: #62c99a;
+    --color-accent-hover: #3baf7a;
+    --color-accent-muted: rgba(98, 201, 154, 0.16);
+    --color-accent-text: #91e0b9;
+    --color-accent-text-hover: #b5f0d2;
+    --color-accent-text-muted: #a7e7c8;
+    --color-text-primary: #f8fdf9;
+    --color-text-secondary: #d9ebe2;
+    --color-text-muted: #9fb9ab;
+    --color-success: #45bd83;
+    --color-warning: #e0a528;
     --color-error: #f05d68;
-    --color-accent-rgb: 34 170 201;
-    --color-accent-hover-rgb: 20 141 172;
-    --color-accent-muted-rgb: 25 70 86;
-    --color-text-primary-rgb: 248 251 253;
-    --color-text-secondary-rgb: 216 228 236;
-    --color-text-muted-rgb: 169 186 200;
-    --color-success-rgb: 34 197 94;
-    --color-warning-rgb: 242 184 75;
+    --color-accent-rgb: 98 201 154;
+    --color-accent-hover-rgb: 59 175 122;
+    --color-accent-muted-rgb: 25 82 57;
+    --color-accent-text-rgb: 145 224 185;
+    --color-accent-text-hover-rgb: 181 240 210;
+    --color-accent-text-muted-rgb: 167 231 200;
+    --color-text-primary-rgb: 248 253 249;
+    --color-text-secondary-rgb: 217 235 226;
+    --color-text-muted-rgb: 159 185 171;
+    --color-success-rgb: 69 189 131;
+    --color-warning-rgb: 224 165 40;
     --color-error-rgb: 240 93 104;
   }
 
-  /* Light theme override — frosted cool operations workspace */
+  /* Light theme override — jade white-green Apple-like frosted workspace */
   .light {
     --app-backdrop:
-      linear-gradient(135deg, rgba(205, 221, 238, 0.92), rgba(246, 251, 255, 0.94) 42%, rgba(215, 235, 248, 0.92)),
-      linear-gradient(180deg, #edf6fb 0%, #d9eafa 100%);
-    --glass-panel: rgba(250, 253, 255, 0.46);
-    --glass-card: rgba(255, 255, 255, 0.48);
-    --glass-card-strong: rgba(255, 255, 255, 0.66);
-    --color-background: rgba(253, 255, 255, 0.42);
-    --color-background-secondary: rgba(239, 247, 253, 0.44);
-    --color-surface: rgba(255, 255, 255, 0.46);
-    --color-surface-hover: rgba(242, 249, 254, 0.62);
-    --color-surface-active: rgba(222, 241, 250, 0.72);
-    --color-surface-muted: rgba(245, 250, 253, 0.48);
-    --color-border: rgba(192, 211, 228, 0.24);
-    --color-border-muted: rgba(208, 225, 240, 0.18);
-    --color-border-subtle: rgba(228, 239, 249, 0.46);
-    --color-mcp: #348aaa;
-    --color-background-rgb: 253 255 255;
-    --color-background-secondary-rgb: 239 247 253;
+      radial-gradient(circle at 9% 9%, rgba(255, 255, 255, 0.78), transparent 30%),
+      radial-gradient(circle at 86% 12%, rgba(228, 245, 234, 0.72), transparent 36%),
+      linear-gradient(135deg, rgba(247, 252, 248, 0.96), rgba(238, 248, 241, 0.94) 42%, rgba(234, 246, 239, 0.92)),
+      linear-gradient(180deg, #f7fcf8 0%, #eaf6ef 100%);
+    --glass-panel: rgba(251, 254, 252, 0.58);
+    --glass-card: rgba(255, 255, 255, 0.72);
+    --glass-card-strong: rgba(255, 255, 255, 0.82);
+    --color-background: rgba(255, 255, 255, 0.72);
+    --color-background-secondary: rgba(242, 250, 245, 0.58);
+    --color-surface: rgba(255, 255, 255, 0.72);
+    --color-surface-hover: rgba(238, 249, 242, 0.8);
+    --color-surface-active: rgba(228, 245, 234, 0.84);
+    --color-surface-muted: rgba(247, 252, 248, 0.68);
+    --color-border: rgba(215, 234, 223, 0.55);
+    --color-border-muted: rgba(220, 236, 227, 0.72);
+    --color-border-subtle: rgba(221, 237, 227, 0.78);
+    --color-mcp: #3baf7a;
+    --color-background-rgb: 255 255 255;
+    --color-background-secondary-rgb: 242 250 245;
     --color-surface-rgb: 255 255 255;
-    --color-surface-hover-rgb: 242 249 254;
-    --color-surface-active-rgb: 222 241 250;
-    --color-surface-muted-rgb: 245 250 253;
-    --color-border-rgb: 206 222 236;
-    --color-border-muted-rgb: 221 233 244;
-    --color-border-subtle-rgb: 235 244 252;
-    --color-mcp-rgb: 52 138 170;
-    --shadow-soft: 0 1px 2px rgba(47, 70, 95, 0.05), 0 8px 22px rgba(80, 113, 145, 0.07);
+    --color-surface-hover-rgb: 238 249 242;
+    --color-surface-active-rgb: 228 245 234;
+    --color-surface-muted-rgb: 247 252 248;
+    --color-border-rgb: 215 234 223;
+    --color-border-muted-rgb: 220 236 227;
+    --color-border-subtle-rgb: 221 237 227;
+    --color-mcp-rgb: 59 175 122;
+    --shadow-soft: 0 1px 2px rgba(60, 120, 90, 0.04), 0 8px 22px rgba(60, 120, 90, 0.06);
     --shadow-card:
       0 1px 1px rgba(255, 255, 255, 0.82) inset,
-      0 10px 28px rgba(74, 106, 138, 0.08);
+      0 10px 28px rgba(60, 120, 90, 0.08);
     --shadow-elevated:
       0 1px 1px rgba(255, 255, 255, 0.9) inset,
-      0 20px 54px rgba(70, 101, 135, 0.13);
-    --color-accent: #21a8c6;
-    --color-accent-hover: #168cab;
-    --color-accent-muted: rgba(33, 168, 198, 0.13);
-    --color-text-primary: #172238;
-    --color-text-secondary: #34465c;
-    --color-text-muted: #607084;
-    --color-success: #16a34a;
-    --color-warning: #d89b12;
+      0 20px 54px rgba(60, 120, 90, 0.11);
+    --color-accent: #62c99a;
+    --color-accent-hover: #3baf7a;
+    --color-accent-muted: rgba(98, 201, 154, 0.14);
+    --color-accent-text: #1f7a57;
+    --color-accent-text-hover: #1d6f50;
+    --color-accent-text-muted: #246b52;
+    --color-text-primary: #263b33;
+    --color-text-secondary: #49685a;
+    --color-text-muted: #8aa99a;
+    --color-success: #249263;
+    --color-warning: #c58a00;
     --color-error: #dc3f4f;
-    --color-accent-rgb: 33 168 198;
-    --color-accent-hover-rgb: 22 140 171;
-    --color-accent-muted-rgb: 220 244 250;
-    --color-text-primary-rgb: 23 34 56;
-    --color-text-secondary-rgb: 52 70 92;
-    --color-text-muted-rgb: 96 112 132;
-    --color-success-rgb: 22 163 74;
-    --color-warning-rgb: 216 155 18;
+    --color-accent-rgb: 98 201 154;
+    --color-accent-hover-rgb: 59 175 122;
+    --color-accent-muted-rgb: 228 245 234;
+    --color-accent-text-rgb: 31 122 87;
+    --color-accent-text-hover-rgb: 29 111 80;
+    --color-accent-text-muted-rgb: 36 107 82;
+    --color-text-primary-rgb: 38 59 51;
+    --color-text-secondary-rgb: 73 104 90;
+    --color-text-muted-rgb: 138 169 154;
+    --color-success-rgb: 36 146 99;
+    --color-warning-rgb: 197 138 0;
     --color-error-rgb: 220 63 79;
   }
 
@@ -174,8 +188,31 @@
   }
 
   .btn-primary {
-    @apply bg-accent text-white hover:bg-accent-hover;
+    background: linear-gradient(135deg, #62c99a, #7ad8ad);
+    @apply text-white;
     @apply shadow-soft;
+  }
+
+  .btn-primary:hover {
+    background: linear-gradient(135deg, #55bd8e, #6fcfa3);
+  }
+
+  .jade-primary-button {
+    background: linear-gradient(135deg, #62c99a 0%, #7ad8ad 100%);
+    color: #ffffff;
+    box-shadow:
+      0 1px 1px rgba(255, 255, 255, 0.48) inset,
+      0 8px 18px rgba(60, 120, 90, 0.1);
+  }
+
+  .jade-primary-button:hover {
+    background: linear-gradient(135deg, #55bd8e 0%, #6fcfa3 100%);
+  }
+
+  .jade-primary-button:disabled {
+    background: var(--color-surface-active);
+    color: var(--color-text-muted);
+    box-shadow: var(--shadow-soft);
   }
 
   .btn-secondary {
@@ -218,7 +255,7 @@
 
   .app-main-panel {
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.06)),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(247, 252, 248, 0.12)),
       var(--glass-panel);
     border: 1px solid var(--color-border-subtle);
     border-radius: 14px;
@@ -230,7 +267,7 @@
 
   .glass-surface {
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.05)),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(238, 248, 241, 0.12)),
       var(--glass-panel);
     border: 1px solid var(--color-border-subtle);
     border-radius: 14px;
@@ -259,7 +296,7 @@
 
   .glass-panel-header {
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.08)),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(238, 248, 241, 0.14)),
       var(--color-background);
     border-bottom: 1px solid var(--color-border-subtle);
     backdrop-filter: blur(26px) saturate(1.18);
@@ -276,19 +313,76 @@
     overflow: hidden;
   }
 
+  .chat-composer-panel {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.64), rgba(251, 254, 252, 0.5)),
+      rgba(255, 255, 255, 0.62);
+    border: 1px solid rgba(220, 236, 227, 0.92);
+    border-radius: 18px;
+    box-shadow:
+      0 1px 1px rgba(255, 255, 255, 0.86) inset,
+      0 5px 16px rgba(60, 120, 90, 0.05);
+    backdrop-filter: blur(26px) saturate(1.12);
+    -webkit-backdrop-filter: blur(26px) saturate(1.12);
+  }
+
+  .composer-flat-button {
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: var(--color-text-muted);
+    transition:
+      background-color 140ms ease,
+      color 140ms ease,
+      opacity 140ms ease;
+  }
+
+  .composer-flat-button:hover:not(:disabled),
+  .composer-flat-button[data-state='open'] {
+    background: rgba(228, 245, 234, 0.78) !important;
+    color: var(--color-accent-hover) !important;
+  }
+
+  .composer-flat-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.46;
+  }
+
+  .composer-flat-pill {
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: var(--color-text-secondary);
+    transition:
+      background-color 140ms ease,
+      color 140ms ease,
+      opacity 140ms ease;
+  }
+
+  .composer-flat-pill:hover:not(:disabled),
+  .composer-flat-pill[data-state='open'] {
+    background: rgba(228, 245, 234, 0.78) !important;
+    color: var(--color-accent-hover) !important;
+  }
+
+  .composer-flat-pill:disabled {
+    cursor: not-allowed;
+    opacity: 0.46;
+  }
+
   .glass-divider {
     border-color: var(--color-border-subtle);
   }
 
   .workflow-react-flow {
     --xy-background-color: var(--color-background);
-    --xy-edge-stroke-default: rgba(100, 116, 139, 0.68);
+    --xy-edge-stroke-default: rgba(93, 125, 109, 0.62);
     --xy-edge-stroke-selected-default: var(--color-accent);
     --xy-connectionline-stroke-default: var(--color-accent);
     --xy-connectionline-stroke-width-default: 1.8;
     --xy-handle-background-color-default: var(--color-background);
-    --xy-handle-border-color-default: rgba(126, 138, 154, 0.7);
-    --xy-minimap-background-color-default: rgba(25, 169, 154, 0.08);
+    --xy-handle-border-color-default: rgba(138, 169, 154, 0.72);
+    --xy-minimap-background-color-default: rgba(98, 201, 154, 0.08);
     --xy-controls-button-background-color-default: var(--color-background);
     --xy-controls-button-background-color-hover-default: var(--color-surface-hover);
     --xy-controls-button-color-default: var(--color-text-secondary);
@@ -343,7 +437,7 @@
     margin-right: 0;
     box-shadow:
       0 1px 1px rgba(255, 255, 255, 0.86) inset,
-      0 2px 8px rgba(74, 106, 138, 0.06);
+      0 2px 8px rgba(60, 120, 90, 0.06);
   }
 
   .chat-message-row {
@@ -370,6 +464,7 @@
 
   .prose-chat strong {
     font-weight: 600;
+    color: var(--color-accent-text-muted);
   }
 
   .prose-chat em {
@@ -402,6 +497,11 @@
 
   .prose-chat li {
     margin-bottom: 0.2rem;
+  }
+
+  .prose-chat li::marker {
+    color: var(--color-accent-text);
+    font-weight: 600;
   }
 
   /* Tighten markdown loose-lists: avoid large gaps when li wraps content in <p> */
@@ -465,11 +565,15 @@
   }
 
   .prose-chat a {
-    color: theme('colors.accent.DEFAULT');
+    color: var(--color-accent-text);
     text-decoration-line: underline;
     text-decoration-thickness: 0.08em;
     text-underline-offset: 0.22em;
     text-decoration-skip-ink: auto;
+  }
+
+  .prose-chat a:hover {
+    color: var(--color-accent-text-hover);
   }
 
   /* Some model outputs wrap citation links in ~...~; keep links readable */
@@ -484,8 +588,8 @@
   .prose-chat blockquote {
     margin: 0.75rem 0;
     padding-left: 1rem;
-    border-left: 3px solid theme('colors.accent.DEFAULT / 40%');
-    color: theme('colors.text.secondary');
+    border-left: 3px solid rgb(var(--color-accent-text-rgb) / 0.36);
+    color: var(--color-text-secondary);
   }
 
   .prose-chat .footnotes {
@@ -504,6 +608,19 @@
 
   .prose-chat .footnotes p {
     margin: 0.25rem 0 0;
+  }
+
+  .prose-accent-link {
+    color: var(--color-accent-text);
+    transition: color 160ms ease, background-color 160ms ease;
+  }
+
+  .prose-accent-link:hover {
+    color: var(--color-accent-text-hover);
+  }
+
+  .prose-accent-inline {
+    color: var(--color-accent-text-muted);
   }
 
   /* Code block */

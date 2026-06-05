@@ -191,10 +191,10 @@ function getWorkflowSaveInputSignature(workflow: DataTaskWorkflow): string {
 
 const TASK_ICON_STYLES = [
   { Icon: Database, className: 'bg-accent/10 text-accent' },
-  { Icon: BarChart3, className: 'bg-blue-500/10 text-blue-500' },
+  { Icon: BarChart3, className: 'bg-[#E9F7F5] text-[#238C80]' },
   { Icon: Folder, className: 'bg-warning/10 text-warning' },
-  { Icon: UploadCloud, className: 'bg-violet-500/10 text-violet-500' },
-  { Icon: Cloud, className: 'bg-cyan-500/10 text-cyan-500' },
+  { Icon: UploadCloud, className: 'bg-[#F2F7F4] text-[#6A8F7B]' },
+  { Icon: Cloud, className: 'bg-[#E7F8EF] text-success' },
 ];
 
 const TABLE_PAGE_SIZE = 10;
@@ -445,8 +445,8 @@ const OPERATOR_CATALOG: Array<{
     type: 'filter',
     labelKey: 'data.workflow.operators.filter',
     Icon: Filter,
-    colorClassName: 'text-blue-500 bg-blue-500/10',
-    nodeClassName: 'border-blue-500/35 bg-blue-500/5 text-blue-500',
+    colorClassName: 'text-accent bg-accent/10',
+    nodeClassName: 'border-accent/35 bg-accent/5 text-accent',
   },
   {
     type: 'field_select',
@@ -459,8 +459,8 @@ const OPERATOR_CATALOG: Array<{
     type: 'deduplicate',
     labelKey: 'data.workflow.operators.deduplicate',
     Icon: Copy,
-    colorClassName: 'text-violet-500 bg-violet-500/10',
-    nodeClassName: 'border-violet-500/35 bg-violet-500/5 text-violet-500',
+    colorClassName: 'text-[#7B8F84] bg-[#F2F7F4]',
+    nodeClassName: 'border-[#DCECE3] bg-[#F7FCF8] text-[#7B8F84]',
   },
   {
     type: 'missing_value',
@@ -473,8 +473,8 @@ const OPERATOR_CATALOG: Array<{
     type: 'type_convert',
     labelKey: 'data.workflow.operators.type_convert',
     Icon: Repeat2,
-    colorClassName: 'text-blue-500 bg-blue-500/10',
-    nodeClassName: 'border-blue-500/35 bg-blue-500/5 text-blue-500',
+    colorClassName: 'text-accent bg-accent/10',
+    nodeClassName: 'border-accent/35 bg-accent/5 text-accent',
   },
   {
     type: 'sort',
@@ -494,15 +494,15 @@ const OPERATOR_CATALOG: Array<{
     type: 'aggregate',
     labelKey: 'data.workflow.operators.aggregate',
     Icon: Sigma,
-    colorClassName: 'text-violet-500 bg-violet-500/10',
-    nodeClassName: 'border-violet-500/35 bg-violet-500/5 text-violet-500',
+    colorClassName: 'text-[#7B8F84] bg-[#F2F7F4]',
+    nodeClassName: 'border-[#DCECE3] bg-[#F7FCF8] text-[#7B8F84]',
   },
   {
     type: 'calculate_field',
     labelKey: 'data.workflow.operators.calculate_field',
     Icon: Calculator,
-    colorClassName: 'text-violet-500 bg-violet-500/10',
-    nodeClassName: 'border-violet-500/35 bg-violet-500/5 text-violet-500',
+    colorClassName: 'text-[#7B8F84] bg-[#F2F7F4]',
+    nodeClassName: 'border-[#DCECE3] bg-[#F7FCF8] text-[#7B8F84]',
   },
   {
     type: 'field_mapping',
@@ -522,8 +522,8 @@ const OPERATOR_CATALOG: Array<{
     type: 'pivot',
     labelKey: 'data.workflow.operators.pivot',
     Icon: BarChart3,
-    colorClassName: 'text-violet-500 bg-violet-500/10',
-    nodeClassName: 'border-violet-500/35 bg-violet-500/5 text-violet-500',
+    colorClassName: 'text-[#7B8F84] bg-[#F2F7F4]',
+    nodeClassName: 'border-[#DCECE3] bg-[#F7FCF8] text-[#7B8F84]',
   },
   {
     type: 'unpivot',
@@ -536,8 +536,8 @@ const OPERATOR_CATALOG: Array<{
     type: 'set_op',
     labelKey: 'data.workflow.operators.set_op',
     Icon: GitMerge,
-    colorClassName: 'text-blue-500 bg-blue-500/10',
-    nodeClassName: 'border-blue-500/35 bg-blue-500/5 text-blue-500',
+    colorClassName: 'text-accent bg-accent/10',
+    nodeClassName: 'border-accent/35 bg-accent/5 text-accent',
   },
   {
     type: 'unnest',
@@ -550,8 +550,8 @@ const OPERATOR_CATALOG: Array<{
     type: 'output',
     labelKey: 'data.workflow.operators.output',
     Icon: UploadCloud,
-    colorClassName: 'text-blue-500 bg-blue-500/10',
-    nodeClassName: 'border-blue-500/35 bg-blue-500/5 text-blue-500',
+    colorClassName: 'text-accent bg-accent/10',
+    nodeClassName: 'border-accent/35 bg-accent/5 text-accent',
   },
 ];
 
@@ -925,7 +925,7 @@ export function DataView() {
         description: t('data.summary.workflowNodesDesc'),
         value: dashboard.summary.workflowNodeCount,
         Icon: Workflow,
-        iconClassName: 'bg-blue-500/10 text-blue-500',
+        iconClassName: 'bg-accent/10 text-accent',
       },
       {
         key: 'runningCount',
@@ -933,7 +933,7 @@ export function DataView() {
         description: t('data.summary.runningDesc'),
         value: dashboard.summary.runningCount,
         Icon: CheckCircle2,
-        iconClassName: 'bg-violet-500/10 text-violet-500',
+        iconClassName: 'bg-[#F2F7F4] text-[#7B8F84]',
       },
       {
         key: 'todayScheduleCount',
@@ -2309,7 +2309,7 @@ function TaskEditor({
           <button
             onClick={() => void handleRun()}
             disabled={isBusy || !workflow}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-55"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-55"
           >
             <Play className="h-3.5 w-3.5" />
             {t('data.editor.runTask')}
@@ -2482,7 +2482,7 @@ function WorkflowDslDialog({
             <button
               type="button"
               onClick={onApply}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors"
             >
               <Workflow className="h-3.5 w-3.5" />
               {t('data.workflow.applyDsl')}
@@ -2492,7 +2492,7 @@ function WorkflowDslDialog({
               type="button"
               onClick={onCopy}
               disabled={!value}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-55"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-55"
             >
               <Copy className="h-3.5 w-3.5" />
               {t('data.workflow.copyDsl')}
@@ -3477,7 +3477,7 @@ function WorkflowInspector({
                       <button
                         onClick={() => void handleApplyOperatorDsl()}
                         disabled={isRunningOperatorDsl}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-55"
+                        className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-55"
                       >
                         <CheckCircle2 className="h-3.5 w-3.5" />
                         {t('data.workflow.applyOperatorDsl')}
@@ -4750,7 +4750,7 @@ function TasksPanel({
           <button
             onClick={onCreate}
             disabled={isCreateDisabled || bulkBusy}
-            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Plus className="h-3.5 w-3.5" />
             {t('data.newCleaningTask')}
@@ -4863,7 +4863,7 @@ function TasksTable({
     <div className="min-w-full overflow-x-auto">
       <table className="w-full table-fixed border-collapse text-left">
         <thead>
-          <tr className="h-10 border-b border-border-muted bg-background/30 text-xs font-medium text-text-muted backdrop-blur-xl">
+          <tr className="h-10 border-b border-border-muted bg-[#F2FAF5] text-xs font-medium text-text-muted backdrop-blur-xl">
             <th className="w-[4%] px-4">
               <span className="sr-only">{t('data.tasks.selection')}</span>
             </th>
@@ -5036,7 +5036,7 @@ function InputTablesPanel({
           <button
             onClick={onCreate}
             disabled={isCreateDisabled || bulkBusy}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Plus className="h-3.5 w-3.5" />
             {t('data.inputTables.add')}
@@ -5130,7 +5130,7 @@ function InputTablesPanel({
             <div className="min-w-full overflow-x-auto">
               <table className="w-full table-fixed border-collapse text-left">
                 <thead>
-                  <tr className="h-10 border-b border-border-muted bg-background/30 text-xs font-medium text-text-muted backdrop-blur-xl">
+                  <tr className="h-10 border-b border-border-muted bg-[#F2FAF5] text-xs font-medium text-text-muted backdrop-blur-xl">
                     <th className="w-[4%] px-4">
                       <span className="sr-only">{t('data.inputTables.selection')}</span>
                     </th>
@@ -5309,7 +5309,7 @@ function OutputTablesPanel({
           <button
             onClick={onCreate}
             disabled={isCreateDisabled || bulkBusy}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Plus className="h-3.5 w-3.5" />
             {t('data.outputTables.add')}
@@ -5384,7 +5384,7 @@ function OutputTablesPanel({
             <div className="min-w-full overflow-x-auto">
               <table className="w-full table-fixed border-collapse text-left">
                 <thead>
-                  <tr className="h-10 border-b border-border-muted bg-background/30 text-xs font-medium text-text-muted backdrop-blur-xl">
+                  <tr className="h-10 border-b border-border-muted bg-[#F2FAF5] text-xs font-medium text-text-muted backdrop-blur-xl">
                     <th className="w-[4%] px-4">
                       <span className="sr-only">{t('data.outputTables.selection')}</span>
                     </th>
@@ -5428,7 +5428,7 @@ function OutputTablesPanel({
                         </td>
                         <td className="px-2">
                           <div className="flex min-w-0 items-center gap-3">
-                            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
+                            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
                               <UploadCloud className="h-4 w-4" />
                             </div>
                             <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
@@ -6370,7 +6370,7 @@ function InputTableEditorWorkbench({
                 type="button"
                 disabled={!canGenerateCustomizeDraft}
                 onClick={() => void generateCustomizeDraft()}
-                className="inline-flex h-10 min-w-[9.5rem] items-center justify-center gap-2 rounded-lg bg-accent px-5 text-[13px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
+                className="inline-flex h-10 min-w-[9.5rem] items-center justify-center gap-2 rounded-lg jade-primary-button px-5 text-[13px] font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
                 title={t('data.inputTables.editor.generateProjectDisabled')}
               >
                 {customizeGenerating ? (
@@ -6911,7 +6911,7 @@ function InputTableVersionHistoryPanel({
                           type="button"
                           disabled={isPublished || publishingVersionId === version.id}
                           onClick={() => onPublish(version)}
-                          className="inline-flex h-7 min-w-[4.25rem] items-center justify-center gap-1 rounded-lg bg-accent px-3 text-[11px] font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
+                          className="inline-flex h-7 min-w-[4.25rem] items-center justify-center gap-1 rounded-lg jade-primary-button px-3 text-[11px] font-medium text-white transition-colors disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
                         >
                           {publishingVersionId === version.id ? (
                             <RefreshCw className="h-3 w-3 animate-spin" />
@@ -6987,8 +6987,8 @@ function InputTablePreviewDialog({
       : t('data.inputTables.editor.previewEmpty');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-sky-950/18 px-4 py-6">
-      <div className="flex h-[42rem] max-h-[calc(100vh-3rem)] w-[72rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-sky-200/55 bg-[#edf7fd]/86 shadow-card backdrop-blur-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#163526]/16 px-4 py-6">
+      <div className="flex h-[42rem] max-h-[calc(100vh-3rem)] w-[72rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-subtle bg-[#FBFEFC]/86 shadow-card backdrop-blur-xl">
         <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between px-4">
           <div className="min-w-0">
             <div className="text-[14px] font-semibold text-text-primary">
@@ -7005,7 +7005,7 @@ function InputTablePreviewDialog({
           </button>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#f4faff]">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#F7FCF8]">
           <GlassDataGridPreview
             preview={preview}
             isLoading={isLoading}
@@ -7049,9 +7049,9 @@ function InputTableInfo({
 }) {
   return (
     <div
-      className={`flex min-h-11 items-center gap-2 rounded-lg border border-blue-500/15 bg-blue-500/5 px-3 text-xs font-medium text-text-muted ${className}`}
+      className={`flex min-h-11 items-center gap-2 rounded-lg border border-accent/15 bg-accent/5 px-3 text-xs font-medium text-text-muted ${className}`}
     >
-      <Info className="h-4 w-4 flex-shrink-0 text-blue-500" />
+      <Info className="h-4 w-4 flex-shrink-0 text-accent" />
       <span>{children}</span>
     </div>
   );
@@ -7346,7 +7346,7 @@ function statusBadgeClass(status: DataTaskStatus): string {
     case 'running':
       return 'bg-success/10 text-success';
     case 'completed':
-      return 'bg-blue-500/10 text-blue-500';
+      return 'bg-accent/10 text-accent';
     case 'stopped':
       return 'bg-text-muted/10 text-text-muted';
     case 'pending':
@@ -7692,8 +7692,8 @@ function getInputTableSourceMeta(kind: InputTableSourceKind): {
       return {
         Icon: FileText,
         labelKey: 'data.inputTables.sources.csv',
-        className: 'bg-blue-500/10 text-blue-500',
-        badgeClassName: 'bg-blue-500/10 text-blue-500',
+        className: 'bg-accent/10 text-accent',
+        badgeClassName: 'bg-accent/10 text-accent',
       };
     case 'folder':
       return {
@@ -7706,8 +7706,8 @@ function getInputTableSourceMeta(kind: InputTableSourceKind): {
       return {
         Icon: FileText,
         labelKey: 'data.inputTables.sources.file',
-        className: 'bg-violet-500/10 text-violet-500',
-        badgeClassName: 'bg-violet-500/10 text-violet-500',
+        className: 'bg-[#F2F7F4] text-[#7B8F84]',
+        badgeClassName: 'bg-[#F2F7F4] text-[#7B8F84]',
       };
   }
 }

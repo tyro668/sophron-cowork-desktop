@@ -956,7 +956,7 @@ export function ChatView() {
             )}
 
             <div
-              className={`glass-card-strong flex min-h-[96px] flex-col rounded-2xl px-4 py-2.5 transition-colors sm:min-h-[104px] sm:py-3 ${
+              className={`chat-composer-panel flex min-h-[120px] flex-col px-4 py-3 transition-colors sm:min-h-[132px] sm:py-3.5 ${
                 isDragging ? 'ring-2 ring-accent bg-accent-muted' : ''
               }`}
             >
@@ -987,12 +987,12 @@ export function ChatView() {
                 className="min-h-[32px] flex-1 resize-none overflow-y-auto border-none bg-transparent text-[14px] leading-5 text-text-primary outline-none placeholder:text-text-muted sm:min-h-[36px] sm:text-[15px]"
               />
 
-              <div className="mt-2 flex items-center justify-between gap-2.5">
+              <div className="mt-3 flex items-center justify-between gap-2.5">
                 <div className="flex min-w-0 items-center gap-2">
                   <button
                     type="button"
                     onClick={handleFileSelect}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-surface text-text-muted shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary"
+                    className="composer-flat-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
                     title={t('welcome.attachFiles')}
                   >
                     <Plus className="h-4 w-4" />
@@ -1001,7 +1001,7 @@ export function ChatView() {
                   <PermissionPolicySelector
                     open={showPermissionMenu}
                     onOpenChange={handlePermissionMenuOpenChange}
-                    buttonClassName="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[13px] font-semibold text-accent transition-colors hover:bg-accent-muted sm:px-2.5"
+                    buttonClassName="composer-flat-pill inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium"
                   />
                 </div>
 
@@ -1014,14 +1014,14 @@ export function ChatView() {
                         if (open) {
                           setShowPermissionMenu(false);
                         }
-                      }}
-                      side="top"
-                      align="end"
-                      contentClassName="w-[min(18rem,calc(100vw-2rem))]"
-                      trigger={
-                        <button
-                          type="button"
-                          className="hidden h-8 min-w-0 max-w-[18rem] items-center gap-1.5 rounded-lg border border-border-muted bg-background/70 px-2.5 text-[13px] text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary sm:inline-flex"
+                        }}
+                        side="top"
+                        align="end"
+                        contentClassName="w-[min(18rem,calc(100vw-2rem))]"
+                        trigger={
+                          <button
+                            type="button"
+                          className="composer-flat-pill hidden h-9 min-w-0 max-w-[18rem] items-center gap-1.5 rounded-full px-3 text-[13px] sm:inline-flex"
                           title={modelLabel}
                         >
                           <span className="truncate">{modelLabel}</span>
@@ -1056,7 +1056,7 @@ export function ChatView() {
                     <button
                       type="button"
                       onClick={handleModelButtonClick}
-                      className="hidden h-8 min-w-0 max-w-[18rem] items-center gap-1.5 rounded-lg border border-border-muted bg-background/70 px-2.5 text-[13px] text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary sm:inline-flex"
+                      className="composer-flat-pill hidden h-9 min-w-0 max-w-[18rem] items-center gap-1.5 rounded-full px-3 text-[13px] sm:inline-flex"
                       title={modelLabel}
                     >
                       <span className="truncate">{modelLabel}</span>
@@ -1068,7 +1068,7 @@ export function ChatView() {
                     <button
                       type="button"
                       onClick={handleStop}
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-error/10 text-error transition-colors hover:bg-error/20"
+                      className="composer-flat-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-error hover:bg-error/10 hover:text-error"
                       title={t('chat.stop')}
                     >
                       <Square className="h-4 w-4" />
@@ -1083,7 +1083,7 @@ export function ChatView() {
                         attachedFiles.length === 0) ||
                       isSubmitting
                     }
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:shadow-none"
+                    className="composer-flat-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-accent disabled:cursor-not-allowed disabled:text-text-muted"
                     title={t('chat.sendMessage')}
                   >
                     <Send className="h-4 w-4" />
