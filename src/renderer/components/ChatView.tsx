@@ -25,6 +25,7 @@ import {
   X,
   Clock,
   ArrowUp,
+  ArrowDown,
   ChevronDown,
 } from 'lucide-react';
 
@@ -84,7 +85,9 @@ export function ChatView() {
   const isScrollingRef = useRef(false);
   const pendingInitialScrollSessionRef = useRef<string | null>(null);
   const showBackToTopRef = useRef(false);
+  const showScrollToBottomRef = useRef(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
   const hasActiveTurn = Boolean(activeTurn);
   const pendingCount = pendingTurns.length;
@@ -176,9 +179,15 @@ export function ChatView() {
     isUserAtBottomRef.current = distanceToBottom <= 80;
     const nextShowBackToTop =
       container.scrollTop > 160 && container.scrollHeight > container.clientHeight;
+    const nextShowScrollToBottom =
+      distanceToBottom > 80 && container.scrollHeight > container.clientHeight;
     if (nextShowBackToTop !== showBackToTopRef.current) {
       showBackToTopRef.current = nextShowBackToTop;
       setShowBackToTop(nextShowBackToTop);
+    }
+    if (nextShowScrollToBottom !== showScrollToBottomRef.current) {
+      showScrollToBottomRef.current = nextShowScrollToBottom;
+      setShowScrollToBottom(nextShowScrollToBottom);
     }
   }, []);
 
@@ -246,7 +255,26 @@ export function ChatView() {
     isUserAtBottomRef.current = false;
     container.scrollTo({ top: 0, behavior: 'smooth' });
     setShowBackToTop(false);
+    showBackToTopRef.current = false;
+    showScrollToBottomRef.current = true;
+    setShowScrollToBottom(true);
   }, []);
+
+  const scrollToConversationBottom = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    isScrollingRef.current = true;
+    isUserAtBottomRef.current = true;
+    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    showScrollToBottomRef.current = false;
+    setShowScrollToBottom(false);
+
+    setTimeout(() => {
+      updateScrollState();
+      isScrollingRef.current = false;
+    }, 320);
+  }, [updateScrollState]);
 
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -274,7 +302,9 @@ export function ChatView() {
     pendingInitialScrollSessionRef.current = activeSessionId;
     isUserAtBottomRef.current = true;
     showBackToTopRef.current = false;
+    showScrollToBottomRef.current = false;
     setShowBackToTop(false);
+    setShowScrollToBottom(false);
   }, [activeSessionId]);
 
   useEffect(() => {
@@ -849,10 +879,25 @@ export function ChatView() {
           <button
             type="button"
             onClick={scrollToConversationTop}
-            className="pointer-events-auto mt-3 inline-flex h-8 items-center gap-1.5 rounded-full border border-accent/25 bg-background/80 px-3 text-xs font-medium text-accent shadow-soft backdrop-blur-xl transition-colors hover:border-accent/45 hover:bg-accent/10"
+            aria-label={t('chat.backToTop')}
+            title={t('chat.backToTop')}
+            className="pointer-events-auto mt-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-white text-accent shadow-soft backdrop-blur-xl transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent-hover"
           >
             <ArrowUp className="h-4 w-4" />
-            <span>{t('chat.backToTop')}</span>
+          </button>
+        </div>
+      )}
+
+      {showScrollToBottom && (
+        <div className="pointer-events-none absolute bottom-[9.5rem] left-0 right-0 z-20 flex justify-center px-4">
+          <button
+            type="button"
+            onClick={scrollToConversationBottom}
+            aria-label={t('chat.scrollToBottom')}
+            title={t('chat.scrollToBottom')}
+            className="pointer-events-auto inline-flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-white text-accent shadow-soft backdrop-blur-xl transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent-hover"
+          >
+            <ArrowDown className="h-4 w-4" />
           </button>
         </div>
       )}

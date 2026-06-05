@@ -1186,6 +1186,7 @@
     "permissionPolicyAutoReview": "自动审查",
     "permissionPolicyFullAccess": "完全访问权限",
     "backToTop": "回到顶部",
+    "scrollToBottom": "去到底部",
     "connectorCount_one": "{{count}} 个连接器",
     "connectorCount_other": "{{count}} 个连接器"
   },

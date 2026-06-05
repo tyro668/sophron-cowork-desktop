@@ -1186,6 +1186,7 @@
     "permissionPolicyAutoReview": "Auto review",
     "permissionPolicyFullAccess": "Full access",
     "backToTop": "Back to top",
+    "scrollToBottom": "Go to bottom",
     "connectorCount_one": "{{count}} connector",
     "connectorCount_other": "{{count}} connectors"
   },
