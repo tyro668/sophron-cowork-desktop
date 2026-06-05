@@ -17,16 +17,23 @@ import {
   Clock3,
   ListChecks,
   Check,
+  MoreHorizontal,
+  PencilLine,
+  Folder,
+  FolderOpen,
+  X,
 } from 'lucide-react';
-import type { AppUpdateState, Session } from '../types';
+import type { AppUpdateState } from '../types';
+import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
+import {
+  buildSessionProjectGroups,
+  type SessionProjectGroup,
+} from '../utils/sidebar-project-groups';
 
 import sidebarLogoSrc from '../assets/logo.png';
 
-type SessionGroup = {
-  key: string;
-  label: string;
-  sessions: Session[];
-};
+const SIDEBAR_PROJECT_NAMES_STORAGE_KEY = 'sophron.sidebar.projectNames.v1';
+const SIDEBAR_PROJECT_EXPANSION_STORAGE_KEY = 'sophron.sidebar.projectExpansion.v1';
 
 export function Sidebar() {
   const { t } = useTranslation();
@@ -57,18 +64,40 @@ export function Sidebar() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [updateState, setUpdateState] = useState<AppUpdateState | null>(null);
+  const [projectNames, setProjectNames] = useState<Record<string, string>>(() =>
+    readStoredProjectNames()
+  );
+  const [projectExpansion, setProjectExpansion] = useState<Record<string, boolean>>(() =>
+    readStoredProjectExpansion()
+  );
+  const [renamingProjectKey, setRenamingProjectKey] = useState<string | null>(null);
+  const [projectNameDraft, setProjectNameDraft] = useState('');
+  const [removingProjectKey, setRemovingProjectKey] = useState<string | null>(null);
 
   const normalizedQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
-  const filteredSessions = useMemo(() => {
-    return normalizedQuery
-      ? sessions.filter((session) => session.title.toLowerCase().includes(normalizedQuery))
-      : sessions;
-  }, [sessions, normalizedQuery]);
-
+  const rendererPlatform = typeof window !== 'undefined' ? window.electronAPI?.platform : undefined;
   const groupedSessions = useMemo(
-    () => groupSessionsByDate(filteredSessions, t),
-    [filteredSessions, t]
+    () =>
+      buildSessionProjectGroups(sessions, {
+        noWorkspaceLabel: t('sidebar.noWorkspaceProject'),
+        platform: rendererPlatform,
+        projectNames,
+        query: normalizedQuery,
+      }),
+    [normalizedQuery, projectNames, rendererPlatform, sessions, t]
   );
+  const expandedProjectKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const group of groupedSessions) {
+      const explicitState = projectExpansion[group.key];
+      const hasActiveSession = group.sessions.some((session) => session.id === activeSessionId);
+      const isExpanded = Boolean(normalizedQuery) || (explicitState ?? hasActiveSession);
+      if (isExpanded) {
+        keys.add(group.key);
+      }
+    }
+    return keys;
+  }, [activeSessionId, groupedSessions, normalizedQuery, projectExpansion]);
   const hasAvailableUpdate = updateState?.status === 'available';
   const updateBadgeTitle = updateState?.availableVersion
     ? t('general.updateAvailableBadgeTitle', { version: updateState.availableVersion })
@@ -100,6 +129,11 @@ export function Sidebar() {
       setSelectedIds(new Set());
       setShowDeleteConfirm(false);
     }
+    if (sidebarCollapsed) {
+      setRenamingProjectKey(null);
+      setProjectNameDraft('');
+      setRemovingProjectKey(null);
+    }
   }, [sidebarCollapsed, isSelectMode]);
 
   // Escape key exits select mode
@@ -128,6 +162,96 @@ export function Sidebar() {
     setSelectedIds(new Set());
     setShowDeleteConfirm(false);
   }, []);
+
+  const saveProjectNames = useCallback(
+    (updater: (current: Record<string, string>) => Record<string, string>) => {
+      setProjectNames((current) => {
+        const next = updater(current);
+        writeStoredProjectNames(next);
+        return next;
+      });
+    },
+    []
+  );
+
+  const saveProjectExpansion = useCallback(
+    (updater: (current: Record<string, boolean>) => Record<string, boolean>) => {
+      setProjectExpansion((current) => {
+        const next = updater(current);
+        writeStoredProjectExpansion(next);
+        return next;
+      });
+    },
+    []
+  );
+
+  const handleToggleProject = useCallback(
+    (group: SessionProjectGroup) => {
+      const isExpanded = expandedProjectKeys.has(group.key);
+      saveProjectExpansion((current) => ({
+        ...current,
+        [group.key]: !isExpanded,
+      }));
+      setRemovingProjectKey(null);
+    },
+    [expandedProjectKeys, saveProjectExpansion]
+  );
+
+  const handleStartRenameProject = useCallback((group: SessionProjectGroup) => {
+    setRenamingProjectKey(group.key);
+    setProjectNameDraft(group.label);
+    setRemovingProjectKey(null);
+  }, []);
+
+  const handleCancelRenameProject = useCallback(() => {
+    setRenamingProjectKey(null);
+    setProjectNameDraft('');
+  }, []);
+
+  const handleSaveProjectName = useCallback(
+    (group: SessionProjectGroup) => {
+      const nextName = projectNameDraft.trim();
+      saveProjectNames((current) => {
+        const next = { ...current };
+        if (!nextName || nextName === group.defaultLabel) {
+          delete next[group.key];
+        } else {
+          next[group.key] = nextName;
+        }
+        return next;
+      });
+      handleCancelRenameProject();
+    },
+    [handleCancelRenameProject, projectNameDraft, saveProjectNames]
+  );
+
+  const handleRemoveProject = useCallback(
+    (group: SessionProjectGroup) => {
+      const sessionIds = group.sessions.map((session) => session.id);
+      if (sessionIds.length === 0) return;
+      batchDeleteSessions(sessionIds);
+      saveProjectNames((current) => {
+        const next = { ...current };
+        delete next[group.key];
+        return next;
+      });
+      saveProjectExpansion((current) => {
+        const next = { ...current };
+        delete next[group.key];
+        return next;
+      });
+      setRemovingProjectKey(null);
+      handleCancelRenameProject();
+      exitSelectMode();
+    },
+    [
+      batchDeleteSessions,
+      exitSelectMode,
+      handleCancelRenameProject,
+      saveProjectExpansion,
+      saveProjectNames,
+    ]
+  );
 
   const handleDataPage = useCallback(() => {
     exitSelectMode();
@@ -162,7 +286,32 @@ export function Sidebar() {
     });
   }, []);
 
-  const visibleSessionIds = useMemo(() => filteredSessions.map((s) => s.id), [filteredSessions]);
+  const visibleSessionIds = useMemo(
+    () =>
+      groupedSessions.flatMap((group) =>
+        expandedProjectKeys.has(group.key) ? group.sessions.map((session) => session.id) : []
+      ),
+    [expandedProjectKeys, groupedSessions]
+  );
+
+  // Keep bulk selection aligned with currently visible tasks.
+  useEffect(() => {
+    if (!isSelectMode) return;
+
+    const visibleSet = new Set(visibleSessionIds);
+    setSelectedIds((current) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of current) {
+        if (visibleSet.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [isSelectMode, visibleSessionIds]);
 
   const allVisibleSelected =
     visibleSessionIds.length > 0 && visibleSessionIds.every((id) => selectedIds.has(id));
@@ -490,15 +639,8 @@ export function Sidebar() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-4">
-        <div
-          className={`mb-3 flex items-center gap-2 rounded-xl px-3 py-2 text-[13px] font-medium ${
-            (activeSessionId || mainView === 'chat') && !showSettings
-              ? 'bg-accent/10 text-accent'
-              : 'text-text-primary'
-          }`}
-        >
-          <ListChecks className="h-4 w-4 flex-shrink-0" />
-          <span>{t('mainNav.tasks')}</span>
+        <div className="mb-2 px-3 text-[12px] font-semibold leading-5 text-text-muted">
+          {t('sidebar.projectsTitle')}
         </div>
         {groupedSessions.length === 0 ? (
           <div className="px-3 py-6">
@@ -506,73 +648,193 @@ export function Sidebar() {
             <p className="mt-1 text-xs leading-5 text-text-muted">{t('sidebar.noTasksHint')}</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {groupedSessions.map((group) => (
-              <section key={group.key}>
-                <div className="px-3 pb-2 text-[11px] font-medium tracking-[0.04em] text-text-muted">
-                  {group.label}
-                </div>
-                <div className="space-y-0.5">
-                  {group.sessions.map((session) => {
-                    const isActive = activeSessionId === session.id;
-                    const isSelected = selectedIds.has(session.id);
-                    return (
-                      <div
-                        key={session.id}
-                        onClick={() => {
-                          if (isSelectMode) {
-                            toggleSelectSession(session.id);
-                          } else {
-                            handleSessionClick(session.id);
-                          }
+          <div className="space-y-1">
+            {groupedSessions.map((group) => {
+              const isProjectExpanded = expandedProjectKeys.has(group.key);
+              return (
+                <section key={group.key} className="space-y-1">
+                  <div className="px-1.5">
+                    {renamingProjectKey === group.key ? (
+                      <form
+                        className="flex items-center gap-1.5 rounded-lg border border-accent/25 bg-background/78 p-1 shadow-soft"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          handleSaveProjectName(group);
                         }}
-                        onMouseEnter={() => setHoveredSession(session.id)}
-                        onMouseLeave={() => setHoveredSession(null)}
-                        className={`group relative cursor-pointer rounded-xl px-2.5 py-1.5 transition-colors ${
-                          isSelectMode && isSelected
-                            ? 'bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/20'
-                            : isActive && !isSelectMode
-                              ? 'bg-accent/10'
-                              : 'hover:bg-surface-hover/60'
-                        }`}
                       >
-                        {isActive && !isSelectMode && (
-                          <span className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r-full bg-accent" />
-                        )}
-                        <div className={`flex items-center gap-2 ${!isSelectMode ? 'pr-6' : ''}`}>
-                          {isSelectMode && (
-                            <div
-                              className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-colors ${
-                                isSelected
-                                  ? 'bg-accent text-white'
-                                  : 'border border-border-muted bg-background'
-                              }`}
-                            >
-                              {isSelected && <Check className="w-2.5 h-2.5" />}
-                            </div>
+                        <input
+                          autoFocus
+                          value={projectNameDraft}
+                          onChange={(event) => setProjectNameDraft(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Escape') {
+                              event.preventDefault();
+                              handleCancelRenameProject();
+                            }
+                          }}
+                          placeholder={t('sidebar.projectNamePlaceholder')}
+                          className="min-w-0 flex-1 rounded-md border border-border-muted bg-background/86 px-2 py-1 text-[12px] font-medium text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+                        />
+                        <button
+                          type="submit"
+                          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-accent transition-colors hover:bg-accent/10"
+                          title={t('sidebar.saveProjectName')}
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCancelRenameProject}
+                          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+                          title={t('sidebar.cancelProjectRename')}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </form>
+                    ) : (
+                      <div className="flex items-center gap-1.5 rounded-lg px-1.5 py-1 transition-colors hover:bg-surface-hover/50">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleProject(group)}
+                          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:text-text-primary"
+                          aria-expanded={isProjectExpanded}
+                          title={group.label}
+                        >
+                          {isProjectExpanded ? (
+                            <FolderOpen className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+                          ) : (
+                            <Folder className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
                           )}
-                          <div className="min-w-0 flex-1">
-                            <div className="text-[13px] font-medium leading-5 text-text-primary truncate">
-                              {session.title}
-                            </div>
-                          </div>
-                        </div>
-
-                        {!isSelectMode && hoveredSession === session.id && (
-                          <button
-                            onClick={(e) => handleDeleteSession(e, session.id)}
-                            className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-lg flex items-center justify-center text-text-muted hover:text-error hover:bg-surface-active transition-colors"
-                            title={t('common.delete')}
+                          <span className="min-w-0 flex-1 truncate text-[12px] font-semibold leading-4 text-text-secondary">
+                            {group.label}
+                          </span>
+                        </button>
+                        <GlassDropdownMenu
+                          align="end"
+                          sideOffset={4}
+                          trigger={
+                            <button
+                              type="button"
+                              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-active hover:text-text-primary"
+                              title={t('sidebar.projectMenu')}
+                            >
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </button>
+                          }
+                        >
+                          <GlassMenuItem
+                            icon={<PencilLine className="h-3.5 w-3.5" />}
+                            onSelect={() => handleStartRenameProject(group)}
                           >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        )}
+                            {t('sidebar.renameProject')}
+                          </GlassMenuItem>
+                          <GlassMenuItem
+                            danger
+                            icon={<Trash2 className="h-3.5 w-3.5" />}
+                            onSelect={() => {
+                              setRemovingProjectKey(group.key);
+                              setRenamingProjectKey(null);
+                              setProjectNameDraft('');
+                            }}
+                          >
+                            {t('sidebar.removeProject')}
+                          </GlassMenuItem>
+                        </GlassDropdownMenu>
                       </div>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
+                    )}
+                  </div>
+                  {removingProjectKey === group.key && (
+                    <div className="mx-1.5 rounded-lg border border-error/25 bg-error/10 px-2.5 py-2">
+                      <p className="text-[12px] leading-4 text-text-primary">
+                        {t('sidebar.removeProjectConfirm', {
+                          count: group.sessions.length,
+                          name: group.label,
+                        })}
+                      </p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setRemovingProjectKey(null)}
+                          className="flex-1 rounded-lg px-2 py-1.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover"
+                        >
+                          {t('sidebar.cancel')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveProject(group)}
+                          className="flex-1 rounded-lg bg-error px-2 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-error/90"
+                        >
+                          {t('sidebar.confirmRemoveProject')}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {isProjectExpanded && (
+                    <div className="ml-6 space-y-0.5 pl-2">
+                      {group.sessions.map((session) => {
+                        const isActive = activeSessionId === session.id;
+                        const isSelected = selectedIds.has(session.id);
+                        return (
+                          <div
+                            key={session.id}
+                            onClick={() => {
+                              if (isSelectMode) {
+                                toggleSelectSession(session.id);
+                              } else {
+                                handleSessionClick(session.id);
+                              }
+                            }}
+                            onMouseEnter={() => setHoveredSession(session.id)}
+                            onMouseLeave={() => setHoveredSession(null)}
+                            className={`group relative cursor-pointer rounded-xl px-2.5 py-1.5 transition-colors ${
+                              isSelectMode && isSelected
+                                ? 'bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/20'
+                                : isActive && !isSelectMode
+                                  ? 'bg-accent/10'
+                                  : 'hover:bg-surface-hover/60'
+                            }`}
+                          >
+                            {isActive && !isSelectMode && (
+                              <span className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r-full bg-accent" />
+                            )}
+                            <div
+                              className={`flex items-center gap-2 ${!isSelectMode ? 'pr-6' : ''}`}
+                            >
+                              {isSelectMode && (
+                                <div
+                                  className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-colors ${
+                                    isSelected
+                                      ? 'bg-accent text-white'
+                                      : 'border border-border-muted bg-background'
+                                  }`}
+                                >
+                                  {isSelected && <Check className="w-2.5 h-2.5" />}
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="text-[13px] font-medium leading-5 text-text-primary truncate">
+                                  {session.title}
+                                </div>
+                              </div>
+                            </div>
+
+                            {!isSelectMode && hoveredSession === session.id && (
+                              <button
+                                onClick={(e) => handleDeleteSession(e, session.id)}
+                                className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-lg flex items-center justify-center text-text-muted hover:text-error hover:bg-surface-active transition-colors"
+                                title={t('common.delete')}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              );
+            })}
           </div>
         )}
       </div>
@@ -661,34 +923,69 @@ export function Sidebar() {
   );
 }
 
-function groupSessionsByDate(sessions: Session[], t: (key: string) => string): SessionGroup[] {
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startOfYesterday = startOfToday - 86_400_000;
-  const startOfPreviousWeek = startOfToday - 7 * 86_400_000;
+function readStoredProjectNames(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
 
-  const buckets: SessionGroup[] = [
-    { key: 'today', label: t('sidebar.today'), sessions: [] },
-    { key: 'yesterday', label: t('sidebar.yesterday'), sessions: [] },
-    { key: 'previousWeek', label: t('sidebar.previousWeek'), sessions: [] },
-    { key: 'older', label: t('sidebar.older'), sessions: [] },
-  ];
+  try {
+    const raw = window.localStorage.getItem(SIDEBAR_PROJECT_NAMES_STORAGE_KEY);
+    if (!raw) return {};
 
-  const sortedSessions = [...sessions].sort(
-    (a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt)
-  );
-  for (const session of sortedSessions) {
-    const timestamp = session.updatedAt || session.createdAt;
-    if (timestamp >= startOfToday) {
-      buckets[0].sessions.push(session);
-    } else if (timestamp >= startOfYesterday) {
-      buckets[1].sessions.push(session);
-    } else if (timestamp >= startOfPreviousWeek) {
-      buckets[2].sessions.push(session);
-    } else {
-      buckets[3].sessions.push(session);
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+    const names: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value === 'string' && value.trim()) {
+        names[key] = value.trim();
+      }
     }
+    return names;
+  } catch {
+    return {};
   }
+}
 
-  return buckets.filter((bucket) => bucket.sessions.length > 0);
+function writeStoredProjectNames(projectNames: Record<string, string>) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(SIDEBAR_PROJECT_NAMES_STORAGE_KEY, JSON.stringify(projectNames));
+  } catch {
+    // Ignore storage failures so sidebar navigation remains usable.
+  }
+}
+
+function readStoredProjectExpansion(): Record<string, boolean> {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    const raw = window.localStorage.getItem(SIDEBAR_PROJECT_EXPANSION_STORAGE_KEY);
+    if (!raw) return {};
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+    const expansion: Record<string, boolean> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value === 'boolean') {
+        expansion[key] = value;
+      }
+    }
+    return expansion;
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredProjectExpansion(projectExpansion: Record<string, boolean>) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(
+      SIDEBAR_PROJECT_EXPANSION_STORAGE_KEY,
+      JSON.stringify(projectExpansion)
+    );
+  } catch {
+    // Ignore storage failures so sidebar navigation remains usable.
+  }
 }
