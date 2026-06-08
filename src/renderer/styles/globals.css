@@ -695,6 +695,62 @@
   }
 }
 
+/* High-performance rendering: avoid expensive backdrop sampling and heavy shadows. */
+:root {
+  --shadow-soft: 0 1px 2px rgba(60, 120, 90, 0.035);
+  --shadow-card: 0 1px 2px rgba(60, 120, 90, 0.045);
+  --shadow-elevated: 0 2px 6px rgba(60, 120, 90, 0.06);
+}
+
+.app-main-panel,
+.glass-surface,
+.glass-card,
+.glass-card-strong,
+.glass-panel-header,
+.glass-table,
+.chat-composer-panel,
+.card {
+  box-shadow: var(--shadow-soft) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.backdrop-blur-sm,
+.backdrop-blur,
+.backdrop-blur-md,
+.backdrop-blur-lg,
+.backdrop-blur-xl,
+.backdrop-blur-2xl,
+.backdrop-blur-3xl {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.shadow-soft,
+.shadow-card,
+.shadow-elevated {
+  box-shadow: var(--shadow-soft) !important;
+}
+
+.transition-all {
+  transition-property: color, background-color, border-color, opacity, transform !important;
+}
+
+*,
+*::before,
+*::after {
+  animation-duration: 120ms !important;
+  transition-duration: 120ms !important;
+}
+
+[data-radix-popper-content-wrapper],
+[data-radix-popper-content-wrapper] *,
+[data-radix-select-content],
+[data-radix-menu-content] {
+  animation: none !important;
+  transition: none !important;
+}
+
 /* Respect reduced motion preferences */
 @media (prefers-reduced-motion: reduce) {
   *,
