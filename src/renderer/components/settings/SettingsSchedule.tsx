@@ -8,7 +8,6 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react';
-import * as Switch from '@radix-ui/react-switch';
 import { useTranslation } from 'react-i18next';
 import {
   AlertCircle,
@@ -52,6 +51,7 @@ import { AgentModelSelector, getAgentModelLabel } from '../AgentModelSelector';
 import { GlassDateTimePicker } from '../GlassDateTimePicker';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { GlassSelect } from '../GlassSelect';
+import { GlassSwitch } from '../GlassSwitch';
 import { formatAppDateTime } from '../../utils/i18n-format';
 import { getWorkingDirDisplayName } from '../../utils/working-dir-label';
 
@@ -1174,24 +1174,11 @@ function TaskStatusSection({
         <span className="text-[13px] font-medium text-text-secondary">
           {tr('schedule.taskStatus', '任务状态')}
         </span>
-        <Switch.Root
+        <GlassSwitch
           checked={localEnabled}
           onCheckedChange={handleCheckedChange}
-          className={`relative inline-flex h-7 w-[52px] flex-shrink-0 items-center rounded-full border p-[3px] shadow-[inset_0_1px_2px_rgba(15,23,42,0.14)] outline-none transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-accent/30 ${
-            localEnabled
-              ? 'border-success bg-success'
-              : 'border-[rgba(148,163,184,0.58)] bg-[rgba(148,163,184,0.32)]'
-          }`}
-          aria-label={tr('schedule.taskStatus', '任务状态')}
-        >
-          <Switch.Thumb
-            className={`block h-[22px] w-[22px] transform-gpu rounded-full bg-white shadow-[0_2px_8px_rgba(15,23,42,0.22)] ring-1 transition-transform duration-150 ease-out will-change-transform ${
-              localEnabled
-                ? 'translate-x-6 ring-white/70'
-                : 'translate-x-0 ring-[rgba(100,116,139,0.38)]'
-            }`}
-          />
-        </Switch.Root>
+          ariaLabel={tr('schedule.taskStatus', '任务状态')}
+        />
         <span className="text-[13px] font-medium text-text-secondary">
           {localEnabled ? tr('schedule.enabled', '启用') : tr('schedule.disabled', '停用')}
         </span>
