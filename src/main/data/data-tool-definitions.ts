@@ -23,6 +23,25 @@ const ListSchema = Type.Object({
 
 const PreviewRowsSchema = Type.Optional(Type.Integer({ minimum: 1, maximum: 100 }));
 
+const CloudConnectionProperties = {
+  apiOrigin: Type.Optional(
+    Type.String({
+      description: 'Personal analysis API origin. Defaults to http://127.0.0.1:3000.',
+    })
+  ),
+  apiKey: Type.Optional(
+    Type.String({
+      description:
+        'Personal analysis API key used to exchange an access token. Defaults to PERSONAL_API_KEY or mock-api-key.',
+    })
+  ),
+  accessToken: Type.Optional(
+    Type.String({
+      description: 'Optional Bearer token. If omitted, the tool exchanges apiKey for a token.',
+    })
+  ),
+};
+
 const ProcessingStrategySchema = Type.Union([
   Type.Object({
     strategy: Type.Literal('auto'),
@@ -75,8 +94,7 @@ export function createDataCustomTools(
     {
       name: 'data_list_input_tables',
       label: 'List input tables',
-      description:
-        'List local data input tables. Use before referencing an input table by name.',
+      description: 'List local data input tables. Use before referencing an input table by name.',
       parameters: Type.Object({
         ...ListSchema.properties,
         sourceKind: Type.Optional(
@@ -89,6 +107,93 @@ export function createDataCustomTools(
         ),
       }),
       execute: async (_toolCallId, params) => dataToolService.listInputTables(params as never),
+    },
+    {
+      name: 'data_list_cloud_spaces',
+      label: 'List cloud spaces',
+      description:
+        'List personal analysis cloud/mock spaces through the configured API. Use before selecting cloud projects.',
+      parameters: Type.Object({
+        ...CloudConnectionProperties,
+      }),
+      execute: async (_toolCallId, params) => dataToolService.listCloudSpaces(params as never),
+    },
+    {
+      name: 'data_list_cloud_projects',
+      label: 'List cloud projects',
+      description:
+        'List personal analysis cloud/mock projects under a cloud space. Use before selecting cloud tables.',
+      parameters: Type.Object({
+        ...CloudConnectionProperties,
+        spaceId: Type.String({ minLength: 1 }),
+      }),
+      execute: async (_toolCallId, params) => dataToolService.listCloudProjects(params as never),
+    },
+    {
+      name: 'data_list_cloud_tables',
+      label: 'List cloud tables',
+      description:
+        'List personal analysis cloud/mock tables under a cloud project. Use before importing a cloud table into cowork.',
+      parameters: Type.Object({
+        ...CloudConnectionProperties,
+        spaceId: Type.String({ minLength: 1 }),
+        projectId: Type.String({ minLength: 1 }),
+      }),
+      execute: async (_toolCallId, params) => dataToolService.listCloudTables(params as never),
+    },
+    {
+      name: 'data_import_cloud_table',
+      label: 'Import cloud table',
+      description:
+        'Export a personal analysis cloud/mock table as CSV, download it locally, and create a cowork input table from it.',
+      parameters: Type.Object({
+        ...CloudConnectionProperties,
+        tableId: Type.String({ minLength: 1 }),
+        spaceId: Type.Optional(
+          Type.String({
+            description:
+              'Optional cloud space id. Pass with projectId to resolve the cloud table name.',
+          })
+        ),
+        projectId: Type.Optional(
+          Type.String({
+            description:
+              'Optional cloud project id. Pass with spaceId to resolve the cloud table name.',
+          })
+        ),
+        name: Type.Optional(Type.String({ minLength: 1 })),
+        previewRows: PreviewRowsSchema,
+      }),
+      execute: async (_toolCallId, params) => dataToolService.importCloudTable(params as never),
+    },
+    {
+      name: 'data_upload_table_to_cloud',
+      label: 'Upload table to cloud',
+      description:
+        'Export a cowork input/output table to CSV, upload it to personal analysis cloud/mock storage, and submit an import with CREATE or REPLACE mode.',
+      parameters: Type.Object({
+        ...CloudConnectionProperties,
+        tableKind: Type.Union([Type.Literal('input'), Type.Literal('output')]),
+        id: Type.String({ minLength: 1 }),
+        writeMode: Type.Union([Type.Literal('CREATE'), Type.Literal('REPLACE')]),
+        datasourceId: Type.Optional(Type.String()),
+        folderId: Type.Optional(Type.String()),
+        projectId: Type.Optional(Type.String()),
+        spaceId: Type.Optional(Type.String()),
+        tableId: Type.Optional(
+          Type.String({
+            description: 'Required when writeMode=REPLACE. Must be omitted for CREATE.',
+          })
+        ),
+        tableName: Type.Optional(Type.String({ minLength: 1 })),
+        fileName: Type.Optional(
+          Type.String({ description: 'CSV file name sent to the upload API.' })
+        ),
+        maxRows: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000000 })),
+        waitForDone: Type.Optional(Type.Boolean()),
+      }),
+      execute: async (_toolCallId, params) =>
+        dataToolService.uploadDataTableToCloud(params as never),
     },
     {
       name: 'data_create_input_table',
@@ -223,8 +328,7 @@ export function createDataCustomTools(
     {
       name: 'data_list_output_tables',
       label: 'List output tables',
-      description:
-        'List reusable output tables. Use before referencing an output table by name.',
+      description: 'List reusable output tables. Use before referencing an output table by name.',
       parameters: ListSchema,
       execute: async (_toolCallId, params) => dataToolService.listOutputTables(params as never),
     },
@@ -267,8 +371,7 @@ export function createDataCustomTools(
     {
       name: 'data_list_tasks',
       label: 'List data tasks',
-      description:
-        'List reusable data tasks. Use before referencing a task by name.',
+      description: 'List reusable data tasks. Use before referencing a task by name.',
       parameters: ListSchema,
       execute: async (_toolCallId, params) => dataToolService.listTasks(params as never),
     },
