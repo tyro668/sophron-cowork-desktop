@@ -6,6 +6,7 @@ import type {
   ServerEvent,
   PermissionResult,
   Session,
+  Project,
   Message,
   TraceStep,
   ContentBlock,
@@ -134,6 +135,21 @@ export function useIPC() {
         switch (event.type) {
           case 'session.list':
             store.setSessions(event.payload.sessions);
+            if (event.payload.projects) {
+              store.setProjects(event.payload.projects);
+            }
+            break;
+
+          case 'project.list':
+            store.setProjects(event.payload.projects);
+            break;
+
+          case 'project.update':
+            store.upsertProject(event.payload.project);
+            break;
+
+          case 'project.delete':
+            store.removeProject(event.payload.projectId);
             break;
 
           case 'session.status':
@@ -701,6 +717,46 @@ export function useIPC() {
     send({ type: 'session.list', payload: {} });
   }, [send]);
 
+  const renameProject = useCallback(
+    async (projectId: string, name: string | null): Promise<Project | null> => {
+      const normalizedName = name?.trim() || null;
+      if (!isElectron) {
+        const project: Project = {
+          id: projectId,
+          name: normalizedName,
+          cwd: '',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        useAppStore.getState().upsertProject(project);
+        return project;
+      }
+
+      const project = await invoke<Project | null>({
+        type: 'project.rename',
+        payload: { projectId, name: normalizedName },
+      });
+      if (project) {
+        useAppStore.getState().upsertProject(project);
+      }
+      return project;
+    },
+    [invoke]
+  );
+
+  const deleteProject = useCallback(
+    async (projectId: string): Promise<void> => {
+      useAppStore.getState().removeProject(projectId);
+      if (isElectron) {
+        await invoke<{ success: boolean }>({
+          type: 'project.delete',
+          payload: { projectId },
+        });
+      }
+    },
+    [invoke]
+  );
+
   // Get messages for a session (from persistent storage)
   const getSessionMessages = useCallback(
     async (sessionId: string): Promise<Message[]> => {
@@ -801,6 +857,8 @@ export function useIPC() {
     stopSession,
     deleteSession,
     batchDeleteSessions,
+    renameProject,
+    deleteProject,
     listSessions,
     getSessionMessages,
     getSessionTraceSteps,

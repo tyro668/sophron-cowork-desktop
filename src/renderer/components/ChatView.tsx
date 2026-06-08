@@ -12,7 +12,7 @@ import {
 } from '../store/selectors';
 import { useAppStore } from '../store';
 import { useIPC } from '../hooks/useIPC';
-import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
+import { AgentModelSelector } from './AgentModelSelector';
 import { MessageCard } from './MessageCard';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
 import type { Message, ContentBlock } from '../types';
@@ -26,7 +26,6 @@ import {
   Clock,
   ArrowUp,
   ArrowDown,
-  ChevronDown,
 } from 'lucide-react';
 
 type AttachedFile = {
@@ -95,18 +94,6 @@ export function ChatView() {
   const canStop = isSessionRunning || hasActiveTurn || pendingCount > 0;
   const modelLabel = appConfig?.model?.trim() || t('chat.noModel');
   const hasConfiguredModel = Boolean(isConfigured && appConfig?.model?.trim());
-  const modelOptions =
-    appConfig?.configSets
-      ?.map((set) => {
-        const model = set.profiles?.[set.activeProfileKey]?.model?.trim() || '';
-        return {
-          id: set.id,
-          name: set.name,
-          model,
-          isActive: set.id === appConfig.activeConfigSetId,
-        };
-      })
-      .filter((option) => option.model) || [];
 
   const displayedMessages = useMemo(() => {
     if (!activeSessionId) return messages;
@@ -1052,51 +1039,19 @@ export function ChatView() {
 
                 <div className="flex min-w-0 items-center gap-2">
                   {hasConfiguredModel ? (
-                    <GlassDropdownMenu
+                    <AgentModelSelector
                       open={showModelMenu}
                       onOpenChange={(open) => {
                         setShowModelMenu(open);
                         if (open) {
                           setShowPermissionMenu(false);
                         }
-                        }}
-                        side="top"
-                        align="end"
-                        contentClassName="w-[min(18rem,calc(100vw-2rem))]"
-                        trigger={
-                          <button
-                            type="button"
-                          className="composer-flat-pill hidden h-9 min-w-0 max-w-[18rem] items-center gap-1.5 rounded-full px-3 text-[13px] sm:inline-flex"
-                          title={modelLabel}
-                        >
-                          <span className="truncate">{modelLabel}</span>
-                          <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" />
-                        </button>
-                      }
-                    >
-                      <div className="max-h-56 overflow-y-auto">
-                        {modelOptions.length > 0 ? (
-                          modelOptions.map((option) => (
-                            <GlassMenuItem
-                              key={option.id}
-                              selected={option.isActive}
-                              onSelect={() => void handleModelOptionClick(option.id)}
-                            >
-                              <span className="block min-w-0">
-                                <span className="block truncate text-[13px] font-medium">
-                                  {option.name}
-                                </span>
-                                <span className="block truncate text-xs opacity-80">
-                                  {option.model}
-                                </span>
-                              </span>
-                            </GlassMenuItem>
-                          ))
-                        ) : (
-                          <div className="px-3 py-2 text-sm text-text-muted">{modelLabel}</div>
-                        )}
-                      </div>
-                    </GlassDropdownMenu>
+                      }}
+                      appConfig={appConfig}
+                      fallbackLabel={modelLabel}
+                      triggerClassName="composer-flat-pill hidden h-9 min-w-0 max-w-[18rem] items-center gap-1.5 rounded-full px-3 text-[13px] sm:inline-flex"
+                      onSelect={(configSetId) => void handleModelOptionClick(configSetId)}
+                    />
                   ) : (
                     <button
                       type="button"
@@ -1105,7 +1060,6 @@ export function ChatView() {
                       title={modelLabel}
                     >
                       <span className="truncate">{modelLabel}</span>
-                      <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" />
                     </button>
                   )}
 

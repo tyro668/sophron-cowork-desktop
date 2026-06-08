@@ -2,6 +2,22 @@ import type {
   PermissionPolicyId,
   PermissionRule as SharedPermissionRule,
 } from '../../shared/permission-policies';
+export type {
+  Automation,
+  AutomationActionDefinitionSummary,
+  AutomationActionGraph,
+  AutomationActionNode,
+  AutomationArtifact,
+  AutomationConcurrencyPolicy,
+  AutomationCreateInput,
+  AutomationDeliveryConfig,
+  AutomationDeliveryChannel,
+  AutomationListQuery,
+  AutomationRun,
+  AutomationRunQuery,
+  AutomationTrigger,
+  AutomationUpdateInput,
+} from '../../shared/automation/types';
 
 // Session types
 export interface Session {
@@ -10,6 +26,8 @@ export interface Session {
   claudeSessionId?: string;
   openaiThreadId?: string;
   status: SessionStatus;
+  projectId?: string;
+  projectName?: string;
   cwd?: string;
   mountedPaths: MountedPath[];
   allowedTools: string[];
@@ -24,6 +42,14 @@ export type SessionStatus = 'idle' | 'running' | 'completed' | 'error';
 export interface MountedPath {
   virtual: string;
   real: string;
+}
+
+export interface Project {
+  id: string;
+  name: string | null;
+  cwd: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 // Message types
@@ -137,11 +163,37 @@ export interface WeeklyScheduleConfig {
 
 export type ScheduleConfig = DailyScheduleConfig | WeeklyScheduleConfig;
 
+export type ScheduleAutomationActionKind = 'conversation' | 'data_task';
+export type ScheduleAutomationArtifactPolicy = 'summary' | 'links' | 'files';
+export type ScheduleAutomationDeliveryChannel = 'feishu' | 'slack' | 'webhook' | 'email';
+
+export interface ScheduleAutomationRecipient {
+  id: string;
+  label: string;
+  channel: ScheduleAutomationDeliveryChannel;
+  target: string;
+  enabled: boolean;
+}
+
+export interface ScheduleAutomationDeliveryConfig {
+  enabled: boolean;
+  artifactPolicy: ScheduleAutomationArtifactPolicy;
+  recipients: ScheduleAutomationRecipient[];
+}
+
+export interface ScheduleAutomationConfig {
+  actionKind: ScheduleAutomationActionKind;
+  dataTaskId?: string | null;
+  dataTaskName?: string | null;
+  delivery: ScheduleAutomationDeliveryConfig;
+}
+
 export interface ScheduleTask {
   id: string;
   title: string;
   prompt: string;
   cwd: string;
+  automationConfig: ScheduleAutomationConfig | null;
   runAt: number;
   nextRunAt: number | null;
   scheduleConfig: ScheduleConfig | null;
@@ -159,6 +211,7 @@ export interface ScheduleCreateInput {
   title?: string;
   prompt: string;
   cwd: string;
+  automationConfig?: ScheduleAutomationConfig | null;
   runAt: number;
   nextRunAt?: number | null;
   scheduleConfig?: ScheduleConfig | null;
@@ -171,6 +224,7 @@ export interface ScheduleUpdateInput {
   title?: string;
   prompt?: string;
   cwd?: string;
+  automationConfig?: ScheduleAutomationConfig | null;
   runAt?: number;
   nextRunAt?: number | null;
   scheduleConfig?: ScheduleConfig | null;
@@ -1005,6 +1059,8 @@ export type ClientEvent =
   | { type: 'session.list'; payload: Record<string, never> }
   | { type: 'session.getMessages'; payload: { sessionId: string } }
   | { type: 'session.getTraceSteps'; payload: { sessionId: string } }
+  | { type: 'project.rename'; payload: { projectId: string; name: string | null } }
+  | { type: 'project.delete'; payload: { projectId: string } }
   | { type: 'permission.response'; payload: { toolUseId: string; result: PermissionResult } }
   | { type: 'sudo.password.response'; payload: { toolUseId: string; password: string | null } }
   | { type: 'settings.update'; payload: Record<string, unknown> }
@@ -1058,7 +1114,10 @@ export type ServerEvent =
   | { type: 'stream.executionTime'; payload: { sessionId: string; messageId: string; executionTimeMs: number } }
   | { type: 'session.status'; payload: { sessionId: string; status: SessionStatus; error?: string } }
   | { type: 'session.update'; payload: { sessionId: string; updates: Partial<Session> } }
-  | { type: 'session.list'; payload: { sessions: Session[] } }
+  | { type: 'session.list'; payload: { sessions: Session[]; projects?: Project[] } }
+  | { type: 'project.list'; payload: { projects: Project[] } }
+  | { type: 'project.update'; payload: { project: Project } }
+  | { type: 'project.delete'; payload: { projectId: string } }
   | { type: 'permission.request'; payload: PermissionRequest }
   | { type: 'permission.dismiss'; payload: { toolUseId: string } }
   | { type: 'sudo.password.request'; payload: SudoPasswordRequest }
@@ -1210,6 +1269,18 @@ export interface AppConfig {
   enableThinking?: boolean;
   isConfigured: boolean;
 }
+
+export type AgentRuntimeConfig = Pick<
+  AppConfig,
+  | 'provider'
+  | 'apiKey'
+  | 'baseUrl'
+  | 'customProtocol'
+  | 'model'
+  | 'contextWindow'
+  | 'maxTokens'
+  | 'enableThinking'
+>;
 
 export interface ProviderPreset {
   name: string;
