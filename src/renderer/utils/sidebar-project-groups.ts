@@ -4,6 +4,7 @@ export const NO_WORKSPACE_PROJECT_KEY = 'project:no-workspace';
 
 export interface SessionProjectGroup {
   key: string;
+  projectId?: string;
   label: string;
   defaultLabel: string;
   path: string | null;
@@ -67,10 +68,13 @@ export function buildSessionProjectGroups(
   );
 
   for (const session of sortedSessions) {
-    const key = getProjectKeyForWorkspace(session.cwd, options.platform);
+    const key = session.projectId
+      ? `project:${session.projectId}`
+      : getProjectKeyForWorkspace(session.cwd, options.platform);
     const path = session.cwd?.trim() || null;
     const defaultLabel = getProjectNameFromWorkspace(path, options.noWorkspaceLabel);
-    const label = options.projectNames?.[key]?.trim() || defaultLabel;
+    const label =
+      options.projectNames?.[key]?.trim() || session.projectName?.trim() || defaultLabel;
     const latestActivity = getSessionActivity(session);
     const existing = groups.get(key);
 
@@ -83,6 +87,7 @@ export function buildSessionProjectGroups(
     } else {
       groups.set(key, {
         key,
+        projectId: session.projectId,
         label,
         defaultLabel,
         path,

@@ -13,6 +13,12 @@ function makeEvent(type: ClientEvent['type']): ClientEvent {
     case 'session.getMessages':
     case 'session.getTraceSteps':
       return { type, payload: { sessionId: 'session-1' } };
+    case 'session.batchDelete':
+      return { type, payload: { sessionIds: ['session-1'] } };
+    case 'project.rename':
+      return { type, payload: { projectId: 'project-1', name: 'Project' } };
+    case 'project.delete':
+      return { type, payload: { projectId: 'project-1' } };
     case 'session.list':
     case 'settings.update':
     case 'folder.select':
@@ -38,6 +44,7 @@ describe('eventRequiresSessionManager', () => {
       'session.continue',
       'session.stop',
       'session.delete',
+      'session.batchDelete',
       'session.list',
       'session.getMessages',
       'session.getTraceSteps',
@@ -56,6 +63,8 @@ describe('eventRequiresSessionManager', () => {
       'workdir.get',
       'workdir.set',
       'workdir.select',
+      'project.rename',
+      'project.delete',
     ];
 
     for (const type of optionalTypes) {

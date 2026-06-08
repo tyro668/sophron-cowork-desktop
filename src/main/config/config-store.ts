@@ -139,6 +139,18 @@ export interface AppConfig {
   isConfigured: boolean;
 }
 
+export type AgentRuntimeConfig = Pick<
+  AppConfig,
+  | 'provider'
+  | 'apiKey'
+  | 'baseUrl'
+  | 'customProtocol'
+  | 'model'
+  | 'contextWindow'
+  | 'maxTokens'
+  | 'enableThinking'
+>;
+
 export interface MemoryModelRuntimeConfig {
   inheritFromActive: boolean;
   provider?: ProviderType;
@@ -1308,6 +1320,23 @@ export class ConfigStore {
     this.saveConfig(this.composeProjectedConfig(current, current.configSets, payload.id));
 
     return this.getAll();
+  }
+
+  getRuntimeConfigForSet(id: string): AgentRuntimeConfig | null {
+    const current = this.getAll();
+    const configSet = current.configSets.find((set) => set.id === id);
+    if (!configSet) return null;
+    const projected = this.projectFromConfigSet(configSet);
+    return {
+      provider: projected.provider,
+      apiKey: projected.apiKey,
+      baseUrl: projected.baseUrl,
+      customProtocol: projected.customProtocol,
+      model: projected.model,
+      contextWindow: projected.contextWindow,
+      maxTokens: projected.maxTokens,
+      enableThinking: projected.enableThinking,
+    };
   }
 
   /**

@@ -32,12 +32,12 @@ import {
 
 import sidebarLogoSrc from '../assets/logo.png';
 
-const SIDEBAR_PROJECT_NAMES_STORAGE_KEY = 'sophron.sidebar.projectNames.v1';
 const SIDEBAR_PROJECT_EXPANSION_STORAGE_KEY = 'sophron.sidebar.projectExpansion.v1';
 
 export function Sidebar() {
   const { t } = useTranslation();
   const sessions = useAppStore((s) => s.sessions);
+  const projects = useAppStore((s) => s.projects);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const mainView = useAppStore((s) => s.mainView);
   const settings = useAppStore((s) => s.settings);
@@ -54,6 +54,8 @@ export function Sidebar() {
   const {
     deleteSession,
     batchDeleteSessions,
+    renameProject,
+    deleteProject,
     getSessionMessages,
     getSessionTraceSteps,
     isElectron,
@@ -64,9 +66,7 @@ export function Sidebar() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [updateState, setUpdateState] = useState<AppUpdateState | null>(null);
-  const [projectNames, setProjectNames] = useState<Record<string, string>>(() =>
-    readStoredProjectNames()
-  );
+  const [projectNames, setProjectNames] = useState<Record<string, string>>({});
   const [projectExpansion, setProjectExpansion] = useState<Record<string, boolean>>(() =>
     readStoredProjectExpansion()
   );
@@ -76,15 +76,29 @@ export function Sidebar() {
 
   const normalizedQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
   const rendererPlatform = typeof window !== 'undefined' ? window.electronAPI?.platform : undefined;
+  const persistedProjectNames = useMemo(() => {
+    const names: Record<string, string> = {};
+    for (const project of projects) {
+      const name = project.name?.trim();
+      if (name) {
+        names[`project:${project.id}`] = name;
+      }
+    }
+    return names;
+  }, [projects]);
+  const effectiveProjectNames = useMemo(
+    () => ({ ...persistedProjectNames, ...projectNames }),
+    [persistedProjectNames, projectNames]
+  );
   const groupedSessions = useMemo(
     () =>
       buildSessionProjectGroups(sessions, {
         noWorkspaceLabel: t('sidebar.noWorkspaceProject'),
         platform: rendererPlatform,
-        projectNames,
+        projectNames: effectiveProjectNames,
         query: normalizedQuery,
       }),
-    [normalizedQuery, projectNames, rendererPlatform, sessions, t]
+    [effectiveProjectNames, normalizedQuery, rendererPlatform, sessions, t]
   );
   const expandedProjectKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -163,17 +177,6 @@ export function Sidebar() {
     setShowDeleteConfirm(false);
   }, []);
 
-  const saveProjectNames = useCallback(
-    (updater: (current: Record<string, string>) => Record<string, string>) => {
-      setProjectNames((current) => {
-        const next = updater(current);
-        writeStoredProjectNames(next);
-        return next;
-      });
-    },
-    []
-  );
-
   const saveProjectExpansion = useCallback(
     (updater: (current: Record<string, boolean>) => Record<string, boolean>) => {
       setProjectExpansion((current) => {
@@ -211,7 +214,7 @@ export function Sidebar() {
   const handleSaveProjectName = useCallback(
     (group: SessionProjectGroup) => {
       const nextName = projectNameDraft.trim();
-      saveProjectNames((current) => {
+      setProjectNames((current) => {
         const next = { ...current };
         if (!nextName || nextName === group.defaultLabel) {
           delete next[group.key];
@@ -220,9 +223,14 @@ export function Sidebar() {
         }
         return next;
       });
+      if (group.projectId) {
+        void renameProject(group.projectId, nextName || null).catch((error) => {
+          console.error('[Sidebar] Failed to rename project:', error);
+        });
+      }
       handleCancelRenameProject();
     },
-    [handleCancelRenameProject, projectNameDraft, saveProjectNames]
+    [handleCancelRenameProject, projectNameDraft, renameProject]
   );
 
   const handleRemoveProject = useCallback(
@@ -230,11 +238,16 @@ export function Sidebar() {
       const sessionIds = group.sessions.map((session) => session.id);
       if (sessionIds.length === 0) return;
       batchDeleteSessions(sessionIds);
-      saveProjectNames((current) => {
+      setProjectNames((current) => {
         const next = { ...current };
         delete next[group.key];
         return next;
       });
+      if (group.projectId) {
+        void deleteProject(group.projectId).catch((error) => {
+          console.error('[Sidebar] Failed to delete project:', error);
+        });
+      }
       saveProjectExpansion((current) => {
         const next = { ...current };
         delete next[group.key];
@@ -246,10 +259,10 @@ export function Sidebar() {
     },
     [
       batchDeleteSessions,
+      deleteProject,
       exitSelectMode,
       handleCancelRenameProject,
       saveProjectExpansion,
-      saveProjectNames,
     ]
   );
 
@@ -921,38 +934,6 @@ export function Sidebar() {
       )}
     </aside>
   );
-}
-
-function readStoredProjectNames(): Record<string, string> {
-  if (typeof window === 'undefined') return {};
-
-  try {
-    const raw = window.localStorage.getItem(SIDEBAR_PROJECT_NAMES_STORAGE_KEY);
-    if (!raw) return {};
-
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-
-    const names: Record<string, string> = {};
-    for (const [key, value] of Object.entries(parsed)) {
-      if (typeof value === 'string' && value.trim()) {
-        names[key] = value.trim();
-      }
-    }
-    return names;
-  } catch {
-    return {};
-  }
-}
-
-function writeStoredProjectNames(projectNames: Record<string, string>) {
-  if (typeof window === 'undefined') return;
-
-  try {
-    window.localStorage.setItem(SIDEBAR_PROJECT_NAMES_STORAGE_KEY, JSON.stringify(projectNames));
-  } catch {
-    // Ignore storage failures so sidebar navigation remains usable.
-  }
 }
 
 function readStoredProjectExpansion(): Record<string, boolean> {

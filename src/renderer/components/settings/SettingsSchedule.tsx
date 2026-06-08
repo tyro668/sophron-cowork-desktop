@@ -1,865 +1,556 @@
-import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
-import type { TFunction } from 'i18next';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from 'react';
+import * as Switch from '@radix-ui/react-switch';
 import { useTranslation } from 'react-i18next';
 import {
   AlertCircle,
   ArrowLeft,
+  ArrowUpDown,
+  Bell,
   CalendarClock,
-  CheckCircle,
   CheckCircle2,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
+  Clock,
   Clock3,
+  Database,
+  Folder,
+  GripVertical,
+  MessagesSquare,
+  MessageSquare,
+  MoreHorizontal,
   PencilLine,
   Play,
   Plus,
   RefreshCw,
   Save,
   Search,
+  Send,
   Trash2,
-  X,
   type LucideIcon,
 } from 'lucide-react';
 import type {
-  ScheduleConfig,
-  ScheduleTask,
-  ScheduleRepeatUnit,
-  ScheduleWeekday,
-  ScheduleCreateInput,
-  ScheduleUpdateInput,
+  Automation,
+  AutomationActionDefinitionSummary,
+  AutomationActionGraph,
+  AutomationActionNode,
+  AutomationCreateInput,
+  AutomationTrigger,
+  AutomationUpdateInput,
+  AppConfig,
+  DataCleaningTask,
+  DataDashboard,
+  Project,
 } from '../../types';
-import { useDismissibleLayer } from '../../hooks/useDismissibleLayer';
+import { useAppStore } from '../../store';
+import { AgentModelSelector, getAgentModelLabel } from '../AgentModelSelector';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { GlassSelect } from '../GlassSelect';
-import { useAppStore } from '../../store';
-import { formatAppDateTime, joinAppList } from '../../utils/i18n-format';
-import { renderLocalizedBannerMessage, getWeekdayOptions, getScheduleModeOptions } from './shared';
-import type { LocalizedBanner, ScheduleFormMode } from './shared';
+import { formatAppDateTime } from '../../utils/i18n-format';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
+const SYSTEM_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 const AUTOMATION_TABLE_PAGE_SIZE = 10;
-
-const SCHEDULE_TIME_SUGGESTIONS = [
-  '06:00',
-  '07:30',
-  '08:00',
-  '09:00',
-  '10:30',
-  '12:00',
-  '14:00',
-  '15:30',
-  '18:00',
-  '19:30',
-  '21:00',
-  '22:30',
+const DEFAULT_NOTIFICATION_RECIPIENT = '运营群';
+const NOTIFICATION_RECIPIENT_OPTIONS = [
+  {
+    value: DEFAULT_NOTIFICATION_RECIPIENT,
+    labelKey: 'schedule.notificationOpsGroup',
+    fallback: '运营群',
+  },
+  { value: '销售群', labelKey: 'schedule.notificationSalesGroup', fallback: '销售群' },
+  { value: '数据团队', labelKey: 'schedule.notificationDataTeam', fallback: '数据团队' },
 ];
+
+type TriggerMode = AutomationTrigger['kind'];
+type Banner = { tone: 'error' | 'success'; text: string };
 
 export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const { t } = useTranslation();
-  const workingDir = useAppStore((state) => state.workingDir);
-  const sessions = useAppStore((state) => state.sessions);
-  const [tasks, setTasks] = useState<ScheduleTask[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<LocalizedBanner | null>(null);
-  const [success, setSuccess] = useState<LocalizedBanner | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingTaskSnapshot, setEditingTaskSnapshot] = useState<ScheduleTask | null>(null);
-  const [taskTitle, setTaskTitle] = useState('');
-  const [isEditingTaskTitle, setIsEditingTaskTitle] = useState(false);
-  const [prompt, setPrompt] = useState('');
-  const [cwd, setCwd] = useState('');
-  const [runAt, setRunAt] = useState('');
-  const [scheduleMode, setScheduleMode] = useState<ScheduleFormMode>('once');
-  const [selectedTimes, setSelectedTimes] = useState<string[]>(['08:00']);
-  const [selectedWeekdays, setSelectedWeekdays] = useState<ScheduleWeekday[]>([1]);
-  const [enabled, setEnabled] = useState(true);
-  const [repeatEvery, setRepeatEvery] = useState(1);
-  const [repeatUnit, setRepeatUnit] = useState<ScheduleRepeatUnit>('day');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const projects = useAppStore((state) => state.projects);
+  const appConfig = useAppStore((state) => state.appConfig);
+  const tr = useCallback(
+    (key: string, fallback: string) => t(key, { defaultValue: fallback }),
+    [t]
+  );
+  const [automations, setAutomations] = useState<Automation[]>([]);
+  const [actionDefinitions, setActionDefinitions] = useState<AutomationActionDefinitionSummary[]>(
+    []
+  );
+  const [dataDashboard, setDataDashboard] = useState<DataDashboard | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'detail'>('list');
+  const [draft, setDraft] = useState<AutomationDraft>(() => createEmptyDraft());
+  const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const taskTitleInputRef = useRef<HTMLInputElement | null>(null);
-  const skipTaskTitleSaveRef = useRef(false);
-  const weekdayOptions = getWeekdayOptions(t);
-  const scheduleModeOptions = getScheduleModeOptions(t);
-  const scheduleConfig = buildScheduleConfigFromForm(scheduleMode, selectedTimes, selectedWeekdays);
-  const selectedWeekdayLabels = joinAppList(
-    selectedWeekdays
-      .map(
-        (weekday) =>
-          weekdayOptions.find((option) => option.value === weekday)?.label ??
-          t('schedule.unknownWeekday')
-      )
-      .filter(Boolean)
-  );
-  const selectedTimeLabels = joinAppList(selectedTimes);
-  const runningSessionIds = useMemo(
-    () =>
-      new Set(
-        sessions.filter((session) => session.status === 'running').map((session) => session.id)
-      ),
-    [sessions]
-  );
-  const todayRange = useMemo(() => {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    return { start, end: start + 24 * 60 * 60 * 1000 };
-  }, []);
-  const filteredTasks = useMemo(() => {
-    const keyword = searchQuery.trim().toLowerCase();
-    if (!keyword) {
-      return tasks;
-    }
-    return tasks.filter((task) =>
-      [task.title, task.prompt, task.cwd]
-        .filter(Boolean)
-        .some((value) => value.toLowerCase().includes(keyword))
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [banner, setBanner] = useState<Banner | null>(null);
+
+  const selectedAutomation = automations.find((automation) => automation.id === selectedId) ?? null;
+  const dataTasks = dataDashboard?.tasks ?? [];
+  const inputTables = dataDashboard?.datasets ?? [];
+  const outputTables = dataDashboard?.outputTables ?? [];
+
+  const filteredAutomations = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    if (!keyword) return automations;
+    return automations.filter((automation) =>
+      [automation.name, automation.description ?? '', automation.status]
+        .join(' ')
+        .toLowerCase()
+        .includes(keyword)
     );
-  }, [searchQuery, tasks]);
-  const totalPages = Math.max(1, Math.ceil(filteredTasks.length / AUTOMATION_TABLE_PAGE_SIZE));
-  const safeCurrentPage = Math.min(currentPage, totalPages);
-  const pageTasks = useMemo(() => {
-    const start = (safeCurrentPage - 1) * AUTOMATION_TABLE_PAGE_SIZE;
-    return filteredTasks.slice(start, start + AUTOMATION_TABLE_PAGE_SIZE);
-  }, [filteredTasks, safeCurrentPage]);
-  const selectedTask = filteredTasks.find((task) => task.id === selectedTaskId) ?? null;
-  const summaryCards = useMemo(
-    () => [
-      {
-        key: 'total',
-        label: t('schedule.summary.total'),
-        description: t('schedule.summary.totalDesc'),
-        value: tasks.length,
-        Icon: CalendarClock,
-        iconClassName: 'bg-accent/10 text-accent',
-      },
-      {
-        key: 'enabled',
-        label: t('schedule.summary.enabled'),
-        description: t('schedule.summary.enabledDesc'),
-        value: tasks.filter((task) => task.enabled).length,
-        Icon: CheckCircle2,
-        iconClassName: 'bg-success/10 text-success',
-      },
-      {
-        key: 'running',
-        label: t('schedule.summary.running'),
-        description: t('schedule.summary.runningDesc'),
-        value: tasks.filter(
-          (task) => task.lastRunSessionId && runningSessionIds.has(task.lastRunSessionId)
-        ).length,
-        Icon: Play,
-        iconClassName: 'bg-[#E9F7F5] text-[#238C80]',
-      },
-      {
-        key: 'today',
-        label: t('schedule.summary.today'),
-        description: t('schedule.summary.todayDesc'),
-        value: tasks.filter(
-          (task) =>
-            task.nextRunAt !== null &&
-            task.nextRunAt >= todayRange.start &&
-            task.nextRunAt < todayRange.end
-        ).length,
-        Icon: Clock3,
-        iconClassName: 'bg-warning/10 text-warning',
-      },
-    ],
-    [runningSessionIds, t, tasks, todayRange.end, todayRange.start]
+  }, [automations, search]);
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredAutomations.length / AUTOMATION_TABLE_PAGE_SIZE)
   );
-
-  useEffect(() => {
-    const defaultRunAt = Date.now() + 5 * 60 * 1000;
-    setRunAt(toLocalDateTimeInput(defaultRunAt));
-  }, []);
-
-  useEffect(() => {
-    if (!cwd) {
-      setCwd(workingDir || '');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workingDir]);
-
-  const loadTasks = useCallback(async (options: { silent?: boolean } = {}) => {
-    if (!isElectron) return;
-    const silent = options.silent === true;
-    if (!silent) {
-      setIsLoading(true);
-      setError(null);
-    }
-    try {
-      const rows = await window.electronAPI.schedule.list();
-      setTasks(rows);
-    } catch (err) {
-      if (!silent) {
-        setError(err instanceof Error ? { text: err.message } : { key: 'schedule.loadFailed' });
-      }
-    } finally {
-      if (!silent) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isElectron || !isActive) return;
-    void loadTasks();
-  }, [isActive, loadTasks]);
-
-  useEffect(() => {
-    if (!isElectron || !isActive) return;
-    const interval = setInterval(() => {
-      void loadTasks({ silent: true });
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [isActive, loadTasks]);
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pageAutomations = useMemo(() => {
+    const start = (safeCurrentPage - 1) * AUTOMATION_TABLE_PAGE_SIZE;
+    return filteredAutomations.slice(start, start + AUTOMATION_TABLE_PAGE_SIZE);
+  }, [filteredAutomations, safeCurrentPage]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery]);
+  }, [search]);
 
-  useEffect(() => {
-    if (safeCurrentPage !== currentPage) {
-      setCurrentPage(safeCurrentPage);
-    }
-  }, [currentPage, safeCurrentPage]);
-
-  useEffect(() => {
-    if (selectedTaskId && !filteredTasks.some((task) => task.id === selectedTaskId)) {
-      setSelectedTaskId(null);
-    }
-  }, [filteredTasks, selectedTaskId]);
-
-  useEffect(() => {
-    if (!isEditingTaskTitle) return;
-    taskTitleInputRef.current?.focus();
-    taskTitleInputRef.current?.select();
-  }, [isEditingTaskTitle]);
-
-  async function saveTaskTitle() {
-    if (skipTaskTitleSaveRef.current) {
-      skipTaskTitleSaveRef.current = false;
-      return;
-    }
-    if (!isElectron || !editingId || !editingTaskSnapshot || !isEditingTaskTitle) return;
-    const nextTitle = taskTitle.trim();
-    if (!nextTitle) {
-      setError({ key: 'schedule.titleRequired' });
-      setTaskTitle(stripAutomationTitlePrefix(editingTaskSnapshot.title));
-      setIsEditingTaskTitle(false);
-      return;
-    }
-    if (nextTitle === stripAutomationTitlePrefix(editingTaskSnapshot.title)) {
-      setTaskTitle(nextTitle);
-      setIsEditingTaskTitle(false);
-      return;
-    }
-    setIsLoading(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      const updated = await window.electronAPI.schedule.update(editingId, { title: nextTitle });
-      if (!updated) {
-        throw new Error(t('schedule.taskMissing'));
-      }
-      applyTaskUpdate(updated);
-      setTaskTitle(stripAutomationTitlePrefix(updated.title));
-      setIsEditingTaskTitle(false);
-      setSuccess({ key: 'schedule.updated' });
-    } catch (err) {
-      setError(err instanceof Error ? { text: err.message } : { key: 'schedule.saveFailed' });
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  function applyTaskUpdate(task: ScheduleTask) {
-    setEditingTaskSnapshot(task);
-    setPrompt(task.prompt);
-    setCwd(task.cwd);
-    setRunAt(toLocalDateTimeInput(task.nextRunAt ?? task.runAt));
-    setEnabled(task.enabled);
-    setScheduleMode(detectScheduleMode(task));
-    setSelectedTimes(task.scheduleConfig?.times ?? ['08:00']);
-    setSelectedWeekdays(
-      task.scheduleConfig?.kind === 'weekly' ? task.scheduleConfig.weekdays : [1]
-    );
-    setRepeatEvery(task.repeatEvery ?? 1);
-    setRepeatUnit(task.repeatUnit ?? 'day');
-    setTasks((current) => [task, ...current.filter((item) => item.id !== task.id)]);
-    setSelectedTaskId(task.id);
-  }
-
-  async function startCreateTask() {
+  const load = useCallback(async () => {
     if (!isElectron) return;
-    const defaultRunAt = Date.now() + 5 * 60 * 1000;
     setIsLoading(true);
-    setError(null);
-    setSuccess(null);
+    setBanner(null);
     try {
-      const created = await window.electronAPI.schedule.create({
-        title: t('schedule.draftTitle'),
-        prompt: '',
-        cwd: workingDir || '',
-        runAt: defaultRunAt,
-        nextRunAt: defaultRunAt,
-        scheduleConfig: null,
-        repeatEvery: null,
-        repeatUnit: null,
-        enabled: false,
+      const [automationRows, actions, dashboard] = await Promise.all([
+        window.electronAPI.automation.list(),
+        window.electronAPI.automation.listActionDefinitions(),
+        window.electronAPI.data.getDashboard({
+          includeSummary: false,
+          includeTasks: true,
+          includeDatasets: true,
+          includeOutputTables: true,
+          taskLimit: 200,
+          datasetLimit: 200,
+          outputLimit: 200,
+        }),
+      ]);
+      setAutomations(automationRows);
+      setActionDefinitions(actions);
+      setDataDashboard(dashboard);
+      if (!selectedId && automationRows[0]) {
+        setSelectedId(automationRows[0].id);
+        setDraft(automationToDraft(automationRows[0]));
+      }
+    } catch (error) {
+      setBanner({
+        tone: 'error',
+        text: error instanceof Error ? error.message : tr('schedule.loadFailed', '加载自动化失败'),
       });
-      setTasks((current) => [created, ...current.filter((task) => task.id !== created.id)]);
-      setSearchQuery('');
-      setCurrentPage(1);
-      editTask(created);
-    } catch (err) {
-      setError(err instanceof Error ? { text: err.message } : { key: 'schedule.saveFailed' });
-      await loadTasks({ silent: true });
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [selectedId, tr]);
 
-  async function submitTask(
-    options: { silentSuccess?: boolean } = {}
-  ): Promise<ScheduleTask | null> {
-    if (!isElectron) return null;
-    const trimmedPrompt = prompt.trim();
-    if (!trimmedPrompt) {
-      setError({ key: 'schedule.promptRequired' });
-      return null;
+  useEffect(() => {
+    if (!isActive) return;
+    void load();
+  }, [isActive, load]);
+
+  useEffect(() => {
+    if (!selectedAutomation) return;
+    setDraft(automationToDraft(selectedAutomation));
+  }, [selectedAutomation]);
+
+  const createNew = () => {
+    setSelectedId(null);
+    setDraft(createEmptyDraft());
+    setViewMode('detail');
+    setBanner(null);
+  };
+
+  const openSelectedDetail = () => {
+    if (!selectedAutomation) return;
+    setDraft(automationToDraft(selectedAutomation));
+    setViewMode('detail');
+    setBanner(null);
+  };
+
+  const save = async () => {
+    if (!draft.name.trim()) {
+      setBanner({ tone: 'error', text: tr('schedule.titleRequired', '请输入自动化名称') });
+      return;
     }
-    if (scheduleMode === 'daily' && (!scheduleConfig || scheduleConfig.times.length === 0)) {
-      setError({ key: 'schedule.dailyTimesRequired' });
-      return null;
+    if (draft.actionGraph.nodes.length === 0) {
+      setBanner({ tone: 'error', text: tr('schedule.actionRequired', '至少添加一个动作') });
+      return;
     }
-    if (scheduleMode === 'weekly') {
-      if (
-        !scheduleConfig ||
-        scheduleConfig.kind !== 'weekly' ||
-        scheduleConfig.times.length === 0
-      ) {
-        setError({ key: 'schedule.weeklyTimesRequired' });
-        return null;
+    setIsSaving(true);
+    setBanner(null);
+    try {
+      const payload = draftToPayload(draft, appConfig);
+      const saved = selectedAutomation
+        ? await window.electronAPI.automation.update(selectedAutomation.id, payload)
+        : await window.electronAPI.automation.create(payload as AutomationCreateInput);
+      if (!saved) {
+        throw new Error(tr('schedule.taskMissing', '自动化不存在'));
       }
-      if (scheduleConfig.weekdays.length === 0) {
-        setError({ key: 'schedule.weekdayRequired' });
-        return null;
-      }
-    }
-    const usesDateTimeInput = scheduleMode === 'once' || scheduleMode === 'legacy-interval';
-    const runAtValue: number | null = usesDateTimeInput
-      ? new Date(runAt).getTime()
-      : computeNextScheduledRun(scheduleConfig, Date.now());
-    if (runAtValue === null || !Number.isFinite(runAtValue)) {
-      setError({
-        key: usesDateTimeInput ? 'schedule.invalidTime' : 'schedule.nextRunCalculationFailed',
+      await load();
+      setSelectedId(saved.id);
+      setDraft(automationToDraft(saved));
+      setViewMode('detail');
+      setBanner({ tone: 'success', text: tr('schedule.saved', '自动化已保存') });
+    } catch (error) {
+      setBanner({
+        tone: 'error',
+        text: error instanceof Error ? error.message : tr('schedule.saveFailed', '保存自动化失败'),
       });
-      return null;
-    }
-    setIsLoading(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      if (editingId) {
-        const originalRunAtInput = editingTaskSnapshot
-          ? toLocalDateTimeInput(editingTaskSnapshot.nextRunAt ?? editingTaskSnapshot.runAt)
-          : null;
-        const nextScheduleSignature = buildScheduleSignatureFromForm(
-          scheduleMode,
-          runAt,
-          selectedTimes,
-          selectedWeekdays,
-          repeatEvery,
-          repeatUnit
-        );
-        const originalScheduleSignature = editingTaskSnapshot
-          ? buildScheduleSignatureFromTask(editingTaskSnapshot)
-          : null;
-        const shouldUpdatePrompt =
-          !editingTaskSnapshot || trimmedPrompt !== editingTaskSnapshot.prompt.trim();
-        const shouldResetScheduleTime =
-          !editingTaskSnapshot ||
-          nextScheduleSignature !== originalScheduleSignature ||
-          runAt !== originalRunAtInput ||
-          (enabled && editingTaskSnapshot.nextRunAt === null);
-        if (shouldResetScheduleTime && runAtValue <= Date.now()) {
-          setError({ key: 'schedule.futureTimeRequired' });
-          return null;
-        }
-        const payload: ScheduleUpdateInput = {
-          title:
-            taskTitle.trim() ||
-            stripAutomationTitlePrefix(editingTaskSnapshot?.title ?? t('schedule.draftTitle')),
-          cwd: cwd.trim() || workingDir || '',
-          enabled,
-          scheduleConfig,
-          repeatEvery: scheduleMode === 'legacy-interval' ? repeatEvery : null,
-          repeatUnit: scheduleMode === 'legacy-interval' ? repeatUnit : null,
-        };
-        if (shouldUpdatePrompt) {
-          payload.prompt = trimmedPrompt;
-        }
-        if (shouldResetScheduleTime) {
-          payload.runAt = runAtValue;
-          payload.nextRunAt = runAtValue;
-        }
-        const updated = await window.electronAPI.schedule.update(editingId, payload);
-        if (!updated) {
-          throw new Error(t('schedule.taskMissing'));
-        }
-        applyTaskUpdate(updated);
-        setTaskTitle(stripAutomationTitlePrefix(updated.title));
-        if (!options.silentSuccess) {
-          setSuccess({ key: 'schedule.updated' });
-        }
-        await loadTasks({ silent: true });
-        return updated;
-      } else {
-        if (runAtValue <= Date.now()) {
-          setError({ key: 'schedule.futureTimeRequired' });
-          return null;
-        }
-        const payload: ScheduleCreateInput = {
-          title: taskTitle.trim() || t('schedule.draftTitle'),
-          prompt: trimmedPrompt,
-          cwd: cwd.trim() || workingDir || '',
-          runAt: runAtValue,
-          nextRunAt: runAtValue,
-          scheduleConfig,
-          enabled,
-          repeatEvery: scheduleMode === 'legacy-interval' ? repeatEvery : null,
-          repeatUnit: scheduleMode === 'legacy-interval' ? repeatUnit : null,
-        };
-        const created = await window.electronAPI.schedule.create(payload);
-        if (!options.silentSuccess) {
-          setSuccess({ key: 'schedule.created' });
-        }
-        clearForm();
-        await loadTasks({ silent: true });
-        return created;
-      }
-    } catch (err) {
-      setError(err instanceof Error ? { text: err.message } : { key: 'schedule.saveFailed' });
-      return null;
     } finally {
-      setIsLoading(false);
+      setIsSaving(false);
     }
-  }
+  };
 
-  async function runNow(task: ScheduleTask) {
-    if (!isElectron) return;
-    setIsLoading(true);
-    setError(null);
-    setSuccess(null);
+  const runNow = async () => {
+    if (!selectedAutomation) return;
     try {
-      const updated = await window.electronAPI.schedule.runNow(task.id);
-      if (!updated) {
-        throw new Error(t('schedule.taskMissing'));
-      }
-      setSuccess({ key: 'schedule.runNowSuccess' });
-      await loadTasks();
-    } catch (err) {
-      setError(err instanceof Error ? { text: err.message } : { key: 'schedule.runNowFailed' });
-    } finally {
-      setIsLoading(false);
+      await window.electronAPI.automation.runNow(selectedAutomation.id);
+      await load();
+      setBanner({ tone: 'success', text: tr('schedule.runNowSuccess', '自动化已开始运行') });
+    } catch (error) {
+      setBanner({
+        tone: 'error',
+        text: error instanceof Error ? error.message : tr('schedule.runNowFailed', '运行失败'),
+      });
     }
-  }
+  };
 
-  async function runEditingTask() {
-    const saved = await submitTask({ silentSuccess: true });
-    if (!saved) return;
-    await runNow(saved);
-  }
+  const remove = async () => {
+    if (!selectedAutomation) return;
+    if (!window.confirm(tr('schedule.deleteConfirm', '确认删除这个自动化？'))) return;
+    await window.electronAPI.automation.delete(selectedAutomation.id);
+    setSelectedId(null);
+    setDraft(createEmptyDraft());
+    setViewMode('list');
+    await load();
+  };
 
-  async function deleteTask(task: ScheduleTask) {
-    if (!isElectron) return;
-    if (!window.confirm(t('schedule.deleteConfirm', { title: task.title }))) return;
-    setIsLoading(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      await window.electronAPI.schedule.delete(task.id);
-      if (editingId === task.id) {
-        clearForm();
-      }
-      if (selectedTaskId === task.id) {
-        setSelectedTaskId(null);
-      }
-      setSuccess({ key: 'schedule.deleted' });
-      await loadTasks();
-    } catch (err) {
-      setError(err instanceof Error ? { text: err.message } : { key: 'schedule.deleteFailed' });
-      setIsLoading(false);
-    }
-  }
+  const summaryContent = (
+    <>
+      <section className="grid flex-shrink-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label={tr('schedule.summary.total', '总数')}
+          description={tr('schedule.summary.totalDesc', '全部自动化流程')}
+          value={automations.length}
+          Icon={CalendarClock}
+          iconClassName="bg-accent/10 text-accent"
+        />
+        <StatCard
+          label={tr('schedule.summary.enabled', '开启')}
+          description={tr('schedule.summary.enabledDesc', '当前会自动触发')}
+          value={automations.filter((item) => item.enabled).length}
+          Icon={CheckCircle2}
+          iconClassName="bg-success/10 text-success"
+        />
+        <StatCard
+          label={tr('schedule.summary.running', '运行中')}
+          description={tr('schedule.summary.runningDesc', '正在执行动作链')}
+          value={automations.filter((item) => item.status === 'running').length}
+          Icon={Play}
+          iconClassName="bg-[#E9F7F5] text-[#238C80]"
+        />
+        <StatCard
+          label={tr('schedule.summary.failed', '失败')}
+          description={tr('schedule.summary.failedDesc', '最近执行失败')}
+          value={automations.filter((item) => item.lastRunStatus === 'failed').length}
+          Icon={Clock3}
+          iconClassName="bg-warning/10 text-warning"
+        />
+      </section>
 
-  function editTask(task: ScheduleTask) {
-    setSelectedTaskId(task.id);
-    setEditingId(task.id);
-    setEditingTaskSnapshot(task);
-    setTaskTitle(stripAutomationTitlePrefix(task.title));
-    setIsEditingTaskTitle(false);
-    setPrompt(task.prompt);
-    setCwd(task.cwd);
-    setRunAt(toLocalDateTimeInput(task.nextRunAt ?? task.runAt));
-    setEnabled(task.enabled);
-    setScheduleMode(detectScheduleMode(task));
-    setSelectedTimes(task.scheduleConfig?.times ?? ['08:00']);
-    setSelectedWeekdays(
-      task.scheduleConfig?.kind === 'weekly' ? task.scheduleConfig.weekdays : [1]
+      {banner && (
+        <div
+          className={`flex items-center gap-2 rounded-md border px-3 py-2 text-xs ${
+            banner.tone === 'error'
+              ? 'border-danger/30 bg-danger/10 text-danger'
+              : 'border-success/30 bg-success/10 text-success'
+          }`}
+        >
+          <AlertCircle size={14} />
+          {banner.text}
+        </div>
+      )}
+    </>
+  );
+
+  if (viewMode === 'detail') {
+    return (
+      <div className="flex h-full min-h-0 flex-col gap-3 text-sm text-text-primary">
+        <EditorHeader
+          selectedAutomation={selectedAutomation}
+          draft={draft}
+          isSaving={isSaving}
+          onDraftChange={setDraft}
+          onSave={() => void save()}
+          onRun={() => void runNow()}
+          onDelete={() => void remove()}
+          onBack={() => setViewMode('list')}
+          tr={tr}
+        />
+
+        <section className="flex min-h-0 flex-1 flex-col gap-4">
+          <TaskStatusSection draft={draft} onDraftChange={setDraft} tr={tr} />
+          <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(340px,0.58fr)_minmax(620px,1fr)]">
+            <div className="flex min-h-0 flex-col gap-4">
+              <ExecutionProjectPanel
+                draft={draft}
+                projects={projects}
+                onDraftChange={setDraft}
+                tr={tr}
+              />
+              <TriggerConditionPanel
+                draft={draft}
+                projects={projects}
+                onDraftChange={setDraft}
+                tr={tr}
+              />
+            </div>
+            <ActionChainSection
+              draft={draft}
+              actionDefinitions={actionDefinitions}
+              dataTasks={dataTasks}
+              inputTables={inputTables}
+              outputTables={outputTables}
+              appConfig={appConfig}
+              onDraftChange={setDraft}
+              tr={tr}
+            />
+          </div>
+        </section>
+      </div>
     );
-    setRepeatEvery(task.repeatEvery ?? 1);
-    setRepeatUnit(task.repeatUnit ?? 'day');
-    setError(null);
-    setSuccess(null);
-  }
-
-  function clearForm() {
-    const defaultRunAt = Date.now() + 5 * 60 * 1000;
-    setEditingId(null);
-    setEditingTaskSnapshot(null);
-    setTaskTitle('');
-    setIsEditingTaskTitle(false);
-    setPrompt('');
-    setCwd(workingDir || '');
-    setRunAt(toLocalDateTimeInput(defaultRunAt));
-    setScheduleMode('once');
-    setSelectedTimes(['08:00']);
-    setSelectedWeekdays([1]);
-    setEnabled(true);
-    setRepeatEvery(1);
-    setRepeatUnit('day');
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-transparent">
-      <div className="flex-shrink-0 space-y-3">
-        {error && (
-          <div className="flex items-center gap-2 rounded-lg border border-error/20 bg-error/10 px-3.5 py-2.5 text-[13px] text-error">
-            <AlertCircle className="h-4 w-4 flex-shrink-0" />
-            <span>{renderLocalizedBannerMessage(error, t)}</span>
-          </div>
-        )}
-        {success && (
-          <div className="flex items-center gap-2 rounded-lg border border-success/20 bg-success/10 px-3.5 py-2.5 text-[13px] text-success">
-            <CheckCircle className="h-4 w-4 flex-shrink-0" />
-            <span>{renderLocalizedBannerMessage(success, t)}</span>
-          </div>
-        )}
-
-        {!editingId && (
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {summaryCards.map(({ key, label, description, value, Icon, iconClassName }) => (
-              <AutomationStatCard
-                key={key}
-                label={label}
-                description={description}
-                value={value}
-                Icon={Icon}
-                iconClassName={iconClassName}
-              />
-            ))}
-          </section>
-        )}
-      </div>
+    <div className="flex h-full min-h-0 flex-col text-sm text-text-primary">
+      {summaryContent}
 
       <section className="mt-3 flex min-h-0 flex-1 flex-col">
-        {editingId ? (
-          <>
-            <div className="mb-3 flex flex-shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-center gap-4">
-                <button
-                  type="button"
-                  onClick={clearForm}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
-                >
-                  <ArrowLeft className="h-3.5 w-3.5" />
-                  {t('schedule.backToList')}
-                </button>
-                <div className="flex min-w-0 items-center gap-2">
-                  {isEditingTaskTitle ? (
-                    <span className="flex h-8 min-w-0 max-w-[24rem] items-center rounded-lg border border-accent/40 bg-background/48 px-2.5 shadow-soft ring-2 ring-accent/15">
-                      <input
-                        ref={taskTitleInputRef}
-                        value={taskTitle}
-                        maxLength={80}
-                        onChange={(event) => setTaskTitle(event.target.value)}
-                        onBlur={() => void saveTaskTitle()}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') {
-                            event.currentTarget.blur();
-                          }
-                          if (event.key === 'Escape') {
-                            skipTaskTitleSaveRef.current = true;
-                            setTaskTitle(
-                              stripAutomationTitlePrefix(editingTaskSnapshot?.title ?? '')
-                            );
-                            setIsEditingTaskTitle(false);
-                          }
-                        }}
-                        className="min-w-0 flex-1 bg-transparent text-[15px] font-medium text-text-secondary outline-none"
-                      />
-                    </span>
-                  ) : (
-                    <h3 className="truncate text-[15px] font-medium text-text-secondary">
-                      {taskTitle || t('schedule.configTitle')}
-                    </h3>
-                  )}
-                  {!isEditingTaskTitle && (
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingTaskTitle(true)}
-                      disabled={isLoading}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
-                      title={t('common.edit')}
-                    >
-                      <PencilLine className="h-3.5 w-3.5" />
-                      <span className="sr-only">{t('common.edit')}</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void submitTask()}
-                  disabled={isLoading}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
-                >
-                  <Save className="h-3.5 w-3.5" />
-                  {t('common.save')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void runEditingTask()}
-                  disabled={isLoading}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-55"
-                >
-                  <Play className="h-3.5 w-3.5" />
-                  {t('schedule.runNow')}
-                </button>
-              </div>
-            </div>
-
-            <div className="glass-card flex min-h-0 flex-1 flex-col rounded-xl p-3">
-              <div className="mb-3 flex items-center justify-end">
-                <label className="inline-flex h-8 flex-shrink-0 items-center gap-2 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary">
-                  <input
-                    type="checkbox"
-                    checked={enabled}
-                    onChange={(event) => setEnabled(event.target.checked)}
-                    className="h-3.5 w-3.5 accent-accent"
-                  />
-                  {t('schedule.enabled')}
-                </label>
-              </div>
-
-              <div className="grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
-                <div className="space-y-2.5">
-                  <div className="space-y-1.5">
-                    <div className="text-xs font-medium text-text-muted">
-                      {t('schedule.promptLabel')}
-                    </div>
-                    <textarea
-                      value={prompt}
-                      onChange={(event) => setPrompt(event.target.value)}
-                      placeholder={t('schedule.promptPlaceholder')}
-                      rows={4}
-                      className="min-h-[110px] w-full rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[13px] leading-relaxed text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/15"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <div className="text-xs font-medium text-text-muted">
-                      {t('schedule.cwdLabel')}
-                    </div>
-                    <input
-                      value={cwd}
-                      onChange={(event) => setCwd(event.target.value)}
-                      placeholder={t('schedule.cwdPlaceholder')}
-                      className="h-9 w-full rounded-lg border border-border-muted bg-background/42 px-3 text-[13px] text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/15"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2.5 rounded-lg bg-background/42 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-[13px] font-medium text-text-primary">
-                      {t('schedule.executionTime')}
-                    </div>
-                  </div>
-                  <div
-                    className={`grid gap-2 ${
-                      scheduleMode === 'weekly' ? 'md:grid-cols-3' : 'md:grid-cols-2'
-                    }`}
-                  >
-                    <ScheduleSelectMenu
-                      label={t('schedule.mode')}
-                      options={scheduleModeOptions}
-                      value={scheduleMode}
-                      onChange={(value) => setScheduleMode(value as ScheduleFormMode)}
-                    />
-                    {scheduleMode === 'weekly' && (
-                      <ScheduleSelectMenu
-                        label={t('schedule.weekday')}
-                        options={weekdayOptions}
-                        values={selectedWeekdays}
-                        placeholder={t('schedule.weekdayPlaceholder')}
-                        summary={selectedWeekdayLabels}
-                        onToggle={(value) => {
-                          setSelectedWeekdays((current) =>
-                            toggleWeekdayValue(current, value as ScheduleWeekday)
-                          );
-                        }}
-                      />
-                    )}
-                    {(scheduleMode === 'daily' || scheduleMode === 'weekly') && (
-                      <TimeMultiSelectMenu
-                        label={t('schedule.times')}
-                        values={selectedTimes}
-                        placeholder={t('schedule.timePlaceholder')}
-                        summary={selectedTimeLabels}
-                        onAdd={(value) =>
-                          setSelectedTimes((current) => toggleTimeValue(current, value))
-                        }
-                        onRemove={(value) =>
-                          setSelectedTimes((current) => toggleTimeValue(current, value))
-                        }
-                      />
-                    )}
-                  </div>
-                  {(scheduleMode === 'once' || scheduleMode === 'legacy-interval') && (
-                    <div className="space-y-1.5">
-                      <div className="text-xs text-text-muted">
-                        {scheduleMode === 'once'
-                          ? t('schedule.onceTimeLabel')
-                          : t('schedule.legacyStartTimeLabel')}
-                      </div>
-                      <input
-                        type="datetime-local"
-                        value={runAt}
-                        onChange={(event) => setRunAt(event.target.value)}
-                        className="h-9 w-full rounded-lg border border-border-muted bg-surface px-3 text-[13px] text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/15"
-                      />
-                    </div>
-                  )}
-                  {scheduleMode === 'legacy-interval' && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <input
-                        type="number"
-                        min={1}
-                        value={repeatEvery}
-                        onChange={(event) =>
-                          setRepeatEvery(Math.max(1, Number(event.target.value) || 1))
-                        }
-                        className="h-9 w-full rounded-lg border border-border-muted bg-surface px-3 text-[13px] text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/15"
-                      />
-                      <GlassSelect
-                        value={repeatUnit}
-                        onValueChange={(value) => setRepeatUnit(value as ScheduleRepeatUnit)}
-                        options={[
-                          { value: 'minute', label: t('schedule.repeatUnitMinute') },
-                          { value: 'hour', label: t('schedule.repeatUnitHour') },
-                          { value: 'day', label: t('schedule.repeatUnitDay') },
-                        ]}
-                        triggerClassName="h-9 w-full justify-between rounded-lg bg-surface px-3 text-[13px]"
-                        contentClassName="w-[var(--radix-select-trigger-width)]"
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="mb-3 flex flex-shrink-0 flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void startCreateTask()}
-                  disabled={isLoading}
-                  className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  {t('schedule.newAutomation')}
-                </button>
-                <AutomationTableSearch
-                  value={searchQuery}
-                  onChange={setSearchQuery}
-                  placeholder={t('schedule.searchPlaceholder')}
-                />
-              </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <AutomationToolbarButton
-                  icon={<RefreshCw className="h-3.5 w-3.5" />}
-                  label={t('schedule.refresh')}
-                  disabled={isLoading}
-                  onClick={() => void loadTasks()}
-                />
-                <AutomationToolbarButton
-                  icon={<Play className="h-3.5 w-3.5" />}
-                  label={t('schedule.runNow')}
-                  disabled={!selectedTask || isLoading}
-                  onClick={() => {
-                    if (selectedTask) {
-                      void runNow(selectedTask);
-                    }
-                  }}
-                />
-                <AutomationToolbarButton
-                  icon={<PencilLine className="h-3.5 w-3.5" />}
-                  label={t('schedule.edit')}
-                  disabled={!selectedTask || isLoading}
-                  onClick={() => {
-                    if (selectedTask) {
-                      editTask(selectedTask);
-                    }
-                  }}
-                />
-                <AutomationToolbarButton
-                  icon={<Trash2 className="h-3.5 w-3.5" />}
-                  label={t('schedule.delete')}
-                  disabled={!selectedTask || isLoading}
-                  danger
-                  onClick={() => {
-                    if (selectedTask) {
-                      void deleteTask(selectedTask);
-                    }
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="glass-table flex min-h-0 min-w-0 flex-1 flex-col">
-              <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
-                <AutomationTasksTable
-                  tasks={pageTasks}
-                  isLoading={isLoading}
-                  selectedTaskId={selectedTaskId}
-                  runningSessionIds={runningSessionIds}
-                  weekdayOptions={weekdayOptions}
-                  onSelectTask={setSelectedTaskId}
-                  onEdit={editTask}
-                />
-              </div>
-              <AutomationPaginationFooter
-                count={filteredTasks.length}
-                currentPage={safeCurrentPage}
-                onPageChange={setCurrentPage}
-              />
-            </div>
-          </>
-        )}
+        <div className="mb-2 flex min-h-10 flex-shrink-0 items-end gap-5">
+          <TabButton
+            active
+            label={tr('schedule.tabs.automations', '自动化')}
+            onClick={() => undefined}
+          />
+        </div>
+        <AutomationListPanel
+          automations={pageAutomations}
+          totalAutomations={filteredAutomations.length}
+          currentPage={safeCurrentPage}
+          selectedId={selectedId}
+          selectedAutomation={selectedAutomation}
+          searchQuery={search}
+          isLoading={isLoading}
+          onCreate={createNew}
+          onSearchChange={setSearch}
+          onRefresh={() => void load()}
+          onPageChange={setCurrentPage}
+          onRun={() => void runNow()}
+          onEdit={openSelectedDetail}
+          onDelete={() => void remove()}
+          onSelect={(automation) => {
+            setSelectedId(automation.id);
+            setDraft(automationToDraft(automation));
+          }}
+          tr={tr}
+        />
       </section>
     </div>
   );
 }
 
-// ==================== Automation Page UI ====================
+interface AutomationDraft {
+  name: string;
+  description: string;
+  projectId: string;
+  enabled: boolean;
+  triggerMode: TriggerMode;
+  trigger: AutomationTrigger;
+  actionGraph: AutomationActionGraph;
+}
 
-function AutomationStatCard({
+function createEmptyDraft(): AutomationDraft {
+  const trigger: AutomationTrigger = {
+    kind: 'once',
+    runAt: Date.now() + 5 * 60 * 1000,
+    timezone: SYSTEM_TIMEZONE,
+  };
+  const conversationNodeId = crypto.randomUUID();
+  const dataTaskNodeId = crypto.randomUUID();
+  return {
+    name: 'New automation',
+    description: '',
+    projectId: '',
+    enabled: true,
+    triggerMode: 'once',
+    trigger,
+    actionGraph: {
+      version: 1,
+      nodes: [
+        {
+          id: conversationNodeId,
+          type: 'conversation.run',
+          label: '',
+          enabled: true,
+          config: {
+            prompt: '',
+            projectId: '',
+            modelConfigSetId: null,
+            model: null,
+            completionMode: 'wait',
+            timeoutMs: 30 * 60 * 1000,
+            collectArtifacts: true,
+          },
+        },
+        {
+          id: dataTaskNodeId,
+          type: 'data.task.run',
+          label: '',
+          enabled: true,
+          config: {
+            taskId: '',
+            outputMode: 'persisted',
+          },
+        },
+      ],
+      edges: [
+        { id: crypto.randomUUID(), sourceNodeId: conversationNodeId, targetNodeId: dataTaskNodeId },
+      ],
+    },
+  };
+}
+
+function automationToDraft(automation: Automation): AutomationDraft {
+  return {
+    name: automation.name,
+    description: automation.description ?? '',
+    projectId: automation.projectId ?? '',
+    enabled: automation.enabled,
+    triggerMode: automation.trigger.kind,
+    trigger: automation.trigger,
+    actionGraph: automation.actionGraph.nodes.length
+      ? automation.actionGraph
+      : createEmptyDraft().actionGraph,
+  };
+}
+
+function draftToPayload(
+  draft: AutomationDraft,
+  appConfig: AppConfig | null
+): AutomationCreateInput | AutomationUpdateInput {
+  return {
+    name: draft.name,
+    description: draft.description || null,
+    projectId: draft.projectId || null,
+    enabled: draft.enabled,
+    trigger: normalizeDraftTrigger(draft.triggerMode, draft.trigger),
+    actionGraph: relinkLinearGraph(enrichActionGraphDefaults(draft.actionGraph, appConfig)),
+  };
+}
+
+function enrichActionGraphDefaults(
+  actionGraph: AutomationActionGraph,
+  appConfig: AppConfig | null
+): AutomationActionGraph {
+  return {
+    ...actionGraph,
+    nodes: actionGraph.nodes.map((node) => {
+      if (node.type !== 'conversation.run') return node;
+      const modelConfigSetId =
+        typeof node.config.modelConfigSetId === 'string' && node.config.modelConfigSetId.trim()
+          ? node.config.modelConfigSetId
+          : appConfig?.activeConfigSetId;
+      if (!modelConfigSetId) return node;
+      return {
+        ...node,
+        config: {
+          ...node.config,
+          modelConfigSetId,
+          model: getAgentModelLabel(appConfig, '', modelConfigSetId) || node.config.model || null,
+        },
+      };
+    }),
+  };
+}
+
+function normalizeDraftTrigger(mode: TriggerMode, trigger: AutomationTrigger): AutomationTrigger {
+  const timezone = trigger.timezone || SYSTEM_TIMEZONE;
+  if (mode === 'file_change') {
+    const source = trigger.kind === 'file_change' ? trigger : null;
+    return {
+      kind: 'file_change',
+      projectId: source?.projectId ?? null,
+      patterns: source?.patterns?.length ? source.patterns : ['**/*'],
+      debounceMs: source?.debounceMs ?? 30_000,
+      timezone,
+    };
+  }
+  if (mode === 'interval') {
+    const source = trigger.kind === 'interval' ? trigger : null;
+    return {
+      kind: 'interval',
+      every: source?.every ?? 1,
+      unit: source?.unit ?? 'day',
+      startAt: source?.startAt ?? Date.now(),
+      endAt: source?.endAt ?? null,
+      timezone,
+    };
+  }
+  if (mode === 'daily') {
+    return {
+      kind: 'daily',
+      times: trigger.kind === 'daily' ? trigger.times : ['08:00'],
+      timezone,
+    };
+  }
+  if (mode === 'weekly') {
+    return {
+      kind: 'weekly',
+      weekdays: trigger.kind === 'weekly' ? trigger.weekdays : [1],
+      times: trigger.kind === 'weekly' ? trigger.times : ['08:00'],
+      timezone,
+    };
+  }
+  if (mode === 'cron') {
+    return {
+      kind: 'cron',
+      expression: trigger.kind === 'cron' ? trigger.expression : '0 9 * * 1',
+      timezone,
+    };
+  }
+  return {
+    kind: 'once',
+    runAt: trigger.kind === 'once' ? trigger.runAt : Date.now() + 5 * 60 * 1000,
+    timezone,
+  };
+}
+
+function relinkLinearGraph(graph: AutomationActionGraph): AutomationActionGraph {
+  return {
+    version: 1,
+    nodes: graph.nodes,
+    edges: graph.nodes.slice(1).map((node, index) => ({
+      id: graph.edges[index]?.id ?? crypto.randomUUID(),
+      sourceNodeId: graph.nodes[index].id,
+      targetNodeId: node.id,
+    })),
+  };
+}
+
+function StatCard({
   label,
   description,
   value,
@@ -873,46 +564,327 @@ function AutomationStatCard({
   iconClassName: string;
 }) {
   return (
-    <div className="glass-card rounded-xl p-4">
-      <div className="flex items-center gap-4">
-        <div
-          className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl ${iconClassName}`}
-        >
-          <Icon className="h-6 w-6" />
+    <article className="glass-card flex h-[5.75rem] items-center gap-3 rounded-xl px-3">
+      <div
+        className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${iconClassName}`}
+      >
+        <Icon className="h-6 w-6" />
+      </div>
+      <div className="min-w-0">
+        <div className="text-[1.25rem] font-medium leading-none text-text-secondary">{value}</div>
+        <div className="mt-1.5 whitespace-nowrap text-[13px] font-medium leading-4 text-text-secondary">
+          {label}
         </div>
-        <div className="min-w-0">
-          <div className="text-2xl font-semibold leading-none text-text-primary">{value}</div>
-          <div className="mt-1 text-[13px] font-medium text-text-primary">{label}</div>
-          <div className="mt-1 text-xs text-text-muted">{description}</div>
+        <div className="mt-1 truncate text-[11px] leading-4 text-text-secondary">{description}</div>
+      </div>
+    </article>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`relative h-9 px-2.5 text-left text-[13px] font-medium transition-colors ${
+        active ? 'text-accent' : 'text-text-secondary hover:text-text-primary'
+      }`}
+    >
+      {label}
+      {active && <span className="absolute bottom-0 left-0 h-px w-full rounded-full bg-accent" />}
+    </button>
+  );
+}
+
+function AutomationListPanel({
+  automations,
+  totalAutomations,
+  currentPage,
+  selectedId,
+  selectedAutomation,
+  searchQuery,
+  isLoading,
+  onCreate,
+  onSearchChange,
+  onRefresh,
+  onPageChange,
+  onRun,
+  onEdit,
+  onDelete,
+  onSelect,
+  tr,
+}: {
+  automations: Automation[];
+  totalAutomations: number;
+  currentPage: number;
+  selectedId: string | null;
+  selectedAutomation: Automation | null;
+  searchQuery: string;
+  isLoading: boolean;
+  onCreate: () => void;
+  onSearchChange: (value: string) => void;
+  onRefresh: () => void;
+  onPageChange: (page: number) => void;
+  onRun: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onSelect: (automation: Automation) => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-transparent">
+      <div className="mb-3 flex flex-shrink-0 flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <button
+            onClick={onCreate}
+            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {tr('schedule.newAutomation', '新建自动化')}
+          </button>
+          <DataTableSearch
+            value={searchQuery}
+            onChange={onSearchChange}
+            placeholder={tr('schedule.searchPlaceholder', '搜索自动化')}
+          />
         </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <DataToolbarButton
+            icon={<Play className="h-3.5 w-3.5" />}
+            label={tr('schedule.runNow', '立即运行')}
+            disabled={!selectedAutomation || selectedAutomation.status === 'running'}
+            onClick={onRun}
+          />
+          <DataToolbarButton
+            icon={<PencilLine className="h-3.5 w-3.5" />}
+            label={tr('schedule.configure', '配置')}
+            disabled={!selectedAutomation}
+            onClick={onEdit}
+          />
+          <DataToolbarButton
+            icon={<Trash2 className="h-3.5 w-3.5" />}
+            label={tr('schedule.delete', '删除')}
+            disabled={!selectedAutomation}
+            danger
+            onClick={onDelete}
+          />
+          <DataMoreMenu
+            items={[
+              {
+                key: 'refresh',
+                label: tr('schedule.refresh', '刷新'),
+                icon: <RefreshCw className="h-3.5 w-3.5" />,
+                onClick: onRefresh,
+              },
+            ]}
+            tr={tr}
+          />
+        </div>
+      </div>
+      <div className="glass-table flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-auto">
+          <AutomationTable
+            automations={automations}
+            selectedId={selectedId}
+            isLoading={isLoading}
+            onSelect={onSelect}
+            onEdit={onEdit}
+            tr={tr}
+          />
+        </div>
+        <PaginationFooter
+          count={totalAutomations}
+          currentPage={currentPage}
+          onPageChange={onPageChange}
+          embedded
+        />
       </div>
     </div>
   );
 }
 
-function AutomationTableSearch({
+function AutomationTable({
+  automations,
+  selectedId,
+  isLoading,
+  onSelect,
+  onEdit,
+  tr,
+}: {
+  automations: Automation[];
+  selectedId: string | null;
+  isLoading: boolean;
+  onSelect: (automation: Automation) => void;
+  onEdit: () => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  if (isLoading) {
+    return <LoadingState label={tr('schedule.loadingTasks', '正在加载自动化...')} />;
+  }
+  if (automations.length === 0) {
+    return <EmptyState label={tr('schedule.empty', '还没有自动化')} />;
+  }
+  return (
+    <div className="min-w-0 overflow-hidden">
+      <table className="w-full table-fixed border-collapse text-left">
+        <thead>
+          <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted backdrop-blur-xl">
+            <th className="w-[3%] px-3">
+              <span className="sr-only">{tr('schedule.selection', '选择')}</span>
+            </th>
+            <th className="w-[39%] whitespace-nowrap px-2">
+              {tr('schedule.columns.name', '名称')}
+            </th>
+            <th className="w-[14%] whitespace-nowrap px-2">
+              {tr('schedule.columns.status', '状态')}
+            </th>
+            <th className="w-[10%] whitespace-nowrap px-2">
+              {tr('schedule.columns.actions', '动作')}
+            </th>
+            <th className="w-[24%] whitespace-nowrap px-2">
+              {tr('schedule.columns.nextRun', '下次执行')}
+            </th>
+            <th className="w-[10%] whitespace-nowrap px-2">
+              <span className="inline-flex items-center gap-1">
+                {tr('schedule.columns.updatedAt', '更新时间')}
+                <ArrowUpDown className="h-3 w-3" />
+              </span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {automations.map((automation, index) => {
+            const selected = automation.id === selectedId;
+            const icon = AUTOMATION_ICON_STYLES[index % AUTOMATION_ICON_STYLES.length];
+            const RowIcon = icon.Icon;
+            return (
+              <tr
+                key={automation.id}
+                onClick={() => onSelect(automation)}
+                onDoubleClick={onEdit}
+                className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
+                  selected
+                    ? 'bg-accent/10 ring-1 ring-inset ring-accent/20'
+                    : 'hover:bg-surface-hover/35'
+                }`}
+              >
+                <td className="px-3">
+                  <input
+                    type="radio"
+                    name="automation-selection"
+                    checked={selected}
+                    onChange={() => onSelect(automation)}
+                    onClick={(event) => event.stopPropagation()}
+                    className="h-3.5 w-3.5 accent-accent"
+                    aria-label={automation.name}
+                  />
+                </td>
+                <td className="px-2">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div
+                      className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${icon.className}`}
+                    >
+                      <RowIcon className="h-4 w-4" />
+                    </div>
+                    <div className="flex min-w-0 flex-col">
+                      <span className="truncate text-[13px] font-medium text-text-secondary">
+                        {automation.name}
+                      </span>
+                      {automation.description && (
+                        <span className="truncate text-[11px] text-text-muted">
+                          {automation.description}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </td>
+                <td className="px-2">
+                  <AutomationStatusBadge automation={automation} tr={tr} />
+                </td>
+                <td className="px-2 text-[13px] font-medium text-text-secondary">
+                  {automation.actionGraph.nodes.length}
+                </td>
+                <td className="truncate whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+                  <span className="truncate">
+                    {automation.nextRunAt ? formatAppDateTime(automation.nextRunAt) : '-'}
+                  </span>
+                </td>
+                <td className="truncate whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+                  <span className="truncate">{formatAppDateTime(automation.updatedAt)}</span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const AUTOMATION_ICON_STYLES: Array<{ Icon: LucideIcon; className: string }> = [
+  { Icon: CalendarClock, className: 'bg-accent/10 text-accent' },
+  { Icon: Database, className: 'bg-[#E9F7F5] text-[#238C80]' },
+  { Icon: Bell, className: 'bg-warning/10 text-warning' },
+  { Icon: MessageSquare, className: 'bg-surface-active/70 text-text-secondary' },
+];
+
+function AutomationStatusBadge({
+  automation,
+  tr,
+}: {
+  automation: Automation;
+  tr: (key: string, fallback: string) => string;
+}) {
+  const tone =
+    automation.status === 'failed'
+      ? 'bg-error/10 text-error'
+      : automation.status === 'running'
+        ? 'bg-warning/10 text-warning'
+        : automation.status === 'paused'
+          ? 'bg-bg-tertiary text-text-muted'
+          : automation.enabled
+            ? 'bg-success/10 text-success'
+            : 'bg-bg-tertiary text-text-muted';
+  return (
+    <span
+      className={`inline-flex h-6 min-w-[4.5rem] items-center justify-center gap-1.5 rounded-full px-2.5 text-xs font-medium ${tone}`}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {tr(`schedule.status.${automation.status}`, automation.status)}
+    </span>
+  );
+}
+
+function DataTableSearch({
   value,
-  onChange,
   placeholder,
+  onChange,
 }: {
   value: string;
-  onChange: (value: string) => void;
   placeholder: string;
+  onChange: (value: string) => void;
 }) {
   return (
-    <div className="relative w-full min-w-[220px] max-w-sm flex-1 sm:flex-none">
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+    <div className="relative w-full sm:w-[18rem]">
+      <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="h-8 w-full rounded-lg border border-border-muted bg-surface pl-8 pr-3 text-xs font-normal text-text-primary placeholder:text-text-muted shadow-soft transition-colors focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/15"
+        className="h-8 w-full rounded-lg border border-border-muted bg-surface pl-8 pr-3 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
       />
     </div>
   );
 }
 
-function AutomationToolbarButton({
+function DataToolbarButton({
   icon,
   label,
   disabled,
@@ -928,12 +900,12 @@ function AutomationToolbarButton({
   return (
     <button
       type="button"
-      onClick={onClick}
       disabled={disabled}
-      className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+      onClick={onClick}
+      className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
         danger
-          ? 'border-error/20 bg-error/5 text-error hover:bg-error/10'
-          : 'border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
+          ? 'text-error hover:border-error/30 hover:bg-error/10'
+          : 'text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
       }`}
     >
       {icon}
@@ -942,648 +914,1100 @@ function AutomationToolbarButton({
   );
 }
 
-function AutomationTasksTable({
-  tasks,
-  isLoading,
-  selectedTaskId,
-  runningSessionIds,
-  weekdayOptions,
-  onSelectTask,
-  onEdit,
+interface DataMoreMenuItem {
+  key: string;
+  label: string;
+  icon?: ReactNode;
+  danger?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}
+
+function DataMoreMenu({
+  items,
+  tr,
 }: {
-  tasks: ScheduleTask[];
-  isLoading: boolean;
-  selectedTaskId: string | null;
-  runningSessionIds: Set<string>;
-  weekdayOptions: Array<{ value: ScheduleWeekday; label: string }>;
-  onSelectTask: (taskId: string) => void;
-  onEdit: (task: ScheduleTask) => void;
+  items: DataMoreMenuItem[];
+  tr: (key: string, fallback: string) => string;
 }) {
-  const { t } = useTranslation();
-
-  if (isLoading) {
-    return <AutomationLoadingState label={t('schedule.loadingTasks')} />;
-  }
-
-  if (tasks.length === 0) {
-    return <AutomationEmptyState label={t('schedule.empty')} />;
-  }
+  const [open, setOpen] = useState(false);
 
   return (
-    <div className="w-full min-w-0 overflow-hidden">
-      <table className="w-full min-w-0 table-fixed border-collapse text-left">
-        <thead>
-          <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted backdrop-blur-xl">
-            <th className="w-[4%] px-4">
-              <span className="sr-only">{t('schedule.selection')}</span>
-            </th>
-            <th className="w-[34%] whitespace-nowrap px-2">{t('schedule.columns.name')}</th>
-            <th className="w-[13%] whitespace-nowrap px-2">{t('schedule.columns.status')}</th>
-            <th className="w-[19%] whitespace-nowrap px-2">{t('schedule.columns.nextRun')}</th>
-            <th className="w-[18%] whitespace-nowrap px-2">{t('schedule.columns.strategy')}</th>
-            <th className="w-[12%] whitespace-nowrap px-2">{t('schedule.columns.updatedAt')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tasks.map((task) => {
-            const selected = task.id === selectedTaskId;
-            const statusMeta = getAutomationStatusMeta(task, runningSessionIds, t);
-            return (
-              <tr
-                key={task.id}
-                onClick={() => onSelectTask(task.id)}
-                onDoubleClick={() => onEdit(task)}
-                className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
-                  selected
-                    ? 'bg-accent/10 ring-1 ring-inset ring-accent/20'
-                    : 'hover:bg-surface-hover/35'
-                }`}
-              >
-                <td className="px-4">
-                  <input
-                    type="radio"
-                    name="automation-selection"
-                    checked={selected}
-                    onChange={() => onSelectTask(task.id)}
-                    onClick={(event) => event.stopPropagation()}
-                    className="h-3.5 w-3.5 accent-accent"
-                    aria-label={task.title}
-                  />
-                </td>
-                <td className="px-2">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
-                      <CalendarClock className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="truncate text-[13px] font-medium text-text-secondary">
-                        {task.title}
-                      </div>
-                      <div className="truncate text-xs text-text-muted">{task.prompt}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-2">
-                  <AutomationStatusBadge
-                    label={statusMeta.label}
-                    className={statusMeta.className}
-                  />
-                </td>
-                <td className="px-2 text-[13px] font-medium text-text-secondary">
-                  <div className="truncate">
-                    {task.nextRunAt === null
-                      ? t('schedule.nextRunNoneValue')
-                      : formatTime(task.nextRunAt)}
-                  </div>
-                </td>
-                <td className="px-2">
-                  <div className="truncate text-[13px] font-medium text-text-secondary">
-                    {formatScheduleRule(task, t, weekdayOptions)}
-                  </div>
-                </td>
-                <td className="px-2 text-[13px] font-medium text-text-secondary">
-                  <div className="truncate">{formatTime(task.updatedAt)}</div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <GlassDropdownMenu
+      open={open}
+      onOpenChange={setOpen}
+      align="end"
+      contentClassName="w-40"
+      trigger={
+        <button
+          type="button"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+          title={tr('data.actions.more', '更多')}
+          aria-label={tr('data.actions.more', '更多')}
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </button>
+      }
+    >
+      {items.map((item) => (
+        <GlassMenuItem
+          key={item.key}
+          disabled={item.disabled}
+          danger={item.danger}
+          icon={item.icon}
+          onSelect={item.onClick}
+        >
+          {item.label}
+        </GlassMenuItem>
+      ))}
+    </GlassDropdownMenu>
+  );
+}
+
+function EmptyState({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-[16rem] items-center justify-center px-4 py-10 text-center text-xs text-text-muted">
+      {label}
     </div>
   );
 }
 
-function AutomationStatusBadge({ label, className }: { label: string; className: string }) {
+function LoadingState({ label }: { label: string }) {
   return (
-    <span
-      className={`inline-flex h-6 items-center rounded-md px-2 text-xs font-medium ${className}`}
-    >
-      {label}
-    </span>
+    <div className="flex min-h-[16rem] items-center justify-center px-4 py-10 text-center text-xs font-medium text-text-muted">
+      <div className="inline-flex items-center gap-2 rounded-lg border border-border-muted bg-background/42 px-3 py-2 shadow-soft">
+        <RefreshCw className="h-3.5 w-3.5 animate-spin text-accent" />
+        {label}
+      </div>
+    </div>
   );
 }
 
-function AutomationPaginationFooter({
+function PaginationFooter({
   count,
   currentPage,
   onPageChange,
+  embedded = false,
 }: {
   count: number;
   currentPage: number;
   onPageChange: (page: number) => void;
+  embedded?: boolean;
 }) {
-  const { t } = useTranslation();
   const pageCount = Math.max(1, Math.ceil(count / AUTOMATION_TABLE_PAGE_SIZE));
-  const safePage = Math.min(Math.max(1, currentPage), pageCount);
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
 
   return (
-    <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between px-4 text-[13px] text-text-secondary">
-      <span>{t('data.totalCount', { count })}</span>
+    <div
+      className={`flex min-h-11 flex-col items-center justify-between gap-2 px-4 text-xs font-medium text-text-secondary sm:flex-row ${
+        embedded ? 'border-t border-border-muted py-2.5' : 'mt-3'
+      }`}
+    >
+      <span>共 {count} 条</span>
       <div className="flex items-center gap-2">
-        <span className="rounded-lg border border-border-muted bg-surface px-3 py-1.5 text-xs font-medium text-text-secondary">
-          {t('data.rowsPerPage', { count: AUTOMATION_TABLE_PAGE_SIZE })}
-        </span>
-        <button
-          type="button"
-          onClick={() => onPageChange(Math.max(1, safePage - 1))}
-          disabled={safePage <= 1}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-muted transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:opacity-40"
-        >
-          <ChevronLeft className="h-4 w-4" />
+        <button className="inline-flex h-8 min-w-[7rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-text-secondary shadow-soft">
+          {AUTOMATION_TABLE_PAGE_SIZE} 条/页
         </button>
-        <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-accent/30 bg-accent/10 px-2 text-xs font-medium text-accent">
-          {safePage}
+        <button
+          className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-border-muted bg-surface px-2 text-text-secondary shadow-soft disabled:cursor-not-allowed disabled:opacity-45"
+          disabled={safeCurrentPage <= 1}
+          onClick={() => onPageChange(safeCurrentPage - 1)}
+        >
+          ‹
+        </button>
+        <span className="min-w-[4rem] text-center">
+          {safeCurrentPage} / {pageCount}
         </span>
         <button
-          type="button"
-          onClick={() => onPageChange(Math.min(pageCount, safePage + 1))}
-          disabled={safePage >= pageCount}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-muted transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:opacity-40"
+          className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-border-muted bg-surface px-2 text-text-secondary shadow-soft disabled:cursor-not-allowed disabled:opacity-45"
+          disabled={safeCurrentPage >= pageCount}
+          onClick={() => onPageChange(safeCurrentPage + 1)}
         >
-          <ChevronRight className="h-4 w-4" />
+          ›
         </button>
       </div>
     </div>
   );
 }
 
-function AutomationLoadingState({ label }: { label: string }) {
-  return (
-    <div className="flex h-full min-h-[220px] items-center justify-center text-[13px] text-text-muted">
-      {label}
-    </div>
-  );
-}
-
-function AutomationEmptyState({ label }: { label: string }) {
-  return (
-    <div className="flex h-full min-h-[220px] items-center justify-center text-[13px] text-text-muted">
-      {label}
-    </div>
-  );
-}
-
-function getAutomationStatusMeta(
-  task: ScheduleTask,
-  runningSessionIds: Set<string>,
-  t: TFunction
-): { label: string; className: string } {
-  if (task.lastRunSessionId && runningSessionIds.has(task.lastRunSessionId)) {
-    return { label: t('schedule.statusRunning'), className: 'bg-[#E9F7F5] text-[#238C80]' };
-  }
-  if (task.lastError) {
-    return { label: t('schedule.statusFailed'), className: 'bg-error/10 text-error' };
-  }
-  if (task.enabled) {
-    return { label: t('schedule.taskEnabled'), className: 'bg-success/10 text-success' };
-  }
-  return { label: t('schedule.taskDisabled'), className: 'bg-surface-hover text-text-muted' };
-}
-
-// ==================== Schedule Helpers ====================
-
-function toLocalDateTimeInput(timestamp: number): string {
-  const date = new Date(timestamp);
-  const pad = (value: number) => String(value).padStart(2, '0');
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hour = pad(date.getHours());
-  const minute = pad(date.getMinutes());
-  return `${year}-${month}-${day}T${hour}:${minute}`;
-}
-
-function formatTime(timestamp: number): string {
-  return formatAppDateTime(timestamp);
-}
-
-function stripAutomationTitlePrefix(value: string): string {
-  return value.replace(/^\s*\[自动化\]\s*/, '').trim();
-}
-
-function formatScheduleRule(
-  task: ScheduleTask,
-  t: TFunction,
-  weekdayOptions: Array<{ value: ScheduleWeekday; label: string }>
-): string {
-  if (task.scheduleConfig?.kind === 'daily') {
-    return t('schedule.ruleDaily', { times: joinAppList(task.scheduleConfig.times) });
-  }
-  if (task.scheduleConfig?.kind === 'weekly') {
-    const weekdays = task.scheduleConfig.weekdays.map(
-      (weekday) =>
-        weekdayOptions.find((option) => option.value === weekday)?.label ??
-        t('schedule.unknownWeekday')
-    );
-    return t('schedule.ruleWeekly', {
-      weekdays: joinAppList(weekdays),
-      times: joinAppList(task.scheduleConfig.times),
-    });
-  }
-  if (!task.repeatEvery || !task.repeatUnit) {
-    return t('schedule.ruleOnce');
-  }
-  if (task.repeatUnit === 'minute') {
-    return t('schedule.repeatEveryMinute', { count: task.repeatEvery });
-  }
-  if (task.repeatUnit === 'hour') {
-    return t('schedule.repeatEveryHour', { count: task.repeatEvery });
-  }
-  return t('schedule.repeatEveryDay', { count: task.repeatEvery });
-}
-
-function detectScheduleMode(task: ScheduleTask): ScheduleFormMode {
-  if (task.scheduleConfig?.kind === 'daily') {
-    return 'daily';
-  }
-  if (task.scheduleConfig?.kind === 'weekly') {
-    return 'weekly';
-  }
-  if (task.repeatEvery && task.repeatUnit) {
-    return 'legacy-interval';
-  }
-  return 'once';
-}
-
-function buildScheduleConfigFromForm(
-  mode: ScheduleFormMode,
-  times: string[],
-  weekdays: ScheduleWeekday[]
-): ScheduleConfig | null {
-  const normalizedTimes = Array.from(new Set(times)).sort();
-  if (mode === 'daily' && normalizedTimes.length > 0) {
-    return { kind: 'daily', times: normalizedTimes };
-  }
-  if (mode === 'weekly' && normalizedTimes.length > 0 && weekdays.length > 0) {
-    return {
-      kind: 'weekly',
-      weekdays: Array.from(new Set(weekdays)).sort((left, right) => left - right),
-      times: normalizedTimes,
-    };
-  }
-  return null;
-}
-
-function buildScheduleSignatureFromTask(task: ScheduleTask): string {
-  if (task.scheduleConfig) {
-    return JSON.stringify(task.scheduleConfig);
-  }
-  if (task.repeatEvery && task.repeatUnit) {
-    return JSON.stringify({
-      mode: 'legacy-interval',
-      runAt: toLocalDateTimeInput(task.nextRunAt ?? task.runAt),
-      repeatEvery: task.repeatEvery,
-      repeatUnit: task.repeatUnit,
-    });
-  }
-  return JSON.stringify({
-    mode: 'once',
-    runAt: toLocalDateTimeInput(task.nextRunAt ?? task.runAt),
-  });
-}
-
-function buildScheduleSignatureFromForm(
-  mode: ScheduleFormMode,
-  runAt: string,
-  times: string[],
-  weekdays: ScheduleWeekday[],
-  repeatEvery: number,
-  repeatUnit: ScheduleRepeatUnit
-): string {
-  if (mode === 'daily' || mode === 'weekly') {
-    return JSON.stringify(buildScheduleConfigFromForm(mode, times, weekdays));
-  }
-  if (mode === 'legacy-interval') {
-    return JSON.stringify({ mode, runAt, repeatEvery, repeatUnit });
-  }
-  return JSON.stringify({ mode, runAt });
-}
-
-function computeNextScheduledRun(
-  scheduleConfig: ScheduleConfig | null,
-  now: number
-): number | null {
-  if (!scheduleConfig || scheduleConfig.times.length === 0) {
-    return null;
-  }
-  const allowedWeekdays =
-    scheduleConfig.kind === 'weekly' ? new Set(scheduleConfig.weekdays) : null;
-  const nowDate = new Date(now);
-
-  for (let dayOffset = 0; dayOffset <= 14; dayOffset += 1) {
-    const candidateDate = new Date(
-      nowDate.getFullYear(),
-      nowDate.getMonth(),
-      nowDate.getDate() + dayOffset,
-      0,
-      0,
-      0,
-      0
-    );
-    if (allowedWeekdays && !allowedWeekdays.has(candidateDate.getDay() as ScheduleWeekday)) {
-      continue;
-    }
-    for (const time of scheduleConfig.times) {
-      const [hour, minute] = time.split(':').map(Number);
-      const candidate = new Date(
-        candidateDate.getFullYear(),
-        candidateDate.getMonth(),
-        candidateDate.getDate(),
-        hour,
-        minute,
-        0,
-        0
-      ).getTime();
-      if (candidate > now) {
-        return candidate;
-      }
-    }
-  }
-
-  return null;
-}
-
-function toggleTimeValue(current: string[], target: string): string[] {
-  if (!isValidTimeValue(target)) {
-    return current;
-  }
-  const next = current.includes(target)
-    ? current.filter((value) => value !== target)
-    : [...current, target];
-  return next.sort();
-}
-
-function toggleWeekdayValue(
-  current: ScheduleWeekday[],
-  target: ScheduleWeekday
-): ScheduleWeekday[] {
-  const next = current.includes(target)
-    ? current.filter((value) => value !== target)
-    : [...current, target];
-  return next.sort((left, right) => left - right);
-}
-
-function isValidTimeValue(value: string): boolean {
-  return /^([01]\d|2[0-3]):([0-5]\d)$/.test(value);
-}
-
-// ==================== Schedule UI Sub-components ====================
-
-function ScheduleSelectMenu(props: {
-  label: string;
-  options: Array<{ value: string | number; label: string }>;
-  value?: string | number;
-  values?: Array<string | number>;
-  placeholder?: string;
-  summary?: string;
-  onChange?: (value: string | number) => void;
-  onToggle?: (value: string | number) => void;
+function EditorHeader({
+  selectedAutomation,
+  draft,
+  isSaving,
+  onDraftChange,
+  onSave,
+  onRun,
+  onDelete,
+  onBack,
+  tr,
+}: {
+  selectedAutomation: Automation | null;
+  draft: AutomationDraft;
+  isSaving: boolean;
+  onDraftChange: (draft: AutomationDraft) => void;
+  onSave: () => void;
+  onRun: () => void;
+  onDelete: () => void;
+  onBack: () => void;
+  tr: (key: string, fallback: string) => string;
 }) {
-  const { t } = useTranslation();
-  const {
-    label,
-    options,
-    value,
-    values = [],
-    placeholder = t('schedule.timePlaceholder'),
-    summary,
-    onChange,
-    onToggle,
-  } = props;
-  const [open, setOpen] = useState(false);
-  const isMulti = typeof onToggle === 'function';
-  const buttonText =
-    summary ||
-    (isMulti
-      ? values.length > 0
-        ? joinAppList(
-            values
-              .map((item) => options.find((option) => option.value === item)?.label ?? String(item))
-              .filter(Boolean)
-          )
-        : placeholder
-      : (options.find((option) => option.value === value)?.label ?? placeholder));
-
-  return (
-    <div>
-      <div className="mb-1 text-xs text-text-muted">{label}</div>
-      <GlassDropdownMenu
-        open={open}
-        onOpenChange={setOpen}
-        align="start"
-        contentClassName="max-h-64 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto"
-        trigger={
-          <button
-            type="button"
-            className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
-              open
-                ? 'border-accent bg-surface text-text-primary'
-                : 'border-border bg-surface text-text-secondary hover:bg-surface-hover'
-            }`}
-          >
-            <span className="truncate">{buttonText}</span>
-            <ChevronDown
-              className={`h-4 w-4 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
-            />
-          </button>
-        }
-      >
-        {options.map((option) => {
-          const selected = isMulti ? values.includes(option.value) : option.value === value;
-          return (
-            <GlassMenuItem
-              key={String(option.value)}
-              selected={selected}
-              closeOnSelect={!isMulti}
-              onSelect={() => {
-                if (isMulti) {
-                  onToggle?.(option.value);
-                  return;
-                }
-                onChange?.(option.value);
-              }}
-            >
-              {option.label}
-            </GlassMenuItem>
-          );
-        })}
-      </GlassDropdownMenu>
-    </div>
-  );
-}
-
-function TimeMultiSelectMenu(props: {
-  label: string;
-  values: string[];
-  placeholder?: string;
-  summary?: string;
-  onAdd: (value: string) => void;
-  onRemove: (value: string) => void;
-}) {
-  const { t } = useTranslation();
-  const {
-    label,
-    values,
-    placeholder = t('schedule.timePlaceholder'),
-    summary,
-    onAdd,
-    onRemove,
-  } = props;
-  const [open, setOpen] = useState(false);
-  const [openUpward, setOpenUpward] = useState(false);
-  const [draftTime, setDraftTime] = useState('');
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const buttonText = summary || (values.length > 0 ? joinAppList(values) : placeholder);
-
-  useDismissibleLayer({
-    open,
-    refs: [containerRef],
-    onDismiss: () => setOpen(false),
-  });
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [localTitle, setLocalTitle] = useState(draft.name);
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    if (!open) {
-      return;
+    if (!isEditingTitle) {
+      setLocalTitle(draft.name);
     }
+  }, [draft.name, isEditingTitle]);
 
-    function updatePlacement() {
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (!rect) {
-        return;
-      }
-      const estimatedPanelHeight = 420;
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const spaceAbove = rect.top;
-      setOpenUpward(spaceBelow < estimatedPanelHeight && spaceAbove > spaceBelow);
+  useEffect(() => {
+    if (!isEditingTitle) return;
+    titleInputRef.current?.focus();
+    titleInputRef.current?.select();
+  }, [isEditingTitle]);
+
+  const commitTitle = () => {
+    const nextTitle = localTitle.trim();
+    if (nextTitle) {
+      onDraftChange({ ...draft, name: nextTitle });
+    } else {
+      setLocalTitle(draft.name);
     }
-
-    updatePlacement();
-    window.addEventListener('resize', updatePlacement);
-    window.addEventListener('scroll', updatePlacement, true);
-    return () => {
-      window.removeEventListener('resize', updatePlacement);
-      window.removeEventListener('scroll', updatePlacement, true);
-    };
-  }, [open]);
-
-  function addDraftTime() {
-    if (!isValidTimeValue(draftTime)) {
-      return;
-    }
-    onAdd(draftTime);
-    setDraftTime('');
-  }
+    setIsEditingTitle(false);
+  };
 
   return (
-    <div ref={containerRef} className="relative">
-      <div className="mb-1 text-xs text-text-muted">{label}</div>
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
-          open
-            ? 'border-accent bg-surface text-text-primary'
-            : 'border-border bg-surface text-text-secondary hover:bg-surface-hover'
-        }`}
-      >
-        <span className="truncate">{buttonText}</span>
-        <ChevronDown
-          className={`h-4 w-4 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
-        />
-      </button>
-      {open && (
-        <div
-          className={`absolute right-0 z-20 w-[min(22rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] p-3 shadow-elevated backdrop-blur-xl ${
-            openUpward ? 'bottom-[calc(100%+8px)]' : 'top-[calc(100%+8px)]'
-          }`}
+    <div className="flex shrink-0 flex-col gap-2 lg:h-10 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex min-w-0 items-center gap-4">
+        <button
+          onClick={onBack}
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
         >
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <div className="text-sm font-medium text-text-primary">
-                    {t('schedule.pickerEditTimes')}
-                  </div>
-                  <div className="text-xs text-text-muted">{t('schedule.pickerAnyHHmm')}</div>
-                </div>
-                {values.length > 0 && (
-                  <div className="text-xs text-text-muted">
-                    {t('schedule.pickerSelectedCount', { count: values.length })}
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
+          <ArrowLeft className="h-3.5 w-3.5" />
+          {tr('schedule.backToList', '返回列表')}
+        </button>
+        <div className="flex min-w-0 items-center gap-2">
+          {isEditingTitle ? (
+            <span className="flex h-8 min-w-0 max-w-[22rem] items-center rounded-lg border border-accent/40 bg-background/48 px-2.5 shadow-soft ring-2 ring-accent/15">
+              <input
+                ref={titleInputRef}
+                value={localTitle}
+                maxLength={80}
+                onChange={(event) => setLocalTitle(event.target.value)}
+                onBlur={commitTitle}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.currentTarget.blur();
+                  }
+                  if (event.key === 'Escape') {
+                    setLocalTitle(draft.name);
+                    setIsEditingTitle(false);
+                  }
+                }}
+                className="min-w-0 flex-1 bg-transparent text-[15px] font-medium text-text-secondary outline-none"
+              />
+            </span>
+          ) : (
+            <h1 className="truncate text-[16px] font-semibold text-text-secondary">{draft.name}</h1>
+          )}
+          {!isEditingTitle && (
+            <button
+              onClick={() => setIsEditingTitle(true)}
+              disabled={isSaving}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+              title={tr('common.edit', '编辑')}
+            >
+              <PencilLine className="h-3.5 w-3.5" />
+              <span className="sr-only">{tr('common.edit', '编辑')}</span>
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        {selectedAutomation && (
+          <IconButton label={tr('schedule.delete', '删除')} onClick={onDelete}>
+            <Trash2 size={14} />
+          </IconButton>
+        )}
+        <button
+          onClick={onSave}
+          disabled={isSaving}
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+        >
+          <Save className="h-3.5 w-3.5" />
+          {tr('schedule.save', '保存')}
+        </button>
+        {selectedAutomation && (
+          <button
+            onClick={onRun}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors"
+          >
+            <Play className="h-3.5 w-3.5" />
+            {tr('schedule.runNow', '立即运行')}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TaskStatusSection({
+  draft,
+  onDraftChange,
+  tr,
+}: {
+  draft: AutomationDraft;
+  onDraftChange: (draft: AutomationDraft) => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  return (
+    <section className="glass-card grid flex-shrink-0 gap-4 rounded-xl border border-border-muted bg-surface/70 p-4 lg:grid-cols-[360px] lg:items-center">
+      <div className="flex min-h-10 items-center gap-4">
+        <span className="text-[13px] font-medium text-text-secondary">
+          {tr('schedule.taskStatus', '任务状态')}
+        </span>
+        <Switch.Root
+          checked={draft.enabled}
+          onCheckedChange={(checked) => onDraftChange({ ...draft, enabled: checked })}
+          className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full border p-0.5 shadow-soft outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
+            draft.enabled ? 'border-success bg-success' : 'border-border-muted bg-bg-tertiary'
+          }`}
+          aria-label={tr('schedule.taskStatus', '任务状态')}
+        >
+          <Switch.Thumb
+            className={`block h-6 w-6 rounded-full bg-white shadow-sm transition-transform ${
+              draft.enabled ? 'translate-x-5' : 'translate-x-0'
+            }`}
+          />
+        </Switch.Root>
+        <span className="text-[13px] font-medium text-text-secondary">
+          {draft.enabled ? tr('schedule.enabled', '启用') : tr('schedule.disabled', '停用')}
+        </span>
+      </div>
+    </section>
+  );
+}
+
+function ExecutionProjectPanel({
+  draft,
+  projects,
+  onDraftChange,
+  tr,
+}: {
+  draft: AutomationDraft;
+  projects: Project[];
+  onDraftChange: (draft: AutomationDraft) => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  const updateProject = (projectId: string) => {
+    onDraftChange({
+      ...draft,
+      projectId,
+      trigger:
+        draft.trigger.kind === 'file_change'
+          ? { ...draft.trigger, projectId: projectId || null }
+          : draft.trigger,
+    });
+  };
+
+  return (
+    <section className="glass-card flex flex-shrink-0 flex-col rounded-xl border border-border-muted bg-surface/70 p-4">
+      <h2 className="pb-3 text-[16px] font-semibold text-text-secondary">
+        {tr('schedule.projectPanelTitle', '执行项目')}
+      </h2>
+      <div className="border-t border-border-muted pt-4">
+        <GlassSelect
+          value={draft.projectId}
+          options={[
+            { value: '', label: tr('schedule.projectPlaceholder', '不指定项目') },
+            ...projects.map((project) => ({
+              value: project.id,
+              label: project.name?.trim() || project.cwd,
+            })),
+          ]}
+          onValueChange={updateProject}
+          placeholder={tr('schedule.projectPlaceholder', '不指定项目')}
+          triggerClassName="h-9 w-full justify-between"
+          contentClassName="w-[var(--radix-select-trigger-width)]"
+        />
+      </div>
+    </section>
+  );
+}
+
+function TriggerConditionPanel({
+  draft,
+  projects,
+  onDraftChange,
+  tr,
+}: {
+  draft: AutomationDraft;
+  projects: Project[];
+  onDraftChange: (draft: AutomationDraft) => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  const trigger = normalizeDraftTrigger(draft.triggerMode, draft.trigger);
+  const triggerMethod = draft.triggerMode === 'file_change' ? 'file_change' : 'scheduled';
+  const setMode = (mode: TriggerMode) => {
+    onDraftChange({
+      ...draft,
+      triggerMode: mode,
+      trigger: normalizeDraftTrigger(mode, draft.trigger),
+    });
+  };
+
+  return (
+    <section className="glass-card flex min-h-0 flex-col rounded-xl border border-border-muted bg-surface/70 p-4">
+      <h2 className="pb-3 text-[16px] font-semibold text-text-secondary">
+        {tr('schedule.triggerTitle', '触发条件')}
+      </h2>
+      <div className="border-t border-border-muted pt-4">
+        <ConfigRow label={tr('schedule.triggerMethod', '触发方式')}>
+          <GlassSelect
+            value={triggerMethod}
+            options={[
+              { value: 'scheduled', label: tr('schedule.triggerScheduled', '定时触发') },
+              { value: 'file_change', label: tr('schedule.triggerFileChange', '文件变更时触发') },
+            ]}
+            onValueChange={(value) => setMode(value === 'file_change' ? 'file_change' : 'daily')}
+            triggerClassName="h-9 w-full justify-between"
+            contentClassName="w-[var(--radix-select-trigger-width)]"
+          />
+        </ConfigRow>
+      </div>
+
+      <div className="mt-6 min-h-0 flex-1">
+        {trigger.kind === 'file_change' ? (
+          <FileChangeConfigCard
+            draft={draft}
+            trigger={trigger}
+            projects={projects}
+            onDraftChange={onDraftChange}
+            tr={tr}
+          />
+        ) : (
+          <ScheduledConfigCard
+            trigger={trigger}
+            mode={draft.triggerMode}
+            onModeChange={setMode}
+            onChange={(next) => onDraftChange({ ...draft, triggerMode: next.kind, trigger: next })}
+            tr={tr}
+          />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ScheduledConfigCard({
+  trigger,
+  mode,
+  onModeChange,
+  onChange,
+  tr,
+}: {
+  trigger: Exclude<AutomationTrigger, { kind: 'file_change' }>;
+  mode: TriggerMode;
+  onModeChange: (mode: TriggerMode) => void;
+  onChange: (trigger: AutomationTrigger) => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  const timezone = trigger.timezone || SYSTEM_TIMEZONE;
+  return (
+    <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
+      <div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-success">
+        <Clock className="h-4 w-4" />
+        {tr('schedule.scheduledConfig', '定时配置')}
+      </div>
+      <div className="space-y-3.5">
+        <ConfigRow label={tr('schedule.frequency', '频率')}>
+          <GlassSelect
+            value={mode === 'file_change' ? 'daily' : mode}
+            options={[
+              { value: 'once', label: tr('schedule.modeOnce', '单次') },
+              { value: 'daily', label: tr('schedule.modeDaily', '每天') },
+              { value: 'weekly', label: tr('schedule.modeWeekly', '每周') },
+              { value: 'interval', label: tr('schedule.modeInterval', '周期') },
+              { value: 'cron', label: tr('schedule.modeCron', 'Cron') },
+            ]}
+            onValueChange={(value: string) => onModeChange(value as TriggerMode)}
+            triggerClassName="h-9 w-full justify-between"
+          />
+        </ConfigRow>
+        {trigger.kind === 'once' && (
+          <ConfigRow label={tr('schedule.executionTime', '执行时间')}>
+            <input
+              type="datetime-local"
+              value={toLocalInput(trigger.runAt)}
+              onChange={(event) =>
+                onChange({ ...trigger, runAt: new Date(event.target.value).getTime() })
+              }
+              className="input h-9 w-full text-xs"
+            />
+          </ConfigRow>
+        )}
+        {trigger.kind === 'daily' && (
+          <ConfigRow label={tr('schedule.executionTime', '执行时间')}>
+            <input
+              type="time"
+              value={trigger.times[0] ?? '09:00'}
+              onChange={(event) => onChange({ ...trigger, times: [event.target.value || '09:00'] })}
+              className="input h-9 w-full text-xs"
+            />
+          </ConfigRow>
+        )}
+        {trigger.kind === 'weekly' && (
+          <>
+            <ConfigRow label={tr('schedule.weekday', '星期')}>
+              <input
+                value={trigger.weekdays.join(',')}
+                onChange={(event) =>
+                  onChange({
+                    ...trigger,
+                    weekdays: splitCsv(event.target.value)
+                      .map(Number)
+                      .filter(
+                        (value) => Number.isInteger(value) && value >= 0 && value <= 6
+                      ) as Array<0 | 1 | 2 | 3 | 4 | 5 | 6>,
+                  })
+                }
+                placeholder="1,2,3,4,5"
+                className="input h-9 w-full text-xs"
+              />
+            </ConfigRow>
+            <ConfigRow label={tr('schedule.executionTime', '执行时间')}>
+              <input
+                type="time"
+                value={trigger.times[0] ?? '09:00'}
+                onChange={(event) =>
+                  onChange({ ...trigger, times: [event.target.value || '09:00'] })
+                }
+                className="input h-9 w-full text-xs"
+              />
+            </ConfigRow>
+          </>
+        )}
+        {trigger.kind === 'interval' && (
+          <>
+            <ConfigRow label={tr('schedule.every', '每')}>
+              <div className="grid grid-cols-[1fr_108px] gap-2">
                 <input
-                  type="time"
-                  step={60}
-                  value={draftTime}
-                  onChange={(event) => setDraftTime(event.target.value)}
-                  className="min-w-0 flex-1 rounded-lg border border-border bg-background/42 px-3 py-2 text-sm text-text-primary"
+                  type="number"
+                  min={1}
+                  value={trigger.every}
+                  onChange={(event) =>
+                    onChange({ ...trigger, every: Number(event.target.value) || 1 })
+                  }
+                  className="input h-9 w-full text-xs"
                 />
-                <button
-                  type="button"
-                  onClick={addDraftTime}
-                  disabled={!isValidTimeValue(draftTime)}
-                  className="inline-flex min-w-[92px] flex-shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg bg-accent px-3 py-2 text-sm text-white disabled:opacity-50"
-                >
-                  <Plus className="h-4 w-4" />
-                  {t('schedule.pickerAdd')}
-                </button>
+                <GlassSelect
+                  value={trigger.unit}
+                  options={[
+                    { value: 'minute', label: tr('schedule.repeatUnitMinute', '分钟') },
+                    { value: 'hour', label: tr('schedule.repeatUnitHour', '小时') },
+                    { value: 'day', label: tr('schedule.repeatUnitDay', '天') },
+                  ]}
+                  onValueChange={(value: string) =>
+                    onChange({ ...trigger, unit: value as 'minute' | 'hour' | 'day' })
+                  }
+                  triggerClassName="h-9 w-full justify-between"
+                />
               </div>
-            </div>
-            <div className="space-y-2">
-              <div className="text-xs text-text-muted">{t('schedule.pickerSelectedTimes')}</div>
-              {values.length > 0 ? (
-                <div className="flex flex-wrap gap-2 rounded-lg bg-background/42 p-2">
-                  {values.map((time) => (
-                    <button
-                      key={time}
-                      type="button"
-                      onClick={() => onRemove(time)}
-                      className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-surface px-3 py-1 text-sm text-accent shadow-sm"
-                    >
-                      <span>{time}</span>
-                      <X className="h-3 w-3" />
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-lg bg-background/42 px-3 py-2 text-xs text-text-muted">
-                  {t('schedule.pickerNone')}
-                </div>
+            </ConfigRow>
+            <ConfigRow label={tr('schedule.startAt', '开始')}>
+              <input
+                type="datetime-local"
+                value={toLocalInput(trigger.startAt)}
+                onChange={(event) =>
+                  onChange({ ...trigger, startAt: new Date(event.target.value).getTime() })
+                }
+                className="input h-9 w-full text-xs"
+              />
+            </ConfigRow>
+          </>
+        )}
+        {trigger.kind === 'cron' && (
+          <ConfigRow label={tr('schedule.cronExpression', 'Cron 表达式')}>
+            <input
+              value={trigger.expression}
+              onChange={(event) => onChange({ ...trigger, expression: event.target.value })}
+              placeholder="0 9 * * 1"
+              className="input h-9 w-full text-xs"
+            />
+          </ConfigRow>
+        )}
+        <ConfigRow label={tr('schedule.timezone', '时区')}>
+          <GlassSelect
+            value={timezone}
+            options={Array.from(new Set([SYSTEM_TIMEZONE, 'Asia/Shanghai', 'UTC'])).map(
+              (value) => ({
+                value,
+                label: value,
+              })
+            )}
+            onValueChange={(value) => onChange({ ...trigger, timezone: value })}
+            triggerClassName="h-9 w-full justify-between"
+            contentClassName="w-[var(--radix-select-trigger-width)]"
+          />
+        </ConfigRow>
+        <div className="mt-1 flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2.5 text-xs font-medium text-success">
+          <CalendarClock className="h-4 w-4" />
+          {formatTriggerSummary(trigger, tr)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FileChangeConfigCard({
+  draft,
+  trigger,
+  projects,
+  onDraftChange,
+  tr,
+}: {
+  draft: AutomationDraft;
+  trigger: Extract<AutomationTrigger, { kind: 'file_change' }>;
+  projects: Project[];
+  onDraftChange: (draft: AutomationDraft) => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  const projectId = trigger.projectId ?? draft.projectId;
+  const updateTrigger = (next: Extract<AutomationTrigger, { kind: 'file_change' }>) => {
+    onDraftChange({ ...draft, projectId: next.projectId ?? draft.projectId, trigger: next });
+  };
+  return (
+    <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
+      <div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-success">
+        <Folder className="h-4 w-4" />
+        {tr('schedule.fileChangeConfig', '文件变更配置')}
+      </div>
+      <div className="space-y-3.5">
+        <ConfigRow label={tr('schedule.watchProject', '监听项目')}>
+          <GlassSelect
+            value={projectId ?? ''}
+            options={[
+              { value: '', label: tr('schedule.projectPlaceholder', '不指定项目') },
+              ...projects.map((project) => ({
+                value: project.id,
+                label: project.name?.trim() || project.cwd,
+              })),
+            ]}
+            onValueChange={(value) => updateTrigger({ ...trigger, projectId: value || null })}
+            placeholder={tr('schedule.projectPlaceholder', '不指定项目')}
+            triggerClassName="h-9 w-full justify-between"
+            contentClassName="w-[var(--radix-select-trigger-width)]"
+          />
+        </ConfigRow>
+        <ConfigRow label={tr('schedule.watchPatterns', '文件范围')}>
+          <input
+            value={trigger.patterns.join(', ')}
+            onChange={(event) =>
+              updateTrigger({ ...trigger, patterns: splitCsv(event.target.value) })
+            }
+            placeholder="**/*, **/*.csv"
+            className="input h-9 w-full text-xs"
+          />
+        </ConfigRow>
+        <ConfigRow label={tr('schedule.debounceSeconds', '防抖秒数')}>
+          <input
+            type="number"
+            min={1}
+            value={Math.round(trigger.debounceMs / 1000)}
+            onChange={(event) =>
+              updateTrigger({
+                ...trigger,
+                debounceMs: Math.max(1, Number(event.target.value) || 30) * 1000,
+              })
+            }
+            className="input h-9 w-full text-xs"
+          />
+        </ConfigRow>
+        <div className="mt-1 flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2.5 text-xs font-medium text-success">
+          <CalendarClock className="h-4 w-4" />
+          {projectId
+            ? tr('schedule.fileChangeSummary', '文件变更后自动执行')
+            : tr('schedule.fileChangeNeedsProject', '请选择一个项目用于监听文件变更')}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ActionChainSection({
+  draft,
+  actionDefinitions,
+  dataTasks,
+  inputTables,
+  outputTables,
+  appConfig,
+  onDraftChange,
+  tr,
+}: {
+  draft: AutomationDraft;
+  actionDefinitions: AutomationActionDefinitionSummary[];
+  dataTasks: DataCleaningTask[];
+  inputTables: DataDashboard['datasets'];
+  outputTables: DataDashboard['outputTables'];
+  appConfig: AppConfig | null;
+  onDraftChange: (draft: AutomationDraft) => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  const nodes = draft.actionGraph.nodes;
+  const updateNodes = (nextNodes: AutomationActionNode[]) =>
+    onDraftChange({
+      ...draft,
+      actionGraph: relinkLinearGraph({ version: 1, nodes: nextNodes, edges: [] }),
+    });
+  const addNode = (definition: AutomationActionDefinitionSummary) => {
+    updateNodes([
+      {
+        id: crypto.randomUUID(),
+        type: definition.type,
+        label: '',
+        enabled: true,
+        config: defaultConfigForAction(definition.type),
+      },
+      ...nodes,
+    ]);
+  };
+  const addActionButton = (
+    <GlassDropdownMenu
+      trigger={
+        <button className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-success bg-success/5 px-3 text-xs font-semibold text-success transition-colors hover:bg-success/10">
+          <Plus size={14} />
+          {tr('schedule.addAction', '添加动作')}
+        </button>
+      }
+    >
+      {actionDefinitions.map((definition) => (
+        <GlassMenuItem key={definition.type} onSelect={() => addNode(definition)}>
+          {getActionTitle(definition.type, definition.title, tr)}
+        </GlassMenuItem>
+      ))}
+    </GlassDropdownMenu>
+  );
+  return (
+    <section className="glass-card flex min-h-0 flex-col rounded-xl border border-border-muted bg-surface/70 p-4">
+      <div className="flex items-center justify-between gap-3 pb-3">
+        <h2 className="min-w-0 text-[16px] font-semibold text-text-secondary">
+          {tr('schedule.actionsTitle', '执行动作')}
+        </h2>
+        {addActionButton}
+      </div>
+      <div className="min-h-0 flex-1 space-y-4 overflow-auto border-t border-border-muted pt-4 pr-1">
+        {nodes.map((node, index) => (
+          <ActionStepCard
+            key={node.id}
+            node={node}
+            index={index}
+            dataTasks={dataTasks}
+            inputTables={inputTables}
+            outputTables={outputTables}
+            appConfig={appConfig}
+            onRemove={() => updateNodes(nodes.filter((item) => item.id !== node.id))}
+            onChange={(next) =>
+              updateNodes(nodes.map((item) => (item.id === next.id ? next : item)))
+            }
+            tr={tr}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ActionStepCard({
+  node,
+  index,
+  dataTasks,
+  inputTables,
+  outputTables,
+  appConfig,
+  onRemove,
+  onChange,
+  tr,
+}: {
+  node: AutomationActionNode;
+  index: number;
+  dataTasks: DataCleaningTask[];
+  inputTables: DataDashboard['datasets'];
+  outputTables: DataDashboard['outputTables'];
+  appConfig: AppConfig | null;
+  onRemove: () => void;
+  onChange: (node: AutomationActionNode) => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  const Icon = getActionIcon(node.type);
+  return (
+    <div className="rounded-lg border border-border-muted bg-bg-secondary/20 p-4">
+      <div className="mb-5 flex items-center gap-3">
+        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-success/12 text-[13px] font-semibold text-success">
+          {index + 1}
+        </span>
+        <Icon className="h-5 w-5 flex-shrink-0 text-text-secondary" />
+        <div className="min-w-0 flex-1 truncate text-[15px] font-semibold text-text-secondary">
+          {getNodeLabel(node, tr)}
+        </div>
+        <div className="flex flex-shrink-0 items-center gap-1 text-text-muted">
+          <GripVertical className="h-4 w-4" />
+          <MiniIcon
+            onClick={(event) => {
+              event.stopPropagation();
+              onRemove();
+            }}
+          >
+            <Trash2 size={13} />
+          </MiniIcon>
+        </div>
+      </div>
+      <ActionConfigEditor
+        node={node}
+        dataTasks={dataTasks}
+        inputTables={inputTables}
+        outputTables={outputTables}
+        appConfig={appConfig}
+        onChange={onChange}
+        tr={tr}
+      />
+    </div>
+  );
+}
+
+function ActionConfigEditor({
+  node,
+  dataTasks,
+  inputTables,
+  outputTables,
+  appConfig,
+  onChange,
+  tr,
+}: {
+  node: AutomationActionNode;
+  dataTasks: DataCleaningTask[];
+  inputTables: DataDashboard['datasets'];
+  outputTables: DataDashboard['outputTables'];
+  appConfig: AppConfig | null;
+  onChange: (node: AutomationActionNode) => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  const setConfig = (config: Record<string, unknown>) => onChange({ ...node, config });
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const currentRecipient = String(node.config.recipient ?? '');
+  const selectedModelConfigSetId =
+    typeof node.config.modelConfigSetId === 'string' && node.config.modelConfigSetId.trim()
+      ? node.config.modelConfigSetId
+      : appConfig?.activeConfigSetId;
+  const notificationRecipientOptions = [
+    ...NOTIFICATION_RECIPIENT_OPTIONS.map((option) => ({
+      value: option.value,
+      label: tr(option.labelKey, option.fallback),
+    })),
+    ...(currentRecipient &&
+    !NOTIFICATION_RECIPIENT_OPTIONS.some((option) => option.value === currentRecipient)
+      ? [{ value: currentRecipient, label: currentRecipient }]
+      : []),
+  ];
+  return (
+    <div className="space-y-4">
+      {node.type === 'notification.send' && (
+        <>
+          <ConfigRow label={tr('schedule.notificationRecipient', '通知对象')}>
+            <GlassSelect
+              value={currentRecipient}
+              options={[
+                { value: '', label: tr('schedule.recipientPlaceholder', '选择通知对象') },
+                ...notificationRecipientOptions,
+              ]}
+              onValueChange={(value) =>
+                setConfig({ ...node.config, channel: 'feishu', recipient: value })
+              }
+              placeholder={tr('schedule.recipientPlaceholder', '选择通知对象')}
+              triggerClassName="h-9 w-full justify-between"
+              contentClassName="w-[var(--radix-select-trigger-width)]"
+            />
+          </ConfigRow>
+          <ConfigRow label={tr('schedule.notificationContent', '通知内容')}>
+            <textarea
+              value={String(node.config.message ?? '')}
+              onChange={(event) => setConfig({ ...node.config, message: event.target.value })}
+              placeholder={tr(
+                'schedule.notificationContentPlaceholder',
+                '销售数据已更新，请查看仪表板'
               )}
-            </div>
-            <div className="space-y-2">
-              <div className="text-xs text-text-muted">{t('schedule.pickerSuggestions')}</div>
-              <div className="flex flex-wrap gap-2">
-                {SCHEDULE_TIME_SUGGESTIONS.map((time) => {
-                  const selected = values.includes(time);
-                  return (
-                    <button
-                      key={time}
-                      type="button"
-                      onClick={() => {
-                        if (selected) {
-                          onRemove(time);
-                          return;
-                        }
-                        onAdd(time);
-                      }}
-                      className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
-                        selected
-                          ? 'border-accent bg-accent/10 text-accent'
-                          : 'border-border bg-background text-text-secondary hover:bg-surface-hover'
-                      }`}
-                    >
-                      {time}
-                    </button>
-                  );
-                })}
-              </div>
+              className="input min-h-[74px] w-full resize-none text-xs leading-5"
+            />
+          </ConfigRow>
+        </>
+      )}
+      {node.type === 'data.task.run' && (
+        <>
+          <ConfigRow label={tr('schedule.dataTaskLabel', '任务')}>
+            <SelectLine
+              value={String(node.config.taskId ?? '')}
+              options={dataTasks.map((task) => ({ value: task.id, label: task.name }))}
+              placeholder={tr('schedule.dataTaskPlaceholder', '选择数据任务')}
+              onChange={(value) =>
+                setConfig({ ...node.config, taskId: value, outputMode: 'persisted' })
+              }
+            />
+          </ConfigRow>
+          <ConfigRow label={tr('schedule.executionMode', '执行方式')}>
+            <SelectLine
+              value={String(node.config.outputMode ?? 'persisted')}
+              options={[
+                { value: 'persisted', label: tr('schedule.executionImmediate', '立即执行') },
+                { value: 'temporary', label: tr('schedule.executionTemporary', '临时执行') },
+              ]}
+              placeholder={tr('schedule.executionImmediate', '立即执行')}
+              onChange={(value) => setConfig({ ...node.config, outputMode: value })}
+            />
+          </ConfigRow>
+        </>
+      )}
+      {node.type === 'data.input.preview' && (
+        <ConfigRow label={tr('schedule.inputDataLabel', '输入数据')}>
+          <SelectLine
+            value={String(node.config.inputTableId ?? '')}
+            options={inputTables.map((table) => ({ value: table.id, label: table.name }))}
+            placeholder={tr('schedule.inputTablePlaceholder', '选择输入表')}
+            onChange={(value) => setConfig({ ...node.config, inputTableId: value, limit: 20 })}
+          />
+        </ConfigRow>
+      )}
+      {(node.type === 'data.output.preview' || node.type === 'data.output.export') && (
+        <ConfigRow label={tr('schedule.outputDataLabel', '输出表')}>
+          <SelectLine
+            value={String(node.config.outputTableId ?? '')}
+            options={outputTables.map((table) => ({ value: table.id, label: table.name }))}
+            placeholder={tr('schedule.outputTablePlaceholder', '选择输出表')}
+            onChange={(value) => setConfig({ ...node.config, outputTableId: value, limit: 20 })}
+          />
+        </ConfigRow>
+      )}
+      {node.type === 'conversation.run' && (
+        <ConfigRow label={tr('schedule.conversationPrompt', '任务内容')}>
+          <div className="chat-composer-panel flex min-h-[116px] flex-col px-3 py-2.5">
+            <textarea
+              value={String(node.config.prompt ?? '')}
+              onChange={(event) => setConfig({ ...node.config, prompt: event.target.value })}
+              placeholder={tr('schedule.promptPlaceholder', '输入任务对话要执行的内容')}
+              className="min-h-[58px] flex-1 resize-none overflow-y-auto border-none bg-transparent text-[13px] leading-5 text-text-primary outline-none placeholder:text-text-muted"
+            />
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <AgentModelSelector
+                open={modelMenuOpen}
+                onOpenChange={setModelMenuOpen}
+                appConfig={appConfig}
+                selectedConfigSetId={selectedModelConfigSetId}
+                fallbackLabel={tr('chat.noModel', '未配置模型')}
+                disabled={!appConfig?.model?.trim()}
+                side="bottom"
+                align="end"
+                triggerClassName="composer-flat-pill inline-flex h-8 min-w-0 max-w-full items-center gap-1.5 rounded-full px-3 text-xs font-medium"
+                onSelect={(configSetId) =>
+                  setConfig({
+                    ...node.config,
+                    modelConfigSetId: configSetId,
+                    model: getAgentModelLabel(appConfig, '', configSetId),
+                  })
+                }
+              />
             </div>
           </div>
-        </div>
+        </ConfigRow>
       )}
     </div>
   );
+}
+
+function ConfigRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="grid gap-2 text-[12px] font-medium text-text-secondary sm:grid-cols-[112px_1fr] sm:items-start">
+      <span className="pt-2">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function SelectLine({
+  value,
+  options,
+  placeholder,
+  onChange,
+}: {
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <GlassSelect
+      value={value}
+      options={[{ value: '', label: placeholder }, ...options]}
+      onValueChange={onChange}
+      placeholder={placeholder}
+      triggerClassName="h-9 w-full justify-between"
+      contentClassName="w-[var(--radix-select-trigger-width)]"
+    />
+  );
+}
+
+function IconButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      className="flex h-8 w-8 items-center justify-center rounded-md border border-border-subtle text-text-muted hover:bg-bg-secondary"
+    >
+      {children}
+    </button>
+  );
+}
+
+function MiniIcon({
+  onClick,
+  children,
+}: {
+  onClick: (event: MouseEvent) => void;
+  children: ReactNode;
+}) {
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      className="flex h-5 w-5 items-center justify-center rounded text-text-muted hover:bg-bg-tertiary"
+    >
+      {children}
+    </span>
+  );
+}
+
+function getActionTitle(
+  type: string,
+  fallback: string,
+  tr: (key: string, fallback: string) => string
+): string {
+  if (type === 'notification.send') {
+    return tr('schedule.actionTypes.notificationSend.title', fallback);
+  }
+  if (type === 'conversation.run') {
+    return tr('schedule.actionTypes.conversationRun.title', fallback);
+  }
+  if (type === 'data.task.run') {
+    return tr('schedule.actionTypes.dataTaskRun.title', fallback);
+  }
+  if (type === 'data.input.preview') {
+    return tr('schedule.actionTypes.dataInputPreview.title', fallback);
+  }
+  if (type === 'data.output.preview') {
+    return tr('schedule.actionTypes.dataOutputPreview.title', fallback);
+  }
+  if (type === 'data.output.export') {
+    return tr('schedule.actionTypes.dataOutputExport.title', fallback);
+  }
+  return fallback;
+}
+
+function getActionIcon(type: string): LucideIcon {
+  if (type === 'notification.send') return Send;
+  if (type === 'conversation.run') return MessagesSquare;
+  if (type.startsWith('data.')) return Database;
+  return CalendarClock;
+}
+
+function formatTriggerSummary(
+  trigger: Exclude<AutomationTrigger, { kind: 'file_change' }>,
+  tr: (key: string, fallback: string) => string
+): string {
+  if (trigger.kind === 'daily') {
+    return tr('schedule.summaryDaily', `每天 ${trigger.times[0] ?? '09:00'} 自动执行`).replace(
+      '{{time}}',
+      trigger.times[0] ?? '09:00'
+    );
+  }
+  if (trigger.kind === 'weekly') {
+    return tr(
+      'schedule.summaryWeekly',
+      `每周 ${trigger.weekdays.join(',')} ${trigger.times[0] ?? '09:00'} 自动执行`
+    )
+      .replace('{{weekdays}}', trigger.weekdays.join(','))
+      .replace('{{time}}', trigger.times[0] ?? '09:00');
+  }
+  if (trigger.kind === 'interval') {
+    return tr('schedule.summaryInterval', `每 ${trigger.every} ${trigger.unit} 自动执行`)
+      .replace('{{every}}', String(trigger.every))
+      .replace('{{unit}}', trigger.unit);
+  }
+  if (trigger.kind === 'cron') {
+    return tr('schedule.summaryCron', `按 Cron ${trigger.expression} 自动执行`).replace(
+      '{{expression}}',
+      trigger.expression
+    );
+  }
+  return tr('schedule.summaryOnce', `在 ${formatAppDateTime(trigger.runAt)} 自动执行`).replace(
+    '{{time}}',
+    formatAppDateTime(trigger.runAt)
+  );
+}
+
+function getNodeLabel(
+  node: AutomationActionNode,
+  tr: (key: string, fallback: string) => string
+): string {
+  const fallback = getActionTitle(node.type, node.type, tr);
+  if (!node.label || node.label === node.type) return fallback;
+  if (node.type === 'notification.send' && node.label === 'Send message notification')
+    return fallback;
+  if (node.type === 'conversation.run' && node.label === 'Conversation') return fallback;
+  if (node.type === 'data.task.run' && node.label === 'Data task') return fallback;
+  return node.label;
+}
+
+function defaultConfigForAction(type: string): Record<string, unknown> {
+  if (type === 'notification.send') {
+    return { channel: 'feishu', recipient: DEFAULT_NOTIFICATION_RECIPIENT, message: '' };
+  }
+  if (type === 'conversation.run') {
+    return {
+      prompt: '',
+      projectId: '',
+      modelConfigSetId: null,
+      model: null,
+      completionMode: 'wait',
+      timeoutMs: 30 * 60 * 1000,
+      collectArtifacts: true,
+    };
+  }
+  if (type === 'data.task.run') return { taskId: '', outputMode: 'persisted' };
+  if (type === 'data.input.preview') return { inputTableId: '', limit: 20 };
+  if (type === 'data.output.preview') return { outputTableId: '', limit: 20 };
+  if (type === 'data.output.export') return { outputTableId: '', format: 'csv' };
+  return {};
+}
+
+function splitCsv(value: string): string[] {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function toLocalInput(timestamp: number): string {
+  const date = new Date(timestamp);
+  const offset = date.getTimezoneOffset();
+  const local = new Date(date.getTime() - offset * 60 * 1000);
+  return local.toISOString().slice(0, 16);
 }

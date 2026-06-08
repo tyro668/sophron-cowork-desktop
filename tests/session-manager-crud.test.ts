@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi } from 'vitest';
 import type { DatabaseInstance } from '../src/main/db/database';
 
@@ -51,7 +52,31 @@ import { SessionManager } from '../src/main/session/session-manager';
 
 // Shared minimal DB factory used across tests
 function makeDb(overrides: Partial<DatabaseInstance> = {}): DatabaseInstance {
+  const defaultProject = {
+    id: 'project-1',
+    name: 'workspace',
+    cwd: '/tmp/workspace',
+    path_key: '/tmp/workspace',
+    created_at: 1,
+    updated_at: 1,
+  };
   return {
+    raw: {
+      transaction: (fn: () => void) => fn,
+    } as any,
+    projects: {
+      create: vi.fn(),
+      update: vi.fn(() => defaultProject),
+      get: vi.fn(() => defaultProject),
+      getByPathKey: vi.fn(() => defaultProject),
+      getAll: vi.fn(() => [defaultProject]),
+      ensureForCwd: vi.fn((cwd: string) => ({
+        ...defaultProject,
+        cwd,
+        path_key: cwd,
+      })),
+      delete: vi.fn(),
+    },
     sessions: {
       create: vi.fn(),
       get: vi.fn(() => null),
@@ -157,6 +182,27 @@ describe('SessionManager.listSessions', () => {
 
     expect(s.mountedPaths).toEqual([]);
     expect(s.allowedTools).toEqual([]);
+  });
+});
+
+// ------------------------------------------------------------------
+// startSession — project/workdir persistence
+// ------------------------------------------------------------------
+describe('SessionManager.startSession project persistence', () => {
+  it('persists the selected cwd on the project and stores only project_id on the session row', async () => {
+    const db = makeDb();
+    const manager = new SessionManager(db, vi.fn());
+
+    const session = await manager.startSession('Task', 'hello', '/tmp/workspace');
+
+    expect(db.projects?.ensureForCwd).toHaveBeenCalledWith('/tmp/workspace');
+    expect(session.cwd).toBe('/tmp/workspace');
+    expect(session.projectId).toBe('project-1');
+    expect(db.sessions.create).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(db.sessions.create).mock.calls[0][0]).toMatchObject({
+      project_id: 'project-1',
+      cwd: null,
+    });
   });
 });
 

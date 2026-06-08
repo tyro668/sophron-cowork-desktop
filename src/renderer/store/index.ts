@@ -8,6 +8,7 @@ import type {
   Session,
   Message,
   TraceStep,
+  Project,
   PermissionRequest,
   SudoPasswordRequest,
   Settings,
@@ -85,6 +86,7 @@ function getSession(states: Record<string, SessionState>, sessionId: string): Se
 interface AppState {
   // Sessions
   sessions: Session[];
+  projects: Project[];
   activeSessionId: string | null;
 
   // Per-session state (messages, partials, turns, traces, etc.)
@@ -132,6 +134,9 @@ interface AppState {
 
   // Actions
   setSessions: (sessions: Session[]) => void;
+  setProjects: (projects: Project[]) => void;
+  upsertProject: (project: Project) => void;
+  removeProject: (projectId: string) => void;
   addSession: (session: Session) => void;
   updateSession: (sessionId: string, updates: Partial<Session>) => void;
   removeSession: (sessionId: string) => void;
@@ -231,6 +236,7 @@ let dataNavigationSeq = 0;
 export const useAppStore = create<AppState>((set) => ({
   // Initial state
   sessions: [],
+  projects: [],
   activeSessionId: null,
   sessionStates: {},
   isLoading: false,
@@ -258,6 +264,41 @@ export const useAppStore = create<AppState>((set) => ({
 
   // Session actions
   setSessions: (sessions) => set({ sessions }),
+
+  setProjects: (projects) => set({ projects }),
+
+  upsertProject: (project) =>
+    set((state) => {
+      const exists = state.projects.some((item) => item.id === project.id);
+      const projects = exists
+        ? state.projects.map((item) => (item.id === project.id ? project : item))
+        : [project, ...state.projects];
+      return {
+        projects,
+        sessions: state.sessions.map((session) =>
+          session.projectId === project.id
+            ? {
+                ...session,
+                projectName: project.name || undefined,
+                cwd: project.cwd,
+                mountedPaths: project.cwd
+                  ? [{ virtual: '/mnt/workspace', real: project.cwd }]
+                  : session.mountedPaths,
+              }
+            : session
+        ),
+      };
+    }),
+
+  removeProject: (projectId) =>
+    set((state) => ({
+      projects: state.projects.filter((project) => project.id !== projectId),
+      sessions: state.sessions.map((session) =>
+        session.projectId === projectId
+          ? { ...session, projectId: undefined, projectName: undefined }
+          : session
+      ),
+    })),
 
   addSession: (session) =>
     set((state) => ({

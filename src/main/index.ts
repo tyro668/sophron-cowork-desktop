@@ -25,9 +25,10 @@ import {
 } from 'electron';
 import { join, resolve, dirname, isAbsolute, basename } from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import { execFileSync } from 'child_process';
 import { config } from 'dotenv';
-import { initDatabase, closeDatabase } from './db/database';
+import { initDatabase, closeDatabase, type DatabaseInstance, type ProjectRow } from './db/database';
 import { createDataTaskStore, type DataTaskStore } from './data/data-task-store';
 import { DataCommandService } from './data/data-command-service';
 import { DataToolService } from './data/data-tool-service';
@@ -60,6 +61,7 @@ import type { MCPServerConfig } from './mcp/mcp-manager';
 import type {
   ClientEvent,
   ServerEvent,
+  Project,
   ApiTestInput,
   ApiTestResult,
   DiagnosticInput,
@@ -86,14 +88,28 @@ import type {
 } from '../renderer/types';
 import { remoteManager, type AgentExecutor } from './remote/remote-manager';
 import { remoteConfigStore } from './remote/remote-config-store';
+import { FeishuAPI } from './remote/channels/feishu/feishu-api';
 import type { GatewayConfig, FeishuChannelConfig, ChannelType } from './remote/types';
 import { startNavServer, stopNavServer } from './nav-server';
 import {
-  ScheduledTaskManager,
+  type ScheduledTask,
   type ScheduledTaskCreateInput,
   type ScheduledTaskUpdateInput,
 } from './schedule/scheduled-task-manager';
-import { createScheduledTaskStore } from './schedule/scheduled-task-store';
+import { createAutomationStore, type AutomationStore } from './automation/automation-store';
+import { AutomationService } from './automation/automation-service';
+import { AutomationRunner } from './automation/automation-runner';
+import { AutomationScheduler } from './automation/automation-scheduler';
+import { createDefaultAutomationActionRegistry } from './automation/default-actions';
+import type {
+  Automation,
+  AutomationActionGraph,
+  AutomationCreateInput,
+  AutomationListQuery,
+  AutomationRunQuery,
+  AutomationTrigger,
+  AutomationUpdateInput,
+} from '../shared/automation/types';
 import {
   buildScheduledTaskFallbackTitle,
   buildScheduledTaskTitle,
@@ -150,10 +166,13 @@ app.disableHardwareAcceleration();
 
 let mainWindow: BrowserWindow | null = null;
 let sessionManager: SessionManager | null = null;
+let appDatabase: DatabaseInstance | null = null;
 let skillsManager: SkillsManager | null = null;
 let pluginRuntimeService: PluginRuntimeService | null = null;
 let memoryService: MemoryService | null = null;
-let scheduledTaskManager: ScheduledTaskManager | null = null;
+let automationStore: AutomationStore | null = null;
+let automationService: AutomationService | null = null;
+let automationScheduler: AutomationScheduler | null = null;
 let dataTaskStore: DataTaskStore | null = null;
 let dataCommandService: DataCommandService | null = null;
 let updateService: UpdateService | null = null;
@@ -197,6 +216,73 @@ async function resolveScheduledTaskTitle(
     logWarn('[Schedule] Failed to generate title via session title flow, using fallback', error);
     return fallback;
   }
+}
+
+function mapProjectRow(row: ProjectRow): Project {
+  return {
+    id: row.id,
+    name: row.name || null,
+    cwd: row.cwd,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function listProjectsForRenderer(): Project[] {
+  return appDatabase?.projects?.getAll().map(mapProjectRow) ?? [];
+}
+
+function ensureProjectIdForLegacyCwd(cwd?: string | null): string | null {
+  const trimmedCwd = cwd?.trim();
+  if (!trimmedCwd || !appDatabase?.projects) return null;
+  const project = appDatabase.projects.ensureForCwd(trimmedCwd);
+  sendToRenderer({
+    type: 'project.update',
+    payload: { project: mapProjectRow(project) },
+  });
+  return project.id;
+}
+
+function resolveAutomationProjectCwd(projectId?: string | null): string {
+  if (!projectId) return '';
+  return appDatabase?.projects?.get(projectId)?.cwd ?? '';
+}
+
+async function sendAutomationNotification(payload: {
+  channel: string;
+  recipient: string;
+  message: string;
+}): Promise<{ id?: string; href?: string } | void> {
+  if (!payload.message.trim()) {
+    throw new Error('Notification message cannot be empty');
+  }
+  if (!payload.recipient.trim()) {
+    throw new Error('Notification recipient cannot be empty');
+  }
+  if (payload.channel === 'feishu') {
+    const feishuConfig = remoteConfigStore.getFeishuConfig();
+    if (!feishuConfig?.appId || !feishuConfig.appSecret) {
+      throw new Error('Feishu notification channel is not configured');
+    }
+    const api = new FeishuAPI(feishuConfig.appId, feishuConfig.appSecret);
+    const id = await api.sendMessage(payload.recipient, 'text', { text: payload.message });
+    return { id };
+  }
+  if (payload.channel === 'webhook') {
+    const response = await fetch(payload.recipient, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ text: payload.message, message: payload.message }),
+    });
+    if (!response.ok) {
+      throw new Error(`Webhook notification failed: HTTP ${response.status}`);
+    }
+    return { href: payload.recipient };
+  }
+  if (payload.channel === 'email') {
+    throw new Error('Email notification channel is not configured');
+  }
+  throw new Error(`Unsupported notification channel: ${payload.channel}`);
 }
 
 async function waitForDevServer(url: string, maxAttempts = 30, intervalMs = 500): Promise<boolean> {
@@ -617,7 +703,8 @@ function scheduleStartupUpdateCheck(): void {
 /**
  * Initialize default working directory
  * This is always the app's DefaultWorkingDir in userData - it never changes
- * Each session can have its own cwd that differs from this default
+ * User-selected workspace directories are persisted as projects and sessions
+ * reference those projects.
  */
 function initializeDefaultWorkingDir(): string {
   // Create default working directory in user data path (this is the permanent global default)
@@ -652,8 +739,8 @@ function getWorkspacePathUnsupportedReason(workspacePath?: string): string | nul
 
 /**
  * Set working directory
- * - If sessionId is provided: update only that session's cwd (for switching directories within a chat)
- * - If no sessionId: update UI display only (for WelcomeView - will be used when creating new session)
+ * - If sessionId is provided: move that session to the project for the selected directory
+ * - If no sessionId: persist/activate a project for the WelcomeView's next session
  *
  * Note: The global default (currentWorkingDir) is NEVER changed after initialization.
  * It is always app.getPath('userData')/DefaultWorkingDir
@@ -680,6 +767,12 @@ async function setWorkingDir(
     SandboxSync.clearSession(sessionId);
     const { LimaSync } = await import('./sandbox/lima-sync');
     LimaSync.clearSession(sessionId);
+  } else if (appDatabase?.projects) {
+    const project = appDatabase.projects.ensureForCwd(newDir);
+    sendToRenderer({
+      type: 'project.update',
+      payload: { project: mapProjectRow(project) },
+    });
   }
 
   // Notify renderer of workdir change (for UI display)
@@ -899,6 +992,7 @@ app
 
     // Initialize database
     const db = initDatabase();
+    appDatabase = db;
     const initializedDataTaskStore = createDataTaskStore(
       join(app.getPath('userData'), 'data', 'workspace.duckdb'),
       {
@@ -991,42 +1085,35 @@ app
 
     startNavServer(() => mainWindow);
 
-    const scheduledTaskStore = createScheduledTaskStore(db);
-    scheduledTaskManager = new ScheduledTaskManager({
-      store: scheduledTaskStore,
-      executeTask: async (task) => {
-        if (!sessionManager) {
-          throw new Error('Session manager not initialized');
-        }
-        const unsupportedReason = getWorkspacePathUnsupportedReason(task.cwd);
-        if (unsupportedReason) {
-          throw new Error(unsupportedReason);
-        }
-        const fallbackTitle = buildScheduledTaskFallbackTitle(task.prompt);
-        const needsRegeneratedTitle = !task.title?.trim() || task.title === fallbackTitle;
-        const title = needsRegeneratedTitle
-          ? await resolveScheduledTaskTitle(task.prompt, task.cwd, task.title)
-          : buildScheduledTaskTitle(task.title);
-        if (title !== task.title) {
-          scheduledTaskStore.update(task.id, { title });
-        }
-        const started = await sessionManager.startSession(title, task.prompt, task.cwd);
-        // 定时任务创建的新会话需要主动同步到前端会话列表
+    automationStore = createAutomationStore(db);
+    automationStore.migrateScheduledTasks();
+    const automationActionRegistry = createDefaultAutomationActionRegistry({
+      dataTaskStore: initializedDataTaskStore,
+      sessionManager,
+      resolveProjectCwd: (projectId) => db.projects?.get(projectId)?.cwd ?? null,
+      resolveModelRuntimeConfig: (configSetId) => configStore.getRuntimeConfigForSet(configSetId),
+      sendNotification: sendAutomationNotification,
+      sendSessionUpdate: (started) => {
         sendToRenderer({
           type: 'session.update',
           payload: { sessionId: started.id, updates: started },
         });
-        return { sessionId: started.id };
       },
-      onTaskError: (taskId, error) => {
-        sendToRenderer({
-          type: 'scheduled-task.error',
-          payload: { taskId, error },
-        });
-      },
-      now: () => Date.now(),
     });
-    scheduledTaskManager.start();
+    const automationRunner = new AutomationRunner({
+      store: automationStore,
+      registry: automationActionRegistry,
+      deliver: async () => 'skipped',
+    });
+    automationService = new AutomationService({
+      store: automationStore,
+      runner: automationRunner,
+      registry: automationActionRegistry,
+    });
+    automationScheduler = new AutomationScheduler(automationService, {
+      resolveProjectCwd: (projectId) => db.projects?.get(projectId)?.cwd ?? null,
+    });
+    automationScheduler.start();
 
     // 初始化远程管理器
     remoteManager.setRendererCallback(sendToRenderer);
@@ -1122,7 +1209,6 @@ async function cleanupSandboxResources(): Promise<void> {
 
   stopNavServer();
   skillsManager?.stopStorageMonitoring();
-  scheduledTaskManager?.stop();
   tray?.destroy();
   tray = null;
 
@@ -1183,6 +1269,8 @@ async function cleanupSandboxResources(): Promise<void> {
     closeDatabase();
   } catch (error) {
     logError('[App] Error closing database:', error);
+  } finally {
+    appDatabase = null;
   }
 
   closeLogFile();
@@ -1193,7 +1281,6 @@ async function cleanupSandboxResources(): Promise<void> {
 async function prepareForUpdateInstall(): Promise<void> {
   isInstallingUpdate = true;
   stopNavServer();
-  scheduledTaskManager?.stop();
   try {
     dataTaskStore?.close();
   } catch (error) {
@@ -1205,6 +1292,8 @@ async function prepareForUpdateInstall(): Promise<void> {
     closeDatabase();
   } catch (error) {
     logError('[Update] Error closing database before install:', error);
+  } finally {
+    appDatabase = null;
   }
 }
 
@@ -1244,6 +1333,8 @@ app.on('before-quit', async (event) => {
         closeDatabase();
       } catch {
         /* best-effort */
+      } finally {
+        appDatabase = null;
       }
       closeLogFile();
       tray?.destroy();
@@ -1671,6 +1762,13 @@ function requireDataTaskStore(): DataTaskStore {
     });
   }
   return dataTaskStore;
+}
+
+function requireAutomationService(): AutomationService {
+  if (!automationService) {
+    throw new Error('Automation service not initialized');
+  }
+  return automationService;
 }
 
 function requireDataCommandService(): DataCommandService {
@@ -2997,10 +3095,248 @@ ipcMain.handle('remote.restart', async () => {
   }
 });
 
+function rescheduleAutomations(): void {
+  automationScheduler?.reschedule();
+}
+
+function scheduleInputToTrigger(input: {
+  runAt: number;
+  scheduleConfig?: ScheduledTaskCreateInput['scheduleConfig'];
+  repeatEvery?: number | null;
+  repeatUnit?: ScheduledTaskCreateInput['repeatUnit'];
+}): AutomationTrigger {
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  if (input.scheduleConfig?.kind === 'daily') {
+    return { kind: 'daily', times: input.scheduleConfig.times, timezone };
+  }
+  if (input.scheduleConfig?.kind === 'weekly') {
+    return {
+      kind: 'weekly',
+      weekdays: input.scheduleConfig.weekdays,
+      times: input.scheduleConfig.times,
+      timezone,
+    };
+  }
+  if (input.repeatEvery && input.repeatUnit) {
+    return {
+      kind: 'interval',
+      every: input.repeatEvery,
+      unit: input.repeatUnit,
+      startAt: input.runAt,
+      timezone,
+    };
+  }
+  return { kind: 'once', runAt: input.runAt, timezone };
+}
+
+function scheduleInputToActionGraph(input: {
+  prompt: string;
+  cwd: string;
+  projectId?: string | null;
+  automationConfig?: ScheduledTaskCreateInput['automationConfig'];
+}): AutomationActionGraph {
+  const automationConfig = input.automationConfig;
+  if (automationConfig?.actionKind === 'data_task' && automationConfig.dataTaskId) {
+    const dataNodeId = crypto.randomUUID();
+    return {
+      version: 1,
+      nodes: [
+        {
+          id: dataNodeId,
+          type: 'data.task.run',
+          label: automationConfig.dataTaskName ?? 'Data task',
+          enabled: true,
+          config: { taskId: automationConfig.dataTaskId, outputMode: 'persisted' },
+        },
+      ],
+      edges: [],
+    };
+  }
+  return {
+    version: 1,
+    nodes: [
+      {
+        id: crypto.randomUUID(),
+        type: 'conversation.run',
+        label: '',
+        enabled: true,
+        config: {
+          prompt: input.prompt,
+          projectId: input.projectId ?? null,
+          completionMode: 'fire_and_forget',
+          timeoutMs: 30 * 60 * 1000,
+          collectArtifacts: true,
+        },
+      },
+    ],
+    edges: [],
+  };
+}
+
+function scheduleDeliveryToAutomationDelivery(
+  delivery?: {
+    enabled?: boolean;
+    artifactPolicy?: 'summary' | 'links' | 'files';
+    recipients?: Array<{ id: string; channel: string; target: string; enabled: boolean }>;
+  } | null
+): AutomationCreateInput['delivery'] {
+  const value = delivery ?? undefined;
+  if (!value?.enabled) return null;
+  return {
+    enabled: true,
+    artifactPolicy:
+      value.artifactPolicy === 'files' ? 'attachments' : (value.artifactPolicy ?? 'links'),
+    failureMessage: { includeRunLog: true, includeArtifacts: false },
+    channels:
+      value.recipients?.map((recipient) => ({
+        id: recipient.id,
+        type:
+          recipient.channel === 'email' || recipient.channel === 'webhook'
+            ? recipient.channel
+            : 'feishu',
+        enabled: recipient.enabled !== false,
+        recipient: recipient.target,
+        config: {},
+      })) ?? [],
+  };
+}
+
+function automationToScheduledTask(automation: Automation): ScheduledTask {
+  const conversationNode = automation.actionGraph.nodes.find(
+    (node) => node.type === 'conversation.run'
+  );
+  const dataTaskNode = automation.actionGraph.nodes.find((node) => node.type === 'data.task.run');
+  const prompt =
+    typeof conversationNode?.config.prompt === 'string' ? conversationNode.config.prompt : '';
+  const actionProjectId =
+    typeof conversationNode?.config.projectId === 'string' &&
+    conversationNode.config.projectId.trim()
+      ? conversationNode.config.projectId.trim()
+      : null;
+  const legacyCwd =
+    typeof conversationNode?.config.cwd === 'string' ? conversationNode.config.cwd : '';
+  const cwd = resolveAutomationProjectCwd(automation.projectId ?? actionProjectId) || legacyCwd;
+  const scheduleConfig =
+    automation.trigger.kind === 'daily'
+      ? { kind: 'daily' as const, times: automation.trigger.times }
+      : automation.trigger.kind === 'weekly'
+        ? {
+            kind: 'weekly' as const,
+            weekdays: automation.trigger.weekdays,
+            times: automation.trigger.times,
+          }
+        : null;
+  return {
+    id: automation.id,
+    title: automation.name,
+    prompt,
+    cwd,
+    automationConfig: dataTaskNode
+      ? {
+          actionKind: 'data_task',
+          dataTaskId:
+            typeof dataTaskNode.config.taskId === 'string' ? dataTaskNode.config.taskId : null,
+          dataTaskName: dataTaskNode.label ?? null,
+          delivery: {
+            enabled: automation.delivery?.enabled ?? false,
+            artifactPolicy:
+              automation.delivery?.artifactPolicy === 'attachments'
+                ? 'files'
+                : (automation.delivery?.artifactPolicy ?? 'links'),
+            recipients:
+              automation.delivery?.channels.map((channel) => ({
+                id: channel.id,
+                label: channel.recipient,
+                channel:
+                  channel.type === 'email' || channel.type === 'webhook' ? channel.type : 'feishu',
+                target: channel.recipient,
+                enabled: channel.enabled,
+              })) ?? [],
+          },
+        }
+      : null,
+    runAt:
+      automation.trigger.kind === 'once'
+        ? automation.trigger.runAt
+        : automation.trigger.kind === 'interval'
+          ? automation.trigger.startAt
+          : (automation.nextRunAt ?? automation.createdAt),
+    nextRunAt: automation.nextRunAt,
+    scheduleConfig,
+    repeatEvery: automation.trigger.kind === 'interval' ? automation.trigger.every : null,
+    repeatUnit: automation.trigger.kind === 'interval' ? automation.trigger.unit : null,
+    enabled: automation.enabled && automation.status !== 'paused',
+    lastRunAt: automation.lastRunAt,
+    lastRunSessionId: null,
+    lastError: automation.lastError,
+    createdAt: automation.createdAt,
+    updatedAt: automation.updatedAt,
+  };
+}
+
+ipcMain.handle('automation.list', (_event, query?: AutomationListQuery) => {
+  return requireAutomationService().list(query);
+});
+
+ipcMain.handle('automation.get', (_event, id: string) => {
+  return requireAutomationService().get(id);
+});
+
+ipcMain.handle('automation.create', (_event, payload: AutomationCreateInput) => {
+  const created = requireAutomationService().create(payload);
+  rescheduleAutomations();
+  return created;
+});
+
+ipcMain.handle('automation.update', (_event, id: string, updates: AutomationUpdateInput) => {
+  const updated = requireAutomationService().update(id, updates);
+  rescheduleAutomations();
+  return updated;
+});
+
+ipcMain.handle('automation.delete', (_event, id: string) => {
+  const result = requireAutomationService().delete(id);
+  rescheduleAutomations();
+  return result;
+});
+
+ipcMain.handle('automation.setEnabled', (_event, id: string, enabled: boolean) => {
+  const updated = requireAutomationService().setEnabled(id, enabled);
+  rescheduleAutomations();
+  return updated;
+});
+
+ipcMain.handle('automation.pause', (_event, id: string) => {
+  const updated = requireAutomationService().pause(id);
+  rescheduleAutomations();
+  return updated;
+});
+
+ipcMain.handle('automation.resume', (_event, id: string) => {
+  const updated = requireAutomationService().resume(id);
+  rescheduleAutomations();
+  return updated;
+});
+
+ipcMain.handle('automation.runNow', async (_event, id: string) => {
+  return requireAutomationService().runNow(id);
+});
+
+ipcMain.handle('automation.runs.list', (_event, id: string, query?: AutomationRunQuery) => {
+  return requireAutomationService().listRuns(id, query);
+});
+
+ipcMain.handle('automation.artifacts.list', (_event, runId: string) => {
+  return requireAutomationService().listArtifacts(runId);
+});
+
+ipcMain.handle('automation.actions.listDefinitions', () => {
+  return requireAutomationService().listActionDefinitions();
+});
+
 ipcMain.handle('schedule.list', () => {
   try {
-    if (!scheduledTaskManager) return [];
-    return scheduledTaskManager.list();
+    return requireAutomationService().list().map(automationToScheduledTask);
   } catch (error) {
     logError('[Schedule] Error listing tasks:', error);
     return [];
@@ -3008,36 +3344,41 @@ ipcMain.handle('schedule.list', () => {
 });
 
 ipcMain.handle('schedule.create', async (_event, payload: ScheduledTaskCreateInput) => {
-  if (!scheduledTaskManager) {
-    throw new Error('Scheduled task manager not initialized');
-  }
   const unsupportedReason = getWorkspacePathUnsupportedReason(payload.cwd);
   if (unsupportedReason) {
     throw new Error(unsupportedReason);
   }
+  const projectId = ensureProjectIdForLegacyCwd(payload.cwd);
   const normalizedPrompt = payload.prompt.trim();
   const title = payload.title
     ? buildScheduledTaskTitle(payload.title)
     : await resolveScheduledTaskTitle(normalizedPrompt, payload.cwd);
-  return scheduledTaskManager.create({
-    ...payload,
-    prompt: normalizedPrompt,
-    title,
+  const created = requireAutomationService().create({
+    name: title,
+    projectId,
+    enabled: payload.enabled,
+    trigger: scheduleInputToTrigger(payload),
+    actionGraph: scheduleInputToActionGraph({ ...payload, prompt: normalizedPrompt, projectId }),
+    delivery: scheduleDeliveryToAutomationDelivery(payload.automationConfig?.delivery),
   });
+  rescheduleAutomations();
+  return automationToScheduledTask(created);
 });
 
 ipcMain.handle('schedule.update', async (_event, id: string, updates: ScheduledTaskUpdateInput) => {
-  if (!scheduledTaskManager) {
-    throw new Error('Scheduled task manager not initialized');
-  }
-  const existing = scheduledTaskManager.get(id);
-  if (!existing) return null;
+  const existingAutomation = requireAutomationService().get(id);
+  if (!existingAutomation) return null;
+  const existing = automationToScheduledTask(existingAutomation);
   const nextCwd = updates.cwd ?? existing.cwd;
   const unsupportedReason = getWorkspacePathUnsupportedReason(nextCwd);
   if (unsupportedReason) {
     throw new Error(unsupportedReason);
   }
   const normalizedPrompt = updates.prompt === undefined ? existing.prompt : updates.prompt.trim();
+  const legacyProjectId =
+    updates.cwd !== undefined
+      ? ensureProjectIdForLegacyCwd(nextCwd)
+      : (existingAutomation.projectId ?? ensureProjectIdForLegacyCwd(existing.cwd));
   const normalizedUpdates: ScheduledTaskUpdateInput = {
     ...updates,
     prompt: normalizedPrompt,
@@ -3052,29 +3393,62 @@ ipcMain.handle('schedule.update', async (_event, id: string, updates: ScheduledT
       existing.title
     );
   }
-
-  return scheduledTaskManager.update(id, normalizedUpdates);
+  const merged: ScheduledTask = { ...existing, ...normalizedUpdates } as ScheduledTask;
+  const updated = requireAutomationService().update(id, {
+    name: normalizedUpdates.title,
+    projectId:
+      updates.cwd !== undefined || (!existingAutomation.projectId && legacyProjectId)
+        ? legacyProjectId
+        : undefined,
+    enabled: normalizedUpdates.enabled,
+    trigger:
+      updates.runAt !== undefined ||
+      updates.scheduleConfig !== undefined ||
+      updates.repeatEvery !== undefined ||
+      updates.repeatUnit !== undefined
+        ? scheduleInputToTrigger({
+            runAt: merged.runAt,
+            scheduleConfig: merged.scheduleConfig,
+            repeatEvery: merged.repeatEvery,
+            repeatUnit: merged.repeatUnit,
+          })
+        : undefined,
+    actionGraph:
+      updates.prompt !== undefined ||
+      updates.cwd !== undefined ||
+      updates.automationConfig !== undefined
+        ? scheduleInputToActionGraph({
+            prompt: merged.prompt,
+            cwd: merged.cwd,
+            projectId: legacyProjectId,
+            automationConfig: merged.automationConfig,
+          })
+        : undefined,
+    delivery:
+      updates.automationConfig !== undefined
+        ? scheduleDeliveryToAutomationDelivery(merged.automationConfig?.delivery)
+        : undefined,
+  });
+  rescheduleAutomations();
+  return updated ? automationToScheduledTask(updated) : null;
 });
 
 ipcMain.handle('schedule.delete', (_event, id: string) => {
-  if (!scheduledTaskManager) {
-    throw new Error('Scheduled task manager not initialized');
-  }
-  return { success: scheduledTaskManager.delete(id) };
+  const result = requireAutomationService().delete(id);
+  rescheduleAutomations();
+  return result;
 });
 
 ipcMain.handle('schedule.toggle', (_event, id: string, enabled: boolean) => {
-  if (!scheduledTaskManager) {
-    throw new Error('Scheduled task manager not initialized');
-  }
-  return scheduledTaskManager.toggle(id, enabled);
+  const updated = requireAutomationService().setEnabled(id, enabled);
+  rescheduleAutomations();
+  return updated ? automationToScheduledTask(updated) : null;
 });
 
 ipcMain.handle('schedule.runNow', async (_event, id: string) => {
-  if (!scheduledTaskManager) {
-    throw new Error('Scheduled task manager not initialized');
-  }
-  return scheduledTaskManager.runNow(id);
+  await requireAutomationService().runNow(id);
+  const updated = requireAutomationService().get(id);
+  return updated ? automationToScheduledTask(updated) : null;
 });
 
 ipcMain.handle('memory.getOverview', (_event, cwd?: string) => {
@@ -3308,8 +3682,37 @@ async function handleClientEvent(event: ClientEvent): Promise<unknown> {
 
     case 'session.list': {
       const sessions = sm.listSessions();
-      sendToRenderer({ type: 'session.list', payload: { sessions } });
+      sendToRenderer({
+        type: 'session.list',
+        payload: { sessions, projects: listProjectsForRenderer() },
+      });
       return sessions;
+    }
+
+    case 'project.rename': {
+      const db = appDatabase;
+      if (!db?.projects) {
+        throw new Error('Project store not initialized');
+      }
+      const updated = db.projects.update(event.payload.projectId, {
+        name: event.payload.name?.trim() || null,
+      });
+      if (!updated) {
+        return null;
+      }
+      const project = mapProjectRow(updated);
+      sendToRenderer({ type: 'project.update', payload: { project } });
+      return project;
+    }
+
+    case 'project.delete': {
+      const db = appDatabase;
+      if (!db?.projects) {
+        throw new Error('Project store not initialized');
+      }
+      db.projects.delete(event.payload.projectId);
+      sendToRenderer({ type: 'project.delete', payload: { projectId: event.payload.projectId } });
+      return { success: true };
     }
 
     case 'session.getMessages':

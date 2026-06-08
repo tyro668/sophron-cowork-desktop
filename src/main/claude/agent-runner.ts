@@ -23,7 +23,14 @@ import {
 } from '@mariozechner/pi-coding-agent';
 import { Type, type TSchema } from '@sinclair/typebox';
 import { getSharedAuthStorage, ModelRegistry } from './shared-auth';
-import type { Session, Message, TraceStep, ServerEvent, ContentBlock } from '../../renderer/types';
+import type {
+  Session,
+  Message,
+  TraceStep,
+  ServerEvent,
+  ContentBlock,
+  AgentRuntimeConfig,
+} from '../../renderer/types';
 import { v4 as uuidv4 } from 'uuid';
 import { decidePermission, rememberAlwaysAllow } from '../config/permission-rules-store';
 import { PathResolver } from '../sandbox/path-resolver';
@@ -1180,7 +1187,12 @@ ${hints.join('\n')}
     return model;
   }
 
-  async run(session: Session, prompt: string, existingMessages: Message[]): Promise<void> {
+  async run(
+    session: Session,
+    prompt: string,
+    existingMessages: Message[],
+    runtimeConfigOverride?: AgentRuntimeConfig
+  ): Promise<void> {
     const runStartTime = Date.now();
     logCtx('[ClaudeAgentRunner] run() started');
 
@@ -1576,7 +1588,7 @@ ${hints.join('\n')}
       logTiming('before pi-ai model resolution', runStartTime);
 
       // Resolve model via pi-ai
-      const runtimeConfig = configStore.getAll();
+      const runtimeConfig = runtimeConfigOverride ?? configStore.getAll();
       const modelString = this.getCurrentModelString(runtimeConfig.model);
       const configProtocol = resolvePiRouteProtocol(
         runtimeConfig.provider,
@@ -1795,7 +1807,8 @@ ${hints.join('\n')}
       logCtx('[ClaudeAgentRunner] Using pi-ai native routing for:', piModel.provider, piModel.id);
 
       // Resolve thinking level early — needed for session reuse check below
-      const enableThinking = configStore.get('enableThinking') ?? false;
+      const enableThinking =
+        runtimeConfigOverride?.enableThinking ?? configStore.get('enableThinking') ?? false;
       logCtx('[ClaudeAgentRunner] Enable thinking mode:', enableThinking);
       type PiThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
       const thinkingLevel: PiThinkingLevel = enableThinking ? 'medium' : 'off';
