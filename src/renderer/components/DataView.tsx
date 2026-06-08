@@ -3478,6 +3478,8 @@ function WorkflowInspector({
                 <div className="mb-2 flex min-h-8 items-center gap-2">
                   <GlassModeToggle
                     mode="form"
+                    formLabel={t('data.workflow.formConfig', '图形配置')}
+                    dslLabel={t('data.workflow.dslEditor', 'DSL 编辑器')}
                     onChange={(m) => {
                       if (m === 'dsl') {
                         setOperatorDsl(exportPrepOperatorDsl(node));

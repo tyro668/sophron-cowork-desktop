@@ -2036,6 +2036,30 @@ ipcMain.handle('data.deleteTask', async (_event, id: string) => {
   }
 });
 
+ipcMain.handle(
+  'data.getWorkflowNodeColumnTypes',
+  async (_event, payload: DataPreviewWorkflowNodeInput) => {
+    try {
+      return await requireDataTaskStore().getWorkflowNodeColumnTypes(payload);
+    } catch (error) {
+      logError('[Data] Error reading workflow node column types:', error);
+      throw error;
+    }
+  }
+);
+
+ipcMain.handle(
+  'data.getWorkflowNodeColumnValues',
+  async (_event, payload: DataPreviewWorkflowNodeInput & { column: string }) => {
+    try {
+      return await requireDataTaskStore().getWorkflowNodeColumnValues(payload);
+    } catch (error) {
+      logError('[Data] Error reading workflow node column values:', error);
+      throw error;
+    }
+  }
+);
+
 ipcMain.handle('data.deleteDataset', async (_event, id: string) => {
   try {
     return { success: await requireDataTaskStore().deleteDataset(id) };

@@ -69,10 +69,11 @@ export default function FormJoin({ node, otherNodes, onNodeChange }: OperatorFor
 
   function handleRightInputChange(value: string) {
     const sourceNode = otherNodes.find((n) => n.id === value);
+    const alias = (sourceNode?.config?.alias as string) || sourceNode?.label || '';
     updateConfig((cfg) => ({
       ...cfg,
-      rightInput: value || undefined,
-      rightAlias: sourceNode?.label || value || undefined,
+      rightInput: alias || undefined,
+      rightAlias: alias || undefined,
     }));
   }
 

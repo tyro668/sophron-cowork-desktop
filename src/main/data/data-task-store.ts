@@ -1561,8 +1561,10 @@ export class DataTaskStore {
     }
 
     const colName = input.column.replace(/^\[|\]$/g, '');
+    const quotedCol = quoteIdentifier(colName);
+    const quotedTable = quoteIdentifier(tableName);
     const rows = await this.queryRows<{ val: string }>(
-      `SELECT DISTINCT "${colName}" AS val FROM "${tableName}" WHERE "${colName}" IS NOT NULL ORDER BY "${colName}" LIMIT 100`,
+      `SELECT DISTINCT ${quotedCol} AS val FROM ${quotedTable} WHERE ${quotedCol} IS NOT NULL ORDER BY ${quotedCol} LIMIT 100`,
       {}
     );
     return rows.map((row) => (row.val === null ? '' : String(row.val))).filter((v) => v !== '');
