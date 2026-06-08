@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Shield, AlertCircle, CheckCircle, Settings, Loader2 } from 'lucide-react';
 import { renderLocalizedBannerMessage } from './shared';
 import type { LocalizedBanner } from './shared';
+import { GlassSwitch } from '../GlassSwitch';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 
@@ -42,6 +43,7 @@ export function SettingsSandbox() {
   const [isLoading, setIsLoading] = useState(true);
   const [isChecking, setIsChecking] = useState(false);
   const [isInstalling, setIsInstalling] = useState<string | null>(null);
+  const [isSavingSandbox, setIsSavingSandbox] = useState(false);
   const [error, setError] = useState<LocalizedBanner | null>(null);
   const [success, setSuccess] = useState<LocalizedBanner | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -103,8 +105,31 @@ export function SettingsSandbox() {
     }
   }
 
-  // TODO: Re-enable when sandbox debugging is complete
-  // async function handleToggleSandbox() { ... }
+  async function handleToggleSandbox(nextEnabled: boolean) {
+    if (!isElectron || isSavingSandbox) return;
+
+    const previousEnabled = sandboxEnabled;
+    setSandboxEnabled(nextEnabled);
+    setIsSavingSandbox(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const result = await window.electronAPI.config.save({ sandboxEnabled: nextEnabled });
+      const persistedEnabled = result.config.sandboxEnabled !== false;
+      setSandboxEnabled(persistedEnabled);
+      await loadStatus();
+      setSuccess({
+        text: persistedEnabled ? t('sandbox.enabledSuccess') : t('sandbox.disabledSuccess'),
+      });
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setSandboxEnabled(previousEnabled);
+      setError({ text: err instanceof Error ? err.message : t('sandbox.failedToSave') });
+    } finally {
+      setIsSavingSandbox(false);
+    }
+  }
 
   async function handleCheckStatus() {
     if (isChecking) return; // Prevent double-click
@@ -287,9 +312,10 @@ export function SettingsSandbox() {
     : isMac
       ? status?.lima?.available && status?.lima?.instanceRunning && status?.lima?.nodeAvailable
       : false;
+  const effectiveSandboxReady = sandboxEnabled && sandboxReady;
   const sandboxStatusText = !sandboxEnabled
     ? t('sandbox.disabledStatus')
-    : sandboxReady
+    : effectiveSandboxReady
       ? t('sandbox.readyStatus')
       : t('sandbox.notReadyStatus');
 
@@ -310,39 +336,49 @@ export function SettingsSandbox() {
       )}
 
       {/* Sandbox overview */}
-      <div className="p-6 rounded-lg bg-surface border border-border text-center space-y-4">
-        <div className="w-16 h-16 rounded-lg flex items-center justify-center mx-auto bg-surface-muted text-text-muted">
-          <Shield className="w-8 h-8" />
-        </div>
-        <div>
-          <h3 className="text-base font-semibold text-text-primary">
-            {t('sandbox.enableSandbox')}
-          </h3>
-          <p className="text-sm text-text-muted mt-1">
-            {isWindows
-              ? t('sandbox.wslDesc')
-              : isMac
-                ? t('sandbox.limaDesc')
-                : t('sandbox.nativeDesc')}
-          </p>
+      <div className="p-4 rounded-lg bg-surface border border-border space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-surface-muted text-text-muted">
+              <Shield className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-text-primary">
+                {t('sandbox.enableSandbox')}
+              </h3>
+              <p className="mt-1 text-xs leading-5 text-text-muted">
+                {isWindows
+                  ? t('sandbox.wslDesc')
+                  : isMac
+                    ? t('sandbox.limaDesc')
+                    : t('sandbox.nativeDesc')}
+              </p>
+            </div>
+          </div>
+          <GlassSwitch
+            checked={sandboxEnabled}
+            onCheckedChange={handleToggleSandbox}
+            disabled={isSavingSandbox || isInstalling !== null}
+            ariaLabel={t('sandbox.enableSandbox')}
+          />
         </div>
         <div
           className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
-            sandboxReady
+            effectiveSandboxReady
               ? 'bg-success/10 text-success'
               : sandboxEnabled
                 ? 'bg-warning/10 text-warning'
                 : 'bg-surface-muted text-text-muted'
           }`}
         >
-          {sandboxReady ? (
+          {effectiveSandboxReady ? (
             <CheckCircle className="w-3.5 h-3.5" />
           ) : (
             <AlertCircle className="w-3.5 h-3.5" />
           )}
           <span>{sandboxStatusText}</span>
         </div>
-        <p className="text-xs text-text-muted max-w-sm mx-auto">
+        <p className="text-xs leading-5 text-text-muted">
           {t('sandbox.helpText1')} {t('sandbox.helpText2')}
         </p>
       </div>

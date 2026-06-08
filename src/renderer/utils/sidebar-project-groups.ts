@@ -19,6 +19,12 @@ interface BuildSessionProjectGroupsOptions {
   query?: string;
 }
 
+interface ProjectNameSource {
+  id: string;
+  name: string | null;
+  cwd: string;
+}
+
 export function normalizeWorkspacePath(
   cwd: string | null | undefined,
   platform?: string
@@ -43,6 +49,20 @@ export function getProjectKeyForWorkspace(
 ): string {
   const normalized = normalizeWorkspacePath(cwd, platform);
   return normalized ? `cwd:${normalized}` : NO_WORKSPACE_PROJECT_KEY;
+}
+
+export function buildProjectNameLookup(
+  projects: ProjectNameSource[],
+  platform?: string
+): Record<string, string> {
+  const names: Record<string, string> = {};
+  for (const project of projects) {
+    const name = project.name?.trim();
+    if (!name) continue;
+    names[`project:${project.id}`] = name;
+    names[getProjectKeyForWorkspace(project.cwd, platform)] = name;
+  }
+  return names;
 }
 
 export function getProjectNameFromWorkspace(

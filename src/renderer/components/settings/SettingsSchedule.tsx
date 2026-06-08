@@ -1,5 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
-import * as Switch from '@radix-ui/react-switch';
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AlertCircle,
@@ -12,7 +20,6 @@ import {
   Clock3,
   Database,
   Folder,
-  GripVertical,
   MessagesSquare,
   MessageSquare,
   MoreHorizontal,
@@ -41,9 +48,12 @@ import type {
 } from '../../types';
 import { useAppStore } from '../../store';
 import { AgentModelSelector, getAgentModelLabel } from '../AgentModelSelector';
+import { GlassDateTimePicker } from '../GlassDateTimePicker';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { GlassSelect } from '../GlassSelect';
+import { GlassSwitch } from '../GlassSwitch';
 import { formatAppDateTime } from '../../utils/i18n-format';
+import { getWorkingDirDisplayName } from '../../utils/working-dir-label';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 const SYSTEM_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
@@ -54,6 +64,16 @@ const NOTIFICATION_RECIPIENT_OPTIONS = [
   { value: '销售群', labelKey: 'schedule.notificationSalesGroup', fallback: '销售群' },
   { value: '数据团队', labelKey: 'schedule.notificationDataTeam', fallback: '数据团队' },
 ];
+
+function getProjectOptionLabel(project: Project, tr: (key: string, fallback: string) => string): string {
+  const name = project.name?.trim();
+  if (name) return name;
+  return getWorkingDirDisplayName(
+    project.cwd,
+    tr('welcome.defaultWorkingFolder', '默认工作目录'),
+    tr('schedule.projectPlaceholder', '不指定项目')
+  );
+}
 
 type TriggerMode = AutomationTrigger['kind'];
 type Banner = { tone: 'error' | 'success'; text: string };
@@ -77,6 +97,11 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [banner, setBanner] = useState<Banner | null>(null);
+  const updateDraftEnabled = useCallback((enabled: boolean) => {
+    startTransition(() => {
+      setDraft((current) => ({ ...current, enabled }));
+    });
+  }, []);
 
   const selectedAutomation = automations.find((automation) => automation.id === selectedId) ?? null;
   const dataTasks = dataDashboard?.tasks ?? [];
@@ -186,7 +211,6 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       setSelectedId(saved.id);
       setDraft(automationToDraft(saved));
       setViewMode('detail');
-      setBanner({ tone: 'success', text: tr('schedule.saved', '自动化已保存') });
     } catch (error) {
       setBanner({
         tone: 'error',
@@ -279,13 +303,16 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           onDraftChange={setDraft}
           onSave={() => void save()}
           onRun={() => void runNow()}
-          onDelete={() => void remove()}
           onBack={() => setViewMode('list')}
           tr={tr}
         />
 
         <section className="flex min-h-0 flex-1 flex-col gap-4">
-          <TaskStatusSection draft={draft} onDraftChange={setDraft} tr={tr} />
+          <TaskStatusSection
+            enabled={draft.enabled}
+            onEnabledChange={updateDraftEnabled}
+            tr={tr}
+          />
           <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(340px,0.58fr)_minmax(620px,1fr)]">
             <div className="flex min-h-0 flex-col gap-4">
               <ExecutionProjectPanel
@@ -1010,7 +1037,6 @@ function EditorHeader({
   onDraftChange,
   onSave,
   onRun,
-  onDelete,
   onBack,
   tr,
 }: {
@@ -1020,7 +1046,6 @@ function EditorHeader({
   onDraftChange: (draft: AutomationDraft) => void;
   onSave: () => void;
   onRun: () => void;
-  onDelete: () => void;
   onBack: () => void;
   tr: (key: string, fallback: string) => string;
 }) {
@@ -1098,11 +1123,6 @@ function EditorHeader({
         </div>
       </div>
       <div className="flex items-center gap-2">
-        {selectedAutomation && (
-          <IconButton label={tr('schedule.delete', '删除')} onClick={onDelete}>
-            <Trash2 size={14} />
-          </IconButton>
-        )}
         <button
           onClick={onSave}
           disabled={isSaving}
@@ -1126,36 +1146,41 @@ function EditorHeader({
 }
 
 function TaskStatusSection({
-  draft,
-  onDraftChange,
+  enabled,
+  onEnabledChange,
   tr,
 }: {
-  draft: AutomationDraft;
-  onDraftChange: (draft: AutomationDraft) => void;
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
   tr: (key: string, fallback: string) => string;
 }) {
+  const [localEnabled, setLocalEnabled] = useState(enabled);
+
+  useEffect(() => {
+    setLocalEnabled(enabled);
+  }, [enabled]);
+
+  const handleCheckedChange = useCallback(
+    (checked: boolean) => {
+      setLocalEnabled(checked);
+      onEnabledChange(checked);
+    },
+    [onEnabledChange]
+  );
+
   return (
     <section className="glass-card grid flex-shrink-0 gap-4 rounded-xl border border-border-muted bg-surface/70 p-4 lg:grid-cols-[360px] lg:items-center">
       <div className="flex min-h-10 items-center gap-4">
         <span className="text-[13px] font-medium text-text-secondary">
           {tr('schedule.taskStatus', '任务状态')}
         </span>
-        <Switch.Root
-          checked={draft.enabled}
-          onCheckedChange={(checked) => onDraftChange({ ...draft, enabled: checked })}
-          className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full border p-0.5 shadow-soft outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
-            draft.enabled ? 'border-success bg-success' : 'border-border-muted bg-bg-tertiary'
-          }`}
-          aria-label={tr('schedule.taskStatus', '任务状态')}
-        >
-          <Switch.Thumb
-            className={`block h-6 w-6 rounded-full bg-white shadow-sm transition-transform ${
-              draft.enabled ? 'translate-x-5' : 'translate-x-0'
-            }`}
-          />
-        </Switch.Root>
+        <GlassSwitch
+          checked={localEnabled}
+          onCheckedChange={handleCheckedChange}
+          ariaLabel={tr('schedule.taskStatus', '任务状态')}
+        />
         <span className="text-[13px] font-medium text-text-secondary">
-          {draft.enabled ? tr('schedule.enabled', '启用') : tr('schedule.disabled', '停用')}
+          {localEnabled ? tr('schedule.enabled', '启用') : tr('schedule.disabled', '停用')}
         </span>
       </div>
     </section>
@@ -1196,7 +1221,7 @@ function ExecutionProjectPanel({
             { value: '', label: tr('schedule.projectPlaceholder', '不指定项目') },
             ...projects.map((project) => ({
               value: project.id,
-              label: project.name?.trim() || project.cwd,
+              label: getProjectOptionLabel(project, tr),
             })),
           ]}
           onValueChange={updateProject}
@@ -1306,11 +1331,9 @@ function ScheduledConfigCard({
         </ConfigRow>
         {trigger.kind === 'once' && (
           <ConfigRow label={tr('schedule.executionTime', '执行时间')}>
-            <input
-              type="datetime-local"
-              value={toLocalInput(trigger.runAt)}
-              onChange={(event) => onChange({ ...trigger, runAt: new Date(event.target.value).getTime() })}
-              className="input h-9 w-full text-xs"
+            <GlassDateTimePicker
+              value={trigger.runAt}
+              onChange={(runAt) => onChange({ ...trigger, runAt })}
             />
           </ConfigRow>
         )}
@@ -1377,11 +1400,9 @@ function ScheduledConfigCard({
               </div>
             </ConfigRow>
             <ConfigRow label={tr('schedule.startAt', '开始')}>
-              <input
-                type="datetime-local"
-                value={toLocalInput(trigger.startAt)}
-                onChange={(event) => onChange({ ...trigger, startAt: new Date(event.target.value).getTime() })}
-                className="input h-9 w-full text-xs"
+              <GlassDateTimePicker
+                value={trigger.startAt}
+                onChange={(startAt) => onChange({ ...trigger, startAt })}
               />
             </ConfigRow>
           </>
@@ -1448,7 +1469,7 @@ function FileChangeConfigCard({
               { value: '', label: tr('schedule.projectPlaceholder', '不指定项目') },
               ...projects.map((project) => ({
                 value: project.id,
-                label: project.name?.trim() || project.cwd,
+                label: getProjectOptionLabel(project, tr),
               })),
             ]}
             onValueChange={(value) => updateTrigger({ ...trigger, projectId: value || null })}
@@ -1598,7 +1619,6 @@ function ActionStepCard({
           {getNodeLabel(node, tr)}
         </div>
         <div className="flex flex-shrink-0 items-center gap-1 text-text-muted">
-          <GripVertical className="h-4 w-4" />
           <MiniIcon onClick={(event) => { event.stopPropagation(); onRemove(); }}>
             <Trash2 size={13} />
           </MiniIcon>
@@ -1789,28 +1809,6 @@ function SelectLine({
   );
 }
 
-function IconButton({
-  label,
-  onClick,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      onClick={onClick}
-      className="flex h-8 w-8 items-center justify-center rounded-md border border-border-subtle text-text-muted hover:bg-bg-secondary"
-    >
-      {children}
-    </button>
-  );
-}
-
 function MiniIcon({
   onClick,
   children,
@@ -1934,11 +1932,4 @@ function splitCsv(value: string): string[] {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
-}
-
-function toLocalInput(timestamp: number): string {
-  const date = new Date(timestamp);
-  const offset = date.getTimezoneOffset();
-  const local = new Date(date.getTime() - offset * 60 * 1000);
-  return local.toISOString().slice(0, 16);
 }

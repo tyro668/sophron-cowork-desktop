@@ -27,6 +27,7 @@ import type { AppUpdateState } from '../types';
 import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
 import {
   buildSessionProjectGroups,
+  buildProjectNameLookup,
   type SessionProjectGroup,
 } from '../utils/sidebar-project-groups';
 
@@ -71,21 +72,15 @@ export function Sidebar() {
     readStoredProjectExpansion()
   );
   const [renamingProjectKey, setRenamingProjectKey] = useState<string | null>(null);
+  const [savingProjectRenameKey, setSavingProjectRenameKey] = useState<string | null>(null);
   const [projectNameDraft, setProjectNameDraft] = useState('');
   const [removingProjectKey, setRemovingProjectKey] = useState<string | null>(null);
 
   const normalizedQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
   const rendererPlatform = typeof window !== 'undefined' ? window.electronAPI?.platform : undefined;
   const persistedProjectNames = useMemo(() => {
-    const names: Record<string, string> = {};
-    for (const project of projects) {
-      const name = project.name?.trim();
-      if (name) {
-        names[`project:${project.id}`] = name;
-      }
-    }
-    return names;
-  }, [projects]);
+    return buildProjectNameLookup(projects, rendererPlatform);
+  }, [projects, rendererPlatform]);
   const effectiveProjectNames = useMemo(
     () => ({ ...persistedProjectNames, ...projectNames }),
     [persistedProjectNames, projectNames]
@@ -202,6 +197,7 @@ export function Sidebar() {
 
   const handleStartRenameProject = useCallback((group: SessionProjectGroup) => {
     setRenamingProjectKey(group.key);
+    setSavingProjectRenameKey(null);
     setProjectNameDraft(group.label);
     setRemovingProjectKey(null);
   }, []);
@@ -212,23 +208,32 @@ export function Sidebar() {
   }, []);
 
   const handleSaveProjectName = useCallback(
-    (group: SessionProjectGroup) => {
+    async (group: SessionProjectGroup) => {
       const nextName = projectNameDraft.trim();
-      setProjectNames((current) => {
-        const next = { ...current };
-        if (!nextName || nextName === group.defaultLabel) {
-          delete next[group.key];
-        } else {
-          next[group.key] = nextName;
+      const persistedName = !nextName || nextName === group.defaultLabel ? null : nextName;
+      setSavingProjectRenameKey(group.key);
+      try {
+        if (group.projectId || group.path) {
+          await renameProject(
+            group.projectId ? group.projectId : { cwd: group.path ?? undefined },
+            persistedName
+          );
         }
-        return next;
-      });
-      if (group.projectId) {
-        void renameProject(group.projectId, nextName || null).catch((error) => {
-          console.error('[Sidebar] Failed to rename project:', error);
+        setProjectNames((current) => {
+          const next = { ...current };
+          if (persistedName) {
+            next[group.key] = persistedName;
+          } else {
+            delete next[group.key];
+          }
+          return next;
         });
+        handleCancelRenameProject();
+      } catch (error) {
+        console.error('[Sidebar] Failed to rename project:', error);
+      } finally {
+        setSavingProjectRenameKey(null);
       }
-      handleCancelRenameProject();
     },
     [handleCancelRenameProject, projectNameDraft, renameProject]
   );
@@ -664,6 +669,7 @@ export function Sidebar() {
           <div className="space-y-1">
             {groupedSessions.map((group) => {
               const isProjectExpanded = expandedProjectKeys.has(group.key);
+              const isSavingProjectName = savingProjectRenameKey === group.key;
               return (
                 <section key={group.key} className="space-y-1">
                   <div className="px-1.5">
@@ -672,11 +678,12 @@ export function Sidebar() {
                         className="flex items-center gap-1.5 rounded-lg border border-accent/25 bg-background/78 p-1 shadow-soft"
                         onSubmit={(event) => {
                           event.preventDefault();
-                          handleSaveProjectName(group);
+                          void handleSaveProjectName(group);
                         }}
                       >
                         <input
                           autoFocus
+                          disabled={isSavingProjectName}
                           value={projectNameDraft}
                           onChange={(event) => setProjectNameDraft(event.target.value)}
                           onKeyDown={(event) => {
@@ -686,19 +693,21 @@ export function Sidebar() {
                             }
                           }}
                           placeholder={t('sidebar.projectNamePlaceholder')}
-                          className="min-w-0 flex-1 rounded-md border border-border-muted bg-background/86 px-2 py-1 text-[12px] font-medium text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+                          className="min-w-0 flex-1 rounded-md border border-border-muted bg-background/86 px-2 py-1 text-[12px] font-medium text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-60"
                         />
                         <button
                           type="submit"
-                          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-accent transition-colors hover:bg-accent/10"
+                          disabled={isSavingProjectName}
+                          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-60"
                           title={t('sidebar.saveProjectName')}
                         >
                           <Check className="h-3.5 w-3.5" />
                         </button>
                         <button
                           type="button"
+                          disabled={isSavingProjectName}
                           onClick={handleCancelRenameProject}
-                          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+                          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
                           title={t('sidebar.cancelProjectRename')}
                         >
                           <X className="h-3.5 w-3.5" />

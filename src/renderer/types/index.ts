@@ -1060,6 +1060,7 @@ export type ClientEvent =
   | { type: 'session.getMessages'; payload: { sessionId: string } }
   | { type: 'session.getTraceSteps'; payload: { sessionId: string } }
   | { type: 'project.rename'; payload: { projectId: string; name: string | null } }
+  | { type: 'project.renameByCwd'; payload: { cwd: string; name: string | null } }
   | { type: 'project.delete'; payload: { projectId: string } }
   | { type: 'permission.response'; payload: { toolUseId: string; result: PermissionResult } }
   | { type: 'sudo.password.response'; payload: { toolUseId: string; password: string | null } }

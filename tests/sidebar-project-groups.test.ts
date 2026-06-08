@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Session } from '../src/renderer/types';
 import {
+  buildProjectNameLookup,
   buildSessionProjectGroups,
   getProjectKeyForWorkspace,
   getProjectNameFromWorkspace,
@@ -66,6 +67,34 @@ describe('sidebar project grouping', () => {
 
     expect(groups[0].key).toBe(key);
     expect(groups[0].defaultLabel).toBe('sophron');
+    expect(groups[0].label).toBe('Customer Ops');
+  });
+
+  it('uses persisted project names for cwd groups after reload', () => {
+    const projectNames = buildProjectNameLookup([
+      {
+        id: 'project-1',
+        name: 'Customer Ops',
+        cwd: '/Users/demo/Library/Application Support/sophron/DefaultWorkingDir',
+      },
+    ]);
+    const groups = buildSessionProjectGroups(
+      [
+        makeSession({
+          id: 'task',
+          cwd: '/Users/demo/Library/Application Support/sophron/DefaultWorkingDir',
+          updatedAt: 10,
+        }),
+      ],
+      {
+        noWorkspaceLabel: 'No workspace',
+        projectNames,
+      }
+    );
+
+    expect(groups[0].key).toBe(
+      getProjectKeyForWorkspace('/Users/demo/Library/Application Support/sophron/DefaultWorkingDir')
+    );
     expect(groups[0].label).toBe('Customer Ops');
   });
 

@@ -73,6 +73,7 @@
     "@codemirror/lint": "6.9.6",
     "@codemirror/state": "6.6.0",
     "@codemirror/view": "6.43.0",
+    "@daypicker/react": "10.0.1",
     "@duckdb/node-api": "^1.5.3-r.2",
     "@glideapps/glide-data-grid": "6.0.3",
     "@google/genai": "^1.44.0",
