@@ -156,16 +156,6 @@ export function normalizeProjectPathKey(cwd: string): string {
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
-function getDefaultProjectName(cwd: string): string {
-  const trimmed = cwd.trim();
-  if (!trimmed) return 'Workspace';
-  if (/^[\\/]+$/.test(trimmed)) return trimmed.replace(/\\/g, '/');
-
-  const normalized = trimmed.replace(/\\/g, '/').replace(/\/+$/g, '');
-  const folderName = normalized.split('/').filter(Boolean).pop();
-  return folderName || normalized || 'Workspace';
-}
-
 function buildBackupPath(targetPath: string, suffix: string): string {
   return `${targetPath}.${suffix}-${Date.now()}`;
 }
@@ -310,11 +300,7 @@ function migrateLegacySessionProjects(database: Database.Database): void {
 
   database.transaction(() => {
     for (const row of rows) {
-      const project = ensureProjectForCwdInDatabase(
-        database,
-        row.cwd,
-        getDefaultProjectName(row.cwd)
-      );
+      const project = ensureProjectForCwdInDatabase(database, row.cwd);
       updateSessionProject.run(project.id, row.id);
     }
   })();

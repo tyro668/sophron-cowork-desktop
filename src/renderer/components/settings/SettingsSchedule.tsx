@@ -12,7 +12,6 @@ import {
   Clock3,
   Database,
   Folder,
-  GripVertical,
   MessagesSquare,
   MessageSquare,
   MoreHorizontal,
@@ -44,6 +43,7 @@ import { AgentModelSelector, getAgentModelLabel } from '../AgentModelSelector';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { GlassSelect } from '../GlassSelect';
 import { formatAppDateTime } from '../../utils/i18n-format';
+import { getWorkingDirDisplayName } from '../../utils/working-dir-label';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 const SYSTEM_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
@@ -54,6 +54,16 @@ const NOTIFICATION_RECIPIENT_OPTIONS = [
   { value: '销售群', labelKey: 'schedule.notificationSalesGroup', fallback: '销售群' },
   { value: '数据团队', labelKey: 'schedule.notificationDataTeam', fallback: '数据团队' },
 ];
+
+function getProjectOptionLabel(project: Project, tr: (key: string, fallback: string) => string): string {
+  const name = project.name?.trim();
+  if (name) return name;
+  return getWorkingDirDisplayName(
+    project.cwd,
+    tr('welcome.defaultWorkingFolder', '默认工作目录'),
+    tr('schedule.projectPlaceholder', '不指定项目')
+  );
+}
 
 type TriggerMode = AutomationTrigger['kind'];
 type Banner = { tone: 'error' | 'success'; text: string };
@@ -1196,7 +1206,7 @@ function ExecutionProjectPanel({
             { value: '', label: tr('schedule.projectPlaceholder', '不指定项目') },
             ...projects.map((project) => ({
               value: project.id,
-              label: project.name?.trim() || project.cwd,
+              label: getProjectOptionLabel(project, tr),
             })),
           ]}
           onValueChange={updateProject}
@@ -1448,7 +1458,7 @@ function FileChangeConfigCard({
               { value: '', label: tr('schedule.projectPlaceholder', '不指定项目') },
               ...projects.map((project) => ({
                 value: project.id,
-                label: project.name?.trim() || project.cwd,
+                label: getProjectOptionLabel(project, tr),
               })),
             ]}
             onValueChange={(value) => updateTrigger({ ...trigger, projectId: value || null })}
@@ -1598,7 +1608,6 @@ function ActionStepCard({
           {getNodeLabel(node, tr)}
         </div>
         <div className="flex flex-shrink-0 items-center gap-1 text-text-muted">
-          <GripVertical className="h-4 w-4" />
           <MiniIcon onClick={(event) => { event.stopPropagation(); onRemove(); }}>
             <Trash2 size={13} />
           </MiniIcon>

@@ -17,6 +17,8 @@ function makeEvent(type: ClientEvent['type']): ClientEvent {
       return { type, payload: { sessionIds: ['session-1'] } };
     case 'project.rename':
       return { type, payload: { projectId: 'project-1', name: 'Project' } };
+    case 'project.renameByCwd':
+      return { type, payload: { cwd: '/tmp/project', name: 'Project' } };
     case 'project.delete':
       return { type, payload: { projectId: 'project-1' } };
     case 'session.list':
@@ -64,6 +66,7 @@ describe('eventRequiresSessionManager', () => {
       'workdir.set',
       'workdir.select',
       'project.rename',
+      'project.renameByCwd',
       'project.delete',
     ];
 

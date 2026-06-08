@@ -3661,6 +3661,23 @@ async function handleClientEvent(event: ClientEvent): Promise<unknown> {
       return project;
     }
 
+    case 'project.renameByCwd': {
+      const db = appDatabase;
+      if (!db?.projects) {
+        throw new Error('Project store not initialized');
+      }
+      const cwd = event.payload.cwd?.trim();
+      if (!cwd) {
+        throw new Error('Project cwd cannot be empty');
+      }
+      const normalizedName = event.payload.name?.trim() || null;
+      const ensured = db.projects.ensureForCwd(cwd);
+      const updated = db.projects.update(ensured.id, { name: normalizedName }) ?? ensured;
+      const project = mapProjectRow(updated);
+      sendToRenderer({ type: 'project.update', payload: { project } });
+      return project;
+    }
+
     case 'project.delete': {
       const db = appDatabase;
       if (!db?.projects) {
