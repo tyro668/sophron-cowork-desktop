@@ -3475,10 +3475,7 @@ function WorkflowInspector({
           configMode === 'form' ? (
             <div className="grid h-full min-h-0 gap-2.5 lg:grid-cols-[minmax(0,1fr)_17rem]">
               <div className="glass-card min-h-0 min-w-0 overflow-y-auto rounded-xl p-2.5">
-                <div className="mb-2 flex min-h-8 items-center justify-between gap-2">
-                  <span className="min-w-0 truncate text-[13px] font-medium text-text-primary">
-                    {t('data.workflow.formConfig', '图形配置')}
-                  </span>
+                <div className="mb-2 flex min-h-8 items-center gap-2">
                   <GlassModeToggle
                     mode="form"
                     onChange={(m) => {
@@ -3491,9 +3488,20 @@ function WorkflowInspector({
                   />
                 </div>
                 <OperatorFormWrapper
+                  key={`${node.id}-form`}
                   node={node}
+                  taskId={node.taskId}
                   fieldCompletions={operatorFieldCompletions}
                   otherNodes={workflowNodes}
+                  sourceNode={
+                    operatorFieldSourceNode
+                      ? {
+                          id: operatorFieldSourceNode.id,
+                          type: operatorFieldSourceNode.type,
+                          config: operatorFieldSourceNode.config,
+                        }
+                      : undefined
+                  }
                   onNodeChange={onNodeChange}
                 />
               </div>
@@ -3507,9 +3515,6 @@ function WorkflowInspector({
             <div className="grid h-full min-h-0 gap-2.5 lg:grid-cols-[minmax(0,1fr)_17rem]">
               <div className="glass-card flex min-h-0 min-w-0 flex-col rounded-xl p-2">
                 <div className="mb-2 flex min-h-8 items-center gap-2">
-                  <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
-                    {t('data.workflow.dslEditor')}
-                  </div>
                   <GlassModeToggle
                     mode="dsl"
                     onChange={(m) => {
@@ -3519,6 +3524,9 @@ function WorkflowInspector({
                       setConfigMode(m);
                     }}
                   />
+                  <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
+                    {t('data.workflow.dslEditor')}
+                  </div>
                   {operatorDslStatus && (
                     <div className="flex h-8 min-w-0 items-center gap-1.5 rounded-lg border border-success/20 bg-success/5 px-2 text-[11px] text-success">
                       <CheckCircle2 className="h-3 w-3 flex-shrink-0" />

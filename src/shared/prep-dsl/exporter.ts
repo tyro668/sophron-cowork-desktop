@@ -138,7 +138,9 @@ function formatFieldMapping(config: Record<string, unknown> | undefined): string
 function formatMissingValue(config: Record<string, unknown> | undefined): string {
   if (config?.strategy === 'drop_empty_rows') return 'missing value row drop when all_null';
   if (config?.strategy === 'drop_rows_by_nulls') {
-    return `missing value row drop when ${String(config.condition ?? 'any_null')}`;
+    const cols = stringArray(config?.columns).map(formatFieldRef).join(', ');
+    const inClause = cols ? ` in ${cols}` : '';
+    return `missing value row drop when ${String(config.condition ?? 'any_null')}${inClause}`;
   }
   const rules = objectArray(config?.rules).map((rule) => formatMissingRule(rule));
   return `missing value ${rules.join(', ') || '[field] skip'}`;
@@ -240,13 +242,11 @@ function formatLimit(config: Record<string, unknown> | undefined): string {
 
 function formatPivot(config: Record<string, unknown> | undefined): string {
   const on = stringArray(config?.on).map(formatFieldRef).join(', ') || '[field]';
-  const values = Array.isArray(config?.values) && config.values.length > 0
-    ? ` in (${config.values.map(literalToDsl).join(', ')})`
-    : '';
-  const using =
-    objectArray(config?.using)
-      .map(formatMetric)
-      .join(', ') || 'count(*)';
+  const values =
+    Array.isArray(config?.values) && config.values.length > 0
+      ? ` in (${config.values.map(literalToDsl).join(', ')})`
+      : '';
+  const using = objectArray(config?.using).map(formatMetric).join(', ') || 'count(*)';
   const groupBy = stringArray(config?.groupBy).map(formatFieldRef).join(', ');
   return `pivot on ${on}${values} using ${using}${groupBy ? ` group by ${groupBy}` : ''}`;
 }
@@ -265,9 +265,7 @@ function formatSetOp(config: Record<string, unknown> | undefined): string {
   const rightInput = String(config?.rightInput ?? 'right_source');
   const mode = typeof config?.mode === 'string' ? ` mode ${config.mode}` : '';
   const match =
-    operation === 'union'
-      ? ` by ${config?.match === 'by_name' ? 'name' : 'position'}`
-      : '';
+    operation === 'union' ? ` by ${config?.match === 'by_name' ? 'name' : 'position'}` : '';
   return `${operation} ${rightInput}${mode}${match}`;
 }
 
@@ -358,7 +356,9 @@ function isString(value: unknown): value is string {
 }
 
 function stringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
 }
 
 function objectArray(value: unknown): Array<Record<string, unknown>> {

@@ -826,7 +826,8 @@ export class DataTaskStore {
     const runtimeWorkflow = input.workflow
       ? normalizeRuntimeWorkflowInput(task.id, input.workflow, startedAt)
       : await this.getRuntimeWorkflow(task.id);
-    const outputMode: WorkflowOutputMode = input.outputMode === 'temporary' ? 'temporary' : 'persisted';
+    const outputMode: WorkflowOutputMode =
+      input.outputMode === 'temporary' ? 'temporary' : 'persisted';
     if (!sourcePath && workflowRequiresTaskSource(runtimeWorkflow.nodes)) {
       const message = 'Data source file is required before running a cleaning task';
       await this.metaRunSql(
@@ -1037,7 +1038,10 @@ export class DataTaskStore {
     const replacementTable = tableNameFromId('dataset_update', uuidv4());
     try {
       await this.ensureReady();
-      const sourceKind = normalizeInputTableSourceKind(input.sourceKind ?? dataset.sourceKind, sourcePath);
+      const sourceKind = normalizeInputTableSourceKind(
+        input.sourceKind ?? dataset.sourceKind,
+        sourcePath
+      );
       const prepared = await this.createDatasetTableFromSource(
         replacementTable,
         sourcePath,
@@ -1093,7 +1097,10 @@ export class DataTaskStore {
     return this.createOutputTableMetadata(input.name?.trim() || 'Output table', this.now());
   }
 
-  private async createOutputTableMetadata(name: string, timestamp: number): Promise<DataOutputTable> {
+  private async createOutputTableMetadata(
+    name: string,
+    timestamp: number
+  ): Promise<DataOutputTable> {
     const id = uuidv4();
     const tableName = tableNameFromId('output', id);
     await this.metaRunSql(
@@ -1488,6 +1495,79 @@ export class DataTaskStore {
     return this.getTableColumns(tableName);
   }
 
+  async getWorkflowNodeColumnTypes(
+    input: DataPreviewWorkflowNodeInput
+  ): Promise<{ name: string; type: string }[]> {
+    await this.ensureMetadataReady();
+    const task = await this.requireTask(input.taskId);
+    await this.ensureReady();
+    await this.cleanupExpiredWorkflowNodeCaches();
+    const nodeConfig = input.nodeConfig ?? {};
+    const node: DataWorkflowNode = {
+      id: input.nodeId,
+      taskId: task.id,
+      type: input.nodeType,
+      label: '',
+      x: 0,
+      y: 0,
+      config: nodeConfig,
+      createdAt: 0,
+      updatedAt: 0,
+    };
+
+    const tableName = await this.resolveWorkflowNodePreviewTable(task, node);
+    if (!tableName || !(await this.physicalTableExists(tableName))) {
+      return [];
+    }
+
+    const rows = await this.queryRows<{ column_name: string; data_type: string }>(
+      `
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_name = $tableName
+        ORDER BY ordinal_position
+      `,
+      { tableName }
+    );
+    return rows.map((row) => ({
+      name: String(row.column_name),
+      type: String(row.data_type),
+    }));
+  }
+
+  async getWorkflowNodeColumnValues(
+    input: DataPreviewWorkflowNodeInput & { column: string }
+  ): Promise<string[]> {
+    await this.ensureMetadataReady();
+    const task = await this.requireTask(input.taskId);
+    await this.ensureReady();
+    await this.cleanupExpiredWorkflowNodeCaches();
+    const nodeConfig = input.nodeConfig ?? {};
+    const node: DataWorkflowNode = {
+      id: input.nodeId,
+      taskId: task.id,
+      type: input.nodeType,
+      label: '',
+      x: 0,
+      y: 0,
+      config: nodeConfig,
+      createdAt: 0,
+      updatedAt: 0,
+    };
+
+    const tableName = await this.resolveWorkflowNodePreviewTable(task, node);
+    if (!tableName || !(await this.physicalTableExists(tableName))) {
+      return [];
+    }
+
+    const colName = input.column.replace(/^\[|\]$/g, '');
+    const rows = await this.queryRows<{ val: string }>(
+      `SELECT DISTINCT "${colName}" AS val FROM "${tableName}" WHERE "${colName}" IS NOT NULL ORDER BY "${colName}" LIMIT 100`,
+      {}
+    );
+    return rows.map((row) => (row.val === null ? '' : String(row.val))).filter((v) => v !== '');
+  }
+
   async deleteTask(id: string): Promise<boolean> {
     await this.ensureMetadataReady();
     const task = await this.getTask(id);
@@ -1538,8 +1618,12 @@ export class DataTaskStore {
     await this.metaRunSql('BEGIN TRANSACTION');
     try {
       nodes = await this.prepareWorkflowOutputNodesForSave(nodes, updatedAt);
-      await this.metaRunSql('DELETE FROM data_workflow_edges WHERE task_id = $taskId', { taskId: id });
-      await this.metaRunSql('DELETE FROM data_workflow_nodes WHERE task_id = $taskId', { taskId: id });
+      await this.metaRunSql('DELETE FROM data_workflow_edges WHERE task_id = $taskId', {
+        taskId: id,
+      });
+      await this.metaRunSql('DELETE FROM data_workflow_nodes WHERE task_id = $taskId', {
+        taskId: id,
+      });
       for (const [index, node] of nodes.entries()) {
         await this.metaRunSql(
           `
@@ -1649,7 +1733,8 @@ export class DataTaskStore {
             : '';
 
       if (outputStrategy === 'auto') {
-        const outputName = stringConfigValue(config.outputTableName) || stringConfigValue(config.table);
+        const outputName =
+          stringConfigValue(config.outputTableName) || stringConfigValue(config.table);
         if (!outputName) {
           preparedNodes.push({
             ...node,
@@ -2213,9 +2298,9 @@ export class DataTaskStore {
         if (node.config.disabled === true) {
           const passthroughNodeId =
             node.type === 'join'
-              ? this.findIncomingNodeId(node.id, edges, 'left') ??
+              ? (this.findIncomingNodeId(node.id, edges, 'left') ??
                 this.findIncomingNodeId(node.id, edges, 'input') ??
-                this.findIncomingNodeId(node.id, edges, 'right')
+                this.findIncomingNodeId(node.id, edges, 'right'))
               : this.findIncomingNodeId(node.id, edges, 'input');
           if (!passthroughNodeId) {
             throw new Error(`Disabled workflow node has no passthrough input: ${node.id}`);
@@ -2320,7 +2405,8 @@ export class DataTaskStore {
     fallback: string
   ): Promise<{ tableName: string; outputDatasetId?: string }> {
     const outputDatasetId =
-      stringConfigValue(node?.config.outputDatasetId) || stringConfigValue(node?.config.outputTableId);
+      stringConfigValue(node?.config.outputDatasetId) ||
+      stringConfigValue(node?.config.outputTableId);
     if (outputDatasetId) {
       const outputTable = await this.requireOutputTable(outputDatasetId);
       return { tableName: outputTable.tableName, outputDatasetId: outputTable.id };
@@ -2344,12 +2430,17 @@ export class DataTaskStore {
     }
     if (node.type === 'output') {
       const outputDatasetId =
-        stringConfigValue(node.config.outputDatasetId) || stringConfigValue(node.config.outputTableId);
+        stringConfigValue(node.config.outputDatasetId) ||
+        stringConfigValue(node.config.outputTableId);
       if (outputDatasetId) {
         const outputTable = await this.getOutputTable(outputDatasetId);
         return outputTable?.tableName ?? null;
       }
-      return stringConfigValue(node.config.table) || task.outputTable || tableNameFromId('clean_task', task.id);
+      return (
+        stringConfigValue(node.config.table) ||
+        task.outputTable ||
+        tableNameFromId('clean_task', task.id)
+      );
     }
     return tableNameFromId(`workflow_${node.type}`, node.id);
   }
@@ -2361,9 +2452,7 @@ export class DataTaskStore {
     cacheRunId: string
   ): string {
     const baseId =
-      cacheScope === 'permanent'
-        ? `${taskId}_${node.id}`
-        : `${taskId}_${node.id}_${cacheRunId}`;
+      cacheScope === 'permanent' ? `${taskId}_${node.id}` : `${taskId}_${node.id}_${cacheRunId}`;
     return tableNameFromId(`workflow_cache_${cacheScope}_${node.type}`, baseId);
   }
 
@@ -2409,10 +2498,7 @@ export class DataTaskStore {
     );
   }
 
-  private async findWorkflowNodeCacheTable(
-    taskId: string,
-    nodeId: string
-  ): Promise<string | null> {
+  private async findWorkflowNodeCacheTable(taskId: string, nodeId: string): Promise<string | null> {
     const rows = await this.metaQueryRows<DataWorkflowNodeCacheRow>(
       `
         SELECT *
@@ -2430,10 +2516,9 @@ export class DataTaskStore {
       if (await this.physicalTableExists(tableName)) {
         return tableName;
       }
-      await this.metaRunSql(
-        'DELETE FROM data_workflow_node_caches WHERE id = $id',
-        { id: String(row.id) }
-      );
+      await this.metaRunSql('DELETE FROM data_workflow_node_caches WHERE id = $id', {
+        id: String(row.id),
+      });
     }
     return null;
   }
@@ -2450,10 +2535,9 @@ export class DataTaskStore {
     );
     for (const row of rows) {
       await this.dropTableIfExists(String(row.table_name)).catch(() => undefined);
-      await this.metaRunSql(
-        'DELETE FROM data_workflow_node_caches WHERE id = $id',
-        { id: String(row.id) }
-      );
+      await this.metaRunSql('DELETE FROM data_workflow_node_caches WHERE id = $id', {
+        id: String(row.id),
+      });
     }
   }
 
@@ -2490,7 +2574,9 @@ export class DataTaskStore {
     }
 
     if (source === 'dataset') {
-      const datasetRef = String(node.config.datasetId ?? node.config.name ?? node.config.alias ?? '');
+      const datasetRef = String(
+        node.config.datasetId ?? node.config.name ?? node.config.alias ?? ''
+      );
       const dataset = await this.findDatasetByReference(datasetRef);
       if (!dataset || !(await this.physicalTableExists(dataset.tableName))) {
         return [];
@@ -2538,7 +2624,9 @@ export class DataTaskStore {
           : 'task';
     await this.dropTableIfExists(tableName);
     if (source === 'dataset') {
-      const datasetRef = String(node.config.datasetId ?? node.config.name ?? node.config.alias ?? '');
+      const datasetRef = String(
+        node.config.datasetId ?? node.config.name ?? node.config.alias ?? ''
+      );
       const dataset = await this.findDatasetByReference(datasetRef);
       if (!dataset) {
         throw new Error(`Dataset source not found: ${datasetRef}`);
@@ -2674,7 +2762,8 @@ export class DataTaskStore {
     if (joinType === 'asof') {
       return compileAsofJoinSql(output, left, right, leftColumns, rightColumns, node.config);
     }
-    const condition = joinType === 'cross' ? '' : ` ON ${compileJoinConditionList(node.config.conditions)}`;
+    const condition =
+      joinType === 'cross' ? '' : ` ON ${compileJoinConditionList(node.config.conditions)}`;
     const sqlJoinType = joinType === 'full' ? 'FULL OUTER' : joinType.toUpperCase();
     const projection = compileJoinProjection(
       node.config.keep,
@@ -2698,8 +2787,7 @@ export class DataTaskStore {
   ): string | null {
     return (
       edges.find(
-        (edge) =>
-          edge.targetNodeId === nodeId && (edge.targetHandle ?? 'input') === targetHandle
+        (edge) => edge.targetNodeId === nodeId && (edge.targetHandle ?? 'input') === targetHandle
       )?.sourceNodeId ?? null
     );
   }
@@ -2958,7 +3046,12 @@ export class DataTaskStore {
   ): Promise<PreparedInputTableImport> {
     const config = normalizeInputTableConfig(inputConfig, sourceKind, sourcePath);
     if (config.dataProcessing?.strategy === 'customize') {
-      return this.createDatasetTableFromPublishedNormalizer(tableName, sourcePath, sourceKind, config);
+      return this.createDatasetTableFromPublishedNormalizer(
+        tableName,
+        sourcePath,
+        sourceKind,
+        config
+      );
     }
     const tempTables: string[] = [];
     try {
@@ -3050,12 +3143,9 @@ export class DataTaskStore {
         result.manifest.output,
         'normalizerImportOutputPath'
       );
-      await this.runSql(
-        `CREATE TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`,
-        {
-          normalizerImportOutputPath: result.manifest.output,
-        }
-      );
+      await this.runSql(`CREATE TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`, {
+        normalizerImportOutputPath: result.manifest.output,
+      });
       return {
         rowCount: await this.countRows(tableName),
         columnCount: (await this.getTableColumns(tableName)).length,
@@ -3081,26 +3171,36 @@ export class DataTaskStore {
   ): Promise<void> {
     if (isExcelFile(filePath)) {
       const workbookConfig = config.sourceKind === 'excel' ? config : defaultExcelConfig(filePath);
-      await this.createTempTableFromWorkbookRows(tableName, parseWorkbookRows(filePath, workbookConfig));
+      await this.createTempTableFromWorkbookRows(
+        tableName,
+        parseWorkbookRows(filePath, workbookConfig)
+      );
       return;
     }
 
     const parameterName = `sourcePath${index}`;
     const relation = readImportRelationForPath(filePath, parameterName, forceVarchar);
-    await this.runSql(`CREATE TEMP TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`, {
-      [parameterName]: filePath,
-    });
+    await this.runSql(
+      `CREATE TEMP TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`,
+      {
+        [parameterName]: filePath,
+      }
+    );
   }
 
   private async appendSourceFileNameColumn(tableName: string, filePath: string): Promise<void> {
-    const existingColumns = new Set((await this.getTableColumns(tableName)).map((column) => column.toLowerCase()));
+    const existingColumns = new Set(
+      (await this.getTableColumns(tableName)).map((column) => column.toLowerCase())
+    );
     let columnName = 'source_file_name';
     let suffix = 2;
     while (existingColumns.has(columnName.toLowerCase())) {
       columnName = `source_file_name_${suffix}`;
       suffix += 1;
     }
-    await this.runSql(`ALTER TABLE ${quoteIdentifier(tableName)} ADD COLUMN ${quoteValueIdentifier(columnName)} VARCHAR`);
+    await this.runSql(
+      `ALTER TABLE ${quoteIdentifier(tableName)} ADD COLUMN ${quoteValueIdentifier(columnName)} VARCHAR`
+    );
     await this.runSql(
       `UPDATE ${quoteIdentifier(tableName)} SET ${quoteValueIdentifier(columnName)} = $sourceFileName`,
       { sourceFileName: basename(filePath) }
@@ -3132,7 +3232,11 @@ export class DataTaskStore {
       for (let index = 0; index < parsed.columns.length; index += 1) {
         const value = row[index];
         values[`value${index}`] =
-          value === null || value === undefined ? null : typeof value === 'boolean' ? String(value) : value;
+          value === null || value === undefined
+            ? null
+            : typeof value === 'boolean'
+              ? String(value)
+              : value;
       }
       await this.runSql(sql, values);
     }
@@ -3354,13 +3458,10 @@ function mapInputTableNormalizerArtifactVersionRow(
           { steps: [], lockFiles: [] }
         )
       : undefined,
-    runtime: parseJsonField<DataInputTableNormalizerArtifactVersion['runtime']>(
-      row.runtime_json,
-      {
-        language: 'python',
-        environment: 'venv',
-      }
-    ),
+    runtime: parseJsonField<DataInputTableNormalizerArtifactVersion['runtime']>(row.runtime_json, {
+      language: 'python',
+      environment: 'venv',
+    }),
     dependencies: parseJsonField<DataInputTableNormalizerArtifactVersion['dependencies']>(
       row.dependencies_json,
       []
@@ -3417,9 +3518,10 @@ function normalizeNormalizerVersionStatus(value: string): DataNormalizerArtifact
   return 'draft';
 }
 
-function parseOutputTableConfig(
-  value: string | null
-): { kind: string | null; sourceDatasetId: string | null } {
+function parseOutputTableConfig(value: string | null): {
+  kind: string | null;
+  sourceDatasetId: string | null;
+} {
   if (!value) return { kind: null, sourceDatasetId: null };
   try {
     const parsed = JSON.parse(value) as { kind?: unknown; sourceDatasetId?: unknown };
@@ -3492,8 +3594,7 @@ function isLegacyExplicitOutputTableRow(row: DataDatasetRow): boolean {
   const sourcePath = String(row.source_path);
   return (
     tableName.startsWith('output_') &&
-    (sourcePath === `duckdb://outputs/${tableName}` ||
-      sourcePath.startsWith('input-table://'))
+    (sourcePath === `duckdb://outputs/${tableName}` || sourcePath.startsWith('input-table://'))
   );
 }
 
@@ -3549,7 +3650,8 @@ function isLegacyDefaultWorkflow(rows: DataWorkflowNodeRow[]): boolean {
     const normalizedType = normalizeOperatorType(row.operator_type ?? row.node_key);
     const legacyLabel = String(row.label);
     const isLegacyInputLabel =
-      legacyNode.type === 'input_source' && (legacyLabel === '数据源' || legacyLabel === '输入数据源');
+      legacyNode.type === 'input_source' &&
+      (legacyLabel === '数据源' || legacyLabel === '输入数据源');
     return (
       normalizedType === legacyNode.type &&
       (legacyLabel === legacyNode.label || isLegacyInputLabel) &&
@@ -3702,9 +3804,7 @@ function findWorkflowTerminalNodeId(
     nodes.filter((node) => node.type !== 'output').map((node) => node.id)
   );
   const sourceIdsWithOutgoingEdges = new Set(
-    edges
-      .filter((edge) => nonOutputIds.has(edge.sourceNodeId))
-      .map((edge) => edge.sourceNodeId)
+    edges.filter((edge) => nonOutputIds.has(edge.sourceNodeId)).map((edge) => edge.sourceNodeId)
   );
   for (let index = nodes.length - 1; index >= 0; index -= 1) {
     const node = nodes[index];
@@ -3789,7 +3889,8 @@ function compileMissingValueSql(
     }
   }
   const projections = columns.map(
-    (column) => `${expressions.get(column) ?? quoteIdentifier(column)} AS ${quoteIdentifier(column)}`
+    (column) =>
+      `${expressions.get(column) ?? quoteIdentifier(column)} AS ${quoteIdentifier(column)}`
   );
   return `CREATE TEMP TABLE ${output} AS SELECT ${projections.join(', ')} FROM ${input}${
     filters.length > 0 ? ` WHERE ${filters.join(' AND ')}` : ''
@@ -3855,7 +3956,9 @@ function compileCalculateFieldSql(
   const calculations = objectArray(config.calculations);
   const additions = calculations.flatMap((calculation) =>
     typeof calculation.field === 'string' && typeof calculation.expression === 'string'
-      ? [`${compileScalarExpression(calculation.expression)} AS ${quoteIdentifier(calculation.field)}`]
+      ? [
+          `${compileScalarExpression(calculation.expression)} AS ${quoteIdentifier(calculation.field)}`,
+        ]
       : []
   );
   return `CREATE TEMP TABLE ${output} AS SELECT *${
@@ -3863,7 +3966,11 @@ function compileCalculateFieldSql(
   } FROM ${input}`;
 }
 
-function compileAggregateSql(output: string, input: string, config: Record<string, unknown>): string {
+function compileAggregateSql(
+  output: string,
+  input: string,
+  config: Record<string, unknown>
+): string {
   const groupBy = stringArray(config.groupBy);
   const metrics = objectArray(config.metrics).flatMap((metric) => {
     if (
@@ -3873,8 +3980,7 @@ function compileAggregateSql(output: string, input: string, config: Record<strin
     ) {
       return [];
     }
-    const expression =
-      metric.expression === '*' ? '*' : compileScalarExpression(metric.expression);
+    const expression = metric.expression === '*' ? '*' : compileScalarExpression(metric.expression);
     return [
       metric.function === 'count_distinct'
         ? `COUNT(DISTINCT ${expression}) AS ${quoteIdentifier(metric.alias)}`
@@ -3909,7 +4015,8 @@ function compileLimitSql(
     `;
   }
   const orderBy = config.mode === 'top' ? sortKeysToSql(config.orderBy) : '';
-  const offset = typeof config.offset === 'number' && config.offset > 0 ? ` OFFSET ${config.offset}` : '';
+  const offset =
+    typeof config.offset === 'number' && config.offset > 0 ? ` OFFSET ${config.offset}` : '';
   return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input}${
     orderBy ? ` ORDER BY ${orderBy}` : ''
   } LIMIT ${Math.floor(limit)}${offset}`;
@@ -4012,7 +4119,9 @@ function compileJoinConditionList(value: unknown): string {
     conditions
       .flatMap((condition) =>
         typeof condition.left === 'string' && typeof condition.right === 'string'
-          ? [`l.${quoteIdentifier(lastQualifiedPart(condition.left))} = r.${quoteIdentifier(lastQualifiedPart(condition.right))}`]
+          ? [
+              `l.${quoteIdentifier(lastQualifiedPart(condition.left))} = r.${quoteIdentifier(lastQualifiedPart(condition.right))}`,
+            ]
           : []
       )
       .join(' AND ') || 'true'
@@ -4048,7 +4157,9 @@ function compileJoinProjection(
             ? 'l'
             : 'r';
       const alias = typeof item.alias === 'string' ? item.alias : lastQualifiedPart(item.source);
-      return [`${side}.${quoteIdentifier(lastQualifiedPart(item.source))} AS ${quoteIdentifier(alias)}`];
+      return [
+        `${side}.${quoteIdentifier(lastQualifiedPart(item.source))} AS ${quoteIdentifier(alias)}`,
+      ];
     })
     .join(', ');
 }
@@ -4069,7 +4180,9 @@ function compileAsofJoinSql(
   const byConditions = objectArray(asof.by)
     .flatMap((condition) =>
       typeof condition.left === 'string' && typeof condition.right === 'string'
-        ? [`r.${quoteIdentifier(lastQualifiedPart(condition.right))} = l.${quoteIdentifier(lastQualifiedPart(condition.left))}`]
+        ? [
+            `r.${quoteIdentifier(lastQualifiedPart(condition.right))} = l.${quoteIdentifier(lastQualifiedPart(condition.left))}`,
+          ]
         : []
     )
     .join(' AND ');
@@ -4104,7 +4217,8 @@ function toPersistentCreateTableSql(sql: string): string {
   return sql.replace(/\bCREATE\s+TEMP\s+TABLE\b/i, 'CREATE TABLE');
 }
 
-const SQL_FIELD_REF_TOKEN_PATTERN = '(?:\\[`(?:[^`\\\\]|\\\\.)*`\\]|\\[[\\p{L}_][\\p{L}\\p{N}_]*\\])';
+const SQL_FIELD_REF_TOKEN_PATTERN =
+  '(?:\\[`(?:[^`\\\\]|\\\\.)*`\\]|\\[[\\p{L}_][\\p{L}\\p{N}_]*\\])';
 const SQL_SCALAR_TOKEN_PATTERN = new RegExp(
   `"(?:[^"\\\\]|\\\\.)*"|(${SQL_FIELD_REF_TOKEN_PATTERN})(?:\\.(${SQL_FIELD_REF_TOKEN_PATTERN}))?`,
   'gu'
@@ -4183,7 +4297,7 @@ function duckDbType(type: string): string {
 }
 
 function lastQualifiedPart(value: string): string {
-  return value.includes('.') ? value.split('.').at(-1) ?? value : value;
+  return value.includes('.') ? (value.split('.').at(-1) ?? value) : value;
 }
 
 function unwrapFieldToken(token: string): string {
@@ -4222,7 +4336,9 @@ function durationToMilliseconds(value: string): number {
 }
 
 function stringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
 }
 
 function unknownArray(value: unknown): unknown[] {
@@ -4307,7 +4423,9 @@ function normalizeImportSourcePath(sourcePath: string): string {
     throw new Error(`Input table source is not a file or folder: ${sourcePath}`);
   }
   if (!isImportableFile(sourcePath)) {
-    throw new Error(`Unsupported input table source type: ${extname(sourcePath).toLowerCase() || '(none)'}`);
+    throw new Error(
+      `Unsupported input table source type: ${extname(sourcePath).toLowerCase() || '(none)'}`
+    );
   }
   return sourcePath;
 }
@@ -4359,9 +4477,7 @@ function normalizeInputTableConfig(
       mergeMode: 'append_same_schema',
       schemaStrategy: 'align_by_name',
       fileRange:
-        config.fileRange === 'excel' || config.fileRange === 'csv'
-          ? config.fileRange
-          : 'excel_csv',
+        config.fileRange === 'excel' || config.fileRange === 'csv' ? config.fileRange : 'excel_csv',
       skipEmptyFiles: config.skipEmptyFiles !== false,
       keepSourceFileName: config.keepSourceFileName !== false,
       dataProcessing: normalizeInputTableDataProcessing(config.dataProcessing),
@@ -4392,11 +4508,10 @@ function normalizeStoredInputTableConfig(
       sourceKind: 'excel',
       sheetName: storedSheetName || sheetNames[0] || 'Sheet1',
       sheetNames,
-      headerMode: config?.sourceKind === 'excel' && config.headerMode === 'manual' ? 'manual' : 'auto',
+      headerMode:
+        config?.sourceKind === 'excel' && config.headerMode === 'manual' ? 'manual' : 'auto',
       headerRow:
-        config?.sourceKind === 'excel'
-          ? Math.max(1, Math.floor(Number(config.headerRow) || 1))
-          : 1,
+        config?.sourceKind === 'excel' ? Math.max(1, Math.floor(Number(config.headerRow) || 1)) : 1,
       dataProcessing: normalizeInputTableDataProcessing(
         config?.sourceKind === 'excel' ? config.dataProcessing : undefined
       ),
@@ -4404,7 +4519,9 @@ function normalizeStoredInputTableConfig(
   }
 
   if (sourceKind === 'folder') {
-    return config?.sourceKind === 'folder' ? normalizeInputTableConfig(config, sourceKind, sourcePath) : defaultFolderConfig();
+    return config?.sourceKind === 'folder'
+      ? normalizeInputTableConfig(config, sourceKind, sourcePath)
+      : defaultFolderConfig();
   }
 
   return defaultCsvConfig(config);
@@ -4661,7 +4778,10 @@ function prepareDelimitedNormalizerSource(input: {
 }): PreparedInputTableNormalizerSourceFile {
   const delimiter = extname(input.filePath).toLowerCase() === '.csv' ? ',' : '\t';
   const rows = parseDelimitedRows(fs.readFileSync(input.filePath, 'utf8'), delimiter);
-  const preparedPath = join(input.directory, createPreparedSourceFileName(input.fileIndex, 0, input.filePath));
+  const preparedPath = join(
+    input.directory,
+    createPreparedSourceFileName(input.fileIndex, 0, input.filePath)
+  );
   writeCsvRows(preparedPath, rows);
   return {
     path: preparedPath,
@@ -4677,14 +4797,26 @@ function prepareDelimitedNormalizerSource(input: {
   };
 }
 
-function createPreparedSourceFileName(fileIndex: number, sheetIndex: number, filePath: string): string {
-  const baseName = basename(filePath, extname(filePath)).replace(/[^A-Za-z0-9_-]+/g, '_') || 'source';
+function createPreparedSourceFileName(
+  fileIndex: number,
+  sheetIndex: number,
+  filePath: string
+): string {
+  const baseName =
+    basename(filePath, extname(filePath)).replace(/[^A-Za-z0-9_-]+/g, '_') || 'source';
   return `${String(fileIndex + 1).padStart(3, '0')}_${String(sheetIndex + 1).padStart(3, '0')}_${baseName}.csv`;
 }
 
-function writeCsvRows(filePath: string, rows: Array<Array<string | number | boolean | null>>): void {
+function writeCsvRows(
+  filePath: string,
+  rows: Array<Array<string | number | boolean | null>>
+): void {
   const content = rows
-    .map((row) => row.map((cell) => escapeCsvCell(cell === null || cell === undefined ? '' : String(cell))).join(','))
+    .map((row) =>
+      row
+        .map((cell) => escapeCsvCell(cell === null || cell === undefined ? '' : String(cell)))
+        .join(',')
+    )
     .join('\n');
   fs.writeFileSync(filePath, `${content}${content ? '\n' : ''}`, 'utf8');
 }
@@ -4786,7 +4918,11 @@ function readNormalizerOutputRelationForPath(filePath: string, parameterName: st
   return readRelationForPath(filePath, parameterName);
 }
 
-function readImportRelationForPath(filePath: string, parameterName: string, forceVarchar: boolean): string {
+function readImportRelationForPath(
+  filePath: string,
+  parameterName: string,
+  forceVarchar: boolean
+): string {
   if (!forceVarchar) {
     return readRelationForPath(filePath, parameterName);
   }
@@ -4823,7 +4959,9 @@ function normalizePreviewOffset(offset: number | undefined): number {
   return Math.max(0, Math.floor(Number(offset)));
 }
 
-function normalizePreviewRow(row: Record<string, unknown>): Record<string, string | number | boolean | null> {
+function normalizePreviewRow(
+  row: Record<string, unknown>
+): Record<string, string | number | boolean | null> {
   return Object.fromEntries(
     Object.entries(row).map(([key, value]) => [key, normalizePreviewCell(value)])
   );
@@ -4843,12 +4981,17 @@ function normalizePreviewCell(value: unknown): string | number | boolean | null 
 }
 
 function isImportableFile(filePath: string): boolean {
-  return isInputTableFile(filePath) || ['.json', '.jsonl', '.ndjson', '.parquet'].includes(extname(filePath).toLowerCase());
+  return (
+    isInputTableFile(filePath) ||
+    ['.json', '.jsonl', '.ndjson', '.parquet'].includes(extname(filePath).toLowerCase())
+  );
 }
 
 function isInputTableFile(filePath: string): boolean {
   const extension = extname(filePath).toLowerCase();
-  return extension === '.csv' || extension === '.tsv' || extension === '.tab' || isExcelFile(filePath);
+  return (
+    extension === '.csv' || extension === '.tsv' || extension === '.tab' || isExcelFile(filePath)
+  );
 }
 
 function isFolderRangeFile(
@@ -4881,9 +5024,7 @@ function parseWorkbookRows(
   const workbook = readWorkbookFile(filePath);
   const sheetNames = workbook.SheetNames;
   const sheetName =
-    config.sheetName && sheetNames.includes(config.sheetName)
-      ? config.sheetName
-      : sheetNames[0];
+    config.sheetName && sheetNames.includes(config.sheetName) ? config.sheetName : sheetNames[0];
   if (!sheetName) {
     throw new Error(`Excel workbook has no sheets: ${filePath}`);
   }
@@ -5010,10 +5151,7 @@ function summarizeWorkbookMergedCells(
   });
 }
 
-function readWorkbookFile(
-  filePath: string,
-  options: XLSX.ParsingOptions = {}
-): XLSX.WorkBook {
+function readWorkbookFile(filePath: string, options: XLSX.ParsingOptions = {}): XLSX.WorkBook {
   return XLSX.read(fs.readFileSync(filePath), {
     cellDates: false,
     raw: false,
@@ -5022,7 +5160,9 @@ function readWorkbookFile(
   });
 }
 
-function sheetToExpandedMatrix(sheet: XLSX.WorkSheet): Array<Array<string | number | boolean | null>> {
+function sheetToExpandedMatrix(
+  sheet: XLSX.WorkSheet
+): Array<Array<string | number | boolean | null>> {
   const matrix = XLSX.utils.sheet_to_json<Array<string | number | boolean | null>>(sheet, {
     header: 1,
     blankrows: false,
@@ -5037,7 +5177,11 @@ function sheetToExpandedMatrix(sheet: XLSX.WorkSheet): Array<Array<string | numb
       const row = expanded[rowIndex] ?? [];
       expanded[rowIndex] = row;
       for (let columnIndex = merge.s.c; columnIndex <= merge.e.c; columnIndex += 1) {
-        if (row[columnIndex] === null || row[columnIndex] === undefined || row[columnIndex] === '') {
+        if (
+          row[columnIndex] === null ||
+          row[columnIndex] === undefined ||
+          row[columnIndex] === ''
+        ) {
           row[columnIndex] = sourceValue;
         }
       }
@@ -5110,7 +5254,9 @@ function readTextSample(filePath: string, maxBytes: number): string {
 
 function getSourceRelativePath(sourcePath: string, filePath: string): string {
   const sourceStat = fs.statSync(sourcePath);
-  return sourceStat.isDirectory() ? relative(sourcePath, filePath) || basename(filePath) : basename(filePath);
+  return sourceStat.isDirectory()
+    ? relative(sourcePath, filePath) || basename(filePath)
+    : basename(filePath);
 }
 
 function clampSummaryLimit(
@@ -5142,7 +5288,9 @@ function sortJsonKeys(_key: string, value: unknown): unknown {
   if (!isRecord(value)) {
     return value;
   }
-  return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)));
+  return Object.fromEntries(
+    Object.entries(value).sort(([left], [right]) => left.localeCompare(right))
+  );
 }
 
 function normalizeWorkbookColumns(row: Array<string | number | boolean | null>): string[] {
@@ -5156,7 +5304,9 @@ function normalizeWorkbookColumns(row: Array<string | number | boolean | null>):
   });
 }
 
-function normalizeWorkbookCell(value: string | number | boolean | null | undefined): string | number | null {
+function normalizeWorkbookCell(
+  value: string | number | boolean | null | undefined
+): string | number | null {
   if (value === null || value === undefined) {
     return null;
   }

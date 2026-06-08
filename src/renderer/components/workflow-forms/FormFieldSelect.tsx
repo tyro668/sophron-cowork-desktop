@@ -1,8 +1,7 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { Search } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
-import { GlassFormLabel } from './shared/GlassFormLabel';
-import { GlassColumnSelector } from './shared/GlassColumnSelector';
 
 export default function FormFieldSelect({
   node,
@@ -20,44 +19,111 @@ export default function FormFieldSelect({
     [onNodeChange]
   );
 
-  const mode = (node.config.mode as string) ?? 'include';
   const columns: string[] = (node.config.columns as string[]) ?? [];
+  const [search, setSearch] = useState('');
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return fieldCompletions;
+    const lower = search.toLowerCase();
+    return fieldCompletions.filter((c) => c.toLowerCase().includes(lower));
+  }, [fieldCompletions, search]);
+
+  const allSelected = filtered.length > 0 && filtered.every((c) => columns.includes(c));
+  const noneSelected = filtered.length === 0 || !filtered.some((c) => columns.includes(c));
+
+  function toggleAll() {
+    if (allSelected) {
+      // Deselect filtered fields only
+      const next = columns.filter((c) => !filtered.includes(c));
+      updateConfig((cfg) => ({
+        ...cfg,
+        mode: 'include',
+        columns: next.length > 0 ? next : undefined,
+      }));
+    } else {
+      // Select all filtered fields
+      const next = [...new Set([...columns, ...filtered])];
+      updateConfig((cfg) => ({ ...cfg, mode: 'include', columns: next }));
+    }
+  }
+
+  function toggleColumn(col: string) {
+    const next = columns.includes(col) ? columns.filter((c) => c !== col) : [...columns, col];
+    updateConfig((cfg) => ({
+      ...cfg,
+      mode: 'include',
+      columns: next.length > 0 ? next : undefined,
+    }));
+  }
 
   return (
     <div className="grid content-start gap-2.5">
-      <GlassFormSection title="字段选择模式">
-        <GlassFormLabel required>模式</GlassFormLabel>
-        <div className="flex gap-1.5">
-          {(['include', 'exclude'] as const).map((m) => (
+      <GlassFormSection>
+        {/* Search bar */}
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="搜索字段名..."
+            className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+          />
+          {search && (
             <button
-              key={m}
               type="button"
-              onClick={() => updateConfig((cfg) => ({ ...cfg, mode: m }))}
-              className={`rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors ${
-                mode === m
-                  ? 'bg-accent/10 text-accent border border-accent/30'
-                  : 'border border-border-muted bg-background/42 text-text-secondary hover:border-accent/30'
-              }`}
+              onClick={() => setSearch('')}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-text-muted hover:text-text-secondary"
             >
-              {m === 'include' ? '保留 (select)' : '排除 (drop)'}
+              清除
             </button>
-          ))}
+          )}
         </div>
-        <p className="mt-1 text-[10px] text-text-muted">
-          {mode === 'include'
-            ? '只保留选中的字段，其他字段将被删除。'
-            : '排除选中的字段，其他字段将被保留。'}
-        </p>
-      </GlassFormSection>
 
-      <GlassFormSection title={mode === 'include' ? '保留的字段' : '排除的字段'}>
-        <GlassColumnSelector
-          columns={fieldCompletions}
-          selected={columns}
-          onChange={(next) =>
-            updateConfig((cfg) => ({ ...cfg, columns: next.length > 0 ? next : undefined }))
-          }
-        />
+        {/* Select all / deselect all */}
+        <div className="flex items-center gap-2 border-b border-border-subtle px-0.5 pb-1">
+          <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-text-muted hover:text-text-secondary">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              ref={(el) => {
+                if (el) el.indeterminate = !allSelected && !noneSelected;
+              }}
+              onChange={toggleAll}
+              className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
+            />
+            {allSelected ? '取消全选' : '全选'}
+          </label>
+          <span className="text-[10px] text-text-muted">
+            {columns.length}/{fieldCompletions.length}
+          </span>
+        </div>
+
+        {/* Field list */}
+        <div className="max-h-48 overflow-y-auto">
+          {filtered.length === 0 ? (
+            <div className="py-4 text-center text-[12px] text-text-muted">
+              {search ? '无匹配字段' : '暂无可用字段'}
+            </div>
+          ) : (
+            filtered.map((col) => (
+              <label
+                key={col}
+                className={`flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-[12px] transition-colors hover:bg-surface-hover ${
+                  columns.includes(col) ? 'text-text-primary' : 'text-text-secondary'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={columns.includes(col)}
+                  onChange={() => toggleColumn(col)}
+                  className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
+                />
+                {col}
+              </label>
+            ))
+          )}
+        </div>
       </GlassFormSection>
     </div>
   );

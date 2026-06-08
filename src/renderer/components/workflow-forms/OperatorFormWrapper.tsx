@@ -6,15 +6,19 @@ import type { DataWorkflowNode } from '../../types';
 
 interface OperatorFormWrapperProps {
   node: DataWorkflowNode;
+  taskId?: string;
   fieldCompletions: string[];
   otherNodes: DataWorkflowNode[];
+  sourceNode?: { id: string; type: string; config?: Record<string, unknown> };
   onNodeChange: (updater: (node: DataWorkflowNode) => DataWorkflowNode) => void;
 }
 
 function LazyOperatorForm({
   node,
+  taskId,
   fieldCompletions,
   otherNodes,
+  sourceNode,
   onNodeChange,
 }: OperatorFormWrapperProps) {
   const loader = getOperatorFormLoader(node.type);
@@ -52,8 +56,10 @@ function LazyOperatorForm({
     >
       <LazyComponent
         node={node}
+        taskId={taskId}
         fieldCompletions={fieldCompletions}
         otherNodes={otherNodes}
+        sourceNode={sourceNode}
         onNodeChange={onNodeChange}
       />
     </Suspense>
