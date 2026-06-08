@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from 'react';
 import * as Switch from '@radix-ui/react-switch';
 import { useTranslation } from 'react-i18next';
 import {
@@ -40,6 +49,7 @@ import type {
 } from '../../types';
 import { useAppStore } from '../../store';
 import { AgentModelSelector, getAgentModelLabel } from '../AgentModelSelector';
+import { GlassDateTimePicker } from '../GlassDateTimePicker';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { GlassSelect } from '../GlassSelect';
 import { formatAppDateTime } from '../../utils/i18n-format';
@@ -87,6 +97,11 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [banner, setBanner] = useState<Banner | null>(null);
+  const updateDraftEnabled = useCallback((enabled: boolean) => {
+    startTransition(() => {
+      setDraft((current) => ({ ...current, enabled }));
+    });
+  }, []);
 
   const selectedAutomation = automations.find((automation) => automation.id === selectedId) ?? null;
   const dataTasks = dataDashboard?.tasks ?? [];
@@ -295,7 +310,11 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         />
 
         <section className="flex min-h-0 flex-1 flex-col gap-4">
-          <TaskStatusSection draft={draft} onDraftChange={setDraft} tr={tr} />
+          <TaskStatusSection
+            enabled={draft.enabled}
+            onEnabledChange={updateDraftEnabled}
+            tr={tr}
+          />
           <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(340px,0.58fr)_minmax(620px,1fr)]">
             <div className="flex min-h-0 flex-col gap-4">
               <ExecutionProjectPanel
@@ -1136,14 +1155,28 @@ function EditorHeader({
 }
 
 function TaskStatusSection({
-  draft,
-  onDraftChange,
+  enabled,
+  onEnabledChange,
   tr,
 }: {
-  draft: AutomationDraft;
-  onDraftChange: (draft: AutomationDraft) => void;
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
   tr: (key: string, fallback: string) => string;
 }) {
+  const [localEnabled, setLocalEnabled] = useState(enabled);
+
+  useEffect(() => {
+    setLocalEnabled(enabled);
+  }, [enabled]);
+
+  const handleCheckedChange = useCallback(
+    (checked: boolean) => {
+      setLocalEnabled(checked);
+      onEnabledChange(checked);
+    },
+    [onEnabledChange]
+  );
+
   return (
     <section className="glass-card grid flex-shrink-0 gap-4 rounded-xl border border-border-muted bg-surface/70 p-4 lg:grid-cols-[360px] lg:items-center">
       <div className="flex min-h-10 items-center gap-4">
@@ -1151,21 +1184,25 @@ function TaskStatusSection({
           {tr('schedule.taskStatus', '任务状态')}
         </span>
         <Switch.Root
-          checked={draft.enabled}
-          onCheckedChange={(checked) => onDraftChange({ ...draft, enabled: checked })}
-          className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full border p-0.5 shadow-soft outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
-            draft.enabled ? 'border-success bg-success' : 'border-border-muted bg-bg-tertiary'
+          checked={localEnabled}
+          onCheckedChange={handleCheckedChange}
+          className={`relative inline-flex h-7 w-[52px] flex-shrink-0 items-center rounded-full border p-[3px] shadow-[inset_0_1px_2px_rgba(15,23,42,0.14)] outline-none transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-accent/30 ${
+            localEnabled
+              ? 'border-success bg-success'
+              : 'border-[rgba(148,163,184,0.58)] bg-[rgba(148,163,184,0.32)]'
           }`}
           aria-label={tr('schedule.taskStatus', '任务状态')}
         >
           <Switch.Thumb
-            className={`block h-6 w-6 rounded-full bg-white shadow-sm transition-transform ${
-              draft.enabled ? 'translate-x-5' : 'translate-x-0'
+            className={`block h-[22px] w-[22px] transform-gpu rounded-full bg-white shadow-[0_2px_8px_rgba(15,23,42,0.22)] ring-1 transition-transform duration-150 ease-out will-change-transform ${
+              localEnabled
+                ? 'translate-x-6 ring-white/70'
+                : 'translate-x-0 ring-[rgba(100,116,139,0.38)]'
             }`}
           />
         </Switch.Root>
         <span className="text-[13px] font-medium text-text-secondary">
-          {draft.enabled ? tr('schedule.enabled', '启用') : tr('schedule.disabled', '停用')}
+          {localEnabled ? tr('schedule.enabled', '启用') : tr('schedule.disabled', '停用')}
         </span>
       </div>
     </section>
@@ -1316,11 +1353,9 @@ function ScheduledConfigCard({
         </ConfigRow>
         {trigger.kind === 'once' && (
           <ConfigRow label={tr('schedule.executionTime', '执行时间')}>
-            <input
-              type="datetime-local"
-              value={toLocalInput(trigger.runAt)}
-              onChange={(event) => onChange({ ...trigger, runAt: new Date(event.target.value).getTime() })}
-              className="input h-9 w-full text-xs"
+            <GlassDateTimePicker
+              value={trigger.runAt}
+              onChange={(runAt) => onChange({ ...trigger, runAt })}
             />
           </ConfigRow>
         )}
@@ -1387,11 +1422,9 @@ function ScheduledConfigCard({
               </div>
             </ConfigRow>
             <ConfigRow label={tr('schedule.startAt', '开始')}>
-              <input
-                type="datetime-local"
-                value={toLocalInput(trigger.startAt)}
-                onChange={(event) => onChange({ ...trigger, startAt: new Date(event.target.value).getTime() })}
-                className="input h-9 w-full text-xs"
+              <GlassDateTimePicker
+                value={trigger.startAt}
+                onChange={(startAt) => onChange({ ...trigger, startAt })}
               />
             </ConfigRow>
           </>
@@ -1943,11 +1976,4 @@ function splitCsv(value: string): string[] {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
-}
-
-function toLocalInput(timestamp: number): string {
-  const date = new Date(timestamp);
-  const offset = date.getTimezoneOffset();
-  const local = new Date(date.getTime() - offset * 60 * 1000);
-  return local.toISOString().slice(0, 16);
 }
