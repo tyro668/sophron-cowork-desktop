@@ -211,7 +211,6 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       setSelectedId(saved.id);
       setDraft(automationToDraft(saved));
       setViewMode('detail');
-      setBanner({ tone: 'success', text: tr('schedule.saved', '自动化已保存') });
     } catch (error) {
       setBanner({
         tone: 'error',
@@ -304,7 +303,6 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           onDraftChange={setDraft}
           onSave={() => void save()}
           onRun={() => void runNow()}
-          onDelete={() => void remove()}
           onBack={() => setViewMode('list')}
           tr={tr}
         />
@@ -1039,7 +1037,6 @@ function EditorHeader({
   onDraftChange,
   onSave,
   onRun,
-  onDelete,
   onBack,
   tr,
 }: {
@@ -1049,7 +1046,6 @@ function EditorHeader({
   onDraftChange: (draft: AutomationDraft) => void;
   onSave: () => void;
   onRun: () => void;
-  onDelete: () => void;
   onBack: () => void;
   tr: (key: string, fallback: string) => string;
 }) {
@@ -1127,11 +1123,6 @@ function EditorHeader({
         </div>
       </div>
       <div className="flex items-center gap-2">
-        {selectedAutomation && (
-          <IconButton label={tr('schedule.delete', '删除')} onClick={onDelete}>
-            <Trash2 size={14} />
-          </IconButton>
-        )}
         <button
           onClick={onSave}
           disabled={isSaving}
@@ -1828,28 +1819,6 @@ function SelectLine({
       triggerClassName="h-9 w-full justify-between"
       contentClassName="w-[var(--radix-select-trigger-width)]"
     />
-  );
-}
-
-function IconButton({
-  label,
-  onClick,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      onClick={onClick}
-      className="flex h-8 w-8 items-center justify-center rounded-md border border-border-subtle text-text-muted hover:bg-bg-secondary"
-    >
-      {children}
-    </button>
   );
 }
 
