@@ -2,6 +2,22 @@ import type {
   PermissionPolicyId,
   PermissionRule as SharedPermissionRule,
 } from '../../shared/permission-policies';
+export type {
+  Automation,
+  AutomationActionDefinitionSummary,
+  AutomationActionGraph,
+  AutomationActionNode,
+  AutomationArtifact,
+  AutomationConcurrencyPolicy,
+  AutomationCreateInput,
+  AutomationDeliveryConfig,
+  AutomationDeliveryChannel,
+  AutomationListQuery,
+  AutomationRun,
+  AutomationRunQuery,
+  AutomationTrigger,
+  AutomationUpdateInput,
+} from '../../shared/automation/types';
 
 // Session types
 export interface Session {
@@ -147,11 +163,37 @@ export interface WeeklyScheduleConfig {
 
 export type ScheduleConfig = DailyScheduleConfig | WeeklyScheduleConfig;
 
+export type ScheduleAutomationActionKind = 'conversation' | 'data_task';
+export type ScheduleAutomationArtifactPolicy = 'summary' | 'links' | 'files';
+export type ScheduleAutomationDeliveryChannel = 'feishu' | 'slack' | 'webhook' | 'email';
+
+export interface ScheduleAutomationRecipient {
+  id: string;
+  label: string;
+  channel: ScheduleAutomationDeliveryChannel;
+  target: string;
+  enabled: boolean;
+}
+
+export interface ScheduleAutomationDeliveryConfig {
+  enabled: boolean;
+  artifactPolicy: ScheduleAutomationArtifactPolicy;
+  recipients: ScheduleAutomationRecipient[];
+}
+
+export interface ScheduleAutomationConfig {
+  actionKind: ScheduleAutomationActionKind;
+  dataTaskId?: string | null;
+  dataTaskName?: string | null;
+  delivery: ScheduleAutomationDeliveryConfig;
+}
+
 export interface ScheduleTask {
   id: string;
   title: string;
   prompt: string;
   cwd: string;
+  automationConfig: ScheduleAutomationConfig | null;
   runAt: number;
   nextRunAt: number | null;
   scheduleConfig: ScheduleConfig | null;
@@ -169,6 +211,7 @@ export interface ScheduleCreateInput {
   title?: string;
   prompt: string;
   cwd: string;
+  automationConfig?: ScheduleAutomationConfig | null;
   runAt: number;
   nextRunAt?: number | null;
   scheduleConfig?: ScheduleConfig | null;
@@ -181,6 +224,7 @@ export interface ScheduleUpdateInput {
   title?: string;
   prompt?: string;
   cwd?: string;
+  automationConfig?: ScheduleAutomationConfig | null;
   runAt?: number;
   nextRunAt?: number | null;
   scheduleConfig?: ScheduleConfig | null;
@@ -1225,6 +1269,18 @@ export interface AppConfig {
   enableThinking?: boolean;
   isConfigured: boolean;
 }
+
+export type AgentRuntimeConfig = Pick<
+  AppConfig,
+  | 'provider'
+  | 'apiKey'
+  | 'baseUrl'
+  | 'customProtocol'
+  | 'model'
+  | 'contextWindow'
+  | 'maxTokens'
+  | 'enableThinking'
+>;
 
 export interface ProviderPreset {
   name: string;

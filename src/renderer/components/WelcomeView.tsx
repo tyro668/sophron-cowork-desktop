@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
 import { useIPC } from '../hooks/useIPC';
 import { getWorkingDirDisplayName } from '../utils/working-dir-label';
-import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
+import { AgentModelSelector } from './AgentModelSelector';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
 import type { ContentBlock } from '../types';
 import { getInitialSessionTitle } from '../../shared/session-title';
@@ -15,7 +15,6 @@ import {
   Mail,
   X,
   Plus,
-  ChevronDown,
   BookOpen,
   FileSearch,
 } from 'lucide-react';
@@ -54,18 +53,6 @@ export function WelcomeView() {
   const canSubmit = prompt.trim().length > 0 || pastedImages.length > 0 || attachedFiles.length > 0;
   const modelLabel = appConfig?.model?.trim() || t('chat.noModel');
   const hasConfiguredModel = Boolean(isConfigured && appConfig?.model?.trim());
-  const modelOptions =
-    appConfig?.configSets
-      ?.map((set) => {
-        const model = set.profiles?.[set.activeProfileKey]?.model?.trim() || '';
-        return {
-          id: set.id,
-          name: set.name,
-          model,
-          isActive: set.id === appConfig.activeConfigSetId,
-        };
-      })
-      .filter((option) => option.model) || [];
   const workingDirLabel = getWorkingDirDisplayName(
     workingDir,
     t('welcome.defaultWorkingFolder'),
@@ -697,7 +684,7 @@ export function WelcomeView() {
 
             <div className="ml-auto flex min-w-0 items-center gap-2">
               {hasConfiguredModel ? (
-                <GlassDropdownMenu
+                <AgentModelSelector
                   open={showModelMenu}
                   onOpenChange={(open) => {
                     setShowModelMenu(open);
@@ -705,41 +692,11 @@ export function WelcomeView() {
                       setShowPermissionMenu(false);
                     }
                   }}
-                  side="top"
-                  align="end"
-                  contentClassName="w-[min(18rem,calc(100vw-2rem))]"
-                  trigger={
-                    <button
-                      type="button"
-                      className="composer-flat-pill inline-flex h-9 min-w-0 max-w-[13rem] items-center gap-2 rounded-full px-3 text-[13px] font-medium"
-                      title={modelLabel}
-                    >
-                      <span className="truncate">{modelLabel}</span>
-                      <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" />
-                    </button>
-                  }
-                >
-                  <div className="max-h-56 overflow-y-auto">
-                    {modelOptions.length > 0 ? (
-                      modelOptions.map((option) => (
-                        <GlassMenuItem
-                          key={option.id}
-                          selected={option.isActive}
-                          onSelect={() => void handleModelOptionClick(option.id)}
-                        >
-                          <span className="block min-w-0">
-                            <span className="block truncate text-[13px] font-medium">
-                              {option.name}
-                            </span>
-                            <span className="block truncate text-xs opacity-80">{option.model}</span>
-                          </span>
-                        </GlassMenuItem>
-                      ))
-                    ) : (
-                      <div className="px-3 py-2 text-sm text-text-muted">{modelLabel}</div>
-                    )}
-                  </div>
-                </GlassDropdownMenu>
+                  appConfig={appConfig}
+                  fallbackLabel={modelLabel}
+                  triggerClassName="composer-flat-pill inline-flex h-9 min-w-0 max-w-[13rem] items-center gap-2 rounded-full px-3 text-[13px] font-medium"
+                  onSelect={(configSetId) => void handleModelOptionClick(configSetId)}
+                />
               ) : (
                 <button
                   type="button"
@@ -748,7 +705,6 @@ export function WelcomeView() {
                   title={modelLabel}
                 >
                   <span className="truncate">{modelLabel}</span>
-                  <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" />
                 </button>
               )}
 

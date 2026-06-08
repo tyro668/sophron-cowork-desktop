@@ -15,6 +15,7 @@ import {
   buildScheduledTaskFallbackTitle,
   buildScheduledTaskTitle,
 } from '../../shared/schedule/task-title';
+import type { ScheduleAutomationConfig } from '../../renderer/types';
 import { log, logError } from '../utils/logger';
 
 export type ScheduleRepeatUnit = 'minute' | 'hour' | 'day';
@@ -40,6 +41,7 @@ export interface ScheduledTask {
   title: string;
   prompt: string;
   cwd: string;
+  automationConfig: ScheduleAutomationConfig | null;
   runAt: number;
   nextRunAt: number | null;
   scheduleConfig: ScheduledTaskScheduleConfig | null;
@@ -57,6 +59,7 @@ export interface ScheduledTaskCreateInput {
   title?: string;
   prompt: string;
   cwd: string;
+  automationConfig?: ScheduleAutomationConfig | null;
   runAt: number;
   nextRunAt?: number | null;
   scheduleConfig?: ScheduledTaskScheduleConfig | null;
@@ -69,6 +72,7 @@ export interface ScheduledTaskUpdateInput {
   title?: string;
   prompt?: string;
   cwd?: string;
+  automationConfig?: ScheduleAutomationConfig | null;
   runAt?: number;
   nextRunAt?: number | null;
   scheduleConfig?: ScheduledTaskScheduleConfig | null;
@@ -89,7 +93,7 @@ export interface ScheduledTaskStore {
 }
 
 export interface ScheduledTaskRunResult {
-  sessionId: string;
+  sessionId?: string;
 }
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
@@ -367,7 +371,7 @@ export class ScheduledTaskManager {
       try {
         this.store.update(task.id, {
           lastRunAt: this.now(),
-          lastRunSessionId: result.sessionId,
+          lastRunSessionId: result.sessionId ?? null,
           lastError: null,
         });
       } catch (error) {

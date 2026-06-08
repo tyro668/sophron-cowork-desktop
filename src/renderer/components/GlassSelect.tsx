@@ -43,7 +43,7 @@ export function GlassSelect({
   contentClassName,
   side = 'bottom',
   align = 'start',
-  sideOffset = 8,
+  sideOffset = 2,
 }: GlassSelectProps) {
   const normalizedValue = value === undefined ? undefined : normalizeSelectValue(value);
   const normalizedOptions = options.map((option) => ({

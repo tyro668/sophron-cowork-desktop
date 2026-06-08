@@ -120,6 +120,7 @@ export interface ScheduledTaskRow {
   title: string;
   prompt: string;
   cwd: string;
+  automation_config: string | null;
   run_at: number;
   next_run_at: number | null;
   schedule_config: string | null;
@@ -473,6 +474,7 @@ function initializeSchema(database: Database.Database): void {
       title TEXT NOT NULL,
       prompt TEXT NOT NULL,
       cwd TEXT NOT NULL,
+      automation_config TEXT,
       run_at INTEGER NOT NULL,
       next_run_at INTEGER,
       schedule_config TEXT,
@@ -487,10 +489,87 @@ function initializeSchema(database: Database.Database): void {
     )
   `);
     ensureColumn(database, 'scheduled_tasks', 'schedule_config', 'schedule_config TEXT');
+    ensureColumn(database, 'scheduled_tasks', 'automation_config', 'automation_config TEXT');
 
     database.exec(`
     CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_next_run
     ON scheduled_tasks(enabled, next_run_at)
+  `);
+
+    database.exec(`
+    CREATE TABLE IF NOT EXISTS automations (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      project_id TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL,
+      trigger_json TEXT NOT NULL,
+      action_graph_json TEXT NOT NULL,
+      delivery_json TEXT,
+      failure_policy_json TEXT NOT NULL,
+      concurrency_json TEXT NOT NULL,
+      next_run_at INTEGER,
+      locked_run_id TEXT,
+      last_run_at INTEGER,
+      last_run_status TEXT,
+      last_error TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+    )
+  `);
+
+    database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_automations_next_run
+    ON automations(enabled, next_run_at)
+  `);
+
+    database.exec(`
+    CREATE TABLE IF NOT EXISTS automation_runs (
+      id TEXT PRIMARY KEY,
+      automation_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      trigger_reason TEXT NOT NULL,
+      queued_at INTEGER,
+      started_at INTEGER,
+      finished_at INTEGER,
+      duration_ms INTEGER,
+      error TEXT,
+      artifact_count INTEGER NOT NULL DEFAULT 0,
+      delivery_status TEXT,
+      created_session_id TEXT,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (automation_id) REFERENCES automations(id) ON DELETE CASCADE
+    )
+  `);
+
+    database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_automation_runs_automation
+    ON automation_runs(automation_id, started_at DESC)
+  `);
+
+    database.exec(`
+    CREATE TABLE IF NOT EXISTS automation_artifacts (
+      id TEXT PRIMARY KEY,
+      automation_run_id TEXT NOT NULL,
+      source_node_id TEXT,
+      kind TEXT NOT NULL,
+      title TEXT NOT NULL,
+      summary TEXT,
+      payload_json TEXT,
+      file_path TEXT,
+      href TEXT,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (automation_run_id) REFERENCES automation_runs(id) ON DELETE CASCADE
+    )
+  `);
+
+    database.exec(`
+    CREATE TABLE IF NOT EXISTS app_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )
   `);
 
     log('[Database] Schema initialized');
@@ -692,9 +771,9 @@ export function initDatabase(): DatabaseInstance {
 
   const insertScheduledTask = rawDb.prepare(`
     INSERT OR REPLACE INTO scheduled_tasks (
-      id, title, prompt, cwd, run_at, next_run_at, schedule_config, repeat_every, repeat_unit, enabled, last_run_at, last_run_session_id, last_error, created_at, updated_at
+      id, title, prompt, cwd, automation_config, run_at, next_run_at, schedule_config, repeat_every, repeat_unit, enabled, last_run_at, last_run_session_id, last_error, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const getScheduledTaskStmt = rawDb.prepare(`
@@ -921,6 +1000,7 @@ export function initDatabase(): DatabaseInstance {
           task.title,
           task.prompt,
           task.cwd,
+          task.automation_config,
           task.run_at,
           task.next_run_at,
           task.schedule_config,

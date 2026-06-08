@@ -23,6 +23,7 @@ import type {
   TextContent,
   TraceStep,
   FileAttachmentContent,
+  AgentRuntimeConfig,
 } from '../../renderer/types';
 import type { DatabaseInstance, ProjectRow, SessionRow, TraceStepRow } from '../db/database';
 import { PathResolver } from '../sandbox/path-resolver';
@@ -59,7 +60,12 @@ import { generateTitleWithClaudeSdk } from '../claude/claude-sdk-one-shot';
 import { buildScheduledTaskTitle } from '../../shared/schedule/task-title';
 
 interface AgentRunner {
-  run(session: Session, prompt: string, existingMessages: Message[]): Promise<void>;
+  run(
+    session: Session,
+    prompt: string,
+    existingMessages: Message[],
+    runtimeConfig?: AgentRuntimeConfig
+  ): Promise<void>;
   cancel(sessionId: string): void;
   clearSdkSession?(sessionId: string): void;
   clearAllSdkSessions?(): void;
@@ -89,6 +95,7 @@ export class SessionManager {
   private sessionTitleAttempts: Set<string> = new Set();
   private titleGenerationTokens: Map<string, symbol> = new Map();
   private messageCache: Map<string, Message[]> = new Map();
+  private sessionRuntimeConfigs: Map<string, AgentRuntimeConfig> = new Map();
   private static readonly MAX_CACHE_SIZE = 100;
 
   constructor(
@@ -251,14 +258,18 @@ export class SessionManager {
     cwd?: string,
     allowedTools?: string[],
     content?: ContentBlock[],
-    memoryEnabled?: boolean
+    memoryEnabled?: boolean,
+    runtimeConfig?: AgentRuntimeConfig
   ): Promise<Session> {
     log('[SessionManager] Starting new session:', title);
 
-    const session = this.createSession(title, cwd, allowedTools, memoryEnabled);
+    const session = this.createSession(title, cwd, allowedTools, memoryEnabled, runtimeConfig?.model);
 
     // Save to database
     this.saveSession(session);
+    if (runtimeConfig) {
+      this.sessionRuntimeConfigs.set(session.id, runtimeConfig);
+    }
 
     // Start processing the prompt with content blocks
     this.enqueuePrompt(session, prompt, content);
@@ -324,7 +335,8 @@ export class SessionManager {
     title: string,
     cwd?: string,
     allowedTools?: string[],
-    memoryEnabled?: boolean
+    memoryEnabled?: boolean,
+    modelOverride?: string
   ): Session {
     const now = Date.now();
     // Prefer frontend-provided cwd; fallback to env vars if provided
@@ -357,7 +369,7 @@ export class SessionManager {
         'grep',
       ],
       memoryEnabled: resolvedMemoryEnabled,
-      model: configStore.get('model') || undefined,
+      model: modelOverride || configStore.get('model') || undefined,
       createdAt: now,
       updatedAt: now,
     };
@@ -675,8 +687,10 @@ export class SessionManager {
         );
         const messagesForContext = [...existingMessages, userMessage];
 
-        // Update session model to match current config (may have changed since session creation)
-        const currentModel = configStore.get('model');
+        // Update session model to match the selected runtime config. Automation-created sessions
+        // may carry an internal model snapshot that should not mutate global app config.
+        const runtimeConfig = this.sessionRuntimeConfigs.get(session.id);
+        const currentModel = runtimeConfig?.model || configStore.get('model');
         if (currentModel && currentModel !== session.model) {
           session.model = currentModel;
           this.db.sessions.update(session.id, { model: currentModel });
@@ -687,7 +701,7 @@ export class SessionManager {
         }
 
         // Run the agent
-        await this.agentRunner.run(session, enhancedPrompt, messagesForContext);
+        await this.agentRunner.run(session, enhancedPrompt, messagesForContext, runtimeConfig);
 
         if (this.extensionManager) {
           const stableMessages = this.getMessages(session.id);
@@ -911,6 +925,7 @@ export class SessionManager {
       if (queue && queue.length === 0) {
         this.promptQueues.delete(session.id);
       }
+      this.sessionRuntimeConfigs.delete(session.id);
       this.updateSessionStatus(session.id, 'idle');
     }
   }
