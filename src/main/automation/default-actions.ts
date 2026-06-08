@@ -26,7 +26,7 @@ export function createDefaultAutomationActionRegistry(
 
   registry.register({
     type: 'notification.send',
-    title: 'Send message notification',
+    title: 'Message',
     description: 'Create a notification artifact for a configured recipient or channel.',
     category: 'integration',
     icon: 'message-square',
@@ -73,7 +73,7 @@ export function createDefaultAutomationActionRegistry(
 
   registry.register({
     type: 'conversation.run',
-    title: 'Run conversation',
+    title: 'Conversation',
     description: 'Start a task conversation and optionally wait until it finishes.',
     category: 'conversation',
     icon: 'message-square',

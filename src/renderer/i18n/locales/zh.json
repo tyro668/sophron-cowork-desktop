@@ -1304,10 +1304,10 @@
     "actionDataTaskDesc": "直接触发数据工作台中的清洗、转换和输出表任务。",
     "actionTypes": {
       "notificationSend": {
-        "title": "发送消息通知"
+        "title": "消息"
       },
       "conversationRun": {
-        "title": "任务对话"
+        "title": "对话"
       },
       "dataTaskRun": {
         "title": "执行数据任务"
@@ -1384,7 +1384,7 @@
     "weeklyHint": "每周在选中的星期与时段自动执行",
     "cronExpression": "Cron 表达式",
     "actions": "动作链",
-    "actionsTitle": "执行操作",
+    "actionsTitle": "执行动作",
     "addAction": "添加动作",
     "notificationRecipient": "通知对象",
     "notificationContent": "通知内容",

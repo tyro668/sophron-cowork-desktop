@@ -1304,10 +1304,10 @@
     "actionDataTaskDesc": "Trigger a data workspace cleaning, transform, or output-table task directly.",
     "actionTypes": {
       "notificationSend": {
-        "title": "Send message notification"
+        "title": "Message"
       },
       "conversationRun": {
-        "title": "Task conversation"
+        "title": "Conversation"
       },
       "dataTaskRun": {
         "title": "Run data task"

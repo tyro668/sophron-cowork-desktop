@@ -13,6 +13,7 @@ import {
   Database,
   Folder,
   GripVertical,
+  MessagesSquare,
   MessageSquare,
   MoreHorizontal,
   PencilLine,
@@ -21,6 +22,7 @@ import {
   RefreshCw,
   Save,
   Search,
+  Send,
   Trash2,
   type LucideIcon,
 } from 'lucide-react';
@@ -1509,7 +1511,6 @@ function ActionChainSection({
     onDraftChange({ ...draft, actionGraph: relinkLinearGraph({ version: 1, nodes: nextNodes, edges: [] }) });
   const addNode = (definition: AutomationActionDefinitionSummary) => {
     updateNodes([
-      ...nodes,
       {
         id: crypto.randomUUID(),
         type: definition.type,
@@ -1517,13 +1518,33 @@ function ActionChainSection({
         enabled: true,
         config: defaultConfigForAction(definition.type),
       },
+      ...nodes,
     ]);
   };
+  const addActionButton = (
+    <GlassDropdownMenu
+      trigger={
+        <button className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-success bg-success/5 px-3 text-xs font-semibold text-success transition-colors hover:bg-success/10">
+          <Plus size={14} />
+          {tr('schedule.addAction', '添加动作')}
+        </button>
+      }
+    >
+      {actionDefinitions.map((definition) => (
+        <GlassMenuItem key={definition.type} onSelect={() => addNode(definition)}>
+          {getActionTitle(definition.type, definition.title, tr)}
+        </GlassMenuItem>
+      ))}
+    </GlassDropdownMenu>
+  );
   return (
     <section className="glass-card flex min-h-0 flex-col rounded-xl border border-border-muted bg-surface/70 p-4">
-      <h2 className="pb-3 text-[16px] font-semibold text-text-secondary">
-        {tr('schedule.actionsTitle', '执行操作')}
-      </h2>
+      <div className="flex items-center justify-between gap-3 pb-3">
+        <h2 className="min-w-0 text-[16px] font-semibold text-text-secondary">
+          {tr('schedule.actionsTitle', '执行动作')}
+        </h2>
+        {addActionButton}
+      </div>
       <div className="min-h-0 flex-1 space-y-4 overflow-auto border-t border-border-muted pt-4 pr-1">
         {nodes.map((node, index) => (
           <ActionStepCard
@@ -1539,20 +1560,6 @@ function ActionChainSection({
             tr={tr}
           />
         ))}
-        <GlassDropdownMenu
-          trigger={
-            <button className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-success bg-success/5 text-[13px] font-semibold text-success transition-colors hover:bg-success/10">
-              <Plus size={16} />
-              {tr('schedule.addAction', '添加操作')}
-            </button>
-          }
-        >
-          {actionDefinitions.map((definition) => (
-            <GlassMenuItem key={definition.type} onSelect={() => addNode(definition)}>
-              {getActionTitle(definition.type, definition.title, tr)}
-            </GlassMenuItem>
-          ))}
-        </GlassDropdownMenu>
       </div>
     </section>
   );
@@ -1850,8 +1857,8 @@ function getActionTitle(
 }
 
 function getActionIcon(type: string): LucideIcon {
-  if (type === 'notification.send') return MessageSquare;
-  if (type === 'conversation.run') return MessageSquare;
+  if (type === 'notification.send') return Send;
+  if (type === 'conversation.run') return MessagesSquare;
   if (type.startsWith('data.')) return Database;
   return CalendarClock;
 }
@@ -1894,6 +1901,7 @@ function getNodeLabel(
 ): string {
   const fallback = getActionTitle(node.type, node.type, tr);
   if (!node.label || node.label === node.type) return fallback;
+  if (node.type === 'notification.send' && node.label === 'Send message notification') return fallback;
   if (node.type === 'conversation.run' && node.label === 'Conversation') return fallback;
   if (node.type === 'data.task.run' && node.label === 'Data task') return fallback;
   return node.label;
