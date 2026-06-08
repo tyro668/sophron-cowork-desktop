@@ -2076,6 +2076,10 @@ const syncConfigAfterMutation = async (previousConfig: AppConfig) => {
     buildAgentRuntimeSignature(previousConfig) !== buildAgentRuntimeSignature(updatedConfig);
   const shouldReloadSandbox = previousConfig.sandboxEnabled !== updatedConfig.sandboxEnabled;
 
+  if (shouldReloadSandbox) {
+    getSandboxBootstrap().reset();
+  }
+
   if (sessionManager) {
     if (shouldReloadRunner) {
       sessionManager.reloadConfig();
@@ -2091,6 +2095,10 @@ const syncConfigAfterMutation = async (previousConfig: AppConfig) => {
         JSON.stringify({ runnerReloaded: shouldReloadRunner, sandboxReloaded: shouldReloadSandbox })
       );
     }
+  }
+
+  if (shouldReloadSandbox && updatedConfig.sandboxEnabled !== false) {
+    void startSandboxBootstrap();
   }
 
   // Notify renderer of config update
