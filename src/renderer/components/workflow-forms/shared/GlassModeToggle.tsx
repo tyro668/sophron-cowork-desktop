@@ -14,29 +14,29 @@ export function GlassModeToggle({
   dslLabel = 'DSL',
 }: GlassModeToggleProps) {
   return (
-    <div className="inline-flex rounded-lg bg-surface-active p-0.5">
+    <div className="inline-flex rounded-md border border-border-muted/55 bg-background/24 p-0.5">
       <button
         type="button"
         onClick={() => onChange('form')}
-        className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-all ${
+        className={`inline-flex h-7 items-center gap-1 rounded px-2 text-[11px] font-medium transition-colors ${
           mode === 'form'
-            ? 'bg-[var(--glass-card-strong)] text-accent shadow-soft'
-            : 'text-text-muted hover:text-text-secondary'
+            ? 'bg-background/80 text-accent shadow-soft'
+            : 'text-text-muted hover:bg-background/30 hover:text-text-secondary'
         }`}
       >
-        <FormInput className="h-3.5 w-3.5" />
+        <FormInput className="h-3 w-3" />
         {formLabel}
       </button>
       <button
         type="button"
         onClick={() => onChange('dsl')}
-        className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-all ${
+        className={`inline-flex h-7 items-center gap-1 rounded px-2 text-[11px] font-medium transition-colors ${
           mode === 'dsl'
-            ? 'bg-[var(--glass-card-strong)] text-accent shadow-soft'
-            : 'text-text-muted hover:text-text-secondary'
+            ? 'bg-background/80 text-accent shadow-soft'
+            : 'text-text-muted hover:bg-background/30 hover:text-text-secondary'
         }`}
       >
-        <Code2 className="h-3.5 w-3.5" />
+        <Code2 className="h-3 w-3" />
         {dslLabel}
       </button>
     </div>
