@@ -1211,10 +1211,12 @@ function ExecutionProjectPanel({
 
   return (
     <section className="glass-card flex flex-shrink-0 flex-col rounded-xl border border-border-muted bg-surface/70 p-4">
-      <h2 className="pb-3 text-[16px] font-semibold text-text-secondary">
-        {tr('schedule.projectPanelTitle', '执行项目')}
-      </h2>
-      <div className="border-t border-border-muted pt-4">
+      <div className="flex h-9 flex-shrink-0 items-center border-b border-border-muted">
+        <h2 className="text-[16px] font-semibold text-text-secondary">
+          {tr('schedule.projectPanelTitle', '执行项目')}
+        </h2>
+      </div>
+      <div className="pt-4">
         <GlassSelect
           value={draft.projectId}
           options={[
@@ -1253,10 +1255,12 @@ function TriggerConditionPanel({
 
   return (
     <section className="glass-card flex min-h-0 flex-col rounded-xl border border-border-muted bg-surface/70 p-4">
-      <h2 className="pb-3 text-[16px] font-semibold text-text-secondary">
-        {tr('schedule.triggerTitle', '触发条件')}
-      </h2>
-      <div className="border-t border-border-muted pt-4">
+      <div className="flex h-9 flex-shrink-0 items-center border-b border-border-muted">
+        <h2 className="text-[16px] font-semibold text-text-secondary">
+          {tr('schedule.triggerTitle', '触发条件')}
+        </h2>
+      </div>
+      <div className="pt-4">
         <ConfigRow label={tr('schedule.triggerMethod', '触发方式')}>
           <GlassSelect
             value={triggerMethod}
@@ -1545,8 +1549,8 @@ function ActionChainSection({
   const addActionButton = (
     <GlassDropdownMenu
       trigger={
-        <button className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-success bg-success/5 px-3 text-xs font-semibold text-success transition-colors hover:bg-success/10">
-          <Plus size={14} />
+        <button className="inline-flex h-7 items-center justify-center gap-1.5 rounded-lg border border-success bg-success/5 px-2.5 text-xs font-semibold text-success transition-colors hover:bg-success/10">
+          <Plus size={13} />
           {tr('schedule.addAction', '添加动作')}
         </button>
       }
@@ -1560,13 +1564,13 @@ function ActionChainSection({
   );
   return (
     <section className="glass-card flex min-h-0 flex-col rounded-xl border border-border-muted bg-surface/70 p-4">
-      <div className="flex items-center justify-between gap-3 pb-3">
+      <div className="flex h-9 flex-shrink-0 items-center justify-between gap-2 border-b border-border-muted">
         <h2 className="min-w-0 text-[16px] font-semibold text-text-secondary">
           {tr('schedule.actionsTitle', '执行动作')}
         </h2>
         {addActionButton}
       </div>
-      <div className="min-h-0 flex-1 space-y-4 overflow-auto border-t border-border-muted pt-4 pr-1">
+      <div className="min-h-0 flex-1 space-y-4 overflow-auto pt-4 pr-1">
         {nodes.map((node, index) => (
           <ActionStepCard
             key={node.id}
