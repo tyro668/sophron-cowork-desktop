@@ -19,6 +19,12 @@ export interface PersonalAnalysisProject {
   tableCount?: number;
 }
 
+export interface PersonalAnalysisDatasource {
+  datasourceId: string;
+  datasourceName?: string;
+  description?: string;
+}
+
 export interface PersonalAnalysisTable {
   tableId: string;
   sheetId?: string;
@@ -53,6 +59,16 @@ export interface PersonalAnalysisUploadResult {
   table?: PersonalAnalysisTable;
 }
 
+interface PersonalAnalysisImportStatus {
+  taskId: string;
+  uploadTaskId?: string;
+  tableId: string;
+  sheetId?: string;
+  status: string;
+  errorMsg?: string;
+  table?: PersonalAnalysisTable;
+}
+
 interface PersonalAnalysisClientOptions extends PersonalAnalysisConnectionInput {
   datasourceId?: string;
 }
@@ -65,11 +81,9 @@ interface HiResponse<T> {
   data?: T;
 }
 
-const DEFAULT_API_ORIGIN = 'http://127.0.0.1:3000';
-const DEFAULT_API_KEY = 'mock-api-key';
-const DEFAULT_DATASOURCE_ID = 'datasource-demo';
 const DEFAULT_RETRY_ATTEMPTS = 20;
 const DEFAULT_RETRY_DELAY_MS = 250;
+const DEFAULT_FETCH_TIMEOUT_MS = 30_000;
 
 export class PersonalAnalysisClient {
   private readonly apiOrigin: string;
@@ -79,14 +93,17 @@ export class PersonalAnalysisClient {
 
   constructor(options: PersonalAnalysisClientOptions = {}) {
     this.apiOrigin = normalizeApiOrigin(options.apiOrigin);
-    this.apiKey = options.apiKey?.trim() || process.env.PERSONAL_API_KEY || DEFAULT_API_KEY;
-    this.datasourceId =
-      options.datasourceId?.trim() || process.env.DATASOURCE_ID || DEFAULT_DATASOURCE_ID;
+    this.apiKey = options.apiKey?.trim() || '';
+    this.datasourceId = options.datasourceId?.trim() || '';
     this.accessToken = options.accessToken?.trim() || null;
   }
 
   async listSpaces(): Promise<PersonalAnalysisSpace[]> {
     return this.apiJson<PersonalAnalysisSpace[]>('/spaces');
+  }
+
+  async listDatasources(): Promise<PersonalAnalysisDatasource[]> {
+    return this.apiJson<PersonalAnalysisDatasource[]>('/datasources');
   }
 
   async listProjects(spaceId: string): Promise<PersonalAnalysisProject[]> {
@@ -127,7 +144,7 @@ export class PersonalAnalysisClient {
       }
     );
 
-    const response = await fetch(download.downloadUrl);
+    const response = await fetchWithTimeout(download.downloadUrl, {}, 'Download cloud CSV');
     if (!response.ok) {
       throw new Error(`Download cloud CSV failed: HTTP ${response.status} ${response.statusText}`);
     }
@@ -136,6 +153,9 @@ export class PersonalAnalysisClient {
 
   async uploadCsv(input: PersonalAnalysisUploadInput): Promise<PersonalAnalysisUploadResult> {
     const datasourceId = input.datasourceId?.trim() || this.datasourceId;
+    if (!datasourceId) {
+      throw new Error('Personal Analysis datasourceId is not configured');
+    }
     const uploadInfo = await this.apiJson<{
       uploadTaskId: string;
       tableId: string;
@@ -158,11 +178,15 @@ export class PersonalAnalysisClient {
       throw new Error('Cloud upload-url response is missing uploadUrl, uploadTaskId, or tableId');
     }
 
-    const uploadResponse = await fetch(uploadInfo.uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'text/csv; charset=utf-8' },
-      body: input.csv,
-    });
+    const uploadResponse = await fetchWithTimeout(
+      uploadInfo.uploadUrl,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'text/csv; charset=utf-8' },
+        body: input.csv,
+      },
+      'Upload cloud CSV'
+    );
     if (!uploadResponse.ok) {
       throw new Error(
         `Upload cloud CSV failed: HTTP ${uploadResponse.status} ${await uploadResponse.text()}`
@@ -190,31 +214,49 @@ export class PersonalAnalysisClient {
       status: submitted.status,
     };
 
-    if (input.waitForDone !== false && input.spaceId && input.projectId) {
-      result.table = await retry(`cloud import ${submitted.taskId}`, async () => {
-        const tables = await this.listTables(input.spaceId!, input.projectId!);
-        return tables.find((table) => table.tableId === result.tableId) ?? null;
+    if (input.waitForDone !== false) {
+      const completed = await retry(`cloud import ${submitted.taskId}`, async () => {
+        const task = await this.getImportStatus(submitted.taskId);
+        if (task.status === 'FAILED') {
+          throw new Error(task.errorMsg || `Cloud import ${submitted.taskId} failed`);
+        }
+        return task.status === 'DONE' ? task : null;
       });
-      result.status = 'DONE';
+
+      result.tableId = completed.tableId || result.tableId;
+      result.sheetId = completed.sheetId || result.sheetId;
+      result.status = completed.status;
+      result.table = completed.table;
     }
 
     return result;
+  }
+
+  private async getImportStatus(taskId: string): Promise<PersonalAnalysisImportStatus> {
+    return this.apiJson<PersonalAnalysisImportStatus>(`/imports/${encodeURIComponent(taskId)}`);
   }
 
   private async apiJson<T>(
     path: string,
     options: { method?: string; body?: Record<string, unknown> } = {}
   ): Promise<T> {
+    if (!this.apiOrigin) {
+      throw new Error('Personal Analysis apiOrigin is not configured');
+    }
     const token = await this.getAccessToken();
     const method = options.method ?? 'GET';
-    const response = await fetch(`${this.apiOrigin}/api/personal/analysis/v1${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+    const response = await fetchWithTimeout(
+      `${this.apiOrigin}/api/personal/analysis/v1${path}`,
+      {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined,
       },
-      body: options.body ? JSON.stringify(options.body) : undefined,
-    });
+      `${method} ${path}`
+    );
     return parseHiResponse<T>(response, await response.text(), `${method} ${path}`);
   }
 
@@ -222,10 +264,20 @@ export class PersonalAnalysisClient {
     if (this.accessToken) {
       return this.accessToken;
     }
-    const response = await fetch(`${this.apiOrigin}/api/personal/api-keys/token`, {
-      method: 'POST',
-      headers: { 'X-API-Key': this.apiKey },
-    });
+    if (!this.apiOrigin) {
+      throw new Error('Personal Analysis apiOrigin is not configured');
+    }
+    if (!this.apiKey) {
+      throw new Error('Personal Analysis apiKey is not configured');
+    }
+    const response = await fetchWithTimeout(
+      `${this.apiOrigin}/api/personal/api-keys/token`,
+      {
+        method: 'POST',
+        headers: { 'X-API-Key': this.apiKey },
+      },
+      'POST /api/personal/api-keys/token'
+    );
     const tokenInfo = await parseHiResponse<{ accessToken: string }>(
       response,
       await response.text(),
@@ -246,10 +298,32 @@ export function createPersonalAnalysisClient(
 }
 
 function normalizeApiOrigin(value: string | undefined): string {
-  return (value?.trim() || process.env.PERSONAL_ANALYSIS_API_ORIGIN || DEFAULT_API_ORIGIN).replace(
-    /\/+$/,
-    ''
-  );
+  const apiOrigin = value?.trim() || '';
+  return apiOrigin.replace(/\/+$/, '');
+}
+
+async function fetchWithTimeout(
+  url: string | URL,
+  init: RequestInit,
+  label: string,
+  timeoutMs = DEFAULT_FETCH_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`${label} timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function parseHiResponse<T>(response: Response, text: string, label: string): Promise<T> {

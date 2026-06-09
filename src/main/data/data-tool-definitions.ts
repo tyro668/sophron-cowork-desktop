@@ -26,13 +26,14 @@ const PreviewRowsSchema = Type.Optional(Type.Integer({ minimum: 1, maximum: 100 
 const CloudConnectionProperties = {
   apiOrigin: Type.Optional(
     Type.String({
-      description: 'Personal analysis API origin. Defaults to http://127.0.0.1:3000.',
+      description:
+        'Personal analysis API origin. If omitted, the saved Personal Analysis setting is used.',
     })
   ),
   apiKey: Type.Optional(
     Type.String({
       description:
-        'Personal analysis API key used to exchange an access token. Defaults to PERSONAL_API_KEY or mock-api-key.',
+        'Personal analysis API key used to exchange an access token. If omitted, the saved Personal Analysis setting is used.',
     })
   ),
   accessToken: Type.Optional(
@@ -176,7 +177,12 @@ export function createDataCustomTools(
         tableKind: Type.Union([Type.Literal('input'), Type.Literal('output')]),
         id: Type.String({ minLength: 1 }),
         writeMode: Type.Union([Type.Literal('CREATE'), Type.Literal('REPLACE')]),
-        datasourceId: Type.Optional(Type.String()),
+        datasourceId: Type.Optional(
+          Type.String({
+            description:
+              'Personal analysis datasource id used for upload. If omitted, the saved Personal Analysis setting is used.',
+          })
+        ),
         folderId: Type.Optional(Type.String()),
         projectId: Type.Optional(Type.String()),
         spaceId: Type.Optional(Type.String()),

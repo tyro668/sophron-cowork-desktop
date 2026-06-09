@@ -83,7 +83,11 @@ import {
   createNormalizerFileTreeHash,
 } from '../../shared/input-table-normalizer/templates';
 import type { InputTableNormalizerProjectGenerator } from './input-table-normalizer-generator';
-import { createPersonalAnalysisClient } from './personal-analysis-client';
+import { configStore, type PersonalAnalysisConfig } from '../config/config-store';
+import {
+  createPersonalAnalysisClient,
+  type PersonalAnalysisConnectionInput,
+} from './personal-analysis-client';
 
 const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 100;
@@ -99,7 +103,9 @@ interface WorkflowResourceBindings {
 export class DataCommandService {
   constructor(
     private readonly store: DataTaskStore,
-    private readonly normalizerProjectGenerator: InputTableNormalizerProjectGenerator
+    private readonly normalizerProjectGenerator: InputTableNormalizerProjectGenerator,
+    private readonly getPersonalAnalysisConfig: () => PersonalAnalysisConfig = () =>
+      configStore.get('personalAnalysis')
   ) {}
 
   async listInputTables(input: ListInputTablesInput = {}): Promise<ListInputTablesResult> {
@@ -425,7 +431,7 @@ export class DataCommandService {
   async listCloudSpaces(input: ListCloudSpacesCommand = {}): Promise<ListCloudSpacesResult> {
     try {
       return {
-        spaces: await createPersonalAnalysisClient(input).listSpaces(),
+        spaces: await this.createPersonalAnalysisClient(input).listSpaces(),
       };
     } catch (error) {
       throw toCommandError(error, 'RUN_FAILED');
@@ -436,7 +442,7 @@ export class DataCommandService {
     const spaceId = normalizeRequiredName(input.spaceId, 'Cloud spaceId is required');
     try {
       return {
-        projects: await createPersonalAnalysisClient(input).listProjects(spaceId),
+        projects: await this.createPersonalAnalysisClient(input).listProjects(spaceId),
       };
     } catch (error) {
       throw toCommandError(error, 'RUN_FAILED');
@@ -448,7 +454,7 @@ export class DataCommandService {
     const projectId = normalizeRequiredName(input.projectId, 'Cloud projectId is required');
     try {
       return {
-        tables: await createPersonalAnalysisClient(input).listTables(spaceId, projectId),
+        tables: await this.createPersonalAnalysisClient(input).listTables(spaceId, projectId),
       };
     } catch (error) {
       throw toCommandError(error, 'RUN_FAILED');
@@ -457,7 +463,7 @@ export class DataCommandService {
 
   async importCloudTable(input: ImportCloudTableCommand): Promise<ImportCloudTableResult> {
     const tableId = normalizeRequiredName(input.tableId, 'Cloud tableId is required');
-    const client = createPersonalAnalysisClient(input);
+    const client = this.createPersonalAnalysisClient(input);
     try {
       const cloudTable =
         input.spaceId && input.projectId
@@ -491,6 +497,9 @@ export class DataCommandService {
     if (input.writeMode === 'REPLACE' && !input.tableId?.trim()) {
       throw new DataCommandError('INVALID_ARGUMENT', 'tableId is required for REPLACE upload');
     }
+    if (input.writeMode === 'CREATE' && input.tableId?.trim()) {
+      throw new DataCommandError('INVALID_ARGUMENT', 'tableId must be omitted for CREATE upload');
+    }
     const exported = await this.store.exportDatasetCsv({
       tableKind: input.tableKind,
       id: input.id,
@@ -501,7 +510,7 @@ export class DataCommandService {
       normalizeOptionalName(input.fileName) || `${sanitizeFileName(tableName || exported.id)}.csv`;
 
     try {
-      const upload = await createPersonalAnalysisClient(input).uploadCsv({
+      const upload = await this.createPersonalAnalysisClient(input).uploadCsv({
         ...input,
         fileName,
         tableName,
@@ -546,6 +555,18 @@ export class DataCommandService {
     } catch (error) {
       throw toCommandError(error, 'INVALID_ARGUMENT');
     }
+  }
+
+  private createPersonalAnalysisClient(
+    input: PersonalAnalysisConnectionInput & { datasourceId?: string } = {}
+  ) {
+    const configured = this.getPersonalAnalysisConfig();
+    return createPersonalAnalysisClient({
+      apiOrigin: input.apiOrigin || configured.apiOrigin,
+      apiKey: input.apiKey || configured.apiKey,
+      accessToken: input.accessToken,
+      datasourceId: input.datasourceId || configured.datasourceId,
+    });
   }
 
   async deleteInputTableNormalizerVersion(
