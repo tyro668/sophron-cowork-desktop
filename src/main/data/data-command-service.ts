@@ -1,5 +1,7 @@
 import type { DataTaskStore } from './data-task-store';
-import { extname } from 'path';
+import { mkdir, writeFile } from 'fs/promises';
+import { tmpdir } from 'os';
+import { extname, join } from 'path';
 import {
   compilePrepWorkflowToFlow,
   exportPrepWorkflowDsl,
@@ -40,6 +42,14 @@ import {
   type GetRunResultCommand,
   type GetTaskWorkflowCommand,
   type InputTableResult,
+  type ImportCloudTableCommand,
+  type ImportCloudTableResult,
+  type ListCloudProjectsCommand,
+  type ListCloudProjectsResult,
+  type ListCloudSpacesCommand,
+  type ListCloudSpacesResult,
+  type ListCloudTablesCommand,
+  type ListCloudTablesResult,
   type ListInputTableNormalizerVersionsCommand,
   type ListInputTableNormalizerVersionsResult,
   type ListInputTablesInput,
@@ -63,6 +73,8 @@ import {
   type UpdateInputTableCommand,
   type UpdateOutputTableCommand,
   type UpdateTaskCommand,
+  type UploadDataTableToCloudCommand,
+  type UploadDataTableToCloudResult,
   type WorkflowResult,
   type WorkflowSaveShape,
 } from './data-command-types';
@@ -70,9 +82,12 @@ import {
   createNormalizerDependencyLockHash,
   createNormalizerFileTreeHash,
 } from '../../shared/input-table-normalizer/templates';
-import type {
-  InputTableNormalizerProjectGenerator,
-} from './input-table-normalizer-generator';
+import type { InputTableNormalizerProjectGenerator } from './input-table-normalizer-generator';
+import { configStore, type PersonalAnalysisConfig } from '../config/config-store';
+import {
+  createPersonalAnalysisClient,
+  type PersonalAnalysisConnectionInput,
+} from './personal-analysis-client';
 
 const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 100;
@@ -88,7 +103,9 @@ interface WorkflowResourceBindings {
 export class DataCommandService {
   constructor(
     private readonly store: DataTaskStore,
-    private readonly normalizerProjectGenerator: InputTableNormalizerProjectGenerator
+    private readonly normalizerProjectGenerator: InputTableNormalizerProjectGenerator,
+    private readonly getPersonalAnalysisConfig: () => PersonalAnalysisConfig = () =>
+      configStore.get('personalAnalysis')
   ) {}
 
   async listInputTables(input: ListInputTablesInput = {}): Promise<ListInputTablesResult> {
@@ -260,7 +277,10 @@ export class DataCommandService {
     input: GenerateInputTableNormalizerDraftCommand
   ): Promise<GenerateInputTableNormalizerDraftResult> {
     const name = normalizeRequiredName(input.name, 'Normalizer artifact name is required');
-    const rulePrompt = normalizeRequiredName(input.rulePrompt, 'Normalizer rule prompt is required');
+    const rulePrompt = normalizeRequiredName(
+      input.rulePrompt,
+      'Normalizer rule prompt is required'
+    );
     const primaryLanguage = input.primaryLanguage === 'node' ? 'node' : 'python';
     let summary: SummarizeInputTableSourceResult['summary'];
     try {
@@ -368,7 +388,8 @@ export class DataCommandService {
           sourceDatasetId: input.sourceInputTableId,
         })
       : created;
-    const preview = outputTable.rowCount > 0 ? await this.previewDataset(outputTable.id) : undefined;
+    const preview =
+      outputTable.rowCount > 0 ? await this.previewDataset(outputTable.id) : undefined;
     return { outputTable, preview };
   }
 
@@ -389,7 +410,8 @@ export class DataCommandService {
       name,
       sourceDatasetId: input.sourceInputTableId,
     });
-    const preview = outputTable.rowCount > 0 ? await this.previewDataset(outputTable.id) : undefined;
+    const preview =
+      outputTable.rowCount > 0 ? await this.previewDataset(outputTable.id) : undefined;
     return { outputTable, preview };
   }
 
@@ -404,6 +426,110 @@ export class DataCommandService {
       id: input.id,
       preview: await this.previewDataset(input.id, input.limit, input.offset),
     };
+  }
+
+  async listCloudSpaces(input: ListCloudSpacesCommand = {}): Promise<ListCloudSpacesResult> {
+    try {
+      return {
+        spaces: await this.createPersonalAnalysisClient(input).listSpaces(),
+      };
+    } catch (error) {
+      throw toCommandError(error, 'RUN_FAILED');
+    }
+  }
+
+  async listCloudProjects(input: ListCloudProjectsCommand): Promise<ListCloudProjectsResult> {
+    const spaceId = normalizeRequiredName(input.spaceId, 'Cloud spaceId is required');
+    try {
+      return {
+        projects: await this.createPersonalAnalysisClient(input).listProjects(spaceId),
+      };
+    } catch (error) {
+      throw toCommandError(error, 'RUN_FAILED');
+    }
+  }
+
+  async listCloudTables(input: ListCloudTablesCommand): Promise<ListCloudTablesResult> {
+    const spaceId = normalizeRequiredName(input.spaceId, 'Cloud spaceId is required');
+    const projectId = normalizeRequiredName(input.projectId, 'Cloud projectId is required');
+    try {
+      return {
+        tables: await this.createPersonalAnalysisClient(input).listTables(spaceId, projectId),
+      };
+    } catch (error) {
+      throw toCommandError(error, 'RUN_FAILED');
+    }
+  }
+
+  async importCloudTable(input: ImportCloudTableCommand): Promise<ImportCloudTableResult> {
+    const tableId = normalizeRequiredName(input.tableId, 'Cloud tableId is required');
+    const client = this.createPersonalAnalysisClient(input);
+    try {
+      const cloudTable =
+        input.spaceId && input.projectId
+          ? (await client.listTables(input.spaceId, input.projectId)).find(
+              (table) => table.tableId === tableId
+            )
+          : undefined;
+      const csv = await client.exportTableCsv(tableId);
+      const downloadedFilePath = await writeCloudCsvTempFile(tableId, csv);
+      const result = await this.createInputTable({
+        name:
+          normalizeOptionalName(input.name) || cloudTable?.tableName || `Cloud table ${tableId}`,
+        sourceKind: 'csv',
+        filePath: downloadedFilePath,
+        previewRows: input.previewRows,
+      });
+      return {
+        ...result,
+        cloudTableId: tableId,
+        cloudTable,
+        downloadedFilePath,
+      };
+    } catch (error) {
+      throw toCommandError(error, 'RUN_FAILED');
+    }
+  }
+
+  async uploadDataTableToCloud(
+    input: UploadDataTableToCloudCommand
+  ): Promise<UploadDataTableToCloudResult> {
+    if (input.writeMode === 'REPLACE' && !input.tableId?.trim()) {
+      throw new DataCommandError('INVALID_ARGUMENT', 'tableId is required for REPLACE upload');
+    }
+    if (input.writeMode === 'CREATE' && input.tableId?.trim()) {
+      throw new DataCommandError('INVALID_ARGUMENT', 'tableId must be omitted for CREATE upload');
+    }
+    const exported = await this.store.exportDatasetCsv({
+      tableKind: input.tableKind,
+      id: input.id,
+      maxRows: input.maxRows,
+    });
+    const tableName = normalizeOptionalName(input.tableName) || exported.name;
+    const fileName =
+      normalizeOptionalName(input.fileName) || `${sanitizeFileName(tableName || exported.id)}.csv`;
+
+    try {
+      const upload = await this.createPersonalAnalysisClient(input).uploadCsv({
+        ...input,
+        fileName,
+        tableName,
+        csv: exported.csv,
+      });
+      return {
+        sourceTable: {
+          tableKind: exported.tableKind,
+          id: exported.id,
+          name: exported.name,
+          rowCount: exported.rowCount,
+          columnCount: exported.columnCount,
+        },
+        csvBytes: Buffer.byteLength(exported.csv, 'utf8'),
+        upload,
+      };
+    } catch (error) {
+      throw toCommandError(error, 'RUN_FAILED');
+    }
   }
 
   async previewInputTableNormalizerVersion(
@@ -429,6 +555,18 @@ export class DataCommandService {
     } catch (error) {
       throw toCommandError(error, 'INVALID_ARGUMENT');
     }
+  }
+
+  private createPersonalAnalysisClient(
+    input: PersonalAnalysisConnectionInput & { datasourceId?: string } = {}
+  ) {
+    const configured = this.getPersonalAnalysisConfig();
+    return createPersonalAnalysisClient({
+      apiOrigin: input.apiOrigin || configured.apiOrigin,
+      apiKey: input.apiKey || configured.apiKey,
+      accessToken: input.accessToken,
+      datasourceId: input.datasourceId || configured.datasourceId,
+    });
   }
 
   async deleteInputTableNormalizerVersion(
@@ -604,7 +742,12 @@ export class DataCommandService {
         })
       : toWorkflowSaveShape(workflow);
 
-    return this.saveOrPreview(input.taskId, nextWorkflow, Boolean(input.dryRun), parsed.diagnostics);
+    return this.saveOrPreview(
+      input.taskId,
+      nextWorkflow,
+      Boolean(input.dryRun),
+      parsed.diagnostics
+    );
   }
 
   async configureOutputOperator(input: ConfigureOutputOperatorCommand): Promise<WorkflowResult> {
@@ -699,7 +842,13 @@ export class DataCommandService {
 
   async getRunResult(input: GetRunResultCommand): Promise<RunResult> {
     const task = await this.requireTask(input.taskId);
-    const preview = await this.previewTaskOutput(input.taskId, task, input.previewRows, undefined, input.offset);
+    const preview = await this.previewTaskOutput(
+      input.taskId,
+      task,
+      input.previewRows,
+      undefined,
+      input.offset
+    );
     return { task, preview };
   }
 
@@ -758,9 +907,7 @@ export class DataCommandService {
         );
       }
       const alias =
-        sanitizeAlias(bindings.inputAlias) ||
-        stringConfigValue(inputNode.config?.alias) ||
-        'src';
+        sanitizeAlias(bindings.inputAlias) || stringConfigValue(inputNode.config?.alias) || 'src';
       nodes = nodes.map((node) =>
         node.id === inputNode.id
           ? {
@@ -837,26 +984,30 @@ export class DataCommandService {
     const task = await this.requireTask(taskId);
     return {
       task,
-      nodes: workflow.nodes.map((node): DataWorkflowNode => ({
-        id: node.id,
-        taskId,
-        type: node.type,
-        label: node.label,
-        x: node.x,
-        y: node.y,
-        config: node.config ?? {},
-        createdAt: 0,
-        updatedAt: 0,
-      })),
-      edges: workflow.edges.map((edge): DataWorkflowEdge => ({
-        id: edge.id,
-        taskId,
-        sourceNodeId: edge.sourceNodeId,
-        targetNodeId: edge.targetNodeId,
-        sourceHandle: edge.sourceHandle ?? 'output',
-        targetHandle: edge.targetHandle ?? 'input',
-        createdAt: 0,
-      })),
+      nodes: workflow.nodes.map(
+        (node): DataWorkflowNode => ({
+          id: node.id,
+          taskId,
+          type: node.type,
+          label: node.label,
+          x: node.x,
+          y: node.y,
+          config: node.config ?? {},
+          createdAt: 0,
+          updatedAt: 0,
+        })
+      ),
+      edges: workflow.edges.map(
+        (edge): DataWorkflowEdge => ({
+          id: edge.id,
+          taskId,
+          sourceNodeId: edge.sourceNodeId,
+          targetNodeId: edge.targetNodeId,
+          sourceHandle: edge.sourceHandle ?? 'output',
+          targetHandle: edge.targetHandle ?? 'input',
+          createdAt: 0,
+        })
+      ),
     };
   }
 
@@ -969,10 +1120,14 @@ export class DataCommandService {
       (item) => item.id !== excludeId && item.name.toLowerCase() === name.toLowerCase()
     );
     if (existing) {
-      throw new DataCommandError('RESOURCE_ALREADY_EXISTS', `Output table already exists: ${name}`, {
-        id: existing.id,
-        name: existing.name,
-      });
+      throw new DataCommandError(
+        'RESOURCE_ALREADY_EXISTS',
+        `Output table already exists: ${name}`,
+        {
+          id: existing.id,
+          name: existing.name,
+        }
+      );
     }
   }
 
@@ -1015,7 +1170,12 @@ function previewOffset(offset: number | undefined): number {
   return Math.max(0, Math.floor(Number(offset) || 0));
 }
 
-function clampInteger(value: number | undefined, fallback: number, min: number, max: number): number {
+function clampInteger(
+  value: number | undefined,
+  fallback: number,
+  min: number,
+  max: number
+): number {
   if (!Number.isFinite(value)) {
     return fallback;
   }
@@ -1044,7 +1204,10 @@ function resolveInputSourceKindForCommand(
     return 'folder';
   }
   const extension = extname(sourcePath).toLowerCase();
-  return extension === '.xlsx' || extension === '.xls' || extension === '.xlsm' || extension === '.xlsb'
+  return extension === '.xlsx' ||
+    extension === '.xls' ||
+    extension === '.xlsm' ||
+    extension === '.xlsb'
     ? 'excel'
     : 'csv';
 }
@@ -1104,12 +1267,26 @@ function normalizeRequiredName(name: string, message: string): string {
   return normalized;
 }
 
+async function writeCloudCsvTempFile(tableId: string, csv: string): Promise<string> {
+  const directory = join(tmpdir(), 'sophron-cowork-cloud-imports');
+  await mkdir(directory, { recursive: true });
+  const filePath = join(directory, `${sanitizeFileName(tableId)}-${Date.now()}.csv`);
+  await writeFile(filePath, csv, 'utf8');
+  return filePath;
+}
+
+function sanitizeFileName(value: string): string {
+  const sanitized = value
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return sanitized || 'table';
+}
+
 function findWorkflowNode(workflow: DataTaskWorkflow, nodeId: string): DataWorkflowNode {
   const node = workflow.nodes.find((item) => item.id === nodeId);
   if (!node) {
-    const available = workflow.nodes
-      .map((item) => `${item.id} (${item.type})`)
-      .join(', ');
+    const available = workflow.nodes.map((item) => `${item.id} (${item.type})`).join(', ');
     throw new DataCommandError(
       'RESOURCE_NOT_FOUND',
       `Workflow node not found: ${nodeId}${
@@ -1132,7 +1309,7 @@ function updateWorkflowNode(
       label: updates.label && node.id === nodeId ? updates.label : node.label,
       x: node.x,
       y: node.y,
-      config: node.id === nodeId ? updates.config ?? node.config : node.config,
+      config: node.id === nodeId ? (updates.config ?? node.config) : node.config,
     })),
     edges: workflow.edges.map(toWorkflowEdgeInput),
   };
@@ -1208,7 +1385,10 @@ function toCommandError(error: unknown, fallbackCode: DataCommandError['code']):
     return error;
   }
   const message = error instanceof Error ? error.message : String(error);
-  if (/source|file|folder|path|unsupported|does not exist/i.test(message) && fallbackCode === 'FILE_ACCESS_DENIED') {
+  if (
+    /source|file|folder|path|unsupported|does not exist/i.test(message) &&
+    fallbackCode === 'FILE_ACCESS_DENIED'
+  ) {
     return new DataCommandError('FILE_ACCESS_DENIED', message);
   }
   if (/not found|does not exist|not exist/i.test(message)) {

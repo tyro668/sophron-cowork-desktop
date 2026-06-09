@@ -24,6 +24,12 @@ import type {
   DataWorkflowSaveInput,
 } from '../../renderer/types';
 import type { PrepDiagnostic } from '../../shared/prep-dsl';
+import type {
+  PersonalAnalysisProject,
+  PersonalAnalysisSpace,
+  PersonalAnalysisTable,
+  PersonalAnalysisUploadResult,
+} from './personal-analysis-client';
 
 export type DataCommandErrorCode =
   | 'INVALID_ARGUMENT'
@@ -88,8 +94,10 @@ export type CreateInputTableProcessingStrategyCommand =
       prepareDependencies?: boolean;
     };
 
-export interface CreateInputTableWithProcessingStrategyCommand
-  extends Omit<CreateInputTableCommand, 'config'> {
+export interface CreateInputTableWithProcessingStrategyCommand extends Omit<
+  CreateInputTableCommand,
+  'config'
+> {
   config?: DataInputTableConfig;
   processingStrategy: CreateInputTableProcessingStrategyCommand;
 }
@@ -135,26 +143,19 @@ export type GenerateInputTableNormalizerDraftCommand =
     onProgress?: GenerateInputTableNormalizerDraftProgressCallback;
   };
 
-export type GenerateInputTableNormalizerDraftResult =
-  DataGenerateInputTableNormalizerDraftResult;
+export type GenerateInputTableNormalizerDraftResult = DataGenerateInputTableNormalizerDraftResult;
 
-export type PublishInputTableNormalizerVersionCommand =
-  DataPublishInputTableNormalizerVersionInput;
+export type PublishInputTableNormalizerVersionCommand = DataPublishInputTableNormalizerVersionInput;
 
-export type PublishInputTableNormalizerVersionResult =
-  DataInputTableNormalizerVersionSaveResult;
+export type PublishInputTableNormalizerVersionResult = DataInputTableNormalizerVersionSaveResult;
 
-export type DeleteInputTableNormalizerVersionCommand =
-  DataDeleteInputTableNormalizerVersionInput;
+export type DeleteInputTableNormalizerVersionCommand = DataDeleteInputTableNormalizerVersionInput;
 
-export type DeleteInputTableNormalizerVersionResult =
-  DataDeleteInputTableNormalizerVersionResult;
+export type DeleteInputTableNormalizerVersionResult = DataDeleteInputTableNormalizerVersionResult;
 
-export type ListInputTableNormalizerVersionsCommand =
-  DataListInputTableNormalizerVersionsInput;
+export type ListInputTableNormalizerVersionsCommand = DataListInputTableNormalizerVersionsInput;
 
-export type ListInputTableNormalizerVersionsResult =
-  DataListInputTableNormalizerVersionsResult;
+export type ListInputTableNormalizerVersionsResult = DataListInputTableNormalizerVersionsResult;
 
 export interface ListOutputTablesResult {
   outputTables: DataOutputTable[];
@@ -192,8 +193,77 @@ export interface PreviewTableResult {
   preview: DataInputTablePreview;
 }
 
-export type PreviewInputTableNormalizerVersionCommand =
-  DataPreviewInputTableNormalizerVersionInput;
+export interface PersonalAnalysisConnectionCommand {
+  apiOrigin?: string;
+  apiKey?: string;
+  accessToken?: string;
+}
+
+export type ListCloudSpacesCommand = PersonalAnalysisConnectionCommand;
+
+export interface ListCloudSpacesResult {
+  spaces: PersonalAnalysisSpace[];
+}
+
+export interface ListCloudProjectsCommand extends PersonalAnalysisConnectionCommand {
+  spaceId: string;
+}
+
+export interface ListCloudProjectsResult {
+  projects: PersonalAnalysisProject[];
+}
+
+export interface ListCloudTablesCommand extends PersonalAnalysisConnectionCommand {
+  spaceId: string;
+  projectId: string;
+}
+
+export interface ListCloudTablesResult {
+  tables: PersonalAnalysisTable[];
+}
+
+export interface ImportCloudTableCommand extends PersonalAnalysisConnectionCommand {
+  tableId: string;
+  spaceId?: string;
+  projectId?: string;
+  name?: string;
+  previewRows?: number;
+}
+
+export interface ImportCloudTableResult extends InputTableResult {
+  cloudTableId: string;
+  cloudTable?: PersonalAnalysisTable;
+  downloadedFilePath: string;
+}
+
+export interface UploadDataTableToCloudCommand extends PersonalAnalysisConnectionCommand {
+  tableKind: 'input' | 'output';
+  id: string;
+  writeMode: 'CREATE' | 'REPLACE';
+  datasourceId?: string;
+  folderId?: string;
+  projectId?: string;
+  spaceId?: string;
+  tableId?: string;
+  tableName?: string;
+  fileName?: string;
+  maxRows?: number;
+  waitForDone?: boolean;
+}
+
+export interface UploadDataTableToCloudResult {
+  sourceTable: {
+    tableKind: 'input' | 'output';
+    id: string;
+    name: string;
+    rowCount: number;
+    columnCount: number;
+  };
+  csvBytes: number;
+  upload: PersonalAnalysisUploadResult;
+}
+
+export type PreviewInputTableNormalizerVersionCommand = DataPreviewInputTableNormalizerVersionInput;
 
 export interface PreviewInputTableNormalizerVersionResult {
   preview: DataInputTablePreview;
