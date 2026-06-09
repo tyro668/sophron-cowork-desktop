@@ -31,6 +31,7 @@ import { config } from 'dotenv';
 import { initDatabase, closeDatabase, type DatabaseInstance, type ProjectRow } from './db/database';
 import { createDataTaskStore, type DataTaskStore } from './data/data-task-store';
 import { DataCommandService } from './data/data-command-service';
+import { createPersonalAnalysisClient } from './data/personal-analysis-client';
 import { DataToolService } from './data/data-tool-service';
 import { createDataAgentRuntimeExtension } from './data/data-agent-extension';
 import { createLlmInputTableNormalizerProjectGenerator } from './data/input-table-normalizer-generator';
@@ -2171,6 +2172,12 @@ ipcMain.handle('config.save', async (_event, newConfig: Partial<AppConfig>) => {
             : undefined,
         }
       : undefined,
+    personalAnalysis: newConfig.personalAnalysis
+      ? {
+          ...newConfig.personalAnalysis,
+          apiKey: newConfig.personalAnalysis.apiKey ? '***' : '',
+        }
+      : undefined,
   });
 
   const previousConfig = configStore.getAll();
@@ -2267,6 +2274,18 @@ ipcMain.handle('config.discover-local', async (_event, payload?: { baseUrl?: str
     return [];
   }
 });
+
+ipcMain.handle(
+  'config.listPersonalAnalysisDatasources',
+  async (_event, payload: { apiOrigin?: string; apiKey?: string; accessToken?: string }) => {
+    try {
+      return await createPersonalAnalysisClient(payload).listDatasources();
+    } catch (error) {
+      logError('[Config] Error listing Personal Analysis datasources:', error);
+      throw error;
+    }
+  }
+);
 
 // MCP Server IPC handlers
 ipcMain.handle('mcp.getServers', () => {

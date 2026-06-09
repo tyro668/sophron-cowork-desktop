@@ -91,6 +91,17 @@ interface PreparedInputTableImport {
   config: DataInputTableConfig;
 }
 
+export interface DataDatasetCsvExport {
+  tableKind: 'input' | 'output';
+  id: string;
+  name: string;
+  tableName: string;
+  columns: string[];
+  rowCount: number;
+  columnCount: number;
+  csv: string;
+}
+
 interface DataTaskRow {
   id: string;
   name: string;
@@ -1412,6 +1423,48 @@ export class DataTaskStore {
       limit,
       offset,
       totalRows: toNumber(countRows[0]?.count),
+    };
+  }
+
+  async exportDatasetCsv(input: {
+    tableKind: 'input' | 'output';
+    id: string;
+    maxRows?: number;
+  }): Promise<DataDatasetCsvExport> {
+    await this.ensureMetadataReady();
+    const dataset =
+      input.tableKind === 'output'
+        ? await this.requireOutputTable(input.id)
+        : await this.requireInputDataset(input.id);
+    await this.ensureReady();
+    if (!(await this.physicalTableExists(dataset.tableName))) {
+      throw new Error(`Data table is not materialized: ${input.id}`);
+    }
+
+    const rowCount = await this.countRows(dataset.tableName);
+    const maxRows = normalizeCsvExportMaxRows(input.maxRows);
+    if (rowCount > maxRows) {
+      throw new Error(`Data table has ${rowCount} rows, above export limit ${maxRows}`);
+    }
+
+    const columns = await this.getTableColumns(dataset.tableName);
+    const rows = await this.queryRows<Record<string, unknown>>(
+      `SELECT * FROM ${quoteIdentifier(dataset.tableName)}`
+    );
+    const csv = [
+      columns.map(csvCell).join(','),
+      ...rows.map((row) => columns.map((column) => csvCell(row[column])).join(',')),
+    ].join('\n');
+
+    return {
+      tableKind: input.tableKind,
+      id: dataset.id,
+      name: dataset.name,
+      tableName: dataset.tableName,
+      columns,
+      rowCount,
+      columnCount: columns.length,
+      csv: `${csv}\n`,
     };
   }
 
@@ -4959,6 +5012,21 @@ function normalizePreviewOffset(offset: number | undefined): number {
     return 0;
   }
   return Math.max(0, Math.floor(Number(offset)));
+}
+
+function normalizeCsvExportMaxRows(value: number | undefined): number {
+  if (!Number.isFinite(value)) {
+    return 100_000;
+  }
+  return Math.max(1, Math.min(1_000_000, Math.floor(Number(value))));
+}
+
+function csvCell(value: unknown): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  const text = value instanceof Date ? value.toISOString() : String(value);
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 function normalizePreviewRow(

@@ -17,6 +17,7 @@ import type {
   ScheduleCreateInput,
   ScheduleUpdateInput,
   ProviderModelInfo,
+  PersonalAnalysisDatasource,
   LocalOllamaDiscoveryResult,
   MemoryOverview,
   MemorySearchResult,
@@ -308,6 +309,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('config.diagnose', input),
     discoverLocal: (payload?: { baseUrl?: string }): Promise<LocalOllamaDiscoveryResult> =>
       ipcRenderer.invoke('config.discover-local', payload),
+    listPersonalAnalysisDatasources: (payload: {
+      apiOrigin?: string;
+      apiKey?: string;
+      accessToken?: string;
+    }): Promise<PersonalAnalysisDatasource[]> =>
+      ipcRenderer.invoke('config.listPersonalAnalysisDatasources', payload),
   },
 
   // Window control methods
@@ -687,6 +694,11 @@ declare global {
         }) => Promise<ProviderModelInfo[]>;
         diagnose: (input: DiagnosticInput) => Promise<DiagnosticResult>;
         discoverLocal: (payload?: { baseUrl?: string }) => Promise<LocalOllamaDiscoveryResult>;
+        listPersonalAnalysisDatasources: (payload: {
+          apiOrigin?: string;
+          apiKey?: string;
+          accessToken?: string;
+        }) => Promise<PersonalAnalysisDatasource[]>;
       };
       window: {
         minimize: () => void;

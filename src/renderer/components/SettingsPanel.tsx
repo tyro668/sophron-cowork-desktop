@@ -9,6 +9,7 @@ import {
   Globe,
   ChevronRight,
   BrainCircuit,
+  Database,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useWindowSize } from '../hooks/useWindowSize';
@@ -20,19 +21,37 @@ import { SettingsConnectors } from './settings/SettingsConnectors';
 import { SettingsGeneral } from './settings/SettingsGeneral';
 import { SettingsLogs } from './settings/SettingsLogs';
 import { SettingsMemory } from './settings/SettingsMemory';
+import { SettingsPersonalAnalysis } from './settings/SettingsPersonalAnalysis';
 
 interface SettingsPanelProps {
   onClose: () => void;
-  initialTab?: 'api' | 'sandbox' | 'connectors' | 'memory' | 'remote' | 'logs' | 'general';
+  initialTab?:
+    | 'api'
+    | 'sandbox'
+    | 'connectors'
+    | 'memory'
+    | 'personal-analysis'
+    | 'remote'
+    | 'logs'
+    | 'general';
 }
 
-type TabId = 'api' | 'sandbox' | 'connectors' | 'memory' | 'remote' | 'logs' | 'general';
+type TabId =
+  | 'api'
+  | 'sandbox'
+  | 'connectors'
+  | 'memory'
+  | 'personal-analysis'
+  | 'remote'
+  | 'logs'
+  | 'general';
 
 const VALID_TABS = new Set<TabId>([
   'api',
   'sandbox',
   'connectors',
   'memory',
+  'personal-analysis',
   'remote',
   'logs',
   'general',
@@ -73,9 +92,7 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
 
   // Mark tab as viewed when it becomes active
   useEffect(() => {
-    if (!viewedTabs.has(activeTab)) {
-      setViewedTabs((prev) => new Set([...prev, activeTab]));
-    }
+    setViewedTabs((prev) => (prev.has(activeTab) ? prev : new Set([...prev, activeTab])));
   }, [activeTab]);
 
   const tabs = [
@@ -102,6 +119,12 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
       label: t('settings.memory'),
       icon: BrainCircuit,
       description: t('settings.memoryDesc'),
+    },
+    {
+      id: 'personal-analysis' as TabId,
+      label: t('settings.personalAnalysis', 'Personal Analysis'),
+      icon: Database,
+      description: t('settings.personalAnalysisDesc', 'Mock Server 连接配置'),
     },
     {
       id: 'remote' as TabId,
@@ -204,6 +227,9 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
                 </div>
                 <div className={activeTab === 'memory' ? '' : 'hidden'}>
                   {viewedTabs.has('memory') && <SettingsMemory />}
+                </div>
+                <div className={activeTab === 'personal-analysis' ? '' : 'hidden'}>
+                  {viewedTabs.has('personal-analysis') && <SettingsPersonalAnalysis />}
                 </div>
                 <div className={activeTab === 'remote' ? '' : 'hidden'}>
                   {viewedTabs.has('remote') && (

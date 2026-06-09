@@ -1311,8 +1311,21 @@ export interface AppConfig {
   sandboxEnabled?: boolean;
   memoryEnabled?: boolean;
   memoryRuntime?: MemoryRuntimeConfig;
+  personalAnalysis?: PersonalAnalysisConfig;
   enableThinking?: boolean;
   isConfigured: boolean;
+}
+
+export interface PersonalAnalysisConfig {
+  apiOrigin: string;
+  apiKey: string;
+  datasourceId: string;
+}
+
+export interface PersonalAnalysisDatasource {
+  datasourceId: string;
+  datasourceName?: string;
+  description?: string;
 }
 
 export type AgentRuntimeConfig = Pick<
