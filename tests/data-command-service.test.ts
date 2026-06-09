@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -12,6 +12,8 @@ const tempRoots: string[] = [];
 const stores: DataTaskStore[] = [];
 
 afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   while (stores.length > 0) {
     stores.pop()?.close();
   }
@@ -24,6 +26,70 @@ afterEach(() => {
 });
 
 describe('DataCommandService', () => {
+  it('uses configured Personal Analysis connection for cloud commands', async () => {
+    const { service } = createService({
+      personalAnalysis: {
+        apiOrigin: 'http://configured.mock',
+        apiKey: 'configured-key',
+        datasourceId: 'configured-datasource',
+      },
+    });
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const href = String(url);
+      if (href.endsWith('/api/personal/api-keys/token')) {
+        return jsonResponse({ success: true, data: { accessToken: 'configured-token' } });
+      }
+      if (href.endsWith('/api/personal/analysis/v1/spaces')) {
+        return jsonResponse({
+          success: true,
+          data: [{ spaceId: 'space-1', spaceName: 'Configured Space' }],
+        });
+      }
+      throw new Error(`Unexpected request: ${href} ${init?.method || 'GET'}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await service.listCloudSpaces({});
+
+    expect(result.spaces[0]?.spaceName).toBe('Configured Space');
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://configured.mock/api/personal/api-keys/token',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'X-API-Key': 'configured-key' },
+        signal: expect.any(AbortSignal),
+      })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://configured.mock/api/personal/analysis/v1/spaces',
+      expect.objectContaining({
+        method: 'GET',
+        headers: { Authorization: 'Bearer configured-token' },
+        signal: expect.any(AbortSignal),
+      })
+    );
+  });
+
+  it('rejects CREATE cloud uploads when tableId is provided', async () => {
+    const { service, store } = createService();
+    const exportSpy = vi.spyOn(store, 'exportDatasetCsv');
+
+    await expect(
+      service.uploadDataTableToCloud({
+        tableKind: 'input',
+        id: 'input-1',
+        writeMode: 'CREATE',
+        tableId: 'table-should-not-be-sent',
+      })
+    ).rejects.toMatchObject({
+      code: 'INVALID_ARGUMENT',
+      message: expect.stringContaining('tableId must be omitted for CREATE upload'),
+    });
+    expect(exportSpy).not.toHaveBeenCalled();
+  });
+
   it('creates input/output/task resources, saves workflow DSL, and runs the task', async () => {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'customers.csv');
@@ -55,9 +121,7 @@ describe('DataCommandService', () => {
 
     const listedInputTablesBeforeRun = await service.listInputTables({});
     const listedOutputTablesBeforeRun = await service.listOutputTables({});
-    expect(listedInputTablesBeforeRun.inputTables[0]?.relatedTaskNames).toContain(
-      'Copy customers'
-    );
+    expect(listedInputTablesBeforeRun.inputTables[0]?.relatedTaskNames).toContain('Copy customers');
     expect(listedOutputTablesBeforeRun.outputTables[0]?.relatedTaskNames).toContain(
       'Copy customers'
     );
@@ -76,9 +140,9 @@ describe('DataCommandService', () => {
     });
     expect(dryRun.dryRun).toBe(true);
     expect(dryRun.workflow.nodes.map((node) => node.type)).toEqual(['input_source', 'output']);
-    expect(dryRun.workflow.nodes.find((node) => node.type === 'output')?.config.outputDatasetId).toBe(
-      output.outputTable.id
-    );
+    expect(
+      dryRun.workflow.nodes.find((node) => node.type === 'output')?.config.outputDatasetId
+    ).toBe(output.outputTable.id);
 
     const saved = await service.applyWorkflowDsl({
       taskId: task.task.id,
@@ -141,9 +205,9 @@ describe('DataCommandService', () => {
     fs.writeFileSync(csvPath, 'id,name\n1,Alice\n', 'utf8');
     await service.createInputTable({ name: 'customers', filePath: csvPath });
 
-    await expect(service.createInputTable({ name: 'customers', filePath: csvPath })).rejects.toThrow(
-      '[RESOURCE_ALREADY_EXISTS]'
-    );
+    await expect(
+      service.createInputTable({ name: 'customers', filePath: csvPath })
+    ).rejects.toThrow('[RESOURCE_ALREADY_EXISTS]');
   });
 
   it('generates, previews, publishes, and lists custom normalizer versions', async () => {
@@ -378,8 +442,9 @@ describe('DataCommandService', () => {
       primaryLanguage: 'node',
     });
 
-    const generatedTransform = draft.version.files.find((file) => file.path === 'src/transform.js')
-      ?.content;
+    const generatedTransform = draft.version.files.find(
+      (file) => file.path === 'src/transform.js'
+    )?.content;
     expect(generatedTransform).toContain('export async function transform');
     expect(generatedTransform).toContain('buildColumns');
     expect(generatedTransform).not.toContain('This project is a scaffold');
@@ -568,7 +633,11 @@ describe('DataCommandService', () => {
   });
 });
 
-function createService(): { service: DataCommandService; store: DataTaskStore; tempRoot: string } {
+function createService(
+  options: {
+    personalAnalysis?: { apiOrigin: string; apiKey: string; datasourceId: string };
+  } = {}
+): { service: DataCommandService; store: DataTaskStore; tempRoot: string } {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-data-command-'));
   tempRoots.push(tempRoot);
   const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'), {
@@ -576,16 +645,35 @@ function createService(): { service: DataCommandService; store: DataTaskStore; t
   });
   stores.push(store);
   return {
-    service: new DataCommandService(store, createFakeNormalizerGenerator()),
+    service: new DataCommandService(
+      store,
+      createFakeNormalizerGenerator(),
+      () =>
+        options.personalAnalysis || {
+          apiOrigin: '',
+          apiKey: '',
+          datasourceId: '',
+        }
+    ),
     store,
     tempRoot,
   };
 }
 
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 function createFakeNormalizerGenerator(): InputTableNormalizerProjectGenerator {
   return {
     async generate(input) {
-      const template = createInputTableNormalizerProjectTemplate(input.primaryLanguage, input.rulePrompt);
+      const template = createInputTableNormalizerProjectTemplate(
+        input.primaryLanguage,
+        input.rulePrompt
+      );
       input.onProgress?.({
         phase: 'code_generation',
         kind: 'delta',
