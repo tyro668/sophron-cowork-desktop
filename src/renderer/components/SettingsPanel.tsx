@@ -124,95 +124,98 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
   ];
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-transparent">
-      {/* Sidebar */}
-      <div
-        className={`${compactSidebar ? 'w-14' : 'w-52 lg:w-60'} m-2 mr-0 rounded-2xl border border-border-subtle bg-background/46 flex flex-col flex-shrink-0 shadow-card backdrop-blur-xl`}
-      >
-        <div className={`flex-1 ${compactSidebar ? 'p-1.5 space-y-1' : 'p-3 space-y-1.5'}`}>
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              title={compactSidebar ? tab.label : undefined}
-              className={`w-full flex items-center ${compactSidebar ? 'justify-center p-2.5' : 'gap-3 px-3.5 py-3'} rounded-lg text-left transition-colors active:scale-[0.98] ${
-                activeTab === tab.id
-                  ? 'bg-accent/10 text-text-primary font-medium shadow-soft'
-                  : 'hover:bg-surface-hover text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              <tab.icon className="w-4.5 h-4.5 flex-shrink-0" />
-              {!compactSidebar && (
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{tab.label}</p>
-                  <p className="text-[11px] leading-4 text-text-muted line-clamp-2 mt-0.5">
-                    {tab.description}
-                  </p>
-                </div>
-              )}
-              {!compactSidebar && activeTab === tab.id && (
-                <ChevronRight className="w-4 h-4 flex-shrink-0" />
-              )}
-            </button>
-          ))}
-        </div>
-        <div className={`${compactSidebar ? 'p-1.5' : 'p-4'} border-t border-border-subtle`}>
-          <button
-            onClick={onClose}
-            className={`w-full py-2 ${compactSidebar ? 'px-2' : 'px-4'} rounded-lg bg-background/68 hover:bg-surface-hover transition-colors text-text-secondary text-sm shadow-soft`}
-            title={compactSidebar ? t('common.close') : undefined}
-          >
-            {compactSidebar ? <X className="w-4 h-4 mx-auto" /> : t('common.close')}
-          </button>
-          {!compactSidebar && (
-            <p className="text-[10px] text-text-muted text-center mt-2 select-text">
-              v{appVersion}
-            </p>
-          )}
-        </div>
+    <div className="flex h-full w-full flex-col overflow-hidden bg-transparent">
+      <div className="flex flex-shrink-0 items-center justify-end border-b border-border-subtle bg-background/28 px-3 py-2 backdrop-blur-xl sm:px-4">
+        <button
+          onClick={onClose}
+          className="p-2 rounded-lg hover:bg-surface-hover transition-colors"
+        >
+          <X className="w-5 h-5 text-text-secondary" />
+        </button>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <div className="flex items-center justify-end px-3 py-2 sm:px-4 border-b border-border-subtle flex-shrink-0 bg-background/28 backdrop-blur-xl">
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg hover:bg-surface-hover transition-colors"
-          >
-            <X className="w-5 h-5 text-text-secondary" />
-          </button>
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* Sidebar */}
+        <div
+          className={`${compactSidebar ? 'w-14' : 'w-52 lg:w-60'} ml-2 mr-0 mt-3 mb-2 rounded-2xl border border-border-subtle bg-background/46 flex flex-col flex-shrink-0 shadow-card backdrop-blur-xl`}
+        >
+          <div className={`flex-1 ${compactSidebar ? 'p-1.5 space-y-1' : 'p-3 space-y-1.5'}`}>
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                title={compactSidebar ? tab.label : undefined}
+                className={`w-full flex items-center ${compactSidebar ? 'justify-center p-2.5' : 'gap-3 px-3.5 py-3'} rounded-lg text-left transition-colors active:scale-[0.98] ${
+                  activeTab === tab.id
+                    ? 'bg-accent/10 text-text-primary font-medium shadow-soft'
+                    : 'hover:bg-surface-hover text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                <tab.icon className="w-4.5 h-4.5 flex-shrink-0" />
+                {!compactSidebar && (
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{tab.label}</p>
+                    <p className="text-[11px] leading-4 text-text-muted line-clamp-2 mt-0.5">
+                      {tab.description}
+                    </p>
+                  </div>
+                )}
+                {!compactSidebar && activeTab === tab.id && (
+                  <ChevronRight className="w-4 h-4 flex-shrink-0" />
+                )}
+              </button>
+            ))}
+          </div>
+          <div className={`${compactSidebar ? 'p-1.5' : 'p-4'} border-t border-border-subtle`}>
+            <button
+              onClick={onClose}
+              className={`w-full py-2 ${compactSidebar ? 'px-2' : 'px-4'} rounded-lg bg-background/68 hover:bg-surface-hover transition-colors text-text-secondary text-sm shadow-soft`}
+              title={compactSidebar ? t('common.close') : undefined}
+            >
+              {compactSidebar ? <X className="w-4 h-4 mx-auto" /> : t('common.close')}
+            </button>
+            {!compactSidebar && (
+              <p className="text-[10px] text-text-muted text-center mt-2 select-text">
+                v{appVersion}
+              </p>
+            )}
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4">
-          <div className="max-w-[1120px] w-full min-w-0 mx-auto">
-            <div className="">
-              <div className={activeTab === 'api' ? '' : 'hidden'}>
-                {viewedTabs.has('api') && (
-                  <>
-                    <SettingsAPI />
-                  </>
-                )}
-              </div>
-              <div className={activeTab === 'sandbox' ? '' : 'hidden'}>
-                {viewedTabs.has('sandbox') && <SettingsSandbox />}
-              </div>
-              <div className={activeTab === 'connectors' ? '' : 'hidden'}>
-                {viewedTabs.has('connectors') && (
-                  <SettingsConnectors isActive={activeTab === 'connectors'} />
-                )}
-              </div>
-              <div className={activeTab === 'memory' ? '' : 'hidden'}>
-                {viewedTabs.has('memory') && <SettingsMemory />}
-              </div>
-              <div className={activeTab === 'remote' ? '' : 'hidden'}>
-                {viewedTabs.has('remote') && (
-                  <RemoteControlPanel isActive={activeTab === 'remote'} />
-                )}
-              </div>
-              <div className={activeTab === 'logs' ? '' : 'hidden'}>
-                {viewedTabs.has('logs') && <SettingsLogs isActive={activeTab === 'logs'} />}
-              </div>
-              <div className={activeTab === 'general' ? '' : 'hidden'}>
-                {viewedTabs.has('general') && <SettingsGeneral />}
+
+        {/* Content */}
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4">
+            <div className="max-w-[1120px] w-full min-w-0 mx-auto">
+              <div className="">
+                <div className={activeTab === 'api' ? '' : 'hidden'}>
+                  {viewedTabs.has('api') && (
+                    <>
+                      <SettingsAPI />
+                    </>
+                  )}
+                </div>
+                <div className={activeTab === 'sandbox' ? '' : 'hidden'}>
+                  {viewedTabs.has('sandbox') && <SettingsSandbox />}
+                </div>
+                <div className={activeTab === 'connectors' ? '' : 'hidden'}>
+                  {viewedTabs.has('connectors') && (
+                    <SettingsConnectors isActive={activeTab === 'connectors'} />
+                  )}
+                </div>
+                <div className={activeTab === 'memory' ? '' : 'hidden'}>
+                  {viewedTabs.has('memory') && <SettingsMemory />}
+                </div>
+                <div className={activeTab === 'remote' ? '' : 'hidden'}>
+                  {viewedTabs.has('remote') && (
+                    <RemoteControlPanel isActive={activeTab === 'remote'} />
+                  )}
+                </div>
+                <div className={activeTab === 'logs' ? '' : 'hidden'}>
+                  {viewedTabs.has('logs') && <SettingsLogs isActive={activeTab === 'logs'} />}
+                </div>
+                <div className={activeTab === 'general' ? '' : 'hidden'}>
+                  {viewedTabs.has('general') && <SettingsGeneral />}
+                </div>
               </div>
             </div>
           </div>

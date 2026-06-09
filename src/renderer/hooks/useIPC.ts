@@ -718,18 +718,39 @@ export function useIPC() {
   }, [send]);
 
   const renameProject = useCallback(
-    async (projectId: string, name: string | null): Promise<Project | null> => {
+    async (
+      projectLocator: string | { projectId?: string; cwd?: string },
+      name: string | null
+    ): Promise<Project | null> => {
       const normalizedName = name?.trim() || null;
+      const projectId =
+        typeof projectLocator === 'string' ? projectLocator : projectLocator.projectId;
+      const cwd = typeof projectLocator === 'string' ? undefined : projectLocator.cwd?.trim();
       if (!isElectron) {
         const project: Project = {
-          id: projectId,
+          id: projectId || `project-${Date.now()}`,
           name: normalizedName,
-          cwd: '',
+          cwd: cwd || '',
           createdAt: Date.now(),
           updatedAt: Date.now(),
         };
         useAppStore.getState().upsertProject(project);
         return project;
+      }
+
+      if (!projectId && cwd) {
+        const project = await invoke<Project | null>({
+          type: 'project.renameByCwd',
+          payload: { cwd, name: normalizedName },
+        });
+        if (project) {
+          useAppStore.getState().upsertProject(project);
+        }
+        return project;
+      }
+
+      if (!projectId) {
+        return null;
       }
 
       const project = await invoke<Project | null>({

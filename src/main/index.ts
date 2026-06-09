@@ -2112,6 +2112,10 @@ const syncConfigAfterMutation = async (previousConfig: AppConfig) => {
     buildAgentRuntimeSignature(previousConfig) !== buildAgentRuntimeSignature(updatedConfig);
   const shouldReloadSandbox = previousConfig.sandboxEnabled !== updatedConfig.sandboxEnabled;
 
+  if (shouldReloadSandbox) {
+    getSandboxBootstrap().reset();
+  }
+
   if (sessionManager) {
     if (shouldReloadRunner) {
       sessionManager.reloadConfig();
@@ -2127,6 +2131,10 @@ const syncConfigAfterMutation = async (previousConfig: AppConfig) => {
         JSON.stringify({ runnerReloaded: shouldReloadRunner, sandboxReloaded: shouldReloadSandbox })
       );
     }
+  }
+
+  if (shouldReloadSandbox && updatedConfig.sandboxEnabled !== false) {
+    void startSandboxBootstrap();
   }
 
   // Notify renderer of config update
@@ -3700,6 +3708,23 @@ async function handleClientEvent(event: ClientEvent): Promise<unknown> {
       if (!updated) {
         return null;
       }
+      const project = mapProjectRow(updated);
+      sendToRenderer({ type: 'project.update', payload: { project } });
+      return project;
+    }
+
+    case 'project.renameByCwd': {
+      const db = appDatabase;
+      if (!db?.projects) {
+        throw new Error('Project store not initialized');
+      }
+      const cwd = event.payload.cwd?.trim();
+      if (!cwd) {
+        throw new Error('Project cwd cannot be empty');
+      }
+      const normalizedName = event.payload.name?.trim() || null;
+      const ensured = db.projects.ensureForCwd(cwd);
+      const updated = db.projects.update(ensured.id, { name: normalizedName }) ?? ensured;
       const project = mapProjectRow(updated);
       sendToRenderer({ type: 'project.update', payload: { project } });
       return project;

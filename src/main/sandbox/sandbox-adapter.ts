@@ -629,7 +629,12 @@ export class SandboxAdapter implements SandboxExecutor {
       const bootstrap = getSandboxBootstrap();
       bootstrap.reset();
 
-      const initConfig = config || this._config || { workspacePath: this.state.workspacePath };
+      const initConfig = config || this._config;
+      if (!initConfig?.workspacePath) {
+        log('[SandboxAdapter] No workspace configured, postponing sandbox initialization');
+        return;
+      }
+
       await this.initialize(initConfig);
       log('[SandboxAdapter] Reinitialized with mode:', this.state.mode);
     } finally {

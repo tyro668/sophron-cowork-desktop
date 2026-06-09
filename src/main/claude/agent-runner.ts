@@ -85,6 +85,7 @@ import {
 } from './tool-result-utils';
 import { fetchOllamaModelInfo } from '../config/ollama-api';
 import { createWindowsBashOperations } from './windows-bash-operations';
+import { createSandboxCodingTools } from './sandbox-tool-operations';
 
 // Virtual workspace path shown to the model (hides real sandbox path)
 const VIRTUAL_WORKSPACE_PATH = '/workspace';
@@ -2146,12 +2147,25 @@ Tool routing:
       // executed via Pi SDK's Bash tool can find bundled and user-installed executables.
       await enrichProcessPathForBuild();
 
-      const bashOptions: BashToolOptions | undefined =
-        process.platform === 'win32' ? { operations: createWindowsBashOperations() } : undefined;
-      const codingTools = createCodingTools(
-        effectiveCwd,
-        bashOptions ? { bash: bashOptions } : undefined
-      );
+      let codingTools: ReturnType<typeof createCodingTools>;
+      if (useSandboxIsolation && sandboxPath && sandbox.isWSL && sandbox.wslStatus?.distro) {
+        codingTools = createSandboxCodingTools(effectiveCwd, {
+          type: 'wsl',
+          distro: sandbox.wslStatus.distro,
+        });
+      } else if (useSandboxIsolation && sandboxPath && sandbox.isLima) {
+        codingTools = createSandboxCodingTools(effectiveCwd, {
+          type: 'lima',
+          instanceName: sandbox.limaStatus?.instanceName,
+        });
+      } else {
+        const bashOptions: BashToolOptions | undefined =
+          process.platform === 'win32' ? { operations: createWindowsBashOperations() } : undefined;
+        codingTools = createCodingTools(
+          effectiveCwd,
+          bashOptions ? { bash: bashOptions } : undefined
+        );
+      }
 
       // Inject a default 120s timeout for bash commands when the model omits one
       const withTimeout = ClaudeAgentRunner.wrapBashToolWithDefaultTimeout(

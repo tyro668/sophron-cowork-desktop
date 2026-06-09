@@ -975,6 +975,8 @@
     "disabledStatus": "Sandbox disabled - commands run directly on system",
     "enabledWillSetup": "Sandbox enabled. Setting up environment...",
     "disabled": "Sandbox mode disabled",
+    "enabledSuccess": "Sandbox mode enabled",
+    "disabledSuccess": "Sandbox mode disabled",
     "failedToLoad": "Failed to load sandbox status",
     "failedToSave": "Failed to save sandbox settings",
     "statusRefreshed": "Status refreshed",

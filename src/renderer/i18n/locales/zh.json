@@ -977,6 +977,8 @@
     "disabledStatus": "沙盒已禁用 - 命令直接在系统上运行",
     "enabledWillSetup": "沙盒已启用，正在设置环境...",
     "disabled": "沙盒模式已禁用",
+    "enabledSuccess": "沙盒模式已启用",
+    "disabledSuccess": "沙盒模式已禁用",
     "failedToLoad": "无法加载沙盒状态",
     "failedToSave": "无法保存沙盒设置",
     "statusRefreshed": "状态已刷新",
