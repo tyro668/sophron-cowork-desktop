@@ -23,10 +23,34 @@ mock server HTTP API
   -> DataTaskStore / DuckDB
 ```
 
+## 配置页产品化增量
+
+为了避免用户在每次工具调用时重复传入 host、API Key 和 datasource 信息，cowork 设置页新增
+“个人分析 / Personal Analysis”配置项，并将配置持久化到 `configStore`。
+
+配置项：
+
+- `Host`：Personal Analysis 服务 origin，例如 `http://127.0.0.1:3000`。只保存 origin，不保存具体 API path。
+- `API Key`：个人 API Key 页面生成的 `X-API-Key` 值。设置页只保存 key 本体，不包含 `X-API-Key:` 前缀。
+- `Datasource`：上传表格时使用的目标数据源。产品化方向是不再写死 mock 默认值，而是通过服务端接口获取可选 datasource 列表。
+
+datasource 获取流程：
+
+```text
+用户填写 Host + API Key
+  -> cowork 调用 /api/personal/api-keys/token 换 token
+  -> cowork 调用 /api/personal/analysis/v1/datasources
+  -> 设置页以下拉框展示可选 datasource
+  -> 保存 datasourceId 到 configStore.personalAnalysis
+```
+
+如果服务端 datasource 列表接口暂不可用或返回空，设置页仍允许手动输入 datasourceId 作为联调兜底，但保存时会做基本校验。
+
 ## 主要改动
 
 1. 新增 `src/main/data/personal-analysis-client.ts`
    - 负责 API Key 换 token。
+   - 查询 datasources。
    - 查询 spaces / projects / tables。
    - 创建导出任务并轮询 downloadUrl。
    - 获取 uploadUrl、PUT CSV、提交 imports。
@@ -54,6 +78,17 @@ mock server HTTP API
    - 将只读的 cloud list 工具加入默认 allow。
    - 导入/上传仍走正常工具权限流。
 
+6. 新增设置页与配置持久化
+   - `src/renderer/components/settings/SettingsPersonalAnalysis.tsx`：个人分析配置页。
+   - `src/main/config/config-store.ts`：新增 `personalAnalysis` 配置段。
+   - `src/preload/index.ts` / `src/main/index.ts`：暴露 datasource 列表加载 IPC。
+   - `src/renderer/i18n/locales/*.json`：补齐中英文文案。
+
+7. 输入校验
+   - Host 必填，且必须是合法 `http://` 或 `https://` URL。
+   - API Key 必填；如果用户粘贴 `X-API-Key:` 前缀，设置页给出明确提示。
+   - Datasource 必填；如果已加载服务端列表，保存时必须选择列表中的 datasource。
+
 ## 使用流程
 
 从 mock server 导入到 cowork：
@@ -68,6 +103,7 @@ data_import_cloud_table
 从 cowork 上传回 mock server：
 
 ```text
+设置页保存 Host / API Key / Datasource
 data_upload_table_to_cloud
 ```
 
@@ -78,8 +114,11 @@ data_upload_table_to_cloud
 已完成验证：
 
 - mock server 自测：`npm run client:test`
+- mock server datasource 接口验证：`GET /api/personal/analysis/v1/datasources`
 - cowork 类型检查：`npm run typecheck`
 - cowork 相关单测：`npm test -- data-tool-service.test.ts data-command-service.test.ts data-tool-prompt.test.ts`
+- cowork 本次相关单测：`npm test -- --run tests/personal-analysis-client.test.ts tests/data-command-service.test.ts tests/config-store-env.test.ts`
+- i18n JSON 与 key 覆盖检查通过。
 - UI 验证：通过 `data_import_cloud_table` 成功把 `table-demo` 导入为 cowork input table，并预览成功。
 - UI 验证：通过 `data_upload_table_to_cloud` 成功将 cowork 表上传回 mock server 并创建新表。
 
@@ -88,3 +127,4 @@ data_upload_table_to_cloud
 - mock server 当前状态保存在内存中，测试创建/替换的表会在服务运行期间累积。
 - 重新启动 mock server 后，会从 `catalog.json` 和 `data/seed-tables` 重新初始化。
 - 后续接真实云端服务时，优先替换 `PersonalAnalysisClient` 内部协议实现，尽量不改 cowork 本地数据处理链路。
+- 真实服务产品化时，优先保留 datasource 列表接口，不建议在客户端写死 datasource 默认值。
