@@ -2004,8 +2004,22 @@ function TaskEditor({
             edge.targetHandle === targetHandle
         );
         if (exists) return current;
+        // When connecting to a join's right handle, sync the rightInput config
+        let nextNodes = current.nodes;
+        if (targetHandle === 'right') {
+          const sourceNode = current.nodes.find((n) => n.id === sourceNodeId);
+          if (sourceNode) {
+            const alias = (sourceNode.config?.alias as string) || sourceNode.label || '';
+            nextNodes = current.nodes.map((n) =>
+              n.id === targetNodeId
+                ? { ...n, config: { ...n.config, rightInput: alias, rightAlias: alias } }
+                : n
+            );
+          }
+        }
         return {
           ...current,
+          nodes: nextNodes,
           edges: [
             ...current.edges,
             {
@@ -2027,6 +2041,7 @@ function TaskEditor({
     if (!connection.source || !connection.target || connection.source === connection.target) return;
     setWorkflow((current) => {
       if (!current) return current;
+      const oldEdge = current.edges.find((e) => e.id === edgeId);
       const duplicate = current.edges.some(
         (edge) =>
           edge.id !== edgeId &&
@@ -2036,13 +2051,46 @@ function TaskEditor({
           edge.targetHandle === (connection.targetHandle ?? 'input')
       );
       if (duplicate) {
+        // If removing a right-handle edge, clear config.rightInput
+        let nextNodes = current.nodes;
+        if (oldEdge?.targetHandle === 'right') {
+          nextNodes = current.nodes.map((n) =>
+            n.id === oldEdge.targetNodeId
+              ? { ...n, config: { ...n.config, rightInput: undefined, rightAlias: undefined } }
+              : n
+          );
+        }
         return {
           ...current,
-          edges: current.edges.filter((edge) => edge.id !== edgeId),
+          nodes: nextNodes,
+          edges: current.edges.filter((e) => e.id !== edgeId),
         };
+      }
+      // Sync config when reconnecting to/from right handle
+      let nextNodes = current.nodes;
+      const newTargetHandle = connection.targetHandle ?? 'input';
+      if (newTargetHandle === 'right') {
+        // Reconnecting TO right handle: set config.rightInput
+        const sourceNode = current.nodes.find((n) => n.id === connection.source);
+        if (sourceNode) {
+          const alias = (sourceNode.config?.alias as string) || sourceNode.label || '';
+          nextNodes = current.nodes.map((n) =>
+            n.id === connection.target
+              ? { ...n, config: { ...n.config, rightInput: alias, rightAlias: alias } }
+              : n
+          );
+        }
+      } else if (oldEdge?.targetHandle === 'right' && newTargetHandle !== 'right') {
+        // Reconnecting AWAY from right handle: clear config.rightInput
+        nextNodes = current.nodes.map((n) =>
+          n.id === oldEdge.targetNodeId
+            ? { ...n, config: { ...n.config, rightInput: undefined, rightAlias: undefined } }
+            : n
+        );
       }
       return {
         ...current,
+        nodes: nextNodes,
         edges: current.edges.map((edge) =>
           edge.id === edgeId
             ? {
@@ -2050,7 +2098,7 @@ function TaskEditor({
                 sourceNodeId: connection.source,
                 targetNodeId: connection.target,
                 sourceHandle: connection.sourceHandle ?? 'output',
-                targetHandle: connection.targetHandle ?? 'input',
+                targetHandle: newTargetHandle,
               }
             : edge
         ),
@@ -2058,14 +2106,24 @@ function TaskEditor({
     });
   }, []);
   const removeWorkflowEdge = useCallback((edgeId: string) => {
-    setWorkflow((current) =>
-      current
-        ? {
-            ...current,
-            edges: current.edges.filter((edge) => edge.id !== edgeId),
-          }
-        : current
-    );
+    setWorkflow((current) => {
+      if (!current) return current;
+      const removedEdge = current.edges.find((e) => e.id === edgeId);
+      const wasRightEdge = removedEdge?.targetHandle === 'right';
+      let nextNodes = current.nodes;
+      if (wasRightEdge && removedEdge) {
+        nextNodes = current.nodes.map((n) =>
+          n.id === removedEdge.targetNodeId
+            ? { ...n, config: { ...n.config, rightInput: undefined, rightAlias: undefined } }
+            : n
+        );
+      }
+      return {
+        ...current,
+        nodes: nextNodes,
+        edges: current.edges.filter((edge) => edge.id !== edgeId),
+      };
+    });
   }, []);
 
   const duplicateSelectedNode = useCallback(() => {
@@ -3154,6 +3212,10 @@ function WorkflowInspector({
     () => getWorkflowFieldSourceNode(node, workflowNodes, workflowEdges),
     [node, workflowEdges, workflowNodes]
   );
+  const operatorRightSourceNode = useMemo(
+    () => getWorkflowRightSourceNode(node, workflowNodes, workflowEdges),
+    [node, workflowEdges, workflowNodes]
+  );
   const editorCompletionLabels = useMemo(
     () => ({
       keywords: t('data.workflow.completionGroups.keywords'),
@@ -3472,107 +3534,104 @@ function WorkflowInspector({
             onPageChange={setNodePreviewPage}
           />
         ) : usesOperatorDsl ? (
-          configMode === 'form' ? (
-            <div className="grid h-full min-h-0 gap-2.5 lg:grid-cols-[minmax(0,1fr)_17rem]">
-              <div className="glass-card min-h-0 min-w-0 overflow-y-auto rounded-xl p-2.5">
-                <div className="mb-2 flex min-h-8 items-center gap-2">
-                  <GlassModeToggle
-                    mode="form"
-                    formLabel={t('data.workflow.formConfig', '图形配置')}
-                    dslLabel={t('data.workflow.dslEditor', 'DSL 编辑器')}
-                    onChange={(m) => {
-                      if (m === 'dsl') {
-                        setOperatorDsl(exportPrepOperatorDsl(node));
-                        setIsEditingOperatorDsl(false);
-                      }
-                      setConfigMode(m);
-                    }}
-                  />
-                </div>
-                <OperatorFormWrapper
-                  key={`${node.id}-form`}
-                  node={node}
-                  taskId={node.taskId}
-                  fieldCompletions={operatorFieldCompletions}
-                  otherNodes={workflowNodes}
-                  sourceNode={
-                    operatorFieldSourceNode
-                      ? {
-                          id: operatorFieldSourceNode.id,
-                          type: operatorFieldSourceNode.type,
-                          config: operatorFieldSourceNode.config,
-                        }
-                      : undefined
-                  }
-                  onNodeChange={onNodeChange}
+          <div className="grid h-full min-h-0 gap-2.5 lg:grid-cols-[minmax(0,1fr)_17rem]">
+            <div className="glass-card flex min-h-0 min-w-0 flex-col rounded-xl p-2">
+              <div className="mb-2 flex min-h-8 items-center gap-2">
+                <GlassModeToggle
+                  mode={configMode}
+                  formLabel={t('data.workflow.formConfig', '图形配置')}
+                  dslLabel={t('data.workflow.dslEditor', 'DSL 编辑器')}
+                  onChange={(m) => {
+                    if (m === 'dsl' && configMode === 'form') {
+                      setOperatorDsl(exportPrepOperatorDsl(node));
+                      setIsEditingOperatorDsl(false);
+                    }
+                    if (m === 'form' && configMode === 'dsl') {
+                      setIsEditingOperatorDsl(false);
+                    }
+                    setConfigMode(m);
+                  }}
                 />
-              </div>
-              <WorkflowSummaryPanel
-                title={t('data.workflow.summary')}
-                rows={summary.primary}
-                emptyText={t('data.workflow.noConfig')}
-              />
-            </div>
-          ) : (
-            <div className="grid h-full min-h-0 gap-2.5 lg:grid-cols-[minmax(0,1fr)_17rem]">
-              <div className="glass-card flex min-h-0 min-w-0 flex-col rounded-xl p-2">
-                <div className="mb-2 flex min-h-8 items-center gap-2">
-                  <GlassModeToggle
-                    mode="dsl"
-                    onChange={(m) => {
-                      if (m === 'form') {
-                        setIsEditingOperatorDsl(false);
-                      }
-                      setConfigMode(m);
-                    }}
-                  />
-                  <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
-                    {t('data.workflow.dslEditor')}
-                  </div>
-                  {operatorDslStatus && (
-                    <div className="flex h-8 min-w-0 items-center gap-1.5 rounded-lg border border-success/20 bg-success/5 px-2 text-[11px] text-success">
-                      <CheckCircle2 className="h-3 w-3 flex-shrink-0" />
-                      <span className="truncate">{operatorDslStatus}</span>
-                    </div>
-                  )}
-                  <div className={`${operatorDslStatus ? '' : 'ml-auto'} flex items-center gap-2`}>
-                    {isEditingOperatorDsl ? (
-                      <>
+                {configMode === 'dsl' && (
+                  <>
+                    {operatorDslStatus && (
+                      <div className="flex h-8 min-w-0 items-center gap-1.5 rounded-lg border border-success/20 bg-success/5 px-2 text-[11px] text-success">
+                        <CheckCircle2 className="h-3 w-3 flex-shrink-0" />
+                        <span className="truncate">{operatorDslStatus}</span>
+                      </div>
+                    )}
+                    <div
+                      className={`${operatorDslStatus ? '' : 'ml-auto'} flex items-center gap-2`}
+                    >
+                      {isEditingOperatorDsl ? (
+                        <>
+                          <button
+                            onClick={handleFormatOperatorDsl}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/42 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+                          >
+                            <Code2 className="h-3.5 w-3.5" />
+                            {t('data.workflow.formatDsl')}
+                          </button>
+                          <button
+                            onClick={handleCancelOperatorDslEdit}
+                            disabled={isRunningOperatorDsl}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/42 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                            {t('common.cancel')}
+                          </button>
+                          <button
+                            onClick={() => void handleApplyOperatorDsl()}
+                            disabled={isRunningOperatorDsl}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-55"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            {t('data.workflow.applyOperatorDsl')}
+                          </button>
+                        </>
+                      ) : (
                         <button
-                          onClick={handleFormatOperatorDsl}
+                          onClick={handleStartOperatorDslEdit}
                           className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/42 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
                         >
-                          <Code2 className="h-3.5 w-3.5" />
-                          {t('data.workflow.formatDsl')}
+                          <PencilLine className="h-3.5 w-3.5" />
+                          {t('data.workflow.configureSelected')}
                         </button>
-                        <button
-                          onClick={handleCancelOperatorDslEdit}
-                          disabled={isRunningOperatorDsl}
-                          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/42 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                          {t('common.cancel')}
-                        </button>
-                        <button
-                          onClick={() => void handleApplyOperatorDsl()}
-                          disabled={isRunningOperatorDsl}
-                          className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-55"
-                        >
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          {t('data.workflow.applyOperatorDsl')}
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        onClick={handleStartOperatorDslEdit}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/42 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
-                      >
-                        <PencilLine className="h-3.5 w-3.5" />
-                        {t('data.workflow.configureSelected')}
-                      </button>
-                    )}
-                  </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+              {configMode === 'form' ? (
+                <div className="min-h-0 min-w-0 overflow-y-auto">
+                  <OperatorFormWrapper
+                    key={`${node.id}-form`}
+                    node={node}
+                    taskId={node.taskId}
+                    fieldCompletions={operatorFieldCompletions}
+                    otherNodes={workflowNodes}
+                    sourceNode={
+                      operatorFieldSourceNode
+                        ? {
+                            id: operatorFieldSourceNode.id,
+                            type: operatorFieldSourceNode.type,
+                            config: operatorFieldSourceNode.config,
+                          }
+                        : undefined
+                    }
+                    rightSourceNode={
+                      operatorRightSourceNode
+                        ? {
+                            id: operatorRightSourceNode.id,
+                            type: operatorRightSourceNode.type,
+                            config: operatorRightSourceNode.config,
+                          }
+                        : undefined
+                    }
+                    onNodeChange={onNodeChange}
+                  />
                 </div>
+              ) : (
                 <PrepDslEditor
                   value={operatorDsl}
                   operatorType={node.type}
@@ -3585,7 +3644,15 @@ function WorkflowInspector({
                   editable={isEditingOperatorDsl}
                   height={182}
                 />
-              </div>
+              )}
+            </div>
+            {configMode === 'form' ? (
+              <WorkflowSummaryPanel
+                title={t('data.workflow.summary')}
+                rows={summary.primary}
+                emptyText={t('data.workflow.noConfig')}
+              />
+            ) : (
               <WorkflowRuleSummaryCard
                 title={t('data.workflow.ruleSummary')}
                 items={ruleSummaryItems}
@@ -3598,8 +3665,8 @@ function WorkflowInspector({
                 formatDiagnostic={formatEditorDiagnostic}
                 emptyText={t('data.workflow.noConfig')}
               />
-            </div>
-          )
+            )}
+          </div>
         ) : (
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
             <div className="grid content-start gap-3 sm:grid-cols-2">
@@ -4064,8 +4131,8 @@ function WorkflowSummaryPanel({
 }) {
   return (
     <div className="min-w-0">
-      <div className="mb-2 text-xs font-medium text-text-secondary">{title}</div>
-      <div className="max-h-44 overflow-y-auto rounded-lg border border-border-muted text-[11px]">
+      <div className="mb-2 text-[13px] font-medium text-text-secondary">{title}</div>
+      <div className="max-h-44 overflow-y-auto rounded-lg border border-border-muted text-xs">
         {rows.length > 0 ? (
           rows.map((row) => (
             <div
@@ -4105,6 +4172,17 @@ function getWorkflowFieldSourceNode(
     edges.find(
       (item) => item.targetNodeId === node.id && (item.targetHandle ?? 'input') === preferredHandle
     ) ?? edges.find((item) => item.targetNodeId === node.id);
+  if (!edge) return null;
+  return nodes.find((item) => item.id === edge.sourceNodeId) ?? null;
+}
+
+function getWorkflowRightSourceNode(
+  node: DataWorkflowNode | null,
+  nodes: DataWorkflowNode[],
+  edges: DataWorkflowEdge[]
+): DataWorkflowNode | null {
+  if (!node || node.type !== 'join') return null;
+  const edge = edges.find((item) => item.targetNodeId === node.id && item.targetHandle === 'right');
   if (!edge) return null;
   return nodes.find((item) => item.id === edge.sourceNodeId) ?? null;
 }

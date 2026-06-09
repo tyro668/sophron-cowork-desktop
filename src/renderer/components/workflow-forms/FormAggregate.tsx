@@ -1,9 +1,9 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
-import { GlassTagInput } from './shared/GlassTagInput';
+import { GlassMultiSelect } from './shared/GlassMultiSelect';
 import { GlassListEditor } from './shared/GlassListEditor';
 
 const AGG_FUNCTIONS = [
@@ -55,6 +55,21 @@ export default function FormAggregate({ node, fieldCompletions, onNodeChange }: 
   const groupBy: string[] = (node.config.groupBy as string[]) ?? [];
   const metrics: MetricEntry[] = (node.config.metrics as MetricEntry[]) ?? [];
 
+  const expressionCompletions = useMemo(
+    () => ['*', ...fieldCompletions.map((c) => `[${c}]`)],
+    [fieldCompletions]
+  );
+
+  // Track which metric indices are in custom text-input mode
+  const [customIndices, setCustomIndices] = useState<Set<number>>(new Set());
+  const prevMetricsLen = useRef(metrics.length);
+  useEffect(() => {
+    if (metrics.length !== prevMetricsLen.current) {
+      prevMetricsLen.current = metrics.length;
+      setCustomIndices(new Set());
+    }
+  }, [metrics.length]);
+
   function handleMetricsChange(items: MetricEntry[]) {
     updateConfig((cfg) => ({
       ...cfg,
@@ -64,9 +79,12 @@ export default function FormAggregate({ node, fieldCompletions, onNodeChange }: 
 
   return (
     <div className="grid content-start gap-2.5">
-      <GlassFormSection title="分组字段 (group by)">
-        <GlassFormLabel>输入字段名后按回车添加</GlassFormLabel>
-        <GlassTagInput
+      {/* Group by — multi-select dropdown */}
+      <GlassFormSection title="选择字段">
+        <p className="mb-2 text-[11px] text-text-muted">
+          可选择多个字段作为分组依据，不选则全表聚合。
+        </p>
+        <GlassMultiSelect
           value={groupBy}
           suggestions={fieldCompletions}
           onChange={(next) =>
@@ -75,15 +93,15 @@ export default function FormAggregate({ node, fieldCompletions, onNodeChange }: 
               groupBy: next.length > 0 ? next : undefined,
             }))
           }
-          placeholder="输入字段名后按回车添加..."
+          placeholder="选择分组字段..."
         />
-        <p className="mt-1 text-[10px] text-text-muted">留空则全表聚合 (aggregate all)。</p>
       </GlassFormSection>
 
-      <GlassFormSection title="聚合指标 (metrics)">
+      {/* Metrics */}
+      <GlassFormSection title="聚合指标">
         <GlassListEditor
           items={metrics}
-          renderRow={(item, _index, onChange) => (
+          renderRow={(item, index, onChange) => (
             <div className="grid gap-1.5">
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
@@ -106,18 +124,58 @@ export default function FormAggregate({ node, fieldCompletions, onNodeChange }: 
                     value={item.alias}
                     onChange={(value) => onChange({ ...item, alias: value })}
                     placeholder="如 total_revenue"
-                    className="h-7"
+                    className={`h-7 ${!item.alias.trim() ? '!border-warning/60' : ''}`}
                   />
                 </div>
               </div>
               <div>
-                <GlassFormLabel>表达式（聚合参数）</GlassFormLabel>
-                <GlassFormTextInput
-                  value={item.expression}
-                  onChange={(value) => onChange({ ...item, expression: value })}
-                  placeholder={'如 [revenue] 或 *'}
-                  className="h-7"
-                />
+                <GlassFormLabel>表达式</GlassFormLabel>
+                {customIndices.has(index) ||
+                (!expressionCompletions.includes(item.expression) && item.expression !== '') ? (
+                  <div className="flex gap-1.5">
+                    <input
+                      autoFocus
+                      value={item.expression}
+                      onChange={(e) => onChange({ ...item, expression: e.target.value })}
+                      placeholder="输入表达式，如 [price] * [qty]"
+                      className="h-7 flex-1 rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent placeholder:text-text-muted"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomIndices((prev) => {
+                          const next = new Set(prev);
+                          next.delete(index);
+                          return next;
+                        });
+                        onChange({ ...item, expression: '*' });
+                      }}
+                      className="h-7 flex-shrink-0 rounded-md border border-border-muted bg-background/42 px-1.5 text-[11px] text-text-muted hover:text-text-secondary"
+                    >
+                      选择字段
+                    </button>
+                  </div>
+                ) : (
+                  <select
+                    value={item.expression}
+                    onChange={(e) => {
+                      if (e.target.value === '__custom__') {
+                        setCustomIndices((prev) => new Set(prev).add(index));
+                        onChange({ ...item, expression: '' });
+                      } else {
+                        onChange({ ...item, expression: e.target.value });
+                      }
+                    }}
+                    className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-secondary outline-none focus:border-accent"
+                  >
+                    <option value="__custom__">自定义...</option>
+                    {expressionCompletions.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             </div>
           )}

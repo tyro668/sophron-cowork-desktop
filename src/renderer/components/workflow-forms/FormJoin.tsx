@@ -1,34 +1,45 @@
-import { useCallback, useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { DataWorkflowOperatorType } from '../../types';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassConditionEditor, type ConditionEntry } from './shared/GlassConditionEditor';
 
-const JOIN_TYPES = [
-  { value: 'inner', label: '内连接' },
-  { value: 'left', label: '左连接' },
-  { value: 'right', label: '右连接' },
-  { value: 'full', label: '全连接' },
-  { value: 'cross', label: '交叉' },
-  { value: 'semi', label: '半连接' },
-  { value: 'anti', label: '反连接' },
-  { value: 'asof', label: '时间近邻' },
-];
-
-const CARDINALITY_OPTIONS = [
-  { value: '', label: '不限制' },
-  { value: 'one_to_one', label: '一对一' },
-  { value: 'one_to_many', label: '一对多' },
-  { value: 'many_to_one', label: '多对一' },
-  { value: 'many_to_many', label: '多对多' },
-];
+const CARDINALITY_LABELS: Record<string, string> = {
+  '': 'cardinalityNone',
+  one_to_one: 'cardinalityOneToOne',
+  one_to_many: 'cardinalityOneToMany',
+  many_to_one: 'cardinalityManyToOne',
+  many_to_many: 'cardinalityManyToMany',
+};
+const CARDINALITY_FALLBACKS: Record<string, string> = {
+  '': '不限制',
+  one_to_one: '一对一',
+  one_to_many: '一对多',
+  many_to_one: '多对一',
+  many_to_many: '多对多',
+};
 
 const SELECT_CLASS =
   'h-7 rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-secondary outline-none focus:border-accent';
 
-export default function FormJoin({ node, otherNodes, onNodeChange }: OperatorFormProps) {
+export default function FormJoin({
+  node,
+  taskId,
+  fieldCompletions,
+  otherNodes,
+  sourceNode,
+  rightSourceNode,
+  onNodeChange,
+}: OperatorFormProps) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    [t]
+  );
+
   const updateConfig = useCallback(
     (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
       onNodeChange((current) => ({
@@ -40,10 +51,7 @@ export default function FormJoin({ node, otherNodes, onNodeChange }: OperatorFor
     [onNodeChange]
   );
 
-  const [showAdvanced, setShowAdvanced] = useState(false);
-
   const joinType = (node.config.joinType as string) ?? 'left';
-  const rightInput = (node.config.rightInput as string) ?? '';
   const conditions: ConditionEntry[] = (node.config.conditions as ConditionEntry[]) ?? [];
   const cardinality = (node.config.cardinality as string) ?? '';
   const conflict = (node.config.conflict as Record<string, unknown>) ?? {};
@@ -65,15 +73,84 @@ export default function FormJoin({ node, otherNodes, onNodeChange }: OperatorFor
 
   const isAsof = joinType === 'asof';
   const needsConditions = joinType !== 'cross';
-  const inputSourceNodes = otherNodes.filter((n) => n.type === 'input_source');
 
-  function handleRightInputChange(value: string) {
-    const sourceNode = otherNodes.find((n) => n.id === value);
-    const alias = (sourceNode?.config?.alias as string) || sourceNode?.label || '';
+  // Resolve a node label from the full node list
+  const resolveNodeLabel = useCallback(
+    (nodeRef: { id: string; config?: Record<string, unknown> } | undefined): string => {
+      if (!nodeRef) return '';
+      const full = otherNodes.find((n) => n.id === nodeRef.id);
+      if (full) return full.label || (full.config?.alias as string) || '';
+      return (nodeRef.config?.alias as string) || nodeRef.id;
+    },
+    [otherNodes]
+  );
+
+  const leftSourceLabel = useMemo(
+    () => resolveNodeLabel(sourceNode),
+    [sourceNode, resolveNodeLabel]
+  );
+  const rightSourceLabel = useMemo(
+    () => resolveNodeLabel(rightSourceNode),
+    [rightSourceNode, resolveNodeLabel]
+  );
+
+  // Right table column names (fetched from DuckDB via IPC)
+  const [rightRawColumns, setRightRawColumns] = useState<string[]>([]);
+  const [rightColumnsError, setRightColumnsError] = useState(false);
+
+  useEffect(() => {
+    setRightRawColumns([]);
+    setRightColumnsError(false);
+    if (!rightSourceNode || typeof taskId !== 'string') return;
+    const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
+    if (!isElectron) return;
+    void window
+      .electronAPI!.data.getWorkflowNodeColumns({
+        taskId,
+        nodeId: rightSourceNode.id,
+        nodeType: rightSourceNode.type as DataWorkflowOperatorType,
+        nodeConfig: rightSourceNode.config,
+      })
+      .then((cols) => {
+        setRightRawColumns(cols);
+        setRightColumnsError(false);
+      })
+      .catch(() => {
+        setRightRawColumns([]);
+        setRightColumnsError(true);
+      });
+  }, [rightSourceNode, taskId]);
+
+  const joinTypeOptions = useMemo(
+    () => [
+      { value: 'inner', label: tr('joinInner', '内连接') },
+      { value: 'left', label: tr('joinLeft', '左连接') },
+      { value: 'right', label: tr('joinRight', '右连接') },
+      { value: 'full', label: tr('joinFull', '全连接') },
+      { value: 'cross', label: tr('joinCross', '交叉') },
+      { value: 'semi', label: tr('joinSemi', '半连接') },
+      { value: 'anti', label: tr('joinAnti', '反连接') },
+      { value: 'asof', label: tr('joinAsof', '时间近邻') },
+    ],
+    [tr]
+  );
+
+  const rightFieldCompletions = useMemo(() => {
+    if (!rightSourceLabel || rightRawColumns.length === 0) return [] as string[];
+    return rightRawColumns.map((c) => `[${rightSourceLabel}].[${c}]`);
+  }, [rightSourceLabel, rightRawColumns]);
+
+  const leftFieldCompletions = useMemo(
+    () => fieldCompletions.map((c) => `[${c}]`),
+    [fieldCompletions]
+  );
+
+  function handleJoinTypeChange(value: string) {
     updateConfig((cfg) => ({
       ...cfg,
-      rightInput: alias || undefined,
-      rightAlias: alias || undefined,
+      joinType: value,
+      conditions: value === 'cross' ? undefined : cfg.conditions,
+      asof: value === 'asof' ? (cfg.asof ?? {}) : undefined,
     }));
   }
 
@@ -91,85 +168,78 @@ export default function FormJoin({ node, otherNodes, onNodeChange }: OperatorFor
     }));
   }
 
+  const readOnlyClasses =
+    'flex h-7 items-center rounded-md border border-border-muted bg-background/28 px-1.5 text-[12px] text-text-muted';
+
   return (
     <div className="grid content-start gap-2.5">
-      {/* Join type + Right input in one row */}
+      {/* Join type + Left source + Right source (both from handles) */}
       <GlassFormSection>
-        <div className="grid gap-2">
-          {/* Join type toggle buttons */}
+        <div className="grid gap-2 sm:grid-cols-3">
           <div>
-            <GlassFormLabel>连接类型</GlassFormLabel>
-            <div className="flex flex-wrap gap-1">
-              {JOIN_TYPES.map((j) => (
-                <button
-                  key={j.value}
-                  type="button"
-                  onClick={() =>
-                    updateConfig((cfg) => ({
-                      ...cfg,
-                      joinType: j.value,
-                      conditions: j.value === 'cross' ? undefined : cfg.conditions,
-                      asof: j.value === 'asof' ? (cfg.asof ?? {}) : undefined,
-                    }))
-                  }
-                  className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
-                    joinType === j.value
-                      ? 'bg-accent/10 text-accent border border-accent/30'
-                      : 'border border-border-muted bg-background/42 text-text-secondary hover:border-accent/30'
-                  }`}
-                >
-                  {j.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Right input */}
-          <div>
-            <GlassFormLabel>右侧输入源</GlassFormLabel>
+            <GlassFormLabel>{tr('joinType', '连接类型')}</GlassFormLabel>
             <select
-              value={rightInput}
-              onChange={(e) => handleRightInputChange(e.target.value)}
+              value={joinType}
+              onChange={(e) => handleJoinTypeChange(e.target.value)}
               className={SELECT_CLASS + ' w-full'}
             >
-              <option value="" disabled>
-                选择输入源
-              </option>
-              {inputSourceNodes.map((n) => (
-                <option key={n.id} value={n.id}>
-                  {n.label}
+              {joinTypeOptions.map((j) => (
+                <option key={j.value} value={j.value}>
+                  {j.label}
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <GlassFormLabel>{tr('leftInput', '左数据源')}</GlassFormLabel>
+            <div className={readOnlyClasses}>
+              {leftSourceLabel || tr('noLeftSource', '上游节点')}
+            </div>
+          </div>
+          <div>
+            <GlassFormLabel>{tr('rightInput', '右侧输入源')}</GlassFormLabel>
+            <div className={readOnlyClasses}>
+              {rightSourceLabel || tr('noRightSource', '未连接右表')}
+            </div>
           </div>
         </div>
       </GlassFormSection>
 
       {/* Conditions (non-cross, non-asof) */}
       {needsConditions && !isAsof && (
-        <GlassFormSection title="连接条件">
+        <GlassFormSection title={tr('conditions', '连接条件')}>
+          {rightSourceLabel && rightColumnsError && (
+            <div className="mb-2 text-[11px] text-warning">
+              {tr('rightColumnsFailed', '无法获取右表字段，请手动输入')}
+            </div>
+          )}
           <GlassConditionEditor
             conditions={conditions}
-            leftFieldCompletions={[]}
-            rightFieldCompletions={[]}
+            leftFieldCompletions={leftFieldCompletions}
+            rightFieldCompletions={rightFieldCompletions}
             onChange={(next) =>
               updateConfig((cfg) => ({ ...cfg, conditions: next.length > 0 ? next : undefined }))
             }
-            leftLabel="左字段 (如 orders.customer_id)"
-            rightLabel="右字段 (如 customers.customer_id)"
+            leftLabel={tr('leftField', '[左字段]')}
+            rightLabel={tr('rightField', '[右表].[字段]')}
           />
         </GlassFormSection>
       )}
 
       {/* ASOF */}
       {isAsof && (
-        <GlassFormSection title="时间近邻 (ASOF)">
+        <GlassFormSection title="ASOF">
+          {rightSourceLabel && rightColumnsError && (
+            <div className="mb-2 text-[11px] text-warning">
+              {tr('rightColumnsFailed', '无法获取右表字段，请手动输入')}
+            </div>
+          )}
           <div className="grid gap-2">
             <div className="grid grid-cols-3 gap-1.5">
               <GlassFormTextInput
                 value={asofLeftTime}
                 onChange={(v) => handleAsofChange({ leftTime: v || undefined })}
-                placeholder="左时间列"
+                placeholder={tr('leftTimeCol', '左时间列')}
                 className="h-7"
               />
               <select
@@ -184,7 +254,7 @@ export default function FormJoin({ node, otherNodes, onNodeChange }: OperatorFor
               <GlassFormTextInput
                 value={asofRightTime}
                 onChange={(v) => handleAsofChange({ rightTime: v || undefined })}
-                placeholder="右时间列"
+                placeholder={tr('rightTimeCol', '右时间列')}
                 className="h-7"
               />
             </div>
@@ -192,7 +262,7 @@ export default function FormJoin({ node, otherNodes, onNodeChange }: OperatorFor
               <GlassFormTextInput
                 value={asofTolerance}
                 onChange={(v) => handleAsofChange({ tolerance: v || undefined })}
-                placeholder="容忍窗口，如 1d"
+                placeholder={tr('tolerance', '容忍窗口，如 1d')}
                 className="h-7"
               />
               <select
@@ -200,7 +270,7 @@ export default function FormJoin({ node, otherNodes, onNodeChange }: OperatorFor
                 onChange={(e) => handleAsofChange({ direction: e.target.value || undefined })}
                 className={SELECT_CLASS}
               >
-                <option value="">方向：默认</option>
+                <option value="">{tr('directionDefault', '方向：默认')}</option>
                 <option value="backward">backward</option>
                 <option value="forward">forward</option>
                 <option value="nearest">nearest</option>
@@ -208,110 +278,94 @@ export default function FormJoin({ node, otherNodes, onNodeChange }: OperatorFor
             </div>
             <GlassConditionEditor
               conditions={asofBy}
-              leftFieldCompletions={[]}
-              rightFieldCompletions={[]}
+              leftFieldCompletions={leftFieldCompletions}
+              rightFieldCompletions={rightFieldCompletions}
               onChange={(next) => handleAsofChange({ by: next.length > 0 ? next : undefined })}
-              leftLabel="左字段"
-              rightLabel="右字段"
+              leftLabel={tr('leftField', '[左字段]')}
+              rightLabel={tr('rightField', '[右表].[字段]')}
             />
           </div>
         </GlassFormSection>
       )}
 
-      {/* Keep */}
-      <GlassFormSection title="保留字段">
-        <div className="flex items-center gap-4">
-          <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
-            <input
-              type="checkbox"
-              checked={keepLeftAll}
-              onChange={(e) => handleKeepChange(e.target.checked, keepRightAll)}
-              className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
-            />
-            左表全部
-          </label>
-          <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
-            <input
-              type="checkbox"
-              checked={keepRightAll}
-              onChange={(e) => handleKeepChange(keepLeftAll, e.target.checked)}
-              className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
-            />
-            右表全部
-          </label>
-        </div>
-      </GlassFormSection>
+      {/* Keep + Cardinality + Conflict in one row */}
+      <div className="grid grid-cols-3 gap-2.5">
+        <GlassFormSection title={tr('keepFields', '保留字段')}>
+          <div className="grid gap-1.5">
+            <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
+              <input
+                type="checkbox"
+                checked={keepLeftAll}
+                onChange={(e) => handleKeepChange(e.target.checked, keepRightAll)}
+                className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
+              />
+              {tr('keepLeftAll', '左表全部')}
+            </label>
+            <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
+              <input
+                type="checkbox"
+                checked={keepRightAll}
+                onChange={(e) => handleKeepChange(keepLeftAll, e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
+              />
+              {tr('keepRightAll', '右表全部')}
+            </label>
+          </div>
+        </GlassFormSection>
 
-      {/* Advanced */}
-      <button
-        type="button"
-        onClick={() => setShowAdvanced(!showAdvanced)}
-        className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] text-text-muted hover:text-text-secondary transition-colors"
-      >
-        {showAdvanced ? (
-          <ChevronDown className="h-3.5 w-3.5" />
-        ) : (
-          <ChevronRight className="h-3.5 w-3.5" />
-        )}
-        高级选项
-      </button>
+        <GlassFormSection title={tr('cardinality', '基数约束')}>
+          <select
+            value={cardinality}
+            onChange={(e) =>
+              updateConfig((cfg) => ({ ...cfg, cardinality: e.target.value || undefined }))
+            }
+            className={SELECT_CLASS + ' w-full'}
+          >
+            {Object.keys(CARDINALITY_LABELS).map((value) => (
+              <option key={value} value={value}>
+                {tr(CARDINALITY_LABELS[value], CARDINALITY_FALLBACKS[value])}
+              </option>
+            ))}
+          </select>
+        </GlassFormSection>
 
-      {showAdvanced && (
-        <div className="grid content-start gap-2.5">
-          <GlassFormSection title="基数约束">
+        <GlassFormSection title={tr('conflict', '同名字段冲突')}>
+          <div className="grid gap-2">
             <select
-              value={cardinality}
+              value={conflictStrategy}
               onChange={(e) =>
-                updateConfig((cfg) => ({ ...cfg, cardinality: e.target.value || undefined }))
+                updateConfig((cfg) => ({
+                  ...cfg,
+                  conflict: {
+                    ...((cfg.conflict as Record<string, unknown>) ?? {}),
+                    strategy: e.target.value,
+                  },
+                }))
               }
               className={SELECT_CLASS + ' w-full'}
             >
-              {CARDINALITY_OPTIONS.map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.label}
-                </option>
-              ))}
+              <option value="right_prefix">{tr('conflictPrefix', '右表字段加前缀')}</option>
+              <option value="suffix">{tr('conflictSuffix', '按表名加后缀')}</option>
             </select>
-          </GlassFormSection>
-
-          <GlassFormSection title="同名字段冲突">
-            <div className="grid gap-2">
-              <select
-                value={conflictStrategy}
-                onChange={(e) =>
+            {conflictStrategy === 'right_prefix' && (
+              <GlassFormTextInput
+                value={rightPrefix}
+                onChange={(v) =>
                   updateConfig((cfg) => ({
                     ...cfg,
                     conflict: {
                       ...((cfg.conflict as Record<string, unknown>) ?? {}),
-                      strategy: e.target.value,
+                      rightPrefix: v || undefined,
                     },
                   }))
                 }
-                className={SELECT_CLASS + ' w-full'}
-              >
-                <option value="right_prefix">右表字段加前缀</option>
-                <option value="suffix">按表名加后缀</option>
-              </select>
-              {conflictStrategy === 'right_prefix' && (
-                <GlassFormTextInput
-                  value={rightPrefix}
-                  onChange={(v) =>
-                    updateConfig((cfg) => ({
-                      ...cfg,
-                      conflict: {
-                        ...((cfg.conflict as Record<string, unknown>) ?? {}),
-                        rightPrefix: v || undefined,
-                      },
-                    }))
-                  }
-                  placeholder="前缀，如 customers_"
-                  className="h-7"
-                />
-              )}
-            </div>
-          </GlassFormSection>
-        </div>
-      )}
+                placeholder={tr('prefix', '前缀，如 customers_')}
+                className="h-7"
+              />
+            )}
+          </div>
+        </GlassFormSection>
+      </div>
     </div>
   );
 }

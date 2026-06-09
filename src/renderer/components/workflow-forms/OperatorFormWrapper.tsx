@@ -10,6 +10,7 @@ interface OperatorFormWrapperProps {
   fieldCompletions: string[];
   otherNodes: DataWorkflowNode[];
   sourceNode?: { id: string; type: string; config?: Record<string, unknown> };
+  rightSourceNode?: { id: string; type: string; config?: Record<string, unknown> };
   onNodeChange: (updater: (node: DataWorkflowNode) => DataWorkflowNode) => void;
 }
 
@@ -19,6 +20,7 @@ function LazyOperatorForm({
   fieldCompletions,
   otherNodes,
   sourceNode,
+  rightSourceNode,
   onNodeChange,
 }: OperatorFormWrapperProps) {
   const loader = getOperatorFormLoader(node.type);
@@ -60,6 +62,7 @@ function LazyOperatorForm({
         fieldCompletions={fieldCompletions}
         otherNodes={otherNodes}
         sourceNode={sourceNode}
+        rightSourceNode={rightSourceNode}
         onNodeChange={onNodeChange}
       />
     </Suspense>

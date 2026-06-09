@@ -8,6 +8,7 @@ export interface OperatorFormProps {
   fieldCompletions: string[];
   otherNodes: DataWorkflowNode[];
   sourceNode?: { id: string; type: string; config?: Record<string, unknown> };
+  rightSourceNode?: { id: string; type: string; config?: Record<string, unknown> };
   onNodeChange: (updater: (node: DataWorkflowNode) => DataWorkflowNode) => void;
 }
 
