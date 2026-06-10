@@ -32,6 +32,7 @@ import type {
 import type { DataToolPromptContext, DataToolResult } from './data-tool-types';
 import { getWorkflowDslReference, type DataDslReferenceTopic } from './data-dsl-reference';
 import { createDataResourceHref, type DataResourceKind } from '../../shared/data-resource-link';
+import { dataFieldTypeLabel } from '../../shared/data-field-types';
 import type {
   DataCleaningTask,
   DataDataset,
@@ -486,8 +487,13 @@ function formatPreview(preview: DataInputTablePreview | undefined): string {
     return '';
   }
   const rows = preview.rows.slice(0, preview.limit);
+  const typeSummary = preview.columnTypes.length
+    ? ` types=${preview.columnTypes.map((column) => `${column.name}: ${dataFieldTypeLabel(column.type)}`).join(', ')}`
+    : '';
   return [
-    `Preview rows=${rows.length}/${preview.totalRows} columns=${preview.columns.join(', ') || '(none)'}`,
+    `Preview rows=${rows.length}/${preview.totalRows} columns=${
+      preview.columns.join(', ') || '(none)'
+    }${typeSummary}`,
     rows.length ? JSON.stringify(rows, null, 2) : '',
   ]
     .filter(Boolean)

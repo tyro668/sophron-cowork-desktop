@@ -161,16 +161,8 @@ describe('DuckDB data task store', () => {
     tempRoots.push(tempRoot);
     const workbookPath = path.join(tempRoot, 'configured-orders.xlsx');
     writeWorkbookSheets(workbookPath, {
-      Raw: [
-        ['skip'],
-        [1],
-      ],
-      Orders: [
-        ['report title'],
-        ['id', 'amount'],
-        [1, 10],
-        [2, 20],
-      ],
+      Raw: [['skip'], [1]],
+      Orders: [['report title'], ['id', 'amount'], [1, 10], [2, 20]],
     });
 
     const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'), {
@@ -197,6 +189,99 @@ describe('DuckDB data task store', () => {
     expect(imported.inputConfig.sheetNames).toEqual(['Raw', 'Orders']);
     expect(imported.rowCount).toBe(2);
     expect(imported.columnCount).toBe(2);
+  });
+
+  it('stores and exposes semantic column types for input, output, and task tables', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const dbPath = path.join(tempRoot, 'workspace.duckdb');
+    const workbookPath = path.join(tempRoot, 'typed-orders.xlsx');
+    writeWorkbook(workbookPath, [
+      [
+        'text_col',
+        'date_col',
+        'datetime_col',
+        'integer_col',
+        'float_col',
+        'decimal_col',
+        'boolean_col',
+      ],
+      ['A001', '2026-06-10', '2026-06-10 12:30:45', '3,302', '1.23e4', '12.34', 'true'],
+      ['A002', '2026-06-11', '2026-06-11 08:15:00', '-1,832', '5.67e2', '56.78', 'false'],
+      ['A003', '2026-06-12', '2026-06-12 09:00:00', '-3，431', '9,876.5', '1,234.56', 'true'],
+    ]);
+
+    const store = createDataTaskStore(dbPath, {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+
+    const imported = await store.importDataset({ filePath: workbookPath });
+    const inputPreview = await store.previewDataset({ id: imported.id });
+    expect(inputPreview.columnTypes.map((column) => column.type)).toEqual([
+      'text',
+      'date',
+      'datetime',
+      'integer',
+      'float',
+      'decimal',
+      'boolean',
+    ]);
+    expect(inputPreview.rows.map((row) => String(row.integer_col))).toEqual([
+      '3302',
+      '-1832',
+      '-3431',
+    ]);
+    expect(Number(inputPreview.rows[2]?.float_col)).toBeCloseTo(9876.5);
+    expect(Number(inputPreview.rows[2]?.decimal_col)).toBeCloseTo(1234.56);
+
+    const outputTable = await store.createOutputTable({ name: 'Typed output' });
+    await store.updateOutputTable({ id: outputTable.id, sourceDatasetId: imported.id });
+    const outputPreview = await store.previewDataset({ id: outputTable.id });
+    expect(outputPreview.columnTypes.map((column) => column.type)).toEqual(
+      inputPreview.columnTypes.map((column) => column.type)
+    );
+
+    const task = await store.createTask({ name: 'Typed task' });
+    const parsed = parsePrepDsl(`
+      input source dataset "${imported.id}" as typed
+
+      from typed
+        | cast [text_col] as text,
+               [date_col] as date format "%Y-%m-%d",
+               [datetime_col] as datetime format "%Y-%m-%d %H:%M:%S",
+               [integer_col] as integer,
+               [float_col] as float,
+               [decimal_col] as decimal,
+               [boolean_col] as boolean
+        | output table "typed_task_output" mode replace
+    `);
+    expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    expect(compiled.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    const saved = await store.saveTaskWorkflow(task.id, {
+      nodes: compiled.nodes,
+      edges: compiled.edges,
+    });
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    const outputNode = saved.nodes.find((node) => node.type === 'output');
+    expect(outputNode).toBeTruthy();
+    const taskColumnTypes = await store.getWorkflowNodeColumnTypes({
+      taskId: task.id,
+      nodeId: outputNode!.id,
+      nodeType: outputNode!.type,
+      nodeConfig: outputNode!.config,
+    });
+    expect(taskColumnTypes.map((column) => column.type)).toEqual([
+      'text',
+      'date',
+      'datetime',
+      'integer',
+      'float',
+      'decimal',
+      'boolean',
+    ]);
   });
 
   it('lists Excel input tables without reading the source workbook', async () => {
@@ -233,12 +318,7 @@ describe('DuckDB data task store', () => {
     const workbookPath = path.join(tempRoot, 'preview-orders.xlsx');
     writeWorkbookSheets(workbookPath, {
       Raw: [['ignored'], ['x']],
-      Orders: [
-        ['report title'],
-        ['id', 'amount'],
-        [1, 10],
-        [2, 20],
-      ],
+      Orders: [['report title'], ['id', 'amount'], [1, 10], [2, 20]],
     });
 
     const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'));
@@ -260,6 +340,7 @@ describe('DuckDB data task store', () => {
 
     expect(preview.columns).toEqual(['id', 'amount']);
     expect(preview.rows).toEqual([{ id: '2', amount: '20' }]);
+    expect(preview.columnTypes.map((column) => column.type)).toEqual(['integer', 'integer']);
     expect(preview.fileCount).toBe(1);
     expect(preview.limit).toBe(1);
     expect(preview.offset).toBe(1);
@@ -373,7 +454,7 @@ describe('DuckDB data task store', () => {
     const verifyConnection = await verifyInstance.connect();
     try {
       const reader = await verifyConnection.runAndReadAll(
-        "SELECT id, config_json FROM data_datasets ORDER BY id"
+        'SELECT id, config_json FROM data_datasets ORDER BY id'
       );
       expect(reader.getRowObjectsJson()).toEqual([
         {
@@ -631,7 +712,7 @@ describe('DuckDB data task store', () => {
       input source dataset "customers" as customers
 
       from orders
-        | cast [revenue] as double on_error null
+        | cast [revenue] as float on_error null
         | join left customers
             on [orders].[customer_id] = [customers].[customer_id]
             keep left *, [customers].[name] as [customer_name]
@@ -691,7 +772,7 @@ describe('DuckDB data task store', () => {
       input source task as orders
 
       from orders
-        | cast [revenue] as double on_error null
+        | cast [revenue] as float on_error null
         | filter [revenue] > 10
         | output table "ignored_output" mode replace
     `);
@@ -799,7 +880,7 @@ describe('DuckDB data task store', () => {
       input source task as orders
 
       from orders
-        | cast [revenue] as double on_error null
+        | cast [revenue] as float on_error null
         | filter [revenue] > 25
         | output table "ignored_output" mode replace
     `);
@@ -862,9 +943,9 @@ describe('DuckDB data task store', () => {
     expect(temporaryRun.rowCount).toBe(2);
 
     const persistedWorkflow = await store.getTaskWorkflow(task.id);
-    expect(
-      persistedWorkflow.nodes.find((node) => node.type === 'filter')?.config.condition
-    ).toBe('[revenue] > 25');
+    expect(persistedWorkflow.nodes.find((node) => node.type === 'filter')?.config.condition).toBe(
+      '[revenue] > 25'
+    );
     const formalPreview = await store.previewDataset({ id: outputTable.id });
     expect(formalPreview.totalRows).toBe(1);
   });
@@ -874,11 +955,7 @@ describe('DuckDB data task store', () => {
     tempRoots.push(tempRoot);
     const dbPath = path.join(tempRoot, 'workspace.duckdb');
     const ordersPath = path.join(tempRoot, 'orders.csv');
-    fs.writeFileSync(
-      ordersPath,
-      'order_id,revenue\n1,20\n2,5\n3,30\n',
-      'utf8'
-    );
+    fs.writeFileSync(ordersPath, 'order_id,revenue\n1,20\n2,5\n3,30\n', 'utf8');
 
     let store = createDataTaskStore(dbPath, {
       now: () => 1_780_000_000_000,
@@ -890,7 +967,7 @@ describe('DuckDB data task store', () => {
       input source task as orders
 
       from orders
-        | cast [revenue] as double on_error null
+        | cast [revenue] as float on_error null
         | filter [revenue] > 10
         | output table "cached_node_output" mode replace
     `);
@@ -962,11 +1039,7 @@ describe('DuckDB data task store', () => {
     tempRoots.push(tempRoot);
     const dbPath = path.join(tempRoot, 'workspace.duckdb');
     const ordersPath = path.join(tempRoot, 'temporary-cache-orders.csv');
-    fs.writeFileSync(
-      ordersPath,
-      'order_id,revenue\n1,20\n2,5\n3,30\n',
-      'utf8'
-    );
+    fs.writeFileSync(ordersPath, 'order_id,revenue\n1,20\n2,5\n3,30\n', 'utf8');
 
     let now = 1_780_000_000_000;
     const store = createDataTaskStore(dbPath, {
@@ -1015,11 +1088,7 @@ describe('DuckDB data task store', () => {
     tempRoots.push(tempRoot);
     const dbPath = path.join(tempRoot, 'workspace.duckdb');
     const ordersPath = path.join(tempRoot, 'input-orders.csv');
-    fs.writeFileSync(
-      ordersPath,
-      'order_id,revenue\n1,20\n2,5\n',
-      'utf8'
-    );
+    fs.writeFileSync(ordersPath, 'order_id,revenue\n1,20\n2,5\n', 'utf8');
 
     const store = createDataTaskStore(dbPath, {
       now: () => 1_780_000_000_000,
@@ -1058,11 +1127,7 @@ describe('DuckDB data task store', () => {
     tempRoots.push(tempRoot);
     const dbPath = path.join(tempRoot, 'workspace.duckdb');
     const ordersPath = path.join(tempRoot, 'cn-orders.csv');
-    fs.writeFileSync(
-      ordersPath,
-      '订单ID,金额\nA1000001,10\nA1000002,20\n',
-      'utf8'
-    );
+    fs.writeFileSync(ordersPath, '订单ID,金额\nA1000001,10\nA1000002,20\n', 'utf8');
 
     const store = createDataTaskStore(dbPath, {
       now: () => 1_780_000_000_000,
@@ -1107,11 +1172,7 @@ describe('DuckDB data task store', () => {
     tempRoots.push(tempRoot);
     const dbPath = path.join(tempRoot, 'workspace.duckdb');
     const ordersPath = path.join(tempRoot, 'orders.csv');
-    fs.writeFileSync(
-      ordersPath,
-      'order_id,revenue\n1,20\n2,5\n3,30\n',
-      'utf8'
-    );
+    fs.writeFileSync(ordersPath, 'order_id,revenue\n1,20\n2,5\n3,30\n', 'utf8');
 
     const store = createDataTaskStore(dbPath, {
       now: () => 1_780_000_000_000,
@@ -1123,7 +1184,7 @@ describe('DuckDB data task store', () => {
       input source task as orders
 
       from orders
-        | cast [revenue] as double on_error null
+        | cast [revenue] as float on_error null
         | filter [revenue] > 10
         | output table "unordered_output" mode replace
     `);
@@ -1171,7 +1232,7 @@ describe('DuckDB data task store', () => {
       input source dataset "status" as status
 
       from events
-        | cast [event_time] as timestamp
+        | cast [event_time] as datetime
         | join asof status
             on [events].[event_time] >= [status].[snapshot_time]
             by [events].[device_id] = [status].[device_id]
@@ -1346,12 +1407,13 @@ describe('DuckDB data task store', () => {
     expect(main).toContain("ipcMain.handle('data.runTask'");
     expect(main).toContain("ipcMain.handle('data.updateTask'");
     expect(main).toContain("ipcMain.handle('data.getTaskWorkflow'");
-    expect(main).toContain("ipcMain.handle('data.saveTaskWorkflow'");
+    expect(main).toMatch(/ipcMain\.handle\(\s*['"]data\.saveTaskWorkflow['"]/);
     expect(main).toContain("ipcMain.handle('data.importDataset'");
     expect(main).toContain("ipcMain.handle('data.updateDataset'");
     expect(main).toContain("ipcMain.handle('data.createOutputTable'");
     expect(main).toContain("ipcMain.handle('data.updateOutputTable'");
     expect(main).toContain("ipcMain.handle('data.previewDataset'");
+    expect(main).toContain("'data.getWorkflowNodeColumnTypes'");
     expect(main).toContain("ipcMain.handle('data.deleteTask'");
     expect(main).toContain("ipcMain.handle('data.deleteDataset'");
     expect(preload).toContain('data: {');

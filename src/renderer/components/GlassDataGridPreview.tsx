@@ -6,11 +6,18 @@ import DataEditor, {
   type GridCell,
   type GridColumn,
   type Item,
+  type SpriteMap,
   type Theme,
 } from '@glideapps/glide-data-grid';
 import '@glideapps/glide-data-grid/dist/index.css';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import type { DataInputTablePreview } from '../types';
+import {
+  isNumericDataFieldType,
+  normalizeDataFieldType,
+  type DataColumnTypeInfo,
+  type DataFieldType,
+} from '../../shared/data-field-types';
 
 type PreviewCellValue = string | number | boolean | null | undefined;
 
@@ -48,21 +55,28 @@ export function GlassDataGridPreview({
 }: GlassDataGridPreviewProps) {
   const theme = useGlassDataGridTheme();
   const columns = preview?.columns ?? EMPTY_COLUMNS;
+  const columnTypeByName = useMemo(
+    () => new Map((preview?.columnTypes ?? []).map((column) => [column.name, column])),
+    [preview?.columnTypes]
+  );
   const rows = preview?.rows ?? EMPTY_ROWS;
   const totalRows = preview?.totalRows ?? 0;
   const pageSize = preview?.limit ?? rows.length;
   const pageCount = Math.max(1, Math.ceil(totalRows / Math.max(1, pageSize || 1)));
   const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
   const pageNumbers = getVisiblePageNumbers(safeCurrentPage, pageCount);
-  const gridColumns = useMemo(() => buildGridColumns(columns, rows), [columns, rows]);
+  const gridColumns = useMemo(
+    () => buildGridColumns(columns, rows, columnTypeByName),
+    [columns, rows, columnTypeByName]
+  );
   const hasData = columns.length > 0 && rows.length > 0;
   const getCellContent = useMemo(() => {
     return ([col, row]: Item): GridCell => {
       const column = columns[col];
       const record = rows[row];
-      return createGridCell(record?.[column]);
+      return createGridCell(record?.[column], columnTypeByName.get(column)?.type);
     };
-  }, [columns, rows]);
+  }, [columnTypeByName, columns, rows]);
   const containerClassName = edgeToEdge
     ? `glass-data-grid-preview flex h-full min-h-0 flex-col overflow-hidden ${className}`
     : `glass-data-grid-preview glass-table flex h-full min-h-0 flex-col ${className}`;
@@ -105,6 +119,7 @@ export function GlassDataGridPreview({
             rowSelect="none"
             verticalBorder={true}
             theme={theme}
+            headerIcons={DATA_FIELD_HEADER_ICONS}
             drawHeader={drawStaticHeader}
             onPaste={false}
             keybindings={{ paste: false, delete: false }}
@@ -234,17 +249,22 @@ const drawStaticHeader: NonNullable<DataEditorProps['drawHeader']> = ({
 
 function buildGridColumns(
   columns: string[],
-  rows: Array<Record<string, string | number | boolean | null>>
+  rows: Array<Record<string, string | number | boolean | null>>,
+  columnTypeByName: Map<string, DataColumnTypeInfo>
 ): GridColumn[] {
-  return columns.map((column) => ({
-    id: column,
-    title: column,
-    width: estimateColumnWidth(column, rows),
-    icon: inferColumnIcon(column, rows),
-  }));
+  return columns.map((column) => {
+    const columnType = columnTypeByName.get(column);
+    return {
+      id: column,
+      title: formatColumnTitle(column),
+      width: estimateColumnWidth(column, rows),
+      icon: inferColumnIcon(column, rows, columnType?.type),
+    };
+  });
 }
 
-function createGridCell(value: PreviewCellValue): GridCell {
+function createGridCell(value: PreviewCellValue, semanticType?: DataFieldType): GridCell {
+  const normalizedType = semanticType ? normalizeDataFieldType(semanticType) : undefined;
   if (value === null || value === undefined) {
     return {
       kind: GridCellKind.Text,
@@ -254,25 +274,36 @@ function createGridCell(value: PreviewCellValue): GridCell {
       displayData: 'NULL',
       copyData: '',
       style: 'faded',
-      contentAlign: 'left',
+      contentAlign: normalizedType && isNumericDataFieldType(normalizedType) ? 'right' : 'left',
     };
   }
-  if (typeof value === 'boolean') {
+  if (
+    normalizedType === 'boolean' &&
+    (typeof value === 'boolean' || /^(true|false)$/i.test(String(value).trim()))
+  ) {
+    const data = typeof value === 'boolean' ? value : String(value).trim().toLowerCase() === 'true';
     return {
       kind: GridCellKind.Boolean,
       allowOverlay: false,
       readonly: true,
-      data: value,
-      copyData: value ? 'true' : 'false',
+      data,
+      copyData: data ? 'true' : 'false',
       contentAlign: 'center',
     };
   }
-  if (typeof value === 'number' && Number.isFinite(value)) {
+  if (
+    normalizedType !== 'decimal' &&
+    ((typeof value === 'number' && Number.isFinite(value)) ||
+      (normalizedType &&
+        isNumericDataFieldType(normalizedType) &&
+        Number.isFinite(Number(String(value).trim()))))
+  ) {
+    const numericValue = typeof value === 'number' ? value : Number(String(value).trim());
     return {
       kind: GridCellKind.Number,
       allowOverlay: false,
       readonly: true,
-      data: value,
+      data: numericValue,
       displayData: formatPreviewCell(value),
       copyData: String(value),
       contentAlign: 'right',
@@ -287,14 +318,18 @@ function createGridCell(value: PreviewCellValue): GridCell {
     displayData: text,
     copyData: text,
     style: text ? 'normal' : 'faded',
-    contentAlign: 'left',
+    contentAlign: normalizedType && isNumericDataFieldType(normalizedType) ? 'right' : 'left',
   };
 }
 
 function inferColumnIcon(
   column: string,
-  rows: Array<Record<string, string | number | boolean | null>>
-): GridColumnIcon {
+  rows: Array<Record<string, string | number | boolean | null>>,
+  semanticType?: DataFieldType
+): GridColumnIcon | string {
+  if (semanticType) {
+    return iconForDataFieldType(semanticType);
+  }
   const values = rows
     .map((row) => row[column])
     .filter((value) => value !== null && value !== undefined);
@@ -307,16 +342,39 @@ function inferColumnIcon(
   return GridColumnIcon.HeaderString;
 }
 
+function iconForDataFieldType(semanticType: DataFieldType): GridColumnIcon | string {
+  switch (normalizeDataFieldType(semanticType)) {
+    case 'text':
+      return GridColumnIcon.HeaderString;
+    case 'date':
+      return GridColumnIcon.HeaderDate;
+    case 'datetime':
+      return GridColumnIcon.HeaderTime;
+    case 'integer':
+      return 'dataFieldTypeInteger';
+    case 'float':
+      return 'dataFieldTypeFloat';
+    case 'decimal':
+      return 'dataFieldTypeDecimal';
+    case 'boolean':
+      return GridColumnIcon.HeaderBoolean;
+  }
+}
+
 function estimateColumnWidth(
   column: string,
   rows: Array<Record<string, string | number | boolean | null>>
 ): number {
   const sampledValues = rows.slice(0, 30).map((row) => formatPreviewCell(row[column]));
-  const widest = [column, ...sampledValues].reduce(
+  const widest = [formatColumnTitle(column), ...sampledValues].reduce(
     (current, value) => Math.max(current, measureDisplayWidth(value)),
     0
   );
   return clamp(Math.round(widest * 7.2 + 40), 104, 280);
+}
+
+function formatColumnTitle(column: string): string {
+  return column;
 }
 
 function measureDisplayWidth(value: string): number {
@@ -427,3 +485,21 @@ const PREVIEW_GRID_BORDER = 'rgba(220, 236, 227, 0.82)';
 const PREVIEW_GRID_TEXT_PRIMARY = '#263B33';
 const PREVIEW_GRID_TEXT_SECONDARY = '#49685A';
 const PREVIEW_GRID_TEXT_MUTED = '#8AA99A';
+
+const DATA_FIELD_HEADER_ICONS: SpriteMap = {
+  dataFieldTypeInteger: (props) => buildTextHeaderIcon(props.bgColor, props.fgColor, '#', '11px'),
+  dataFieldTypeFloat: (props) => buildTextHeaderIcon(props.bgColor, props.fgColor, '1.2', '7px'),
+  dataFieldTypeDecimal: (props) => buildTextHeaderIcon(props.bgColor, props.fgColor, '0.00', '6px'),
+};
+
+function buildTextHeaderIcon(
+  bgColor: string,
+  fgColor: string,
+  label: string,
+  fontSize: string
+): string {
+  return `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="2" y="2" width="16" height="16" rx="2" fill="${bgColor}"/>
+  <text x="10" y="10.8" text-anchor="middle" dominant-baseline="middle" fill="${fgColor}" font-family="Inter, SF Pro Text, Arial, sans-serif" font-size="${fontSize}" font-weight="600">${label}</text>
+</svg>`;
+}

@@ -126,6 +126,7 @@ import {
   parsePrepOperatorDsl,
   type PrepDiagnostic,
 } from '../../shared/prep-dsl';
+import { dataFieldTypeLabel } from '../../shared/data-field-types';
 import { useAppStore } from '../store';
 
 type DataTab = 'tasks' | 'input_tables' | 'output_tables';
@@ -4770,7 +4771,9 @@ function formatConversions(value: unknown, t: TranslateFn): string {
   const conversions = recordArray(value).map((item) => {
     const onError = stringValue(item.onError);
     const suffix = onError ? ` (${onError})` : '';
-    return `${stringValue(item.column, '?')} -> ${stringValue(item.type, '?')}${suffix}`;
+    return `${stringValue(item.column, '?')} -> ${dataFieldTypeLabel(
+      stringValue(item.type, 'text')
+    )}${suffix}`;
   });
   return formatList(conversions, t);
 }

@@ -2,6 +2,11 @@ import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { Plus, Trash2, Loader2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
+import {
+  isNumericDataFieldType,
+  isTemporalDataFieldType,
+  normalizeDataFieldType,
+} from '../../../shared/data-field-types';
 
 type OpDef = { label: string; value: string };
 
@@ -22,28 +27,19 @@ const STRING_OPS: OpDef[] = [
 
 const BOOLEAN_OPS: OpDef[] = [{ label: '等于', value: '=' }];
 
-/** Map DuckDB data_type to operator list. */
 function operatorsForType(colType: string | undefined): OpDef[] {
   if (!colType) return ALL_OPERATORS;
-  const t = colType.toLowerCase();
-  if (
-    t.includes('int') ||
-    t.includes('float') ||
-    t.includes('double') ||
-    t.includes('decimal') ||
-    t.includes('numeric') ||
-    t.includes('real') ||
-    t.includes('number')
-  ) {
+  const type = normalizeDataFieldType(colType);
+  if (isNumericDataFieldType(type)) {
     return ALL_OPERATORS;
   }
-  if (t.includes('varchar') || t.includes('char') || t.includes('text') || t.includes('string')) {
+  if (type === 'text') {
     return STRING_OPS;
   }
-  if (t.includes('date') || t.includes('time') || t.includes('timestamp')) {
+  if (isTemporalDataFieldType(type)) {
     return ALL_OPERATORS;
   }
-  if (t.includes('bool')) {
+  if (type === 'boolean') {
     return BOOLEAN_OPS;
   }
   return ALL_OPERATORS;
