@@ -64,6 +64,7 @@ function makeConfig(): AppConfig {
       apiOrigin: '',
       apiKey: '',
       datasourceId: '',
+      updatedAt: 0,
     },
     enableThinking: false,
     isConfigured: true,
