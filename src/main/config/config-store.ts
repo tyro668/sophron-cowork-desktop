@@ -182,7 +182,12 @@ export interface PersonalAnalysisConfig {
   apiOrigin: string;
   apiKey: string;
   datasourceId: string;
+  updatedAt: number;
 }
+
+type ConfigStoreUpdate = Partial<Omit<AppConfig, 'personalAnalysis'>> & {
+  personalAnalysis?: Partial<PersonalAnalysisConfig>;
+};
 
 const DEFAULT_CONFIG_SET_ID = 'default';
 const MAX_CONFIG_SET_COUNT = 20;
@@ -330,6 +335,7 @@ const defaultConfig: AppConfig = {
     apiOrigin: '',
     apiKey: '',
     datasourceId: '',
+    updatedAt: 0,
   },
   enableThinking: false,
   isConfigured: false,
@@ -513,7 +519,22 @@ function normalizePersonalAnalysisConfig(raw: unknown): PersonalAnalysisConfig {
       typeof value.datasourceId === 'string'
         ? value.datasourceId.trim()
         : defaultConfig.personalAnalysis.datasourceId,
+    updatedAt:
+      typeof value.updatedAt === 'number' && Number.isFinite(value.updatedAt)
+        ? Math.max(0, Math.round(value.updatedAt))
+        : defaultConfig.personalAnalysis.updatedAt,
   };
+}
+
+function personalAnalysisConnectionChanged(
+  previous: PersonalAnalysisConfig,
+  next: PersonalAnalysisConfig
+): boolean {
+  return (
+    previous.apiOrigin !== next.apiOrigin ||
+    previous.apiKey !== next.apiKey ||
+    previous.datasourceId !== next.datasourceId
+  );
 }
 
 function profileKeyFromProvider(
@@ -1234,7 +1255,7 @@ export class ConfigStore {
    * Set a specific config value
    */
   set<K extends keyof AppConfig>(key: K, value: AppConfig[K]): void {
-    this.update({ [key]: value } as Partial<AppConfig>);
+    this.update({ [key]: value } as ConfigStoreUpdate);
   }
 
   /**
@@ -1376,7 +1397,7 @@ export class ConfigStore {
   /**
    * Update multiple config values
    */
-  update(updates: Partial<AppConfig>): void {
+  update(updates: ConfigStoreUpdate): void {
     const current = this.getAll();
     let nextConfigSets = current.configSets.map((set) => this.cloneConfigSet(set));
 
@@ -1492,6 +1513,19 @@ export class ConfigStore {
     }
 
     const projectedConfig = this.composeProjectedConfig(current, nextConfigSets, activeConfigSetId);
+    const nextPersonalAnalysis =
+      updates.personalAnalysis !== undefined
+        ? {
+            ...normalizePersonalAnalysisConfig(updates.personalAnalysis),
+            updatedAt: current.personalAnalysis.updatedAt,
+          }
+        : current.personalAnalysis;
+    const personalAnalysis =
+      updates.personalAnalysis !== undefined &&
+      personalAnalysisConnectionChanged(current.personalAnalysis, nextPersonalAnalysis)
+        ? { ...nextPersonalAnalysis, updatedAt: Date.now() }
+        : nextPersonalAnalysis;
+
     this.saveConfig({
       ...projectedConfig,
       claudeCodePath:
@@ -1513,10 +1547,7 @@ export class ConfigStore {
         updates.memoryRuntime !== undefined
           ? normalizeMemoryRuntimeConfig(updates.memoryRuntime)
           : current.memoryRuntime,
-      personalAnalysis:
-        updates.personalAnalysis !== undefined
-          ? normalizePersonalAnalysisConfig(updates.personalAnalysis)
-          : current.personalAnalysis,
+      personalAnalysis,
       isConfigured:
         updates.isConfigured !== undefined ? updates.isConfigured : current.isConfigured,
     });

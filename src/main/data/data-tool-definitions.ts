@@ -43,6 +43,9 @@ const CloudConnectionProperties = {
   ),
 };
 
+const CLOUD_CONNECTION_RETRY_GUIDANCE =
+  ' If a previous Personal Analysis authentication or connection error appears in the conversation, do not assume it is still current after the user updates Personal Analysis settings; retry this cloud tool for the new request.';
+
 const ProcessingStrategySchema = Type.Union([
   Type.Object({
     strategy: Type.Literal('auto'),
@@ -113,7 +116,8 @@ export function createDataCustomTools(
       name: 'data_list_cloud_spaces',
       label: 'List cloud spaces',
       description:
-        'List personal analysis cloud/mock spaces through the configured API. Use before selecting cloud projects.',
+        'List personal analysis cloud/mock spaces through the configured API. Use before selecting cloud projects.' +
+        CLOUD_CONNECTION_RETRY_GUIDANCE,
       parameters: Type.Object({
         ...CloudConnectionProperties,
       }),
@@ -123,7 +127,8 @@ export function createDataCustomTools(
       name: 'data_list_cloud_projects',
       label: 'List cloud projects',
       description:
-        'List personal analysis cloud/mock projects under a cloud space. Use before selecting cloud tables.',
+        'List personal analysis cloud/mock projects under a cloud space. Use before selecting cloud tables.' +
+        CLOUD_CONNECTION_RETRY_GUIDANCE,
       parameters: Type.Object({
         ...CloudConnectionProperties,
         spaceId: Type.String({ minLength: 1 }),
@@ -134,7 +139,8 @@ export function createDataCustomTools(
       name: 'data_list_cloud_tables',
       label: 'List cloud tables',
       description:
-        'List personal analysis cloud/mock tables under a cloud project. Use before importing a cloud table into cowork.',
+        'List personal analysis cloud/mock tables under a cloud project. Use before importing a cloud table into cowork.' +
+        CLOUD_CONNECTION_RETRY_GUIDANCE,
       parameters: Type.Object({
         ...CloudConnectionProperties,
         spaceId: Type.String({ minLength: 1 }),
@@ -146,7 +152,8 @@ export function createDataCustomTools(
       name: 'data_import_cloud_table',
       label: 'Import cloud table',
       description:
-        'Export a personal analysis cloud/mock table as CSV, download it locally, and create a cowork input table from it.',
+        'Export a personal analysis cloud/mock table as CSV, download it locally, and create a cowork input table from it.' +
+        CLOUD_CONNECTION_RETRY_GUIDANCE,
       parameters: Type.Object({
         ...CloudConnectionProperties,
         tableId: Type.String({ minLength: 1 }),
@@ -171,7 +178,8 @@ export function createDataCustomTools(
       name: 'data_upload_table_to_cloud',
       label: 'Upload table to cloud',
       description:
-        'Export a cowork input/output table to CSV, upload it to personal analysis cloud/mock storage, and submit an import with CREATE or REPLACE mode.',
+        'Export a cowork input/output table to CSV, upload it to personal analysis cloud/mock storage, and submit an import with CREATE or REPLACE mode.' +
+        CLOUD_CONNECTION_RETRY_GUIDANCE,
       parameters: Type.Object({
         ...CloudConnectionProperties,
         tableKind: Type.Union([Type.Literal('input'), Type.Literal('output')]),

@@ -703,7 +703,7 @@
     "loadDatasources": "加载",
     "mockServer": "Mock Server",
     "saveSettings": "保存设置",
-    "saveSuccess": "Personal Analysis 设置已保存",
+    "saveSuccess": "Personal Analysis 设置已保存。新的连接信息将在下一次工具请求时生效。",
     "saveFailed": "保存 Personal Analysis 设置失败",
     "datasourceRefreshMissingConnection": "请先填写服务地址和 API Key，再加载数据源",
     "datasourceRefreshEmpty": "服务端未返回可用数据源，可手动输入数据源 ID。",

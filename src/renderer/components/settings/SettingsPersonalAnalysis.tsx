@@ -10,6 +10,7 @@ const EMPTY_PERSONAL_ANALYSIS_CONFIG: PersonalAnalysisConfig = {
   apiKey: '',
   datasourceId: '',
 };
+type PersonalAnalysisFormField = 'apiOrigin' | 'apiKey' | 'datasourceId';
 
 export function SettingsPersonalAnalysis() {
   const { t } = useTranslation();
@@ -26,7 +27,7 @@ export function SettingsPersonalAnalysis() {
     setForm(appConfig?.personalAnalysis || EMPTY_PERSONAL_ANALYSIS_CONFIG);
   }, [appConfig?.personalAnalysis]);
 
-  const updateField = (field: keyof PersonalAnalysisConfig, value: string) => {
+  const updateField = (field: PersonalAnalysisFormField, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
     setError('');
     setSuccessMessage('');
@@ -166,7 +167,12 @@ export function SettingsPersonalAnalysis() {
       const result = await window.electronAPI.config.save({ personalAnalysis });
       setAppConfig(result.config);
       setForm(result.config.personalAnalysis || personalAnalysis);
-      setSuccessMessage(t('personalAnalysis.saveSuccess', 'Personal Analysis settings saved'));
+      setSuccessMessage(
+        t(
+          'personalAnalysis.saveSuccess',
+          'Personal Analysis settings saved. The new connection will be used on the next tool request.'
+        )
+      );
     } catch (saveError) {
       setError(
         saveError instanceof Error
