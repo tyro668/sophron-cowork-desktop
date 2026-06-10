@@ -723,7 +723,8 @@ export function useIPC() {
       name: string | null
     ): Promise<Project | null> => {
       const normalizedName = name?.trim() || null;
-      const projectId = typeof projectLocator === 'string' ? projectLocator : projectLocator.projectId;
+      const projectId =
+        typeof projectLocator === 'string' ? projectLocator : projectLocator.projectId;
       const cwd = typeof projectLocator === 'string' ? undefined : projectLocator.cwd?.trim();
       if (!isElectron) {
         const project: Project = {

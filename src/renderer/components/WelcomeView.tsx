@@ -502,9 +502,7 @@ export function WelcomeView() {
     <div className="flex-1 flex flex-col items-center justify-center bg-transparent px-4 py-6 md:px-8">
       <div className="max-w-[880px] w-full space-y-4 animate-fade-in">
         <div className="flex items-center justify-between gap-3 border-b border-border-subtle pb-3">
-          <h1 className="text-[17px] font-medium text-text-primary">
-            {t('welcome.title')}
-          </h1>
+          <h1 className="text-[17px] font-medium text-text-primary">{t('welcome.title')}</h1>
           <span className="hidden rounded-full border border-border-subtle bg-background/58 px-3 py-1 text-xs text-text-muted shadow-soft sm:inline-flex">
             {workingDirLabel}
           </span>
@@ -534,11 +532,11 @@ export function WelcomeView() {
             <button
               key={tag.id}
               onClick={() => handleTagClick(tag.id, tag.prompt)}
-                className={`inline-flex h-8 items-center gap-2 rounded-xl border px-3 text-[13px] font-medium shadow-soft transition-colors ${
-                  selectedTag === tag.id
-                    ? 'border-accent/30 bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/15'
-                    : 'border-border-muted bg-background/68 text-text-secondary hover:border-accent/25 hover:bg-surface-hover hover:text-text-primary'
-                } ${
+              className={`inline-flex h-8 items-center gap-2 rounded-xl border px-3 text-[13px] font-medium shadow-soft transition-colors ${
+                selectedTag === tag.id
+                  ? 'border-accent/30 bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/15'
+                  : 'border-border-muted bg-background/68 text-text-secondary hover:border-accent/25 hover:bg-surface-hover hover:text-text-primary'
+              } ${
                 ('requiresChrome' in tag && tag.requiresChrome) ||
                 ('requiresNotion' in tag && tag.requiresNotion)
                   ? 'relative'
@@ -671,9 +669,7 @@ export function WelcomeView() {
                 type="button"
                 onClick={handleSelectFolder}
                 className={`composer-flat-pill inline-flex h-9 min-w-0 flex-1 items-center gap-2 rounded-full px-3 text-[13px] font-medium sm:flex-none ${
-                  workingDir
-                    ? ''
-                    : 'text-accent hover:text-accent-hover'
+                  workingDir ? '' : 'text-accent hover:text-accent-hover'
                 }`}
                 title={workingDir || t('welcome.selectWorkingFolder')}
               >
@@ -718,7 +714,6 @@ export function WelcomeView() {
               </button>
             </div>
           </div>
-
         </form>
       </div>
     </div>

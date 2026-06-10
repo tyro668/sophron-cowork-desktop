@@ -132,6 +132,9 @@ export interface AppConfig {
   // Dedicated memory runtime config
   memoryRuntime: MemoryRuntimeConfig;
 
+  // Personal Analysis / mock server connection
+  personalAnalysis: PersonalAnalysisConfig;
+
   // Enable thinking mode (show thinking steps)
   enableThinking: boolean;
 
@@ -173,6 +176,12 @@ export interface MemoryRuntimeConfig {
   evalMaxRounds?: number;
   evalArtifactsRoot?: string;
   promptIterationRounds?: number;
+}
+
+export interface PersonalAnalysisConfig {
+  apiOrigin: string;
+  apiKey: string;
+  datasourceId: string;
 }
 
 const DEFAULT_CONFIG_SET_ID = 'default';
@@ -316,6 +325,11 @@ const defaultConfig: AppConfig = {
     evalMaxRounds: 12,
     evalArtifactsRoot: '',
     promptIterationRounds: 2,
+  },
+  personalAnalysis: {
+    apiOrigin: '',
+    apiKey: '',
+    datasourceId: '',
   },
   enableThinking: false,
   isConfigured: false,
@@ -480,6 +494,25 @@ function normalizeMemoryRuntimeConfig(raw: unknown): MemoryRuntimeConfig {
       Number.isFinite(value.promptIterationRounds)
         ? Math.max(0, Math.min(10, Math.round(value.promptIterationRounds)))
         : defaultConfig.memoryRuntime.promptIterationRounds,
+  };
+}
+
+function normalizePersonalAnalysisConfig(raw: unknown): PersonalAnalysisConfig {
+  const value =
+    typeof raw === 'object' && raw !== null ? (raw as Partial<PersonalAnalysisConfig>) : {};
+  return {
+    apiOrigin:
+      typeof value.apiOrigin === 'string'
+        ? value.apiOrigin.trim().replace(/\/+$/, '')
+        : defaultConfig.personalAnalysis.apiOrigin,
+    apiKey:
+      typeof value.apiKey === 'string'
+        ? value.apiKey.trim()
+        : defaultConfig.personalAnalysis.apiKey,
+    datasourceId:
+      typeof value.datasourceId === 'string'
+        ? value.datasourceId.trim()
+        : defaultConfig.personalAnalysis.datasourceId,
   };
 }
 
@@ -1043,6 +1076,7 @@ export class ConfigStore {
       sandboxEnabled: toBoolean(raw.sandboxEnabled, defaultConfig.sandboxEnabled),
       memoryEnabled: toBoolean(raw.memoryEnabled, defaultConfig.memoryEnabled),
       memoryRuntime: normalizeMemoryRuntimeConfig(raw.memoryRuntime),
+      personalAnalysis: normalizePersonalAnalysisConfig(raw.personalAnalysis),
       enableThinking: projected.enableThinking,
       isConfigured: toBoolean(raw.isConfigured, defaultConfig.isConfigured),
     };
@@ -1479,6 +1513,10 @@ export class ConfigStore {
         updates.memoryRuntime !== undefined
           ? normalizeMemoryRuntimeConfig(updates.memoryRuntime)
           : current.memoryRuntime,
+      personalAnalysis:
+        updates.personalAnalysis !== undefined
+          ? normalizePersonalAnalysisConfig(updates.personalAnalysis)
+          : current.personalAnalysis,
       isConfigured:
         updates.isConfigured !== undefined ? updates.isConfigured : current.isConfigured,
     });

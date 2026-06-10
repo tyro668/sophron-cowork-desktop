@@ -31,6 +31,7 @@ import { config } from 'dotenv';
 import { initDatabase, closeDatabase, type DatabaseInstance, type ProjectRow } from './db/database';
 import { createDataTaskStore, type DataTaskStore } from './data/data-task-store';
 import { DataCommandService } from './data/data-command-service';
+import { createPersonalAnalysisClient } from './data/personal-analysis-client';
 import { DataToolService } from './data/data-tool-service';
 import { createDataAgentRuntimeExtension } from './data/data-agent-extension';
 import { createLlmInputTableNormalizerProjectGenerator } from './data/input-table-normalizer-generator';
@@ -993,9 +994,12 @@ app
     // Initialize database
     const db = initDatabase();
     appDatabase = db;
-    const initializedDataTaskStore = createDataTaskStore(join(app.getPath('userData'), 'data', 'workspace.duckdb'), {
-      metadataDb: db,
-    });
+    const initializedDataTaskStore = createDataTaskStore(
+      join(app.getPath('userData'), 'data', 'workspace.duckdb'),
+      {
+        metadataDb: db,
+      }
+    );
     dataTaskStore = initializedDataTaskStore;
     updateService = new UpdateService({
       getWindow: () => mainWindow,
@@ -1832,14 +1836,17 @@ ipcMain.handle('data.getTaskWorkflow', async (_event, id: string) => {
   }
 });
 
-ipcMain.handle('data.saveTaskWorkflow', async (_event, id: string, payload: DataWorkflowSaveInput) => {
-  try {
-    return await requireDataTaskStore().saveTaskWorkflow(id, payload);
-  } catch (error) {
-    logError('[Data] Error saving task workflow:', error);
-    throw error;
+ipcMain.handle(
+  'data.saveTaskWorkflow',
+  async (_event, id: string, payload: DataWorkflowSaveInput) => {
+    try {
+      return await requireDataTaskStore().saveTaskWorkflow(id, payload);
+    } catch (error) {
+      logError('[Data] Error saving task workflow:', error);
+      throw error;
+    }
   }
-});
+);
 
 ipcMain.handle('data.importDataset', async (_event, payload: DataImportDatasetInput) => {
   try {
@@ -1997,23 +2004,29 @@ ipcMain.handle('data.previewDataset', async (_event, payload: DataPreviewDataset
   }
 });
 
-ipcMain.handle('data.previewWorkflowNode', async (_event, payload: DataPreviewWorkflowNodeInput) => {
-  try {
-    return await requireDataTaskStore().previewWorkflowNode(payload);
-  } catch (error) {
-    logError('[Data] Error previewing workflow node cache:', error);
-    throw error;
+ipcMain.handle(
+  'data.previewWorkflowNode',
+  async (_event, payload: DataPreviewWorkflowNodeInput) => {
+    try {
+      return await requireDataTaskStore().previewWorkflowNode(payload);
+    } catch (error) {
+      logError('[Data] Error previewing workflow node cache:', error);
+      throw error;
+    }
   }
-});
+);
 
-ipcMain.handle('data.getWorkflowNodeColumns', async (_event, payload: DataPreviewWorkflowNodeInput) => {
-  try {
-    return await requireDataTaskStore().getWorkflowNodeColumns(payload);
-  } catch (error) {
-    logError('[Data] Error reading workflow node cache columns:', error);
-    throw error;
+ipcMain.handle(
+  'data.getWorkflowNodeColumns',
+  async (_event, payload: DataPreviewWorkflowNodeInput) => {
+    try {
+      return await requireDataTaskStore().getWorkflowNodeColumns(payload);
+    } catch (error) {
+      logError('[Data] Error reading workflow node cache columns:', error);
+      throw error;
+    }
   }
-});
+);
 
 ipcMain.handle('data.deleteTask', async (_event, id: string) => {
   try {
@@ -2023,6 +2036,30 @@ ipcMain.handle('data.deleteTask', async (_event, id: string) => {
     throw error;
   }
 });
+
+ipcMain.handle(
+  'data.getWorkflowNodeColumnTypes',
+  async (_event, payload: DataPreviewWorkflowNodeInput) => {
+    try {
+      return await requireDataTaskStore().getWorkflowNodeColumnTypes(payload);
+    } catch (error) {
+      logError('[Data] Error reading workflow node column types:', error);
+      throw error;
+    }
+  }
+);
+
+ipcMain.handle(
+  'data.getWorkflowNodeColumnValues',
+  async (_event, payload: DataPreviewWorkflowNodeInput & { column: string }) => {
+    try {
+      return await requireDataTaskStore().getWorkflowNodeColumnValues(payload);
+    } catch (error) {
+      logError('[Data] Error reading workflow node column values:', error);
+      throw error;
+    }
+  }
+);
 
 ipcMain.handle('data.deleteDataset', async (_event, id: string) => {
   try {
@@ -2135,6 +2172,12 @@ ipcMain.handle('config.save', async (_event, newConfig: Partial<AppConfig>) => {
             : undefined,
         }
       : undefined,
+    personalAnalysis: newConfig.personalAnalysis
+      ? {
+          ...newConfig.personalAnalysis,
+          apiKey: newConfig.personalAnalysis.apiKey ? '***' : '',
+        }
+      : undefined,
   });
 
   const previousConfig = configStore.getAll();
@@ -2231,6 +2274,18 @@ ipcMain.handle('config.discover-local', async (_event, payload?: { baseUrl?: str
     return [];
   }
 });
+
+ipcMain.handle(
+  'config.listPersonalAnalysisDatasources',
+  async (_event, payload: { apiOrigin?: string; apiKey?: string; accessToken?: string }) => {
+    try {
+      return await createPersonalAnalysisClient(payload).listDatasources();
+    } catch (error) {
+      logError('[Config] Error listing Personal Analysis datasources:', error);
+      throw error;
+    }
+  }
+);
 
 // MCP Server IPC handlers
 ipcMain.handle('mcp.getServers', () => {
@@ -3146,24 +3201,26 @@ function scheduleInputToActionGraph(input: {
 }
 
 function scheduleDeliveryToAutomationDelivery(
-  delivery?:
-    | {
-        enabled?: boolean;
-        artifactPolicy?: 'summary' | 'links' | 'files';
-        recipients?: Array<{ id: string; channel: string; target: string; enabled: boolean }>;
-      }
-    | null
+  delivery?: {
+    enabled?: boolean;
+    artifactPolicy?: 'summary' | 'links' | 'files';
+    recipients?: Array<{ id: string; channel: string; target: string; enabled: boolean }>;
+  } | null
 ): AutomationCreateInput['delivery'] {
   const value = delivery ?? undefined;
   if (!value?.enabled) return null;
   return {
     enabled: true,
-    artifactPolicy: value.artifactPolicy === 'files' ? 'attachments' : value.artifactPolicy ?? 'links',
+    artifactPolicy:
+      value.artifactPolicy === 'files' ? 'attachments' : (value.artifactPolicy ?? 'links'),
     failureMessage: { includeRunLog: true, includeArtifacts: false },
     channels:
       value.recipients?.map((recipient) => ({
         id: recipient.id,
-        type: recipient.channel === 'email' || recipient.channel === 'webhook' ? recipient.channel : 'feishu',
+        type:
+          recipient.channel === 'email' || recipient.channel === 'webhook'
+            ? recipient.channel
+            : 'feishu',
         enabled: recipient.enabled !== false,
         recipient: recipient.target,
         config: {},
@@ -3172,17 +3229,19 @@ function scheduleDeliveryToAutomationDelivery(
 }
 
 function automationToScheduledTask(automation: Automation): ScheduledTask {
-  const conversationNode = automation.actionGraph.nodes.find((node) => node.type === 'conversation.run');
+  const conversationNode = automation.actionGraph.nodes.find(
+    (node) => node.type === 'conversation.run'
+  );
   const dataTaskNode = automation.actionGraph.nodes.find((node) => node.type === 'data.task.run');
   const prompt =
-    typeof conversationNode?.config.prompt === 'string'
-      ? conversationNode.config.prompt
-      : '';
+    typeof conversationNode?.config.prompt === 'string' ? conversationNode.config.prompt : '';
   const actionProjectId =
-    typeof conversationNode?.config.projectId === 'string' && conversationNode.config.projectId.trim()
+    typeof conversationNode?.config.projectId === 'string' &&
+    conversationNode.config.projectId.trim()
       ? conversationNode.config.projectId.trim()
       : null;
-  const legacyCwd = typeof conversationNode?.config.cwd === 'string' ? conversationNode.config.cwd : '';
+  const legacyCwd =
+    typeof conversationNode?.config.cwd === 'string' ? conversationNode.config.cwd : '';
   const cwd = resolveAutomationProjectCwd(automation.projectId ?? actionProjectId) || legacyCwd;
   const scheduleConfig =
     automation.trigger.kind === 'daily'
@@ -3202,14 +3261,15 @@ function automationToScheduledTask(automation: Automation): ScheduledTask {
     automationConfig: dataTaskNode
       ? {
           actionKind: 'data_task',
-          dataTaskId: typeof dataTaskNode.config.taskId === 'string' ? dataTaskNode.config.taskId : null,
+          dataTaskId:
+            typeof dataTaskNode.config.taskId === 'string' ? dataTaskNode.config.taskId : null,
           dataTaskName: dataTaskNode.label ?? null,
           delivery: {
             enabled: automation.delivery?.enabled ?? false,
             artifactPolicy:
               automation.delivery?.artifactPolicy === 'attachments'
                 ? 'files'
-                : automation.delivery?.artifactPolicy ?? 'links',
+                : (automation.delivery?.artifactPolicy ?? 'links'),
             recipients:
               automation.delivery?.channels.map((channel) => ({
                 id: channel.id,
@@ -3227,7 +3287,7 @@ function automationToScheduledTask(automation: Automation): ScheduledTask {
         ? automation.trigger.runAt
         : automation.trigger.kind === 'interval'
           ? automation.trigger.startAt
-          : automation.nextRunAt ?? automation.createdAt,
+          : (automation.nextRunAt ?? automation.createdAt),
     nextRunAt: automation.nextRunAt,
     scheduleConfig,
     repeatEvery: automation.trigger.kind === 'interval' ? automation.trigger.every : null,
@@ -3345,7 +3405,7 @@ ipcMain.handle('schedule.update', async (_event, id: string, updates: ScheduledT
   const legacyProjectId =
     updates.cwd !== undefined
       ? ensureProjectIdForLegacyCwd(nextCwd)
-      : existingAutomation.projectId ?? ensureProjectIdForLegacyCwd(existing.cwd);
+      : (existingAutomation.projectId ?? ensureProjectIdForLegacyCwd(existing.cwd));
   const normalizedUpdates: ScheduledTaskUpdateInput = {
     ...updates,
     prompt: normalizedPrompt,
@@ -3363,9 +3423,10 @@ ipcMain.handle('schedule.update', async (_event, id: string, updates: ScheduledT
   const merged: ScheduledTask = { ...existing, ...normalizedUpdates } as ScheduledTask;
   const updated = requireAutomationService().update(id, {
     name: normalizedUpdates.title,
-    projectId: updates.cwd !== undefined || (!existingAutomation.projectId && legacyProjectId)
-      ? legacyProjectId
-      : undefined,
+    projectId:
+      updates.cwd !== undefined || (!existingAutomation.projectId && legacyProjectId)
+        ? legacyProjectId
+        : undefined,
     enabled: normalizedUpdates.enabled,
     trigger:
       updates.runAt !== undefined ||
@@ -3380,7 +3441,9 @@ ipcMain.handle('schedule.update', async (_event, id: string, updates: ScheduledT
           })
         : undefined,
     actionGraph:
-      updates.prompt !== undefined || updates.cwd !== undefined || updates.automationConfig !== undefined
+      updates.prompt !== undefined ||
+      updates.cwd !== undefined ||
+      updates.automationConfig !== undefined
         ? scheduleInputToActionGraph({
             prompt: merged.prompt,
             cwd: merged.cwd,

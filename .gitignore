@@ -95,6 +95,9 @@ DEV_LOG.md
 # Playwright MCP
 .playwright-mcp/
 
+# Agents
+.agents/
+
 # Build cache
 .build-cache/
 .bundle-resources/

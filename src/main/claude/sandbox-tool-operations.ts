@@ -49,7 +49,10 @@ function rewriteVirtualWorkspaceReferences(command: string, cwd: string): string
   return command.replace(/\/workspace(?=\/|\s|$)/g, shellQuote(cwd));
 }
 
-function buildSandboxShellInvocation(mode: SandboxToolMode, script: string): {
+function buildSandboxShellInvocation(
+  mode: SandboxToolMode,
+  script: string
+): {
   command: string;
   args: string[];
 } {
@@ -228,10 +231,7 @@ function createSandboxReadOperations(mode: SandboxToolMode, cwd: string): ReadOp
   return {
     readFile: async (absolutePath) => {
       const path = resolveSandboxPath(absolutePath, cwd);
-      const result = await runCheckedSandboxShell(
-        mode,
-        `base64 -w 0 ${shellQuote(path)}`
-      );
+      const result = await runCheckedSandboxShell(mode, `base64 -w 0 ${shellQuote(path)}`);
       return Buffer.from(result.stdout.toString('utf-8').trim(), 'base64');
     },
     access: async (absolutePath) => {

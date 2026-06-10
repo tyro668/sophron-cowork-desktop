@@ -263,7 +263,13 @@ export class SessionManager {
   ): Promise<Session> {
     log('[SessionManager] Starting new session:', title);
 
-    const session = this.createSession(title, cwd, allowedTools, memoryEnabled, runtimeConfig?.model);
+    const session = this.createSession(
+      title,
+      cwd,
+      allowedTools,
+      memoryEnabled,
+      runtimeConfig?.model
+    );
 
     // Save to database
     this.saveSession(session);

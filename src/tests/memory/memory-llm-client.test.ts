@@ -52,6 +52,11 @@ function makeConfig(timeoutMs: number): AppConfig {
       evalArtifactsRoot: '',
       promptIterationRounds: 2,
     },
+    personalAnalysis: {
+      apiOrigin: '',
+      apiKey: '',
+      datasourceId: '',
+    },
     enableThinking: false,
     isConfigured: true,
   };

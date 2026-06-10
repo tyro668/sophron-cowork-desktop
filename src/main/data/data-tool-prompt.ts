@@ -48,7 +48,9 @@ function buildCurrentContextSection(context: DataToolPromptContext): string {
     );
   }
   if (lines.length === 1) {
-    lines.push('- No current data task/table is selected. Use list tools before referencing resources by name.');
+    lines.push(
+      '- No current data task/table is selected. Use list tools before referencing resources by name.'
+    );
   }
   if (context.workspacePath) {
     lines.push(`- workspacePath: ${context.workspacePath}`);
@@ -61,6 +63,8 @@ function buildToolGuideSection(): string {
     'Core tool guide:',
     '- DSL help: data_get_workflow_dsl_reference. Use this tool instead of reading source files such as design/prep/*.md.',
     '- Discover resources: data_list_input_tables, data_list_output_tables, data_list_tasks.',
+    '- Discover personal analysis cloud/mock resources: data_list_cloud_spaces, data_list_cloud_projects, data_list_cloud_tables.',
+    '- Move data between cloud/mock and cowork: use data_import_cloud_table to download a cloud table into a cowork input table; use data_upload_table_to_cloud to upload a cowork input/output table back with CREATE or REPLACE.',
     '- Create resources for fixed workflows: data_create_input_table_with_processing_strategy, data_create_input_table, data_create_output_table, data_create_task.',
     '- Prefer data_create_input_table_with_processing_strategy when creating an input table. Pass processingStrategy.strategy="auto" for normal built-in import. Pass processingStrategy.strategy="customize" and the user-provided rulePrompt for complex Excel/CSV/folder standardization before workflow DSL.',
     '- For customize processing, data_create_input_table_with_processing_strategy samples the real source with built-in Node readers, generates an executable normalizer project through the configured LLM, previews it, publishes the validated version, and imports the input table bound to that published strategy.',
@@ -88,10 +92,12 @@ function buildDslReferenceSection(): string {
 function buildWorkflowRecipesSection(): string {
   return [
     'Standard fixed-workflow recipes:',
+    '0. From personal analysis cloud/mock: list cloud spaces/projects/tables, call data_import_cloud_table, then use the returned inputTable id in the normal workflow.',
     '1. From a user-authorized file/folder: call data_create_input_table_with_processing_strategy, using strategy=customize when the source needs LLM-generated standardization code and strategy=auto otherwise. Inspect the preview, create an output table if needed, create a task with sourceInputTableId/outputTableId, apply text workflow DSL with inputTableId/outputTableId and dryRun=true, then save and temporary run.',
     '2. From existing tables: list matching input/output tables, preview schemas, create or select a task with sourceInputTableId/outputTableId, apply text DSL using returned IDs, then temporary run.',
     '3. To publish formal output: configure the output operator with outputTableId, run mode=temporary for validation, then run mode=persisted only after the user confirms.',
-    '4. If the user only asks to explore or analyze once, do not create a task automatically. Ask whether to turn it into a reusable data task.',
+    '4. To send a finished table back to personal analysis cloud/mock, preview or run the output first, then call data_upload_table_to_cloud with writeMode=CREATE for a new cloud table or REPLACE with tableId for an existing cloud table.',
+    '5. If the user only asks to explore or analyze once, do not create a task automatically. Ask whether to turn it into a reusable data task.',
   ].join('\n');
 }
 

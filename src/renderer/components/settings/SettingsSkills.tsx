@@ -482,9 +482,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-[15px] font-semibold text-text-primary">
-          {t('skills.customSkills')}
-        </h2>
+        <h2 className="text-[15px] font-semibold text-text-primary">{t('skills.customSkills')}</h2>
         <div className="glass-card overflow-hidden rounded-xl">
           {customSkills.length === 0 ? (
             <div className="flex items-center gap-3 px-4 py-3 text-text-muted">

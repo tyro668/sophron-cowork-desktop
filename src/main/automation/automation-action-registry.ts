@@ -24,8 +24,10 @@ export interface AutomationRunLogEvent {
   details?: Record<string, unknown>;
 }
 
-export interface AutomationActionDefinition<TConfig = Record<string, unknown>, TResult = unknown>
-  extends AutomationActionDefinitionSummary {
+export interface AutomationActionDefinition<
+  TConfig = Record<string, unknown>,
+  TResult = unknown,
+> extends AutomationActionDefinitionSummary {
   defaultConfig: TConfig;
   outputSchema?: AutomationJsonSchema;
   validate?: (config: TConfig) => void | Promise<void>;
@@ -73,4 +75,3 @@ export function objectSchema(
     properties,
   };
 }
-

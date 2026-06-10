@@ -9,12 +9,7 @@ export type AutomationTriggerReason =
   | 'queued_overlap'
   | 'file_change';
 
-export type AutomationDeliveryStatus =
-  | 'pending'
-  | 'succeeded'
-  | 'partial'
-  | 'failed'
-  | 'skipped';
+export type AutomationDeliveryStatus = 'pending' | 'succeeded' | 'partial' | 'failed' | 'skipped';
 
 export type AutomationTrigger =
   | AutomationTriggerOnce

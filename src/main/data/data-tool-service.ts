@@ -13,6 +13,10 @@ import type {
   GenerateInputTableNormalizerDraftCommand,
   GetRunResultCommand,
   GetTaskWorkflowCommand,
+  ImportCloudTableCommand,
+  ListCloudProjectsCommand,
+  ListCloudSpacesCommand,
+  ListCloudTablesCommand,
   ListInputTableNormalizerVersionsCommand,
   ListInputTablesInput,
   PreviewTableCommand,
@@ -23,12 +27,10 @@ import type {
   UpdateInputTableCommand,
   UpdateOutputTableCommand,
   UpdateTaskCommand,
+  UploadDataTableToCloudCommand,
 } from './data-command-types';
 import type { DataToolPromptContext, DataToolResult } from './data-tool-types';
-import {
-  getWorkflowDslReference,
-  type DataDslReferenceTopic,
-} from './data-dsl-reference';
+import { getWorkflowDslReference, type DataDslReferenceTopic } from './data-dsl-reference';
 import { createDataResourceHref, type DataResourceKind } from '../../shared/data-resource-link';
 import type {
   DataCleaningTask,
@@ -37,6 +39,11 @@ import type {
   DataOutputTable,
   DataTaskWorkflow,
 } from '../../renderer/types';
+import type {
+  PersonalAnalysisProject,
+  PersonalAnalysisSpace,
+  PersonalAnalysisTable,
+} from './personal-analysis-client';
 
 export class DataToolService {
   constructor(private readonly commandService: DataCommandService) {}
@@ -68,9 +75,11 @@ export class DataToolService {
     );
   }
 
-  async getWorkflowDslReference(input: {
-    topic?: DataDslReferenceTopic;
-  } = {}): Promise<DataToolResult> {
+  async getWorkflowDslReference(
+    input: {
+      topic?: DataDslReferenceTopic;
+    } = {}
+  ): Promise<DataToolResult> {
     const topic = input.topic ?? 'all';
     const text = getWorkflowDslReference(topic);
     return toolResult(text, { topic, text });
@@ -79,10 +88,7 @@ export class DataToolService {
   async createInputTable(input: CreateInputTableCommand): Promise<DataToolResult> {
     const result = await this.commandService.createInputTable(input);
     return toolResult(
-      [
-        `Created input table: ${formatInputTable(result.inputTable)}`,
-        formatPreview(result.preview),
-      ]
+      [`Created input table: ${formatInputTable(result.inputTable)}`, formatPreview(result.preview)]
         .filter(Boolean)
         .join('\n\n'),
       result
@@ -116,17 +122,16 @@ export class DataToolService {
   async updateInputTable(input: UpdateInputTableCommand): Promise<DataToolResult> {
     const result = await this.commandService.updateInputTable(input);
     return toolResult(
-      [
-        `Updated input table: ${formatInputTable(result.inputTable)}`,
-        formatPreview(result.preview),
-      ]
+      [`Updated input table: ${formatInputTable(result.inputTable)}`, formatPreview(result.preview)]
         .filter(Boolean)
         .join('\n\n'),
       result
     );
   }
 
-  async summarizeInputTableSource(input: SummarizeInputTableSourceCommand): Promise<DataToolResult> {
+  async summarizeInputTableSource(
+    input: SummarizeInputTableSourceCommand
+  ): Promise<DataToolResult> {
     const result = await this.commandService.summarizeInputTableSource(input);
     return toolResult(formatInputTableSourceSummary(result.summary), result);
   }
@@ -190,11 +195,75 @@ export class DataToolService {
     );
   }
 
+  async listCloudSpaces(input: ListCloudSpacesCommand): Promise<DataToolResult> {
+    const result = await this.commandService.listCloudSpaces(input);
+    const lines = result.spaces.map(formatCloudSpace);
+    return toolResult(
+      lines.length
+        ? `Found ${result.spaces.length} cloud space(s):\n${lines.join('\n')}`
+        : 'No cloud spaces found.',
+      result
+    );
+  }
+
+  async listCloudProjects(input: ListCloudProjectsCommand): Promise<DataToolResult> {
+    const result = await this.commandService.listCloudProjects(input);
+    const lines = result.projects.map(formatCloudProject);
+    return toolResult(
+      lines.length
+        ? `Found ${result.projects.length} cloud project(s):\n${lines.join('\n')}`
+        : 'No cloud projects found.',
+      result
+    );
+  }
+
+  async listCloudTables(input: ListCloudTablesCommand): Promise<DataToolResult> {
+    const result = await this.commandService.listCloudTables(input);
+    const lines = result.tables.map(formatCloudTable);
+    return toolResult(
+      lines.length
+        ? `Found ${result.tables.length} cloud table(s):\n${lines.join('\n')}`
+        : 'No cloud tables found.',
+      result
+    );
+  }
+
+  async importCloudTable(input: ImportCloudTableCommand): Promise<DataToolResult> {
+    const result = await this.commandService.importCloudTable(input);
+    return toolResult(
+      [
+        `Imported cloud table ${result.cloudTableId} as input table: ${formatInputTable(result.inputTable)}`,
+        result.cloudTable ? `Cloud source: ${formatCloudTable(result.cloudTable)}` : '',
+        formatPreview(result.preview),
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
+      result
+    );
+  }
+
+  async uploadDataTableToCloud(input: UploadDataTableToCloudCommand): Promise<DataToolResult> {
+    const result = await this.commandService.uploadDataTableToCloud(input);
+    return toolResult(
+      [
+        `Uploaded ${result.sourceTable.tableKind} table ${result.sourceTable.name} (${result.sourceTable.id}) to cloud table ${result.upload.tableId}.`,
+        `Rows=${result.sourceTable.rowCount} columns=${result.sourceTable.columnCount} bytes=${result.csvBytes} status=${result.upload.status} importTaskId=${result.upload.importTaskId}`,
+        result.upload.table ? `Cloud target: ${formatCloudTable(result.upload.table)}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      result
+    );
+  }
+
   async previewInputTableNormalizerVersion(
     input: PreviewInputTableNormalizerVersionCommand
   ): Promise<DataToolResult> {
     const result = await this.commandService.previewInputTableNormalizerVersion(input);
-    return toolResult(`Previewed normalizer version ${input.versionId}.\n\n${formatPreview(result.preview)}`, result);
+    return toolResult(
+      `Previewed normalizer version ${input.versionId}.\n\n${formatPreview(result.preview)}`,
+      result
+    );
   }
 
   async publishInputTableNormalizerVersion(
@@ -265,7 +334,10 @@ export class DataToolService {
 
   async exportWorkflowDsl(input: ExportWorkflowDslCommand): Promise<DataToolResult> {
     const result = await this.commandService.exportWorkflowDsl(input);
-    return toolResult(result.text ? `Workflow DSL:\n${result.text}` : 'Workflow has no DSL.', result);
+    return toolResult(
+      result.text ? `Workflow DSL:\n${result.text}` : 'Workflow has no DSL.',
+      result
+    );
   }
 
   async configureInputOperator(input: ConfigureInputOperatorCommand): Promise<DataToolResult> {
@@ -276,7 +348,13 @@ export class DataToolService {
   async applyOperatorDsl(input: ApplyOperatorDslCommand): Promise<DataToolResult> {
     const result = await this.commandService.applyOperatorDsl(input);
     return toolResult(
-      [formatWorkflow(result.dryRun ? 'Validated operator DSL' : 'Applied operator DSL', result.workflow), formatDiagnostics(result.diagnostics)]
+      [
+        formatWorkflow(
+          result.dryRun ? 'Validated operator DSL' : 'Applied operator DSL',
+          result.workflow
+        ),
+        formatDiagnostics(result.diagnostics),
+      ]
         .filter(Boolean)
         .join('\n\n'),
       result
@@ -322,6 +400,18 @@ function toolResult(text: string, details: unknown): DataToolResult {
 
 function formatInputTable(table: DataDataset): string {
   return `- ${formatDataResourceLink('input_table', table.id, table.name)} (${table.id}) kind=${table.sourceKind} rows=${table.rowCount} columns=${table.columnCount}`;
+}
+
+function formatCloudSpace(space: PersonalAnalysisSpace): string {
+  return `- ${space.spaceName} (${space.spaceId}) projects=${space.projectCount ?? '?'}`;
+}
+
+function formatCloudProject(project: PersonalAnalysisProject): string {
+  return `- ${project.projectName} (${project.projectId}) folderId=${project.folderId} tables=${project.tableCount ?? '?'}`;
+}
+
+function formatCloudTable(table: PersonalAnalysisTable): string {
+  return `- ${table.tableName} (${table.tableId}) projectId=${table.projectId} rows=${table.rowCount ?? '?'} columns=${table.columns?.length ?? '?'}`;
 }
 
 function formatInputTableSourceSummary(
@@ -404,7 +494,9 @@ function formatPreview(preview: DataInputTablePreview | undefined): string {
     .join('\n');
 }
 
-function formatDiagnostics(diagnostics: Array<{ severity: string; message: string; code?: string }> | undefined): string {
+function formatDiagnostics(
+  diagnostics: Array<{ severity: string; message: string; code?: string }> | undefined
+): string {
   if (!diagnostics?.length) {
     return '';
   }

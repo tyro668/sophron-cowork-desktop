@@ -17,6 +17,7 @@ import type {
   ScheduleCreateInput,
   ScheduleUpdateInput,
   ProviderModelInfo,
+  PersonalAnalysisDatasource,
   LocalOllamaDiscoveryResult,
   MemoryOverview,
   MemorySearchResult,
@@ -152,7 +153,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getState: (): Promise<AppUpdateState | null> => ipcRenderer.invoke('update.getState'),
     checkAndInstall: (): Promise<AppUpdateState> => ipcRenderer.invoke('update.checkAndInstall'),
     onState: (callback: (state: AppUpdateState) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, state: AppUpdateState) => callback(state);
+      const listener = (_event: Electron.IpcRendererEvent, state: AppUpdateState) =>
+        callback(state);
       ipcRenderer.on('update.state', listener);
       return () => ipcRenderer.removeListener('update.state', listener);
     },
@@ -227,11 +229,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('data.previewInputTable', payload),
     previewDataset: (payload: DataPreviewDatasetInput): Promise<DataInputTablePreview> =>
       ipcRenderer.invoke('data.previewDataset', payload),
-    previewWorkflowNode: (
-      payload: DataPreviewWorkflowNodeInput
-    ): Promise<DataInputTablePreview> => ipcRenderer.invoke('data.previewWorkflowNode', payload),
+    previewWorkflowNode: (payload: DataPreviewWorkflowNodeInput): Promise<DataInputTablePreview> =>
+      ipcRenderer.invoke('data.previewWorkflowNode', payload),
     getWorkflowNodeColumns: (payload: DataPreviewWorkflowNodeInput): Promise<string[]> =>
       ipcRenderer.invoke('data.getWorkflowNodeColumns', payload),
+    getWorkflowNodeColumnTypes: (
+      payload: DataPreviewWorkflowNodeInput
+    ): Promise<Array<{ name: string; type: string }>> =>
+      ipcRenderer.invoke('data.getWorkflowNodeColumnTypes', payload),
+    getWorkflowNodeColumnValues: (
+      payload: DataPreviewWorkflowNodeInput & { column: string }
+    ): Promise<string[]> => ipcRenderer.invoke('data.getWorkflowNodeColumnValues', payload),
     summarizeInputTableSource: (
       payload: DataSummarizeInputTableSourceInput
     ): Promise<DataInputTableSourceSummary> =>
@@ -301,6 +309,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('config.diagnose', input),
     discoverLocal: (payload?: { baseUrl?: string }): Promise<LocalOllamaDiscoveryResult> =>
       ipcRenderer.invoke('config.discover-local', payload),
+    listPersonalAnalysisDatasources: (payload: {
+      apiOrigin?: string;
+      apiKey?: string;
+      accessToken?: string;
+    }): Promise<PersonalAnalysisDatasource[]> =>
+      ipcRenderer.invoke('config.listPersonalAnalysisDatasources', payload),
   },
 
   // Window control methods
@@ -550,7 +564,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   memory: {
-    getOverview: (cwd?: string): Promise<MemoryOverview> => ipcRenderer.invoke('memory.getOverview', cwd),
+    getOverview: (cwd?: string): Promise<MemoryOverview> =>
+      ipcRenderer.invoke('memory.getOverview', cwd),
     search: (payload: {
       query: string;
       cwd?: string;
@@ -563,7 +578,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('memory.rebuildWorkspace', cwd),
     clearWorkspace: (cwd: string): Promise<{ success: boolean; workspaceKey: string }> =>
       ipcRenderer.invoke('memory.clearWorkspace', cwd),
-    clearCoreMemory: (): Promise<{ success: boolean }> => ipcRenderer.invoke('memory.clearCoreMemory'),
+    clearCoreMemory: (): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke('memory.clearCoreMemory'),
     rebuildAll: (): Promise<{ success: boolean; workspaceCount: number; sessionCount: number }> =>
       ipcRenderer.invoke('memory.rebuildAll'),
     listFiles: (): Promise<MemoryDebugFileInfo[]> => ipcRenderer.invoke('memory.listFiles'),
@@ -615,24 +631,25 @@ declare global {
         updateTask: (payload: DataUpdateTaskInput) => Promise<DataCleaningTask>;
         runTask: (id: string, payload?: DataRunTaskInput) => Promise<DataCleaningTask>;
         getTaskWorkflow: (id: string) => Promise<DataTaskWorkflow>;
-        saveTaskWorkflow: (
-          id: string,
-          payload: DataWorkflowSaveInput
-        ) => Promise<DataTaskWorkflow>;
+        saveTaskWorkflow: (id: string, payload: DataWorkflowSaveInput) => Promise<DataTaskWorkflow>;
         importDataset: (payload: DataImportDatasetInput) => Promise<DataDataset>;
         getInputTable: (id: string) => Promise<DataDataset | null>;
         updateDataset: (payload: DataUpdateDatasetInput) => Promise<DataDataset>;
         getOutputTable: (id: string) => Promise<DataOutputTable | null>;
         createOutputTable: (payload?: DataCreateOutputTableInput) => Promise<DataOutputTable>;
         updateOutputTable: (payload: DataUpdateOutputTableInput) => Promise<DataOutputTable>;
-        previewInputTable: (
-          payload: DataPreviewInputTableInput
-        ) => Promise<DataInputTablePreview>;
+        previewInputTable: (payload: DataPreviewInputTableInput) => Promise<DataInputTablePreview>;
         previewDataset: (payload: DataPreviewDatasetInput) => Promise<DataInputTablePreview>;
         previewWorkflowNode: (
           payload: DataPreviewWorkflowNodeInput
         ) => Promise<DataInputTablePreview>;
         getWorkflowNodeColumns: (payload: DataPreviewWorkflowNodeInput) => Promise<string[]>;
+        getWorkflowNodeColumnTypes: (
+          payload: DataPreviewWorkflowNodeInput
+        ) => Promise<Array<{ name: string; type: string }>>;
+        getWorkflowNodeColumnValues: (
+          payload: DataPreviewWorkflowNodeInput & { column: string }
+        ) => Promise<string[]>;
         summarizeInputTableSource: (
           payload: DataSummarizeInputTableSourceInput
         ) => Promise<DataInputTableSourceSummary>;
@@ -677,6 +694,11 @@ declare global {
         }) => Promise<ProviderModelInfo[]>;
         diagnose: (input: DiagnosticInput) => Promise<DiagnosticResult>;
         discoverLocal: (payload?: { baseUrl?: string }) => Promise<LocalOllamaDiscoveryResult>;
+        listPersonalAnalysisDatasources: (payload: {
+          apiOrigin?: string;
+          apiKey?: string;
+          accessToken?: string;
+        }) => Promise<PersonalAnalysisDatasource[]>;
       };
       window: {
         minimize: () => void;
@@ -876,7 +898,11 @@ declare global {
         rebuildWorkspace: (cwd: string) => Promise<{ success: boolean; workspaceKey: string }>;
         clearWorkspace: (cwd: string) => Promise<{ success: boolean; workspaceKey: string }>;
         clearCoreMemory: () => Promise<{ success: boolean }>;
-        rebuildAll: () => Promise<{ success: boolean; workspaceCount: number; sessionCount: number }>;
+        rebuildAll: () => Promise<{
+          success: boolean;
+          workspaceCount: number;
+          sessionCount: number;
+        }>;
         listFiles: () => Promise<MemoryDebugFileInfo[]>;
         readFile: (filePath: string) => Promise<MemoryDebugFileContent>;
         inspectSession: (

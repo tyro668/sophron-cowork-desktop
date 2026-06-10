@@ -164,8 +164,12 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
 
   return {
     list: (query = {}) => {
-      const rows = raw.prepare('SELECT * FROM automations ORDER BY updated_at DESC').all() as AutomationRow[];
-      return rows.map(mapAutomationRow).filter((automation) => matchesAutomationQuery(automation, query));
+      const rows = raw
+        .prepare('SELECT * FROM automations ORDER BY updated_at DESC')
+        .all() as AutomationRow[];
+      return rows
+        .map(mapAutomationRow)
+        .filter((automation) => matchesAutomationQuery(automation, query));
     },
 
     get: getAutomationById,
@@ -205,7 +209,9 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
       if (!currentRow) return null;
       const current = mapAutomationRow(currentRow);
       const nextTrigger =
-        updates.trigger === undefined ? current.trigger : normalizeAutomationTrigger(updates.trigger);
+        updates.trigger === undefined
+          ? current.trigger
+          : normalizeAutomationTrigger(updates.trigger);
       const nextEnabled = updates.enabled === undefined ? current.enabled : updates.enabled;
       const nextStatus = nextEnabled
         ? current.status === 'running'
@@ -395,7 +401,9 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
 
     listArtifacts: (runId) => {
       const rows = raw
-        .prepare('SELECT * FROM automation_artifacts WHERE automation_run_id = ? ORDER BY created_at ASC')
+        .prepare(
+          'SELECT * FROM automation_artifacts WHERE automation_run_id = ? ORDER BY created_at ASC'
+        )
         .all(runId) as AutomationArtifactRow[];
       return rows.map(mapArtifactRow);
     },
@@ -437,7 +445,11 @@ function insertAutomation(raw: DatabaseInstance['raw'], automation: Automation):
     );
 }
 
-function updateAutomation(raw: DatabaseInstance['raw'], id: string, mapped: Record<string, unknown>): void {
+function updateAutomation(
+  raw: DatabaseInstance['raw'],
+  id: string,
+  mapped: Record<string, unknown>
+): void {
   updateById(raw, 'automations', id, mapped);
 }
 
@@ -544,7 +556,9 @@ function migrateScheduledTasksToAutomations(db: DatabaseInstance): void {
   if (existingVersion?.value === AUTOMATION_MIGRATION_VERSION) return;
 
   const transaction = raw.transaction(() => {
-    const rows = raw.prepare('SELECT * FROM scheduled_tasks ORDER BY created_at ASC').all() as ScheduledTaskRow[];
+    const rows = raw
+      .prepare('SELECT * FROM scheduled_tasks ORDER BY created_at ASC')
+      .all() as ScheduledTaskRow[];
     for (const row of rows) {
       const existing = raw.prepare('SELECT id FROM automations WHERE id = ?').get(row.id);
       if (existing) continue;
@@ -562,14 +576,12 @@ function mapScheduledTaskToAutomation(db: DatabaseInstance, row: ScheduledTaskRo
   const now = Date.now();
   const project = row.cwd.trim() ? db.projects?.ensureForCwd(row.cwd) : null;
   const trigger = scheduledRowToTrigger(row);
-  const automationConfig = parseJson(row.automation_config, null) as
-    | {
-        actionKind?: string;
-        dataTaskId?: string | null;
-        dataTaskName?: string | null;
-        delivery?: unknown;
-      }
-    | null;
+  const automationConfig = parseJson(row.automation_config, null) as {
+    actionKind?: string;
+    dataTaskId?: string | null;
+    dataTaskName?: string | null;
+    delivery?: unknown;
+  } | null;
   const actionGraph = legacyAutomationConfigToActionGraph(row, automationConfig);
   const enabled = row.enabled === 1;
   return {
@@ -584,7 +596,7 @@ function mapScheduledTaskToAutomation(db: DatabaseInstance, row: ScheduledTaskRo
     delivery: legacyDeliveryToDeliveryConfig(automationConfig?.delivery),
     failurePolicy: DEFAULT_AUTOMATION_FAILURE_POLICY,
     concurrencyPolicy: DEFAULT_AUTOMATION_CONCURRENCY_POLICY,
-    nextRunAt: enabled ? row.next_run_at ?? computeNextAutomationRunAt(trigger, now) : null,
+    nextRunAt: enabled ? (row.next_run_at ?? computeNextAutomationRunAt(trigger, now)) : null,
     lockedRunId: null,
     lastRunAt: row.last_run_at,
     lastRunStatus: row.last_error ? 'failed' : row.last_run_at ? 'succeeded' : null,
@@ -624,7 +636,11 @@ function scheduledRowToTrigger(row: ScheduledTaskRow): AutomationTrigger {
 
 function legacyAutomationConfigToActionGraph(
   row: ScheduledTaskRow,
-  automationConfig: { actionKind?: string; dataTaskId?: string | null; dataTaskName?: string | null } | null
+  automationConfig: {
+    actionKind?: string;
+    dataTaskId?: string | null;
+    dataTaskName?: string | null;
+  } | null
 ): AutomationActionGraph {
   if (automationConfig?.actionKind === 'data_task' && automationConfig.dataTaskId) {
     const dataNodeId = randomUUID();
@@ -664,17 +680,16 @@ function legacyAutomationConfigToActionGraph(
 }
 
 function legacyDeliveryToDeliveryConfig(value: unknown): AutomationDeliveryConfig | null {
-  const delivery = value as
-    | {
-        enabled?: boolean;
-        artifactPolicy?: 'summary' | 'links' | 'files';
-        recipients?: Array<{ id: string; channel: string; target: string; enabled: boolean }>;
-      }
-    | null;
+  const delivery = value as {
+    enabled?: boolean;
+    artifactPolicy?: 'summary' | 'links' | 'files';
+    recipients?: Array<{ id: string; channel: string; target: string; enabled: boolean }>;
+  } | null;
   if (!delivery?.enabled) return DEFAULT_AUTOMATION_DELIVERY;
   return {
     enabled: true,
-    artifactPolicy: delivery.artifactPolicy === 'files' ? 'attachments' : delivery.artifactPolicy ?? 'links',
+    artifactPolicy:
+      delivery.artifactPolicy === 'files' ? 'attachments' : (delivery.artifactPolicy ?? 'links'),
     failureMessage: DEFAULT_AUTOMATION_DELIVERY.failureMessage,
     channels:
       delivery.recipients?.map((recipient) => ({
@@ -790,7 +805,12 @@ function parseRunStatus(value: string | null): AutomationRunStatus | null {
 }
 
 function parseTriggerReason(value: string): AutomationTriggerReason {
-  if (value === 'manual' || value === 'retry' || value === 'queued_overlap' || value === 'file_change') {
+  if (
+    value === 'manual' ||
+    value === 'retry' ||
+    value === 'queued_overlap' ||
+    value === 'file_change'
+  ) {
     return value;
   }
   return 'timer';
