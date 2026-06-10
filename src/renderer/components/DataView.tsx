@@ -8,6 +8,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from 'react';
+import { flushSync } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Background,
@@ -3348,12 +3349,14 @@ function WorkflowInspector({
 
   const handleStartOperatorDslEdit = useCallback(() => {
     if (!node || !usesOperatorDsl) return;
-    setOperatorDslBeforeEdit(operatorDsl);
-    setOperatorDslStatus(null);
-    setOperatorDslDiagnostics([]);
-    setOperatorDslDiagnosticsOpen(true);
-    setIsEditingOperatorDsl(true);
-    onActiveTabChange('config');
+    flushSync(() => {
+      setOperatorDslBeforeEdit(operatorDsl);
+      setOperatorDslStatus(null);
+      setOperatorDslDiagnostics([]);
+      setOperatorDslDiagnosticsOpen(true);
+      setIsEditingOperatorDsl(true);
+      onActiveTabChange('config');
+    });
   }, [node, onActiveTabChange, operatorDsl, usesOperatorDsl]);
 
   const handleCancelOperatorDslEdit = useCallback(() => {
@@ -3641,6 +3644,7 @@ function WorkflowInspector({
                   formatDiagnostic={formatEditorDiagnostic}
                   onChange={handleOperatorDslChange}
                   onDiagnosticsChange={setOperatorDslDiagnostics}
+                  onRequestEdit={handleStartOperatorDslEdit}
                   fieldCompletions={operatorFieldCompletions}
                   editable={isEditingOperatorDsl}
                   height={182}
@@ -4581,10 +4585,12 @@ function getWorkflowConfigSummary(node: DataWorkflowNode, t: TranslateFn): Workf
         ],
       };
       break;
-    case 'set_op':
+    case 'set_op': {
+      const rawOperation = stringValue(config.operation, 'union');
+      const opValue = t(`data.workflow.summaryLabels.operation_${rawOperation}`);
       summary = {
         primary: [
-          summaryRow(t, 'operation', stringValue(config.operation, 'union')),
+          summaryRow(t, 'operation', opValue || rawOperation),
           summaryRow(t, 'rightInput', stringValue(config.rightInput)),
         ],
         details: [
@@ -4593,11 +4599,12 @@ function getWorkflowConfigSummary(node: DataWorkflowNode, t: TranslateFn): Workf
         ],
       };
       break;
+    }
     case 'unnest':
       summary = {
         primary: [
-          summaryRow(t, 'field', stringValue(config.column), true),
-          summaryRow(t, 'alias', stringValue(config.alias), true),
+          summaryRow(t, 'source', stringValue(config.column), false),
+          summaryRow(t, 'alias', stringValue(config.alias, 'item'), false),
         ],
         details: [summaryRow(t, 'mode', stringValue(config.sourceKind, 'list'))],
       };

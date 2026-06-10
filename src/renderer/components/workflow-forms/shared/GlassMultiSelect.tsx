@@ -24,6 +24,14 @@ export function GlassMultiSelect({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Focus search without scrolling when dropdown opens
+  useEffect(() => {
+    if (open && searchInputRef.current) {
+      searchInputRef.current.focus({ preventScroll: true });
+    }
+  }, [open]);
 
   // Close on outside click
   useEffect(() => {
@@ -43,17 +51,29 @@ export function GlassMultiSelect({
     return suggestions.filter((s) => s.toLowerCase().includes(lower)).slice(0, 30);
   }, [search, suggestions]);
 
-  function toggle(col: string) {
-    if (value.includes(col)) {
-      onChange(value.filter((v) => v !== col));
-    } else {
-      onChange([...value, col]);
-    }
-  }
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const removingRef = useRef(false);
 
-  function remove(col: string) {
-    onChange(value.filter((v) => v !== col));
-  }
+  const toggle = useCallback((col: string) => {
+    const cur = valueRef.current;
+    if (cur.includes(col)) {
+      onChangeRef.current(cur.filter((v) => v !== col));
+    } else {
+      onChangeRef.current([...cur, col]);
+    }
+  }, []);
+
+  const remove = useCallback((col: string) => {
+    if (removingRef.current) return;
+    removingRef.current = true;
+    onChangeRef.current(valueRef.current.filter((v) => v !== col));
+    requestAnimationFrame(() => {
+      removingRef.current = false;
+    });
+  }, []);
 
   const allSelected = suggestions.length > 0 && value.length === suggestions.length;
 
@@ -64,10 +84,10 @@ export function GlassMultiSelect({
   return (
     <div ref={ref} className="relative">
       <div
-        onClick={() => {
-          if (open) {
-            setSearch('');
-          }
+        onMouseDown={(e) => {
+          // Don't toggle if clicking on a chip's X button
+          if ((e.target as HTMLElement).closest('button')) return;
+          if (open) setSearch('');
           setOpen(!open);
         }}
         className={`flex min-h-7 cursor-pointer flex-wrap items-center gap-1 rounded-md border bg-background/42 px-1.5 py-0.5 text-[12px] outline-none transition-colors ${
@@ -85,7 +105,8 @@ export function GlassMultiSelect({
               {col}
               <button
                 type="button"
-                onClick={(e) => {
+                onMouseDown={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
                   remove(col);
                 }}
@@ -103,7 +124,7 @@ export function GlassMultiSelect({
         <div className="absolute left-0 top-full z-50 mt-0.5 w-full rounded-md border border-border-muted bg-[var(--glass-card-strong)] py-0.5 shadow-elevated backdrop-blur-xl">
           <div
             className="flex items-center gap-1.5 border-b border-border-subtle px-2 py-1"
-            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => searchInputRef.current?.focus({ preventScroll: true })}
           >
             <Search className="h-3 w-3 flex-shrink-0 text-text-muted" />
             <input
@@ -111,7 +132,7 @@ export function GlassMultiSelect({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={tr('search', '搜索...')}
-              autoFocus
+              ref={searchInputRef}
               className="w-full bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
             />
           </div>
@@ -125,9 +146,6 @@ export function GlassMultiSelect({
               />
               {allSelected ? tr('deselectAll', '取消全选') : tr('selectAll', '全选')}
             </label>
-            <span className="text-[10px] text-text-muted">
-              {value.length}/{suggestions.length}
-            </span>
           </div>
           <div className="max-h-48 overflow-y-auto">
             {filtered.length === 0 ? (

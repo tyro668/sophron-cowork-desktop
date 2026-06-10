@@ -1,34 +1,23 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
 import { GlassListEditor } from './shared/GlassListEditor';
+import {
+  createStableListItemId,
+  needsListItemIdNormalization,
+  normalizeListItemsWithIds,
+  type ListItemWithId,
+} from './shared/list-item-ids';
 
-interface MappingEntry {
+interface MappingEntry extends ListItemWithId {
   id: string;
   source: string;
   target: string;
 }
 
-function createMappingId(): string {
-  if (globalThis.crypto?.randomUUID) {
-    return `map_${globalThis.crypto.randomUUID()}`;
-  }
-  return `map_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
 function createDefault(): MappingEntry {
-  return { id: createMappingId(), source: '', target: '' };
-}
-
-function normalizeMappings(
-  raw: Array<{ id?: string; source: string; target: string }> | undefined
-): MappingEntry[] {
-  return (raw ?? []).map((item) => ({
-    id: item.id || createMappingId(),
-    source: item.source ?? '',
-    target: item.target ?? '',
-  }));
+  return { id: createStableListItemId('map'), source: '', target: '' };
 }
 
 export default function FormFieldMapping({
@@ -53,13 +42,30 @@ export default function FormFieldMapping({
     [onNodeChange]
   );
 
-  const mappings = useMemo(
+  const rawMappings = useMemo(
     () =>
-      normalizeMappings(
-        node.config.mappings as Array<{ id?: string; source: string; target: string }> | undefined
-      ),
+      (node.config.mappings as
+        | Array<{ id?: string; source: string; target: string }>
+        | undefined) ?? [],
     [node.config.mappings]
   );
+  const mappings = useMemo(
+    () =>
+      normalizeListItemsWithIds(
+        rawMappings.map((item) => ({
+          ...item,
+          source: item.source ?? '',
+          target: item.target ?? '',
+        })),
+        'map'
+      ),
+    [rawMappings]
+  );
+
+  useEffect(() => {
+    if (!needsListItemIdNormalization(rawMappings)) return;
+    updateConfig((cfg) => ({ ...cfg, mappings }));
+  }, [mappings, rawMappings, updateConfig]);
 
   // Existing field names that are NOT being renamed away by any mapping
   const occupiedNames = useMemo(() => {
