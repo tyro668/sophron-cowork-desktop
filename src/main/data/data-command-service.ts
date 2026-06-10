@@ -100,12 +100,17 @@ interface WorkflowResourceBindings {
   outputTableId?: string;
 }
 
+interface DataCommandServiceOptions {
+  onTaskCompleted?: (task: DataCleaningTask) => void;
+}
+
 export class DataCommandService {
   constructor(
     private readonly store: DataTaskStore,
     private readonly normalizerProjectGenerator: InputTableNormalizerProjectGenerator,
     private readonly getPersonalAnalysisConfig: () => PersonalAnalysisConfig = () =>
-      configStore.get('personalAnalysis')
+      configStore.get('personalAnalysis'),
+    private readonly options: DataCommandServiceOptions = {}
   ) {}
 
   async listInputTables(input: ListInputTablesInput = {}): Promise<ListInputTablesResult> {
@@ -824,6 +829,7 @@ export class DataCommandService {
 
     try {
       const task = await this.store.runTask(input.taskId, runInput);
+      this.options.onTaskCompleted?.(task);
       const preview = await this.previewTaskOutput(
         input.taskId,
         task,

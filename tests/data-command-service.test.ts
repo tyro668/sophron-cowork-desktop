@@ -91,7 +91,7 @@ describe('DataCommandService', () => {
   });
 
   it('creates input/output/task resources, saves workflow DSL, and runs the task', async () => {
-    const { service, tempRoot } = createService();
+    const { service, store, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'customers.csv');
     fs.writeFileSync(csvPath, 'id,name\n1,Alice\n2,Bob\n', 'utf8');
 
@@ -152,7 +152,19 @@ describe('DataCommandService', () => {
     const outputNode = saved.workflow.nodes.find((node) => node.type === 'output');
     expect(outputNode?.config.outputDatasetId).toBe(output.outputTable.id);
 
-    const temporaryRun = await service.runTask({
+    const onTaskCompleted = vi.fn();
+    const notifyingService = new DataCommandService(
+      store,
+      createFakeNormalizerGenerator(),
+      () => ({
+        apiOrigin: '',
+        apiKey: '',
+        datasourceId: '',
+      }),
+      { onTaskCompleted }
+    );
+
+    const temporaryRun = await notifyingService.runTask({
       taskId: task.task.id,
       mode: 'temporary',
       previewRows: 2,
@@ -161,7 +173,7 @@ describe('DataCommandService', () => {
     expect(temporaryRun.task.outputTable).toMatch(/^temp_task_/);
     expect(temporaryRun.preview?.totalRows).toBe(2);
 
-    const persistedRun = await service.runTask({
+    const persistedRun = await notifyingService.runTask({
       taskId: task.task.id,
       mode: 'persisted',
       previewRows: 2,
@@ -169,6 +181,8 @@ describe('DataCommandService', () => {
     expect(persistedRun.task.status).toBe('completed');
     expect(persistedRun.task.sourceDatasetId).toBe(input.inputTable.id);
     expect(persistedRun.preview?.totalRows).toBe(2);
+    expect(onTaskCompleted).toHaveBeenCalledTimes(2);
+    expect(onTaskCompleted).toHaveBeenLastCalledWith(persistedRun.task);
 
     const exported = await service.exportWorkflowDsl({ taskId: task.task.id });
     expect(exported.text).toContain(`input source dataset "${input.inputTable.id}" as customers`);

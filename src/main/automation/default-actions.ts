@@ -131,7 +131,8 @@ export function createDefaultAutomationActionRegistry(
         undefined,
         undefined,
         undefined,
-        runtimeConfig
+        runtimeConfig,
+        { suppressCompletionNotification: true }
       );
       options.sendSessionUpdate?.(session);
       context.emitArtifact({
