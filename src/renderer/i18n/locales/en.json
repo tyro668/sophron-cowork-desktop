@@ -703,7 +703,7 @@
     "loadDatasources": "Load",
     "mockServer": "Mock Server",
     "saveSettings": "Save Settings",
-    "saveSuccess": "Personal Analysis settings saved",
+    "saveSuccess": "Personal Analysis settings saved. The new connection will be used on the next tool request.",
     "saveFailed": "Failed to save Personal Analysis settings",
     "datasourceRefreshMissingConnection": "Fill Host and API Key before loading datasources",
     "datasourceRefreshEmpty": "No datasources returned. Enter a datasource ID manually.",

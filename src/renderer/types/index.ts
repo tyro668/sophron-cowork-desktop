@@ -1318,6 +1318,7 @@ export interface PersonalAnalysisConfig {
   apiOrigin: string;
   apiKey: string;
   datasourceId: string;
+  updatedAt?: number;
 }
 
 export interface PersonalAnalysisDatasource {
