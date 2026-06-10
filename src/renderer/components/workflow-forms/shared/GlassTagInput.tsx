@@ -12,7 +12,7 @@ export function GlassTagInput({
   value,
   suggestions = [],
   onChange,
-  placeholder = '输入后按回车添加...',
+  placeholder,
 }: GlassTagInputProps) {
   const [input, setInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);

@@ -1,3 +1,5 @@
+import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { ReactNode } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 
@@ -6,6 +8,7 @@ interface GlassListEditorProps<T> {
   renderRow: (item: T, index: number, onChange: (item: T) => void) => ReactNode;
   createDefault: () => T;
   onChange: (items: T[]) => void;
+  getKey?: (item: T, index: number) => string;
   addLabel?: string;
   emptyText?: string;
 }
@@ -15,9 +18,16 @@ export function GlassListEditor<T>({
   renderRow,
   createDefault,
   onChange,
+  getKey,
   addLabel = '添加',
   emptyText = '暂无条目',
 }: GlassListEditorProps<T>) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    [t]
+  );
+
   function updateItem(index: number, item: T) {
     onChange(items.map((existing, i) => (i === index ? item : existing)));
   }
@@ -38,14 +48,14 @@ export function GlassListEditor<T>({
         <div className="space-y-2">
           {items.map((item, i) => (
             <div
-              key={i}
+              key={getKey ? getKey(item, i) : i}
               className="group/item relative rounded-lg border border-border-muted bg-background/42 p-2.5"
             >
               <button
                 type="button"
                 onClick={() => removeItem(i)}
                 className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-0 transition-opacity hover:bg-surface-hover hover:text-error group-hover/item:opacity-100"
-                title="删除"
+                title={tr('remove', '删除')}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>

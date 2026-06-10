@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Search } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
@@ -9,6 +10,12 @@ export default function FormDeduplicate({
   fieldCompletions,
   onNodeChange,
 }: OperatorFormProps) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    [t]
+  );
+
   const updateConfig = useCallback(
     (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
       onNodeChange((current) => ({
@@ -60,7 +67,7 @@ export default function FormDeduplicate({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索字段..."
+            placeholder={tr('dedupSearchPlaceholder', '搜索字段...')}
             className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
           />
         </div>
@@ -74,7 +81,7 @@ export default function FormDeduplicate({
               onChange={toggleAll}
               className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
             />
-            {allSelected ? '取消全选' : '全选'}
+            {allSelected ? tr('deselectAll', '取消全选') : tr('selectAll', '全选')}
           </label>
           <span className="text-[10px] text-text-muted">
             {columns.length}/{fieldCompletions.length}
@@ -85,7 +92,7 @@ export default function FormDeduplicate({
         <div className="max-h-44 overflow-y-auto">
           {filtered.length === 0 ? (
             <div className="py-4 text-center text-[12px] text-text-muted">
-              {search ? '无匹配字段' : '暂无可用字段'}
+              {search ? tr('noMatch', '无匹配字段') : tr('noFields', '暂无可用字段')}
             </div>
           ) : (
             filtered.map((col) => (
@@ -119,7 +126,7 @@ export default function FormDeduplicate({
                   : 'text-text-muted hover:text-text-secondary'
               }`}
             >
-              第一条
+              {tr('first', '第一条')}
             </button>
             <button
               type="button"
@@ -130,11 +137,16 @@ export default function FormDeduplicate({
                   : 'text-text-muted hover:text-text-secondary'
               }`}
             >
-              最后一条
+              {tr('last', '最后一条')}
             </button>
           </div>
           <span className="text-[10px] text-text-muted truncate">
-            {columns.length > 0 ? `按 ${columns.length} 个字段去重` : '全字段去重'}
+            {columns.length > 0
+              ? tr('dedupByFields', '按 {{count}} 个字段去重').replace(
+                  '{{count}}',
+                  String(columns.length)
+                )
+              : tr('dedupAllFields', '全字段去重')}
           </span>
         </div>
 

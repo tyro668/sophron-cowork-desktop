@@ -1,10 +1,17 @@
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 
 export default function FormUnnest({ node, fieldCompletions, onNodeChange }: OperatorFormProps) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    [t]
+  );
+
   const updateConfig = useCallback(
     (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
       onNodeChange((current) => ({
@@ -27,8 +34,8 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
 
   return (
     <div className="grid content-start gap-2.5">
-      <GlassFormSection title="数据源">
-        <GlassFormLabel required>源类型</GlassFormLabel>
+      <GlassFormSection title={tr('unnestSource', '数据源')}>
+        <GlassFormLabel required>{tr('unnestSourceType', '源类型')}</GlassFormLabel>
         <div className="flex gap-1.5">
           {(['list', 'json'] as const).map((s) => (
             <button
@@ -47,10 +54,10 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
         </div>
       </GlassFormSection>
 
-      <GlassFormSection title="展开设置">
+      <GlassFormSection title={tr('unnestSettings', '展开设置')}>
         <div className="grid gap-2">
           <div>
-            <GlassFormLabel required>源字段</GlassFormLabel>
+            <GlassFormLabel required>{tr('unnestSourceField', '源字段')}</GlassFormLabel>
             <select
               value={column}
               onChange={(e) =>
@@ -59,7 +66,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
               className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent"
             >
               <option value="" disabled>
-                选择字段
+                {tr('aggregateSelectField', '选择字段')}
               </option>
               {fieldCompletions.map((col) => (
                 <option key={col} value={col}>
@@ -69,21 +76,21 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
             </select>
           </div>
           <div>
-            <GlassFormLabel required>展开后的别名</GlassFormLabel>
+            <GlassFormLabel required>{tr('unnestAlias', '展开后的别名')}</GlassFormLabel>
             <GlassFormTextInput
               value={alias}
               onChange={(value) => updateConfig((cfg) => ({ ...cfg, alias: value || undefined }))}
-              placeholder="如 item"
+              placeholder={tr('unnestAliasPlaceholder', '如 item')}
               className="h-7"
             />
           </div>
           {sourceKind === 'json' && (
             <div>
-              <GlassFormLabel required>JSON 路径</GlassFormLabel>
+              <GlassFormLabel required>{tr('unnestJsonPath', 'JSON 路径')}</GlassFormLabel>
               <GlassFormTextInput
                 value={path}
                 onChange={(value) => updateConfig((cfg) => ({ ...cfg, path: value || undefined }))}
-                placeholder={'如 $.items'}
+                placeholder={tr('unnestJsonPathPlaceholder', '如 $.items')}
                 className="h-7"
               />
             </div>
@@ -91,21 +98,21 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
         </div>
       </GlassFormSection>
 
-      <GlassFormSection title="选项">
+      <GlassFormSection title={tr('unnestOptions', '选项')}>
         <div className="grid gap-2">
           <div>
-            <GlassFormLabel>索引列 (with index)</GlassFormLabel>
+            <GlassFormLabel>{tr('unnestIndexCol', '索引列 (with index)')}</GlassFormLabel>
             <GlassFormTextInput
               value={withIndex}
               onChange={(value) =>
                 updateConfig((cfg) => ({ ...cfg, withIndex: value || undefined }))
               }
-              placeholder="如 item_index"
+              placeholder={tr('unnestIndexColPlaceholder', '如 item_index')}
               className="h-7"
             />
           </div>
           <div>
-            <GlassFormLabel>最大展开深度</GlassFormLabel>
+            <GlassFormLabel>{tr('unnestMaxDepth', '最大展开深度')}</GlassFormLabel>
             <input
               type="number"
               value={maxDepth ?? ''}
@@ -116,7 +123,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                 }))
               }
               min={1}
-              placeholder="不限制"
+              placeholder={tr('unnestMaxDepthPlaceholder', '不限制')}
               className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-2 text-[12px] text-text-primary outline-none focus:border-accent placeholder:text-text-muted"
             />
           </div>
@@ -133,7 +140,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                 }
                 className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
               />
-              递归展开
+              {tr('unnestRecursive', '递归展开')}
             </label>
             <label className="flex cursor-pointer items-center gap-2 text-[12px] text-text-secondary">
               <input
@@ -147,7 +154,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                 }
                 className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
               />
-              保留父字段名
+              {tr('unnestKeepParent', '保留父字段名')}
             </label>
           </div>
         </div>

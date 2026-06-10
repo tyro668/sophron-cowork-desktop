@@ -1,3 +1,5 @@
+import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Trash2 } from 'lucide-react';
 
 export interface SortKeyEntry {
@@ -15,6 +17,12 @@ interface GlassSortKeyEditorProps {
 const DEFAULT_KEY: SortKeyEntry = { field: '', direction: 'asc' };
 
 export function GlassSortKeyEditor({ keys, fieldCompletions, onChange }: GlassSortKeyEditorProps) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    [t]
+  );
+
   function updateKey(index: number, patch: Partial<SortKeyEntry>) {
     onChange(keys.map((k, i) => (i === index ? { ...k, ...patch } : k)));
   }
@@ -30,7 +38,9 @@ export function GlassSortKeyEditor({ keys, fieldCompletions, onChange }: GlassSo
   return (
     <div className="space-y-1.5">
       {keys.length === 0 ? (
-        <div className="py-3 text-center text-[12px] text-text-muted">暂无排序键</div>
+        <div className="py-3 text-center text-[12px] text-text-muted">
+          {tr('sortNoKeys', '暂未设置排序键')}
+        </div>
       ) : (
         keys.map((key, i) => (
           <div key={i} className="flex items-center gap-1.5">
@@ -40,7 +50,7 @@ export function GlassSortKeyEditor({ keys, fieldCompletions, onChange }: GlassSo
               className="h-7 flex-1 rounded-md border border-border-muted bg-background/42 px-2 text-[12px] text-text-primary outline-none focus:border-accent"
             >
               <option value="" disabled>
-                选择字段
+                {tr('sortSelectField', '选择字段')}
               </option>
               {fieldCompletions.map((col) => (
                 <option key={col} value={col}>
@@ -51,13 +61,13 @@ export function GlassSortKeyEditor({ keys, fieldCompletions, onChange }: GlassSo
             <button
               type="button"
               onClick={() => updateKey(i, { direction: key.direction === 'asc' ? 'desc' : 'asc' })}
-              className={`h-7 shrink-0 rounded-md border px-2 text-[11px] font-medium transition-colors ${
+              className={`h-7 shrink-0 rounded-md border px-3 text-[11px] font-medium transition-colors ${
                 key.direction === 'asc'
                   ? 'border-accent/30 bg-accent/10 text-accent'
                   : 'border-border-muted bg-background/42 text-text-secondary'
               }`}
             >
-              {key.direction === 'asc' ? '升序' : '降序'}
+              {key.direction === 'asc' ? tr('asc', '升序') : tr('desc', '降序')}
             </button>
             <select
               value={key.nulls ?? ''}
@@ -66,11 +76,11 @@ export function GlassSortKeyEditor({ keys, fieldCompletions, onChange }: GlassSo
                   nulls: (e.target.value || undefined) as 'first' | 'last' | undefined,
                 })
               }
-              className="h-7 w-16 rounded-md border border-border-muted bg-background/42 px-1 text-[11px] text-text-secondary outline-none focus:border-accent"
+              className="h-7 w-28 rounded-md border border-border-muted bg-background/42 px-1 text-[11px] text-text-secondary outline-none focus:border-accent"
             >
-              <option value="">默认</option>
-              <option value="first">NULL 在前</option>
-              <option value="last">NULL 在后</option>
+              <option value="">{tr('nullsDefault', 'NULL 默认')}</option>
+              <option value="first">{tr('nullsFirst', 'NULL 在前')}</option>
+              <option value="last">{tr('nullsLast', 'NULL 在后')}</option>
             </select>
             <button
               type="button"
@@ -88,7 +98,7 @@ export function GlassSortKeyEditor({ keys, fieldCompletions, onChange }: GlassSo
         className="inline-flex h-7 items-center gap-1 rounded-md border border-border-muted bg-background/42 px-2 text-[11px] text-text-secondary hover:border-accent/30 hover:text-accent transition-colors"
       >
         <Plus className="h-3 w-3" />
-        添加排序键
+        {tr('sortAddKey', '添加排序键')}
       </button>
     </div>
   );

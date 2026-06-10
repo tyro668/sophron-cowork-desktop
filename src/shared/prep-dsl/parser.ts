@@ -10,7 +10,7 @@ import type {
   PrepWorkflowAst,
 } from './ast';
 import { createPrepDiagnostic } from './diagnostics';
-import { tokenizePrepDsl } from './tokens';
+import { prepDslLexer, tokenizePrepDsl } from './tokens';
 
 const OPERATOR_LABELS: Record<PrepOperatorType, string> = {
   input_source: 'input_source',
@@ -228,36 +228,167 @@ function parseInputSource(
   diagnostics: PrepDiagnostic[]
 ): PrepOperatorAst | null {
   const text = command.text;
-  const match =
-    /^input\s+source\s+(task|file\s+"(?:[^"\\]|\\.)*"|dataset\s+"(?:[^"\\]|\\.)*")(?:\s+format\s+([A-Za-z_][A-Za-z0-9_]*))?(?:\s+sheet\s+("(?:[^"\\]|\\.)*"))?(?:\s+header\s+(true|false))?(?:\s+encoding\s+("(?:[^"\\]|\\.)*"))?(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?$/.exec(
-      text
-    );
-  if (!match) {
+  const lexResult = prepDslLexer.tokenize(text);
+
+  // Collect lexer errors as diagnostics
+  for (const err of lexResult.errors) {
     diagnostics.push({
-      ...createPrepDiagnostic('invalidInputSource', `Cannot parse input source: ${text}`, {
-        value: text,
-      }),
+      severity: 'error' as const,
+      message: err.message,
+      line: command.line + (err.line ?? 1) - 1,
+      column: err.column,
+    });
+  }
+
+  // Filter to meaningful tokens (skip whitespace and comments)
+  const tokens = lexResult.tokens.filter(
+    (t) => t.tokenType.name !== 'WhiteSpace' && t.tokenType.name !== 'Comment'
+  );
+
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const advance = () => tokens[pos++];
+  const atEof = () => pos >= tokens.length;
+
+  const error = (msg: string) => {
+    diagnostics.push({
+      ...createPrepDiagnostic('invalidInputSource', msg, { value: text }),
       line: command.line,
     });
+  };
+
+  function expectIdent(errorMsg: string) {
+    const token = peek();
+    if (!token || token.tokenType.name !== 'Identifier') {
+      error(errorMsg);
+      return null;
+    }
+    advance();
+    return token;
+  }
+
+  function expectString(errorMsg: string) {
+    const token = peek();
+    if (!token || token.tokenType.name !== 'StringLiteral') {
+      error(errorMsg);
+      return null;
+    }
+    advance();
+    return token;
+  }
+
+  // Consume "input"
+  const t1 = peek();
+  if (!t1 || t1.image !== 'input') {
+    error('Expected "input"');
     return null;
   }
-  const target = match[1];
-  const alias = match[6];
-  const config: Record<string, unknown> = { dsl: text };
-  if (target === 'task') {
-    config.source = 'task';
-  } else if (target.startsWith('file ')) {
-    config.source = 'file';
-    config.filePath = unquote(target.slice(5));
-  } else if (target.startsWith('dataset ')) {
-    config.source = 'dataset';
-    config.datasetId = unquote(target.slice(8));
+  advance();
+
+  // Consume "source"
+  const t2 = peek();
+  if (!t2 || t2.image !== 'source') {
+    error('Expected "source"');
+    return null;
   }
-  if (match[2]) config.format = match[2];
-  if (match[3]) config.sheet = unquote(match[3]);
-  if (match[4]) config.header = match[4] === 'true';
-  if (match[5]) config.encoding = unquote(match[5]);
-  if (alias) config.alias = alias;
+  advance();
+
+  // Source type: task | file <string> | dataset <string>
+  const srcType = peek();
+  if (!srcType || srcType.tokenType.name !== 'Identifier') {
+    error('Expected "task", "file", or "dataset"');
+    return null;
+  }
+  advance();
+
+  const config: Record<string, unknown> = { dsl: text };
+
+  if (srcType.image === 'task') {
+    config.source = 'task';
+  } else if (srcType.image === 'file') {
+    config.source = 'file';
+    const pathToken = expectString('Expected file path string after "file"');
+    if (!pathToken) return null;
+    config.filePath = unquote(pathToken.image);
+  } else if (srcType.image === 'dataset') {
+    config.source = 'dataset';
+    const idToken = expectString('Expected dataset ID string after "dataset"');
+    if (!idToken) return null;
+    config.datasetId = unquote(idToken.image);
+  } else {
+    error(`Unknown source type "${srcType.image}". Expected "task", "file", or "dataset"`);
+    return null;
+  }
+
+  // Optional keyword-value pairs (order-independent)
+  const consumed = new Set<string>();
+  while (!atEof()) {
+    const kw = peek();
+    if (!kw || kw.tokenType.name !== 'Identifier') {
+      error(`Unexpected token: ${kw?.image ?? 'EOF'}`);
+      return null;
+    }
+
+    if (consumed.has(kw.image)) {
+      error(`Duplicate keyword "${kw.image}"`);
+      return null;
+    }
+
+    switch (kw.image) {
+      case 'format': {
+        advance();
+        const fmt = expectIdent('Expected format name after "format"');
+        if (!fmt) return null;
+        config.format = fmt.image;
+        break;
+      }
+      case 'sheet': {
+        advance();
+        const s = expectString('Expected sheet name string after "sheet"');
+        if (!s) return null;
+        config.sheet = unquote(s.image);
+        break;
+      }
+      case 'header': {
+        advance();
+        const h = peek();
+        if (
+          !h ||
+          h.tokenType.name !== 'Identifier' ||
+          (h.image !== 'true' && h.image !== 'false')
+        ) {
+          error('Expected "true" or "false" after "header"');
+          return null;
+        }
+        advance();
+        config.header = h.image === 'true';
+        break;
+      }
+      case 'encoding': {
+        advance();
+        const enc = expectString('Expected encoding string after "encoding"');
+        if (!enc) return null;
+        config.encoding = unquote(enc.image);
+        break;
+      }
+      case 'as': {
+        advance();
+        const alias = expectIdent('Expected alias name after "as"');
+        if (!alias) return null;
+        config.alias = alias.image;
+        break;
+      }
+      default: {
+        error(
+          `Unknown keyword "${kw.image}". Expected "format", "sheet", "header", "encoding", or "as"`
+        );
+        return null;
+      }
+    }
+
+    consumed.add(kw.image);
+  }
+
   return makeOperator('input_source', text, config);
 }
 

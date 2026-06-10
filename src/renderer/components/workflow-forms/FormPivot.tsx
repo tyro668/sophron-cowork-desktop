@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
 import { GlassFormLabel } from './shared/GlassFormLabel';
@@ -14,6 +15,12 @@ interface PivotMetric {
 }
 
 export default function FormPivot({ node, fieldCompletions, onNodeChange }: OperatorFormProps) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    [t]
+  );
+
   const updateConfig = useCallback(
     (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
       onNodeChange((current) => ({
@@ -45,36 +52,36 @@ export default function FormPivot({ node, fieldCompletions, onNodeChange }: Oper
 
   return (
     <div className="grid content-start gap-2.5">
-      <GlassFormSection title="透视列 (on)">
-        <GlassFormLabel required>按哪些字段透视</GlassFormLabel>
+      <GlassFormSection title={tr('pivotOn', '透视列 (on)')}>
+        <GlassFormLabel required>{tr('pivotOnLabel', '按哪些字段透视')}</GlassFormLabel>
         <GlassTagInput
           value={onFields}
           suggestions={fieldCompletions}
           onChange={(next) =>
             updateConfig((cfg) => ({ ...cfg, on: next.length > 0 ? next : undefined }))
           }
-          placeholder="输入字段名后按回车添加..."
+          placeholder={tr('pivotOnPlaceholder', '输入字段名后按回车添加...')}
         />
       </GlassFormSection>
 
-      <GlassFormSection title="固定值域 (in) — 可选">
-        <GlassFormLabel>限制透视值（留空则动态生成）</GlassFormLabel>
+      <GlassFormSection title={tr('pivotIn', '固定值域 (in) — 可选')}>
+        <GlassFormLabel>{tr('pivotInLabel', '限制透视值（留空则动态生成）')}</GlassFormLabel>
         <GlassTagInput
           value={values}
           onChange={(next) =>
             updateConfig((cfg) => ({ ...cfg, values: next.length > 0 ? next : undefined }))
           }
-          placeholder="如 2024, 2025, 2026"
+          placeholder={tr('pivotInPlaceholder', '如 2024, 2025, 2026')}
         />
         <p className="mt-1 text-[10px] text-text-muted">
-          显式指定 in 值可固定输出 schema，避免列随数据变化。
+          {tr('pivotInHint', '显式指定 in 值可固定输出 schema，避免列随数据变化。')}
         </p>
       </GlassFormSection>
 
-      <GlassFormSection title="聚合指标 (using)">
+      <GlassFormSection title={tr('pivotUsing', '聚合指标 (using)')}>
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <GlassFormLabel>聚合函数</GlassFormLabel>
+            <GlassFormLabel>{tr('aggregateFunction', '聚合函数')}</GlassFormLabel>
             <select
               value={singleMetric.function}
               onChange={(e) => handleMetricChange({ function: e.target.value })}
@@ -88,19 +95,19 @@ export default function FormPivot({ node, fieldCompletions, onNodeChange }: Oper
             </select>
           </div>
           <div>
-            <GlassFormLabel>表达式</GlassFormLabel>
+            <GlassFormLabel>{tr('expressionLabel', '表达式')}</GlassFormLabel>
             <GlassFormTextInput
               value={singleMetric.expression}
               onChange={(value) => handleMetricChange({ expression: value })}
-              placeholder={'如 [revenue]'}
+              placeholder={tr('aggregateAliasPlaceholder', '如 total_revenue')}
               className="h-7"
             />
           </div>
         </div>
       </GlassFormSection>
 
-      <GlassFormSection title="分组字段 (group by)">
-        <GlassFormLabel>保留哪些列作为行标识</GlassFormLabel>
+      <GlassFormSection title={tr('pivotGroupBy', '分组字段 (group by)')}>
+        <GlassFormLabel>{tr('pivotGroupByLabel', '保留哪些列作为行标识')}</GlassFormLabel>
         <GlassTagInput
           value={groupBy}
           suggestions={fieldCompletions}
@@ -110,7 +117,7 @@ export default function FormPivot({ node, fieldCompletions, onNodeChange }: Oper
               groupBy: next.length > 0 ? next : undefined,
             }))
           }
-          placeholder="如 region"
+          placeholder={tr('pivotGroupByPlaceholder', '如 region')}
         />
       </GlassFormSection>
     </div>

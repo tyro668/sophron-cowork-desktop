@@ -9,6 +9,7 @@ export interface OperatorFormProps {
   otherNodes: DataWorkflowNode[];
   sourceNode?: { id: string; type: string; config?: Record<string, unknown> };
   rightSourceNode?: { id: string; type: string; config?: Record<string, unknown> };
+  upstreamRowCount?: number;
   onNodeChange: (updater: (node: DataWorkflowNode) => DataWorkflowNode) => void;
 }
 

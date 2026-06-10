@@ -1,3 +1,6 @@
+import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+
 interface GlassColumnSelectorProps {
   columns: string[];
   selected: string[];
@@ -11,6 +14,12 @@ export function GlassColumnSelector({
   onChange,
   maxHeight = '160px',
 }: GlassColumnSelectorProps) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    [t]
+  );
+
   const allSelected = columns.length > 0 && selected.length === columns.length;
 
   function toggleAll() {
@@ -35,7 +44,7 @@ export function GlassColumnSelector({
             onChange={toggleAll}
             className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
           />
-          {allSelected ? '取消全选' : '全选'}
+          {allSelected ? tr('deselectAll', '取消全选') : tr('selectAll', '全选')}
         </label>
         <span className="text-[10px] text-text-muted">
           {selected.length}/{columns.length}
@@ -43,7 +52,9 @@ export function GlassColumnSelector({
       </div>
       <div className="overflow-y-auto" style={{ maxHeight }}>
         {columns.length === 0 ? (
-          <div className="px-3 py-4 text-center text-[12px] text-text-muted">暂无可用字段</div>
+          <div className="px-3 py-4 text-center text-[12px] text-text-muted">
+            {tr('noFields', '暂无可用字段')}
+          </div>
         ) : (
           columns.map((col) => (
             <label

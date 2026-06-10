@@ -3628,6 +3628,7 @@ function WorkflowInspector({
                           }
                         : undefined
                     }
+                    upstreamRowCount={nodePreviewData?.totalRows}
                     onNodeChange={onNodeChange}
                   />
                 </div>

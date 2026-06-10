@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
 import { GlassFormLabel } from './shared/GlassFormLabel';
@@ -20,6 +21,12 @@ const MATCH_OPTIONS = [
 ];
 
 export default function FormSetOp({ node, otherNodes, onNodeChange }: OperatorFormProps) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    [t]
+  );
+
   const updateConfig = useCallback(
     (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
       onNodeChange((current) => ({
@@ -41,10 +48,10 @@ export default function FormSetOp({ node, otherNodes, onNodeChange }: OperatorFo
 
   return (
     <div className="grid content-start gap-2.5">
-      <GlassFormSection title="集合操作">
+      <GlassFormSection title={tr('setOpTitle', '集合操作')}>
         <div className="grid gap-2">
           <div>
-            <GlassFormLabel required>操作类型</GlassFormLabel>
+            <GlassFormLabel required>{tr('setOpType', '操作类型')}</GlassFormLabel>
             <select
               value={operation}
               onChange={(e) => updateConfig((cfg) => ({ ...cfg, operation: e.target.value }))}
@@ -52,13 +59,20 @@ export default function FormSetOp({ node, otherNodes, onNodeChange }: OperatorFo
             >
               {OPERATION_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
-                  {o.label}
+                  {tr(
+                    o.value === 'union'
+                      ? 'setOpUnion'
+                      : o.value === 'intersect'
+                        ? 'setOpIntersect'
+                        : 'setOpExcept',
+                    o.label
+                  )}
                 </option>
               ))}
             </select>
           </div>
           <div>
-            <GlassFormLabel required>右侧输入源</GlassFormLabel>
+            <GlassFormLabel required>{tr('setOpRightInput', '右侧输入源')}</GlassFormLabel>
             <select
               value={rightInput}
               onChange={(e) =>
@@ -67,7 +81,7 @@ export default function FormSetOp({ node, otherNodes, onNodeChange }: OperatorFo
               className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent"
             >
               <option value="" disabled>
-                选择输入源
+                {tr('setOpSelectSource', '选择输入源')}
               </option>
               {inputSourceNodes.map((n) => (
                 <option key={n.id} value={n.id}>
@@ -79,10 +93,10 @@ export default function FormSetOp({ node, otherNodes, onNodeChange }: OperatorFo
         </div>
       </GlassFormSection>
 
-      <GlassFormSection title="选项">
+      <GlassFormSection title={tr('setOpOptions', '选项')}>
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <GlassFormLabel>去重模式</GlassFormLabel>
+            <GlassFormLabel>{tr('setOpDedupMode', '去重模式')}</GlassFormLabel>
             <select
               value={mode}
               onChange={(e) => updateConfig((cfg) => ({ ...cfg, mode: e.target.value }))}
@@ -90,13 +104,13 @@ export default function FormSetOp({ node, otherNodes, onNodeChange }: OperatorFo
             >
               {MODE_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
-                  {o.label}
+                  {tr(o.value === 'all' ? 'setOpAll' : 'setOpDistinct', o.label)}
                 </option>
               ))}
             </select>
           </div>
           <div>
-            <GlassFormLabel>匹配方式</GlassFormLabel>
+            <GlassFormLabel>{tr('setOpMatchMode', '匹配方式')}</GlassFormLabel>
             <select
               value={match}
               onChange={(e) => updateConfig((cfg) => ({ ...cfg, match: e.target.value }))}
@@ -104,7 +118,7 @@ export default function FormSetOp({ node, otherNodes, onNodeChange }: OperatorFo
             >
               {MATCH_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
-                  {o.label}
+                  {tr(o.value === 'by_name' ? 'setOpByName' : 'setOpByPosition', o.label)}
                 </option>
               ))}
             </select>

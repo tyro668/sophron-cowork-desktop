@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
 import { GlassFormLabel } from './shared/GlassFormLabel';
@@ -6,6 +7,12 @@ import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassColumnSelector } from './shared/GlassColumnSelector';
 
 export default function FormUnpivot({ node, fieldCompletions, onNodeChange }: OperatorFormProps) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    [t]
+  );
+
   const updateConfig = useCallback(
     (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
       onNodeChange((current) => ({
@@ -25,8 +32,8 @@ export default function FormUnpivot({ node, fieldCompletions, onNodeChange }: Op
 
   return (
     <div className="grid content-start gap-2.5">
-      <GlassFormSection title="列展开模式">
-        <GlassFormLabel>模式</GlassFormLabel>
+      <GlassFormSection title={tr('unpivotMode', '列展开模式')}>
+        <GlassFormLabel>{tr('unpivotModeLabel', '模式')}</GlassFormLabel>
         <div className="flex gap-1.5">
           {(['include', 'except'] as const).map((m) => (
             <button
@@ -39,13 +46,19 @@ export default function FormUnpivot({ node, fieldCompletions, onNodeChange }: Op
                   : 'border border-border-muted bg-background/42 text-text-secondary hover:border-accent/30'
               }`}
             >
-              {m === 'include' ? '指定列' : '排除列'}
+              {m === 'include' ? tr('unpivotInclude', '指定列') : tr('unpivotExclude', '排除列')}
             </button>
           ))}
         </div>
       </GlassFormSection>
 
-      <GlassFormSection title={mode === 'include' ? '要展开的列' : '排除的列'}>
+      <GlassFormSection
+        title={
+          mode === 'include'
+            ? tr('unpivotExpandCols', '要展开的列')
+            : tr('unpivotExcludeCols', '排除的列')
+        }
+      >
         <GlassColumnSelector
           columns={fieldCompletions}
           selected={columns}
@@ -55,34 +68,34 @@ export default function FormUnpivot({ node, fieldCompletions, onNodeChange }: Op
         />
       </GlassFormSection>
 
-      <GlassFormSection title="输出列设置">
+      <GlassFormSection title={tr('unpivotOutputSettings', '输出列设置')}>
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <GlassFormLabel required>名称列</GlassFormLabel>
+            <GlassFormLabel required>{tr('unpivotNameCol', '名称列')}</GlassFormLabel>
             <GlassFormTextInput
               value={nameColumn}
               onChange={(value) =>
                 updateConfig((cfg) => ({ ...cfg, nameColumn: value || undefined }))
               }
-              placeholder="如 month"
+              placeholder={tr('unpivotNameColPlaceholder', '如 month')}
               className="h-7"
             />
           </div>
           <div>
-            <GlassFormLabel required>值列</GlassFormLabel>
+            <GlassFormLabel required>{tr('unpivotValueCol', '值列')}</GlassFormLabel>
             <GlassFormTextInput
               value={valueColumn}
               onChange={(value) =>
                 updateConfig((cfg) => ({ ...cfg, valueColumn: value || undefined }))
               }
-              placeholder="如 sales_amount"
+              placeholder={tr('unpivotValueColPlaceholder', '如 sales_amount')}
               className="h-7"
             />
           </div>
         </div>
       </GlassFormSection>
 
-      <GlassFormSection title="选项">
+      <GlassFormSection title={tr('unpivotOptions', '选项')}>
         <label className="flex cursor-pointer items-center gap-2 text-[12px] text-text-secondary">
           <input
             type="checkbox"
@@ -95,7 +108,7 @@ export default function FormUnpivot({ node, fieldCompletions, onNodeChange }: Op
             }
             className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
           />
-          包含空值行 (include nulls)
+          {tr('unpivotIncludeNulls', '包含空值行 (include nulls)')}
         </label>
       </GlassFormSection>
     </div>

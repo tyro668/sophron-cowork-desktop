@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Search } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
@@ -64,6 +65,12 @@ export default function FormMissingValue({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    [t]
+  );
+
   const updateConfig = useCallback(
     (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
       onNodeChange((current) => ({
@@ -141,8 +148,8 @@ export default function FormMissingValue({
       {/* Tab toggle */}
       <div className="flex h-7 rounded-md border border-border-muted bg-background/42 p-0.5">
         {[
-          { value: 'row' as const, label: '按行处理' },
-          { value: 'column' as const, label: '按列处理' },
+          { value: 'row' as const, label: tr('rowProcess', '按行处理') },
+          { value: 'column' as const, label: tr('colProcess', '按列处理') },
         ].map((t) => (
           <button
             key={t.value}
@@ -165,8 +172,8 @@ export default function FormMissingValue({
           <div className="grid gap-2">
             <div className="flex h-7 rounded-md border border-border-muted bg-background/42 p-0.5">
               {[
-                { value: 'all' as const, label: '全部为空' },
-                { value: 'any' as const, label: '任一为空' },
+                { value: 'all' as const, label: tr('allNull', '全部为空') },
+                { value: 'any' as const, label: tr('anyNull', '任一为空') },
               ].map((s) => (
                 <button
                   key={s.value}
@@ -192,7 +199,7 @@ export default function FormMissingValue({
 
             {rowSubMode === 'all' ? (
               <div className="rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[12px] text-text-secondary text-center">
-                所有字段均为空 (null) 的行将被删除。
+                {tr('dropAllHint', '所有字段均为空 (null) 的行将被删除。')}
               </div>
             ) : (
               <div>
@@ -202,14 +209,14 @@ export default function FormMissingValue({
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="搜索字段..."
+                    placeholder={tr('searchField', '搜索字段...')}
                     className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
                   />
                 </div>
                 <div className="max-h-56 overflow-y-auto rounded-lg border border-border-muted bg-background/42 p-1.5">
                   {filteredFields.length === 0 ? (
                     <div className="py-4 text-center text-[12px] text-text-muted">
-                      {search ? '无匹配字段' : '暂无可用字段'}
+                      {search ? tr('noMatch', '无匹配字段') : tr('noFields', '暂无可用字段')}
                     </div>
                   ) : (
                     filteredFields.map((col) => (
@@ -241,7 +248,9 @@ export default function FormMissingValue({
                     ))
                   )}
                 </div>
-                <p className="mt-1 text-[10px] text-text-muted">任一勾选字段为空即删除该行。</p>
+                <p className="mt-1 text-[10px] text-text-muted">
+                  {tr('dropRowsHint', '任一勾选字段为空即删除该行。')}
+                </p>
               </div>
             )}
           </div>
@@ -281,7 +290,7 @@ export default function FormMissingValue({
                     className={SELECT_CLASS + ' flex-1 min-w-0'}
                   >
                     <option value="" disabled>
-                      选择字段
+                      {tr('selectField', '选择字段')}
                     </option>
                     {fieldCompletions.map((col) => (
                       <option key={col} value={col}>
@@ -308,7 +317,7 @@ export default function FormMissingValue({
                   >
                     {availableMethods.map((m) => (
                       <option key={m.value} value={m.value}>
-                        {m.label}
+                        {t(`ruleMethods.${m.value}`, { defaultValue: m.label })}
                       </option>
                     ))}
                   </select>
@@ -332,8 +341,8 @@ export default function FormMissingValue({
                       }}
                       placeholder={
                         item.method === 'nullify_values'
-                          ? '特殊值，逗号分隔。如 "", N/A, -'
-                          : '填充值，如 UNKNOWN 或 0'
+                          ? tr('missingSpecialValuesPlaceholder', '特殊值，逗号分隔。如 "", N/A, -')
+                          : tr('missingFillPlaceholder', '填充值，如 UNKNOWN 或 0')
                       }
                       className="h-7 flex-1 min-w-0"
                     />
@@ -343,11 +352,11 @@ export default function FormMissingValue({
             }}
             createDefault={createDefault}
             onChange={handleRulesChange}
-            addLabel="添加规则"
-            emptyText="暂无处理规则"
+            addLabel={tr('missingAddRule', '添加规则')}
+            emptyText={tr('missingNoRules', '暂无处理规则')}
           />
           <p className="mt-2 text-[10px] leading-relaxed text-text-muted">
-            规则按顺序执行。均值/中位数/众数仅适用于数值字段。
+            {tr('missingRulesHint', '规则按顺序执行。均值/中位数/众数仅适用于数值字段。')}
           </p>
         </GlassFormSection>
       )}

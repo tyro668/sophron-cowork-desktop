@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
@@ -74,6 +75,12 @@ export default function FormTypeConvert({
   fieldCompletions,
   onNodeChange,
 }: OperatorFormProps) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    [t]
+  );
+
   const updateConfig = useCallback(
     (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
       onNodeChange((current) => ({
@@ -108,7 +115,9 @@ export default function FormTypeConvert({
     <div className="grid content-start gap-2.5">
       <GlassFormSection>
         {conversions.length === 0 ? (
-          <div className="py-4 text-center text-[12px] text-text-muted">暂未设置类型转换</div>
+          <div className="py-4 text-center text-[12px] text-text-muted">
+            {tr('typeConvertEmpty', '暂未设置类型转换')}
+          </div>
         ) : (
           <div className="grid grid-cols-2 gap-2">
             {conversions.map((item, i) => {
@@ -130,14 +139,14 @@ export default function FormTypeConvert({
 
                   <div className="grid gap-1.5 pr-6">
                     <div>
-                      <GlassFormLabel>字段名</GlassFormLabel>
+                      <GlassFormLabel>{tr('typeConvertField', '字段名')}</GlassFormLabel>
                       <select
                         value={item.column}
                         onChange={(e) => change(i, { column: e.target.value })}
                         className={SELECT_CLASS}
                       >
                         <option value="" disabled>
-                          选择字段
+                          {tr('typeConvertSelectField', '选择字段')}
                         </option>
                         {fieldCompletions.map((col) => (
                           <option key={col} value={col}>
@@ -148,7 +157,7 @@ export default function FormTypeConvert({
                     </div>
 
                     <div>
-                      <GlassFormLabel>目标类型</GlassFormLabel>
+                      <GlassFormLabel>{tr('typeConvertTargetType', '目标类型')}</GlassFormLabel>
                       <select
                         value={item.type}
                         disabled={!fieldSelected}
@@ -165,7 +174,7 @@ export default function FormTypeConvert({
 
                     {showFormat && (
                       <div>
-                        <GlassFormLabel>日期格式</GlassFormLabel>
+                        <GlassFormLabel>{tr('typeConvertDateFormat', '日期格式')}</GlassFormLabel>
                         <input
                           type="text"
                           list={`fmt-list-${i}`}
@@ -188,7 +197,7 @@ export default function FormTypeConvert({
 
                     {item.type === 'timestamp' && (
                       <div>
-                        <GlassFormLabel>时区</GlassFormLabel>
+                        <GlassFormLabel>{tr('typeConvertTimezone', '时区')}</GlassFormLabel>
                         <input
                           type="text"
                           list={`tz-list-${i}`}
@@ -207,7 +216,7 @@ export default function FormTypeConvert({
 
                     {item.type === 'decimal' && (
                       <div>
-                        <GlassFormLabel>区域</GlassFormLabel>
+                        <GlassFormLabel>{tr('typeConvertLocale', '区域')}</GlassFormLabel>
                         <GlassFormTextInput
                           value={item.locale ?? ''}
                           onChange={(v) => change(i, { locale: v || undefined })}
@@ -217,7 +226,7 @@ export default function FormTypeConvert({
                     )}
 
                     <div>
-                      <GlassFormLabel>错误处理</GlassFormLabel>
+                      <GlassFormLabel>{tr('typeConvertErrorHandling', '错误处理')}</GlassFormLabel>
                       <select
                         value={item.onError ?? 'null'}
                         disabled={!fieldSelected}
@@ -230,7 +239,10 @@ export default function FormTypeConvert({
                       >
                         {ON_ERROR_OPTIONS.map((o) => (
                           <option key={o.value} value={o.value}>
-                            {o.label}
+                            {t(
+                              `formLabels.${o.value === 'null' ? 'typeConvertNullify' : o.value === 'fail' ? 'typeConvertFail' : 'typeConvertKeep'}`,
+                              { defaultValue: o.label }
+                            )}
                           </option>
                         ))}
                       </select>
@@ -248,7 +260,7 @@ export default function FormTypeConvert({
           className="mt-2 inline-flex h-7 items-center gap-1 rounded-md border border-border-muted bg-background/42 px-2 text-[11px] text-text-secondary hover:border-accent/30 hover:text-accent transition-colors"
         >
           <Plus className="h-3 w-3" />
-          添加转换
+          {tr('typeConvertAdd', '添加转换')}
         </button>
       </GlassFormSection>
     </div>

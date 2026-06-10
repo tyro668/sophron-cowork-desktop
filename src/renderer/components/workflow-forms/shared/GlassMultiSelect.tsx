@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronDown, Search, X } from 'lucide-react';
 
 interface GlassMultiSelectProps {
@@ -12,8 +13,14 @@ export function GlassMultiSelect({
   value,
   suggestions,
   onChange,
-  placeholder = '选择字段...',
+  placeholder,
 }: GlassMultiSelectProps) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    [t]
+  );
+  const resolvedPlaceholder = placeholder ?? tr('aggregateGroupByPlaceholder', '选择字段...');
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
@@ -68,7 +75,7 @@ export function GlassMultiSelect({
         }`}
       >
         {value.length === 0 ? (
-          <span className="text-text-muted">{placeholder}</span>
+          <span className="text-text-muted">{resolvedPlaceholder}</span>
         ) : (
           value.map((col) => (
             <span
@@ -103,7 +110,7 @@ export function GlassMultiSelect({
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索..."
+              placeholder={tr('search', '搜索...')}
               autoFocus
               className="w-full bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
             />
@@ -116,7 +123,7 @@ export function GlassMultiSelect({
                 onChange={toggleAll}
                 className="h-3 w-3 rounded border-border-muted accent-accent"
               />
-              全选
+              {allSelected ? tr('deselectAll', '取消全选') : tr('selectAll', '全选')}
             </label>
             <span className="text-[10px] text-text-muted">
               {value.length}/{suggestions.length}
@@ -124,7 +131,9 @@ export function GlassMultiSelect({
           </div>
           <div className="max-h-48 overflow-y-auto">
             {filtered.length === 0 ? (
-              <div className="px-3 py-3 text-center text-[12px] text-text-muted">无匹配字段</div>
+              <div className="px-3 py-3 text-center text-[12px] text-text-muted">
+                {tr('noMatch', '无匹配字段')}
+              </div>
             ) : (
               filtered.map((col) => {
                 const selected = value.includes(col);

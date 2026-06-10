@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Trash2, Loader2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
@@ -6,21 +7,31 @@ import { GlassFormSection } from './shared/GlassFormSection';
 type OpDef = { label: string; value: string };
 
 const ALL_OPERATORS: OpDef[] = [
-  { label: '等于', value: '=' },
-  { label: '大于', value: '>' },
-  { label: '小于', value: '<' },
-  { label: '不大于', value: '<=' },
-  { label: '不小于', value: '>=' },
-  { label: '不等于', value: '!=' },
-  { label: '介于', value: 'between' },
+  { label: '', value: '=' },
+  { label: '', value: '>' },
+  { label: '', value: '<' },
+  { label: '', value: '<=' },
+  { label: '', value: '>=' },
+  { label: '', value: '!=' },
+  { label: '', value: 'between' },
 ];
 
 const STRING_OPS: OpDef[] = [
-  { label: '等于', value: '=' },
-  { label: '不等于', value: '!=' },
+  { label: '', value: '=' },
+  { label: '', value: '!=' },
 ];
 
-const BOOLEAN_OPS: OpDef[] = [{ label: '等于', value: '=' }];
+const BOOLEAN_OPS: OpDef[] = [{ label: '', value: '=' }];
+
+const OP_LABEL_KEYS: Record<string, string> = {
+  '=': 'filterOpEq',
+  '>': 'filterOpGt',
+  '<': 'filterOpLt',
+  '<=': 'filterOpLte',
+  '>=': 'filterOpGte',
+  '!=': 'filterOpNeq',
+  between: 'filterOpBetween',
+};
 
 /** Map DuckDB data_type to operator list. */
 function operatorsForType(colType: string | undefined): OpDef[] {
@@ -234,6 +245,12 @@ export default function FormFilter({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    [t]
+  );
+
   const updateConfig = useCallback(
     (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
       onNodeChange((current) => ({
@@ -342,7 +359,7 @@ export default function FormFilter({
 
   return (
     <div className="grid content-start gap-2.5">
-      <GlassFormSection title="筛选条件">
+      <GlassFormSection title={tr('filterTitle', '筛选条件')}>
         <div className="space-y-2">
           {rows.map((row, i) => {
             const fieldSelected = !!row.field;
@@ -364,7 +381,7 @@ export default function FormFilter({
                       updateRow(i, { connective: row.connective === 'and' ? 'or' : 'and' })
                     }
                     className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/10 transition-colors"
-                    title="点击切换 AND / OR"
+                    title={tr('filterToggleAndOr', '点击切换 AND / OR')}
                   >
                     {row.connective.toUpperCase()}
                   </button>
@@ -375,7 +392,7 @@ export default function FormFilter({
                   value={row.field}
                   suggestions={fieldCompletions}
                   onChange={(v) => updateRow(i, { field: v, op: effectiveOp })}
-                  placeholder="字段"
+                  placeholder={tr('filterFieldPlaceholder', '字段')}
                 />
 
                 {/* Operator — disabled until field selected */}
@@ -387,7 +404,7 @@ export default function FormFilter({
                 >
                   {ops.map((o) => (
                     <option key={o.value} value={o.value}>
-                      {o.label}
+                      {tr(OP_LABEL_KEYS[o.value] ?? '', o.value)}
                     </option>
                   ))}
                 </select>
@@ -399,7 +416,7 @@ export default function FormFilter({
                   isLoading={isValsLoading}
                   disabled={!fieldSelected}
                   onChange={(v) => updateRow(i, { val1: v })}
-                  placeholder="值"
+                  placeholder={tr('filterValuePlaceholder', '值')}
                 />
 
                 {/* Value 2 (between only) */}
@@ -410,7 +427,7 @@ export default function FormFilter({
                     isLoading={isValsLoading}
                     disabled={!fieldSelected}
                     onChange={(v) => updateRow(i, { val2: v })}
-                    placeholder="值2"
+                    placeholder={tr('filterValue2Placeholder', '值2')}
                   />
                 )}
 
@@ -419,7 +436,7 @@ export default function FormFilter({
                   type="button"
                   onClick={() => removeRow(i)}
                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-surface-hover hover:text-error transition-colors"
-                  title="删除此条件"
+                  title={tr('filterDeleteCondition', '删除此条件')}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
@@ -434,12 +451,15 @@ export default function FormFilter({
           className="mt-2 inline-flex h-7 items-center gap-1 rounded-md border border-border-muted bg-background/42 px-2 text-[11px] text-text-secondary hover:border-accent/30 hover:text-accent transition-colors"
         >
           <Plus className="h-3 w-3" />
-          添加筛选条件
+          {tr('filterAddCondition', '添加筛选条件')}
         </button>
 
-        <p className="mt-2 text-[10px] leading-relaxed text-text-muted">
-          多个条件以 <b>AND</b> 连接。字段选中后自动加载列值建议。
-        </p>
+        <p
+          className="mt-2 text-[10px] leading-relaxed text-text-muted"
+          dangerouslySetInnerHTML={{
+            __html: tr('filterHint', '多个条件以 <b>AND</b> 连接。字段选中后自动加载列值建议。'),
+          }}
+        />
       </GlassFormSection>
     </div>
   );

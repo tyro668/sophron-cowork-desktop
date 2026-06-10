@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Search } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
@@ -8,6 +9,12 @@ export default function FormFieldSelect({
   fieldCompletions,
   onNodeChange,
 }: OperatorFormProps) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    [t]
+  );
+
   const updateConfig = useCallback(
     (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
       onNodeChange((current) => ({
@@ -66,7 +73,7 @@ export default function FormFieldSelect({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索字段名..."
+            placeholder={tr('searchField', '搜索字段...')}
             className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
           />
           {search && (
@@ -75,7 +82,7 @@ export default function FormFieldSelect({
               onClick={() => setSearch('')}
               className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-text-muted hover:text-text-secondary"
             >
-              清除
+              {tr('clear', '清除')}
             </button>
           )}
         </div>
@@ -92,7 +99,7 @@ export default function FormFieldSelect({
               onChange={toggleAll}
               className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
             />
-            {allSelected ? '取消全选' : '全选'}
+            {allSelected ? tr('deselectAll', '取消全选') : tr('selectAll', '全选')}
           </label>
           <span className="text-[10px] text-text-muted">
             {columns.length}/{fieldCompletions.length}
@@ -103,7 +110,7 @@ export default function FormFieldSelect({
         <div className="max-h-48 overflow-y-auto">
           {filtered.length === 0 ? (
             <div className="py-4 text-center text-[12px] text-text-muted">
-              {search ? '无匹配字段' : '暂无可用字段'}
+              {search ? tr('noMatch', '无匹配字段') : tr('noFields', '暂无可用字段')}
             </div>
           ) : (
             filtered.map((col) => (

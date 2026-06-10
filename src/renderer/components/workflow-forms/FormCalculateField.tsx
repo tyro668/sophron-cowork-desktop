@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import {
@@ -23,7 +24,7 @@ function functionToken(label: string): HelperToken {
 }
 
 const FIELD_INPUT_CLASS =
-  'h-8 w-full rounded-md border border-border-muted/70 bg-background/34 px-2 text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/15';
+  'min-h-[40px] w-full rounded-md border border-border-muted/70 bg-background/34 px-2 text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/15';
 
 const EXPRESSION_INPUT_CLASS =
   'min-h-[72px] w-full resize-y rounded-md border border-border-muted/70 bg-background/34 px-2 py-1.5 font-mono text-[12px] leading-5 text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/15';
@@ -31,9 +32,9 @@ const EXPRESSION_INPUT_CLASS =
 const CHIP_CLASS =
   'inline-flex h-6 max-w-full cursor-pointer items-center rounded-md border border-border-muted/70 bg-background/28 px-2 text-[11px] text-text-secondary transition-colors hover:border-accent/40 hover:bg-accent/10 hover:text-accent';
 
-const FUNCTION_GROUPS: Array<{ label: string; tokens: HelperToken[] }> = [
+const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
   {
-    label: '条件',
+    i18nKey: 'calcFieldCategoryCondition',
     tokens: [
       { label: 'if', apply: 'if ' },
       { label: 'then', apply: ' then ' },
@@ -41,29 +42,29 @@ const FUNCTION_GROUPS: Array<{ label: string; tokens: HelperToken[] }> = [
     ],
   },
   {
-    label: '窗口',
+    i18nKey: 'calcFieldCategoryWindow',
     tokens: ['row_number', 'rank', 'lag', 'lead'].map(functionToken),
   },
   {
-    label: '聚合',
+    i18nKey: 'calcFieldCategoryAggregate',
     tokens: ['sum', 'avg', 'count', 'min', 'max'].map(functionToken),
   },
   {
-    label: '数学',
+    i18nKey: 'calcFieldCategoryMath',
     tokens: ['abs', 'round'].map(functionToken),
   },
   {
-    label: '字符串',
+    i18nKey: 'calcFieldCategoryString',
     tokens: ['upper', 'lower', 'trim', 'length', 'substr', 'split_part', 'concat'].map(
       functionToken
     ),
   },
   {
-    label: '空值',
+    i18nKey: 'calcFieldCategoryNull',
     tokens: ['coalesce', 'nullif'].map(functionToken),
   },
   {
-    label: '类型',
+    i18nKey: 'calcFieldCategoryType',
     tokens: [{ label: 'CAST', apply: 'CAST( AS )', cursorOffset: 5 }],
   },
 ];
@@ -73,6 +74,12 @@ export default function FormCalculateField({
   fieldCompletions,
   onNodeChange,
 }: OperatorFormProps) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    [t]
+  );
+
   const updateConfig = useCallback(
     (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
       onNodeChange((current) => ({
@@ -131,7 +138,7 @@ export default function FormCalculateField({
   }
 
   function updateItem(id: string, patch: Partial<CalculationRow>) {
-    handleChange(
+    storeCalculations(
       calculations.map((existing) => (existing.id === id ? { ...existing, ...patch } : existing))
     );
   }
@@ -198,9 +205,16 @@ export default function FormCalculateField({
       <section className="overflow-hidden rounded-lg border border-border-muted/70 bg-background/18">
         <div className="flex min-h-9 items-center gap-2 border-b border-border-muted/60 px-2.5 py-1.5">
           <div className="min-w-0">
-            <div className="text-[13px] font-medium text-text-primary">计算字段</div>
+            <div className="text-[13px] font-medium text-text-primary">
+              {tr('calcFieldTitle', '计算字段')}
+            </div>
             <div className="text-[11px] text-text-muted">
-              {calculations.length > 0 ? `${calculations.length} 条公式规则` : '0 条公式规则'}
+              {calculations.length > 0
+                ? tr('calcFieldRuleCount', '{{count}} 条公式规则').replace(
+                    '{{count}}',
+                    String(calculations.length)
+                  )
+                : tr('calcFieldZeroRules', '0 条公式规则')}
             </div>
           </div>
         </div>
@@ -208,9 +222,11 @@ export default function FormCalculateField({
         <div className="grid gap-1.5 p-2">
           {calculations.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border-muted/70 bg-background/16 px-3 py-5 text-center">
-              <div className="text-[12px] text-text-secondary">暂无计算字段</div>
+              <div className="text-[12px] text-text-secondary">
+                {tr('calcFieldEmpty', '暂无计算字段')}
+              </div>
               <div className="mt-1 text-[11px] text-text-muted">
-                添加一条规则后填写目标字段和表达式
+                {tr('calcFieldEmptyHint', '添加一条规则后填写目标字段和表达式')}
               </div>
             </div>
           ) : (
@@ -233,14 +249,16 @@ export default function FormCalculateField({
                         #{index + 1}
                       </span>
                       <span className="truncate text-[11px] text-text-muted">
-                        {isActive ? '当前编辑规则' : '计算规则'}
+                        {isActive
+                          ? tr('calcFieldActiveRule', '当前编辑规则')
+                          : tr('calcFieldRule', '计算规则')}
                       </span>
                     </div>
                     <button
                       type="button"
                       onClick={() => removeCalculation(item.id, index)}
                       className="flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-0 transition-opacity hover:bg-surface-hover hover:text-error group-hover/rule:opacity-100"
-                      title="删除"
+                      title={tr('remove', '删除')}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -249,16 +267,19 @@ export default function FormCalculateField({
                   <div className="grid gap-2 lg:grid-cols-[minmax(8rem,0.32fr)_minmax(0,1fr)]">
                     <label className="grid content-start gap-1">
                       <span className="text-[11px] font-medium text-text-secondary">
-                        目标字段 <span className="text-error">*</span>
+                        {tr('calcFieldTargetField', '目标字段')}{' '}
+                        <span className="text-error">*</span>
                       </span>
-                      <input
+                      <textarea
+                        rows={2}
+                        maxLength={128}
                         value={item.field}
                         onChange={(e) => updateItem(item.id, { field: e.target.value })}
                         onFocus={() => setActiveCalculationId(item.id)}
                         onBlur={() => markTouched(item.id, 'field')}
-                        placeholder="如 margin"
+                        placeholder={tr('calcFieldTargetPlaceholder', '如 margin')}
                         aria-invalid={fieldError}
-                        className={`${FIELD_INPUT_CLASS} ${
+                        className={`${FIELD_INPUT_CLASS} resize-none ${
                           fieldError ? '!border-warning/70 !ring-warning/10' : ''
                         }`}
                       />
@@ -266,7 +287,8 @@ export default function FormCalculateField({
 
                     <label className="grid min-w-0 gap-1">
                       <span className="text-[11px] font-medium text-text-secondary">
-                        表达式 <span className="text-error">*</span>
+                        {tr('calcFieldExpressionLabel', '表达式')}{' '}
+                        <span className="text-error">*</span>
                       </span>
                       <textarea
                         ref={(el) => {
@@ -277,7 +299,10 @@ export default function FormCalculateField({
                         onChange={(e) => updateItem(item.id, { expression: e.target.value })}
                         onFocus={() => setActiveCalculationId(item.id)}
                         onBlur={() => markTouched(item.id, 'expression')}
-                        placeholder="如 [revenue] - [cost] 或 if [a] > 0 then 1 else 0"
+                        placeholder={tr(
+                          'calcFieldExpressionPlaceholder',
+                          '如 [revenue] - [cost] 或 if [a] > 0 then 1 else 0'
+                        )}
                         aria-invalid={expressionError}
                         className={`${EXPRESSION_INPUT_CLASS} ${
                           expressionError ? '!border-warning/70 !ring-warning/10' : ''
@@ -288,9 +313,11 @@ export default function FormCalculateField({
 
                   {(fieldError || expressionError) && (
                     <div className="mt-1.5 text-[11px] text-warning">
-                      请补全{fieldError ? '目标字段' : ''}
-                      {fieldError && expressionError ? '和' : ''}
-                      {expressionError ? '表达式' : ''}
+                      {fieldError && expressionError
+                        ? tr('calcFieldCompleteBoth', '请补全目标字段和表达式')
+                        : fieldError
+                          ? tr('calcFieldCompleteField', '请补全目标字段')
+                          : tr('calcFieldCompleteExpr', '请补全表达式')}
                     </div>
                   )}
                 </div>
@@ -306,7 +333,7 @@ export default function FormCalculateField({
             className="inline-flex h-7 w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-border-muted/70 bg-background/16 text-[12px] text-text-secondary transition-colors hover:border-accent/40 hover:bg-accent/5 hover:text-accent"
           >
             <Plus className="h-3.5 w-3.5" />
-            添加规则
+            {tr('calcFieldAddRule', '添加规则')}
           </button>
         </div>
       </section>
@@ -314,7 +341,13 @@ export default function FormCalculateField({
       <section className="rounded-lg border border-border-muted/60 bg-background/16 p-2">
         <div className="mb-1.5 flex min-h-7 items-center justify-between gap-2">
           <div className="min-w-0 text-[11px] font-medium text-text-secondary">
-            插入到{calculations.length > 0 ? `第 ${activeIndex + 1} 条表达式` : '表达式'}
+            {tr('calcFieldInsertTo', '插入到')}
+            {calculations.length > 0
+              ? tr('calcFieldExpressionNth', '第 {{n}} 条表达式').replace(
+                  '{{n}}',
+                  String(activeIndex + 1)
+                )
+              : tr('calcFieldExpressionLabel', '表达式')}
           </div>
           <div className="inline-flex rounded-md bg-surface-active/70 p-0.5">
             {(['fields', 'functions'] as const).map((tab) => (
@@ -328,7 +361,9 @@ export default function FormCalculateField({
                     : 'text-text-muted hover:text-text-secondary'
                 }`}
               >
-                {tab === 'fields' ? '字段' : '函数'}
+                {tab === 'fields'
+                  ? tr('calcFieldTabFields', '字段')
+                  : tr('calcFieldTabFunctions', '函数')}
               </button>
             ))}
           </div>
@@ -344,21 +379,21 @@ export default function FormCalculateField({
                   onClick={() => insert(`[${col}]`)}
                   disabled={calculations.length === 0}
                   className={`${CHIP_CLASS} disabled:cursor-not-allowed disabled:opacity-45`}
-                  title={`插入字段 ${col}`}
+                  title={tr('calcFieldInsertField', '插入字段 {{name}}').replace('{{name}}', col)}
                 >
                   <span className="truncate">{col}</span>
                 </button>
               ))
             ) : (
-              <span className="text-[11px] text-text-muted">暂无可用字段</span>
+              <span className="text-[11px] text-text-muted">{tr('noFields', '暂无可用字段')}</span>
             )}
           </div>
         ) : (
           <div className="grid max-h-28 gap-1.5 overflow-y-auto pr-0.5">
             {FUNCTION_GROUPS.map((group) => (
-              <div key={group.label} className="flex min-w-0 items-start gap-1.5">
+              <div key={group.i18nKey} className="flex min-w-0 items-start gap-1.5">
                 <span className="mt-0.5 w-9 flex-shrink-0 text-[10px] text-text-muted">
-                  {group.label}
+                  {tr(group.i18nKey, group.i18nKey)}
                 </span>
                 <div className="flex min-w-0 flex-wrap gap-1">
                   {group.tokens.map((token) => (
@@ -368,7 +403,10 @@ export default function FormCalculateField({
                       onClick={() => insert(token.apply, token.cursorOffset)}
                       disabled={calculations.length === 0}
                       className={`${CHIP_CLASS} font-mono disabled:cursor-not-allowed disabled:opacity-45`}
-                      title={`插入 ${token.label}`}
+                      title={tr('calcFieldInsertFn', '插入 {{name}}').replace(
+                        '{{name}}',
+                        token.label
+                      )}
                     >
                       {token.label}
                     </button>
