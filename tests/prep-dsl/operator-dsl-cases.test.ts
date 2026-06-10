@@ -76,11 +76,11 @@ const currentOperatorCases: Array<{
   {
     name: 'convert types',
     type: 'type_convert',
-    dsl: 'cast [order_date] as date format "%Y-%m-%d" on_error null, [revenue] as double on_error fail',
+    dsl: 'cast [order_date] as date format "%Y-%m-%d" on_error null, [revenue] as float on_error fail',
     expectedConfig: {
       conversions: [
         { column: 'order_date', type: 'date', format: '%Y-%m-%d', onError: 'null' },
-        { column: 'revenue', type: 'double', onError: 'fail' },
+        { column: 'revenue', type: 'float', onError: 'fail' },
       ],
     },
   },
@@ -150,7 +150,12 @@ const currentOperatorCases: Array<{
     name: 'unpivot rows',
     type: 'unpivot',
     dsl: 'unpivot [jan], [feb], [mar] into name [month] value [sales]',
-    expectedConfig: { mode: 'include', columns: ['jan', 'feb', 'mar'], nameColumn: 'month', valueColumn: 'sales' },
+    expectedConfig: {
+      mode: 'include',
+      columns: ['jan', 'feb', 'mar'],
+      nameColumn: 'month',
+      valueColumn: 'sales',
+    },
   },
   {
     name: 'union rows',
@@ -179,9 +184,9 @@ describe('operator DSL executable cases', () => {
     expect(errorsOf(parsed.diagnostics), dsl).toHaveLength(0);
     expect(parsed.operator?.type).toBe(type);
     expect(parsed.operator?.config).toMatchObject({ dsl, ...expectedConfig });
-    expect(exportPrepOperatorDsl({ id: `${type}_case`, type, config: parsed.operator!.config })).toBe(
-      dsl
-    );
+    expect(
+      exportPrepOperatorDsl({ id: `${type}_case`, type, config: parsed.operator!.config })
+    ).toBe(dsl);
   });
 
   it('compiles and round-trips a workflow that uses every currently executable operator family', () => {
@@ -192,7 +197,7 @@ describe('operator DSL executable cases', () => {
       from orders
         | select [order_id], [customer_id], [dt], [region], [rev], [profit], [status], [updated_at]
         | map [dt] to [order_date], [rev] to [revenue]
-        | cast [order_date] as date format "%Y-%m-%d" on_error null, [revenue] as double on_error null, [profit] as double on_error null
+        | cast [order_date] as date format "%Y-%m-%d" on_error null, [revenue] as float on_error null, [profit] as float on_error null
         | missing value [region] nullify values ("", "N/A"), [region] fill "UNKNOWN"
         | deduplicate by [order_id] keep last order by [updated_at] desc
         | derive [rn] = row_number() over(partition by [region] order by [revenue] desc)

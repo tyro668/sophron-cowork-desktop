@@ -32,6 +32,7 @@ describe('DataCommandService', () => {
         apiOrigin: 'http://configured.mock',
         apiKey: 'configured-key',
         datasourceId: 'configured-datasource',
+        updatedAt: 1,
       },
     });
     const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
@@ -68,6 +69,53 @@ describe('DataCommandService', () => {
         method: 'GET',
         headers: { Authorization: 'Bearer configured-token' },
         signal: expect.any(AbortSignal),
+      })
+    );
+  });
+
+  it('reads the latest Personal Analysis config for each cloud command', async () => {
+    let personalAnalysis = {
+      apiOrigin: 'http://old.mock',
+      apiKey: 'old-key',
+      datasourceId: 'old-datasource',
+      updatedAt: 1,
+    };
+    const { service } = createService({
+      getPersonalAnalysisConfig: () => personalAnalysis,
+    });
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      const href = String(url);
+      if (href.endsWith('/api/personal/api-keys/token')) {
+        return jsonResponse({ success: true, data: { accessToken: 'token' } });
+      }
+      if (href.endsWith('/api/personal/analysis/v1/spaces')) {
+        return jsonResponse({ success: true, data: [] });
+      }
+      throw new Error(`Unexpected request: ${href}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await service.listCloudSpaces({});
+    personalAnalysis = {
+      apiOrigin: 'http://new.mock',
+      apiKey: 'new-key',
+      datasourceId: 'new-datasource',
+      updatedAt: 2,
+    };
+    await service.listCloudSpaces({});
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://old.mock/api/personal/api-keys/token',
+      expect.objectContaining({
+        headers: { 'X-API-Key': 'old-key' },
+      })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      'http://new.mock/api/personal/api-keys/token',
+      expect.objectContaining({
+        headers: { 'X-API-Key': 'new-key' },
       })
     );
   });
@@ -635,7 +683,18 @@ describe('DataCommandService', () => {
 
 function createService(
   options: {
-    personalAnalysis?: { apiOrigin: string; apiKey: string; datasourceId: string };
+    personalAnalysis?: {
+      apiOrigin: string;
+      apiKey: string;
+      datasourceId: string;
+      updatedAt?: number;
+    };
+    getPersonalAnalysisConfig?: () => {
+      apiOrigin: string;
+      apiKey: string;
+      datasourceId: string;
+      updatedAt: number;
+    };
   } = {}
 ): { service: DataCommandService; store: DataTaskStore; tempRoot: string } {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-data-command-'));
@@ -648,12 +707,15 @@ function createService(
     service: new DataCommandService(
       store,
       createFakeNormalizerGenerator(),
-      () =>
-        options.personalAnalysis || {
-          apiOrigin: '',
-          apiKey: '',
-          datasourceId: '',
-        }
+      options.getPersonalAnalysisConfig ||
+        (() => ({
+          ...(options.personalAnalysis || {
+            apiOrigin: '',
+            apiKey: '',
+            datasourceId: '',
+          }),
+          updatedAt: options.personalAnalysis?.updatedAt ?? 0,
+        }))
     ),
     store,
     tempRoot,

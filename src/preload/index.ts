@@ -27,6 +27,7 @@ import type {
   MemoryDebugFileContent,
   MemoryInspectSessionResult,
   DataCleaningTask,
+  DataColumnTypeInfo,
   DataCreateOutputTableInput,
   DataCreateTaskInput,
   DataDashboard,
@@ -235,7 +236,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('data.getWorkflowNodeColumns', payload),
     getWorkflowNodeColumnTypes: (
       payload: DataPreviewWorkflowNodeInput
-    ): Promise<Array<{ name: string; type: string }>> =>
+    ): Promise<DataColumnTypeInfo[]> =>
       ipcRenderer.invoke('data.getWorkflowNodeColumnTypes', payload),
     getWorkflowNodeColumnValues: (
       payload: DataPreviewWorkflowNodeInput & { column: string }
@@ -646,7 +647,7 @@ declare global {
         getWorkflowNodeColumns: (payload: DataPreviewWorkflowNodeInput) => Promise<string[]>;
         getWorkflowNodeColumnTypes: (
           payload: DataPreviewWorkflowNodeInput
-        ) => Promise<Array<{ name: string; type: string }>>;
+        ) => Promise<DataColumnTypeInfo[]>;
         getWorkflowNodeColumnValues: (
           payload: DataPreviewWorkflowNodeInput & { column: string }
         ) => Promise<string[]>;

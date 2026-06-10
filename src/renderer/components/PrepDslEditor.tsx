@@ -56,7 +56,9 @@ const prepDslLanguage = StreamLanguage.define({
     ) {
       return 'keyword';
     }
-    if (stream.match(/\b(?:string|int|double|decimal|boolean|date|timestamp)\b/)) return 'typeName';
+    if (stream.match(/\b(?:text|date|datetime|integer|float|decimal|boolean)\b/)) {
+      return 'typeName';
+    }
     if (stream.match(/\b(?:true|false|null)\b/)) return 'atom';
     if (stream.match(/[A-Za-z_][A-Za-z0-9_]*/)) return 'variableName';
     stream.next();
@@ -411,7 +413,7 @@ function operatorCompletions(
       completion('missing value fill', snippets, 'missing value [field] fill "UNKNOWN"'),
     ],
     type_convert: [
-      completion('cast', keyword, 'cast [field] as string on_error null'),
+      completion('cast', keyword, 'cast [field] as text on_error null'),
       completion('cast date', snippets, 'cast [field] as date format "yyyy-MM-dd" on_error null'),
     ],
     sort: [completion('sort by', keyword, 'sort by [field] asc nulls last')],
@@ -450,7 +452,7 @@ function operatorCompletions(
 }
 
 function typeCompletions(labels: PrepDslEditorProps['completionLabels']): Completion[] {
-  return ['string', 'int', 'double', 'decimal', 'boolean', 'date', 'timestamp'].map((type) =>
+  return ['text', 'date', 'datetime', 'integer', 'float', 'decimal', 'boolean'].map((type) =>
     completion(type, labels.types, type, 'type')
   );
 }

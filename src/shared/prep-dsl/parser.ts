@@ -9,6 +9,7 @@ import type {
   PrepParseResult,
   PrepWorkflowAst,
 } from './ast';
+import { DATA_FIELD_TYPES, isDataFieldType } from '../data-field-types';
 import { createPrepDiagnostic } from './diagnostics';
 import { prepDslLexer, tokenizePrepDsl } from './tokens';
 
@@ -201,7 +202,7 @@ function parseOperator(
     return makeOperator('filter', text, { condition: text.slice(7).trim() });
   if (text.startsWith('deduplicate')) return parseDeduplicate(text);
   if (text.startsWith('missing value ')) return parseMissingValue(text);
-  if (text.startsWith('cast ')) return parseCast(text);
+  if (text.startsWith('cast ')) return parseCast(command, diagnostics);
   if (text.startsWith('sort by ')) return parseSort(text);
   if (text.startsWith('join ')) return parseJoin(command, diagnostics);
   if (text.startsWith('aggregate ')) return parseAggregate(text);
@@ -472,16 +473,28 @@ function parseMissingValue(text: string): PrepOperatorAst {
   return makeOperator('missing_value', text, { strategy: 'by_column', rules });
 }
 
-function parseCast(text: string): PrepOperatorAst {
+function parseCast(command: CommandLine, diagnostics: PrepDiagnostic[]): PrepOperatorAst {
+  const text = command.text;
   const conversions = splitTopLevel(text.slice(5)).flatMap((part) => {
     const match = /^(.*?)\s+as\s+([A-Za-z_][A-Za-z0-9_]*)(.*)$/.exec(part.trim());
     if (!match) return [];
     const field = parseFieldRef(match[1].trim());
     const rest = match[3] ?? '';
+    const targetType = match[2];
+    if (!isDataFieldType(targetType)) {
+      diagnostics.push({
+        ...createPrepDiagnostic(
+          'invalidCastTargetType',
+          `Unsupported cast target type: ${targetType}. Use one of ${DATA_FIELD_TYPES.join(', ')}.`,
+          { type: targetType }
+        ),
+        line: command.line,
+      });
+    }
     return [
       {
         column: field ? toFieldName(field) : match[1].trim(),
-        type: match[2],
+        type: targetType,
         format: pickQuotedOption(rest, 'format'),
         onError: pickWordOption(rest, 'on_error') ?? 'null',
         locale: pickQuotedOption(rest, 'locale'),

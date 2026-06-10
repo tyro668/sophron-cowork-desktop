@@ -2,6 +2,8 @@ import type {
   PermissionPolicyId,
   PermissionRule as SharedPermissionRule,
 } from '../../shared/permission-policies';
+import type { DataColumnTypeInfo } from '../../shared/data-field-types';
+export type { DataColumnTypeInfo, DataFieldType } from '../../shared/data-field-types';
 export type {
   Automation,
   AutomationActionDefinitionSummary,
@@ -663,17 +665,13 @@ export interface DataPreviewWorkflowNodeInput {
   offset?: number;
 }
 
-export interface DataColumnTypeInfo {
-  name: string;
-  type: string;
-}
-
 export interface DataPreviewWorkflowNodeColumnInput extends DataPreviewWorkflowNodeInput {
   column: string;
 }
 
 export interface DataInputTablePreview {
   columns: string[];
+  columnTypes: DataColumnTypeInfo[];
   rows: Array<Record<string, string | number | boolean | null>>;
   fileCount: number;
   limit: number;
@@ -1320,6 +1318,7 @@ export interface PersonalAnalysisConfig {
   apiOrigin: string;
   apiKey: string;
   datasourceId: string;
+  updatedAt?: number;
 }
 
 export interface PersonalAnalysisDatasource {

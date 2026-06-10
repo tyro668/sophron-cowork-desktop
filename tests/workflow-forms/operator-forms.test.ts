@@ -100,8 +100,8 @@ describe('operator forms — config ↔ DSL round-trip', () => {
     const result = ok(
       {
         conversions: [
-          { column: 'revenue', type: 'double', onError: 'null' },
-          { column: 'qty', type: 'int', onError: 'fail' },
+          { column: 'revenue', type: 'float', onError: 'null' },
+          { column: 'qty', type: 'integer', onError: 'fail' },
         ],
       },
       'type_convert'

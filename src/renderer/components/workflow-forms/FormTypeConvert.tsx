@@ -5,8 +5,14 @@ import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
+import {
+  DATA_FIELD_TYPES,
+  dataFieldTypeLabel,
+  normalizeDataFieldType,
+  type DataFieldType,
+} from '../../../shared/data-field-types';
 
-const TYPE_OPTIONS = ['string', 'int', 'double', 'decimal', 'boolean', 'date', 'timestamp'];
+const TYPE_OPTIONS = DATA_FIELD_TYPES;
 
 const DATE_FORMATS = [
   'yyyy-MM-dd',
@@ -60,14 +66,15 @@ interface ConversionEntry {
 }
 
 function createDefault(): ConversionEntry {
-  return { column: '', type: 'string' };
+  return { column: '', type: 'text' };
 }
 
 const SELECT_CLASS =
   'h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-secondary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-50';
 
 function needsFormat(type: string): boolean {
-  return type === 'date' || type === 'timestamp';
+  const normalizedType = normalizeDataFieldType(type);
+  return normalizedType === 'date' || normalizedType === 'datetime';
 }
 
 export default function FormTypeConvert({
@@ -122,7 +129,8 @@ export default function FormTypeConvert({
           <div className="grid grid-cols-2 gap-2">
             {conversions.map((item, i) => {
               const fieldSelected = !!item.column;
-              const showFormat = needsFormat(item.type);
+              const normalizedType = normalizeDataFieldType(item.type);
+              const showFormat = needsFormat(normalizedType);
 
               return (
                 <div
@@ -159,14 +167,14 @@ export default function FormTypeConvert({
                     <div>
                       <GlassFormLabel>{tr('typeConvertTargetType', '目标类型')}</GlassFormLabel>
                       <select
-                        value={item.type}
+                        value={normalizedType}
                         disabled={!fieldSelected}
-                        onChange={(e) => change(i, { type: e.target.value })}
+                        onChange={(e) => change(i, { type: e.target.value as DataFieldType })}
                         className={SELECT_CLASS}
                       >
                         {TYPE_OPTIONS.map((t) => (
                           <option key={t} value={t}>
-                            {t}
+                            {dataFieldTypeLabel(t)}
                           </option>
                         ))}
                       </select>
@@ -181,12 +189,12 @@ export default function FormTypeConvert({
                           value={item.format ?? ''}
                           onChange={(e) => change(i, { format: e.target.value || undefined })}
                           placeholder={
-                            item.type === 'timestamp' ? 'yyyy-MM-dd HH:mm:ss' : 'yyyy-MM-dd'
+                            normalizedType === 'datetime' ? 'yyyy-MM-dd HH:mm:ss' : 'yyyy-MM-dd'
                           }
                           className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
                         />
                         <datalist id={`fmt-list-${i}`}>
-                          {(item.type === 'timestamp' ? TIMESTAMP_FORMATS : DATE_FORMATS).map(
+                          {(normalizedType === 'datetime' ? TIMESTAMP_FORMATS : DATE_FORMATS).map(
                             (f) => (
                               <option key={f} value={f} />
                             )
@@ -195,7 +203,7 @@ export default function FormTypeConvert({
                       </div>
                     )}
 
-                    {item.type === 'timestamp' && (
+                    {normalizedType === 'datetime' && (
                       <div>
                         <GlassFormLabel>{tr('typeConvertTimezone', '时区')}</GlassFormLabel>
                         <input
@@ -214,7 +222,7 @@ export default function FormTypeConvert({
                       </div>
                     )}
 
-                    {item.type === 'decimal' && (
+                    {normalizedType === 'decimal' && (
                       <div>
                         <GlassFormLabel>{tr('typeConvertLocale', '区域')}</GlassFormLabel>
                         <GlassFormTextInput

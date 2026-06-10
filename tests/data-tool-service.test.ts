@@ -108,6 +108,7 @@ describe('DataToolService', () => {
   it('formats input table processing strategy creation results', async () => {
     const preview: DataInputTablePreview = {
       columns: ['id', 'name'],
+      columnTypes: [],
       rows: [{ id: '1', name: 'Alice' }],
       fileCount: 1,
       limit: 20,
@@ -183,6 +184,7 @@ describe('DataToolService', () => {
   it('normalizes tool-call strategy JSON strings and workspace-relative source paths', async () => {
     const preview: DataInputTablePreview = {
       columns: ['id'],
+      columnTypes: [],
       rows: [{ id: '1' }],
       fileCount: 1,
       limit: 20,

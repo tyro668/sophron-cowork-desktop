@@ -106,7 +106,7 @@ function formatFieldSelect(config: Record<string, unknown> | undefined): string 
 
 function formatTypeConvert(config: Record<string, unknown> | undefined): string {
   const conversions = objectArray(config?.conversions);
-  if (conversions.length === 0) return 'cast [field] as string';
+  if (conversions.length === 0) return 'cast [field] as text';
   return `cast ${conversions
     .map((item) => {
       const options = [
@@ -115,7 +115,7 @@ function formatTypeConvert(config: Record<string, unknown> | undefined): string 
         typeof item.locale === 'string' ? `locale ${quoteString(item.locale)}` : '',
         typeof item.timezone === 'string' ? `timezone ${quoteString(item.timezone)}` : '',
       ].filter(Boolean);
-      return `${formatFieldRef(String(item.column ?? 'field'))} as ${String(item.type ?? 'string')}${
+      return `${formatFieldRef(String(item.column ?? 'field'))} as ${String(item.type ?? 'text')}${
         options.length > 0 ? ` ${options.join(' ')}` : ''
       }`;
     })

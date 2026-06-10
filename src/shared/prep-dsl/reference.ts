@@ -61,7 +61,7 @@ export const PREP_DSL_OPERATOR_EXAMPLES: PrepDslOperatorExample[] = [
   {
     type: 'type_convert',
     title: 'Cast field types',
-    dsl: 'cast [amount] as double on_error null',
+    dsl: 'cast [amount] as decimal on_error null',
   },
   {
     type: 'deduplicate',
@@ -141,6 +141,7 @@ const OVERVIEW = [
   'Always use data_get_workflow_dsl_reference for DSL help. Do not read source-tree design docs; packaged apps may not include them.',
   'A workflow starts with one or more input source lines, optionally chooses a main source with from <alias>, then pipes operators with lines starting with |.',
   'Fields use bracket syntax: [field_name]. Qualified fields use [table_alias].[field_name], never [table_alias.field_name].',
+  'Cast target types are text, date, datetime, integer, float, decimal, and boolean.',
   'For created input/output tables, prefer passing inputTableId and outputTableId to data_apply_workflow_dsl instead of embedding or guessing node ids.',
 ].join('\n');
 

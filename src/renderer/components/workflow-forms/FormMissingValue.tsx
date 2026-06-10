@@ -5,6 +5,12 @@ import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassListEditor } from './shared/GlassListEditor';
+import {
+  dataFieldTypeLabel,
+  isNumericDataFieldType,
+  isTemporalDataFieldType,
+  normalizeDataFieldType,
+} from '../../../shared/data-field-types';
 
 const BASE_METHODS = [
   { value: 'skip', label: '不处理' },
@@ -26,19 +32,11 @@ const ORDERED_METHODS = [
 
 function methodsForType(colType: string | undefined) {
   if (!colType) return BASE_METHODS; // unknown type: show base only
-  const t = colType.toLowerCase();
-  const isNumeric =
-    t.includes('int') ||
-    t.includes('float') ||
-    t.includes('double') ||
-    t.includes('decimal') ||
-    t.includes('numeric') ||
-    t.includes('real') ||
-    t.includes('number');
-  const isTemporal = t.includes('date') || t.includes('time') || t.includes('timestamp');
+  const type = normalizeDataFieldType(colType);
 
-  if (isNumeric) return [...BASE_METHODS, ...ORDERED_METHODS, ...STATISTICAL_METHODS];
-  if (isTemporal) return [...BASE_METHODS, ...ORDERED_METHODS];
+  if (isNumericDataFieldType(type))
+    return [...BASE_METHODS, ...ORDERED_METHODS, ...STATISTICAL_METHODS];
+  if (isTemporalDataFieldType(type)) return [...BASE_METHODS, ...ORDERED_METHODS];
   return BASE_METHODS; // string, boolean, etc.
 }
 
@@ -241,7 +239,7 @@ export default function FormMissingValue({
                         {col}
                         {columnTypes[col] && (
                           <span className="ml-auto text-[10px] text-text-muted">
-                            {columnTypes[col]}
+                            {dataFieldTypeLabel(columnTypes[col])}
                           </span>
                         )}
                       </label>
