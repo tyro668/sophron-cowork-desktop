@@ -38,7 +38,10 @@ describe('operator DSL execution cases', () => {
       'utf8'
     );
 
-    const task = await store.createTask({ name: 'Executable cleaning operators', sourcePath: ordersPath });
+    const task = await store.createTask({
+      name: 'Executable cleaning operators',
+      sourcePath: ordersPath,
+    });
     await saveWorkflowDsl(
       store,
       task.id,
@@ -46,7 +49,7 @@ describe('operator DSL execution cases', () => {
         input source task as orders
           | select [order_id], [dt], [region], [rev], [profit], [status], [updated_at]
           | map [dt] to [order_date], [rev] to [revenue]
-          | cast [order_date] as date format "%Y-%m-%d" on_error null, [revenue] as double on_error null, [profit] as double on_error null
+          | cast [order_date] as date format "%Y-%m-%d" on_error null, [revenue] as float on_error null, [profit] as float on_error null
           | missing value [region] nullify values ("", "N/A"), [region] fill "UNKNOWN"
           | deduplicate by [order_id] keep last order by [updated_at] desc
           | derive [margin] = [profit] / nullif([revenue], 0)
@@ -94,13 +97,16 @@ describe('operator DSL execution cases', () => {
       'utf8'
     );
 
-    const task = await store.createTask({ name: 'Executable window derive', sourcePath: ordersPath });
+    const task = await store.createTask({
+      name: 'Executable window derive',
+      sourcePath: ordersPath,
+    });
     await saveWorkflowDsl(
       store,
       task.id,
       `
         input source task as orders
-          | cast [revenue] as double on_error null
+          | cast [revenue] as float on_error null
           | derive [rn] = row_number() over(partition by [region] order by [revenue] desc)
           | filter [rn] <= 2
           | sort by [region] asc, [rn] asc

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
+import { dataFieldTypeLabel } from '../../../shared/data-field-types';
 
 interface SortKey {
   field: string;
@@ -91,7 +92,7 @@ export default function FormSort({
                     {fieldCompletions.map((col) => (
                       <option key={col} value={col}>
                         {col}
-                        {columnTypes[col] ? ` (${columnTypes[col]})` : ''}
+                        {columnTypes[col] ? ` (${dataFieldTypeLabel(columnTypes[col])})` : ''}
                       </option>
                     ))}
                   </select>

@@ -15,7 +15,7 @@ describe('prep DSL parser and workflow compiler', () => {
         | select [order_id], [region], [revenue]
         | missing value row drop when all_null
         | missing value [region] nullify values ("", "N/A", "-")
-        | cast [revenue] as double on_error null
+        | cast [revenue] as float on_error null
         | derive [margin] = if [revenue] = 0 then 0 else [profit] / [revenue]
         | output table "clean_orders" mode replace
     `);
@@ -53,8 +53,16 @@ describe('prep DSL parser and workflow compiler', () => {
     const joinNode = compiled.nodes.find((node) => node.type === 'join');
     expect(joinNode?.config?.joinType).toBe('left');
     expect(joinNode?.config?.rightInput).toBe('customers');
-    expect(compiled.edges.some((edge) => edge.targetNodeId === joinNode?.id && edge.targetHandle === 'left')).toBe(true);
-    expect(compiled.edges.some((edge) => edge.targetNodeId === joinNode?.id && edge.targetHandle === 'right')).toBe(true);
+    expect(
+      compiled.edges.some(
+        (edge) => edge.targetNodeId === joinNode?.id && edge.targetHandle === 'left'
+      )
+    ).toBe(true);
+    expect(
+      compiled.edges.some(
+        (edge) => edge.targetNodeId === joinNode?.id && edge.targetHandle === 'right'
+      )
+    ).toBe(true);
   });
 
   it('parses asof join configuration', () => {
@@ -93,7 +101,9 @@ describe('prep DSL parser and workflow compiler', () => {
         | join left customers on [orders.customer_id] = [customers.customer_id]
     `);
 
-    expect(result.diagnostics.some((item) => item.message.includes('[table_name].[field_name]'))).toBe(true);
+    expect(
+      result.diagnostics.some((item) => item.message.includes('[table_name].[field_name]'))
+    ).toBe(true);
   });
 
   it('exports compiled workflows back to DSL', () => {
@@ -124,7 +134,7 @@ describe('prep DSL parser and workflow compiler', () => {
       ['filter', 'filter [revenue] > 0'],
       ['deduplicate', 'deduplicate by [order_id] keep last order by [updated_at] desc'],
       ['missing_value', 'missing value [region] nullify values ("", "N/A")'],
-      ['type_convert', 'cast [revenue] as double on_error null'],
+      ['type_convert', 'cast [revenue] as float on_error null'],
       ['sort', 'sort by [order_date] desc nulls last'],
       ['calculate_field', 'derive [margin] = [profit] / [revenue]'],
       ['aggregate', 'aggregate by [region] metrics sum([revenue]) as [total_revenue]'],
@@ -139,6 +149,14 @@ describe('prep DSL parser and workflow compiler', () => {
       expect(result.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
       expect(result.operator?.type).toBe(type);
       expect(result.operator?.config.dsl).toBe(dsl);
+    }
+  });
+
+  it('rejects legacy cast target aliases', () => {
+    for (const targetType of ['string', 'int', 'double', 'timestamp']) {
+      const result = parsePrepOperatorDsl(`cast [value] as ${targetType}`, 'type_convert');
+
+      expect(result.diagnostics.some((item) => item.code === 'invalidCastTargetType')).toBe(true);
     }
   });
 

@@ -7,6 +7,7 @@ import type Database from 'better-sqlite3';
 import * as XLSX from 'xlsx';
 import type { DatabaseInstance } from '../db/database';
 import type {
+  DataColumnTypeInfo,
   DataCleaningTask,
   DataCreateTaskInput,
   DataCreateOutputTableInput,
@@ -50,6 +51,12 @@ import type {
   DataWorkflowOperatorType,
   DataWorkflowSaveInput,
 } from '../../renderer/types';
+import {
+  dataFieldTypeFromDuckDbType,
+  duckDbTypeForDataFieldType,
+  requireDataFieldType,
+  type DataFieldType,
+} from '../../shared/data-field-types';
 import { runInputTableNormalizerProject } from './input-table-normalizer-runner';
 
 interface DataTaskStoreOptions {
@@ -1245,6 +1252,7 @@ export class DataTaskStore {
       });
     }
     const tempTables: string[] = [];
+    let previewTable: string | null = null;
     try {
       const importFiles = getImportSourceFiles(sourcePath, sourceKind, config);
       const forceVarchar = sourceKind === 'folder';
@@ -1269,16 +1277,19 @@ export class DataTaskStore {
       }
 
       const unionSql = buildUnionSqlFromTempTables(tempTables);
+      previewTable = tableNameFromId('dataset_preview_union', uuidv4());
+      await this.runSql(`CREATE TEMP TABLE ${quoteIdentifier(previewTable)} AS ${unionSql}`);
       const countRows = await this.queryRows<{ count: number | string }>(
-        `SELECT count(*) AS count FROM (${unionSql})`
+        `SELECT count(*) AS count FROM ${quoteIdentifier(previewTable)}`
       );
       const totalRows = toNumber(countRows[0]?.count);
       const rows = await this.queryRows<Record<string, unknown>>(
-        `SELECT * FROM (${unionSql}) LIMIT ${limit} OFFSET ${offset}`
+        `SELECT * FROM ${quoteIdentifier(previewTable)} LIMIT ${limit} OFFSET ${offset}`
       );
-      const columns = rows[0] ? Object.keys(rows[0]) : [];
+      const columns = await this.getTableColumns(previewTable);
       return {
         columns,
+        columnTypes: await this.inferTableColumnTypes(previewTable),
         rows: rows.map(normalizePreviewRow),
         fileCount: tempTables.length,
         limit,
@@ -1286,6 +1297,9 @@ export class DataTaskStore {
         totalRows,
       };
     } finally {
+      if (previewTable) {
+        await this.dropTableIfExists(previewTable).catch(() => undefined);
+      }
       for (const tempTable of tempTables) {
         await this.dropTableIfExists(tempTable).catch(() => undefined);
       }
@@ -1351,6 +1365,7 @@ export class DataTaskStore {
       );
       return {
         columns: await this.getTableColumns(tempTable),
+        columnTypes: await this.inferTableColumnTypes(tempTable),
         rows: rows.map(normalizePreviewRow),
         fileCount: summary.fileCount,
         limit,
@@ -1403,6 +1418,7 @@ export class DataTaskStore {
     if (!(await this.physicalTableExists(dataset.tableName))) {
       return {
         columns: [],
+        columnTypes: [],
         rows: [],
         fileCount: dataset.fileCount,
         limit,
@@ -1418,6 +1434,7 @@ export class DataTaskStore {
     );
     return {
       columns: await this.getTableColumns(dataset.tableName),
+      columnTypes: await this.getTableColumnTypes(dataset.tableName),
       rows: rows.map(normalizePreviewRow),
       fileCount: dataset.fileCount,
       limit,
@@ -1491,6 +1508,7 @@ export class DataTaskStore {
     if (!tableName || !(await this.physicalTableExists(tableName))) {
       return {
         columns: [],
+        columnTypes: [],
         rows: [],
         fileCount: 0,
         limit,
@@ -1508,6 +1526,7 @@ export class DataTaskStore {
     );
     return {
       columns: await this.getTableColumns(tableName),
+      columnTypes: await this.getTableColumnTypes(tableName),
       rows: rows.map(normalizePreviewRow),
       fileCount: 1,
       limit,
@@ -1550,7 +1569,7 @@ export class DataTaskStore {
 
   async getWorkflowNodeColumnTypes(
     input: DataPreviewWorkflowNodeInput
-  ): Promise<{ name: string; type: string }[]> {
+  ): Promise<DataColumnTypeInfo[]> {
     await this.ensureMetadataReady();
     const task = await this.requireTask(input.taskId);
     await this.ensureReady();
@@ -1573,6 +1592,10 @@ export class DataTaskStore {
       return [];
     }
 
+    return this.getTableColumnTypes(tableName);
+  }
+
+  private async getTableColumnTypes(tableName: string): Promise<DataColumnTypeInfo[]> {
     const rows = await this.queryRows<{ column_name: string; data_type: string }>(
       `
         SELECT column_name, data_type
@@ -1584,7 +1607,8 @@ export class DataTaskStore {
     );
     return rows.map((row) => ({
       name: String(row.column_name),
-      type: String(row.data_type),
+      type: dataFieldTypeFromDuckDbType(String(row.data_type)),
+      storageType: String(row.data_type),
     }));
   }
 
@@ -3093,6 +3117,42 @@ export class DataTaskStore {
     return rows.map((row) => String(row.column_name));
   }
 
+  private async inferTableColumnTypes(tableName: string): Promise<DataColumnTypeInfo[]> {
+    const physicalTypes = await this.getTableColumnTypes(tableName);
+    const rows = await this.queryRows<Record<string, unknown>>(
+      `SELECT * FROM ${quoteIdentifier(tableName)} LIMIT 1000`
+    );
+    return physicalTypes.map((column) => {
+      if (column.type !== 'text') {
+        return column;
+      }
+      const inferredType = inferDataFieldTypeFromValues(rows.map((row) => row[column.name]));
+      return {
+        name: column.name,
+        type: inferredType,
+        storageType: duckDbTypeForDataFieldType(inferredType),
+      };
+    });
+  }
+
+  private async createTypedTableFromRelation(
+    tableName: string,
+    relationTableName: string
+  ): Promise<void> {
+    const columnTypes = await this.inferTableColumnTypes(relationTableName);
+    const projections =
+      columnTypes.length > 0
+        ? columnTypes
+            .map((column) => compileTypedProjection(column, quoteIdentifier(column.name)))
+            .join(', ')
+        : '*';
+    await this.runSql(
+      `CREATE TABLE ${quoteIdentifier(tableName)} AS SELECT ${projections} FROM ${quoteIdentifier(
+        relationTableName
+      )}`
+    );
+  }
+
   private async createDatasetTableFromSource(
     tableName: string,
     sourcePath: string,
@@ -3172,6 +3232,7 @@ export class DataTaskStore {
     let workDir: string | null = null;
     let cleanupWorkDir = true;
     let preparedSources: PreparedInputTableNormalizerSourceContext | null = null;
+    const tempTable = tableNameFromId('normalizer_import', uuidv4());
     try {
       preparedSources = prepareInputTableNormalizerSources({
         sourcePath,
@@ -3198,9 +3259,13 @@ export class DataTaskStore {
         result.manifest.output,
         'normalizerImportOutputPath'
       );
-      await this.runSql(`CREATE TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`, {
-        normalizerImportOutputPath: result.manifest.output,
-      });
+      await this.runSql(
+        `CREATE TEMP TABLE ${quoteIdentifier(tempTable)} AS SELECT * FROM ${relation}`,
+        {
+          normalizerImportOutputPath: result.manifest.output,
+        }
+      );
+      await this.createTypedTableFromRelation(tableName, tempTable);
       return {
         rowCount: await this.countRows(tableName),
         columnCount: (await this.getTableColumns(tableName)).length,
@@ -3211,6 +3276,7 @@ export class DataTaskStore {
       if (workDir && cleanupWorkDir) {
         fs.rmSync(workDir, { recursive: true, force: true });
       }
+      await this.dropTableIfExists(tempTable).catch(() => undefined);
       if (preparedSources) {
         fs.rmSync(preparedSources.directory, { recursive: true, force: true });
       }
@@ -3270,8 +3336,12 @@ export class DataTaskStore {
       throw new Error('Excel workbook has no readable columns');
     }
 
+    const inferredTypes = inferWorkbookColumnTypes(parsed);
     const columnSql = parsed.columns
-      .map((column) => `${quoteValueIdentifier(column)} VARCHAR`)
+      .map(
+        (column, index) =>
+          `${quoteValueIdentifier(column)} ${duckDbTypeForDataFieldType(inferredTypes[index])}`
+      )
       .join(', ');
     await this.runSql(`CREATE TEMP TABLE ${quoteIdentifier(tableName)} (${columnSql})`);
 
@@ -3286,12 +3356,7 @@ export class DataTaskStore {
       const values: Record<string, string | number | null> = {};
       for (let index = 0; index < parsed.columns.length; index += 1) {
         const value = row[index];
-        values[`value${index}`] =
-          value === null || value === undefined
-            ? null
-            : typeof value === 'boolean'
-              ? String(value)
-              : value;
+        values[`value${index}`] = normalizeWorkbookValueForDuckDb(value, inferredTypes[index]);
       }
       await this.runSql(sql, values);
     }
@@ -3306,7 +3371,13 @@ export class DataTaskStore {
     }
 
     const unionSql = buildUnionSqlFromTempTables(tempTables);
-    await this.runSql(`CREATE TABLE ${quoteIdentifier(tableName)} AS ${unionSql}`);
+    const unionTable = tableNameFromId('dataset_import_union', uuidv4());
+    try {
+      await this.runSql(`CREATE TEMP TABLE ${quoteIdentifier(unionTable)} AS ${unionSql}`);
+      await this.createTypedTableFromRelation(tableName, unionTable);
+    } finally {
+      await this.dropTableIfExists(unionTable).catch(() => undefined);
+    }
   }
 
   private async countRows(tableName: string): Promise<number> {
@@ -3962,14 +4033,14 @@ function compileTypeConvertSql(
   const byColumn = new Map(
     conversions.flatMap((conversion) =>
       typeof conversion.column === 'string' && typeof conversion.type === 'string'
-        ? [[conversion.column, conversion.type] as const]
+        ? [[conversion.column, conversion] as const]
         : []
     )
   );
   const projections = columns.map((column) => {
-    const targetType = byColumn.get(column);
-    return targetType
-      ? `TRY_CAST(${quoteIdentifier(column)} AS ${duckDbType(targetType)}) AS ${quoteIdentifier(column)}`
+    const conversion = byColumn.get(column);
+    return conversion
+      ? `${compileTypeConversionExpression(column, conversion)} AS ${quoteIdentifier(column)}`
       : quoteIdentifier(column);
   });
   return `CREATE TEMP TABLE ${output} AS SELECT ${projections.join(', ')} FROM ${input}`;
@@ -4309,6 +4380,179 @@ function quoteColumnList(columns: string[]): string {
   return columns.map(quoteIdentifier).join(', ') || '*';
 }
 
+function inferWorkbookColumnTypes(parsed: ParsedWorkbookRows): DataFieldType[] {
+  return parsed.columns.map((_, columnIndex) =>
+    inferDataFieldTypeFromValues(parsed.rows.map((row) => row[columnIndex]))
+  );
+}
+
+function inferDataFieldTypeFromValues(values: unknown[]): DataFieldType {
+  const nonEmpty = values.filter(hasInferableValue);
+  if (nonEmpty.length === 0) {
+    return 'text';
+  }
+  if (nonEmpty.every(isBooleanLikeValue)) {
+    return 'boolean';
+  }
+  if (nonEmpty.every(isDateLikeValue)) {
+    return nonEmpty.some(isDateTimeLikeValue) ? 'datetime' : 'date';
+  }
+  if (nonEmpty.every(isIntegerLikeValue)) {
+    return 'integer';
+  }
+  if (nonEmpty.every(isNumericLikeValue)) {
+    return nonEmpty.every(isFixedDecimalLikeValue) ? 'decimal' : 'float';
+  }
+  return 'text';
+}
+
+function hasInferableValue(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  return typeof value === 'string' ? value.trim().length > 0 : true;
+}
+
+function isBooleanLikeValue(value: unknown): boolean {
+  if (typeof value === 'boolean') return true;
+  if (typeof value !== 'string') return false;
+  return /^(true|false)$/i.test(value.trim());
+}
+
+function isDateLikeValue(value: unknown): boolean {
+  if (value instanceof Date) return !Number.isNaN(value.getTime());
+  if (typeof value !== 'string') return false;
+  const text = value.trim();
+  return isDateOnlyText(text) || isDateTimeText(text);
+}
+
+function isDateTimeLikeValue(value: unknown): boolean {
+  return value instanceof Date || (typeof value === 'string' && isDateTimeText(value.trim()));
+}
+
+function isDateOnlyText(value: string): boolean {
+  if (!/^(\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{8})$/.test(value)) return false;
+  const normalized =
+    value.length === 8
+      ? `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`
+      : value.replace(/[/.]/g, '-');
+  const timestamp = Date.parse(`${normalized}T00:00:00Z`);
+  return Number.isFinite(timestamp);
+}
+
+function isDateTimeText(value: string): boolean {
+  const match =
+    /^(\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{8})[ T]\d{1,2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?(?:Z|[+-]\d{2}:?\d{2})?$/i.exec(
+      value
+    );
+  if (!match) return false;
+  const datePart = match[1];
+  return isDateOnlyText(datePart);
+}
+
+function isIntegerLikeValue(value: unknown): boolean {
+  if (typeof value === 'bigint') return true;
+  if (typeof value === 'number') return Number.isInteger(value);
+  if (typeof value !== 'string') return false;
+  const normalized = normalizeNumericText(value);
+  return normalized !== null && /^[+-]?\d+$/.test(normalized);
+}
+
+function isNumericLikeValue(value: unknown): boolean {
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value !== 'string') return false;
+  const normalized = normalizeNumericText(value);
+  return normalized !== null && Number.isFinite(Number(normalized));
+}
+
+function isFixedDecimalLikeValue(value: unknown): boolean {
+  if (typeof value === 'number') {
+    return Number.isFinite(value);
+  }
+  if (typeof value !== 'string') return false;
+  const text = normalizeNumericText(value);
+  if (text === null) return false;
+  if (/[eE]/.test(text)) return false;
+  if (/^[+-]?\d+$/.test(text)) return true;
+  const match = /^[+-]?(?:\d+)\.(\d+)$/.exec(text);
+  return Boolean(match && match[1].length <= 6);
+}
+
+function normalizeNumericText(value: string): string | null {
+  const text = value
+    .trim()
+    .normalize('NFKC')
+    .replace(/[\u2212\u2010\u2011\u2012\u2013\u2014]/g, '-')
+    .replace(/[\s\u00a0\u202f]+/g, '');
+  if (!text) return null;
+  if (text.includes(',')) {
+    if (!/^[+-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(text)) {
+      return null;
+    }
+    return text.replace(/,/g, '');
+  }
+  return /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(text) ? text : null;
+}
+
+function normalizeWorkbookValueForDuckDb(
+  value: string | number | boolean | null | undefined,
+  inferredType: DataFieldType
+): string | number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'boolean') return String(value);
+  if (typeof value !== 'string') return value;
+  if (inferredType === 'integer' || inferredType === 'float' || inferredType === 'decimal') {
+    return normalizeNumericText(value) ?? value;
+  }
+  return value;
+}
+
+function compileTypedProjection(column: DataColumnTypeInfo, sourceExpression: string): string {
+  const targetType = duckDbTypeForDataFieldType(column.type);
+  const expression =
+    column.type === 'text'
+      ? `CAST(${sourceExpression} AS VARCHAR)`
+      : `TRY_CAST(${sourceExpression} AS ${targetType})`;
+  return `${expression} AS ${quoteIdentifier(column.name)}`;
+}
+
+function compileTypeConversionExpression(
+  column: string,
+  conversion: Record<string, unknown>
+): string {
+  const source = quoteIdentifier(column);
+  const targetType = requireDataFieldType(
+    typeof conversion.type === 'string' ? conversion.type : 'text',
+    'cast target type'
+  );
+  if (conversion.onError === 'keep') {
+    return source;
+  }
+  const failOnError = conversion.onError === 'fail';
+  const storageType = duckDbTypeForDataFieldType(targetType);
+  const format = typeof conversion.format === 'string' ? conversion.format.trim() : '';
+  if ((targetType === 'date' || targetType === 'datetime') && format) {
+    const parser = failOnError ? 'strptime' : 'try_strptime';
+    const parsed = `${parser}(CAST(${source} AS VARCHAR), ${literalToSql(
+      normalizeDuckDbDateFormat(format)
+    )})`;
+    return targetType === 'date' ? `CAST(${parsed} AS DATE)` : parsed;
+  }
+  return `${failOnError ? 'CAST' : 'TRY_CAST'}(${source} AS ${storageType})`;
+}
+
+function normalizeDuckDbDateFormat(format: string): string {
+  return format
+    .replace(/yyyy/g, '%Y')
+    .replace(/YYYY/g, '%Y')
+    .replace(/MM/g, '%m')
+    .replace(/dd/g, '%d')
+    .replace(/DD/g, '%d')
+    .replace(/HH/g, '%H')
+    .replace(/hh/g, '%H')
+    .replace(/mm/g, '%M')
+    .replace(/ss/g, '%S')
+    .replace(/SSS/g, '%f');
+}
+
 function literalToSql(value: unknown): string {
   if (value === null || value === undefined) return 'NULL';
   if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL';
@@ -4328,27 +4572,6 @@ function formatAggregateCall(metric: Record<string, unknown>): string {
       ? '*'
       : compileScalarExpression(String(metric.expression ?? '*'));
   return `${fn}(${expression})`;
-}
-
-function duckDbType(type: string): string {
-  switch (type) {
-    case 'string':
-      return 'VARCHAR';
-    case 'int':
-      return 'INTEGER';
-    case 'double':
-      return 'DOUBLE';
-    case 'decimal':
-      return 'DECIMAL(18, 6)';
-    case 'boolean':
-      return 'BOOLEAN';
-    case 'date':
-      return 'DATE';
-    case 'timestamp':
-      return 'TIMESTAMP';
-    default:
-      return type.toUpperCase();
-  }
 }
 
 function lastQualifiedPart(value: string): string {
@@ -5376,7 +5599,7 @@ function normalizeWorkbookColumns(row: Array<string | number | boolean | null>):
 
 function normalizeWorkbookCell(
   value: string | number | boolean | null | undefined
-): string | number | null {
+): string | number | boolean | null {
   if (value === null || value === undefined) {
     return null;
   }
@@ -5384,7 +5607,7 @@ function normalizeWorkbookCell(
     return value;
   }
   if (typeof value === 'boolean') {
-    return String(value);
+    return value;
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
