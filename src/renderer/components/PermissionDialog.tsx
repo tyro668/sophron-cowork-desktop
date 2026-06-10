@@ -125,7 +125,9 @@ export function PermissionDialog({ permission }: PermissionDialogProps) {
             <div className="mt-4 rounded-xl border border-warning/20 bg-warning/10 px-4 py-3">
               <div className="flex items-center gap-3">
                 <AlertTriangle className="h-5 w-5 flex-shrink-0 text-warning" strokeWidth={1.9} />
-                <p className="text-[13px] leading-5 text-text-secondary">{t('permission.warning')}</p>
+                <p className="text-[13px] leading-5 text-text-secondary">
+                  {t('permission.warning')}
+                </p>
               </div>
             </div>
           )}

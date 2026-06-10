@@ -115,13 +115,13 @@ export function createDefaultAutomationActionRegistry(
         typeof config.projectId === 'string' && config.projectId.trim()
           ? config.projectId.trim()
           : context.projectId;
-      const cwd = projectId ? options.resolveProjectCwd?.(projectId) ?? undefined : undefined;
+      const cwd = projectId ? (options.resolveProjectCwd?.(projectId) ?? undefined) : undefined;
       const modelConfigSetId =
         typeof config.modelConfigSetId === 'string' && config.modelConfigSetId.trim()
           ? config.modelConfigSetId.trim()
           : null;
       const runtimeConfig = modelConfigSetId
-        ? options.resolveModelRuntimeConfig?.(modelConfigSetId) ?? undefined
+        ? (options.resolveModelRuntimeConfig?.(modelConfigSetId) ?? undefined)
         : undefined;
       const title = buildScheduledTaskFallbackTitle(prompt);
       const session = await options.sessionManager.startSession(
@@ -141,7 +141,12 @@ export function createDefaultAutomationActionRegistry(
         dataRef: { kind: 'session', id: session.id },
       });
       if (config.completionMode !== 'fire_and_forget') {
-        await waitForSession(options.sessionManager, session.id, Number(config.timeoutMs) || 30 * 60 * 1000, now);
+        await waitForSession(
+          options.sessionManager,
+          session.id,
+          Number(config.timeoutMs) || 30 * 60 * 1000,
+          now
+        );
       }
       return { sessionId: session.id };
     },

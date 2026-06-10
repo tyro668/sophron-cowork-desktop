@@ -60,12 +60,19 @@ const SYSTEM_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC
 const AUTOMATION_TABLE_PAGE_SIZE = 10;
 const DEFAULT_NOTIFICATION_RECIPIENT = '运营群';
 const NOTIFICATION_RECIPIENT_OPTIONS = [
-  { value: DEFAULT_NOTIFICATION_RECIPIENT, labelKey: 'schedule.notificationOpsGroup', fallback: '运营群' },
+  {
+    value: DEFAULT_NOTIFICATION_RECIPIENT,
+    labelKey: 'schedule.notificationOpsGroup',
+    fallback: '运营群',
+  },
   { value: '销售群', labelKey: 'schedule.notificationSalesGroup', fallback: '销售群' },
   { value: '数据团队', labelKey: 'schedule.notificationDataTeam', fallback: '数据团队' },
 ];
 
-function getProjectOptionLabel(project: Project, tr: (key: string, fallback: string) => string): string {
+function getProjectOptionLabel(
+  project: Project,
+  tr: (key: string, fallback: string) => string
+): string {
   const name = project.name?.trim();
   if (name) return name;
   return getWorkingDirDisplayName(
@@ -87,7 +94,9 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     [t]
   );
   const [automations, setAutomations] = useState<Automation[]>([]);
-  const [actionDefinitions, setActionDefinitions] = useState<AutomationActionDefinitionSummary[]>([]);
+  const [actionDefinitions, setActionDefinitions] = useState<AutomationActionDefinitionSummary[]>(
+    []
+  );
   const [dataDashboard, setDataDashboard] = useState<DataDashboard | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'detail'>('list');
@@ -118,7 +127,10 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         .includes(keyword)
     );
   }, [automations, search]);
-  const totalPages = Math.max(1, Math.ceil(filteredAutomations.length / AUTOMATION_TABLE_PAGE_SIZE));
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredAutomations.length / AUTOMATION_TABLE_PAGE_SIZE)
+  );
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const pageAutomations = useMemo(() => {
     const start = (safeCurrentPage - 1) * AUTOMATION_TABLE_PAGE_SIZE;
@@ -308,11 +320,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         />
 
         <section className="flex min-h-0 flex-1 flex-col gap-4">
-          <TaskStatusSection
-            enabled={draft.enabled}
-            onEnabledChange={updateDraftEnabled}
-            tr={tr}
-          />
+          <TaskStatusSection enabled={draft.enabled} onEnabledChange={updateDraftEnabled} tr={tr} />
           <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(340px,0.58fr)_minmax(620px,1fr)]">
             <div className="flex min-h-0 flex-col gap-4">
               <ExecutionProjectPanel
@@ -333,7 +341,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
               actionDefinitions={actionDefinitions}
               dataTasks={dataTasks}
               inputTables={inputTables}
-            outputTables={outputTables}
+              outputTables={outputTables}
               appConfig={appConfig}
               onDraftChange={setDraft}
               tr={tr}
@@ -350,7 +358,11 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
 
       <section className="mt-3 flex min-h-0 flex-1 flex-col">
         <div className="mb-2 flex min-h-10 flex-shrink-0 items-end gap-5">
-          <TabButton active label={tr('schedule.tabs.automations', '自动化')} onClick={() => undefined} />
+          <TabButton
+            active
+            label={tr('schedule.tabs.automations', '自动化')}
+            onClick={() => undefined}
+          />
         </div>
         <AutomationListPanel
           automations={pageAutomations}
@@ -432,7 +444,9 @@ function createEmptyDraft(): AutomationDraft {
           },
         },
       ],
-      edges: [{ id: crypto.randomUUID(), sourceNodeId: conversationNodeId, targetNodeId: dataTaskNodeId }],
+      edges: [
+        { id: crypto.randomUUID(), sourceNodeId: conversationNodeId, targetNodeId: dataTaskNodeId },
+      ],
     },
   };
 }
@@ -579,9 +593,7 @@ function StatCard({
         <div className="mt-1.5 whitespace-nowrap text-[13px] font-medium leading-4 text-text-secondary">
           {label}
         </div>
-        <div className="mt-1 truncate text-[11px] leading-4 text-text-secondary">
-          {description}
-        </div>
+        <div className="mt-1 truncate text-[11px] leading-4 text-text-secondary">{description}</div>
       </div>
     </article>
   );
@@ -604,9 +616,7 @@ function TabButton({
       }`}
     >
       {label}
-      {active && (
-        <span className="absolute bottom-0 left-0 h-px w-full rounded-full bg-accent" />
-      )}
+      {active && <span className="absolute bottom-0 left-0 h-px w-full rounded-full bg-accent" />}
     </button>
   );
 }
@@ -747,10 +757,18 @@ function AutomationTable({
             <th className="w-[3%] px-3">
               <span className="sr-only">{tr('schedule.selection', '选择')}</span>
             </th>
-            <th className="w-[39%] whitespace-nowrap px-2">{tr('schedule.columns.name', '名称')}</th>
-            <th className="w-[14%] whitespace-nowrap px-2">{tr('schedule.columns.status', '状态')}</th>
-            <th className="w-[10%] whitespace-nowrap px-2">{tr('schedule.columns.actions', '动作')}</th>
-            <th className="w-[24%] whitespace-nowrap px-2">{tr('schedule.columns.nextRun', '下次执行')}</th>
+            <th className="w-[39%] whitespace-nowrap px-2">
+              {tr('schedule.columns.name', '名称')}
+            </th>
+            <th className="w-[14%] whitespace-nowrap px-2">
+              {tr('schedule.columns.status', '状态')}
+            </th>
+            <th className="w-[10%] whitespace-nowrap px-2">
+              {tr('schedule.columns.actions', '动作')}
+            </th>
+            <th className="w-[24%] whitespace-nowrap px-2">
+              {tr('schedule.columns.nextRun', '下次执行')}
+            </th>
             <th className="w-[10%] whitespace-nowrap px-2">
               <span className="inline-flex items-center gap-1">
                 {tr('schedule.columns.updatedAt', '更新时间')}
@@ -1250,7 +1268,11 @@ function TriggerConditionPanel({
   const trigger = normalizeDraftTrigger(draft.triggerMode, draft.trigger);
   const triggerMethod = draft.triggerMode === 'file_change' ? 'file_change' : 'scheduled';
   const setMode = (mode: TriggerMode) => {
-    onDraftChange({ ...draft, triggerMode: mode, trigger: normalizeDraftTrigger(mode, draft.trigger) });
+    onDraftChange({
+      ...draft,
+      triggerMode: mode,
+      trigger: normalizeDraftTrigger(mode, draft.trigger),
+    });
   };
 
   return (
@@ -1361,7 +1383,9 @@ function ScheduledConfigCard({
                     ...trigger,
                     weekdays: splitCsv(event.target.value)
                       .map(Number)
-                      .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6) as Array<0 | 1 | 2 | 3 | 4 | 5 | 6>,
+                      .filter(
+                        (value) => Number.isInteger(value) && value >= 0 && value <= 6
+                      ) as Array<0 | 1 | 2 | 3 | 4 | 5 | 6>,
                   })
                 }
                 placeholder="1,2,3,4,5"
@@ -1372,7 +1396,9 @@ function ScheduledConfigCard({
               <input
                 type="time"
                 value={trigger.times[0] ?? '09:00'}
-                onChange={(event) => onChange({ ...trigger, times: [event.target.value || '09:00'] })}
+                onChange={(event) =>
+                  onChange({ ...trigger, times: [event.target.value || '09:00'] })
+                }
                 className="input h-9 w-full text-xs"
               />
             </ConfigRow>
@@ -1386,7 +1412,9 @@ function ScheduledConfigCard({
                   type="number"
                   min={1}
                   value={trigger.every}
-                  onChange={(event) => onChange({ ...trigger, every: Number(event.target.value) || 1 })}
+                  onChange={(event) =>
+                    onChange({ ...trigger, every: Number(event.target.value) || 1 })
+                  }
                   className="input h-9 w-full text-xs"
                 />
                 <GlassSelect
@@ -1424,10 +1452,12 @@ function ScheduledConfigCard({
         <ConfigRow label={tr('schedule.timezone', '时区')}>
           <GlassSelect
             value={timezone}
-            options={Array.from(new Set([SYSTEM_TIMEZONE, 'Asia/Shanghai', 'UTC'])).map((value) => ({
-              value,
-              label: value,
-            }))}
+            options={Array.from(new Set([SYSTEM_TIMEZONE, 'Asia/Shanghai', 'UTC'])).map(
+              (value) => ({
+                value,
+                label: value,
+              })
+            )}
             onValueChange={(value) => onChange({ ...trigger, timezone: value })}
             triggerClassName="h-9 w-full justify-between"
             contentClassName="w-[var(--radix-select-trigger-width)]"
@@ -1485,7 +1515,9 @@ function FileChangeConfigCard({
         <ConfigRow label={tr('schedule.watchPatterns', '文件范围')}>
           <input
             value={trigger.patterns.join(', ')}
-            onChange={(event) => updateTrigger({ ...trigger, patterns: splitCsv(event.target.value) })}
+            onChange={(event) =>
+              updateTrigger({ ...trigger, patterns: splitCsv(event.target.value) })
+            }
             placeholder="**/*, **/*.csv"
             className="input h-9 w-full text-xs"
           />
@@ -1496,7 +1528,10 @@ function FileChangeConfigCard({
             min={1}
             value={Math.round(trigger.debounceMs / 1000)}
             onChange={(event) =>
-              updateTrigger({ ...trigger, debounceMs: Math.max(1, Number(event.target.value) || 30) * 1000 })
+              updateTrigger({
+                ...trigger,
+                debounceMs: Math.max(1, Number(event.target.value) || 30) * 1000,
+              })
             }
             className="input h-9 w-full text-xs"
           />
@@ -1533,7 +1568,10 @@ function ActionChainSection({
 }) {
   const nodes = draft.actionGraph.nodes;
   const updateNodes = (nextNodes: AutomationActionNode[]) =>
-    onDraftChange({ ...draft, actionGraph: relinkLinearGraph({ version: 1, nodes: nextNodes, edges: [] }) });
+    onDraftChange({
+      ...draft,
+      actionGraph: relinkLinearGraph({ version: 1, nodes: nextNodes, edges: [] }),
+    });
   const addNode = (definition: AutomationActionDefinitionSummary) => {
     updateNodes([
       {
@@ -1581,7 +1619,9 @@ function ActionChainSection({
             outputTables={outputTables}
             appConfig={appConfig}
             onRemove={() => updateNodes(nodes.filter((item) => item.id !== node.id))}
-            onChange={(next) => updateNodes(nodes.map((item) => (item.id === next.id ? next : item)))}
+            onChange={(next) =>
+              updateNodes(nodes.map((item) => (item.id === next.id ? next : item)))
+            }
             tr={tr}
           />
         ))}
@@ -1622,11 +1662,14 @@ function ActionStepCard({
         <div className="min-w-0 flex-1 truncate text-[15px] font-semibold text-text-secondary">
           {getNodeLabel(node, tr)}
         </div>
-        <div className="flex flex-shrink-0 items-center gap-1 text-text-muted">
-          <MiniIcon onClick={(event) => { event.stopPropagation(); onRemove(); }}>
-            <Trash2 size={13} />
-          </MiniIcon>
-        </div>
+        <MiniIcon
+          onClick={(event) => {
+            event.stopPropagation();
+            onRemove();
+          }}
+        >
+          <Trash2 size={13} />
+        </MiniIcon>
       </div>
       <ActionConfigEditor
         node={node}
@@ -1686,7 +1729,9 @@ function ActionConfigEditor({
                 { value: '', label: tr('schedule.recipientPlaceholder', '选择通知对象') },
                 ...notificationRecipientOptions,
               ]}
-              onValueChange={(value) => setConfig({ ...node.config, channel: 'feishu', recipient: value })}
+              onValueChange={(value) =>
+                setConfig({ ...node.config, channel: 'feishu', recipient: value })
+              }
               placeholder={tr('schedule.recipientPlaceholder', '选择通知对象')}
               triggerClassName="h-9 w-full justify-between"
               contentClassName="w-[var(--radix-select-trigger-width)]"
@@ -1696,7 +1741,10 @@ function ActionConfigEditor({
             <textarea
               value={String(node.config.message ?? '')}
               onChange={(event) => setConfig({ ...node.config, message: event.target.value })}
-              placeholder={tr('schedule.notificationContentPlaceholder', '销售数据已更新，请查看仪表板')}
+              placeholder={tr(
+                'schedule.notificationContentPlaceholder',
+                '销售数据已更新，请查看仪表板'
+              )}
               className="input min-h-[74px] w-full resize-none text-xs leading-5"
             />
           </ConfigRow>
@@ -1709,7 +1757,9 @@ function ActionConfigEditor({
               value={String(node.config.taskId ?? '')}
               options={dataTasks.map((task) => ({ value: task.id, label: task.name }))}
               placeholder={tr('schedule.dataTaskPlaceholder', '选择数据任务')}
-              onChange={(value) => setConfig({ ...node.config, taskId: value, outputMode: 'persisted' })}
+              onChange={(value) =>
+                setConfig({ ...node.config, taskId: value, outputMode: 'persisted' })
+              }
             />
           </ConfigRow>
           <ConfigRow label={tr('schedule.executionMode', '执行方式')}>
@@ -1876,7 +1926,10 @@ function formatTriggerSummary(
     );
   }
   if (trigger.kind === 'weekly') {
-    return tr('schedule.summaryWeekly', `每周 ${trigger.weekdays.join(',')} ${trigger.times[0] ?? '09:00'} 自动执行`)
+    return tr(
+      'schedule.summaryWeekly',
+      `每周 ${trigger.weekdays.join(',')} ${trigger.times[0] ?? '09:00'} 自动执行`
+    )
       .replace('{{weekdays}}', trigger.weekdays.join(','))
       .replace('{{time}}', trigger.times[0] ?? '09:00');
   }
@@ -1903,7 +1956,8 @@ function getNodeLabel(
 ): string {
   const fallback = getActionTitle(node.type, node.type, tr);
   if (!node.label || node.label === node.type) return fallback;
-  if (node.type === 'notification.send' && node.label === 'Send message notification') return fallback;
+  if (node.type === 'notification.send' && node.label === 'Send message notification')
+    return fallback;
   if (node.type === 'conversation.run' && node.label === 'Conversation') return fallback;
   if (node.type === 'data.task.run' && node.label === 'Data task') return fallback;
   return node.label;

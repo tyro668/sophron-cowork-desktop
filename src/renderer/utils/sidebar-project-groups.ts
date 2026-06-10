@@ -93,7 +93,8 @@ export function buildSessionProjectGroups(
       : getProjectKeyForWorkspace(session.cwd, options.platform);
     const path = session.cwd?.trim() || null;
     const defaultLabel = getProjectNameFromWorkspace(path, options.noWorkspaceLabel);
-    const label = options.projectNames?.[key]?.trim() || session.projectName?.trim() || defaultLabel;
+    const label =
+      options.projectNames?.[key]?.trim() || session.projectName?.trim() || defaultLabel;
     const latestActivity = getSessionActivity(session);
     const existing = groups.get(key);
 

@@ -279,7 +279,14 @@ function ensureProjectForCwdInDatabase(
     .prepare(
       'INSERT INTO projects (id, name, cwd, path_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
     )
-    .run(project.id, project.name, project.cwd, project.path_key, project.created_at, project.updated_at);
+    .run(
+      project.id,
+      project.name,
+      project.cwd,
+      project.path_key,
+      project.created_at,
+      project.updated_at
+    );
   return project;
 }
 

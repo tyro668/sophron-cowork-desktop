@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Automation, AutomationRun, AutomationArtifact } from '../src/shared/automation/types';
-import { AutomationActionRegistry, objectSchema } from '../src/main/automation/automation-action-registry';
+import {
+  AutomationActionRegistry,
+  objectSchema,
+} from '../src/main/automation/automation-action-registry';
 import { AutomationRunner } from '../src/main/automation/automation-runner';
 import type { AutomationStore } from '../src/main/automation/automation-store';
 
@@ -40,7 +43,10 @@ function createAutomation(overrides: Partial<Automation> = {}): Automation {
   };
 }
 
-function createStore(): AutomationStore & { runs: AutomationRun[]; artifacts: AutomationArtifact[] } {
+function createStore(): AutomationStore & {
+  runs: AutomationRun[];
+  artifacts: AutomationArtifact[];
+} {
   const runs: AutomationRun[] = [];
   const artifacts: AutomationArtifact[] = [];
   return {
@@ -172,4 +178,3 @@ describe('AutomationRunner', () => {
     expect(run.error).toBe('boom');
   });
 });
-

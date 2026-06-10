@@ -1,14 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  AlertCircle,
-  CheckCircle,
-  Loader2,
-  Save,
-  Globe,
-  Trash2,
-  Copy,
-} from 'lucide-react';
+import { AlertCircle, CheckCircle, Loader2, Save, Globe, Trash2, Copy } from 'lucide-react';
 import { formatAppDateTime } from '../../utils/i18n-format';
 import { SettingsContentSection } from './shared';
 import { GlassSwitch } from '../GlassSwitch';
@@ -194,7 +186,9 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
             <div className="text-sm text-text-muted">{t('logs.logFiles')}</div>
           </div>
           <div className="glass-card rounded-lg p-4">
-            <div className="text-[20px] font-medium text-text-primary">{formatFileSize(totalSize)}</div>
+            <div className="text-[20px] font-medium text-text-primary">
+              {formatFileSize(totalSize)}
+            </div>
             <div className="text-sm text-text-muted">{t('logs.totalSize')}</div>
           </div>
         </div>
@@ -210,10 +204,7 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
         ) : (
           <div className="space-y-2 max-h-64 overflow-y-auto">
             {logFiles.map((file) => (
-              <div
-                key={file.path}
-                className="glass-card rounded-lg p-3"
-              >
+              <div key={file.path} className="glass-card rounded-lg p-3">
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <div className="font-mono text-sm text-text-primary truncate">{file.name}</div>

@@ -76,7 +76,10 @@ function normalizeIntervalTrigger(trigger: AutomationTriggerInterval): Automatio
     every,
     unit,
     startAt: normalizeTimestamp(trigger.startAt, Date.now()),
-    endAt: trigger.endAt === null || trigger.endAt === undefined ? null : normalizeTimestamp(trigger.endAt, 0),
+    endAt:
+      trigger.endAt === null || trigger.endAt === undefined
+        ? null
+        : normalizeTimestamp(trigger.endAt, 0),
     timezone: normalizeTimezone(trigger.timezone),
   };
 }
@@ -112,7 +115,9 @@ function normalizeCronTrigger(trigger: AutomationTriggerCron): AutomationTrigger
   };
 }
 
-function normalizeFileChangeTrigger(trigger: AutomationTriggerFileChange): AutomationTriggerFileChange {
+function normalizeFileChangeTrigger(
+  trigger: AutomationTriggerFileChange
+): AutomationTriggerFileChange {
   return {
     kind: 'file_change',
     projectId:
@@ -167,7 +172,10 @@ function findNextScheduledSlot(
       0,
       0
     );
-    if (allowedWeekdays && !allowedWeekdays.has(candidateDate.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6)) {
+    if (
+      allowedWeekdays &&
+      !allowedWeekdays.has(candidateDate.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6)
+    ) {
       continue;
     }
     for (const time of normalizedTimes) {
@@ -221,15 +229,13 @@ function computeNextCronRunAt(trigger: AutomationTriggerCron, now: number): numb
   return null;
 }
 
-function parseSimpleCron(expression: string):
-  | {
-      minutes: Set<number>;
-      hours: Set<number>;
-      daysOfMonth: Set<number>;
-      months: Set<number>;
-      weekdays: Set<number>;
-    }
-  | null {
+function parseSimpleCron(expression: string): {
+  minutes: Set<number>;
+  hours: Set<number>;
+  daysOfMonth: Set<number>;
+  months: Set<number>;
+  weekdays: Set<number>;
+} | null {
   const fields = expression.trim().split(/\s+/);
   if (fields.length !== 5) return null;
   const minutes = parseCronField(fields[0], 0, 59);
@@ -262,7 +268,9 @@ function withinEnd(value: number, endAt?: number | null): number | null {
 
 function normalizeTimes(times: string[]): string[] {
   if (!Array.isArray(times)) return [];
-  return Array.from(new Set(times.filter((time) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(time)))).sort();
+  return Array.from(
+    new Set(times.filter((time) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(time)))
+  ).sort();
 }
 
 function normalizeWeekdays(days: number[]): Array<0 | 1 | 2 | 3 | 4 | 5 | 6> {
@@ -270,8 +278,7 @@ function normalizeWeekdays(days: number[]): Array<0 | 1 | 2 | 3 | 4 | 5 | 6> {
   return Array.from(
     new Set(
       days.filter(
-        (day): day is 0 | 1 | 2 | 3 | 4 | 5 | 6 =>
-          Number.isInteger(day) && day >= 0 && day <= 6
+        (day): day is 0 | 1 | 2 | 3 | 4 | 5 | 6 => Number.isInteger(day) && day >= 0 && day <= 6
       )
     )
   ).sort((left, right) => left - right);

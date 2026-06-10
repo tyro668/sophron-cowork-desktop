@@ -11,7 +11,12 @@
       'PingFang SC', 'Inter', 'SF Pro Text', 'Microsoft YaHei UI', 'Noto Sans SC', sans-serif;
     /* Dark theme (default) — compact frosted jade operations workspace */
     --app-backdrop:
-      linear-gradient(135deg, rgba(11, 30, 24, 0.96), rgba(31, 58, 46, 0.88) 48%, rgba(11, 30, 24, 0.94)),
+      linear-gradient(
+        135deg,
+        rgba(11, 30, 24, 0.96),
+        rgba(31, 58, 46, 0.88) 48%,
+        rgba(11, 30, 24, 0.94)
+      ),
       linear-gradient(180deg, #10231c 0%, #0b1914 100%);
     --glass-panel: rgba(25, 48, 39, 0.58);
     --glass-card: rgba(39, 66, 55, 0.46);
@@ -37,12 +42,8 @@
     --color-border-subtle-rgb: 235 249 242;
     --color-mcp-rgb: 120 199 163;
     --shadow-soft: 0 1px 2px rgba(5, 22, 15, 0.14), 0 8px 22px rgba(5, 22, 15, 0.1);
-    --shadow-card:
-      0 1px 1px rgba(255, 255, 255, 0.08) inset,
-      0 10px 28px rgba(2, 18, 12, 0.16);
-    --shadow-elevated:
-      0 1px 1px rgba(255, 255, 255, 0.12) inset,
-      0 18px 42px rgba(2, 18, 12, 0.22);
+    --shadow-card: 0 1px 1px rgba(255, 255, 255, 0.08) inset, 0 10px 28px rgba(2, 18, 12, 0.16);
+    --shadow-elevated: 0 1px 1px rgba(255, 255, 255, 0.12) inset, 0 18px 42px rgba(2, 18, 12, 0.22);
     --color-accent: #62c99a;
     --color-accent-hover: #3baf7a;
     --color-accent-muted: rgba(98, 201, 154, 0.16);
@@ -122,12 +123,9 @@
     --color-border-subtle-rgb: 221 237 227;
     --color-mcp-rgb: 59 175 122;
     --shadow-soft: 0 1px 2px rgba(60, 120, 90, 0.04), 0 8px 22px rgba(60, 120, 90, 0.06);
-    --shadow-card:
-      0 1px 1px rgba(255, 255, 255, 0.82) inset,
-      0 10px 28px rgba(60, 120, 90, 0.08);
+    --shadow-card: 0 1px 1px rgba(255, 255, 255, 0.82) inset, 0 10px 28px rgba(60, 120, 90, 0.08);
     --shadow-elevated:
-      0 1px 1px rgba(255, 255, 255, 0.9) inset,
-      0 20px 54px rgba(60, 120, 90, 0.11);
+      0 1px 1px rgba(255, 255, 255, 0.9) inset, 0 20px 54px rgba(60, 120, 90, 0.11);
     --color-accent: #62c99a;
     --color-accent-hover: #3baf7a;
     --color-accent-muted: rgba(98, 201, 154, 0.14);
@@ -671,7 +669,9 @@
   .prose-accent-link {
     color: var(--color-accent-text);
     font-weight: 500;
-    transition: color 160ms ease, background-color 160ms ease;
+    transition:
+      color 160ms ease,
+      background-color 160ms ease;
   }
 
   .prose-accent-link:hover {

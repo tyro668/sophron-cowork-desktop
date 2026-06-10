@@ -233,6 +233,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('data.previewWorkflowNode', payload),
     getWorkflowNodeColumns: (payload: DataPreviewWorkflowNodeInput): Promise<string[]> =>
       ipcRenderer.invoke('data.getWorkflowNodeColumns', payload),
+    getWorkflowNodeColumnTypes: (
+      payload: DataPreviewWorkflowNodeInput
+    ): Promise<Array<{ name: string; type: string }>> =>
+      ipcRenderer.invoke('data.getWorkflowNodeColumnTypes', payload),
+    getWorkflowNodeColumnValues: (
+      payload: DataPreviewWorkflowNodeInput & { column: string }
+    ): Promise<string[]> => ipcRenderer.invoke('data.getWorkflowNodeColumnValues', payload),
     summarizeInputTableSource: (
       payload: DataSummarizeInputTableSourceInput
     ): Promise<DataInputTableSourceSummary> =>
@@ -637,6 +644,12 @@ declare global {
           payload: DataPreviewWorkflowNodeInput
         ) => Promise<DataInputTablePreview>;
         getWorkflowNodeColumns: (payload: DataPreviewWorkflowNodeInput) => Promise<string[]>;
+        getWorkflowNodeColumnTypes: (
+          payload: DataPreviewWorkflowNodeInput
+        ) => Promise<Array<{ name: string; type: string }>>;
+        getWorkflowNodeColumnValues: (
+          payload: DataPreviewWorkflowNodeInput & { column: string }
+        ) => Promise<string[]>;
         summarizeInputTableSource: (
           payload: DataSummarizeInputTableSourceInput
         ) => Promise<DataInputTableSourceSummary>;

@@ -76,9 +76,12 @@ export class AutomationScheduler {
       .filter((value): value is number => typeof value === 'number')
       .sort((left, right) => left - right)[0];
     const delay = nextRunAt === undefined ? 60_000 : Math.max(0, nextRunAt - this.now());
-    this.timer = setTimeout(() => {
-      void this.tick();
-    }, Math.min(delay, MAX_TIMER_DELAY_MS));
+    this.timer = setTimeout(
+      () => {
+        void this.tick();
+      },
+      Math.min(delay, MAX_TIMER_DELAY_MS)
+    );
   }
 
   private syncFileWatchers(): void {
@@ -107,18 +110,25 @@ export class AutomationScheduler {
 
     for (const [automationId, next] of desired) {
       if (this.fileWatchers.has(automationId)) continue;
-      this.fileWatchers.set(automationId, this.createFileWatcher(next.automation, next.cwd, next.signature));
+      this.fileWatchers.set(
+        automationId,
+        this.createFileWatcher(next.automation, next.cwd, next.signature)
+      );
     }
   }
 
-  private createFileWatcher(automation: Automation, cwd: string, signature: string): FileWatcherRecord {
+  private createFileWatcher(
+    automation: Automation,
+    cwd: string,
+    signature: string
+  ): FileWatcherRecord {
     const trigger = automation.trigger.kind === 'file_change' ? automation.trigger : null;
     const debounceMs = trigger?.debounceMs ?? 30_000;
     const patterns = trigger?.patterns ?? ['**/*'];
     const record: FileWatcherRecord = {
       signature,
       watcher: watchWorkspace(cwd, (filename) => {
-        const relativePath = typeof filename === 'string' ? filename : filename?.toString() ?? '';
+        const relativePath = typeof filename === 'string' ? filename : (filename?.toString() ?? '');
         if (!matchesAnyPattern(relativePath, patterns)) return;
         if (record.timer) clearTimeout(record.timer);
         record.timer = setTimeout(() => {
@@ -144,13 +154,19 @@ export class AutomationScheduler {
 function isFileChangeAutomation(
   automation: Automation
 ): automation is Automation & { trigger: Extract<Automation['trigger'], { kind: 'file_change' }> } {
-  return automation.enabled && automation.status !== 'paused' && automation.trigger.kind === 'file_change';
+  return (
+    automation.enabled &&
+    automation.status !== 'paused' &&
+    automation.trigger.kind === 'file_change'
+  );
 }
 
 function matchesAnyPattern(relativePath: string, patterns: string[]): boolean {
   if (!relativePath) return true;
   const normalizedPath = relativePath.replaceAll('\\', '/');
-  return patterns.length === 0 || patterns.some((pattern) => globToRegExp(pattern).test(normalizedPath));
+  return (
+    patterns.length === 0 || patterns.some((pattern) => globToRegExp(pattern).test(normalizedPath))
+  );
 }
 
 function globToRegExp(pattern: string): RegExp {
@@ -178,7 +194,10 @@ function escapeRegExp(value: string): string {
   return value.replace(/[\\^$+?.()|[\]{}]/g, '\\$&');
 }
 
-function watchWorkspace(cwd: string, listener: (filename: string | Buffer | null) => void): FSWatcher {
+function watchWorkspace(
+  cwd: string,
+  listener: (filename: string | Buffer | null) => void
+): FSWatcher {
   try {
     return watch(cwd, { recursive: true }, (_eventType, filename) => listener(filename));
   } catch {

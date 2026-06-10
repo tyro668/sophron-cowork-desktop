@@ -79,7 +79,7 @@ const prepDslTheme = EditorView.theme({
     borderRadius: '0.625rem',
     backgroundColor: 'rgba(255, 255, 255, 0.86)',
     color: '#334155',
-    fontSize: '11px',
+    fontSize: '12px',
   },
   '&.cm-focused': {
     outline: 'none',
@@ -248,7 +248,12 @@ export function PrepDslEditor({
     });
   }, [value]);
 
-  return <div ref={hostRef} style={{ '--prep-dsl-editor-height': `${height}px` } as CSSProperties} />;
+  return (
+    <div
+      ref={hostRef}
+      style={{ '--prep-dsl-editor-height': `${height}px`, fontSize: '12px' } as CSSProperties}
+    />
+  );
 }
 
 function completePrepDsl(
@@ -262,7 +267,9 @@ function completePrepDsl(
     const query = fieldRef.text.slice(1).replace(/^`/, '').toLocaleLowerCase();
     const options = uniqueFieldCompletions(fieldCompletions)
       .filter((field) => field.toLocaleLowerCase().includes(query))
-      .map((field) => completion(field, completionLabels.fields, formatFieldCompletion(field), 'variable'));
+      .map((field) =>
+        completion(field, completionLabels.fields, formatFieldCompletion(field), 'variable')
+      );
     if (options.length > 0) {
       return {
         from: fieldRef.from,
@@ -306,11 +313,19 @@ function operatorCompletions(
     filter: [completion('filter', keyword, 'filter [field] = "value"')],
     deduplicate: [
       completion('deduplicate', snippets, 'deduplicate by [field] keep first'),
-      completion('deduplicate keep last', snippets, 'deduplicate by [field] keep last order by [updated_at] desc'),
+      completion(
+        'deduplicate keep last',
+        snippets,
+        'deduplicate by [field] keep last order by [updated_at] desc'
+      ),
     ],
     missing_value: [
       completion('missing value row drop', snippets, 'missing value row drop when all_null'),
-      completion('missing value nullify', snippets, 'missing value [field] nullify values ("", "N/A")'),
+      completion(
+        'missing value nullify',
+        snippets,
+        'missing value [field] nullify values ("", "N/A")'
+      ),
       completion('missing value fill', snippets, 'missing value [field] fill "UNKNOWN"'),
     ],
     type_convert: [
@@ -327,9 +342,21 @@ function operatorCompletions(
       completion('aggregate all', snippets, 'aggregate all metrics count(*) as [row_count]'),
     ],
     join: [
-      completion('join left', snippets, 'join left right_source on [left].[id] = [right_source].[id]'),
-      completion('join inner', snippets, 'join inner right_source on [left].[id] = [right_source].[id]'),
-      completion('join anti', snippets, 'join anti right_source on [left].[id] = [right_source].[id]'),
+      completion(
+        'join left',
+        snippets,
+        'join left right_source on [left].[id] = [right_source].[id]'
+      ),
+      completion(
+        'join inner',
+        snippets,
+        'join inner right_source on [left].[id] = [right_source].[id]'
+      ),
+      completion(
+        'join anti',
+        snippets,
+        'join anti right_source on [left].[id] = [right_source].[id]'
+      ),
       completion(
         'join asof',
         snippets,
@@ -357,11 +384,7 @@ function completion(
 
 function uniqueFieldCompletions(fields: string[]): string[] {
   return Array.from(
-    new Set(
-      fields
-        .map((field) => field.trim())
-        .filter((field) => field.length > 0)
-    )
+    new Set(fields.map((field) => field.trim()).filter((field) => field.length > 0))
   );
 }
 

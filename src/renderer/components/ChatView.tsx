@@ -16,17 +16,7 @@ import { AgentModelSelector } from './AgentModelSelector';
 import { MessageCard } from './MessageCard';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
 import type { Message, ContentBlock } from '../types';
-import {
-  Send,
-  Square,
-  Plus,
-  Loader2,
-  Plug,
-  X,
-  Clock,
-  ArrowUp,
-  ArrowDown,
-} from 'lucide-react';
+import { Send, Square, Plus, Loader2, Plug, X, Clock, ArrowUp, ArrowDown } from 'lucide-react';
 
 type AttachedFile = {
   name: string;
@@ -891,10 +881,7 @@ export function ChatView() {
 
       {/* Messages */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
-        <div
-          ref={messagesContainerRef}
-          className="w-full max-w-[980px] mx-auto py-5 px-4 lg:px-6"
-        >
+        <div ref={messagesContainerRef} className="w-full max-w-[980px] mx-auto py-5 px-4 lg:px-6">
           {displayedMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-28 text-text-muted space-y-3 text-center">
               <p className="text-[11px] uppercase tracking-[0.16em] text-text-muted/80">
@@ -1090,7 +1077,6 @@ export function ChatView() {
                 </div>
               </div>
             </div>
-
           </form>
         </div>
       </div>

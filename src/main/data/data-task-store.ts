@@ -1548,6 +1548,81 @@ export class DataTaskStore {
     return this.getTableColumns(tableName);
   }
 
+  async getWorkflowNodeColumnTypes(
+    input: DataPreviewWorkflowNodeInput
+  ): Promise<{ name: string; type: string }[]> {
+    await this.ensureMetadataReady();
+    const task = await this.requireTask(input.taskId);
+    await this.ensureReady();
+    await this.cleanupExpiredWorkflowNodeCaches();
+    const nodeConfig = input.nodeConfig ?? {};
+    const node: DataWorkflowNode = {
+      id: input.nodeId,
+      taskId: task.id,
+      type: input.nodeType,
+      label: '',
+      x: 0,
+      y: 0,
+      config: nodeConfig,
+      createdAt: 0,
+      updatedAt: 0,
+    };
+
+    const tableName = await this.resolveWorkflowNodePreviewTable(task, node);
+    if (!tableName || !(await this.physicalTableExists(tableName))) {
+      return [];
+    }
+
+    const rows = await this.queryRows<{ column_name: string; data_type: string }>(
+      `
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_name = $tableName
+        ORDER BY ordinal_position
+      `,
+      { tableName }
+    );
+    return rows.map((row) => ({
+      name: String(row.column_name),
+      type: String(row.data_type),
+    }));
+  }
+
+  async getWorkflowNodeColumnValues(
+    input: DataPreviewWorkflowNodeInput & { column: string }
+  ): Promise<string[]> {
+    await this.ensureMetadataReady();
+    const task = await this.requireTask(input.taskId);
+    await this.ensureReady();
+    await this.cleanupExpiredWorkflowNodeCaches();
+    const nodeConfig = input.nodeConfig ?? {};
+    const node: DataWorkflowNode = {
+      id: input.nodeId,
+      taskId: task.id,
+      type: input.nodeType,
+      label: '',
+      x: 0,
+      y: 0,
+      config: nodeConfig,
+      createdAt: 0,
+      updatedAt: 0,
+    };
+
+    const tableName = await this.resolveWorkflowNodePreviewTable(task, node);
+    if (!tableName || !(await this.physicalTableExists(tableName))) {
+      return [];
+    }
+
+    const colName = input.column.replace(/^\[|\]$/g, '');
+    const quotedCol = quoteIdentifier(colName);
+    const quotedTable = quoteIdentifier(tableName);
+    const rows = await this.queryRows<{ val: string }>(
+      `SELECT DISTINCT ${quotedCol} AS val FROM ${quotedTable} WHERE ${quotedCol} IS NOT NULL ORDER BY ${quotedCol} LIMIT 100`,
+      {}
+    );
+    return rows.map((row) => (row.val === null ? '' : String(row.val))).filter((v) => v !== '');
+  }
+
   async deleteTask(id: string): Promise<boolean> {
     await this.ensureMetadataReady();
     const task = await this.getTask(id);

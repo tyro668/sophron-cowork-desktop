@@ -125,7 +125,9 @@ export function parsePrepDsl(input: string): PrepParseResult {
   }
 
   if (sources.length === 0) {
-    diagnostics.push(createPrepDiagnostic('missingInputSource', 'At least one input source is required'));
+    diagnostics.push(
+      createPrepDiagnostic('missingInputSource', 'At least one input source is required')
+    );
   }
   if (!mainSource && sources[0]) {
     mainSource = sourceAlias(sources[0]) ?? 'source';
@@ -177,13 +179,26 @@ export function parsePrepOperatorDsl(
   return { operator, diagnostics };
 }
 
-function parseOperator(command: CommandLine, diagnostics: PrepDiagnostic[]): PrepOperatorAst | null {
+function parseOperator(
+  command: CommandLine,
+  diagnostics: PrepDiagnostic[]
+): PrepOperatorAst | null {
   const text = command.text;
   if (isInputSource(text)) return parseInputSource(command, diagnostics);
-  if (text.startsWith('select ')) return makeOperator('field_select', text, { mode: 'include', columns: parseFieldRefs(text.slice(7)).map(toFieldName) });
-  if (text.startsWith('drop ')) return makeOperator('field_select', text, { mode: 'exclude', columns: parseFieldRefs(text.slice(5)).map(toFieldName) });
-  if (text.startsWith('map ') || text.startsWith('rename ')) return parseMapping(command, diagnostics);
-  if (text.startsWith('filter ')) return makeOperator('filter', text, { condition: text.slice(7).trim() });
+  if (text.startsWith('select '))
+    return makeOperator('field_select', text, {
+      mode: 'include',
+      columns: parseFieldRefs(text.slice(7)).map(toFieldName),
+    });
+  if (text.startsWith('drop '))
+    return makeOperator('field_select', text, {
+      mode: 'exclude',
+      columns: parseFieldRefs(text.slice(5)).map(toFieldName),
+    });
+  if (text.startsWith('map ') || text.startsWith('rename '))
+    return parseMapping(command, diagnostics);
+  if (text.startsWith('filter '))
+    return makeOperator('filter', text, { condition: text.slice(7).trim() });
   if (text.startsWith('deduplicate')) return parseDeduplicate(text);
   if (text.startsWith('missing value ')) return parseMissingValue(text);
   if (text.startsWith('cast ')) return parseCast(text);
@@ -200,18 +215,28 @@ function parseOperator(command: CommandLine, diagnostics: PrepDiagnostic[]): Pre
   if (text.startsWith('unnest ') || text.startsWith('explode ')) return parseUnnest(text);
   if (text.startsWith('output ')) return parseOutput(text);
   diagnostics.push({
-    ...createPrepDiagnostic('unsupportedCommand', `Unsupported DSL command: ${text}`, { value: text }),
+    ...createPrepDiagnostic('unsupportedCommand', `Unsupported DSL command: ${text}`, {
+      value: text,
+    }),
     line: command.line,
   });
   return null;
 }
 
-function parseInputSource(command: CommandLine, diagnostics: PrepDiagnostic[]): PrepOperatorAst | null {
+function parseInputSource(
+  command: CommandLine,
+  diagnostics: PrepDiagnostic[]
+): PrepOperatorAst | null {
   const text = command.text;
-  const match = /^input\s+source\s+(task|file\s+"(?:[^"\\]|\\.)*"|dataset\s+"(?:[^"\\]|\\.)*")(?:\s+format\s+([A-Za-z_][A-Za-z0-9_]*))?(?:\s+sheet\s+("(?:[^"\\]|\\.)*"))?(?:\s+header\s+(true|false))?(?:\s+encoding\s+("(?:[^"\\]|\\.)*"))?(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?$/.exec(text);
+  const match =
+    /^input\s+source\s+(task|file\s+"(?:[^"\\]|\\.)*"|dataset\s+"(?:[^"\\]|\\.)*")(?:\s+format\s+([A-Za-z_][A-Za-z0-9_]*))?(?:\s+sheet\s+("(?:[^"\\]|\\.)*"))?(?:\s+header\s+(true|false))?(?:\s+encoding\s+("(?:[^"\\]|\\.)*"))?(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?$/.exec(
+      text
+    );
   if (!match) {
     diagnostics.push({
-      ...createPrepDiagnostic('invalidInputSource', `Cannot parse input source: ${text}`, { value: text }),
+      ...createPrepDiagnostic('invalidInputSource', `Cannot parse input source: ${text}`, {
+        value: text,
+      }),
       line: command.line,
     });
     return null;
@@ -274,17 +299,25 @@ function parseDeduplicate(text: string): PrepOperatorAst {
 function parseMissingValue(text: string): PrepOperatorAst {
   const body = text.slice('missing value '.length);
   if (body.startsWith('row drop when ')) {
-    const condition = body.slice('row drop when '.length).trim();
+    const raw = body.slice('row drop when '.length).trim();
+    const inMatch = /\s+in\s+(.+)$/i.exec(raw);
+    const condition = inMatch ? raw.slice(0, inMatch.index).trim() : raw;
+    const columns = inMatch ? parseFieldRefs(inMatch[1]).map(toFieldName) : undefined;
     return makeOperator('missing_value', text, {
       strategy: condition === 'all_null' ? 'drop_empty_rows' : 'drop_rows_by_nulls',
       condition,
+      columns,
     });
   }
   const rules = splitTopLevel(body).map((part) => {
     const field = parseFieldRef(part);
     const afterField = field ? part.slice(field.raw.length).trim() : part;
     if (afterField.startsWith('nullify values ')) {
-      return { column: field ? toFieldName(field) : '', method: 'nullify_values', values: parseLiteralList(afterField.slice(15).trim()) };
+      return {
+        column: field ? toFieldName(field) : '',
+        method: 'nullify_values',
+        values: parseLiteralList(afterField.slice(15).trim()),
+      };
     }
     if (afterField.startsWith('fill ')) {
       const value = afterField.slice(5).trim();
@@ -295,9 +328,14 @@ function parseMissingValue(text: string): PrepOperatorAst {
         median: 'median_fill',
         mode: 'mode_fill',
       };
-      return { column: field ? toFieldName(field) : '', method: methods[value] ?? 'literal_fill', value: methods[value] ? undefined : parseLiteral(value) };
+      return {
+        column: field ? toFieldName(field) : '',
+        method: methods[value] ?? 'literal_fill',
+        value: methods[value] ? undefined : parseLiteral(value),
+      };
     }
-    if (afterField === 'drop rows') return { column: field ? toFieldName(field) : '', method: 'drop' };
+    if (afterField === 'drop rows')
+      return { column: field ? toFieldName(field) : '', method: 'drop' };
     return { column: field ? toFieldName(field) : '', method: 'skip' };
   });
   return makeOperator('missing_value', text, { strategy: 'by_column', rules });
@@ -329,7 +367,10 @@ function parseSort(text: string): PrepOperatorAst {
 
 function parseAggregate(text: string): PrepOperatorAst {
   const match = /^aggregate\s+(all|by\s+.+?)\s+metrics\s+(.+)$/s.exec(text);
-  const groupBy = match?.[1] === 'all' ? [] : parseFieldRefs((match?.[1] ?? '').replace(/^by\s+/, '')).map(toFieldName);
+  const groupBy =
+    match?.[1] === 'all'
+      ? []
+      : parseFieldRefs((match?.[1] ?? '').replace(/^by\s+/, '')).map(toFieldName);
   const metrics = parseMetricList(match?.[2] ?? '', true);
   return makeOperator('aggregate', text, { groupBy, metrics });
 }
@@ -392,7 +433,9 @@ function parseUnpivot(text: string): PrepOperatorAst {
   const except = columnSpec.startsWith('columns except ');
   return makeOperator('unpivot', text, {
     mode: except ? 'except' : 'include',
-    columns: parseFieldRefs(except ? columnSpec.slice('columns except '.length) : columnSpec).map(toFieldName),
+    columns: parseFieldRefs(except ? columnSpec.slice('columns except '.length) : columnSpec).map(
+      toFieldName
+    ),
     nameColumn: nameColumn ? toFieldName(nameColumn) : '',
     valueColumn: valueColumn ? toFieldName(valueColumn) : '',
     includeNulls,
@@ -445,7 +488,10 @@ function parseUnnest(text: string): PrepOperatorAst {
 }
 
 function parseOutput(text: string): PrepOperatorAst {
-  const match = /^output\s+(table|dataset|file)\s+("(?:[^"\\]|\\.)*")(?:\s+format\s+([A-Za-z_][A-Za-z0-9_]*))?(?:\s+mode\s+([A-Za-z_][A-Za-z0-9_]*))?(?:\s+name\s+("(?:[^"\\]|\\.)*"))?$/.exec(text);
+  const match =
+    /^output\s+(table|dataset|file)\s+("(?:[^"\\]|\\.)*")(?:\s+format\s+([A-Za-z_][A-Za-z0-9_]*))?(?:\s+mode\s+([A-Za-z_][A-Za-z0-9_]*))?(?:\s+name\s+("(?:[^"\\]|\\.)*"))?$/.exec(
+      text
+    );
   const target = match?.[1] ?? 'table';
   return makeOperator('output', text, {
     destination: target === 'table' ? 'duckdb_table' : target,
@@ -463,7 +509,10 @@ function parseJoin(command: CommandLine, diagnostics: PrepDiagnostic[]): PrepOpe
   if (text.startsWith('join asof ')) {
     return parseAsofJoin(command, diagnostics);
   }
-  const match = /^join\s+(inner|left|right|full|cross|semi|anti)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?(.*)$/s.exec(text);
+  const match =
+    /^join\s+(inner|left|right|full|cross|semi|anti)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?(.*)$/s.exec(
+      text
+    );
   if (!match) {
     diagnostics.push({
       ...createPrepDiagnostic('invalidJoin', `Cannot parse join: ${text}`, { value: text }),
@@ -484,18 +533,38 @@ function parseJoin(command: CommandLine, diagnostics: PrepDiagnostic[]): PrepOpe
   });
 }
 
-function parseAsofJoin(command: CommandLine, diagnostics: PrepDiagnostic[]): PrepOperatorAst | null {
+function parseAsofJoin(
+  command: CommandLine,
+  diagnostics: PrepDiagnostic[]
+): PrepOperatorAst | null {
   const text = command.text;
-  const match = /^join\s+asof\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?(.*)$/s.exec(text);
+  const match =
+    /^join\s+asof\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?(.*)$/s.exec(text);
   if (!match) {
     diagnostics.push({
-      ...createPrepDiagnostic('invalidAsofJoin', `Cannot parse asof join: ${text}`, { value: text }),
+      ...createPrepDiagnostic('invalidAsofJoin', `Cannot parse asof join: ${text}`, {
+        value: text,
+      }),
       line: command.line,
     });
     return null;
   }
-  const clauses = parseClauses(match[3] ?? '', ['on', 'by', 'direction', 'tolerance', 'keep', 'suffix', 'right_prefix', 'expect']);
-  const asof = parseAsofClause(findClause(clauses, 'on') ?? '', findClause(clauses, 'by') ?? '', findClause(clauses, 'direction'), findClause(clauses, 'tolerance'));
+  const clauses = parseClauses(match[3] ?? '', [
+    'on',
+    'by',
+    'direction',
+    'tolerance',
+    'keep',
+    'suffix',
+    'right_prefix',
+    'expect',
+  ]);
+  const asof = parseAsofClause(
+    findClause(clauses, 'on') ?? '',
+    findClause(clauses, 'by') ?? '',
+    findClause(clauses, 'direction'),
+    findClause(clauses, 'tolerance')
+  );
   return makeOperator('join', text, {
     joinType: 'asof',
     rightInput: match[1],
@@ -507,7 +576,12 @@ function parseAsofJoin(command: CommandLine, diagnostics: PrepDiagnostic[]): Pre
   });
 }
 
-function parseAsofClause(onClause: string, byClause: string, direction?: string, tolerance?: string): PrepAsofJoinConfig | undefined {
+function parseAsofClause(
+  onClause: string,
+  byClause: string,
+  direction?: string,
+  tolerance?: string
+): PrepAsofJoinConfig | undefined {
   const match = /^(.+?)\s*(>=|<=|nearest)\s*(.+)$/.exec(onClause.trim());
   if (!match) return undefined;
   const left = parseFieldRef(match[1].trim());
@@ -518,7 +592,9 @@ function parseAsofClause(onClause: string, byClause: string, direction?: string,
     leftTime: toQualifiedName(left),
     operator: op,
     rightTime: toQualifiedName(right),
-    direction: (direction as PrepAsofJoinConfig['direction'] | undefined) ?? (op === '>=' ? 'backward' : op === '<=' ? 'forward' : 'nearest'),
+    direction:
+      (direction as PrepAsofJoinConfig['direction'] | undefined) ??
+      (op === '>=' ? 'backward' : op === '<=' ? 'forward' : 'nearest'),
     tolerance,
     by: byClause ? parseJoinConditions(byClause) : undefined,
   };
@@ -545,7 +621,9 @@ function parseJoinKeep(value: string): unknown[] | undefined {
     const match = /^(.+?)(?:\s+as\s+(.+))?$/.exec(trimmed);
     const source = match ? parseFieldRef(match[1].trim()) : null;
     const alias = match?.[2] ? parseFieldRef(match[2].trim()) : null;
-    return source ? [{ source: toQualifiedName(source), alias: alias ? toFieldName(alias) : undefined }] : [];
+    return source
+      ? [{ source: toQualifiedName(source), alias: alias ? toFieldName(alias) : undefined }]
+      : [];
   });
 }
 
@@ -557,7 +635,11 @@ function parseJoinConflict(clauses: Clause[], rightAlias: string): Record<string
   }
   if (suffix) {
     const parts = suffix.split(/\s+/);
-    return { strategy: 'suffix', leftSuffix: unquoteMaybe(parts[0] ?? '_left'), rightSuffix: unquoteMaybe(parts[1] ?? '_right') };
+    return {
+      strategy: 'suffix',
+      leftSuffix: unquoteMaybe(parts[0] ?? '_left'),
+      rightSuffix: unquoteMaybe(parts[1] ?? '_right'),
+    };
   }
   return { strategy: 'right_prefix', rightPrefix: `${rightAlias}_` };
 }
@@ -584,7 +666,10 @@ function defaultMetricAlias(fn: string, expression: string): string {
 }
 
 function parseUnnestOptions(value: string): Record<string, unknown> {
-  const withIndex = /\s+with\s+index\s+(.+?)(?:\s+recursive\s+|\s+max_depth\s+|\s+keep\s+parent\s+names\s+|$)/.exec(value);
+  const withIndex =
+    /\s+with\s+index\s+(.+?)(?:\s+recursive\s+|\s+max_depth\s+|\s+keep\s+parent\s+names\s+|$)/.exec(
+      value
+    );
   const indexField = withIndex ? parseFieldRef(withIndex[1].trim()) : null;
   const recursive = pickWordOption(value, 'recursive');
   const maxDepth = pickWordOption(value, 'max_depth');
@@ -679,7 +764,11 @@ function isInputSource(text: string): boolean {
   return text.startsWith('input source ');
 }
 
-function makeOperator(type: PrepOperatorType, dsl: string, config: Record<string, unknown>): PrepOperatorAst {
+function makeOperator(
+  type: PrepOperatorType,
+  dsl: string,
+  config: Record<string, unknown>
+): PrepOperatorAst {
   return {
     type,
     label: OPERATOR_LABELS[type],
@@ -712,7 +801,13 @@ function parseSortKeys(value: string): Array<Record<string, string>> {
     const pieces = part.trim().split(/\s+/);
     const field = parseFieldRef(pieces[0] ?? '');
     if (!field) return [];
-    return [{ field: toFieldName(field), direction: pieces[1] === 'desc' ? 'desc' : 'asc', nulls: pieces[3] }];
+    return [
+      {
+        field: toFieldName(field),
+        direction: pieces[1] === 'desc' ? 'desc' : 'asc',
+        nulls: pieces[3],
+      },
+    ];
   });
 }
 
@@ -736,7 +831,8 @@ function parseClauses(text: string, names: string[]): Clause[] {
   const matches = [...text.matchAll(pattern)];
   return matches.map((match, index) => {
     const start = (match.index ?? 0) + match[0].length;
-    const end = index + 1 < matches.length ? matches[index + 1].index ?? text.length : text.length;
+    const end =
+      index + 1 < matches.length ? (matches[index + 1].index ?? text.length) : text.length;
     return { name: match[1], value: text.slice(start, end).trim() };
   });
 }
@@ -794,7 +890,9 @@ function toQualifiedName(field: PrepFieldRef): string {
 
 function unwrapFieldName(value: string): string {
   const inner = value.slice(1, -1);
-  return inner.startsWith('`') && inner.endsWith('`') ? inner.slice(1, -1).replace(/\\`/g, '`') : inner;
+  return inner.startsWith('`') && inner.endsWith('`')
+    ? inner.slice(1, -1).replace(/\\`/g, '`')
+    : inner;
 }
 
 function unquote(value: string): string {

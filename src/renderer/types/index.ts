@@ -663,6 +663,15 @@ export interface DataPreviewWorkflowNodeInput {
   offset?: number;
 }
 
+export interface DataColumnTypeInfo {
+  name: string;
+  type: string;
+}
+
+export interface DataPreviewWorkflowNodeColumnInput extends DataPreviewWorkflowNodeInput {
+  column: string;
+}
+
 export interface DataInputTablePreview {
   columns: string[];
   rows: Array<Record<string, string | number | boolean | null>>;

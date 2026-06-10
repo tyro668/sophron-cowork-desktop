@@ -87,7 +87,7 @@ export function GlassDataGridPreview({
             getCellsForSelection={true}
             rowMarkers={{
               kind: 'number',
-              startIndex: ((safeCurrentPage - 1) * Math.max(1, pageSize || rows.length || 1)) + 1,
+              startIndex: (safeCurrentPage - 1) * Math.max(1, pageSize || rows.length || 1) + 1,
               width: 48,
               theme: {
                 textMedium: theme.textLight,
@@ -123,7 +123,10 @@ export function GlassDataGridPreview({
           {preview ? labels.total(totalRows) : labels.pageSize(INPUT_TABLE_FALLBACK_PAGE_SIZE)}
         </span>
         <div className="flex flex-shrink-0 items-center gap-1.5">
-          <span className="mr-2 hidden sm:inline" style={{ color: 'var(--data-grid-text-secondary)' }}>
+          <span
+            className="mr-2 hidden sm:inline"
+            style={{ color: 'var(--data-grid-text-secondary)' }}
+          >
             {labels.pageSize(preview?.limit ?? INPUT_TABLE_FALLBACK_PAGE_SIZE)}
           </span>
           <button
@@ -292,7 +295,9 @@ function inferColumnIcon(
   column: string,
   rows: Array<Record<string, string | number | boolean | null>>
 ): GridColumnIcon {
-  const values = rows.map((row) => row[column]).filter((value) => value !== null && value !== undefined);
+  const values = rows
+    .map((row) => row[column])
+    .filter((value) => value !== null && value !== undefined);
   if (values.length > 0 && values.every((value) => typeof value === 'number')) {
     return GridColumnIcon.HeaderNumber;
   }

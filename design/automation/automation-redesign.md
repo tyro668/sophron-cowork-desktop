@@ -70,15 +70,15 @@ flowchart LR
 
 核心拆分：
 
-| 模块 | 职责 |
-| --- | --- |
-| `AutomationStore` | 持久化自动化定义、运行记录、动作产物、输出通道配置 |
-| `AutomationService` | IPC 门面，负责校验、CRUD、启停、立即运行 |
-| `AutomationScheduler` | 只处理触发时间计算和 timer 管理 |
-| `AutomationRunner` | 创建运行上下文，按动作图执行 action，收集产物 |
-| `ActionRegistry` | action 扩展注册中心，内置数据任务、输入数据、输出表、任务对话 |
-| `ArtifactCollector` | 规范化文本、表格、文件、链接、会话、数据表等产物 |
-| `DeliveryRouter` | 根据通道配置发送产物，失败时写入运行记录 |
+| 模块                  | 职责                                                          |
+| --------------------- | ------------------------------------------------------------- |
+| `AutomationStore`     | 持久化自动化定义、运行记录、动作产物、输出通道配置            |
+| `AutomationService`   | IPC 门面，负责校验、CRUD、启停、立即运行                      |
+| `AutomationScheduler` | 只处理触发时间计算和 timer 管理                               |
+| `AutomationRunner`    | 创建运行上下文，按动作图执行 action，收集产物                 |
+| `ActionRegistry`      | action 扩展注册中心，内置数据任务、输入数据、输出表、任务对话 |
+| `ArtifactCollector`   | 规范化文本、表格、文件、链接、会话、数据表等产物              |
+| `DeliveryRouter`      | 根据通道配置发送产物，失败时写入运行记录                      |
 
 ---
 
@@ -87,19 +87,9 @@ flowchart LR
 自动化配置态和运行态分开。
 
 ```ts
-type AutomationStatus =
-  | 'enabled'
-  | 'disabled'
-  | 'paused'
-  | 'running'
-  | 'failed';
+type AutomationStatus = 'enabled' | 'disabled' | 'paused' | 'running' | 'failed';
 
-type AutomationRunStatus =
-  | 'queued'
-  | 'running'
-  | 'succeeded'
-  | 'failed'
-  | 'cancelled';
+type AutomationRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 interface Automation {
   id: string;
@@ -159,13 +149,13 @@ interface AutomationRunnerOptions {
 
 字段语义：
 
-| 字段 | 说明 |
-| --- | --- |
-| `enabled` | 用户开关，关闭后 scheduler 不再排程 |
-| `status` | 当前自动化状态，用于列表和详情呈现 |
-| `lastRunStatus` | 最近一次运行结果 |
-| `nextRunAt` | 下次触发时间，关闭或无可触发时间时为 `null` |
-| `lockedRunId` | 防止同一自动化重入运行 |
+| 字段            | 说明                                        |
+| --------------- | ------------------------------------------- |
+| `enabled`       | 用户开关，关闭后 scheduler 不再排程         |
+| `status`        | 当前自动化状态，用于列表和详情呈现          |
+| `lastRunStatus` | 最近一次运行结果                            |
+| `nextRunAt`     | 下次触发时间，关闭或无可触发时间时为 `null` |
+| `lockedRunId`   | 防止同一自动化重入运行                      |
 
 状态流转：
 
@@ -366,14 +356,14 @@ interface AutomationActionDefinition<TConfig = unknown, TResult = unknown> {
 
 ### 6.2 内置 Action
 
-| 类型 | 输入 | 输出产物 | 说明 |
-| --- | --- | --- | --- |
-| `conversation.run` | `prompt`、`projectId/cwd`、模型/权限配置 | `sessionId`、文本摘要、文件链接 | 执行任务对话中能做的事情 |
-| `data.task.run` | `taskId`、`outputMode` | 数据任务结果、输出表引用 | 调用 `DataTaskStore.runTask` |
-| `data.input.preview` | `inputTableId`、`limit` | 表格预览 | 读取输入表数据 |
-| `data.input.import` | `filePath`、`name`、`config` | 输入表引用 | 自动导入输入数据 |
-| `data.output.preview` | `outputTableId`、`limit` | 表格预览 | 读取输出表数据 |
-| `data.output.export` | `outputTableId`、`format` | 文件产物 | 导出 CSV/JSON/XLSX 等 |
+| 类型                  | 输入                                     | 输出产物                        | 说明                         |
+| --------------------- | ---------------------------------------- | ------------------------------- | ---------------------------- |
+| `conversation.run`    | `prompt`、`projectId/cwd`、模型/权限配置 | `sessionId`、文本摘要、文件链接 | 执行任务对话中能做的事情     |
+| `data.task.run`       | `taskId`、`outputMode`                   | 数据任务结果、输出表引用        | 调用 `DataTaskStore.runTask` |
+| `data.input.preview`  | `inputTableId`、`limit`                  | 表格预览                        | 读取输入表数据               |
+| `data.input.import`   | `filePath`、`name`、`config`             | 输入表引用                      | 自动导入输入数据             |
+| `data.output.preview` | `outputTableId`、`limit`                 | 表格预览                        | 读取输出表数据               |
+| `data.output.export`  | `outputTableId`、`format`                | 文件产物                        | 导出 CSV/JSON/XLSX 等        |
 
 `artifact.compose`（组合产物）暂不作为内置 Action 暴露；等产物引用、模板编辑和通知正文生成规则稳定后再注册。
 
@@ -533,11 +523,11 @@ interface AutomationDeliverySendResult {
 
 内置通道：
 
-| 通道 | recipient 示例 | 配置 | 说明 |
-| --- | --- | --- | --- |
-| `feishu` | 群机器人 URL、open chat id、用户 open id | app/机器人凭据引用 | 支持正文、链接、文件附件 |
-| `email` | `name@example.com` | SMTP/应用邮件配置引用 | 支持正文和附件 |
-| `webhook` | URL | method、headers、签名 | 二期开放，需要权限审计 |
+| 通道      | recipient 示例                           | 配置                  | 说明                     |
+| --------- | ---------------------------------------- | --------------------- | ------------------------ |
+| `feishu`  | 群机器人 URL、open chat id、用户 open id | app/机器人凭据引用    | 支持正文、链接、文件附件 |
+| `email`   | `name@example.com`                       | SMTP/应用邮件配置引用 | 支持正文和附件           |
+| `webhook` | URL                                      | method、headers、签名 | 二期开放，需要权限审计   |
 
 发送时机：
 
@@ -624,16 +614,16 @@ CREATE TABLE IF NOT EXISTS app_meta (
 
 迁移规则：
 
-| 旧字段 | 新字段 |
-| --- | --- |
-| `title` | `automations.name` |
-| `prompt` | `conversation.run.config.prompt` |
-| `cwd` | 按 cwd 匹配/创建 project，写入 `project_id` |
-| `enabled` | `automations.enabled` |
-| `run_at` + `schedule_config` + `repeat_*` | 转为 `trigger_json` |
-| `automation_config.actionKind=data_task` | 转为 `data.task.run` 节点 |
-| `automation_config.delivery` | 转为 `delivery_json` |
-| `last_*` | 写入 automation 摘要字段，不生成历史 run |
+| 旧字段                                    | 新字段                                      |
+| ----------------------------------------- | ------------------------------------------- |
+| `title`                                   | `automations.name`                          |
+| `prompt`                                  | `conversation.run.config.prompt`            |
+| `cwd`                                     | 按 cwd 匹配/创建 project，写入 `project_id` |
+| `enabled`                                 | `automations.enabled`                       |
+| `run_at` + `schedule_config` + `repeat_*` | 转为 `trigger_json`                         |
+| `automation_config.actionKind=data_task`  | 转为 `data.task.run` 节点                   |
+| `automation_config.delivery`              | 转为 `delivery_json`                        |
+| `last_*`                                  | 写入 automation 摘要字段，不生成历史 run    |
 
 迁移后的兼容策略：
 
@@ -785,15 +775,15 @@ Renderer 类型全部迁移到 `Automation*` 命名，停止继续扩展 `Schedu
 
 列表使用紧凑表格：
 
-| 列 | 内容 |
-| --- | --- |
-| 状态 | 开关 + 状态点 |
-| 名称 | 自动化名称、项目 |
-| 启动 | 单次/周期摘要、下次执行 |
-| 动作 | action 数量和主要 action 标签 |
-| 输出 | 通道数量、产物策略 |
-| 最近运行 | 成功/失败、耗时、错误摘要 |
-| 操作 | 运行、编辑、更多 |
+| 列       | 内容                          |
+| -------- | ----------------------------- |
+| 状态     | 开关 + 状态点                 |
+| 名称     | 自动化名称、项目              |
+| 启动     | 单次/周期摘要、下次执行       |
+| 动作     | action 数量和主要 action 标签 |
+| 输出     | 通道数量、产物策略            |
+| 最近运行 | 成功/失败、耗时、错误摘要     |
+| 操作     | 运行、编辑、更多              |
 
 不使用大卡片堆叠。移动端可以退化为密集列表行。
 
@@ -830,14 +820,14 @@ Renderer 类型全部迁移到 `Automation*` 命名，停止继续扩展 `Schedu
 
 ### 11.4 内置 Action 配置 UI
 
-| Action | UI 控件 |
-| --- | --- |
-| `conversation.run` | 简要智能体对话框：模型选择、prompt textarea；完整模式再显示权限/工具摘要、产物收集开关 |
-| `data.task.run` | 数据任务 select、运行模式 persisted/temporary、输出表摘要 |
-| `data.input.preview` | 输入表 select、行数 stepper |
-| `data.input.import` | 文件选择、输入表名称、处理策略 |
-| `data.output.preview` | 输出表 select、行数 stepper |
-| `data.output.export` | 输出表 select、格式 select、文件名模板 |
+| Action                | UI 控件                                                                                |
+| --------------------- | -------------------------------------------------------------------------------------- |
+| `conversation.run`    | 简要智能体对话框：模型选择、prompt textarea；完整模式再显示权限/工具摘要、产物收集开关 |
+| `data.task.run`       | 数据任务 select、运行模式 persisted/temporary、输出表摘要                              |
+| `data.input.preview`  | 输入表 select、行数 stepper                                                            |
+| `data.input.import`   | 文件选择、输入表名称、处理策略                                                         |
+| `data.output.preview` | 输出表 select、行数 stepper                                                            |
+| `data.output.export`  | 输出表 select、格式 select、文件名模板                                                 |
 
 UI 不直接硬编码未来 action。未知 action 使用 schema renderer，但仍保持小控件和表单密度。
 
@@ -848,15 +838,15 @@ UI 不直接硬编码未来 action。未知 action 使用 schema renderer，但�
 
 状态 UI：
 
-| 状态 | 表现 |
-| --- | --- |
-| 加载中 | 表格骨架行 + 编辑面板禁用态，不使用大 spinner 居中占屏 |
-| 空列表 | 单行空态，提供 `新建自动化` 按钮 |
-| action 定义缺失 | action 行显示 warning 状态，配置只读，允许删除或保留 |
-| 数据资源缺失 | select 显示资源已不存在，保存前校验阻止启用 |
-| 运行中 | 行内状态点 + `running` 标签，运行按钮禁用 |
-| 输出通道失败 | 最近运行列显示 delivery `partial/failed`，详情中展示每个通道结果 |
-| 保存失败 | 编辑面板顶部显示紧凑错误 banner，保留用户未保存输入 |
+| 状态            | 表现                                                             |
+| --------------- | ---------------------------------------------------------------- |
+| 加载中          | 表格骨架行 + 编辑面板禁用态，不使用大 spinner 居中占屏           |
+| 空列表          | 单行空态，提供 `新建自动化` 按钮                                 |
+| action 定义缺失 | action 行显示 warning 状态，配置只读，允许删除或保留             |
+| 数据资源缺失    | select 显示资源已不存在，保存前校验阻止启用                      |
+| 运行中          | 行内状态点 + `running` 标签，运行按钮禁用                        |
+| 输出通道失败    | 最近运行列显示 delivery `partial/failed`，详情中展示每个通道结果 |
+| 保存失败        | 编辑面板顶部显示紧凑错误 banner，保留用户未保存输入              |
 
 实现风格：
 
@@ -870,13 +860,13 @@ UI 不直接硬编码未来 action。未知 action 使用 schema renderer，但�
 
 需要删除或改造：
 
-| 当前位置 | 处理 |
-| --- | --- |
-| `src/renderer/components/settings/SettingsSchedule.tsx` | 不再保留旧定时任务详情表单，重建为 Automation UI |
-| `ScheduleTask` / `ScheduleCreateInput` / `ScheduleUpdateInput` | 新增 `Automation*` 类型后逐步删除 |
-| `schedule.*` IPC | 兼容期代理到 `automation.*`，后续移除 |
-| `ScheduledTaskManager` | 替换为 `AutomationScheduler + AutomationRunner` |
-| `scheduled_tasks` 表 | 迁移后只读兼容，最终废弃 |
+| 当前位置                                                       | 处理                                             |
+| -------------------------------------------------------------- | ------------------------------------------------ |
+| `src/renderer/components/settings/SettingsSchedule.tsx`        | 不再保留旧定时任务详情表单，重建为 Automation UI |
+| `ScheduleTask` / `ScheduleCreateInput` / `ScheduleUpdateInput` | 新增 `Automation*` 类型后逐步删除                |
+| `schedule.*` IPC                                               | 兼容期代理到 `automation.*`，后续移除            |
+| `ScheduledTaskManager`                                         | 替换为 `AutomationScheduler + AutomationRunner`  |
+| `scheduled_tasks` 表                                           | 迁移后只读兼容，最终废弃                         |
 
 界面命名建议：
 
@@ -927,18 +917,18 @@ UI 不直接硬编码未来 action。未知 action 使用 schema renderer，但�
 
 ## 14. 测试策略
 
-| 测试 | 覆盖 |
-| --- | --- |
-| `automation-trigger.test.ts` | 单次、interval、daily、weekly、窗口截止、时区 |
-| `automation-store.test.ts` | CRUD、迁移、JSON 字段容错 |
-| `automation-runner.test.ts` | action 执行顺序、失败策略、产物收集 |
-| `automation-concurrency.test.ts` | 多自动化并发、同自动化 skip/queue_once、防重入 |
-| `automation-conversation-run.test.ts` | wait/fire_and_forget、timeout、session artifact 收集 |
-| `automation-action-registry.test.ts` | 注册、重复 type、schema 校验 |
-| `automation-delivery.test.ts` | 飞书/邮件 fake sender、通道失败记录 |
-| `automation-ui-source.test.ts` | 页面入口、旧定时任务详情表单移除、新 action/channel 控件存在 |
-| `automation-ui-states.test.ts` | 空态、加载态、缺失 action、缺失数据资源、通道失败提示 |
-| `scheduled-task-migration.test.ts` | 旧任务迁移为 automation |
+| 测试                                  | 覆盖                                                         |
+| ------------------------------------- | ------------------------------------------------------------ |
+| `automation-trigger.test.ts`          | 单次、interval、daily、weekly、窗口截止、时区                |
+| `automation-store.test.ts`            | CRUD、迁移、JSON 字段容错                                    |
+| `automation-runner.test.ts`           | action 执行顺序、失败策略、产物收集                          |
+| `automation-concurrency.test.ts`      | 多自动化并发、同自动化 skip/queue_once、防重入               |
+| `automation-conversation-run.test.ts` | wait/fire_and_forget、timeout、session artifact 收集         |
+| `automation-action-registry.test.ts`  | 注册、重复 type、schema 校验                                 |
+| `automation-delivery.test.ts`         | 飞书/邮件 fake sender、通道失败记录                          |
+| `automation-ui-source.test.ts`        | 页面入口、旧定时任务详情表单移除、新 action/channel 控件存在 |
+| `automation-ui-states.test.ts`        | 空态、加载态、缺失 action、缺失数据资源、通道失败提示        |
+| `scheduled-task-migration.test.ts`    | 旧任务迁移为 automation                                      |
 
 关键边界：
 

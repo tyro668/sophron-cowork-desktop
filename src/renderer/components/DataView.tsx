@@ -116,6 +116,8 @@ import type {
   Message,
 } from '../types';
 import { PrepDslEditor } from './PrepDslEditor';
+import { OperatorFormWrapper } from './workflow-forms/OperatorFormWrapper';
+import { GlassModeToggle } from './workflow-forms/shared/GlassModeToggle';
 import {
   compilePrepWorkflowToFlow,
   exportPrepOperatorDsl,
@@ -703,66 +705,87 @@ export function DataView() {
     };
   }, [clearDataNavigation, isDataApiAvailable, pendingDataNavigation, t]);
 
-  const loadDashboard = useCallback(async (options: { preserveError?: boolean; query?: string; taskPage?: number; datasetPage?: number; outputPage?: number; tab?: DataTab } = {}) => {
-    if (!window.electronAPI?.data) return;
-    const requestSeq = dashboardRequestSeq.current + 1;
-    dashboardRequestSeq.current = requestSeq;
-    const targetTab = options.tab ?? activeTab;
-    const requestedTaskPage = Math.max(1, options.taskPage ?? taskPage);
-    const requestedOutputPage = Math.max(1, options.outputPage ?? outputPage);
-    const shouldLoadTasks = targetTab === 'tasks';
-    const shouldLoadOutputTables = targetTab === 'output_tables';
-    const shouldLoadSummary = shouldLoadTasks || !hasLoadedDashboardSummary.current;
-    setLoadingTab(targetTab);
-    if (!options.preserveError) {
-      setError(null);
-    }
-    try {
-      const nextDashboard = await window.electronAPI.data.getDashboard({
-        query: options.query ?? (shouldLoadTasks || shouldLoadOutputTables ? searchQuery : ''),
-        includeSummary: shouldLoadSummary,
-        includeTasks: shouldLoadTasks,
-        includeDatasets: false,
-        includeOutputTables: shouldLoadOutputTables,
-        taskOffset: (requestedTaskPage - 1) * TABLE_PAGE_SIZE,
-        taskLimit: shouldLoadTasks ? TABLE_PAGE_SIZE : 0,
-        datasetOffset: 0,
-        datasetLimit: 0,
-        outputOffset: (requestedOutputPage - 1) * TABLE_PAGE_SIZE,
-        outputLimit: shouldLoadOutputTables ? TABLE_PAGE_SIZE : 0,
-        datasetSourceKind: 'all',
-      });
-      if (requestSeq === dashboardRequestSeq.current) {
-        if (shouldLoadSummary) {
-          hasLoadedDashboardSummary.current = true;
+  const loadDashboard = useCallback(
+    async (
+      options: {
+        preserveError?: boolean;
+        query?: string;
+        taskPage?: number;
+        datasetPage?: number;
+        outputPage?: number;
+        tab?: DataTab;
+      } = {}
+    ) => {
+      if (!window.electronAPI?.data) return;
+      const requestSeq = dashboardRequestSeq.current + 1;
+      dashboardRequestSeq.current = requestSeq;
+      const targetTab = options.tab ?? activeTab;
+      const requestedTaskPage = Math.max(1, options.taskPage ?? taskPage);
+      const requestedOutputPage = Math.max(1, options.outputPage ?? outputPage);
+      const shouldLoadTasks = targetTab === 'tasks';
+      const shouldLoadOutputTables = targetTab === 'output_tables';
+      const shouldLoadSummary = shouldLoadTasks || !hasLoadedDashboardSummary.current;
+      setLoadingTab(targetTab);
+      if (!options.preserveError) {
+        setError(null);
+      }
+      try {
+        const nextDashboard = await window.electronAPI.data.getDashboard({
+          query: options.query ?? (shouldLoadTasks || shouldLoadOutputTables ? searchQuery : ''),
+          includeSummary: shouldLoadSummary,
+          includeTasks: shouldLoadTasks,
+          includeDatasets: false,
+          includeOutputTables: shouldLoadOutputTables,
+          taskOffset: (requestedTaskPage - 1) * TABLE_PAGE_SIZE,
+          taskLimit: shouldLoadTasks ? TABLE_PAGE_SIZE : 0,
+          datasetOffset: 0,
+          datasetLimit: 0,
+          outputOffset: (requestedOutputPage - 1) * TABLE_PAGE_SIZE,
+          outputLimit: shouldLoadOutputTables ? TABLE_PAGE_SIZE : 0,
+          datasetSourceKind: 'all',
+        });
+        if (requestSeq === dashboardRequestSeq.current) {
+          if (shouldLoadSummary) {
+            hasLoadedDashboardSummary.current = true;
+          }
+          setDashboard((current) => ({
+            summary: shouldLoadSummary ? nextDashboard.summary : current.summary,
+            tasks: shouldLoadTasks ? nextDashboard.tasks : current.tasks,
+            outputTables: shouldLoadOutputTables
+              ? nextDashboard.outputTables
+              : current.outputTables,
+            datasets: current.datasets,
+            totalTasks:
+              shouldLoadTasks || shouldLoadSummary ? nextDashboard.totalTasks : current.totalTasks,
+            totalDatasets: current.totalDatasets,
+            totalOutputTables: shouldLoadOutputTables
+              ? nextDashboard.totalOutputTables
+              : current.totalOutputTables,
+          }));
         }
-        setDashboard((current) => ({
-          summary: shouldLoadSummary ? nextDashboard.summary : current.summary,
-          tasks: shouldLoadTasks ? nextDashboard.tasks : current.tasks,
-          outputTables: shouldLoadOutputTables ? nextDashboard.outputTables : current.outputTables,
-          datasets: current.datasets,
-          totalTasks:
-            shouldLoadTasks || shouldLoadSummary ? nextDashboard.totalTasks : current.totalTasks,
-          totalDatasets: current.totalDatasets,
-          totalOutputTables: shouldLoadOutputTables
-            ? nextDashboard.totalOutputTables
-            : current.totalOutputTables,
-        }));
+      } catch (err) {
+        if (requestSeq === dashboardRequestSeq.current) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      } finally {
+        if (requestSeq === dashboardRequestSeq.current) {
+          setPendingNavigationTab((current) => (current === targetTab ? null : current));
+          setLoadingTab((current) => (current === targetTab ? null : current));
+        }
       }
-    } catch (err) {
-      if (requestSeq === dashboardRequestSeq.current) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    } finally {
-      if (requestSeq === dashboardRequestSeq.current) {
-        setPendingNavigationTab((current) => (current === targetTab ? null : current));
-        setLoadingTab((current) => (current === targetTab ? null : current));
-      }
-    }
-  }, [activeTab, outputPage, searchQuery, taskPage]);
+    },
+    [activeTab, outputPage, searchQuery, taskPage]
+  );
 
   const loadInputTables = useCallback(
-    async (options: { preserveError?: boolean; page?: number; sourceFilter?: InputTableSourceFilter; query?: string } = {}) => {
+    async (
+      options: {
+        preserveError?: boolean;
+        page?: number;
+        sourceFilter?: InputTableSourceFilter;
+        query?: string;
+      } = {}
+    ) => {
       if (!window.electronAPI?.data) return;
       const requestSeq = inputTablesRequestSeq.current + 1;
       inputTablesRequestSeq.current = requestSeq;
@@ -796,9 +819,7 @@ export function DataView() {
         }
       } finally {
         if (requestSeq === inputTablesRequestSeq.current) {
-          setPendingNavigationTab((current) =>
-            current === 'input_tables' ? null : current
-          );
+          setPendingNavigationTab((current) => (current === 'input_tables' ? null : current));
           setLoadingTab((current) => (current === 'input_tables' ? null : current));
           setInputTablesLoading(false);
         }
@@ -884,14 +905,17 @@ export function DataView() {
     setDatasetPage(1);
   }, []);
 
-  const handleTabChange = useCallback((tab: DataTab) => {
-    if (tab === activeTab) return;
-    dashboardRequestSeq.current += 1;
-    setPendingNavigationTab(tab);
-    setLoadingTab(tab);
-    setActiveTab(tab);
-    setSearchQuery('');
-  }, [activeTab]);
+  const handleTabChange = useCallback(
+    (tab: DataTab) => {
+      if (tab === activeTab) return;
+      dashboardRequestSeq.current += 1;
+      setPendingNavigationTab(tab);
+      setLoadingTab(tab);
+      setActiveTab(tab);
+      setSearchQuery('');
+    },
+    [activeTab]
+  );
 
   const handleTaskPageChange = useCallback((page: number) => {
     setLoadingTab('tasks');
@@ -1012,8 +1036,7 @@ export function DataView() {
 
   const isInputTableEditor = Boolean(editingInputTableDraft || editingInputTableDataset);
   const isTasksLoading =
-    loadingTab === 'tasks' ||
-    (activeTab === 'tasks' && pendingNavigationTab === 'tasks');
+    loadingTab === 'tasks' || (activeTab === 'tasks' && pendingNavigationTab === 'tasks');
   const isInputTablesLoading =
     inputTablesLoading ||
     loadingTab === 'input_tables' ||
@@ -1083,9 +1106,7 @@ export function DataView() {
 
   const handleRenameInputTableDraft = useCallback((id: string, name: string) => {
     setInputTableDrafts((current) =>
-      current.map((draft) =>
-        draft.id === id ? { ...draft, name, updatedAt: Date.now() } : draft
-      )
+      current.map((draft) => (draft.id === id ? { ...draft, name, updatedAt: Date.now() } : draft))
     );
   }, []);
 
@@ -1094,45 +1115,48 @@ export function DataView() {
     setEditingInputTableDraftId((current) => (current === id ? null : current));
   }, []);
 
-  const handleImportInputTableSource = useCallback(async (
-    draft: InputTableDraft,
-    sourceKind: DataInputTableSourceKind,
-    config: DataInputTableConfig,
-    name?: string
-  ) => {
-    if (!window.electronAPI?.data) return;
-    setActionId(draft.id);
-    setError(null);
-    try {
-      const source = window.electronAPI.selectInputTableSource
-        ? await window.electronAPI.selectInputTableSource(sourceKind)
-        : { path: await selectOneFile(), kind: 'file' as const };
-      const sourcePath = source?.path;
-      if (!sourcePath) return;
-      setActiveTab('input_tables');
-      const imported = await window.electronAPI.data.importDataset({
-        filePath: sourcePath,
-        name: name?.trim() || draft.name,
-        sourceKind,
-        config,
-      });
-      setInputTableDrafts((current) => current.filter((item) => item.id !== draft.id));
-      setInputTableDatasets((current) => [
-        imported,
-        ...current.filter((dataset) => dataset.id !== imported.id),
-      ]);
-      setTotalInputTableDatasets((current) => current + 1);
-      setEditingInputTableDraftId(null);
-      setEditingInputTableDatasetId(imported.id);
-      setDatasetPage(1);
-      await loadInputTables({ preserveError: true, page: 1, sourceFilter: 'all' });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      await loadInputTables({ preserveError: true });
-    } finally {
-      setActionId(null);
-    }
-  }, [loadInputTables, selectOneFile]);
+  const handleImportInputTableSource = useCallback(
+    async (
+      draft: InputTableDraft,
+      sourceKind: DataInputTableSourceKind,
+      config: DataInputTableConfig,
+      name?: string
+    ) => {
+      if (!window.electronAPI?.data) return;
+      setActionId(draft.id);
+      setError(null);
+      try {
+        const source = window.electronAPI.selectInputTableSource
+          ? await window.electronAPI.selectInputTableSource(sourceKind)
+          : { path: await selectOneFile(), kind: 'file' as const };
+        const sourcePath = source?.path;
+        if (!sourcePath) return;
+        setActiveTab('input_tables');
+        const imported = await window.electronAPI.data.importDataset({
+          filePath: sourcePath,
+          name: name?.trim() || draft.name,
+          sourceKind,
+          config,
+        });
+        setInputTableDrafts((current) => current.filter((item) => item.id !== draft.id));
+        setInputTableDatasets((current) => [
+          imported,
+          ...current.filter((dataset) => dataset.id !== imported.id),
+        ]);
+        setTotalInputTableDatasets((current) => current + 1);
+        setEditingInputTableDraftId(null);
+        setEditingInputTableDatasetId(imported.id);
+        setDatasetPage(1);
+        await loadInputTables({ preserveError: true, page: 1, sourceFilter: 'all' });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        await loadInputTables({ preserveError: true });
+      } finally {
+        setActionId(null);
+      }
+    },
+    [loadInputTables, selectOneFile]
+  );
 
   const handleEditInputTableDataset = useCallback((id: string) => {
     setActiveTab('input_tables');
@@ -1143,13 +1167,20 @@ export function DataView() {
   const handleRenameInputTableDataset = useCallback(
     async (dataset: DataDataset, name: string) => {
       const trimmedName = name.trim();
-      if (!trimmedName || trimmedName === dataset.name || !window.electronAPI?.data?.updateDataset) {
+      if (
+        !trimmedName ||
+        trimmedName === dataset.name ||
+        !window.electronAPI?.data?.updateDataset
+      ) {
         return;
       }
       setActionId(dataset.id);
       setError(null);
       try {
-        const updated = await window.electronAPI.data.updateDataset({ id: dataset.id, name: trimmedName });
+        const updated = await window.electronAPI.data.updateDataset({
+          id: dataset.id,
+          name: trimmedName,
+        });
         setInputTableDatasets((current) =>
           current.map((item) => (item.id === updated.id ? updated : item))
         );
@@ -1397,26 +1428,29 @@ export function DataView() {
     }
   }, []);
 
-  const handlePreviewStoredOutputTable = useCallback(async (outputTable: DataOutputTable, page = 1) => {
-    if (!window.electronAPI?.data?.previewDataset) return;
-    setStoredPreviewOpen(true);
-    setStoredPreviewTarget({ kind: 'output', outputTable });
-    setStoredPreviewLoading(true);
-    setStoredPreviewError(null);
-    setStoredPreviewPage(page);
-    try {
-      const preview = await window.electronAPI.data.previewDataset({
-        id: outputTable.id,
-        limit: INPUT_TABLE_PREVIEW_PAGE_SIZE,
-        offset: (page - 1) * INPUT_TABLE_PREVIEW_PAGE_SIZE,
-      });
-      setStoredPreviewData(preview);
-    } catch (err) {
-      setStoredPreviewError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setStoredPreviewLoading(false);
-    }
-  }, []);
+  const handlePreviewStoredOutputTable = useCallback(
+    async (outputTable: DataOutputTable, page = 1) => {
+      if (!window.electronAPI?.data?.previewDataset) return;
+      setStoredPreviewOpen(true);
+      setStoredPreviewTarget({ kind: 'output', outputTable });
+      setStoredPreviewLoading(true);
+      setStoredPreviewError(null);
+      setStoredPreviewPage(page);
+      try {
+        const preview = await window.electronAPI.data.previewDataset({
+          id: outputTable.id,
+          limit: INPUT_TABLE_PREVIEW_PAGE_SIZE,
+          offset: (page - 1) * INPUT_TABLE_PREVIEW_PAGE_SIZE,
+        });
+        setStoredPreviewData(preview);
+      } catch (err) {
+        setStoredPreviewError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setStoredPreviewLoading(false);
+      }
+    },
+    []
+  );
 
   const handleCreateOutputTable = useCallback(async () => {
     if (!window.electronAPI?.data?.createOutputTable) return;
@@ -1440,17 +1474,12 @@ export function DataView() {
   }, [dashboard.totalOutputTables, loadDashboard, t]);
 
   const handleUpdateOutputTable = useCallback(
-    async (
-      outputTable: DataOutputTable,
-      name: string,
-      sourceDatasetId: string | null
-    ) => {
+    async (outputTable: DataOutputTable, name: string, sourceDatasetId: string | null) => {
       const trimmedName = name.trim();
       const nextSourceDatasetId = sourceDatasetId || null;
       if (
         !trimmedName ||
-        (trimmedName === outputTable.name &&
-          nextSourceDatasetId === outputTable.sourceDatasetId) ||
+        (trimmedName === outputTable.name && nextSourceDatasetId === outputTable.sourceDatasetId) ||
         !window.electronAPI?.data?.updateOutputTable
       ) {
         return;
@@ -1477,7 +1506,9 @@ export function DataView() {
   const handleDeleteOutputTable = useCallback(
     async (outputTable: DataOutputTable) => {
       if (!window.electronAPI?.data?.deleteDataset) return;
-      const confirmed = window.confirm(t('data.outputTables.deleteConfirm', { name: outputTable.name }));
+      const confirmed = window.confirm(
+        t('data.outputTables.deleteConfirm', { name: outputTable.name })
+      );
       if (!confirmed) return;
       setActionId(outputTable.id);
       setError(null);
@@ -1544,9 +1575,7 @@ export function DataView() {
   }, [dashboard.totalOutputTables, loadDashboard, searchQuery, t]);
 
   return (
-    <div
-      className="flex-1 min-h-0 overflow-hidden bg-transparent"
-    >
+    <div className="flex-1 min-h-0 overflow-hidden bg-transparent">
       <div
         className={`mx-auto w-full px-3 py-3 sm:px-4 ${
           isInputTableEditor ? 'max-w-[1500px]' : 'max-w-[1120px]'
@@ -1958,7 +1987,12 @@ function TaskEditor({
   }, []);
 
   const connectNodes = useCallback(
-    (sourceNodeId: string, targetNodeId: string, sourceHandle = 'output', targetHandle = 'input') => {
+    (
+      sourceNodeId: string,
+      targetNodeId: string,
+      sourceHandle = 'output',
+      targetHandle = 'input'
+    ) => {
       if (sourceNodeId === targetNodeId) return;
       setWorkflow((current) => {
         if (!current) return current;
@@ -1970,8 +2004,22 @@ function TaskEditor({
             edge.targetHandle === targetHandle
         );
         if (exists) return current;
+        // When connecting to a join's right handle, sync the rightInput config
+        let nextNodes = current.nodes;
+        if (targetHandle === 'right') {
+          const sourceNode = current.nodes.find((n) => n.id === sourceNodeId);
+          if (sourceNode) {
+            const alias = (sourceNode.config?.alias as string) || sourceNode.label || '';
+            nextNodes = current.nodes.map((n) =>
+              n.id === targetNodeId
+                ? { ...n, config: { ...n.config, rightInput: alias, rightAlias: alias } }
+                : n
+            );
+          }
+        }
         return {
           ...current,
+          nodes: nextNodes,
           edges: [
             ...current.edges,
             {
@@ -1993,6 +2041,7 @@ function TaskEditor({
     if (!connection.source || !connection.target || connection.source === connection.target) return;
     setWorkflow((current) => {
       if (!current) return current;
+      const oldEdge = current.edges.find((e) => e.id === edgeId);
       const duplicate = current.edges.some(
         (edge) =>
           edge.id !== edgeId &&
@@ -2002,13 +2051,46 @@ function TaskEditor({
           edge.targetHandle === (connection.targetHandle ?? 'input')
       );
       if (duplicate) {
+        // If removing a right-handle edge, clear config.rightInput
+        let nextNodes = current.nodes;
+        if (oldEdge?.targetHandle === 'right') {
+          nextNodes = current.nodes.map((n) =>
+            n.id === oldEdge.targetNodeId
+              ? { ...n, config: { ...n.config, rightInput: undefined, rightAlias: undefined } }
+              : n
+          );
+        }
         return {
           ...current,
-          edges: current.edges.filter((edge) => edge.id !== edgeId),
+          nodes: nextNodes,
+          edges: current.edges.filter((e) => e.id !== edgeId),
         };
+      }
+      // Sync config when reconnecting to/from right handle
+      let nextNodes = current.nodes;
+      const newTargetHandle = connection.targetHandle ?? 'input';
+      if (newTargetHandle === 'right') {
+        // Reconnecting TO right handle: set config.rightInput
+        const sourceNode = current.nodes.find((n) => n.id === connection.source);
+        if (sourceNode) {
+          const alias = (sourceNode.config?.alias as string) || sourceNode.label || '';
+          nextNodes = current.nodes.map((n) =>
+            n.id === connection.target
+              ? { ...n, config: { ...n.config, rightInput: alias, rightAlias: alias } }
+              : n
+          );
+        }
+      } else if (oldEdge?.targetHandle === 'right' && newTargetHandle !== 'right') {
+        // Reconnecting AWAY from right handle: clear config.rightInput
+        nextNodes = current.nodes.map((n) =>
+          n.id === oldEdge.targetNodeId
+            ? { ...n, config: { ...n.config, rightInput: undefined, rightAlias: undefined } }
+            : n
+        );
       }
       return {
         ...current,
+        nodes: nextNodes,
         edges: current.edges.map((edge) =>
           edge.id === edgeId
             ? {
@@ -2016,7 +2098,7 @@ function TaskEditor({
                 sourceNodeId: connection.source,
                 targetNodeId: connection.target,
                 sourceHandle: connection.sourceHandle ?? 'output',
-                targetHandle: connection.targetHandle ?? 'input',
+                targetHandle: newTargetHandle,
               }
             : edge
         ),
@@ -2024,14 +2106,24 @@ function TaskEditor({
     });
   }, []);
   const removeWorkflowEdge = useCallback((edgeId: string) => {
-    setWorkflow((current) =>
-      current
-        ? {
-            ...current,
-            edges: current.edges.filter((edge) => edge.id !== edgeId),
-          }
-        : current
-    );
+    setWorkflow((current) => {
+      if (!current) return current;
+      const removedEdge = current.edges.find((e) => e.id === edgeId);
+      const wasRightEdge = removedEdge?.targetHandle === 'right';
+      let nextNodes = current.nodes;
+      if (wasRightEdge && removedEdge) {
+        nextNodes = current.nodes.map((n) =>
+          n.id === removedEdge.targetNodeId
+            ? { ...n, config: { ...n.config, rightInput: undefined, rightAlias: undefined } }
+            : n
+        );
+      }
+      return {
+        ...current,
+        nodes: nextNodes,
+        edges: current.edges.filter((edge) => edge.id !== edgeId),
+      };
+    });
   }, []);
 
   const duplicateSelectedNode = useCallback(() => {
@@ -2353,10 +2445,7 @@ function TaskEditor({
         </div>
       ) : (
         <div className="grid flex-1 min-h-0 grid-cols-[13rem_minmax(0,1fr)] items-stretch gap-3">
-          <WorkflowOperatorPalette
-            operators={OPERATOR_CATALOG}
-            onAddOperator={addOperator}
-          />
+          <WorkflowOperatorPalette operators={OPERATOR_CATALOG} onAddOperator={addOperator} />
           <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_20rem] gap-3">
             <WorkflowCanvas
               nodes={nodes}
@@ -2706,11 +2795,7 @@ function WorkflowCanvasContent({
         if (change.type !== 'position' || !change.dragging || !change.position) {
           return change;
         }
-        const snap = getWorkflowAlignmentSnap(
-          change.id,
-          change.position,
-          flowNodesRef.current
-        );
+        const snap = getWorkflowAlignmentSnap(change.id, change.position, flowNodesRef.current);
         nextGuides = snap.guides;
         return {
           ...change,
@@ -2733,12 +2818,9 @@ function WorkflowCanvasContent({
     [onSelectNode]
   );
 
-  const handleEdgesChange = useCallback(
-    (changes: EdgeChange<WorkflowFlowEdge>[]) => {
-      setFlowEdges((currentEdges) => applyEdgeChanges(changes, currentEdges));
-    },
-    []
-  );
+  const handleEdgesChange = useCallback((changes: EdgeChange<WorkflowFlowEdge>[]) => {
+    setFlowEdges((currentEdges) => applyEdgeChanges(changes, currentEdges));
+  }, []);
 
   const handleConnect = useCallback(
     (connection: Connection) => {
@@ -3045,8 +3127,8 @@ function WorkflowOperatorNode({ data, selected }: NodeProps<WorkflowFlowNode>) {
 }
 
 function WorkflowAlignmentGuidesOverlay({ guides }: { guides: WorkflowAlignmentGuides }) {
-  const lines = [guides.horizontal, guides.vertical].filter(
-    (line): line is WorkflowAlignmentLine => Boolean(line)
+  const lines = [guides.horizontal, guides.vertical].filter((line): line is WorkflowAlignmentLine =>
+    Boolean(line)
   );
   if (lines.length === 0) {
     return null;
@@ -3111,6 +3193,7 @@ function WorkflowInspector({
   const [operatorDsl, setOperatorDsl] = useState('');
   const [operatorDslBeforeEdit, setOperatorDslBeforeEdit] = useState('');
   const [isEditingOperatorDsl, setIsEditingOperatorDsl] = useState(false);
+  const [configMode, setConfigMode] = useState<'form' | 'dsl'>('form');
   const [operatorDslDiagnostics, setOperatorDslDiagnostics] = useState<PrepDiagnostic[]>([]);
   const [operatorDslStatus, setOperatorDslStatus] = useState<string | null>(null);
   const [operatorDslDiagnosticsOpen, setOperatorDslDiagnosticsOpen] = useState(true);
@@ -3127,6 +3210,10 @@ function WorkflowInspector({
   const usesOperatorDsl = Boolean(node && node.type !== 'input_source' && node.type !== 'output');
   const operatorFieldSourceNode = useMemo(
     () => getWorkflowFieldSourceNode(node, workflowNodes, workflowEdges),
+    [node, workflowEdges, workflowNodes]
+  );
+  const operatorRightSourceNode = useMemo(
+    () => getWorkflowRightSourceNode(node, workflowNodes, workflowEdges),
     [node, workflowEdges, workflowNodes]
   );
   const editorCompletionLabels = useMemo(
@@ -3155,6 +3242,7 @@ function WorkflowInspector({
       setOperatorDslDiagnostics([]);
       setOperatorDslStatus(null);
       setOperatorDslDiagnosticsOpen(true);
+      setConfigMode('form');
       return;
     }
     const nextDsl = exportPrepOperatorDsl(node);
@@ -3165,6 +3253,7 @@ function WorkflowInspector({
     setOperatorDslDiagnostics([]);
     setOperatorDslStatus(null);
     setOperatorDslDiagnosticsOpen(true);
+    setConfigMode('form');
   }, [node, node?.id, node?.type, usesOperatorDsl]);
 
   useEffect(() => {
@@ -3287,7 +3376,9 @@ function WorkflowInspector({
       setOperatorDslStatus(null);
       return;
     }
-    setOperatorDsl(exportPrepOperatorDsl({ id: node.id, type: node.type, config: result.operator.config }));
+    setOperatorDsl(
+      exportPrepOperatorDsl({ id: node.id, type: node.type, config: result.operator.config })
+    );
     setOperatorDslStatus(null);
   }, [isEditingOperatorDsl, node, operatorDsl, usesOperatorDsl]);
 
@@ -3430,7 +3521,6 @@ function WorkflowInspector({
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden p-2.5">
-
         {activeTab === 'logs' ? (
           <div className="h-full min-h-0 rounded-lg border border-border-muted bg-background/34 p-2.5 text-xs text-text-muted">
             {t('data.workflow.noLogs')}
@@ -3447,78 +3537,135 @@ function WorkflowInspector({
           <div className="grid h-full min-h-0 gap-2.5 lg:grid-cols-[minmax(0,1fr)_17rem]">
             <div className="glass-card flex min-h-0 min-w-0 flex-col rounded-xl p-2">
               <div className="mb-2 flex min-h-8 items-center gap-2">
-                <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
-                  {t('data.workflow.dslEditor')}
-                </div>
-                {operatorDslStatus && (
-                  <div className="ml-auto flex h-8 min-w-0 items-center gap-1.5 rounded-lg border border-success/20 bg-success/5 px-2 text-[11px] text-success">
-                    <CheckCircle2 className="h-3 w-3 flex-shrink-0" />
-                    <span className="truncate">{operatorDslStatus}</span>
-                  </div>
-                )}
-                <div className={`${operatorDslStatus ? '' : 'ml-auto'} flex items-center gap-2`}>
-                  {isEditingOperatorDsl ? (
-                    <>
-                      <button
-                        onClick={handleFormatOperatorDsl}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/42 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
-                      >
-                        <Code2 className="h-3.5 w-3.5" />
-                        {t('data.workflow.formatDsl')}
-                      </button>
-                      <button
-                        onClick={handleCancelOperatorDslEdit}
-                        disabled={isRunningOperatorDsl}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/42 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                        {t('common.cancel')}
-                      </button>
-                      <button
-                        onClick={() => void handleApplyOperatorDsl()}
-                        disabled={isRunningOperatorDsl}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-55"
-                      >
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        {t('data.workflow.applyOperatorDsl')}
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={handleStartOperatorDslEdit}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/42 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+                <GlassModeToggle
+                  mode={configMode}
+                  formLabel={t('data.workflow.formConfig', '图形配置')}
+                  dslLabel={t('data.workflow.dslEditor', 'DSL 编辑器')}
+                  onChange={(m) => {
+                    if (m === 'dsl' && configMode === 'form') {
+                      setOperatorDsl(exportPrepOperatorDsl(node));
+                      setIsEditingOperatorDsl(false);
+                    }
+                    if (m === 'form' && configMode === 'dsl') {
+                      setIsEditingOperatorDsl(false);
+                    }
+                    setConfigMode(m);
+                  }}
+                />
+                {configMode === 'dsl' && (
+                  <>
+                    {operatorDslStatus && (
+                      <div className="flex h-8 min-w-0 items-center gap-1.5 rounded-lg border border-success/20 bg-success/5 px-2 text-[11px] text-success">
+                        <CheckCircle2 className="h-3 w-3 flex-shrink-0" />
+                        <span className="truncate">{operatorDslStatus}</span>
+                      </div>
+                    )}
+                    <div
+                      className={`${operatorDslStatus ? '' : 'ml-auto'} flex items-center gap-2`}
                     >
-                      <PencilLine className="h-3.5 w-3.5" />
-                      {t('data.workflow.configureSelected')}
-                    </button>
-                  )}
-                </div>
+                      {isEditingOperatorDsl ? (
+                        <>
+                          <button
+                            onClick={handleFormatOperatorDsl}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/42 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+                          >
+                            <Code2 className="h-3.5 w-3.5" />
+                            {t('data.workflow.formatDsl')}
+                          </button>
+                          <button
+                            onClick={handleCancelOperatorDslEdit}
+                            disabled={isRunningOperatorDsl}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/42 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                            {t('common.cancel')}
+                          </button>
+                          <button
+                            onClick={() => void handleApplyOperatorDsl()}
+                            disabled={isRunningOperatorDsl}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-55"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            {t('data.workflow.applyOperatorDsl')}
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={handleStartOperatorDslEdit}
+                          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/42 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+                        >
+                          <PencilLine className="h-3.5 w-3.5" />
+                          {t('data.workflow.configureSelected')}
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
-              <PrepDslEditor
-                value={operatorDsl}
-                operatorType={node.type}
-                placeholderText={t('data.workflow.operatorDslPlaceholder')}
-                completionLabels={editorCompletionLabels}
-                formatDiagnostic={formatEditorDiagnostic}
-                onChange={handleOperatorDslChange}
-                onDiagnosticsChange={setOperatorDslDiagnostics}
-                fieldCompletions={operatorFieldCompletions}
-                editable={isEditingOperatorDsl}
-                height={182}
-              />
+              {configMode === 'form' ? (
+                <div className="min-h-0 min-w-0 overflow-y-auto">
+                  <OperatorFormWrapper
+                    key={`${node.id}-form`}
+                    node={node}
+                    taskId={node.taskId}
+                    fieldCompletions={operatorFieldCompletions}
+                    otherNodes={workflowNodes}
+                    sourceNode={
+                      operatorFieldSourceNode
+                        ? {
+                            id: operatorFieldSourceNode.id,
+                            type: operatorFieldSourceNode.type,
+                            config: operatorFieldSourceNode.config,
+                          }
+                        : undefined
+                    }
+                    rightSourceNode={
+                      operatorRightSourceNode
+                        ? {
+                            id: operatorRightSourceNode.id,
+                            type: operatorRightSourceNode.type,
+                            config: operatorRightSourceNode.config,
+                          }
+                        : undefined
+                    }
+                    onNodeChange={onNodeChange}
+                  />
+                </div>
+              ) : (
+                <PrepDslEditor
+                  value={operatorDsl}
+                  operatorType={node.type}
+                  placeholderText={t('data.workflow.operatorDslPlaceholder')}
+                  completionLabels={editorCompletionLabels}
+                  formatDiagnostic={formatEditorDiagnostic}
+                  onChange={handleOperatorDslChange}
+                  onDiagnosticsChange={setOperatorDslDiagnostics}
+                  fieldCompletions={operatorFieldCompletions}
+                  editable={isEditingOperatorDsl}
+                  height={182}
+                />
+              )}
             </div>
-            <WorkflowRuleSummaryCard
-              title={t('data.workflow.ruleSummary')}
-              items={ruleSummaryItems}
-              syntaxOk={!operatorDslHasErrors}
-              syntaxOkText={t('data.workflow.syntaxOk')}
-              syntaxErrorText={t('data.workflow.syntaxInvalid')}
-              diagnostics={operatorDslDiagnostics}
-              diagnosticsOpen={operatorDslDiagnosticsOpen}
-              onCloseDiagnostics={() => setOperatorDslDiagnosticsOpen(false)}
-              formatDiagnostic={formatEditorDiagnostic}
-              emptyText={t('data.workflow.noConfig')}
-            />
+            {configMode === 'form' ? (
+              <WorkflowSummaryPanel
+                title={t('data.workflow.summary')}
+                rows={summary.primary}
+                emptyText={t('data.workflow.noConfig')}
+              />
+            ) : (
+              <WorkflowRuleSummaryCard
+                title={t('data.workflow.ruleSummary')}
+                items={ruleSummaryItems}
+                syntaxOk={!operatorDslHasErrors}
+                syntaxOkText={t('data.workflow.syntaxOk')}
+                syntaxErrorText={t('data.workflow.syntaxInvalid')}
+                diagnostics={operatorDslDiagnostics}
+                diagnosticsOpen={operatorDslDiagnosticsOpen}
+                onCloseDiagnostics={() => setOperatorDslDiagnosticsOpen(false)}
+                formatDiagnostic={formatEditorDiagnostic}
+                emptyText={t('data.workflow.noConfig')}
+              />
+            )}
           </div>
         ) : (
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
@@ -3538,7 +3685,10 @@ function WorkflowInspector({
                 />
               ) : (
                 <>
-                  <SelectLike label={t('data.workflow.input')} value={t('data.workflow.previousOutput')} />
+                  <SelectLike
+                    label={t('data.workflow.input')}
+                    value={t('data.workflow.previousOutput')}
+                  />
                   <SelectLike label={t('data.workflow.output')} value={t(catalog.labelKey)} />
                 </>
               )}
@@ -3616,7 +3766,8 @@ function WorkflowInputSourceConfig({
 }) {
   const { t } = useTranslation();
   const selectedInputTableId = stringValue(node.config.datasetId);
-  const selectedInputTableName = stringValue(node.config.inputTableName) || stringValue(node.config.name);
+  const selectedInputTableName =
+    stringValue(node.config.inputTableName) || stringValue(node.config.name);
   const hasSelectedInputTableInChoices = inputTables.some(
     (inputTable) => inputTable.id === selectedInputTableId
   );
@@ -3660,12 +3811,19 @@ function WorkflowInputSourceConfig({
         onValueChange={handleInputTableChange}
         options={[
           ...(selectedInputTableId && !hasSelectedInputTableInChoices
-            ? [{ value: selectedInputTableId, label: selectedInputTableName || selectedInputTableId }]
+            ? [
+                {
+                  value: selectedInputTableId,
+                  label: selectedInputTableName || selectedInputTableId,
+                },
+              ]
             : []),
           ...inputTables.map((inputTable) => ({ value: inputTable.id, label: inputTable.name })),
         ]}
         placeholder={
-          isLoading ? t('data.workflow.loadingInputTables') : t('data.workflow.noAvailableInputTables')
+          isLoading
+            ? t('data.workflow.loadingInputTables')
+            : t('data.workflow.noAvailableInputTables')
         }
         disabled={isLoading || (!selectedInputTableId && inputTables.length === 0)}
         triggerClassName="h-8 w-full justify-between rounded-lg bg-surface px-2 text-xs font-medium text-text-secondary"
@@ -3694,7 +3852,8 @@ function WorkflowOutputConfig({
       : selectedOutputDatasetId
         ? 'existing'
         : 'auto';
-  const autoOutputTableName = stringValue(node.config.outputTableName) || stringValue(node.config.table);
+  const autoOutputTableName =
+    stringValue(node.config.outputTableName) || stringValue(node.config.table);
   const availableOutputTables = outputTables.filter(
     (outputTable) =>
       outputTable.relatedTaskNames.length === 0 || outputTable.id === selectedOutputDatasetId
@@ -3794,16 +3953,16 @@ function WorkflowOutputConfig({
         <span className="mb-1.5 block text-xs font-medium text-text-secondary">
           {t('data.workflow.outputStrategy')}
         </span>
-          <GlassSelect
-            value={strategy}
-            onValueChange={handleStrategyChange}
-            options={[
-              { value: 'auto', label: t('data.workflow.values.outputStrategies.auto') },
-              { value: 'existing', label: t('data.workflow.values.outputStrategies.existing') },
-            ]}
-            triggerClassName="h-8 w-full justify-between rounded-lg bg-surface px-2 text-xs font-medium text-text-secondary"
-            contentClassName="w-[var(--radix-select-trigger-width)]"
-          />
+        <GlassSelect
+          value={strategy}
+          onValueChange={handleStrategyChange}
+          options={[
+            { value: 'auto', label: t('data.workflow.values.outputStrategies.auto') },
+            { value: 'existing', label: t('data.workflow.values.outputStrategies.existing') },
+          ]}
+          triggerClassName="h-8 w-full justify-between rounded-lg bg-surface px-2 text-xs font-medium text-text-secondary"
+          contentClassName="w-[var(--radix-select-trigger-width)]"
+        />
       </label>
 
       {strategy === 'auto' ? (
@@ -3828,7 +3987,9 @@ function WorkflowOutputConfig({
             onValueChange={handleOutputTableChange}
             options={[
               ...(selectedOutputDatasetId &&
-              !availableOutputTables.some((outputTable) => outputTable.id === selectedOutputDatasetId)
+              !availableOutputTables.some(
+                (outputTable) => outputTable.id === selectedOutputDatasetId
+              )
                 ? [{ value: selectedOutputDatasetId, label: selectedOutputDatasetId }]
                 : []),
               ...availableOutputTables.map((outputTable) => ({
@@ -3970,8 +4131,8 @@ function WorkflowSummaryPanel({
 }) {
   return (
     <div className="min-w-0">
-      <div className="mb-2 text-xs font-medium text-text-secondary">{title}</div>
-      <div className="max-h-44 overflow-y-auto rounded-lg border border-border-muted text-[11px]">
+      <div className="mb-2 text-[13px] font-medium text-text-secondary">{title}</div>
+      <div className="max-h-44 overflow-y-auto rounded-lg border border-border-muted text-xs">
         {rows.length > 0 ? (
           rows.map((row) => (
             <div
@@ -4009,9 +4170,19 @@ function getWorkflowFieldSourceNode(
   const preferredHandle = node.type === 'join' ? 'left' : 'input';
   const edge =
     edges.find(
-      (item) =>
-        item.targetNodeId === node.id && (item.targetHandle ?? 'input') === preferredHandle
+      (item) => item.targetNodeId === node.id && (item.targetHandle ?? 'input') === preferredHandle
     ) ?? edges.find((item) => item.targetNodeId === node.id);
+  if (!edge) return null;
+  return nodes.find((item) => item.id === edge.sourceNodeId) ?? null;
+}
+
+function getWorkflowRightSourceNode(
+  node: DataWorkflowNode | null,
+  nodes: DataWorkflowNode[],
+  edges: DataWorkflowEdge[]
+): DataWorkflowNode | null {
+  if (!node || node.type !== 'join') return null;
+  const edge = edges.find((item) => item.targetNodeId === node.id && item.targetHandle === 'right');
   if (!edge) return null;
   return nodes.find((item) => item.id === edge.sourceNodeId) ?? null;
 }
@@ -4050,11 +4221,18 @@ function getWorkflowAlignmentSnap(
     return { position, guides: EMPTY_WORKFLOW_ALIGNMENT_GUIDES };
   }
 
-  let verticalMatch: { distance: number; x: number; snappedX: number; node: WorkflowFlowNode } | null =
-    null;
-  let horizontalMatch:
-    | { distance: number; y: number; snappedY: number; node: WorkflowFlowNode }
-    | null = null;
+  let verticalMatch: {
+    distance: number;
+    x: number;
+    snappedX: number;
+    node: WorkflowFlowNode;
+  } | null = null;
+  let horizontalMatch: {
+    distance: number;
+    y: number;
+    snappedY: number;
+    node: WorkflowFlowNode;
+  } | null = null;
   const activeLeft = position.x;
   const activeRight = position.x + WORKFLOW_NODE_WIDTH;
   const activeCenterY = position.y + WORKFLOW_NODE_HEIGHT / 2;
@@ -4250,17 +4428,16 @@ interface WorkflowConfigSummary {
   details: WorkflowSummaryRow[];
 }
 
-function getWorkflowConfigSummary(
-  node: DataWorkflowNode,
-  t: TranslateFn
-): WorkflowConfigSummary {
+function getWorkflowConfigSummary(node: DataWorkflowNode, t: TranslateFn): WorkflowConfigSummary {
   const config = node.config;
   let summary: WorkflowConfigSummary;
 
   switch (node.type) {
     case 'input_source': {
       const inputTableName =
-        stringValue(config.inputTableName) || stringValue(config.name) || stringValue(config.datasetId);
+        stringValue(config.inputTableName) ||
+        stringValue(config.name) ||
+        stringValue(config.datasetId);
       summary = {
         primary: [summaryRow(t, 'inputTable', inputTableName, true)],
         details: [],
@@ -4270,7 +4447,11 @@ function getWorkflowConfigSummary(
     case 'field_select':
       summary = {
         primary: [
-          summaryRow(t, 'mode', translateWorkflowValue(t, 'selectModes', stringValue(config.mode, 'include'))),
+          summaryRow(
+            t,
+            'mode',
+            translateWorkflowValue(t, 'selectModes', stringValue(config.mode, 'include'))
+          ),
           summaryRow(t, 'columns', formatCount(stringArray(config.columns).length)),
         ],
         details: [summaryRow(t, 'fields', formatList(stringArray(config.columns), t), true)],
@@ -4297,9 +4478,17 @@ function getWorkflowConfigSummary(
           summaryRow(
             t,
             'strategy',
-            translateWorkflowValue(t, 'deduplicateStrategies', stringValue(config.strategy, 'all_columns'))
+            translateWorkflowValue(
+              t,
+              'deduplicateStrategies',
+              stringValue(config.strategy, 'all_columns')
+            )
           ),
-          summaryRow(t, 'keep', translateWorkflowValue(t, 'keepRules', stringValue(config.keep, 'first'))),
+          summaryRow(
+            t,
+            'keep',
+            translateWorkflowValue(t, 'keepRules', stringValue(config.keep, 'first'))
+          ),
         ],
         details: [
           summaryRow(t, 'columns', formatList(stringArray(config.columns), t), true),
@@ -4313,7 +4502,11 @@ function getWorkflowConfigSummary(
           summaryRow(
             t,
             'strategy',
-            translateWorkflowValue(t, 'missingStrategies', stringValue(config.strategy, 'by_column'))
+            translateWorkflowValue(
+              t,
+              'missingStrategies',
+              stringValue(config.strategy, 'by_column')
+            )
           ),
           summaryRow(t, 'rules', formatCount(recordArray(config.rules).length)),
         ],
@@ -4325,7 +4518,9 @@ function getWorkflowConfigSummary(
       break;
     case 'type_convert':
       summary = {
-        primary: [summaryRow(t, 'conversions', formatCount(recordArray(config.conversions).length))],
+        primary: [
+          summaryRow(t, 'conversions', formatCount(recordArray(config.conversions).length)),
+        ],
         details: [summaryRow(t, 'fields', formatConversions(config.conversions, t), true)],
       };
       break;
@@ -4337,7 +4532,9 @@ function getWorkflowConfigSummary(
       break;
     case 'calculate_field':
       summary = {
-        primary: [summaryRow(t, 'calculations', formatCount(recordArray(config.calculations).length))],
+        primary: [
+          summaryRow(t, 'calculations', formatCount(recordArray(config.calculations).length)),
+        ],
         details: [summaryRow(t, 'expression', formatCalculations(config.calculations, t), true)],
       };
       break;
@@ -4423,7 +4620,11 @@ function getWorkflowConfigSummary(
           summaryRow(
             t,
             'destination',
-            translateWorkflowValue(t, 'destinations', stringValue(config.destination, 'duckdb_table'))
+            translateWorkflowValue(
+              t,
+              'destinations',
+              stringValue(config.destination, 'duckdb_table')
+            )
           ),
           summaryRow(t, 'outputTable', outputDisplayName, true),
         ],
@@ -4456,7 +4657,12 @@ function getJoinConfigSummary(
     summaryRow(t, 'cardinality', stringValue(config.cardinality)),
   ];
   const details = [
-    summaryRow(t, 'conditions', joinType === 'asof' ? formatAsof(asof, t) : formatConditions(config.conditions, t), true),
+    summaryRow(
+      t,
+      'conditions',
+      joinType === 'asof' ? formatAsof(asof, t) : formatConditions(config.conditions, t),
+      true
+    ),
     summaryRow(t, 'by', formatConditions(asof?.by, t), true),
     summaryRow(t, 'direction', stringValue(asof?.direction)),
     summaryRow(t, 'tolerance', stringValue(asof?.tolerance)),
@@ -4500,7 +4706,9 @@ function cloneWorkflowNodeConfig(config: Record<string, unknown>): Record<string
 }
 
 function stringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
 }
 
 function recordArray(value: unknown): Array<Record<string, unknown>> {
@@ -4663,9 +4871,7 @@ function StatCard({
         <div className="mt-1.5 whitespace-nowrap text-[13px] font-medium leading-4 text-text-secondary">
           {label}
         </div>
-        <div className="mt-1 truncate text-[11px] leading-4 text-text-secondary">
-          {description}
-        </div>
+        <div className="mt-1 truncate text-[11px] leading-4 text-text-secondary">{description}</div>
       </div>
     </article>
   );
@@ -4688,9 +4894,7 @@ function TabButton({
       }`}
     >
       {label}
-      {active && (
-        <span className="absolute bottom-0 left-0 h-px w-full rounded-full bg-accent" />
-      )}
+      {active && <span className="absolute bottom-0 left-0 h-px w-full rounded-full bg-accent" />}
     </button>
   );
 }
@@ -4993,6 +5197,7 @@ function InputTablesPanel({
   const totalRows = totalDatasets + draftCount;
   const pageCount = getTablePageCount(totalRows);
   const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
+  const pageNumbers = getVisiblePageNumbers(safeCurrentPage, pageCount);
   const draftStart = (safeCurrentPage - 1) * TABLE_PAGE_SIZE;
   const pageDrafts = useMemo(
     () =>
@@ -5127,124 +5332,169 @@ function InputTablesPanel({
           ) : visibleRows.length === 0 ? (
             <EmptyState label={emptyLabel} />
           ) : (
-            <div className="min-w-full overflow-x-auto">
-              <table className="w-full table-fixed border-collapse text-left">
-                <thead>
-                  <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted backdrop-blur-xl">
-                    <th className="w-[4%] px-4">
-                      <span className="sr-only">{t('data.inputTables.selection')}</span>
-                    </th>
-                    <th className="w-[22%] whitespace-nowrap px-2">{t('data.columns.inputTableName')}</th>
-                    <th className="w-[9%] whitespace-nowrap px-2">{t('data.columns.sourceType')}</th>
-                    <th className="w-[22%] whitespace-nowrap px-2">{t('data.columns.sourceLocation')}</th>
-                    <th className="w-[17%] whitespace-nowrap px-2">{t('data.columns.relatedTasks')}</th>
-                    <th className="w-[16%] whitespace-nowrap px-2">
-                      <span className="inline-flex items-center gap-1">
-                        {t('data.columns.updatedAt')}
-                        <ArrowUpDown className="h-3 w-3" />
-                      </span>
-                    </th>
-                    <th className="w-[10%] whitespace-nowrap px-2">{t('data.columns.status')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pageRows.map((row, index) => {
-                    const dataset = row.kind === 'dataset' ? row.dataset : null;
-                    const draft = row.kind === 'draft' ? row.draft : null;
-                    const sourceKind = dataset ? dataset.sourceKind : 'draft';
-                    const sourceMeta = getInputTableSourceMeta(sourceKind);
-                    const SourceIcon = sourceMeta.Icon;
-                    const selected = row.id === selectedDatasetId;
-                    const rowName = dataset?.name ?? draft?.name ?? '';
-                    const rowUpdatedAt = dataset?.updatedAt ?? draft?.updatedAt ?? null;
-                    return (
-                      <tr
-                        key={row.id}
-                        onClick={() => setSelectedDatasetId(row.id)}
-                        onDoubleClick={() => {
-                          if (draft) {
-                            onEditDraft(draft.id);
-                          } else if (dataset) {
-                            onEditDataset(dataset.id);
-                          }
-                        }}
-                        className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
-                          selected
-                            ? 'bg-accent/10 ring-1 ring-inset ring-accent/20'
-                            : index === 1
-                              ? 'bg-accent/5'
-                              : 'hover:bg-surface-hover/35'
-                        }`}
-                      >
-                        <td className="px-4">
-                          <input
-                            type="radio"
-                            name="input-table-selection"
-                            checked={selected}
-                            onChange={() => setSelectedDatasetId(row.id)}
-                            onClick={(event) => event.stopPropagation()}
-                            className="h-3.5 w-3.5 accent-accent"
-                            aria-label={rowName}
-                          />
-                        </td>
-                        <td className="px-2">
-                          <div className="flex min-w-0 items-center gap-3">
-                            <div
-                              className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${sourceMeta.className}`}
-                            >
-                              <SourceIcon className="h-4 w-4" />
-                            </div>
-                            <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
-                              {rowName}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-2">
-                          <span
-                            className={`inline-flex h-6 items-center rounded-md px-2 text-xs font-medium ${sourceMeta.badgeClassName}`}
-                          >
-                            {t(sourceMeta.labelKey)}
-                          </span>
-                        </td>
-                        <td className="px-2">
-                          <div className="truncate text-[13px] font-medium text-text-secondary" title={dataset?.sourcePath}>
-                            {dataset ? formatDisplayPath(dataset.sourcePath) : t('data.inputTables.notConfigured')}
-                          </div>
-                        </td>
-                        <td className="px-2">
-                          <div className="truncate text-[13px] font-medium text-text-secondary">
-                            {dataset
-                              ? formatRelatedTaskNames(dataset.relatedTaskNames, t)
-                              : t('data.inputTables.noRelatedTasks')}
-                          </div>
-                        </td>
-                        <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
-                          {formatDateTime(rowUpdatedAt)}
-                        </td>
-                        <td className="px-2">
-                          <InputTableStatusBadge
-                            label={
-                              draft
-                                ? t('data.inputTables.status.draft')
-                                : t('data.inputTables.status.available')
+            <>
+              <div className="min-w-full overflow-x-auto">
+                <table className="w-full table-fixed border-collapse text-left">
+                  <thead>
+                    <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted backdrop-blur-xl">
+                      <th className="w-[4%] px-4">
+                        <span className="sr-only">{t('data.inputTables.selection')}</span>
+                      </th>
+                      <th className="w-[22%] whitespace-nowrap px-2">
+                        {t('data.columns.inputTableName')}
+                      </th>
+                      <th className="w-[9%] whitespace-nowrap px-2">
+                        {t('data.columns.sourceType')}
+                      </th>
+                      <th className="w-[22%] whitespace-nowrap px-2">
+                        {t('data.columns.sourceLocation')}
+                      </th>
+                      <th className="w-[17%] whitespace-nowrap px-2">
+                        {t('data.columns.relatedTasks')}
+                      </th>
+                      <th className="w-[16%] whitespace-nowrap px-2">
+                        <span className="inline-flex items-center gap-1">
+                          {t('data.columns.updatedAt')}
+                          <ArrowUpDown className="h-3 w-3" />
+                        </span>
+                      </th>
+                      <th className="w-[10%] whitespace-nowrap px-2">{t('data.columns.status')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pageRows.map((row, index) => {
+                      const dataset = row.kind === 'dataset' ? row.dataset : null;
+                      const draft = row.kind === 'draft' ? row.draft : null;
+                      const sourceKind = dataset ? dataset.sourceKind : 'draft';
+                      const sourceMeta = getInputTableSourceMeta(sourceKind);
+                      const SourceIcon = sourceMeta.Icon;
+                      const selected = row.id === selectedDatasetId;
+                      const rowName = dataset?.name ?? draft?.name ?? '';
+                      const rowUpdatedAt = dataset?.updatedAt ?? draft?.updatedAt ?? null;
+                      return (
+                        <tr
+                          key={row.id}
+                          onClick={() => setSelectedDatasetId(row.id)}
+                          onDoubleClick={() => {
+                            if (draft) {
+                              onEditDraft(draft.id);
+                            } else if (dataset) {
+                              onEditDataset(dataset.id);
                             }
-                            tone={draft ? 'warning' : 'success'}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          }}
+                          className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
+                            selected
+                              ? 'bg-accent/10 ring-1 ring-inset ring-accent/20'
+                              : index === 1
+                                ? 'bg-accent/5'
+                                : 'hover:bg-surface-hover/35'
+                          }`}
+                        >
+                          <td className="px-4">
+                            <input
+                              type="radio"
+                              name="input-table-selection"
+                              checked={selected}
+                              onChange={() => setSelectedDatasetId(row.id)}
+                              onClick={(event) => event.stopPropagation()}
+                              className="h-3.5 w-3.5 accent-accent"
+                              aria-label={rowName}
+                            />
+                          </td>
+                          <td className="px-2">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <div
+                                className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${sourceMeta.className}`}
+                              >
+                                <SourceIcon className="h-4 w-4" />
+                              </div>
+                              <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
+                                {rowName}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-2">
+                            <span
+                              className={`inline-flex h-6 items-center rounded-md px-2 text-xs font-medium ${sourceMeta.badgeClassName}`}
+                            >
+                              {t(sourceMeta.labelKey)}
+                            </span>
+                          </td>
+                          <td className="px-2">
+                            <div
+                              className="truncate text-[13px] font-medium text-text-secondary"
+                              title={dataset?.sourcePath}
+                            >
+                              {dataset
+                                ? formatDisplayPath(dataset.sourcePath)
+                                : t('data.inputTables.notConfigured')}
+                            </div>
+                          </td>
+                          <td className="px-2">
+                            <div className="truncate text-[13px] font-medium text-text-secondary">
+                              {dataset
+                                ? formatRelatedTaskNames(dataset.relatedTaskNames, t)
+                                : t('data.inputTables.noRelatedTasks')}
+                            </div>
+                          </td>
+                          <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+                            {formatDateTime(rowUpdatedAt)}
+                          </td>
+                          <td className="px-2">
+                            <InputTableStatusBadge
+                              label={
+                                draft
+                                  ? t('data.inputTables.status.draft')
+                                  : t('data.inputTables.status.available')
+                              }
+                              tone={draft ? 'warning' : 'success'}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex min-h-11 flex-col items-center justify-between gap-2 border-t border-border-muted px-4 py-2.5 text-xs font-medium text-text-secondary sm:flex-row">
+                <span>{t('data.totalCount', { count: totalRows })}</span>
+                <div className="flex items-center gap-2">
+                  <button className="inline-flex h-8 min-w-[6.5rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-text-secondary shadow-soft">
+                    {t('data.rowsPerPage', { count: TABLE_PAGE_SIZE })}
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => onPageChange(safeCurrentPage - 1)}
+                    disabled={safeCurrentPage <= 1}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  {pageNumbers.map((pageNumber) => (
+                    <button
+                      key={pageNumber}
+                      onClick={() => onPageChange(pageNumber)}
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
+                        pageNumber === safeCurrentPage
+                          ? 'bg-accent text-white shadow-soft'
+                          : 'border border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
+                      }`}
+                    >
+                      {pageNumber}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => onPageChange(safeCurrentPage + 1)}
+                    disabled={safeCurrentPage >= pageCount}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </>
           )}
         </div>
-        <PaginationFooter
-          count={totalRows}
-          currentPage={safeCurrentPage}
-          onPageChange={onPageChange}
-          embedded
-        />
       </div>
     </div>
   );
@@ -5388,8 +5638,12 @@ function OutputTablesPanel({
                     <th className="w-[4%] px-4">
                       <span className="sr-only">{t('data.outputTables.selection')}</span>
                     </th>
-                    <th className="w-[34%] whitespace-nowrap px-2">{t('data.columns.outputTableName')}</th>
-                    <th className="w-[30%] whitespace-nowrap px-2">{t('data.columns.relatedTasks')}</th>
+                    <th className="w-[34%] whitespace-nowrap px-2">
+                      {t('data.columns.outputTableName')}
+                    </th>
+                    <th className="w-[30%] whitespace-nowrap px-2">
+                      {t('data.columns.relatedTasks')}
+                    </th>
                     <th className="w-[18%] whitespace-nowrap px-2">
                       <span className="inline-flex items-center gap-1">
                         {t('data.columns.updatedAt')}
@@ -5496,26 +5750,22 @@ function OutputTableEditor({
   const trimmedName = localName.trim();
   const canSave = Boolean(
     trimmedName &&
-      !isBusy &&
-      (trimmedName !== outputTable.name ||
-        (sourceDatasetId || null) !== outputTable.sourceDatasetId)
+    !isBusy &&
+    (trimmedName !== outputTable.name || (sourceDatasetId || null) !== outputTable.sourceDatasetId)
   );
-  const inputTableOptions = useMemo(
-    () => {
-      const options = inputTables.map((dataset) => ({
-        value: dataset.id,
-        label: dataset.name,
-      }));
-      if (sourceDatasetId && !options.some((option) => option.value === sourceDatasetId)) {
-        options.unshift({ value: sourceDatasetId, label: sourceDatasetId });
-      }
-      const emptyLabel = isInputTablesLoading
-        ? t('data.outputTables.editor.loadingInputTables')
-        : t('data.outputTables.editor.noInputTable');
-      return [{ value: '', label: emptyLabel }, ...options];
-    },
-    [inputTables, isInputTablesLoading, sourceDatasetId, t]
-  );
+  const inputTableOptions = useMemo(() => {
+    const options = inputTables.map((dataset) => ({
+      value: dataset.id,
+      label: dataset.name,
+    }));
+    if (sourceDatasetId && !options.some((option) => option.value === sourceDatasetId)) {
+      options.unshift({ value: sourceDatasetId, label: sourceDatasetId });
+    }
+    const emptyLabel = isInputTablesLoading
+      ? t('data.outputTables.editor.loadingInputTables')
+      : t('data.outputTables.editor.noInputTable');
+    return [{ value: '', label: emptyLabel }, ...options];
+  }, [inputTables, isInputTablesLoading, sourceDatasetId, t]);
 
   useEffect(() => {
     setLocalName(outputTable.name);
@@ -5580,10 +5830,7 @@ function OutputTableEditor({
             >
               <PencilLine className="h-4 w-4" />
             </button>
-            <InputTableStatusBadge
-              label={t('data.outputTables.status.available')}
-              tone="success"
-            />
+            <InputTableStatusBadge label={t('data.outputTables.status.available')} tone="success" />
           </div>
         </div>
         <button
@@ -5708,15 +5955,15 @@ function InputTableEditorWorkbench({
   const canSave = Boolean(dataset && trimmedName && !isBusy && (hasNameChanges || canSaveConfig));
   const canPreview = Boolean(
     dataset &&
-      localSourceKind === dataset.sourceKind &&
-      !isBusy &&
-      window.electronAPI?.data?.previewInputTable
+    localSourceKind === dataset.sourceKind &&
+    !isBusy &&
+    window.electronAPI?.data?.previewInputTable
   );
   const canGenerateCustomizeDraft = Boolean(
     dataset &&
-      dataProcessing.strategy === 'customize' &&
-      dataProcessing.rulePrompt.trim() &&
-      !customizeGenerating
+    dataProcessing.strategy === 'customize' &&
+    dataProcessing.rulePrompt.trim() &&
+    !customizeGenerating
   );
   const currentNormalizerVersion =
     dataProcessing.strategy === 'customize'
@@ -5742,7 +5989,8 @@ function InputTableEditorWorkbench({
     return (
       normalizerProjectFiles.find((file) => file.path === selectedNormalizerFilePath) ??
       normalizerProjectFiles.find(
-        (file) => file.path === getPreferredNormalizerFilePath(normalizerProjectFiles, normalizerLanguage)
+        (file) =>
+          file.path === getPreferredNormalizerFilePath(normalizerProjectFiles, normalizerLanguage)
       ) ??
       normalizerProjectFiles[0]
     );
@@ -5769,7 +6017,10 @@ function InputTableEditorWorkbench({
   }, [isNameEditing]);
 
   useEffect(() => {
-    const preferredPath = getPreferredNormalizerFilePath(normalizerProjectFiles, normalizerLanguage);
+    const preferredPath = getPreferredNormalizerFilePath(
+      normalizerProjectFiles,
+      normalizerLanguage
+    );
     setSelectedNormalizerFilePath((current) => {
       if (current && normalizerProjectFiles.some((file) => file.path === current)) {
         return current;
@@ -5858,18 +6109,17 @@ function InputTableEditorWorkbench({
     setCustomizeGenerating(true);
     setCustomizeGenerationError(null);
     const progressId = createNormalizerGenerationProgressId();
-    const unsubscribeProgress =
-      window.electronAPI.data.onInputTableNormalizerDraftProgress?.(
-        (event: DataInputTableNormalizerDraftProgressEvent) => {
-          if (event.progressId !== progressId) return;
-          if (typeof event.text !== 'string' || event.text.length === 0) return;
-          if (event.kind === 'delta') {
-            appendGenerationOutputChunk(event.text);
-          } else {
-            appendGenerationOutput(event.text);
-          }
+    const unsubscribeProgress = window.electronAPI.data.onInputTableNormalizerDraftProgress?.(
+      (event: DataInputTableNormalizerDraftProgressEvent) => {
+        if (event.progressId !== progressId) return;
+        if (typeof event.text !== 'string' || event.text.length === 0) return;
+        if (event.kind === 'delta') {
+          appendGenerationOutputChunk(event.text);
+        } else {
+          appendGenerationOutput(event.text);
         }
-      );
+      }
+    );
     try {
       const result = await window.electronAPI.data.generateInputTableNormalizerDraft({
         artifactId: dataProcessing.artifactId,
@@ -5959,11 +6209,7 @@ function InputTableEditorWorkbench({
   };
 
   const previewCustomizeDraft = async () => {
-    if (
-      dataProcessing.strategy !== 'customize' ||
-      !dataProcessing.artifactVersionId ||
-      !dataset
-    ) {
+    if (dataProcessing.strategy !== 'customize' || !dataProcessing.artifactVersionId || !dataset) {
       return;
     }
     setPreviewOpen(true);
@@ -6168,9 +6414,7 @@ function InputTableEditorWorkbench({
             <InputTableConfigRow label={t('data.inputTables.editor.sourceType')}>
               <GlassSelect
                 value={localSourceKind}
-                onValueChange={(value) =>
-                  handleSourceKindChange(value as DataInputTableSourceKind)
-                }
+                onValueChange={(value) => handleSourceKindChange(value as DataInputTableSourceKind)}
                 options={[
                   { value: 'excel', label: t('data.inputTables.editor.excel') },
                   { value: 'csv', label: t('data.inputTables.editor.csv') },
@@ -6178,7 +6422,9 @@ function InputTableEditorWorkbench({
                 ]}
                 disabled={isBusy}
                 triggerIcon={
-                  <span className={`flex h-6 w-6 items-center justify-center rounded-md ${sourceMeta.className}`}>
+                  <span
+                    className={`flex h-6 w-6 items-center justify-center rounded-md ${sourceMeta.className}`}
+                  >
                     <SourceIcon className="h-4 w-4" />
                   </span>
                 }
@@ -6196,7 +6442,9 @@ function InputTableEditorWorkbench({
             >
               <div className="flex min-w-0 items-stretch">
                 <div className="flex h-10 min-w-0 flex-1 items-center gap-3 rounded-l-lg border border-border-muted bg-background/50 px-3 shadow-soft">
-                  <span className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md ${sourceMeta.className}`}>
+                  <span
+                    className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md ${sourceMeta.className}`}
+                  >
                     <SourceIcon className="h-4 w-4" />
                   </span>
                   <div
@@ -6248,155 +6496,156 @@ function InputTableEditorWorkbench({
           </div>
 
           {dataProcessing.strategy === 'customize' ? (
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div className="flex h-14 flex-shrink-0 items-end border-b border-border-muted/80 px-5">
-              {editorTabs.map((tab) => (
-                <button
-                  key={tab.value}
-                  type="button"
-                  onClick={() => setActiveEditorTab(tab.value)}
-                  className={`relative flex h-12 min-w-[8.5rem] items-center justify-center px-4 text-[13px] font-medium transition-colors ${
-                    activeEditorTab === tab.value
-                      ? 'text-accent'
-                      : 'text-text-secondary hover:text-text-primary'
-                  }`}
-                >
-                  {tab.label}
-                  {activeEditorTab === tab.value ? (
-                    <span className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full bg-accent" />
-                  ) : null}
-                </button>
-              ))}
-            </div>
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="flex h-14 flex-shrink-0 items-end border-b border-border-muted/80 px-5">
+                {editorTabs.map((tab) => (
+                  <button
+                    key={tab.value}
+                    type="button"
+                    onClick={() => setActiveEditorTab(tab.value)}
+                    className={`relative flex h-12 min-w-[8.5rem] items-center justify-center px-4 text-[13px] font-medium transition-colors ${
+                      activeEditorTab === tab.value
+                        ? 'text-accent'
+                        : 'text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    {tab.label}
+                    {activeEditorTab === tab.value ? (
+                      <span className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full bg-accent" />
+                    ) : null}
+                  </button>
+                ))}
+              </div>
 
-            <div
-              className={`min-h-0 flex-1 px-7 py-6 ${
-                activeEditorTab === 'versions' ? 'overflow-y-auto' : 'overflow-hidden'
-              }`}
-            >
-              {activeEditorTab === 'rules' ? (
-                <div className="mx-auto flex h-full min-h-0 max-w-[70rem] flex-col gap-4">
-                  <label className="grid flex-shrink-0 gap-2">
-                    <span className="inline-flex items-center gap-2 text-[13px] font-medium text-text-secondary">
-                      {t('data.inputTables.editor.rulePrompt')}
-                      <Info className="h-3.5 w-3.5 text-text-muted" />
-                    </span>
-                    <textarea
-                      value={dataProcessing.rulePrompt}
-                      onChange={(event) =>
-                        updateDataProcessing({
-                          ...dataProcessing,
-                          rulePrompt: event.target.value,
-                        })
-                      }
-                      disabled={isBusy || !dataset}
-                      rows={4}
-                      maxLength={4000}
-                      placeholder={t('data.inputTables.editor.rulePromptPlaceholder')}
-                      className="h-24 min-h-24 w-full resize-none rounded-lg border border-border-muted bg-background/50 px-4 py-3 text-[13px] leading-6 text-text-primary shadow-soft outline-none placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
-                    />
-                  </label>
-                  <InputTableGenerationOutputPanel
-                    isStreaming={customizeGenerating}
-                    output={customizeGenerationOutput}
-                    t={t}
-                  />
-                  {customizeGenerationError ? (
-                    <div className="flex-shrink-0 rounded-lg border border-danger/20 bg-danger/10 px-3 py-2 text-[12px] font-medium text-danger">
-                      {customizeGenerationError}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {activeEditorTab === 'code' ? (
-                <div className="grid h-[30rem] max-h-full min-h-0 gap-3 overflow-hidden lg:grid-cols-[minmax(0,1fr)_16rem]">
-                  <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-background/50">
-                    <div className="flex h-9 flex-shrink-0 items-center justify-between gap-2 border-b border-border-muted px-3">
-                      <span className="min-w-0 truncate font-mono text-xs font-medium text-text-primary">
-                        {selectedNormalizerFile?.path ?? t('data.inputTables.editor.noProjectFiles')}
+              <div
+                className={`min-h-0 flex-1 px-7 py-6 ${
+                  activeEditorTab === 'versions' ? 'overflow-y-auto' : 'overflow-hidden'
+                }`}
+              >
+                {activeEditorTab === 'rules' ? (
+                  <div className="mx-auto flex h-full min-h-0 max-w-[70rem] flex-col gap-4">
+                    <label className="grid flex-shrink-0 gap-2">
+                      <span className="inline-flex items-center gap-2 text-[13px] font-medium text-text-secondary">
+                        {t('data.inputTables.editor.rulePrompt')}
+                        <Info className="h-3.5 w-3.5 text-text-muted" />
                       </span>
-                      <button
-                        type="button"
-                        disabled={!selectedNormalizerFile}
-                        onClick={() => {
-                          if (selectedNormalizerFile) {
-                            void navigator.clipboard?.writeText(selectedNormalizerFile.content);
-                          }
-                        }}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
-                        title={t('data.inputTables.editor.copyCode')}
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                    <CodePreview file={selectedNormalizerFile} t={t} />
-                  </div>
-                  <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-background/42">
-                    <div className="flex h-9 items-center border-b border-border-muted px-3 text-xs font-medium text-text-primary">
-                      {t('data.inputTables.editor.projectStructure')}
-                    </div>
-                    <div className="min-h-0 flex-1 overflow-auto p-2">
-                      <NormalizerProjectTree
-                        files={normalizerProjectFiles}
-                        selectedPath={selectedNormalizerFile?.path ?? selectedNormalizerFilePath}
-                        onSelect={setSelectedNormalizerFilePath}
-                        t={t}
+                      <textarea
+                        value={dataProcessing.rulePrompt}
+                        onChange={(event) =>
+                          updateDataProcessing({
+                            ...dataProcessing,
+                            rulePrompt: event.target.value,
+                          })
+                        }
+                        disabled={isBusy || !dataset}
+                        rows={4}
+                        maxLength={4000}
+                        placeholder={t('data.inputTables.editor.rulePromptPlaceholder')}
+                        className="h-24 min-h-24 w-full resize-none rounded-lg border border-border-muted bg-background/50 px-4 py-3 text-[13px] leading-6 text-text-primary shadow-soft outline-none placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
                       />
+                    </label>
+                    <InputTableGenerationOutputPanel
+                      isStreaming={customizeGenerating}
+                      output={customizeGenerationOutput}
+                      t={t}
+                    />
+                    {customizeGenerationError ? (
+                      <div className="flex-shrink-0 rounded-lg border border-danger/20 bg-danger/10 px-3 py-2 text-[12px] font-medium text-danger">
+                        {customizeGenerationError}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {activeEditorTab === 'code' ? (
+                  <div className="grid h-[30rem] max-h-full min-h-0 gap-3 overflow-hidden lg:grid-cols-[minmax(0,1fr)_16rem]">
+                    <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-background/50">
+                      <div className="flex h-9 flex-shrink-0 items-center justify-between gap-2 border-b border-border-muted px-3">
+                        <span className="min-w-0 truncate font-mono text-xs font-medium text-text-primary">
+                          {selectedNormalizerFile?.path ??
+                            t('data.inputTables.editor.noProjectFiles')}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={!selectedNormalizerFile}
+                          onClick={() => {
+                            if (selectedNormalizerFile) {
+                              void navigator.clipboard?.writeText(selectedNormalizerFile.content);
+                            }
+                          }}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                          title={t('data.inputTables.editor.copyCode')}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <CodePreview file={selectedNormalizerFile} t={t} />
+                    </div>
+                    <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-background/42">
+                      <div className="flex h-9 items-center border-b border-border-muted px-3 text-xs font-medium text-text-primary">
+                        {t('data.inputTables.editor.projectStructure')}
+                      </div>
+                      <div className="min-h-0 flex-1 overflow-auto p-2">
+                        <NormalizerProjectTree
+                          files={normalizerProjectFiles}
+                          selectedPath={selectedNormalizerFile?.path ?? selectedNormalizerFilePath}
+                          onSelect={setSelectedNormalizerFilePath}
+                          t={t}
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-              ) : null}
+                ) : null}
 
-              {activeEditorTab === 'versions' ? (
-                <InputTableVersionHistoryPanel
-                  currentVersion={currentNormalizerVersion}
-                  currentVersionId={customizeArtifactVersionId}
-                  deletingVersionId={deletingNormalizerVersionId}
-                  embedded
-                  loading={normalizerVersionsLoading}
-                  onRefresh={() => void refreshNormalizerVersions(customizeArtifactId)}
-                  onDelete={(version) => void deleteSpecificNormalizerVersion(version)}
-                  onPublish={(version) => void publishSpecificNormalizerVersion(version)}
-                  publishingVersionId={customizeVersionActionId}
-                  t={t}
-                  versions={normalizerVersions}
-                />
-              ) : null}
-            </div>
+                {activeEditorTab === 'versions' ? (
+                  <InputTableVersionHistoryPanel
+                    currentVersion={currentNormalizerVersion}
+                    currentVersionId={customizeArtifactVersionId}
+                    deletingVersionId={deletingNormalizerVersionId}
+                    embedded
+                    loading={normalizerVersionsLoading}
+                    onRefresh={() => void refreshNormalizerVersions(customizeArtifactId)}
+                    onDelete={(version) => void deleteSpecificNormalizerVersion(version)}
+                    onPublish={(version) => void publishSpecificNormalizerVersion(version)}
+                    publishingVersionId={customizeVersionActionId}
+                    t={t}
+                    versions={normalizerVersions}
+                  />
+                ) : null}
+              </div>
 
-            <div className="flex min-h-16 flex-shrink-0 items-center justify-end gap-3 border-t border-border-muted/80 px-7 py-4">
-              <button
-                type="button"
-                disabled={!canGenerateCustomizeDraft}
-                onClick={() => void generateCustomizeDraft()}
-                className="inline-flex h-10 min-w-[9.5rem] items-center justify-center gap-2 rounded-lg jade-primary-button px-5 text-[13px] font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
-                title={t('data.inputTables.editor.generateProjectDisabled')}
-              >
-                {customizeGenerating ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Sparkles className="h-4 w-4" />
-                )}
-                {customizeGenerating
-                  ? t('data.inputTables.editor.generateProjectDrafting')
-                  : t('data.inputTables.editor.generateProjectDraft')}
-              </button>
-              <button
-                type="button"
-                disabled={!customizeArtifactVersionId || previewLoading || !dataset}
-                onClick={() => void previewCustomizeDraft()}
-                className="inline-flex h-10 min-w-[11.5rem] items-center justify-center gap-2 rounded-lg border border-border-muted bg-background/62 px-5 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {previewLoading ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
-                {t('data.inputTables.editor.previewNormalizedDraft')}
-              </button>
+              <div className="flex min-h-16 flex-shrink-0 items-center justify-end gap-3 border-t border-border-muted/80 px-7 py-4">
+                <button
+                  type="button"
+                  disabled={!canGenerateCustomizeDraft}
+                  onClick={() => void generateCustomizeDraft()}
+                  className="inline-flex h-10 min-w-[9.5rem] items-center justify-center gap-2 rounded-lg bg-accent px-5 text-[13px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
+                  title={t('data.inputTables.editor.generateProjectDisabled')}
+                >
+                  {customizeGenerating ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4 w-4" />
+                  )}
+                  {customizeGenerating
+                    ? t('data.inputTables.editor.generateProjectDrafting')
+                    : t('data.inputTables.editor.generateProjectDraft')}
+                </button>
+                <button
+                  type="button"
+                  disabled={!customizeArtifactVersionId || previewLoading || !dataset}
+                  onClick={() => void previewCustomizeDraft()}
+                  className="inline-flex h-10 min-w-[11.5rem] items-center justify-center gap-2 rounded-lg border border-border-muted bg-background/62 px-5 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {previewLoading ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                  {t('data.inputTables.editor.previewNormalizedDraft')}
+                </button>
+              </div>
             </div>
-          </div>
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto px-7 py-6">
               <div className="mx-auto grid max-w-[70rem] gap-4">
@@ -6575,13 +6824,7 @@ function InputTableEditor({
   );
 }
 
-function InputTableConfigRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
+function InputTableConfigRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid min-h-12 items-center gap-3 px-1 py-1 lg:grid-cols-[10rem_minmax(0,1fr)]">
       <div className="text-[14px] font-medium text-text-primary">{label}</div>
@@ -6647,13 +6890,7 @@ function InputTableGenerationOutputPanel({
   );
 }
 
-function CodePreview({
-  file,
-  t,
-}: {
-  file?: DataNormalizerProjectFile;
-  t: TranslateFn;
-}) {
+function CodePreview({ file, t }: { file?: DataNormalizerProjectFile; t: TranslateFn }) {
   if (!file) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center px-4 text-center text-xs font-medium text-text-muted">
@@ -6838,9 +7075,7 @@ function InputTableVersionHistoryPanel({
   return (
     <section
       className={`overflow-hidden rounded-lg border border-border-muted ${
-        embedded
-          ? 'bg-background/42'
-          : 'mt-3 bg-[var(--glass-card)] shadow-soft backdrop-blur-xl'
+        embedded ? 'bg-background/42' : 'mt-3 bg-[var(--glass-card)] shadow-soft backdrop-blur-xl'
       }`}
     >
       <div className="flex h-11 items-center justify-between border-b border-border-muted px-3">
@@ -6991,9 +7226,7 @@ function InputTablePreviewDialog({
       <div className="flex h-[42rem] max-h-[calc(100vh-3rem)] w-[72rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl">
         <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between px-4">
           <div className="min-w-0">
-            <div className="text-[14px] font-semibold text-text-primary">
-              {previewTitle}
-            </div>
+            <div className="text-[14px] font-semibold text-text-primary">{previewTitle}</div>
           </div>
           <button
             type="button"
@@ -7034,19 +7267,11 @@ function InputTableFormLabel({
   className?: string;
 }) {
   return (
-    <div className={`text-[13px] font-medium text-text-secondary ${className}`}>
-      {children}
-    </div>
+    <div className={`text-[13px] font-medium text-text-secondary ${className}`}>{children}</div>
   );
 }
 
-function InputTableInfo({
-  children,
-  className = '',
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
+function InputTableInfo({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
     <div
       className={`flex min-h-11 items-center gap-2 rounded-lg border border-accent/15 bg-accent/5 px-3 text-xs font-medium text-text-muted ${className}`}
@@ -7470,7 +7695,9 @@ function truncateGenerationLogText(value: string, maxLength: number): string {
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 3)}...` : normalized;
 }
 
-function buildNormalizerProjectTree(files: DataNormalizerProjectFile[]): NormalizerProjectTreeNode[] {
+function buildNormalizerProjectTree(
+  files: DataNormalizerProjectFile[]
+): NormalizerProjectTreeNode[] {
   const roots: NormalizerProjectTreeNode[] = [];
   const folderMap = new Map<string, NormalizerProjectTreeNode>();
   const getFolder = (folderPath: string, name: string): NormalizerProjectTreeNode => {
@@ -7556,9 +7783,10 @@ function getNormalizerVersionDiffSummary(
     changed,
     added,
     removed,
-    rule: version.rulePrompt === current.rulePrompt
-      ? t('data.inputTables.editor.versionRuleSame')
-      : t('data.inputTables.editor.versionRuleChanged'),
+    rule:
+      version.rulePrompt === current.rulePrompt
+        ? t('data.inputTables.editor.versionRuleSame')
+        : t('data.inputTables.editor.versionRuleChanged'),
   });
 }
 

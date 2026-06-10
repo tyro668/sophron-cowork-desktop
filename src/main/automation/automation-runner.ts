@@ -13,7 +13,11 @@ export interface AutomationRunnerOptions {
   registry: AutomationActionRegistry;
   maxConcurrentRuns?: number;
   now?: () => number;
-  deliver?: (automation: Automation, run: AutomationRun, artifacts: AutomationArtifact[]) => Promise<AutomationRun['deliveryStatus']>;
+  deliver?: (
+    automation: Automation,
+    run: AutomationRun,
+    artifacts: AutomationArtifact[]
+  ) => Promise<AutomationRun['deliveryStatus']>;
 }
 
 export class AutomationRunner {
@@ -47,7 +51,10 @@ export class AutomationRunner {
     return this.execute(automation, reason);
   }
 
-  private async execute(automation: Automation, reason: AutomationTriggerReason): Promise<AutomationRun> {
+  private async execute(
+    automation: Automation,
+    reason: AutomationTriggerReason
+  ): Promise<AutomationRun> {
     this.runningCount += 1;
     const startedAt = this.now();
     let run = this.store.createRun({
@@ -66,7 +73,10 @@ export class AutomationRunner {
     const outputs = new Map<string, unknown>();
 
     try {
-      for (const node of topoSortNodes(automation.actionGraph.nodes, automation.actionGraph.edges)) {
+      for (const node of topoSortNodes(
+        automation.actionGraph.nodes,
+        automation.actionGraph.edges
+      )) {
         if (node.enabled === false) continue;
         const definition = this.registry.get(node.type);
         if (!definition) {
@@ -175,7 +185,10 @@ function topoSortNodes(
   for (const edge of edges) {
     if (!byId.has(edge.sourceNodeId) || !byId.has(edge.targetNodeId)) continue;
     incoming.set(edge.targetNodeId, (incoming.get(edge.targetNodeId) ?? 0) + 1);
-    outgoing.set(edge.sourceNodeId, [...(outgoing.get(edge.sourceNodeId) ?? []), edge.targetNodeId]);
+    outgoing.set(edge.sourceNodeId, [
+      ...(outgoing.get(edge.sourceNodeId) ?? []),
+      edge.targetNodeId,
+    ]);
   }
   const queue = nodes.filter((node) => (incoming.get(node.id) ?? 0) === 0);
   const sorted: AutomationActionNode[] = [];
@@ -198,4 +211,3 @@ function topoSortNodes(
 function findSessionArtifactId(artifacts: AutomationArtifact[]): string | null {
   return artifacts.find((artifact) => artifact.kind === 'session')?.dataRef?.id ?? null;
 }
-
