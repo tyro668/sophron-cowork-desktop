@@ -1394,20 +1394,20 @@
     "actionDataTask": "数据任务",
     "actionDataTaskDesc": "直接触发数据工作台中的清洗、转换和输出表任务。",
     "actionTypes": {
-      "notificationSend": {
-        "title": "消息"
+      "data": {
+        "title": "数据"
       },
       "conversationRun": {
-        "title": "对话"
+        "title": "任务"
       },
       "dataTaskRun": {
-        "title": "执行数据任务"
+        "title": "数据任务"
       },
       "dataInputPreview": {
-        "title": "读取输入数据"
+        "title": "输入表"
       },
       "dataOutputPreview": {
-        "title": "读取输出表"
+        "title": "输出表"
       },
       "dataOutputExport": {
         "title": "导出输出表"
@@ -1423,13 +1423,6 @@
     "capabilityBrowser": "浏览器 / MCP",
     "capabilityMcp": "工具调用",
     "capabilityArtifacts": "产物收集",
-    "channelFeishu": "飞书",
-    "channelWebhook": "Webhook",
-    "channelEmail": "邮箱",
-    "recipientPlaceholder": "选择通知对象",
-    "notificationOpsGroup": "运营群",
-    "notificationSalesGroup": "销售群",
-    "notificationDataTeam": "数据团队",
     "promptLabel": "Prompt",
     "cwdLabel": "执行目录",
     "autoTitleLabel": "自动标题（用于会话区分）",
@@ -1477,9 +1470,8 @@
     "actions": "动作链",
     "actionsTitle": "执行动作",
     "addAction": "添加动作",
-    "notificationRecipient": "通知对象",
-    "notificationContent": "通知内容",
-    "notificationContentPlaceholder": "销售数据已更新，请查看仪表板",
+    "dataTypeLabel": "数据类型",
+    "dataTypePlaceholder": "选择数据类型",
     "executionMode": "执行方式",
     "executionImmediate": "立即执行",
     "executionTemporary": "临时执行",

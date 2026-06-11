@@ -1394,20 +1394,20 @@
     "actionDataTask": "Data task",
     "actionDataTaskDesc": "Trigger a data workspace cleaning, transform, or output-table task directly.",
     "actionTypes": {
-      "notificationSend": {
-        "title": "Message"
+      "data": {
+        "title": "Data"
       },
       "conversationRun": {
-        "title": "Conversation"
+        "title": "Task"
       },
       "dataTaskRun": {
-        "title": "Run data task"
+        "title": "Data task"
       },
       "dataInputPreview": {
-        "title": "Read input data"
+        "title": "Input table"
       },
       "dataOutputPreview": {
-        "title": "Read output table"
+        "title": "Output table"
       },
       "dataOutputExport": {
         "title": "Export output table"
@@ -1423,13 +1423,6 @@
     "capabilityBrowser": "Browser / MCP",
     "capabilityMcp": "Tool calls",
     "capabilityArtifacts": "Artifact capture",
-    "channelFeishu": "Feishu",
-    "channelWebhook": "Webhook",
-    "channelEmail": "Email",
-    "recipientPlaceholder": "Select recipient",
-    "notificationOpsGroup": "Operations group",
-    "notificationSalesGroup": "Sales group",
-    "notificationDataTeam": "Data team",
     "promptLabel": "Prompt",
     "cwdLabel": "Working directory",
     "autoTitleLabel": "Auto title (used to identify sessions)",
@@ -1477,9 +1470,8 @@
     "actions": "Action chain",
     "actionsTitle": "Actions",
     "addAction": "Add action",
-    "notificationRecipient": "Recipient",
-    "notificationContent": "Message",
-    "notificationContentPlaceholder": "Sales data has been updated. Please check the dashboard.",
+    "dataTypeLabel": "Data type",
+    "dataTypePlaceholder": "Select data type",
     "executionMode": "Execution mode",
     "executionImmediate": "Run immediately",
     "executionTemporary": "Temporary run",

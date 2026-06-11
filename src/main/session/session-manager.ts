@@ -71,6 +71,10 @@ interface AgentRunner {
   clearAllSdkSessions?(): void;
 }
 
+interface SessionStartOptions {
+  suppressCompletionNotification?: boolean;
+}
+
 const WORKSPACE_MOUNT_VIRTUAL_PATH = '/mnt/workspace';
 const TITLE_GENERATION_TIMEOUT_MS = 20000;
 
@@ -96,13 +100,16 @@ export class SessionManager {
   private titleGenerationTokens: Map<string, symbol> = new Map();
   private messageCache: Map<string, Message[]> = new Map();
   private sessionRuntimeConfigs: Map<string, AgentRuntimeConfig> = new Map();
+  private suppressedCompletionNotifications = new Set<string>();
+  private readonly onSessionCompleted?: (session: Session) => void;
   private static readonly MAX_CACHE_SIZE = 100;
 
   constructor(
     db: DatabaseInstance,
     sendToRenderer: (event: ServerEvent) => void,
     pluginRuntimeService?: PluginRuntimeService,
-    extensionManager?: AgentRuntimeExtensionManager
+    extensionManager?: AgentRuntimeExtensionManager,
+    onSessionCompleted?: (session: Session) => void
   ) {
     this.db = db;
     this.sendToRenderer = (event) => {
@@ -118,6 +125,7 @@ export class SessionManager {
     this.sandboxAdapter = getSandboxAdapter();
     this.pluginRuntimeService = pluginRuntimeService;
     this.extensionManager = extensionManager;
+    this.onSessionCompleted = onSessionCompleted;
 
     // Initialize MCP Manager
     this.mcpManager = new MCPManager();
@@ -259,7 +267,8 @@ export class SessionManager {
     allowedTools?: string[],
     content?: ContentBlock[],
     memoryEnabled?: boolean,
-    runtimeConfig?: AgentRuntimeConfig
+    runtimeConfig?: AgentRuntimeConfig,
+    options?: SessionStartOptions
   ): Promise<Session> {
     log('[SessionManager] Starting new session:', title);
 
@@ -275,6 +284,9 @@ export class SessionManager {
     this.saveSession(session);
     if (runtimeConfig) {
       this.sessionRuntimeConfigs.set(session.id, runtimeConfig);
+    }
+    if (options?.suppressCompletionNotification) {
+      this.suppressedCompletionNotifications.add(session.id);
     }
 
     // Start processing the prompt with content blocks
@@ -923,6 +935,7 @@ export class SessionManager {
         log('[SessionManager] Continuing queue with newly arrived prompts:', session.id);
       }
     } finally {
+      const wasAborted = controller.signal.aborted;
       // Only clean up here — no restart logic needed since the outer loop
       // already handles re-checking. activeSessions is only deleted once
       // there are truly no pending items remaining.
@@ -933,7 +946,20 @@ export class SessionManager {
       }
       this.sessionRuntimeConfigs.delete(session.id);
       this.updateSessionStatus(session.id, 'idle');
+      if (!wasAborted) {
+        this.notifySessionCompleted(session.id);
+      } else {
+        this.suppressedCompletionNotifications.delete(session.id);
+      }
     }
+  }
+
+  private notifySessionCompleted(sessionId: string): void {
+    const shouldSuppress = this.suppressedCompletionNotifications.delete(sessionId);
+    if (shouldSuppress || !this.onSessionCompleted) return;
+    const latestSession = this.loadSession(sessionId);
+    if (!latestSession) return;
+    this.onSessionCompleted(latestSession);
   }
 
   // Stop a running session

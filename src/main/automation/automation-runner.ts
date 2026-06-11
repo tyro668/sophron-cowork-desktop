@@ -18,6 +18,7 @@ export interface AutomationRunnerOptions {
     run: AutomationRun,
     artifacts: AutomationArtifact[]
   ) => Promise<AutomationRun['deliveryStatus']>;
+  notifyRunFinished?: (automation: Automation, run: AutomationRun) => void;
 }
 
 export class AutomationRunner {
@@ -26,6 +27,7 @@ export class AutomationRunner {
   private readonly maxConcurrentRuns: number;
   private readonly now: () => number;
   private readonly deliver?: AutomationRunnerOptions['deliver'];
+  private readonly notifyRunFinished?: AutomationRunnerOptions['notifyRunFinished'];
   private runningCount = 0;
   private readonly queued: Array<{ automation: Automation; reason: AutomationTriggerReason }> = [];
 
@@ -35,6 +37,7 @@ export class AutomationRunner {
     this.maxConcurrentRuns = options.maxConcurrentRuns ?? 4;
     this.now = options.now ?? (() => Date.now());
     this.deliver = options.deliver;
+    this.notifyRunFinished = options.notifyRunFinished;
   }
 
   async run(automation: Automation, reason: AutomationTriggerReason): Promise<AutomationRun> {
@@ -133,6 +136,7 @@ export class AutomationRunner {
         lastRunStatus: 'succeeded',
         lastError: null,
       });
+      this.notifyRunFinished?.(automation, run);
       return run;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -158,6 +162,7 @@ export class AutomationRunner {
         lastRunStatus: 'failed',
         lastError: message,
       });
+      this.notifyRunFinished?.(automation, run);
       return run;
     } finally {
       this.runningCount = Math.max(0, this.runningCount - 1);
