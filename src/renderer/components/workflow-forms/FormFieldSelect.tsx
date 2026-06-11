@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search } from 'lucide-react';
 import type { OperatorFormProps } from './index';
@@ -28,6 +28,33 @@ export default function FormFieldSelect({
 
   const columns: string[] = (node.config.columns as string[]) ?? [];
   const [search, setSearch] = useState('');
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const pendingScrollTopRef = useRef<number | null>(null);
+
+  const lockScrollTop = useCallback(() => {
+    pendingScrollTopRef.current = listRef.current?.scrollTop ?? 0;
+  }, []);
+
+  const commitSelection = useCallback(
+    (nextColumns: string[]) => {
+      lockScrollTop();
+      updateConfig((cfg) => ({
+        ...cfg,
+        mode: 'include',
+        columns: nextColumns.length > 0 ? nextColumns : undefined,
+      }));
+    },
+    [lockScrollTop, updateConfig]
+  );
+
+  useLayoutEffect(() => {
+    const listEl = listRef.current;
+    const pendingScrollTop = pendingScrollTopRef.current;
+    if (!listEl || pendingScrollTop === null) return;
+
+    listEl.scrollTop = pendingScrollTop;
+    pendingScrollTopRef.current = null;
+  });
 
   const filtered = useMemo(() => {
     if (!search.trim()) return fieldCompletions;
@@ -39,34 +66,24 @@ export default function FormFieldSelect({
   const noneSelected = filtered.length === 0 || !filtered.some((c) => columns.includes(c));
 
   function toggleAll() {
+    if (filtered.length === 0) return;
+
     if (allSelected) {
-      // Deselect filtered fields only
-      const next = columns.filter((c) => !filtered.includes(c));
-      updateConfig((cfg) => ({
-        ...cfg,
-        mode: 'include',
-        columns: next.length > 0 ? next : undefined,
-      }));
+      const filteredSet = new Set(filtered);
+      commitSelection(columns.filter((c) => !filteredSet.has(c)));
     } else {
-      // Select all filtered fields
-      const next = [...new Set([...columns, ...filtered])];
-      updateConfig((cfg) => ({ ...cfg, mode: 'include', columns: next }));
+      commitSelection([...new Set([...columns, ...filtered])]);
     }
   }
 
   function toggleColumn(col: string) {
     const next = columns.includes(col) ? columns.filter((c) => c !== col) : [...columns, col];
-    updateConfig((cfg) => ({
-      ...cfg,
-      mode: 'include',
-      columns: next.length > 0 ? next : undefined,
-    }));
+    commitSelection(next);
   }
 
   return (
     <div className="grid content-start gap-2.5">
       <GlassFormSection>
-        {/* Search bar */}
         <div className="relative">
           <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
           <input
@@ -87,9 +104,14 @@ export default function FormFieldSelect({
           )}
         </div>
 
-        {/* Select all / deselect all */}
         <div className="flex items-center gap-2 border-b border-border-subtle px-0.5 pb-1">
-          <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-text-muted hover:text-text-secondary">
+          <label
+            className="flex cursor-pointer items-center gap-1.5 text-[11px] text-text-muted hover:text-text-secondary"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              lockScrollTop();
+            }}
+          >
             <input
               type="checkbox"
               checked={allSelected}
@@ -106,8 +128,7 @@ export default function FormFieldSelect({
           </span>
         </div>
 
-        {/* Field list */}
-        <div className="max-h-48 overflow-y-auto">
+        <div ref={listRef} className="max-h-48 overflow-y-auto [overflow-anchor:none]">
           {filtered.length === 0 ? (
             <div className="py-4 text-center text-[12px] text-text-muted">
               {search ? tr('noMatch', '无匹配字段') : tr('noFields', '暂无可用字段')}
@@ -119,6 +140,10 @@ export default function FormFieldSelect({
                 className={`flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-[12px] transition-colors hover:bg-surface-hover ${
                   columns.includes(col) ? 'text-text-primary' : 'text-text-secondary'
                 }`}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  lockScrollTop();
+                }}
               >
                 <input
                   type="checkbox"

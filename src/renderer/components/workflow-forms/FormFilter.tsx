@@ -278,6 +278,12 @@ export default function FormFilter({
       localUpdateRef.current = false;
       return;
     }
+    // Guard: don't reset rows if they encode the same condition as config.
+    // This handles partially-filled rows (e.g. field selected but value
+    // not yet entered) where buildCondition returns undefined.
+    const fromRows = buildCondition(rows);
+    const fromConfig = node.config.condition as string | undefined;
+    if ((fromRows || undefined) === (fromConfig || undefined)) return;
     if (!eqRows(rows, parsedFromConfig)) {
       setRows(parsedFromConfig);
     }

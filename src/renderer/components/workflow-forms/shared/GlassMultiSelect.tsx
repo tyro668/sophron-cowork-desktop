@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, Search, X } from 'lucide-react';
 
@@ -7,6 +7,7 @@ interface GlassMultiSelectProps {
   suggestions: string[];
   onChange: (selected: string[]) => void;
   placeholder?: string;
+  scrollKey?: string;
 }
 
 export function GlassMultiSelect({
@@ -14,6 +15,7 @@ export function GlassMultiSelect({
   suggestions,
   onChange,
   placeholder,
+  scrollKey,
 }: GlassMultiSelectProps) {
   const { t } = useTranslation();
   const tr = useCallback(
@@ -25,25 +27,10 @@ export function GlassMultiSelect({
   const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-
-  // Focus search without scrolling when dropdown opens
-  useEffect(() => {
-    if (open && searchInputRef.current) {
-      searchInputRef.current.focus({ preventScroll: true });
-    }
-  }, [open]);
-
-  // Close on outside click
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setSearch('');
-      }
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const pendingScrollTopRef = useRef<number | null>(null);
+  const scrollLockRef = useRef<{ scrollTop: number; until: number } | null>(null);
+  const scrollLockFrameRef = useRef<number | null>(null);
 
   const filtered = useMemo(() => {
     const lower = search.toLowerCase();
@@ -57,14 +44,127 @@ export function GlassMultiSelect({
   onChangeRef.current = onChange;
   const removingRef = useRef(false);
 
-  const toggle = useCallback((col: string) => {
-    const cur = valueRef.current;
-    if (cur.includes(col)) {
-      onChangeRef.current(cur.filter((v) => v !== col));
-    } else {
-      onChangeRef.current([...cur, col]);
+  useEffect(() => {
+    if (open && searchInputRef.current) {
+      searchInputRef.current.focus({ preventScroll: true });
+    }
+  }, [open]);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch('');
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const restoreScrollTop = useCallback((scrollTop: number) => {
+    if (listRef.current) {
+      listRef.current.scrollTop = scrollTop;
     }
   }, []);
+
+  const stopScrollLock = useCallback(() => {
+    if (scrollLockFrameRef.current !== null) {
+      cancelAnimationFrame(scrollLockFrameRef.current);
+      scrollLockFrameRef.current = null;
+    }
+    scrollLockRef.current = null;
+  }, []);
+
+  const runScrollLock = useCallback(() => {
+    const lock = scrollLockRef.current;
+    if (!lock) {
+      scrollLockFrameRef.current = null;
+      return;
+    }
+
+    restoreScrollTop(lock.scrollTop);
+    if (performance.now() >= lock.until) {
+      scrollLockFrameRef.current = null;
+      scrollLockRef.current = null;
+      return;
+    }
+
+    scrollLockFrameRef.current = requestAnimationFrame(runScrollLock);
+  }, [restoreScrollTop]);
+
+  const startScrollLock = useCallback(
+    (scrollTop: number) => {
+      scrollLockRef.current = {
+        scrollTop,
+        until: performance.now() + SCROLL_LOCK_WINDOW_MS,
+      };
+      if (scrollLockFrameRef.current === null) {
+        scrollLockFrameRef.current = requestAnimationFrame(runScrollLock);
+      }
+    },
+    [runScrollLock]
+  );
+
+  const lockScrollTop = useCallback(() => {
+    const scrollTop = listRef.current?.scrollTop ?? 0;
+    pendingScrollTopRef.current = scrollTop;
+    startScrollLock(scrollTop);
+    if (scrollKey) {
+      multiSelectScrollCache.set(scrollKey, {
+        scrollTop,
+        expiresAt: Date.now() + SCROLL_CACHE_TTL_MS,
+      });
+    }
+  }, [scrollKey, startScrollLock]);
+
+  const commitSelection = useCallback(
+    (nextValue: string[]) => {
+      lockScrollTop();
+      onChangeRef.current(nextValue);
+    },
+    [lockScrollTop]
+  );
+
+  useLayoutEffect(() => {
+    const pendingScrollTop = pendingScrollTopRef.current;
+    if (pendingScrollTop === null) return;
+
+    restoreScrollTop(pendingScrollTop);
+    startScrollLock(pendingScrollTop);
+    pendingScrollTopRef.current = null;
+  });
+
+  useLayoutEffect(() => {
+    if (!open || !scrollKey) return;
+
+    const cached = multiSelectScrollCache.get(scrollKey);
+    if (!cached || cached.expiresAt < Date.now()) {
+      multiSelectScrollCache.delete(scrollKey);
+      return;
+    }
+    restoreScrollTop(cached.scrollTop);
+  }, [open, restoreScrollTop, scrollKey]);
+
+  useEffect(() => {
+    if (!open) {
+      pendingScrollTopRef.current = null;
+      stopScrollLock();
+    }
+  }, [open, stopScrollLock]);
+
+  useEffect(() => stopScrollLock, [stopScrollLock]);
+
+  const toggle = useCallback(
+    (col: string) => {
+      const cur = valueRef.current;
+      if (cur.includes(col)) {
+        commitSelection(cur.filter((v) => v !== col));
+      } else {
+        commitSelection([...cur, col]);
+      }
+    },
+    [commitSelection]
+  );
 
   const remove = useCallback((col: string) => {
     if (removingRef.current) return;
@@ -78,14 +178,13 @@ export function GlassMultiSelect({
   const allSelected = suggestions.length > 0 && value.length === suggestions.length;
 
   function toggleAll() {
-    onChange(allSelected ? [] : [...suggestions]);
+    commitSelection(allSelected ? [] : [...suggestions]);
   }
 
   return (
     <div ref={ref} className="relative">
       <div
         onMouseDown={(e) => {
-          // Don't toggle if clicking on a chip's X button
           if ((e.target as HTMLElement).closest('button')) return;
           if (open) setSearch('');
           setOpen(!open);
@@ -137,17 +236,32 @@ export function GlassMultiSelect({
             />
           </div>
           <div className="flex items-center gap-2 border-b border-border-subtle px-2.5 py-1">
-            <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-text-muted hover:text-text-secondary">
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={allSelected}
+              className="flex cursor-pointer items-center gap-1.5 text-[11px] text-text-muted hover:text-text-secondary"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleAll();
+              }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+            >
               <input
                 type="checkbox"
                 checked={allSelected}
-                onChange={toggleAll}
-                className="h-3 w-3 rounded border-border-muted accent-accent"
+                readOnly
+                tabIndex={-1}
+                className="pointer-events-none h-3 w-3 rounded border-border-muted accent-accent"
               />
               {allSelected ? tr('deselectAll', '取消全选') : tr('selectAll', '全选')}
-            </label>
+            </button>
           </div>
-          <div className="max-h-48 overflow-y-auto">
+          <div ref={listRef} className="max-h-48 overflow-y-auto [overflow-anchor:none]">
             {filtered.length === 0 ? (
               <div className="px-3 py-3 text-center text-[12px] text-text-muted">
                 {tr('noMatch', '无匹配字段')}
@@ -156,13 +270,27 @@ export function GlassMultiSelect({
               filtered.map((col) => {
                 const selected = value.includes(col);
                 return (
-                  <label
+                  <div
                     key={col}
+                    role="checkbox"
+                    aria-checked={selected}
+                    tabIndex={0}
                     className={`flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-[12px] transition-colors hover:bg-surface-hover ${
                       selected ? 'text-accent' : 'text-text-secondary'
                     }`}
                     onMouseDown={(e) => {
                       e.preventDefault();
+                      e.stopPropagation();
+                      toggle(col);
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter' && e.key !== ' ') return;
+                      e.preventDefault();
+                      lockScrollTop();
                       toggle(col);
                     }}
                   >
@@ -170,10 +298,11 @@ export function GlassMultiSelect({
                       type="checkbox"
                       checked={selected}
                       readOnly
-                      className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
+                      tabIndex={-1}
+                      className="pointer-events-none h-3.5 w-3.5 rounded border-border-muted accent-accent"
                     />
                     {col}
-                  </label>
+                  </div>
                 );
               })
             )}
@@ -183,3 +312,7 @@ export function GlassMultiSelect({
     </div>
   );
 }
+
+const SCROLL_CACHE_TTL_MS = 1000;
+const SCROLL_LOCK_WINDOW_MS = 350;
+const multiSelectScrollCache = new Map<string, { scrollTop: number; expiresAt: number }>();

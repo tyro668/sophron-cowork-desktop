@@ -75,7 +75,7 @@ export default function FormPivot({ node, fieldCompletions, onNodeChange }: Oper
       <GlassFormSection title={tr('pivotAxes', '行列配置')}>
         <div className="grid grid-cols-1 gap-2.5">
           {/* → 列（透视字段） */}
-          <label className="grid gap-1">
+          <div className="grid gap-1">
             <span className="flex items-center gap-1 text-[11px] font-medium text-text-secondary">
               <ArrowLeftRight className="h-3 w-3" />
               {tr('pivotOnLabel', '透视列')}
@@ -88,11 +88,12 @@ export default function FormPivot({ node, fieldCompletions, onNodeChange }: Oper
               suggestions={fieldCompletions}
               onChange={handleOnChange}
               placeholder={tr('pivotOnPlaceholder', '选择字段...')}
+              scrollKey={`${node.id}:pivot:on`}
             />
-          </label>
+          </div>
 
           {/* ↓ 行（分组字段） */}
-          <label className="grid gap-1">
+          <div className="grid gap-1">
             <span className="flex items-center gap-1 text-[11px] font-medium text-text-secondary">
               <ArrowDownUp className="h-3 w-3" />
               {tr('pivotGroupByLabel', '行标识')}
@@ -105,8 +106,9 @@ export default function FormPivot({ node, fieldCompletions, onNodeChange }: Oper
               suggestions={fieldCompletions}
               onChange={handleGroupByChange}
               placeholder={tr('pivotGroupByPlaceholder', '选择字段...')}
+              scrollKey={`${node.id}:pivot:groupBy`}
             />
-          </label>
+          </div>
         </div>
       </GlassFormSection>
 
