@@ -47,6 +47,32 @@ datasource 上传解析流程：
 
 mock server 可以保留 `datasource-demo` 作为本地联调数据源，但 cowork 客户端不写死该默认值。
 
+## 配置更新后的重试问题
+
+联调时发现一个上下文一致性问题：用户在设置页修正 Personal Analysis 的 Host / API Key 后，
+`configStore` 中已经是最新配置，但模型对话上下文里仍可能保留上一轮工具调用返回的
+`API Key invalid` 失败结果。模型无法天然知道配置已经变化，因此有概率沿用旧结论，直接回答
+“API Key 仍无效”，而不是重新调用 cloud data tool。
+
+这个问题本质上不是 mock server 鉴权或 datasource 解析问题，而是“配置状态已更新”与“模型上下文中
+旧工具结果仍可见”之间缺少版本提示。解决时同时从运行时读取、配置版本和提示词三层收口：
+
+1. `personalAnalysis` 配置增加 `updatedAt` 版本时间。
+   - 仅当连接配置真实变化时刷新，也就是 Host / API Key 发生变化时更新。
+   - 单纯重复保存相同配置不刷新版本，避免制造无意义的状态变化。
+
+2. `DataCommandService` 每次 cloud 工具调用都读取最新 Personal Analysis 配置。
+   - `apiOrigin` / `apiKey` 未显式传入工具参数时，从当前 `configStore` 读取。
+   - 不缓存旧的 `PersonalAnalysisClient` 连接状态，避免设置页保存后继续使用旧 key。
+
+3. cloud data tool 描述中加入配置更新后的重试规则。
+   - 当对话里出现旧的 Personal Analysis 鉴权或连接错误时，如果用户已经更新设置，模型不能把旧错误当作当前事实。
+   - 新请求应重新调用对应 cloud 工具，让工具以最新配置重新验证。
+
+4. 设置页保存成功提示同步更新。
+   - 保存成功后明确提示“新的连接信息将在下一次工具请求时生效”。
+   - 这既提醒用户后续需要再次触发工具，也帮助解释为什么旧对话里曾经出现过的失败结果不应继续作为结论。
+
 ## 主要改动
 
 1. 新增 `src/main/data/personal-analysis-client.ts`
@@ -81,12 +107,17 @@ mock server 可以保留 `datasource-demo` 作为本地联调数据源，但 cow
 
 6. 新增设置页与配置持久化
    - `src/renderer/components/settings/SettingsPersonalAnalysis.tsx`：个人分析配置页。
-   - `src/main/config/config-store.ts`：新增 `personalAnalysis` 配置段。
+   - `src/main/config/config-store.ts`：新增 `personalAnalysis` 配置段，并在连接信息真实变化时刷新 `updatedAt`。
    - `src/renderer/i18n/locales/*.json`：补齐中英文文案。
 
 7. 输入校验
    - Host 必填，且必须是合法 `http://` 或 `https://` URL。
    - API Key 必填；如果用户粘贴 `X-API-Key:` 前缀，设置页给出明确提示。
+
+8. 配置更新重试防护
+   - cloud 工具每次调用读取最新保存配置。
+   - cloud 工具描述加入“用户更新 Personal Analysis 设置后，应重试工具，不沿用旧鉴权错误”的规则。
+   - 保存成功提示说明新连接会在下一次工具请求生效。
 
 ## 使用流程
 
@@ -118,6 +149,7 @@ data_upload_table_to_cloud
 - cowork 类型检查：`npm run typecheck`
 - cowork 相关单测：`npm test -- data-tool-service.test.ts data-command-service.test.ts data-tool-prompt.test.ts`
 - cowork 本次相关单测：`npm test -- --run tests/personal-analysis-client.test.ts tests/data-command-service.test.ts tests/config-store-env.test.ts`
+- 配置更新相关单测：覆盖 `updatedAt` 仅在连接信息变化时刷新，以及 `DataCommandService` 每次 cloud 命令读取最新 Personal Analysis 配置。
 - i18n JSON 与 key 覆盖检查通过。
 - UI 验证：通过 `data_import_cloud_table` 成功把 `table-demo` 导入为 cowork input table，并预览成功。
 - UI 验证：通过 `data_upload_table_to_cloud` 成功将 cowork 表上传回 mock server 并创建新表。
@@ -128,3 +160,4 @@ data_upload_table_to_cloud
 - 重新启动 mock server 后，会从 `catalog.json` 和 `data/seed-tables` 重新初始化。
 - 后续接真实云端服务时，优先替换 `PersonalAnalysisClient` 内部协议实现，尽量不改 cowork 本地数据处理链路。
 - 真实服务产品化时，优先保留 datasource 列表接口，不建议在客户端写死 datasource 默认值。
+- 对话上下文里的旧工具失败结果不会自动消失；依赖工具描述和保存成功提示引导模型/用户在配置更新后重新调用工具验证最新状态。
