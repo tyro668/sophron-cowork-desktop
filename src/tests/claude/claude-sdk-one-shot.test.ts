@@ -63,7 +63,6 @@ function makeConfig(): AppConfig {
     personalAnalysis: {
       apiOrigin: '',
       apiKey: '',
-      datasourceId: '',
       updatedAt: 0,
     },
     enableThinking: false,

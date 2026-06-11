@@ -1317,7 +1317,6 @@ export interface AppConfig {
 export interface PersonalAnalysisConfig {
   apiOrigin: string;
   apiKey: string;
-  datasourceId: string;
   updatedAt?: number;
 }
 

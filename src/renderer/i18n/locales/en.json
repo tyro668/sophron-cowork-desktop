@@ -862,7 +862,7 @@
     "memory": "Memory",
     "memoryDesc": "Manage long-term memory and workspace experience",
     "personalAnalysis": "Personal Analysis",
-    "personalAnalysisDesc": "Configure analysis service and datasource",
+    "personalAnalysisDesc": "Configure analysis service connection",
     "schedule": "Automations",
     "scheduleDesc": "Run prompts automatically on a plan",
     "remote": "Remote Control",
@@ -878,21 +878,14 @@
     "apiOriginPlaceholder": "Example: http://127.0.0.1:3000",
     "apiKey": "API Key",
     "apiKeyPlaceholder": "Enter the X-API-Key value",
-    "datasourceId": "Datasource",
-    "datasourceIdPlaceholder": "Load or enter datasource ID",
-    "loadDatasources": "Load",
     "mockServer": "Mock Server",
     "saveSettings": "Save Settings",
     "saveSuccess": "Personal Analysis settings saved. The new connection will be used on the next tool request.",
     "saveFailed": "Failed to save Personal Analysis settings",
-    "datasourceRefreshMissingConnection": "Fill Host and API Key before loading datasources",
-    "datasourceRefreshEmpty": "No datasources returned. Enter a datasource ID manually.",
-    "datasourceRefreshFailed": "Failed to load Personal Analysis datasources",
+    "connectionMissing": "Fill Host and API Key before saving Personal Analysis settings",
     "invalidApiOrigin": "Enter a valid Host URL, for example http://127.0.0.1:3000",
     "invalidApiOriginProtocol": "Host must start with http:// or https://",
-    "apiKeyHeaderPrefixError": "Paste only the API key value, without the X-API-Key: prefix",
-    "datasourceRequired": "Select or enter a datasource",
-    "datasourceNotInList": "Select a datasource returned by the service, or reload the datasource list"
+    "apiKeyHeaderPrefixError": "Paste only the API key value, without the X-API-Key: prefix"
   },
   "general": {
     "appearance": "Appearance",
@@ -1544,7 +1537,8 @@
       "todayDesc": "Planned for today"
     },
     "tabs": {
-      "automations": "Automations"
+      "automations": "Automations",
+      "runs": "Execution log"
     },
     "columns": {
       "name": "Automation name",
@@ -1560,6 +1554,37 @@
       "paused": "Paused",
       "running": "Running",
       "failed": "Failed"
+    },
+    "runColumns": {
+      "automation": "Automation",
+      "status": "Status",
+      "reason": "Trigger",
+      "startedAt": "Started",
+      "duration": "Duration",
+      "artifacts": "Artifacts",
+      "delivery": "Delivery",
+      "error": "Error"
+    },
+    "runStatus": {
+      "queued": "Queued",
+      "running": "Running",
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "runReason": {
+      "timer": "Timer",
+      "manual": "Manual",
+      "retry": "Retry",
+      "queued_overlap": "Queued",
+      "file_change": "File change"
+    },
+    "deliveryStatus": {
+      "pending": "Pending",
+      "succeeded": "Succeeded",
+      "partial": "Partial",
+      "failed": "Failed",
+      "skipped": "Skipped"
     },
     "createTitle": "Create Automation",
     "editTitle": "Edit Automation",
@@ -1581,20 +1606,20 @@
     "actionDataTask": "Data task",
     "actionDataTaskDesc": "Trigger a data workspace cleaning, transform, or output-table task directly.",
     "actionTypes": {
-      "notificationSend": {
-        "title": "Message"
+      "data": {
+        "title": "Data"
       },
       "conversationRun": {
-        "title": "Conversation"
+        "title": "Task"
       },
       "dataTaskRun": {
-        "title": "Run data task"
+        "title": "Data task"
       },
       "dataInputPreview": {
-        "title": "Read input data"
+        "title": "Input table"
       },
       "dataOutputPreview": {
-        "title": "Read output table"
+        "title": "Output table"
       },
       "dataOutputExport": {
         "title": "Export output table"
@@ -1610,13 +1635,6 @@
     "capabilityBrowser": "Browser / MCP",
     "capabilityMcp": "Tool calls",
     "capabilityArtifacts": "Artifact capture",
-    "channelFeishu": "Feishu",
-    "channelWebhook": "Webhook",
-    "channelEmail": "Email",
-    "recipientPlaceholder": "Select recipient",
-    "notificationOpsGroup": "Operations group",
-    "notificationSalesGroup": "Sales group",
-    "notificationDataTeam": "Data team",
     "promptLabel": "Prompt",
     "cwdLabel": "Working directory",
     "autoTitleLabel": "Auto title (used to identify sessions)",
@@ -1664,9 +1682,8 @@
     "actions": "Action chain",
     "actionsTitle": "Actions",
     "addAction": "Add action",
-    "notificationRecipient": "Recipient",
-    "notificationContent": "Message",
-    "notificationContentPlaceholder": "Sales data has been updated. Please check the dashboard.",
+    "dataTypeLabel": "Data type",
+    "dataTypePlaceholder": "Select data type",
     "executionMode": "Execution mode",
     "executionImmediate": "Run immediately",
     "executionTemporary": "Temporary run",
@@ -1707,6 +1724,9 @@
     "toggleFailed": "Failed to toggle automation state",
     "runNowSuccess": "Triggered an immediate run",
     "runNowFailed": "Failed to run immediately",
+    "runsLoadFailed": "Failed to load execution log",
+    "runsLoading": "Loading execution log...",
+    "runsEmpty": "No execution records yet",
     "noSessionToStop": "This automation has no execution session to stop",
     "sessionNotRunning": "This automation does not currently have a running session",
     "stopSent": "Stop command sent",

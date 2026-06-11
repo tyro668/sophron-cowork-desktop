@@ -137,13 +137,16 @@ describe('AutomationRunner', () => {
       },
     });
 
-    const runner = new AutomationRunner({ store, registry, now: () => 2_000 });
-    const run = await runner.run(createAutomation(), 'manual');
+    const notifyRunFinished = vi.fn();
+    const runner = new AutomationRunner({ store, registry, now: () => 2_000, notifyRunFinished });
+    const automation = createAutomation();
+    const run = await runner.run(automation, 'manual');
 
     expect(calls).toEqual(['first', 'second']);
     expect(store.artifacts).toHaveLength(2);
     expect(run.status).toBe('succeeded');
     expect(run.artifactCount).toBe(2);
+    expect(notifyRunFinished).toHaveBeenCalledWith(automation, run);
   });
 
   it('marks a run failed when an action throws', async () => {
@@ -162,19 +165,19 @@ describe('AutomationRunner', () => {
       },
     });
 
-    const runner = new AutomationRunner({ store, registry, now: () => 2_000 });
-    const run = await runner.run(
-      createAutomation({
-        actionGraph: {
-          version: 1,
-          nodes: [{ id: 'first', type: 'test.first', enabled: true, config: {} }],
-          edges: [],
-        },
-      }),
-      'manual'
-    );
+    const notifyRunFinished = vi.fn();
+    const runner = new AutomationRunner({ store, registry, now: () => 2_000, notifyRunFinished });
+    const automation = createAutomation({
+      actionGraph: {
+        version: 1,
+        nodes: [{ id: 'first', type: 'test.first', enabled: true, config: {} }],
+        edges: [],
+      },
+    });
+    const run = await runner.run(automation, 'manual');
 
     expect(run.status).toBe('failed');
     expect(run.error).toBe('boom');
+    expect(notifyRunFinished).toHaveBeenCalledWith(automation, run);
   });
 });

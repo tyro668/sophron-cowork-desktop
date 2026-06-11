@@ -20,6 +20,7 @@ import {
   shell,
   Menu,
   nativeTheme,
+  Notification,
   Tray,
   type OpenDialogOptions,
 } from 'electron';
@@ -63,10 +64,12 @@ import type {
   ClientEvent,
   ServerEvent,
   Project,
+  Session,
   ApiTestInput,
   ApiTestResult,
   DiagnosticInput,
   ProviderModelInfo,
+  DataCleaningTask,
   DataCreateOutputTableInput,
   DataCreateTaskInput,
   DataDashboardQuery,
@@ -89,7 +92,6 @@ import type {
 } from '../renderer/types';
 import { remoteManager, type AgentExecutor } from './remote/remote-manager';
 import { remoteConfigStore } from './remote/remote-config-store';
-import { FeishuAPI } from './remote/channels/feishu/feishu-api';
 import type { GatewayConfig, FeishuChannelConfig, ChannelType } from './remote/types';
 import { startNavServer, stopNavServer } from './nav-server';
 import {
@@ -107,6 +109,7 @@ import type {
   AutomationActionGraph,
   AutomationCreateInput,
   AutomationListQuery,
+  AutomationRun,
   AutomationRunQuery,
   AutomationTrigger,
   AutomationUpdateInput,
@@ -180,9 +183,68 @@ let updateService: UpdateService | null = null;
 let isInstallingUpdate = false;
 let startupUpdateCheckScheduled = false;
 
+interface SystemNotificationInput {
+  title: string;
+  body?: string;
+}
+
 function getRuntimeAppName(): string {
   const runtimeName = app.getName();
   return runtimeName && runtimeName !== APP_INTERNAL_NAME ? runtimeName : APP_NAME_EN;
+}
+
+function sendSystemNotification(input: SystemNotificationInput): void {
+  try {
+    if (!Notification.isSupported()) {
+      logWarn('[Notification] System notifications are not supported on this platform');
+      return;
+    }
+    const notification = new Notification({
+      title: truncateNotificationText(input.title, 90),
+      body: input.body ? truncateNotificationText(input.body, 220) : undefined,
+    });
+    notification.on('click', () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    });
+    notification.show();
+  } catch (error) {
+    logWarn('[Notification] Failed to show system notification:', error);
+  }
+}
+
+function notifyConversationCompleted(session: Session): void {
+  sendSystemNotification({
+    title: '对话任务完成',
+    body: session.title || getRuntimeAppName(),
+  });
+}
+
+function notifyAutomationRunFinished(automation: Automation, run: AutomationRun): void {
+  if (automation.trigger.kind === 'file_change') return;
+  const succeeded = run.status === 'succeeded';
+  sendSystemNotification({
+    title: succeeded ? '定时任务执行完成' : '定时任务执行失败',
+    body: succeeded ? automation.name : `${automation.name}${run.error ? `：${run.error}` : ''}`,
+  });
+}
+
+function notifyDataTaskCompleted(task: DataCleaningTask): void {
+  const shape =
+    task.rowCount === null
+      ? ''
+      : `，${task.rowCount} 行${task.columnCount === null ? '' : `，${task.columnCount} 列`}`;
+  sendSystemNotification({
+    title: '数据任务执行完成',
+    body: `${task.name}${shape}`,
+  });
+}
+
+function truncateNotificationText(value: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}…` : normalized;
 }
 
 function sanitizeDiagnosticBaseUrl(value: string | undefined): string | null {
@@ -247,43 +309,6 @@ function ensureProjectIdForLegacyCwd(cwd?: string | null): string | null {
 function resolveAutomationProjectCwd(projectId?: string | null): string {
   if (!projectId) return '';
   return appDatabase?.projects?.get(projectId)?.cwd ?? '';
-}
-
-async function sendAutomationNotification(payload: {
-  channel: string;
-  recipient: string;
-  message: string;
-}): Promise<{ id?: string; href?: string } | void> {
-  if (!payload.message.trim()) {
-    throw new Error('Notification message cannot be empty');
-  }
-  if (!payload.recipient.trim()) {
-    throw new Error('Notification recipient cannot be empty');
-  }
-  if (payload.channel === 'feishu') {
-    const feishuConfig = remoteConfigStore.getFeishuConfig();
-    if (!feishuConfig?.appId || !feishuConfig.appSecret) {
-      throw new Error('Feishu notification channel is not configured');
-    }
-    const api = new FeishuAPI(feishuConfig.appId, feishuConfig.appSecret);
-    const id = await api.sendMessage(payload.recipient, 'text', { text: payload.message });
-    return { id };
-  }
-  if (payload.channel === 'webhook') {
-    const response = await fetch(payload.recipient, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json; charset=utf-8' },
-      body: JSON.stringify({ text: payload.message, message: payload.message }),
-    });
-    if (!response.ok) {
-      throw new Error(`Webhook notification failed: HTTP ${response.status}`);
-    }
-    return { href: payload.recipient };
-  }
-  if (payload.channel === 'email') {
-    throw new Error('Email notification channel is not configured');
-  }
-  throw new Error(`Unsupported notification channel: ${payload.channel}`);
 }
 
 async function waitForDevServer(url: string, maxAttempts = 30, intervalMs = 500): Promise<boolean> {
@@ -940,6 +965,10 @@ function sendToRenderer(event: ServerEvent) {
 app
   .whenReady()
   .then(async () => {
+    if (process.platform === 'win32') {
+      app.setAppUserModelId('com.sophron.app');
+    }
+
     // Smoke test mode: verify the app can start, then exit cleanly
     if (process.argv.includes('--smoke-test')) {
       log('[SmokeTest] App launched successfully in smoke test mode');
@@ -1014,7 +1043,9 @@ app
     memoryService = new MemoryService(db);
     dataCommandService = new DataCommandService(
       initializedDataTaskStore,
-      createLlmInputTableNormalizerProjectGenerator(() => configStore.getAll())
+      createLlmInputTableNormalizerProjectGenerator(() => configStore.getAll()),
+      () => configStore.get('personalAnalysis'),
+      { onTaskCompleted: notifyDataTaskCompleted }
     );
     const dataToolService = new DataToolService(dataCommandService);
     const extensionManager = new AgentRuntimeExtensionManager([
@@ -1024,7 +1055,13 @@ app
 
     // Initialize session manager before creating an interactive window.
     // This avoids session.start racing the startup path and hitting a null manager.
-    sessionManager = new SessionManager(db, sendToRenderer, pluginRuntimeService, extensionManager);
+    sessionManager = new SessionManager(
+      db,
+      sendToRenderer,
+      pluginRuntimeService,
+      extensionManager,
+      notifyConversationCompleted
+    );
     skillsManager = new SkillsManager(db, {
       getConfiguredGlobalSkillsPath: () => configStore.get('globalSkillsPath') || '',
       setConfiguredGlobalSkillsPath: (nextPath: string) => {
@@ -1093,7 +1130,6 @@ app
       sessionManager,
       resolveProjectCwd: (projectId) => db.projects?.get(projectId)?.cwd ?? null,
       resolveModelRuntimeConfig: (configSetId) => configStore.getRuntimeConfigForSet(configSetId),
-      sendNotification: sendAutomationNotification,
       sendSessionUpdate: (started) => {
         sendToRenderer({
           type: 'session.update',
@@ -1105,6 +1141,7 @@ app
       store: automationStore,
       registry: automationActionRegistry,
       deliver: async () => 'skipped',
+      notifyRunFinished: notifyAutomationRunFinished,
     });
     automationService = new AutomationService({
       store: automationStore,
@@ -1776,7 +1813,9 @@ function requireDataCommandService(): DataCommandService {
   if (!dataCommandService) {
     dataCommandService = new DataCommandService(
       requireDataTaskStore(),
-      createLlmInputTableNormalizerProjectGenerator(() => configStore.getAll())
+      createLlmInputTableNormalizerProjectGenerator(() => configStore.getAll()),
+      () => configStore.get('personalAnalysis'),
+      { onTaskCompleted: notifyDataTaskCompleted }
     );
   }
   return dataCommandService;
@@ -1820,7 +1859,9 @@ ipcMain.handle('data.updateTask', async (_event, payload: DataUpdateTaskInput) =
 
 ipcMain.handle('data.runTask', async (_event, id: string, payload?: DataRunTaskInput) => {
   try {
-    return await requireDataTaskStore().runTask(id, payload ?? {});
+    const task = await requireDataTaskStore().runTask(id, payload ?? {});
+    notifyDataTaskCompleted(task);
+    return task;
   } catch (error) {
     logError('[Data] Error running task:', error);
     throw error;

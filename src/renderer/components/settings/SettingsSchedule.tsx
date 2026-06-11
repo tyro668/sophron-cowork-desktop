@@ -21,7 +21,6 @@ import {
   Database,
   Folder,
   MessagesSquare,
-  MessageSquare,
   MoreHorizontal,
   PencilLine,
   Play,
@@ -29,7 +28,6 @@ import {
   RefreshCw,
   Save,
   Search,
-  Send,
   Trash2,
   type LucideIcon,
 } from 'lucide-react';
@@ -39,6 +37,7 @@ import type {
   AutomationActionGraph,
   AutomationActionNode,
   AutomationCreateInput,
+  AutomationRun,
   AutomationTrigger,
   AutomationUpdateInput,
   AppConfig,
@@ -58,16 +57,8 @@ import { getWorkingDirDisplayName } from '../../utils/working-dir-label';
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 const SYSTEM_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 const AUTOMATION_TABLE_PAGE_SIZE = 10;
-const DEFAULT_NOTIFICATION_RECIPIENT = '运营群';
-const NOTIFICATION_RECIPIENT_OPTIONS = [
-  {
-    value: DEFAULT_NOTIFICATION_RECIPIENT,
-    labelKey: 'schedule.notificationOpsGroup',
-    fallback: '运营群',
-  },
-  { value: '销售群', labelKey: 'schedule.notificationSalesGroup', fallback: '销售群' },
-  { value: '数据团队', labelKey: 'schedule.notificationDataTeam', fallback: '数据团队' },
-];
+const ACTION_MENU_TYPES = ['conversation.run', 'data.task.run'];
+const DATA_ACTION_TYPES = ['data.task.run', 'data.input.preview', 'data.output.preview'];
 
 function getProjectOptionLabel(
   project: Project,
@@ -83,7 +74,12 @@ function getProjectOptionLabel(
 }
 
 type TriggerMode = AutomationTrigger['kind'];
+type ListTab = 'automations' | 'runs';
 type Banner = { tone: 'error' | 'success'; text: string };
+interface AutomationRunLogEntry {
+  automation: Pick<Automation, 'id' | 'name'>;
+  run: AutomationRun;
+}
 
 export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const { t } = useTranslation();
@@ -100,10 +96,13 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const [dataDashboard, setDataDashboard] = useState<DataDashboard | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'detail'>('list');
+  const [activeListTab, setActiveListTab] = useState<ListTab>('automations');
+  const [automationRunLogs, setAutomationRunLogs] = useState<AutomationRunLogEntry[]>([]);
   const [draft, setDraft] = useState<AutomationDraft>(() => createEmptyDraft());
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRunsLoading, setIsRunsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [banner, setBanner] = useState<Banner | null>(null);
   const updateDraftEnabled = useCallback((enabled: boolean) => {
@@ -176,10 +175,57 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     }
   }, [selectedId, tr]);
 
+  const loadRuns = useCallback(
+    async (sourceAutomations = automations) => {
+      if (!isElectron) return;
+      if (sourceAutomations.length === 0) {
+        setAutomationRunLogs([]);
+        return;
+      }
+      setIsRunsLoading(true);
+      try {
+        const entries = (
+          await Promise.all(
+            sourceAutomations.map(async (automation) => {
+              const rows = await window.electronAPI.automation.listRuns(automation.id, {
+                limit: 20,
+                status: 'all',
+              });
+              return rows.map((run) => ({
+                automation: { id: automation.id, name: automation.name },
+                run,
+              }));
+            })
+          )
+        )
+          .flat()
+          .sort((left, right) => getRunSortTime(right.run) - getRunSortTime(left.run))
+          .slice(0, 100);
+        setAutomationRunLogs(entries);
+      } catch (error) {
+        setBanner({
+          tone: 'error',
+          text:
+            error instanceof Error
+              ? error.message
+              : tr('schedule.runsLoadFailed', '加载执行日志失败'),
+        });
+      } finally {
+        setIsRunsLoading(false);
+      }
+    },
+    [automations, tr]
+  );
+
   useEffect(() => {
     if (!isActive) return;
     void load();
   }, [isActive, load]);
+
+  useEffect(() => {
+    if (!isActive || activeListTab !== 'runs') return;
+    void loadRuns();
+  }, [activeListTab, isActive, loadRuns]);
 
   useEffect(() => {
     if (!selectedAutomation) return;
@@ -238,6 +284,9 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     try {
       await window.electronAPI.automation.runNow(selectedAutomation.id);
       await load();
+      if (activeListTab === 'runs') {
+        await loadRuns();
+      }
       setBanner({ tone: 'success', text: tr('schedule.runNowSuccess', '自动化已开始运行') });
     } catch (error) {
       setBanner({
@@ -252,6 +301,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     if (!window.confirm(tr('schedule.deleteConfirm', '确认删除这个自动化？'))) return;
     await window.electronAPI.automation.delete(selectedAutomation.id);
     setSelectedId(null);
+    setAutomationRunLogs([]);
     setDraft(createEmptyDraft());
     setViewMode('list');
     await load();
@@ -359,32 +409,47 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       <section className="mt-3 flex min-h-0 flex-1 flex-col">
         <div className="mb-2 flex min-h-10 flex-shrink-0 items-end gap-5">
           <TabButton
-            active
+            active={activeListTab === 'automations'}
             label={tr('schedule.tabs.automations', '自动化')}
-            onClick={() => undefined}
+            onClick={() => setActiveListTab('automations')}
+          />
+          <TabButton
+            active={activeListTab === 'runs'}
+            label={tr('schedule.tabs.runs', '执行日志')}
+            onClick={() => setActiveListTab('runs')}
           />
         </div>
-        <AutomationListPanel
-          automations={pageAutomations}
-          totalAutomations={filteredAutomations.length}
-          currentPage={safeCurrentPage}
-          selectedId={selectedId}
-          selectedAutomation={selectedAutomation}
-          searchQuery={search}
-          isLoading={isLoading}
-          onCreate={createNew}
-          onSearchChange={setSearch}
-          onRefresh={() => void load()}
-          onPageChange={setCurrentPage}
-          onRun={() => void runNow()}
-          onEdit={openSelectedDetail}
-          onDelete={() => void remove()}
-          onSelect={(automation) => {
-            setSelectedId(automation.id);
-            setDraft(automationToDraft(automation));
-          }}
-          tr={tr}
-        />
+        {activeListTab === 'automations' ? (
+          <AutomationListPanel
+            automations={pageAutomations}
+            totalAutomations={filteredAutomations.length}
+            currentPage={safeCurrentPage}
+            selectedId={selectedId}
+            selectedAutomation={selectedAutomation}
+            searchQuery={search}
+            isLoading={isLoading}
+            onCreate={createNew}
+            onSearchChange={setSearch}
+            onRefresh={() => void load()}
+            onPageChange={setCurrentPage}
+            onRun={() => void runNow()}
+            onEdit={openSelectedDetail}
+            onDelete={() => void remove()}
+            onSelect={(automation) => {
+              setSelectedId(automation.id);
+              setDraft(automationToDraft(automation));
+            }}
+            tr={tr}
+          />
+        ) : (
+          <AutomationRunLogPanel
+            automations={automations}
+            entries={automationRunLogs}
+            isLoading={isRunsLoading}
+            onRefresh={() => void loadRuns()}
+            tr={tr}
+          />
+        )}
       </section>
     </div>
   );
@@ -728,6 +793,132 @@ function AutomationListPanel({
   );
 }
 
+function AutomationRunLogPanel({
+  automations,
+  entries,
+  isLoading,
+  onRefresh,
+  tr,
+}: {
+  automations: Automation[];
+  entries: AutomationRunLogEntry[];
+  isLoading: boolean;
+  onRefresh: () => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-transparent">
+      <div className="mb-3 flex flex-shrink-0 justify-end">
+        <DataToolbarButton
+          icon={<RefreshCw className="h-3.5 w-3.5" />}
+          label={tr('schedule.refresh', '刷新')}
+          disabled={automations.length === 0 || isLoading}
+          onClick={onRefresh}
+        />
+      </div>
+      <div className="glass-table flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-auto">
+          <AutomationRunTable
+            entries={entries}
+            isLoading={isLoading}
+            hasAutomations={automations.length > 0}
+            tr={tr}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AutomationRunTable({
+  entries,
+  isLoading,
+  hasAutomations,
+  tr,
+}: {
+  entries: AutomationRunLogEntry[];
+  isLoading: boolean;
+  hasAutomations: boolean;
+  tr: (key: string, fallback: string) => string;
+}) {
+  if (!hasAutomations) {
+    return <EmptyState label={tr('schedule.empty', '还没有自动化')} />;
+  }
+  if (isLoading) {
+    return <LoadingState label={tr('schedule.runsLoading', '正在加载执行日志...')} />;
+  }
+  if (entries.length === 0) {
+    return <EmptyState label={tr('schedule.runsEmpty', '暂无执行记录')} />;
+  }
+  return (
+    <div className="min-w-0 overflow-hidden">
+      <table className="w-full table-fixed border-collapse text-left">
+        <thead>
+          <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted backdrop-blur-xl">
+            <th className="w-[22%] whitespace-nowrap px-3">
+              {tr('schedule.runColumns.automation', '自动化')}
+            </th>
+            <th className="w-[12%] whitespace-nowrap px-2">
+              {tr('schedule.runColumns.status', '状态')}
+            </th>
+            <th className="w-[10%] whitespace-nowrap px-2">
+              {tr('schedule.runColumns.reason', '触发')}
+            </th>
+            <th className="w-[18%] whitespace-nowrap px-2">
+              {tr('schedule.runColumns.startedAt', '开始时间')}
+            </th>
+            <th className="w-[10%] whitespace-nowrap px-2">
+              {tr('schedule.runColumns.duration', '耗时')}
+            </th>
+            <th className="w-[8%] whitespace-nowrap px-2">
+              {tr('schedule.runColumns.artifacts', '产物')}
+            </th>
+            <th className="w-[10%] whitespace-nowrap px-2">
+              {tr('schedule.runColumns.delivery', '交付')}
+            </th>
+            <th className="w-[20%] whitespace-nowrap px-2">
+              {tr('schedule.runColumns.error', '错误信息')}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map(({ automation, run }) => (
+            <tr
+              key={run.id}
+              className="h-[3.25rem] border-b border-border-muted/85 last:border-b-0 transition-colors hover:bg-surface-hover/35"
+            >
+              <td className="truncate px-3 text-[13px] font-medium text-text-secondary">
+                {automation.name}
+              </td>
+              <td className="px-3">
+                <AutomationRunStatusBadge status={run.status} tr={tr} />
+              </td>
+              <td className="truncate px-2 text-[13px] font-medium text-text-secondary">
+                {formatRunReason(run.triggerReason, tr)}
+              </td>
+              <td className="truncate whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+                {formatAppDateTime(run.startedAt ?? run.queuedAt ?? run.createdAt)}
+              </td>
+              <td className="truncate whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+                {formatDurationMs(run.durationMs)}
+              </td>
+              <td className="px-2 text-[13px] font-medium text-text-secondary">
+                {run.artifactCount}
+              </td>
+              <td className="truncate px-2 text-[13px] font-medium text-text-secondary">
+                {formatDeliveryStatus(run.deliveryStatus, tr)}
+              </td>
+              <td className="truncate px-2 text-[12px] text-text-muted" title={run.error ?? ''}>
+                {run.error ?? '-'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function AutomationTable({
   automations,
   selectedId,
@@ -850,7 +1041,6 @@ const AUTOMATION_ICON_STYLES: Array<{ Icon: LucideIcon; className: string }> = [
   { Icon: CalendarClock, className: 'bg-accent/10 text-accent' },
   { Icon: Database, className: 'bg-[#E9F7F5] text-[#238C80]' },
   { Icon: Bell, className: 'bg-warning/10 text-warning' },
-  { Icon: MessageSquare, className: 'bg-surface-active/70 text-text-secondary' },
 ];
 
 function AutomationStatusBadge({
@@ -878,6 +1068,60 @@ function AutomationStatusBadge({
       {tr(`schedule.status.${automation.status}`, automation.status)}
     </span>
   );
+}
+
+function AutomationRunStatusBadge({
+  status,
+  tr,
+}: {
+  status: AutomationRun['status'];
+  tr: (key: string, fallback: string) => string;
+}) {
+  const tone =
+    status === 'failed'
+      ? 'bg-error/10 text-error'
+      : status === 'running' || status === 'queued'
+        ? 'bg-warning/10 text-warning'
+        : status === 'succeeded'
+          ? 'bg-success/10 text-success'
+          : 'bg-bg-tertiary text-text-muted';
+  return (
+    <span
+      className={`inline-flex h-6 min-w-[4.5rem] items-center justify-center gap-1.5 rounded-full px-2.5 text-xs font-medium ${tone}`}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {tr(`schedule.runStatus.${status}`, status)}
+    </span>
+  );
+}
+
+function formatRunReason(
+  reason: AutomationRun['triggerReason'],
+  tr: (key: string, fallback: string) => string
+): string {
+  return tr(`schedule.runReason.${reason}`, reason);
+}
+
+function formatDeliveryStatus(
+  status: AutomationRun['deliveryStatus'],
+  tr: (key: string, fallback: string) => string
+): string {
+  if (!status) return '-';
+  return tr(`schedule.deliveryStatus.${status}`, status);
+}
+
+function formatDurationMs(durationMs: number | null): string {
+  if (durationMs === null) return '-';
+  if (durationMs < 1000) return `${durationMs}ms`;
+  const totalSeconds = Math.round(durationMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes === 0) return `${seconds}s`;
+  return `${minutes}m ${seconds}s`;
+}
+
+function getRunSortTime(run: AutomationRun): number {
+  return run.startedAt ?? run.queuedAt ?? run.createdAt;
 }
 
 function DataTableSearch({
@@ -1572,14 +1816,16 @@ function ActionChainSection({
       ...draft,
       actionGraph: relinkLinearGraph({ version: 1, nodes: nextNodes, edges: [] }),
     });
-  const addNode = (definition: AutomationActionDefinitionSummary) => {
+  const availableActionTypes = new Set(actionDefinitions.map((definition) => definition.type));
+  const menuActionTypes = ACTION_MENU_TYPES.filter((type) => availableActionTypes.has(type));
+  const addNode = (type: string) => {
     updateNodes([
       {
         id: crypto.randomUUID(),
-        type: definition.type,
+        type,
         label: '',
         enabled: true,
-        config: defaultConfigForAction(definition.type),
+        config: defaultConfigForAction(type),
       },
       ...nodes,
     ]);
@@ -1593,9 +1839,9 @@ function ActionChainSection({
         </button>
       }
     >
-      {actionDefinitions.map((definition) => (
-        <GlassMenuItem key={definition.type} onSelect={() => addNode(definition)}>
-          {getActionTitle(definition.type, definition.title, tr)}
+      {menuActionTypes.map((type) => (
+        <GlassMenuItem key={type} onSelect={() => addNode(type)}>
+          {getActionTitle(type, type, tr)}
         </GlassMenuItem>
       ))}
     </GlassDropdownMenu>
@@ -1703,52 +1949,33 @@ function ActionConfigEditor({
 }) {
   const setConfig = (config: Record<string, unknown>) => onChange({ ...node, config });
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const currentRecipient = String(node.config.recipient ?? '');
   const selectedModelConfigSetId =
     typeof node.config.modelConfigSetId === 'string' && node.config.modelConfigSetId.trim()
       ? node.config.modelConfigSetId
       : appConfig?.activeConfigSetId;
-  const notificationRecipientOptions = [
-    ...NOTIFICATION_RECIPIENT_OPTIONS.map((option) => ({
-      value: option.value,
-      label: tr(option.labelKey, option.fallback),
-    })),
-    ...(currentRecipient &&
-    !NOTIFICATION_RECIPIENT_OPTIONS.some((option) => option.value === currentRecipient)
-      ? [{ value: currentRecipient, label: currentRecipient }]
-      : []),
-  ];
+  const dataTypeOptions = DATA_ACTION_TYPES.map((type) => ({
+    value: type,
+    label: getDataActionTypeTitle(type, tr),
+  }));
+  const changeDataType = (type: string) => {
+    onChange({
+      ...node,
+      type,
+      label: '',
+      config: defaultConfigForAction(type),
+    });
+  };
   return (
     <div className="space-y-4">
-      {node.type === 'notification.send' && (
-        <>
-          <ConfigRow label={tr('schedule.notificationRecipient', '通知对象')}>
-            <GlassSelect
-              value={currentRecipient}
-              options={[
-                { value: '', label: tr('schedule.recipientPlaceholder', '选择通知对象') },
-                ...notificationRecipientOptions,
-              ]}
-              onValueChange={(value) =>
-                setConfig({ ...node.config, channel: 'feishu', recipient: value })
-              }
-              placeholder={tr('schedule.recipientPlaceholder', '选择通知对象')}
-              triggerClassName="h-9 w-full justify-between"
-              contentClassName="w-[var(--radix-select-trigger-width)]"
-            />
-          </ConfigRow>
-          <ConfigRow label={tr('schedule.notificationContent', '通知内容')}>
-            <textarea
-              value={String(node.config.message ?? '')}
-              onChange={(event) => setConfig({ ...node.config, message: event.target.value })}
-              placeholder={tr(
-                'schedule.notificationContentPlaceholder',
-                '销售数据已更新，请查看仪表板'
-              )}
-              className="input min-h-[74px] w-full resize-none text-xs leading-5"
-            />
-          </ConfigRow>
-        </>
+      {isDataActionType(node.type) && (
+        <ConfigRow label={tr('schedule.dataTypeLabel', '数据类型')}>
+          <SelectLine
+            value={node.type}
+            options={dataTypeOptions}
+            placeholder={tr('schedule.dataTypePlaceholder', '选择数据类型')}
+            onChange={changeDataType}
+          />
+        </ConfigRow>
       )}
       {node.type === 'data.task.run' && (
         <>
@@ -1887,31 +2114,37 @@ function getActionTitle(
   fallback: string,
   tr: (key: string, fallback: string) => string
 ): string {
-  if (type === 'notification.send') {
-    return tr('schedule.actionTypes.notificationSend.title', fallback);
-  }
   if (type === 'conversation.run') {
     return tr('schedule.actionTypes.conversationRun.title', fallback);
   }
-  if (type === 'data.task.run') {
-    return tr('schedule.actionTypes.dataTaskRun.title', fallback);
-  }
-  if (type === 'data.input.preview') {
-    return tr('schedule.actionTypes.dataInputPreview.title', fallback);
-  }
-  if (type === 'data.output.preview') {
-    return tr('schedule.actionTypes.dataOutputPreview.title', fallback);
-  }
-  if (type === 'data.output.export') {
-    return tr('schedule.actionTypes.dataOutputExport.title', fallback);
+  if (isDataActionType(type)) {
+    return tr('schedule.actionTypes.data.title', fallback);
   }
   return fallback;
 }
 
+function getDataActionTypeTitle(
+  type: string,
+  tr: (key: string, fallback: string) => string
+): string {
+  if (type === 'data.task.run') {
+    return tr('schedule.actionTypes.dataTaskRun.title', 'Data task');
+  }
+  if (type === 'data.input.preview') {
+    return tr('schedule.actionTypes.dataInputPreview.title', 'Input table');
+  }
+  if (type === 'data.output.preview') {
+    return tr('schedule.actionTypes.dataOutputPreview.title', 'Output table');
+  }
+  if (type === 'data.output.export') {
+    return tr('schedule.actionTypes.dataOutputExport.title', 'Export output table');
+  }
+  return type;
+}
+
 function getActionIcon(type: string): LucideIcon {
-  if (type === 'notification.send') return Send;
   if (type === 'conversation.run') return MessagesSquare;
-  if (type.startsWith('data.')) return Database;
+  if (isDataActionType(type)) return Database;
   return CalendarClock;
 }
 
@@ -1956,17 +2189,12 @@ function getNodeLabel(
 ): string {
   const fallback = getActionTitle(node.type, node.type, tr);
   if (!node.label || node.label === node.type) return fallback;
-  if (node.type === 'notification.send' && node.label === 'Send message notification')
-    return fallback;
   if (node.type === 'conversation.run' && node.label === 'Conversation') return fallback;
   if (node.type === 'data.task.run' && node.label === 'Data task') return fallback;
   return node.label;
 }
 
 function defaultConfigForAction(type: string): Record<string, unknown> {
-  if (type === 'notification.send') {
-    return { channel: 'feishu', recipient: DEFAULT_NOTIFICATION_RECIPIENT, message: '' };
-  }
   if (type === 'conversation.run') {
     return {
       prompt: '',
@@ -1983,6 +2211,10 @@ function defaultConfigForAction(type: string): Record<string, unknown> {
   if (type === 'data.output.preview') return { outputTableId: '', limit: 20 };
   if (type === 'data.output.export') return { outputTableId: '', format: 'csv' };
   return {};
+}
+
+function isDataActionType(type: string): boolean {
+  return DATA_ACTION_TYPES.includes(type);
 }
 
 function splitCsv(value: string): string[] {

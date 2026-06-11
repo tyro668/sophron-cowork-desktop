@@ -86,7 +86,9 @@ import type { InputTableNormalizerProjectGenerator } from './input-table-normali
 import { configStore, type PersonalAnalysisConfig } from '../config/config-store';
 import {
   createPersonalAnalysisClient,
+  type PersonalAnalysisClient,
   type PersonalAnalysisConnectionInput,
+  type PersonalAnalysisDatasource,
 } from './personal-analysis-client';
 
 const DEFAULT_LIST_LIMIT = 20;
@@ -100,12 +102,17 @@ interface WorkflowResourceBindings {
   outputTableId?: string;
 }
 
+interface DataCommandServiceOptions {
+  onTaskCompleted?: (task: DataCleaningTask) => void;
+}
+
 export class DataCommandService {
   constructor(
     private readonly store: DataTaskStore,
     private readonly normalizerProjectGenerator: InputTableNormalizerProjectGenerator,
     private readonly getPersonalAnalysisConfig: () => PersonalAnalysisConfig = () =>
-      configStore.get('personalAnalysis')
+      configStore.get('personalAnalysis'),
+    private readonly options: DataCommandServiceOptions = {}
   ) {}
 
   async listInputTables(input: ListInputTablesInput = {}): Promise<ListInputTablesResult> {
@@ -510,8 +517,11 @@ export class DataCommandService {
       normalizeOptionalName(input.fileName) || `${sanitizeFileName(tableName || exported.id)}.csv`;
 
     try {
-      const upload = await this.createPersonalAnalysisClient(input).uploadCsv({
+      const client = this.createPersonalAnalysisClient(input);
+      const datasourceId = await this.resolveUploadDatasourceId(client, input.datasourceId);
+      const upload = await client.uploadCsv({
         ...input,
+        datasourceId,
         fileName,
         tableName,
         csv: exported.csv,
@@ -557,16 +567,40 @@ export class DataCommandService {
     }
   }
 
-  private createPersonalAnalysisClient(
-    input: PersonalAnalysisConnectionInput & { datasourceId?: string } = {}
-  ) {
+  private createPersonalAnalysisClient(input: PersonalAnalysisConnectionInput = {}) {
     const configured = this.getPersonalAnalysisConfig();
     return createPersonalAnalysisClient({
       apiOrigin: input.apiOrigin || configured.apiOrigin,
       apiKey: input.apiKey || configured.apiKey,
       accessToken: input.accessToken,
-      datasourceId: input.datasourceId || configured.datasourceId,
     });
+  }
+
+  private async resolveUploadDatasourceId(
+    client: PersonalAnalysisClient,
+    datasourceId: string | undefined
+  ): Promise<string> {
+    const explicitDatasourceId = datasourceId?.trim();
+    if (explicitDatasourceId) {
+      return explicitDatasourceId;
+    }
+
+    const datasources = await client.listDatasources();
+    if (datasources.length === 0) {
+      throw new Error(
+        'No Personal Analysis datasource is available for upload. Choose a project with an available datasource or pass datasourceId.'
+      );
+    }
+
+    if (datasources.length === 1) {
+      return datasources[0].datasourceId;
+    }
+
+    throw new Error(
+      `Multiple Personal Analysis datasources are available: ${datasources
+        .map(formatDatasourceForError)
+        .join(', ')}. Pass datasourceId for this upload.`
+    );
   }
 
   async deleteInputTableNormalizerVersion(
@@ -824,6 +858,7 @@ export class DataCommandService {
 
     try {
       const task = await this.store.runTask(input.taskId, runInput);
+      this.options.onTaskCompleted?.(task);
       const preview = await this.previewTaskOutput(
         input.taskId,
         task,
@@ -1378,6 +1413,12 @@ function stringConfigValue(value: unknown): string {
 function looksLikeJson(value: string): boolean {
   const trimmed = value.trim();
   return trimmed.startsWith('{') || trimmed.startsWith('[');
+}
+
+function formatDatasourceForError(datasource: PersonalAnalysisDatasource): string {
+  return datasource.datasourceName
+    ? `${datasource.datasourceName} (${datasource.datasourceId})`
+    : datasource.datasourceId;
 }
 
 function toCommandError(error: unknown, fallbackCode: DataCommandError['code']): DataCommandError {
