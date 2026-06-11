@@ -1,5 +1,8 @@
 import type { PrepDiagnostic } from '../../shared/prep-dsl';
 
+/** Delimiter unlikely to appear in diagnostic fields (SOH control char). */
+const SIG_DELIMITER = String.fromCharCode(1);
+
 export function arePrepDiagnosticsEqual(
   left: readonly PrepDiagnostic[],
   right: readonly PrepDiagnostic[]
@@ -22,7 +25,7 @@ function diagnosticSignature(diagnostic: PrepDiagnostic): string {
     diagnostic.line ?? '',
     diagnostic.column ?? '',
     serializeParams(diagnostic.params),
-  ].join('\u0001');
+  ].join(SIG_DELIMITER);
 }
 
 function serializeParams(params: PrepDiagnostic['params']): string {

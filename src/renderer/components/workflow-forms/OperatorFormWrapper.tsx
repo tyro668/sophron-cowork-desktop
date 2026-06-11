@@ -1,4 +1,4 @@
-import React, { Suspense, useCallback, useMemo } from 'react';
+import React, { Suspense, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
@@ -75,6 +75,8 @@ function LazyOperatorForm({
 }
 
 export function OperatorFormWrapper(props: OperatorFormWrapperProps) {
+  const { t } = useTranslation();
+
   if (!hasOperatorForm(props.node.type)) {
     return (
       <div className="rounded-lg border border-border-muted bg-background/42 px-3 py-6 text-center text-[13px] text-text-muted">
