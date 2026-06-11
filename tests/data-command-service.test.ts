@@ -31,7 +31,6 @@ describe('DataCommandService', () => {
       personalAnalysis: {
         apiOrigin: 'http://configured.mock',
         apiKey: 'configured-key',
-        datasourceId: 'configured-datasource',
         updatedAt: 1,
       },
     });
@@ -77,7 +76,6 @@ describe('DataCommandService', () => {
     let personalAnalysis = {
       apiOrigin: 'http://old.mock',
       apiKey: 'old-key',
-      datasourceId: 'old-datasource',
       updatedAt: 1,
     };
     const { service } = createService({
@@ -99,7 +97,6 @@ describe('DataCommandService', () => {
     personalAnalysis = {
       apiOrigin: 'http://new.mock',
       apiKey: 'new-key',
-      datasourceId: 'new-datasource',
       updatedAt: 2,
     };
     await service.listCloudSpaces({});
@@ -136,6 +133,115 @@ describe('DataCommandService', () => {
       message: expect.stringContaining('tableId must be omitted for CREATE upload'),
     });
     expect(exportSpy).not.toHaveBeenCalled();
+  });
+
+  it('uses the only available datasource for cloud uploads when datasourceId is omitted', async () => {
+    const { service, tempRoot } = createService({
+      personalAnalysis: {
+        apiOrigin: 'http://configured.mock',
+        apiKey: 'configured-key',
+      },
+    });
+    const csvPath = path.join(tempRoot, 'sales.csv');
+    fs.writeFileSync(csvPath, 'month,revenue\nJan,100\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'sales',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const href = String(url);
+      if (href.endsWith('/api/personal/api-keys/token')) {
+        return jsonResponse({ success: true, data: { accessToken: 'token' } });
+      }
+      if (href.endsWith('/api/personal/analysis/v1/datasources')) {
+        return jsonResponse({
+          success: true,
+          data: [{ datasourceId: 'datasource-auto', datasourceName: 'Auto Datasource' }],
+        });
+      }
+      if (href.endsWith('/api/personal/analysis/v1/imports/upload-url')) {
+        const body = JSON.parse(String(init?.body || '{}'));
+        expect(body.datasourceId).toBe('datasource-auto');
+        return jsonResponse({
+          success: true,
+          data: {
+            uploadTaskId: 'upload-1',
+            tableId: 'table-1',
+            uploadUrl: 'http://upload.mock/sales.csv',
+          },
+        });
+      }
+      if (href === 'http://upload.mock/sales.csv') {
+        expect(init?.method).toBe('PUT');
+        return new Response('', { status: 200 });
+      }
+      if (href.endsWith('/api/personal/analysis/v1/imports')) {
+        return jsonResponse({
+          success: true,
+          data: { taskId: 'import-1', tableId: 'table-1', status: 'PENDING' },
+        });
+      }
+      throw new Error(`Unexpected request: ${href} ${init?.method || 'GET'}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await service.uploadDataTableToCloud({
+      tableKind: 'input',
+      id: input.inputTable.id,
+      writeMode: 'CREATE',
+      waitForDone: false,
+    });
+
+    expect(result.upload.tableId).toBe('table-1');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://configured.mock/api/personal/analysis/v1/datasources',
+      expect.objectContaining({ method: 'GET' })
+    );
+  });
+
+  it('asks for datasourceId when multiple upload datasources are available', async () => {
+    const { service, tempRoot } = createService({
+      personalAnalysis: {
+        apiOrigin: 'http://configured.mock',
+        apiKey: 'configured-key',
+      },
+    });
+    const csvPath = path.join(tempRoot, 'sales.csv');
+    fs.writeFileSync(csvPath, 'month,revenue\nJan,100\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'sales',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      const href = String(url);
+      if (href.endsWith('/api/personal/api-keys/token')) {
+        return jsonResponse({ success: true, data: { accessToken: 'token' } });
+      }
+      if (href.endsWith('/api/personal/analysis/v1/datasources')) {
+        return jsonResponse({
+          success: true,
+          data: [
+            { datasourceId: 'datasource-sales', datasourceName: 'Sales Datasource' },
+            { datasourceId: 'datasource-retention', datasourceName: 'Retention Datasource' },
+          ],
+        });
+      }
+      throw new Error(`Unexpected request: ${href}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      service.uploadDataTableToCloud({
+        tableKind: 'input',
+        id: input.inputTable.id,
+        writeMode: 'CREATE',
+      })
+    ).rejects.toMatchObject({
+      code: 'RUN_FAILED',
+      message: expect.stringContaining('Pass datasourceId for this upload'),
+    });
   });
 
   it('creates input/output/task resources, saves workflow DSL, and runs the task', async () => {
@@ -686,13 +792,11 @@ function createService(
     personalAnalysis?: {
       apiOrigin: string;
       apiKey: string;
-      datasourceId: string;
       updatedAt?: number;
     };
     getPersonalAnalysisConfig?: () => {
       apiOrigin: string;
       apiKey: string;
-      datasourceId: string;
       updatedAt: number;
     };
   } = {}
@@ -712,7 +816,6 @@ function createService(
           ...(options.personalAnalysis || {
             apiOrigin: '',
             apiKey: '',
-            datasourceId: '',
           }),
           updatedAt: options.personalAnalysis?.updatedAt ?? 0,
         }))

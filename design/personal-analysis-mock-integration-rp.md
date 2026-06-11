@@ -25,26 +25,27 @@ mock server HTTP API
 
 ## 配置页产品化增量
 
-为了避免用户在每次工具调用时重复传入 host、API Key 和 datasource 信息，cowork 设置页新增
+为了避免用户在每次工具调用时重复传入 host 和 API Key，cowork 设置页新增
 “个人分析 / Personal Analysis”配置项，并将配置持久化到 `configStore`。
 
 配置项：
 
 - `Host`：Personal Analysis 服务 origin，例如 `http://127.0.0.1:3000`。只保存 origin，不保存具体 API path。
 - `API Key`：个人 API Key 页面生成的 `X-API-Key` 值。设置页只保存 key 本体，不包含 `X-API-Key:` 前缀。
-- `Datasource`：上传表格时使用的目标数据源。产品化方向是不再写死 mock 默认值，而是通过服务端接口获取可选 datasource 列表。
 
-datasource 获取流程：
+Datasource 不再作为全局设置保存。它属于具体上传/导入操作的业务参数，应该在用户选择 space/project/table 后由服务端推导或按本次操作选择。
+
+datasource 上传解析流程：
 
 ```text
-用户填写 Host + API Key
-  -> cowork 调用 /api/personal/api-keys/token 换 token
-  -> cowork 调用 /api/personal/analysis/v1/datasources
-  -> 设置页以下拉框展示可选 datasource
-  -> 保存 datasourceId 到 configStore.personalAnalysis
+用户发起上传
+  -> 如果工具入参包含 datasourceId，直接使用
+  -> 如果没有 datasourceId，cowork 调用 /api/personal/analysis/v1/datasources
+  -> 如果服务端只返回一个 datasource，自动使用
+  -> 如果返回多个，提示用户为本次上传选择 datasourceId
 ```
 
-如果服务端 datasource 列表接口暂不可用或返回空，设置页仍允许手动输入 datasourceId 作为联调兜底，但保存时会做基本校验。
+mock server 可以保留 `datasource-demo` 作为本地联调数据源，但 cowork 客户端不写死该默认值。
 
 ## 主要改动
 
@@ -81,13 +82,11 @@ datasource 获取流程：
 6. 新增设置页与配置持久化
    - `src/renderer/components/settings/SettingsPersonalAnalysis.tsx`：个人分析配置页。
    - `src/main/config/config-store.ts`：新增 `personalAnalysis` 配置段。
-   - `src/preload/index.ts` / `src/main/index.ts`：暴露 datasource 列表加载 IPC。
    - `src/renderer/i18n/locales/*.json`：补齐中英文文案。
 
 7. 输入校验
    - Host 必填，且必须是合法 `http://` 或 `https://` URL。
    - API Key 必填；如果用户粘贴 `X-API-Key:` 前缀，设置页给出明确提示。
-   - Datasource 必填；如果已加载服务端列表，保存时必须选择列表中的 datasource。
 
 ## 使用流程
 
@@ -103,8 +102,9 @@ data_import_cloud_table
 从 cowork 上传回 mock server：
 
 ```text
-设置页保存 Host / API Key / Datasource
+设置页保存 Host / API Key
 data_upload_table_to_cloud
+缺少 datasourceId 时按服务端唯一 datasource 自动解析；多个 datasource 时提示用户选择
 ```
 
 `writeMode=CREATE` 创建新云端表；`writeMode=REPLACE` 替换已有云端表，必须传 `tableId`。

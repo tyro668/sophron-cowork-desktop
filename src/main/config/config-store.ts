@@ -181,7 +181,6 @@ export interface MemoryRuntimeConfig {
 export interface PersonalAnalysisConfig {
   apiOrigin: string;
   apiKey: string;
-  datasourceId: string;
   updatedAt: number;
 }
 
@@ -334,7 +333,6 @@ const defaultConfig: AppConfig = {
   personalAnalysis: {
     apiOrigin: '',
     apiKey: '',
-    datasourceId: '',
     updatedAt: 0,
   },
   enableThinking: false,
@@ -515,10 +513,6 @@ function normalizePersonalAnalysisConfig(raw: unknown): PersonalAnalysisConfig {
       typeof value.apiKey === 'string'
         ? value.apiKey.trim()
         : defaultConfig.personalAnalysis.apiKey,
-    datasourceId:
-      typeof value.datasourceId === 'string'
-        ? value.datasourceId.trim()
-        : defaultConfig.personalAnalysis.datasourceId,
     updatedAt:
       typeof value.updatedAt === 'number' && Number.isFinite(value.updatedAt)
         ? Math.max(0, Math.round(value.updatedAt))
@@ -530,11 +524,7 @@ function personalAnalysisConnectionChanged(
   previous: PersonalAnalysisConfig,
   next: PersonalAnalysisConfig
 ): boolean {
-  return (
-    previous.apiOrigin !== next.apiOrigin ||
-    previous.apiKey !== next.apiKey ||
-    previous.datasourceId !== next.datasourceId
-  );
+  return previous.apiOrigin !== next.apiOrigin || previous.apiKey !== next.apiKey;
 }
 
 function profileKeyFromProvider(

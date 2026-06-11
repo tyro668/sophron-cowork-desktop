@@ -125,7 +125,6 @@ describe('ConfigStore applyToEnv', () => {
       personalAnalysis: {
         apiOrigin: 'http://127.0.0.1:3000',
         apiKey: 'first-key',
-        datasourceId: 'datasource-demo',
       },
     });
     const firstUpdatedAt = store.get('personalAnalysis').updatedAt;
@@ -136,7 +135,6 @@ describe('ConfigStore applyToEnv', () => {
       personalAnalysis: {
         apiOrigin: 'http://127.0.0.1:3000',
         apiKey: 'first-key',
-        datasourceId: 'datasource-demo',
       },
     });
     expect(store.get('personalAnalysis').updatedAt).toBe(firstUpdatedAt);
@@ -146,7 +144,6 @@ describe('ConfigStore applyToEnv', () => {
       personalAnalysis: {
         apiOrigin: 'http://127.0.0.1:3000',
         apiKey: 'second-key',
-        datasourceId: 'datasource-demo',
       },
     });
     expect(store.get('personalAnalysis').updatedAt).toBe(

@@ -69,10 +69,6 @@ interface PersonalAnalysisImportStatus {
   table?: PersonalAnalysisTable;
 }
 
-interface PersonalAnalysisClientOptions extends PersonalAnalysisConnectionInput {
-  datasourceId?: string;
-}
-
 interface HiResponse<T> {
   success?: boolean;
   code?: string;
@@ -88,13 +84,11 @@ const DEFAULT_FETCH_TIMEOUT_MS = 30_000;
 export class PersonalAnalysisClient {
   private readonly apiOrigin: string;
   private readonly apiKey: string;
-  private readonly datasourceId: string;
   private accessToken: string | null;
 
-  constructor(options: PersonalAnalysisClientOptions = {}) {
+  constructor(options: PersonalAnalysisConnectionInput = {}) {
     this.apiOrigin = normalizeApiOrigin(options.apiOrigin);
     this.apiKey = options.apiKey?.trim() || '';
-    this.datasourceId = options.datasourceId?.trim() || '';
     this.accessToken = options.accessToken?.trim() || null;
   }
 
@@ -152,9 +146,9 @@ export class PersonalAnalysisClient {
   }
 
   async uploadCsv(input: PersonalAnalysisUploadInput): Promise<PersonalAnalysisUploadResult> {
-    const datasourceId = input.datasourceId?.trim() || this.datasourceId;
+    const datasourceId = input.datasourceId?.trim();
     if (!datasourceId) {
-      throw new Error('Personal Analysis datasourceId is not configured');
+      throw new Error('Personal Analysis datasourceId is required for upload');
     }
     const uploadInfo = await this.apiJson<{
       uploadTaskId: string;
@@ -292,7 +286,7 @@ export class PersonalAnalysisClient {
 }
 
 export function createPersonalAnalysisClient(
-  input: PersonalAnalysisConnectionInput & { datasourceId?: string } = {}
+  input: PersonalAnalysisConnectionInput = {}
 ): PersonalAnalysisClient {
   return new PersonalAnalysisClient(input);
 }

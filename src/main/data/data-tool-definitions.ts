@@ -188,7 +188,7 @@ export function createDataCustomTools(
         datasourceId: Type.Optional(
           Type.String({
             description:
-              'Personal analysis datasource id used for upload. If omitted, the saved Personal Analysis setting is used.',
+              'Personal analysis datasource id used for this upload. If omitted, the tool uses the only available datasource; when multiple datasources are available, ask the user to choose one.',
           })
         ),
         folderId: Type.Optional(Type.String()),
