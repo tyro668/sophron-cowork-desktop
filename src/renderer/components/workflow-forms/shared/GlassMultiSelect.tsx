@@ -184,39 +184,47 @@ export function GlassMultiSelect({
   return (
     <div ref={ref} className="relative">
       <div
-        onMouseDown={(e) => {
-          if ((e.target as HTMLElement).closest('button')) return;
-          if (open) setSearch('');
-          setOpen(!open);
-        }}
-        className={`flex min-h-7 cursor-pointer flex-wrap items-center gap-1 rounded-md border bg-background/42 px-1.5 py-0.5 text-[12px] outline-none transition-colors ${
+        className={`flex min-h-7 rounded-md border bg-background/42 text-[12px] transition-colors ${
           open ? 'border-accent ring-1 ring-accent/20' : 'border-border-muted'
         }`}
       >
-        {value.length === 0 ? (
-          <span className="text-text-muted">{resolvedPlaceholder}</span>
-        ) : (
-          value.map((col) => (
-            <span
-              key={col}
-              className="inline-flex items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent"
-            >
-              {col}
-              <button
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  remove(col);
-                }}
-                className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
+        <div className="flex flex-1 flex-wrap items-center gap-1 px-1.5 py-0.5">
+          {value.length === 0 ? (
+            <span className="text-text-muted">{resolvedPlaceholder}</span>
+          ) : (
+            value.map((col) => (
+              <span
+                key={col}
+                className="inline-flex items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent"
               >
-                <X className="h-2.5 w-2.5" />
-              </button>
-            </span>
-          ))
-        )}
-        <ChevronDown className="ml-auto h-3 w-3 flex-shrink-0 text-text-muted" />
+                {col}
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    remove(col);
+                  }}
+                  className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            ))
+          )}
+        </div>
+        <button
+          type="button"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (open) setSearch('');
+            setOpen(!open);
+          }}
+          className="flex w-7 items-center justify-center border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
+        >
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
       </div>
 
       {open && (

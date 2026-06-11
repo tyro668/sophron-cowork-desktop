@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
 import { GlassFormLabel } from './shared/GlassFormLabel';
-import { GlassFormTextInput } from './shared/GlassFormTextInput';
+
 import { GlassMultiSelect } from './shared/GlassMultiSelect';
 import { GlassListEditor } from './shared/GlassListEditor';
 
@@ -127,11 +127,14 @@ export default function FormAggregate({ node, fieldCompletions, onNodeChange }: 
                 </div>
                 <div>
                   <GlassFormLabel required>{tr('aggregateAlias', '别名 (as)')}</GlassFormLabel>
-                  <GlassFormTextInput
-                    value={item.alias}
-                    onChange={(value) => onChange({ ...item, alias: value })}
+                  <input
+                    type="text"
+                    value={item.alias ?? ''}
+                    onChange={(e) => onChange({ ...item, alias: e.target.value })}
                     placeholder={tr('aggregateAliasPlaceholder', '如 total_revenue')}
-                    className={`h-7 ${!item.alias.trim() ? '!border-warning/60' : ''}`}
+                    className={`h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent ${
+                      !(item.alias ?? '').trim() ? '!border-warning/60' : ''
+                    }`}
                   />
                 </div>
               </div>

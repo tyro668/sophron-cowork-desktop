@@ -1,8 +1,9 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search } from 'lucide-react';
+import { ChevronDown, X } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
+import { GlassColumnSelector } from './shared/GlassColumnSelector';
 
 export default function FormFieldSelect({
   node,
@@ -20,140 +21,109 @@ export default function FormFieldSelect({
       onNodeChange((current) => ({
         ...current,
         config: updater(current.config),
-        updatedAt: Date.now(),
       }));
     },
     [onNodeChange]
   );
 
   const columns: string[] = (node.config.columns as string[]) ?? [];
-  const [search, setSearch] = useState('');
-  const listRef = useRef<HTMLDivElement | null>(null);
-  const pendingScrollTopRef = useRef<number | null>(null);
+  const [showFieldPicker, setShowFieldPicker] = useState(false);
+  const removingRef = useRef(false);
 
-  const lockScrollTop = useCallback(() => {
-    pendingScrollTopRef.current = listRef.current?.scrollTop ?? 0;
-  }, []);
-
-  const commitSelection = useCallback(
-    (nextColumns: string[]) => {
-      lockScrollTop();
+  const handleColumnsSelect = useCallback(
+    (next: string[]) => {
       updateConfig((cfg) => ({
         ...cfg,
         mode: 'include',
-        columns: nextColumns.length > 0 ? nextColumns : undefined,
+        columns: next.length > 0 ? next : undefined,
       }));
     },
-    [lockScrollTop, updateConfig]
+    [updateConfig]
   );
 
-  useLayoutEffect(() => {
-    const listEl = listRef.current;
-    const pendingScrollTop = pendingScrollTopRef.current;
-    if (!listEl || pendingScrollTop === null) return;
-
-    listEl.scrollTop = pendingScrollTop;
-    pendingScrollTopRef.current = null;
-  });
-
-  const filtered = useMemo(() => {
-    if (!search.trim()) return fieldCompletions;
-    const lower = search.toLowerCase();
-    return fieldCompletions.filter((c) => c.toLowerCase().includes(lower));
-  }, [fieldCompletions, search]);
-
-  const allSelected = filtered.length > 0 && filtered.every((c) => columns.includes(c));
-  const noneSelected = filtered.length === 0 || !filtered.some((c) => columns.includes(c));
-
-  function toggleAll() {
-    if (filtered.length === 0) return;
-
-    if (allSelected) {
-      const filteredSet = new Set(filtered);
-      commitSelection(columns.filter((c) => !filteredSet.has(c)));
-    } else {
-      commitSelection([...new Set([...columns, ...filtered])]);
-    }
-  }
-
-  function toggleColumn(col: string) {
-    const next = columns.includes(col) ? columns.filter((c) => c !== col) : [...columns, col];
-    commitSelection(next);
-  }
+  const removeColumn = useCallback(
+    (col: string) => {
+      if (removingRef.current) return;
+      removingRef.current = true;
+      updateConfig((cfg) => ({
+        ...cfg,
+        mode: 'include',
+        columns: ((cfg.columns as string[]) ?? []).filter((c) => c !== col),
+      }));
+      requestAnimationFrame(() => {
+        removingRef.current = false;
+      });
+    },
+    [updateConfig]
+  );
 
   return (
     <div className="grid content-start gap-2.5">
-      <GlassFormSection>
-        <div className="relative">
-          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={tr('searchField', '搜索字段...')}
-            className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
-          />
-          {search && (
+      <GlassFormSection title={tr('fieldSelectTitle', '字段选择')}>
+        <div className="grid gap-1.5">
+          {/* Combobox: tags + text input + dropdown button */}
+          <div className="flex min-h-8 rounded-md border border-border-muted bg-background/42 focus-within:border-accent">
+            {/* Tags */}
+            <div className="flex flex-1 flex-wrap items-center gap-1 px-1.5 py-1">
+              {columns.map((col) => (
+                <span
+                  key={col}
+                  className="inline-flex items-center gap-0.5 rounded bg-surface-active/80 px-1.5 py-0.5 text-[11px] text-text-primary"
+                >
+                  {col}
+                  <button
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      removeColumn(col);
+                    }}
+                    className="ml-0.5 flex-shrink-0 rounded-full p-0.5 hover:bg-surface-hover transition-colors"
+                  >
+                    <X className="h-2.5 w-2.5 text-text-muted" />
+                  </button>
+                </span>
+              ))}
+              <input
+                type="text"
+                readOnly
+                placeholder={
+                  columns.length === 0 ? tr('fieldSelectPlaceholder', '选择字段...') : ''
+                }
+                className="h-5 min-w-[60px] flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
+              />
+            </div>
+            {/* Dropdown toggle */}
             <button
               type="button"
-              onClick={() => setSearch('')}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-text-muted hover:text-text-secondary"
-            >
-              {tr('clear', '清除')}
-            </button>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 border-b border-border-subtle px-0.5 pb-1">
-          <label
-            className="flex cursor-pointer items-center gap-1.5 text-[11px] text-text-muted hover:text-text-secondary"
-            onMouseDown={(e) => {
-              e.preventDefault();
-              lockScrollTop();
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={allSelected}
-              ref={(el) => {
-                if (el) el.indeterminate = !allSelected && !noneSelected;
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setShowFieldPicker((v) => !v);
               }}
-              onChange={toggleAll}
-              className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
-            />
-            {allSelected ? tr('deselectAll', '取消全选') : tr('selectAll', '全选')}
-          </label>
-          <span className="text-[10px] text-text-muted">
-            {columns.length}/{fieldCompletions.length}
-          </span>
-        </div>
+              className="flex w-7 items-center justify-center border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
+            >
+              <ChevronDown
+                className={`h-3.5 w-3.5 transition-transform ${showFieldPicker ? 'rotate-180' : ''}`}
+              />
+            </button>
+          </div>
 
-        <div ref={listRef} className="max-h-48 overflow-y-auto [overflow-anchor:none]">
-          {filtered.length === 0 ? (
-            <div className="py-4 text-center text-[12px] text-text-muted">
-              {search ? tr('noMatch', '无匹配字段') : tr('noFields', '暂无可用字段')}
-            </div>
-          ) : (
-            filtered.map((col) => (
-              <label
-                key={col}
-                className={`flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-[12px] transition-colors hover:bg-surface-hover ${
-                  columns.includes(col) ? 'text-text-primary' : 'text-text-secondary'
-                }`}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  lockScrollTop();
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={columns.includes(col)}
-                  onChange={() => toggleColumn(col)}
-                  className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
-                />
-                {col}
-              </label>
-            ))
+          {/* Count hint */}
+          <div className="text-[10px] text-text-muted">
+            {tr('fieldSelectCount', '已选 {{n}}/{{total}} 个字段')
+              .replace('{{n}}', String(columns.length))
+              .replace('{{total}}', String(fieldCompletions.length))}
+          </div>
+
+          {/* Dropdown */}
+          {showFieldPicker && (
+            <GlassColumnSelector
+              columns={fieldCompletions}
+              selected={columns}
+              onChange={handleColumnsSelect}
+              maxHeight="200px"
+            />
           )}
         </div>
       </GlassFormSection>

@@ -31,7 +31,7 @@ export default function FormUnpivot({ node, fieldCompletions, onNodeChange }: Op
   const includeNulls = Boolean(node.config.includeNulls ?? false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showFieldPicker, setShowFieldPicker] = useState(false);
-  const pickerRef = useRef<HTMLDivElement>(null);
+  const pickerRef = useRef<HTMLLabelElement>(null);
   const removingRef = useRef(false);
 
   const handleColumnsSelect = useCallback(
