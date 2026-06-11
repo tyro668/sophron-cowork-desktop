@@ -73,6 +73,7 @@ import {
 } from './pi-model-resolution';
 import { buildPiSessionRuntimeSignature } from './pi-session-runtime';
 import { ThinkTagStreamParser } from './think-tag-parser';
+import { extractPseudoToolUsesFromText, type ParsedPseudoToolUse } from './pseudo-tool-use-parser';
 import {
   LoopGuard,
   buildAbortUserMessage,
@@ -91,6 +92,11 @@ import { createSandboxCodingTools } from './sandbox-tool-operations';
 
 // Virtual workspace path shown to the model (hides real sandbox path)
 const VIRTUAL_WORKSPACE_PATH = '/workspace';
+const AUTO_EXECUTABLE_PSEUDO_TOOL_NAMES = new Set([
+  'data_list_cloud_spaces',
+  'data_list_cloud_projects',
+  'data_list_cloud_tables',
+]);
 
 /**
  * Estimate chars-per-token ratio based on content language.
@@ -2382,6 +2388,8 @@ Tool routing:
       let compactionStepId: string | undefined;
       let hasEmittedError = false;
       let terminalErrorText: string | undefined;
+      let shouldClearSdkSessionAfterRecoveredToolUse = false;
+      let recoveredPseudoToolExecution: Promise<void> = Promise.resolve();
       const thinkParser = new ThinkTagStreamParser();
       const promptStartedAt = Date.now();
       const streamEventCounts = new Map<string, number>();
@@ -2673,15 +2681,35 @@ Tool routing:
               }
               if (resolvedPayload.shouldEmitMessage) {
                 const contentBlocks: ContentBlock[] = [];
+                const recoveredPseudoToolUses: ParsedPseudoToolUse[] = [];
                 for (const block of resolvedPayload.effectiveContent) {
                   if (block.type === 'text') {
-                    const { cleanText, artifacts } = extractArtifactsFromText(block.text);
+                    const { cleanText: textWithoutPseudoTools, toolUses } =
+                      extractPseudoToolUsesFromText(block.text);
+                    const { cleanText, artifacts } =
+                      extractArtifactsFromText(textWithoutPseudoTools);
                     if (cleanText) {
                       contentBlocks.push({ type: 'text', text: sanitizeOutputPaths(cleanText) });
                     }
                     if (artifacts.length > 0) {
                       for (const step of buildArtifactTraceSteps(artifacts)) {
                         this.sendTraceStep(session.id, step);
+                      }
+                    }
+                    for (const toolUse of toolUses) {
+                      if (AUTO_EXECUTABLE_PSEUDO_TOOL_NAMES.has(toolUse.name)) {
+                        recoveredPseudoToolUses.push(toolUse);
+                        contentBlocks.push({
+                          type: 'tool_use',
+                          id: toolUse.id,
+                          name: toolUse.name,
+                          displayName: this.getToolDisplayName(toolUse.name),
+                          input: toolUse.input,
+                        });
+                      } else {
+                        log(
+                          `[ClaudeAgentRunner] Suppressed unsupported pseudo tool_use in text: ${toolUse.name}`
+                        );
                       }
                     }
                   } else if (block.type === 'toolCall') {
@@ -2758,6 +2786,25 @@ Tool routing:
                     tokenUsage,
                   };
                   this.sendMessage(session.id, assistantMsg);
+                  if (recoveredPseudoToolUses.length > 0) {
+                    recoveredPseudoToolExecution = recoveredPseudoToolExecution
+                      .then(() =>
+                        this.executeRecoveredPseudoToolUses(
+                          session.id,
+                          recoveredPseudoToolUses,
+                          customTools,
+                          controller.signal,
+                          sanitizeOutputPaths
+                        )
+                      )
+                      .catch((error) => {
+                        logError(
+                          '[ClaudeAgentRunner] Recovered pseudo tool execution failed:',
+                          error
+                        );
+                      });
+                    shouldClearSdkSessionAfterRecoveredToolUse = true;
+                  }
                 }
               }
               break;
@@ -2902,6 +2949,7 @@ Tool routing:
           JSON.stringify(promptResult ?? 'void').substring(0, 1000)
         );
       } finally {
+        await recoveredPseudoToolExecution;
         try {
           unsubscribe();
         } catch (e) {
@@ -2909,6 +2957,9 @@ Tool routing:
         }
         if (activityTimeoutId) clearTimeout(activityTimeoutId);
         if (ollamaColdStartTimerId) clearTimeout(ollamaColdStartTimerId);
+        if (shouldClearSdkSessionAfterRecoveredToolUse) {
+          this.clearSdkSession(session.id);
+        }
       }
 
       logTiming('agent prompt completed', runStartTime);
@@ -3046,6 +3097,116 @@ Tool routing:
   cancel(sessionId: string): void {
     const controller = this.activeControllers.get(sessionId);
     if (controller) controller.abort();
+  }
+
+  private async executeRecoveredPseudoToolUses(
+    sessionId: string,
+    toolUses: ParsedPseudoToolUse[],
+    customTools: ToolDefinition[],
+    signal: AbortSignal,
+    sanitizeToolOutput: (content: string) => string
+  ): Promise<void> {
+    for (const toolUse of toolUses) {
+      if (signal.aborted) return;
+      const tool = customTools.find((candidate) => candidate.name === toolUse.name);
+      const toolDisplayName = this.getToolDisplayName(toolUse.name);
+
+      this.sendTraceStep(sessionId, {
+        id: toolUse.id,
+        type: 'tool_call',
+        status: 'running',
+        title: toolDisplayName,
+        toolName: toolUse.name,
+        toolInput: toolUse.input,
+        timestamp: Date.now(),
+      });
+
+      if (!tool) {
+        const message = `Recovered pseudo tool_use references unknown tool: ${toolUse.name}`;
+        this.sendTraceUpdate(sessionId, toolUse.id, {
+          status: 'error',
+          title: toolDisplayName,
+          toolName: toolUse.name,
+          toolOutput: message,
+        });
+        this.sendMessage(sessionId, {
+          id: uuidv4(),
+          sessionId,
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_result',
+              toolUseId: toolUse.id,
+              content: message,
+              isError: true,
+            },
+          ],
+          timestamp: Date.now(),
+        });
+        continue;
+      }
+
+      try {
+        const result = await (
+          tool.execute as (
+            toolCallId: string,
+            params: Record<string, unknown>,
+            signal?: AbortSignal,
+            onUpdate?: (update: unknown) => void,
+            ctx?: unknown
+          ) => Promise<unknown>
+        )(toolUse.id, toolUse.input, signal, undefined, { sessionId });
+        const normalizedToolResult = normalizeToolExecutionResultForUi(result);
+        const outputText = sanitizeToolOutput(normalizedToolResult.content);
+        this.sendTraceUpdate(sessionId, toolUse.id, {
+          status: 'completed',
+          title: toolDisplayName,
+          toolName: toolUse.name,
+          toolOutput: outputText.slice(0, 800),
+        });
+        this.sendMessage(sessionId, {
+          id: uuidv4(),
+          sessionId,
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_result',
+              toolUseId: toolUse.id,
+              content: outputText,
+              isError: false,
+              ...(normalizedToolResult.images.length > 0
+                ? { images: normalizedToolResult.images }
+                : {}),
+            },
+          ],
+          timestamp: Date.now(),
+        });
+      } catch (error) {
+        const outputText = sanitizeToolOutput(
+          error instanceof Error ? error.message : String(error)
+        );
+        this.sendTraceUpdate(sessionId, toolUse.id, {
+          status: 'error',
+          title: toolDisplayName,
+          toolName: toolUse.name,
+          toolOutput: outputText.slice(0, 800),
+        });
+        this.sendMessage(sessionId, {
+          id: uuidv4(),
+          sessionId,
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_result',
+              toolUseId: toolUse.id,
+              content: outputText,
+              isError: true,
+            },
+          ],
+          timestamp: Date.now(),
+        });
+      }
+    }
   }
 
   private sendTraceStep(sessionId: string, step: TraceStep): void {
