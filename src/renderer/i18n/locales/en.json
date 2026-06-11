@@ -1364,7 +1364,8 @@
       "todayDesc": "Planned for today"
     },
     "tabs": {
-      "automations": "Automations"
+      "automations": "Automations",
+      "runs": "Execution log"
     },
     "columns": {
       "name": "Automation name",
@@ -1380,6 +1381,37 @@
       "paused": "Paused",
       "running": "Running",
       "failed": "Failed"
+    },
+    "runColumns": {
+      "automation": "Automation",
+      "status": "Status",
+      "reason": "Trigger",
+      "startedAt": "Started",
+      "duration": "Duration",
+      "artifacts": "Artifacts",
+      "delivery": "Delivery",
+      "error": "Error"
+    },
+    "runStatus": {
+      "queued": "Queued",
+      "running": "Running",
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "runReason": {
+      "timer": "Timer",
+      "manual": "Manual",
+      "retry": "Retry",
+      "queued_overlap": "Queued",
+      "file_change": "File change"
+    },
+    "deliveryStatus": {
+      "pending": "Pending",
+      "succeeded": "Succeeded",
+      "partial": "Partial",
+      "failed": "Failed",
+      "skipped": "Skipped"
     },
     "createTitle": "Create Automation",
     "editTitle": "Edit Automation",
@@ -1519,6 +1551,9 @@
     "toggleFailed": "Failed to toggle automation state",
     "runNowSuccess": "Triggered an immediate run",
     "runNowFailed": "Failed to run immediately",
+    "runsLoadFailed": "Failed to load execution log",
+    "runsLoading": "Loading execution log...",
+    "runsEmpty": "No execution records yet",
     "noSessionToStop": "This automation has no execution session to stop",
     "sessionNotRunning": "This automation does not currently have a running session",
     "stopSent": "Stop command sent",
