@@ -1357,7 +1357,8 @@
       "todayDesc": "今天将触发"
     },
     "tabs": {
-      "automations": "自动化"
+      "automations": "自动化",
+      "runs": "执行日志"
     },
     "columns": {
       "name": "自动化名称",
@@ -1373,6 +1374,37 @@
       "paused": "已暂停",
       "running": "运行中",
       "failed": "失败"
+    },
+    "runColumns": {
+      "automation": "自动化",
+      "status": "状态",
+      "reason": "触发",
+      "startedAt": "开始时间",
+      "duration": "耗时",
+      "artifacts": "产物",
+      "delivery": "交付",
+      "error": "错误信息"
+    },
+    "runStatus": {
+      "queued": "排队中",
+      "running": "运行中",
+      "succeeded": "成功",
+      "failed": "失败",
+      "cancelled": "已取消"
+    },
+    "runReason": {
+      "timer": "定时",
+      "manual": "手动",
+      "retry": "重试",
+      "queued_overlap": "排队",
+      "file_change": "文件变更"
+    },
+    "deliveryStatus": {
+      "pending": "待交付",
+      "succeeded": "成功",
+      "partial": "部分成功",
+      "failed": "失败",
+      "skipped": "跳过"
     },
     "createTitle": "新建自动化",
     "editTitle": "编辑自动化",
@@ -1512,6 +1544,9 @@
     "toggleFailed": "切换状态失败",
     "runNowSuccess": "已触发立即执行",
     "runNowFailed": "立即执行失败",
+    "runsLoadFailed": "加载执行日志失败",
+    "runsLoading": "正在加载执行日志...",
+    "runsEmpty": "暂无执行记录",
     "noSessionToStop": "该自动化暂无可停止的执行会话",
     "sessionNotRunning": "该自动化当前没有正在执行的会话",
     "stopSent": "已发送停止指令",
