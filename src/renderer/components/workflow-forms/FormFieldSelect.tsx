@@ -21,6 +21,7 @@ export default function FormFieldSelect({
       onNodeChange((current) => ({
         ...current,
         config: updater(current.config),
+        updatedAt: Date.now(),
       }));
     },
     [onNodeChange]

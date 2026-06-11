@@ -72,6 +72,7 @@ export default function FormMissingValue({
       onNodeChange((current) => ({
         ...current,
         config: updater(current.config),
+        updatedAt: Date.now(),
       }));
     },
     [onNodeChange]
@@ -146,16 +147,18 @@ export default function FormMissingValue({
     (col: string) => {
       if (removingRef.current) return;
       removingRef.current = true;
-      const next = ((node.config.columns as string[]) ?? []).filter((c) => c !== col);
-      updateConfig((cfg) => ({
-        ...cfg,
-        columns: next.length > 0 ? next : undefined,
-      }));
+      updateConfig((cfg) => {
+        const next = ((cfg.columns as string[]) ?? []).filter((c) => c !== col);
+        return {
+          ...cfg,
+          columns: next.length > 0 ? next : undefined,
+        };
+      });
       requestAnimationFrame(() => {
         removingRef.current = false;
       });
     },
-    [node.config.columns, updateConfig]
+    [updateConfig]
   );
 
   return (

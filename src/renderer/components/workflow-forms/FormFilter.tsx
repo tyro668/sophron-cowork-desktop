@@ -163,6 +163,8 @@ function SearchableDropdown({
   placeholder,
   disabled,
   showSearch,
+  noMatchText = '无匹配结果',
+  emptyText = '暂无选项',
 }: {
   value: string;
   suggestions: string[];
@@ -170,6 +172,8 @@ function SearchableDropdown({
   placeholder: string;
   disabled?: boolean;
   showSearch?: boolean;
+  noMatchText?: string;
+  emptyText?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState(value);
@@ -246,7 +250,7 @@ function SearchableDropdown({
           <div className="max-h-48 overflow-y-auto">
             {filtered.length === 0 ? (
               <div className="px-3 py-3 text-center text-[12px] text-text-muted">
-                {search ? '无匹配结果' : '暂无选项'}
+                {search ? noMatchText : emptyText}
               </div>
             ) : (
               filtered.map((s) => (
@@ -547,6 +551,8 @@ export default function FormFilter({
                       onChange={(v) => updateRow(i, { field: v, op: effectiveOp })}
                       placeholder={tr('filterFieldPlaceholder', '选择字段')}
                       showSearch
+                      noMatchText={tr('noMatch', '无匹配字段')}
+                      emptyText={tr('noFields', '暂无可用字段')}
                     />
 
                     {/* Operator */}

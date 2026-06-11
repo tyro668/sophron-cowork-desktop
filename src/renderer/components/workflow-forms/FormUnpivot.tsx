@@ -20,6 +20,7 @@ export default function FormUnpivot({ node, fieldCompletions, onNodeChange }: Op
       onNodeChange((current) => ({
         ...current,
         config: updater(current.config),
+        updatedAt: Date.now(),
       }));
     },
     [onNodeChange]

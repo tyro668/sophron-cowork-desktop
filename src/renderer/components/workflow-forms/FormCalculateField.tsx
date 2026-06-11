@@ -122,8 +122,8 @@ export default function FormCalculateField({
   const exprInputRefs = useRef<Map<string, HTMLTextAreaElement>>(new Map());
   const [activeCalculationId, setActiveCalculationId] = useState<string | null>(null);
   const [touched, setTouched] = useState<TouchedState>({});
-  const [fieldPickerOpen, setFieldPickerOpen] = useState(false);
-  const [showFnHelper, setShowFnHelper] = useState(false);
+  const [fieldPickerOpenId, setFieldPickerOpenId] = useState<string | null>(null);
+  const [showFnHelperId, setShowFnHelperId] = useState<string | null>(null);
 
   const activeCalculation =
     (activeCalculationId
@@ -333,13 +333,13 @@ export default function FormCalculateField({
                           e.preventDefault();
                           e.stopPropagation();
                           setActiveCalculationId(item.id);
-                          setFieldPickerOpen((v) => !v);
+                          setFieldPickerOpenId((v) => (v === item.id ? null : item.id));
                         }}
                         className="flex items-center gap-1 rounded text-[11px] text-text-muted hover:text-text-secondary transition-colors"
                       >
                         {tr('calcFieldTabFields', '字段选择')}
                         <ChevronDown
-                          className={`h-3 w-3 transition-transform ${fieldPickerOpen && activeCalculation?.id === item.id ? 'rotate-180' : ''}`}
+                          className={`h-3 w-3 transition-transform ${fieldPickerOpenId === item.id ? 'rotate-180' : ''}`}
                         />
                       </button>
                     </div>
@@ -365,7 +365,7 @@ export default function FormCalculateField({
                     />
 
                     {/* Field picker dropdown */}
-                    {fieldPickerOpen && activeCalculation?.id === item.id && (
+                    {fieldPickerOpenId === item.id && (
                       <div className="rounded-b-md border border-t-0 border-border-muted/70 bg-background/20 p-1.5">
                         <div className="max-h-40 overflow-y-auto">
                           {fieldCompletions.length === 0 ? (
@@ -411,17 +411,17 @@ export default function FormCalculateField({
                       type="button"
                       onClick={() => {
                         setActiveCalculationId(item.id);
-                        setShowFnHelper((v) => !v);
+                        setShowFnHelperId((v) => (v === item.id ? null : item.id));
                       }}
                       className="flex items-center gap-1 text-[11px] text-text-muted hover:text-text-secondary transition-colors"
                     >
                       <FunctionSquare className="h-3 w-3" />
                       {tr('calcFieldFnHelperLabel', '函数助手')}
                       <ChevronDown
-                        className={`h-3 w-3 transition-transform ${showFnHelper && activeCalculation?.id === item.id ? 'rotate-180' : ''}`}
+                        className={`h-3 w-3 transition-transform ${showFnHelperId === item.id ? 'rotate-180' : ''}`}
                       />
                     </button>
-                    {showFnHelper && activeCalculation?.id === item.id && (
+                    {showFnHelperId === item.id && (
                       <div className="mt-1.5 flex flex-wrap gap-1">
                         {FUNCTION_GROUPS.flatMap((group) =>
                           group.tokens.map((token) => (
