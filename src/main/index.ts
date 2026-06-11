@@ -92,7 +92,6 @@ import type {
 } from '../renderer/types';
 import { remoteManager, type AgentExecutor } from './remote/remote-manager';
 import { remoteConfigStore } from './remote/remote-config-store';
-import { FeishuAPI } from './remote/channels/feishu/feishu-api';
 import type { GatewayConfig, FeishuChannelConfig, ChannelType } from './remote/types';
 import { startNavServer, stopNavServer } from './nav-server';
 import {
@@ -310,43 +309,6 @@ function ensureProjectIdForLegacyCwd(cwd?: string | null): string | null {
 function resolveAutomationProjectCwd(projectId?: string | null): string {
   if (!projectId) return '';
   return appDatabase?.projects?.get(projectId)?.cwd ?? '';
-}
-
-async function sendAutomationNotification(payload: {
-  channel: string;
-  recipient: string;
-  message: string;
-}): Promise<{ id?: string; href?: string } | void> {
-  if (!payload.message.trim()) {
-    throw new Error('Notification message cannot be empty');
-  }
-  if (!payload.recipient.trim()) {
-    throw new Error('Notification recipient cannot be empty');
-  }
-  if (payload.channel === 'feishu') {
-    const feishuConfig = remoteConfigStore.getFeishuConfig();
-    if (!feishuConfig?.appId || !feishuConfig.appSecret) {
-      throw new Error('Feishu notification channel is not configured');
-    }
-    const api = new FeishuAPI(feishuConfig.appId, feishuConfig.appSecret);
-    const id = await api.sendMessage(payload.recipient, 'text', { text: payload.message });
-    return { id };
-  }
-  if (payload.channel === 'webhook') {
-    const response = await fetch(payload.recipient, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json; charset=utf-8' },
-      body: JSON.stringify({ text: payload.message, message: payload.message }),
-    });
-    if (!response.ok) {
-      throw new Error(`Webhook notification failed: HTTP ${response.status}`);
-    }
-    return { href: payload.recipient };
-  }
-  if (payload.channel === 'email') {
-    throw new Error('Email notification channel is not configured');
-  }
-  throw new Error(`Unsupported notification channel: ${payload.channel}`);
 }
 
 async function waitForDevServer(url: string, maxAttempts = 30, intervalMs = 500): Promise<boolean> {
@@ -1168,7 +1130,6 @@ app
       sessionManager,
       resolveProjectCwd: (projectId) => db.projects?.get(projectId)?.cwd ?? null,
       resolveModelRuntimeConfig: (configSetId) => configStore.getRuntimeConfigForSet(configSetId),
-      sendNotification: sendAutomationNotification,
       sendSessionUpdate: (started) => {
         sendToRenderer({
           type: 'session.update',

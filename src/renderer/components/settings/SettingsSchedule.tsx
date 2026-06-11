@@ -21,7 +21,6 @@ import {
   Database,
   Folder,
   MessagesSquare,
-  MessageSquare,
   MoreHorizontal,
   PencilLine,
   Play,
@@ -29,7 +28,6 @@ import {
   RefreshCw,
   Save,
   Search,
-  Send,
   Trash2,
   type LucideIcon,
 } from 'lucide-react';
@@ -58,16 +56,8 @@ import { getWorkingDirDisplayName } from '../../utils/working-dir-label';
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 const SYSTEM_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 const AUTOMATION_TABLE_PAGE_SIZE = 10;
-const DEFAULT_NOTIFICATION_RECIPIENT = '运营群';
-const NOTIFICATION_RECIPIENT_OPTIONS = [
-  {
-    value: DEFAULT_NOTIFICATION_RECIPIENT,
-    labelKey: 'schedule.notificationOpsGroup',
-    fallback: '运营群',
-  },
-  { value: '销售群', labelKey: 'schedule.notificationSalesGroup', fallback: '销售群' },
-  { value: '数据团队', labelKey: 'schedule.notificationDataTeam', fallback: '数据团队' },
-];
+const ACTION_MENU_TYPES = ['conversation.run', 'data.task.run'];
+const DATA_ACTION_TYPES = ['data.task.run', 'data.input.preview', 'data.output.preview'];
 
 function getProjectOptionLabel(
   project: Project,
@@ -850,7 +840,6 @@ const AUTOMATION_ICON_STYLES: Array<{ Icon: LucideIcon; className: string }> = [
   { Icon: CalendarClock, className: 'bg-accent/10 text-accent' },
   { Icon: Database, className: 'bg-[#E9F7F5] text-[#238C80]' },
   { Icon: Bell, className: 'bg-warning/10 text-warning' },
-  { Icon: MessageSquare, className: 'bg-surface-active/70 text-text-secondary' },
 ];
 
 function AutomationStatusBadge({
@@ -1572,14 +1561,16 @@ function ActionChainSection({
       ...draft,
       actionGraph: relinkLinearGraph({ version: 1, nodes: nextNodes, edges: [] }),
     });
-  const addNode = (definition: AutomationActionDefinitionSummary) => {
+  const availableActionTypes = new Set(actionDefinitions.map((definition) => definition.type));
+  const menuActionTypes = ACTION_MENU_TYPES.filter((type) => availableActionTypes.has(type));
+  const addNode = (type: string) => {
     updateNodes([
       {
         id: crypto.randomUUID(),
-        type: definition.type,
+        type,
         label: '',
         enabled: true,
-        config: defaultConfigForAction(definition.type),
+        config: defaultConfigForAction(type),
       },
       ...nodes,
     ]);
@@ -1593,9 +1584,9 @@ function ActionChainSection({
         </button>
       }
     >
-      {actionDefinitions.map((definition) => (
-        <GlassMenuItem key={definition.type} onSelect={() => addNode(definition)}>
-          {getActionTitle(definition.type, definition.title, tr)}
+      {menuActionTypes.map((type) => (
+        <GlassMenuItem key={type} onSelect={() => addNode(type)}>
+          {getActionTitle(type, type, tr)}
         </GlassMenuItem>
       ))}
     </GlassDropdownMenu>
@@ -1703,52 +1694,33 @@ function ActionConfigEditor({
 }) {
   const setConfig = (config: Record<string, unknown>) => onChange({ ...node, config });
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const currentRecipient = String(node.config.recipient ?? '');
   const selectedModelConfigSetId =
     typeof node.config.modelConfigSetId === 'string' && node.config.modelConfigSetId.trim()
       ? node.config.modelConfigSetId
       : appConfig?.activeConfigSetId;
-  const notificationRecipientOptions = [
-    ...NOTIFICATION_RECIPIENT_OPTIONS.map((option) => ({
-      value: option.value,
-      label: tr(option.labelKey, option.fallback),
-    })),
-    ...(currentRecipient &&
-    !NOTIFICATION_RECIPIENT_OPTIONS.some((option) => option.value === currentRecipient)
-      ? [{ value: currentRecipient, label: currentRecipient }]
-      : []),
-  ];
+  const dataTypeOptions = DATA_ACTION_TYPES.map((type) => ({
+    value: type,
+    label: getDataActionTypeTitle(type, tr),
+  }));
+  const changeDataType = (type: string) => {
+    onChange({
+      ...node,
+      type,
+      label: '',
+      config: defaultConfigForAction(type),
+    });
+  };
   return (
     <div className="space-y-4">
-      {node.type === 'notification.send' && (
-        <>
-          <ConfigRow label={tr('schedule.notificationRecipient', '通知对象')}>
-            <GlassSelect
-              value={currentRecipient}
-              options={[
-                { value: '', label: tr('schedule.recipientPlaceholder', '选择通知对象') },
-                ...notificationRecipientOptions,
-              ]}
-              onValueChange={(value) =>
-                setConfig({ ...node.config, channel: 'feishu', recipient: value })
-              }
-              placeholder={tr('schedule.recipientPlaceholder', '选择通知对象')}
-              triggerClassName="h-9 w-full justify-between"
-              contentClassName="w-[var(--radix-select-trigger-width)]"
-            />
-          </ConfigRow>
-          <ConfigRow label={tr('schedule.notificationContent', '通知内容')}>
-            <textarea
-              value={String(node.config.message ?? '')}
-              onChange={(event) => setConfig({ ...node.config, message: event.target.value })}
-              placeholder={tr(
-                'schedule.notificationContentPlaceholder',
-                '销售数据已更新，请查看仪表板'
-              )}
-              className="input min-h-[74px] w-full resize-none text-xs leading-5"
-            />
-          </ConfigRow>
-        </>
+      {isDataActionType(node.type) && (
+        <ConfigRow label={tr('schedule.dataTypeLabel', '数据类型')}>
+          <SelectLine
+            value={node.type}
+            options={dataTypeOptions}
+            placeholder={tr('schedule.dataTypePlaceholder', '选择数据类型')}
+            onChange={changeDataType}
+          />
+        </ConfigRow>
       )}
       {node.type === 'data.task.run' && (
         <>
@@ -1887,31 +1859,37 @@ function getActionTitle(
   fallback: string,
   tr: (key: string, fallback: string) => string
 ): string {
-  if (type === 'notification.send') {
-    return tr('schedule.actionTypes.notificationSend.title', fallback);
-  }
   if (type === 'conversation.run') {
     return tr('schedule.actionTypes.conversationRun.title', fallback);
   }
-  if (type === 'data.task.run') {
-    return tr('schedule.actionTypes.dataTaskRun.title', fallback);
-  }
-  if (type === 'data.input.preview') {
-    return tr('schedule.actionTypes.dataInputPreview.title', fallback);
-  }
-  if (type === 'data.output.preview') {
-    return tr('schedule.actionTypes.dataOutputPreview.title', fallback);
-  }
-  if (type === 'data.output.export') {
-    return tr('schedule.actionTypes.dataOutputExport.title', fallback);
+  if (isDataActionType(type)) {
+    return tr('schedule.actionTypes.data.title', fallback);
   }
   return fallback;
 }
 
+function getDataActionTypeTitle(
+  type: string,
+  tr: (key: string, fallback: string) => string
+): string {
+  if (type === 'data.task.run') {
+    return tr('schedule.actionTypes.dataTaskRun.title', 'Data task');
+  }
+  if (type === 'data.input.preview') {
+    return tr('schedule.actionTypes.dataInputPreview.title', 'Input table');
+  }
+  if (type === 'data.output.preview') {
+    return tr('schedule.actionTypes.dataOutputPreview.title', 'Output table');
+  }
+  if (type === 'data.output.export') {
+    return tr('schedule.actionTypes.dataOutputExport.title', 'Export output table');
+  }
+  return type;
+}
+
 function getActionIcon(type: string): LucideIcon {
-  if (type === 'notification.send') return Send;
   if (type === 'conversation.run') return MessagesSquare;
-  if (type.startsWith('data.')) return Database;
+  if (isDataActionType(type)) return Database;
   return CalendarClock;
 }
 
@@ -1956,17 +1934,12 @@ function getNodeLabel(
 ): string {
   const fallback = getActionTitle(node.type, node.type, tr);
   if (!node.label || node.label === node.type) return fallback;
-  if (node.type === 'notification.send' && node.label === 'Send message notification')
-    return fallback;
   if (node.type === 'conversation.run' && node.label === 'Conversation') return fallback;
   if (node.type === 'data.task.run' && node.label === 'Data task') return fallback;
   return node.label;
 }
 
 function defaultConfigForAction(type: string): Record<string, unknown> {
-  if (type === 'notification.send') {
-    return { channel: 'feishu', recipient: DEFAULT_NOTIFICATION_RECIPIENT, message: '' };
-  }
   if (type === 'conversation.run') {
     return {
       prompt: '',
@@ -1983,6 +1956,10 @@ function defaultConfigForAction(type: string): Record<string, unknown> {
   if (type === 'data.output.preview') return { outputTableId: '', limit: 20 };
   if (type === 'data.output.export') return { outputTableId: '', format: 'csv' };
   return {};
+}
+
+function isDataActionType(type: string): boolean {
+  return DATA_ACTION_TYPES.includes(type);
 }
 
 function splitCsv(value: string): string[] {

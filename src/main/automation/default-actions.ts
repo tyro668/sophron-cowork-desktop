@@ -9,11 +9,6 @@ interface DefaultAutomationActionOptions {
   sessionManager: SessionManager;
   resolveProjectCwd?: (projectId: string) => string | null;
   resolveModelRuntimeConfig?: (configSetId: string) => AgentRuntimeConfig | null;
-  sendNotification?: (payload: {
-    channel: string;
-    recipient: string;
-    message: string;
-  }) => Promise<{ id?: string; href?: string } | void>;
   sendSessionUpdate?: (session: Awaited<ReturnType<SessionManager['startSession']>>) => void;
   now?: () => number;
 }
@@ -23,53 +18,6 @@ export function createDefaultAutomationActionRegistry(
 ): AutomationActionRegistry {
   const registry = new AutomationActionRegistry();
   const now = options.now ?? (() => Date.now());
-
-  registry.register({
-    type: 'notification.send',
-    title: 'Message',
-    description: 'Create a notification artifact for a configured recipient or channel.',
-    category: 'integration',
-    icon: 'message-square',
-    version: 1,
-    defaultConfig: {
-      channel: 'feishu',
-      recipient: '',
-      message: '',
-    },
-    configSchema: objectSchema(
-      {
-        channel: {
-          type: 'string',
-          title: 'Channel',
-          enum: ['feishu', 'email', 'webhook'],
-          default: 'feishu',
-        },
-        recipient: { type: 'string', title: 'Recipient' },
-        message: { type: 'string', title: 'Message' },
-      },
-      ['message']
-    ),
-    validate: (config) => {
-      if (!String(config.message ?? '').trim()) {
-        throw new Error('notification.send requires message');
-      }
-    },
-    execute: async (config, context, node) => {
-      const channel = String(config.channel ?? 'feishu');
-      const recipient = String(config.recipient ?? '').trim();
-      const message = String(config.message ?? '').trim();
-      const deliveryResult = await options.sendNotification?.({ channel, recipient, message });
-      context.emitArtifact({
-        sourceNodeId: node.id,
-        kind: deliveryResult?.href ? 'link' : 'markdown',
-        title: node.label || 'Message notification',
-        summary: recipient ? `${channel}: ${recipient}` : channel,
-        content: deliveryResult?.href ? undefined : message,
-        href: deliveryResult?.href,
-      });
-      return { channel, recipient, message, deliveryId: deliveryResult?.id ?? null };
-    },
-  });
 
   registry.register({
     type: 'conversation.run',
