@@ -105,6 +105,9 @@ import type {
   DataNormalizerLanguage,
   DataInputTablePreview,
   DataInputTableSourceKind,
+  PersonalAnalysisProject,
+  PersonalAnalysisSpace,
+  PersonalAnalysisTable,
   DataOutputTable,
   DataNormalizerProjectFile,
   DataRunTaskInput,
@@ -116,6 +119,7 @@ import type {
   DataWorkflowSaveInput,
   Message,
 } from '../types';
+import { getPersonalAnalysisErrorMessage } from '../../shared/personal-analysis';
 import { PrepDslEditor } from './PrepDslEditor';
 import { OperatorFormWrapper } from './workflow-forms/OperatorFormWrapper';
 import { GlassModeToggle } from './workflow-forms/shared/GlassModeToggle';
@@ -595,6 +599,9 @@ export function DataView() {
   const [storedPreviewData, setStoredPreviewData] = useState<DataInputTablePreview | null>(null);
   const [storedPreviewPage, setStoredPreviewPage] = useState(1);
   const [storedPreviewTarget, setStoredPreviewTarget] = useState<StoredPreviewTarget | null>(null);
+  const [uploadCloudOutputTable, setUploadCloudOutputTable] = useState<DataOutputTable | null>(
+    null
+  );
   const [focusedTask, setFocusedTask] = useState<DataCleaningTask | null>(null);
   const [focusedInputTable, setFocusedInputTable] = useState<DataDataset | null>(null);
   const [focusedOutputTable, setFocusedOutputTable] = useState<DataOutputTable | null>(null);
@@ -619,6 +626,7 @@ export function DataView() {
       setEditingInputTableDraftId(null);
       setEditingInputTableDatasetId(null);
       setEditingOutputTableId(null);
+      setUploadCloudOutputTable(null);
 
       if (target.kind === 'task') {
         setActiveTab('tasks');
@@ -1522,6 +1530,9 @@ export function DataView() {
         if (editingOutputTableId === outputTable.id) {
           setEditingOutputTableId(null);
         }
+        if (uploadCloudOutputTable?.id === outputTable.id) {
+          setUploadCloudOutputTable(null);
+        }
         await loadDashboard({ preserveError: true, tab: 'output_tables' });
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -1530,7 +1541,7 @@ export function DataView() {
         setActionId(null);
       }
     },
-    [editingOutputTableId, loadDashboard, t]
+    [editingOutputTableId, loadDashboard, t, uploadCloudOutputTable?.id]
   );
 
   const handleDeleteAllOutputTables = useCallback(async () => {
@@ -1718,6 +1729,7 @@ export function DataView() {
                       onRefresh={() => loadDashboard({ preserveError: true, tab: 'output_tables' })}
                       onPageChange={handleOutputPageChange}
                       onPreview={handlePreviewStoredOutputTable}
+                      onUpload={(outputTable) => setUploadCloudOutputTable(outputTable)}
                       onEdit={(outputTable) => setEditingOutputTableId(outputTable.id)}
                       onDelete={handleDeleteOutputTable}
                       onDeleteAll={handleDeleteAllOutputTables}
@@ -1741,6 +1753,12 @@ export function DataView() {
                   }
                 }}
                 onClose={() => setStoredPreviewOpen(false)}
+              />
+            )}
+            {uploadCloudOutputTable && (
+              <UploadOutputTableToCloudDialog
+                outputTable={uploadCloudOutputTable}
+                onClose={() => setUploadCloudOutputTable(null)}
               />
             )}
           </div>
@@ -5524,6 +5542,7 @@ function OutputTablesPanel({
   onRefresh,
   onPageChange,
   onPreview,
+  onUpload,
   onEdit,
   onDelete,
   onDeleteAll,
@@ -5540,6 +5559,7 @@ function OutputTablesPanel({
   onRefresh: () => void;
   onPageChange: (page: number) => void;
   onPreview: (outputTable: DataOutputTable) => void;
+  onUpload: (outputTable: DataOutputTable) => void;
   onEdit: (outputTable: DataOutputTable) => void;
   onDelete: (outputTable: DataOutputTable) => void;
   onDeleteAll: () => void;
@@ -5599,6 +5619,16 @@ function OutputTablesPanel({
             onClick={() => {
               if (selectedOutputTable) {
                 onEdit(selectedOutputTable);
+              }
+            }}
+          />
+          <DataToolbarButton
+            icon={<UploadCloud className="h-3.5 w-3.5" />}
+            label={t('data.outputTables.uploadToCloud.action')}
+            disabled={!selectedOutputTable || selectedBusy || bulkBusy}
+            onClick={() => {
+              if (selectedOutputTable) {
+                onUpload(selectedOutputTable);
               }
             }}
           />
@@ -5729,6 +5759,398 @@ function OutputTablesPanel({
           onPageChange={onPageChange}
           embedded
         />
+      </div>
+    </div>
+  );
+}
+
+function UploadOutputTableToCloudDialog({
+  outputTable,
+  onClose,
+}: {
+  outputTable: DataOutputTable;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const [spaces, setSpaces] = useState<PersonalAnalysisSpace[]>([]);
+  const [projects, setProjects] = useState<PersonalAnalysisProject[]>([]);
+  const [cloudTables, setCloudTables] = useState<PersonalAnalysisTable[]>([]);
+  const [spaceId, setSpaceId] = useState('');
+  const [projectId, setProjectId] = useState('');
+  const [targetTableId, setTargetTableId] = useState('');
+  const [writeMode, setWriteMode] = useState<'CREATE' | 'REPLACE'>('CREATE');
+  const [tableName, setTableName] = useState(outputTable.name);
+  const [loadingSpaces, setLoadingSpaces] = useState(false);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [loadingTables, setLoadingTables] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const spaceRequestSeq = useRef(0);
+  const projectRequestSeq = useRef(0);
+  const tableRequestSeq = useRef(0);
+
+  useEffect(() => {
+    const requestId = ++spaceRequestSeq.current;
+    const loadSpaces = async () => {
+      if (!window.electronAPI?.data?.listCloudSpaces) return;
+      setLoadingSpaces(true);
+      setError(null);
+      try {
+        const result = await window.electronAPI.data.listCloudSpaces({});
+        if (requestId !== spaceRequestSeq.current) return;
+        setSpaces(result.spaces);
+        const firstSpace = result.spaces[0];
+        setSpaceId(firstSpace?.spaceId ?? '');
+      } catch (err) {
+        if (requestId === spaceRequestSeq.current) {
+          setError(getPersonalAnalysisErrorMessage(err, t));
+        }
+      } finally {
+        if (requestId === spaceRequestSeq.current) {
+          setLoadingSpaces(false);
+        }
+      }
+    };
+
+    void loadSpaces();
+    return () => {
+      if (requestId === spaceRequestSeq.current) {
+        spaceRequestSeq.current += 1;
+      }
+    };
+  }, [t]);
+
+  useEffect(() => {
+    const requestId = ++projectRequestSeq.current;
+    const loadProjects = async () => {
+      if (!spaceId || !window.electronAPI?.data?.listCloudProjects) {
+        setProjects([]);
+        setProjectId('');
+        return;
+      }
+      setLoadingProjects(true);
+      setError(null);
+      try {
+        const result = await window.electronAPI.data.listCloudProjects({ spaceId });
+        if (requestId !== projectRequestSeq.current) return;
+        setProjects(result.projects);
+        setProjectId((current) =>
+          result.projects.some((project) => project.projectId === current)
+            ? current
+            : (result.projects[0]?.projectId ?? '')
+        );
+      } catch (err) {
+        if (requestId === projectRequestSeq.current) {
+          setProjects([]);
+          setProjectId('');
+          setError(getPersonalAnalysisErrorMessage(err, t));
+        }
+      } finally {
+        if (requestId === projectRequestSeq.current) {
+          setLoadingProjects(false);
+        }
+      }
+    };
+
+    void loadProjects();
+    return () => {
+      if (requestId === projectRequestSeq.current) {
+        projectRequestSeq.current += 1;
+      }
+    };
+  }, [spaceId, t]);
+
+  useEffect(() => {
+    const requestId = ++tableRequestSeq.current;
+    const loadTables = async () => {
+      if (!spaceId || !projectId || !window.electronAPI?.data?.listCloudTables) {
+        setCloudTables([]);
+        setTargetTableId('');
+        return;
+      }
+      setLoadingTables(true);
+      if (writeMode === 'REPLACE') {
+        setError(null);
+      }
+      try {
+        const result = await window.electronAPI.data.listCloudTables({ spaceId, projectId });
+        if (requestId !== tableRequestSeq.current) return;
+        setCloudTables(result.tables);
+        setTargetTableId((current) =>
+          result.tables.some((table) => table.tableId === current)
+            ? current
+            : (result.tables[0]?.tableId ?? '')
+        );
+      } catch (err) {
+        if (requestId === tableRequestSeq.current) {
+          setCloudTables([]);
+          setTargetTableId('');
+          if (writeMode === 'REPLACE') {
+            setError(getPersonalAnalysisErrorMessage(err, t));
+          }
+        }
+      } finally {
+        if (requestId === tableRequestSeq.current) {
+          setLoadingTables(false);
+        }
+      }
+    };
+
+    void loadTables();
+    return () => {
+      if (requestId === tableRequestSeq.current) {
+        tableRequestSeq.current += 1;
+      }
+    };
+  }, [projectId, spaceId, t, writeMode]);
+
+  useEffect(() => {
+    setTableName(outputTable.name);
+    setTargetTableId('');
+    setWriteMode('CREATE');
+    setSuccess(null);
+    setError(null);
+  }, [outputTable.id, outputTable.name]);
+
+  const selectedProject = projects.find((project) => project.projectId === projectId) ?? null;
+  const selectedCloudTable = cloudTables.find((table) => table.tableId === targetTableId) ?? null;
+  const resolvedTableName =
+    writeMode === 'REPLACE'
+      ? tableName.trim() || selectedCloudTable?.tableName || outputTable.name
+      : tableName.trim();
+  const canUpload = Boolean(
+    spaceId &&
+    projectId &&
+    resolvedTableName &&
+    !uploading &&
+    (writeMode === 'CREATE' || targetTableId)
+  );
+
+  const handleUpload = async () => {
+    if (!window.electronAPI?.data?.uploadDataTableToCloud || !canUpload) return;
+    setUploading(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const result = await window.electronAPI.data.uploadDataTableToCloud({
+        tableKind: 'output',
+        id: outputTable.id,
+        writeMode,
+        spaceId,
+        projectId,
+        folderId: selectedProject?.folderId,
+        tableId: writeMode === 'REPLACE' ? targetTableId : undefined,
+        tableName: resolvedTableName,
+        waitForDone: true,
+      });
+      setSuccess(
+        t(
+          writeMode === 'REPLACE'
+            ? 'data.outputTables.uploadToCloud.replaceSuccess'
+            : 'data.outputTables.uploadToCloud.success',
+          {
+            name: resolvedTableName,
+            tableId: result.upload.tableId,
+          }
+        )
+      );
+    } catch (err) {
+      setError(getPersonalAnalysisErrorMessage(err, t));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/18 px-5 py-5 backdrop-blur-sm">
+      <div className="flex max-h-full w-full max-w-[560px] flex-col overflow-hidden rounded-xl border border-border-subtle bg-background shadow-elevated">
+        <div className="flex h-12 flex-shrink-0 items-center justify-between border-b border-border-subtle px-4">
+          <div className="min-w-0">
+            <div className="truncate text-[14px] font-semibold text-text-primary">
+              {t('data.outputTables.uploadToCloud.title')}
+            </div>
+            <div className="truncate text-[11px] text-text-muted">{outputTable.name}</div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+          <InputTableInfo>{t('data.outputTables.uploadToCloud.info')}</InputTableInfo>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1.5">
+              <InputTableFormLabel>
+                {t('data.outputTables.uploadToCloud.space')}
+              </InputTableFormLabel>
+              <InputTableSelect
+                value={spaceId}
+                disabled={loadingSpaces || uploading || spaces.length === 0}
+                onChange={setSpaceId}
+                options={
+                  spaces.length
+                    ? spaces.map((space) => ({ value: space.spaceId, label: space.spaceName }))
+                    : [{ value: '', label: t('data.outputTables.uploadToCloud.noSpaces') }]
+                }
+              />
+            </label>
+
+            <label className="space-y-1.5">
+              <InputTableFormLabel>
+                {t('data.outputTables.uploadToCloud.project')}
+              </InputTableFormLabel>
+              <InputTableSelect
+                value={projectId}
+                disabled={loadingProjects || uploading || projects.length === 0}
+                onChange={setProjectId}
+                options={
+                  projects.length
+                    ? projects.map((project) => ({
+                        value: project.projectId,
+                        label: project.projectName,
+                      }))
+                    : [{ value: '', label: t('data.outputTables.uploadToCloud.noProjects') }]
+                }
+              />
+            </label>
+          </div>
+
+          <div className="space-y-1.5">
+            <InputTableFormLabel>
+              {t('data.outputTables.uploadToCloud.writeMode')}
+            </InputTableFormLabel>
+            <div className="inline-flex rounded-lg border border-border-muted/55 bg-background/24 p-0.5">
+              {(['CREATE', 'REPLACE'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => {
+                    setWriteMode(mode);
+                    setSuccess(null);
+                    setError(null);
+                  }}
+                  disabled={uploading}
+                  className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                    writeMode === mode
+                      ? 'bg-background/80 text-accent shadow-soft'
+                      : 'text-text-muted hover:bg-background/30 hover:text-text-secondary'
+                  }`}
+                >
+                  {mode === 'CREATE' ? (
+                    <Plus className="h-3.5 w-3.5" />
+                  ) : (
+                    <Repeat2 className="h-3.5 w-3.5" />
+                  )}
+                  {t(
+                    mode === 'CREATE'
+                      ? 'data.outputTables.uploadToCloud.writeModeCreateShort'
+                      : 'data.outputTables.uploadToCloud.writeModeReplaceShort'
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {writeMode === 'REPLACE' && (
+            <label className="block space-y-1.5">
+              <InputTableFormLabel>
+                {t('data.outputTables.uploadToCloud.targetTable')}
+              </InputTableFormLabel>
+              <InputTableSelect
+                value={targetTableId}
+                disabled={loadingTables || uploading || cloudTables.length === 0}
+                onChange={(value) => {
+                  setTargetTableId(value);
+                  const target = cloudTables.find((table) => table.tableId === value);
+                  if (target) {
+                    setTableName(target.tableName);
+                  }
+                }}
+                options={
+                  cloudTables.length
+                    ? cloudTables.map((table) => ({
+                        value: table.tableId,
+                        label: `${table.tableName} · ${table.tableId}`,
+                      }))
+                    : [{ value: '', label: t('data.outputTables.uploadToCloud.noTables') }]
+                }
+              />
+            </label>
+          )}
+
+          <label className="block space-y-1.5">
+            <InputTableFormLabel>
+              {t('data.outputTables.uploadToCloud.tableName')}
+            </InputTableFormLabel>
+            <input
+              value={tableName}
+              disabled={uploading}
+              onChange={(event) => setTableName(event.target.value)}
+              className="h-10 w-full rounded-lg border border-border-muted bg-background/50 px-3 text-[13px] font-medium text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-60"
+              placeholder={t('data.outputTables.uploadToCloud.tableNamePlaceholder')}
+            />
+          </label>
+
+          <div className="rounded-lg border border-border-subtle bg-surface/35 px-3 py-2 text-[12px] text-text-secondary">
+            <div className="font-medium text-text-primary">
+              {t(
+                writeMode === 'REPLACE'
+                  ? 'data.outputTables.uploadToCloud.writeModeReplace'
+                  : 'data.outputTables.uploadToCloud.writeModeCreate'
+              )}
+            </div>
+            <div className="mt-1 text-text-muted">
+              {t(
+                writeMode === 'REPLACE'
+                  ? 'data.outputTables.uploadToCloud.writeModeReplaceHint'
+                  : 'data.outputTables.uploadToCloud.writeModeCreateHint'
+              )}
+            </div>
+          </div>
+
+          {error && (
+            <div className="rounded-lg border border-error/25 bg-error/10 px-3 py-2 text-[13px] text-error">
+              {error}
+            </div>
+          )}
+          {success && (
+            <div className="rounded-lg border border-success/25 bg-accent/10 px-3 py-2 text-[13px] text-success">
+              {success}
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-shrink-0 justify-end gap-2 border-t border-border-subtle px-4 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={uploading}
+            className="inline-flex h-8 items-center rounded-lg border border-border-muted bg-background/60 px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {t('common.cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleUpload()}
+            disabled={!canUpload}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-[12px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {uploading ? (
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <UploadCloud className="h-3.5 w-3.5" />
+            )}
+            {uploading
+              ? t('data.outputTables.uploadToCloud.uploading')
+              : t('data.outputTables.uploadToCloud.confirm')}
+          </button>
+        </div>
       </div>
     </div>
   );
