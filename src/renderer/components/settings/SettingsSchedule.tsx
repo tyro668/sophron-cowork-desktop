@@ -46,11 +46,13 @@ import type {
   Project,
 } from '../../types';
 import { useAppStore } from '../../store';
+import { useSkillMentions } from '../../hooks/useSkillMentions';
 import { AgentModelSelector, getAgentModelLabel } from '../AgentModelSelector';
 import { GlassDateTimePicker } from '../GlassDateTimePicker';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { GlassSelect } from '../GlassSelect';
 import { GlassSwitch } from '../GlassSwitch';
+import { SelectedSkillChips, SkillMentionMenu } from '../SkillMentionPicker';
 import { formatAppDateTime } from '../../utils/i18n-format';
 import { getWorkingDirDisplayName } from '../../utils/working-dir-label';
 
@@ -490,6 +492,7 @@ function createEmptyDraft(): AutomationDraft {
           enabled: true,
           config: {
             prompt: '',
+            selectedSkillNames: [],
             projectId: '',
             modelConfigSetId: null,
             model: null,
@@ -1947,8 +1950,43 @@ function ActionConfigEditor({
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
 }) {
-  const setConfig = (config: Record<string, unknown>) => onChange({ ...node, config });
+  const configRef = useRef(node.config);
+  useEffect(() => {
+    configRef.current = node.config;
+  }, [node.config]);
+  const setConfig = (config: Record<string, unknown>) => {
+    configRef.current = config;
+    onChange({ ...node, config });
+  };
+  const patchConfig = useCallback(
+    (patch: Record<string, unknown>) => {
+      const config = { ...configRef.current, ...patch };
+      configRef.current = config;
+      onChange({ ...node, config });
+    },
+    [node, onChange]
+  );
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const conversationComposerRef = useRef<HTMLDivElement>(null);
+  const conversationTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const conversationPrompt = String(node.config.prompt ?? '');
+  const conversationSelectedSkillNames = useMemo(
+    () =>
+      Array.isArray(node.config.selectedSkillNames)
+        ? node.config.selectedSkillNames.filter((name): name is string => typeof name === 'string')
+        : [],
+    [node.config.selectedSkillNames]
+  );
+  const skillMentions = useSkillMentions({
+    prompt: conversationPrompt,
+    setPrompt: (prompt) => patchConfig({ prompt }),
+    textareaRef: conversationTextareaRef,
+    isElectron,
+    selectedSkillNames: conversationSelectedSkillNames,
+    onSelectedSkillNamesChange: (selectedSkillNames) => patchConfig({ selectedSkillNames }),
+    onSkillSelectionCommit: ({ prompt, selectedSkillNames }) =>
+      patchConfig({ prompt, selectedSkillNames }),
+  });
   const selectedModelConfigSetId =
     typeof node.config.modelConfigSetId === 'string' && node.config.modelConfigSetId.trim()
       ? node.config.modelConfigSetId
@@ -2024,10 +2062,28 @@ function ActionConfigEditor({
       )}
       {node.type === 'conversation.run' && (
         <ConfigRow label={tr('schedule.conversationPrompt', '任务内容')}>
-          <div className="chat-composer-panel flex min-h-[116px] flex-col px-3 py-2.5">
+          <div
+            ref={conversationComposerRef}
+            className="chat-composer-panel relative flex min-h-[116px] flex-col px-3 py-2.5"
+          >
+            <SkillMentionMenu
+              open={skillMentions.isMentionMenuOpen}
+              skills={skillMentions.filteredSkills}
+              highlightedIndex={skillMentions.highlightedIndex}
+              onSelect={skillMentions.selectSkill}
+              anchorRef={conversationComposerRef}
+            />
+            <SelectedSkillChips
+              skills={skillMentions.selectedSkills}
+              onRemove={skillMentions.removeSkill}
+            />
             <textarea
-              value={String(node.config.prompt ?? '')}
-              onChange={(event) => setConfig({ ...node.config, prompt: event.target.value })}
+              ref={conversationTextareaRef}
+              value={conversationPrompt}
+              onChange={skillMentions.handlePromptChange}
+              onKeyDown={(event) => {
+                skillMentions.handlePromptKeyDown(event);
+              }}
               placeholder={tr('schedule.promptPlaceholder', '输入任务对话要执行的内容')}
               className="min-h-[58px] flex-1 resize-none overflow-y-auto border-none bg-transparent text-[13px] leading-5 text-text-primary outline-none placeholder:text-text-muted"
             />
@@ -2198,6 +2254,7 @@ function defaultConfigForAction(type: string): Record<string, unknown> {
   if (type === 'conversation.run') {
     return {
       prompt: '',
+      selectedSkillNames: [],
       projectId: '',
       modelConfigSetId: null,
       model: null,

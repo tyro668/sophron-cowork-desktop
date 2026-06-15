@@ -25,6 +25,9 @@ interface UseSkillMentionsOptions {
   setPrompt: (value: string) => void;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   isElectron: boolean;
+  selectedSkillNames?: string[];
+  onSelectedSkillNamesChange?: (names: string[]) => void;
+  onSkillSelectionCommit?: (next: { prompt: string; selectedSkillNames: string[] }) => void;
 }
 
 const MAX_VISIBLE_SKILLS = 8;
@@ -57,6 +60,9 @@ export function useSkillMentions({
   setPrompt,
   textareaRef,
   isElectron,
+  selectedSkillNames: controlledSelectedSkillNames,
+  onSelectedSkillNamesChange,
+  onSkillSelectionCommit,
 }: UseSkillMentionsOptions) {
   const { i18n } = useTranslation();
   const skillsStorageChangedAt = useAppStore((state) => state.skillsStorageChangedAt);
@@ -64,6 +70,15 @@ export function useSkillMentions({
   const [selectedSkills, setSelectedSkills] = useState<SkillMention[]>([]);
   const [mentionTrigger, setMentionTrigger] = useState<MentionTrigger | null>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const controlledSelectedSignature = useMemo(
+    () =>
+      controlledSelectedSkillNames
+        ? JSON.stringify(
+            controlledSelectedSkillNames.map((name) => name.trim()).filter(Boolean)
+          )
+        : '',
+    [controlledSelectedSkillNames]
+  );
 
   useEffect(() => {
     if (!isElectron || typeof window === 'undefined' || !window.electronAPI) {
@@ -104,6 +119,32 @@ export function useSkillMentions({
       cancelled = true;
     };
   }, [i18n.language, i18n.resolvedLanguage, isElectron, skillsStorageChangedAt]);
+
+  useEffect(() => {
+    if (!controlledSelectedSkillNames) {
+      return;
+    }
+
+    const skillsByName = new Map(availableSkills.map((skill) => [normalizeText(skill.name), skill]));
+    const nextSelectedSkills = controlledSelectedSkillNames
+      .map((name) => name.trim())
+      .filter(Boolean)
+      .map(
+        (name): SkillMention =>
+          skillsByName.get(normalizeText(name)) || {
+            id: `selected-${name}`,
+            name,
+            type: 'custom',
+          }
+      );
+    const nextSignature = JSON.stringify(nextSelectedSkills.map((skill) => skill.name));
+
+    setSelectedSkills((current) =>
+      JSON.stringify(current.map((skill) => skill.name)) === nextSignature
+        ? current
+        : nextSelectedSkills
+    );
+  }, [availableSkills, controlledSelectedSignature, controlledSelectedSkillNames]);
 
   const selectedSkillNames = useMemo(
     () => selectedSkills.map((skill) => skill.name),
@@ -154,41 +195,67 @@ export function useSkillMentions({
 
   const selectSkill = useCallback(
     (skill: SkillMention) => {
-      setSelectedSkills((current) =>
-        current.some((item) => item.name === skill.name) ? current : [...current, skill]
-      );
-
+      const nextSelectedSkills = selectedSkills.some((item) => item.name === skill.name)
+        ? selectedSkills
+        : [...selectedSkills, skill];
+      const nextSelectedSkillNames = nextSelectedSkills.map((item) => item.name);
       const textarea = textareaRef.current;
       const cursor = textarea?.selectionStart ?? prompt.length;
       const trigger = mentionTrigger || detectMentionTrigger(prompt, cursor);
+      let nextPrompt = prompt;
+      let nextCursor = cursor;
+
       if (trigger) {
         const before = prompt.slice(0, trigger.start).replace(/[ \t]+$/g, '');
         const after = prompt.slice(trigger.end).replace(/^[ \t]+/g, '');
-        const nextPrompt = before && after ? `${before} ${after}` : before || after;
-        setPrompt(nextPrompt);
+        nextPrompt = before && after ? `${before} ${after}` : before || after;
+        nextCursor = before.length + (before && after ? 1 : 0);
+      }
 
-        requestAnimationFrame(() => {
-          textarea?.focus();
-          const nextCursor = before.length + (before && after ? 1 : 0);
-          textarea?.setSelectionRange(nextCursor, nextCursor);
+      setSelectedSkills(nextSelectedSkills);
+      if (onSkillSelectionCommit) {
+        onSkillSelectionCommit({
+          prompt: nextPrompt,
+          selectedSkillNames: nextSelectedSkillNames,
         });
       } else {
-        requestAnimationFrame(() => textarea?.focus());
+        onSelectedSkillNamesChange?.(nextSelectedSkillNames);
+        setPrompt(nextPrompt);
       }
+
+      requestAnimationFrame(() => {
+        textarea?.focus();
+        textarea?.setSelectionRange(nextCursor, nextCursor);
+      });
 
       closeMentionMenu();
     },
-    [closeMentionMenu, mentionTrigger, prompt, setPrompt, textareaRef]
+    [
+      closeMentionMenu,
+      mentionTrigger,
+      onSkillSelectionCommit,
+      onSelectedSkillNamesChange,
+      prompt,
+      selectedSkills,
+      setPrompt,
+      textareaRef,
+    ]
   );
 
-  const removeSkill = useCallback((skillName: string) => {
-    setSelectedSkills((current) => current.filter((skill) => skill.name !== skillName));
-  }, []);
+  const removeSkill = useCallback(
+    (skillName: string) => {
+      const next = selectedSkills.filter((skill) => skill.name !== skillName);
+      setSelectedSkills(next);
+      onSelectedSkillNamesChange?.(next.map((item) => item.name));
+    },
+    [onSelectedSkillNamesChange, selectedSkills]
+  );
 
   const clearSelectedSkills = useCallback(() => {
     setSelectedSkills([]);
+    onSelectedSkillNamesChange?.([]);
     closeMentionMenu();
-  }, [closeMentionMenu]);
+  }, [closeMentionMenu, onSelectedSkillNamesChange]);
 
   const handlePromptKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
