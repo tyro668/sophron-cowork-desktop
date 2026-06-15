@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useRef, useCallback } from 'react';
+import { Suspense, lazy, useEffect, useRef, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from './store';
 import {
@@ -67,6 +67,21 @@ function ContextPanelFallback() {
   );
 }
 
+type KeepAliveMainRouteId = 'chat' | 'data' | 'skills' | 'automation';
+type MainPanelRouteId = KeepAliveMainRouteId | 'settings';
+type ActiveMainRouteId = MainPanelRouteId | 'welcome';
+
+const KEEP_ALIVE_MAIN_ROUTES = new Set<KeepAliveMainRouteId>([
+  'chat',
+  'data',
+  'skills',
+  'automation',
+]);
+
+function isKeepAliveMainRoute(routeId: ActiveMainRouteId): routeId is KeepAliveMainRouteId {
+  return KEEP_ALIVE_MAIN_ROUTES.has(routeId as KeepAliveMainRouteId);
+}
+
 function App() {
   const { t } = useTranslation();
   // --- Store state via selectors (each subscription is minimally scoped) ---
@@ -97,6 +112,9 @@ function App() {
   const { width } = useWindowSize();
   const initialized = useRef(false);
   const sidebarBeforeSettings = useRef(false);
+  const [mountedMainRouteIds, setMountedMainRouteIds] = useState<Set<KeepAliveMainRouteId>>(
+    () => new Set()
+  );
 
   useEffect(() => {
     // Only run once on mount
@@ -182,6 +200,61 @@ function App() {
   // Determine if we should show the sandbox setup dialog
   // Show if there's progress and setup is not complete
   const showSandboxSetup = sandboxSetupProgress && !isSandboxSetupComplete;
+  const activeMainRouteId: ActiveMainRouteId = showSettings
+    ? 'settings'
+    : mainView === 'chat'
+      ? activeSessionId
+        ? 'chat'
+        : 'welcome'
+      : mainView;
+
+  useEffect(() => {
+    if (!isKeepAliveMainRoute(activeMainRouteId)) return;
+
+    setMountedMainRouteIds((current) => {
+      if (current.has(activeMainRouteId)) return current;
+      return new Set([...current, activeMainRouteId]);
+    });
+  }, [activeMainRouteId]);
+
+  const mainPanelRoutes = [
+    {
+      id: 'settings' as MainPanelRouteId,
+      name: 'SettingsPanel',
+      resetKey: 'settings',
+      mounted: activeMainRouteId === 'settings',
+      element: <SettingsPanel onClose={() => setShowSettings(false)} />,
+    },
+    {
+      id: 'skills' as MainPanelRouteId,
+      name: 'SkillsView',
+      resetKey: 'skills',
+      mounted: activeMainRouteId === 'skills' || mountedMainRouteIds.has('skills'),
+      element: <SkillsView />,
+    },
+    {
+      id: 'automation' as MainPanelRouteId,
+      name: 'AutomationView',
+      resetKey: 'automation',
+      mounted: activeMainRouteId === 'automation' || mountedMainRouteIds.has('automation'),
+      element: <AutomationView />,
+    },
+    {
+      id: 'chat' as MainPanelRouteId,
+      name: 'ChatView',
+      resetKey: activeSessionId || 'chat',
+      mounted:
+        !!activeSessionId && (activeMainRouteId === 'chat' || mountedMainRouteIds.has('chat')),
+      element: <ChatView />,
+    },
+    {
+      id: 'data' as MainPanelRouteId,
+      name: 'DataView',
+      resetKey: 'data',
+      mounted: activeMainRouteId === 'data' || mountedMainRouteIds.has('data'),
+      element: <DataView />,
+    },
+  ];
 
   return (
     <div className="h-full w-full min-h-0 flex flex-col overflow-hidden bg-[var(--app-backdrop)] text-text-primary">
@@ -197,68 +270,41 @@ function App() {
 
         {/* Main Content Area */}
         <main className="app-main-panel flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
-          {showSettings ? (
-            <PanelErrorBoundary
-              name="SettingsPanel"
-              resetKey="settings"
-              fallback={<MainPanelFallback />}
-            >
-              <Suspense fallback={<MainPanelFallback />}>
-                <SettingsPanel onClose={() => setShowSettings(false)} />
-              </Suspense>
-            </PanelErrorBoundary>
-          ) : mainView === 'skills' ? (
-            <PanelErrorBoundary
-              name="SkillsView"
-              resetKey="skills"
-              fallback={<MainPanelFallback />}
-            >
-              <Suspense fallback={<MainPanelFallback />}>
-                <SkillsView />
-              </Suspense>
-            </PanelErrorBoundary>
-          ) : mainView === 'automation' ? (
-            <PanelErrorBoundary
-              name="AutomationView"
-              resetKey="automation"
-              fallback={<MainPanelFallback />}
-            >
-              <Suspense fallback={<MainPanelFallback />}>
-                <AutomationView />
-              </Suspense>
-            </PanelErrorBoundary>
-          ) : activeSessionId ? (
-            <PanelErrorBoundary
-              name="ChatView"
-              resetKey={activeSessionId}
-              fallback={<MainPanelFallback />}
-            >
-              <Suspense fallback={<MainPanelFallback />}>
-                <ChatView />
-              </Suspense>
-            </PanelErrorBoundary>
-          ) : mainView === 'data' ? (
-            <PanelErrorBoundary name="DataView" resetKey="data" fallback={<MainPanelFallback />}>
-              <Suspense fallback={<MainPanelFallback />}>
-                <DataView />
-              </Suspense>
-            </PanelErrorBoundary>
-          ) : (
-            <WelcomeView />
-          )}
+          {mainPanelRoutes
+            .filter((route) => route.mounted)
+            .map((route) => (
+              <div
+                key={route.id}
+                className={
+                  activeMainRouteId === route.id ? 'flex h-full min-h-0 w-full' : 'hidden'
+                }
+              >
+                <PanelErrorBoundary
+                  name={route.name}
+                  resetKey={route.resetKey}
+                  fallback={<MainPanelFallback />}
+                >
+                  <Suspense fallback={<MainPanelFallback />}>{route.element}</Suspense>
+                </PanelErrorBoundary>
+              </div>
+            ))}
+
+          {activeMainRouteId === 'welcome' && <WelcomeView />}
         </main>
 
         {/* Context Panel - only show when in session and not in settings */}
-        {activeSessionId && !showSettings && mainView === 'chat' && (
-          <PanelErrorBoundary
-            name="ContextPanel"
-            resetKey={activeSessionId}
-            fallback={<ContextPanelFallback />}
-          >
-            <Suspense fallback={<ContextPanelFallback />}>
-              <ContextPanel />
-            </Suspense>
-          </PanelErrorBoundary>
+        {activeSessionId && mountedMainRouteIds.has('chat') && (
+          <div className={activeMainRouteId === 'chat' ? 'contents' : 'hidden'}>
+            <PanelErrorBoundary
+              name="ContextPanel"
+              resetKey={activeSessionId}
+              fallback={<ContextPanelFallback />}
+            >
+              <Suspense fallback={<ContextPanelFallback />}>
+                <ContextPanel />
+              </Suspense>
+            </PanelErrorBoundary>
+          </div>
         )}
       </div>
 

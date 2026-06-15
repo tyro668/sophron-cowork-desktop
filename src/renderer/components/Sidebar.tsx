@@ -274,23 +274,20 @@ export function Sidebar() {
   const handleDataPage = useCallback(() => {
     exitSelectMode();
     setMainView('data');
-    setActiveSession(null);
     setShowSettings(false);
-  }, [exitSelectMode, setActiveSession, setMainView, setShowSettings]);
+  }, [exitSelectMode, setMainView, setShowSettings]);
 
   const handleSkillsPage = useCallback(() => {
     exitSelectMode();
     setMainView('skills');
-    setActiveSession(null);
     setShowSettings(false);
-  }, [exitSelectMode, setActiveSession, setMainView, setShowSettings]);
+  }, [exitSelectMode, setMainView, setShowSettings]);
 
   const handleAutomationPage = useCallback(() => {
     exitSelectMode();
     setMainView('automation');
-    setActiveSession(null);
     setShowSettings(false);
-  }, [exitSelectMode, setActiveSession, setMainView, setShowSettings]);
+  }, [exitSelectMode, setMainView, setShowSettings]);
 
   const toggleSelectSession = useCallback((sessionId: string) => {
     setSelectedIds((prev) => {

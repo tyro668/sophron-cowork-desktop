@@ -635,7 +635,6 @@ export const useAppStore = create<AppState>((set) => ({
   navigateToDataElement: (target) =>
     set({
       mainView: 'data',
-      activeSessionId: null,
       showSettings: false,
       pendingDataNavigation: { ...target, nonce: ++dataNavigationSeq },
     }),
