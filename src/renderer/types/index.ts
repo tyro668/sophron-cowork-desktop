@@ -816,10 +816,14 @@ export interface PluginCatalogItemV2 {
   hasManifest: boolean;
   componentCounts: PluginComponentCounts;
   pluginId?: string;
+  skillHubSlug?: string;
   installCommand?: string;
   detailUrl?: string;
-  catalogSource?: 'claude-marketplace';
+  catalogSource?: 'claude-marketplace' | 'skillhub';
+  requiresApiKey?: boolean;
 }
+
+export type PluginCatalogSource = NonNullable<PluginCatalogItemV2['catalogSource']>;
 
 export interface PluginCatalogItem extends PluginCatalogItemV2 {
   skillCount: number;
