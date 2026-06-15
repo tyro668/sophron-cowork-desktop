@@ -68,6 +68,7 @@ import type {
   AutomationRun,
   AutomationRunQuery,
   AutomationUpdateInput,
+  DesktopAuthStatus,
 } from '../renderer/types';
 import type { DiagnosticInput, DiagnosticResult } from '../renderer/types';
 import { isAllowedClientEventType } from '../shared/client-event-allowlist';
@@ -159,6 +160,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('update.state', listener);
       return () => ipcRenderer.removeListener('update.state', listener);
     },
+  },
+
+  auth: {
+    getStatus: (): Promise<DesktopAuthStatus> => ipcRenderer.invoke('auth.getStatus'),
+    login: (): Promise<DesktopAuthStatus> => ipcRenderer.invoke('auth.login'),
+    cancelLogin: (): Promise<DesktopAuthStatus> => ipcRenderer.invoke('auth.cancelLogin'),
+    logout: (): Promise<DesktopAuthStatus> => ipcRenderer.invoke('auth.logout'),
   },
 
   // Open links in default browser
@@ -616,6 +624,12 @@ declare global {
         getState: () => Promise<AppUpdateState | null>;
         checkAndInstall: () => Promise<AppUpdateState>;
         onState: (callback: (state: AppUpdateState) => void) => () => void;
+      };
+      auth: {
+        getStatus: () => Promise<DesktopAuthStatus>;
+        login: () => Promise<DesktopAuthStatus>;
+        cancelLogin: () => Promise<DesktopAuthStatus>;
+        logout: () => Promise<DesktopAuthStatus>;
       };
       openExternal: (url: string) => Promise<boolean>;
       showItemInFolder: (filePath: string, cwd?: string) => Promise<boolean>;
