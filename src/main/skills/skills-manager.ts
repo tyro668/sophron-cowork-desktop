@@ -19,6 +19,7 @@ import type { Skill, PluginInstallResult } from '../../renderer/types';
 import type { DatabaseInstance } from '../db/database';
 import { log, logError, logWarn } from '../utils/logger';
 import { isPathWithinRoot } from '../tools/path-containment';
+import { SkillHubService } from './skillhub-service';
 
 /**
  * Validate that a skill name is safe for use as a directory name.
@@ -73,6 +74,7 @@ interface SkillsManagerOptions {
   getConfiguredGlobalSkillsPath?: () => string | undefined;
   setConfiguredGlobalSkillsPath?: (nextPath: string) => void;
   watchStorage?: boolean;
+  skillHubService?: SkillHubService;
 }
 
 export interface SkillsStorageChangeEvent {
@@ -108,12 +110,14 @@ export class SkillsManager {
   private loadedGlobalSkillsSignature = '';
   private globalSkillsLoaded = false;
   private storageCallbacks = new Set<(event: SkillsStorageChangeEvent) => void>();
+  private readonly skillHubService: SkillHubService;
 
   constructor(db: DatabaseInstance, options: SkillsManagerOptions = {}) {
     this.db = db;
     this.getConfiguredGlobalSkillsPathFn = options.getConfiguredGlobalSkillsPath;
     this.setConfiguredGlobalSkillsPathFn = options.setConfiguredGlobalSkillsPath;
     this.watchStorageEnabled = options.watchStorage === true;
+    this.skillHubService = options.skillHubService ?? new SkillHubService();
     this.loadBuiltinSkills();
     if (this.watchStorageEnabled) {
       this.startStorageWatcher();
@@ -1042,6 +1046,15 @@ export class SkillsManager {
 
     log(`Installed skill: ${installedSkill.name} (${installedSkill.id})`);
     return installedSkill;
+  }
+
+  async installSkillHubSkill(slug: string): Promise<Skill> {
+    const downloaded = await this.skillHubService.downloadSkill(slug);
+    try {
+      return await this.installSkill(downloaded.rootPath);
+    } finally {
+      downloaded.cleanup();
+    }
   }
 
   private deduplicateSkills(skills: Skill[]): Skill[] {

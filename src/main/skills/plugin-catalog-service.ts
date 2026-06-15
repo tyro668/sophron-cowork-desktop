@@ -1,4 +1,5 @@
 import type { PluginCatalogItem, PluginComponentCounts } from '../../renderer/types';
+import { SkillHubService } from './skillhub-service';
 
 interface CachedCatalog {
   expiresAt: number;
@@ -31,10 +32,42 @@ class HttpRequestError extends Error {
 
 export class PluginCatalogService {
   private readonly fetchFn: typeof fetch;
+  private readonly skillHubService: SkillHubService;
   private cache: CachedCatalog | null = null;
+  private skillHubCache = new Map<string, CachedCatalog>();
 
-  constructor(fetchFn: typeof fetch = fetch) {
+  constructor(
+    fetchFn: typeof fetch = fetch,
+    skillHubService: SkillHubService = new SkillHubService(fetchFn)
+  ) {
     this.fetchFn = fetchFn;
+    this.skillHubService = skillHubService;
+  }
+
+  async listCatalog(forceRefresh = false, installableOnly = false): Promise<PluginCatalogItem[]> {
+    const results = await Promise.allSettled([
+      this.listAnthropicPlugins(forceRefresh, installableOnly),
+      this.listSkillHubSkills(forceRefresh, installableOnly),
+    ]);
+
+    const items = results.flatMap((result) => (result.status === 'fulfilled' ? result.value : []));
+    if (items.length === 0) {
+      const messages = results
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .map((result) =>
+          result.reason instanceof Error ? result.reason.message : String(result.reason)
+        );
+      throw new Error(
+        messages.length ? messages.join(' | ') : 'No plugin catalog sources available'
+      );
+    }
+
+    return items.sort((a, b) => {
+      const sourcePriority = (value: PluginCatalogItem) =>
+        value.catalogSource === 'skillhub' ? 0 : 1;
+      const priority = sourcePriority(a) - sourcePriority(b);
+      return priority === 0 ? a.name.localeCompare(b.name) : priority;
+    });
   }
 
   async listAnthropicPlugins(
@@ -86,6 +119,32 @@ export class PluginCatalogService {
     throw new Error(
       'Direct plugin download is no longer supported. Install via Claude CLI instead.'
     );
+  }
+
+  async listSkillHubSkills(
+    forceRefresh = false,
+    installableOnly = false,
+    options: { page?: number; pageSize?: number } = {}
+  ): Promise<PluginCatalogItem[]> {
+    const page = Math.max(1, Math.floor(options.page ?? 1));
+    const pageSize = Math.min(100, Math.max(1, Math.floor(options.pageSize ?? 50)));
+    const cacheKey = `${page}:${pageSize}`;
+    const cached = this.skillHubCache.get(cacheKey);
+    if (!forceRefresh && cached && cached.expiresAt > Date.now()) {
+      return installableOnly ? cached.data.filter((skill) => skill.installable) : cached.data;
+    }
+
+    try {
+      const data = await this.skillHubService.listCatalogSkills({ page, pageSize });
+      this.skillHubCache.set(cacheKey, {
+        expiresAt: Date.now() + CACHE_TTL_MS,
+        data,
+      });
+      return installableOnly ? data.filter((skill) => skill.installable) : data;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to fetch SkillHub catalog: ${message}`);
+    }
   }
 
   private async readMarketplacePlugin(slug: string): Promise<PluginCatalogItem | null> {

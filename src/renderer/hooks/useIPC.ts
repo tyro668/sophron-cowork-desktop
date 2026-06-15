@@ -16,6 +16,10 @@ import i18n from '../i18n/config';
 // Check if running in Electron
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 
+interface SessionSendOptions {
+  selectedSkillNames?: string[];
+}
+
 // Module-level singleton guard so only the FIRST useIPC() caller installs the
 // server-event listener. Other callers (PermissionDialog, Sidebar, ChatView,
 // etc.) still get the callback API but must NOT re-register the listener —
@@ -441,7 +445,12 @@ export function useIPC() {
 
   // Start a new session
   const startSession = useCallback(
-    async (title: string, promptOrContent: string | ContentBlock[], cwd?: string) => {
+    async (
+      title: string,
+      promptOrContent: string | ContentBlock[],
+      cwd?: string,
+      options?: SessionSendOptions
+    ) => {
       setLoading(true);
       console.log('[useIPC] Starting session:', title);
 
@@ -522,6 +531,7 @@ export function useIPC() {
             cwd,
             permissionRules: useAppStore.getState().settings.permissionRules,
             content, // Send full content blocks including images
+            selectedSkillNames: options?.selectedSkillNames,
           },
         });
         if (session) {
@@ -570,7 +580,11 @@ export function useIPC() {
 
   // Continue an existing session
   const continueSession = useCallback(
-    async (sessionId: string, promptOrContent: string | ContentBlock[]) => {
+    async (
+      sessionId: string,
+      promptOrContent: string | ContentBlock[],
+      options?: SessionSendOptions
+    ) => {
       setLoading(true);
       console.log('[useIPC] Continuing session:', sessionId);
 
@@ -642,6 +656,7 @@ export function useIPC() {
             prompt,
             permissionRules: store.settings.permissionRules,
             content, // Send full content blocks including images
+            selectedSkillNames: options?.selectedSkillNames,
           },
         });
         // Loading will be reset when we receive session.status event

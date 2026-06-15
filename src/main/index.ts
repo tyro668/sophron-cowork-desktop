@@ -2460,6 +2460,20 @@ ipcMain.handle('skills.install', async (_event, skillPath: string) => {
   }
 });
 
+ipcMain.handle('skills.installFromSkillHub', async (_event, slug: string) => {
+  try {
+    if (!skillsManager) {
+      throw new Error('SkillsManager not initialized');
+    }
+    const skill = await skillsManager.installSkillHubSkill(slug);
+    sessionManager?.invalidateSkillsSetup();
+    return { success: true, skill };
+  } catch (error) {
+    logError('[Skills] Error installing SkillHub skill:', error);
+    throw error;
+  }
+});
+
 ipcMain.handle('skills.delete', async (_event, skillId: string) => {
   try {
     if (!skillsManager) {
@@ -2540,17 +2554,28 @@ ipcMain.handle('skills.openStoragePath', async () => {
   return { success: true, path: storagePath };
 });
 
-ipcMain.handle('plugins.listCatalog', async (_event, options?: { installableOnly?: boolean }) => {
-  try {
-    if (!pluginRuntimeService) {
-      throw new Error('PluginRuntimeService not initialized');
+ipcMain.handle(
+  'plugins.listCatalog',
+  async (
+    _event,
+    options?: {
+      installableOnly?: boolean;
+      source?: 'skillhub' | 'claude-marketplace' | 'all';
+      page?: number;
+      pageSize?: number;
     }
-    return await pluginRuntimeService.listCatalog(options);
-  } catch (error) {
-    logError('[Plugins] Error listing catalog:', error);
-    throw error;
+  ) => {
+    try {
+      if (!pluginRuntimeService) {
+        throw new Error('PluginRuntimeService not initialized');
+      }
+      return await pluginRuntimeService.listCatalog(options);
+    } catch (error) {
+      logError('[Plugins] Error listing catalog:', error);
+      throw error;
+    }
   }
-});
+);
 
 ipcMain.handle('plugins.listInstalled', async () => {
   try {
@@ -3738,7 +3763,9 @@ async function handleClientEvent(event: ClientEvent): Promise<unknown> {
         event.payload.cwd,
         event.payload.allowedTools,
         event.payload.content,
-        event.payload.memoryEnabled
+        event.payload.memoryEnabled,
+        undefined,
+        { selectedSkillNames: event.payload.selectedSkillNames }
       );
 
     case 'session.continue':
@@ -3748,7 +3775,8 @@ async function handleClientEvent(event: ClientEvent): Promise<unknown> {
       return sm.continueSession(
         event.payload.sessionId,
         event.payload.prompt,
-        event.payload.content
+        event.payload.content,
+        { selectedSkillNames: event.payload.selectedSkillNames }
       );
 
     case 'session.stop':
