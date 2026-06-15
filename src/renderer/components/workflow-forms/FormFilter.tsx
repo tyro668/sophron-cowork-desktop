@@ -154,15 +154,14 @@ function formatConditionValue(value: string, colType: string | undefined): strin
   const normalizedType = colType ? normalizeDataFieldType(colType) : undefined;
   const lower = unquoted.toLowerCase();
   if (lower === 'null') return 'null';
-  if (normalizedType === 'boolean' && /^(true|false)$/i.test(unquoted)) {
-    return lower;
-  }
-  if (isNumericDataFieldType(normalizedType) && isNumberLiteral(unquoted)) {
-    return unquoted;
-  }
-  if (!normalizedType && (/^(true|false)$/i.test(unquoted) || isNumberLiteral(unquoted))) {
-    return unquoted;
-  }
+
+  const isBoolLike = /^(true|false)$/i.test(unquoted);
+  const isNumLike = isNumberLiteral(unquoted);
+
+  if (normalizedType === 'boolean' && isBoolLike) return lower;
+  if (isNumericDataFieldType(normalizedType) && isNumLike) return unquoted;
+  if (!normalizedType && (isBoolLike || isNumLike)) return unquoted;
+
   return quoteDslString(unquoted);
 }
 
