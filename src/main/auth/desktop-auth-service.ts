@@ -6,7 +6,6 @@ import type { DesktopAuthStatus, DesktopAuthUser } from '../../renderer/types';
 import { createEncryptedStoreWithKeyRotation } from '../utils/store-encryption';
 import { log, logWarn } from '../utils/logger';
 
-const DEFAULT_AUTH_ORIGIN = 'http://127.0.0.1:3000';
 const CLIENT_ID = 'sophorn-desktop';
 const CALLBACK_PATH = '/callback';
 const LOGIN_TIMEOUT_MS = 2 * 60 * 1000;
@@ -75,7 +74,7 @@ export class DesktopAuthService {
   private store: Store<DesktopAuthStoreSchema>;
   private loginAttempt: LoginAttempt | null = null;
 
-  constructor(private readonly resolveApiOrigin: () => string | null | undefined) {
+  constructor(private readonly resolveApiOrigin: () => string) {
     type DesktopAuthStoreRecord = DesktopAuthStoreSchema & Record<string, unknown>;
     const storeOptions: StoreOptions<DesktopAuthStoreRecord> & { projectName?: string } = {
       name: 'desktop-auth',
@@ -243,7 +242,11 @@ export class DesktopAuthService {
 
   private resolveAuthOrigin(): string {
     const configured = this.resolveApiOrigin()?.trim().replace(/\/+$/, '');
-    return configured || DEFAULT_AUTH_ORIGIN;
+    if (!configured) {
+      throw new Error('Desktop auth origin is not configured');
+    }
+
+    return configured;
   }
 
   private sessionToStatus(session: DesktopAuthSession): DesktopAuthStatus {
