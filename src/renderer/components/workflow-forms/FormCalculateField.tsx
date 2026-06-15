@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Plus, Trash2, ChevronDown, FunctionSquare } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import {
   createCalculationRow,
@@ -15,7 +16,6 @@ interface HelperToken {
   cursorOffset?: number;
 }
 
-type HelperTab = 'fields' | 'functions';
 type TouchedState = Record<string, { field?: boolean; expression?: boolean }>;
 
 function functionToken(label: string): HelperToken {
@@ -23,17 +23,17 @@ function functionToken(label: string): HelperToken {
 }
 
 const FIELD_INPUT_CLASS =
-  'h-8 w-full rounded-md border border-border-muted/70 bg-background/34 px-2 text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/15';
+  'min-h-[40px] w-full rounded-md border border-border-muted/70 bg-background/34 px-2 text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/15';
 
 const EXPRESSION_INPUT_CLASS =
-  'min-h-[72px] w-full resize-y rounded-md border border-border-muted/70 bg-background/34 px-2 py-1.5 font-mono text-[12px] leading-5 text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/15';
+  'min-h-[72px] w-full resize-y rounded-md border border-border-muted/70 bg-background/34 px-2 py-1.5 font-mono text-[12px] leading-5 text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent';
 
-const CHIP_CLASS =
-  'inline-flex h-6 max-w-full cursor-pointer items-center rounded-md border border-border-muted/70 bg-background/28 px-2 text-[11px] text-text-secondary transition-colors hover:border-accent/40 hover:bg-accent/10 hover:text-accent';
+const FN_CHIP =
+  'inline-flex h-6 cursor-pointer items-center rounded-md border border-border-muted/60 bg-background/20 px-1.5 font-mono text-[11px] text-text-secondary transition-colors hover:border-accent/40 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40';
 
-const FUNCTION_GROUPS: Array<{ label: string; tokens: HelperToken[] }> = [
+const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
   {
-    label: '条件',
+    i18nKey: 'calcFieldCategoryCondition',
     tokens: [
       { label: 'if', apply: 'if ' },
       { label: 'then', apply: ' then ' },
@@ -41,38 +41,61 @@ const FUNCTION_GROUPS: Array<{ label: string; tokens: HelperToken[] }> = [
     ],
   },
   {
-    label: '窗口',
+    i18nKey: 'calcFieldCategoryWindow',
     tokens: ['row_number', 'rank', 'lag', 'lead'].map(functionToken),
   },
   {
-    label: '聚合',
+    i18nKey: 'calcFieldCategoryAggregate',
     tokens: ['sum', 'avg', 'count', 'min', 'max'].map(functionToken),
   },
   {
-    label: '数学',
+    i18nKey: 'calcFieldCategoryMath',
     tokens: ['abs', 'round'].map(functionToken),
   },
   {
-    label: '字符串',
+    i18nKey: 'calcFieldCategoryString',
     tokens: ['upper', 'lower', 'trim', 'length', 'substr', 'split_part', 'concat'].map(
       functionToken
     ),
   },
   {
-    label: '空值',
+    i18nKey: 'calcFieldCategoryNull',
     tokens: ['coalesce', 'nullif'].map(functionToken),
   },
   {
-    label: '类型',
+    i18nKey: 'calcFieldCategoryType',
     tokens: [{ label: 'CAST', apply: 'CAST( AS )', cursorOffset: 5 }],
   },
 ];
+
+// ── Helpers ────────────────────────────────────────────────────────────
+
+function extractFieldRefs(expression: string): string[] {
+  const matches = expression.matchAll(/\[([^\]]+)\]/g);
+  return [...new Set([...matches].map((m) => m[1]))];
+}
+
+function removeFieldRef(expression: string, field: string): string {
+  const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return expression
+    .replace(new RegExp(`\\[${escaped}\\]`, 'g'), '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+// ── Main Component ─────────────────────────────────────────────────────
 
 export default function FormCalculateField({
   node,
   fieldCompletions,
   onNodeChange,
 }: OperatorFormProps) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    [t]
+  );
+
   const updateConfig = useCallback(
     (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
       onNodeChange((current) => ({
@@ -98,8 +121,9 @@ export default function FormCalculateField({
   );
   const exprInputRefs = useRef<Map<string, HTMLTextAreaElement>>(new Map());
   const [activeCalculationId, setActiveCalculationId] = useState<string | null>(null);
-  const [helperTab, setHelperTab] = useState<HelperTab>('fields');
   const [touched, setTouched] = useState<TouchedState>({});
+  const [fieldPickerOpenId, setFieldPickerOpenId] = useState<string | null>(null);
+  const [showFnHelperId, setShowFnHelperId] = useState<string | null>(null);
 
   const activeCalculation =
     (activeCalculationId
@@ -107,10 +131,6 @@ export default function FormCalculateField({
       : undefined) ??
     calculations[0] ??
     null;
-  const activeIndex = activeCalculation
-    ? calculations.findIndex((item) => item.id === activeCalculation.id)
-    : -1;
-
   const storeCalculations = useCallback(
     (items: CalculationRow[]) => {
       updateConfig((cfg) => ({
@@ -131,7 +151,7 @@ export default function FormCalculateField({
   }
 
   function updateItem(id: string, patch: Partial<CalculationRow>) {
-    handleChange(
+    storeCalculations(
       calculations.map((existing) => (existing.id === id ? { ...existing, ...patch } : existing))
     );
   }
@@ -175,12 +195,36 @@ export default function FormCalculateField({
     return !item.expression.trim() && (Boolean(item.field.trim()) || state?.expression === true);
   }
 
-  function insert(text: string, cursorOffset = text.length) {
-    const item = activeCalculation;
-    if (!item) return;
+  function insertFieldRef(item: CalculationRow, col: string) {
     const el = exprInputRefs.current.get(item.id);
-    if (!el) return;
+    const ref = `[${col}]`;
+    if (!el) {
+      updateItem(item.id, { expression: `${item.expression} ${ref}`.trim() });
+      return;
+    }
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? el.value.length;
+    const next = el.value.slice(0, start) + ref + el.value.slice(end);
+    updateItem(item.id, { expression: next });
+    setActiveCalculationId(item.id);
+    requestAnimationFrame(() => {
+      el.focus();
+      const cursor = start + ref.length;
+      el.setSelectionRange(cursor, cursor);
+    });
+  }
 
+  function removeFieldRefFromExpression(item: CalculationRow, col: string) {
+    const next = removeFieldRef(item.expression, col);
+    updateItem(item.id, { expression: next });
+  }
+
+  function insertFn(item: CalculationRow, text: string, cursorOffset = text.length) {
+    const el = exprInputRefs.current.get(item.id);
+    if (!el) {
+      updateItem(item.id, { expression: `${item.expression}${text}` });
+      return;
+    }
     const start = el.selectionStart ?? el.value.length;
     const end = el.selectionEnd ?? el.value.length;
     const next = el.value.slice(0, start) + text + el.value.slice(end);
@@ -193,24 +237,37 @@ export default function FormCalculateField({
     });
   }
 
+  // ── Render ──────────────────────────────────────────────────────────
+
   return (
     <div className="grid content-start gap-2 text-[12px]">
+      {/* Header */}
       <section className="overflow-hidden rounded-lg border border-border-muted/70 bg-background/18">
         <div className="flex min-h-9 items-center gap-2 border-b border-border-muted/60 px-2.5 py-1.5">
           <div className="min-w-0">
-            <div className="text-[13px] font-medium text-text-primary">计算字段</div>
+            <div className="text-[13px] font-medium text-text-primary">
+              {tr('calcFieldTitle', '计算字段')}
+            </div>
             <div className="text-[11px] text-text-muted">
-              {calculations.length > 0 ? `${calculations.length} 条公式规则` : '0 条公式规则'}
+              {calculations.length > 0
+                ? tr('calcFieldRuleCount', '{{count}} 条公式规则').replace(
+                    '{{count}}',
+                    String(calculations.length)
+                  )
+                : tr('calcFieldZeroRules', '0 条公式规则')}
             </div>
           </div>
         </div>
 
+        {/* Rules */}
         <div className="grid gap-1.5 p-2">
           {calculations.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border-muted/70 bg-background/16 px-3 py-5 text-center">
-              <div className="text-[12px] text-text-secondary">暂无计算字段</div>
+              <div className="text-[12px] text-text-secondary">
+                {tr('calcFieldEmpty', '暂无计算字段')}
+              </div>
               <div className="mt-1 text-[11px] text-text-muted">
-                添加一条规则后填写目标字段和表达式
+                {tr('calcFieldEmptyHint', '添加一条规则后填写目标字段和表达式')}
               </div>
             </div>
           ) : (
@@ -218,6 +275,8 @@ export default function FormCalculateField({
               const isActive = activeCalculation?.id === item.id;
               const fieldError = showFieldError(item);
               const expressionError = showExpressionError(item);
+              const fieldRefs = extractFieldRefs(item.expression);
+
               return (
                 <div
                   key={item.id}
@@ -227,70 +286,171 @@ export default function FormCalculateField({
                       : 'border-border-muted/55 bg-background/16 hover:border-border-muted/80'
                   }`}
                 >
-                  <div className="mb-1.5 flex items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <span className="inline-flex h-5 items-center rounded bg-background/42 px-1.5 text-[10px] font-medium text-text-muted">
-                        #{index + 1}
-                      </span>
-                      <span className="truncate text-[11px] text-text-muted">
-                        {isActive ? '当前编辑规则' : '计算规则'}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeCalculation(item.id, index)}
-                      className="flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-0 transition-opacity hover:bg-surface-hover hover:text-error group-hover/rule:opacity-100"
-                      title="删除"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-
-                  <div className="grid gap-2 lg:grid-cols-[minmax(8rem,0.32fr)_minmax(0,1fr)]">
-                    <label className="grid content-start gap-1">
-                      <span className="text-[11px] font-medium text-text-secondary">
-                        目标字段 <span className="text-error">*</span>
-                      </span>
-                      <input
+                  {/* Target field */}
+                  <div className="mb-2">
+                    <label className="grid gap-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-medium text-text-secondary">
+                          {tr('calcFieldTargetField', '目标字段')}{' '}
+                          <span className="text-error">*</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeCalculation(item.id, index)}
+                          className="flex h-5 w-5 items-center justify-center rounded text-text-muted opacity-0 transition-opacity hover:bg-surface-hover hover:text-error group-hover/rule:opacity-100"
+                          title={tr('remove', '删除')}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <textarea
+                        rows={2}
+                        maxLength={128}
                         value={item.field}
                         onChange={(e) => updateItem(item.id, { field: e.target.value })}
                         onFocus={() => setActiveCalculationId(item.id)}
                         onBlur={() => markTouched(item.id, 'field')}
-                        placeholder="如 margin"
+                        placeholder={tr('calcFieldTargetPlaceholder', '如 margin')}
                         aria-invalid={fieldError}
-                        className={`${FIELD_INPUT_CLASS} ${
+                        className={`${FIELD_INPUT_CLASS} resize-none ${
                           fieldError ? '!border-warning/70 !ring-warning/10' : ''
-                        }`}
-                      />
-                    </label>
-
-                    <label className="grid min-w-0 gap-1">
-                      <span className="text-[11px] font-medium text-text-secondary">
-                        表达式 <span className="text-error">*</span>
-                      </span>
-                      <textarea
-                        ref={(el) => {
-                          if (el) exprInputRefs.current.set(item.id, el);
-                          else exprInputRefs.current.delete(item.id);
-                        }}
-                        value={item.expression}
-                        onChange={(e) => updateItem(item.id, { expression: e.target.value })}
-                        onFocus={() => setActiveCalculationId(item.id)}
-                        onBlur={() => markTouched(item.id, 'expression')}
-                        placeholder="如 [revenue] - [cost] 或 if [a] > 0 then 1 else 0"
-                        aria-invalid={expressionError}
-                        className={`${EXPRESSION_INPUT_CLASS} ${
-                          expressionError ? '!border-warning/70 !ring-warning/10' : ''
                         }`}
                       />
                     </label>
                   </div>
 
+                  {/* Expression — combobox area */}
+                  <label className="grid gap-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-medium text-text-secondary">
+                        {tr('calcFieldExpressionLabel', '表达式')}{' '}
+                        <span className="text-error">*</span>
+                      </span>
+                      {/* Field picker toggle */}
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setActiveCalculationId(item.id);
+                          setFieldPickerOpenId((v) => (v === item.id ? null : item.id));
+                        }}
+                        className="flex items-center gap-1 rounded text-[11px] text-text-muted hover:text-text-secondary transition-colors"
+                      >
+                        {tr('calcFieldTabFields', '字段选择')}
+                        <ChevronDown
+                          className={`h-3 w-3 transition-transform ${fieldPickerOpenId === item.id ? 'rotate-180' : ''}`}
+                        />
+                      </button>
+                    </div>
+
+                    {/* Expression textarea */}
+                    <textarea
+                      ref={(el) => {
+                        if (el) exprInputRefs.current.set(item.id, el);
+                        else exprInputRefs.current.delete(item.id);
+                      }}
+                      value={item.expression}
+                      onChange={(e) => updateItem(item.id, { expression: e.target.value })}
+                      onFocus={() => setActiveCalculationId(item.id)}
+                      onBlur={() => markTouched(item.id, 'expression')}
+                      placeholder={tr(
+                        'calcFieldExpressionPlaceholder',
+                        '如 [revenue] - [cost] 或 if [a] > 0 then 1 else 0'
+                      )}
+                      aria-invalid={expressionError}
+                      className={`${EXPRESSION_INPUT_CLASS} ${
+                        expressionError ? '!border-warning/70' : ''
+                      }`}
+                    />
+
+                    {/* Field picker dropdown */}
+                    {fieldPickerOpenId === item.id && (
+                      <div className="rounded-b-md border border-t-0 border-border-muted/70 bg-background/20 p-1.5">
+                        <div className="max-h-40 overflow-y-auto">
+                          {fieldCompletions.length === 0 ? (
+                            <div className="px-2 py-2 text-center text-[11px] text-text-muted">
+                              {tr('noFields', '暂无可用字段')}
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {fieldCompletions.map((col) => {
+                                const isSelected = fieldRefs.includes(col);
+                                return (
+                                  <button
+                                    key={col}
+                                    type="button"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      if (isSelected) {
+                                        removeFieldRefFromExpression(item, col);
+                                      } else {
+                                        insertFieldRef(item, col);
+                                      }
+                                    }}
+                                    className={`inline-flex h-6 cursor-pointer items-center rounded-md border px-1.5 text-[11px] transition-colors ${
+                                      isSelected
+                                        ? 'border-accent/40 bg-accent/15 text-accent'
+                                        : 'border-border-muted/60 bg-background/20 text-text-secondary hover:border-accent/40 hover:bg-accent/10 hover:text-accent'
+                                    }`}
+                                  >
+                                    {col}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </label>
+
+                  {/* Function helper (collapsible) */}
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveCalculationId(item.id);
+                        setShowFnHelperId((v) => (v === item.id ? null : item.id));
+                      }}
+                      className="flex items-center gap-1 text-[11px] text-text-muted hover:text-text-secondary transition-colors"
+                    >
+                      <FunctionSquare className="h-3 w-3" />
+                      {tr('calcFieldFnHelperLabel', '函数助手')}
+                      <ChevronDown
+                        className={`h-3 w-3 transition-transform ${showFnHelperId === item.id ? 'rotate-180' : ''}`}
+                      />
+                    </button>
+                    {showFnHelperId === item.id && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {FUNCTION_GROUPS.flatMap((group) =>
+                          group.tokens.map((token) => (
+                            <button
+                              key={token.label}
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                insertFn(item, token.apply, token.cursorOffset);
+                              }}
+                              className={FN_CHIP}
+                              title={token.label}
+                            >
+                              {token.label}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Error message */}
                   {(fieldError || expressionError) && (
                     <div className="mt-1.5 text-[11px] text-warning">
-                      请补全{fieldError ? '目标字段' : ''}
-                      {fieldError && expressionError ? '和' : ''}
-                      {expressionError ? '表达式' : ''}
+                      {fieldError && expressionError
+                        ? tr('calcFieldCompleteBoth', '请补全目标字段和表达式')
+                        : fieldError
+                          ? tr('calcFieldCompleteField', '请补全目标字段')
+                          : tr('calcFieldCompleteExpr', '请补全表达式')}
                     </div>
                   )}
                 </div>
@@ -299,6 +459,7 @@ export default function FormCalculateField({
           )}
         </div>
 
+        {/* Add rule button */}
         <div className="border-t border-border-muted/60 px-2 pb-2 pt-1.5">
           <button
             type="button"
@@ -306,78 +467,9 @@ export default function FormCalculateField({
             className="inline-flex h-7 w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-border-muted/70 bg-background/16 text-[12px] text-text-secondary transition-colors hover:border-accent/40 hover:bg-accent/5 hover:text-accent"
           >
             <Plus className="h-3.5 w-3.5" />
-            添加规则
+            {tr('calcFieldAddRule', '添加规则')}
           </button>
         </div>
-      </section>
-
-      <section className="rounded-lg border border-border-muted/60 bg-background/16 p-2">
-        <div className="mb-1.5 flex min-h-7 items-center justify-between gap-2">
-          <div className="min-w-0 text-[11px] font-medium text-text-secondary">
-            插入到{calculations.length > 0 ? `第 ${activeIndex + 1} 条表达式` : '表达式'}
-          </div>
-          <div className="inline-flex rounded-md bg-surface-active/70 p-0.5">
-            {(['fields', 'functions'] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setHelperTab(tab)}
-                className={`h-6 rounded px-2 text-[11px] font-medium transition-colors ${
-                  helperTab === tab
-                    ? 'bg-background/70 text-accent shadow-soft'
-                    : 'text-text-muted hover:text-text-secondary'
-                }`}
-              >
-                {tab === 'fields' ? '字段' : '函数'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {helperTab === 'fields' ? (
-          <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto pr-0.5">
-            {fieldCompletions.length > 0 ? (
-              fieldCompletions.map((col) => (
-                <button
-                  key={col}
-                  type="button"
-                  onClick={() => insert(`[${col}]`)}
-                  disabled={calculations.length === 0}
-                  className={`${CHIP_CLASS} disabled:cursor-not-allowed disabled:opacity-45`}
-                  title={`插入字段 ${col}`}
-                >
-                  <span className="truncate">{col}</span>
-                </button>
-              ))
-            ) : (
-              <span className="text-[11px] text-text-muted">暂无可用字段</span>
-            )}
-          </div>
-        ) : (
-          <div className="grid max-h-28 gap-1.5 overflow-y-auto pr-0.5">
-            {FUNCTION_GROUPS.map((group) => (
-              <div key={group.label} className="flex min-w-0 items-start gap-1.5">
-                <span className="mt-0.5 w-9 flex-shrink-0 text-[10px] text-text-muted">
-                  {group.label}
-                </span>
-                <div className="flex min-w-0 flex-wrap gap-1">
-                  {group.tokens.map((token) => (
-                    <button
-                      key={token.label}
-                      type="button"
-                      onClick={() => insert(token.apply, token.cursorOffset)}
-                      disabled={calculations.length === 0}
-                      className={`${CHIP_CLASS} font-mono disabled:cursor-not-allowed disabled:opacity-45`}
-                      title={`插入 ${token.label}`}
-                    >
-                      {token.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </section>
     </div>
   );

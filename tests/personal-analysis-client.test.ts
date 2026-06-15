@@ -31,7 +31,7 @@ describe('PersonalAnalysisClient', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('requires a configured datasource id for uploads', async () => {
+  it('requires a datasource id in upload input', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
@@ -47,7 +47,7 @@ describe('PersonalAnalysisClient', () => {
         csv: 'name\nAlice\n',
         waitForDone: false,
       })
-    ).rejects.toThrow('Personal Analysis datasourceId is not configured');
+    ).rejects.toThrow('Personal Analysis datasourceId is required for upload');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -83,7 +83,7 @@ describe('PersonalAnalysisClient', () => {
     ]);
   });
 
-  it('uses the configured datasource for uploads', async () => {
+  it('uses the upload input datasource for uploads', async () => {
     const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
       const href = String(url);
 
@@ -130,10 +130,10 @@ describe('PersonalAnalysisClient', () => {
     const client = new PersonalAnalysisClient({
       apiOrigin: 'http://mock.local',
       apiKey: 'test-api-key',
-      datasourceId: 'test-datasource',
     });
     const result = await client.uploadCsv({
       writeMode: 'CREATE',
+      datasourceId: 'test-datasource',
       fileName: 'create.csv',
       tableName: 'Created Table',
       csv: 'name\nAlice\n',
@@ -235,11 +235,11 @@ describe('PersonalAnalysisClient', () => {
     const client = new PersonalAnalysisClient({
       apiOrigin: 'http://mock.local',
       apiKey: 'test-api-key',
-      datasourceId: 'test-datasource',
     });
 
     const result = await client.uploadCsv({
       writeMode: 'REPLACE',
+      datasourceId: 'test-datasource',
       spaceId: 'space-growth',
       projectId: 'project-sales',
       tableId: 'table-existing',
@@ -312,11 +312,11 @@ describe('PersonalAnalysisClient', () => {
     const client = new PersonalAnalysisClient({
       apiOrigin: 'http://mock.local',
       apiKey: 'test-api-key',
-      datasourceId: 'test-datasource',
     });
 
     const result = await client.uploadCsv({
       writeMode: 'REPLACE',
+      datasourceId: 'test-datasource',
       spaceId: 'space-growth',
       projectId: 'project-sales',
       tableId: 'table-existing',

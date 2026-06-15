@@ -68,6 +68,7 @@ describe('ConfigStore applyToEnv', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     if (originalEnv.COWORK_WORKDIR === undefined) {
       delete process.env.COWORK_WORKDIR;
     } else {
@@ -113,6 +114,41 @@ describe('ConfigStore applyToEnv', () => {
     } else {
       process.env.GEMINI_BASE_URL = originalEnv.GEMINI_BASE_URL;
     }
+  });
+
+  it('updates Personal Analysis updatedAt only when connection settings change', () => {
+    vi.useFakeTimers();
+    const store = new ConfigStore();
+
+    vi.setSystemTime(new Date('2026-06-10T01:00:00.000Z'));
+    store.update({
+      personalAnalysis: {
+        apiOrigin: 'http://127.0.0.1:3000',
+        apiKey: 'first-key',
+      },
+    });
+    const firstUpdatedAt = store.get('personalAnalysis').updatedAt;
+    expect(firstUpdatedAt).toBe(new Date('2026-06-10T01:00:00.000Z').getTime());
+
+    vi.setSystemTime(new Date('2026-06-10T02:00:00.000Z'));
+    store.update({
+      personalAnalysis: {
+        apiOrigin: 'http://127.0.0.1:3000',
+        apiKey: 'first-key',
+      },
+    });
+    expect(store.get('personalAnalysis').updatedAt).toBe(firstUpdatedAt);
+
+    vi.setSystemTime(new Date('2026-06-10T03:00:00.000Z'));
+    store.update({
+      personalAnalysis: {
+        apiOrigin: 'http://127.0.0.1:3000',
+        apiKey: 'second-key',
+      },
+    });
+    expect(store.get('personalAnalysis').updatedAt).toBe(
+      new Date('2026-06-10T03:00:00.000Z').getTime()
+    );
   });
 
   it('clears stale COWORK_WORKDIR when config value is removed', () => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import {
   autocompletion,
@@ -10,11 +10,12 @@ import {
 import { defaultKeymap, indentWithTab } from '@codemirror/commands';
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from '@codemirror/language';
 import { linter, type Diagnostic as CodeMirrorDiagnostic } from '@codemirror/lint';
-import { EditorState } from '@codemirror/state';
-import { EditorView, drawSelection, keymap, placeholder } from '@codemirror/view';
+import { Compartment, EditorState, type Extension } from '@codemirror/state';
+import { EditorView, keymap, placeholder } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
 import type { DataWorkflowOperatorType } from '../types';
 import { parsePrepOperatorDsl, type PrepDiagnostic } from '../../shared/prep-dsl';
+import { arePrepDiagnosticsEqual } from './prep-dsl-editor-utils';
 
 interface PrepDslEditorProps {
   value: string;
@@ -30,6 +31,7 @@ interface PrepDslEditorProps {
   formatDiagnostic: (diagnostic: PrepDiagnostic) => string;
   onChange: (value: string) => void;
   onDiagnosticsChange: (diagnostics: PrepDiagnostic[]) => void;
+  onRequestEdit?: () => void;
   editable?: boolean;
   height?: number;
 }
@@ -95,17 +97,17 @@ const prepDslTheme = EditorView.theme({
     overflow: 'hidden auto',
   },
   '.cm-scroller::-webkit-scrollbar': {
-    width: '0',
-    height: '0',
-  },
-  '&:hover .cm-scroller::-webkit-scrollbar, &.cm-focused .cm-scroller::-webkit-scrollbar': {
     width: '6px',
     height: '6px',
   },
   '.cm-scroller::-webkit-scrollbar-thumb': {
-    backgroundColor: 'rgba(148, 163, 184, 0.45)',
+    backgroundColor: 'transparent',
     borderRadius: '999px',
   },
+  '&:hover .cm-scroller::-webkit-scrollbar-thumb, &.cm-focused .cm-scroller::-webkit-scrollbar-thumb':
+    {
+      backgroundColor: 'rgba(148, 163, 184, 0.45)',
+    },
   '.cm-scroller::-webkit-scrollbar-track': {
     backgroundColor: 'transparent',
   },
@@ -145,20 +147,35 @@ export function PrepDslEditor({
   formatDiagnostic,
   onChange,
   onDiagnosticsChange,
+  onRequestEdit,
   editable = true,
   height = 180,
 }: PrepDslEditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const editabilityCompartmentRef = useRef(new Compartment());
+  const assistanceCompartmentRef = useRef(new Compartment());
   const valueRef = useRef(value);
+  const lastEmittedRef = useRef(value);
+  const operatorTypeRef = useRef(operatorType);
+  const editableRef = useRef(editable);
+  const wasEditableRef = useRef(editable);
+  const pendingEditFocusPositionRef = useRef<number | null>(null);
   const fieldCompletionsRef = useRef(fieldCompletions);
+  const completionLabelsRef = useRef(completionLabels);
   const onChangeRef = useRef(onChange);
+  const onRequestEditRef = useRef(onRequestEdit);
   const onDiagnosticsChangeRef = useRef(onDiagnosticsChange);
   const formatDiagnosticRef = useRef(formatDiagnostic);
+  const lastDiagnosticsRef = useRef<PrepDiagnostic[]>([]);
 
   useEffect(() => {
     valueRef.current = value;
   }, [value]);
+
+  useEffect(() => {
+    operatorTypeRef.current = operatorType;
+  }, [operatorType]);
 
   useEffect(() => {
     fieldCompletionsRef.current = fieldCompletions;
@@ -169,8 +186,16 @@ export function PrepDslEditor({
   }, [editable, fieldCompletions]);
 
   useEffect(() => {
+    completionLabelsRef.current = completionLabels;
+  }, [completionLabels]);
+
+  useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  useEffect(() => {
+    onRequestEditRef.current = onRequestEdit;
+  }, [onRequestEdit]);
 
   useEffect(() => {
     onDiagnosticsChangeRef.current = onDiagnosticsChange;
@@ -182,50 +207,76 @@ export function PrepDslEditor({
 
   const extensions = useMemo(
     () => [
-      drawSelection(),
       prepDslLanguage,
       syntaxHighlighting(prepDslHighlightStyle),
       prepDslTheme,
       placeholder(placeholderText),
-      EditorState.readOnly.of(!editable),
-      EditorView.editable.of(editable),
+      editabilityCompartmentRef.current.of(createEditabilityExtensions(editableRef.current)),
       keymap.of([...defaultKeymap, indentWithTab]),
-      editable
-        ? autocompletion({
-            override: [
-              (context) =>
-                completePrepDsl(
-                  context,
-                  operatorType,
-                  completionLabels,
-                  fieldCompletionsRef.current
-                ),
-            ],
-          })
-        : [],
-      editable
-        ? linter((view) => {
-            const result = parsePrepOperatorDsl(view.state.doc.toString(), operatorType);
-            onDiagnosticsChangeRef.current(result.diagnostics);
-            return result.diagnostics.map((diagnostic) =>
-              toCodeMirrorDiagnostic(view.state, diagnostic, formatDiagnosticRef.current)
-            );
-          })
-        : [],
+      assistanceCompartmentRef.current.of(createAssistanceExtensions(editableRef.current)),
       EditorView.lineWrapping,
       EditorView.updateListener.of((update) => {
-        if (editable && update.docChanged) {
-          onChangeRef.current(update.state.doc.toString());
+        if (editableRef.current && update.docChanged) {
+          const text = update.state.doc.toString();
+          lastEmittedRef.current = text;
+          onChangeRef.current(text);
           if (isFieldCompletionContext(update.view)) {
             startCompletion(update.view);
           }
         }
       }),
     ],
-    [completionLabels, editable, operatorType, placeholderText]
+    [placeholderText]
   );
 
-  useEffect(() => {
+  function createEditabilityExtensions(isEditable: boolean): Extension {
+    return [
+      EditorState.readOnly.of(!isEditable),
+      EditorView.editable.of(isEditable),
+      EditorView.domEventHandlers({
+        pointerdown: (event) => {
+          if (!editableRef.current) {
+            pendingEditFocusPositionRef.current =
+              viewRef.current?.posAtCoords({ x: event.clientX, y: event.clientY }) ?? null;
+            event.preventDefault();
+            event.stopPropagation();
+            onRequestEditRef.current?.();
+            return true;
+          }
+          return false;
+        },
+      }),
+    ];
+  }
+
+  function createAssistanceExtensions(isEditable: boolean): Extension {
+    if (!isEditable) return [];
+    return [
+      autocompletion({
+        override: [
+          (context) =>
+            completePrepDsl(
+              context,
+              operatorTypeRef.current,
+              completionLabelsRef.current,
+              fieldCompletionsRef.current
+            ),
+        ],
+      }),
+      linter((view) => {
+        const result = parsePrepOperatorDsl(view.state.doc.toString(), operatorTypeRef.current);
+        if (!arePrepDiagnosticsEqual(lastDiagnosticsRef.current, result.diagnostics)) {
+          lastDiagnosticsRef.current = result.diagnostics;
+          onDiagnosticsChangeRef.current(result.diagnostics);
+        }
+        return result.diagnostics.map((diagnostic) =>
+          toCodeMirrorDiagnostic(view.state, diagnostic, formatDiagnosticRef.current)
+        );
+      }),
+    ];
+  }
+
+  useLayoutEffect(() => {
     if (!hostRef.current) return undefined;
     const view = new EditorView({
       parent: hostRef.current,
@@ -238,15 +289,46 @@ export function PrepDslEditor({
     };
   }, [extensions]);
 
+  useLayoutEffect(() => {
+    editableRef.current = editable;
+    const view = viewRef.current;
+    if (!view) {
+      wasEditableRef.current = editable;
+      return;
+    }
+    view.dispatch({
+      effects: [
+        editabilityCompartmentRef.current.reconfigure(createEditabilityExtensions(editable)),
+        assistanceCompartmentRef.current.reconfigure(createAssistanceExtensions(editable)),
+      ],
+    });
+    if (editable && !wasEditableRef.current) {
+      const focusPosition = pendingEditFocusPositionRef.current;
+      pendingEditFocusPositionRef.current = null;
+      const nextView = viewRef.current;
+      if (nextView) {
+        if (focusPosition !== null) {
+          const position = Math.min(focusPosition, nextView.state.doc.length);
+          nextView.dispatch({ selection: { anchor: position }, scrollIntoView: true });
+        }
+        nextView.focus({ preventScroll: true });
+      }
+    }
+    wasEditableRef.current = editable;
+  }, [editable]);
+
   useEffect(() => {
     const view = viewRef.current;
-    if (!view || view.state.doc.toString() === value) return;
+    if (!view) return;
+    // Skip sync if this value came from the editor itself
+    if (value === lastEmittedRef.current) return;
+    const currentDoc = view.state.doc.toString();
+    if (currentDoc === value) return;
+    // External change: sync into editor
+    const cursor = view.state.selection.main.head;
     view.dispatch({
-      changes: {
-        from: 0,
-        to: view.state.doc.length,
-        insert: value,
-      },
+      changes: { from: 0, to: view.state.doc.length, insert: value },
+      selection: { anchor: Math.min(cursor, value.length) },
     });
   }, [value]);
 

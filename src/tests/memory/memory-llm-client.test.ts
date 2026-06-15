@@ -55,7 +55,7 @@ function makeConfig(timeoutMs: number): AppConfig {
     personalAnalysis: {
       apiOrigin: '',
       apiKey: '',
-      datasourceId: '',
+      updatedAt: 0,
     },
     enableThinking: false,
     isConfigured: true,

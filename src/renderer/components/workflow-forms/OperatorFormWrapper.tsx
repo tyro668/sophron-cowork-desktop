@@ -1,4 +1,5 @@
 import React, { Suspense, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { hasOperatorForm, getOperatorFormLoader } from './index';
@@ -11,6 +12,7 @@ interface OperatorFormWrapperProps {
   otherNodes: DataWorkflowNode[];
   sourceNode?: { id: string; type: string; config?: Record<string, unknown> };
   rightSourceNode?: { id: string; type: string; config?: Record<string, unknown> };
+  upstreamRowCount?: number;
   onNodeChange: (updater: (node: DataWorkflowNode) => DataWorkflowNode) => void;
 }
 
@@ -21,8 +23,10 @@ function LazyOperatorForm({
   otherNodes,
   sourceNode,
   rightSourceNode,
+  upstreamRowCount,
   onNodeChange,
 }: OperatorFormWrapperProps) {
+  const { t } = useTranslation();
   const loader = getOperatorFormLoader(node.type);
 
   const LazyComponent = useMemo(() => {
@@ -43,7 +47,7 @@ function LazyOperatorForm({
   if (!loader || !LazyComponent) {
     return (
       <div className="flex items-center justify-center py-8 text-[13px] text-text-muted">
-        该算子暂不支持图形化配置
+        {t('formLabels.noFormSupport', { defaultValue: '该算子暂不支持图形化配置' })}
       </div>
     );
   }
@@ -63,6 +67,7 @@ function LazyOperatorForm({
         otherNodes={otherNodes}
         sourceNode={sourceNode}
         rightSourceNode={rightSourceNode}
+        upstreamRowCount={upstreamRowCount}
         onNodeChange={onNodeChange}
       />
     </Suspense>
@@ -70,10 +75,14 @@ function LazyOperatorForm({
 }
 
 export function OperatorFormWrapper(props: OperatorFormWrapperProps) {
+  const { t } = useTranslation();
+
   if (!hasOperatorForm(props.node.type)) {
     return (
       <div className="rounded-lg border border-border-muted bg-background/42 px-3 py-6 text-center text-[13px] text-text-muted">
-        该算子暂不支持图形化配置，请切换到 DSL 模式
+        {t('formLabels.noFormSupportHint', {
+          defaultValue: '该算子暂不支持图形化配置，请切换到 DSL 模式',
+        })}
       </div>
     );
   }
