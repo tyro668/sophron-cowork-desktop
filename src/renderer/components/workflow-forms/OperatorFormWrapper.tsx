@@ -79,7 +79,7 @@ export function OperatorFormWrapper(props: OperatorFormWrapperProps) {
 
   if (!hasOperatorForm(props.node.type)) {
     return (
-      <div className="rounded-lg border border-border-muted bg-background/42 px-3 py-6 text-center text-[13px] text-text-muted">
+      <div className="px-1 py-2 text-center text-[12px] text-text-muted">
         {t('formLabels.noFormSupportHint', {
           defaultValue: '该算子暂不支持图形化配置，请切换到 DSL 模式',
         })}

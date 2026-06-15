@@ -61,7 +61,7 @@ function formatOperator(node: PrepFlowNodeLike): string | null {
   if (typeof node.config?.dsl === 'string') return node.config.dsl;
   switch (node.type) {
     case 'filter':
-      return `filter ${String(node.config?.condition ?? 'true')}`;
+      return `filter ${normalizeBareFilterLiterals(String(node.config?.condition ?? 'true'))}`;
     case 'field_select':
       return formatFieldSelect(node.config);
     case 'missing_value':
@@ -338,6 +338,23 @@ function literalToDsl(value: unknown): string {
 
 function quoteString(value: string): string {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function normalizeBareFilterLiterals(condition: string): string {
+  return condition.replace(
+    /((?:=|!=|>=|<=|>|<)\s*)([\p{L}_][\p{L}\p{N}_ -]*?)(?=\s*(?:$|\)|\band\b|\bor\b))/giu,
+    (match, operator: string, value: string) => {
+      const trimmed = value.trim();
+      if (!trimmed || /^(true|false|null)$/i.test(trimmed) || isNumberLiteral(trimmed)) {
+        return match;
+      }
+      return `${operator}${quoteString(trimmed)}`;
+    }
+  );
+}
+
+function isNumberLiteral(value: string): boolean {
+  return /^[+-]?(?:\d+|\d*\.\d+)(?:e[+-]?\d+)?$/i.test(value);
 }
 
 function objectValue(value: unknown): Record<string, unknown> | null {

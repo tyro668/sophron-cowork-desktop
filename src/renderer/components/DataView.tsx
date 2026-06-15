@@ -6,6 +6,7 @@ import {
   useState,
   type DragEvent,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
 import { flushSync } from 'react-dom';
@@ -73,7 +74,6 @@ import {
   Folder,
   GitMerge,
   Info,
-  MapPin,
   MoreHorizontal,
   PencilLine,
   Play,
@@ -89,6 +89,7 @@ import {
   Upload,
   UploadCloud,
   Workflow,
+  Maximize2,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -118,7 +119,6 @@ import type {
 } from '../types';
 import { PrepDslEditor } from './PrepDslEditor';
 import { OperatorFormWrapper } from './workflow-forms/OperatorFormWrapper';
-import { GlassModeToggle } from './workflow-forms/shared/GlassModeToggle';
 import {
   compilePrepWorkflowToFlow,
   exportPrepOperatorDsl,
@@ -210,6 +210,14 @@ const WORKFLOW_NODE_HEIGHT = 36;
 const WORKFLOW_OPERATOR_MIME = 'application/x-sophron-workflow-operator';
 const WORKFLOW_ALIGNMENT_THRESHOLD = 6;
 const WORKFLOW_ALIGNMENT_GUIDE_PADDING = 32;
+const WORKFLOW_OPERATOR_DSL_TOP_MIN_HEIGHT = 160;
+const WORKFLOW_OPERATOR_DSL_BOTTOM_MIN_HEIGHT = 96;
+const WORKFLOW_OPERATOR_DSL_SPLIT_HANDLE_HEIGHT = 20;
+const WORKFLOW_OPERATOR_DSL_TOTAL_MIN_HEIGHT =
+  WORKFLOW_OPERATOR_DSL_TOP_MIN_HEIGHT +
+  WORKFLOW_OPERATOR_DSL_BOTTOM_MIN_HEIGHT +
+  WORKFLOW_OPERATOR_DSL_SPLIT_HANDLE_HEIGHT;
+const WORKFLOW_OPERATOR_DSL_DEFAULT_SPLIT_RATIO = 0.68;
 
 const INPUT_TABLE_SOURCE_FILTERS: Array<{
   value: InputTableSourceFilter;
@@ -562,6 +570,10 @@ const OPERATOR_CATALOG: Array<{
 const WORKFLOW_NODE_TYPES = {
   operator: WorkflowOperatorNode,
 };
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
 
 export function DataView() {
   const { t } = useTranslation();
@@ -2448,7 +2460,7 @@ function TaskEditor({
       ) : (
         <div className="grid flex-1 min-h-0 grid-cols-[13rem_minmax(0,1fr)] items-stretch gap-3">
           <WorkflowOperatorPalette operators={OPERATOR_CATALOG} onAddOperator={addOperator} />
-          <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_20rem] gap-3">
+          <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_minmax(26rem,36vh)] gap-3">
             <WorkflowCanvas
               nodes={nodes}
               edges={edges}
@@ -3195,17 +3207,24 @@ function WorkflowInspector({
   const [operatorDsl, setOperatorDsl] = useState('');
   const [operatorDslBeforeEdit, setOperatorDslBeforeEdit] = useState('');
   const [isEditingOperatorDsl, setIsEditingOperatorDsl] = useState(false);
-  const [configMode, setConfigMode] = useState<'form' | 'dsl'>('form');
   const [operatorDslDiagnostics, setOperatorDslDiagnostics] = useState<PrepDiagnostic[]>([]);
   const [operatorDslStatus, setOperatorDslStatus] = useState<string | null>(null);
-  const [operatorDslDiagnosticsOpen, setOperatorDslDiagnosticsOpen] = useState(true);
   const [operatorFieldCompletions, setOperatorFieldCompletions] = useState<string[]>([]);
   const [isEditingNodeTitle, setIsEditingNodeTitle] = useState(false);
+  const [isConfigInfoOpen, setIsConfigInfoOpen] = useState(false);
+  const [operatorDslSplitRatio, setOperatorDslSplitRatio] = useState(
+    WORKFLOW_OPERATOR_DSL_DEFAULT_SPLIT_RATIO
+  );
+  const [operatorDslPaneHeight, setOperatorDslPaneHeight] = useState(0);
+  const [isOperatorDslSplitDragging, setIsOperatorDslSplitDragging] = useState(false);
   const [nodePreviewData, setNodePreviewData] = useState<DataInputTablePreview | null>(null);
   const [nodePreviewLoading, setNodePreviewLoading] = useState(false);
   const [nodePreviewError, setNodePreviewError] = useState<string | null>(null);
   const [nodePreviewPage, setNodePreviewPage] = useState(1);
   const operatorDslNodeKeyRef = useRef('');
+  const operatorDslSplitRatioRef = useRef(operatorDslSplitRatio);
+  const operatorDslPaneRef = useRef<HTMLDivElement | null>(null);
+  const operatorDslSplitDragCleanupRef = useRef<(() => void) | null>(null);
   const nodeTitleInputRef = useRef<HTMLInputElement | null>(null);
   const nodePreviewRequestSeq = useRef(0);
   const operatorFieldsRequestSeq = useRef(0);
@@ -3233,6 +3252,10 @@ function WorkflowInspector({
   );
 
   useEffect(() => {
+    operatorDslSplitRatioRef.current = operatorDslSplitRatio;
+  }, [operatorDslSplitRatio]);
+
+  useEffect(() => {
     const nextNodeKey = node && usesOperatorDsl ? `${node.id}:${node.type}` : '';
     if (operatorDslNodeKeyRef.current === nextNodeKey) return;
     operatorDslNodeKeyRef.current = nextNodeKey;
@@ -3243,8 +3266,7 @@ function WorkflowInspector({
       setOperatorFieldCompletions([]);
       setOperatorDslDiagnostics([]);
       setOperatorDslStatus(null);
-      setOperatorDslDiagnosticsOpen(true);
-      setConfigMode('form');
+      setIsConfigInfoOpen(false);
       return;
     }
     const nextDsl = exportPrepOperatorDsl(node);
@@ -3254,9 +3276,17 @@ function WorkflowInspector({
     setOperatorFieldCompletions([]);
     setOperatorDslDiagnostics([]);
     setOperatorDslStatus(null);
-    setOperatorDslDiagnosticsOpen(true);
-    setConfigMode('form');
+    setIsConfigInfoOpen(false);
   }, [node, node?.id, node?.type, usesOperatorDsl]);
+
+  useEffect(() => {
+    if (!node || !usesOperatorDsl || isEditingOperatorDsl) return;
+    const nextDsl = exportPrepOperatorDsl(node);
+    setOperatorDsl(nextDsl);
+    setOperatorDslBeforeEdit(nextDsl);
+    setOperatorDslDiagnostics([]);
+    setOperatorDslStatus(null);
+  }, [isEditingOperatorDsl, node, node?.config, node?.label, usesOperatorDsl]);
 
   useEffect(() => {
     const requestSeq = operatorFieldsRequestSeq.current + 1;
@@ -3290,6 +3320,43 @@ function WorkflowInspector({
     const timeoutId = window.setTimeout(() => setOperatorDslStatus(null), 3000);
     return () => window.clearTimeout(timeoutId);
   }, [operatorDslStatus]);
+
+  useEffect(() => {
+    operatorDslSplitDragCleanupRef.current?.();
+    setIsOperatorDslSplitDragging(false);
+  }, [node?.id]);
+
+  useEffect(() => {
+    const element = operatorDslPaneRef.current;
+    if (!element || activeTab !== 'config' || !usesOperatorDsl) {
+      setOperatorDslPaneHeight(0);
+      return undefined;
+    }
+
+    const updatePaneHeight = () => {
+      setOperatorDslPaneHeight(element.getBoundingClientRect().height);
+    };
+
+    updatePaneHeight();
+
+    const observer = new ResizeObserver(updatePaneHeight);
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, [activeTab, usesOperatorDsl, node?.id]);
+
+  useEffect(
+    () => () => {
+      operatorDslSplitDragCleanupRef.current?.();
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (activeTab !== 'config' || !usesOperatorDsl) {
+      operatorDslSplitDragCleanupRef.current?.();
+    }
+  }, [activeTab, usesOperatorDsl]);
 
   useEffect(() => {
     setIsEditingNodeTitle(false);
@@ -3345,7 +3412,6 @@ function WorkflowInspector({
   const handleOperatorDslChange = useCallback((value: string) => {
     setOperatorDsl(value);
     setOperatorDslStatus(null);
-    setOperatorDslDiagnosticsOpen(true);
   }, []);
 
   const handleStartOperatorDslEdit = useCallback(() => {
@@ -3354,11 +3420,9 @@ function WorkflowInspector({
       setOperatorDslBeforeEdit(operatorDsl);
       setOperatorDslStatus(null);
       setOperatorDslDiagnostics([]);
-      setOperatorDslDiagnosticsOpen(true);
       setIsEditingOperatorDsl(true);
-      onActiveTabChange('config');
     });
-  }, [node, onActiveTabChange, operatorDsl, usesOperatorDsl]);
+  }, [node, operatorDsl, usesOperatorDsl]);
 
   const handleCancelOperatorDslEdit = useCallback(() => {
     if (!node || !usesOperatorDsl) return;
@@ -3366,7 +3430,6 @@ function WorkflowInspector({
     setOperatorDsl(nextDsl);
     setOperatorDslStatus(null);
     setOperatorDslDiagnostics([]);
-    setOperatorDslDiagnosticsOpen(true);
     setIsEditingOperatorDsl(false);
   }, [node, operatorDslBeforeEdit, usesOperatorDsl]);
 
@@ -3374,7 +3437,6 @@ function WorkflowInspector({
     if (!node || !usesOperatorDsl || !isEditingOperatorDsl) return;
     const result = parsePrepOperatorDsl(operatorDsl, node.type);
     setOperatorDslDiagnostics(result.diagnostics);
-    setOperatorDslDiagnosticsOpen(true);
     const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
     if (!result.operator || errors.length > 0) {
       setOperatorDslStatus(null);
@@ -3390,7 +3452,6 @@ function WorkflowInspector({
     if (!node || !usesOperatorDsl || !isEditingOperatorDsl || isRunningOperatorDsl) return;
     const result = parsePrepOperatorDsl(operatorDsl, node.type);
     setOperatorDslDiagnostics(result.diagnostics);
-    setOperatorDslDiagnosticsOpen(true);
     const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
     if (!result.operator || errors.length > 0) {
       setOperatorDslStatus(null);
@@ -3401,18 +3462,15 @@ function WorkflowInspector({
     setOperatorDslBeforeEdit(nextDsl);
     setOperatorDslStatus(t('data.workflow.operatorDslApplied'));
     setOperatorDslDiagnostics([]);
-    setOperatorDslDiagnosticsOpen(true);
     setIsEditingOperatorDsl(false);
     setNodePreviewPage(1);
     setNodePreviewData(null);
     setNodePreviewError(null);
-    onActiveTabChange('data');
     await onApplyOperatorDsl(node.id, result.operator.config);
   }, [
     isEditingOperatorDsl,
     isRunningOperatorDsl,
     node,
-    onActiveTabChange,
     onApplyOperatorDsl,
     operatorDsl,
     t,
@@ -3430,6 +3488,89 @@ function WorkflowInspector({
     [onNodeChange]
   );
 
+  const operatorDslSplitLayout = useMemo(() => {
+    const availableHeight = Math.max(
+      0,
+      operatorDslPaneHeight - WORKFLOW_OPERATOR_DSL_SPLIT_HANDLE_HEIGHT
+    );
+    const maxTopHeight = Math.max(
+      WORKFLOW_OPERATOR_DSL_TOP_MIN_HEIGHT,
+      availableHeight - WORKFLOW_OPERATOR_DSL_BOTTOM_MIN_HEIGHT
+    );
+    const minTopHeight = Math.min(WORKFLOW_OPERATOR_DSL_TOP_MIN_HEIGHT, maxTopHeight);
+    const desiredTopHeight = availableHeight * operatorDslSplitRatio;
+    const topHeight = clampNumber(desiredTopHeight, minTopHeight, maxTopHeight);
+    const bottomHeight = Math.max(
+      WORKFLOW_OPERATOR_DSL_BOTTOM_MIN_HEIGHT,
+      availableHeight - topHeight
+    );
+    return {
+      topHeight,
+      bottomHeight,
+      canDrag:
+        availableHeight >
+        WORKFLOW_OPERATOR_DSL_TOP_MIN_HEIGHT + WORKFLOW_OPERATOR_DSL_BOTTOM_MIN_HEIGHT,
+    };
+  }, [operatorDslPaneHeight, operatorDslSplitRatio]);
+
+  const handleOperatorDslSplitPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0 || !usesOperatorDsl || activeTab !== 'config') return;
+
+      const pane = operatorDslPaneRef.current;
+      if (!pane) return;
+
+      const paneRect = pane.getBoundingClientRect();
+      const availableHeight = Math.max(
+        0,
+        paneRect.height - WORKFLOW_OPERATOR_DSL_SPLIT_HANDLE_HEIGHT
+      );
+      if (
+        availableHeight <=
+        WORKFLOW_OPERATOR_DSL_TOP_MIN_HEIGHT + WORKFLOW_OPERATOR_DSL_BOTTOM_MIN_HEIGHT
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const maxTopHeight = Math.max(
+        WORKFLOW_OPERATOR_DSL_TOP_MIN_HEIGHT,
+        availableHeight - WORKFLOW_OPERATOR_DSL_BOTTOM_MIN_HEIGHT
+      );
+      const minTopHeight = Math.min(WORKFLOW_OPERATOR_DSL_TOP_MIN_HEIGHT, maxTopHeight);
+
+      const updateRatio = (clientY: number) => {
+        const nextTopHeight = clampNumber(clientY - paneRect.top, minTopHeight, maxTopHeight);
+        const nextRatio = availableHeight > 0 ? nextTopHeight / availableHeight : 0;
+        operatorDslSplitRatioRef.current = nextRatio;
+        setOperatorDslSplitRatio(nextRatio);
+      };
+
+      updateRatio(event.clientY);
+      setIsOperatorDslSplitDragging(true);
+
+      const handlePointerMove = (moveEvent: PointerEvent) => {
+        updateRatio(moveEvent.clientY);
+      };
+
+      const handlePointerUp = () => {
+        setIsOperatorDslSplitDragging(false);
+        document.removeEventListener('pointermove', handlePointerMove);
+        document.removeEventListener('pointerup', handlePointerUp);
+        document.removeEventListener('pointercancel', handlePointerUp);
+        operatorDslSplitDragCleanupRef.current = null;
+      };
+
+      operatorDslSplitDragCleanupRef.current = handlePointerUp;
+      document.addEventListener('pointermove', handlePointerMove);
+      document.addEventListener('pointerup', handlePointerUp);
+      document.addEventListener('pointercancel', handlePointerUp);
+    },
+    [activeTab, usesOperatorDsl]
+  );
+
   if (!node) {
     return (
       <aside className="glass-card min-h-0 overflow-y-auto rounded-xl p-3 text-xs text-text-muted">
@@ -3441,9 +3582,8 @@ function WorkflowInspector({
   const catalog = getOperatorCatalog(node.type);
   const Icon = catalog.Icon;
   const summary = getWorkflowConfigSummary(node, t);
-  const ruleSummaryItems = getRuleSummaryItems(node, t, Icon);
-  const operatorDslHasErrors = operatorDslDiagnostics.some(
-    (diagnostic) => diagnostic.severity === 'error'
+  const configInfoRows = [...summary.primary, ...summary.details].filter(
+    (row) => row.label !== t('data.workflow.summaryLabels.dsl')
   );
 
   return (
@@ -3524,7 +3664,11 @@ function WorkflowInspector({
           <X className="h-4 w-4 text-text-muted" />
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden p-2.5">
+      <div
+        className={`min-h-0 flex-1 overflow-hidden ${
+          activeTab === 'config' && usesOperatorDsl ? 'p-0' : 'p-2.5'
+        }`}
+      >
         {activeTab === 'logs' ? (
           <div className="h-full min-h-0 rounded-lg border border-border-muted bg-background/34 p-2.5 text-xs text-text-muted">
             {t('data.workflow.noLogs')}
@@ -3538,141 +3682,204 @@ function WorkflowInspector({
             onPageChange={setNodePreviewPage}
           />
         ) : usesOperatorDsl ? (
-          <div className="grid h-full min-h-0 gap-2.5 lg:grid-cols-[minmax(0,1fr)_17rem]">
-            <div className="glass-card flex min-h-0 min-w-0 flex-col rounded-xl p-2">
-              <div className="mb-2 flex min-h-8 items-center gap-2">
-                <GlassModeToggle
-                  mode={configMode}
-                  formLabel={t('data.workflow.formConfig', '图形配置')}
-                  dslLabel={t('data.workflow.dslEditor', 'DSL 编辑器')}
-                  onChange={(m) => {
-                    if (m === 'dsl' && configMode === 'form') {
-                      setOperatorDsl(exportPrepOperatorDsl(node));
-                      setIsEditingOperatorDsl(false);
-                    }
-                    if (m === 'form' && configMode === 'dsl') {
-                      setIsEditingOperatorDsl(false);
-                    }
-                    setConfigMode(m);
-                  }}
+          <>
+            <div
+              ref={operatorDslPaneRef}
+              className={`relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden ${
+                isOperatorDslSplitDragging ? 'select-none' : ''
+              }`}
+              style={{ minHeight: `${WORKFLOW_OPERATOR_DSL_TOTAL_MIN_HEIGHT}px` }}
+            >
+              <button
+                type="button"
+                onClick={() => setIsConfigInfoOpen((current) => !current)}
+                className={`absolute right-0 top-0 z-20 inline-flex h-8 items-center gap-1.5 rounded-none border px-3 text-[11px] font-medium transition-colors ${
+                  isConfigInfoOpen
+                    ? 'border-accent/30 bg-accent/10 text-accent'
+                    : 'border-border-muted bg-background/82 text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
+                }`}
+                title={t('data.workflow.summary', 'Config summary')}
+              >
+                <ChevronDown
+                  className={`h-3.5 w-3.5 transition-transform ${isConfigInfoOpen ? 'rotate-180' : ''}`}
                 />
-                {configMode === 'dsl' && (
-                  <>
-                    {operatorDslStatus && (
-                      <div className="flex h-8 min-w-0 items-center gap-1.5 rounded-lg border border-success/20 bg-success/5 px-2 text-[11px] text-success">
-                        <CheckCircle2 className="h-3 w-3 flex-shrink-0" />
-                        <span className="truncate">{operatorDslStatus}</span>
-                      </div>
-                    )}
-                    <div
-                      className={`${operatorDslStatus ? '' : 'ml-auto'} flex items-center gap-2`}
+                {t('data.workflow.summary', 'Config summary')}
+              </button>
+              {isConfigInfoOpen && (
+                <section className="absolute right-0 top-8 z-20 w-60 overflow-hidden rounded-none border border-border-muted bg-[var(--glass-card-strong)] p-2.5 shadow-elevated backdrop-blur-xl">
+                  <div className="mb-2 flex h-6 items-center justify-between gap-2">
+                    <h3 className="text-[12px] font-medium text-text-secondary">
+                      {t('data.workflow.summary', 'Config summary')}
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setIsConfigInfoOpen(false)}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-accent/10 hover:text-accent"
                     >
-                      {isEditingOperatorDsl ? (
-                        <>
-                          <button
-                            onClick={handleFormatOperatorDsl}
-                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/42 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
-                          >
-                            <Code2 className="h-3.5 w-3.5" />
-                            {t('data.workflow.formatDsl')}
-                          </button>
-                          <button
-                            onClick={handleCancelOperatorDslEdit}
-                            disabled={isRunningOperatorDsl}
-                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/42 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                            {t('common.cancel')}
-                          </button>
-                          <button
-                            onClick={() => void handleApplyOperatorDsl()}
-                            disabled={isRunningOperatorDsl}
-                            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-55"
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            {t('data.workflow.applyOperatorDsl')}
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={handleStartOperatorDslEdit}
-                          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/42 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <div className="max-h-[14rem] overflow-y-auto rounded-lg border border-border-muted text-[11px]">
+                    {configInfoRows.length > 0 ? (
+                      configInfoRows.map((row) => (
+                        <div
+                          key={`${row.label}-${row.value}`}
+                          className="grid grid-cols-[4.5rem_minmax(0,1fr)] border-b border-border-muted last:border-b-0"
                         >
-                          <PencilLine className="h-3.5 w-3.5" />
-                          {t('data.workflow.configureSelected')}
-                        </button>
+                          <div className="bg-background/72 px-2 py-1.5 text-text-muted">
+                            {row.label}
+                          </div>
+                          <div className="min-w-0 break-words px-2 py-1.5 text-text-secondary">
+                            {row.value}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-2 py-2 text-text-muted">{t('data.workflow.noConfig')}</div>
+                    )}
+                  </div>
+                </section>
+              )}
+              <div
+                className="min-h-0 overflow-y-auto px-1.5 pt-1.5"
+                style={{ height: operatorDslSplitLayout.topHeight }}
+              >
+                <OperatorFormWrapper
+                  key={`${node.id}-form`}
+                  node={node}
+                  taskId={node.taskId}
+                  fieldCompletions={operatorFieldCompletions}
+                  otherNodes={workflowNodes}
+                  sourceNode={
+                    operatorFieldSourceNode
+                      ? {
+                          id: operatorFieldSourceNode.id,
+                          type: operatorFieldSourceNode.type,
+                          config: operatorFieldSourceNode.config,
+                        }
+                      : undefined
+                  }
+                  rightSourceNode={
+                    operatorRightSourceNode
+                      ? {
+                          id: operatorRightSourceNode.id,
+                          type: operatorRightSourceNode.type,
+                          config: operatorRightSourceNode.config,
+                        }
+                      : undefined
+                  }
+                  upstreamRowCount={nodePreviewData?.totalRows}
+                  onNodeChange={onNodeChange}
+                />
+              </div>
+              <div
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label={t('data.workflow.resizeOperatorDslSplit', 'Drag to resize')}
+                onPointerDown={handleOperatorDslSplitPointerDown}
+                className={`group relative flex h-5 items-center justify-center ${
+                  operatorDslSplitLayout.canDrag ? 'cursor-ns-resize' : 'cursor-default'
+                } ${isOperatorDslSplitDragging ? 'text-accent' : 'text-border-muted'}`}
+                style={{ touchAction: 'none', userSelect: 'none' }}
+              >
+                <div
+                  className={`pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 transition-colors ${
+                    isOperatorDslSplitDragging
+                      ? 'bg-accent/60'
+                      : 'bg-border-muted/70 group-hover:bg-accent/35'
+                  }`}
+                />
+                <div className="pointer-events-none absolute inset-x-0 flex items-center justify-center">
+                  <span className="relative block h-4 w-5">
+                    <span
+                      className={`absolute left-1/2 top-0 -translate-x-1/2 border-l-[8px] border-r-[8px] border-b-[6px] border-l-transparent border-r-transparent transition-colors ${
+                        isOperatorDslSplitDragging
+                          ? 'border-b-accent'
+                          : 'border-b-border-muted/80 group-hover:border-b-accent/70'
+                      }`}
+                    />
+                    <span
+                      className={`absolute left-1/2 bottom-0 -translate-x-1/2 border-l-[8px] border-r-[8px] border-t-[6px] border-l-transparent border-r-transparent transition-colors ${
+                        isOperatorDslSplitDragging
+                          ? 'border-t-accent'
+                          : 'border-t-border-muted/80 group-hover:border-t-accent/70'
+                      }`}
+                    />
+                  </span>
+                </div>
+              </div>
+              <section
+                className="min-h-0 px-1.5 pb-1 pt-1"
+                style={{ height: operatorDslSplitLayout.bottomHeight }}
+              >
+                <div className="flex h-full min-h-0 flex-col">
+                  <div className="flex h-7 shrink-0 items-center justify-between gap-2 px-0.5">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="text-[13px] font-medium text-text-secondary">DSL</span>
+                      {operatorDslStatus && (
+                        <div className="flex h-6 min-w-0 items-center rounded-full border border-success/20 bg-success/5 px-2 text-[11px] text-success">
+                          <CheckCircle2 className="mr-1 h-3 w-3 flex-shrink-0" />
+                          <span className="truncate">{operatorDslStatus}</span>
+                        </div>
                       )}
                     </div>
-                  </>
-                )}
-              </div>
-              {configMode === 'form' ? (
-                <div className="min-h-0 min-w-0 overflow-y-auto">
-                  <OperatorFormWrapper
-                    key={`${node.id}-form`}
-                    node={node}
-                    taskId={node.taskId}
-                    fieldCompletions={operatorFieldCompletions}
-                    otherNodes={workflowNodes}
-                    sourceNode={
-                      operatorFieldSourceNode
-                        ? {
-                            id: operatorFieldSourceNode.id,
-                            type: operatorFieldSourceNode.type,
-                            config: operatorFieldSourceNode.config,
-                          }
-                        : undefined
-                    }
-                    rightSourceNode={
-                      operatorRightSourceNode
-                        ? {
-                            id: operatorRightSourceNode.id,
-                            type: operatorRightSourceNode.type,
-                            config: operatorRightSourceNode.config,
-                          }
-                        : undefined
-                    }
-                    upstreamRowCount={nodePreviewData?.totalRows}
-                    onNodeChange={onNodeChange}
-                  />
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => void navigator.clipboard?.writeText(operatorDsl)}
+                        className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/50 px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                        {t('data.workflow.copyDsl', 'Copy DSL')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleStartOperatorDslEdit}
+                        className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/50 px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+                      >
+                        <Maximize2 className="h-3.5 w-3.5" />
+                        {t('common.expand', 'Expand')}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-1 min-h-0 flex-1 overflow-hidden rounded-[14px] border border-border-muted/80 bg-[var(--glass-card-strong)] shadow-[inset_0_1px_0_rgba(255,255,255,0.45),0_1px_0_rgba(15,23,42,0.03)]">
+                    <PrepDslEditor
+                      value={operatorDsl}
+                      operatorType={node.type}
+                      placeholderText={t('data.workflow.operatorDslPlaceholder')}
+                      completionLabels={editorCompletionLabels}
+                      formatDiagnostic={formatEditorDiagnostic}
+                      onChange={handleOperatorDslChange}
+                      onDiagnosticsChange={setOperatorDslDiagnostics}
+                      onRequestEdit={handleStartOperatorDslEdit}
+                      fieldCompletions={operatorFieldCompletions}
+                      editable={false}
+                      height="100%"
+                    />
+                  </div>
                 </div>
-              ) : (
-                <PrepDslEditor
-                  value={operatorDsl}
-                  operatorType={node.type}
-                  placeholderText={t('data.workflow.operatorDslPlaceholder')}
-                  completionLabels={editorCompletionLabels}
-                  formatDiagnostic={formatEditorDiagnostic}
-                  onChange={handleOperatorDslChange}
-                  onDiagnosticsChange={setOperatorDslDiagnostics}
-                  onRequestEdit={handleStartOperatorDslEdit}
-                  fieldCompletions={operatorFieldCompletions}
-                  editable={isEditingOperatorDsl}
-                  height={182}
-                />
-              )}
+              </section>
             </div>
-            {configMode === 'form' ? (
-              <WorkflowSummaryPanel
-                title={t('data.workflow.summary')}
-                rows={summary.primary}
-                emptyText={t('data.workflow.noConfig')}
-              />
-            ) : (
-              <WorkflowRuleSummaryCard
-                title={t('data.workflow.ruleSummary')}
-                items={ruleSummaryItems}
-                syntaxOk={!operatorDslHasErrors}
-                syntaxOkText={t('data.workflow.syntaxOk')}
-                syntaxErrorText={t('data.workflow.syntaxInvalid')}
-                diagnostics={operatorDslDiagnostics}
-                diagnosticsOpen={operatorDslDiagnosticsOpen}
-                onCloseDiagnostics={() => setOperatorDslDiagnosticsOpen(false)}
-                formatDiagnostic={formatEditorDiagnostic}
-                emptyText={t('data.workflow.noConfig')}
+            {isEditingOperatorDsl && (
+              <WorkflowOperatorDslDialog
+                nodeLabel={node.label || t(catalog.labelKey)}
+                operatorType={node.type}
+                operatorDsl={operatorDsl}
+                operatorDslStatus={operatorDslStatus}
+                operatorDslDiagnostics={operatorDslDiagnostics}
+                editorCompletionLabels={editorCompletionLabels}
+                fieldCompletions={operatorFieldCompletions}
+                formatEditorDiagnostic={formatEditorDiagnostic}
+                isRunningOperatorDsl={isRunningOperatorDsl}
+                onChange={handleOperatorDslChange}
+                onDiagnosticsChange={setOperatorDslDiagnostics}
+                onClose={handleCancelOperatorDslEdit}
+                onCopy={() => void navigator.clipboard?.writeText(operatorDsl)}
+                onFormat={handleFormatOperatorDsl}
+                onApply={() => void handleApplyOperatorDsl()}
               />
             )}
-          </div>
+          </>
         ) : (
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
             <div className="grid content-start gap-3 sm:grid-cols-2">
@@ -4020,112 +4227,6 @@ interface WorkflowSummaryRow {
   mono?: boolean;
 }
 
-interface WorkflowRuleSummaryItem {
-  id: string;
-  label: string;
-  operator?: string;
-  value: string;
-  Icon: LucideIcon;
-}
-
-function WorkflowRuleSummaryCard({
-  title,
-  items,
-  syntaxOk,
-  syntaxOkText,
-  syntaxErrorText,
-  diagnostics,
-  diagnosticsOpen,
-  onCloseDiagnostics,
-  formatDiagnostic,
-  emptyText,
-}: {
-  title: string;
-  items: WorkflowRuleSummaryItem[];
-  syntaxOk: boolean;
-  syntaxOkText: string;
-  syntaxErrorText: string;
-  diagnostics: PrepDiagnostic[];
-  diagnosticsOpen: boolean;
-  onCloseDiagnostics: () => void;
-  formatDiagnostic: (diagnostic: PrepDiagnostic) => string;
-  emptyText: string;
-}) {
-  const visibleDiagnostics = diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
-  return (
-    <section className="glass-card flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-xl p-3">
-      <h3 className="mb-2 flex h-8 items-center text-[13px] font-medium text-text-secondary">
-        {title}
-      </h3>
-      <div className="min-h-0 space-y-1.5 overflow-hidden">
-        {items.length > 0 ? (
-          items.map((item) => (
-            <div
-              key={item.id}
-              className="flex min-h-8 items-center gap-2 rounded-lg bg-surface-active/45 px-2.5 py-1.5 text-[13px] text-text-secondary"
-            >
-              <item.Icon className="h-4 w-4 flex-shrink-0 text-accent" />
-              <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
-              {item.operator && (
-                <span className="px-1.5 font-mono text-xs font-medium text-accent">
-                  {item.operator}
-                </span>
-              )}
-              <span className="max-w-[7rem] truncate rounded-md bg-accent/10 px-2 py-1 font-medium text-accent">
-                {item.value}
-              </span>
-            </div>
-          ))
-        ) : (
-          <div className="rounded-lg bg-surface-active/45 px-2.5 py-2 text-xs text-text-muted">
-            {emptyText}
-          </div>
-        )}
-      </div>
-      <div className="mt-auto border-t border-dashed border-border-muted pt-2">
-        <div
-          className={`flex h-8 items-center gap-2 text-[13px] font-medium ${
-            syntaxOk ? 'text-accent' : 'text-error'
-          }`}
-        >
-          {syntaxOk ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-          <span>{syntaxOk ? syntaxOkText : syntaxErrorText}</span>
-        </div>
-        {visibleDiagnostics.length > 0 && diagnosticsOpen && (
-          <div className="mt-2 max-h-20 overflow-y-auto rounded-lg border border-error/15 bg-error/5 p-1.5">
-            <div className="mb-1 flex items-center justify-between gap-2 px-1">
-              <span className="text-[11px] font-medium text-error">
-                {visibleDiagnostics.length}
-              </span>
-              <button
-                onClick={onCloseDiagnostics}
-                className="inline-flex h-5 w-5 items-center justify-center rounded-md text-error/70 transition-colors hover:bg-error/10 hover:text-error"
-                title={formatDiagnostic({
-                  severity: 'warning',
-                  code: 'dismissDiagnostics',
-                  message: 'Dismiss diagnostics',
-                })}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-            <div className="space-y-1">
-              {visibleDiagnostics.map((diagnostic, index) => (
-                <div
-                  key={`${diagnostic.code ?? diagnostic.message}-${index}`}
-                  className="rounded-md bg-background/72 px-2 py-1 text-[11px] leading-4 text-error"
-                >
-                  {formatDiagnostic(diagnostic)}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
 function WorkflowSummaryPanel({
   title,
   rows,
@@ -4360,73 +4461,6 @@ function getWorkflowConnectionDropTarget(
     return null;
   }
   return { nodeId, handleId };
-}
-
-function getRuleSummaryItems(
-  node: DataWorkflowNode,
-  t: TranslateFn,
-  fallbackIcon: LucideIcon
-): WorkflowRuleSummaryItem[] {
-  if (node.type === 'filter') {
-    const condition = stringValue(node.config.condition);
-    const parsedConditions = parseFilterSummaryItems(condition);
-    if (parsedConditions.length > 0) {
-      return parsedConditions.map((item, index) => ({
-        id: `condition-${index}`,
-        label: item.label,
-        operator: item.operator,
-        value: item.value,
-        Icon: item.label.toLowerCase().includes('region') ? MapPin : BarChart3,
-      }));
-    }
-  }
-
-  const summary = getWorkflowConfigSummary(node, t);
-  const dslLabel = t('data.workflow.summaryLabels.dsl');
-  const notSet = t('data.workflow.values.notSet');
-  return [...summary.primary, ...summary.details]
-    .filter((row) => row.label !== dslLabel && row.value && row.value !== notSet)
-    .slice(0, 3)
-    .map((row, index) => ({
-      id: `${row.label}-${index}`,
-      label: row.label,
-      value: row.value,
-      Icon: fallbackIcon,
-    }));
-}
-
-function parseFilterSummaryItems(
-  condition: string
-): Array<{ label: string; operator: string; value: string }> {
-  const normalized = condition.replace(/^filter\s+/i, '').trim();
-  if (!normalized) return [];
-  return normalized.split(/\s+and\s+/i).flatMap((part) => {
-    const match = /^\s*(.+?)\s*(>=|<=|!=|=|>|<)\s*(.+?)\s*$/.exec(part);
-    if (!match) return [];
-    return [
-      {
-        label: stripSummaryFieldRef(match[1]),
-        operator: match[2],
-        value: stripSummaryLiteral(match[3]),
-      },
-    ];
-  });
-}
-
-function stripSummaryFieldRef(value: string): string {
-  const pieces = value
-    .trim()
-    .split('.')
-    .map((part) => part.trim().replace(/^\[/, '').replace(/\]$/, '').replace(/^`|`$/g, ''));
-  return pieces[pieces.length - 1] || value.trim();
-}
-
-function stripSummaryLiteral(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
-    return trimmed.slice(1, -1).replace(/\\"/g, '"');
-  }
-  return trimmed;
 }
 
 interface WorkflowConfigSummary {
@@ -7264,6 +7298,141 @@ function InputTablePreviewDialog({
               pageSize: (count) => t('data.inputTables.editor.previewPageSize', { count }),
             }}
           />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WorkflowOperatorDslDialog({
+  nodeLabel,
+  operatorType,
+  operatorDsl,
+  operatorDslStatus,
+  operatorDslDiagnostics,
+  editorCompletionLabels,
+  fieldCompletions,
+  formatEditorDiagnostic,
+  isRunningOperatorDsl,
+  onChange,
+  onDiagnosticsChange,
+  onClose,
+  onCopy,
+  onFormat,
+  onApply,
+}: {
+  nodeLabel: string;
+  operatorType: DataWorkflowOperatorType;
+  operatorDsl: string;
+  operatorDslStatus: string | null;
+  operatorDslDiagnostics: PrepDiagnostic[];
+  editorCompletionLabels: {
+    keywords: string;
+    snippets: string;
+    types: string;
+    fields: string;
+  };
+  fieldCompletions: string[];
+  formatEditorDiagnostic: (diagnostic: PrepDiagnostic) => string;
+  isRunningOperatorDsl: boolean;
+  onChange: (value: string) => void;
+  onDiagnosticsChange: (diagnostics: PrepDiagnostic[]) => void;
+  onClose: () => void;
+  onCopy: () => void;
+  onFormat: () => void;
+  onApply: () => void;
+}) {
+  const { t } = useTranslation();
+  const hasErrors = operatorDslDiagnostics.some((diagnostic) => diagnostic.severity === 'error');
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#163526]/16 px-4 py-6 dark:bg-black/50">
+      <div className="flex h-[42rem] max-h-[calc(100vh-3rem)] w-[72rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl">
+        <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between px-4">
+          <div className="min-w-0">
+            <div className="text-[14px] font-semibold text-text-primary">
+              {t('data.workflow.dslEditor', 'DSL 编辑器')}
+            </div>
+            <div className="truncate text-[11px] text-text-muted">{nodeLabel}</div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {operatorDslStatus && (
+              <div className="flex h-6 min-w-0 items-center rounded-full border border-success/20 bg-success/5 px-2 text-[11px] text-success">
+                <CheckCircle2 className="mr-1 h-3 w-3 flex-shrink-0" />
+                <span className="truncate">{operatorDslStatus}</span>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={onCopy}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/50 px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              {t('data.workflow.copyDsl', 'Copy DSL')}
+            </button>
+            <button
+              type="button"
+              onClick={onFormat}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/50 px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+            >
+              <Code2 className="h-3.5 w-3.5" />
+              {t('data.workflow.formatDsl', 'Format')}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isRunningOperatorDsl}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/50 px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+            >
+              <X className="h-3.5 w-3.5" />
+              {t('common.cancel', 'Cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={onApply}
+              disabled={isRunningOperatorDsl}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-[11px] font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-55"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              {t('data.workflow.applyOperatorDsl', 'Apply')}
+            </button>
+          </div>
+        </div>
+
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--data-grid-cell-surface)]">
+          <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
+            <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-border-muted/80 bg-[var(--glass-card-strong)] shadow-[inset_0_1px_0_rgba(255,255,255,0.45),0_1px_0_rgba(15,23,42,0.03)]">
+              <PrepDslEditor
+                value={operatorDsl}
+                operatorType={operatorType}
+                placeholderText={t('data.workflow.operatorDslPlaceholder')}
+                completionLabels={editorCompletionLabels}
+                formatDiagnostic={formatEditorDiagnostic}
+                onChange={onChange}
+                onDiagnosticsChange={onDiagnosticsChange}
+                fieldCompletions={fieldCompletions}
+                editable
+                height="100%"
+              />
+            </div>
+            {hasErrors && (
+              <div className="max-h-24 overflow-y-auto rounded-lg border border-error/15 bg-error/5 px-2.5 py-2 text-[11px] leading-4 text-error">
+                <div className="mb-1 font-medium">{t('data.workflow.syntaxInvalid')}</div>
+                <div className="space-y-1">
+                  {operatorDslDiagnostics
+                    .filter((diagnostic) => diagnostic.severity === 'error')
+                    .map((diagnostic, index) => (
+                      <div
+                        key={`${diagnostic.code ?? diagnostic.message}-${index}`}
+                        className="rounded-md bg-background/72 px-2 py-1"
+                      >
+                        {formatEditorDiagnostic(diagnostic)}
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -119,14 +119,22 @@ function parseCondition(condition: string | undefined): ConditionRow[] {
   return rows;
 }
 
-function buildCondition(rows: ConditionRow[]): string | undefined {
+function buildCondition(
+  rows: ConditionRow[],
+  columnTypes: Record<string, string> = {}
+): string | undefined {
   const parts: { expr: string; connective: Connective }[] = [];
   for (const row of rows) {
     const { field, op, val1, val2 } = row;
     if (!field || !op || !val1) continue;
     if (op === 'between' && !val2) continue;
+    const colType = columnTypes[field];
+    const firstValue = formatConditionValue(val1, colType);
+    const secondValue = formatConditionValue(val2, colType);
     const expr =
-      op === 'between' ? `[${field}] between ${val1} and ${val2}` : `[${field}] ${op} ${val1}`;
+      op === 'between'
+        ? `[${field}] between ${firstValue} and ${secondValue}`
+        : `[${field}] ${op} ${firstValue}`;
     parts.push({ expr, connective: row.connective });
   }
   if (parts.length === 0) return undefined;
@@ -135,6 +143,54 @@ function buildCondition(rows: ConditionRow[]): string | undefined {
     out += ` ${parts[i].connective} ${parts[i].expr}`;
   }
   return out;
+}
+
+function formatConditionValue(value: string, colType: string | undefined): string {
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+  if (isDslFieldReference(trimmed)) return trimmed;
+
+  const unquoted = unwrapQuotedValue(trimmed);
+  const normalizedType = colType ? normalizeDataFieldType(colType) : undefined;
+  const lower = unquoted.toLowerCase();
+  if (lower === 'null') return 'null';
+  if (normalizedType === 'boolean' && /^(true|false)$/i.test(unquoted)) {
+    return lower;
+  }
+  if (isNumericDataFieldType(normalizedType) && isNumberLiteral(unquoted)) {
+    return unquoted;
+  }
+  if (!normalizedType && (/^(true|false)$/i.test(unquoted) || isNumberLiteral(unquoted))) {
+    return unquoted;
+  }
+  return quoteDslString(unquoted);
+}
+
+function isDslFieldReference(value: string): boolean {
+  return /^\[(?:`(?:[^`\\]|\\.)+`|[^\]]+)\](?:\.\[(?:`(?:[^`\\]|\\.)+`|[^\]]+)\])?$/.test(value);
+}
+
+function unwrapQuotedValue(value: string): string {
+  if (value.length < 2) return value;
+  const first = value[0];
+  const last = value[value.length - 1];
+  if (first !== last || (first !== '"' && first !== "'")) return value;
+  if (first === '"') {
+    try {
+      return JSON.parse(value) as string;
+    } catch {
+      return value.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    }
+  }
+  return value.slice(1, -1).replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+}
+
+function isNumberLiteral(value: string): boolean {
+  return /^[+-]?(?:\d+|\d*\.\d+)(?:e[+-]?\d+)?$/i.test(value);
+}
+
+function quoteDslString(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
 function eqRows(a: ConditionRow[], b: ConditionRow[]): boolean {
@@ -423,7 +479,7 @@ export default function FormFilter({
       localUpdateRef.current = false;
       return;
     }
-    const fromRows = buildCondition(rows);
+    const fromRows = buildCondition(rows, columnTypes);
     const fromConfig = node.config.condition as string | undefined;
     if ((fromRows || undefined) === (fromConfig || undefined)) return;
     if (!eqRows(rows, parsedFromConfig)) {
@@ -476,7 +532,7 @@ export default function FormFilter({
 
   function updateRows(next: ConditionRow[]) {
     setRows(next);
-    const cond = buildCondition(next);
+    const cond = buildCondition(next, columnTypes);
     localUpdateRef.current = true;
     updateConfig((cfg) => ({ ...cfg, condition: cond }));
   }

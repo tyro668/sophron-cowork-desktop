@@ -2791,7 +2791,7 @@ export class DataTaskStore {
       case 'type_convert':
         return compileTypeConvertSql(output, input, columns, node.config);
       case 'filter':
-        return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} WHERE ${compileScalarExpression(
+        return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} WHERE ${compileFilterConditionExpression(
           String(node.config.condition ?? 'true')
         )}`;
       case 'deduplicate':
@@ -4389,6 +4389,29 @@ function compileScalarExpression(expression: string): string {
       return quoteValueIdentifier(unwrapFieldToken(second ?? first ?? match));
     }
   );
+}
+
+function compileFilterConditionExpression(condition: string): string {
+  return compileScalarExpression(normalizeBareFilterLiterals(condition));
+}
+
+function normalizeBareFilterLiterals(condition: string): string {
+  return condition.replace(
+    /((?:=|!=|>=|<=|>|<)\s*)([\p{L}_][\p{L}\p{N}_ -]*?)(?=\s*(?:$|\)|\band\b|\bor\b))/giu,
+    (match, operator: string, value: string) => {
+      const trimmed = value.trim();
+      if (!trimmed || isSqlKeywordLiteral(trimmed) || isNumberLiteralText(trimmed)) return match;
+      return `${operator}${JSON.stringify(trimmed)}`;
+    }
+  );
+}
+
+function isSqlKeywordLiteral(value: string): boolean {
+  return /^(true|false|null)$/i.test(value);
+}
+
+function isNumberLiteralText(value: string): boolean {
+  return /^[+-]?(?:\d+|\d*\.\d+)(?:e[+-]?\d+)?$/i.test(value);
 }
 
 function sortKeysToSql(value: unknown): string {
