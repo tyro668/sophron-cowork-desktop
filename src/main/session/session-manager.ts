@@ -64,7 +64,8 @@ interface AgentRunner {
     session: Session,
     prompt: string,
     existingMessages: Message[],
-    runtimeConfig?: AgentRuntimeConfig
+    runtimeConfig?: AgentRuntimeConfig,
+    options?: SessionRunOptions
   ): Promise<void>;
   cancel(sessionId: string): void;
   clearSdkSession?(sessionId: string): void;
@@ -73,6 +74,10 @@ interface AgentRunner {
 
 interface SessionStartOptions {
   suppressCompletionNotification?: boolean;
+}
+
+interface SessionRunOptions {
+  selectedSkillNames?: string[];
 }
 
 const WORKSPACE_MOUNT_VIRTUAL_PATH = '/mnt/workspace';
@@ -88,8 +93,10 @@ export class SessionManager {
   private pluginRuntimeService?: PluginRuntimeService;
   private extensionManager?: AgentRuntimeExtensionManager;
   private activeSessions: Map<string, AbortController> = new Map();
-  private promptQueues: Map<string, Array<{ prompt: string; content?: ContentBlock[] }>> =
-    new Map();
+  private promptQueues: Map<
+    string,
+    Array<{ prompt: string; content?: ContentBlock[]; options?: SessionRunOptions }>
+  > = new Map();
   private pendingPermissions: Map<string, (result: PermissionResult) => void> = new Map();
   private pendingSudoPasswords: Map<
     string,
@@ -268,7 +275,7 @@ export class SessionManager {
     content?: ContentBlock[],
     memoryEnabled?: boolean,
     runtimeConfig?: AgentRuntimeConfig,
-    options?: SessionStartOptions
+    options?: SessionStartOptions & SessionRunOptions
   ): Promise<Session> {
     log('[SessionManager] Starting new session:', title);
 
@@ -290,7 +297,9 @@ export class SessionManager {
     }
 
     // Start processing the prompt with content blocks
-    this.enqueuePrompt(session, prompt, content);
+    this.enqueuePrompt(session, prompt, content, {
+      selectedSkillNames: options?.selectedSkillNames,
+    });
 
     return session;
   }
@@ -430,7 +439,8 @@ export class SessionManager {
   async continueSession(
     sessionId: string,
     prompt: string,
-    content?: ContentBlock[]
+    content?: ContentBlock[],
+    options?: SessionRunOptions
   ): Promise<void> {
     log('[SessionManager] Continuing session:', sessionId);
 
@@ -439,7 +449,7 @@ export class SessionManager {
       throw new Error(`Session not found: ${sessionId}`);
     }
 
-    this.enqueuePrompt(session, prompt, content);
+    this.enqueuePrompt(session, prompt, content, options);
   }
 
   async generateSessionTitleFromPrompt(prompt: string): Promise<string> {
@@ -638,7 +648,8 @@ export class SessionManager {
   private async processPrompt(
     session: Session,
     prompt: string,
-    content?: ContentBlock[]
+    content?: ContentBlock[],
+    options?: SessionRunOptions
   ): Promise<void> {
     const traceId = generateTraceId();
     return runWithLogContext({ sessionId: session.id, traceId }, async () => {
@@ -719,7 +730,13 @@ export class SessionManager {
         }
 
         // Run the agent
-        await this.agentRunner.run(session, enhancedPrompt, messagesForContext, runtimeConfig);
+        await this.agentRunner.run(
+          session,
+          enhancedPrompt,
+          messagesForContext,
+          runtimeConfig,
+          options
+        );
 
         if (this.extensionManager) {
           const stableMessages = this.getMessages(session.id);
@@ -858,9 +875,14 @@ export class SessionManager {
     );
   }
 
-  private enqueuePrompt(session: Session, prompt: string, content?: ContentBlock[]): void {
+  private enqueuePrompt(
+    session: Session,
+    prompt: string,
+    content?: ContentBlock[],
+    options?: SessionRunOptions
+  ): void {
     const queue = this.promptQueues.get(session.id) || [];
-    queue.push({ prompt, content });
+    queue.push({ prompt, content, options });
     this.promptQueues.set(session.id, queue);
 
     if (!this.activeSessions.has(session.id)) {
@@ -906,7 +928,7 @@ export class SessionManager {
             return; // finally handles cleanup
           }
 
-          await this.processPrompt(latestSession, item.prompt, item.content);
+          await this.processPrompt(latestSession, item.prompt, item.content, item.options);
 
           if (controller.signal.aborted) return; // finally handles cleanup
         }

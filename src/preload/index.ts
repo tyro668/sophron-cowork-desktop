@@ -344,6 +344,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAll: (): Promise<Skill[]> => ipcRenderer.invoke('skills.getAll'),
     install: (skillPath: string): Promise<{ success: boolean; skill: Skill }> =>
       ipcRenderer.invoke('skills.install', skillPath),
+    installFromSkillHub: (slug: string): Promise<{ success: boolean; skill: Skill }> =>
+      ipcRenderer.invoke('skills.installFromSkillHub', slug),
     delete: (skillId: string): Promise<{ success: boolean }> =>
       ipcRenderer.invoke('skills.delete', skillId),
     setEnabled: (skillId: string, enabled: boolean): Promise<{ success: boolean }> =>
@@ -366,8 +368,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   plugins: {
-    listCatalog: (options?: { installableOnly?: boolean }): Promise<PluginCatalogItemV2[]> =>
-      ipcRenderer.invoke('plugins.listCatalog', options),
+    listCatalog: (options?: {
+      installableOnly?: boolean;
+      source?: 'skillhub' | 'claude-marketplace' | 'all';
+      page?: number;
+      pageSize?: number;
+    }): Promise<PluginCatalogItemV2[]> => ipcRenderer.invoke('plugins.listCatalog', options),
     listInstalled: (): Promise<InstalledPlugin[]> => ipcRenderer.invoke('plugins.listInstalled'),
     install: (pluginName: string): Promise<PluginInstallResultV2> =>
       ipcRenderer.invoke('plugins.install', pluginName),
@@ -718,6 +724,7 @@ declare global {
       skills: {
         getAll: () => Promise<Skill[]>;
         install: (skillPath: string) => Promise<{ success: boolean; skill: Skill }>;
+        installFromSkillHub: (slug: string) => Promise<{ success: boolean; skill: Skill }>;
         delete: (skillId: string) => Promise<{ success: boolean }>;
         setEnabled: (skillId: string, enabled: boolean) => Promise<{ success: boolean }>;
         validate: (skillPath: string) => Promise<{ valid: boolean; errors: string[] }>;
@@ -735,7 +742,12 @@ declare global {
         openStoragePath: () => Promise<{ success: boolean; path: string; error?: string }>;
       };
       plugins: {
-        listCatalog: (options?: { installableOnly?: boolean }) => Promise<PluginCatalogItemV2[]>;
+        listCatalog: (options?: {
+          installableOnly?: boolean;
+          source?: 'skillhub' | 'claude-marketplace' | 'all';
+          page?: number;
+          pageSize?: number;
+        }) => Promise<PluginCatalogItemV2[]>;
         listInstalled: () => Promise<InstalledPlugin[]>;
         install: (pluginName: string) => Promise<PluginInstallResultV2>;
         setEnabled: (pluginId: string, enabled: boolean) => Promise<PluginToggleResult>;

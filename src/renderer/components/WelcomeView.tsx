@@ -2,9 +2,11 @@ import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
 import { useIPC } from '../hooks/useIPC';
+import { useSkillMentions } from '../hooks/useSkillMentions';
 import { getWorkingDirDisplayName } from '../utils/working-dir-label';
 import { AgentModelSelector } from './AgentModelSelector';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
+import { SelectedSkillChips, SkillMentionMenu } from './SkillMentionPicker';
 import type { ContentBlock } from '../types';
 import { getInitialSessionTitle } from '../../shared/session-title';
 import {
@@ -58,6 +60,12 @@ export function WelcomeView() {
     t('welcome.defaultWorkingFolder'),
     t('welcome.selectWorkingFolder')
   );
+  const skillMentions = useSkillMentions({
+    prompt,
+    setPrompt,
+    textareaRef,
+    isElectron,
+  });
 
   const handleSelectFolder = async () => {
     try {
@@ -409,7 +417,9 @@ export function WelcomeView() {
     setIsSubmitting(true);
     try {
       const sessionTitle = getInitialSessionTitle(currentPrompt, attachedFiles[0]?.name);
-      const session = await startSession(sessionTitle, contentBlocks, workingDir || undefined);
+      const session = await startSession(sessionTitle, contentBlocks, workingDir || undefined, {
+        selectedSkillNames: skillMentions.selectedSkillNames,
+      });
       if (session) {
         setPrompt('');
         if (textareaRef.current) {
@@ -418,6 +428,7 @@ export function WelcomeView() {
         pastedImages.forEach((img) => URL.revokeObjectURL(img.url));
         setPastedImages([]);
         setAttachedFiles([]);
+        skillMentions.clearSelectedSkills();
       }
     } finally {
       setIsSubmitting(false);
@@ -617,11 +628,22 @@ export function WelcomeView() {
           )}
 
           {/* Text Input - Auto-resizing */}
+          <SkillMentionMenu
+            open={skillMentions.isMentionMenuOpen}
+            skills={skillMentions.filteredSkills}
+            highlightedIndex={skillMentions.highlightedIndex}
+            onSelect={skillMentions.selectSkill}
+          />
+          <SelectedSkillChips
+            skills={skillMentions.selectedSkills}
+            disabled={isSubmitting}
+            onRemove={skillMentions.removeSkill}
+          />
           <textarea
             ref={textareaRef}
             value={prompt}
             onChange={(e) => {
-              setPrompt(e.target.value);
+              skillMentions.handlePromptChange(e);
               adjustTextareaHeight();
             }}
             onCompositionStart={() => {
@@ -636,6 +658,9 @@ export function WelcomeView() {
             style={{ minHeight: '76px', maxHeight: '140px' }}
             className="w-full resize-none overflow-hidden border-none bg-transparent text-[14px] leading-6 text-text-primary outline-none placeholder:text-text-muted sm:text-[15px]"
             onKeyDown={(e) => {
+              if (skillMentions.handlePromptKeyDown(e)) {
+                return;
+              }
               // Enter to send, Shift+Enter for new line
               if (e.key === 'Enter' && !e.shiftKey) {
                 if (e.nativeEvent.isComposing || isComposingRef.current || e.keyCode === 229) {

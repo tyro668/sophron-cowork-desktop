@@ -311,7 +311,7 @@ export function PrepDslEditor({
           const position = Math.min(focusPosition, nextView.state.doc.length);
           nextView.dispatch({ selection: { anchor: position }, scrollIntoView: true });
         }
-        nextView.focus();
+        nextView.contentDOM.focus({ preventScroll: true });
       }
     }
     wasEditableRef.current = editable;

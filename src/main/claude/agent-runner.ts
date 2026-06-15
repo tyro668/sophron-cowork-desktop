@@ -20,6 +20,8 @@ import {
   type BashToolOptions,
   type AgentSession as PiAgentSession,
   type ToolDefinition,
+  type Skill as PiSkill,
+  type ResourceDiagnostic,
 } from '@mariozechner/pi-coding-agent';
 import { Type, type TSchema } from '@sinclair/typebox';
 import { getSharedAuthStorage, ModelRegistry } from './shared-auth';
@@ -541,6 +543,10 @@ interface CachedPiSession {
   runtimeSignature: string;
   skillsSignature?: string;
   ollamaNumCtx?: { value: number };
+}
+
+interface AgentRunOptions {
+  selectedSkillNames?: string[];
 }
 
 /**
@@ -1192,7 +1198,8 @@ ${hints.join('\n')}
     session: Session,
     prompt: string,
     existingMessages: Message[],
-    runtimeConfigOverride?: AgentRuntimeConfig
+    runtimeConfigOverride?: AgentRuntimeConfig,
+    options?: AgentRunOptions
   ): Promise<void> {
     const runStartTime = Date.now();
     logCtx('[ClaudeAgentRunner] run() started');
@@ -1822,8 +1829,17 @@ ${hints.join('\n')}
         effectiveCwd,
         apiKey,
       });
+      const selectedSkillNames = Array.from(
+        new Set((options?.selectedSkillNames || []).map((name) => name.trim()).filter(Boolean))
+      );
+      const selectedSkillNameSet = new Set(
+        selectedSkillNames.map((name) => name.toLocaleLowerCase())
+      );
       const skillPaths = await this.resolveSkillPaths(session.id);
-      const skillsSignature = JSON.stringify(skillPaths);
+      const skillsSignature = JSON.stringify({
+        paths: skillPaths,
+        selected: selectedSkillNames,
+      });
       log('[ClaudeAgentRunner] Skill paths for pi ResourceLoader:', skillPaths);
 
       // Build contextual prompt — if reusing an existing SDK session, the SDK
@@ -2233,6 +2249,15 @@ Tool routing:
           cwd: effectiveCwd,
           additionalSkillPaths: skillPaths,
           appendSystemPrompt: coworkAppendPrompt,
+          skillsOverride:
+            selectedSkillNameSet.size > 0
+              ? (current: { skills: PiSkill[]; diagnostics: ResourceDiagnostic[] }) => ({
+                  skills: current.skills.filter((skill) =>
+                    selectedSkillNameSet.has(skill.name.toLocaleLowerCase())
+                  ),
+                  diagnostics: current.diagnostics,
+                })
+              : undefined,
         });
         await resourceLoader.reload();
 

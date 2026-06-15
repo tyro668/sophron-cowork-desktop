@@ -28,6 +28,7 @@ export function createDefaultAutomationActionRegistry(
     version: 1,
     defaultConfig: {
       prompt: '',
+      selectedSkillNames: [],
       projectId: null,
       modelConfigSetId: null,
       model: null,
@@ -38,6 +39,12 @@ export function createDefaultAutomationActionRegistry(
     configSchema: objectSchema(
       {
         prompt: { type: 'string', title: 'Prompt' },
+        selectedSkillNames: {
+          type: 'array',
+          title: 'Selected skills',
+          items: { type: 'string' },
+          default: [],
+        },
         projectId: { type: 'string', title: 'Project' },
         modelConfigSetId: { type: 'string', title: 'Model config set' },
         model: { type: 'string', title: 'Model' },
@@ -71,6 +78,11 @@ export function createDefaultAutomationActionRegistry(
       const runtimeConfig = modelConfigSetId
         ? (options.resolveModelRuntimeConfig?.(modelConfigSetId) ?? undefined)
         : undefined;
+      const selectedSkillNames = Array.isArray(config.selectedSkillNames)
+        ? config.selectedSkillNames
+            .map((name) => (typeof name === 'string' ? name.trim() : ''))
+            .filter(Boolean)
+        : [];
       const title = buildScheduledTaskFallbackTitle(prompt);
       const session = await options.sessionManager.startSession(
         title,
@@ -80,7 +92,7 @@ export function createDefaultAutomationActionRegistry(
         undefined,
         undefined,
         runtimeConfig,
-        { suppressCompletionNotification: true }
+        { suppressCompletionNotification: true, selectedSkillNames }
       );
       options.sendSessionUpdate?.(session);
       context.emitArtifact({

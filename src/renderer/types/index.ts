@@ -781,6 +781,8 @@ export interface Skill {
   id: string;
   name: string;
   description?: string;
+  descriptionEn?: string;
+  descriptionZh?: string;
   type: SkillType;
   enabled: boolean;
   config?: Record<string, unknown>;
@@ -816,10 +818,14 @@ export interface PluginCatalogItemV2 {
   hasManifest: boolean;
   componentCounts: PluginComponentCounts;
   pluginId?: string;
+  skillHubSlug?: string;
   installCommand?: string;
   detailUrl?: string;
-  catalogSource?: 'claude-marketplace';
+  catalogSource?: 'claude-marketplace' | 'skillhub';
+  requiresApiKey?: boolean;
 }
+
+export type PluginCatalogSource = NonNullable<PluginCatalogItemV2['catalogSource']>;
 
 export interface PluginCatalogItem extends PluginCatalogItemV2 {
   skillCount: number;
@@ -1054,6 +1060,7 @@ export type ClientEvent =
         permissionRules?: PermissionRule[];
         content?: ContentBlock[];
         memoryEnabled?: boolean;
+        selectedSkillNames?: string[];
       };
     }
   | {
@@ -1063,6 +1070,7 @@ export type ClientEvent =
         prompt: string;
         permissionRules?: PermissionRule[];
         content?: ContentBlock[];
+        selectedSkillNames?: string[];
       };
     }
   | { type: 'session.stop'; payload: { sessionId: string } }

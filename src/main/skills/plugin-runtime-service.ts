@@ -6,6 +6,7 @@ import { app } from 'electron';
 import type {
   InstalledPlugin,
   PluginCatalogItemV2,
+  PluginCatalogSource,
   PluginComponentCounts,
   PluginComponentEnabledState,
   PluginComponentKind,
@@ -97,9 +98,23 @@ export class PluginRuntimeService {
     this.commandRunner = commandRunner;
   }
 
-  async listCatalog(options?: { installableOnly?: boolean }): Promise<PluginCatalogItemV2[]> {
+  async listCatalog(options?: {
+    installableOnly?: boolean;
+    source?: PluginCatalogSource | 'all';
+    page?: number;
+    pageSize?: number;
+  }): Promise<PluginCatalogItemV2[]> {
     const installableOnly = options?.installableOnly === true;
-    const plugins = await this.catalogService.listAnthropicPlugins(false, installableOnly);
+    const source = options?.source ?? 'all';
+    const plugins =
+      source === 'skillhub'
+        ? await this.catalogService.listSkillHubSkills(false, installableOnly, {
+            page: options?.page,
+            pageSize: options?.pageSize,
+          })
+        : source === 'claude-marketplace'
+          ? await this.catalogService.listAnthropicPlugins(false, installableOnly)
+          : await this.catalogService.listCatalog(false, installableOnly);
     return plugins.map((plugin) => ({
       name: plugin.name,
       description: plugin.description,
@@ -109,9 +124,11 @@ export class PluginRuntimeService {
       hasManifest: plugin.hasManifest,
       componentCounts: cloneCounts(plugin.componentCounts),
       pluginId: plugin.pluginId,
+      skillHubSlug: plugin.skillHubSlug,
       installCommand: plugin.installCommand,
       detailUrl: plugin.detailUrl,
       catalogSource: plugin.catalogSource,
+      requiresApiKey: plugin.requiresApiKey,
     }));
   }
 
@@ -121,6 +138,9 @@ export class PluginRuntimeService {
 
   async install(pluginRef: string): Promise<PluginInstallResultV2> {
     log(`[PluginRuntime] Install requested: ${pluginRef}`);
+    if (pluginRef.trim().toLowerCase().startsWith('skillhub:')) {
+      throw new Error('SkillHub skills must be installed through the skills installer.');
+    }
     const catalog = await this.catalogService.listAnthropicPlugins(false, false);
     const requested = pluginRef.trim();
     const loweredRequested = requested.toLowerCase();

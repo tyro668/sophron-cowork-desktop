@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AlertCircle,
@@ -17,8 +17,10 @@ import {
 import type { Skill, PluginCatalogItemV2, InstalledPlugin, PluginComponentKind } from '../../types';
 import { useAppStore } from '../../store';
 import type { LocalizedBanner } from './shared';
+import { getLocalizedSkillDescription } from '../../utils/localized-skill';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
+const SKILLHUB_MARKET_PAGE_SIZE = 50;
 
 export function SettingsSkills({ isActive }: { isActive: boolean }) {
   const { t } = useTranslation();
@@ -36,7 +38,10 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
   >({});
   const [isLoading, setIsLoading] = useState(false);
   const [isPluginLoading, setIsPluginLoading] = useState(false);
+  const [isPluginLoadingMore, setIsPluginLoadingMore] = useState(false);
   const [isPluginModalOpen, setIsPluginModalOpen] = useState(false);
+  const [pluginPage, setPluginPage] = useState(0);
+  const [hasMorePlugins, setHasMorePlugins] = useState(false);
   const [pluginActionKey, setPluginActionKey] = useState<string | null>(null);
   const [pluginToastMessage, setPluginToastMessage] = useState('');
   const [error, setError] = useState<LocalizedBanner | null>(null);
@@ -74,12 +79,35 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
 
     addKey(plugin.name);
     addKey(plugin.pluginId);
+    addKey(plugin.skillHubSlug);
 
     const marketplaceId = plugin.pluginId?.split('@')[0];
     addKey(marketplaceId);
 
     return [...keys];
   }
+
+  const installedSkillsByKey = useMemo(() => {
+    const nextInstalledByKey: Record<string, Skill> = {};
+    const addLookupKey = (key: string, skill: Skill) => {
+      if (!key || nextInstalledByKey[key]) {
+        return;
+      }
+      nextInstalledByKey[key] = skill;
+    };
+
+    for (const skill of skills) {
+      const candidates = [
+        skill.name,
+        skill.name?.toLowerCase(),
+        normalizePluginLookupKey(skill.name),
+      ].filter((value): value is string => Boolean(value));
+      for (const key of candidates) {
+        addLookupKey(key, skill);
+      }
+    }
+    return nextInstalledByKey;
+  }, [skills]);
 
   useEffect(() => {
     if (!skillsStorageChangeEvent) {
@@ -180,14 +208,36 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
     }
   }, [isActive, loadSkills, skillsStorageChangedAt]);
 
-  async function loadPlugins() {
+  async function loadPlugins(reset = true) {
+    const nextPage = reset ? 1 : pluginPage + 1;
     try {
-      setIsPluginLoading(true);
+      if (reset) {
+        setIsPluginLoading(true);
+      } else {
+        setIsPluginLoadingMore(true);
+      }
       const [catalog, installed] = await Promise.all([
-        window.electronAPI.plugins.listCatalog({ installableOnly: false }),
+        window.electronAPI.plugins.listCatalog({
+          installableOnly: false,
+          source: 'skillhub',
+          page: nextPage,
+          pageSize: SKILLHUB_MARKET_PAGE_SIZE,
+        }),
         window.electronAPI.plugins.listInstalled(),
       ]);
-      setPlugins(catalog || []);
+      const nextCatalog = catalog || [];
+      setPlugins((current) => {
+        if (reset) {
+          return nextCatalog;
+        }
+        const seen = new Set(current.map((plugin) => plugin.pluginId || plugin.name));
+        return [
+          ...current,
+          ...nextCatalog.filter((plugin) => !seen.has(plugin.pluginId || plugin.name)),
+        ];
+      });
+      setPluginPage(nextPage);
+      setHasMorePlugins(nextCatalog.length >= SKILLHUB_MARKET_PAGE_SIZE);
       const nextInstalledByKey: Record<string, InstalledPlugin> = {};
       const addLookupKey = (key: string, plugin: InstalledPlugin) => {
         if (!key || nextInstalledByKey[key]) {
@@ -213,13 +263,19 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
     } catch (err) {
       setError({ text: err instanceof Error ? err.message : t('skills.pluginInstallFailed') });
     } finally {
-      setIsPluginLoading(false);
+      if (reset) {
+        setIsPluginLoading(false);
+      } else {
+        setIsPluginLoadingMore(false);
+      }
     }
   }
 
   async function handleBrowsePlugins() {
     setIsPluginModalOpen(true);
-    await loadPlugins();
+    setPluginPage(0);
+    setHasMorePlugins(false);
+    await Promise.all([loadSkills(true), loadPlugins(true)]);
   }
 
   async function handleInstall() {
@@ -340,6 +396,18 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
     setError(null);
     setSuccess(null);
     try {
+      if (plugin.catalogSource === 'skillhub') {
+        const slug = plugin.skillHubSlug ?? installTarget.replace(/^skillhub:/i, '');
+        const result = await window.electronAPI.skills.installFromSkillHub(slug);
+        await loadSkills();
+        await loadPlugins();
+        const message = t('skills.skillHubInstallSuccess', { name: result.skill.name });
+        setSuccess({ text: message });
+        showPluginInstallToast(message);
+        setTimeout(() => setSuccess(null), 4000);
+        return;
+      }
+
       const result = await window.electronAPI.plugins.install(installTarget);
       await loadSkills();
       await loadPlugins();
@@ -556,183 +624,218 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
               ) : plugins.length === 0 ? (
                 <div className="py-8 text-center text-text-muted">{t('skills.noPluginsFound')}</div>
               ) : (
-                plugins.map((plugin) => (
-                  <div
-                    key={plugin.pluginId || plugin.name}
-                    className="rounded-lg border border-border bg-surface-hover p-4"
-                  >
-                    {(() => {
-                      const installedPlugin = getCatalogLookupKeys(plugin)
-                        .map((key) => installedPluginsByKey[key])
-                        .find((item): item is InstalledPlugin => Boolean(item));
-                      const installTarget = plugin.pluginId ?? plugin.name;
-                      const isInstalling = pluginActionKey === `install:${installTarget}`;
-                      const componentEntries = componentOrder.filter(
-                        (component) => plugin.componentCounts[component] > 0
-                      );
-                      const isMarketplaceCatalog = plugin.catalogSource === 'claude-marketplace';
-                      const hasKnownComponents = componentEntries.length > 0;
-                      const isInstallable = plugin.installable;
-                      return (
-                        <>
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <h4 className="font-medium text-text-primary truncate">
-                                  {plugin.name}
-                                </h4>
-                                {plugin.version && (
-                                  <span className="text-xs px-2 py-0.5 rounded bg-surface text-text-muted">
-                                    v{plugin.version}
+                <>
+                  {plugins.map((plugin) => (
+                    <div
+                      key={plugin.pluginId || plugin.name}
+                      className="rounded-lg border border-border bg-surface-hover p-4"
+                    >
+                      {(() => {
+                        const installedPlugin = getCatalogLookupKeys(plugin)
+                          .map((key) => installedPluginsByKey[key])
+                          .find((item): item is InstalledPlugin => Boolean(item));
+                        const installedSkill = getCatalogLookupKeys(plugin)
+                          .map((key) => installedSkillsByKey[key])
+                          .find((item): item is Skill => Boolean(item));
+                        const installTarget = plugin.pluginId ?? plugin.name;
+                        const isInstalling = pluginActionKey === `install:${installTarget}`;
+                        const componentEntries = componentOrder.filter(
+                          (component) => plugin.componentCounts[component] > 0
+                        );
+                        const isSkillHubCatalog = plugin.catalogSource === 'skillhub';
+                        const isMarketplaceCatalog = plugin.catalogSource === 'claude-marketplace';
+                        const hasKnownComponents = componentEntries.length > 0;
+                        const isInstallable = plugin.installable;
+                        const isInstalled = Boolean(installedPlugin || installedSkill);
+                        return (
+                          <>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h4 className="font-medium text-text-primary truncate">
+                                    {plugin.name}
+                                  </h4>
+                                  {plugin.version && (
+                                    <span className="text-xs px-2 py-0.5 rounded bg-surface text-text-muted">
+                                      v{plugin.version}
+                                    </span>
+                                  )}
+                                  <span
+                                    className={`text-xs px-2 py-0.5 rounded ${
+                                      isSkillHubCatalog
+                                        ? 'bg-success/10 text-success'
+                                        : 'bg-accent/10 text-accent'
+                                    }`}
+                                  >
+                                    {isSkillHubCatalog
+                                      ? t('skills.skillHubSource')
+                                      : t('skills.claudeMarketplaceSource')}
                                   </span>
+                                </div>
+                                {plugin.description && (
+                                  <p className="text-sm text-text-muted line-clamp-2">
+                                    {plugin.description}
+                                  </p>
                                 )}
-                              </div>
-                              {plugin.description && (
-                                <p className="text-sm text-text-muted line-clamp-2">
-                                  {plugin.description}
-                                </p>
-                              )}
-                              {hasKnownComponents ? (
-                                <p className="text-xs text-text-muted mt-2">
-                                  {t('skills.pluginComponents', {
-                                    skills: plugin.componentCounts.skills,
-                                    commands: plugin.componentCounts.commands,
-                                    agents: plugin.componentCounts.agents,
-                                    hooks: plugin.componentCounts.hooks,
-                                    mcp: plugin.componentCounts.mcp,
-                                  })}
-                                </p>
-                              ) : (
-                                isMarketplaceCatalog &&
-                                !installedPlugin && (
+                                {isSkillHubCatalog ? (
                                   <p className="text-xs text-text-muted mt-2">
-                                    {t('skills.pluginComponentsAvailableAfterInstall')}
+                                    {plugin.requiresApiKey
+                                      ? t('skills.skillHubRequiresApiKey')
+                                      : t('skills.skillHubSkillPackage')}
                                   </p>
-                                )
-                              )}
-                              {hasKnownComponents &&
-                                plugin.componentCounts.hooks > 0 &&
-                                !installedPlugin && (
-                                  <p className="text-xs text-warning mt-1">
-                                    {t('skills.pluginComponentHooksDisabledByDefault')}
+                                ) : hasKnownComponents ? (
+                                  <p className="text-xs text-text-muted mt-2">
+                                    {t('skills.pluginComponents', {
+                                      skills: plugin.componentCounts.skills,
+                                      commands: plugin.componentCounts.commands,
+                                      agents: plugin.componentCounts.agents,
+                                      hooks: plugin.componentCounts.hooks,
+                                      mcp: plugin.componentCounts.mcp,
+                                    })}
                                   </p>
-                                )}
-                              {hasKnownComponents &&
-                                plugin.componentCounts.mcp > 0 &&
-                                !installedPlugin && (
-                                  <p className="text-xs text-warning mt-1">
-                                    {t('skills.pluginComponentMcpDisabledByDefault')}
-                                  </p>
-                                )}
-                              {!isInstallable && !isMarketplaceCatalog && (
-                                <p className="text-xs text-error mt-1">
-                                  {t('skills.pluginNoComponents')}
-                                </p>
-                              )}
-                            </div>
-                            {installedPlugin ? (
-                              <span className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-success/10 text-success text-sm">
-                                <CheckCircle className="w-4 h-4" />
-                                {t('skills.pluginInstalled')}
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => handleInstallPlugin(plugin)}
-                                disabled={!isInstallable || pluginActionKey !== null}
-                                className="px-3 py-2 rounded-lg bg-accent text-white hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                              >
-                                {isInstalling ? (
-                                  <span className="inline-flex items-center gap-1">
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    {t('common.install')}
-                                  </span>
                                 ) : (
-                                  t('skills.pluginInstall')
+                                  isMarketplaceCatalog &&
+                                  !installedPlugin && (
+                                    <p className="text-xs text-text-muted mt-2">
+                                      {t('skills.pluginComponentsAvailableAfterInstall')}
+                                    </p>
+                                  )
                                 )}
-                              </button>
-                            )}
-                          </div>
-                          {installedPlugin && (
-                            <div className="mt-3 pt-3 border-t border-border space-y-2">
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="text-xs text-text-muted">
-                                  {installedPlugin.enabled
-                                    ? t('skills.pluginAppliedInRuntime')
-                                    : t('skills.pluginDisabled')}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={() =>
-                                      handleSetPluginEnabled(
-                                        installedPlugin,
-                                        !installedPlugin.enabled
-                                      )
-                                    }
-                                    disabled={pluginActionKey !== null}
-                                    className={`px-3 py-1.5 rounded-md text-xs ${
-                                      installedPlugin.enabled
-                                        ? 'bg-warning/10 text-warning hover:bg-warning/20'
-                                        : 'bg-success/10 text-success hover:bg-success/20'
-                                    } disabled:opacity-50`}
-                                  >
-                                    {installedPlugin.enabled
-                                      ? t('skills.pluginDisable')
-                                      : t('skills.pluginEnable')}
-                                  </button>
-                                  <button
-                                    onClick={() => handleUninstallPlugin(installedPlugin)}
-                                    disabled={pluginActionKey !== null}
-                                    className="px-3 py-1.5 rounded-md text-xs bg-error/10 text-error hover:bg-error/20 disabled:opacity-50"
-                                  >
-                                    {t('skills.pluginManageUninstall')}
-                                  </button>
-                                </div>
+                                {hasKnownComponents &&
+                                  plugin.componentCounts.hooks > 0 &&
+                                  !installedPlugin && (
+                                    <p className="text-xs text-warning mt-1">
+                                      {t('skills.pluginComponentHooksDisabledByDefault')}
+                                    </p>
+                                  )}
+                                {hasKnownComponents &&
+                                  plugin.componentCounts.mcp > 0 &&
+                                  !installedPlugin && (
+                                    <p className="text-xs text-warning mt-1">
+                                      {t('skills.pluginComponentMcpDisabledByDefault')}
+                                    </p>
+                                  )}
+                                {!isInstallable && !isMarketplaceCatalog && (
+                                  <p className="text-xs text-error mt-1">
+                                    {t('skills.pluginNoComponents')}
+                                  </p>
+                                )}
                               </div>
-                              <div className="space-y-1">
-                                {componentEntries.map((component) => {
-                                  const enabled = installedPlugin.componentsEnabled[component];
-                                  return (
-                                    <div
-                                      key={`${installedPlugin.pluginId}:${component}`}
-                                      className="flex items-center justify-between gap-2"
-                                    >
-                                      <div className="text-xs text-text-secondary">
-                                        <span className="font-medium">{component}</span>
-                                        <span className="text-text-muted">
-                                          {' '}
-                                          ({plugin.componentCounts[component]})
-                                        </span>
-                                      </div>
-                                      <button
-                                        onClick={() =>
-                                          handleSetComponentEnabled(
-                                            installedPlugin,
-                                            component,
-                                            !enabled
-                                          )
-                                        }
-                                        disabled={pluginActionKey !== null}
-                                        className={`px-2 py-1 rounded text-xs ${
-                                          enabled
-                                            ? 'bg-success/10 text-success hover:bg-success/20'
-                                            : 'bg-surface text-text-muted hover:bg-surface-active'
-                                        } disabled:opacity-50`}
-                                      >
-                                        {enabled
-                                          ? t('skills.pluginDisable')
-                                          : t('skills.pluginEnable')}
-                                      </button>
-                                    </div>
-                                  );
-                                })}
-                              </div>
+                              {isInstalled ? (
+                                <span className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-success/10 text-success text-sm">
+                                  <CheckCircle className="w-4 h-4" />
+                                  {t('skills.pluginInstalled')}
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => handleInstallPlugin(plugin)}
+                                  disabled={!isInstallable || pluginActionKey !== null}
+                                  className="px-3 py-2 rounded-lg bg-accent text-white hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                >
+                                  {isInstalling ? (
+                                    <span className="inline-flex items-center gap-1">
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                      {t('common.install')}
+                                    </span>
+                                  ) : (
+                                    t('skills.pluginInstall')
+                                  )}
+                                </button>
+                              )}
                             </div>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </div>
-                ))
+                            {installedPlugin && (
+                              <div className="mt-3 pt-3 border-t border-border space-y-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="text-xs text-text-muted">
+                                    {installedPlugin.enabled
+                                      ? t('skills.pluginAppliedInRuntime')
+                                      : t('skills.pluginDisabled')}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() =>
+                                        handleSetPluginEnabled(
+                                          installedPlugin,
+                                          !installedPlugin.enabled
+                                        )
+                                      }
+                                      disabled={pluginActionKey !== null}
+                                      className={`px-3 py-1.5 rounded-md text-xs ${
+                                        installedPlugin.enabled
+                                          ? 'bg-warning/10 text-warning hover:bg-warning/20'
+                                          : 'bg-success/10 text-success hover:bg-success/20'
+                                      } disabled:opacity-50`}
+                                    >
+                                      {installedPlugin.enabled
+                                        ? t('skills.pluginDisable')
+                                        : t('skills.pluginEnable')}
+                                    </button>
+                                    <button
+                                      onClick={() => handleUninstallPlugin(installedPlugin)}
+                                      disabled={pluginActionKey !== null}
+                                      className="px-3 py-1.5 rounded-md text-xs bg-error/10 text-error hover:bg-error/20 disabled:opacity-50"
+                                    >
+                                      {t('skills.pluginManageUninstall')}
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="space-y-1">
+                                  {componentEntries.map((component) => {
+                                    const enabled = installedPlugin.componentsEnabled[component];
+                                    return (
+                                      <div
+                                        key={`${installedPlugin.pluginId}:${component}`}
+                                        className="flex items-center justify-between gap-2"
+                                      >
+                                        <div className="text-xs text-text-secondary">
+                                          <span className="font-medium">{component}</span>
+                                          <span className="text-text-muted">
+                                            {' '}
+                                            ({plugin.componentCounts[component]})
+                                          </span>
+                                        </div>
+                                        <button
+                                          onClick={() =>
+                                            handleSetComponentEnabled(
+                                              installedPlugin,
+                                              component,
+                                              !enabled
+                                            )
+                                          }
+                                          disabled={pluginActionKey !== null}
+                                          className={`px-2 py-1 rounded text-xs ${
+                                            enabled
+                                              ? 'bg-success/10 text-success hover:bg-success/20'
+                                              : 'bg-surface text-text-muted hover:bg-surface-active'
+                                          } disabled:opacity-50`}
+                                        >
+                                          {enabled
+                                            ? t('skills.pluginDisable')
+                                            : t('skills.pluginEnable')}
+                                        </button>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  ))}
+                  {hasMorePlugins && (
+                    <button
+                      type="button"
+                      onClick={() => loadPlugins(false)}
+                      disabled={isPluginLoadingMore}
+                      className="flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-border-muted bg-background/52 px-3 text-[13px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
+                    >
+                      {isPluginLoadingMore && <Loader2 className="h-4 w-4 animate-spin" />}
+                      {t('skills.loadMore')}
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -762,8 +865,10 @@ function SkillRow({
   onDelete: (() => void) | null;
   isLoading: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const isBuiltin = skill.type === 'builtin';
+  const description = getLocalizedSkillDescription(skill, i18n.resolvedLanguage || i18n.language);
+  const typeLabel = t(`skills.skillTypes.${skill.type}`);
 
   return (
     <div className="flex min-h-[64px] items-center gap-3 border-b border-border-muted px-3 py-2.5 last:border-b-0">
@@ -784,13 +889,11 @@ function SkillRow({
                   : 'border-success/20 bg-success/5 text-success'
             }`}
           >
-            {skill.type.toUpperCase()}
+            {typeLabel}
           </span>
         </div>
-        {skill.description && (
-          <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-text-muted">
-            {skill.description}
-          </p>
+        {description && (
+          <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-text-muted">{description}</p>
         )}
       </div>
       <div className="flex flex-shrink-0 items-center gap-1">

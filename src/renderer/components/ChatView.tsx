@@ -12,9 +12,11 @@ import {
 } from '../store/selectors';
 import { useAppStore } from '../store';
 import { useIPC } from '../hooks/useIPC';
+import { useSkillMentions } from '../hooks/useSkillMentions';
 import { AgentModelSelector } from './AgentModelSelector';
 import { MessageCard } from './MessageCard';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
+import { SelectedSkillChips, SkillMentionMenu } from './SkillMentionPicker';
 import type { Message, ContentBlock } from '../types';
 import { Send, Square, Plus, Loader2, Plug, X, Clock, ArrowUp, ArrowDown } from 'lucide-react';
 
@@ -84,6 +86,12 @@ export function ChatView() {
   const canStop = isSessionRunning || hasActiveTurn || pendingCount > 0;
   const modelLabel = appConfig?.model?.trim() || t('chat.noModel');
   const hasConfiguredModel = Boolean(isConfigured && appConfig?.model?.trim());
+  const skillMentions = useSkillMentions({
+    prompt,
+    setPrompt,
+    textareaRef,
+    isElectron,
+  });
 
   const displayedMessages = useMemo(() => {
     if (!activeSessionId) return messages;
@@ -327,7 +335,7 @@ export function ChatView() {
 
     prevMessageCountRef.current = messageCount;
     prevPartialLengthRef.current = partialLength;
-  }, [messages.length, partialMessage.length, partialThinking.length]);
+  }, [messages.length, partialMessage.length, partialThinking.length, scrollToBottom]);
 
   // Additional scroll trigger for content height changes (e.g., TodoWrite expand/collapse)
   useEffect(() => {
@@ -348,7 +356,7 @@ export function ChatView() {
     return () => {
       resizeObserver.disconnect();
     };
-  }, []); // ResizeObserver is stable — no need to recreate on message count changes
+  }, [scrollToBottom]); // ResizeObserver is stable — no need to recreate on message count changes
 
   // Cleanup scroll timeouts on unmount
   useEffect(() => {
@@ -717,7 +725,9 @@ export function ChatView() {
       }
 
       // Send message with content blocks
-      await continueSession(activeSessionId, contentBlocks);
+      await continueSession(activeSessionId, contentBlocks, {
+        selectedSkillNames: skillMentions.selectedSkillNames,
+      });
 
       // Clean up
       setPrompt('');
@@ -727,6 +737,7 @@ export function ChatView() {
       pastedImages.forEach((img) => URL.revokeObjectURL(img.url));
       setPastedImages([]);
       setAttachedFiles([]);
+      skillMentions.clearSelectedSkills();
     } finally {
       setIsSubmitting(false);
     }
@@ -979,10 +990,21 @@ export function ChatView() {
                 isDragging ? 'ring-2 ring-accent bg-accent-muted' : ''
               }`}
             >
+              <SkillMentionMenu
+                open={skillMentions.isMentionMenuOpen}
+                skills={skillMentions.filteredSkills}
+                highlightedIndex={skillMentions.highlightedIndex}
+                onSelect={skillMentions.selectSkill}
+              />
+              <SelectedSkillChips
+                skills={skillMentions.selectedSkills}
+                disabled={isSubmitting}
+                onRemove={skillMentions.removeSkill}
+              />
               <textarea
                 ref={textareaRef}
                 value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
+                onChange={skillMentions.handlePromptChange}
                 onCompositionStart={() => {
                   isComposingRef.current = true;
                 }}
@@ -991,6 +1013,9 @@ export function ChatView() {
                 }}
                 onPaste={handlePaste}
                 onKeyDown={(e) => {
+                  if (skillMentions.handlePromptKeyDown(e)) {
+                    return;
+                  }
                   // Enter to send, Shift+Enter for new line
                   if (e.key === 'Enter' && !e.shiftKey) {
                     if (e.nativeEvent.isComposing || isComposingRef.current || e.keyCode === 229) {
