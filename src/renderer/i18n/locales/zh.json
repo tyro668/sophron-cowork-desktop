@@ -1351,6 +1351,11 @@
     "description": "技能通过专业知识和工具扩展九思助理的本地数据处理能力。",
     "builtinSkills": "内置技能",
     "customSkills": "自定义技能",
+    "skillTypes": {
+      "builtin": "内置",
+      "custom": "自定义",
+      "mcp": "MCP"
+    },
     "noCustomSkills": "未安装自定义技能",
     "installSkillsDesc": "安装技能以扩展本地数据处理能力",
     "browsePlugins": "浏览在线市场",
