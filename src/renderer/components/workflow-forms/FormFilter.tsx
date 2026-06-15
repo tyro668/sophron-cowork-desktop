@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
-import { Plus, Trash2, Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Plus, Trash2, Loader2, ChevronDown } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
 import {
@@ -8,42 +9,48 @@ import {
   normalizeDataFieldType,
 } from '../../../shared/data-field-types';
 
+// ── Operator definitions ──────────────────────────────────────────────
+
 type OpDef = { label: string; value: string };
 
 const ALL_OPERATORS: OpDef[] = [
-  { label: '等于', value: '=' },
-  { label: '大于', value: '>' },
-  { label: '小于', value: '<' },
-  { label: '不大于', value: '<=' },
-  { label: '不小于', value: '>=' },
-  { label: '不等于', value: '!=' },
-  { label: '介于', value: 'between' },
+  { label: '', value: '=' },
+  { label: '', value: '>' },
+  { label: '', value: '<' },
+  { label: '', value: '<=' },
+  { label: '', value: '>=' },
+  { label: '', value: '!=' },
+  { label: '', value: 'between' },
 ];
 
 const STRING_OPS: OpDef[] = [
-  { label: '等于', value: '=' },
-  { label: '不等于', value: '!=' },
+  { label: '', value: '=' },
+  { label: '', value: '!=' },
 ];
 
-const BOOLEAN_OPS: OpDef[] = [{ label: '等于', value: '=' }];
+const BOOLEAN_OPS: OpDef[] = [{ label: '', value: '=' }];
+
+const OP_LABEL_KEYS: Record<string, string> = {
+  '=': 'filterOpEq',
+  '>': 'filterOpGt',
+  '<': 'filterOpLt',
+  '<=': 'filterOpLte',
+  '>=': 'filterOpGte',
+  '!=': 'filterOpNeq',
+  between: 'filterOpBetween',
+};
 
 function operatorsForType(colType: string | undefined): OpDef[] {
   if (!colType) return ALL_OPERATORS;
   const type = normalizeDataFieldType(colType);
-  if (isNumericDataFieldType(type)) {
-    return ALL_OPERATORS;
-  }
-  if (type === 'text') {
-    return STRING_OPS;
-  }
-  if (isTemporalDataFieldType(type)) {
-    return ALL_OPERATORS;
-  }
-  if (type === 'boolean') {
-    return BOOLEAN_OPS;
-  }
+  if (isNumericDataFieldType(type)) return ALL_OPERATORS;
+  if (type === 'text') return STRING_OPS;
+  if (isTemporalDataFieldType(type)) return ALL_OPERATORS;
+  if (type === 'boolean') return BOOLEAN_OPS;
   return ALL_OPERATORS;
 }
+
+// ── Condition data types ──────────────────────────────────────────────
 
 type Connective = 'and' | 'or';
 
@@ -57,7 +64,9 @@ interface ConditionRow {
 
 const EMPTY_ROW: ConditionRow = { field: '', op: '=', val1: '', val2: '', connective: 'and' };
 
-function parseSingleCondition(expr: string): ConditionRow {
+// ── Parse / Build ─────────────────────────────────────────────────────
+
+function parseSingleCondition(expr: string): ConditionRow | null {
   const betweenMatch = expr.match(
     /^\s*\[([^\]]+)\]\s+between\s+(.+?)\s+(?:and|%%PH%%)\s+(.+?)\s*$/i
   );
@@ -80,12 +89,11 @@ function parseSingleCondition(expr: string): ConditionRow {
       connective: 'and',
     };
   }
-  return { ...EMPTY_ROW };
+  return null;
 }
 
 function parseCondition(condition: string | undefined): ConditionRow[] {
-  if (!condition) return [{ ...EMPTY_ROW }];
-  // Protect "between X and Y" segments before splitting
+  if (!condition) return [];
   const betweenPattern = /\[([^\]]+)\]\s+between\s+(.+?)\s+and\s+(.+?)(?=\s*(?:$|and\s|or\s))/gi;
   const placeholders: string[] = [];
   const protected_ = condition.replace(betweenPattern, (_m, field, v1, v2) => {
@@ -94,8 +102,6 @@ function parseCondition(condition: string | undefined): ConditionRow[] {
     return `__BETWEEN_${idx}__`;
   });
 
-  // Split capturing both "and" and "or" connectives
-  // tokens: ['[a] > 0', ' and ', '[b] = "x"', ' or ', '[c] < 10']
   const tokens = protected_.split(/(\s+(?:and|or)\s+)/i);
   const rows: ConditionRow[] = [];
   for (let i = 0; i < tokens.length; i += 2) {
@@ -105,12 +111,12 @@ function parseCondition(condition: string | undefined): ConditionRow[] {
       return placeholders[Number(idx)] ?? _m;
     });
     const row = parseSingleCondition(restored.trim());
-    // Connective from the token BEFORE this expression
+    if (!row) continue;
     const connectiveToken = tokens[i - 1];
     row.connective = connectiveToken ? (connectiveToken.trim().toLowerCase() as Connective) : 'and';
     rows.push(row);
   }
-  return rows.length > 0 ? rows : [{ ...EMPTY_ROW }];
+  return rows;
 }
 
 function buildCondition(rows: ConditionRow[]): string | undefined {
@@ -143,26 +149,41 @@ function eqRows(a: ConditionRow[], b: ConditionRow[]): boolean {
   );
 }
 
-/** Searchable dropdown for field selection. */
-function SearchableFieldSelect({
+// ── Shared styles ─────────────────────────────────────────────────────
+
+const SELECT_BASE =
+  'h-8 rounded-md border border-border-muted bg-background/42 pl-2 pr-6 text-[12px] text-text-secondary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-40 appearance-none';
+
+// ── Searchable dropdown (field / value) ───────────────────────────────
+
+function SearchableDropdown({
   value,
   suggestions,
   onChange,
   placeholder,
   disabled,
+  showSearch,
+  noMatchText = '无匹配结果',
+  emptyText = '暂无选项',
 }: {
   value: string;
   suggestions: string[];
   onChange: (v: string) => void;
   placeholder: string;
   disabled?: boolean;
+  showSearch?: boolean;
+  noMatchText?: string;
+  emptyText?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState(value);
+  const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => setInput(value), [value]);
 
+  // Close on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
@@ -172,276 +193,95 @@ function SearchableFieldSelect({
   }, []);
 
   const filtered = useMemo(() => {
-    if (!input) return suggestions.slice(0, 20);
-    const lower = input.toLowerCase();
-    return suggestions.filter((s) => s.toLowerCase().includes(lower)).slice(0, 20);
-  }, [input, suggestions]);
+    if (!showSearch) return suggestions.slice(0, 30);
+    if (!search.trim()) return suggestions.slice(0, 30);
+    const lower = search.toLowerCase();
+    return suggestions.filter((s) => s.toLowerCase().includes(lower)).slice(0, 30);
+  }, [search, suggestions, showSearch]);
 
   return (
-    <div ref={ref} className="relative min-w-0 flex-[2]">
-      <input
-        type="text"
-        value={input}
-        disabled={disabled}
-        onChange={(e) => {
-          setInput(e.target.value);
-          setOpen(true);
-        }}
-        onFocus={() => !disabled && setOpen(true)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            onChange(input);
-            setOpen(false);
-          }
-        }}
-        placeholder={placeholder}
-        className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-50"
-      />
-      {open && filtered.length > 0 && (
-        <div className="absolute left-0 top-full z-50 mt-0.5 max-h-40 w-full overflow-y-auto rounded-md border border-border-muted bg-[var(--glass-card-strong)] py-0.5 shadow-elevated backdrop-blur-xl">
-          {filtered.map((s) => (
-            <button
-              key={s}
-              type="button"
-              className="w-full px-2 py-1 text-left text-[12px] text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                setInput(s);
-                onChange(s);
-                setOpen(false);
-              }}
-            >
-              {s}
-            </button>
-          ))}
+    <div ref={ref} className="relative flex-1 min-w-0">
+      {/* Input row with dropdown button */}
+      <div className="flex rounded-md border border-border-muted bg-background/42 focus-within:border-accent">
+        <input
+          ref={inputRef}
+          type="text"
+          value={open ? search : input}
+          disabled={disabled}
+          onChange={(e) => {
+            if (open) {
+              setSearch(e.target.value);
+            } else {
+              setInput(e.target.value);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setOpen(false);
+              inputRef.current?.blur();
+            } else if (e.key === 'Enter') {
+              const confirmed = open ? search || input : input;
+              setInput(confirmed);
+              onChange(confirmed);
+              setOpen(false);
+            }
+          }}
+          placeholder={placeholder}
+          className="h-8 flex-1 min-w-0 bg-transparent pl-2 text-[12px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-40"
+        />
+        <button
+          type="button"
+          disabled={disabled}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!open) setSearch(input);
+            setOpen(!open);
+          }}
+          className="flex w-7 items-center justify-center border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-full min-w-[180px] rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl">
+          <div className="max-h-48 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-3 text-center text-[12px] text-text-muted">
+                {search ? noMatchText : emptyText}
+              </div>
+            ) : (
+              filtered.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className={`w-full px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-surface-hover ${
+                    s === input ? 'text-accent' : 'text-text-secondary'
+                  }`}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setInput(s);
+                    setSearch('');
+                    onChange(s);
+                    setOpen(false);
+                  }}
+                >
+                  {s}
+                </button>
+              ))
+            )}
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-const SELECT_CLASS =
-  'h-7 rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-secondary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-50';
+// ── Value input (free text + dropdown suggestions) ───────────────────
 
-export default function FormFilter({
-  node,
-  taskId,
-  fieldCompletions,
-  sourceNode,
-  onNodeChange,
-}: OperatorFormProps) {
-  const updateConfig = useCallback(
-    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
-      onNodeChange((current) => ({
-        ...current,
-        config: updater(current.config),
-        updatedAt: Date.now(),
-      }));
-    },
-    [onNodeChange]
-  );
-
-  const parsedFromConfig = useMemo(
-    () => parseCondition(node.config.condition as string | undefined),
-    [node.config.condition]
-  );
-  const [rows, setRows] = useState<ConditionRow[]>(parsedFromConfig);
-
-  // Column types cache: { [fieldName]: typeString }
-  const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
-  // Column values cache: { [fieldName]: string[] }
-  const [columnValues, setColumnValues] = useState<Record<string, string[]>>({});
-  const [loadingValues, setLoadingValues] = useState<Record<string, boolean>>({});
-
-  // Ref to prevent local updates from triggering external-sync reset
-  const localUpdateRef = useRef(false);
-
-  useEffect(() => {
-    if (localUpdateRef.current) {
-      localUpdateRef.current = false;
-      return;
-    }
-    if (!eqRows(rows, parsedFromConfig)) {
-      setRows(parsedFromConfig);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parsedFromConfig]);
-
-  // Fetch column types using the upstream source node (which has a cached preview table)
-  useEffect(() => {
-    if (!taskId || !sourceNode?.id) return;
-    const api = window.electronAPI?.data;
-    if (!api?.getWorkflowNodeColumnTypes) return;
-    api
-      .getWorkflowNodeColumnTypes({
-        taskId,
-        nodeId: sourceNode.id,
-        nodeType: sourceNode.type as never,
-        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
-      })
-      .then((types) => {
-        const map: Record<string, string> = {};
-        for (const t of types) {
-          map[t.name] = t.type;
-        }
-        setColumnTypes(map);
-      })
-      .catch(() => setColumnTypes({}));
-  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
-
-  // Fetch column distinct values using the upstream source node
-  function fetchColumnValues(colName: string) {
-    if (!taskId || !sourceNode?.id || !colName) return;
-    if (columnValues[colName] || loadingValues[colName]) return;
-    const api = window.electronAPI?.data;
-    if (!api?.getWorkflowNodeColumnValues) return;
-    setLoadingValues((prev) => ({ ...prev, [colName]: true }));
-    api
-      .getWorkflowNodeColumnValues({
-        taskId,
-        nodeId: sourceNode.id,
-        nodeType: sourceNode.type as never,
-        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
-        column: colName,
-      })
-      .then((vals) => {
-        setColumnValues((prev) => ({ ...prev, [colName]: vals }));
-        setLoadingValues((prev) => ({ ...prev, [colName]: false }));
-      })
-      .catch(() => setLoadingValues((prev) => ({ ...prev, [colName]: false })));
-  }
-
-  function updateRows(next: ConditionRow[]) {
-    setRows(next);
-    const cond = buildCondition(next);
-    localUpdateRef.current = true;
-    updateConfig((cfg) => ({ ...cfg, condition: cond }));
-  }
-
-  function updateRow(i: number, patch: Partial<ConditionRow>) {
-    const next = rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r));
-    // Fetch column values when field changes
-    if (patch.field && patch.field !== rows[i].field) {
-      fetchColumnValues(patch.field);
-    }
-    updateRows(next);
-  }
-
-  function removeRow(i: number) {
-    const next = rows.filter((_, idx) => idx !== i);
-    updateRows(next.length > 0 ? next : [{ ...EMPTY_ROW }]);
-  }
-
-  function addRow() {
-    updateRows([...rows, { ...EMPTY_ROW }]);
-  }
-
-  return (
-    <div className="grid content-start gap-2.5">
-      <GlassFormSection title="筛选条件">
-        <div className="space-y-2">
-          {rows.map((row, i) => {
-            const fieldSelected = !!row.field;
-            const colType = columnTypes[row.field];
-            const ops = operatorsForType(colType);
-            // Reset op if current op is not in allowed list
-            const validOps = ops.map((o) => o.value);
-            const effectiveOp = validOps.includes(row.op) ? row.op : (ops[0]?.value ?? '=');
-            const isBetween = effectiveOp === 'between';
-            const colVals = columnValues[row.field] ?? [];
-            const isValsLoading = loadingValues[row.field] ?? false;
-
-            return (
-              <div key={i} className="flex items-center gap-1.5">
-                {i > 0 && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      updateRow(i, { connective: row.connective === 'and' ? 'or' : 'and' })
-                    }
-                    className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/10 transition-colors"
-                    title="点击切换 AND / OR"
-                  >
-                    {row.connective.toUpperCase()}
-                  </button>
-                )}
-
-                {/* Field */}
-                <SearchableFieldSelect
-                  value={row.field}
-                  suggestions={fieldCompletions}
-                  onChange={(v) => updateRow(i, { field: v, op: effectiveOp })}
-                  placeholder="字段"
-                />
-
-                {/* Operator — disabled until field selected */}
-                <select
-                  value={effectiveOp}
-                  disabled={!fieldSelected}
-                  onChange={(e) => updateRow(i, { op: e.target.value })}
-                  className={`${SELECT_CLASS} w-20 shrink-0`}
-                >
-                  {ops.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-
-                {/* Value 1 — disabled until field selected */}
-                <ValueInput
-                  value={row.val1}
-                  suggestions={colVals}
-                  isLoading={isValsLoading}
-                  disabled={!fieldSelected}
-                  onChange={(v) => updateRow(i, { val1: v })}
-                  placeholder="值"
-                />
-
-                {/* Value 2 (between only) */}
-                {isBetween && (
-                  <ValueInput
-                    value={row.val2}
-                    suggestions={colVals}
-                    isLoading={isValsLoading}
-                    disabled={!fieldSelected}
-                    onChange={(v) => updateRow(i, { val2: v })}
-                    placeholder="值2"
-                  />
-                )}
-
-                {/* Remove */}
-                <button
-                  type="button"
-                  onClick={() => removeRow(i)}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-surface-hover hover:text-error transition-colors"
-                  title="删除此条件"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-
-        <button
-          type="button"
-          onClick={addRow}
-          className="mt-2 inline-flex h-7 items-center gap-1 rounded-md border border-border-muted bg-background/42 px-2 text-[11px] text-text-secondary hover:border-accent/30 hover:text-accent transition-colors"
-        >
-          <Plus className="h-3 w-3" />
-          添加筛选条件
-        </button>
-
-        <p className="mt-2 text-[10px] leading-relaxed text-text-muted">
-          多个条件以 <b>AND</b> 连接。字段选中后自动加载列值建议。
-        </p>
-      </GlassFormSection>
-    </div>
-  );
-}
-
-/** Value input with dropdown suggestions from column data. */
 function ValueInput({
   value,
   suggestions,
@@ -478,49 +318,321 @@ function ValueInput({
   }, [input, suggestions]);
 
   return (
-    <div ref={ref} className="relative min-w-0 flex-[2]">
-      <div className="relative">
+    <div ref={ref} className="relative flex-1 min-w-0">
+      <div className="flex rounded-md border border-border-muted bg-background/42 focus-within:border-accent">
         <input
           type="text"
           value={input}
           disabled={disabled}
-          onChange={(e) => {
-            setInput(e.target.value);
-            setOpen(true);
-          }}
-          onFocus={() => !disabled && setOpen(true)}
+          onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') {
+            if (e.key === 'Escape') setOpen(false);
+            else if (e.key === 'Enter') {
               onChange(input);
               setOpen(false);
             }
           }}
           placeholder={placeholder}
-          className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 pr-6 text-[12px] text-text-primary outline-none focus:border-accent placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-8 flex-1 min-w-0 bg-transparent pl-2 text-[12px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-40"
         />
         {isLoading && (
-          <Loader2 className="absolute right-1.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-text-muted" />
+          <Loader2 className="my-auto h-3.5 w-3.5 flex-shrink-0 animate-spin text-text-muted" />
         )}
+        <button
+          type="button"
+          disabled={disabled}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setOpen(!open);
+          }}
+          className="flex w-7 items-center justify-center border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
       </div>
       {open && filtered.length > 0 && (
-        <div className="absolute left-0 top-full z-50 mt-0.5 max-h-40 w-full overflow-y-auto rounded-md border border-border-muted bg-[var(--glass-card-strong)] py-0.5 shadow-elevated backdrop-blur-xl">
-          {filtered.map((s) => (
-            <button
-              key={s}
-              type="button"
-              className="w-full px-2 py-1 text-left text-[12px] text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                setInput(s);
-                onChange(s);
-                setOpen(false);
-              }}
-            >
-              {s}
-            </button>
-          ))}
+        <div className="absolute left-0 top-full z-50 mt-1 w-full rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl">
+          <div className="max-h-40 overflow-y-auto">
+            {filtered.map((s) => (
+              <button
+                key={s}
+                type="button"
+                className={`w-full px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-surface-hover ${
+                  s === input ? 'text-accent' : 'text-text-secondary'
+                }`}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setInput(s);
+                  onChange(s);
+                  setOpen(false);
+                }}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Main FormFilter ───────────────────────────────────────────────────
+
+export default function FormFilter({
+  node,
+  taskId,
+  fieldCompletions,
+  sourceNode,
+  onNodeChange,
+}: OperatorFormProps) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    [t]
+  );
+
+  const updateConfig = useCallback(
+    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
+      onNodeChange((current) => ({
+        ...current,
+        config: updater(current.config),
+        updatedAt: Date.now(),
+      }));
+    },
+    [onNodeChange]
+  );
+
+  const parsedFromConfig = useMemo(
+    () => parseCondition(node.config.condition as string | undefined),
+    [node.config.condition]
+  );
+  const [rows, setRows] = useState<ConditionRow[]>(parsedFromConfig);
+
+  // Column metadata caches
+  const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
+  const [columnValues, setColumnValues] = useState<Record<string, string[]>>({});
+  const [loadingValues, setLoadingValues] = useState<Record<string, boolean>>({});
+
+  const localUpdateRef = useRef(false);
+
+  // Sync from external config changes
+  useEffect(() => {
+    if (localUpdateRef.current) {
+      localUpdateRef.current = false;
+      return;
+    }
+    const fromRows = buildCondition(rows);
+    const fromConfig = node.config.condition as string | undefined;
+    if ((fromRows || undefined) === (fromConfig || undefined)) return;
+    if (!eqRows(rows, parsedFromConfig)) {
+      setRows(parsedFromConfig);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parsedFromConfig]);
+
+  // Fetch column types
+  useEffect(() => {
+    if (!taskId || !sourceNode?.id) return;
+    const api = window.electronAPI?.data;
+    if (!api?.getWorkflowNodeColumnTypes) return;
+    api
+      .getWorkflowNodeColumnTypes({
+        taskId,
+        nodeId: sourceNode.id,
+        nodeType: sourceNode.type as never,
+        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
+      })
+      .then((types) => {
+        const map: Record<string, string> = {};
+        for (const t of types) map[t.name] = t.type;
+        setColumnTypes(map);
+      })
+      .catch(() => setColumnTypes({}));
+  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
+
+  // Fetch column distinct values
+  function fetchColumnValues(colName: string) {
+    if (!taskId || !sourceNode?.id || !colName) return;
+    if (columnValues[colName] || loadingValues[colName]) return;
+    const api = window.electronAPI?.data;
+    if (!api?.getWorkflowNodeColumnValues) return;
+    setLoadingValues((prev) => ({ ...prev, [colName]: true }));
+    api
+      .getWorkflowNodeColumnValues({
+        taskId,
+        nodeId: sourceNode.id,
+        nodeType: sourceNode.type as never,
+        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
+        column: colName,
+      })
+      .then((vals) => {
+        setColumnValues((prev) => ({ ...prev, [colName]: vals }));
+        setLoadingValues((prev) => ({ ...prev, [colName]: false }));
+      })
+      .catch(() => setLoadingValues((prev) => ({ ...prev, [colName]: false })));
+  }
+
+  function updateRows(next: ConditionRow[]) {
+    setRows(next);
+    const cond = buildCondition(next);
+    localUpdateRef.current = true;
+    updateConfig((cfg) => ({ ...cfg, condition: cond }));
+  }
+
+  function updateRow(i: number, patch: Partial<ConditionRow>) {
+    const next = rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r));
+    if (patch.field && patch.field !== rows[i].field) {
+      fetchColumnValues(patch.field);
+    }
+    updateRows(next);
+  }
+
+  function removeRow(i: number) {
+    const next = rows.filter((_, idx) => idx !== i);
+    updateRows(next);
+  }
+
+  function addRow() {
+    updateRows([...rows, { ...EMPTY_ROW }]);
+  }
+
+  return (
+    <div className="grid content-start gap-2.5">
+      <GlassFormSection title={tr('filterTitle', '筛选条件')}>
+        <div className="grid gap-1">
+          {/* Empty state */}
+          {rows.length === 0 && (
+            <div className="rounded-lg border border-dashed border-border-muted/70 px-4 py-6 text-center">
+              <p className="text-[12px] text-text-muted">
+                {tr('filterEmptyHint', '尚未添加筛选条件，请点击下方按钮开始')}
+              </p>
+            </div>
+          )}
+
+          {/* Condition cards */}
+          {rows.map((row, i) => {
+            const fieldSelected = !!row.field;
+            const colType = columnTypes[row.field];
+            const ops = operatorsForType(colType);
+            const validOps = ops.map((o) => o.value);
+            const effectiveOp = validOps.includes(row.op) ? row.op : (ops[0]?.value ?? '=');
+            const isBetween = effectiveOp === 'between';
+            const colVals = columnValues[row.field] ?? [];
+            const isValsLoading = loadingValues[row.field] ?? false;
+
+            return (
+              <div key={i}>
+                {/* Connective separator pill (between conditions) */}
+                {i > 0 && (
+                  <div className="flex items-center justify-center py-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateRow(i, { connective: row.connective === 'and' ? 'or' : 'and' })
+                      }
+                      className="rounded-full border border-border-muted/70 bg-background/60 px-3 py-0.5 text-[11px] font-semibold tracking-wider text-accent hover:bg-accent/10 hover:border-accent/30 transition-colors"
+                      title={tr('filterToggleAndOr', '点击切换 AND / OR')}
+                    >
+                      {row.connective.toUpperCase()}
+                    </button>
+                  </div>
+                )}
+
+                {/* Condition card */}
+                <div className="group relative rounded-lg border border-border-muted/60 bg-background/30 px-3 pb-2.5 pt-2.5">
+                  {/* Row 1: field + operator */}
+                  <div className="flex items-center gap-2">
+                    {/* Field */}
+                    <SearchableDropdown
+                      value={row.field}
+                      suggestions={fieldCompletions}
+                      onChange={(v) => updateRow(i, { field: v, op: effectiveOp })}
+                      placeholder={tr('filterFieldPlaceholder', '选择字段')}
+                      showSearch
+                      noMatchText={tr('noMatch', '无匹配字段')}
+                      emptyText={tr('noFields', '暂无可用字段')}
+                    />
+
+                    {/* Operator */}
+                    <div className="relative w-20 flex-shrink-0">
+                      <select
+                        value={effectiveOp}
+                        disabled={!fieldSelected}
+                        onChange={(e) => updateRow(i, { op: e.target.value })}
+                        className={`${SELECT_BASE} w-20`}
+                      >
+                        {ops.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {tr(OP_LABEL_KEYS[o.value] ?? '', o.value)}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
+                    </div>
+                  </div>
+
+                  {/* Row 2: values + delete */}
+                  <div className="mt-2 flex items-center gap-2">
+                    {/* Value 1 */}
+                    <ValueInput
+                      value={row.val1}
+                      suggestions={colVals}
+                      isLoading={isValsLoading}
+                      onChange={(v) => updateRow(i, { val1: v })}
+                      placeholder={tr('filterValuePlaceholder', '值')}
+                      disabled={!fieldSelected}
+                    />
+
+                    {/* Value 2 (between only) */}
+                    {isBetween && (
+                      <span className="text-[11px] text-text-muted flex-shrink-0">
+                        {tr('filterAnd', '至')}
+                      </span>
+                    )}
+                    {isBetween && (
+                      <ValueInput
+                        value={row.val2}
+                        suggestions={colVals}
+                        isLoading={isValsLoading}
+                        onChange={(v) => updateRow(i, { val2: v })}
+                        placeholder={tr('filterValue2Placeholder', '值2')}
+                        disabled={!fieldSelected}
+                      />
+                    )}
+
+                    {/* Delete */}
+                    <button
+                      type="button"
+                      onClick={() => removeRow(i)}
+                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-text-muted/50 hover:text-error hover:bg-error/10 transition-colors"
+                      title={tr('filterDeleteCondition', '删除此条件')}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Add button */}
+        <button
+          type="button"
+          onClick={addRow}
+          className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border-muted/70 py-2 text-[12px] text-text-muted hover:border-accent/40 hover:text-accent transition-colors"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {tr('filterAddCondition', '添加筛选条件')}
+        </button>
+
+        {/* Hint */}
+        <p className="mt-2 text-[10px] leading-relaxed text-text-muted">
+          {tr('filterHint', '多个条件以 AND/OR 连接。选择字段后自动加载列值建议。')}
+        </p>
+      </GlassFormSection>
     </div>
   );
 }

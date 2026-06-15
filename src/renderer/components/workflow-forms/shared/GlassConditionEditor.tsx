@@ -1,3 +1,5 @@
+import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Trash2 } from 'lucide-react';
 
 export interface ConditionEntry {
@@ -25,10 +27,19 @@ export function GlassConditionEditor({
   leftFieldCompletions,
   rightFieldCompletions,
   onChange,
-  leftLabel = '左字段',
-  rightLabel = '右字段',
+  leftLabel,
+  rightLabel,
   operators = DEFAULT_OPERATORS,
 }: GlassConditionEditorProps) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    [t]
+  );
+
+  const resolvedLeftLabel = leftLabel ?? tr('leftField', '[左字段]');
+  const resolvedRightLabel = rightLabel ?? tr('rightField', '[右表].[字段]');
+
   function updateCondition(index: number, patch: Partial<ConditionEntry>) {
     onChange(conditions.map((c, i) => (i === index ? { ...c, ...patch } : c)));
   }
@@ -44,7 +55,9 @@ export function GlassConditionEditor({
   return (
     <div className="space-y-1.5">
       {conditions.length === 0 ? (
-        <div className="py-4 text-center text-[12px] text-text-muted">暂无连接条件</div>
+        <div className="py-4 text-center text-[12px] text-text-muted">
+          {tr('noConditions', '暂无连接条件')}
+        </div>
       ) : (
         conditions.map((cond, i) => (
           <div key={i} className="flex items-center gap-1.5">
@@ -54,7 +67,7 @@ export function GlassConditionEditor({
               className="h-7 flex-1 rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent"
             >
               <option value="" disabled>
-                {leftLabel}
+                {resolvedLeftLabel}
               </option>
               {leftFieldCompletions.map((col) => (
                 <option key={col} value={col}>
@@ -79,7 +92,7 @@ export function GlassConditionEditor({
               className="h-7 flex-1 rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent"
             >
               <option value="" disabled>
-                {rightLabel}
+                {resolvedRightLabel}
               </option>
               {rightFieldCompletions.map((col) => (
                 <option key={col} value={col}>
@@ -103,7 +116,7 @@ export function GlassConditionEditor({
         className="inline-flex h-7 items-center gap-1 rounded-md border border-border-muted bg-background/42 px-2 text-[11px] text-text-secondary hover:border-accent/30 hover:text-accent transition-colors"
       >
         <Plus className="h-3 w-3" />
-        添加条件
+        {tr('addCondition', '添加条件')}
       </button>
     </div>
   );

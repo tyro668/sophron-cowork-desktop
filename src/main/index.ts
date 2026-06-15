@@ -2102,6 +2102,18 @@ ipcMain.handle(
   }
 );
 
+ipcMain.handle(
+  'data.getWorkflowNodeRowCount',
+  async (_event, payload: DataPreviewWorkflowNodeInput) => {
+    try {
+      return await requireDataTaskStore().getWorkflowNodeRowCount(payload);
+    } catch (error) {
+      logError('[Data] Error reading workflow node row count:', error);
+      throw error;
+    }
+  }
+);
+
 ipcMain.handle('data.deleteDataset', async (_event, id: string) => {
   try {
     return { success: await requireDataTaskStore().deleteDataset(id) };

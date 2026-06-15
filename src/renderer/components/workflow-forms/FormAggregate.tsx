@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
 import { GlassFormLabel } from './shared/GlassFormLabel';
-import { GlassFormTextInput } from './shared/GlassFormTextInput';
+
 import { GlassMultiSelect } from './shared/GlassMultiSelect';
 import { GlassListEditor } from './shared/GlassListEditor';
 
@@ -41,6 +42,12 @@ function createDefault(): MetricEntry {
 }
 
 export default function FormAggregate({ node, fieldCompletions, onNodeChange }: OperatorFormProps) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    [t]
+  );
+
   const updateConfig = useCallback(
     (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
       onNodeChange((current) => ({
@@ -80,9 +87,9 @@ export default function FormAggregate({ node, fieldCompletions, onNodeChange }: 
   return (
     <div className="grid content-start gap-2.5">
       {/* Group by — multi-select dropdown */}
-      <GlassFormSection title="选择字段">
+      <GlassFormSection title={tr('aggregateGroupBy', '选择字段')}>
         <p className="mb-2 text-[11px] text-text-muted">
-          可选择多个字段作为分组依据，不选则全表聚合。
+          {tr('aggregateGroupByHint', '可选择多个字段作为分组依据，不选则全表聚合。')}
         </p>
         <GlassMultiSelect
           value={groupBy}
@@ -93,19 +100,19 @@ export default function FormAggregate({ node, fieldCompletions, onNodeChange }: 
               groupBy: next.length > 0 ? next : undefined,
             }))
           }
-          placeholder="选择分组字段..."
+          placeholder={tr('aggregateGroupByPlaceholder', '选择分组字段...')}
         />
       </GlassFormSection>
 
       {/* Metrics */}
-      <GlassFormSection title="聚合指标">
+      <GlassFormSection title={tr('aggregateMetrics', '聚合指标')}>
         <GlassListEditor
           items={metrics}
           renderRow={(item, index, onChange) => (
             <div className="grid gap-1.5">
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
-                  <GlassFormLabel>聚合函数</GlassFormLabel>
+                  <GlassFormLabel>{tr('aggregateFunction', '聚合函数')}</GlassFormLabel>
                   <select
                     value={item.function}
                     onChange={(e) => onChange({ ...item, function: e.target.value })}
@@ -119,17 +126,20 @@ export default function FormAggregate({ node, fieldCompletions, onNodeChange }: 
                   </select>
                 </div>
                 <div>
-                  <GlassFormLabel required>别名 (as)</GlassFormLabel>
-                  <GlassFormTextInput
-                    value={item.alias}
-                    onChange={(value) => onChange({ ...item, alias: value })}
-                    placeholder="如 total_revenue"
-                    className={`h-7 ${!item.alias.trim() ? '!border-warning/60' : ''}`}
+                  <GlassFormLabel required>{tr('aggregateAlias', '别名 (as)')}</GlassFormLabel>
+                  <input
+                    type="text"
+                    value={item.alias ?? ''}
+                    onChange={(e) => onChange({ ...item, alias: e.target.value })}
+                    placeholder={tr('aggregateAliasPlaceholder', '如 total_revenue')}
+                    className={`h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent ${
+                      !(item.alias ?? '').trim() ? '!border-warning/60' : ''
+                    }`}
                   />
                 </div>
               </div>
               <div>
-                <GlassFormLabel>表达式</GlassFormLabel>
+                <GlassFormLabel>{tr('expressionLabel', '表达式')}</GlassFormLabel>
                 {customIndices.has(index) ||
                 (!expressionCompletions.includes(item.expression) && item.expression !== '') ? (
                   <div className="flex gap-1.5">
@@ -137,7 +147,10 @@ export default function FormAggregate({ node, fieldCompletions, onNodeChange }: 
                       autoFocus
                       value={item.expression}
                       onChange={(e) => onChange({ ...item, expression: e.target.value })}
-                      placeholder="输入表达式，如 [price] * [qty]"
+                      placeholder={tr(
+                        'aggregateExpressionPlaceholder',
+                        '输入表达式，如 [price] * [qty]'
+                      )}
                       className="h-7 flex-1 rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent placeholder:text-text-muted"
                     />
                     <button
@@ -152,7 +165,7 @@ export default function FormAggregate({ node, fieldCompletions, onNodeChange }: 
                       }}
                       className="h-7 flex-shrink-0 rounded-md border border-border-muted bg-background/42 px-1.5 text-[11px] text-text-muted hover:text-text-secondary"
                     >
-                      选择字段
+                      {tr('aggregateSelectField', '选择字段')}
                     </button>
                   </div>
                 ) : (
@@ -168,7 +181,7 @@ export default function FormAggregate({ node, fieldCompletions, onNodeChange }: 
                     }}
                     className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-secondary outline-none focus:border-accent"
                   >
-                    <option value="__custom__">自定义...</option>
+                    <option value="__custom__">{tr('aggregateCustom', '自定义...')}</option>
                     {expressionCompletions.map((opt) => (
                       <option key={opt} value={opt}>
                         {opt}
@@ -181,8 +194,8 @@ export default function FormAggregate({ node, fieldCompletions, onNodeChange }: 
           )}
           createDefault={createDefault}
           onChange={handleMetricsChange}
-          addLabel="添加指标"
-          emptyText="暂无聚合指标"
+          addLabel={tr('aggregateAddMetric', '添加指标')}
+          emptyText={tr('aggregateNoMetrics', '暂无聚合指标')}
         />
       </GlassFormSection>
     </div>

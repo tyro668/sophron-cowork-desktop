@@ -1,15 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Search } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { ChevronDown, X } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
-import { GlassFormTextInput } from './shared/GlassFormTextInput';
+import { GlassColumnSelector } from './shared/GlassColumnSelector';
 import { GlassListEditor } from './shared/GlassListEditor';
 import {
-  dataFieldTypeLabel,
   isNumericDataFieldType,
   isTemporalDataFieldType,
   normalizeDataFieldType,
 } from '../../../shared/data-field-types';
+
+const SELECT_CLASS =
+  'h-7 rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-secondary outline-none focus:border-accent';
 
 const BASE_METHODS = [
   { value: 'skip', label: '不处理' },
@@ -30,13 +33,12 @@ const ORDERED_METHODS = [
 ];
 
 function methodsForType(colType: string | undefined) {
-  if (!colType) return BASE_METHODS; // unknown type: show base only
+  if (!colType) return BASE_METHODS;
   const type = normalizeDataFieldType(colType);
-
   if (isNumericDataFieldType(type))
     return [...BASE_METHODS, ...ORDERED_METHODS, ...STATISTICAL_METHODS];
   if (isTemporalDataFieldType(type)) return [...BASE_METHODS, ...ORDERED_METHODS];
-  return BASE_METHODS; // string, boolean, etc.
+  return BASE_METHODS;
 }
 
 interface MissingRule {
@@ -50,9 +52,6 @@ function createDefault(): MissingRule {
   return { column: '', method: 'literal_fill', value: '' };
 }
 
-const SELECT_CLASS =
-  'h-7 rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-secondary outline-none focus:border-accent';
-
 type TabMode = 'row' | 'column';
 
 export default function FormMissingValue({
@@ -62,6 +61,12 @@ export default function FormMissingValue({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    [t]
+  );
+
   const updateConfig = useCallback(
     (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
       onNodeChange((current) => ({
@@ -76,14 +81,14 @@ export default function FormMissingValue({
   const strategy = (node.config.strategy as string) ?? 'by_column';
   const rules: MissingRule[] = (node.config.rules as MissingRule[]) ?? [];
   const rowColumns: string[] = (node.config.columns as string[]) ?? [];
-  const [search, setSearch] = useState('');
 
-  // Which tab is active
   const tabMode: TabMode =
     strategy === 'drop_empty_rows' || strategy === 'drop_rows_by_nulls' ? 'row' : 'column';
-
-  // Row sub-mode
   const rowSubMode = strategy === 'drop_empty_rows' ? 'all' : 'any';
+
+  // Row mode combobox state
+  const [showFieldPicker, setShowFieldPicker] = useState(false);
+  const removingRef = useRef(false);
 
   // Column types
   const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
@@ -105,12 +110,6 @@ export default function FormMissingValue({
       })
       .catch(() => setColumnTypes({}));
   }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
-
-  const filteredFields = useMemo(() => {
-    if (!search.trim()) return fieldCompletions;
-    const lower = search.toLowerCase();
-    return fieldCompletions.filter((c) => c.toLowerCase().includes(lower));
-  }, [fieldCompletions, search]);
 
   function switchTab(tab: TabMode) {
     if (tab === 'column') {
@@ -134,21 +133,51 @@ export default function FormMissingValue({
     updateConfig((cfg) => ({ ...cfg, rules: items.length > 0 ? items : undefined }));
   }
 
+  const handleRowsColumnsChange = useCallback(
+    (next: string[]) => {
+      updateConfig((cfg) => ({
+        ...cfg,
+        columns: next.length > 0 ? next : undefined,
+      }));
+    },
+    [updateConfig]
+  );
+
+  const removeRowColumn = useCallback(
+    (col: string) => {
+      if (removingRef.current) return;
+      removingRef.current = true;
+      updateConfig((cfg) => {
+        const next = ((cfg.columns as string[]) ?? []).filter((c) => c !== col);
+        return {
+          ...cfg,
+          columns: next.length > 0 ? next : undefined,
+        };
+      });
+      requestAnimationFrame(() => {
+        removingRef.current = false;
+      });
+    },
+    [updateConfig]
+  );
+
   return (
     <div className="grid content-start gap-2.5">
       {/* Tab toggle */}
-      <div className="flex h-7 rounded-md border border-border-muted bg-background/42 p-0.5">
-        {[
-          { value: 'row' as const, label: '按行处理' },
-          { value: 'column' as const, label: '按列处理' },
-        ].map((t) => (
+      <div className="flex h-8 rounded-md border border-border-muted bg-background/42 p-0.5">
+        {(
+          [
+            { value: 'row' as const, label: tr('rowProcess', '按行处理') },
+            { value: 'column' as const, label: tr('colProcess', '按列处理') },
+          ] as const
+        ).map((t) => (
           <button
             key={t.value}
             type="button"
             onClick={() => switchTab(t.value)}
             className={`flex-1 rounded text-[11px] font-medium transition-all ${
               tabMode === t.value
-                ? 'bg-accent/10 text-accent shadow-soft'
+                ? 'bg-background/70 text-accent shadow-soft'
                 : 'text-text-muted hover:text-text-secondary'
             }`}
           >
@@ -160,12 +189,15 @@ export default function FormMissingValue({
       {/* Row mode */}
       {tabMode === 'row' && (
         <GlassFormSection>
-          <div className="grid gap-2">
-            <div className="flex h-7 rounded-md border border-border-muted bg-background/42 p-0.5">
-              {[
-                { value: 'all' as const, label: '全部为空' },
-                { value: 'any' as const, label: '任一为空' },
-              ].map((s) => (
+          <div className="grid gap-2.5">
+            {/* Sub-mode toggle */}
+            <div className="flex h-8 rounded-md border border-border-muted bg-background/42 p-0.5">
+              {(
+                [
+                  { value: 'all' as const, label: tr('allNull', '全部为空') },
+                  { value: 'any' as const, label: tr('anyNull', '任一为空') },
+                ] as const
+              ).map((s) => (
                 <button
                   key={s.value}
                   type="button"
@@ -179,7 +211,7 @@ export default function FormMissingValue({
                   }
                   className={`flex-1 rounded text-[11px] font-medium transition-all ${
                     rowSubMode === s.value
-                      ? 'bg-accent/10 text-accent shadow-soft'
+                      ? 'bg-background/70 text-accent shadow-soft'
                       : 'text-text-muted hover:text-text-secondary'
                   }`}
                 >
@@ -189,58 +221,78 @@ export default function FormMissingValue({
             </div>
 
             {rowSubMode === 'all' ? (
-              <div className="rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[12px] text-text-secondary text-center">
-                所有字段均为空 (null) 的行将被删除。
+              <div className="rounded-lg border border-border-muted bg-background/42 px-3 py-3 text-center text-[12px] text-text-secondary">
+                {tr('dropAllHint', '所有字段均为空 (null) 的行将被删除。')}
               </div>
             ) : (
-              <div>
-                <div className="relative mb-2">
-                  <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="搜索字段..."
-                    className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
-                  />
-                </div>
-                <div className="max-h-56 overflow-y-auto rounded-lg border border-border-muted bg-background/42 p-1.5">
-                  {filteredFields.length === 0 ? (
-                    <div className="py-4 text-center text-[12px] text-text-muted">
-                      {search ? '无匹配字段' : '暂无可用字段'}
+              <>
+                {/* Combobox for column selection */}
+                <label className="grid gap-1">
+                  <span className="text-[11px] font-medium text-text-secondary">
+                    {tr('missingColumns', '判断字段')}
+                  </span>
+                  <div className="flex min-h-8 rounded-md border border-border-muted bg-background/42 focus-within:border-accent">
+                    <div className="flex flex-1 flex-wrap items-center gap-1 px-1.5 py-1">
+                      {rowColumns.map((col) => (
+                        <span
+                          key={col}
+                          className="inline-flex items-center gap-0.5 rounded bg-surface-active/80 px-1.5 py-0.5 text-[11px] text-text-primary"
+                        >
+                          {col}
+                          <button
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              removeRowColumn(col);
+                            }}
+                            className="ml-0.5 flex-shrink-0 rounded-full p-0.5 hover:bg-surface-hover transition-colors"
+                          >
+                            <X className="h-2.5 w-2.5 text-text-muted" />
+                          </button>
+                        </span>
+                      ))}
+                      <input
+                        type="text"
+                        readOnly
+                        placeholder={
+                          rowColumns.length === 0
+                            ? tr('missingSelectPlaceholder', '选择判断字段...')
+                            : ''
+                        }
+                        className="h-5 min-w-[60px] flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
+                      />
                     </div>
-                  ) : (
-                    filteredFields.map((col) => (
-                      <label
-                        key={col}
-                        className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-[12px] text-text-secondary hover:bg-surface-hover"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={rowColumns.includes(col)}
-                          onChange={() => {
-                            const next = rowColumns.includes(col)
-                              ? rowColumns.filter((c) => c !== col)
-                              : [...rowColumns, col];
-                            updateConfig((cfg) => ({
-                              ...cfg,
-                              columns: next.length > 0 ? next : undefined,
-                            }));
-                          }}
-                          className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
-                        />
-                        {col}
-                        {columnTypes[col] && (
-                          <span className="ml-auto text-[10px] text-text-muted">
-                            {dataFieldTypeLabel(columnTypes[col])}
-                          </span>
-                        )}
-                      </label>
-                    ))
-                  )}
-                </div>
-                <p className="mt-1 text-[10px] text-text-muted">任一勾选字段为空即删除该行。</p>
-              </div>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setShowFieldPicker((v) => !v);
+                      }}
+                      className="flex w-7 items-center justify-center border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
+                    >
+                      <ChevronDown
+                        className={`h-3.5 w-3.5 transition-transform ${showFieldPicker ? 'rotate-180' : ''}`}
+                      />
+                    </button>
+                  </div>
+                </label>
+
+                {/* Dropdown */}
+                {showFieldPicker && (
+                  <GlassColumnSelector
+                    columns={fieldCompletions}
+                    selected={rowColumns}
+                    onChange={handleRowsColumnsChange}
+                    maxHeight="200px"
+                  />
+                )}
+
+                <p className="text-[10px] text-text-muted">
+                  {tr('dropRowsHint', '任一勾选字段为空即删除该行。')}
+                </p>
+              </>
             )}
           </div>
         </GlassFormSection>
@@ -259,10 +311,12 @@ export default function FormMissingValue({
               const effectiveMethod = validMethodValues.includes(item.method)
                 ? item.method
                 : (availableMethods[0]?.value ?? 'skip');
-              const needsValue = item.method === 'nullify_values' || item.method === 'literal_fill';
+              const needsValue =
+                effectiveMethod === 'nullify_values' || effectiveMethod === 'literal_fill';
 
               return (
                 <div className="flex items-center gap-1.5">
+                  {/* Column select */}
                   <select
                     value={item.column}
                     onChange={(e) => {
@@ -279,7 +333,7 @@ export default function FormMissingValue({
                     className={SELECT_CLASS + ' flex-1 min-w-0'}
                   >
                     <option value="" disabled>
-                      选择字段
+                      {tr('selectField', '选择字段')}
                     </option>
                     {fieldCompletions.map((col) => (
                       <option key={col} value={col}>
@@ -287,6 +341,8 @@ export default function FormMissingValue({
                       </option>
                     ))}
                   </select>
+
+                  {/* Method select */}
                   <select
                     value={effectiveMethod}
                     disabled={!fieldSelected}
@@ -306,34 +362,38 @@ export default function FormMissingValue({
                   >
                     {availableMethods.map((m) => (
                       <option key={m.value} value={m.value}>
-                        {m.label}
+                        {t(`ruleMethods.${m.value}`, { defaultValue: m.label })}
                       </option>
                     ))}
                   </select>
+
+                  {/* Value input */}
                   {needsValue && (
-                    <GlassFormTextInput
+                    <input
+                      type="text"
                       value={
-                        item.method === 'nullify_values'
+                        effectiveMethod === 'nullify_values'
                           ? (item.values ?? []).join(', ')
                           : String(item.value ?? '')
                       }
-                      onChange={(value) => {
-                        if (item.method === 'nullify_values') {
-                          const vals = value
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (effectiveMethod === 'nullify_values') {
+                          const vals = raw
                             .split(',')
                             .map((v) => v.trim().replace(/^"|"$/g, ''))
                             .filter(Boolean);
                           onChange({ ...item, values: vals.length > 0 ? vals : undefined });
                         } else {
-                          onChange({ ...item, value: value || undefined });
+                          onChange({ ...item, value: raw });
                         }
                       }}
                       placeholder={
-                        item.method === 'nullify_values'
-                          ? '特殊值，逗号分隔。如 "", N/A, -'
-                          : '填充值，如 UNKNOWN 或 0'
+                        effectiveMethod === 'nullify_values'
+                          ? tr('missingSpecialValuesPlaceholder', '特殊值，逗号分隔。如 "", N/A, -')
+                          : tr('missingFillPlaceholder', '填充值，如 UNKNOWN 或 0')
                       }
-                      className="h-7 flex-1 min-w-0"
+                      className="h-7 flex-1 min-w-0 rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
                     />
                   )}
                 </div>
@@ -341,11 +401,11 @@ export default function FormMissingValue({
             }}
             createDefault={createDefault}
             onChange={handleRulesChange}
-            addLabel="添加规则"
-            emptyText="暂无处理规则"
+            addLabel={tr('missingAddRule', '添加规则')}
+            emptyText={tr('missingNoRules', '暂无处理规则')}
           />
           <p className="mt-2 text-[10px] leading-relaxed text-text-muted">
-            规则按顺序执行。均值/中位数/众数仅适用于数值字段。
+            {tr('missingRulesHint', '规则按顺序执行。均值/中位数/众数仅适用于数值字段。')}
           </p>
         </GlassFormSection>
       )}

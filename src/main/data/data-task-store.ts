@@ -1647,6 +1647,35 @@ export class DataTaskStore {
     return rows.map((row) => (row.val === null ? '' : String(row.val))).filter((v) => v !== '');
   }
 
+  async getWorkflowNodeRowCount(input: DataPreviewWorkflowNodeInput): Promise<number> {
+    await this.ensureMetadataReady();
+    const task = await this.requireTask(input.taskId);
+    await this.ensureReady();
+    await this.cleanupExpiredWorkflowNodeCaches();
+    const nodeConfig = input.nodeConfig ?? {};
+    const node: DataWorkflowNode = {
+      id: input.nodeId,
+      taskId: task.id,
+      type: input.nodeType,
+      label: '',
+      x: 0,
+      y: 0,
+      config: nodeConfig,
+      createdAt: 0,
+      updatedAt: 0,
+    };
+    const tableName = await this.resolveWorkflowNodePreviewTable(task, node);
+    if (!tableName || !(await this.physicalTableExists(tableName))) {
+      return 0;
+    }
+    const quotedTable = quoteIdentifier(tableName);
+    const rows = await this.queryRows<{ cnt: number }>(
+      `SELECT count(*) AS cnt FROM ${quotedTable}`,
+      {}
+    );
+    return rows[0]?.cnt ?? 0;
+  }
+
   async deleteTask(id: string): Promise<boolean> {
     await this.ensureMetadataReady();
     const task = await this.getTask(id);
