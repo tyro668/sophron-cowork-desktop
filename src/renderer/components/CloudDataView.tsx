@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
+  ArrowRight,
   CheckCircle2,
   Cloud,
   Database,
@@ -10,11 +11,14 @@ import {
   RefreshCw,
   Search,
   Settings,
+  ShieldCheck,
   Table2,
+  UploadCloud,
   X,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
+import appLogoSrc from '../assets/logo.png';
 import type {
   DataInputTablePreview,
   PersonalAnalysisConfig,
@@ -53,6 +57,28 @@ function formatCount(value?: number) {
 function valueText(value: unknown) {
   if (value === null || value === undefined) return '';
   return String(value);
+}
+
+function CloudDataPermissionItem({
+  icon,
+  title,
+  description,
+}: {
+  icon: JSX.Element;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex min-w-0 gap-3">
+      <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-background/72 text-text-primary">
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <div className="text-[14px] font-medium text-text-primary">{title}</div>
+        <div className="mt-1 text-[12px] leading-5 text-text-muted">{description}</div>
+      </div>
+    </div>
+  );
 }
 
 export function CloudDataView() {
@@ -348,8 +374,8 @@ export function CloudDataView() {
   }, []);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-transparent">
-      <div className="flex h-12 flex-shrink-0 items-center justify-between gap-3 border-b border-border-subtle bg-background/28 px-5 backdrop-blur-xl">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-transparent">
+      <div className="flex h-12 w-full flex-shrink-0 items-center justify-between gap-3 border-b border-border-subtle bg-background/28 px-5 backdrop-blur-xl">
         <div className="flex min-w-0 items-center gap-2">
           <Cloud className="h-4 w-4 flex-shrink-0 text-accent-text" />
           <h2 className="truncate text-[16px] font-semibold text-text-primary">
@@ -428,41 +454,68 @@ export function CloudDataView() {
       )}
 
       {!isConnected ? (
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-          <div className="max-w-[760px] rounded-xl border border-border-subtle bg-background/62 px-5 py-4 shadow-soft">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent-text">
-                <Cloud className="h-5 w-5" />
+        <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto px-6 py-8">
+          <div className="flex w-full max-w-[760px] flex-col items-center text-center">
+            <div className="flex items-center justify-center gap-4">
+              <div className="flex h-[72px] w-[72px] items-center justify-center rounded-2xl bg-accent/10 shadow-soft ring-1 ring-accent/10">
+                <img src={appLogoSrc} alt="" className="h-11 w-11 object-contain" />
               </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-[16px] font-semibold text-text-primary">
-                  {t('cloudData.connectTitle')}
-                </h3>
-                <p className="mt-1 max-w-[560px] text-[13px] leading-5 text-text-secondary">
-                  {t('cloudData.connectDescription')}
-                </p>
-                <div className="mt-3 grid gap-1.5 text-[13px] text-text-secondary sm:grid-cols-2">
-                  {[
-                    t('cloudData.valueBrowseSpaces'),
-                    t('cloudData.valuePreviewTables'),
-                    t('cloudData.valueImportInput'),
-                    t('cloudData.valueUseInTasks'),
-                  ].map((item) => (
-                    <div key={item} className="flex items-center gap-2">
-                      <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-accent-text" />
-                      <span>{item}</span>
-                    </div>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={openSettings}
-                  className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-accent px-3 text-[13px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover"
-                >
-                  <Settings className="h-4 w-4" />
-                  {t('cloudData.startConnect')}
-                </button>
+              <div className="flex items-center gap-1 text-accent/45">
+                <ArrowRight className="h-4 w-4" />
+                <ArrowRight className="h-4 w-4" />
+                <ArrowRight className="h-4 w-4" />
               </div>
+              <div className="flex h-[72px] w-[72px] items-center justify-center rounded-2xl bg-accent/10 text-accent-text shadow-soft ring-1 ring-accent/10">
+                <Cloud className="h-10 w-10" />
+              </div>
+            </div>
+
+            <h3 className="mt-8 text-[26px] font-semibold leading-tight text-text-primary">
+              {t('cloudData.connectTitle')}
+            </h3>
+            <p className="mt-3 max-w-[620px] text-[15px] leading-7 text-text-secondary">
+              {t('cloudData.connectDescription')}
+            </p>
+
+            <div className="mt-8 w-full max-w-[620px] rounded-xl bg-surface/55 px-7 py-6 text-left shadow-soft ring-1 ring-border-subtle">
+              <div className="text-[14px] font-medium text-text-secondary">
+                {t('cloudData.availableAfterConnect')}
+              </div>
+              <div className="mt-5 grid gap-5 sm:grid-cols-2">
+                <CloudDataPermissionItem
+                  icon={<Eye className="h-5 w-5" />}
+                  title={t('cloudData.permissionReadTables')}
+                  description={t('cloudData.permissionReadTablesDesc')}
+                />
+                <CloudDataPermissionItem
+                  icon={<Database className="h-5 w-5" />}
+                  title={t('cloudData.permissionPreviewData')}
+                  description={t('cloudData.permissionPreviewDataDesc')}
+                />
+                <CloudDataPermissionItem
+                  icon={<FolderKanban className="h-5 w-5" />}
+                  title={t('cloudData.permissionImportData')}
+                  description={t('cloudData.permissionImportDataDesc')}
+                />
+                <CloudDataPermissionItem
+                  icon={<UploadCloud className="h-5 w-5" />}
+                  title={t('cloudData.permissionUploadData')}
+                  description={t('cloudData.permissionUploadDataDesc')}
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={openSettings}
+              className="mt-8 inline-flex h-12 w-full max-w-[620px] items-center justify-center rounded-xl bg-accent px-5 text-[15px] font-semibold text-white shadow-soft transition-colors hover:bg-accent-hover"
+            >
+              {t('cloudData.startConnect')}
+            </button>
+
+            <div className="mt-6 flex max-w-[620px] items-center justify-center gap-2 text-[13px] text-text-muted">
+              <ShieldCheck className="h-4 w-4 flex-shrink-0 text-accent-text" />
+              <span>{t('cloudData.privacyHint')}</span>
             </div>
           </div>
         </div>
