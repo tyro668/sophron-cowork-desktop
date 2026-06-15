@@ -69,6 +69,18 @@ import type {
   AutomationRunQuery,
   AutomationUpdateInput,
   DesktopAuthStatus,
+  ImportCloudTableInput,
+  ImportCloudTableResult,
+  ListCloudProjectsInput,
+  ListCloudProjectsResult,
+  ListCloudSpacesInput,
+  ListCloudSpacesResult,
+  ListCloudTablesInput,
+  ListCloudTablesResult,
+  PreviewCloudTableInput,
+  PreviewCloudTableResult,
+  UploadDataTableToCloudInput,
+  UploadDataTableToCloudResult,
 } from '../renderer/types';
 import type { DiagnosticInput, DiagnosticResult } from '../renderer/types';
 import { isAllowedClientEventType } from '../shared/client-event-allowlist';
@@ -287,6 +299,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('data.deleteTask', id),
     deleteDataset: (id: string): Promise<{ success: boolean }> =>
       ipcRenderer.invoke('data.deleteDataset', id),
+    listCloudSpaces: (payload?: ListCloudSpacesInput): Promise<ListCloudSpacesResult> =>
+      ipcRenderer.invoke('data.listCloudSpaces', payload),
+    listCloudProjects: (payload: ListCloudProjectsInput): Promise<ListCloudProjectsResult> =>
+      ipcRenderer.invoke('data.listCloudProjects', payload),
+    listCloudTables: (payload: ListCloudTablesInput): Promise<ListCloudTablesResult> =>
+      ipcRenderer.invoke('data.listCloudTables', payload),
+    previewCloudTable: (payload: PreviewCloudTableInput): Promise<PreviewCloudTableResult> =>
+      ipcRenderer.invoke('data.previewCloudTable', payload),
+    importCloudTable: (payload: ImportCloudTableInput): Promise<ImportCloudTableResult> =>
+      ipcRenderer.invoke('data.importCloudTable', payload),
+    uploadDataTableToCloud: (
+      payload: UploadDataTableToCloudInput
+    ): Promise<UploadDataTableToCloudResult> =>
+      ipcRenderer.invoke('data.uploadDataTableToCloud', payload),
   },
 
   // Config methods
@@ -694,6 +720,14 @@ declare global {
         ) => Promise<DataListInputTableNormalizerVersionsResult>;
         deleteTask: (id: string) => Promise<{ success: boolean }>;
         deleteDataset: (id: string) => Promise<{ success: boolean }>;
+        listCloudSpaces: (payload?: ListCloudSpacesInput) => Promise<ListCloudSpacesResult>;
+        listCloudProjects: (payload: ListCloudProjectsInput) => Promise<ListCloudProjectsResult>;
+        listCloudTables: (payload: ListCloudTablesInput) => Promise<ListCloudTablesResult>;
+        previewCloudTable: (payload: PreviewCloudTableInput) => Promise<PreviewCloudTableResult>;
+        importCloudTable: (payload: ImportCloudTableInput) => Promise<ImportCloudTableResult>;
+        uploadDataTableToCloud: (
+          payload: UploadDataTableToCloudInput
+        ) => Promise<UploadDataTableToCloudResult>;
       };
       config: {
         get: () => Promise<AppConfig>;

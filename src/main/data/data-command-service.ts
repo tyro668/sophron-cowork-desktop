@@ -57,6 +57,8 @@ import {
   type ListOutputTablesResult,
   type ListTasksResult,
   type OutputTableResult,
+  type PreviewCloudTableCommand,
+  type PreviewCloudTableResult,
   type PreviewInputTableNormalizerVersionCommand,
   type PreviewInputTableNormalizerVersionResult,
   type PreviewTableCommand,
@@ -83,13 +85,16 @@ import {
   createNormalizerFileTreeHash,
 } from '../../shared/input-table-normalizer/templates';
 import type { InputTableNormalizerProjectGenerator } from './input-table-normalizer-generator';
-import { configStore, type PersonalAnalysisConfig } from '../config/config-store';
+import { configStore } from '../config/config-store';
 import {
   createPersonalAnalysisClient,
   type PersonalAnalysisClient,
-  type PersonalAnalysisConnectionInput,
-  type PersonalAnalysisDatasource,
 } from './personal-analysis-client';
+import type {
+  StoredPersonalAnalysisConfig,
+  PersonalAnalysisConnectionInput,
+  PersonalAnalysisDatasource,
+} from '../../shared/personal-analysis-types';
 
 const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 100;
@@ -110,7 +115,7 @@ export class DataCommandService {
   constructor(
     private readonly store: DataTaskStore,
     private readonly normalizerProjectGenerator: InputTableNormalizerProjectGenerator,
-    private readonly getPersonalAnalysisConfig: () => PersonalAnalysisConfig = () =>
+    private readonly getPersonalAnalysisConfig: () => StoredPersonalAnalysisConfig = () =>
       configStore.get('personalAnalysis'),
     private readonly options: DataCommandServiceOptions = {}
   ) {}
@@ -492,6 +497,42 @@ export class DataCommandService {
         cloudTableId: tableId,
         cloudTable,
         downloadedFilePath,
+      };
+    } catch (error) {
+      throw toCommandError(error, 'RUN_FAILED');
+    }
+  }
+
+  async previewCloudTable(input: PreviewCloudTableCommand): Promise<PreviewCloudTableResult> {
+    const tableId = normalizeRequiredName(input.tableId, 'Cloud tableId is required');
+    const limit =
+      typeof input.limit === 'number' && Number.isFinite(input.limit)
+        ? Math.min(Math.max(Math.floor(input.limit), 1), MAX_PREVIEW_LIMIT)
+        : DEFAULT_PREVIEW_LIMIT;
+    const offset =
+      typeof input.offset === 'number' && Number.isFinite(input.offset)
+        ? Math.max(Math.floor(input.offset), 0)
+        : 0;
+    try {
+      const csv = await this.createPersonalAnalysisClient(input).exportTableCsv(tableId);
+      const downloadedFilePath = await writeCloudCsvTempFile(tableId, csv);
+      const preview = await this.store.previewInputTable({
+        filePath: downloadedFilePath,
+        sourceKind: 'csv',
+        config: {
+          sourceKind: 'csv',
+          header: 'auto',
+          dataRegion: 'auto',
+          encoding: 'auto',
+          delimiter: 'auto',
+        },
+        limit,
+        offset,
+      });
+      return {
+        cloudTableId: tableId,
+        downloadedFilePath,
+        preview,
       };
     } catch (error) {
       throw toCommandError(error, 'RUN_FAILED');

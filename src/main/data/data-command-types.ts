@@ -29,7 +29,7 @@ import type {
   PersonalAnalysisSpace,
   PersonalAnalysisTable,
   PersonalAnalysisUploadResult,
-} from './personal-analysis-client';
+} from '../../shared/personal-analysis-types';
 
 export type DataCommandErrorCode =
   | 'INVALID_ARGUMENT'
@@ -234,6 +234,18 @@ export interface ImportCloudTableResult extends InputTableResult {
   cloudTableId: string;
   cloudTable?: PersonalAnalysisTable;
   downloadedFilePath: string;
+}
+
+export interface PreviewCloudTableCommand extends PersonalAnalysisConnectionCommand {
+  tableId: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface PreviewCloudTableResult {
+  cloudTableId: string;
+  downloadedFilePath: string;
+  preview: DataInputTablePreview;
 }
 
 export interface UploadDataTableToCloudCommand extends PersonalAnalysisConnectionCommand {

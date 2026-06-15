@@ -3,7 +3,22 @@ import type {
   PermissionRule as SharedPermissionRule,
 } from '../../shared/permission-policies';
 import type { DataColumnTypeInfo } from '../../shared/data-field-types';
+import type {
+  PersonalAnalysisConfig,
+  PersonalAnalysisConnectionInput,
+  PersonalAnalysisProject,
+  PersonalAnalysisSpace,
+  PersonalAnalysisTable,
+} from '../../shared/personal-analysis-types';
 export type { DataColumnTypeInfo, DataFieldType } from '../../shared/data-field-types';
+export type {
+  PersonalAnalysisConfig,
+  PersonalAnalysisConnectionInput,
+  PersonalAnalysisDatasource,
+  PersonalAnalysisProject,
+  PersonalAnalysisSpace,
+  PersonalAnalysisTable,
+} from '../../shared/personal-analysis-types';
 export type {
   Automation,
   AutomationActionDefinitionSummary,
@@ -1322,10 +1337,10 @@ export interface AppConfig {
   isConfigured: boolean;
 }
 
-export interface PersonalAnalysisConfig {
-  apiOrigin: string;
-  apiKey: string;
-  updatedAt?: number;
+export type ListCloudSpacesInput = PersonalAnalysisConnectionInput;
+
+export interface ListCloudSpacesResult {
+  spaces: PersonalAnalysisSpace[];
 }
 
 export interface DesktopAuthUser {
@@ -1346,10 +1361,83 @@ export interface DesktopAuthStatus {
   error?: string;
 }
 
-export interface PersonalAnalysisDatasource {
-  datasourceId: string;
-  datasourceName?: string;
-  description?: string;
+export interface ListCloudProjectsInput extends PersonalAnalysisConnectionInput {
+  spaceId: string;
+}
+
+export interface ListCloudProjectsResult {
+  projects: PersonalAnalysisProject[];
+}
+
+export interface ListCloudTablesInput extends PersonalAnalysisConnectionInput {
+  spaceId: string;
+  projectId: string;
+}
+
+export interface ListCloudTablesResult {
+  tables: PersonalAnalysisTable[];
+}
+
+export interface PreviewCloudTableInput extends PersonalAnalysisConnectionInput {
+  tableId: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface PreviewCloudTableResult {
+  cloudTableId: string;
+  downloadedFilePath: string;
+  preview: DataInputTablePreview;
+}
+
+export interface ImportCloudTableInput extends PersonalAnalysisConnectionInput {
+  tableId: string;
+  spaceId?: string;
+  projectId?: string;
+  name?: string;
+  previewRows?: number;
+}
+
+export interface ImportCloudTableResult {
+  inputTable: DataDataset;
+  preview?: DataInputTablePreview;
+  cloudTableId: string;
+  cloudTable?: PersonalAnalysisTable;
+  downloadedFilePath: string;
+}
+
+export interface UploadDataTableToCloudInput extends PersonalAnalysisConnectionInput {
+  tableKind: 'input' | 'output';
+  id: string;
+  writeMode: 'CREATE' | 'REPLACE';
+  datasourceId?: string;
+  folderId?: string;
+  projectId?: string;
+  spaceId?: string;
+  tableId?: string;
+  tableName?: string;
+  fileName?: string;
+  maxRows?: number;
+  waitForDone?: boolean;
+}
+
+export interface UploadDataTableToCloudResult {
+  sourceTable: {
+    tableKind: 'input' | 'output';
+    id: string;
+    name: string;
+    rowCount: number;
+    columnCount: number;
+  };
+  csvBytes: number;
+  upload: {
+    uploadTaskId: string;
+    importTaskId: string;
+    tableId: string;
+    sheetId?: string;
+    status: string;
+    table?: PersonalAnalysisTable;
+  };
 }
 
 export type AgentRuntimeConfig = Pick<

@@ -27,6 +27,8 @@ import {
   shouldUseAnthropicAuthToken,
 } from './auth-utils';
 import { API_PROVIDER_PRESETS, PI_AI_CURATED_PRESETS } from '../../shared/api-model-presets';
+import { normalizePersonalAnalysisApiOrigin } from '../../shared/personal-analysis';
+import type { StoredPersonalAnalysisConfig } from '../../shared/personal-analysis-types';
 
 /**
  * Application configuration schema
@@ -133,7 +135,7 @@ export interface AppConfig {
   memoryRuntime: MemoryRuntimeConfig;
 
   // Personal Analysis / mock server connection
-  personalAnalysis: PersonalAnalysisConfig;
+  personalAnalysis: StoredPersonalAnalysisConfig;
 
   // Enable thinking mode (show thinking steps)
   enableThinking: boolean;
@@ -178,14 +180,8 @@ export interface MemoryRuntimeConfig {
   promptIterationRounds?: number;
 }
 
-export interface PersonalAnalysisConfig {
-  apiOrigin: string;
-  apiKey: string;
-  updatedAt: number;
-}
-
 type ConfigStoreUpdate = Partial<Omit<AppConfig, 'personalAnalysis'>> & {
-  personalAnalysis?: Partial<PersonalAnalysisConfig>;
+  personalAnalysis?: Partial<StoredPersonalAnalysisConfig>;
 };
 
 const DEFAULT_CONFIG_SET_ID = 'default';
@@ -501,13 +497,13 @@ function normalizeMemoryRuntimeConfig(raw: unknown): MemoryRuntimeConfig {
   };
 }
 
-function normalizePersonalAnalysisConfig(raw: unknown): PersonalAnalysisConfig {
+function normalizePersonalAnalysisConfig(raw: unknown): StoredPersonalAnalysisConfig {
   const value =
-    typeof raw === 'object' && raw !== null ? (raw as Partial<PersonalAnalysisConfig>) : {};
+    typeof raw === 'object' && raw !== null ? (raw as Partial<StoredPersonalAnalysisConfig>) : {};
   return {
     apiOrigin:
       typeof value.apiOrigin === 'string'
-        ? value.apiOrigin.trim().replace(/\/+$/, '')
+        ? normalizePersonalAnalysisApiOrigin(value.apiOrigin)
         : defaultConfig.personalAnalysis.apiOrigin,
     apiKey:
       typeof value.apiKey === 'string'
@@ -521,8 +517,8 @@ function normalizePersonalAnalysisConfig(raw: unknown): PersonalAnalysisConfig {
 }
 
 function personalAnalysisConnectionChanged(
-  previous: PersonalAnalysisConfig,
-  next: PersonalAnalysisConfig
+  previous: StoredPersonalAnalysisConfig,
+  next: StoredPersonalAnalysisConfig
 ): boolean {
   return previous.apiOrigin !== next.apiOrigin || previous.apiKey !== next.apiKey;
 }
