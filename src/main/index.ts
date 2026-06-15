@@ -51,6 +51,7 @@ import {
   type CreateConfigSetPayload,
 } from './config/config-store';
 import { runConfigApiTest } from './config/config-test-routing';
+import { resolveDesktopAuthOrigin } from './config/desktop-auth-config';
 import { listOllamaModels } from './config/ollama-api';
 import { setPermissionRules } from './config/permission-rules-store';
 import { mcpConfigStore } from './mcp/mcp-config-store';
@@ -181,7 +182,7 @@ let automationScheduler: AutomationScheduler | null = null;
 let dataTaskStore: DataTaskStore | null = null;
 let dataCommandService: DataCommandService | null = null;
 const desktopAuthService = new DesktopAuthService(
-  () => configStore.get('personalAnalysis')?.apiOrigin
+  () => resolveDesktopAuthOrigin(configStore.get('personalAnalysis')?.apiOrigin)
 );
 let updateService: UpdateService | null = null;
 let isInstallingUpdate = false;
