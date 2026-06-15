@@ -22,7 +22,7 @@ import { applySessionUpdate } from '../utils/session-update';
 
 export type GlobalNoticeType = 'info' | 'warning' | 'error' | 'success';
 export type GlobalNoticeAction = 'open_api_settings';
-export type MainView = 'chat' | 'data' | 'skills' | 'automation';
+export type MainView = 'chat' | 'data' | 'cloud-data' | 'skills' | 'automation';
 
 export interface PendingDataNavigation extends DataResourceTarget {
   nonce: number;
@@ -191,6 +191,7 @@ interface AppState {
   setGlobalNotice: (notice: GlobalNotice | null) => void;
   clearGlobalNotice: () => void;
   navigateToDataElement: (target: DataResourceTarget) => void;
+  navigateToCloudData: () => void;
   clearDataNavigation: (nonce?: number) => void;
 
   // Working directory actions
@@ -644,6 +645,12 @@ export const useAppStore = create<AppState>((set) => ({
       showSettings: false,
       pendingDataNavigation: { ...target, nonce: ++dataNavigationSeq },
     }),
+  navigateToCloudData: () =>
+    set({
+      mainView: 'cloud-data',
+      activeSessionId: null,
+      showSettings: false,
+    }),
   clearDataNavigation: (nonce) =>
     set((state) => {
       if (nonce !== undefined && state.pendingDataNavigation?.nonce !== nonce) {
@@ -697,6 +704,10 @@ if (typeof window !== 'undefined') {
     } else if (page === 'data') {
       store.setShowSettings(false);
       store.setMainView('data');
+      store.setActiveSession(null);
+    } else if (page === 'cloud-data') {
+      store.setShowSettings(false);
+      store.setMainView('cloud-data');
       store.setActiveSession(null);
     } else if (page === 'skills') {
       store.setShowSettings(false);

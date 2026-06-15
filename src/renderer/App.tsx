@@ -43,6 +43,9 @@ const SettingsPanel = lazy(() =>
 const DataView = lazy(() =>
   import('./components/DataView').then((module) => ({ default: module.DataView }))
 );
+const CloudDataView = lazy(() =>
+  import('./components/CloudDataView').then((module) => ({ default: module.CloudDataView }))
+);
 const SkillsView = lazy(() =>
   import('./components/SkillsView').then((module) => ({ default: module.SkillsView }))
 );
@@ -67,13 +70,14 @@ function ContextPanelFallback() {
   );
 }
 
-type KeepAliveMainRouteId = 'chat' | 'data' | 'skills' | 'automation';
+type KeepAliveMainRouteId = 'chat' | 'data' | 'cloud-data' | 'skills' | 'automation';
 type MainPanelRouteId = KeepAliveMainRouteId | 'settings';
 type ActiveMainRouteId = MainPanelRouteId | 'welcome';
 
 const KEEP_ALIVE_MAIN_ROUTES = new Set<KeepAliveMainRouteId>([
   'chat',
   'data',
+  'cloud-data',
   'skills',
   'automation',
 ]);
@@ -253,6 +257,13 @@ function App() {
       resetKey: 'data',
       mounted: activeMainRouteId === 'data' || mountedMainRouteIds.has('data'),
       element: <DataView />,
+    },
+    {
+      id: 'cloud-data' as MainPanelRouteId,
+      name: 'CloudDataView',
+      resetKey: 'cloud-data',
+      mounted: activeMainRouteId === 'cloud-data' || mountedMainRouteIds.has('cloud-data'),
+      element: <CloudDataView />,
     },
   ];
 

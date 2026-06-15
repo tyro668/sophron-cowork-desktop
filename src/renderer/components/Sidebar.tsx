@@ -18,6 +18,7 @@ import {
   Search as SearchIcon,
   Plus,
   Layers,
+  Cloud,
   Package,
   Clock3,
   ListChecks,
@@ -415,6 +416,13 @@ export function Sidebar() {
     setShowSettings(false);
   }, [exitSelectMode, setMainView, setShowSettings]);
 
+  const handleCloudDataPage = useCallback(() => {
+    exitSelectMode();
+    setMainView('cloud-data');
+    setActiveSession(null);
+    setShowSettings(false);
+  }, [exitSelectMode, setActiveSession, setMainView, setShowSettings]);
+
   const handleSkillsPage = useCallback(() => {
     exitSelectMode();
     setMainView('skills');
@@ -588,6 +596,7 @@ export function Sidebar() {
       <Monitor className="w-4 h-4" />
     );
   const isDataPageActive = mainView === 'data' && !showSettings;
+  const isCloudDataPageActive = mainView === 'cloud-data' && !showSettings;
   const isSkillsPageActive = mainView === 'skills' && !showSettings;
   const isAutomationPageActive = mainView === 'automation' && !showSettings;
   const renderAuthAvatar = (containerClassName: string, iconClassName: string) => {
@@ -680,6 +689,17 @@ export function Sidebar() {
             title={t('mainNav.data')}
           >
             <Layers className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleCloudDataPage}
+            className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
+              isCloudDataPageActive
+                ? 'bg-accent/10 text-accent'
+                : 'text-text-secondary hover:bg-surface-hover'
+            }`}
+            title={t('mainNav.cloudData')}
+          >
+            <Cloud className="w-4 h-4" />
           </button>
           <button
             onClick={handleSkillsPage}
@@ -857,6 +877,17 @@ export function Sidebar() {
           >
             <Layers className="h-4 w-4 flex-shrink-0" />
             <span className="min-w-0 flex-1 truncate">{t('mainNav.data')}</span>
+          </button>
+          <button
+            onClick={handleCloudDataPage}
+            className={`group flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[13px] font-medium transition-colors ${
+              isCloudDataPageActive
+                ? 'bg-accent/10 text-accent'
+                : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+            }`}
+          >
+            <Cloud className="h-4 w-4 flex-shrink-0" />
+            <span className="min-w-0 flex-1 truncate">{t('mainNav.cloudData')}</span>
           </button>
           <button
             onClick={handleSkillsPage}
