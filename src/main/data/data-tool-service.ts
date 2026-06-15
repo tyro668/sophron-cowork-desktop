@@ -44,7 +44,7 @@ import type {
   PersonalAnalysisProject,
   PersonalAnalysisSpace,
   PersonalAnalysisTable,
-} from './personal-analysis-client';
+} from '../../shared/personal-analysis-types';
 
 export class DataToolService {
   constructor(private readonly commandService: DataCommandService) {}

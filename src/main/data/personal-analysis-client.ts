@@ -1,63 +1,13 @@
-export interface PersonalAnalysisConnectionInput {
-  apiOrigin?: string;
-  apiKey?: string;
-  accessToken?: string;
-}
-
-export interface PersonalAnalysisSpace {
-  spaceId: string;
-  spaceName: string;
-  description?: string;
-  projectCount?: number;
-}
-
-export interface PersonalAnalysisProject {
-  projectId: string;
-  folderId: string;
-  spaceId: string;
-  projectName: string;
-  tableCount?: number;
-}
-
-export interface PersonalAnalysisDatasource {
-  datasourceId: string;
-  datasourceName?: string;
-  description?: string;
-}
-
-export interface PersonalAnalysisTable {
-  tableId: string;
-  sheetId?: string;
-  tableName: string;
-  spaceId?: string;
-  projectId: string;
-  datasourceId?: string;
-  folderId?: string;
-  columns?: string[];
-  rowCount?: number;
-}
-
-export interface PersonalAnalysisUploadInput extends PersonalAnalysisConnectionInput {
-  writeMode: 'CREATE' | 'REPLACE';
-  datasourceId?: string;
-  folderId?: string;
-  projectId?: string;
-  spaceId?: string;
-  tableId?: string;
-  fileName: string;
-  tableName: string;
-  csv: string;
-  waitForDone?: boolean;
-}
-
-export interface PersonalAnalysisUploadResult {
-  uploadTaskId: string;
-  importTaskId: string;
-  tableId: string;
-  sheetId?: string;
-  status: string;
-  table?: PersonalAnalysisTable;
-}
+import { normalizePersonalAnalysisApiOrigin } from '../../shared/personal-analysis';
+import type {
+  PersonalAnalysisConnectionInput,
+  PersonalAnalysisDatasource,
+  PersonalAnalysisProject,
+  PersonalAnalysisSpace,
+  PersonalAnalysisTable,
+  PersonalAnalysisUploadInput,
+  PersonalAnalysisUploadResult,
+} from '../../shared/personal-analysis-types';
 
 interface PersonalAnalysisImportStatus {
   taskId: string;
@@ -87,7 +37,7 @@ export class PersonalAnalysisClient {
   private accessToken: string | null;
 
   constructor(options: PersonalAnalysisConnectionInput = {}) {
-    this.apiOrigin = normalizeApiOrigin(options.apiOrigin);
+    this.apiOrigin = normalizePersonalAnalysisApiOrigin(options.apiOrigin);
     this.apiKey = options.apiKey?.trim() || '';
     this.accessToken = options.accessToken?.trim() || null;
   }
@@ -289,11 +239,6 @@ export function createPersonalAnalysisClient(
   input: PersonalAnalysisConnectionInput = {}
 ): PersonalAnalysisClient {
   return new PersonalAnalysisClient(input);
-}
-
-function normalizeApiOrigin(value: string | undefined): string {
-  const apiOrigin = value?.trim() || '';
-  return apiOrigin.replace(/\/+$/, '');
 }
 
 async function fetchWithTimeout(
