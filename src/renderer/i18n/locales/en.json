@@ -1479,6 +1479,10 @@
     "permissionPolicyFullAccess": "Full access",
     "backToTop": "Back to top",
     "scrollToBottom": "Go to bottom",
+    "selectedSkills": "Skills",
+    "insertSkill": "Insert skill",
+    "noMatchingSkills": "No matching enabled skills",
+    "removeSkill": "Remove skill {{name}}",
     "connectorCount_one": "{{count}} connector",
     "connectorCount_other": "{{count}} connectors"
   },

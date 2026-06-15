@@ -3763,7 +3763,9 @@ async function handleClientEvent(event: ClientEvent): Promise<unknown> {
         event.payload.cwd,
         event.payload.allowedTools,
         event.payload.content,
-        event.payload.memoryEnabled
+        event.payload.memoryEnabled,
+        undefined,
+        { selectedSkillNames: event.payload.selectedSkillNames }
       );
 
     case 'session.continue':
@@ -3773,7 +3775,8 @@ async function handleClientEvent(event: ClientEvent): Promise<unknown> {
       return sm.continueSession(
         event.payload.sessionId,
         event.payload.prompt,
-        event.payload.content
+        event.payload.content,
+        { selectedSkillNames: event.payload.selectedSkillNames }
       );
 
     case 'session.stop':

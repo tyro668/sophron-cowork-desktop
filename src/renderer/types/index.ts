@@ -1058,6 +1058,7 @@ export type ClientEvent =
         permissionRules?: PermissionRule[];
         content?: ContentBlock[];
         memoryEnabled?: boolean;
+        selectedSkillNames?: string[];
       };
     }
   | {
@@ -1067,6 +1068,7 @@ export type ClientEvent =
         prompt: string;
         permissionRules?: PermissionRule[];
         content?: ContentBlock[];
+        selectedSkillNames?: string[];
       };
     }
   | { type: 'session.stop'; payload: { sessionId: string } }

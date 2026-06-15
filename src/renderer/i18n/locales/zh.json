@@ -1479,6 +1479,10 @@
     "permissionPolicyFullAccess": "完全访问权限",
     "backToTop": "回到顶部",
     "scrollToBottom": "去到底部",
+    "selectedSkills": "技能",
+    "insertSkill": "引入技能",
+    "noMatchingSkills": "没有匹配的可用技能",
+    "removeSkill": "移除技能 {{name}}",
     "connectorCount_one": "{{count}} 个连接器",
     "connectorCount_other": "{{count}} 个连接器"
   },
