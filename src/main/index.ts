@@ -104,6 +104,7 @@ import { AutomationService } from './automation/automation-service';
 import { AutomationRunner } from './automation/automation-runner';
 import { AutomationScheduler } from './automation/automation-scheduler';
 import { createDefaultAutomationActionRegistry } from './automation/default-actions';
+import { DesktopAuthService } from './auth/desktop-auth-service';
 import type {
   Automation,
   AutomationActionGraph,
@@ -179,6 +180,9 @@ let automationService: AutomationService | null = null;
 let automationScheduler: AutomationScheduler | null = null;
 let dataTaskStore: DataTaskStore | null = null;
 let dataCommandService: DataCommandService | null = null;
+const desktopAuthService = new DesktopAuthService(
+  () => configStore.get('personalAnalysis')?.apiOrigin
+);
 let updateService: UpdateService | null = null;
 let isInstallingUpdate = false;
 let startupUpdateCheckScheduled = false;
@@ -1433,6 +1437,30 @@ ipcMain.handle('update.checkAndInstall', async () => {
     throw new Error('Update service is not initialized');
   }
   return updateService.checkAndInstall();
+});
+
+ipcMain.handle('auth.getStatus', async () => {
+  return desktopAuthService.getStatus();
+});
+
+ipcMain.handle('auth.login', async () => {
+  try {
+    return await desktopAuthService.login();
+  } finally {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  }
+});
+
+ipcMain.handle('auth.cancelLogin', async () => {
+  return desktopAuthService.cancelLogin();
+});
+
+ipcMain.handle('auth.logout', async () => {
+  return desktopAuthService.logout();
 });
 
 ipcMain.handle('shell.openExternal', async (_event, url: string) => {

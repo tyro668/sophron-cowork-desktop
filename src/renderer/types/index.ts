@@ -1328,6 +1328,24 @@ export interface PersonalAnalysisConfig {
   updatedAt?: number;
 }
 
+export interface DesktopAuthUser {
+  userId: string;
+  username?: string;
+  displayName?: string;
+  email?: string;
+  avatarUrl?: string;
+  remainingCredits?: number | null;
+}
+
+export interface DesktopAuthStatus {
+  authenticated: boolean;
+  user?: DesktopAuthUser;
+  apiOrigin?: string;
+  expiresAt?: number;
+  updatedAt: number;
+  error?: string;
+}
+
 export interface PersonalAnalysisDatasource {
   datasourceId: string;
   datasourceName?: string;

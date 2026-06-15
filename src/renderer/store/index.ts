@@ -16,6 +16,7 @@ import type {
   SandboxSetupProgress,
   SandboxSyncStatus,
   SkillsStorageChangeEvent,
+  DesktopAuthStatus,
 } from '../types';
 import { applySessionUpdate } from '../utils/session-update';
 
@@ -99,6 +100,7 @@ interface AppState {
   contextPanelCollapsed: boolean;
   showSettings: boolean;
   settingsTab: string | null;
+  desktopAuthStatus: DesktopAuthStatus;
 
   // Permission
   pendingPermission: PermissionRequest | null;
@@ -172,6 +174,7 @@ interface AppState {
   setContextPanelCollapsed: (collapsed: boolean) => void;
   setShowSettings: (show: boolean) => void;
   setSettingsTab: (tab: string | null) => void;
+  setDesktopAuthStatus: (status: DesktopAuthStatus) => void;
 
   setPendingPermission: (permission: PermissionRequest | null) => void;
 
@@ -245,6 +248,7 @@ export const useAppStore = create<AppState>((set) => ({
   contextPanelCollapsed: false,
   showSettings: false,
   settingsTab: null,
+  desktopAuthStatus: { authenticated: false, updatedAt: 0 },
   pendingPermission: null,
   pendingSudoPassword: null,
   settings: defaultSettings,
@@ -316,7 +320,8 @@ export const useAppStore = create<AppState>((set) => ({
 
   removeSession: (sessionId) =>
     set((state) => {
-      const { [sessionId]: _, ...restSessionStates } = state.sessionStates;
+      const restSessionStates = { ...state.sessionStates };
+      delete restSessionStates[sessionId];
       return {
         sessions: state.sessions.filter((s) => s.id !== sessionId),
         sessionStates: restSessionStates,
@@ -601,6 +606,7 @@ export const useAppStore = create<AppState>((set) => ({
   setContextPanelCollapsed: (collapsed) => set({ contextPanelCollapsed: collapsed }),
   setShowSettings: (show) => set({ showSettings: show }),
   setSettingsTab: (tab) => set({ settingsTab: tab }),
+  setDesktopAuthStatus: (status) => set({ desktopAuthStatus: status }),
 
   // Permission actions
   setPendingPermission: (permission) => set({ pendingPermission: permission }),
