@@ -59,9 +59,18 @@ interface McpServerConfig {
 interface SkillConfig {
   name: string;
   description?: string;
+  descriptionEn?: string;
+  descriptionZh?: string;
   type: 'mcp' | 'custom';
   mcp?: McpServerConfig;
   enabled?: boolean;
+}
+
+interface SkillMetadata {
+  name: string;
+  description: string;
+  descriptionEn?: string;
+  descriptionZh?: string;
 }
 
 interface PluginManifest {
@@ -163,6 +172,8 @@ export class SkillsManager {
             id: `builtin-${dir}`,
             name: metadata.name,
             description: metadata.description,
+            descriptionEn: metadata.descriptionEn,
+            descriptionZh: metadata.descriptionZh,
             type: 'builtin',
             enabled: true,
             createdAt: Date.now(),
@@ -608,6 +619,8 @@ export class SkillsManager {
               id: `${source}-${entry}`,
               name: metadata.name,
               description: metadata.description,
+              descriptionEn: metadata.descriptionEn,
+              descriptionZh: metadata.descriptionZh,
               type: 'custom',
               enabled: true,
               createdAt: Date.now(),
@@ -627,6 +640,8 @@ export class SkillsManager {
               id: `${source}-${path.basename(entry, '.json')}`,
               name: config.name,
               description: config.description,
+              descriptionEn: config.descriptionEn,
+              descriptionZh: config.descriptionZh,
               type: config.type === 'mcp' ? 'mcp' : 'custom',
               enabled: config.enabled !== false,
               config: config.mcp ? { mcp: config.mcp } : undefined,
@@ -870,7 +885,7 @@ export class SkillsManager {
   /**
    * Get skill metadata from SKILL.md file
    */
-  getSkillMetadata(skillPath: string): { name: string; description: string } | null {
+  getSkillMetadata(skillPath: string): SkillMetadata | null {
     const skillMdPath = path.join(skillPath, 'SKILL.md');
 
     if (!fs.existsSync(skillMdPath)) {
@@ -884,19 +899,27 @@ export class SkillsManager {
       const frontMatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
       const frontMatter = frontMatterMatch ? frontMatterMatch[1] : content;
 
-      const nameMatch = frontMatter.match(/name:\s*["']?([^"'\r\n]+)["']?/);
-      const descMatch = frontMatter.match(/description:\s*["']?([^"'\r\n]+)["']?/);
+      const readField = (field: string) => {
+        const match = frontMatter.match(new RegExp(`^${field}:\\s*["']?([^"'\\r\\n]+)["']?`, 'm'));
+        return match?.[1]?.trim();
+      };
 
-      if (!nameMatch || !descMatch) {
+      const name = readField('name');
+      const description = readField('description');
+      const descriptionEn = readField('description_en') || readField('descriptionEn') || description;
+      const descriptionZh = readField('description_zh') || readField('descriptionZh');
+
+      if (!name || !description) {
         return null;
       }
 
-      const name = nameMatch[1].trim();
       validateSkillName(name);
 
       return {
         name,
-        description: descMatch[1].trim(),
+        description,
+        descriptionEn,
+        descriptionZh,
       };
     } catch (error) {
       logError(`Failed to parse SKILL.md from ${skillPath}:`, error);

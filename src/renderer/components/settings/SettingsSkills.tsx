@@ -17,6 +17,7 @@ import {
 import type { Skill, PluginCatalogItemV2, InstalledPlugin, PluginComponentKind } from '../../types';
 import { useAppStore } from '../../store';
 import type { LocalizedBanner } from './shared';
+import { getLocalizedSkillDescription } from '../../utils/localized-skill';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 const SKILLHUB_MARKET_PAGE_SIZE = 50;
@@ -864,8 +865,10 @@ function SkillRow({
   onDelete: (() => void) | null;
   isLoading: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const isBuiltin = skill.type === 'builtin';
+  const description = getLocalizedSkillDescription(skill, i18n.resolvedLanguage || i18n.language);
+  const typeLabel = t(`skills.skillTypes.${skill.type}`);
 
   return (
     <div className="flex min-h-[64px] items-center gap-3 border-b border-border-muted px-3 py-2.5 last:border-b-0">
@@ -886,12 +889,12 @@ function SkillRow({
                   : 'border-success/20 bg-success/5 text-success'
             }`}
           >
-            {skill.type.toUpperCase()}
+            {typeLabel}
           </span>
         </div>
-        {skill.description && (
+        {description && (
           <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-text-muted">
-            {skill.description}
+            {description}
           </p>
         )}
       </div>

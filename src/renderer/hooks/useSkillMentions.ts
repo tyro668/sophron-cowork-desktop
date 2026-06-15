@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent, RefObject } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
 import type { Skill } from '../types';
+import { getLocalizedSkillDescription } from '../utils/localized-skill';
 
 export interface SkillMention {
   id: string;
   name: string;
   description?: string;
+  descriptionEn?: string;
+  descriptionZh?: string;
   type: Skill['type'];
 }
 
@@ -54,6 +58,7 @@ export function useSkillMentions({
   textareaRef,
   isElectron,
 }: UseSkillMentionsOptions) {
+  const { i18n } = useTranslation();
   const skillsStorageChangedAt = useAppStore((state) => state.skillsStorageChangedAt);
   const [availableSkills, setAvailableSkills] = useState<SkillMention[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<SkillMention[]>([]);
@@ -77,7 +82,12 @@ export function useSkillMentions({
             .map((skill) => ({
               id: skill.id,
               name: skill.name,
-              description: skill.description,
+              description: getLocalizedSkillDescription(
+                skill,
+                i18n.resolvedLanguage || i18n.language
+              ),
+              descriptionEn: skill.descriptionEn,
+              descriptionZh: skill.descriptionZh,
               type: skill.type,
             }))
             .sort((a, b) => a.name.localeCompare(b.name))
@@ -93,7 +103,7 @@ export function useSkillMentions({
     return () => {
       cancelled = true;
     };
-  }, [isElectron, skillsStorageChangedAt]);
+  }, [i18n.language, i18n.resolvedLanguage, isElectron, skillsStorageChangedAt]);
 
   const selectedSkillNames = useMemo(
     () => selectedSkills.map((skill) => skill.name),
@@ -115,7 +125,9 @@ export function useSkillMentions({
         }
         return (
           normalizeText(skill.name).includes(query) ||
-          normalizeText(skill.description || '').includes(query)
+          normalizeText(skill.description || '').includes(query) ||
+          normalizeText(skill.descriptionEn || '').includes(query) ||
+          normalizeText(skill.descriptionZh || '').includes(query)
         );
       })
       .slice(0, MAX_VISIBLE_SKILLS);

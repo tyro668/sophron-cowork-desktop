@@ -1351,6 +1351,11 @@
     "description": "Skills extend sophron cowork's local data capabilities with specialized knowledge and tools.",
     "builtinSkills": "Built-in Skills",
     "customSkills": "Custom Skills",
+    "skillTypes": {
+      "builtin": "Built-in",
+      "custom": "Custom",
+      "mcp": "MCP"
+    },
     "noCustomSkills": "No custom skills installed",
     "installSkillsDesc": "Install skills to extend local data capabilities",
     "browsePlugins": "Browse Marketplace",
