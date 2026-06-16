@@ -9,6 +9,7 @@ import type {
   DesktopAuthUser,
   ProviderModelInfo,
 } from '../../renderer/types';
+import type { PersonalAnalysisConnectionInput } from '../../shared/personal-analysis-types';
 import { createEncryptedStoreWithKeyRotation } from '../utils/store-encryption';
 import { log, logWarn } from '../utils/logger';
 
@@ -166,6 +167,23 @@ export class DesktopAuthService {
     }
 
     return this.emptyStatus();
+  }
+
+  getPersonalAnalysisConnection(): PersonalAnalysisConnectionInput | null {
+    const session = this.store.get('session');
+    if (!session?.accessToken) {
+      return null;
+    }
+
+    if (session.expiresAt && session.expiresAt <= Date.now()) {
+      this.store.set('session', null);
+      return null;
+    }
+
+    return {
+      apiOrigin: session.apiOrigin,
+      accessToken: session.accessToken,
+    };
   }
 
   async getStatus(): Promise<DesktopAuthStatus> {
