@@ -182,7 +182,7 @@ export class DesktopAuthService {
 
     return {
       apiOrigin: session.apiOrigin,
-      accessToken: session.accessToken,
+      accessToken: this.resolvePersonalAnalysisAccessToken(session),
     };
   }
 
@@ -308,7 +308,7 @@ export class DesktopAuthService {
       authorizeUrl.searchParams.set('clientId', CLIENT_ID);
       authorizeUrl.searchParams.set('redirectUri', callbackServer.redirectUri);
       authorizeUrl.searchParams.set('state', state);
-      authorizeUrl.searchParams.set('scope', 'profile ai');
+      authorizeUrl.searchParams.set('scope', 'profile read write ai');
 
       await shell.openExternal(authorizeUrl.toString());
       const callbackUrl = await Promise.race([callbackServer.waitForCallback, loginCancelled]);
@@ -440,6 +440,19 @@ export class DesktopAuthService {
     // separate stores. Its /api/llm/v1/* routes currently accept the documented
     // default bearer token, while production can use the desktop login token.
     if (process.env.VITE_DEV_SERVER_URL && this.isLoopbackOrigin(session.apiOrigin)) {
+      return 'mock-token';
+    }
+
+    return session.accessToken;
+  }
+
+  private resolvePersonalAnalysisAccessToken(session: DesktopAuthSession): string {
+    const overrideToken = process.env.SOPHRON_PERSONAL_ANALYSIS_ACCESS_TOKEN?.trim();
+    if (overrideToken) {
+      return overrideToken;
+    }
+
+    if (this.isLoopbackOrigin(session.apiOrigin)) {
       return 'mock-token';
     }
 
