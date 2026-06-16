@@ -19,6 +19,23 @@ export type {
   PersonalAnalysisSpace,
   PersonalAnalysisTable,
 } from '../../shared/personal-analysis-types';
+
+export interface CloudTableChatAttachment {
+  id: string;
+  tableId: string;
+  tableName: string;
+  spaceId?: string;
+  spaceName?: string;
+  projectId?: string;
+  projectName?: string;
+  datasourceId?: string;
+  folderId?: string;
+  rowCount?: number;
+  columns?: string[];
+  sampleRows?: Array<Record<string, unknown>>;
+  accessModeLabel?: string;
+  connectionLabel?: string;
+}
 export type {
   Automation,
   AutomationActionDefinitionSummary,

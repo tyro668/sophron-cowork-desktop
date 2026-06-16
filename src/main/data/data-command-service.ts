@@ -109,6 +109,7 @@ interface WorkflowResourceBindings {
 
 interface DataCommandServiceOptions {
   onTaskCompleted?: (task: DataCleaningTask) => void;
+  getPersonalAnalysisConnection?: () => PersonalAnalysisConnectionInput | null;
 }
 
 export class DataCommandService {
@@ -610,10 +611,17 @@ export class DataCommandService {
 
   private createPersonalAnalysisClient(input: PersonalAnalysisConnectionInput = {}) {
     const configured = this.getPersonalAnalysisConfig();
+    const authenticated = this.options.getPersonalAnalysisConnection?.() ?? null;
+    const configuredApiKey = configured.apiKey?.trim() || '';
+    const inputApiKey = input.apiKey?.trim() || '';
+    const inputAccessToken = input.accessToken?.trim() || '';
+    const fallbackAccessToken = authenticated?.accessToken?.trim() || '';
+
     return createPersonalAnalysisClient({
-      apiOrigin: input.apiOrigin || configured.apiOrigin,
-      apiKey: input.apiKey || configured.apiKey,
-      accessToken: input.accessToken,
+      apiOrigin: input.apiOrigin || configured.apiOrigin || authenticated?.apiOrigin,
+      apiKey: inputApiKey || configuredApiKey,
+      accessToken:
+        inputAccessToken || (!inputApiKey && !configuredApiKey ? fallbackAccessToken : undefined),
     });
   }
 
