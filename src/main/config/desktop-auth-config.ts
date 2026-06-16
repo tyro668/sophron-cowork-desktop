@@ -26,3 +26,7 @@ export function resolveDesktopAuthOrigin(configuredOrigin?: string | null): stri
 
   return DESKTOP_AUTH_ORIGINS[getDesktopAuthEnvironment()];
 }
+
+export function resolveDesktopLlmBaseUrl(configuredOrigin?: string | null): string {
+  return `${resolveDesktopAuthOrigin(configuredOrigin)}/api/llm/v1`;
+}

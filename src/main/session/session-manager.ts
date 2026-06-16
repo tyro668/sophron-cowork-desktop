@@ -80,6 +80,10 @@ interface SessionRunOptions {
   selectedSkillNames?: string[];
 }
 
+type RuntimeConfigResolver = (
+  config?: AgentRuntimeConfig | null
+) => AgentRuntimeConfig | undefined;
+
 const WORKSPACE_MOUNT_VIRTUAL_PATH = '/mnt/workspace';
 const TITLE_GENERATION_TIMEOUT_MS = 20000;
 
@@ -109,6 +113,7 @@ export class SessionManager {
   private sessionRuntimeConfigs: Map<string, AgentRuntimeConfig> = new Map();
   private suppressedCompletionNotifications = new Set<string>();
   private readonly onSessionCompleted?: (session: Session) => void;
+  private readonly resolveRuntimeConfig?: RuntimeConfigResolver;
   private static readonly MAX_CACHE_SIZE = 100;
 
   constructor(
@@ -116,7 +121,8 @@ export class SessionManager {
     sendToRenderer: (event: ServerEvent) => void,
     pluginRuntimeService?: PluginRuntimeService,
     extensionManager?: AgentRuntimeExtensionManager,
-    onSessionCompleted?: (session: Session) => void
+    onSessionCompleted?: (session: Session) => void,
+    resolveRuntimeConfig?: RuntimeConfigResolver
   ) {
     this.db = db;
     this.sendToRenderer = (event) => {
@@ -133,6 +139,7 @@ export class SessionManager {
     this.pluginRuntimeService = pluginRuntimeService;
     this.extensionManager = extensionManager;
     this.onSessionCompleted = onSessionCompleted;
+    this.resolveRuntimeConfig = resolveRuntimeConfig;
 
     // Initialize MCP Manager
     this.mcpManager = new MCPManager();
@@ -718,7 +725,10 @@ export class SessionManager {
 
         // Update session model to match the selected runtime config. Automation-created sessions
         // may carry an internal model snapshot that should not mutate global app config.
-        const runtimeConfig = this.sessionRuntimeConfigs.get(session.id);
+        const storedRuntimeConfig = this.sessionRuntimeConfigs.get(session.id);
+        const runtimeConfig = this.resolveRuntimeConfig
+          ? this.resolveRuntimeConfig(storedRuntimeConfig)
+          : storedRuntimeConfig;
         const currentModel = runtimeConfig?.model || configStore.get('model');
         if (currentModel && currentModel !== session.model) {
           session.model = currentModel;
@@ -870,8 +880,13 @@ export class SessionManager {
 
   private async generateTitleWithConfig(titlePrompt: string): Promise<string | null> {
     // Always use pi-ai SDK for title generation
+    const baseConfig = configStore.getAll();
+    const runtimeConfig = this.resolveRuntimeConfig?.(null);
     return normalizeGeneratedTitle(
-      await generateTitleWithClaudeSdk(titlePrompt, configStore.getAll())
+      await generateTitleWithClaudeSdk(
+        titlePrompt,
+        runtimeConfig ? { ...baseConfig, ...runtimeConfig } : baseConfig
+      )
     );
   }
 

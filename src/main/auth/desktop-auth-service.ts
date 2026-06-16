@@ -2,7 +2,13 @@ import * as http from 'http';
 import * as crypto from 'crypto';
 import Store, { type Options as StoreOptions } from 'electron-store';
 import { shell } from 'electron';
-import type { DesktopAuthStatus, DesktopAuthUser } from '../../renderer/types';
+import type {
+  AiCreditBalance,
+  AiCreditUsageSummary,
+  DesktopAuthStatus,
+  DesktopAuthUser,
+  ProviderModelInfo,
+} from '../../renderer/types';
 import { createEncryptedStoreWithKeyRotation } from '../utils/store-encryption';
 import { log, logWarn } from '../utils/logger';
 
@@ -24,6 +30,10 @@ interface DesktopAuthTokenResponse {
   expiresIn?: number;
   refreshToken?: string;
   user?: DesktopAuthUser;
+  aiCredits?: unknown;
+  availableAiCredits?: unknown;
+  aiCreditBalance?: unknown;
+  remainingAiCredits?: unknown;
   remainingCredits?: unknown;
   credits?: unknown;
   creditBalance?: unknown;
@@ -37,12 +47,42 @@ interface DesktopAuthMeResponse {
   clientId?: string;
   scope?: string;
   expiresAt?: string;
+  aiCredits?: unknown;
+  availableAiCredits?: unknown;
+  aiCreditBalance?: unknown;
+  remainingAiCredits?: unknown;
   remainingCredits?: unknown;
   credits?: unknown;
   creditBalance?: unknown;
   points?: unknown;
   remainingPoints?: unknown;
   quotaRemaining?: unknown;
+}
+
+interface DesktopLlmModelsResponse {
+  mode: string;
+  models: Array<{
+    model: string;
+    provider?: string;
+    displayName?: string;
+    upstreamModel?: string;
+    creditMultiplier?: number;
+    inputCreditMultiplier?: number;
+    outputCreditMultiplier?: number;
+    creditUnit?: string;
+    creditsPerMillionTokens?: number;
+    inputCreditsPerMillionTokens?: number;
+    outputCreditsPerMillionTokens?: number;
+  }>;
+}
+
+interface DesktopLlmCreditsResponse {
+  quotaCredits: number;
+  usedCredits: number;
+  availableCredits: number;
+  unit?: string;
+  exhausted?: boolean;
+  usage?: AiCreditBalance['usage'];
 }
 
 interface DesktopAuthSession {
@@ -136,6 +176,9 @@ export class DesktopAuthService {
 
     try {
       const me = await this.getCurrentUser(session);
+      if (!this.hasRequiredAiScope(me.scope)) {
+        throw new Error('Login token is missing AI scope; please sign in again');
+      }
       const user = this.normalizeUser(me.user, me);
       const nextSession: DesktopAuthSession = {
         ...session,
@@ -144,7 +187,7 @@ export class DesktopAuthService {
         updatedAt: Date.now(),
       };
       this.store.set('session', nextSession);
-      return this.sessionToStatus(nextSession);
+      return this.sessionToStatus(nextSession, await this.tryFetchAiCredits(nextSession));
     } catch (error) {
       logWarn('[DesktopAuth] Failed to refresh auth status:', error);
       this.store.set('session', null);
@@ -181,6 +224,62 @@ export class DesktopAuthService {
     return this.emptyStatus();
   }
 
+  getAccessToken(): string | null {
+    return this.store.get('session')?.accessToken ?? null;
+  }
+
+  requireAccessToken(): string {
+    const token = this.getAccessToken();
+    if (!token) {
+      throw new Error('Please sign in before using the built-in LLM');
+    }
+    return token;
+  }
+
+  requireLlmAccessToken(): string {
+    const session = this.requireSession();
+    return this.resolveLlmAccessToken(session);
+  }
+
+  async listLlmModels(): Promise<ProviderModelInfo[]> {
+    const session = this.requireSession();
+    const data = await this.requestJson<DesktopLlmModelsResponse>(
+      `${session.apiOrigin}/api/llm/v1/models`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: this.buildLlmAuthorization(session),
+        },
+      }
+    );
+
+    return data.models
+      .map((model): ProviderModelInfo | null => {
+        const id = model.model?.trim();
+        const name = model.displayName?.trim() || id;
+        if (!id || !name) return null;
+        return {
+          id,
+          name,
+          provider: model.provider?.trim(),
+          upstreamModel: model.upstreamModel?.trim(),
+          creditMultiplier: model.creditMultiplier,
+          inputCreditMultiplier: model.inputCreditMultiplier,
+          outputCreditMultiplier: model.outputCreditMultiplier,
+          creditUnit: model.creditUnit,
+        };
+      })
+      .filter((model): model is ProviderModelInfo => Boolean(model));
+  }
+
+  async getAiCreditUsage(limit = 50): Promise<AiCreditUsageSummary> {
+    return this.fetchAiCreditUsage(this.requireSession(), limit);
+  }
+
+  async getAiCredits(): Promise<AiCreditBalance> {
+    return this.fetchAiCredits(this.requireSession());
+  }
+
   private async runLogin(loginCancelled: Promise<never>): Promise<DesktopAuthStatus> {
     const apiOrigin = this.resolveAuthOrigin();
     const state = crypto.randomBytes(16).toString('hex');
@@ -191,7 +290,7 @@ export class DesktopAuthService {
       authorizeUrl.searchParams.set('clientId', CLIENT_ID);
       authorizeUrl.searchParams.set('redirectUri', callbackServer.redirectUri);
       authorizeUrl.searchParams.set('state', state);
-      authorizeUrl.searchParams.set('scope', 'profile');
+      authorizeUrl.searchParams.set('scope', 'profile ai');
 
       await shell.openExternal(authorizeUrl.toString());
       const callbackUrl = await Promise.race([callbackServer.waitForCallback, loginCancelled]);
@@ -249,10 +348,14 @@ export class DesktopAuthService {
     return configured;
   }
 
-  private sessionToStatus(session: DesktopAuthSession): DesktopAuthStatus {
+  private sessionToStatus(
+    session: DesktopAuthSession,
+    aiCredits?: AiCreditBalance
+  ): DesktopAuthStatus {
     return {
       authenticated: true,
       user: session.user,
+      aiCredits,
       apiOrigin: session.apiOrigin,
       expiresAt: session.expiresAt,
       updatedAt: session.updatedAt,
@@ -265,6 +368,87 @@ export class DesktopAuthService {
       apiOrigin: this.resolveAuthOrigin(),
       updatedAt: Date.now(),
     };
+  }
+
+  private requireSession(): DesktopAuthSession {
+    const session = this.store.get('session');
+    if (!session?.accessToken) {
+      throw new Error('Please sign in before using the built-in LLM');
+    }
+    return session;
+  }
+
+  private async tryFetchAiCredits(session: DesktopAuthSession): Promise<AiCreditBalance | undefined> {
+    try {
+      return await this.fetchAiCredits(session);
+    } catch (error) {
+      logWarn('[DesktopAuth] Failed to fetch AI credits:', error);
+      return undefined;
+    }
+  }
+
+  private async fetchAiCredits(session: DesktopAuthSession): Promise<AiCreditBalance> {
+    const data = await this.requestJson<DesktopLlmCreditsResponse>(
+      `${session.apiOrigin}/api/llm/v1/credits`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: this.buildLlmAuthorization(session),
+        },
+      }
+    );
+
+    return {
+      quotaCredits: Number(data.quotaCredits ?? 0),
+      usedCredits: Number(data.usedCredits ?? 0),
+      availableCredits: Number(data.availableCredits ?? 0),
+      unit: data.unit,
+      exhausted: Boolean(data.exhausted),
+      usage: data.usage,
+    };
+  }
+
+  private buildLlmAuthorization(session: DesktopAuthSession): string {
+    return `Bearer ${this.resolveLlmAccessToken(session)}`;
+  }
+
+  private resolveLlmAccessToken(session: DesktopAuthSession): string {
+    const overrideToken = process.env.SOPHRON_LLM_ACCESS_TOKEN?.trim();
+    if (overrideToken) {
+      return overrideToken;
+    }
+
+    // The local mock server keeps desktop login tokens and API bearer tokens in
+    // separate stores. Its /api/llm/v1/* routes currently accept the documented
+    // default bearer token, while production can use the desktop login token.
+    if (process.env.VITE_DEV_SERVER_URL && this.isLoopbackOrigin(session.apiOrigin)) {
+      return 'mock-token';
+    }
+
+    return session.accessToken;
+  }
+
+  private isLoopbackOrigin(origin: string): boolean {
+    try {
+      const hostname = new URL(origin).hostname;
+      return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+    } catch {
+      return false;
+    }
+  }
+
+  private async fetchAiCreditUsage(
+    session: DesktopAuthSession,
+    limit = 50
+  ): Promise<AiCreditUsageSummary> {
+    const url = new URL(`${session.apiOrigin}/api/llm/v1/usage`);
+    url.searchParams.set('limit', String(Math.max(1, Math.min(200, Math.round(limit)))));
+    return this.requestJson<AiCreditUsageSummary>(url.toString(), {
+      method: 'GET',
+      headers: {
+        Authorization: this.buildLlmAuthorization(session),
+      },
+    });
   }
 
   private normalizeUser(user: DesktopAuthUser, fallbackSource?: unknown): DesktopAuthUser {
@@ -288,28 +472,58 @@ export class DesktopAuthService {
 
     const record = source as Record<string, unknown>;
     const keys = [
+      'aiCredits',
+      'availableAiCredits',
+      'aiCreditBalance',
+      'aiCreditsBalance',
+      'remainingAiCredits',
+      'availableCredits',
       'remainingCredits',
       'credits',
       'creditBalance',
+      'availableAiPoints',
+      'aiPoints',
+      'remainingAiPoints',
       'points',
       'remainingPoints',
       'quotaRemaining',
     ];
 
     for (const key of keys) {
-      const value = record[key];
-      if (typeof value === 'number' && Number.isFinite(value)) {
-        return value;
-      }
-      if (typeof value === 'string' && value.trim()) {
-        const parsed = Number(value);
-        if (Number.isFinite(parsed)) {
-          return parsed;
-        }
+      const parsed = this.readNumericCreditValue(record[key]);
+      if (parsed !== null) {
+        return parsed;
       }
     }
 
     return null;
+  }
+
+  private readNumericCreditValue(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string' && value.trim()) {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    if (value && typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      for (const key of ['available', 'remaining', 'balance', 'total', 'value']) {
+        const parsed = this.readNumericCreditValue(record[key]);
+        if (parsed !== null) {
+          return parsed;
+        }
+      }
+    }
+    return null;
+  }
+
+  private hasRequiredAiScope(scope: string | undefined): boolean {
+    if (typeof scope !== 'string' || !scope.trim()) {
+      return true;
+    }
+    return scope.split(/[\s,]+/).includes('ai');
   }
 
   private async getCurrentUser(session: DesktopAuthSession): Promise<DesktopAuthMeResponse> {

@@ -1,31 +1,111 @@
+import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronDown } from 'lucide-react';
-import type { AppConfig } from '../types';
+import {
+  BUILTIN_LLM_PROVIDER,
+  makeBuiltinLlmConfigSetId,
+  parseBuiltinLlmConfigSetId,
+} from '../../shared/builtin-llm';
+import type { ApiConfigSet, AppConfig, ProviderModelInfo } from '../types';
 import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
 
 export interface AgentModelOption {
   id: string;
   name: string;
   model: string;
+  serverModel: string;
+  creditMultiplier?: number;
+  inputCreditMultiplier?: number;
+  outputCreditMultiplier?: number;
   isActive: boolean;
+  source: 'builtin' | 'custom';
+}
+
+function getConfigSetModel(configSet: ApiConfigSet | null | undefined): string {
+  return configSet?.profiles?.[configSet.activeProfileKey]?.model?.trim() || '';
+}
+
+function normalizeBuiltinModels(builtinModels: ProviderModelInfo[] = []): ProviderModelInfo[] {
+  const seen = new Set<string>();
+  return builtinModels
+    .map((model) => ({
+      id: model.id.trim(),
+      name: model.name?.trim() || model.id.trim(),
+      provider: model.provider?.trim(),
+      upstreamModel: model.upstreamModel?.trim(),
+      creditMultiplier: model.creditMultiplier,
+      inputCreditMultiplier: model.inputCreditMultiplier,
+      outputCreditMultiplier: model.outputCreditMultiplier,
+      creditUnit: model.creditUnit,
+    }))
+    .filter((model) => {
+      if (!model.id || seen.has(model.id)) return false;
+      seen.add(model.id);
+      return true;
+    });
+}
+
+function resolveSelectedBuiltinModel(
+  appConfig: AppConfig | null | undefined,
+  selectedConfigSetId?: string
+): string {
+  const virtualModel = parseBuiltinLlmConfigSetId(selectedConfigSetId);
+  if (virtualModel) return virtualModel;
+
+  const selectedSet =
+    selectedConfigSetId && appConfig?.configSets
+      ? appConfig.configSets.find((set) => set.id === selectedConfigSetId)
+      : null;
+  if (selectedSet?.provider === BUILTIN_LLM_PROVIDER) {
+    return getConfigSetModel(selectedSet);
+  }
+
+  if (!selectedConfigSetId && appConfig?.provider === BUILTIN_LLM_PROVIDER) {
+    return appConfig.model?.trim() || '';
+  }
+
+  return '';
 }
 
 export function getAgentModelOptions(
   appConfig: AppConfig | null | undefined,
-  selectedConfigSetId?: string
+  selectedConfigSetId?: string,
+  builtinModels: ProviderModelInfo[] = []
 ): AgentModelOption[] {
-  return (
+  const selectedId = selectedConfigSetId || appConfig?.activeConfigSetId;
+  const selectedBuiltinModel = resolveSelectedBuiltinModel(appConfig, selectedConfigSetId);
+  const normalizedBuiltinModels = normalizeBuiltinModels(builtinModels);
+
+  const builtinOptions = normalizedBuiltinModels.map((model) => ({
+    id: makeBuiltinLlmConfigSetId(model.id),
+    name: model.name,
+    model: model.id,
+    serverModel: model.upstreamModel || model.id,
+    creditMultiplier: model.creditMultiplier,
+    inputCreditMultiplier: model.inputCreditMultiplier,
+    outputCreditMultiplier: model.outputCreditMultiplier,
+    source: 'builtin' as const,
+    isActive: selectedBuiltinModel === model.id,
+  }));
+
+  const customOptions =
     appConfig?.configSets
+      ?.filter((set) => set.provider !== BUILTIN_LLM_PROVIDER)
       ?.map((set) => {
-        const model = set.profiles?.[set.activeProfileKey]?.model?.trim() || '';
+        const model = getConfigSetModel(set);
         return {
           id: set.id,
           name: set.name,
           model,
-          isActive: set.id === (selectedConfigSetId || appConfig.activeConfigSetId),
+          serverModel: model,
+          creditMultiplier: undefined,
+          source: 'custom' as const,
+          isActive: !selectedBuiltinModel && set.id === selectedId,
         };
       })
-      .filter((option) => option.model) || []
-  );
+      .filter((option) => option.model) || [];
+
+  return [...builtinOptions, ...customOptions];
 }
 
 export function getAgentModelLabel(
@@ -33,15 +113,14 @@ export function getAgentModelLabel(
   fallback: string,
   selectedConfigSetId?: string
 ): string {
+  const builtinModel = resolveSelectedBuiltinModel(appConfig, selectedConfigSetId);
+  if (builtinModel) return builtinModel;
+
   const selected =
     selectedConfigSetId && appConfig?.configSets
       ? appConfig.configSets.find((set) => set.id === selectedConfigSetId)
       : null;
-  return (
-    selected?.profiles?.[selected.activeProfileKey]?.model?.trim() ||
-    appConfig?.model?.trim() ||
-    fallback
-  );
+  return getConfigSetModel(selected) || appConfig?.model?.trim() || fallback;
 }
 
 export function AgentModelSelector({
@@ -67,8 +146,114 @@ export function AgentModelSelector({
   align?: 'start' | 'center' | 'end';
   onSelect: (configSetId: string) => void;
 }) {
-  const label = getAgentModelLabel(appConfig, fallbackLabel, selectedConfigSetId);
-  const options = getAgentModelOptions(appConfig, selectedConfigSetId);
+  const { t } = useTranslation();
+  const [builtinModels, setBuiltinModels] = useState<ProviderModelInfo[]>([]);
+  const options = useMemo(
+    () => getAgentModelOptions(appConfig, selectedConfigSetId, builtinModels),
+    [appConfig, builtinModels, selectedConfigSetId]
+  );
+  const builtinOptions = options.filter((option) => option.source === 'builtin');
+  const customOptions = options.filter((option) => option.source === 'custom');
+  const label = useMemo(() => {
+    const builtinModel = resolveSelectedBuiltinModel(appConfig, selectedConfigSetId);
+    if (!builtinModel) {
+      return getAgentModelLabel(appConfig, fallbackLabel, selectedConfigSetId);
+    }
+
+    return (
+      builtinOptions.find((option) => option.model === builtinModel)?.name ||
+      fallbackLabel
+    );
+  }, [appConfig, builtinOptions, fallbackLabel, selectedConfigSetId]);
+
+  const formatMultiplier = (value: number | undefined) => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return '';
+    return Number.isInteger(value)
+      ? String(value)
+      : value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+  };
+
+  const formatCostMultiplier = (option: AgentModelOption) => {
+    if (typeof option.creditMultiplier === 'number' && Number.isFinite(option.creditMultiplier)) {
+      return t('chat.modelCreditMultiplierSingle', {
+        value: formatMultiplier(option.creditMultiplier),
+      });
+    }
+
+    const multipliers = [option.inputCreditMultiplier, option.outputCreditMultiplier].filter(
+      (value): value is number => typeof value === 'number' && Number.isFinite(value)
+    );
+    if (multipliers.length === 0) return '';
+    return t('chat.modelCreditMultiplierSingle', {
+      value: formatMultiplier(Math.max(...multipliers)),
+    });
+  };
+
+  const getSecondaryModelText = (option: AgentModelOption) => {
+    if (option.source === 'builtin') return '';
+    const serverModel = option.serverModel || option.model;
+    return serverModel && serverModel !== option.name ? serverModel : '';
+  };
+
+  useEffect(() => {
+    if (!open || disabled || !window.electronAPI?.config?.listModels) {
+      return;
+    }
+
+    let cancelled = false;
+    window.electronAPI.config
+      .listModels({ provider: BUILTIN_LLM_PROVIDER, apiKey: '' })
+      .then((models) => {
+        if (!cancelled) {
+          setBuiltinModels(models);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBuiltinModels([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [disabled, open]);
+
+  const renderOptionGroup = (title: string, groupOptions: AgentModelOption[]) => {
+    if (groupOptions.length === 0) return null;
+    return (
+      <div className="py-1">
+        <div className="px-3 pb-1 pt-1.5 text-[11px] font-semibold text-text-muted">
+          {title}
+        </div>
+        {groupOptions.map((option) => {
+          const costMultiplier = formatCostMultiplier(option);
+          const secondaryModelText = getSecondaryModelText(option);
+          return (
+            <GlassMenuItem
+              key={option.id}
+              selected={option.isActive}
+              onSelect={() => onSelect(option.id)}
+            >
+              <span className="block min-w-0">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="block truncate text-[13px] font-medium">{option.name}</span>
+                  {costMultiplier ? (
+                    <span className="shrink-0 rounded-full border border-border/70 px-1.5 py-0.5 text-[10px] leading-none opacity-80">
+                      {costMultiplier}
+                    </span>
+                  ) : null}
+                </span>
+                {secondaryModelText ? (
+                  <span className="block truncate text-xs opacity-80">{secondaryModelText}</span>
+                ) : null}
+              </span>
+            </GlassMenuItem>
+          );
+        })}
+      </div>
+    );
+  };
 
   if (disabled) {
     return (
@@ -95,18 +280,10 @@ export function AgentModelSelector({
     >
       <div className="max-h-56 overflow-y-auto">
         {options.length > 0 ? (
-          options.map((option) => (
-            <GlassMenuItem
-              key={option.id}
-              selected={option.isActive}
-              onSelect={() => onSelect(option.id)}
-            >
-              <span className="block min-w-0">
-                <span className="block truncate text-[13px] font-medium">{option.name}</span>
-                <span className="block truncate text-xs opacity-80">{option.model}</span>
-              </span>
-            </GlassMenuItem>
-          ))
+          <>
+            {renderOptionGroup(t('chat.modelGroupBuiltin'), builtinOptions)}
+            {renderOptionGroup(t('chat.modelGroupCustom'), customOptions)}
+          </>
         ) : (
           <div className="px-3 py-2 text-sm text-text-muted">{label}</div>
         )}

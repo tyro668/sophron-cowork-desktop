@@ -63,6 +63,7 @@ const isElectron = typeof window !== 'undefined' && window.electronAPI !== undef
 const CONFIG_SET_LIMIT = 20;
 const DEFAULT_CONFIG_SET_ID = 'default';
 const DEFAULT_CONFIG_SET_NAME_ZH = '默认方案';
+const DEFAULT_VISIBLE_PROFILE_KEY: ProviderProfileKey = 'deepseek';
 export const FALLBACK_PROVIDER_PRESETS: ProviderPresets = API_PROVIDER_PRESETS;
 
 const PROFILE_KEYS: ProviderProfileKey[] = [
@@ -73,6 +74,7 @@ const PROFILE_KEYS: ProviderProfileKey[] = [
   'moonshot',
   'aliyun',
   'zai',
+  'sophron',
   'gemini',
   'ollama',
   'custom:anthropic',
@@ -94,6 +96,7 @@ function isProviderType(value: unknown): value is ProviderType {
     value === 'moonshot' ||
     value === 'aliyun' ||
     value === 'zai' ||
+    value === 'sophron' ||
     value === 'gemini' ||
     value === 'ollama'
   );
@@ -101,6 +104,10 @@ function isProviderType(value: unknown): value is ProviderType {
 
 function isCustomProtocol(value: unknown): value is CustomProtocolType {
   return value === 'anthropic' || value === 'openai' || value === 'gemini';
+}
+
+function normalizeVisibleApiProfileKey(profileKey: ProviderProfileKey): ProviderProfileKey {
+  return profileKey === 'sophron' ? DEFAULT_VISIBLE_PROFILE_KEY : profileKey;
 }
 
 export function profileKeyFromProvider(
@@ -152,6 +159,9 @@ export function profileKeyToProvider(profileKey: ProviderProfileKey): {
   }
   if (profileKey === 'zai') {
     return { provider: 'zai', customProtocol: 'openai' };
+  }
+  if (profileKey === 'sophron') {
+    return { provider: 'sophron', customProtocol: 'openai' };
   }
   if (profileKey === 'gemini') {
     return { provider: 'gemini', customProtocol: 'gemini' };
@@ -309,11 +319,12 @@ export function buildApiConfigSnapshot(
         ? 'gemini'
         : 'anthropic';
   const derivedProfileKey = profileKeyFromProvider(provider, customProtocol);
-  const activeProfileKey = migratedToOllama
+  const rawActiveProfileKey = migratedToOllama
     ? 'ollama'
     : isProfileKey(config?.activeProfileKey)
       ? config.activeProfileKey
       : derivedProfileKey;
+  const activeProfileKey = normalizeVisibleApiProfileKey(rawActiveProfileKey);
 
   const profiles = {} as Record<ProviderProfileKey, UIProviderProfile>;
   for (const key of PROFILE_KEYS) {
@@ -955,13 +966,14 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     profiles[activeProfileKey] || defaultProfileForKey(activeProfileKey, presets);
   const modelPreset = modelPresetForProfile(activeProfileKey, presets);
   const currentPreset = modelPreset;
-  const hasDiscoveredOllamaModels =
-    provider === 'ollama' &&
+  const usesDiscoveredModelOptions = provider === 'ollama' || provider === 'sophron';
+  const hasDiscoveredModelOptions =
+    usesDiscoveredModelOptions &&
     Object.prototype.hasOwnProperty.call(discoveredModels, activeProfileKey);
   const modelOptions =
     provider === 'ollama'
       ? discoveredModels[activeProfileKey] || []
-      : hasDiscoveredOllamaModels
+      : hasDiscoveredModelOptions
         ? discoveredModels[activeProfileKey] || []
         : modelPreset.models;
   const modelInputGuidance = getModelInputGuidance(provider, customProtocol);
@@ -1129,6 +1141,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
   ]);
 
   const allowEmptyApiKey =
+    provider === 'sophron' ||
     provider === 'ollama' ||
     (provider === 'custom' &&
       ((customProtocol === 'anthropic' && isCustomAnthropicLoopbackGateway(baseUrl)) ||
@@ -1513,7 +1526,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
   }, [handleDiagnose]);
 
   const refreshModelOptions = useCallback(async () => {
-    if (!isElectron || provider !== 'ollama') {
+    if (!isElectron || (provider !== 'ollama' && provider !== 'sophron')) {
       return [];
     }
 
@@ -1533,7 +1546,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
       const latestTarget = latestOllamaTargetRef.current;
       if (
         requestId !== ollamaRefreshRequestIdRef.current ||
-        latestTarget.provider !== 'ollama' ||
+        latestTarget.provider !== provider ||
         latestTarget.activeProfileKey !== requestedProfileKey ||
         latestTarget.baseUrl !== requestedBaseUrl
       ) {
@@ -1566,7 +1579,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
       const latestTarget = latestOllamaTargetRef.current;
       if (
         requestId !== ollamaRefreshRequestIdRef.current ||
-        latestTarget.provider !== 'ollama' ||
+        latestTarget.provider !== provider ||
         latestTarget.activeProfileKey !== requestedProfileKey ||
         latestTarget.baseUrl !== requestedBaseUrl
       ) {
@@ -1734,6 +1747,11 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     }, 800);
     return () => clearTimeout(timer);
   }, [provider, baseUrl, refreshModelOptions]);
+
+  useEffect(() => {
+    if (provider !== 'sophron') return;
+    void refreshModelOptions();
+  }, [provider, refreshModelOptions]);
 
   const handleSave = useCallback(
     async (options?: { silentSuccess?: boolean }) => {

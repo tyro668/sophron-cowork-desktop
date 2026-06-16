@@ -10,6 +10,7 @@ const OPENAI_COMPATIBLE_ROUTE_PROVIDERS = new Set([
   'moonshot',
   'aliyun',
   'zai',
+  'sophron',
   'ollama',
 ]);
 const REASONING_MODEL_PATTERN =
@@ -220,7 +221,9 @@ export function resolveSyntheticPiModelFallback(
   }
 
   const fallbackProvider =
-    input.rawProvider === 'custom' || input.rawProvider === 'ollama'
+    input.rawProvider === 'custom' ||
+    input.rawProvider === 'ollama' ||
+    input.rawProvider === 'sophron'
       ? input.routeProtocol || 'anthropic'
       : parsedProvider || input.rawProvider || input.routeProtocol || 'anthropic';
 

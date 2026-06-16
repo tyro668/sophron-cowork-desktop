@@ -42,6 +42,7 @@ export type ProviderType =
   | 'moonshot'
   | 'aliyun'
   | 'zai'
+  | 'sophron'
   | 'gemini'
   | 'ollama';
 export type CustomProtocolType = 'anthropic' | 'openai' | 'gemini';
@@ -54,6 +55,7 @@ export type ProviderProfileKey =
   | 'moonshot'
   | 'aliyun'
   | 'zai'
+  | 'sophron'
   | 'gemini'
   | 'ollama'
   | 'custom:anthropic'
@@ -241,6 +243,11 @@ const defaultProfiles: Record<ProviderProfileKey, ProviderProfile> = {
     baseUrl: 'https://api.z.ai/api/paas/v4',
     model: 'glm-5',
   },
+  sophron: {
+    apiKey: '',
+    baseUrl: '',
+    model: 'deepseek-v4-flash',
+  },
   ollama: {
     apiKey: '',
     baseUrl: 'http://localhost:11434/v1',
@@ -272,9 +279,9 @@ const defaultConfigSet: ApiConfigSet = {
   id: DEFAULT_CONFIG_SET_ID,
   name: '默认方案',
   isSystem: true,
-  provider: 'deepseek',
+  provider: 'sophron',
   customProtocol: 'openai',
-  activeProfileKey: 'deepseek',
+  activeProfileKey: 'sophron',
   profiles: defaultProfiles,
   enableThinking: false,
   updatedAt: '1970-01-01T00:00:00.000Z',
@@ -282,10 +289,10 @@ const defaultConfigSet: ApiConfigSet = {
 
 const defaultConfig: AppConfig = {
   provider: defaultConfigSet.provider,
-  apiKey: defaultProfiles.deepseek.apiKey,
-  baseUrl: defaultProfiles.deepseek.baseUrl,
+  apiKey: defaultProfiles.sophron.apiKey,
+  baseUrl: defaultProfiles.sophron.baseUrl,
   customProtocol: defaultConfigSet.customProtocol,
-  model: defaultProfiles.deepseek.model,
+  model: defaultProfiles.sophron.model,
   activeProfileKey: defaultConfigSet.activeProfileKey,
   profiles: defaultProfiles,
   activeConfigSetId: DEFAULT_CONFIG_SET_ID,
@@ -332,7 +339,7 @@ const defaultConfig: AppConfig = {
     updatedAt: 0,
   },
   enableThinking: false,
-  isConfigured: false,
+  isConfigured: true,
 };
 
 export const PROVIDER_PRESETS = API_PROVIDER_PRESETS;
@@ -395,6 +402,7 @@ const PROFILE_KEYS: ProviderProfileKey[] = [
   'moonshot',
   'aliyun',
   'zai',
+  'sophron',
   'gemini',
   'ollama',
   'custom:anthropic',
@@ -413,6 +421,7 @@ function isProviderType(value: unknown): value is ProviderType {
     value === 'moonshot' ||
     value === 'aliyun' ||
     value === 'zai' ||
+    value === 'sophron' ||
     value === 'gemini' ||
     value === 'ollama'
   );
@@ -570,6 +579,9 @@ function profileKeyToProvider(profileKey: ProviderProfileKey): {
   if (profileKey === 'zai') {
     return { provider: 'zai', customProtocol: 'openai' };
   }
+  if (profileKey === 'sophron') {
+    return { provider: 'sophron', customProtocol: 'openai' };
+  }
   if (profileKey === 'gemini') {
     return { provider: 'gemini', customProtocol: 'gemini' };
   }
@@ -613,6 +625,7 @@ function defaultProtocolForProvider(provider: ProviderType): CustomProtocolType 
     provider === 'moonshot' ||
     provider === 'aliyun' ||
     provider === 'zai' ||
+    provider === 'sophron' ||
     provider === 'ollama'
   ) {
     return 'openai';
@@ -1044,13 +1057,31 @@ export class ConfigStore {
     );
   }
 
+  private hasUsableCredentialsForConfigSet(configSet: ApiConfigSet): boolean {
+    const projected = this.projectFromConfigSet(configSet);
+    return this.hasUsableCredentialsForProjection({
+      provider: projected.provider,
+      customProtocol: projected.customProtocol,
+      apiKey: projected.apiKey,
+      baseUrl: projected.baseUrl,
+      model: projected.model,
+    });
+  }
+
+  private hasAnyUsableConfigSet(configSets: ApiConfigSet[]): boolean {
+    return configSets.some((configSet) => this.hasUsableCredentialsForConfigSet(configSet));
+  }
+
   private normalizeConfig(rawConfig: Partial<AppConfig> | undefined): AppConfig {
     const raw = rawConfig || {};
     const legacy = this.normalizeLegacyProjection(raw);
     const normalizedFromRaw = this.normalizeConfigSets(raw.configSets, legacy);
-    const configSets = this.shouldPreferLegacyConfigSetProjection(normalizedFromRaw, legacy)
+    let configSets = this.shouldPreferLegacyConfigSetProjection(normalizedFromRaw, legacy)
       ? [this.makeDefaultConfigSetFromLegacy(legacy)]
       : normalizedFromRaw;
+    if (!this.hasAnyUsableConfigSet(configSets)) {
+      configSets = [this.cloneConfigSet(defaultConfigSet)];
+    }
 
     const requestedActiveSetId = toNonEmptyString(raw.activeConfigSetId);
     const activeConfigSetId = configSets.some((set) => set.id === requestedActiveSetId)
@@ -1085,7 +1116,7 @@ export class ConfigStore {
       memoryRuntime: normalizeMemoryRuntimeConfig(raw.memoryRuntime),
       personalAnalysis: normalizePersonalAnalysisConfig(raw.personalAnalysis),
       enableThinking: projected.enableThinking,
-      isConfigured: toBoolean(raw.isConfigured, defaultConfig.isConfigured),
+      isConfigured: this.hasAnyUsableConfigSet(configSets),
     };
     this.normalizeModelIds(result);
     return result;
@@ -1555,6 +1586,9 @@ export class ConfigStore {
   }): boolean {
     if (projection.provider === 'ollama' && !projection.model?.trim()) {
       return false;
+    }
+    if (projection.provider === 'sophron') {
+      return Boolean(projection.model?.trim());
     }
     const apiKey = projection.apiKey?.trim();
     if (apiKey) {
