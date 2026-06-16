@@ -13,7 +13,7 @@ import {
 import { useAppStore } from '../store';
 import { useIPC } from '../hooks/useIPC';
 import { useSkillMentions } from '../hooks/useSkillMentions';
-import { parseBuiltinLlmConfigSetId } from '../../shared/builtin-llm';
+import { BUILTIN_LLM_PROVIDER, parseBuiltinLlmConfigSetId } from '../../shared/builtin-llm';
 import { AgentModelSelector } from './AgentModelSelector';
 import { MessageCard } from './MessageCard';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
@@ -86,7 +86,10 @@ export function ChatView() {
   const isSessionRunning = activeSession?.status === 'running';
   const canStop = isSessionRunning || hasActiveTurn || pendingCount > 0;
   const modelLabel = appConfig?.model?.trim() || t('chat.noModel');
-  const hasConfiguredModel = Boolean(isConfigured && appConfig?.model?.trim());
+  const hasSelectedModel = Boolean(appConfig?.model?.trim());
+  const hasConfiguredModel = Boolean(
+    isConfigured && (appConfig?.model?.trim() || appConfig?.provider === BUILTIN_LLM_PROVIDER)
+  );
   const skillMentions = useSkillMentions({
     prompt,
     setPrompt,
@@ -684,6 +687,7 @@ export function ChatView() {
     if (
       (!currentPrompt.trim() && pastedImages.length === 0 && attachedFiles.length === 0) ||
       !activeSessionId ||
+      !hasSelectedModel ||
       isSubmitting
     )
       return;
@@ -790,7 +794,7 @@ export function ChatView() {
       if (
         builtinModel &&
         appConfig.provider === 'sophron' &&
-        appConfig.model?.trim() === builtinModel
+        (appConfig.builtinLlmModel?.trim() || appConfig.model?.trim()) === builtinModel
       ) {
         return;
       }
@@ -1107,6 +1111,7 @@ export function ChatView() {
                         !textareaRef.current?.value.trim() &&
                         pastedImages.length === 0 &&
                         attachedFiles.length === 0) ||
+                      !hasSelectedModel ||
                       isSubmitting
                     }
                     className="composer-flat-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-accent disabled:cursor-not-allowed disabled:text-text-muted"

@@ -2449,28 +2449,13 @@ ipcMain.handle('config.selectBuiltinModel', async (_event, payload: { model: str
 
   log('[Config] Selecting built-in model:', { model });
   const previousConfig = configStore.getAll();
-  const sophronProfile = previousConfig.profiles.sophron ?? {
-    apiKey: '',
-    baseUrl: '',
-    model: '',
-  };
   configStore.update({
     activeConfigSetId: BUILTIN_LLM_CONFIG_SET_ID,
     provider: 'sophron',
     customProtocol: 'openai',
-    activeProfileKey: 'sophron',
-    profiles: {
-      ...previousConfig.profiles,
-      sophron: {
-        ...sophronProfile,
-        apiKey: '',
-        baseUrl: '',
-        model,
-      },
-    },
+    builtinLlmModel: model,
     apiKey: '',
     baseUrl: '',
-    model,
   });
   const updatedConfig = await syncConfigAfterMutation(previousConfig);
   return { success: true, config: updatedConfig };

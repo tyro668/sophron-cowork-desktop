@@ -63,6 +63,7 @@ export type ProviderProfileKey =
   | 'custom:gemini';
 export type ConfigSetId = string;
 export type CreateSetMode = 'blank' | 'clone';
+type ConfigurableProviderProfileKey = Exclude<ProviderProfileKey, 'sophron'>;
 
 export interface CreateConfigSetPayload {
   name: string;
@@ -101,6 +102,7 @@ export interface AppConfig {
 
   // Model selection
   model: string;
+  builtinLlmModel?: string;
   contextWindow?: number;
   maxTokens?: number;
 
@@ -194,6 +196,7 @@ const DIRECT_READ_KEYS = new Set<keyof AppConfig>([
   'apiKey',
   'baseUrl',
   'customProtocol',
+  'builtinLlmModel',
   'activeProfileKey',
   'activeConfigSetId',
   'claudeCodePath',
@@ -207,7 +210,7 @@ const DIRECT_READ_KEYS = new Set<keyof AppConfig>([
   'isConfigured',
 ]);
 
-const defaultProfiles: Record<ProviderProfileKey, ProviderProfile> = {
+const defaultProfiles: Record<ConfigurableProviderProfileKey, ProviderProfile> = {
   openrouter: {
     apiKey: '',
     baseUrl: 'https://openrouter.ai/api/v1',
@@ -242,11 +245,6 @@ const defaultProfiles: Record<ProviderProfileKey, ProviderProfile> = {
     apiKey: '',
     baseUrl: 'https://api.z.ai/api/paas/v4',
     model: 'glm-5',
-  },
-  sophron: {
-    apiKey: '',
-    baseUrl: '',
-    model: 'deepseek-v4-flash',
   },
   ollama: {
     apiKey: '',
@@ -289,10 +287,11 @@ const defaultConfigSet: ApiConfigSet = {
 
 const defaultConfig: AppConfig = {
   provider: defaultConfigSet.provider,
-  apiKey: defaultProfiles.sophron.apiKey,
-  baseUrl: defaultProfiles.sophron.baseUrl,
+  apiKey: '',
+  baseUrl: '',
   customProtocol: defaultConfigSet.customProtocol,
-  model: defaultProfiles.sophron.model,
+  model: '',
+  builtinLlmModel: '',
   activeProfileKey: defaultConfigSet.activeProfileKey,
   profiles: defaultProfiles,
   activeConfigSetId: DEFAULT_CONFIG_SET_ID,
@@ -702,6 +701,9 @@ export class ConfigStore {
   }
 
   private getDefaultProfile(profileKey: ProviderProfileKey): ProviderProfile {
+    if (profileKey === 'sophron') {
+      return { apiKey: '', baseUrl: '', model: '' };
+    }
     const fallback = defaultProfiles[profileKey];
     return {
       apiKey: fallback.apiKey,
@@ -1090,13 +1092,15 @@ export class ConfigStore {
 
     const activeConfigSet = configSets.find((set) => set.id === activeConfigSetId) || configSets[0];
     const projected = this.projectFromConfigSet(activeConfigSet);
+    const builtinLlmModel = toNonEmptyString(raw.builtinLlmModel) || '';
 
     const result: AppConfig = {
       provider: projected.provider,
       customProtocol: projected.customProtocol,
       apiKey: projected.apiKey,
       baseUrl: projected.baseUrl,
-      model: projected.model,
+      model: projected.provider === 'sophron' ? builtinLlmModel : projected.model,
+      builtinLlmModel,
       activeProfileKey: projected.activeProfileKey,
       profiles: projected.profiles,
       activeConfigSetId,
@@ -1149,7 +1153,7 @@ export class ConfigStore {
       customProtocol: projected.customProtocol,
       apiKey: projected.apiKey,
       baseUrl: projected.baseUrl,
-      model: projected.model,
+      model: projected.provider === 'sophron' ? base.builtinLlmModel || '' : projected.model,
       activeProfileKey: projected.activeProfileKey,
       profiles: projected.profiles,
       enableThinking: projected.enableThinking,
@@ -1404,7 +1408,7 @@ export class ConfigStore {
       apiKey: projected.apiKey,
       baseUrl: projected.baseUrl,
       customProtocol: projected.customProtocol,
-      model: projected.model,
+      model: projected.provider === 'sophron' ? current.builtinLlmModel || '' : projected.model,
       contextWindow: projected.contextWindow,
       maxTokens: projected.maxTokens,
       enableThinking: projected.enableThinking,
@@ -1564,6 +1568,16 @@ export class ConfigStore {
         updates.memoryRuntime !== undefined
           ? normalizeMemoryRuntimeConfig(updates.memoryRuntime)
           : current.memoryRuntime,
+      builtinLlmModel:
+        updates.builtinLlmModel !== undefined
+          ? toNonEmptyString(updates.builtinLlmModel) || ''
+          : current.builtinLlmModel || '',
+      model:
+        projectedConfig.provider === 'sophron'
+          ? updates.builtinLlmModel !== undefined
+            ? toNonEmptyString(updates.builtinLlmModel) || ''
+            : current.builtinLlmModel || ''
+          : projectedConfig.model,
       personalAnalysis,
       isConfigured:
         updates.isConfigured !== undefined ? updates.isConfigured : current.isConfigured,
@@ -1588,7 +1602,7 @@ export class ConfigStore {
       return false;
     }
     if (projection.provider === 'sophron') {
-      return Boolean(projection.model?.trim());
+      return true;
     }
     const apiKey = projection.apiKey?.trim();
     if (apiKey) {
