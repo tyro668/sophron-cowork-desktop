@@ -17,14 +17,21 @@ import type {
   SandboxSyncStatus,
   SkillsStorageChangeEvent,
   DesktopAuthStatus,
+  CloudTableChatAttachment,
 } from '../types';
 import { applySessionUpdate } from '../utils/session-update';
 
 export type GlobalNoticeType = 'info' | 'warning' | 'error' | 'success';
 export type GlobalNoticeAction = 'open_api_settings';
 export type MainView = 'chat' | 'data' | 'cloud-data' | 'skills' | 'automation';
+export type DataWorkspaceTab = 'tasks' | 'input_tables' | 'output_tables' | 'cloud_analysis';
 
 export interface PendingDataNavigation extends DataResourceTarget {
+  nonce: number;
+}
+
+export interface PendingDataTabNavigation {
+  tab: DataWorkspaceTab;
   nonce: number;
 }
 
@@ -118,6 +125,11 @@ interface AppState {
   hasSeenInitialConfigStatus: boolean;
   globalNotice: GlobalNotice | null;
   pendingDataNavigation: PendingDataNavigation | null;
+  pendingDataTabNavigation: PendingDataTabNavigation | null;
+  pendingCloudTableChatAttachments: {
+    attachments: CloudTableChatAttachment[];
+    nonce: number;
+  } | null;
 
   // Working directory
   workingDir: string | null;
@@ -191,8 +203,12 @@ interface AppState {
   setGlobalNotice: (notice: GlobalNotice | null) => void;
   clearGlobalNotice: () => void;
   navigateToDataElement: (target: DataResourceTarget) => void;
+  navigateToDataTab: (tab: DataWorkspaceTab) => void;
   navigateToCloudData: () => void;
   clearDataNavigation: (nonce?: number) => void;
+  clearDataTabNavigation: (nonce?: number) => void;
+  addCloudTablesToChat: (attachments: CloudTableChatAttachment[]) => void;
+  clearPendingCloudTableChatAttachments: (nonce?: number) => void;
 
   // Working directory actions
   setWorkingDir: (path: string | null) => void;
@@ -236,6 +252,8 @@ const defaultSettings: Settings = {
 };
 
 let dataNavigationSeq = 0;
+let dataTabNavigationSeq = 0;
+let cloudTableChatAttachmentSeq = 0;
 
 export const useAppStore = create<AppState>((set) => ({
   // Initial state
@@ -259,6 +277,8 @@ export const useAppStore = create<AppState>((set) => ({
   hasSeenInitialConfigStatus: false,
   globalNotice: null,
   pendingDataNavigation: null,
+  pendingDataTabNavigation: null,
+  pendingCloudTableChatAttachments: null,
   workingDir: null,
   sandboxSetupProgress: null,
   isSandboxSetupComplete: false,
@@ -645,11 +665,19 @@ export const useAppStore = create<AppState>((set) => ({
       showSettings: false,
       pendingDataNavigation: { ...target, nonce: ++dataNavigationSeq },
     }),
-  navigateToCloudData: () =>
+  navigateToDataTab: (tab) =>
     set({
-      mainView: 'cloud-data',
+      mainView: 'data',
       activeSessionId: null,
       showSettings: false,
+      pendingDataTabNavigation: { tab, nonce: ++dataTabNavigationSeq },
+    }),
+  navigateToCloudData: () =>
+    set({
+      mainView: 'data',
+      activeSessionId: null,
+      showSettings: false,
+      pendingDataTabNavigation: { tab: 'cloud_analysis', nonce: ++dataTabNavigationSeq },
     }),
   clearDataNavigation: (nonce) =>
     set((state) => {
@@ -657,6 +685,31 @@ export const useAppStore = create<AppState>((set) => ({
         return {};
       }
       return { pendingDataNavigation: null };
+    }),
+  clearDataTabNavigation: (nonce) =>
+    set((state) => {
+      if (nonce !== undefined && state.pendingDataTabNavigation?.nonce !== nonce) {
+        return {};
+      }
+      return { pendingDataTabNavigation: null };
+    }),
+  addCloudTablesToChat: (attachments) => {
+    if (attachments.length === 0) return;
+    set({
+      mainView: 'chat',
+      showSettings: false,
+      pendingCloudTableChatAttachments: {
+        attachments,
+        nonce: ++cloudTableChatAttachmentSeq,
+      },
+    });
+  },
+  clearPendingCloudTableChatAttachments: (nonce) =>
+    set((state) => {
+      if (nonce !== undefined && state.pendingCloudTableChatAttachments?.nonce !== nonce) {
+        return {};
+      }
+      return { pendingCloudTableChatAttachments: null };
     }),
 
   // Working directory actions
@@ -706,9 +759,7 @@ if (typeof window !== 'undefined') {
       store.setMainView('data');
       store.setActiveSession(null);
     } else if (page === 'cloud-data') {
-      store.setShowSettings(false);
-      store.setMainView('cloud-data');
-      store.setActiveSession(null);
+      store.navigateToCloudData();
     } else if (page === 'skills') {
       store.setShowSettings(false);
       store.setMainView('skills');

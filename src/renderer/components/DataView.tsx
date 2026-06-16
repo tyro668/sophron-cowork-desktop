@@ -73,6 +73,7 @@ import {
   Folder,
   GitMerge,
   Info,
+  LogIn,
   MapPin,
   MoreHorizontal,
   PencilLine,
@@ -82,6 +83,7 @@ import {
   RefreshCw,
   Save,
   Search,
+  Settings,
   Sigma,
   Sparkles,
   Table2,
@@ -133,8 +135,9 @@ import {
 } from '../../shared/prep-dsl';
 import { dataFieldTypeLabel } from '../../shared/data-field-types';
 import { useAppStore } from '../store';
+import { CloudDataView } from './CloudDataView';
 
-type DataTab = 'tasks' | 'input_tables' | 'output_tables';
+type DataTab = 'tasks' | 'input_tables' | 'output_tables' | 'cloud_analysis';
 type WorkflowInspectorTab = 'config' | 'data' | 'logs';
 type InputTableSourceFilter = 'all' | 'excel' | 'csv' | 'folder';
 type InputTableSourceKind = Exclude<InputTableSourceFilter, 'all'> | 'file' | 'draft';
@@ -570,7 +573,9 @@ const WORKFLOW_NODE_TYPES = {
 export function DataView() {
   const { t } = useTranslation();
   const pendingDataNavigation = useAppStore((state) => state.pendingDataNavigation);
+  const pendingDataTabNavigation = useAppStore((state) => state.pendingDataTabNavigation);
   const clearDataNavigation = useAppStore((state) => state.clearDataNavigation);
+  const clearDataTabNavigation = useAppStore((state) => state.clearDataTabNavigation);
   const [dashboard, setDashboard] = useState<DataDashboard>(EMPTY_DASHBOARD);
   const [activeTab, setActiveTab] = useState<DataTab>('tasks');
   const [inputTableSourceFilter, setInputTableSourceFilter] =
@@ -610,6 +615,21 @@ export function DataView() {
   const hasLoadedDashboardSummary = useRef(false);
 
   const isDataApiAvailable = Boolean(window.electronAPI?.data);
+
+  useEffect(() => {
+    if (!pendingDataTabNavigation) return;
+    setStoredPreviewOpen(false);
+    setEditingTaskId(null);
+    setEditingInputTableDraftId(null);
+    setEditingInputTableDatasetId(null);
+    setEditingOutputTableId(null);
+    setUploadCloudOutputTable(null);
+    setPendingNavigationTab(pendingDataTabNavigation.tab);
+    setLoadingTab(pendingDataTabNavigation.tab);
+    setActiveTab(pendingDataTabNavigation.tab);
+    setSearchQuery('');
+    clearDataTabNavigation(pendingDataTabNavigation.nonce);
+  }, [clearDataTabNavigation, pendingDataTabNavigation]);
 
   useEffect(() => {
     if (!pendingDataNavigation || !isDataApiAvailable || !window.electronAPI?.data) {
@@ -1669,6 +1689,11 @@ export function DataView() {
                     onClick={() => handleTabChange('output_tables')}
                     label={t('data.tabs.outputTables')}
                   />
+                  <TabButton
+                    active={activeTab === 'cloud_analysis'}
+                    onClick={() => handleTabChange('cloud_analysis')}
+                    label={t('data.tabs.cloudAnalysis')}
+                  />
                 </div>
               </div>
 
@@ -1715,7 +1740,7 @@ export function DataView() {
                       isCreateDisabled={!isDataApiAvailable}
                       actionId={actionId}
                     />
-                  ) : (
+                  ) : activeTab === 'output_tables' ? (
                     <OutputTablesPanel
                       outputTables={dashboard.outputTables}
                       totalOutputTables={dashboard.totalOutputTables}
@@ -1734,6 +1759,8 @@ export function DataView() {
                       onDelete={handleDeleteOutputTable}
                       onDeleteAll={handleDeleteAllOutputTables}
                     />
+                  ) : (
+                    <CloudDataView />
                   )}
                 </div>
               )}
@@ -5772,6 +5799,11 @@ function UploadOutputTableToCloudDialog({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const appConfig = useAppStore((state) => state.appConfig);
+  const desktopAuthStatus = useAppStore((state) => state.desktopAuthStatus);
+  const setDesktopAuthStatus = useAppStore((state) => state.setDesktopAuthStatus);
+  const setSettingsTab = useAppStore((state) => state.setSettingsTab);
+  const setShowSettings = useAppStore((state) => state.setShowSettings);
   const [spaces, setSpaces] = useState<PersonalAnalysisSpace[]>([]);
   const [projects, setProjects] = useState<PersonalAnalysisProject[]>([]);
   const [cloudTables, setCloudTables] = useState<PersonalAnalysisTable[]>([]);
@@ -5784,16 +5816,71 @@ function UploadOutputTableToCloudDialog({
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [loadingTables, setLoadingTables] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [loginBusy, setLoginBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const spaceRequestSeq = useRef(0);
   const projectRequestSeq = useRef(0);
   const tableRequestSeq = useRef(0);
+  const storedConnection = appConfig?.personalAnalysis;
+  const hasStoredConnection = Boolean(storedConnection?.apiOrigin && storedConnection?.apiKey);
+  const hasDesktopAuthConnection = Boolean(
+    desktopAuthStatus.authenticated && desktopAuthStatus.apiOrigin
+  );
+  const hasCloudConnection = hasStoredConnection || hasDesktopAuthConnection;
+  const authDisplayName =
+    desktopAuthStatus.user?.displayName?.trim() ||
+    desktopAuthStatus.user?.username?.trim() ||
+    desktopAuthStatus.user?.userId?.trim() ||
+    t('data.outputTables.uploadToCloud.currentAccount');
+  const accessModeLabel = hasStoredConnection
+    ? desktopAuthStatus.authenticated
+      ? t('data.outputTables.uploadToCloud.apiKeyModeWithAccount', { account: authDisplayName })
+      : t('data.outputTables.uploadToCloud.apiKeyMode')
+    : t('data.outputTables.uploadToCloud.accountMode', { account: authDisplayName });
+  const connectionLabel =
+    storedConnection?.apiOrigin || desktopAuthStatus.apiOrigin || t('cloudData.notConnected');
+
+  const openApiKeySettings = useCallback(() => {
+    setSettingsTab('personal-analysis');
+    setShowSettings(true);
+    onClose();
+  }, [onClose, setSettingsTab, setShowSettings]);
+
+  const handleLoginAndContinue = useCallback(async () => {
+    if (!window.electronAPI?.auth || loginBusy) return;
+
+    setLoginBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const status = await window.electronAPI.auth.login();
+      setDesktopAuthStatus(status);
+      if (!status.authenticated) {
+        setError(t('data.outputTables.uploadToCloud.loginNotCompleted'));
+      }
+    } catch (err) {
+      const isCancelled = err instanceof Error && err.message === 'Login cancelled';
+      setError(
+        isCancelled
+          ? t('data.outputTables.uploadToCloud.loginCancelled')
+          : err instanceof Error
+            ? err.message
+            : t('data.outputTables.uploadToCloud.loginFailed')
+      );
+    } finally {
+      setLoginBusy(false);
+    }
+  }, [loginBusy, setDesktopAuthStatus, t]);
 
   useEffect(() => {
     const requestId = ++spaceRequestSeq.current;
     const loadSpaces = async () => {
-      if (!window.electronAPI?.data?.listCloudSpaces) return;
+      if (!hasCloudConnection || !window.electronAPI?.data?.listCloudSpaces) {
+        setSpaces([]);
+        setSpaceId('');
+        return;
+      }
       setLoadingSpaces(true);
       setError(null);
       try {
@@ -5819,7 +5906,7 @@ function UploadOutputTableToCloudDialog({
         spaceRequestSeq.current += 1;
       }
     };
-  }, [t]);
+  }, [hasCloudConnection, t]);
 
   useEffect(() => {
     const requestId = ++projectRequestSeq.current;
@@ -5962,6 +6049,87 @@ function UploadOutputTableToCloudDialog({
     }
   };
 
+  if (!hasCloudConnection) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/18 px-5 py-5 backdrop-blur-sm">
+        <div className="flex max-h-full w-full max-w-[520px] flex-col overflow-hidden rounded-xl border border-border-subtle bg-background shadow-elevated">
+          <div className="flex h-12 flex-shrink-0 items-center justify-between border-b border-border-subtle px-4">
+            <div className="min-w-0">
+              <div className="truncate text-[14px] font-semibold text-text-primary">
+                {t('data.outputTables.uploadToCloud.connectTitle')}
+              </div>
+              <div className="truncate text-[11px] text-text-muted">
+                {t('data.outputTables.uploadToCloud.connectSubtitle', {
+                  name: outputTable.name,
+                })}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="space-y-4 px-4 py-4">
+            <InputTableInfo>{t('data.outputTables.uploadToCloud.connectInfo')}</InputTableInfo>
+
+            <div className="rounded-lg border border-border-subtle bg-surface/35 px-3 py-3">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                  <Cloud className="h-[18px] w-[18px]" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[13px] font-medium text-text-primary">
+                    {t('data.outputTables.uploadToCloud.connectPrimaryTitle')}
+                  </div>
+                  <div className="mt-1 text-[12px] leading-5 text-text-muted">
+                    {t('data.outputTables.uploadToCloud.connectPrimaryDescription')}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {error && (
+              <div className="rounded-lg border border-error/25 bg-error/10 px-3 py-2 text-[13px] text-error">
+                {error}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-shrink-0 flex-col gap-2 border-t border-border-subtle px-4 py-3 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={openApiKeySettings}
+              disabled={loginBusy}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/60 px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Settings className="h-3.5 w-3.5" />
+              {t('data.outputTables.uploadToCloud.connectWithApiKey')}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleLoginAndContinue()}
+              disabled={loginBusy}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-[12px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loginBusy ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <LogIn className="h-3.5 w-3.5" />
+              )}
+              {loginBusy
+                ? t('data.outputTables.uploadToCloud.loggingIn')
+                : t('data.outputTables.uploadToCloud.loginAndContinue')}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/18 px-5 py-5 backdrop-blur-sm">
       <div className="flex max-h-full w-full max-w-[560px] flex-col overflow-hidden rounded-xl border border-border-subtle bg-background shadow-elevated">
@@ -5970,7 +6138,12 @@ function UploadOutputTableToCloudDialog({
             <div className="truncate text-[14px] font-semibold text-text-primary">
               {t('data.outputTables.uploadToCloud.title')}
             </div>
-            <div className="truncate text-[11px] text-text-muted">{outputTable.name}</div>
+            <div className="truncate text-[11px] text-text-muted">
+              {t('data.outputTables.uploadToCloud.accessMode', {
+                mode: accessModeLabel,
+                host: connectionLabel,
+              })}
+            </div>
           </div>
           <button
             type="button"
@@ -5983,6 +6156,17 @@ function UploadOutputTableToCloudDialog({
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
           <InputTableInfo>{t('data.outputTables.uploadToCloud.info')}</InputTableInfo>
+          <div className="rounded-lg border border-border-subtle bg-surface/35 px-3 py-2 text-[12px] leading-5 text-text-secondary">
+            <div className="font-medium text-text-primary">
+              {t('data.outputTables.uploadToCloud.accessIdentity')}
+            </div>
+            <div className="mt-1 text-text-muted">
+              {t('data.outputTables.uploadToCloud.accessMode', {
+                mode: accessModeLabel,
+                host: connectionLabel,
+              })}
+            </div>
+          </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="space-y-1.5">

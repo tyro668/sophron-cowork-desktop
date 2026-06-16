@@ -18,8 +18,19 @@ import { AgentModelSelector } from './AgentModelSelector';
 import { MessageCard } from './MessageCard';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
 import { SelectedSkillChips, SkillMentionMenu } from './SkillMentionPicker';
-import type { Message, ContentBlock } from '../types';
-import { Send, Square, Plus, Loader2, Plug, X, Clock, ArrowUp, ArrowDown } from 'lucide-react';
+import type { CloudTableChatAttachment, Message, ContentBlock } from '../types';
+import {
+  Send,
+  Square,
+  Plus,
+  Loader2,
+  Plug,
+  X,
+  Clock,
+  ArrowUp,
+  ArrowDown,
+  Table2,
+} from 'lucide-react';
 
 type AttachedFile = {
   name: string;
@@ -46,6 +57,10 @@ export function ChatView() {
   const setIsConfigured = useAppStore((s) => s.setIsConfigured);
   const setShowSettings = useAppStore((s) => s.setShowSettings);
   const setSettingsTab = useAppStore((s) => s.setSettingsTab);
+  const pendingCloudTableChatAttachments = useAppStore((s) => s.pendingCloudTableChatAttachments);
+  const clearPendingCloudTableChatAttachments = useAppStore(
+    (s) => s.clearPendingCloudTableChatAttachments
+  );
   const { continueSession, stopSession, isElectron } = useIPC();
   const [prompt, setPrompt] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -60,6 +75,7 @@ export function ChatView() {
     Array<{ url: string; base64: string; mediaType: string }>
   >([]);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+  const [attachedCloudTables, setAttachedCloudTables] = useState<CloudTableChatAttachment[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showPermissionMenu, setShowPermissionMenu] = useState(false);
@@ -527,6 +543,52 @@ export function ChatView() {
     });
   };
 
+  const removeCloudTable = (index: number) => {
+    setAttachedCloudTables((prev) => {
+      const updated = [...prev];
+      updated.splice(index, 1);
+      return updated;
+    });
+  };
+
+  const formatCloudTableContext = (tables: CloudTableChatAttachment[]) => {
+    const payload = tables.map((table) => ({
+      tableId: table.tableId,
+      tableName: table.tableName,
+      spaceId: table.spaceId,
+      spaceName: table.spaceName,
+      projectId: table.projectId,
+      projectName: table.projectName,
+      datasourceId: table.datasourceId,
+      folderId: table.folderId,
+      rowCount: table.rowCount,
+      columns: table.columns ?? [],
+      sampleRows: table.sampleRows ?? [],
+      accessMode: table.accessModeLabel,
+      connection: table.connectionLabel,
+    }));
+
+    return [
+      '[Cloud analysis tables added to this conversation]',
+      'Use these Personal Analysis table references when answering the user.',
+      'If the user asks to modify or overwrite a cloud table, first import the table into the local cowork data workspace, create or update a local output table, then ask for confirmation before uploading with REPLACE mode.',
+      JSON.stringify(payload, null, 2),
+    ].join('\n');
+  };
+
+  useEffect(() => {
+    if (!pendingCloudTableChatAttachments) return;
+
+    setAttachedCloudTables((prev) => {
+      const byId = new Map(prev.map((item) => [item.id, item]));
+      pendingCloudTableChatAttachments.attachments.forEach((item) => {
+        byId.set(item.id, item);
+      });
+      return Array.from(byId.values());
+    });
+    clearPendingCloudTableChatAttachments(pendingCloudTableChatAttachments.nonce);
+  }, [clearPendingCloudTableChatAttachments, pendingCloudTableChatAttachments]);
+
   const handleFileSelect = async () => {
     if (!isElectron || !window.electronAPI) {
       console.log('[ChatView] Not in Electron, file selection not available');
@@ -682,7 +744,10 @@ export function ChatView() {
     const currentPrompt = textareaRef.current?.value || prompt;
 
     if (
-      (!currentPrompt.trim() && pastedImages.length === 0 && attachedFiles.length === 0) ||
+      (!currentPrompt.trim() &&
+        pastedImages.length === 0 &&
+        attachedFiles.length === 0 &&
+        attachedCloudTables.length === 0) ||
       !activeSessionId ||
       isSubmitting
     )
@@ -717,6 +782,13 @@ export function ChatView() {
         });
       });
 
+      if (attachedCloudTables.length > 0) {
+        contentBlocks.push({
+          type: 'text',
+          text: formatCloudTableContext(attachedCloudTables),
+        });
+      }
+
       // Add text if present
       if (currentPrompt.trim()) {
         contentBlocks.push({
@@ -738,6 +810,7 @@ export function ChatView() {
       pastedImages.forEach((img) => URL.revokeObjectURL(img.url));
       setPastedImages([]);
       setAttachedFiles([]);
+      setAttachedCloudTables([]);
       skillMentions.clearSelectedSkills();
     } finally {
       setIsSubmitting(false);
@@ -1000,6 +1073,32 @@ export function ChatView() {
               </div>
             )}
 
+            {attachedCloudTables.length > 0 && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {attachedCloudTables.map((table, index) => (
+                  <div
+                    key={table.id}
+                    className="group inline-flex max-w-full items-center gap-2 rounded-lg border border-accent/20 bg-accent/10 px-3 py-2 text-[13px] text-accent-text shadow-soft"
+                  >
+                    <Table2 className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span className="min-w-0 truncate font-medium">{table.tableName}</span>
+                    {table.projectName && (
+                      <span className="hidden flex-shrink-0 text-[11px] text-text-muted sm:inline">
+                        {table.projectName}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeCloudTable(index)}
+                      className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-background/60 text-text-muted opacity-70 transition-colors hover:bg-error/10 hover:text-error group-hover:opacity-100"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div
               className={`chat-composer-panel flex min-h-[120px] flex-col px-4 py-3 transition-colors sm:min-h-[132px] sm:py-3.5 ${
                 isDragging ? 'ring-2 ring-accent bg-accent-muted' : ''
@@ -1106,7 +1205,8 @@ export function ChatView() {
                       (!prompt.trim() &&
                         !textareaRef.current?.value.trim() &&
                         pastedImages.length === 0 &&
-                        attachedFiles.length === 0) ||
+                        attachedFiles.length === 0 &&
+                        attachedCloudTables.length === 0) ||
                       isSubmitting
                     }
                     className="composer-flat-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-accent disabled:cursor-not-allowed disabled:text-text-muted"
