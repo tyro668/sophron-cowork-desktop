@@ -4,6 +4,7 @@ import { useAppStore } from '../store';
 import { useIPC } from '../hooks/useIPC';
 import { useSkillMentions } from '../hooks/useSkillMentions';
 import { getWorkingDirDisplayName } from '../utils/working-dir-label';
+import { parseBuiltinLlmConfigSetId } from '../../shared/builtin-llm';
 import { AgentModelSelector } from './AgentModelSelector';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
 import { SelectedSkillChips, SkillMentionMenu } from './SkillMentionPicker';
@@ -113,7 +114,7 @@ export function WelcomeView() {
 
   const handleModelOptionClick = async (configSetId: string) => {
     setShowModelMenu(false);
-    if (!appConfig || configSetId === appConfig.activeConfigSetId) {
+    if (!appConfig) {
       return;
     }
 
@@ -122,7 +123,21 @@ export function WelcomeView() {
     }
 
     try {
-      const result = await window.electronAPI.config.switchSet({ id: configSetId });
+      const builtinModel = parseBuiltinLlmConfigSetId(configSetId);
+      if (!builtinModel && configSetId === appConfig.activeConfigSetId) {
+        return;
+      }
+      if (
+        builtinModel &&
+        appConfig.provider === 'sophron' &&
+        appConfig.model?.trim() === builtinModel
+      ) {
+        return;
+      }
+
+      const result = builtinModel
+        ? await window.electronAPI.config.selectBuiltinModel({ model: builtinModel })
+        : await window.electronAPI.config.switchSet({ id: configSetId });
       if (result.success) {
         setAppConfig(result.config);
         setIsConfigured(Boolean(result.config.isConfigured));

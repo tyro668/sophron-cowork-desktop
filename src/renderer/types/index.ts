@@ -1244,6 +1244,7 @@ export type ProviderType =
   | 'moonshot'
   | 'aliyun'
   | 'zai'
+  | 'sophron'
   | 'gemini'
   | 'ollama';
 export type CustomProtocolType = 'anthropic' | 'openai' | 'gemini';
@@ -1256,6 +1257,7 @@ export type ProviderProfileKey =
   | 'moonshot'
   | 'aliyun'
   | 'zai'
+  | 'sophron'
   | 'gemini'
   | 'ollama'
   | 'custom:anthropic'
@@ -1352,9 +1354,53 @@ export interface DesktopAuthUser {
   remainingCredits?: number | null;
 }
 
+export interface AiCreditUsageTotals {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  inputCredits: number;
+  outputCredits: number;
+  totalCredits: number;
+}
+
+export interface AiCreditUsageRecord {
+  recordId: string;
+  provider: string;
+  providerName?: string;
+  model: string;
+  mode: string;
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+  credits: {
+    inputCredits: number;
+    outputCredits: number;
+    totalCredits: number;
+  };
+  createdAt: string;
+}
+
+export interface AiCreditUsageSummary {
+  totals: AiCreditUsageTotals;
+  records?: AiCreditUsageRecord[];
+}
+
+export interface AiCreditBalance {
+  quotaCredits: number;
+  usedCredits: number;
+  availableCredits: number;
+  unit?: string;
+  exhausted?: boolean;
+  usage?: AiCreditUsageTotals;
+}
+
 export interface DesktopAuthStatus {
   authenticated: boolean;
   user?: DesktopAuthUser;
+  aiCredits?: AiCreditBalance;
+  aiCreditUsage?: AiCreditUsageSummary;
   apiOrigin?: string;
   expiresAt?: number;
   updatedAt: number;
@@ -1469,6 +1515,7 @@ export interface ProviderPresets {
   moonshot: ProviderPreset;
   aliyun: ProviderPreset;
   zai: ProviderPreset;
+  sophron: ProviderPreset;
   gemini: ProviderPreset;
   ollama: ProviderPreset;
 }
@@ -1476,6 +1523,12 @@ export interface ProviderPresets {
 export interface ProviderModelInfo {
   id: string;
   name: string;
+  provider?: string;
+  upstreamModel?: string;
+  creditMultiplier?: number;
+  inputCreditMultiplier?: number;
+  outputCreditMultiplier?: number;
+  creditUnit?: string;
 }
 
 export interface ApiTestInput {

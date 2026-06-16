@@ -96,6 +96,7 @@ export function SettingsAPI() {
   }
 
   const providerOptions = VISIBLE_API_PROVIDER_OPTIONS;
+  const isSophronMode = provider === 'sophron';
   const showsBaseUrl = provider === 'ollama';
   const baseUrlPlaceholder = 'http://localhost:11434/v1';
 
@@ -146,24 +147,25 @@ export function SettingsAPI() {
         </div>
       </div>
 
-      {/* API Key */}
-      <div className="glass-card space-y-3 rounded-xl px-4 py-3">
-        <label
-          htmlFor="api-key-input"
-          className="flex items-center gap-2 text-[13px] font-medium text-text-primary"
-        >
-          <Key className="w-4 h-4" />
-          {t('api.apiKey')}
-        </label>
-        <input
-          id="api-key-input"
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          placeholder={currentPreset?.keyPlaceholder || t('api.enterApiKey')}
-          className="w-full rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[13px] text-text-primary shadow-soft placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
-        />
-      </div>
+      {!isSophronMode && (
+        <div className="glass-card space-y-3 rounded-xl px-4 py-3">
+          <label
+            htmlFor="api-key-input"
+            className="flex items-center gap-2 text-[13px] font-medium text-text-primary"
+          >
+            <Key className="w-4 h-4" />
+            {t('api.apiKey')}
+          </label>
+          <input
+            id="api-key-input"
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder={currentPreset?.keyPlaceholder || t('api.enterApiKey')}
+            className="w-full rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[13px] text-text-primary shadow-soft placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
+          />
+        </div>
+      )}
 
       {/* Custom Protocol */}
       {provider === 'custom' && (
@@ -247,7 +249,7 @@ export function SettingsAPI() {
             {t('api.model')}
           </label>
           <div className="flex items-center gap-2">
-            {isOllamaMode && (
+            {(isOllamaMode || isSophronMode) && (
               <button
                 type="button"
                 onClick={() => {

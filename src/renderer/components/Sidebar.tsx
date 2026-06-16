@@ -138,13 +138,16 @@ export function Sidebar() {
     : desktopAuthStatus.authenticated
       ? t('sidebar.loggedIn')
       : t('sidebar.loginDesc');
+  const authCreditsLabel = t('sidebar.aiCredits');
   const authCreditsText = useMemo(() => {
-    const value = authUser?.remainingCredits;
+    const value = desktopAuthStatus.aiCredits?.availableCredits;
     if (typeof value === 'number' && Number.isFinite(value)) {
-      return new Intl.NumberFormat().format(value);
+      return new Intl.NumberFormat(undefined, {
+        maximumFractionDigits: 4,
+      }).format(value);
     }
     return t('sidebar.creditsUnavailable');
-  }, [authUser?.remainingCredits, t]);
+  }, [desktopAuthStatus.aiCredits?.availableCredits, t]);
 
   const refreshDesktopAuthStatus = useCallback(async () => {
     if (!isElectron || !window.electronAPI?.auth) return;
@@ -235,6 +238,16 @@ export function Sidebar() {
       setAuthBusyMode(null);
     }
   }, [isAuthBusy, isElectron, setDesktopAuthStatus, setGlobalNotice, t]);
+
+  const handleAuthMenuOpenChange = useCallback(
+    (open: boolean) => {
+      setAuthMenuOpen(open);
+      if (open && desktopAuthStatus.authenticated) {
+        void refreshDesktopAuthStatus();
+      }
+    },
+    [desktopAuthStatus.authenticated, refreshDesktopAuthStatus]
+  );
 
   const handleAuthAvatarError = useCallback((avatarUrl: string) => {
     setFailedAuthAvatarUrls((current) => {
@@ -646,7 +659,7 @@ export function Sidebar() {
       <div className="mx-1 mb-1 flex items-center justify-between gap-3 rounded-lg bg-background/54 px-2.5 py-2 text-[12px]">
         <span className="flex min-w-0 items-center gap-2 font-medium text-text-secondary">
           <CircleDollarSign className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
-          <span className="truncate">{t('sidebar.remainingCredits')}</span>
+          <span className="truncate">{authCreditsLabel}</span>
         </span>
         <span className="flex-shrink-0 font-semibold text-text-primary">{authCreditsText}</span>
       </div>
@@ -739,7 +752,7 @@ export function Sidebar() {
           {desktopAuthStatus.authenticated ? (
             <GlassDropdownMenu
               open={authMenuOpen}
-              onOpenChange={setAuthMenuOpen}
+              onOpenChange={handleAuthMenuOpenChange}
               align="start"
               side="top"
               sideOffset={6}
@@ -1179,7 +1192,7 @@ export function Sidebar() {
             {desktopAuthStatus.authenticated ? (
               <GlassDropdownMenu
                 open={authMenuOpen}
-                onOpenChange={setAuthMenuOpen}
+                onOpenChange={handleAuthMenuOpenChange}
                 align="start"
                 side="top"
                 sideOffset={6}

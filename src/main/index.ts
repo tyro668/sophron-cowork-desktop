@@ -42,6 +42,7 @@ import { PluginCatalogService } from './skills/plugin-catalog-service';
 import { PluginRuntimeService } from './skills/plugin-runtime-service';
 import { MemoryService } from './memory/memory-service';
 import { MemoryExtension } from './memory/memory-extension';
+import { MemoryLLMClient } from './memory/memory-llm-client';
 import { AgentRuntimeExtensionManager } from './extensions/agent-runtime-extension-manager';
 import {
   configStore,
@@ -51,7 +52,7 @@ import {
   type CreateConfigSetPayload,
 } from './config/config-store';
 import { runConfigApiTest } from './config/config-test-routing';
-import { resolveDesktopAuthOrigin } from './config/desktop-auth-config';
+import { resolveDesktopAuthOrigin, resolveDesktopLlmBaseUrl } from './config/desktop-auth-config';
 import { listOllamaModels } from './config/ollama-api';
 import { setPermissionRules } from './config/permission-rules-store';
 import { mcpConfigStore } from './mcp/mcp-config-store';
@@ -68,6 +69,7 @@ import type {
   Session,
   ApiTestInput,
   ApiTestResult,
+  AgentRuntimeConfig,
   DiagnosticInput,
   ProviderModelInfo,
   DataCleaningTask,
@@ -127,6 +129,10 @@ import {
   buildScheduledTaskTitle,
 } from '../shared/schedule/task-title';
 import { APP_INTERNAL_NAME, APP_NAME_EN } from '../shared/branding';
+import {
+  BUILTIN_LLM_CONFIG_SET_ID,
+  parseBuiltinLlmConfigSetId,
+} from '../shared/builtin-llm';
 import {
   isUncPath,
   isWindowsDrivePath,
@@ -190,6 +196,69 @@ let dataCommandService: DataCommandService | null = null;
 const desktopAuthService = new DesktopAuthService(
   () => resolveDesktopAuthOrigin(configStore.get('personalAnalysis')?.apiOrigin)
 );
+
+function withSophronRuntimeAuth<T extends AppConfig | AgentRuntimeConfig>(config: T): T {
+  if (config.provider !== 'sophron') {
+    return config;
+  }
+
+  const apiOrigin = configStore.get('personalAnalysis')?.apiOrigin;
+  return {
+    ...config,
+    provider: 'sophron',
+    customProtocol: 'openai',
+    apiKey: desktopAuthService.requireLlmAccessToken(),
+    baseUrl: resolveDesktopLlmBaseUrl(apiOrigin),
+  };
+}
+
+function resolveAgentRuntimeConfigForAuth(
+  config?: AgentRuntimeConfig | null
+): AgentRuntimeConfig | undefined {
+  const runtimeConfig =
+    config ??
+    configStore.getRuntimeConfigForSet(configStore.get('activeConfigSetId')) ??
+    undefined;
+  if (!runtimeConfig) {
+    return undefined;
+  }
+  return withSophronRuntimeAuth(runtimeConfig);
+}
+
+function resolveModelRuntimeConfigForAutomation(configSetId: string): AgentRuntimeConfig | null {
+  const builtinModel = parseBuiltinLlmConfigSetId(configSetId);
+  if (builtinModel) {
+    return (
+      resolveAgentRuntimeConfigForAuth({
+        provider: 'sophron',
+        apiKey: '',
+        baseUrl: '',
+        customProtocol: 'openai',
+        model: builtinModel,
+        enableThinking: false,
+      }) ?? null
+    );
+  }
+
+  return resolveAgentRuntimeConfigForAuth(configStore.getRuntimeConfigForSet(configSetId)) ?? null;
+}
+
+function resolveAppConfigForAuth(config: AppConfig = configStore.getAll()): AppConfig {
+  return withSophronRuntimeAuth(config);
+}
+
+function resolveApiTestInputForAuth(input: ApiTestInput): ApiTestInput {
+  if (input.provider !== 'sophron') {
+    return input;
+  }
+  const apiOrigin = configStore.get('personalAnalysis')?.apiOrigin;
+  return {
+    ...input,
+    customProtocol: 'openai',
+    apiKey: desktopAuthService.requireLlmAccessToken(),
+    baseUrl: resolveDesktopLlmBaseUrl(apiOrigin),
+  };
+}
 let updateService: UpdateService | null = null;
 let isInstallingUpdate = false;
 let startupUpdateCheckScheduled = false;
@@ -1051,10 +1120,14 @@ app
     updateService.initialize();
 
     pluginRuntimeService = new PluginRuntimeService(new PluginCatalogService());
-    memoryService = new MemoryService(db);
+    memoryService = new MemoryService(db, {
+      llmClient: new MemoryLLMClient(() => resolveAppConfigForAuth(configStore.getAll())),
+    });
     dataCommandService = new DataCommandService(
       initializedDataTaskStore,
-      createLlmInputTableNormalizerProjectGenerator(() => configStore.getAll()),
+      createLlmInputTableNormalizerProjectGenerator(() =>
+        resolveAppConfigForAuth(configStore.getAll())
+      ),
       () => configStore.get('personalAnalysis'),
       { onTaskCompleted: notifyDataTaskCompleted }
     );
@@ -1071,7 +1144,8 @@ app
       sendToRenderer,
       pluginRuntimeService,
       extensionManager,
-      notifyConversationCompleted
+      notifyConversationCompleted,
+      resolveAgentRuntimeConfigForAuth
     );
     skillsManager = new SkillsManager(db, {
       getConfiguredGlobalSkillsPath: () => configStore.get('globalSkillsPath') || '',
@@ -1140,7 +1214,7 @@ app
       dataTaskStore: initializedDataTaskStore,
       sessionManager,
       resolveProjectCwd: (projectId) => db.projects?.get(projectId)?.cwd ?? null,
-      resolveModelRuntimeConfig: (configSetId) => configStore.getRuntimeConfigForSet(configSetId),
+      resolveModelRuntimeConfig: resolveModelRuntimeConfigForAutomation,
       sendSessionUpdate: (started) => {
         sendToRenderer({
           type: 'session.update',
@@ -1848,7 +1922,9 @@ function requireDataCommandService(): DataCommandService {
   if (!dataCommandService) {
     dataCommandService = new DataCommandService(
       requireDataTaskStore(),
-      createLlmInputTableNormalizerProjectGenerator(() => configStore.getAll()),
+      createLlmInputTableNormalizerProjectGenerator(() =>
+        resolveAppConfigForAuth(configStore.getAll())
+      ),
       () => configStore.get('personalAnalysis'),
       { onTaskCompleted: notifyDataTaskCompleted }
     );
@@ -2365,6 +2441,41 @@ ipcMain.handle('config.switchSet', async (_event, payload: { id: string }) => {
   return { success: true, config: updatedConfig };
 });
 
+ipcMain.handle('config.selectBuiltinModel', async (_event, payload: { model: string }) => {
+  const model = typeof payload.model === 'string' ? payload.model.trim() : '';
+  if (!model) {
+    throw new Error('Model is required');
+  }
+
+  log('[Config] Selecting built-in model:', { model });
+  const previousConfig = configStore.getAll();
+  const sophronProfile = previousConfig.profiles.sophron ?? {
+    apiKey: '',
+    baseUrl: '',
+    model: '',
+  };
+  configStore.update({
+    activeConfigSetId: BUILTIN_LLM_CONFIG_SET_ID,
+    provider: 'sophron',
+    customProtocol: 'openai',
+    activeProfileKey: 'sophron',
+    profiles: {
+      ...previousConfig.profiles,
+      sophron: {
+        ...sophronProfile,
+        apiKey: '',
+        baseUrl: '',
+        model,
+      },
+    },
+    apiKey: '',
+    baseUrl: '',
+    model,
+  });
+  const updatedConfig = await syncConfigAfterMutation(previousConfig);
+  return { success: true, config: updatedConfig };
+});
+
 ipcMain.handle('config.isConfigured', () => {
   try {
     return configStore.isConfigured();
@@ -2376,7 +2487,8 @@ ipcMain.handle('config.isConfigured', () => {
 
 ipcMain.handle('config.test', async (_event, payload: ApiTestInput): Promise<ApiTestResult> => {
   try {
-    return await runConfigApiTest(payload, configStore.getAll());
+    const resolvedPayload = resolveApiTestInputForAuth(payload);
+    return await runConfigApiTest(resolvedPayload, resolveAppConfigForAuth(configStore.getAll()));
   } catch (error) {
     logError('[Config] API test failed:', error);
     return {
@@ -2393,6 +2505,9 @@ ipcMain.handle(
     _event,
     payload: { provider: AppConfig['provider']; apiKey: string; baseUrl?: string }
   ): Promise<ProviderModelInfo[]> => {
+    if (payload.provider === 'sophron') {
+      return desktopAuthService.listLlmModels();
+    }
     if (payload.provider !== 'ollama') {
       return [];
     }
@@ -2403,7 +2518,7 @@ ipcMain.handle(
 ipcMain.handle('config.diagnose', async (_event, payload: DiagnosticInput) => {
   try {
     const { runDiagnostics } = await import('./config/api-diagnostics');
-    return await runDiagnostics(payload);
+    return await runDiagnostics(resolveApiTestInputForAuth(payload));
   } catch (error) {
     logError('[Config] Error running diagnostics:', error);
     throw error;

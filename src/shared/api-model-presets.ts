@@ -7,11 +7,15 @@ export type SharedProviderType =
   | 'moonshot'
   | 'aliyun'
   | 'zai'
+  | 'sophron'
   | 'gemini'
   | 'ollama';
 
 export type SharedCustomProtocolType = 'anthropic' | 'openai' | 'gemini';
-export type VisibleApiProviderType = Exclude<SharedProviderType, 'custom' | 'gemini'>;
+export type VisibleApiProviderType = Exclude<
+  SharedProviderType,
+  'custom' | 'gemini' | 'sophron'
+>;
 
 export const VISIBLE_API_PROVIDER_OPTIONS = [
   'deepseek',
@@ -41,6 +45,7 @@ export interface SharedProviderPresets {
   moonshot: SharedProviderPreset;
   aliyun: SharedProviderPreset;
   zai: SharedProviderPreset;
+  sophron: SharedProviderPreset;
   gemini: SharedProviderPreset;
   ollama: SharedProviderPreset;
 }
@@ -143,6 +148,16 @@ export const API_PROVIDER_PRESETS: SharedProviderPresets = {
     ],
     keyPlaceholder: 'sk-...',
     keyHint: '从 docs.z.ai / Z.AI Open Platform 获取',
+  },
+  sophron: {
+    name: '内置 LLM',
+    baseUrl: '',
+    models: [
+      { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash' },
+      { id: 'glm-5.1', name: 'GLM-5.1' },
+    ],
+    keyPlaceholder: '登录后自动使用',
+    keyHint: '使用桌面登录态调用后端 LLM 代理并统计 AI 积分',
   },
   gemini: {
     name: 'Gemini',
@@ -313,6 +328,13 @@ export function getModelInputGuidance(
     return {
       placeholder: 'glm-5.1, glm-5, glm-4.5',
       hint: 'Use the exact model ID for the selected protocol or endpoint.',
+    };
+  }
+
+  if (provider === 'sophron') {
+    return {
+      placeholder: 'deepseek-v4-flash, glm-5.1',
+      hint: 'Use the built-in LLM model returned by the backend proxy.',
     };
   }
 
