@@ -128,26 +128,34 @@ export function CloudDataView() {
   const hasDesktopAuthConnection = Boolean(
     desktopAuthStatus.authenticated && desktopAuthStatus.apiOrigin
   );
-  const isConnected = hasStoredConnection || hasDesktopAuthConnection;
+  const usesDesktopAuthConnection = hasDesktopAuthConnection;
+  const usesStoredConnection = !usesDesktopAuthConnection && hasStoredConnection;
+  const isConnected = usesStoredConnection || usesDesktopAuthConnection;
   const authDisplayName =
     desktopAuthStatus.user?.displayName?.trim() ||
     desktopAuthStatus.user?.username?.trim() ||
     desktopAuthStatus.user?.userId?.trim() ||
     t('cloudData.currentAccount');
-  const accessModeLabel = hasStoredConnection
-    ? desktopAuthStatus.authenticated
-      ? t('cloudData.apiKeyModeWithAccount', { account: authDisplayName })
-      : t('cloudData.apiKeyMode')
+  const accessModeLabel = usesStoredConnection
+    ? t('cloudData.apiKeyMode')
     : t('cloudData.accountMode', { account: authDisplayName });
   const connectionLabel =
-    storedConnection.apiOrigin || desktopAuthStatus.apiOrigin || t('cloudData.notConnected');
+    (usesDesktopAuthConnection ? desktopAuthStatus.apiOrigin : storedConnection.apiOrigin) ||
+    t('cloudData.notConnected');
 
   const connectionPayload = useMemo(
     () => ({
-      apiOrigin: storedConnection.apiOrigin || desktopAuthStatus.apiOrigin || '',
-      ...(storedConnection.apiKey ? { apiKey: storedConnection.apiKey } : {}),
+      apiOrigin:
+        (usesDesktopAuthConnection ? desktopAuthStatus.apiOrigin : storedConnection.apiOrigin) || '',
+      ...(usesStoredConnection && storedConnection.apiKey ? { apiKey: storedConnection.apiKey } : {}),
     }),
-    [desktopAuthStatus.apiOrigin, storedConnection.apiKey, storedConnection.apiOrigin]
+    [
+      desktopAuthStatus.apiOrigin,
+      storedConnection.apiKey,
+      storedConnection.apiOrigin,
+      usesDesktopAuthConnection,
+      usesStoredConnection,
+    ]
   );
 
   useEffect(() => {
@@ -570,7 +578,7 @@ export function CloudDataView() {
             </span>
           </div>
           <div className="flex flex-shrink-0 items-center gap-2">
-            {hasStoredConnection && desktopAuthStatus.authenticated && (
+            {usesStoredConnection && desktopAuthStatus.authenticated && (
               <button
                 type="button"
                 onClick={() => void handleSwitchToAccountAccess()}

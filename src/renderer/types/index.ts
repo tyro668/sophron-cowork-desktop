@@ -1338,6 +1338,7 @@ export interface AppConfig {
   baseUrl?: string;
   customProtocol?: CustomProtocolType;
   model: string;
+  builtinLlmModel?: string;
   contextWindow?: number;
   maxTokens?: number;
   activeProfileKey: ProviderProfileKey;

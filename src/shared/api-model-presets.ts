@@ -152,10 +152,7 @@ export const API_PROVIDER_PRESETS: SharedProviderPresets = {
   sophron: {
     name: '内置 LLM',
     baseUrl: '',
-    models: [
-      { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash' },
-      { id: 'glm-5.1', name: 'GLM-5.1' },
-    ],
+    models: [],
     keyPlaceholder: '登录后自动使用',
     keyHint: '使用桌面登录态调用后端 LLM 代理并统计 AI 积分',
   },
@@ -333,7 +330,7 @@ export function getModelInputGuidance(
 
   if (provider === 'sophron') {
     return {
-      placeholder: 'deepseek-v4-flash, glm-5.1',
+      placeholder: '',
       hint: 'Use the built-in LLM model returned by the backend proxy.',
     };
   }

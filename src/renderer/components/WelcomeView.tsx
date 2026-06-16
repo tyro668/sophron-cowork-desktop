@@ -4,7 +4,7 @@ import { useAppStore } from '../store';
 import { useIPC } from '../hooks/useIPC';
 import { useSkillMentions } from '../hooks/useSkillMentions';
 import { getWorkingDirDisplayName } from '../utils/working-dir-label';
-import { parseBuiltinLlmConfigSetId } from '../../shared/builtin-llm';
+import { BUILTIN_LLM_PROVIDER, parseBuiltinLlmConfigSetId } from '../../shared/builtin-llm';
 import { AgentModelSelector } from './AgentModelSelector';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
 import { SelectedSkillChips, SkillMentionMenu } from './SkillMentionPicker';
@@ -53,9 +53,14 @@ export function WelcomeView() {
   const setIsConfigured = useAppStore((state) => state.setIsConfigured);
   const setShowSettings = useAppStore((state) => state.setShowSettings);
   const setSettingsTab = useAppStore((state) => state.setSettingsTab);
-  const canSubmit = prompt.trim().length > 0 || pastedImages.length > 0 || attachedFiles.length > 0;
   const modelLabel = appConfig?.model?.trim() || t('chat.noModel');
-  const hasConfiguredModel = Boolean(isConfigured && appConfig?.model?.trim());
+  const hasSelectedModel = Boolean(appConfig?.model?.trim());
+  const canSubmit =
+    hasSelectedModel &&
+    (prompt.trim().length > 0 || pastedImages.length > 0 || attachedFiles.length > 0);
+  const hasConfiguredModel = Boolean(
+    isConfigured && (appConfig?.model?.trim() || appConfig?.provider === BUILTIN_LLM_PROVIDER)
+  );
   const workingDirLabel = getWorkingDirDisplayName(
     workingDir,
     t('welcome.defaultWorkingFolder'),
@@ -130,7 +135,7 @@ export function WelcomeView() {
       if (
         builtinModel &&
         appConfig.provider === 'sophron' &&
-        appConfig.model?.trim() === builtinModel
+        (appConfig.builtinLlmModel?.trim() || appConfig.model?.trim()) === builtinModel
       ) {
         return;
       }
@@ -389,6 +394,7 @@ export function WelcomeView() {
 
     if (
       (!currentPrompt.trim() && pastedImages.length === 0 && attachedFiles.length === 0) ||
+      !hasSelectedModel ||
       isSubmitting
     )
       return;

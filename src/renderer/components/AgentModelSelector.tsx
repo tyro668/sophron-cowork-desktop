@@ -61,7 +61,7 @@ function resolveSelectedBuiltinModel(
   }
 
   if (!selectedConfigSetId && appConfig?.provider === BUILTIN_LLM_PROVIDER) {
-    return appConfig.model?.trim() || '';
+    return appConfig.builtinLlmModel?.trim() || appConfig.model?.trim() || '';
   }
 
   return '';
