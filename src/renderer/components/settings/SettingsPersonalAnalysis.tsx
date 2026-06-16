@@ -31,8 +31,7 @@ export function SettingsPersonalAnalysis() {
   const { t } = useTranslation();
   const appConfig = useAppStore((s) => s.appConfig);
   const setAppConfig = useAppStore((s) => s.setAppConfig);
-  const setMainView = useAppStore((s) => s.setMainView);
-  const setShowSettings = useAppStore((s) => s.setShowSettings);
+  const navigateToCloudData = useAppStore((s) => s.navigateToCloudData);
   const [form, setForm] = useState<PersonalAnalysisConfig>(EMPTY_PERSONAL_ANALYSIS_CONFIG);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
@@ -141,8 +140,7 @@ export function SettingsPersonalAnalysis() {
   };
 
   const handleViewCloudData = () => {
-    setMainView('cloud-data');
-    setShowSettings(false);
+    navigateToCloudData();
   };
 
   return (

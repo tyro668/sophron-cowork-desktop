@@ -7,7 +7,9 @@ import {
   Database,
   Eye,
   FolderKanban,
+  LogIn,
   Loader2,
+  MessageSquarePlus,
   RefreshCw,
   Search,
   Settings,
@@ -20,6 +22,7 @@ import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
 import appLogoSrc from '../assets/logo.png';
 import type {
+  CloudTableChatAttachment,
   DataInputTablePreview,
   PersonalAnalysisConfig,
   PersonalAnalysisProject,
@@ -35,6 +38,10 @@ interface SelectedProject {
   spaceId: string;
   projectId: string;
 }
+
+type CloudConnection = Pick<PersonalAnalysisConfig, 'apiOrigin'> & {
+  apiKey?: string;
+};
 
 interface NoticeState {
   type: 'success' | 'error' | 'info';
@@ -84,9 +91,13 @@ function CloudDataPermissionItem({
 export function CloudDataView() {
   const { t } = useTranslation();
   const appConfig = useAppStore((state) => state.appConfig);
+  const desktopAuthStatus = useAppStore((state) => state.desktopAuthStatus);
+  const setDesktopAuthStatus = useAppStore((state) => state.setDesktopAuthStatus);
   const setSettingsTab = useAppStore((state) => state.setSettingsTab);
   const setShowSettings = useAppStore((state) => state.setShowSettings);
+  const setAppConfig = useAppStore((state) => state.setAppConfig);
   const navigateToDataElement = useAppStore((state) => state.navigateToDataElement);
+  const addCloudTablesToChat = useAppStore((state) => state.addCloudTablesToChat);
   const [spaces, setSpaces] = useState<PersonalAnalysisSpace[]>([]);
   const [projectsBySpace, setProjectsBySpace] = useState<Record<string, PersonalAnalysisProject[]>>(
     {}
@@ -96,7 +107,11 @@ export function CloudDataView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [loadingTables, setLoadingTables] = useState(false);
+  const [loginBusy, setLoginBusy] = useState(false);
+  const [switchingToAccount, setSwitchingToAccount] = useState(false);
   const [importingTableId, setImportingTableId] = useState<string | null>(null);
+  const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
+  const [addingToChat, setAddingToChat] = useState(false);
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const catalogRequestSeq = useRef(0);
@@ -109,16 +124,44 @@ export function CloudDataView() {
     () => appConfig?.personalAnalysis || EMPTY_PERSONAL_ANALYSIS_CONFIG,
     [appConfig?.personalAnalysis]
   );
-  const isConnected = Boolean(storedConnection.apiOrigin && storedConnection.apiKey);
-  const connectionLabel = storedConnection.apiOrigin || t('cloudData.notConnected');
+  const hasStoredConnection = Boolean(storedConnection.apiOrigin && storedConnection.apiKey);
+  const hasDesktopAuthConnection = Boolean(
+    desktopAuthStatus.authenticated && desktopAuthStatus.apiOrigin
+  );
+  const isConnected = hasStoredConnection || hasDesktopAuthConnection;
+  const authDisplayName =
+    desktopAuthStatus.user?.displayName?.trim() ||
+    desktopAuthStatus.user?.username?.trim() ||
+    desktopAuthStatus.user?.userId?.trim() ||
+    t('cloudData.currentAccount');
+  const accessModeLabel = hasStoredConnection
+    ? desktopAuthStatus.authenticated
+      ? t('cloudData.apiKeyModeWithAccount', { account: authDisplayName })
+      : t('cloudData.apiKeyMode')
+    : t('cloudData.accountMode', { account: authDisplayName });
+  const connectionLabel =
+    storedConnection.apiOrigin || desktopAuthStatus.apiOrigin || t('cloudData.notConnected');
 
   const connectionPayload = useMemo(
     () => ({
-      apiOrigin: storedConnection.apiOrigin,
-      apiKey: storedConnection.apiKey,
+      apiOrigin: storedConnection.apiOrigin || desktopAuthStatus.apiOrigin || '',
+      ...(storedConnection.apiKey ? { apiKey: storedConnection.apiKey } : {}),
     }),
-    [storedConnection.apiKey, storedConnection.apiOrigin]
+    [desktopAuthStatus.apiOrigin, storedConnection.apiKey, storedConnection.apiOrigin]
   );
+
+  useEffect(() => {
+    if (
+      hasStoredConnection ||
+      notice?.type !== 'error' ||
+      (notice.message !== t('cloudData.errorAuth') &&
+        notice.message !== t('cloudData.errorPermission'))
+    ) {
+      return;
+    }
+
+    setNotice(null);
+  }, [hasStoredConnection, notice, t]);
 
   useEffect(() => {
     selectedProjectRef.current = selectedProject;
@@ -141,17 +184,75 @@ export function CloudDataView() {
         .some((value) => String(value).toLowerCase().includes(query))
     );
   }, [searchQuery, tables]);
+  const selectedTableIdSet = useMemo(() => new Set(selectedTableIds), [selectedTableIds]);
+  const selectedTables = useMemo(
+    () => tables.filter((table) => selectedTableIdSet.has(table.tableId)),
+    [selectedTableIdSet, tables]
+  );
+  const allFilteredSelected =
+    filteredTables.length > 0 &&
+    filteredTables.every((table) => selectedTableIdSet.has(table.tableId));
 
   const openSettings = useCallback(() => {
     setSettingsTab('personal-analysis');
     setShowSettings(true);
   }, [setSettingsTab, setShowSettings]);
 
+  const handleLogin = useCallback(async () => {
+    if (!window.electronAPI?.auth || loginBusy) return;
+
+    setLoginBusy(true);
+    setNotice(null);
+    try {
+      const status = await window.electronAPI.auth.login();
+      setDesktopAuthStatus(status);
+      if (!status.authenticated) {
+        setNotice({
+          type: 'info',
+          message: t('cloudData.loginNotCompleted'),
+        });
+      }
+    } catch (error) {
+      const isCancelled = error instanceof Error && error.message === 'Login cancelled';
+      setNotice({
+        type: isCancelled ? 'info' : 'error',
+        message: isCancelled
+          ? t('cloudData.loginCancelled')
+          : error instanceof Error
+            ? error.message
+            : t('cloudData.loginFailed'),
+      });
+    } finally {
+      setLoginBusy(false);
+    }
+  }, [loginBusy, setDesktopAuthStatus, t]);
+
+  const handleSwitchToAccountAccess = useCallback(async () => {
+    if (!window.electronAPI?.config || switchingToAccount) return;
+
+    setSwitchingToAccount(true);
+    setNotice(null);
+    try {
+      const result = await window.electronAPI.config.save({
+        personalAnalysis: EMPTY_PERSONAL_ANALYSIS_CONFIG,
+      });
+      setAppConfig(result.config);
+      setNotice({
+        type: 'success',
+        message: t('cloudData.switchedToAccountMode'),
+      });
+    } catch (error) {
+      setNotice({
+        type: 'error',
+        message: error instanceof Error ? error.message : t('cloudData.switchToAccountFailed'),
+      });
+    } finally {
+      setSwitchingToAccount(false);
+    }
+  }, [setAppConfig, switchingToAccount, t]);
+
   const loadTables = useCallback(
-    async (
-      target: SelectedProject,
-      connection: Pick<PersonalAnalysisConfig, 'apiOrigin' | 'apiKey'> = connectionPayload
-    ) => {
+    async (target: SelectedProject, connection: CloudConnection = connectionPayload) => {
       if (!window.electronAPI?.data) return;
       const requestId = ++tableRequestSeq.current;
       setLoadingTables(true);
@@ -183,11 +284,11 @@ export function CloudDataView() {
     async (
       options: {
         announceSuccess?: boolean;
-        connection?: Pick<PersonalAnalysisConfig, 'apiOrigin' | 'apiKey'>;
+        connection?: CloudConnection;
       } = {}
     ) => {
       const connection = options.connection ?? connectionPayload;
-      if (!window.electronAPI?.data || !connection.apiOrigin || !connection.apiKey) return;
+      if (!window.electronAPI?.data || !connection.apiOrigin) return;
       const requestId = ++catalogRequestSeq.current;
       setLoadingCatalog(true);
       setNotice(null);
@@ -274,8 +375,9 @@ export function CloudDataView() {
     importRequestSeq.current += 1;
     setPreview(null);
     setImportingTableId(null);
+    setSelectedTableIds([]);
 
-    if (connectionPayload.apiOrigin && connectionPayload.apiKey) {
+    if (connectionPayload.apiOrigin) {
       setSpaces([]);
       setProjectsBySpace({});
       setSelectedProject(null);
@@ -299,6 +401,7 @@ export function CloudDataView() {
     (target: SelectedProject) => {
       setSelectedProject(target);
       setSearchQuery('');
+      setSelectedTableIds([]);
       void loadTables(target);
     },
     [loadTables]
@@ -368,6 +471,89 @@ export function CloudDataView() {
     [connectionPayload, selectedProject, t]
   );
 
+  const toggleTableSelection = useCallback((tableId: string) => {
+    setSelectedTableIds((current) =>
+      current.includes(tableId) ? current.filter((id) => id !== tableId) : [...current, tableId]
+    );
+  }, []);
+
+  const toggleAllFilteredTables = useCallback(() => {
+    setSelectedTableIds((current) => {
+      const visibleIds = filteredTables.map((table) => table.tableId);
+      if (visibleIds.length === 0) return current;
+      const visibleIdSet = new Set(visibleIds);
+      const allVisibleSelected = visibleIds.every((id) => current.includes(id));
+      if (allVisibleSelected) {
+        return current.filter((id) => !visibleIdSet.has(id));
+      }
+      return Array.from(new Set([...current, ...visibleIds]));
+    });
+  }, [filteredTables]);
+
+  const addSelectedTablesToChat = useCallback(async () => {
+    if (!window.electronAPI?.data || !selectedProject || selectedTables.length === 0) return;
+
+    setAddingToChat(true);
+    setNotice(null);
+    try {
+      const attachments = await Promise.all(
+        selectedTables.map(async (table): Promise<CloudTableChatAttachment> => {
+          let sampleRows: Array<Record<string, unknown>> = [];
+          let columns = table.columns ?? [];
+          try {
+            const result = await window.electronAPI.data.previewCloudTable({
+              ...connectionPayload,
+              tableId: table.tableId,
+              limit: 5,
+              offset: 0,
+            });
+            sampleRows = result.preview.rows;
+            columns = result.preview.columns.length ? result.preview.columns : columns;
+          } catch {
+            // The table reference is still useful even when preview sampling fails.
+          }
+
+          return {
+            id: `${table.projectId || selectedProject.projectId}:${table.tableId}`,
+            tableId: table.tableId,
+            tableName: table.tableName,
+            spaceId: table.spaceId || selectedProject.spaceId,
+            spaceName: selectedSpace?.spaceName,
+            projectId: table.projectId || selectedProject.projectId,
+            projectName: selectedProjectRecord?.projectName,
+            datasourceId: table.datasourceId,
+            folderId: table.folderId,
+            rowCount: table.rowCount,
+            columns,
+            sampleRows,
+            accessModeLabel,
+            connectionLabel,
+          };
+        })
+      );
+
+      addCloudTablesToChat(attachments);
+      setSelectedTableIds([]);
+    } catch (error) {
+      setNotice({
+        type: 'error',
+        message: getPersonalAnalysisErrorMessage(error, t),
+      });
+    } finally {
+      setAddingToChat(false);
+    }
+  }, [
+    accessModeLabel,
+    addCloudTablesToChat,
+    connectionLabel,
+    connectionPayload,
+    selectedProject,
+    selectedProjectRecord?.projectName,
+    selectedSpace?.spaceName,
+    selectedTables,
+    t,
+  ]);
+
   const closePreview = useCallback(() => {
     previewRequestSeq.current += 1;
     setPreview(null);
@@ -375,42 +561,46 @@ export function CloudDataView() {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-transparent">
-      <div className="flex h-12 w-full flex-shrink-0 items-center justify-between gap-3 border-b border-border-subtle bg-background/28 px-5 backdrop-blur-xl">
-        <div className="flex min-w-0 items-center gap-2">
-          <Cloud className="h-4 w-4 flex-shrink-0 text-accent-text" />
-          <h2 className="truncate text-[16px] font-semibold text-text-primary">
-            {t('cloudData.title')}
-          </h2>
-          {isConnected && (
+      {isConnected && (
+        <div className="flex h-10 w-full flex-shrink-0 items-center justify-between gap-3 border-b border-border-subtle bg-background/18 px-5 backdrop-blur-xl">
+          <div className="flex min-w-0 items-center gap-2">
+            <Cloud className="h-3.5 w-3.5 flex-shrink-0 text-accent-text" />
             <span className="truncate text-[12px] font-medium text-text-muted">
-              {t('cloudData.connectedTo', { host: connectionLabel })}
+              {t('cloudData.connectedWithMode', { mode: accessModeLabel, host: connectionLabel })}
             </span>
-          )}
-        </div>
-        <div className="flex flex-shrink-0 items-center gap-2">
-          {isConnected && (
-            <>
+          </div>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            {hasStoredConnection && desktopAuthStatus.authenticated && (
               <button
                 type="button"
-                onClick={() => void loadCatalog()}
-                disabled={loadingCatalog}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/60 px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => void handleSwitchToAccountAccess()}
+                disabled={switchingToAccount}
+                className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted bg-background/60 px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-wait disabled:opacity-60"
               >
-                <RefreshCw className={`h-3.5 w-3.5 ${loadingCatalog ? 'animate-spin' : ''}`} />
-                {t('common.refresh')}
+                {switchingToAccount && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {t('cloudData.switchToAccountMode')}
               </button>
-              <button
-                type="button"
-                onClick={openSettings}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/60 px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
-              >
-                <Settings className="h-3.5 w-3.5" />
-                {t('cloudData.manageConnection')}
-              </button>
-            </>
-          )}
+            )}
+            <button
+              type="button"
+              onClick={() => void loadCatalog()}
+              disabled={loadingCatalog}
+              className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted bg-background/60 px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${loadingCatalog ? 'animate-spin' : ''}`} />
+              {t('common.refresh')}
+            </button>
+            <button
+              type="button"
+              onClick={openSettings}
+              className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted bg-background/60 px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+            >
+              <Settings className="h-3.5 w-3.5" />
+              {t('cloudData.manageConnection')}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {notice && (
         <div className="mx-5 mt-3 flex flex-shrink-0 items-center justify-between gap-3 rounded-lg border border-border-muted bg-background/72 px-3 py-2 text-[13px] shadow-soft">
@@ -454,51 +644,50 @@ export function CloudDataView() {
       )}
 
       {!isConnected ? (
-        <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto px-6 py-8">
-          <div className="flex w-full max-w-[760px] flex-col items-center text-center">
-            <div className="flex items-center justify-center gap-4">
-              <div className="flex h-[72px] w-[72px] items-center justify-center rounded-2xl bg-accent/10 shadow-soft ring-1 ring-accent/10">
-                <img src={appLogoSrc} alt="" className="h-11 w-11 object-contain" />
+        <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto px-6 py-5">
+          <div className="flex w-full max-w-[680px] flex-col items-center text-center">
+            <div className="flex items-center justify-center gap-3">
+              <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-accent/10 text-accent-text shadow-soft ring-1 ring-accent/10">
+                <img src={appLogoSrc} alt="" className="h-9 w-9 object-contain" />
               </div>
               <div className="flex items-center gap-1 text-accent/45">
-                <ArrowRight className="h-4 w-4" />
-                <ArrowRight className="h-4 w-4" />
-                <ArrowRight className="h-4 w-4" />
+                <ArrowRight className="h-3.5 w-3.5" />
+                <ArrowRight className="h-3.5 w-3.5" />
               </div>
-              <div className="flex h-[72px] w-[72px] items-center justify-center rounded-2xl bg-accent/10 text-accent-text shadow-soft ring-1 ring-accent/10">
-                <Cloud className="h-10 w-10" />
+              <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-accent/10 text-accent-text shadow-soft ring-1 ring-accent/10">
+                <Cloud className="h-8 w-8" />
               </div>
             </div>
 
-            <h3 className="mt-8 text-[26px] font-semibold leading-tight text-text-primary">
+            <h3 className="mt-6 text-[21px] font-semibold leading-tight text-text-primary">
               {t('cloudData.connectTitle')}
             </h3>
-            <p className="mt-3 max-w-[620px] text-[15px] leading-7 text-text-secondary">
+            <p className="mt-2 max-w-[560px] text-[13px] leading-6 text-text-secondary">
               {t('cloudData.connectDescription')}
             </p>
 
-            <div className="mt-8 w-full max-w-[620px] rounded-xl bg-surface/55 px-7 py-6 text-left shadow-soft ring-1 ring-border-subtle">
-              <div className="text-[14px] font-medium text-text-secondary">
+            <div className="mt-6 w-full max-w-[560px] rounded-xl bg-surface/55 px-5 py-4 text-left shadow-soft ring-1 ring-border-subtle">
+              <div className="text-[13px] font-medium text-text-secondary">
                 {t('cloudData.availableAfterConnect')}
               </div>
-              <div className="mt-5 grid gap-5 sm:grid-cols-2">
+              <div className="mt-4 grid gap-x-5 gap-y-4 sm:grid-cols-2">
                 <CloudDataPermissionItem
-                  icon={<Eye className="h-5 w-5" />}
+                  icon={<LogIn className="h-4 w-4" />}
                   title={t('cloudData.permissionReadTables')}
                   description={t('cloudData.permissionReadTablesDesc')}
                 />
                 <CloudDataPermissionItem
-                  icon={<Database className="h-5 w-5" />}
+                  icon={<Database className="h-4 w-4" />}
                   title={t('cloudData.permissionPreviewData')}
                   description={t('cloudData.permissionPreviewDataDesc')}
                 />
                 <CloudDataPermissionItem
-                  icon={<FolderKanban className="h-5 w-5" />}
+                  icon={<FolderKanban className="h-4 w-4" />}
                   title={t('cloudData.permissionImportData')}
                   description={t('cloudData.permissionImportDataDesc')}
                 />
                 <CloudDataPermissionItem
-                  icon={<UploadCloud className="h-5 w-5" />}
+                  icon={<UploadCloud className="h-4 w-4" />}
                   title={t('cloudData.permissionUploadData')}
                   description={t('cloudData.permissionUploadDataDesc')}
                 />
@@ -507,14 +696,23 @@ export function CloudDataView() {
 
             <button
               type="button"
-              onClick={openSettings}
-              className="mt-8 inline-flex h-12 w-full max-w-[620px] items-center justify-center rounded-xl bg-accent px-5 text-[15px] font-semibold text-white shadow-soft transition-colors hover:bg-accent-hover"
+              onClick={() => void handleLogin()}
+              disabled={loginBusy}
+              className="mt-6 inline-flex h-10 w-full max-w-[360px] items-center justify-center gap-2 rounded-lg bg-accent px-5 text-[14px] font-semibold text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-wait disabled:opacity-70"
             >
+              {loginBusy && <Loader2 className="h-4 w-4 animate-spin" />}
               {t('cloudData.startConnect')}
             </button>
+            <button
+              type="button"
+              onClick={openSettings}
+              className="mt-3 text-[12px] font-medium text-text-muted transition-colors hover:text-accent-text hover:underline"
+            >
+              {t('cloudData.apiKeyFallback')}
+            </button>
 
-            <div className="mt-6 flex max-w-[620px] items-center justify-center gap-2 text-[13px] text-text-muted">
-              <ShieldCheck className="h-4 w-4 flex-shrink-0 text-accent-text" />
+            <div className="mt-4 flex max-w-[560px] items-center justify-center gap-2 text-[12px] text-text-muted">
+              <ShieldCheck className="h-3.5 w-3.5 flex-shrink-0 text-accent-text" />
               <span>{t('cloudData.privacyHint')}</span>
             </div>
           </div>
@@ -629,11 +827,21 @@ export function CloudDataView() {
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-auto">
+            <div className="relative min-h-0 flex-1 overflow-auto">
               <table className="w-full min-w-[640px] table-fixed border-collapse text-left">
                 <thead className="sticky top-0 z-10 bg-[var(--data-grid-header-surface)] text-[12px] font-medium text-text-secondary">
                   <tr className="h-10 border-b border-border-subtle">
-                    <th className="w-[42%] px-3">{t('cloudData.tableName')}</th>
+                    <th className="w-[6%] px-3">
+                      <input
+                        type="checkbox"
+                        checked={allFilteredSelected}
+                        disabled={filteredTables.length === 0}
+                        onChange={toggleAllFilteredTables}
+                        className="h-3.5 w-3.5 rounded border-border-muted accent-accent disabled:opacity-40"
+                        aria-label={t('cloudData.selectAllTables')}
+                      />
+                    </th>
+                    <th className="w-[36%] px-3">{t('cloudData.tableName')}</th>
                     <th className="w-[14%] px-3">{t('cloudData.rows')}</th>
                     <th className="w-[14%] px-3">{t('cloudData.columns')}</th>
                     <th className="w-[30%] px-3 text-right">{t('cloudData.actions')}</th>
@@ -642,14 +850,14 @@ export function CloudDataView() {
                 <tbody className="divide-y divide-border-subtle text-[13px]">
                   {loadingTables ? (
                     <tr>
-                      <td colSpan={4} className="h-28 px-3 text-center text-text-muted">
+                      <td colSpan={5} className="h-28 px-3 text-center text-text-muted">
                         <Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />
                         {t('cloudData.loadingTables')}
                       </td>
                     </tr>
                   ) : filteredTables.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="h-28 px-3 text-center text-text-muted">
+                      <td colSpan={5} className="h-28 px-3 text-center text-text-muted">
                         <div>{t('cloudData.noTables')}</div>
                         {selectedProject && (
                           <button
@@ -667,8 +875,22 @@ export function CloudDataView() {
                     filteredTables.map((table) => (
                       <tr
                         key={table.tableId}
-                        className="h-[52px] transition-colors hover:bg-surface-hover/60"
+                        className={`h-[52px] transition-colors ${
+                          selectedTableIdSet.has(table.tableId)
+                            ? 'bg-accent/10 ring-1 ring-inset ring-accent/15'
+                            : 'hover:bg-surface-hover/60'
+                        }`}
                       >
+                        <td className="px-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedTableIdSet.has(table.tableId)}
+                            onChange={() => toggleTableSelection(table.tableId)}
+                            onClick={(event) => event.stopPropagation()}
+                            className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
+                            aria-label={table.tableName}
+                          />
+                        </td>
                         <td className="px-3">
                           <div className="flex min-w-0 items-center gap-2">
                             <Table2 className="h-4 w-4 flex-shrink-0 text-accent-text" />
@@ -720,6 +942,29 @@ export function CloudDataView() {
                   )}
                 </tbody>
               </table>
+
+              {selectedTables.length > 0 && (
+                <div className="pointer-events-none sticky bottom-4 z-20 flex justify-center px-4">
+                  <div className="pointer-events-auto flex items-center gap-3 rounded-xl border border-border-subtle bg-background/95 px-4 py-3 shadow-elevated backdrop-blur-xl">
+                    <span className="whitespace-nowrap text-[13px] font-medium text-text-secondary">
+                      {t('cloudData.selectedTableCount', { count: selectedTables.length })}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void addSelectedTablesToChat()}
+                      disabled={addingToChat}
+                      className="inline-flex h-9 items-center gap-2 rounded-lg bg-accent px-4 text-[13px] font-semibold text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-wait disabled:opacity-70"
+                    >
+                      {addingToChat ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <MessageSquarePlus className="h-4 w-4" />
+                      )}
+                      {t('cloudData.addToChat')}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
         </div>

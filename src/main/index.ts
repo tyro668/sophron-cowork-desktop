@@ -193,8 +193,8 @@ let automationService: AutomationService | null = null;
 let automationScheduler: AutomationScheduler | null = null;
 let dataTaskStore: DataTaskStore | null = null;
 let dataCommandService: DataCommandService | null = null;
-const desktopAuthService = new DesktopAuthService(
-  () => resolveDesktopAuthOrigin(configStore.get('personalAnalysis')?.apiOrigin)
+const desktopAuthService = new DesktopAuthService(() =>
+  resolveDesktopAuthOrigin(configStore.get('personalAnalysis')?.apiOrigin)
 );
 
 function withSophronRuntimeAuth<T extends AppConfig | AgentRuntimeConfig>(config: T): T {
@@ -1129,7 +1129,10 @@ app
         resolveAppConfigForAuth(configStore.getAll())
       ),
       () => configStore.get('personalAnalysis'),
-      { onTaskCompleted: notifyDataTaskCompleted }
+      {
+        onTaskCompleted: notifyDataTaskCompleted,
+        getPersonalAnalysisConnection: () => desktopAuthService.getPersonalAnalysisConnection(),
+      }
     );
     const dataToolService = new DataToolService(dataCommandService);
     const extensionManager = new AgentRuntimeExtensionManager([
@@ -1926,7 +1929,10 @@ function requireDataCommandService(): DataCommandService {
         resolveAppConfigForAuth(configStore.getAll())
       ),
       () => configStore.get('personalAnalysis'),
-      { onTaskCompleted: notifyDataTaskCompleted }
+      {
+        onTaskCompleted: notifyDataTaskCompleted,
+        getPersonalAnalysisConnection: () => desktopAuthService.getPersonalAnalysisConnection(),
+      }
     );
   }
   return dataCommandService;
