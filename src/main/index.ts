@@ -1919,362 +1919,6 @@ registerDataIpcHandlers({
   logError,
 });
 
-ipcMain.handle('data.getTask', async (_event, id: string) => {
-  try {
-    return await requireDataTaskStore().getTaskRecord(id);
-  } catch (error) {
-    logError('[Data] Error getting task:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('data.createTask', async (_event, payload: DataCreateTaskInput) => {
-  try {
-    return await requireDataTaskStore().createTask(payload);
-  } catch (error) {
-    logError('[Data] Error creating task:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('data.updateTask', async (_event, payload: DataUpdateTaskInput) => {
-  try {
-    return await requireDataTaskStore().updateTask(payload);
-  } catch (error) {
-    logError('[Data] Error updating task:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('data.runTask', async (_event, id: string, payload?: DataRunTaskInput) => {
-  try {
-    const task = await requireDataTaskStore().runTask(id, payload ?? {});
-    notifyDataTaskCompleted(task);
-    return task;
-  } catch (error) {
-    logError('[Data] Error running task:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('data.getTaskWorkflow', async (_event, id: string) => {
-  try {
-    return await requireDataTaskStore().getTaskWorkflow(id);
-  } catch (error) {
-    logError('[Data] Error getting task workflow:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle(
-  'data.saveTaskWorkflow',
-  async (_event, id: string, payload: DataWorkflowSaveInput) => {
-    try {
-      return await requireDataTaskStore().saveTaskWorkflow(id, payload);
-    } catch (error) {
-      logError('[Data] Error saving task workflow:', error);
-      throw error;
-    }
-  }
-);
-
-ipcMain.handle('data.importDataset', async (_event, payload: DataImportDatasetInput) => {
-  try {
-    return await requireDataTaskStore().importDataset(payload);
-  } catch (error) {
-    logError('[Data] Error importing dataset:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('data.getInputTable', async (_event, id: string) => {
-  try {
-    return await requireDataTaskStore().getInputTableRecord(id);
-  } catch (error) {
-    logError('[Data] Error getting input table:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('data.updateDataset', async (_event, payload: DataUpdateDatasetInput) => {
-  try {
-    return await requireDataTaskStore().updateDataset(payload);
-  } catch (error) {
-    logError('[Data] Error updating dataset:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('data.getOutputTable', async (_event, id: string) => {
-  try {
-    return await requireDataTaskStore().getOutputTableRecord(id);
-  } catch (error) {
-    logError('[Data] Error getting output table:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('data.createOutputTable', async (_event, payload?: DataCreateOutputTableInput) => {
-  try {
-    return await requireDataTaskStore().createOutputTable(payload ?? {});
-  } catch (error) {
-    logError('[Data] Error creating output table:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('data.updateOutputTable', async (_event, payload: DataUpdateOutputTableInput) => {
-  try {
-    return await requireDataTaskStore().updateOutputTable(payload);
-  } catch (error) {
-    logError('[Data] Error updating output table:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('data.previewInputTable', async (_event, payload: DataPreviewInputTableInput) => {
-  try {
-    return await requireDataTaskStore().previewInputTable(payload);
-  } catch (error) {
-    logError('[Data] Error previewing input table:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle(
-  'data.summarizeInputTableSource',
-  async (_event, payload: DataSummarizeInputTableSourceInput) => {
-    try {
-      return await requireDataTaskStore().summarizeInputTableSource(payload);
-    } catch (error) {
-      logError('[Data] Error summarizing input table source:', error);
-      throw error;
-    }
-  }
-);
-
-ipcMain.handle(
-  'data.generateInputTableNormalizerDraft',
-  async (event, payload: DataGenerateInputTableNormalizerDraftInput) => {
-    try {
-      const progressId = payload.progressId?.trim();
-      const modelConfigSetId =
-        typeof payload.modelConfigSetId === 'string' ? payload.modelConfigSetId.trim() : '';
-      const runtimeConfig = modelConfigSetId
-        ? (resolveModelRuntimeConfigForAutomation(modelConfigSetId) ?? undefined)
-        : undefined;
-      return await requireDataCommandService().generateInputTableNormalizerDraft({
-        ...payload,
-        runtimeConfig,
-        onProgress: progressId
-          ? (progress) => {
-              if (typeof progress.text !== 'string' || progress.text.length === 0) return;
-              event.sender.send('data.inputTableNormalizerDraftProgress', {
-                progressId,
-                ...progress,
-              });
-            }
-          : undefined,
-      });
-    } catch (error) {
-      logError('[Data] Error generating input table normalizer draft:', error);
-      throw error;
-    }
-  }
-);
-
-ipcMain.handle(
-  'data.previewInputTableNormalizerVersion',
-  async (_event, payload: DataPreviewInputTableNormalizerVersionInput) => {
-    try {
-      return await requireDataCommandService().previewInputTableNormalizerVersion(payload);
-    } catch (error) {
-      logError('[Data] Error previewing input table normalizer version:', error);
-      throw error;
-    }
-  }
-);
-
-ipcMain.handle(
-  'data.publishInputTableNormalizerVersion',
-  async (_event, payload: DataPublishInputTableNormalizerVersionInput) => {
-    try {
-      return await requireDataCommandService().publishInputTableNormalizerVersion(payload);
-    } catch (error) {
-      logError('[Data] Error publishing input table normalizer version:', error);
-      throw error;
-    }
-  }
-);
-
-ipcMain.handle(
-  'data.deleteInputTableNormalizerVersion',
-  async (_event, payload: DataDeleteInputTableNormalizerVersionInput) => {
-    try {
-      return await requireDataCommandService().deleteInputTableNormalizerVersion(payload);
-    } catch (error) {
-      logError('[Data] Error deleting input table normalizer version:', error);
-      throw error;
-    }
-  }
-);
-
-ipcMain.handle(
-  'data.listInputTableNormalizerVersions',
-  async (_event, payload: DataListInputTableNormalizerVersionsInput) => {
-    try {
-      return await requireDataCommandService().listInputTableNormalizerVersions(payload);
-    } catch (error) {
-      logError('[Data] Error listing input table normalizer versions:', error);
-      throw error;
-    }
-  }
-);
-
-ipcMain.handle('data.previewDataset', async (_event, payload: DataPreviewDatasetInput) => {
-  try {
-    return await requireDataTaskStore().previewDataset(payload);
-  } catch (error) {
-    logError('[Data] Error previewing stored input table:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle(
-  'data.previewWorkflowNode',
-  async (_event, payload: DataPreviewWorkflowNodeInput) => {
-    try {
-      return await requireDataTaskStore().previewWorkflowNode(payload);
-    } catch (error) {
-      logError('[Data] Error previewing workflow node cache:', error);
-      throw error;
-    }
-  }
-);
-
-ipcMain.handle(
-  'data.getWorkflowNodeColumns',
-  async (_event, payload: DataPreviewWorkflowNodeInput) => {
-    try {
-      return await requireDataTaskStore().getWorkflowNodeColumns(payload);
-    } catch (error) {
-      logError('[Data] Error reading workflow node cache columns:', error);
-      throw error;
-    }
-  }
-);
-
-ipcMain.handle('data.deleteTask', async (_event, id: string) => {
-  try {
-    return { success: await requireDataTaskStore().deleteTask(id) };
-  } catch (error) {
-    logError('[Data] Error deleting task:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle(
-  'data.getWorkflowNodeColumnTypes',
-  async (_event, payload: DataPreviewWorkflowNodeInput) => {
-    try {
-      return await requireDataTaskStore().getWorkflowNodeColumnTypes(payload);
-    } catch (error) {
-      logError('[Data] Error reading workflow node column types:', error);
-      throw error;
-    }
-  }
-);
-
-ipcMain.handle(
-  'data.getWorkflowNodeColumnValues',
-  async (_event, payload: DataPreviewWorkflowNodeInput & { column: string }) => {
-    try {
-      return await requireDataTaskStore().getWorkflowNodeColumnValues(payload);
-    } catch (error) {
-      logError('[Data] Error reading workflow node column values:', error);
-      throw error;
-    }
-  }
-);
-
-ipcMain.handle(
-  'data.getWorkflowNodeRowCount',
-  async (_event, payload: DataPreviewWorkflowNodeInput) => {
-    try {
-      return await requireDataTaskStore().getWorkflowNodeRowCount(payload);
-    } catch (error) {
-      logError('[Data] Error reading workflow node row count:', error);
-      throw error;
-    }
-  }
-);
-
-ipcMain.handle('data.deleteDataset', async (_event, id: string) => {
-  try {
-    return { success: await requireDataTaskStore().deleteDataset(id) };
-  } catch (error) {
-    logError('[Data] Error deleting dataset:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('data.listCloudSpaces', async (_event, payload?: ListCloudSpacesInput) => {
-  try {
-    return await requireDataCommandService().listCloudSpaces(payload ?? {});
-  } catch (error) {
-    logError('[Data] Error listing cloud spaces:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('data.listCloudProjects', async (_event, payload: ListCloudProjectsInput) => {
-  try {
-    return await requireDataCommandService().listCloudProjects(payload);
-  } catch (error) {
-    logError('[Data] Error listing cloud projects:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('data.listCloudTables', async (_event, payload: ListCloudTablesInput) => {
-  try {
-    return await requireDataCommandService().listCloudTables(payload);
-  } catch (error) {
-    logError('[Data] Error listing cloud tables:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('data.previewCloudTable', async (_event, payload: PreviewCloudTableInput) => {
-  try {
-    return await requireDataCommandService().previewCloudTable(payload);
-  } catch (error) {
-    logError('[Data] Error previewing cloud table:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('data.importCloudTable', async (_event, payload: ImportCloudTableInput) => {
-  try {
-    return await requireDataCommandService().importCloudTable(payload);
-  } catch (error) {
-    logError('[Data] Error importing cloud table:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle(
-  'data.uploadDataTableToCloud',
-  async (_event, payload: UploadDataTableToCloudInput) => {
-    try {
-      return await requireDataCommandService().uploadDataTableToCloud(payload);
-    } catch (error) {
-      logError('[Data] Error uploading data table to cloud:', error);
-      throw error;
-    }
-  }
-);
-
 // Config IPC handlers
 ipcMain.handle('config.get', () => {
   try {
@@ -3763,6 +3407,72 @@ ipcMain.handle('memory.read', (_event, id: string) => {
     throw new Error('Memory service not initialized');
   }
   return memoryService.read(id);
+});
+
+ipcMain.handle('memory.listCoreEntries', () => {
+  if (!memoryService) {
+    throw new Error('Memory service not initialized');
+  }
+  return memoryService.listCoreEntries();
+});
+
+ipcMain.handle(
+  'memory.updateCoreEntry',
+  (
+    _event,
+    combinedKey: string,
+    updates: {
+      key?: string;
+      value?: string;
+      confidence?: number;
+      status?: 'active' | 'pending' | 'rejected' | 'archived';
+    }
+  ) => {
+    if (!memoryService) {
+      throw new Error('Memory service not initialized');
+    }
+    return memoryService.updateCoreEntry(combinedKey, updates);
+  }
+);
+
+ipcMain.handle('memory.deleteCoreEntry', (_event, combinedKey: string) => {
+  if (!memoryService) {
+    throw new Error('Memory service not initialized');
+  }
+  return memoryService.deleteCoreEntry(combinedKey);
+});
+
+ipcMain.handle('memory.listProjectEntries', (_event, workspaceKey?: string | null) => {
+  if (!memoryService) {
+    throw new Error('Memory service not initialized');
+  }
+  return memoryService.listProjectEntries(workspaceKey);
+});
+
+ipcMain.handle(
+  'memory.updateProjectEntry',
+  (
+    _event,
+    id: string,
+    updates: {
+      key?: string;
+      value?: string;
+      confidence?: number;
+      status?: 'active' | 'pending' | 'rejected' | 'archived';
+    }
+  ) => {
+    if (!memoryService) {
+      throw new Error('Memory service not initialized');
+    }
+    return memoryService.updateProjectEntry(id, updates);
+  }
+);
+
+ipcMain.handle('memory.deleteProjectEntry', (_event, id: string) => {
+  if (!memoryService) {
+    throw new Error('Memory service not initialized');
+  }
+  return memoryService.deleteProjectEntry(id);
 });
 
 ipcMain.handle('memory.rebuildWorkspace', async (_event, cwd: string) => {
