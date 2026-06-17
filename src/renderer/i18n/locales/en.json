@@ -257,6 +257,7 @@
         "previewPageSize": "100 rows/page",
         "sheetName": "Sheet name",
         "headerRow": "Header row",
+        "headerRowDetectHint": "Smart detection scans the first rows of the selected sheet and prefers the row with more non-empty cells, more complete field names, and following rows that look like data records.",
         "smartDetect": "Smart detect",
         "recommended": "(Recommended)",
         "manualSpecify": "Manual",

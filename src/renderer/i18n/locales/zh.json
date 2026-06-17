@@ -257,6 +257,7 @@
         "previewPageSize": "100 行/页",
         "sheetName": "Sheet 名",
         "headerRow": "标题行",
+        "headerRowDetectHint": "智能识别会扫描所选 Sheet 的前几行，优先选择非空单元格较多、字段名更完整且后续行更像数据记录的行作为标题行。",
         "smartDetect": "智能识别",
         "recommended": "（推荐）",
         "manualSpecify": "手动指定",
