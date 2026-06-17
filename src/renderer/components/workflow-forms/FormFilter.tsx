@@ -29,70 +29,98 @@ import {
 
 // ── Operator definitions ──────────────────────────────────────────────
 
-type OpDef = { label: string; value: string };
-type OpGroup = { group: string; items: OpDef[] };
+type OpDef = { labelKey: string; value: string };
+type OpGroup = { groupKey: string; items: OpDef[] };
 
 const ALL_OP_GROUPS: OpGroup[] = [
-  { group: '比较', items: [
-    { label: '等于', value: '=' },
-    { label: '不等于', value: '!=' },
-  ]},
-  { group: '范围', items: [
-    { label: '大于', value: '>' },
-    { label: '小于', value: '<' },
-    { label: '大于等于', value: '>=' },
-    { label: '小于等于', value: '<=' },
-    { label: '介于', value: 'between' },
-  ]},
-  { group: '集合', items: [
-    { label: '属于', value: 'in' },
-    { label: '不属于', value: 'not in' },
-  ]},
+  {
+    groupKey: 'filterGroupCompare',
+    items: [
+      { labelKey: 'filterOpEq', value: '=' },
+      { labelKey: 'filterOpNeq', value: '!=' },
+    ],
+  },
+  {
+    groupKey: 'filterGroupRange',
+    items: [
+      { labelKey: 'filterOpGt', value: '>' },
+      { labelKey: 'filterOpLt', value: '<' },
+      { labelKey: 'filterOpGte', value: '>=' },
+      { labelKey: 'filterOpLte', value: '<=' },
+      { labelKey: 'filterOpBetween', value: 'between' },
+    ],
+  },
+  {
+    groupKey: 'filterGroupSet',
+    items: [
+      { labelKey: 'filterOpIn', value: 'in' },
+      { labelKey: 'filterOpNotIn', value: 'not in' },
+    ],
+  },
 ];
 
 const STRING_OP_GROUPS: OpGroup[] = [
-  { group: '比较', items: [
-    { label: '等于', value: '=' },
-    { label: '不等于', value: '!=' },
-  ]},
-  { group: '匹配', items: [
-    { label: '包含', value: 'like' },
-    { label: '不包含', value: 'not like' },
-    { label: '匹配', value: 'matches' },
-    { label: '不匹配', value: 'not matches' },
-  ]},
-  { group: '边界', items: [
-    { label: '开头是', value: 'begin' },
-    { label: '结尾是', value: 'end' },
-  ]},
-  { group: '集合', items: [
-    { label: '属于', value: 'in' },
-    { label: '不属于', value: 'not in' },
-  ]},
+  {
+    groupKey: 'filterGroupCompare',
+    items: [
+      { labelKey: 'filterOpEq', value: '=' },
+      { labelKey: 'filterOpNeq', value: '!=' },
+    ],
+  },
+  {
+    groupKey: 'filterGroupMatch',
+    items: [
+      { labelKey: 'filterOpLike', value: 'like' },
+      { labelKey: 'filterOpNotLike', value: 'not like' },
+      { labelKey: 'filterOpMatches', value: 'matches' },
+      { labelKey: 'filterOpNotMatches', value: 'not matches' },
+    ],
+  },
+  {
+    groupKey: 'filterGroupBoundary',
+    items: [
+      { labelKey: 'filterOpBegin', value: 'begin' },
+      { labelKey: 'filterOpEnd', value: 'end' },
+    ],
+  },
+  {
+    groupKey: 'filterGroupSet',
+    items: [
+      { labelKey: 'filterOpIn', value: 'in' },
+      { labelKey: 'filterOpNotIn', value: 'not in' },
+    ],
+  },
 ];
 
 const BOOLEAN_OP_GROUPS: OpGroup[] = [
-  { group: '比较', items: [
-    { label: '等于', value: '=' },
-  ]},
+  { groupKey: 'filterGroupCompare', items: [{ labelKey: 'filterOpEq', value: '=' }] },
 ];
 
 const TEMPORAL_OP_GROUPS: OpGroup[] = [
-  { group: '比较', items: [
-    { label: '等于', value: '=' },
-    { label: '不等于', value: '!=' },
-  ]},
-  { group: '范围', items: [
-    { label: '晚于', value: '>' },
-    { label: '早于', value: '<' },
-    { label: '不晚于', value: '<=' },
-    { label: '不早于', value: '>=' },
-    { label: '介于', value: 'between' },
-  ]},
-  { group: '集合', items: [
-    { label: '属于', value: 'in' },
-    { label: '不属于', value: 'not in' },
-  ]},
+  {
+    groupKey: 'filterGroupCompare',
+    items: [
+      { labelKey: 'filterOpEq', value: '=' },
+      { labelKey: 'filterOpNeq', value: '!=' },
+    ],
+  },
+  {
+    groupKey: 'filterGroupRange',
+    items: [
+      { labelKey: 'filterDateGt', value: '>' },
+      { labelKey: 'filterDateLt', value: '<' },
+      { labelKey: 'filterDateLte', value: '<=' },
+      { labelKey: 'filterDateGte', value: '>=' },
+      { labelKey: 'filterOpBetween', value: 'between' },
+    ],
+  },
+  {
+    groupKey: 'filterGroupSet',
+    items: [
+      { labelKey: 'filterOpIn', value: 'in' },
+      { labelKey: 'filterOpNotIn', value: 'not in' },
+    ],
+  },
 ];
 
 function operatorsForType(colType: string | undefined): OpGroup[] {
@@ -341,6 +369,7 @@ function MultiValueInput({
   disabled,
   onChange,
   placeholder,
+  tr,
 }: {
   value: string;
   suggestions: string[];
@@ -348,6 +377,7 @@ function MultiValueInput({
   disabled?: boolean;
   onChange: (v: string) => void;
   placeholder: string;
+  tr: (key: string, fallback: string) => string;
 }) {
   const [open, setOpen] = useState(false);
   const [inputText, setInputText] = useState('');
@@ -489,11 +519,13 @@ function MultiValueInput({
                 addValue(inputText);
               }}
             >
-              添加 "{inputText}"
+              {tr('filterAddValue', '添加')} "{inputText}"
             </button>
           )}
           {filtered.length === 0 && !inputText && (
-            <div className="px-3 py-3 text-center text-[12px] text-text-muted">暂无建议值</div>
+            <div className="px-3 py-3 text-center text-[12px] text-text-muted">
+              {tr('noSuggestions', '暂无建议值')}
+            </div>
           )}
         </div>
       )}
@@ -508,11 +540,13 @@ function OperatorSelect({
   groups,
   disabled,
   onChange,
+  tr,
 }: {
   value: string;
   groups: OpGroup[];
   disabled?: boolean;
   onChange: (v: string) => void;
+  tr: (key: string, fallback: string) => string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -520,11 +554,11 @@ function OperatorSelect({
   const selectedLabel = useMemo(() => {
     for (const g of groups) {
       for (const o of g.items) {
-        if (o.value === value) return o.label || o.value;
+        if (o.value === value) return tr(o.labelKey, o.value);
       }
     }
     return value;
-  }, [value, groups]);
+  }, [value, groups, tr]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -543,13 +577,15 @@ function OperatorSelect({
         className="flex h-8 w-[100px] items-center rounded-md border border-border-muted bg-background/42 text-[12px] text-text-secondary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-40"
       >
         <span className="flex-1 text-center">{selectedLabel}</span>
-        <ChevronDown className={`mr-1 h-3.5 w-3.5 flex-shrink-0 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown
+          className={`mr-1 h-3.5 w-3.5 flex-shrink-0 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`}
+        />
       </button>
 
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 w-[100px] max-h-60 overflow-y-auto rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl">
           {groups.map((g, gi) => (
-            <div key={g.group}>
+            <div key={g.groupKey}>
               {gi > 0 && <div className="mx-3 my-0.5 border-t border-border-muted" />}
               {g.items.map((o) => (
                 <button
@@ -565,7 +601,7 @@ function OperatorSelect({
                     setOpen(false);
                   }}
                 >
-                  {o.label || o.value}
+                  {tr(o.labelKey, o.value)}
                 </button>
               ))}
             </div>
@@ -640,6 +676,7 @@ function ConditionLeafRow({
           groups={opGroups}
           disabled={!fieldSelected}
           onChange={(v) => ctx.updateLeaf(leaf.id, { op: v })}
+          tr={ctx.tr}
         />
 
         {/* Value(s) */}
@@ -651,6 +688,7 @@ function ConditionLeafRow({
             onChange={(v) => ctx.updateLeaf(leaf.id, { val1: v })}
             placeholder={ctx.tr('filterValuesPlaceholder', '输入值后按 Enter 添加')}
             disabled={!fieldSelected}
+            tr={ctx.tr}
           />
         ) : (
           <ValueInput
@@ -704,7 +742,11 @@ function ConditionLeafRow({
               ? 'text-text-muted/20 cursor-not-allowed'
               : 'text-text-muted/50 hover:text-accent hover:bg-accent/10'
           }`}
-          title={depth >= MAX_NESTING_DEPTH ? '已达最大嵌套深度' : ctx.tr('filterAddAndGroup', '增加条件并建组')}
+          title={
+            depth >= MAX_NESTING_DEPTH
+              ? ctx.tr('filterMaxDepth', '已达最大嵌套深度')
+              : ctx.tr('filterAddAndGroup', '增加条件并建组')
+          }
         >
           <Layers className="h-3.5 w-3.5" />
         </button>
@@ -735,7 +777,10 @@ function BranchGroupRenderer({
   root: FilterConditionBranch;
   depth: number;
   ctx: LeafRowContext & {
-    updateBranch: (branchId: string, updater: (b: FilterConditionBranch) => FilterConditionBranch) => void;
+    updateBranch: (
+      branchId: string,
+      updater: (b: FilterConditionBranch) => FilterConditionBranch
+    ) => void;
     toggleBranchConnective: (branchId: string) => void;
   };
 }) {
@@ -745,23 +790,10 @@ function BranchGroupRenderer({
   const renderItem = (item: FilterConditionNode, i: number) => {
     if (isLeaf(item)) {
       return (
-        <ConditionLeafRow
-          leaf={item}
-          branchId={branch.id}
-          index={i}
-          depth={depth}
-          ctx={ctx}
-        />
+        <ConditionLeafRow leaf={item} branchId={branch.id} index={i} depth={depth} ctx={ctx} />
       );
     }
-    return (
-      <BranchGroupRenderer
-        branch={item}
-        root={root}
-        depth={depth + 1}
-        ctx={ctx}
-      />
-    );
+    return <BranchGroupRenderer branch={item} root={root} depth={depth + 1} ctx={ctx} />;
   };
 
   // Empty state
@@ -777,7 +809,13 @@ function BranchGroupRenderer({
 
   // Single item: no bracket, just render directly
   if (!showBracket) {
-    return <div>{branch.items.map((item, i) => <div key={item.id}>{renderItem(item, i)}</div>)}</div>;
+    return (
+      <div>
+        {branch.items.map((item, i) => (
+          <div key={item.id}>{renderItem(item, i)}</div>
+        ))}
+      </div>
+    );
   }
 
   // Multiple items: left-side bracket layout
@@ -792,7 +830,10 @@ function BranchGroupRenderer({
           className="rounded border border-border-muted/60 bg-background/50 px-2 py-0.5 text-[12px] text-center text-accent hover:bg-accent/10 hover:border-accent/30 transition-colors"
           title={ctx.tr('filterToggleAndOr', '点击切换与 / 或')}
         >
-          {branch.connective === 'and' ? '与' : '或'}
+          {ctx.tr(
+            branch.connective === 'and' ? 'filterConnectiveAnd' : 'filterConnectiveOr',
+            branch.connective === 'and' ? '与' : '或'
+          )}
         </button>
       </div>
 
@@ -820,7 +861,9 @@ function BranchGroupRenderer({
             <div key={item.id}>
               <div className="relative">
                 {(isFirst || isLast) && (
-                  <span className={`absolute -left-[33px] ${horzClass} block w-[33px] border-t border-accent/35`} />
+                  <span
+                    className={`absolute -left-[33px] ${horzClass} block w-[33px] border-t border-accent/35`}
+                  />
                 )}
                 <div className="py-0.5">{renderItem(item, i)}</div>
               </div>
@@ -860,10 +903,14 @@ export default function FormFilter({
     [onNodeChange]
   );
 
-  // Parse condition from config into tree
+  // Parse condition from config into tree (ensure at least one empty row)
   const [root, setRoot] = useState<FilterConditionBranch>(() => {
     resetNodeIdCounter();
-    return parseConditionTree(node.config.condition as string | undefined);
+    const tree = parseConditionTree(node.config.condition as string | undefined);
+    if (tree.items.length === 0) {
+      tree.items.push(createEmptyLeaf());
+    }
+    return tree;
   });
 
   const localUpdateRef = useRef(false);
@@ -880,6 +927,9 @@ export default function FormFilter({
     // Re-parse from config
     resetNodeIdCounter();
     const reparsed = parseConditionTree(node.config.condition as string | undefined);
+    if (reparsed.items.length === 0) {
+      reparsed.items.push(createEmptyLeaf());
+    }
     setRoot(reparsed);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node.config.condition]);
@@ -978,13 +1028,14 @@ export default function FormFilter({
   const addAfterAndGroup = useCallback(
     (branchId: string, leafId: string, afterIndex: number) => {
       setRoot((prev) => {
-        let next = updateBranchInTree(prev, branchId, (b) => addLeafToBranch(b, afterIndex));
-        const newLeafId = findNewLeafId(next, branchId, afterIndex);
-        if (newLeafId) {
-          next = updateBranchInTree(next, branchId, (b) =>
-            wrapItemsInGroup(b, [leafId, newLeafId], 'and') ?? b
-          );
-        }
+        const next = updateBranchInTree(prev, branchId, (b) => {
+          const withNewLeaf = addLeafToBranch(b, afterIndex);
+          const newLeafId = withNewLeaf.items[afterIndex + 1]?.id;
+          if (newLeafId) {
+            return wrapItemsInGroup(withNewLeaf, [leafId, newLeafId], 'and') ?? withNewLeaf;
+          }
+          return withNewLeaf;
+        });
         localUpdateRef.current = true;
         updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
         return next;
@@ -1031,7 +1082,18 @@ export default function FormFilter({
       addAndGroup: addAfterAndGroup,
       tr,
     }),
-    [columnTypes, columnValues, loadingValues, fieldCompletions, fetchColumnValues, updateLeaf, removeNode, addAfter, addAfterAndGroup, tr]
+    [
+      columnTypes,
+      columnValues,
+      loadingValues,
+      fieldCompletions,
+      fetchColumnValues,
+      updateLeaf,
+      removeNode,
+      addAfter,
+      addAfterAndGroup,
+      tr,
+    ]
   );
 
   const branchCtx = useMemo(
@@ -1064,13 +1126,7 @@ export default function FormFilter({
         </button>
 
         {/* Condition tree */}
-        <BranchGroupRenderer
-          branch={root}
-          root={root}
-          depth={0}
-          ctx={branchCtx}
-        />
-
+        <BranchGroupRenderer branch={root} root={root} depth={0} ctx={branchCtx} />
       </GlassFormSection>
     </div>
   );
@@ -1112,26 +1168,4 @@ function updateBranchConnectiveInTree(
     return item;
   });
   return { ...branch, items };
-}
-
-/** Find the ID of the newly inserted leaf at afterIndex+1 in the given branch. */
-function findNewLeafId(
-  root: FilterConditionBranch,
-  branchId: string,
-  afterIndex: number
-): string | null {
-  function walk(branch: FilterConditionBranch): string | null {
-    if (branch.id === branchId) {
-      const item = branch.items[afterIndex + 1];
-      return item && isLeaf(item) ? item.id : null;
-    }
-    for (const item of branch.items) {
-      if (isBranch(item)) {
-        const found = walk(item);
-        if (found) return found;
-      }
-    }
-    return null;
-  }
-  return walk(root);
 }

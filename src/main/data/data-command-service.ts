@@ -1,7 +1,4 @@
 import type { DataTaskStore } from './data-task-store';
-import { mkdir, writeFile } from 'fs/promises';
-import { tmpdir } from 'os';
-import { extname, join } from 'path';
 import {
   compilePrepWorkflowToFlow,
   exportPrepWorkflowDsl,
@@ -11,10 +8,7 @@ import {
 } from '../../shared/prep-dsl';
 import type {
   DataCleaningTask,
-  DataInputTableConfig,
   DataInputTablePreview,
-  DataInputTableProcessingConfig,
-  DataInputTableSourceKind,
   DataRunTaskInput,
   DataTaskWorkflow,
   DataWorkflowEdge,
@@ -80,20 +74,14 @@ import {
   type WorkflowResult,
   type WorkflowSaveShape,
 } from './data-command-types';
-import {
-  createNormalizerDependencyLockHash,
-  createNormalizerFileTreeHash,
-} from '../../shared/input-table-normalizer/templates';
 import type { InputTableNormalizerProjectGenerator } from './input-table-normalizer-generator';
 import { configStore } from '../config/config-store';
-import {
-  createPersonalAnalysisClient,
-  type PersonalAnalysisClient,
-} from './personal-analysis-client';
+import { CloudAnalysisCommandService } from './cloud-analysis-command-service';
+import { InputTablesCommandService } from './input-tables-command-service';
+import { OutputTablesCommandService } from './output-tables-command-service';
 import type {
-  StoredPersonalAnalysisConfig,
   PersonalAnalysisConnectionInput,
-  PersonalAnalysisDatasource,
+  StoredPersonalAnalysisConfig,
 } from '../../shared/personal-analysis-types';
 
 const DEFAULT_LIST_LIMIT = 20;
@@ -113,321 +101,65 @@ interface DataCommandServiceOptions {
 }
 
 export class DataCommandService {
+  private readonly inputTables: InputTablesCommandService;
+  private readonly outputTables: OutputTablesCommandService;
+  private readonly cloudAnalysis: CloudAnalysisCommandService;
+
   constructor(
     private readonly store: DataTaskStore,
-    private readonly normalizerProjectGenerator: InputTableNormalizerProjectGenerator,
-    private readonly getPersonalAnalysisConfig: () => StoredPersonalAnalysisConfig = () =>
+    normalizerProjectGenerator: InputTableNormalizerProjectGenerator,
+    getPersonalAnalysisConfig: () => StoredPersonalAnalysisConfig = () =>
       configStore.get('personalAnalysis'),
     private readonly options: DataCommandServiceOptions = {}
-  ) {}
+  ) {
+    this.inputTables = new InputTablesCommandService(store, normalizerProjectGenerator);
+    this.outputTables = new OutputTablesCommandService(store);
+    this.cloudAnalysis = new CloudAnalysisCommandService(store, getPersonalAnalysisConfig, {
+      getPersonalAnalysisConnection: options.getPersonalAnalysisConnection,
+      createInputTable: (input) => this.createInputTable(input),
+    });
+  }
 
   async listInputTables(input: ListInputTablesInput = {}): Promise<ListInputTablesResult> {
-    const window = listWindow(input.limit, input.offset);
-    const dashboard = await this.store.getDashboard({
-      query: input.query,
-      includeSummary: false,
-      includeTasks: false,
-      includeDatasets: true,
-      includeOutputTables: false,
-      datasetSourceKind: input.sourceKind ?? 'all',
-      datasetLimit: window.limit,
-      datasetOffset: window.offset,
-    });
-    return {
-      inputTables: dashboard.datasets,
-      total: dashboard.totalDatasets,
-      ...window,
-    };
+    return this.inputTables.listInputTables(input);
   }
 
   async createInputTable(input: CreateInputTableCommand): Promise<InputTableResult> {
-    const sourcePath = normalizeSourcePathInput(input);
-    const name = normalizeOptionalName(input.name);
-    if (name) {
-      await this.ensureUniqueInputTableName(name);
-    }
-
-    try {
-      const inputTable = await this.store.importDataset({
-        filePath: sourcePath,
-        name,
-        sourceKind: input.sourceKind,
-        config: input.config,
-      });
-      const preview = await this.previewIfRequested(inputTable.id, input.previewRows);
-      return { inputTable, preview };
-    } catch (error) {
-      throw toCommandError(error, 'FILE_ACCESS_DENIED');
-    }
+    return this.inputTables.createInputTable(input);
   }
 
   async createInputTableWithProcessingStrategy(
     input: CreateInputTableWithProcessingStrategyCommand
   ): Promise<CreateInputTableWithProcessingStrategyResult> {
-    const sourcePath = normalizeSourcePathInput(input);
-    const sourceKind = resolveInputSourceKindForCommand(input, sourcePath);
-    const baseConfig = withInputTableDataProcessing(input.config, sourceKind, { strategy: 'auto' });
-
-    if (input.processingStrategy.strategy === 'auto') {
-      const result = await this.createInputTable({
-        ...input,
-        sourceKind,
-        filePath: input.folderPath ? undefined : sourcePath,
-        folderPath: input.folderPath ? sourcePath : undefined,
-        config: baseConfig,
-      });
-      return {
-        ...result,
-        processingStrategy: 'auto',
-      };
-    }
-
-    const rulePrompt = normalizeRequiredName(
-      input.processingStrategy.rulePrompt,
-      'Normalizer rule prompt is required for custom processing'
-    );
-    const artifactName =
-      normalizeOptionalName(input.processingStrategy.artifactName) ||
-      `${normalizeOptionalName(input.name) || 'input table'} normalizer`;
-
-    if (input.name) {
-      await this.ensureUniqueInputTableName(input.name);
-    }
-
-    const draft = await this.generateInputTableNormalizerDraft({
-      artifactId: input.processingStrategy.artifactId,
-      name: artifactName,
-      description: input.processingStrategy.artifactDescription,
-      sourcePath,
-      sourceKind,
-      config: baseConfig,
-      rulePrompt,
-      primaryLanguage: input.processingStrategy.primaryLanguage,
-    });
-    const normalizerPreview = await this.previewInputTableNormalizerVersion({
-      versionId: draft.version.id,
-      sourcePath,
-      sourceKind,
-      config: baseConfig,
-      prepareDependencies: input.processingStrategy.prepareDependencies,
-      limit: input.previewRows,
-    });
-    const published = await this.publishInputTableNormalizerVersion({
-      versionId: draft.version.id,
-    });
-    const customConfig = withInputTableDataProcessing(input.config, sourceKind, {
-      strategy: 'customize',
-      rulePrompt,
-      artifactId: published.artifact.id,
-      artifactVersionId: published.version.id,
-      artifactVersionStatus: published.version.status,
-      fileTreeHash: published.version.fileTreeHash,
-      dependencyLockHash: published.version.dependencyLockHash ?? undefined,
-      runtime: published.version.runtime,
-      entrypoint: published.version.entrypoint,
-      dependencyPrepare: published.version.dependencyPrepare,
-      projectFiles: published.version.files,
-      sourceSummaryHash: published.version.sourceSummaryHash ?? undefined,
-    });
-    const result = await this.createInputTable({
-      ...input,
-      sourceKind,
-      filePath: input.folderPath ? undefined : sourcePath,
-      folderPath: input.folderPath ? sourcePath : undefined,
-      config: customConfig,
-    });
-    return {
-      ...result,
-      processingStrategy: 'customize',
-      normalizer: {
-        artifact: published.artifact,
-        draftVersion: draft.version,
-        publishedVersion: published.version,
-        sourceSummary: draft.summary,
-        preview: normalizerPreview.preview,
-      },
-    };
+    return this.inputTables.createInputTableWithProcessingStrategy(input);
   }
 
   async updateInputTable(input: UpdateInputTableCommand): Promise<InputTableResult> {
-    const existing = await this.store.getInputTableRecord(input.id);
-    if (!existing) {
-      throw new DataCommandError('RESOURCE_NOT_FOUND', `Input table not found: ${input.id}`);
-    }
-    const name = normalizeOptionalName(input.name);
-    if (name) {
-      await this.ensureUniqueInputTableName(name, input.id);
-    }
-    const sourcePath = input.filePath || input.folderPath;
-    try {
-      const inputTable = await this.store.updateDataset({
-        id: input.id,
-        name,
-        filePath: sourcePath,
-        sourceKind: input.sourceKind,
-        config: input.config,
-      });
-      const preview = await this.previewIfRequested(inputTable.id, input.previewRows);
-      return { inputTable, preview };
-    } catch (error) {
-      throw toCommandError(error, sourcePath ? 'FILE_ACCESS_DENIED' : 'INVALID_ARGUMENT');
-    }
+    return this.inputTables.updateInputTable(input);
   }
 
   async summarizeInputTableSource(
     input: SummarizeInputTableSourceCommand
   ): Promise<SummarizeInputTableSourceResult> {
-    try {
-      return {
-        summary: await this.store.summarizeInputTableSource(input),
-      };
-    } catch (error) {
-      throw toCommandError(error, 'FILE_ACCESS_DENIED');
-    }
+    return this.inputTables.summarizeInputTableSource(input);
   }
 
   async generateInputTableNormalizerDraft(
     input: GenerateInputTableNormalizerDraftCommand
   ): Promise<GenerateInputTableNormalizerDraftResult> {
-    const name = normalizeRequiredName(input.name, 'Normalizer artifact name is required');
-    const rulePrompt = normalizeRequiredName(
-      input.rulePrompt,
-      'Normalizer rule prompt is required'
-    );
-    const primaryLanguage = input.primaryLanguage === 'node' ? 'node' : 'python';
-    let summary: SummarizeInputTableSourceResult['summary'];
-    try {
-      input.onProgress?.({
-        phase: 'source_summary',
-        kind: 'message',
-        text: '\n\n**内置读取源文件摘要**\n\n正在读取文件/文件夹信息，并抽取前 20 行左右样本用于结构分析。\n',
-      });
-      summary = await this.store.summarizeInputTableSource({
-        sourcePath: input.sourcePath,
-        sourceKind: input.sourceKind,
-        config: input.config,
-        maxFiles: 8,
-        maxSheetsPerFile: 12,
-        maxRowsPerSheet: 20,
-        maxColumnsPerRow: 80,
-      });
-      input.onProgress?.({
-        phase: 'source_summary',
-        kind: 'message',
-        text: `已完成源文件摘要：${summary.fileCount} 个文件，hash ${summary.hash}。\n`,
-      });
-    } catch (error) {
-      throw toCommandError(error, 'FILE_ACCESS_DENIED');
-    }
-    try {
-      const template = await this.normalizerProjectGenerator.generate({
-        name,
-        primaryLanguage,
-        rulePrompt,
-        selectedSkillNames: input.selectedSkillNames,
-        sourceSummary: summary,
-        runtimeConfig: input.runtimeConfig,
-        onProgress: input.onProgress,
-      });
-      input.onProgress?.({
-        phase: 'saving',
-        kind: 'message',
-        text: '\n\n**保存项目草稿**\n\n正在写入项目文件和版本记录。\n',
-      });
-      const result = await this.store.saveInputTableNormalizerDraft({
-        artifactId: input.artifactId,
-        name,
-        description: input.description,
-        sourceKind: summary.sourceKind,
-        primaryLanguage: template.primaryLanguage,
-        rulePrompt,
-        files: template.files,
-        fileTreeHash: createNormalizerFileTreeHash(template.files),
-        sourceSummaryHash: summary.hash,
-        entrypoint: template.entrypoint,
-        dependencyPrepare: template.dependencyPrepare,
-        runtime: template.runtime,
-        dependencies: template.dependencies,
-        dependencyLockHash: createNormalizerDependencyLockHash(template.files),
-      });
-      input.onProgress?.({
-        phase: 'complete',
-        kind: 'message',
-        text: `草稿已保存：v${result.version.version}，共 ${result.version.files.length} 个项目文件。\n`,
-      });
-      return {
-        ...result,
-        summary,
-      };
-    } catch (error) {
-      input.onProgress?.({
-        phase: 'error',
-        kind: 'message',
-        text: error instanceof Error ? error.message : String(error),
-      });
-      throw toCommandError(error, 'RUN_FAILED');
-    }
+    return this.inputTables.generateInputTableNormalizerDraft(input);
   }
 
   async listOutputTables(input: ListInputTablesInput = {}): Promise<ListOutputTablesResult> {
-    const window = listWindow(input.limit, input.offset);
-    const dashboard = await this.store.getDashboard({
-      query: input.query,
-      includeSummary: false,
-      includeTasks: false,
-      includeDatasets: false,
-      includeOutputTables: true,
-      outputLimit: window.limit,
-      outputOffset: window.offset,
-    });
-    return {
-      outputTables: dashboard.outputTables,
-      total: dashboard.totalOutputTables,
-      ...window,
-    };
+    return this.outputTables.listOutputTables(input);
   }
 
   async createOutputTable(input: CreateOutputTableCommand = {}): Promise<OutputTableResult> {
-    const name = normalizeOptionalName(input.name);
-    if (name) {
-      await this.ensureUniqueOutputTableName(name);
-    }
-    if (input.sourceInputTableId) {
-      await this.requireInputTable(input.sourceInputTableId);
-    }
-
-    const created = await this.store.createOutputTable({ name });
-    const outputTable = input.sourceInputTableId
-      ? await this.store.updateOutputTable({
-          id: created.id,
-          sourceDatasetId: input.sourceInputTableId,
-        })
-      : created;
-    const preview =
-      outputTable.rowCount > 0 ? await this.previewDataset(outputTable.id) : undefined;
-    return { outputTable, preview };
+    return this.outputTables.createOutputTable(input);
   }
 
   async updateOutputTable(input: UpdateOutputTableCommand): Promise<OutputTableResult> {
-    const existing = await this.store.getOutputTableRecord(input.id);
-    if (!existing) {
-      throw new DataCommandError('RESOURCE_NOT_FOUND', `Output table not found: ${input.id}`);
-    }
-    const name = normalizeOptionalName(input.name);
-    if (name) {
-      await this.ensureUniqueOutputTableName(name, input.id);
-    }
-    if (input.sourceInputTableId) {
-      await this.requireInputTable(input.sourceInputTableId);
-    }
-    const outputTable = await this.store.updateOutputTable({
-      id: input.id,
-      name,
-      sourceDatasetId: input.sourceInputTableId,
-    });
-    const preview =
-      outputTable.rowCount > 0 ? await this.previewDataset(outputTable.id) : undefined;
-    return { outputTable, preview };
+    return this.outputTables.updateOutputTable(input);
   }
 
   async previewTable(input: PreviewTableCommand): Promise<PreviewTableResult> {
@@ -444,242 +176,53 @@ export class DataCommandService {
   }
 
   async listCloudSpaces(input: ListCloudSpacesCommand = {}): Promise<ListCloudSpacesResult> {
-    try {
-      return {
-        spaces: await this.createPersonalAnalysisClient(input).listSpaces(),
-      };
-    } catch (error) {
-      throw toCommandError(error, 'RUN_FAILED');
-    }
+    return this.cloudAnalysis.listCloudSpaces(input);
   }
 
   async listCloudProjects(input: ListCloudProjectsCommand): Promise<ListCloudProjectsResult> {
-    const spaceId = normalizeRequiredName(input.spaceId, 'Cloud spaceId is required');
-    try {
-      return {
-        projects: await this.createPersonalAnalysisClient(input).listProjects(spaceId),
-      };
-    } catch (error) {
-      throw toCommandError(error, 'RUN_FAILED');
-    }
+    return this.cloudAnalysis.listCloudProjects(input);
   }
 
   async listCloudTables(input: ListCloudTablesCommand): Promise<ListCloudTablesResult> {
-    const spaceId = normalizeRequiredName(input.spaceId, 'Cloud spaceId is required');
-    const projectId = normalizeRequiredName(input.projectId, 'Cloud projectId is required');
-    try {
-      return {
-        tables: await this.createPersonalAnalysisClient(input).listTables(spaceId, projectId),
-      };
-    } catch (error) {
-      throw toCommandError(error, 'RUN_FAILED');
-    }
+    return this.cloudAnalysis.listCloudTables(input);
   }
 
   async importCloudTable(input: ImportCloudTableCommand): Promise<ImportCloudTableResult> {
-    const tableId = normalizeRequiredName(input.tableId, 'Cloud tableId is required');
-    const client = this.createPersonalAnalysisClient(input);
-    try {
-      const cloudTable =
-        input.spaceId && input.projectId
-          ? (await client.listTables(input.spaceId, input.projectId)).find(
-              (table) => table.tableId === tableId
-            )
-          : undefined;
-      const csv = await client.exportTableCsv(tableId);
-      const downloadedFilePath = await writeCloudCsvTempFile(tableId, csv);
-      const result = await this.createInputTable({
-        name:
-          normalizeOptionalName(input.name) || cloudTable?.tableName || `Cloud table ${tableId}`,
-        sourceKind: 'csv',
-        filePath: downloadedFilePath,
-        previewRows: input.previewRows,
-      });
-      return {
-        ...result,
-        cloudTableId: tableId,
-        cloudTable,
-        downloadedFilePath,
-      };
-    } catch (error) {
-      throw toCommandError(error, 'RUN_FAILED');
-    }
+    return this.cloudAnalysis.importCloudTable(input);
   }
 
   async previewCloudTable(input: PreviewCloudTableCommand): Promise<PreviewCloudTableResult> {
-    const tableId = normalizeRequiredName(input.tableId, 'Cloud tableId is required');
-    const limit =
-      typeof input.limit === 'number' && Number.isFinite(input.limit)
-        ? Math.min(Math.max(Math.floor(input.limit), 1), MAX_PREVIEW_LIMIT)
-        : DEFAULT_PREVIEW_LIMIT;
-    const offset =
-      typeof input.offset === 'number' && Number.isFinite(input.offset)
-        ? Math.max(Math.floor(input.offset), 0)
-        : 0;
-    try {
-      const csv = await this.createPersonalAnalysisClient(input).exportTableCsv(tableId);
-      const downloadedFilePath = await writeCloudCsvTempFile(tableId, csv);
-      const preview = await this.store.previewInputTable({
-        filePath: downloadedFilePath,
-        sourceKind: 'csv',
-        config: {
-          sourceKind: 'csv',
-          header: 'auto',
-          dataRegion: 'auto',
-          encoding: 'auto',
-          delimiter: 'auto',
-        },
-        limit,
-        offset,
-      });
-      return {
-        cloudTableId: tableId,
-        downloadedFilePath,
-        preview,
-      };
-    } catch (error) {
-      throw toCommandError(error, 'RUN_FAILED');
-    }
+    return this.cloudAnalysis.previewCloudTable(input);
   }
 
   async uploadDataTableToCloud(
     input: UploadDataTableToCloudCommand
   ): Promise<UploadDataTableToCloudResult> {
-    if (input.writeMode === 'REPLACE' && !input.tableId?.trim()) {
-      throw new DataCommandError('INVALID_ARGUMENT', 'tableId is required for REPLACE upload');
-    }
-    if (input.writeMode === 'CREATE' && input.tableId?.trim()) {
-      throw new DataCommandError('INVALID_ARGUMENT', 'tableId must be omitted for CREATE upload');
-    }
-    const exported = await this.store.exportDatasetCsv({
-      tableKind: input.tableKind,
-      id: input.id,
-      maxRows: input.maxRows,
-    });
-    const tableName = normalizeOptionalName(input.tableName) || exported.name;
-    const fileName =
-      normalizeOptionalName(input.fileName) || `${sanitizeFileName(tableName || exported.id)}.csv`;
-
-    try {
-      const client = this.createPersonalAnalysisClient(input);
-      const datasourceId = await this.resolveUploadDatasourceId(client, input.datasourceId);
-      const upload = await client.uploadCsv({
-        ...input,
-        datasourceId,
-        fileName,
-        tableName,
-        csv: exported.csv,
-      });
-      return {
-        sourceTable: {
-          tableKind: exported.tableKind,
-          id: exported.id,
-          name: exported.name,
-          rowCount: exported.rowCount,
-          columnCount: exported.columnCount,
-        },
-        csvBytes: Buffer.byteLength(exported.csv, 'utf8'),
-        upload,
-      };
-    } catch (error) {
-      throw toCommandError(error, 'RUN_FAILED');
-    }
+    return this.cloudAnalysis.uploadDataTableToCloud(input);
   }
 
   async previewInputTableNormalizerVersion(
     input: PreviewInputTableNormalizerVersionCommand
   ): Promise<PreviewInputTableNormalizerVersionResult> {
-    try {
-      return {
-        preview: await this.store.previewInputTableNormalizerVersion(input),
-      };
-    } catch (error) {
-      throw toCommandError(error, 'RUN_FAILED');
-    }
+    return this.inputTables.previewInputTableNormalizerVersion(input);
   }
 
   async publishInputTableNormalizerVersion(
     input: PublishInputTableNormalizerVersionCommand
   ): Promise<PublishInputTableNormalizerVersionResult> {
-    if (!input.versionId.trim()) {
-      throw new DataCommandError('INVALID_ARGUMENT', 'Normalizer version id is required');
-    }
-    try {
-      return await this.store.publishInputTableNormalizerArtifactVersion(input.versionId);
-    } catch (error) {
-      throw toCommandError(error, 'INVALID_ARGUMENT');
-    }
-  }
-
-  private createPersonalAnalysisClient(input: PersonalAnalysisConnectionInput = {}) {
-    const configured = this.getPersonalAnalysisConfig();
-    const authenticated = this.options.getPersonalAnalysisConnection?.() ?? null;
-    const configuredApiKey = configured.apiKey?.trim() || '';
-    const inputApiKey = input.apiKey?.trim() || '';
-    const inputAccessToken = input.accessToken?.trim() || '';
-    const fallbackAccessToken = authenticated?.accessToken?.trim() || '';
-
-    return createPersonalAnalysisClient({
-      apiOrigin: input.apiOrigin || configured.apiOrigin || authenticated?.apiOrigin,
-      apiKey: inputApiKey || configuredApiKey,
-      accessToken:
-        inputAccessToken || (!inputApiKey && !configuredApiKey ? fallbackAccessToken : undefined),
-    });
-  }
-
-  private async resolveUploadDatasourceId(
-    client: PersonalAnalysisClient,
-    datasourceId: string | undefined
-  ): Promise<string> {
-    const explicitDatasourceId = datasourceId?.trim();
-    if (explicitDatasourceId) {
-      return explicitDatasourceId;
-    }
-
-    const datasources = await client.listDatasources();
-    if (datasources.length === 0) {
-      throw new Error(
-        'No Personal Analysis datasource is available for upload. Choose a project with an available datasource or pass datasourceId.'
-      );
-    }
-
-    if (datasources.length === 1) {
-      return datasources[0].datasourceId;
-    }
-
-    throw new Error(
-      `Multiple Personal Analysis datasources are available: ${datasources
-        .map(formatDatasourceForError)
-        .join(', ')}. Pass datasourceId for this upload.`
-    );
+    return this.inputTables.publishInputTableNormalizerVersion(input);
   }
 
   async deleteInputTableNormalizerVersion(
     input: DeleteInputTableNormalizerVersionCommand
   ): Promise<DeleteInputTableNormalizerVersionResult> {
-    if (!input.versionId.trim()) {
-      throw new DataCommandError('INVALID_ARGUMENT', 'Normalizer version id is required');
-    }
-    try {
-      return await this.store.deleteInputTableNormalizerArtifactVersion(input.versionId);
-    } catch (error) {
-      throw toCommandError(error, 'INVALID_ARGUMENT');
-    }
+    return this.inputTables.deleteInputTableNormalizerVersion(input);
   }
 
   async listInputTableNormalizerVersions(
     input: ListInputTableNormalizerVersionsCommand
   ): Promise<ListInputTableNormalizerVersionsResult> {
-    if (!input.artifactId.trim()) {
-      throw new DataCommandError('INVALID_ARGUMENT', 'Normalizer artifact id is required');
-    }
-    try {
-      return {
-        versions: await this.store.listInputTableNormalizerArtifactVersions(input.artifactId),
-      };
-    } catch (error) {
-      throw toCommandError(error, 'INVALID_ARGUMENT');
-    }
+    return this.inputTables.listInputTableNormalizerVersions(input);
   }
 
   async listTasks(input: ListInputTablesInput = {}): Promise<ListTasksResult> {
@@ -1144,16 +687,6 @@ export class DataCommandService {
     return undefined;
   }
 
-  private async previewIfRequested(
-    id: string,
-    previewRows?: number
-  ): Promise<DataInputTablePreview | undefined> {
-    if (!previewRows || previewRows <= 0) {
-      return undefined;
-    }
-    return this.previewDataset(id, previewRows);
-  }
-
   private async previewDataset(
     id: string,
     limit?: number,
@@ -1190,33 +723,6 @@ export class DataCommandService {
     return outputTable;
   }
 
-  private async ensureUniqueInputTableName(name: string, excludeId?: string): Promise<void> {
-    const existing = await this.findExactInputTableByName(name, excludeId);
-    if (existing) {
-      throw new DataCommandError('RESOURCE_ALREADY_EXISTS', `Input table already exists: ${name}`, {
-        id: existing.id,
-        name: existing.name,
-      });
-    }
-  }
-
-  private async ensureUniqueOutputTableName(name: string, excludeId?: string): Promise<void> {
-    const result = await this.listOutputTables({ query: name, limit: MAX_LIST_LIMIT });
-    const existing = result.outputTables.find(
-      (item) => item.id !== excludeId && item.name.toLowerCase() === name.toLowerCase()
-    );
-    if (existing) {
-      throw new DataCommandError(
-        'RESOURCE_ALREADY_EXISTS',
-        `Output table already exists: ${name}`,
-        {
-          id: existing.id,
-          name: existing.name,
-        }
-      );
-    }
-  }
-
   private async ensureUniqueTaskName(name: string, excludeId?: string): Promise<void> {
     const result = await this.listTasks({ query: name, limit: MAX_LIST_LIMIT });
     const existing = result.tasks.find(
@@ -1228,13 +734,6 @@ export class DataCommandService {
         name: existing.name,
       });
     }
-  }
-
-  private async findExactInputTableByName(name: string, excludeId?: string) {
-    const result = await this.listInputTables({ query: name, limit: MAX_LIST_LIMIT });
-    return result.inputTables.find(
-      (item) => item.id !== excludeId && item.name.toLowerCase() === name.toLowerCase()
-    );
   }
 }
 
@@ -1268,78 +767,6 @@ function clampInteger(
   return Math.max(min, Math.min(max, Math.floor(Number(value))));
 }
 
-function normalizeSourcePathInput(input: CreateInputTableCommand): string {
-  const sourcePath = input.filePath || input.folderPath;
-  if (!sourcePath?.trim()) {
-    throw new DataCommandError(
-      'INVALID_ARGUMENT',
-      'filePath or folderPath is required to create an input table'
-    );
-  }
-  return sourcePath.trim();
-}
-
-function resolveInputSourceKindForCommand(
-  input: Pick<CreateInputTableCommand, 'sourceKind' | 'folderPath'>,
-  sourcePath: string
-): DataInputTableSourceKind {
-  if (input.sourceKind === 'excel' || input.sourceKind === 'csv' || input.sourceKind === 'folder') {
-    return input.sourceKind;
-  }
-  if (input.folderPath) {
-    return 'folder';
-  }
-  const extension = extname(sourcePath).toLowerCase();
-  return extension === '.xlsx' ||
-    extension === '.xls' ||
-    extension === '.xlsm' ||
-    extension === '.xlsb'
-    ? 'excel'
-    : 'csv';
-}
-
-function withInputTableDataProcessing(
-  config: DataInputTableConfig | undefined,
-  sourceKind: DataInputTableSourceKind,
-  dataProcessing: DataInputTableProcessingConfig
-): DataInputTableConfig {
-  if (sourceKind === 'excel') {
-    const excelConfig = config?.sourceKind === 'excel' ? config : undefined;
-    return {
-      sourceKind: 'excel',
-      sheetName: excelConfig?.sheetName ?? null,
-      sheetNames: excelConfig?.sheetNames ?? [],
-      headerMode: excelConfig?.headerMode === 'manual' ? 'manual' : 'auto',
-      headerRow: excelConfig?.headerRow ?? 1,
-      dataProcessing,
-    };
-  }
-
-  if (sourceKind === 'folder') {
-    const folderConfig = config?.sourceKind === 'folder' ? config : undefined;
-    return {
-      sourceKind: 'folder',
-      mergeMode: 'append_same_schema',
-      schemaStrategy: 'align_by_name',
-      fileRange: folderConfig?.fileRange ?? 'excel_csv',
-      skipEmptyFiles: folderConfig?.skipEmptyFiles !== false,
-      keepSourceFileName: folderConfig?.keepSourceFileName !== false,
-      dataProcessing,
-    };
-  }
-
-  const csvConfig = config?.sourceKind === 'csv' ? config : undefined;
-  return {
-    sourceKind: 'csv',
-    header: 'auto',
-    dataRegion: 'auto',
-    encoding: 'auto',
-    delimiter: 'auto',
-    ...csvConfig,
-    dataProcessing,
-  };
-}
-
 function normalizeOptionalName(name: string | undefined): string | undefined {
   const normalized = name?.trim();
   return normalized || undefined;
@@ -1351,22 +778,6 @@ function normalizeRequiredName(name: string, message: string): string {
     throw new DataCommandError('INVALID_ARGUMENT', message);
   }
   return normalized;
-}
-
-async function writeCloudCsvTempFile(tableId: string, csv: string): Promise<string> {
-  const directory = join(tmpdir(), 'sophron-cowork-cloud-imports');
-  await mkdir(directory, { recursive: true });
-  const filePath = join(directory, `${sanitizeFileName(tableId)}-${Date.now()}.csv`);
-  await writeFile(filePath, csv, 'utf8');
-  return filePath;
-}
-
-function sanitizeFileName(value: string): string {
-  const sanitized = value
-    .trim()
-    .replace(/[^a-zA-Z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return sanitized || 'table';
 }
 
 function findWorkflowNode(workflow: DataTaskWorkflow, nodeId: string): DataWorkflowNode {
@@ -1464,12 +875,6 @@ function stringConfigValue(value: unknown): string {
 function looksLikeJson(value: string): boolean {
   const trimmed = value.trim();
   return trimmed.startsWith('{') || trimmed.startsWith('[');
-}
-
-function formatDatasourceForError(datasource: PersonalAnalysisDatasource): string {
-  return datasource.datasourceName
-    ? `${datasource.datasourceName} (${datasource.datasourceId})`
-    : datasource.datasourceId;
 }
 
 function toCommandError(error: unknown, fallbackCode: DataCommandError['code']): DataCommandError {

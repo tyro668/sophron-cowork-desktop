@@ -36,6 +36,7 @@ import { createPersonalAnalysisClient } from './data/personal-analysis-client';
 import { DataToolService } from './data/data-tool-service';
 import { createDataAgentRuntimeExtension } from './data/data-agent-extension';
 import { createLlmInputTableNormalizerProjectGenerator } from './data/input-table-normalizer-generator';
+import { registerDataIpcHandlers } from './data/ipc/register-data-ipc';
 import { SessionManager } from './session/session-manager';
 import { SkillsManager } from './skills/skills-manager';
 import { PluginCatalogService } from './skills/plugin-catalog-service';
@@ -73,31 +74,7 @@ import type {
   DiagnosticInput,
   ProviderModelInfo,
   DataCleaningTask,
-  DataCreateOutputTableInput,
-  DataCreateTaskInput,
-  DataDashboardQuery,
-  DataDeleteInputTableNormalizerVersionInput,
-  DataGenerateInputTableNormalizerDraftInput,
   DataInputTableSourceKind,
-  DataImportDatasetInput,
-  DataListInputTableNormalizerVersionsInput,
-  DataPreviewDatasetInput,
-  DataPreviewInputTableInput,
-  DataPreviewInputTableNormalizerVersionInput,
-  DataPreviewWorkflowNodeInput,
-  DataPublishInputTableNormalizerVersionInput,
-  DataRunTaskInput,
-  DataSummarizeInputTableSourceInput,
-  DataUpdateOutputTableInput,
-  DataUpdateTaskInput,
-  DataUpdateDatasetInput,
-  DataWorkflowSaveInput,
-  ImportCloudTableInput,
-  ListCloudProjectsInput,
-  ListCloudSpacesInput,
-  ListCloudTablesInput,
-  PreviewCloudTableInput,
-  UploadDataTableToCloudInput,
 } from '../renderer/types';
 import { remoteManager, type AgentExecutor } from './remote/remote-manager';
 import { remoteConfigStore } from './remote/remote-config-store';
@@ -1933,13 +1910,13 @@ function requireDataCommandService(): DataCommandService {
   return dataCommandService;
 }
 
-ipcMain.handle('data.getDashboard', async (_event, payload?: DataDashboardQuery) => {
-  try {
-    return await requireDataTaskStore().getDashboard(payload ?? {});
-  } catch (error) {
-    logError('[Data] Error getting dashboard:', error);
-    throw error;
-  }
+registerDataIpcHandlers({
+  ipcMain,
+  requireDataTaskStore,
+  requireDataCommandService,
+  resolveModelRuntimeConfig: resolveModelRuntimeConfigForAutomation,
+  notifyDataTaskCompleted,
+  logError,
 });
 
 ipcMain.handle('data.getTask', async (_event, id: string) => {

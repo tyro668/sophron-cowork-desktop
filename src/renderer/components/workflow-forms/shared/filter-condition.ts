@@ -125,10 +125,7 @@ function buildNodeDsl(
   return buildBranchDsl(node, columnTypes, depth);
 }
 
-function buildLeafDsl(
-  leaf: FilterConditionLeaf,
-  columnTypes: Record<string, string>
-): string {
+function buildLeafDsl(leaf: FilterConditionLeaf, columnTypes: Record<string, string>): string {
   const field = leaf.field.trim();
   const op = leaf.op;
   const val1 = leaf.val1.trim();
@@ -177,13 +174,21 @@ export function parseConditionTree(
  * Parse a DSL string into a branch, detecting the dominant connective
  * and extracting nested parenthesized groups.
  */
-function parseBranchFromDsl(
-  dsl: string,
-  depth: number
-): FilterConditionBranch | null {
+function parseBranchFromDsl(dsl: string, depth: number): FilterConditionBranch | null {
+  // Protect between ... and ... patterns from connective splitting
+  const betweenPlaceholders: string[] = [];
+  const protectedDsl = dsl.replace(
+    /\b(between\s+.+?\s+)and(\s+.+?)(?=\s*(?:$|\)|\band\b|\bor\b))/gi,
+    (_m, prefix: string, suffix: string) => {
+      const idx = betweenPlaceholders.length;
+      betweenPlaceholders.push(` ${prefix}and${suffix}`);
+      return ` __BTW_${idx}__`;
+    }
+  );
+
   // Split by top-level connectives that are OUTSIDE of parentheses
   // 'or' has lower precedence, so split by 'or' first
-  const orSegments = splitByTopLevelConnective(dsl, 'or');
+  const orSegments = splitByTopLevelConnective(protectedDsl, 'or');
 
   let connective: FilterConditionConnective;
   let segments: string[];
@@ -205,13 +210,32 @@ function parseBranchFromDsl(
   };
 
   for (const seg of segments) {
-    const trimmed = seg.trim();
+    let trimmed = seg.trim();
     if (!trimmed) continue;
+
+    // Restore between placeholders
+    trimmed = trimmed.replace(/__BTW_(\d+)__/g, (_m, idx) => {
+      return betweenPlaceholders[Number(idx)] ?? _m;
+    });
 
     // Check if this segment is a parenthesized group
     if (trimmed.startsWith('(') && trimmed.endsWith(')')) {
       const inner = trimmed.slice(1, -1).trim();
       const nested = parseBranchFromDsl(inner, depth + 1);
+      if (nested && nested.items.length > 0) {
+        branch.items.push(nested);
+      }
+      continue;
+    }
+
+    // If the segment still contains a connective not part of `between`,
+    // recursively parse it as a sub-branch
+    const withoutBetween = trimmed.replace(
+      /\bbetween\s+.+?\s+and\s+.+?(?=\s*(?:$|\)|\band\b|\bor\b))/gi,
+      '__BETWEEN__'
+    );
+    if (/\s+(?:and|or)\s+/i.test(withoutBetween)) {
+      const nested = parseBranchFromDsl(trimmed, depth + 1);
       if (nested && nested.items.length > 0) {
         branch.items.push(nested);
       }
@@ -232,10 +256,7 @@ function parseBranchFromDsl(
  * Split a DSL string by a top-level connective (outside of parentheses and
  * quoted strings).
  */
-function splitByTopLevelConnective(
-  dsl: string,
-  connective: 'and' | 'or'
-): string[] {
+function splitByTopLevelConnective(dsl: string, connective: 'and' | 'or'): string[] {
   const parts: string[] = [];
   let current = '';
   let parenDepth = 0;
@@ -274,11 +295,11 @@ function splitByTopLevelConnective(
       if (parenDepth === 0) {
         const remaining = dsl.slice(i, i + delim.length);
         if (remaining.toLowerCase() === delimLower) {
-          // Validate it's a word boundary
-          const beforeOk = i === 0 || /\s/.test(dsl[i - 1]);
+          // Validate trailing word boundary — delimiter starts with space,
+          // so only need to ensure "after" is word/non-word boundary
           const afterIdx = i + delim.length;
-          const afterOk = afterIdx >= dsl.length || /\s/.test(dsl[afterIdx]);
-          if (beforeOk && afterOk) {
+          const afterOk = afterIdx >= dsl.length || !/[a-zA-Z0-9_]/.test(dsl[afterIdx]);
+          if (afterOk) {
             parts.push(current);
             current = '';
             i += delim.length;
@@ -307,9 +328,7 @@ function parseLeafCondition(expr: string): FilterConditionLeaf | null {
   if (!trimmed) return null;
 
   // Try between: [field] between val1 and val2
-  const betweenMatch = trimmed.match(
-    /^\s*\[([^\]]+)\]\s+between\s+(.+?)\s+and\s+(.+?)\s*$/i
-  );
+  const betweenMatch = trimmed.match(/^\s*\[([^\]]+)\]\s+between\s+(.+?)\s+and\s+(.+?)\s*$/i);
   if (betweenMatch) {
     return {
       kind: 'leaf',
@@ -322,9 +341,7 @@ function parseLeafCondition(expr: string): FilterConditionLeaf | null {
   }
 
   // Try in / not in: [field] in (val1, val2, ...) or [field] not in (val1, ...)
-  const inMatch = trimmed.match(
-    /^\s*\[([^\]]+)\]\s+(not\s+in|in)\s*\((.+)\)\s*$/i
-  );
+  const inMatch = trimmed.match(/^\s*\[([^\]]+)\]\s+(not\s+in|in)\s*\((.+)\)\s*$/i);
   if (inMatch) {
     const op = inMatch[2].toLowerCase() === 'not in' ? 'not in' : 'in';
     const values = parseInValueList(inMatch[3]);
@@ -504,10 +521,7 @@ export function createEmptyBranch(
  * Walk a tree and compute the depth of each node.
  * Root branch has depth 0. Its direct children have depth 1, etc.
  */
-export function getNodeDepth(
-  node: FilterConditionNode,
-  root: FilterConditionBranch
-): number {
+export function getNodeDepth(node: FilterConditionNode, root: FilterConditionBranch): number {
   function findDepth(
     target: FilterConditionNode,
     branch: FilterConditionBranch,
@@ -525,10 +539,7 @@ export function getNodeDepth(
   return findDepth(node, root, 0);
 }
 
-export function getBranchDepth(
-  branch: FilterConditionBranch,
-  root: FilterConditionBranch
-): number {
+export function getBranchDepth(branch: FilterConditionBranch, root: FilterConditionBranch): number {
   return getNodeDepth(branch, root);
 }
 
@@ -664,10 +675,7 @@ export function wrapItemsInGroup(
 /**
  * Unwrap a nested group, moving its items to the parent branch.
  */
-export function unwrapGroup(
-  branch: FilterConditionBranch,
-  groupId: string
-): FilterConditionBranch {
+export function unwrapGroup(branch: FilterConditionBranch, groupId: string): FilterConditionBranch {
   const newItems: FilterConditionNode[] = [];
   for (const item of branch.items) {
     if (isBranch(item) && item.id === groupId) {
