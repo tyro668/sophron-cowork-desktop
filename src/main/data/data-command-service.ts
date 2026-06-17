@@ -324,7 +324,9 @@ export class DataCommandService {
         name,
         primaryLanguage,
         rulePrompt,
+        selectedSkillNames: input.selectedSkillNames,
         sourceSummary: summary,
+        runtimeConfig: input.runtimeConfig,
         onProgress: input.onProgress,
       });
       input.onProgress?.({

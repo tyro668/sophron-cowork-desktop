@@ -2,6 +2,7 @@ import { basename } from 'path';
 import type { AppConfig } from '../config/config-store';
 import { runPiAiOneShot } from '../claude/claude-sdk-one-shot';
 import type {
+  AgentRuntimeConfig,
   DataInputTableSourceSummary,
   DataNormalizerLanguage,
   DataNormalizerProjectFile,
@@ -15,7 +16,9 @@ export interface GenerateInputTableNormalizerProjectInput {
   name: string;
   primaryLanguage: DataNormalizerLanguage;
   rulePrompt: string;
+  selectedSkillNames?: string[];
   sourceSummary: DataInputTableSourceSummary;
+  runtimeConfig?: AgentRuntimeConfig;
   onProgress?: InputTableNormalizerProjectProgressCallback;
 }
 
@@ -51,14 +54,19 @@ export function createLlmInputTableNormalizerProjectGenerator(
         input.primaryLanguage,
         input.rulePrompt
       );
+      const generationInput = {
+        ...input,
+        rulePrompt: buildSkillAwareRulePrompt(input.rulePrompt, input.selectedSkillNames),
+      };
+      const runtimeConfig = input.runtimeConfig ?? getConfig();
       const sourceSummary = compactSourceSummary(input.sourceSummary);
       const analysisProgress = createJsonProgressWriter(input, 'source_analysis', '结构分析输出');
       const analysisResponse = await runWithProgressBlock(
         () =>
           runPiAiOneShot(
-            buildSourceAnalysisUserPrompt(input, sourceSummary),
+            buildSourceAnalysisUserPrompt(generationInput, sourceSummary),
             buildSourceAnalysisSystemPrompt(),
-            getConfig(),
+            runtimeConfig,
             {
               temperature: 0,
               maxTokens: 8_000,
@@ -73,9 +81,14 @@ export function createLlmInputTableNormalizerProjectGenerator(
       const response = await runWithProgressBlock(
         () =>
           runPiAiOneShot(
-            buildCodeGenerationUserPrompt(input, template, sourceSummary, sourceStructureAnalysis),
+            buildCodeGenerationUserPrompt(
+              generationInput,
+              template,
+              sourceSummary,
+              sourceStructureAnalysis
+            ),
             buildCodeGenerationSystemPrompt(input.primaryLanguage),
-            getConfig(),
+            runtimeConfig,
             {
               temperature: 0.1,
               maxTokens: 16_000,
@@ -98,6 +111,7 @@ export function createLlmInputTableNormalizerProjectGenerator(
           content: `${JSON.stringify(
             {
               rulePrompt: input.rulePrompt,
+              selectedSkillNames: normalizeSelectedSkillNames(input.selectedSkillNames),
               sourceSummaryHash: input.sourceSummary.hash,
               sourceStructureAnalysis,
             },
@@ -108,6 +122,31 @@ export function createLlmInputTableNormalizerProjectGenerator(
       };
     },
   };
+}
+
+function normalizeSelectedSkillNames(selectedSkillNames: string[] | undefined): string[] {
+  return Array.isArray(selectedSkillNames)
+    ? selectedSkillNames
+        .map((name) => name.trim())
+        .filter((name, index, names) => name.length > 0 && names.indexOf(name) === index)
+    : [];
+}
+
+function buildSkillAwareRulePrompt(
+  rulePrompt: string,
+  selectedSkillNames: string[] | undefined
+): string {
+  const normalizedSkillNames = normalizeSelectedSkillNames(selectedSkillNames);
+  if (normalizedSkillNames.length === 0) {
+    return rulePrompt;
+  }
+
+  return [
+    rulePrompt,
+    '',
+    `Selected skills from the UI: ${normalizedSkillNames.map((name) => `@${name}`).join(', ')}.`,
+    'Use these selected skills as user-provided context when interpreting the transformation rule.',
+  ].join('\n');
 }
 
 function emitProgress(

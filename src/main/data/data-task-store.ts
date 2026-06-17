@@ -4886,6 +4886,16 @@ function normalizeInputTableDataProcessing(
     return {
       strategy: 'customize',
       rulePrompt: typeof value.rulePrompt === 'string' ? value.rulePrompt : '',
+      selectedSkillNames: Array.isArray(value.selectedSkillNames)
+        ? value.selectedSkillNames.filter(
+            (name): name is string => typeof name === 'string' && name.trim().length > 0
+          )
+        : undefined,
+      modelConfigSetId:
+        typeof value.modelConfigSetId === 'string' && value.modelConfigSetId.trim()
+          ? value.modelConfigSetId
+          : undefined,
+      model: typeof value.model === 'string' && value.model.trim() ? value.model : undefined,
       artifactId: typeof value.artifactId === 'string' ? value.artifactId : undefined,
       artifactVersionId:
         typeof value.artifactVersionId === 'string' ? value.artifactVersionId : undefined,
