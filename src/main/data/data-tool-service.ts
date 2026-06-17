@@ -223,7 +223,7 @@ export class DataToolService {
     const lines = result.tables.map(formatCloudTable);
     return toolResult(
       lines.length
-        ? `Found ${result.tables.length} cloud table(s):\n${lines.join('\n')}`
+        ? `Found ${result.tables.length} cloud table(s) on page ${result.page} of ${result.total} total:\n${lines.join('\n')}`
         : 'No cloud tables found.',
       result
     );

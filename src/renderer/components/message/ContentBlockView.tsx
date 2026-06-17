@@ -19,8 +19,13 @@ import {
   normalizeDataResourceMarkdownLinks,
   parseDataResourceHref,
 } from '../../../shared/data-resource-link';
-import type { ToolUseContent, ToolResultContent, FileAttachmentContent } from '../../types';
-import { FileText } from 'lucide-react';
+import type {
+  CloudTableAttachmentContent,
+  ToolUseContent,
+  ToolResultContent,
+  FileAttachmentContent,
+} from '../../types';
+import { FileText, Table2 } from 'lucide-react';
 import { CodeBlock } from './CodeBlock';
 import { ThinkingBlock } from './ThinkingBlock';
 import { ToolUseBlock } from './ToolUseBlock';
@@ -346,6 +351,32 @@ export const ContentBlockView = memo(function ContentBlockView({
           <div className="flex-1 min-w-0">
             <p className="text-sm text-text-primary truncate">{fileBlock.filename}</p>
           </div>
+        </div>
+      );
+    }
+
+    case 'cloud_table_attachment': {
+      const cloudTableBlock = block as CloudTableAttachmentContent;
+      const tables = Array.isArray(cloudTableBlock.tables) ? cloudTableBlock.tables : [];
+
+      if (tables.length === 0) return null;
+
+      return (
+        <div className="flex max-w-full flex-wrap gap-2">
+          {tables.map((table, index) => (
+            <div
+              key={table.id || `${table.tableId}-${index}`}
+              className="inline-flex max-w-full items-center gap-2 rounded-lg border border-accent/20 bg-accent/10 px-3 py-2 text-[13px] text-accent-text shadow-soft"
+            >
+              <Table2 className="h-3.5 w-3.5 flex-shrink-0" />
+              <span className="min-w-0 truncate font-medium">{table.tableName}</span>
+              {table.projectName && (
+                <span className="hidden flex-shrink-0 text-[11px] text-text-muted sm:inline">
+                  {table.projectName}
+                </span>
+              )}
+            </div>
+          ))}
         </div>
       );
     }

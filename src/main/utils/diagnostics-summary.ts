@@ -33,6 +33,7 @@ export interface MessageMetaSummary {
   textBlockCount: number;
   imageBlockCount: number;
   fileAttachmentCount: number;
+  cloudTableAttachmentCount: number;
   toolUseCount: number;
   toolResultCount: number;
 }
@@ -173,10 +174,7 @@ export function redactFileSystemPath(value?: string | null): string | null {
   if (/AppData[/\\]Local[/\\]Temp/i.test(trimmed)) {
     const appDataTempIdx = normalizedForTmpCheck.search(/appdata\/local\/temp/i);
     if (appDataTempIdx >= 0) {
-      const tmpBase = normalizedForTmpCheck.slice(
-        0,
-        appDataTempIdx + 'AppData/Local/Temp'.length
-      );
+      const tmpBase = normalizedForTmpCheck.slice(0, appDataTempIdx + 'AppData/Local/Temp'.length);
       const tail = getRelativeTail(normalizedForTmpCheck, tmpBase);
       return tail ? `<tmp>/${tail}` : '<tmp>';
     }
@@ -225,6 +223,9 @@ function summarizeMessageMeta(message?: Message): MessageMetaSummary | null {
     textBlockCount: message.content.filter((block) => block.type === 'text').length,
     imageBlockCount: message.content.filter((block) => block.type === 'image').length,
     fileAttachmentCount: message.content.filter((block) => block.type === 'file_attachment').length,
+    cloudTableAttachmentCount: message.content.filter(
+      (block) => block.type === 'cloud_table_attachment'
+    ).length,
     toolUseCount: message.content.filter((block) => block.type === 'tool_use').length,
     toolResultCount: message.content.filter((block) => block.type === 'tool_result').length,
   };

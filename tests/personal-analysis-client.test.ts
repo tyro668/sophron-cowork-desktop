@@ -83,6 +83,80 @@ describe('PersonalAnalysisClient', () => {
     ]);
   });
 
+  it('lists tables with pagination and normalizes item responses', async () => {
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      const href = String(url);
+
+      if (href.endsWith('/api/personal/api-keys/token')) {
+        return jsonResponse({
+          success: true,
+          data: { accessToken: 'token-1' },
+        });
+      }
+
+      const listUrl = new URL(href);
+      if (
+        listUrl.pathname === '/api/personal/analysis/v1/spaces/space-a/projects/project-a/tables'
+      ) {
+        expect(listUrl.searchParams.get('keyword')).toBe('sales');
+        expect(listUrl.searchParams.get('page')).toBe('2');
+        expect(listUrl.searchParams.get('pageSize')).toBe('50');
+        expect(listUrl.searchParams.get('sortBy')).toBe('updatedAt');
+        expect(listUrl.searchParams.get('sortOrder')).toBe('desc');
+        return jsonResponse({
+          success: true,
+          data: {
+            items: [
+              {
+                tableId: 'table-a',
+                tableName: 'Sales A',
+                projectId: 'project-a',
+                rowCount: 12,
+                columnCount: 3,
+              },
+            ],
+            page: 2,
+            pageSize: 50,
+            total: 72,
+            hasMore: false,
+          },
+        });
+      }
+
+      throw new Error(`Unexpected fetch ${href}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new PersonalAnalysisClient({
+      apiOrigin: 'http://mock.local',
+      apiKey: 'test-api-key',
+    });
+
+    await expect(
+      client.listTables('space-a', 'project-a', {
+        keyword: ' sales ',
+        page: 2,
+        pageSize: 50,
+        sortBy: 'updatedAt',
+        sortOrder: 'desc',
+      })
+    ).resolves.toEqual({
+      tables: [
+        {
+          tableId: 'table-a',
+          tableName: 'Sales A',
+          projectId: 'project-a',
+          rowCount: 12,
+          columnCount: 3,
+        },
+      ],
+      page: 2,
+      pageSize: 50,
+      total: 72,
+      hasMore: false,
+    });
+  });
+
   it('uses the upload input datasource for uploads', async () => {
     const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
       const href = String(url);

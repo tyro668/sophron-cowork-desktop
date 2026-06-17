@@ -145,6 +145,17 @@ export function createDataCustomTools(
         ...CloudConnectionProperties,
         spaceId: Type.String({ minLength: 1 }),
         projectId: Type.String({ minLength: 1 }),
+        keyword: Type.Optional(Type.String({ description: 'Search by cloud table name or id.' })),
+        page: Type.Optional(Type.Integer({ minimum: 1 })),
+        pageSize: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+        sortBy: Type.Optional(
+          Type.Union([
+            Type.Literal('tableName'),
+            Type.Literal('updatedAt'),
+            Type.Literal('rowCount'),
+          ])
+        ),
+        sortOrder: Type.Optional(Type.Union([Type.Literal('asc'), Type.Literal('desc')])),
       }),
       execute: async (_toolCallId, params) => dataToolService.listCloudTables(params as never),
     },

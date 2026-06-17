@@ -445,11 +445,16 @@ export function UploadOutputTableToCloudDialog({
         setError(null);
       }
       try {
-        const result = await window.electronAPI.data.listCloudTables({ spaceId, projectId });
+        const result = await window.electronAPI.data.listCloudTables({
+          spaceId,
+          projectId,
+          page: 1,
+          pageSize: 10,
+        });
         if (requestId !== tableRequestSeq.current) return;
         setCloudTables(result.tables);
         setTargetTableId((current) =>
-          result.tables.some((table) => table.tableId === current)
+          result.tables.some((table: PersonalAnalysisTable) => table.tableId === current)
             ? current
             : (result.tables[0]?.tableId ?? '')
         );
