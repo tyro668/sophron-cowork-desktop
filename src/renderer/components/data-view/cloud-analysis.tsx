@@ -49,7 +49,6 @@ interface NoticeState {
   inputTableId?: string;
 }
 
-type CloudDataTranslate = (key: string, options?: Record<string, unknown>) => string;
 const CLOUD_TABLE_PAGE_SIZE = 10;
 
 interface PreviewState {
@@ -65,30 +64,6 @@ interface TableCacheEntry {
   pageSize: number;
   total: number;
   hasMore: boolean;
-}
-
-function getCloudTableImportNotice(
-  error: unknown,
-  tableName: string,
-  t: CloudDataTranslate
-): Pick<NoticeState, 'type' | 'message'> {
-  const message = error instanceof Error ? error.message : String(error);
-  const normalized = message.toLowerCase();
-  const inputTableAlreadyExists =
-    message.includes('RESOURCE_ALREADY_EXISTS') ||
-    normalized.includes('input table already exists');
-
-  if (inputTableAlreadyExists) {
-    return {
-      type: 'error',
-      message: t('cloudData.importAlreadyExists', { name: tableName }),
-    };
-  }
-
-  return {
-    type: 'error',
-    message: getPersonalAnalysisErrorMessage(error, t),
-  };
 }
 
 function formatCount(value?: number) {
@@ -626,7 +601,10 @@ export function CloudAnalysisPanel() {
         });
       } catch (error) {
         if (requestId !== importRequestSeq.current) return;
-        setNotice(getCloudTableImportNotice(error, table.tableName, t));
+        setNotice({
+          type: 'error',
+          message: getPersonalAnalysisErrorMessage(error, t),
+        });
       } finally {
         if (requestId === importRequestSeq.current) {
           setImportingTableId(null);

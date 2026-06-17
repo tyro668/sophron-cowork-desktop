@@ -129,10 +129,7 @@ import {
   buildScheduledTaskTitle,
 } from '../shared/schedule/task-title';
 import { APP_INTERNAL_NAME, APP_NAME_EN } from '../shared/branding';
-import {
-  BUILTIN_LLM_CONFIG_SET_ID,
-  parseBuiltinLlmConfigSetId,
-} from '../shared/builtin-llm';
+import { BUILTIN_LLM_CONFIG_SET_ID, parseBuiltinLlmConfigSetId } from '../shared/builtin-llm';
 import {
   isUncPath,
   isWindowsDrivePath,
@@ -197,6 +194,44 @@ const desktopAuthService = new DesktopAuthService(() =>
   resolveDesktopAuthOrigin(configStore.get('personalAnalysis')?.apiOrigin)
 );
 
+interface DataCommandIpcError {
+  __dataCommandError: true;
+  name: string;
+  message: string;
+  code?: string;
+  details?: unknown;
+}
+
+function serializeDataCommandError(error: unknown): DataCommandIpcError {
+  const errorRecord =
+    error && typeof error === 'object' ? (error as Record<string, unknown>) : null;
+  const message = error instanceof Error ? error.message : String(error || 'Data command failed');
+  return {
+    __dataCommandError: true,
+    name:
+      error instanceof Error
+        ? error.name
+        : typeof errorRecord?.name === 'string'
+          ? errorRecord.name
+          : 'DataCommandError',
+    message,
+    code: typeof errorRecord?.code === 'string' ? errorRecord.code : undefined,
+    details: errorRecord?.details,
+  };
+}
+
+async function invokeCloudDataCommand<T>(
+  action: () => Promise<T>,
+  logMessage: string
+): Promise<T | DataCommandIpcError> {
+  try {
+    return await action();
+  } catch (error) {
+    logError(logMessage, error);
+    return serializeDataCommandError(error);
+  }
+}
+
 function withSophronRuntimeAuth<T extends AppConfig | AgentRuntimeConfig>(config: T): T {
   if (config.provider !== 'sophron') {
     return config;
@@ -216,9 +251,7 @@ function resolveAgentRuntimeConfigForAuth(
   config?: AgentRuntimeConfig | null
 ): AgentRuntimeConfig | undefined {
   const runtimeConfig =
-    config ??
-    configStore.getRuntimeConfigForSet(configStore.get('activeConfigSetId')) ??
-    undefined;
+    config ?? configStore.getRuntimeConfigForSet(configStore.get('activeConfigSetId')) ?? undefined;
   if (!runtimeConfig) {
     return undefined;
   }
@@ -2089,7 +2122,7 @@ ipcMain.handle(
       const modelConfigSetId =
         typeof payload.modelConfigSetId === 'string' ? payload.modelConfigSetId.trim() : '';
       const runtimeConfig = modelConfigSetId
-        ? resolveModelRuntimeConfigForAutomation(modelConfigSetId) ?? undefined
+        ? (resolveModelRuntimeConfigForAutomation(modelConfigSetId) ?? undefined)
         : undefined;
       return await requireDataCommandService().generateInputTableNormalizerDraft({
         ...payload,
@@ -2247,59 +2280,47 @@ ipcMain.handle('data.deleteDataset', async (_event, id: string) => {
 });
 
 ipcMain.handle('data.listCloudSpaces', async (_event, payload?: ListCloudSpacesInput) => {
-  try {
-    return await requireDataCommandService().listCloudSpaces(payload ?? {});
-  } catch (error) {
-    logError('[Data] Error listing cloud spaces:', error);
-    throw error;
-  }
+  return invokeCloudDataCommand(
+    () => requireDataCommandService().listCloudSpaces(payload ?? {}),
+    '[Data] Error listing cloud spaces:'
+  );
 });
 
 ipcMain.handle('data.listCloudProjects', async (_event, payload: ListCloudProjectsInput) => {
-  try {
-    return await requireDataCommandService().listCloudProjects(payload);
-  } catch (error) {
-    logError('[Data] Error listing cloud projects:', error);
-    throw error;
-  }
+  return invokeCloudDataCommand(
+    () => requireDataCommandService().listCloudProjects(payload),
+    '[Data] Error listing cloud projects:'
+  );
 });
 
 ipcMain.handle('data.listCloudTables', async (_event, payload: ListCloudTablesInput) => {
-  try {
-    return await requireDataCommandService().listCloudTables(payload);
-  } catch (error) {
-    logError('[Data] Error listing cloud tables:', error);
-    throw error;
-  }
+  return invokeCloudDataCommand(
+    () => requireDataCommandService().listCloudTables(payload),
+    '[Data] Error listing cloud tables:'
+  );
 });
 
 ipcMain.handle('data.previewCloudTable', async (_event, payload: PreviewCloudTableInput) => {
-  try {
-    return await requireDataCommandService().previewCloudTable(payload);
-  } catch (error) {
-    logError('[Data] Error previewing cloud table:', error);
-    throw error;
-  }
+  return invokeCloudDataCommand(
+    () => requireDataCommandService().previewCloudTable(payload),
+    '[Data] Error previewing cloud table:'
+  );
 });
 
 ipcMain.handle('data.importCloudTable', async (_event, payload: ImportCloudTableInput) => {
-  try {
-    return await requireDataCommandService().importCloudTable(payload);
-  } catch (error) {
-    logError('[Data] Error importing cloud table:', error);
-    throw error;
-  }
+  return invokeCloudDataCommand(
+    () => requireDataCommandService().importCloudTable(payload),
+    '[Data] Error importing cloud table:'
+  );
 });
 
 ipcMain.handle(
   'data.uploadDataTableToCloud',
   async (_event, payload: UploadDataTableToCloudInput) => {
-    try {
-      return await requireDataCommandService().uploadDataTableToCloud(payload);
-    } catch (error) {
-      logError('[Data] Error uploading data table to cloud:', error);
-      throw error;
-    }
+    return invokeCloudDataCommand(
+      () => requireDataCommandService().uploadDataTableToCloud(payload),
+      '[Data] Error uploading data table to cloud:'
+    );
   }
 );
 

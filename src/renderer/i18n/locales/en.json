@@ -1004,7 +1004,6 @@
     "preview": "Preview",
     "importAsInput": "Import as input table",
     "importSuccess": "Imported as input table: {{name}}. You can use it in the current chat and data tasks.",
-    "importAlreadyExists": "Input table \"{{name}}\" already exists. No need to import it again.",
     "previewTitle": "Preview: {{name}}",
     "previewLoading": "Preparing preview...",
     "tableId": "tableId",

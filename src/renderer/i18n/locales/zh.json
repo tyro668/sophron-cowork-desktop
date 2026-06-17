@@ -1004,7 +1004,6 @@
     "preview": "预览",
     "importAsInput": "导入为输入表",
     "importSuccess": "已导入为输入表：{{name}}。你可以在当前对话和数据任务中使用它。",
-    "importAlreadyExists": "输入表“{{name}}”已存在，无需重复导入。",
     "previewTitle": "预览：{{name}}",
     "previewLoading": "正在生成预览...",
     "tableId": "tableId",
