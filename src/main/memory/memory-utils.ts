@@ -2,6 +2,7 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { ContentBlock, Message } from '../../renderer/types';
+import memorySearchLexicon from './memory-search-lexicon.json';
 import type {
   AppliedCoreMemoryAction,
   CoreMemoryActionInput,
@@ -10,67 +11,66 @@ import type {
   MemoryTranscriptTurn,
 } from './memory-types';
 
-const EN_STOP_WORDS = new Set([
-  'the',
-  'and',
-  'for',
-  'with',
-  'that',
-  'this',
-  'from',
-  'your',
-  'have',
-  'will',
-  'into',
-  'about',
-  'please',
-  'using',
-  'user',
-  'assistant',
-  'need',
-  'want',
-  'help',
-  'make',
-  'just',
-  'then',
-  'than',
-  'them',
-  'they',
-  'their',
-  'there',
-  'here',
-  'been',
-  'were',
-  'when',
-  'what',
-  'which',
-  'where',
-  'while',
-  'after',
-  'before',
-  'should',
-  'could',
-  'would',
-  'current',
-  'project',
-  'workspace',
-  'session',
-  'continue',
-  'based',
-]);
+type SearchTokenKind = 'en' | 'zh' | 'code' | 'number';
 
-const ZH_STOP_WORDS = [
-  '我们',
-  '你们',
-  '他们',
-  '进行',
-  '一个',
-  '这个',
-  '那个',
-  '需要',
-  '可以',
-  '已经',
-];
+export interface SearchToken {
+  text: string;
+  kind: SearchTokenKind;
+  weight: number;
+}
+
+interface EnglishNormalizationRule {
+  suffix: string;
+  replacement: string;
+  minLength: number;
+  trimDoubleConsonant?: boolean;
+}
+
+interface MemorySearchLexicon {
+  stopWords: {
+    en: string[];
+    zh: string[];
+  };
+  domainTerms: {
+    en: string[];
+    zh: string[];
+  };
+  weights: {
+    default: number;
+    en: number;
+    zh: number;
+    code: number;
+    number: number;
+    domain: number;
+    phraseBonus: number;
+    lengthBoostMax: number;
+  };
+  englishNormalization: {
+    overrides: Record<string, string>;
+    suffixRules: EnglishNormalizationRule[];
+  };
+}
+
+type SegmenterSegment = {
+  segment: string;
+  isWordLike?: boolean;
+};
+
+type WordSegmenter = {
+  segment(input: string): Iterable<SegmenterSegment>;
+};
+
+type SegmenterConstructor = new (
+  locale?: string | string[],
+  options?: { granularity?: 'grapheme' | 'word' | 'sentence' }
+) => WordSegmenter;
+
+const SEARCH_LEXICON = memorySearchLexicon as MemorySearchLexicon;
+const EN_STOP_WORDS = new Set(SEARCH_LEXICON.stopWords.en.map((word) => word.toLowerCase()));
+const ZH_STOP_WORDS = new Set(SEARCH_LEXICON.stopWords.zh);
+const EN_DOMAIN_TERMS = new Set(SEARCH_LEXICON.domainTerms.en.map((word) => word.toLowerCase()));
+const ZH_DOMAIN_TERMS = new Set(SEARCH_LEXICON.domainTerms.zh);
+const SEGMENTERS = new Map<string, WordSegmenter | null>();
 const CORE_CATEGORIES = new Set<CoreMemoryCategory>([
   'identity',
   'preferences',
@@ -223,36 +223,240 @@ export function tokenizeSearchQuery(query: string): string[] {
 }
 
 export function simpleTokenize(text: string): string[] {
-  return (text.toLowerCase().match(/[a-z0-9][a-z0-9_-]{1,}|[\u4e00-\u9fff]{2,}/g) || []).filter(
-    (token) => !EN_STOP_WORDS.has(token) && !ZH_STOP_WORDS.includes(token)
-  );
+  return tokenizeSearchText(text).map((token) => token.text);
+}
+
+export function tokenizeSearchText(text: string): SearchToken[] {
+  const normalized = text.normalize('NFKC');
+  const tokens: SearchToken[] = [];
+
+  for (const match of normalized.matchAll(/[A-Za-z][A-Za-z0-9_.-]{1,}|[0-9]+(?:\.[0-9]+)?/g)) {
+    appendUnique(tokens, tokenizeCodeLikeToken(match[0]));
+  }
+
+  for (const match of normalized.matchAll(/[\u4e00-\u9fff]+/g)) {
+    appendUnique(tokens, tokenizeChineseRun(match[0]));
+  }
+
+  return tokens;
 }
 
 export function lexicalScore(query: string, text: string): number {
-  const queryTerms = new Map<string, number>();
-  for (const token of simpleTokenize(query)) {
-    queryTerms.set(token, (queryTerms.get(token) || 0) + 1);
-  }
-  const itemTerms = new Map<string, number>();
-  for (const token of simpleTokenize(text)) {
-    itemTerms.set(token, (itemTerms.get(token) || 0) + 1);
-  }
+  const queryTerms = buildWeightedTermMap(tokenizeSearchText(query));
+  const itemTerms = buildWeightedTermMap(tokenizeSearchText(text));
   if (!queryTerms.size || !itemTerms.size) {
     return 0;
   }
   let overlap = 0;
-  let queryCount = 0;
-  let itemCount = 0;
+  let queryNorm = 0;
+  let itemNorm = 0;
   for (const value of queryTerms.values()) {
-    queryCount += value;
+    queryNorm += value * value;
   }
   for (const value of itemTerms.values()) {
-    itemCount += value;
+    itemNorm += value * value;
   }
-  for (const [term, count] of queryTerms.entries()) {
-    overlap += Math.min(count, itemTerms.get(term) || 0);
+  for (const [term, queryWeight] of queryTerms.entries()) {
+    overlap += Math.min(queryWeight, itemTerms.get(term) || 0);
   }
-  return overlap / Math.sqrt(queryCount * Math.max(itemCount, 1));
+  const baseScore = overlap / Math.sqrt(queryNorm * Math.max(itemNorm, 1));
+  const phraseBonus = hasPhraseMatch(query, text) ? SEARCH_LEXICON.weights.phraseBonus : 0;
+  return Math.min(1, baseScore + phraseBonus);
+}
+
+function tokenizeCodeLikeToken(rawToken: string): SearchToken[] {
+  const tokens: SearchToken[] = [];
+  const rawParts = rawToken.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  const compact = rawToken.replace(/[^A-Za-z0-9]+/g, '');
+  const sourceParts = compact && compact !== rawParts.join('') ? [...rawParts, compact] : rawParts;
+
+  for (const part of sourceParts) {
+    if (/^\d+(?:\.\d+)?$/.test(part)) {
+      appendSearchToken(tokens, part, 'number');
+      continue;
+    }
+    const normalized = normalizeEnglishToken(part);
+    appendSearchToken(tokens, normalized, part === rawToken ? 'en' : 'code');
+    for (const splitPart of splitIdentifierParts(part)) {
+      appendSearchToken(tokens, normalizeEnglishToken(splitPart), 'code');
+    }
+  }
+
+  return tokens;
+}
+
+function tokenizeChineseRun(run: string): SearchToken[] {
+  const tokens: SearchToken[] = [];
+  for (const term of ZH_DOMAIN_TERMS) {
+    if (run.includes(term)) {
+      appendSearchToken(tokens, term, 'zh');
+    }
+  }
+
+  const segmentedTokens = tokenizeChineseWithSegmenter(run);
+  if (segmentedTokens.length > 0) {
+    appendUnique(tokens, segmentedTokens);
+    return tokens;
+  }
+
+  appendUnique(tokens, tokenizeChineseNgrams(run));
+  return tokens;
+}
+
+function tokenizeChineseWithSegmenter(run: string): SearchToken[] {
+  const segmenter = getWordSegmenter('zh');
+  if (!segmenter) {
+    return [];
+  }
+
+  const tokens: SearchToken[] = [];
+  for (const part of segmenter.segment(run)) {
+    if (part.isWordLike === false) {
+      continue;
+    }
+    appendSearchToken(tokens, part.segment, 'zh');
+  }
+  return tokens;
+}
+
+function tokenizeChineseNgrams(run: string): SearchToken[] {
+  const chars = Array.from(run);
+  const tokens: SearchToken[] = [];
+  for (const size of [2, 3, 4]) {
+    if (chars.length < size) {
+      continue;
+    }
+    for (let index = 0; index <= chars.length - size; index += 1) {
+      appendSearchToken(tokens, chars.slice(index, index + size).join(''), 'zh');
+    }
+  }
+  return tokens;
+}
+
+function appendUnique(target: SearchToken[], source: SearchToken[]): void {
+  const seen = new Set<string>();
+  for (const token of source) {
+    if (seen.has(token.text)) {
+      continue;
+    }
+    seen.add(token.text);
+    target.push(token);
+  }
+}
+
+function appendSearchToken(target: SearchToken[], text: string, kind: SearchTokenKind): void {
+  const normalized = normalizeTokenText(text, kind);
+  if (!normalized || isStopToken(normalized, kind)) {
+    return;
+  }
+  target.push({
+    text: normalized,
+    kind,
+    weight: getTokenWeight(normalized, kind),
+  });
+}
+
+function normalizeTokenText(text: string, kind: SearchTokenKind): string {
+  const normalized = text.normalize('NFKC').trim();
+  if (!normalized) {
+    return '';
+  }
+  if (kind === 'zh') {
+    return Array.from(normalized).length >= 2 ? normalized : '';
+  }
+  if (kind === 'number') {
+    return normalized;
+  }
+  const lower = normalized.toLowerCase();
+  return lower.length >= 2 ? lower : '';
+}
+
+function normalizeEnglishToken(token: string): string {
+  const lower = token.normalize('NFKC').toLowerCase();
+  const override = SEARCH_LEXICON.englishNormalization.overrides[lower];
+  if (override) {
+    return override;
+  }
+  for (const rule of SEARCH_LEXICON.englishNormalization.suffixRules) {
+    if (lower.length < rule.minLength || !lower.endsWith(rule.suffix)) {
+      continue;
+    }
+    let stem = `${lower.slice(0, -rule.suffix.length)}${rule.replacement}`;
+    if (rule.trimDoubleConsonant && hasTrailingDoubleConsonant(stem)) {
+      stem = stem.slice(0, -1);
+    }
+    return stem;
+  }
+  return lower;
+}
+
+function splitIdentifierParts(value: string): string[] {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .split(/[^A-Za-z0-9]+|\s+/)
+    .filter((part) => part.length > 0 && part !== value);
+}
+
+function hasTrailingDoubleConsonant(value: string): boolean {
+  if (value.length < 2) {
+    return false;
+  }
+  const last = value[value.length - 1];
+  const previous = value[value.length - 2];
+  return last === previous && /[bcdfghjklmnpqrstvwxyz]/.test(last);
+}
+
+function isStopToken(token: string, kind: SearchTokenKind): boolean {
+  if (kind === 'zh') {
+    return ZH_STOP_WORDS.has(token);
+  }
+  if (kind === 'number') {
+    return false;
+  }
+  return EN_STOP_WORDS.has(token);
+}
+
+function getTokenWeight(token: string, kind: SearchTokenKind): number {
+  const weights = SEARCH_LEXICON.weights;
+  const base = weights[kind] ?? weights.default;
+  const domainBoost =
+    EN_DOMAIN_TERMS.has(token) || ZH_DOMAIN_TERMS.has(token) ? weights.domain : 1;
+  const lengthBoost =
+    kind === 'number'
+      ? 0
+      : Math.min(Math.max(Array.from(token).length - 2, 0) * 0.04, weights.lengthBoostMax);
+  return base * domainBoost + lengthBoost;
+}
+
+function buildWeightedTermMap(tokens: SearchToken[]): Map<string, number> {
+  const terms = new Map<string, number>();
+  for (const token of tokens) {
+    terms.set(token.text, (terms.get(token.text) || 0) + token.weight);
+  }
+  return terms;
+}
+
+function hasPhraseMatch(query: string, text: string): boolean {
+  const normalizedQuery = normalizePhrase(query);
+  if (normalizedQuery.length < 4) {
+    return false;
+  }
+  return normalizePhrase(text).includes(normalizedQuery);
+}
+
+function normalizePhrase(value: string): string {
+  return value.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function getWordSegmenter(locale: string): WordSegmenter | null {
+  if (SEGMENTERS.has(locale)) {
+    return SEGMENTERS.get(locale) ?? null;
+  }
+  const Segmenter = (Intl as typeof Intl & { Segmenter?: SegmenterConstructor }).Segmenter;
+  const segmenter = Segmenter ? new Segmenter(locale, { granularity: 'word' }) : null;
+  SEGMENTERS.set(locale, segmenter);
+  return segmenter;
 }
 
 export function cosineSimilarity(vecA: number[], vecB: number[]): number {
@@ -274,12 +478,17 @@ export function cosineSimilarity(vecA: number[], vecB: number[]): number {
 }
 
 export function extractKeywords(text: string, limit = 8): string[] {
-  const counts = new Map<string, number>();
-  for (const token of simpleTokenize(text)) {
-    counts.set(token, (counts.get(token) || 0) + 1);
+  const scores = new Map<string, number>();
+  for (const token of tokenizeSearchText(text)) {
+    scores.set(token.text, (scores.get(token.text) || 0) + token.weight);
   }
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  return [...scores.entries()]
+    .sort(
+      (a, b) =>
+        b[1] - a[1] ||
+        Array.from(b[0]).length - Array.from(a[0]).length ||
+        a[0].localeCompare(b[0])
+    )
     .slice(0, limit)
     .map(([token]) => token);
 }
@@ -302,7 +511,9 @@ export function resolveCoreCombinedKey(
   return trimmedKey;
 }
 
-export function parseCoreCombinedKey(combinedKey: string): CoreMemoryEntry {
+export function parseCoreCombinedKey(
+  combinedKey: string
+): Pick<CoreMemoryEntry, 'combinedKey' | 'category' | 'key'> & { value: string } {
   const trimmed = combinedKey.trim();
   const separator = trimmed.indexOf('.');
   if (separator > 0) {

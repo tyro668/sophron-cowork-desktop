@@ -387,6 +387,8 @@ describe('MemoryService', () => {
 
     const overview = service.getOverview('/repo/a');
     expect(overview.coreCount).toBe(2);
+    expect(overview.projectCount).toBe(1);
+    expect(overview.currentWorkspace?.projectCount).toBe(1);
     expect(overview.experienceSessionCount).toBe(1);
     expect(overview.experienceChunkCount).toBe(1);
 
@@ -395,6 +397,11 @@ describe('MemoryService', () => {
     expect(core.text).toContain('preferences.response_language');
 
     const files = service.listFiles();
+    const projectFile = files.find((item) => item.kind === 'project');
+    expect(projectFile?.filePath).toContain('project_memory.json');
+    const project = service.readFile(projectFile!.filePath);
+    expect(JSON.stringify(project.parsed)).toContain('gateway token rotation');
+
     const experienceFile = files.find((item) => item.kind === 'experience');
     expect(experienceFile?.filePath).toContain('experience_memory.json');
 
@@ -428,6 +435,7 @@ describe('MemoryService', () => {
       '继续 gateway token rotation'
     );
     expect(promptPrefix).toContain('<core_memory>');
+    expect(promptPrefix).toContain('<project_memory');
     expect(promptPrefix).toContain('<experience_memory');
     expect(promptPrefix).toContain('Expanded Chunk Raw Text');
     expect(promptPrefix).toContain('gateway token rotation');
@@ -443,8 +451,10 @@ describe('MemoryService', () => {
       limit: 10,
     });
     expect(results.some((item) => item.kind === 'experience_chunk')).toBe(true);
+    expect(results.some((item) => item.kind === 'project')).toBe(true);
 
-    const detail = service.read(results[0].id);
+    const experienceResult = results.find((item) => item.kind === 'experience_chunk') || results[0];
+    const detail = service.read(experienceResult.id);
     expect(detail?.sourceFile).toContain('experience_memory.json');
     expect(detail?.summary || detail?.rawText).toContain('gateway token rotation');
 
@@ -452,6 +462,11 @@ describe('MemoryService', () => {
     expect(inspected?.session.sessionId).toBe('session-a');
     expect(inspected?.chunks).toHaveLength(1);
     expect(inspected?.sourceWorkspace).toBe('/repo/a');
+
+    const projectEntries = service.listProjectEntries('/repo/a');
+    expect(projectEntries).toHaveLength(1);
+    service.updateProjectEntry(projectEntries[0].id, { status: 'archived' });
+    expect(service.getOverview('/repo/a').currentWorkspace?.projectCount).toBe(0);
   });
 
   it('escapes memory text before injecting it into the prompt delimiter block', async () => {

@@ -37,12 +37,14 @@ describe('memory integration wiring', () => {
     expect(preload).toContain('memory: {');
     expect(preload).toContain("ipcRenderer.invoke('memory.search'");
     expect(preload).toContain("ipcRenderer.invoke('memory.listFiles')");
-    expect(memorySettings).toContain("window.electronAPI.memory.search");
-    expect(memorySettings).toContain("window.electronAPI.memory.readFile");
-    expect(memorySettings).toContain("window.electronAPI.memory.inspectSession");
-    expect(memorySettings).toContain("window.electronAPI.memory.rebuildWorkspace");
-    expect(memorySettings).toContain('evalEnabled: source.evalEnabled');
-    expect(memorySettings).toContain('promptIterationRounds');
+    expect(memorySettings).toContain('window.electronAPI.memory.listCoreEntries');
+    expect(memorySettings).toContain('window.electronAPI.memory.listProjectEntries');
+    expect(memorySettings).toContain('window.electronAPI.memory.updateCoreEntry');
+    expect(memorySettings).toContain('window.electronAPI.memory.updateProjectEntry');
+    expect(memorySettings).toContain('window.electronAPI.memory.rebuildWorkspace');
+    expect(memorySettings).toContain('failedSessionCount');
+    expect(memorySettings).not.toContain('window.electronAPI.memory.readFile');
+    expect(memorySettings).not.toContain('promptIterationRounds');
   });
 
   it('defaults new sessions to the global memory toggle', () => {

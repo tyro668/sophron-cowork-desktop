@@ -3,6 +3,7 @@ import type {
   MemoryReadResult,
   MemorySearchParams,
   MemorySearchResult,
+  ProjectMemoryEntry,
   SessionMemoryItem,
 } from './memory-types';
 import { ExperienceMemoryStore } from './experience-memory-store';
@@ -28,6 +29,8 @@ export class MemoryRetriever {
     private readonly deps: {
       getCoreEntries: () => CoreMemoryEntry[];
       getCoreFilePath: () => string;
+      getProjectEntries: (workspaceKey?: string | null) => ProjectMemoryEntry[];
+      getProjectFilePath: () => string;
       getExperienceStore: () => ExperienceMemoryStore;
       getExperienceFilePath: () => string;
       getSessionTitle: (sessionId: string) => string | undefined;
@@ -53,6 +56,9 @@ export class MemoryRetriever {
       results.push(...this.searchCore(query));
     }
     if (scope !== 'global') {
+      results.push(...this.searchProject(query, experienceWorkspace));
+    }
+    if (scope !== 'global') {
       results.push(...this.searchExperience(query, experienceWorkspace));
     }
 
@@ -70,6 +76,9 @@ export class MemoryRetriever {
     }
     if (parsed.kind === 'core') {
       return this.readCore(parsed.recordId);
+    }
+    if (parsed.kind === 'project') {
+      return this.readProject(parsed.recordId);
     }
 
     const store = this.deps.getExperienceStore();
@@ -100,6 +109,8 @@ export class MemoryRetriever {
         createdAt: Date.parse(chunk.createdAt) || Date.now(),
         updatedAt: Date.parse(chunk.ingestedAt) || undefined,
         keywords: chunk.keywords,
+        confidence: chunk.confidence,
+        status: chunk.status,
       };
     }
 
@@ -137,6 +148,8 @@ export class MemoryRetriever {
       createdAt: Date.parse(session.createdAt) || Date.now(),
       updatedAt: Date.parse(session.ingestedAt) || undefined,
       keywords: session.keywords,
+      confidence: session.confidence,
+      status: session.status,
       chunkIds: chunks.map((chunk) => chunk.id),
     };
   }
@@ -144,9 +157,11 @@ export class MemoryRetriever {
   private searchCore(query: string): MemorySearchResult[] {
     return this.deps
       .getCoreEntries()
+      .filter((entry) => entry.status === 'active')
       .map((entry): MemorySearchResult | null => {
-        const score = lexicalScore(query, `${entry.combinedKey} ${entry.value}`);
-        if (score <= 0) {
+        const evidenceScore = lexicalScore(query, `${entry.combinedKey} ${entry.value}`);
+        const score = evidenceScore + confidenceBoost(entry.confidence) + 0.06;
+        if (evidenceScore <= 0) {
           return null;
         }
         return {
@@ -159,8 +174,42 @@ export class MemoryRetriever {
           category: entry.category,
           sourceFile: this.deps.getCoreFilePath(),
           score,
-          createdAt: 0,
-          updatedAt: 0,
+          confidence: entry.confidence,
+          status: entry.status,
+          createdAt: Date.parse(entry.createdAt) || 0,
+          updatedAt: Date.parse(entry.updatedAt) || 0,
+        };
+      })
+      .filter((item): item is MemorySearchResult => Boolean(item));
+  }
+
+  private searchProject(query: string, sourceWorkspace: string | null): MemorySearchResult[] {
+    return this.deps
+      .getProjectEntries(sourceWorkspace)
+      .filter((entry) => entry.status === 'active')
+      .map((entry): MemorySearchResult | null => {
+        const evidenceScore = lexicalScore(query, `${entry.key} ${entry.value}`);
+        if (evidenceScore <= 0) {
+          return null;
+        }
+        const workspaceBoost =
+          sourceWorkspace && entry.workspaceKey === sourceWorkspace ? 0.18 : 0.04;
+        return {
+          id: buildSearchId('project', entry.id),
+          recordId: entry.id,
+          kind: 'project',
+          title: entry.key,
+          summary: entry.value,
+          contentPreview: summarizeText(entry.value, 220),
+          workspaceKey: entry.workspaceKey,
+          sourceWorkspace: entry.workspaceKey,
+          sourceWorkspaceLabel: entry.workspaceLabel,
+          sourceFile: this.deps.getProjectFilePath(),
+          confidence: entry.confidence,
+          status: entry.status,
+          score: evidenceScore + confidenceBoost(entry.confidence) + workspaceBoost + 0.12,
+          createdAt: Date.parse(entry.createdAt) || Date.now(),
+          updatedAt: Date.parse(entry.updatedAt) || undefined,
         };
       })
       .filter((item): item is MemorySearchResult => Boolean(item));
@@ -171,6 +220,9 @@ export class MemoryRetriever {
     const results: MemorySearchResult[] = [];
 
     for (const item of store.sessions) {
+      if (item.status !== 'active' || item.supersededBy) {
+        continue;
+      }
       if (sourceWorkspace && item.sourceWorkspace !== sourceWorkspace) {
         continue;
       }
@@ -178,10 +230,13 @@ export class MemoryRetriever {
       if (score <= 0) {
         continue;
       }
-      results.push(this.mapSessionResult(item, score));
+      results.push(this.mapSessionResult(item, score + confidenceBoost(item.confidence) + 0.08));
     }
 
     for (const item of store.chunks) {
+      if (item.status !== 'active' || item.supersededBy) {
+        continue;
+      }
       if (sourceWorkspace && item.sourceWorkspace !== sourceWorkspace) {
         continue;
       }
@@ -206,10 +261,12 @@ export class MemoryRetriever {
         sourceSessionTitle: item.sourceSessionTitle,
         sessionId: item.sessionId,
         sessionTitle: this.deps.getSessionTitle(item.sessionId),
-        score,
+        score: score + confidenceBoost(item.confidence) + 0.1,
         createdAt: Date.parse(item.createdAt) || Date.now(),
         updatedAt: Date.parse(item.ingestedAt) || undefined,
         keywords: item.keywords,
+        confidence: item.confidence,
+        status: item.status,
         sourceFile: this.deps.getExperienceFilePath(),
       });
     }
@@ -239,6 +296,8 @@ export class MemoryRetriever {
       createdAt: Date.parse(item.createdAt) || Date.now(),
       updatedAt: Date.parse(item.ingestedAt) || undefined,
       keywords: item.keywords,
+      confidence: item.confidence,
+      status: item.status,
       sourceFile: this.deps.getExperienceFilePath(),
     };
   }
@@ -258,9 +317,44 @@ export class MemoryRetriever {
       rawText: entry.value,
       category: entry.category,
       score: 0,
-      createdAt: 0,
-      updatedAt: 0,
+      confidence: entry.confidence,
+      status: entry.status,
+      createdAt: Date.parse(entry.createdAt) || 0,
+      updatedAt: Date.parse(entry.updatedAt) || 0,
       sourceFile: this.deps.getCoreFilePath(),
     };
   }
+
+  private readProject(id: string): MemoryReadResult | null {
+    const entry = this.deps.getProjectEntries().find((item) => item.id === id);
+    if (!entry) {
+      return null;
+    }
+    return {
+      id: buildSearchId('project', entry.id),
+      recordId: entry.id,
+      kind: 'project',
+      title: entry.key,
+      summary: entry.value,
+      contentPreview: summarizeText(entry.value, 220),
+      rawText: entry.value,
+      workspaceKey: entry.workspaceKey,
+      sourceWorkspace: entry.workspaceKey,
+      sourceWorkspaceLabel: entry.workspaceLabel,
+      sourceExcerpt: entry.evidence[0]?.excerpt,
+      sourceFile: this.deps.getProjectFilePath(),
+      confidence: entry.confidence,
+      status: entry.status,
+      score: 0,
+      createdAt: Date.parse(entry.createdAt) || Date.now(),
+      updatedAt: Date.parse(entry.updatedAt) || undefined,
+    };
+  }
+}
+
+function confidenceBoost(confidence?: number): number {
+  if (typeof confidence !== 'number' || !Number.isFinite(confidence)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(1, confidence)) * 0.1;
 }

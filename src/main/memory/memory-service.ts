@@ -16,12 +16,15 @@ import { MemoryNavigator } from './memory-navigator';
 import { DEFAULT_MEMORY_PROMPTS, type MemoryPromptSet } from './memory-prompts';
 import { MemoryRetriever } from './memory-retriever';
 import { MemorySessionStateStore } from './memory-state-store';
+import { ProjectMemoryStore } from './project-memory-store';
 import type {
   ChunkMemoryItem,
+  CoreMemoryEntry,
   MemoryDebugFileContent,
   MemoryDebugFileInfo,
   MemoryIngestionInput,
   MemoryInspectSessionResult,
+  MemoryItemStatus,
   MemoryOverview,
   MemoryReadResult,
   MemorySearchParams,
@@ -29,6 +32,7 @@ import type {
   MemoryToolDefinition,
   MemoryTranscriptTurn,
   ProgressiveRetrievalResult,
+  ProjectMemoryEntry,
 } from './memory-types';
 import {
   extractKeywords,
@@ -41,15 +45,24 @@ import {
   messagesToTranscript,
   normalizeWorkspaceKey,
   safeRemoveFile,
+  summarizeText,
 } from './memory-utils';
 import { createMemoryTools } from './memory-tools';
 
 interface MemoryPaths {
   storageRoot: string;
   coreFilePath: string;
+  projectFilePath: string;
   experienceFilePath: string;
   stateFilePath: string;
   artifactsDir: string;
+}
+
+interface MemoryEntryUpdatePayload {
+  key?: string;
+  value?: string;
+  confidence?: number;
+  status?: MemoryItemStatus;
 }
 
 interface ExtractionBundle {
@@ -60,6 +73,19 @@ interface ExtractionBundle {
   fullMessages: MemoryIngestionInput['messages'];
   fullTurns: MemoryTranscriptTurn[];
   extracted: Awaited<ReturnType<ExperienceMemoryExtractor['extractSession']>>;
+}
+
+interface BatchRebuildResult {
+  sessionCount: number;
+  succeededSessionCount: number;
+  failedSessionCount: number;
+}
+
+interface ExtractionFailure {
+  session: MemoryIngestionInput['session'];
+  sourceWorkspace: string | null;
+  fullMessageCount: number;
+  error: unknown;
 }
 
 interface ExpandedChunkData {
@@ -150,6 +176,7 @@ export class MemoryService {
   private readonly tools: MemoryToolDefinition[];
   private currentPathsKey: string | null = null;
   private coreStore: CoreMemoryStore | null = null;
+  private projectStore: ProjectMemoryStore | null = null;
   private stateStore: MemorySessionStateStore | null = null;
   private experienceStore: ExperienceMemoryStore | null = null;
 
@@ -177,6 +204,8 @@ export class MemoryService {
     this.retriever = new MemoryRetriever({
       getCoreEntries: () => this.getCoreStore().getEntries(),
       getCoreFilePath: () => this.getPaths().coreFilePath,
+      getProjectEntries: (workspaceKey) => this.getProjectStore().getEntries(workspaceKey),
+      getProjectFilePath: () => this.getPaths().projectFilePath,
       getExperienceStore: () => this.getExperienceStore(),
       getExperienceFilePath: () => this.getPaths().experienceFilePath,
       getSessionTitle: (sessionId) => this.getSessionTitle(sessionId),
@@ -208,6 +237,7 @@ export class MemoryService {
   getOverview(cwd?: string): MemoryOverview {
     const paths = this.getPaths();
     const coreEntries = this.getCoreStore().getEntries();
+    const projectStore = this.getProjectStore();
     const experienceStore = this.getExperienceStore();
     const stateRecords = this.getStateStore().getAll();
     const currentWorkspace = normalizeWorkspaceKey(cwd);
@@ -217,9 +247,11 @@ export class MemoryService {
       enabled: this.isEnabled(),
       storageRoot: paths.storageRoot,
       coreFilePath: paths.coreFilePath,
+      projectFilePath: paths.projectFilePath,
       experienceFilePath: paths.experienceFilePath,
       stateFilePath: paths.stateFilePath,
-      coreCount: coreEntries.length,
+      coreCount: coreEntries.filter((entry) => entry.status === 'active').length,
+      projectCount: projectStore.getActiveEntries().length,
       experienceSessionCount: experienceStore.sessions.length,
       experienceChunkCount: experienceStore.chunks.length,
       sourceWorkspaceCount: topSourceWorkspaces.filter((item) => item.workspaceKey !== '(none)')
@@ -238,6 +270,7 @@ export class MemoryService {
       currentWorkspace: currentWorkspace
         ? {
             workspaceKey: currentWorkspace,
+            projectCount: projectStore.getActiveEntries(currentWorkspace).length,
             experienceSessionCount: experienceStore.sessions.filter(
               (item) => item.sourceWorkspace === currentWorkspace
             ).length,
@@ -261,6 +294,14 @@ export class MemoryService {
         exists: fs.existsSync(paths.coreFilePath),
         sizeBytes: getFileSizeBytes(paths.coreFilePath),
         updatedAt: getFileTimestampMs(paths.coreFilePath),
+      },
+      {
+        kind: 'project',
+        label: 'project_memory.json',
+        filePath: paths.projectFilePath,
+        exists: fs.existsSync(paths.projectFilePath),
+        sizeBytes: getFileSizeBytes(paths.projectFilePath),
+        updatedAt: getFileTimestampMs(paths.projectFilePath),
       },
       {
         kind: 'experience',
@@ -347,6 +388,30 @@ export class MemoryService {
     };
   }
 
+  listCoreEntries(): CoreMemoryEntry[] {
+    return this.getCoreStore().getEntries();
+  }
+
+  updateCoreEntry(combinedKey: string, updates: MemoryEntryUpdatePayload): CoreMemoryEntry | null {
+    return this.getCoreStore().updateEntry(combinedKey, updates);
+  }
+
+  deleteCoreEntry(combinedKey: string): { success: boolean } {
+    return this.getCoreStore().deleteEntry(combinedKey);
+  }
+
+  listProjectEntries(workspaceKey?: string | null): ProjectMemoryEntry[] {
+    return this.getProjectStore().getEntries(workspaceKey);
+  }
+
+  updateProjectEntry(id: string, updates: MemoryEntryUpdatePayload): ProjectMemoryEntry | null {
+    return this.getProjectStore().updateEntry(id, updates);
+  }
+
+  deleteProjectEntry(id: string): { success: boolean } {
+    return this.getProjectStore().deleteEntry(id);
+  }
+
   async buildPromptPrefix(session: { cwd?: string }, prompt: string): Promise<string> {
     if (!this.isEnabled()) {
       return '';
@@ -358,10 +423,15 @@ export class MemoryService {
       sections.push(`<core_memory>\n${escapeMemoryContextText(corePromptBlock)}\n</core_memory>`);
     }
 
-    const experienceContext = await this.buildExperienceContext(
-      prompt,
-      normalizeWorkspaceKey(session.cwd)
-    );
+    const currentWorkspace = normalizeWorkspaceKey(session.cwd);
+    const projectPromptBlock = this.getProjectStore().toPromptBlock(currentWorkspace);
+    if (projectPromptBlock !== 'None') {
+      sections.push(
+        `<project_memory workspace="${escapeMemoryContextText(currentWorkspace || 'global')}">\n${escapeMemoryContextText(projectPromptBlock)}\n</project_memory>`
+      );
+    }
+
+    const experienceContext = await this.buildExperienceContext(prompt, currentWorkspace);
     if (experienceContext.trim()) {
       sections.push(
         `<experience_memory>\n${escapeMemoryContextText(experienceContext)}\n</experience_memory>`
@@ -394,7 +464,12 @@ export class MemoryService {
     });
   }
 
-  async rebuildWorkspace(cwd: string): Promise<{ success: boolean; workspaceKey: string }> {
+  async rebuildWorkspace(cwd: string): Promise<
+    {
+      success: boolean;
+      workspaceKey: string;
+    } & BatchRebuildResult
+  > {
     const workspaceKey = normalizeWorkspaceKey(cwd);
     if (!workspaceKey) {
       throw new Error('Workspace path is required');
@@ -409,13 +484,14 @@ export class MemoryService {
       )
       .sort((a, b) => a.created_at - b.created_at);
 
-    await this.batchRebuild(sessionRows);
-    return { success: true, workspaceKey };
+    const result = await this.batchRebuild(sessionRows);
+    return { success: true, workspaceKey, ...result };
   }
 
-  async rebuildAll(): Promise<{ success: boolean; workspaceCount: number; sessionCount: number }> {
+  async rebuildAll(): Promise<{ success: boolean; workspaceCount: number } & BatchRebuildResult> {
     const paths = this.getPaths();
     safeRemoveFile(paths.coreFilePath);
+    safeRemoveFile(paths.projectFilePath);
     safeRemoveFile(paths.experienceFilePath);
     safeRemoveFile(paths.stateFilePath);
     fs.rmSync(paths.artifactsDir, { recursive: true, force: true });
@@ -425,12 +501,12 @@ export class MemoryService {
       .getAll()
       .filter((session) => session.memory_enabled === 1)
       .sort((a, b) => a.created_at - b.created_at);
-    await this.batchRebuild(sessionRows);
+    const result = await this.batchRebuild(sessionRows);
     const overview = this.getOverview();
     return {
       success: true,
       workspaceCount: overview.sourceWorkspaceCount,
-      sessionCount: sessionRows.length,
+      ...result,
     };
   }
 
@@ -443,6 +519,7 @@ export class MemoryService {
     const store = this.getExperienceStore();
     store.removeBySourceWorkspace(workspaceKey);
     store.save();
+    this.getProjectStore().removeByWorkspace(workspaceKey);
     this.getStateStore().deleteBySourceWorkspace(workspaceKey);
     return { success: true, workspaceKey };
   }
@@ -464,15 +541,36 @@ export class MemoryService {
     });
   }
 
-  private async batchRebuild(sessionRows: SessionRow[]): Promise<void> {
+  private async batchRebuild(sessionRows: SessionRow[]): Promise<BatchRebuildResult> {
+    const result: BatchRebuildResult = {
+      sessionCount: sessionRows.length,
+      succeededSessionCount: 0,
+      failedSessionCount: 0,
+    };
     if (!sessionRows.length) {
-      return;
+      return result;
     }
-    const bundles = await this.extractExperienceBundles(sessionRows);
+    const { bundles, failures } = await this.extractExperienceBundles(sessionRows);
+    for (const failure of failures) {
+      this.recordRebuildFailure(failure);
+      result.failedSessionCount += 1;
+    }
     const sortedBundles = [...bundles].sort((a, b) => a.session.createdAt - b.session.createdAt);
     for (const bundle of sortedBundles) {
-      await this.ingestExtractedBundle(bundle);
+      try {
+        await this.ingestExtractedBundle(bundle);
+        result.succeededSessionCount += 1;
+      } catch (error) {
+        this.recordRebuildFailure({
+          session: bundle.session,
+          sourceWorkspace: bundle.sourceWorkspace,
+          fullMessageCount: bundle.fullMessages.length,
+          error,
+        });
+        result.failedSessionCount += 1;
+      }
     }
+    return result;
   }
 
   private async ingest(input: MemoryIngestionInput): Promise<void> {
@@ -500,7 +598,7 @@ export class MemoryService {
     const sessionDate = this.resolveSessionDate(session, messages);
 
     try {
-      await this.updateCoreMemory(session.id, sessionDate, deltaTurns);
+      await this.updateCoreMemory(session.id, sessionDate, sourceWorkspace, deltaTurns);
       if (this.deletedSessionIds.has(session.id)) {
         stateStore.delete(session.id);
         return;
@@ -552,7 +650,12 @@ export class MemoryService {
   }
 
   private async ingestExtractedBundle(bundle: ExtractionBundle): Promise<void> {
-    await this.updateCoreMemory(bundle.session.id, bundle.sessionDate, bundle.fullTurns);
+    await this.updateCoreMemory(
+      bundle.session.id,
+      bundle.sessionDate,
+      bundle.sourceWorkspace,
+      bundle.fullTurns
+    );
     if (bundle.fullTurns.length) {
       await this.storeExperienceSession({
         sourceWorkspace: bundle.sourceWorkspace,
@@ -575,8 +678,10 @@ export class MemoryService {
     });
   }
 
-  private async extractExperienceBundles(sessionRows: SessionRow[]): Promise<ExtractionBundle[]> {
-    const concurrency = this.getAppConfig().memoryRuntime.ingestionConcurrency;
+  private async extractExperienceBundles(
+    sessionRows: SessionRow[]
+  ): Promise<{ bundles: ExtractionBundle[]; failures: ExtractionFailure[] }> {
+    const concurrency = Math.max(1, this.getAppConfig().memoryRuntime.ingestionConcurrency || 1);
     const tasks = sessionRows.map((sessionRow) => async () => {
       const session = this.sessionRowToSession(sessionRow);
       const fullMessages = this.getMessagesForSession(sessionRow.id);
@@ -602,21 +707,56 @@ export class MemoryService {
     });
 
     const bundles: ExtractionBundle[] = [];
+    const failures: ExtractionFailure[] = [];
     let cursor = 0;
     const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, async () => {
       while (cursor < tasks.length) {
         const index = cursor;
         cursor += 1;
-        bundles[index] = await tasks[index]();
+        try {
+          bundles[index] = await tasks[index]();
+        } catch (error) {
+          const session = this.sessionRowToSession(sessionRows[index]);
+          const fullMessages = this.getMessagesForSession(sessionRows[index].id);
+          failures.push({
+            session,
+            sourceWorkspace: normalizeWorkspaceKey(session.cwd),
+            fullMessageCount: fullMessages.length,
+            error,
+          });
+        }
       }
     });
     await Promise.all(workers);
-    return bundles.filter(Boolean);
+    return {
+      bundles: bundles.filter(Boolean),
+      failures,
+    };
+  }
+
+  private recordRebuildFailure(input: ExtractionFailure): void {
+    const message = input.error instanceof Error ? input.error.message : String(input.error);
+    logError(
+      '[MemoryService] Failed to rebuild memory for session:',
+      input.session.id,
+      input.error
+    );
+    const previousState = this.getStateStore().get(input.session.id);
+    this.getStateStore().set({
+      sessionId: input.session.id,
+      sourceWorkspace: input.sourceWorkspace,
+      lastProcessedMessageCount: previousState?.lastProcessedMessageCount || 0,
+      lastIngestedAt: previousState?.lastIngestedAt || null,
+      lastError: message,
+      createdAt: previousState?.createdAt || input.session.createdAt || Date.now(),
+      updatedAt: Date.now(),
+    });
   }
 
   private async updateCoreMemory(
     sessionId: string,
     sessionDate: string,
+    sourceWorkspace: string | null,
     turns: MemoryTranscriptTurn[]
   ): Promise<void> {
     if (!turns.length) {
@@ -630,7 +770,18 @@ export class MemoryService {
       existingCorePromptBlock: coreStore.toPromptBlock(),
     });
     if (actions.length) {
-      coreStore.applyActions(actions);
+      coreStore.applyActions(actions, [
+        {
+          sessionId,
+          sourceWorkspace,
+          sourceTurns: turns.map((_turn, index) => index + 1),
+          excerpt: summarizeText(
+            turns.map((turn) => `${turn.role}: ${turn.content}`).join('\n'),
+            260
+          ),
+          createdAt: sessionDate,
+        },
+      ]);
     }
   }
 
@@ -668,6 +819,8 @@ export class MemoryService {
         createdAt: existing?.createdAt || new Date(input.sessionCreatedAt).toISOString(),
         ingestedAt,
         embedding: await this.embedText(searchableText),
+        confidence: 0.72,
+        status: 'active',
       });
     }
 
@@ -693,10 +846,21 @@ export class MemoryService {
         createdAt: existing?.createdAt || new Date(input.sessionCreatedAt).toISOString(),
         ingestedAt,
         embedding: await this.embedText(sessionSearchable),
+        confidence: 0.72,
+        status: 'active',
       },
       chunkInputs
     );
     store.save();
+    this.getProjectStore().upsertFromExperience({
+      workspaceKey: input.sourceWorkspace,
+      workspaceLabel: sourceWorkspaceLabel,
+      sessionId: input.sessionId,
+      sessionTitle: input.sessionTitle,
+      summary: input.extracted.sessionSummary,
+      keywords: input.extracted.sessionKeywords,
+      sourceTurns: input.extracted.chunks.flatMap((chunk) => chunk.sourceTurns),
+    });
   }
 
   private async buildExperienceContext(
@@ -966,6 +1130,7 @@ export class MemoryService {
     return {
       storageRoot,
       coreFilePath: path.join(storageRoot, 'core_memory.json'),
+      projectFilePath: path.join(storageRoot, 'project_memory.json'),
       experienceFilePath: path.join(storageRoot, 'experience_memory.json'),
       stateFilePath: path.join(storageRoot, 'session_state.json'),
       artifactsDir,
@@ -978,6 +1143,7 @@ export class MemoryService {
     if (
       this.currentPathsKey === pathsKey &&
       this.coreStore &&
+      this.projectStore &&
       this.stateStore &&
       this.experienceStore
     ) {
@@ -988,6 +1154,7 @@ export class MemoryService {
     assertSafeMemoryPaths(paths.storageRoot, paths.artifactsDir);
     this.currentPathsKey = pathsKey;
     this.coreStore = new CoreMemoryStore(paths.coreFilePath);
+    this.projectStore = new ProjectMemoryStore(paths.projectFilePath);
     this.stateStore = new MemorySessionStateStore(paths.stateFilePath);
     this.experienceStore = new ExperienceMemoryStore(paths.experienceFilePath);
   }
@@ -995,6 +1162,7 @@ export class MemoryService {
   private resetStores(): void {
     this.currentPathsKey = null;
     this.coreStore = null;
+    this.projectStore = null;
     this.stateStore = null;
     this.experienceStore = null;
   }
@@ -1002,6 +1170,11 @@ export class MemoryService {
   private getCoreStore(): CoreMemoryStore {
     this.ensureStores();
     return this.coreStore!;
+  }
+
+  private getProjectStore(): ProjectMemoryStore {
+    this.ensureStores();
+    return this.projectStore!;
   }
 
   private getStateStore(): MemorySessionStateStore {
@@ -1018,6 +1191,9 @@ export class MemoryService {
     const paths = this.getPaths();
     if (filePath === paths.coreFilePath) {
       return 'core';
+    }
+    if (filePath === paths.projectFilePath) {
+      return 'project';
     }
     if (filePath === paths.experienceFilePath) {
       return 'experience';
@@ -1038,7 +1214,7 @@ export class MemoryService {
 
     const normalizedPath = fs.realpathSync(requestedPath);
     const allowedFiles = new Set(
-      [paths.coreFilePath, paths.experienceFilePath, paths.stateFilePath]
+      [paths.coreFilePath, paths.projectFilePath, paths.experienceFilePath, paths.stateFilePath]
         .filter((candidate) => fs.existsSync(candidate))
         .map((candidate) => fs.realpathSync(candidate))
     );

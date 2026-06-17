@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   ChunkMemoryItem,
   FocusedChunkItem,
+  MemoryItemStatus,
   MemoryTranscriptTurn,
   ProgressiveRetrievalResult,
   RawSessionCandidateItem,
@@ -21,8 +22,12 @@ interface ExperienceMemoryFile {
   chunks: Array<Record<string, unknown>>;
 }
 
+const MEMORY_STATUSES = new Set<MemoryItemStatus>(['active', 'pending', 'rejected', 'archived']);
+
 function toStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
 }
 
 function toNumberArray(value: unknown): number[] {
@@ -33,6 +38,19 @@ function toNumberArray(value: unknown): number[] {
 
 function normalizeWorkspace(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? normalizeWorkspaceKey(value) : null;
+}
+
+function normalizeStatus(value: unknown): MemoryItemStatus {
+  return typeof value === 'string' && MEMORY_STATUSES.has(value as MemoryItemStatus)
+    ? (value as MemoryItemStatus)
+    : 'active';
+}
+
+function normalizeConfidence(value: unknown, fallback = 0.72): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(0, Math.min(1, value));
 }
 
 function normalizeChunk(item: Record<string, unknown>): ChunkMemoryItem | null {
@@ -68,6 +86,9 @@ function normalizeChunk(item: Record<string, unknown>): ChunkMemoryItem | null {
     createdAt: typeof item.created_at === 'string' ? item.created_at : '',
     ingestedAt: typeof item.ingested_at === 'string' ? item.ingested_at : '',
     embedding: toNumberArray(item.embedding),
+    confidence: normalizeConfidence(item.confidence),
+    status: normalizeStatus(item.status),
+    supersededBy: typeof item.superseded_by === 'string' ? item.superseded_by : undefined,
   };
 }
 
@@ -123,6 +144,9 @@ function normalizeSession(item: Record<string, unknown>): SessionMemoryItem | nu
     createdAt: typeof item.created_at === 'string' ? item.created_at : '',
     ingestedAt: typeof item.ingested_at === 'string' ? item.ingested_at : '',
     embedding: toNumberArray(item.embedding),
+    confidence: normalizeConfidence(item.confidence),
+    status: normalizeStatus(item.status),
+    supersededBy: typeof item.superseded_by === 'string' ? item.superseded_by : undefined,
   };
 }
 
@@ -144,6 +168,9 @@ function chunkToFileRecord(item: ChunkMemoryItem): Record<string, unknown> {
     created_at: item.createdAt,
     ingested_at: item.ingestedAt,
     embedding: item.embedding,
+    confidence: item.confidence,
+    status: item.status,
+    superseded_by: item.supersededBy ?? '',
   };
 }
 
@@ -164,6 +191,9 @@ function sessionToFileRecord(item: SessionMemoryItem): Record<string, unknown> {
     created_at: item.createdAt,
     ingested_at: item.ingestedAt,
     embedding: item.embedding,
+    confidence: item.confidence,
+    status: item.status,
+    superseded_by: item.supersededBy ?? '',
   };
 }
 
@@ -246,8 +276,15 @@ export class ExperienceMemoryStore {
       .filter((item): item is ChunkMemoryItem => Boolean(item));
   }
 
-  getStatsBySourceWorkspace(): Array<{ workspaceKey: string; sessionCount: number; chunkCount: number }> {
-    const stats = new Map<string, { workspaceKey: string; sessionCount: number; chunkCount: number }>();
+  getStatsBySourceWorkspace(): Array<{
+    workspaceKey: string;
+    sessionCount: number;
+    chunkCount: number;
+  }> {
+    const stats = new Map<
+      string,
+      { workspaceKey: string; sessionCount: number; chunkCount: number }
+    >();
     for (const session of this.sessions) {
       const key = session.sourceWorkspace || '(none)';
       const current = stats.get(key) || { workspaceKey: key, sessionCount: 0, chunkCount: 0 };
@@ -260,13 +297,19 @@ export class ExperienceMemoryStore {
       current.chunkCount += 1;
       stats.set(key, current);
     }
-    return [...stats.values()].sort((a, b) => b.sessionCount + b.chunkCount - (a.sessionCount + a.chunkCount));
+    return [...stats.values()].sort(
+      (a, b) => b.sessionCount + b.chunkCount - (a.sessionCount + a.chunkCount)
+    );
   }
 
   replaceSession(
     sessionId: string,
-    sessionInput: Omit<SessionMemoryItem, 'id'> & { id?: string },
-    chunkInputs: Array<Omit<ChunkMemoryItem, 'id'> & { id?: string }>
+    sessionInput: Omit<SessionMemoryItem, 'id' | 'confidence' | 'status' | 'supersededBy'> &
+      Partial<Pick<SessionMemoryItem, 'id' | 'confidence' | 'status' | 'supersededBy'>>,
+    chunkInputs: Array<
+      Omit<ChunkMemoryItem, 'id' | 'confidence' | 'status' | 'supersededBy'> &
+        Partial<Pick<ChunkMemoryItem, 'id' | 'confidence' | 'status' | 'supersededBy'>>
+    >
   ): SessionMemoryItem {
     this.removeSession(sessionId);
 
@@ -274,17 +317,25 @@ export class ExperienceMemoryStore {
       const chunk: ChunkMemoryItem = {
         ...item,
         id: item.id || randomUUID(),
+        confidence: item.confidence ?? 0.72,
+        status: item.status ?? 'active',
       };
-      this.chunks.push(chunk);
-      this.chunkIndex.set(chunk.id, chunk);
       return chunk;
     });
+    this.markSupersededChunks(chunks);
+    for (const chunk of chunks) {
+      this.chunks.push(chunk);
+      this.chunkIndex.set(chunk.id, chunk);
+    }
 
     const session: SessionMemoryItem = {
       ...sessionInput,
       id: sessionInput.id || randomUUID(),
       chunkIds: chunks.map((chunk) => chunk.id),
+      confidence: sessionInput.confidence ?? 0.72,
+      status: sessionInput.status ?? 'active',
     };
+    this.markSupersededSessions(session);
     this.sessions.push(session);
     this.sessionIndex.set(session.sessionId, session);
     return session;
@@ -348,26 +399,45 @@ export class ExperienceMemoryStore {
     const currentWorkspace = normalizeWorkspaceKey(options?.currentWorkspace || null);
     const queryEmbedding = options?.queryEmbedding;
 
-    const rankedChunks = this.rankItems(query, this.chunks, chunkTopK, queryEmbedding, currentWorkspace, (item) => [
-      item.summary,
-      item.details,
-      item.rawText,
-      ...item.keywords,
-      item.sourceWorkspace || '',
-      item.sourceSessionTitle || '',
-    ].join(' '));
+    const activeChunks = this.chunks.filter((item) => isActiveMemoryItem(item));
+    const activeSessions = this.sessions.filter((item) => isActiveMemoryItem(item));
+
+    const rankedChunks = this.rankItems(
+      query,
+      activeChunks,
+      chunkTopK,
+      queryEmbedding,
+      currentWorkspace,
+      (item) =>
+        [
+          item.summary,
+          item.details,
+          item.rawText,
+          ...item.keywords,
+          item.sourceWorkspace || '',
+          item.sourceSessionTitle || '',
+        ].join(' ')
+    );
     const rankedSessions = this.rankItems(
       query,
-      this.sessions,
+      activeSessions,
       sessionTopK,
       queryEmbedding,
       currentWorkspace,
-      (item) => [item.summary, ...item.keywords, item.sourceWorkspace || '', item.sourceSessionTitle || ''].join(' ')
+      (item) =>
+        [
+          item.summary,
+          ...item.keywords,
+          item.sourceWorkspace || '',
+          item.sourceSessionTitle || '',
+        ].join(' ')
     );
 
     const broadSummaries = [
       ...rankedChunks.map(
-        (item): { score: number; payload: ProgressiveRetrievalResult['broadSummaries'][number] } => ({
+        (
+          item
+        ): { score: number; payload: ProgressiveRetrievalResult['broadSummaries'][number] } => ({
           score: item.score,
           payload: {
             type: 'chunk',
@@ -380,7 +450,9 @@ export class ExperienceMemoryStore {
         })
       ),
       ...rankedSessions.map(
-        (item): { score: number; payload: ProgressiveRetrievalResult['broadSummaries'][number] } => ({
+        (
+          item
+        ): { score: number; payload: ProgressiveRetrievalResult['broadSummaries'][number] } => ({
           score: item.score,
           payload: {
             type: 'session',
@@ -435,7 +507,16 @@ export class ExperienceMemoryStore {
     };
   }
 
-  private rankItems<T extends { embedding: number[]; ingestedAt: string; sourceWorkspace?: string | null }>(
+  private rankItems<
+    T extends {
+      embedding: number[];
+      ingestedAt: string;
+      sourceWorkspace?: string | null;
+      confidence?: number;
+      status?: MemoryItemStatus;
+      supersededBy?: string;
+    },
+  >(
     query: string,
     items: T[],
     topK: number,
@@ -454,11 +535,79 @@ export class ExperienceMemoryStore {
         const score =
           evidenceScore +
           workspaceBoost(currentWorkspace, record.sourceWorkspace) +
-          recencyBoost(record.ingestedAt);
+          recencyBoost(record.ingestedAt) +
+          confidenceBoost(record.confidence);
         return { record, score, evidenceScore };
       })
       .filter((item) => item.evidenceScore > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, topK);
   }
+
+  private markSupersededChunks(newChunks: ChunkMemoryItem[]): void {
+    for (const newChunk of newChunks) {
+      const newText = [newChunk.summary, newChunk.details, newChunk.rawText, ...newChunk.keywords]
+        .join(' ')
+        .trim();
+      if (!newText) {
+        continue;
+      }
+      for (const oldChunk of this.chunks) {
+        if (
+          !isActiveMemoryItem(oldChunk) ||
+          oldChunk.sourceWorkspace !== newChunk.sourceWorkspace
+        ) {
+          continue;
+        }
+        const oldText = [oldChunk.summary, oldChunk.details, oldChunk.rawText, ...oldChunk.keywords]
+          .join(' ')
+          .trim();
+        const sameSummary =
+          normalizeDedupeText(oldChunk.summary) === normalizeDedupeText(newChunk.summary);
+        if (oldText && (sameSummary || lexicalScore(newText, oldText) >= 0.72)) {
+          oldChunk.status = 'archived';
+          oldChunk.supersededBy = newChunk.id;
+          oldChunk.ingestedAt = newChunk.ingestedAt;
+        }
+      }
+    }
+  }
+
+  private markSupersededSessions(newSession: SessionMemoryItem): void {
+    const newText = [newSession.summary, ...newSession.keywords].join(' ').trim();
+    if (!newText) {
+      return;
+    }
+    for (const oldSession of this.sessions) {
+      if (
+        !isActiveMemoryItem(oldSession) ||
+        oldSession.sourceWorkspace !== newSession.sourceWorkspace
+      ) {
+        continue;
+      }
+      const oldText = [oldSession.summary, ...oldSession.keywords].join(' ').trim();
+      const sameSummary =
+        normalizeDedupeText(oldSession.summary) === normalizeDedupeText(newSession.summary);
+      if (oldText && (sameSummary || lexicalScore(newText, oldText) >= 0.76)) {
+        oldSession.status = 'archived';
+        oldSession.supersededBy = newSession.sessionId;
+        oldSession.ingestedAt = newSession.ingestedAt;
+      }
+    }
+  }
+}
+
+function confidenceBoost(confidence?: number): number {
+  if (typeof confidence !== 'number' || !Number.isFinite(confidence)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(1, confidence)) * 0.08;
+}
+
+function isActiveMemoryItem(item: { status?: MemoryItemStatus; supersededBy?: string }): boolean {
+  return (item.status ?? 'active') === 'active' && !item.supersededBy;
+}
+
+function normalizeDedupeText(value: string): string {
+  return value.normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
 }

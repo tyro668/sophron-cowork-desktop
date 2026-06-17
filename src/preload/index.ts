@@ -23,6 +23,9 @@ import type {
   MemorySearchResult,
   MemoryReadResult,
   MemorySearchScope,
+  MemoryItemStatus,
+  CoreMemoryEntry,
+  ProjectMemoryEntry,
   MemoryDebugFileInfo,
   MemoryDebugFileContent,
   MemoryInspectSessionResult,
@@ -648,14 +651,43 @@ contextBridge.exposeInMainWorld('electronAPI', {
       limit?: number;
     }): Promise<MemorySearchResult[]> => ipcRenderer.invoke('memory.search', payload),
     read: (id: string): Promise<MemoryReadResult | null> => ipcRenderer.invoke('memory.read', id),
-    rebuildWorkspace: (cwd: string): Promise<{ success: boolean; workspaceKey: string }> =>
-      ipcRenderer.invoke('memory.rebuildWorkspace', cwd),
+    listCoreEntries: (): Promise<CoreMemoryEntry[]> => ipcRenderer.invoke('memory.listCoreEntries'),
+    updateCoreEntry: (
+      combinedKey: string,
+      updates: { key?: string; value?: string; confidence?: number; status?: MemoryItemStatus }
+    ): Promise<CoreMemoryEntry | null> =>
+      ipcRenderer.invoke('memory.updateCoreEntry', combinedKey, updates),
+    deleteCoreEntry: (combinedKey: string): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke('memory.deleteCoreEntry', combinedKey),
+    listProjectEntries: (workspaceKey?: string | null): Promise<ProjectMemoryEntry[]> =>
+      ipcRenderer.invoke('memory.listProjectEntries', workspaceKey),
+    updateProjectEntry: (
+      id: string,
+      updates: { key?: string; value?: string; confidence?: number; status?: MemoryItemStatus }
+    ): Promise<ProjectMemoryEntry | null> =>
+      ipcRenderer.invoke('memory.updateProjectEntry', id, updates),
+    deleteProjectEntry: (id: string): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke('memory.deleteProjectEntry', id),
+    rebuildWorkspace: (
+      cwd: string
+    ): Promise<{
+      success: boolean;
+      workspaceKey: string;
+      sessionCount: number;
+      succeededSessionCount: number;
+      failedSessionCount: number;
+    }> => ipcRenderer.invoke('memory.rebuildWorkspace', cwd),
     clearWorkspace: (cwd: string): Promise<{ success: boolean; workspaceKey: string }> =>
       ipcRenderer.invoke('memory.clearWorkspace', cwd),
     clearCoreMemory: (): Promise<{ success: boolean }> =>
       ipcRenderer.invoke('memory.clearCoreMemory'),
-    rebuildAll: (): Promise<{ success: boolean; workspaceCount: number; sessionCount: number }> =>
-      ipcRenderer.invoke('memory.rebuildAll'),
+    rebuildAll: (): Promise<{
+      success: boolean;
+      workspaceCount: number;
+      sessionCount: number;
+      succeededSessionCount: number;
+      failedSessionCount: number;
+    }> => ipcRenderer.invoke('memory.rebuildAll'),
     listFiles: (): Promise<MemoryDebugFileInfo[]> => ipcRenderer.invoke('memory.listFiles'),
     readFile: (filePath: string): Promise<MemoryDebugFileContent> =>
       ipcRenderer.invoke('memory.readFile', filePath),
@@ -992,13 +1024,33 @@ declare global {
           limit?: number;
         }) => Promise<MemorySearchResult[]>;
         read: (id: string) => Promise<MemoryReadResult | null>;
-        rebuildWorkspace: (cwd: string) => Promise<{ success: boolean; workspaceKey: string }>;
+        listCoreEntries: () => Promise<CoreMemoryEntry[]>;
+        updateCoreEntry: (
+          combinedKey: string,
+          updates: { key?: string; value?: string; confidence?: number; status?: MemoryItemStatus }
+        ) => Promise<CoreMemoryEntry | null>;
+        deleteCoreEntry: (combinedKey: string) => Promise<{ success: boolean }>;
+        listProjectEntries: (workspaceKey?: string | null) => Promise<ProjectMemoryEntry[]>;
+        updateProjectEntry: (
+          id: string,
+          updates: { key?: string; value?: string; confidence?: number; status?: MemoryItemStatus }
+        ) => Promise<ProjectMemoryEntry | null>;
+        deleteProjectEntry: (id: string) => Promise<{ success: boolean }>;
+        rebuildWorkspace: (cwd: string) => Promise<{
+          success: boolean;
+          workspaceKey: string;
+          sessionCount: number;
+          succeededSessionCount: number;
+          failedSessionCount: number;
+        }>;
         clearWorkspace: (cwd: string) => Promise<{ success: boolean; workspaceKey: string }>;
         clearCoreMemory: () => Promise<{ success: boolean }>;
         rebuildAll: () => Promise<{
           success: boolean;
           workspaceCount: number;
           sessionCount: number;
+          succeededSessionCount: number;
+          failedSessionCount: number;
         }>;
         listFiles: () => Promise<MemoryDebugFileInfo[]>;
         readFile: (filePath: string) => Promise<MemoryDebugFileContent>;

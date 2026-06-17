@@ -4,8 +4,14 @@ import type { Message, Session } from '../../renderer/types';
 
 export type CoreMemoryCategory = 'identity' | 'preferences' | 'skills' | 'interests';
 export type MemorySearchScope = 'workspace' | 'global' | 'all';
-export type MemorySearchKind = 'core' | 'experience_session' | 'experience_chunk' | 'raw_session';
+export type MemorySearchKind =
+  | 'core'
+  | 'project'
+  | 'experience_session'
+  | 'experience_chunk'
+  | 'raw_session';
 export type MemoryNavigationActionType = 'expand_chunk' | 'expand_session' | 'get_raw_session';
+export type MemoryItemStatus = 'active' | 'pending' | 'rejected' | 'archived';
 
 export interface MemoryTranscriptTurn {
   role: string;
@@ -30,11 +36,38 @@ export interface AppliedCoreMemoryAction {
   combinedKey: string;
 }
 
+export interface MemoryEvidenceRef {
+  sessionId: string;
+  sourceWorkspace?: string | null;
+  sourceSessionTitle?: string;
+  sourceTurns?: number[];
+  excerpt?: string;
+  createdAt?: string;
+}
+
 export interface CoreMemoryEntry {
   combinedKey: string;
   category?: CoreMemoryCategory;
   key: string;
   value: string;
+  confidence: number;
+  status: MemoryItemStatus;
+  evidence: MemoryEvidenceRef[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectMemoryEntry {
+  id: string;
+  workspaceKey: string;
+  workspaceLabel?: string;
+  key: string;
+  value: string;
+  confidence: number;
+  status: MemoryItemStatus;
+  evidence: MemoryEvidenceRef[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ChunkMemoryItem {
@@ -54,6 +87,9 @@ export interface ChunkMemoryItem {
   createdAt: string;
   ingestedAt: string;
   embedding: number[];
+  confidence: number;
+  status: MemoryItemStatus;
+  supersededBy?: string;
 }
 
 export interface SessionMemoryItem {
@@ -72,6 +108,9 @@ export interface SessionMemoryItem {
   createdAt: string;
   ingestedAt: string;
   embedding: number[];
+  confidence: number;
+  status: MemoryItemStatus;
+  supersededBy?: string;
 }
 
 export interface ProgressiveSummaryItem {
@@ -157,6 +196,8 @@ export interface MemorySearchResult {
   sessionId?: string;
   sessionTitle?: string;
   category?: CoreMemoryCategory;
+  confidence?: number;
+  status?: MemoryItemStatus;
   score: number;
   createdAt: number;
   updatedAt?: number;
@@ -190,7 +231,7 @@ export interface MemorySessionStateRecord {
 }
 
 export interface MemoryDebugFileInfo {
-  kind: 'core' | 'experience' | 'state' | 'artifacts';
+  kind: 'core' | 'project' | 'experience' | 'state' | 'artifacts';
   label: string;
   filePath: string;
   exists: boolean;
@@ -220,9 +261,11 @@ export interface MemoryOverview {
   enabled: boolean;
   storageRoot: string;
   coreFilePath: string;
+  projectFilePath: string;
   experienceFilePath: string;
   stateFilePath: string;
   coreCount: number;
+  projectCount: number;
   experienceSessionCount: number;
   experienceChunkCount: number;
   sourceWorkspaceCount: number;
@@ -231,6 +274,7 @@ export interface MemoryOverview {
   latestError: string | null;
   currentWorkspace?: {
     workspaceKey: string;
+    projectCount: number;
     experienceSessionCount: number;
     experienceChunkCount: number;
   };
