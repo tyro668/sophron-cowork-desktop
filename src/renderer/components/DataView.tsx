@@ -5255,7 +5255,6 @@ function InputTablesPanel({
   const totalRows = totalDatasets + draftCount;
   const pageCount = getTablePageCount(totalRows);
   const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
-  const pageNumbers = getVisiblePageNumbers(safeCurrentPage, pageCount);
   const draftStart = (safeCurrentPage - 1) * TABLE_PAGE_SIZE;
   const pageDrafts = useMemo(
     () =>
@@ -5390,169 +5389,137 @@ function InputTablesPanel({
           ) : visibleRows.length === 0 ? (
             <EmptyState label={emptyLabel} />
           ) : (
-            <>
-              <div className="min-w-full overflow-x-auto">
-                <table className="w-full table-fixed border-collapse text-left">
-                  <thead>
-                    <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted backdrop-blur-xl">
-                      <th className="w-[4%] px-4">
-                        <span className="sr-only">{t('data.inputTables.selection')}</span>
-                      </th>
-                      <th className="w-[22%] whitespace-nowrap px-2">
-                        {t('data.columns.inputTableName')}
-                      </th>
-                      <th className="w-[9%] whitespace-nowrap px-2">
-                        {t('data.columns.sourceType')}
-                      </th>
-                      <th className="w-[22%] whitespace-nowrap px-2">
-                        {t('data.columns.sourceLocation')}
-                      </th>
-                      <th className="w-[17%] whitespace-nowrap px-2">
-                        {t('data.columns.relatedTasks')}
-                      </th>
-                      <th className="w-[16%] whitespace-nowrap px-2">
-                        <span className="inline-flex items-center gap-1">
-                          {t('data.columns.updatedAt')}
-                          <ArrowUpDown className="h-3 w-3" />
-                        </span>
-                      </th>
-                      <th className="w-[10%] whitespace-nowrap px-2">{t('data.columns.status')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pageRows.map((row, index) => {
-                      const dataset = row.kind === 'dataset' ? row.dataset : null;
-                      const draft = row.kind === 'draft' ? row.draft : null;
-                      const sourceKind = dataset ? dataset.sourceKind : 'draft';
-                      const sourceMeta = getInputTableSourceMeta(sourceKind);
-                      const SourceIcon = sourceMeta.Icon;
-                      const selected = row.id === selectedDatasetId;
-                      const rowName = dataset?.name ?? draft?.name ?? '';
-                      const rowUpdatedAt = dataset?.updatedAt ?? draft?.updatedAt ?? null;
-                      return (
-                        <tr
-                          key={row.id}
-                          onClick={() => setSelectedDatasetId(row.id)}
-                          onDoubleClick={() => {
-                            if (draft) {
-                              onEditDraft(draft.id);
-                            } else if (dataset) {
-                              onEditDataset(dataset.id);
-                            }
-                          }}
-                          className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
-                            selected
-                              ? 'bg-accent/10 ring-1 ring-inset ring-accent/20'
-                              : index === 1
-                                ? 'bg-accent/5'
-                                : 'hover:bg-surface-hover/35'
-                          }`}
-                        >
-                          <td className="px-4">
-                            <input
-                              type="radio"
-                              name="input-table-selection"
-                              checked={selected}
-                              onChange={() => setSelectedDatasetId(row.id)}
-                              onClick={(event) => event.stopPropagation()}
-                              className="h-3.5 w-3.5 accent-accent"
-                              aria-label={rowName}
-                            />
-                          </td>
-                          <td className="px-2">
-                            <div className="flex min-w-0 items-center gap-3">
-                              <div
-                                className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${sourceMeta.className}`}
-                              >
-                                <SourceIcon className="h-4 w-4" />
-                              </div>
-                              <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
-                                {rowName}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-2">
-                            <span
-                              className={`inline-flex h-6 items-center rounded-md px-2 text-xs font-medium ${sourceMeta.badgeClassName}`}
-                            >
-                              {t(sourceMeta.labelKey)}
-                            </span>
-                          </td>
-                          <td className="px-2">
+            <div className="min-w-full overflow-x-auto">
+              <table className="w-full table-fixed border-collapse text-left">
+                <thead>
+                  <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted backdrop-blur-xl">
+                    <th className="w-[4%] px-4">
+                      <span className="sr-only">{t('data.inputTables.selection')}</span>
+                    </th>
+                    <th className="w-[22%] whitespace-nowrap px-2">
+                      {t('data.columns.inputTableName')}
+                    </th>
+                    <th className="w-[9%] whitespace-nowrap px-2">
+                      {t('data.columns.sourceType')}
+                    </th>
+                    <th className="w-[22%] whitespace-nowrap px-2">
+                      {t('data.columns.sourceLocation')}
+                    </th>
+                    <th className="w-[17%] whitespace-nowrap px-2">
+                      {t('data.columns.relatedTasks')}
+                    </th>
+                    <th className="w-[16%] whitespace-nowrap px-2">
+                      <span className="inline-flex items-center gap-1">
+                        {t('data.columns.updatedAt')}
+                        <ArrowUpDown className="h-3 w-3" />
+                      </span>
+                    </th>
+                    <th className="w-[10%] whitespace-nowrap px-2">{t('data.columns.status')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageRows.map((row, index) => {
+                    const dataset = row.kind === 'dataset' ? row.dataset : null;
+                    const draft = row.kind === 'draft' ? row.draft : null;
+                    const sourceKind = dataset ? dataset.sourceKind : 'draft';
+                    const sourceMeta = getInputTableSourceMeta(sourceKind);
+                    const SourceIcon = sourceMeta.Icon;
+                    const selected = row.id === selectedDatasetId;
+                    const rowName = dataset?.name ?? draft?.name ?? '';
+                    const rowUpdatedAt = dataset?.updatedAt ?? draft?.updatedAt ?? null;
+                    return (
+                      <tr
+                        key={row.id}
+                        onClick={() => setSelectedDatasetId(row.id)}
+                        onDoubleClick={() => {
+                          if (draft) {
+                            onEditDraft(draft.id);
+                          } else if (dataset) {
+                            onEditDataset(dataset.id);
+                          }
+                        }}
+                        className={`h-[3.25rem] cursor-pointer border-b border-dashed border-border-muted/85 last:border-b-0 transition-colors ${
+                          selected
+                            ? 'bg-accent/10 ring-1 ring-inset ring-accent/20'
+                            : index === 1
+                              ? 'bg-accent/5'
+                              : 'hover:bg-surface-hover/35'
+                        }`}
+                      >
+                        <td className="px-4">
+                          <input
+                            type="radio"
+                            name="input-table-selection"
+                            checked={selected}
+                            onChange={() => setSelectedDatasetId(row.id)}
+                            onClick={(event) => event.stopPropagation()}
+                            className="h-3.5 w-3.5 accent-accent"
+                            aria-label={rowName}
+                          />
+                        </td>
+                        <td className="px-2">
+                          <div className="flex min-w-0 items-center gap-3">
                             <div
-                              className="truncate text-[13px] font-medium text-text-secondary"
-                              title={dataset?.sourcePath}
+                              className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${sourceMeta.className}`}
                             >
-                              {dataset
-                                ? formatDisplayPath(dataset.sourcePath)
-                                : t('data.inputTables.notConfigured')}
+                              <SourceIcon className="h-4 w-4" />
                             </div>
-                          </td>
-                          <td className="px-2">
-                            <div className="truncate text-[13px] font-medium text-text-secondary">
-                              {dataset
-                                ? formatRelatedTaskNames(dataset.relatedTaskNames, t)
-                                : t('data.inputTables.noRelatedTasks')}
+                            <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
+                              {rowName}
                             </div>
-                          </td>
-                          <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
-                            {formatDateTime(rowUpdatedAt)}
-                          </td>
-                          <td className="px-2">
-                            <InputTableStatusBadge
-                              label={
-                                draft
-                                  ? t('data.inputTables.status.draft')
-                                  : t('data.inputTables.status.available')
-                              }
-                              tone={draft ? 'warning' : 'success'}
-                            />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <div className="flex min-h-11 flex-col items-center justify-between gap-2 border-t border-border-muted px-4 py-2.5 text-xs font-medium text-text-secondary sm:flex-row">
-                <span>{t('data.totalCount', { count: totalRows })}</span>
-                <div className="flex items-center gap-2">
-                  <button className="inline-flex h-8 min-w-[6.5rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-text-secondary shadow-soft">
-                    {t('data.rowsPerPage', { count: TABLE_PAGE_SIZE })}
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => onPageChange(safeCurrentPage - 1)}
-                    disabled={safeCurrentPage <= 1}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                  {pageNumbers.map((pageNumber) => (
-                    <button
-                      key={pageNumber}
-                      onClick={() => onPageChange(pageNumber)}
-                      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
-                        pageNumber === safeCurrentPage
-                          ? 'bg-accent text-white shadow-soft'
-                          : 'border border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
-                      }`}
-                    >
-                      {pageNumber}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => onPageChange(safeCurrentPage + 1)}
-                    disabled={safeCurrentPage >= pageCount}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            </>
+                          </div>
+                        </td>
+                        <td className="px-2">
+                          <span
+                            className={`inline-flex h-6 items-center rounded-md px-2 text-xs font-medium ${sourceMeta.badgeClassName}`}
+                          >
+                            {t(sourceMeta.labelKey)}
+                          </span>
+                        </td>
+                        <td className="px-2">
+                          <div
+                            className="truncate text-[13px] font-medium text-text-secondary"
+                            title={dataset?.sourcePath}
+                          >
+                            {dataset
+                              ? formatDisplayPath(dataset.sourcePath)
+                              : t('data.inputTables.notConfigured')}
+                          </div>
+                        </td>
+                        <td className="px-2">
+                          <div className="truncate text-[13px] font-medium text-text-secondary">
+                            {dataset
+                              ? formatRelatedTaskNames(dataset.relatedTaskNames, t)
+                              : t('data.inputTables.noRelatedTasks')}
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+                          {formatDateTime(rowUpdatedAt)}
+                        </td>
+                        <td className="px-2">
+                          <InputTableStatusBadge
+                            label={
+                              draft
+                                ? t('data.inputTables.status.draft')
+                                : t('data.inputTables.status.available')
+                            }
+                            tone={draft ? 'warning' : 'success'}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
+        <PaginationFooter
+          count={totalRows}
+          currentPage={currentPage}
+          onPageChange={onPageChange}
+          embedded
+        />
       </div>
     </div>
   );
@@ -6410,6 +6377,7 @@ function OutputTableEditor({
             {t('data.outputTables.editor.back')}
           </button>
           <div className="flex min-w-0 items-center gap-2">
+            <InputTableStatusBadge label={t('data.outputTables.status.available')} tone="success" />
             {isNameEditing ? (
               <input
                 ref={nameInputRef}
@@ -6443,13 +6411,12 @@ function OutputTableEditor({
               type="button"
               onClick={() => setIsNameEditing(true)}
               disabled={isBusy || isNameEditing}
-              className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-45"
+              className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
               aria-label={t('common.edit')}
               title={t('common.edit')}
             >
-              <PencilLine className="h-4 w-4" />
+              <PencilLine className="h-3.5 w-3.5" />
             </button>
-            <InputTableStatusBadge label={t('data.outputTables.status.available')} tone="success" />
           </div>
         </div>
         <button
@@ -6970,16 +6937,24 @@ function InputTableEditorWorkbench({
   return (
     <>
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="mb-3 flex h-14 shrink-0 items-center justify-between gap-3 px-1">
-          <div className="flex min-w-0 items-center gap-3">
+        <div className="mb-3 flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-center gap-4">
             <button
               onClick={onBack}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border-muted bg-background/62 px-3 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
             >
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft className="h-3.5 w-3.5" />
               {t('data.inputTables.editor.backShort')}
             </button>
             <div className="flex min-w-0 items-center gap-2">
+              <InputTableStatusBadge
+                label={
+                  isConfigured
+                    ? t('data.inputTables.status.available')
+                    : t('data.inputTables.status.draft')
+                }
+                tone={isConfigured ? 'success' : 'warning'}
+              />
               {isNameEditing ? (
                 <input
                   ref={nameInputRef}
@@ -7000,12 +6975,12 @@ function InputTableEditorWorkbench({
                   disabled={isBusy}
                   maxLength={50}
                   aria-label={t('data.inputTables.editor.name')}
-                  className="h-9 min-w-0 max-w-[22rem] truncate border-0 bg-transparent px-0 text-[18px] font-medium text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-60"
+                  className="h-8 min-w-0 max-w-[22rem] truncate border-0 bg-transparent px-0 text-[15px] font-medium text-text-secondary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-60"
                   placeholder={t('data.inputTables.editor.title')}
                 />
               ) : (
                 <div
-                  className="flex h-9 min-w-0 max-w-[22rem] items-center truncate text-[18px] font-medium text-text-primary"
+                  className="flex h-8 min-w-0 max-w-[22rem] items-center truncate text-[15px] font-medium text-text-secondary"
                   title={localName || t('data.inputTables.editor.title')}
                 >
                   {localName || t('data.inputTables.editor.title')}
@@ -7015,20 +6990,12 @@ function InputTableEditorWorkbench({
                 type="button"
                 onClick={() => setIsNameEditing(true)}
                 disabled={isBusy || isNameEditing}
-                className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-45"
+                className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
                 aria-label={t('common.edit')}
                 title={t('common.edit')}
               >
-                <PencilLine className="h-4 w-4" />
+                <PencilLine className="h-3.5 w-3.5" />
               </button>
-              <InputTableStatusBadge
-                label={
-                  isConfigured
-                    ? t('data.inputTables.status.available')
-                    : t('data.inputTables.status.draft')
-                }
-                tone={isConfigured ? 'success' : 'warning'}
-              />
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -7036,7 +7003,7 @@ function InputTableEditorWorkbench({
               type="button"
               onClick={() => void previewInputTable()}
               disabled={!canPreview || previewLoading}
-              className="inline-flex h-9 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/62 px-4 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
             >
               {previewLoading ? (
                 <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -7049,7 +7016,7 @@ function InputTableEditorWorkbench({
               type="button"
               onClick={saveInputTable}
               disabled={!canSave}
-              className="inline-flex h-9 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/62 px-4 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Save className="h-3.5 w-3.5" />
               {isBusy ? t('common.saving') : t('common.save')}
@@ -7076,7 +7043,7 @@ function InputTableEditorWorkbench({
                     <SourceIcon className="h-4 w-4" />
                   </span>
                 }
-                triggerClassName="h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
+                triggerClassName="!h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
                 contentClassName="w-[var(--radix-select-trigger-width)]"
               />
             </InputTableConfigRow>
@@ -7138,7 +7105,7 @@ function InputTableEditorWorkbench({
                   { value: 'customize', label: t('data.inputTables.editor.processingCustomize') },
                 ]}
                 disabled={isBusy || !dataset}
-                triggerClassName="h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
+                triggerClassName="!h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
                 contentClassName="w-[var(--radix-select-trigger-width)]"
               />
             </InputTableConfigRow>
@@ -7311,8 +7278,8 @@ function InputTableEditorWorkbench({
               </div>
             </div>
           ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto px-7 py-6">
-              <div className="mx-auto grid max-w-[70rem] gap-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
+              <div className="grid gap-4">
                 {localSourceKind === 'excel' ? (
                   <>
                     <InputTableConfigRow label={t('data.inputTables.editor.sheetName')}>
@@ -7329,30 +7296,77 @@ function InputTableEditorWorkbench({
                           : ['Sheet1']
                         ).map((sheetName) => ({ value: sheetName, label: sheetName }))}
                         disabled={isBusy || !dataset}
-                        triggerClassName="h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
+                        triggerClassName="!h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
                         contentClassName="w-[var(--radix-select-trigger-width)]"
                       />
                     </InputTableConfigRow>
-                    <InputTableConfigRow label={t('data.inputTables.editor.headerRow')}>
-                      <GlassSelect
-                        value={excelConfig.headerMode}
-                        onValueChange={(value) =>
-                          updateConfig({
-                            ...excelConfig,
-                            headerMode: value as DataInputTableExcelConfig['headerMode'],
-                          })
-                        }
-                        options={[
-                          { value: 'auto', label: t('data.inputTables.editor.smartDetect') },
-                          {
-                            value: 'manual',
-                            label: t('data.inputTables.editor.manualSpecify'),
-                          },
-                        ]}
-                        disabled={isBusy || !dataset}
-                        triggerClassName="h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
-                        contentClassName="w-[var(--radix-select-trigger-width)]"
-                      />
+                    <InputTableConfigRow
+                      label={
+                        <span className="inline-flex items-center gap-1.5">
+                          {t('data.inputTables.editor.headerRow')}
+                          <span className="group relative inline-flex">
+                            <button
+                              type="button"
+                              className="inline-flex h-4 w-4 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-accent/10 hover:text-accent focus:bg-accent/10 focus:text-accent focus:outline-none"
+                              aria-label={t('data.inputTables.editor.headerRowDetectHint')}
+                            >
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                            <span className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-72 rounded-lg border border-border-subtle bg-[var(--glass-card-strong)] px-3 py-2 text-left text-[12px] font-medium leading-5 text-text-secondary shadow-elevated backdrop-blur-xl group-hover:block group-focus-within:block">
+                              {t('data.inputTables.editor.headerRowDetectHint')}
+                            </span>
+                          </span>
+                        </span>
+                      }
+                    >
+                      <div
+                        className={`grid items-start gap-2 ${
+                          excelConfig.headerMode === 'manual'
+                            ? 'sm:grid-cols-[minmax(0,1fr)_10rem]'
+                            : ''
+                        }`}
+                      >
+                        <GlassSelect
+                          value={excelConfig.headerMode}
+                          onValueChange={(value) =>
+                            updateConfig({
+                              ...excelConfig,
+                              headerMode: value as DataInputTableExcelConfig['headerMode'],
+                            })
+                          }
+                          options={[
+                            { value: 'auto', label: t('data.inputTables.editor.smartDetect') },
+                            {
+                              value: 'manual',
+                              label: t('data.inputTables.editor.manualSpecify'),
+                            },
+                          ]}
+                          disabled={isBusy || !dataset}
+                          triggerClassName="!h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
+                          contentClassName="w-[var(--radix-select-trigger-width)]"
+                        />
+                        {excelConfig.headerMode === 'manual' ? (
+                          <label className="relative block !h-10">
+                            <input
+                              type="number"
+                              min={1}
+                              step={1}
+                              value={excelConfig.headerRow}
+                              onChange={(event) =>
+                                updateConfig({
+                                  ...excelConfig,
+                                  headerRow: Math.max(1, Math.floor(Number(event.target.value) || 1)),
+                                })
+                              }
+                              disabled={isBusy || !dataset}
+                              className="box-border !h-10 w-full rounded-lg border border-border-muted bg-background/50 pl-3 pr-10 text-[14px] font-medium leading-5 text-text-primary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+                            />
+                            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-medium text-text-muted">
+                              {t('data.inputTables.editor.rowUnit')}
+                            </span>
+                          </label>
+                        ) : null}
+                      </div>
                     </InputTableConfigRow>
                   </>
                 ) : null}
@@ -7416,8 +7430,6 @@ function InputTableEditorWorkbench({
                     </div>
                   </div>
                 ) : null}
-
-                <InputTableInfo>{t('data.inputTables.editor.processingAutoInfo')}</InputTableInfo>
               </div>
             </div>
           )}
@@ -7488,7 +7500,7 @@ function InputTableEditor({
   );
 }
 
-function InputTableConfigRow({ label, children }: { label: string; children: ReactNode }) {
+function InputTableConfigRow({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
     <div className="grid min-h-12 items-center gap-3 px-1 py-1 lg:grid-cols-[10rem_minmax(0,1fr)]">
       <div className="text-[14px] font-medium text-text-primary">{label}</div>
@@ -7964,7 +7976,7 @@ function InputTableSelect({
         disabled={disabled}
         onValueChange={onChange}
         options={options}
-        triggerClassName="h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[13px] font-medium text-text-secondary disabled:opacity-60"
+        triggerClassName="!h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[13px] font-medium text-text-secondary disabled:opacity-60"
         contentClassName="w-[var(--radix-select-trigger-width)]"
       />
     </label>
