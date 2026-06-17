@@ -44,10 +44,8 @@ import {
   Ban,
   BarChart3,
   Calculator,
-  CheckCircle2,
   ChevronDown,
   Cloud,
-  Code2,
   Columns3,
   Copy,
   Database,
@@ -55,7 +53,6 @@ import {
   Filter,
   Folder,
   GitMerge,
-  MapPin,
   MoreHorizontal,
   PencilLine,
   Play,
@@ -84,9 +81,6 @@ import type {
   DataWorkflowOperatorType,
   DataWorkflowSaveInput,
 } from '../../types';
-import { PrepDslEditor } from '../PrepDslEditor';
-import { OperatorFormWrapper } from '../workflow-forms/OperatorFormWrapper';
-import { GlassModeToggle } from '../workflow-forms/shared/GlassModeToggle';
 import {
   compilePrepWorkflowToFlow,
   exportPrepOperatorDsl,
@@ -111,6 +105,7 @@ import {
   makeLocalId,
   type TranslateFn,
 } from './shared';
+import { WorkflowOperatorConfigPanel } from './WorkflowOperatorConfigPanel';
 
 function toWorkflowSaveInput(workflow: DataTaskWorkflow): DataWorkflowSaveInput {
   return {
@@ -798,7 +793,6 @@ export function TaskEditor({
       };
       setWorkflow(nextWorkflow);
       setSelectedNodeId(nodeId);
-      setActiveInspectorTab('data');
       await onRun(task, {
         workflow: toWorkflowSaveInput(nextWorkflow),
         outputMode: 'temporary',
@@ -997,7 +991,7 @@ export function TaskEditor({
       ) : (
         <div className="grid flex-1 min-h-0 grid-cols-[13rem_minmax(0,1fr)] items-stretch gap-3">
           <WorkflowOperatorPalette operators={OPERATOR_CATALOG} onAddOperator={addOperator} />
-          <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_20rem] gap-3">
+          <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_400px] gap-3">
             <WorkflowCanvas
               nodes={nodes}
               edges={edges}
@@ -1744,10 +1738,8 @@ function WorkflowInspector({
   const [operatorDsl, setOperatorDsl] = useState('');
   const [operatorDslBeforeEdit, setOperatorDslBeforeEdit] = useState('');
   const [isEditingOperatorDsl, setIsEditingOperatorDsl] = useState(false);
-  const [configMode, setConfigMode] = useState<'form' | 'dsl'>('form');
   const [operatorDslDiagnostics, setOperatorDslDiagnostics] = useState<PrepDiagnostic[]>([]);
   const [operatorDslStatus, setOperatorDslStatus] = useState<string | null>(null);
-  const [operatorDslDiagnosticsOpen, setOperatorDslDiagnosticsOpen] = useState(true);
   const [operatorFieldCompletions, setOperatorFieldCompletions] = useState<string[]>([]);
   const [isEditingNodeTitle, setIsEditingNodeTitle] = useState(false);
   const [nodePreviewData, setNodePreviewData] = useState<DataInputTablePreview | null>(null);
@@ -1792,8 +1784,6 @@ function WorkflowInspector({
       setOperatorFieldCompletions([]);
       setOperatorDslDiagnostics([]);
       setOperatorDslStatus(null);
-      setOperatorDslDiagnosticsOpen(true);
-      setConfigMode('form');
       return;
     }
     const nextDsl = exportPrepOperatorDsl(node);
@@ -1803,9 +1793,16 @@ function WorkflowInspector({
     setOperatorFieldCompletions([]);
     setOperatorDslDiagnostics([]);
     setOperatorDslStatus(null);
-    setOperatorDslDiagnosticsOpen(true);
-    setConfigMode('form');
   }, [node, node?.id, node?.type, usesOperatorDsl]);
+
+  useEffect(() => {
+    if (!node || !usesOperatorDsl || isEditingOperatorDsl) return;
+    const nextDsl = exportPrepOperatorDsl(node);
+    setOperatorDsl(nextDsl);
+    setOperatorDslBeforeEdit(nextDsl);
+    setOperatorDslDiagnostics([]);
+    setOperatorDslStatus(null);
+  }, [isEditingOperatorDsl, node, node?.config, node?.label, usesOperatorDsl]);
 
   useEffect(() => {
     const requestSeq = operatorFieldsRequestSeq.current + 1;
@@ -1894,7 +1891,6 @@ function WorkflowInspector({
   const handleOperatorDslChange = useCallback((value: string) => {
     setOperatorDsl(value);
     setOperatorDslStatus(null);
-    setOperatorDslDiagnosticsOpen(true);
   }, []);
 
   const handleStartOperatorDslEdit = useCallback(() => {
@@ -1903,7 +1899,6 @@ function WorkflowInspector({
       setOperatorDslBeforeEdit(operatorDsl);
       setOperatorDslStatus(null);
       setOperatorDslDiagnostics([]);
-      setOperatorDslDiagnosticsOpen(true);
       setIsEditingOperatorDsl(true);
       onActiveTabChange('config');
     });
@@ -1915,7 +1910,6 @@ function WorkflowInspector({
     setOperatorDsl(nextDsl);
     setOperatorDslStatus(null);
     setOperatorDslDiagnostics([]);
-    setOperatorDslDiagnosticsOpen(true);
     setIsEditingOperatorDsl(false);
   }, [node, operatorDslBeforeEdit, usesOperatorDsl]);
 
@@ -1923,7 +1917,6 @@ function WorkflowInspector({
     if (!node || !usesOperatorDsl || !isEditingOperatorDsl) return;
     const result = parsePrepOperatorDsl(operatorDsl, node.type);
     setOperatorDslDiagnostics(result.diagnostics);
-    setOperatorDslDiagnosticsOpen(true);
     const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
     if (!result.operator || errors.length > 0) {
       setOperatorDslStatus(null);
@@ -1939,7 +1932,6 @@ function WorkflowInspector({
     if (!node || !usesOperatorDsl || !isEditingOperatorDsl || isRunningOperatorDsl) return;
     const result = parsePrepOperatorDsl(operatorDsl, node.type);
     setOperatorDslDiagnostics(result.diagnostics);
-    setOperatorDslDiagnosticsOpen(true);
     const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
     if (!result.operator || errors.length > 0) {
       setOperatorDslStatus(null);
@@ -1950,18 +1942,15 @@ function WorkflowInspector({
     setOperatorDslBeforeEdit(nextDsl);
     setOperatorDslStatus(t('data.workflow.operatorDslApplied'));
     setOperatorDslDiagnostics([]);
-    setOperatorDslDiagnosticsOpen(true);
     setIsEditingOperatorDsl(false);
     setNodePreviewPage(1);
     setNodePreviewData(null);
     setNodePreviewError(null);
-    onActiveTabChange('data');
     await onApplyOperatorDsl(node.id, result.operator.config);
   }, [
     isEditingOperatorDsl,
     isRunningOperatorDsl,
     node,
-    onActiveTabChange,
     onApplyOperatorDsl,
     operatorDsl,
     t,
@@ -1990,9 +1979,9 @@ function WorkflowInspector({
   const catalog = getOperatorCatalog(node.type);
   const Icon = catalog.Icon;
   const summary = getWorkflowConfigSummary(node, t);
-  const ruleSummaryItems = getRuleSummaryItems(node, t, Icon);
-  const operatorDslHasErrors = operatorDslDiagnostics.some(
-    (diagnostic) => diagnostic.severity === 'error'
+  const dslSummaryLabel = t('data.workflow.summaryLabels.dsl');
+  const configInfoRows = [...summary.primary, ...summary.details].filter(
+    (row) => row.label !== dslSummaryLabel
   );
 
   return (
@@ -2073,7 +2062,11 @@ function WorkflowInspector({
           <X className="h-4 w-4 text-text-muted" />
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden p-2.5">
+      <div
+        className={`min-h-0 flex-1 overflow-hidden ${
+          activeTab === 'config' && usesOperatorDsl ? 'p-0' : 'p-2.5'
+        }`}
+      >
         {activeTab === 'logs' ? (
           <div className="h-full min-h-0 rounded-lg border border-border-muted bg-background/34 p-2.5 text-xs text-text-muted">
             {t('data.workflow.noLogs')}
@@ -2087,141 +2080,47 @@ function WorkflowInspector({
             onPageChange={setNodePreviewPage}
           />
         ) : usesOperatorDsl ? (
-          <div className="grid h-full min-h-0 gap-2.5 lg:grid-cols-[minmax(0,1fr)_17rem]">
-            <div className="glass-card flex min-h-0 min-w-0 flex-col rounded-xl p-2">
-              <div className="mb-2 flex min-h-8 items-center gap-2">
-                <GlassModeToggle
-                  mode={configMode}
-                  formLabel={t('data.workflow.formConfig', '图形配置')}
-                  dslLabel={t('data.workflow.dslEditor', 'DSL 编辑器')}
-                  onChange={(m) => {
-                    if (m === 'dsl' && configMode === 'form') {
-                      setOperatorDsl(exportPrepOperatorDsl(node));
-                      setIsEditingOperatorDsl(false);
-                    }
-                    if (m === 'form' && configMode === 'dsl') {
-                      setIsEditingOperatorDsl(false);
-                    }
-                    setConfigMode(m);
-                  }}
-                />
-                {configMode === 'dsl' && (
-                  <>
-                    {operatorDslStatus && (
-                      <div className="flex h-8 min-w-0 items-center gap-1.5 rounded-lg border border-success/20 bg-success/5 px-2 text-[11px] text-success">
-                        <CheckCircle2 className="h-3 w-3 flex-shrink-0" />
-                        <span className="truncate">{operatorDslStatus}</span>
-                      </div>
-                    )}
-                    <div
-                      className={`${operatorDslStatus ? '' : 'ml-auto'} flex items-center gap-2`}
-                    >
-                      {isEditingOperatorDsl ? (
-                        <>
-                          <button
-                            onClick={handleFormatOperatorDsl}
-                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/42 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
-                          >
-                            <Code2 className="h-3.5 w-3.5" />
-                            {t('data.workflow.formatDsl')}
-                          </button>
-                          <button
-                            onClick={handleCancelOperatorDslEdit}
-                            disabled={isRunningOperatorDsl}
-                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/42 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                            {t('common.cancel')}
-                          </button>
-                          <button
-                            onClick={() => void handleApplyOperatorDsl()}
-                            disabled={isRunningOperatorDsl}
-                            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-55"
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            {t('data.workflow.applyOperatorDsl')}
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={handleStartOperatorDslEdit}
-                          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/42 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
-                        >
-                          <PencilLine className="h-3.5 w-3.5" />
-                          {t('data.workflow.configureSelected')}
-                        </button>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-              {configMode === 'form' ? (
-                <div className="min-h-0 min-w-0 overflow-y-auto">
-                  <OperatorFormWrapper
-                    key={`${node.id}-form`}
-                    node={node}
-                    taskId={node.taskId}
-                    fieldCompletions={operatorFieldCompletions}
-                    otherNodes={workflowNodes}
-                    sourceNode={
-                      operatorFieldSourceNode
-                        ? {
-                            id: operatorFieldSourceNode.id,
-                            type: operatorFieldSourceNode.type,
-                            config: operatorFieldSourceNode.config,
-                          }
-                        : undefined
-                    }
-                    rightSourceNode={
-                      operatorRightSourceNode
-                        ? {
-                            id: operatorRightSourceNode.id,
-                            type: operatorRightSourceNode.type,
-                            config: operatorRightSourceNode.config,
-                          }
-                        : undefined
-                    }
-                    upstreamRowCount={nodePreviewData?.totalRows}
-                    onNodeChange={onNodeChange}
-                  />
-                </div>
-              ) : (
-                <PrepDslEditor
-                  value={operatorDsl}
-                  operatorType={node.type}
-                  placeholderText={t('data.workflow.operatorDslPlaceholder')}
-                  completionLabels={editorCompletionLabels}
-                  formatDiagnostic={formatEditorDiagnostic}
-                  onChange={handleOperatorDslChange}
-                  onDiagnosticsChange={setOperatorDslDiagnostics}
-                  onRequestEdit={handleStartOperatorDslEdit}
-                  fieldCompletions={operatorFieldCompletions}
-                  editable={isEditingOperatorDsl}
-                  height={182}
-                />
-              )}
-            </div>
-            {configMode === 'form' ? (
-              <WorkflowSummaryPanel
-                title={t('data.workflow.summary')}
-                rows={summary.primary}
-                emptyText={t('data.workflow.noConfig')}
-              />
-            ) : (
-              <WorkflowRuleSummaryCard
-                title={t('data.workflow.ruleSummary')}
-                items={ruleSummaryItems}
-                syntaxOk={!operatorDslHasErrors}
-                syntaxOkText={t('data.workflow.syntaxOk')}
-                syntaxErrorText={t('data.workflow.syntaxInvalid')}
-                diagnostics={operatorDslDiagnostics}
-                diagnosticsOpen={operatorDslDiagnosticsOpen}
-                onCloseDiagnostics={() => setOperatorDslDiagnosticsOpen(false)}
-                formatDiagnostic={formatEditorDiagnostic}
-                emptyText={t('data.workflow.noConfig')}
-              />
-            )}
-          </div>
+          <WorkflowOperatorConfigPanel
+            node={node}
+            workflowNodes={workflowNodes}
+            sourceNode={
+              operatorFieldSourceNode
+                ? {
+                    id: operatorFieldSourceNode.id,
+                    type: operatorFieldSourceNode.type,
+                    config: operatorFieldSourceNode.config,
+                  }
+                : undefined
+            }
+            rightSourceNode={
+              operatorRightSourceNode
+                ? {
+                    id: operatorRightSourceNode.id,
+                    type: operatorRightSourceNode.type,
+                    config: operatorRightSourceNode.config,
+                  }
+                : undefined
+            }
+            fieldCompletions={operatorFieldCompletions}
+            upstreamRowCount={nodePreviewData?.totalRows}
+            summaryRows={configInfoRows}
+            summaryTitle={t('data.workflow.summary')}
+            summaryEmptyText={t('data.workflow.noConfig')}
+            operatorDsl={operatorDsl}
+            operatorDslStatus={operatorDslStatus}
+            operatorDslDiagnostics={operatorDslDiagnostics}
+            isEditingOperatorDsl={isEditingOperatorDsl}
+            isRunningOperatorDsl={isRunningOperatorDsl}
+            editorCompletionLabels={editorCompletionLabels}
+            formatEditorDiagnostic={formatEditorDiagnostic}
+            onNodeChange={onNodeChange}
+            onDslChange={handleOperatorDslChange}
+            onDiagnosticsChange={setOperatorDslDiagnostics}
+            onStartDslEdit={handleStartOperatorDslEdit}
+            onCancelDslEdit={handleCancelOperatorDslEdit}
+            onFormatDsl={handleFormatOperatorDsl}
+            onApplyDsl={() => void handleApplyOperatorDsl()}
+          />
         ) : (
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
             <div className="grid content-start gap-3 sm:grid-cols-2">
@@ -2569,112 +2468,6 @@ interface WorkflowSummaryRow {
   mono?: boolean;
 }
 
-interface WorkflowRuleSummaryItem {
-  id: string;
-  label: string;
-  operator?: string;
-  value: string;
-  Icon: LucideIcon;
-}
-
-function WorkflowRuleSummaryCard({
-  title,
-  items,
-  syntaxOk,
-  syntaxOkText,
-  syntaxErrorText,
-  diagnostics,
-  diagnosticsOpen,
-  onCloseDiagnostics,
-  formatDiagnostic,
-  emptyText,
-}: {
-  title: string;
-  items: WorkflowRuleSummaryItem[];
-  syntaxOk: boolean;
-  syntaxOkText: string;
-  syntaxErrorText: string;
-  diagnostics: PrepDiagnostic[];
-  diagnosticsOpen: boolean;
-  onCloseDiagnostics: () => void;
-  formatDiagnostic: (diagnostic: PrepDiagnostic) => string;
-  emptyText: string;
-}) {
-  const visibleDiagnostics = diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
-  return (
-    <section className="glass-card flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-xl p-3">
-      <h3 className="mb-2 flex h-8 items-center text-[13px] font-medium text-text-secondary">
-        {title}
-      </h3>
-      <div className="min-h-0 space-y-1.5 overflow-hidden">
-        {items.length > 0 ? (
-          items.map((item) => (
-            <div
-              key={item.id}
-              className="flex min-h-8 items-center gap-2 rounded-lg bg-surface-active/45 px-2.5 py-1.5 text-[13px] text-text-secondary"
-            >
-              <item.Icon className="h-4 w-4 flex-shrink-0 text-accent" />
-              <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
-              {item.operator && (
-                <span className="px-1.5 font-mono text-xs font-medium text-accent">
-                  {item.operator}
-                </span>
-              )}
-              <span className="max-w-[7rem] truncate rounded-md bg-accent/10 px-2 py-1 font-medium text-accent">
-                {item.value}
-              </span>
-            </div>
-          ))
-        ) : (
-          <div className="rounded-lg bg-surface-active/45 px-2.5 py-2 text-xs text-text-muted">
-            {emptyText}
-          </div>
-        )}
-      </div>
-      <div className="mt-auto border-t border-dashed border-border-muted pt-2">
-        <div
-          className={`flex h-8 items-center gap-2 text-[13px] font-medium ${
-            syntaxOk ? 'text-accent' : 'text-error'
-          }`}
-        >
-          {syntaxOk ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-          <span>{syntaxOk ? syntaxOkText : syntaxErrorText}</span>
-        </div>
-        {visibleDiagnostics.length > 0 && diagnosticsOpen && (
-          <div className="mt-2 max-h-20 overflow-y-auto rounded-lg border border-error/15 bg-error/5 p-1.5">
-            <div className="mb-1 flex items-center justify-between gap-2 px-1">
-              <span className="text-[11px] font-medium text-error">
-                {visibleDiagnostics.length}
-              </span>
-              <button
-                onClick={onCloseDiagnostics}
-                className="inline-flex h-5 w-5 items-center justify-center rounded-md text-error/70 transition-colors hover:bg-error/10 hover:text-error"
-                title={formatDiagnostic({
-                  severity: 'warning',
-                  code: 'dismissDiagnostics',
-                  message: 'Dismiss diagnostics',
-                })}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-            <div className="space-y-1">
-              {visibleDiagnostics.map((diagnostic, index) => (
-                <div
-                  key={`${diagnostic.code ?? diagnostic.message}-${index}`}
-                  className="rounded-md bg-background/72 px-2 py-1 text-[11px] leading-4 text-error"
-                >
-                  {formatDiagnostic(diagnostic)}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
 function WorkflowSummaryPanel({
   title,
   rows,
@@ -2902,73 +2695,6 @@ function getWorkflowConnectionDropTarget(
     return null;
   }
   return { nodeId, handleId };
-}
-
-function getRuleSummaryItems(
-  node: DataWorkflowNode,
-  t: TranslateFn,
-  fallbackIcon: LucideIcon
-): WorkflowRuleSummaryItem[] {
-  if (node.type === 'filter') {
-    const condition = stringValue(node.config.condition);
-    const parsedConditions = parseFilterSummaryItems(condition);
-    if (parsedConditions.length > 0) {
-      return parsedConditions.map((item, index) => ({
-        id: `condition-${index}`,
-        label: item.label,
-        operator: item.operator,
-        value: item.value,
-        Icon: item.label.toLowerCase().includes('region') ? MapPin : BarChart3,
-      }));
-    }
-  }
-
-  const summary = getWorkflowConfigSummary(node, t);
-  const dslLabel = t('data.workflow.summaryLabels.dsl');
-  const notSet = t('data.workflow.values.notSet');
-  return [...summary.primary, ...summary.details]
-    .filter((row) => row.label !== dslLabel && row.value && row.value !== notSet)
-    .slice(0, 3)
-    .map((row, index) => ({
-      id: `${row.label}-${index}`,
-      label: row.label,
-      value: row.value,
-      Icon: fallbackIcon,
-    }));
-}
-
-function parseFilterSummaryItems(
-  condition: string
-): Array<{ label: string; operator: string; value: string }> {
-  const normalized = condition.replace(/^filter\s+/i, '').trim();
-  if (!normalized) return [];
-  return normalized.split(/\s+and\s+/i).flatMap((part) => {
-    const match = /^\s*(.+?)\s*(>=|<=|!=|=|>|<)\s*(.+?)\s*$/.exec(part);
-    if (!match) return [];
-    return [
-      {
-        label: stripSummaryFieldRef(match[1]),
-        operator: match[2],
-        value: stripSummaryLiteral(match[3]),
-      },
-    ];
-  });
-}
-
-function stripSummaryFieldRef(value: string): string {
-  const pieces = value
-    .trim()
-    .split('.')
-    .map((part) => part.trim().replace(/^\[/, '').replace(/\]$/, '').replace(/^`|`$/g, ''));
-  return pieces[pieces.length - 1] || value.trim();
-}
-
-function stripSummaryLiteral(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
-    return trimmed.slice(1, -1).replace(/\\"/g, '"');
-  }
-  return trimmed;
 }
 
 interface WorkflowConfigSummary {
