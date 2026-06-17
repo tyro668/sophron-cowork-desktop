@@ -107,6 +107,7 @@ export type ContentBlock =
   | TextContent
   | ImageContent
   | FileAttachmentContent
+  | CloudTableAttachmentContent
   | ToolUseContent
   | ToolResultContent
   | ThinkingContent;
@@ -132,6 +133,11 @@ export interface FileAttachmentContent {
   size: number;
   mimeType?: string;
   inlineDataBase64?: string;
+}
+
+export interface CloudTableAttachmentContent {
+  type: 'cloud_table_attachment';
+  tables: CloudTableChatAttachment[];
 }
 
 export interface ToolUseContent {
