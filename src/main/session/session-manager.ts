@@ -23,6 +23,7 @@ import type {
   TextContent,
   TraceStep,
   FileAttachmentContent,
+  CloudTableAttachmentContent,
   AgentRuntimeConfig,
 } from '../../renderer/types';
 import type { DatabaseInstance, ProjectRow, SessionRow, TraceStepRow } from '../db/database';
@@ -80,9 +81,7 @@ interface SessionRunOptions {
   selectedSkillNames?: string[];
 }
 
-type RuntimeConfigResolver = (
-  config?: AgentRuntimeConfig | null
-) => AgentRuntimeConfig | undefined;
+type RuntimeConfigResolver = (config?: AgentRuntimeConfig | null) => AgentRuntimeConfig | undefined;
 
 const WORKSPACE_MOUNT_VIRTUAL_PATH = '/mnt/workspace';
 const TITLE_GENERATION_TIMEOUT_MS = 20000;
@@ -651,6 +650,32 @@ export class SessionManager {
     return processedContent;
   }
 
+  private formatCloudTableContext(tables: CloudTableAttachmentContent['tables']): string {
+    // This context is for model prompts only. Do not store it in user-visible message content.
+    const payload = tables.map((table) => ({
+      tableId: table.tableId,
+      tableName: table.tableName,
+      spaceId: table.spaceId,
+      spaceName: table.spaceName,
+      projectId: table.projectId,
+      projectName: table.projectName,
+      datasourceId: table.datasourceId,
+      folderId: table.folderId,
+      rowCount: table.rowCount,
+      columns: table.columns ?? [],
+      sampleRows: (table.sampleRows ?? []).slice(0, 5),
+      accessMode: table.accessModeLabel,
+      connection: table.connectionLabel,
+    }));
+
+    return [
+      '[Cloud analysis tables added to this conversation]',
+      'Use these Personal Analysis table references when answering the user.',
+      'If the user asks to modify or overwrite a cloud table, first import the table into the local cowork data workspace, create or update a local output table, then ask for confirmation before uploading with REPLACE mode.',
+      JSON.stringify(payload, null, 2),
+    ].join('\n');
+  }
+
   // Process a prompt using ClaudeAgentRunner
   private async processPrompt(
     session: Session,
@@ -702,6 +727,23 @@ export class SessionManager {
             .join('\n');
           enhancedPrompt = `${prompt}\n\n[Attached files - use Read tool to access them]:\n${fileInfo}`;
           logCtx('[SessionManager] Enhanced prompt with file info:', enhancedPrompt);
+        }
+        const cloudTableAttachments = messageContent.filter(
+          (c) => c.type === 'cloud_table_attachment'
+        ) as CloudTableAttachmentContent[];
+        if (cloudTableAttachments.length > 0) {
+          const cloudTableContext = cloudTableAttachments
+            .flatMap((block) => block.tables)
+            .filter(Boolean);
+          if (cloudTableContext.length > 0) {
+            const cloudTablePrompt = this.formatCloudTableContext(cloudTableContext);
+            enhancedPrompt = `${enhancedPrompt}\n\n${cloudTablePrompt}`;
+            logCtx(
+              '[SessionManager] Enhanced prompt with cloud table context:',
+              cloudTableContext.length,
+              'table(s)'
+            );
+          }
         }
 
         // Save user message to database for persistence

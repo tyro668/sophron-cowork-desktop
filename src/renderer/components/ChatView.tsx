@@ -554,31 +554,6 @@ export function ChatView() {
     });
   };
 
-  const formatCloudTableContext = (tables: CloudTableChatAttachment[]) => {
-    const payload = tables.map((table) => ({
-      tableId: table.tableId,
-      tableName: table.tableName,
-      spaceId: table.spaceId,
-      spaceName: table.spaceName,
-      projectId: table.projectId,
-      projectName: table.projectName,
-      datasourceId: table.datasourceId,
-      folderId: table.folderId,
-      rowCount: table.rowCount,
-      columns: table.columns ?? [],
-      sampleRows: table.sampleRows ?? [],
-      accessMode: table.accessModeLabel,
-      connection: table.connectionLabel,
-    }));
-
-    return [
-      '[Cloud analysis tables added to this conversation]',
-      'Use these Personal Analysis table references when answering the user.',
-      'If the user asks to modify or overwrite a cloud table, first import the table into the local cowork data workspace, create or update a local output table, then ask for confirmation before uploading with REPLACE mode.',
-      JSON.stringify(payload, null, 2),
-    ].join('\n');
-  };
-
   useEffect(() => {
     if (!pendingCloudTableChatAttachments) return;
 
@@ -788,8 +763,8 @@ export function ChatView() {
 
       if (attachedCloudTables.length > 0) {
         contentBlocks.push({
-          type: 'text',
-          text: formatCloudTableContext(attachedCloudTables),
+          type: 'cloud_table_attachment',
+          tables: attachedCloudTables,
         });
       }
 

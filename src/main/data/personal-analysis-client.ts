@@ -5,6 +5,8 @@ import type {
   PersonalAnalysisProject,
   PersonalAnalysisSpace,
   PersonalAnalysisTable,
+  PersonalAnalysisTableListResult,
+  PersonalAnalysisTableSearchParams,
   PersonalAnalysisUploadInput,
   PersonalAnalysisUploadResult,
 } from '../../shared/personal-analysis-types';
@@ -56,10 +58,53 @@ export class PersonalAnalysisClient {
     );
   }
 
-  async listTables(spaceId: string, projectId: string): Promise<PersonalAnalysisTable[]> {
-    return this.apiJson<PersonalAnalysisTable[]>(
-      `/spaces/${encodeURIComponent(spaceId)}/projects/${encodeURIComponent(projectId)}/tables`
+  async listTables(
+    spaceId: string,
+    projectId: string,
+    params: PersonalAnalysisTableSearchParams = {}
+  ): Promise<PersonalAnalysisTableListResult> {
+    const query = new URLSearchParams();
+    if (params.keyword?.trim()) query.set('keyword', params.keyword.trim());
+    if (params.page) query.set('page', String(params.page));
+    if (params.pageSize) query.set('pageSize', String(params.pageSize));
+    if (params.sortBy) query.set('sortBy', params.sortBy);
+    if (params.sortOrder) query.set('sortOrder', params.sortOrder);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    const result = await this.apiJson<
+      | PersonalAnalysisTable[]
+      | {
+          items?: PersonalAnalysisTable[];
+          tables?: PersonalAnalysisTable[];
+          page?: number;
+          pageSize?: number;
+          total?: number;
+          hasMore?: boolean;
+        }
+    >(
+      `/spaces/${encodeURIComponent(spaceId)}/projects/${encodeURIComponent(projectId)}/tables${suffix}`
     );
+
+    if (Array.isArray(result)) {
+      // Legacy table-list responses are unpaged arrays, so treat them as complete.
+      const page = params.page ?? 1;
+      const pageSize = params.pageSize ?? result.length;
+      return {
+        tables: result,
+        page,
+        pageSize,
+        total: result.length,
+        hasMore: false,
+      };
+    }
+
+    const tables = result.items ?? result.tables ?? [];
+    return {
+      tables,
+      page: result.page ?? params.page ?? 1,
+      pageSize: result.pageSize ?? params.pageSize ?? tables.length,
+      total: result.total ?? tables.length,
+      hasMore: result.hasMore ?? false,
+    };
   }
 
   async exportTableCsv(tableId: string): Promise<string> {

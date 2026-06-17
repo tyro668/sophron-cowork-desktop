@@ -97,6 +97,35 @@ import type {
   RemoteSessionMapping,
 } from '../shared/ipc-types';
 
+interface DataCommandIpcError {
+  __dataCommandError: true;
+  name?: string;
+  message: string;
+  code?: string;
+  details?: unknown;
+}
+
+function isDataCommandIpcError(value: unknown): value is DataCommandIpcError {
+  return (
+    Boolean(value) &&
+    typeof value === 'object' &&
+    (value as { __dataCommandError?: unknown }).__dataCommandError === true &&
+    typeof (value as { message?: unknown }).message === 'string'
+  );
+}
+
+async function invokeDataCommand<T>(channel: string, payload?: unknown): Promise<T> {
+  const result = await ipcRenderer.invoke(channel, payload);
+  if (isDataCommandIpcError(result)) {
+    throw Object.assign(new Error(result.message), {
+      name: result.name || 'DataCommandError',
+      code: result.code,
+      details: result.details,
+    });
+  }
+  return result as T;
+}
+
 // Track registered callbacks to prevent duplicate listeners
 let registeredCallback: ((event: ServerEvent) => void) | null = null;
 let ipcListener: ((event: Electron.IpcRendererEvent, data: ServerEvent) => void) | null = null;
@@ -300,19 +329,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     deleteDataset: (id: string): Promise<{ success: boolean }> =>
       ipcRenderer.invoke('data.deleteDataset', id),
     listCloudSpaces: (payload?: ListCloudSpacesInput): Promise<ListCloudSpacesResult> =>
-      ipcRenderer.invoke('data.listCloudSpaces', payload),
+      invokeDataCommand('data.listCloudSpaces', payload),
     listCloudProjects: (payload: ListCloudProjectsInput): Promise<ListCloudProjectsResult> =>
-      ipcRenderer.invoke('data.listCloudProjects', payload),
+      invokeDataCommand('data.listCloudProjects', payload),
     listCloudTables: (payload: ListCloudTablesInput): Promise<ListCloudTablesResult> =>
-      ipcRenderer.invoke('data.listCloudTables', payload),
+      invokeDataCommand('data.listCloudTables', payload),
     previewCloudTable: (payload: PreviewCloudTableInput): Promise<PreviewCloudTableResult> =>
-      ipcRenderer.invoke('data.previewCloudTable', payload),
+      invokeDataCommand('data.previewCloudTable', payload),
     importCloudTable: (payload: ImportCloudTableInput): Promise<ImportCloudTableResult> =>
-      ipcRenderer.invoke('data.importCloudTable', payload),
+      invokeDataCommand('data.importCloudTable', payload),
     uploadDataTableToCloud: (
       payload: UploadDataTableToCloudInput
     ): Promise<UploadDataTableToCloudResult> =>
-      ipcRenderer.invoke('data.uploadDataTableToCloud', payload),
+      invokeDataCommand('data.uploadDataTableToCloud', payload),
   },
 
   // Config methods

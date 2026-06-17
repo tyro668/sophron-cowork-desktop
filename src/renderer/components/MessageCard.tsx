@@ -63,7 +63,7 @@ export const MessageCard = memo(function MessageCard({ message, isStreaming }: M
         // User message - right-aligned prompt card in the conversation flow.
         <div className="group flex items-start justify-end gap-2">
           <div
-            className={`message-user max-w-[min(44rem,88%)] min-w-0 break-words rounded-xl px-4 py-3 ${
+            className={`message-user max-w-[min(44rem,88%)] min-w-0 space-y-2 break-words rounded-xl px-4 py-3 ${
               isQueued ? 'opacity-70 border-dashed' : ''
             } ${isCancelled ? 'opacity-60' : ''}`}
           >

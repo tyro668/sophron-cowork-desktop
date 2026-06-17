@@ -59,7 +59,18 @@ const EN_STOP_WORDS = new Set([
   'based',
 ]);
 
-const ZH_STOP_WORDS = ['我们', '你们', '他们', '进行', '一个', '这个', '那个', '需要', '可以', '已经'];
+const ZH_STOP_WORDS = [
+  '我们',
+  '你们',
+  '他们',
+  '进行',
+  '一个',
+  '这个',
+  '那个',
+  '需要',
+  '可以',
+  '已经',
+];
 const CORE_CATEGORIES = new Set<CoreMemoryCategory>([
   'identity',
   'preferences',
@@ -159,6 +170,11 @@ export function extractTextFromContent(content: ContentBlock[]): string {
           return `${block.name} ${JSON.stringify(block.input)}`;
         case 'file_attachment':
           return `[file] ${block.filename}`;
+        case 'cloud_table_attachment':
+          return block.tables
+            .map((table) => `[cloud table] ${table.tableName}`)
+            .filter(Boolean)
+            .join('\n');
         case 'image':
           return '[image]';
         default:

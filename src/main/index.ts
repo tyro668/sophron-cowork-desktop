@@ -106,10 +106,7 @@ import {
   buildScheduledTaskTitle,
 } from '../shared/schedule/task-title';
 import { APP_INTERNAL_NAME, APP_NAME_EN } from '../shared/branding';
-import {
-  BUILTIN_LLM_CONFIG_SET_ID,
-  parseBuiltinLlmConfigSetId,
-} from '../shared/builtin-llm';
+import { BUILTIN_LLM_CONFIG_SET_ID, parseBuiltinLlmConfigSetId } from '../shared/builtin-llm';
 import {
   isUncPath,
   isWindowsDrivePath,
@@ -193,9 +190,7 @@ function resolveAgentRuntimeConfigForAuth(
   config?: AgentRuntimeConfig | null
 ): AgentRuntimeConfig | undefined {
   const runtimeConfig =
-    config ??
-    configStore.getRuntimeConfigForSet(configStore.get('activeConfigSetId')) ??
-    undefined;
+    config ?? configStore.getRuntimeConfigForSet(configStore.get('activeConfigSetId')) ?? undefined;
   if (!runtimeConfig) {
     return undefined;
   }

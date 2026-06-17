@@ -145,6 +145,7 @@ function escapeXmlText(value: string): string {
  *   - tool_result   \u2192 `<tool_result tool_use_id="\u2026"[ is_error="true"]>\u2026</tool_result>`
  *   - image         \u2192 skipped (binary, cannot live inside an XML text preamble)
  *   - file_attachment \u2192 skipped (large, would bloat the prompt)
+ *   - cloud_table_attachment \u2192 `<cloud_table_attachment>\u2026</cloud_table_attachment>`
  */
 export function serializeMessageContentForHistory(content: ContentBlock[]): string {
   const parts: string[] = [];
@@ -205,6 +206,28 @@ export function serializeMessageContentForHistory(content: ContentBlock[]): stri
       case 'file_attachment':
         // Skip \u2014 not representable as XML text in a history preamble.
         break;
+      case 'cloud_table_attachment': {
+        const tables = Array.isArray(block.tables) ? block.tables : [];
+        if (tables.length === 0) break;
+        let tableStr: string;
+        try {
+          tableStr = JSON.stringify(
+            tables.map((table) => ({
+              tableId: table.tableId,
+              tableName: table.tableName,
+              spaceName: table.spaceName,
+              projectName: table.projectName,
+              rowCount: table.rowCount,
+              columns: table.columns ?? [],
+              sampleRows: (table.sampleRows ?? []).slice(0, 5),
+            }))
+          );
+        } catch {
+          tableStr = '[]';
+        }
+        parts.push(`<cloud_table_attachment>${escapeXmlText(tableStr)}</cloud_table_attachment>`);
+        break;
+      }
     }
   }
   return parts.join('\n');
