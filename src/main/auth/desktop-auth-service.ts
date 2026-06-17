@@ -396,7 +396,9 @@ export class DesktopAuthService {
     return session;
   }
 
-  private async tryFetchAiCredits(session: DesktopAuthSession): Promise<AiCreditBalance | undefined> {
+  private async tryFetchAiCredits(
+    session: DesktopAuthSession
+  ): Promise<AiCreditBalance | undefined> {
     try {
       return await this.fetchAiCredits(session);
     } catch (error) {

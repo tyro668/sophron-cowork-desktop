@@ -12,10 +12,7 @@ export type SharedProviderType =
   | 'ollama';
 
 export type SharedCustomProtocolType = 'anthropic' | 'openai' | 'gemini';
-export type VisibleApiProviderType = Exclude<
-  SharedProviderType,
-  'custom' | 'gemini' | 'sophron'
->;
+export type VisibleApiProviderType = Exclude<SharedProviderType, 'custom' | 'gemini' | 'sophron'>;
 
 export const VISIBLE_API_PROVIDER_OPTIONS = [
   'deepseek',

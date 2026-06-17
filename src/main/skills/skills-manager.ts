@@ -906,7 +906,8 @@ export class SkillsManager {
 
       const name = readField('name');
       const description = readField('description');
-      const descriptionEn = readField('description_en') || readField('descriptionEn') || description;
+      const descriptionEn =
+        readField('description_en') || readField('descriptionEn') || description;
       const descriptionZh = readField('description_zh') || readField('descriptionZh');
 
       if (!name || !description) {

@@ -160,10 +160,7 @@ export function AgentModelSelector({
       return getAgentModelLabel(appConfig, fallbackLabel, selectedConfigSetId);
     }
 
-    return (
-      builtinOptions.find((option) => option.model === builtinModel)?.name ||
-      fallbackLabel
-    );
+    return builtinOptions.find((option) => option.model === builtinModel)?.name || fallbackLabel;
   }, [appConfig, builtinOptions, fallbackLabel, selectedConfigSetId]);
 
   const formatMultiplier = (value: number | undefined) => {
@@ -223,9 +220,7 @@ export function AgentModelSelector({
     if (groupOptions.length === 0) return null;
     return (
       <div className="py-1">
-        <div className="px-3 pb-1 pt-1.5 text-[11px] font-semibold text-text-muted">
-          {title}
-        </div>
+        <div className="px-3 pb-1 pt-1.5 text-[11px] font-semibold text-text-muted">{title}</div>
         {groupOptions.map((option) => {
           const costMultiplier = formatCostMultiplier(option);
           const secondaryModelText = getSecondaryModelText(option);

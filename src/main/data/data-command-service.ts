@@ -735,7 +735,6 @@ export class DataCommandService {
       });
     }
   }
-
 }
 
 function listWindow(

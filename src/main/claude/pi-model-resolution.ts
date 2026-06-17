@@ -145,7 +145,9 @@ const KNOWN_MODEL_SPECS: Record<string, { contextWindow: number; maxTokens: numb
 };
 
 function matchesKnownModelSpec(key: string, lowerModelId: string): boolean {
-  return lowerModelId === key || lowerModelId.startsWith(key + ':') || lowerModelId.startsWith(key + '-');
+  return (
+    lowerModelId === key || lowerModelId.startsWith(key + ':') || lowerModelId.startsWith(key + '-')
+  );
 }
 
 function lookupModelSpecs(

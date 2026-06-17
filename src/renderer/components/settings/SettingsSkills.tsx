@@ -893,9 +893,7 @@ function SkillRow({
           </span>
         </div>
         {description && (
-          <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-text-muted">
-            {description}
-          </p>
+          <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-text-muted">{description}</p>
         )}
       </div>
       <div className="flex flex-shrink-0 items-center gap-1">

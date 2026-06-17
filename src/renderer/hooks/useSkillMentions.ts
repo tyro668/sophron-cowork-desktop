@@ -73,9 +73,7 @@ export function useSkillMentions({
   const controlledSelectedSignature = useMemo(
     () =>
       controlledSelectedSkillNames
-        ? JSON.stringify(
-            controlledSelectedSkillNames.map((name) => name.trim()).filter(Boolean)
-          )
+        ? JSON.stringify(controlledSelectedSkillNames.map((name) => name.trim()).filter(Boolean))
         : '',
     [controlledSelectedSkillNames]
   );
@@ -125,7 +123,9 @@ export function useSkillMentions({
       return;
     }
 
-    const skillsByName = new Map(availableSkills.map((skill) => [normalizeText(skill.name), skill]));
+    const skillsByName = new Map(
+      availableSkills.map((skill) => [normalizeText(skill.name), skill])
+    );
     const nextSelectedSkills = controlledSelectedSkillNames
       .map((name) => name.trim())
       .filter(Boolean)

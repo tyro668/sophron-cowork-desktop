@@ -41,20 +41,23 @@ export function GlassListEditor<T>({
   }
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       {items.length === 0 ? (
-        <div className="py-4 text-center text-[12px] text-text-muted">{emptyText}</div>
+        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border-muted/70 py-6 text-center">
+          <Plus className="h-5 w-5 text-text-muted/50" />
+          <span className="text-[12px] text-text-muted">{emptyText}</span>
+        </div>
       ) : (
-        <div className="space-y-2">
+        <>
           {items.map((item, i) => (
             <div
               key={getKey ? getKey(item, i) : i}
-              className="group/item relative rounded-lg border border-border-muted bg-background/42 p-2.5"
+              className="group/item relative rounded-lg border border-border-muted/60 bg-background/28 p-2.5 hover:border-border-muted transition-colors"
             >
               <button
                 type="button"
                 onClick={() => removeItem(i)}
-                className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-0 transition-opacity hover:bg-surface-hover hover:text-error group-hover/item:opacity-100"
+                className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded text-text-muted/50 opacity-0 transition-all hover:bg-error/10 hover:text-error group-hover/item:opacity-100"
                 title={tr('remove', '删除')}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -62,14 +65,14 @@ export function GlassListEditor<T>({
               <div className="pr-6">{renderRow(item, i, (updated) => updateItem(i, updated))}</div>
             </div>
           ))}
-        </div>
+        </>
       )}
       <button
         type="button"
         onClick={addItem}
-        className="inline-flex h-7 items-center gap-1 rounded-md border border-border-muted bg-background/42 px-2 text-[11px] text-text-secondary hover:border-accent/30 hover:text-accent transition-colors"
+        className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border-muted/70 py-2 text-[12px] text-text-muted hover:border-accent/40 hover:text-accent transition-colors"
       >
-        <Plus className="h-3 w-3" />
+        <Plus className="h-3.5 w-3.5" />
         {addLabel}
       </button>
     </div>

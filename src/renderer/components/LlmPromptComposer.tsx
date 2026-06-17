@@ -72,7 +72,9 @@ export function LlmPromptComposer({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const normalizedSelectedSkillNames = useMemo(
     () =>
-      selectedSkillNames === undefined ? undefined : normalizeSelectedSkillNames(selectedSkillNames),
+      selectedSkillNames === undefined
+        ? undefined
+        : normalizeSelectedSkillNames(selectedSkillNames),
     [selectedSkillNames]
   );
   const activeModelConfigSetId = selectedModelConfigSetId || appConfig?.activeConfigSetId;

@@ -286,9 +286,7 @@ function App() {
             .map((route) => (
               <div
                 key={route.id}
-                className={
-                  activeMainRouteId === route.id ? 'flex h-full min-h-0 w-full' : 'hidden'
-                }
+                className={activeMainRouteId === route.id ? 'flex h-full min-h-0 w-full' : 'hidden'}
               >
                 <PanelErrorBoundary
                   name={route.name}

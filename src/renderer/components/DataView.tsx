@@ -1,18 +1,6 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  AlertCircle,
-  CheckCircle2,
-  Clock3,
-  Database,
-  Workflow,
-} from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock3, Database, Workflow } from 'lucide-react';
 import type {
   DataCleaningTask,
   DataDashboard,
