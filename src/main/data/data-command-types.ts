@@ -1,4 +1,5 @@
 import type {
+  AgentRuntimeConfig,
   DataCleaningTask,
   DataDataset,
   DataDeleteInputTableNormalizerVersionInput,
@@ -140,6 +141,7 @@ export type GenerateInputTableNormalizerDraftProgressCallback = (
 
 export type GenerateInputTableNormalizerDraftCommand =
   DataGenerateInputTableNormalizerDraftInput & {
+    runtimeConfig?: AgentRuntimeConfig;
     onProgress?: GenerateInputTableNormalizerDraftProgressCallback;
   };
 

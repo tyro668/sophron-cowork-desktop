@@ -3,8 +3,12 @@ import {
   streamSimple,
   type UserMessage as PiUserMessage,
 } from '@mariozechner/pi-ai';
-import type { ApiTestInput, ApiTestResult } from '../../renderer/types';
-import { PROVIDER_PRESETS, type AppConfig, type CustomProtocolType } from '../config/config-store';
+import type { AgentRuntimeConfig, ApiTestInput, ApiTestResult } from '../../renderer/types';
+import {
+  PROVIDER_PRESETS,
+  type AppConfig,
+  type CustomProtocolType,
+} from '../config/config-store';
 import {
   normalizeAnthropicBaseUrl,
   normalizeOllamaBaseUrl,
@@ -165,7 +169,7 @@ function mapPiAiError(errorText: string, durationMs: number, provider?: string):
 export async function runPiAiOneShot(
   prompt: string,
   systemPrompt: string,
-  config: AppConfig,
+  config: AppConfig | AgentRuntimeConfig,
   options?: {
     temperature?: number;
     maxTokens?: number;

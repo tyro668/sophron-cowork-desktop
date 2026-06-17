@@ -49,6 +49,8 @@ import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
 import { GlassDataGridPreview } from './GlassDataGridPreview';
 import { GlassSelect } from './GlassSelect';
 import { MessageCard } from './MessageCard';
+import { getAgentModelLabel } from './AgentModelSelector';
+import { LlmPromptComposer } from './LlmPromptComposer';
 import {
   AlertCircle,
   ArrowLeft,
@@ -6520,6 +6522,7 @@ function InputTableEditorWorkbench({
   onUpdateDatasetConfig,
 }: InputTableEditorProps) {
   const { t } = useTranslation();
+  const appConfig = useAppStore((state) => state.appConfig);
   const targetId = draft?.id ?? dataset?.id ?? '';
   const initialName = draft?.name ?? dataset?.name ?? '';
   const initialSourceKind = dataset?.sourceKind ?? 'excel';
@@ -6673,9 +6676,34 @@ function InputTableEditorWorkbench({
     setLocalConfig(config);
   };
 
-  const updateDataProcessing = (dataProcessing: DataInputTableProcessingConfig) => {
-    updateConfig(withInputTableDataProcessing(localConfig, dataProcessing));
-  };
+  const updateDataProcessing = useCallback((dataProcessing: DataInputTableProcessingConfig) => {
+    setLocalConfig(withInputTableDataProcessing(localConfig, dataProcessing));
+  }, [localConfig]);
+
+  const customizeSelectedSkillNames = useMemo(() => {
+    if (dataProcessing.strategy !== 'customize') return [];
+    return Array.isArray(dataProcessing.selectedSkillNames)
+      ? dataProcessing.selectedSkillNames.filter((name): name is string => typeof name === 'string')
+      : [];
+  }, [dataProcessing]);
+
+  const selectedCustomizeModelConfigSetId =
+    dataProcessing.strategy === 'customize' &&
+    typeof dataProcessing.modelConfigSetId === 'string' &&
+    dataProcessing.modelConfigSetId.trim()
+      ? dataProcessing.modelConfigSetId
+      : appConfig?.activeConfigSetId;
+
+  const patchCustomizeDataProcessing = useCallback(
+    (patch: Partial<Extract<DataInputTableProcessingConfig, { strategy: 'customize' }>>) => {
+      if (dataProcessing.strategy !== 'customize') return;
+      updateDataProcessing({
+        ...dataProcessing,
+        ...patch,
+      });
+    },
+    [dataProcessing, updateDataProcessing]
+  );
 
   const appendGenerationOutput = useCallback((line: string) => {
     setCustomizeGenerationOutput((current) => `${current}${current ? '\n' : ''}${line}`);
@@ -6745,6 +6773,9 @@ function InputTableEditorWorkbench({
         sourceKind: localSourceKind,
         config: localConfig,
         rulePrompt,
+        selectedSkillNames: customizeSelectedSkillNames,
+        modelConfigSetId: selectedCustomizeModelConfigSetId,
+        model: getAgentModelLabel(appConfig, '', selectedCustomizeModelConfigSetId),
         primaryLanguage: normalizerLanguage,
         progressId,
       });
@@ -7092,6 +7123,7 @@ function InputTableEditorWorkbench({
                 onValueChange={(value) => {
                   if (value === 'customize') {
                     updateDataProcessing({
+                      ...(dataProcessing.strategy === 'customize' ? dataProcessing : {}),
                       strategy: 'customize',
                       rulePrompt:
                         dataProcessing.strategy === 'customize' ? dataProcessing.rulePrompt : '',
@@ -7141,26 +7173,41 @@ function InputTableEditorWorkbench({
               >
                 {activeEditorTab === 'rules' ? (
                   <div className="mx-auto flex h-full min-h-0 max-w-[70rem] flex-col gap-4">
-                    <label className="grid flex-shrink-0 gap-2">
+                    <div className="grid flex-shrink-0 gap-2">
                       <span className="inline-flex items-center gap-2 text-[13px] font-medium text-text-secondary">
                         {t('data.inputTables.editor.rulePrompt')}
                         <Info className="h-3.5 w-3.5 text-text-muted" />
                       </span>
-                      <textarea
+                      <LlmPromptComposer
                         value={dataProcessing.rulePrompt}
-                        onChange={(event) =>
-                          updateDataProcessing({
-                            ...dataProcessing,
-                            rulePrompt: event.target.value,
+                        onChange={(rulePrompt) => patchCustomizeDataProcessing({ rulePrompt })}
+                        selectedSkillNames={customizeSelectedSkillNames}
+                        onSelectedSkillNamesChange={(selectedSkillNames) =>
+                          patchCustomizeDataProcessing({ selectedSkillNames })
+                        }
+                        onSkillSelectionCommit={({ value, selectedSkillNames }) =>
+                          patchCustomizeDataProcessing({
+                            rulePrompt: value,
+                            selectedSkillNames,
                           })
                         }
-                        disabled={isBusy || !dataset}
-                        rows={4}
-                        maxLength={4000}
+                        appConfig={appConfig}
+                        selectedModelConfigSetId={selectedCustomizeModelConfigSetId}
+                        modelFallbackLabel={t('chat.noModel', { defaultValue: '未配置模型' })}
                         placeholder={t('data.inputTables.editor.rulePromptPlaceholder')}
-                        className="h-24 min-h-24 w-full resize-none rounded-lg border border-border-muted bg-background/50 px-4 py-3 text-[13px] leading-6 text-text-primary shadow-soft outline-none placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={isBusy || !dataset}
+                        maxLength={4000}
+                        className="min-h-[128px]"
+                        textareaClassName="min-h-[64px]"
+                        skillMenuPlacement="bottom"
+                        onModelSelect={({ configSetId, model }) =>
+                          patchCustomizeDataProcessing({
+                            modelConfigSetId: configSetId,
+                            model,
+                          })
+                        }
                       />
-                    </label>
+                    </div>
                     <InputTableGenerationOutputPanel
                       isStreaming={customizeGenerating}
                       output={customizeGenerationOutput}

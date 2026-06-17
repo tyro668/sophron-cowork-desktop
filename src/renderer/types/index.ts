@@ -418,6 +418,9 @@ export interface DataGenerateInputTableNormalizerDraftInput {
   sourceKind?: DataInputTableSourceKind;
   config?: DataInputTableConfig;
   rulePrompt: string;
+  selectedSkillNames?: string[];
+  modelConfigSetId?: string | null;
+  model?: string | null;
   primaryLanguage?: DataNormalizerLanguage;
   progressId?: string;
 }
@@ -518,6 +521,9 @@ export interface DataInputTableHeaderCandidate {
 export interface DataInputTableCustomizeProcessingConfig {
   strategy: 'customize';
   rulePrompt: string;
+  selectedSkillNames?: string[];
+  modelConfigSetId?: string | null;
+  model?: string | null;
   artifactId?: string;
   artifactVersionId?: string;
   artifactVersionStatus?: 'draft' | 'published' | 'archived';

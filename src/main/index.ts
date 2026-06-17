@@ -2086,8 +2086,14 @@ ipcMain.handle(
   async (event, payload: DataGenerateInputTableNormalizerDraftInput) => {
     try {
       const progressId = payload.progressId?.trim();
+      const modelConfigSetId =
+        typeof payload.modelConfigSetId === 'string' ? payload.modelConfigSetId.trim() : '';
+      const runtimeConfig = modelConfigSetId
+        ? resolveModelRuntimeConfigForAutomation(modelConfigSetId) ?? undefined
+        : undefined;
       return await requireDataCommandService().generateInputTableNormalizerDraft({
         ...payload,
+        runtimeConfig,
         onProgress: progressId
           ? (progress) => {
               if (typeof progress.text !== 'string' || progress.text.length === 0) return;
