@@ -9,6 +9,8 @@ import type {
   PersonalAnalysisProject,
   PersonalAnalysisSpace,
   PersonalAnalysisTable,
+  PersonalAnalysisTableListResult,
+  PersonalAnalysisTableSearchParams,
 } from '../../shared/personal-analysis-types';
 export type { DataColumnTypeInfo, DataFieldType } from '../../shared/data-field-types';
 export type {
@@ -18,6 +20,8 @@ export type {
   PersonalAnalysisProject,
   PersonalAnalysisSpace,
   PersonalAnalysisTable,
+  PersonalAnalysisTableListResult,
+  PersonalAnalysisTableSearchParams,
 } from '../../shared/personal-analysis-types';
 
 export interface CloudTableChatAttachment {
@@ -107,6 +111,7 @@ export type ContentBlock =
   | TextContent
   | ImageContent
   | FileAttachmentContent
+  | CloudTableAttachmentContent
   | ToolUseContent
   | ToolResultContent
   | ThinkingContent;
@@ -132,6 +137,11 @@ export interface FileAttachmentContent {
   size: number;
   mimeType?: string;
   inlineDataBase64?: string;
+}
+
+export interface CloudTableAttachmentContent {
+  type: 'cloud_table_attachment';
+  tables: CloudTableChatAttachment[];
 }
 
 export interface ToolUseContent {
@@ -1439,14 +1449,14 @@ export interface ListCloudProjectsResult {
   projects: PersonalAnalysisProject[];
 }
 
-export interface ListCloudTablesInput extends PersonalAnalysisConnectionInput {
+export interface ListCloudTablesInput
+  extends PersonalAnalysisConnectionInput,
+    PersonalAnalysisTableSearchParams {
   spaceId: string;
   projectId: string;
 }
 
-export interface ListCloudTablesResult {
-  tables: PersonalAnalysisTable[];
-}
+export type ListCloudTablesResult = PersonalAnalysisTableListResult;
 
 export interface PreviewCloudTableInput extends PersonalAnalysisConnectionInput {
   tableId: string;

@@ -29,6 +29,8 @@ import type {
   PersonalAnalysisProject,
   PersonalAnalysisSpace,
   PersonalAnalysisTable,
+  PersonalAnalysisTableListResult,
+  PersonalAnalysisTableSearchParams,
   PersonalAnalysisUploadResult,
 } from '../../shared/personal-analysis-types';
 
@@ -215,14 +217,14 @@ export interface ListCloudProjectsResult {
   projects: PersonalAnalysisProject[];
 }
 
-export interface ListCloudTablesCommand extends PersonalAnalysisConnectionCommand {
+export interface ListCloudTablesCommand
+  extends PersonalAnalysisConnectionCommand,
+    PersonalAnalysisTableSearchParams {
   spaceId: string;
   projectId: string;
 }
 
-export interface ListCloudTablesResult {
-  tables: PersonalAnalysisTable[];
-}
+export type ListCloudTablesResult = PersonalAnalysisTableListResult;
 
 export interface ImportCloudTableCommand extends PersonalAnalysisConnectionCommand {
   tableId: string;

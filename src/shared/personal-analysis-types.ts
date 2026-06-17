@@ -45,6 +45,24 @@ export interface PersonalAnalysisTable {
   folderId?: string;
   columns?: string[];
   rowCount?: number;
+  columnCount?: number;
+  updatedAt?: string;
+}
+
+export interface PersonalAnalysisTableSearchParams {
+  keyword?: string;
+  page?: number;
+  pageSize?: number;
+  sortBy?: 'tableName' | 'updatedAt' | 'rowCount';
+  sortOrder?: 'asc' | 'desc';
+}
+
+export interface PersonalAnalysisTableListResult {
+  tables: PersonalAnalysisTable[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
 }
 
 export interface PersonalAnalysisUploadInput extends PersonalAnalysisConnectionInput {
