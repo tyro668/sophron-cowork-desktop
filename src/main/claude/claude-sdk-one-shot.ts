@@ -4,11 +4,7 @@ import {
   type UserMessage as PiUserMessage,
 } from '@mariozechner/pi-ai';
 import type { AgentRuntimeConfig, ApiTestInput, ApiTestResult } from '../../renderer/types';
-import {
-  PROVIDER_PRESETS,
-  type AppConfig,
-  type CustomProtocolType,
-} from '../config/config-store';
+import { PROVIDER_PRESETS, type AppConfig, type CustomProtocolType } from '../config/config-store';
 import {
   normalizeAnthropicBaseUrl,
   normalizeOllamaBaseUrl,
@@ -320,7 +316,11 @@ async function streamPiAiOneShotResponse(
       const delta = normalizeStreamDelta(event.delta);
       if (delta) callbacks.onThinkingDelta?.(delta);
     } else if (event.type === 'error') {
-      logWarn('[OneShot] Streaming provider error-as-event:', event.reason, event.error.errorMessage);
+      logWarn(
+        '[OneShot] Streaming provider error-as-event:',
+        event.reason,
+        event.error.errorMessage
+      );
     }
   }
   return stream.result();

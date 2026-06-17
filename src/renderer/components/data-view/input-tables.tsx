@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   HighlightStyle,
@@ -604,7 +597,6 @@ export function InputTablesPanel({
   );
 }
 
-
 type InputTableEditorProps = {
   draft?: InputTableDraft;
   dataset?: DataDataset;
@@ -799,9 +791,12 @@ function InputTableEditorWorkbench({
     setLocalConfig(config);
   };
 
-  const updateDataProcessing = useCallback((dataProcessing: DataInputTableProcessingConfig) => {
-    setLocalConfig(withInputTableDataProcessing(localConfig, dataProcessing));
-  }, [localConfig]);
+  const updateDataProcessing = useCallback(
+    (dataProcessing: DataInputTableProcessingConfig) => {
+      setLocalConfig(withInputTableDataProcessing(localConfig, dataProcessing));
+    },
+    [localConfig]
+  );
 
   const customizeSelectedSkillNames = useMemo(() => {
     if (dataProcessing.strategy !== 'customize') return [];
@@ -1511,7 +1506,10 @@ function InputTableEditorWorkbench({
                               onChange={(event) =>
                                 updateConfig({
                                   ...excelConfig,
-                                  headerRow: Math.max(1, Math.floor(Number(event.target.value) || 1)),
+                                  headerRow: Math.max(
+                                    1,
+                                    Math.floor(Number(event.target.value) || 1)
+                                  ),
                                 })
                               }
                               disabled={isBusy || !dataset}
@@ -2141,7 +2139,6 @@ function InputTableCheckbox({
   );
 }
 
-
 function getPreferredNormalizerFilePath(
   files: DataNormalizerProjectFile[],
   language: DataNormalizerLanguage
@@ -2312,7 +2309,6 @@ function getNormalizerVersionDiffSummary(
   });
 }
 
-
 function inferNormalizerLanguageFromRulePrompt(rulePrompt: string): DataNormalizerLanguage {
   const normalized = rulePrompt.toLowerCase();
   if (/\b(node|node\.js|javascript|typescript|npm|js)\b/.test(normalized)) {
@@ -2321,7 +2317,9 @@ function inferNormalizerLanguageFromRulePrompt(rulePrompt: string): DataNormaliz
   return 'python';
 }
 
-export function getDefaultInputTableConfig(sourceKind: DataInputTableSourceKind): DataInputTableConfig {
+export function getDefaultInputTableConfig(
+  sourceKind: DataInputTableSourceKind
+): DataInputTableConfig {
   if (sourceKind === 'excel') {
     return getDefaultExcelInputTableConfig();
   }

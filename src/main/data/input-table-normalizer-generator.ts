@@ -269,8 +269,7 @@ function buildSourceAnalysisUserPrompt(
 ): string {
   return JSON.stringify(
     {
-      task:
-        'Analyze the real input file/folder structure for a custom input table normalizer. This is step 1 of 2. Do not generate code.',
+      task: 'Analyze the real input file/folder structure for a custom input table normalizer. This is step 1 of 2. Do not generate code.',
       projectName: input.name,
       languageRequestedForFinalCode: input.primaryLanguage,
       rulePrompt: input.rulePrompt,
@@ -318,8 +317,7 @@ function buildCodeGenerationUserPrompt(
 ): string {
   return JSON.stringify(
     {
-      task:
-        'Generate final executable code for an input table normalizer project. This is step 2 of 2 and must follow the prior sourceStructureAnalysis.',
+      task: 'Generate final executable code for an input table normalizer project. This is step 2 of 2 and must follow the prior sourceStructureAnalysis.',
       projectName: input.name,
       language: input.primaryLanguage,
       rulePrompt: input.rulePrompt,
@@ -434,7 +432,10 @@ function validateGeneratedTransform(
   file: DataNormalizerProjectFile,
   language: DataNormalizerLanguage
 ): void {
-  if (file.content.includes('This project is a scaffold') || /TODO|Replace this draft/i.test(file.content)) {
+  if (
+    file.content.includes('This project is a scaffold') ||
+    /TODO|Replace this draft/i.test(file.content)
+  ) {
     throw new Error('LLM normalizer transform still contains scaffold placeholder text');
   }
   if (language === 'node' && !/export\s+async\s+function\s+transform/.test(file.content)) {

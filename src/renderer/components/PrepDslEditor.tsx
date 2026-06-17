@@ -33,7 +33,7 @@ interface PrepDslEditorProps {
   onDiagnosticsChange: (diagnostics: PrepDiagnostic[]) => void;
   onRequestEdit?: () => void;
   editable?: boolean;
-  height?: number;
+  height?: number | string;
 }
 
 const prepDslLanguage = StreamLanguage.define({
@@ -78,17 +78,16 @@ const prepDslHighlightStyle = HighlightStyle.define([
 
 const prepDslTheme = EditorView.theme({
   '&': {
-    height: 'var(--prep-dsl-editor-height, 180px)',
-    border: '1px solid rgba(148, 163, 184, 0.22)',
-    borderRadius: '0.625rem',
-    backgroundColor: 'rgba(255, 255, 255, 0.86)',
+    height: 'var(--prep-dsl-editor-height, 140px)',
+    border: 'none',
+    borderRadius: '0',
+    backgroundColor: 'transparent',
     color: '#334155',
     fontSize: '12px',
   },
   '&.cm-focused': {
     outline: 'none',
-    borderColor: 'rgba(25, 169, 154, 0.62)',
-    boxShadow: '0 0 0 2px rgba(25, 169, 154, 0.12)',
+    boxShadow: 'none',
   },
   '.cm-scroller': {
     fontFamily:
@@ -149,7 +148,7 @@ export function PrepDslEditor({
   onDiagnosticsChange,
   onRequestEdit,
   editable = true,
-  height = 180,
+  height = 140,
 }: PrepDslEditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -168,6 +167,7 @@ export function PrepDslEditor({
   const onDiagnosticsChangeRef = useRef(onDiagnosticsChange);
   const formatDiagnosticRef = useRef(formatDiagnostic);
   const lastDiagnosticsRef = useRef<PrepDiagnostic[]>([]);
+  const heightCss = typeof height === 'number' ? `${height}px` : height;
 
   useEffect(() => {
     valueRef.current = value;
@@ -335,7 +335,14 @@ export function PrepDslEditor({
   return (
     <div
       ref={hostRef}
-      style={{ '--prep-dsl-editor-height': `${height}px`, fontSize: '12px' } as CSSProperties}
+      style={
+        {
+          '--prep-dsl-editor-height': heightCss,
+          height: heightCss,
+          minHeight: 0,
+          fontSize: '12px',
+        } as CSSProperties
+      }
     />
   );
 }

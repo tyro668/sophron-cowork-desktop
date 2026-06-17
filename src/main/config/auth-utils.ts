@@ -227,8 +227,8 @@ export function shouldAllowEmptyOpenAIApiKey(
 ): boolean {
   return (
     config.provider === 'custom' &&
-      config.customProtocol === 'openai' &&
-      isLoopbackBaseUrl(config.baseUrl)
+    config.customProtocol === 'openai' &&
+    isLoopbackBaseUrl(config.baseUrl)
   );
 }
 

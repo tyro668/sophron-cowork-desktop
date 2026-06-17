@@ -95,7 +95,10 @@ export function SkillMentionMenu({
     );
 
     if (placement === 'bottom') {
-      const availableBelow = Math.max(96, viewportHeight - rect.bottom - MENU_GAP - VIEWPORT_PADDING);
+      const availableBelow = Math.max(
+        96,
+        viewportHeight - rect.bottom - MENU_GAP - VIEWPORT_PADDING
+      );
       setPortalLayout({
         style: {
           position: 'fixed',

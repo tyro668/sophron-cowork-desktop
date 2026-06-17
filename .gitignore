@@ -81,6 +81,9 @@ vendor/
 # LSP config
 .cclsp.json
 
+# Design drafts
+workflow-form-design/
+
 # Temp work products
 progress.md
 task_plan.md

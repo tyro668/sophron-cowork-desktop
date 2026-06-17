@@ -214,7 +214,10 @@ export class InputTablesCommandService {
     input: GenerateInputTableNormalizerDraftCommand
   ): Promise<GenerateInputTableNormalizerDraftResult> {
     const name = normalizeRequiredName(input.name, 'Normalizer artifact name is required');
-    const rulePrompt = normalizeRequiredName(input.rulePrompt, 'Normalizer rule prompt is required');
+    const rulePrompt = normalizeRequiredName(
+      input.rulePrompt,
+      'Normalizer rule prompt is required'
+    );
     const primaryLanguage = input.primaryLanguage === 'node' ? 'node' : 'python';
     let summary: SummarizeInputTableSourceResult['summary'];
     try {
