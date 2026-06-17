@@ -343,18 +343,18 @@ function quoteString(value: string): string {
 function normalizeBareFilterLiterals(condition: string): string {
   return condition.replace(
     /((?:=|!=|>=|<=|>|<)\s*)([\p{L}_][\p{L}\p{N}_ -]*?)(?=\s*(?:$|\)|\band\b|\bor\b))/giu,
-    (match, operator: string, value: string) => {
+    (_match, operator: string, value: string) => {
       const trimmed = value.trim();
-      if (!trimmed || /^(true|false|null)$/i.test(trimmed) || isNumberLiteral(trimmed)) {
-        return match;
+      if (
+        !trimmed ||
+        /^(true|false|null)$/i.test(trimmed) ||
+        /^[+-]?(?:\d+|\d*\.\d+)(?:e[+-]?\d+)?$/i.test(trimmed)
+      ) {
+        return `${operator}${value}`;
       }
       return `${operator}${quoteString(trimmed)}`;
     }
   );
-}
-
-function isNumberLiteral(value: string): boolean {
-  return /^[+-]?(?:\d+|\d*\.\d+)(?:e[+-]?\d+)?$/i.test(value);
 }
 
 function objectValue(value: unknown): Record<string, unknown> | null {

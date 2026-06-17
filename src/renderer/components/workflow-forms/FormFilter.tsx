@@ -8,6 +8,7 @@ import {
   isTemporalDataFieldType,
   normalizeDataFieldType,
 } from '../../../shared/data-field-types';
+import { buildFilterCondition, type FilterConditionRow } from './shared/filter-condition';
 
 // ── Operator definitions ──────────────────────────────────────────────
 
@@ -52,15 +53,8 @@ function operatorsForType(colType: string | undefined): OpDef[] {
 
 // ── Condition data types ──────────────────────────────────────────────
 
-type Connective = 'and' | 'or';
-
-interface ConditionRow {
-  field: string;
-  op: string;
-  val1: string;
-  val2: string;
-  connective: Connective;
-}
+type Connective = FilterConditionRow['connective'];
+type ConditionRow = FilterConditionRow;
 
 const EMPTY_ROW: ConditionRow = { field: '', op: '=', val1: '', val2: '', connective: 'and' };
 
@@ -117,79 +111,6 @@ function parseCondition(condition: string | undefined): ConditionRow[] {
     rows.push(row);
   }
   return rows;
-}
-
-function buildCondition(
-  rows: ConditionRow[],
-  columnTypes: Record<string, string> = {}
-): string | undefined {
-  const parts: { expr: string; connective: Connective }[] = [];
-  for (const row of rows) {
-    const { field, op, val1, val2 } = row;
-    if (!field || !op || !val1) continue;
-    if (op === 'between' && !val2) continue;
-    const colType = columnTypes[field];
-    const firstValue = formatConditionValue(val1, colType);
-    const secondValue = formatConditionValue(val2, colType);
-    const expr =
-      op === 'between'
-        ? `[${field}] between ${firstValue} and ${secondValue}`
-        : `[${field}] ${op} ${firstValue}`;
-    parts.push({ expr, connective: row.connective });
-  }
-  if (parts.length === 0) return undefined;
-  let out = parts[0].expr;
-  for (let i = 1; i < parts.length; i++) {
-    out += ` ${parts[i].connective} ${parts[i].expr}`;
-  }
-  return out;
-}
-
-function formatConditionValue(value: string, colType: string | undefined): string {
-  const trimmed = value.trim();
-  if (!trimmed) return trimmed;
-  if (isDslFieldReference(trimmed)) return trimmed;
-
-  const unquoted = unwrapQuotedValue(trimmed);
-  const normalizedType = colType ? normalizeDataFieldType(colType) : undefined;
-  const lower = unquoted.toLowerCase();
-  if (lower === 'null') return 'null';
-
-  const isBoolLike = /^(true|false)$/i.test(unquoted);
-  const isNumLike = isNumberLiteral(unquoted);
-
-  if (normalizedType === 'boolean' && isBoolLike) return lower;
-  if (isNumericDataFieldType(normalizedType) && isNumLike) return unquoted;
-  if (!normalizedType && (isBoolLike || isNumLike)) return unquoted;
-
-  return quoteDslString(unquoted);
-}
-
-function isDslFieldReference(value: string): boolean {
-  return /^\[(?:`(?:[^`\\]|\\.)+`|[^\]]+)\](?:\.\[(?:`(?:[^`\\]|\\.)+`|[^\]]+)\])?$/.test(value);
-}
-
-function unwrapQuotedValue(value: string): string {
-  if (value.length < 2) return value;
-  const first = value[0];
-  const last = value[value.length - 1];
-  if (first !== last || (first !== '"' && first !== "'")) return value;
-  if (first === '"') {
-    try {
-      return JSON.parse(value) as string;
-    } catch {
-      return value.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-    }
-  }
-  return value.slice(1, -1).replace(/\\'/g, "'").replace(/\\\\/g, '\\');
-}
-
-function isNumberLiteral(value: string): boolean {
-  return /^[+-]?(?:\d+|\d*\.\d+)(?:e[+-]?\d+)?$/i.test(value);
-}
-
-function quoteDslString(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
 function eqRows(a: ConditionRow[], b: ConditionRow[]): boolean {
@@ -478,7 +399,7 @@ export default function FormFilter({
       localUpdateRef.current = false;
       return;
     }
-    const fromRows = buildCondition(rows, columnTypes);
+    const fromRows = buildFilterCondition(rows, columnTypes);
     const fromConfig = node.config.condition as string | undefined;
     if ((fromRows || undefined) === (fromConfig || undefined)) return;
     if (!eqRows(rows, parsedFromConfig)) {
@@ -531,7 +452,7 @@ export default function FormFilter({
 
   function updateRows(next: ConditionRow[]) {
     setRows(next);
-    const cond = buildCondition(next, columnTypes);
+    const cond = buildFilterCondition(next, columnTypes);
     localUpdateRef.current = true;
     updateConfig((cfg) => ({ ...cfg, condition: cond }));
   }

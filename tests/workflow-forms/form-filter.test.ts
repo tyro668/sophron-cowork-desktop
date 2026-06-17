@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
+import {
+  buildFilterCondition,
+  formatFilterConditionValue,
+  type FilterConditionRow,
+} from '../../src/renderer/components/workflow-forms/shared/filter-condition';
 
 function roundTrip(config: Record<string, unknown>) {
   const dsl = exportPrepOperatorDsl({ id: 'test', type: 'filter', config });
@@ -152,51 +157,6 @@ describe('FormFilter — DSL idempotent', () => {
 // ── formatConditionValue (type-aware quoting) ────────────────────────
 
 describe('FormFilter — type-aware value formatting', () => {
-  function isDslFieldRef(v: string) {
-    return /^\[(?:`(?:[^`\\]|\\.)+`|[^\]]+)\](?:\.\[(?:`(?:[^`\\]|\\.)+`|[^\]]+)\])?$/.test(v);
-  }
-  function unwrap(v: string) {
-    if (v.length < 2) return v;
-    const f = v[0],
-      l = v[v.length - 1];
-    if (f !== l || (f !== '"' && f !== "'")) return v;
-    if (f === '"') {
-      try {
-        return JSON.parse(v) as string;
-      } catch {
-        return v.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-      }
-    }
-    return v.slice(1, -1).replace(/\\'/g, "'").replace(/\\\\/g, '\\');
-  }
-  function isNum(v: string) {
-    return /^[+-]?(?:\d+|\d*\.\d+)(?:e[+-]?\d+)?$/i.test(v);
-  }
-  function quote(v: string) {
-    return `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-  }
-
-  function fmt(v: string, colType?: string): string {
-    const t = v.trim();
-    if (!t) return t;
-    if (isDslFieldRef(t)) return t;
-    const u = unwrap(t);
-    const lower = u.toLowerCase();
-    if (lower === 'null') return 'null';
-    if (colType === 'boolean' && /^(true|false)$/i.test(u)) return lower;
-    if (
-      (colType === 'number' ||
-        colType === 'double' ||
-        colType === 'integer' ||
-        colType === 'decimal' ||
-        colType === 'float') &&
-      isNum(u)
-    )
-      return u;
-    if (!colType && (/^(true|false)$/i.test(u) || isNum(u))) return u;
-    return quote(u);
-  }
-
   function build(
     rows: Array<{
       field: string;
@@ -207,23 +167,28 @@ describe('FormFilter — type-aware value formatting', () => {
       colType?: string;
     }>
   ) {
-    return rows
-      .map((r, i) => {
-        const f = (v: string) => fmt(v, r.colType);
-        const expr =
-          r.op === 'between' && r.val2
-            ? `[${r.field}] between ${f(r.val1)} and ${f(r.val2)}`
-            : `[${r.field}] ${r.op} ${f(r.val1)}`;
-        return i === 0 ? expr : `${r.connective || 'and'} ${expr}`;
-      })
-      .join(' ');
+    const columnTypes = Object.fromEntries(
+      rows.flatMap((row) => (row.colType ? [[row.field, row.colType]] : []))
+    );
+    return buildFilterCondition(
+      rows.map(
+        (row): FilterConditionRow => ({
+          field: row.field,
+          op: row.op,
+          val1: row.val1,
+          val2: row.val2 ?? '',
+          connective: row.connective === 'or' ? 'or' : 'and',
+        })
+      ),
+      columnTypes
+    );
   }
 
   it('numeric: numbers unquoted', () => {
-    expect(build([{ field: 'a', op: '>', val1: '100', colType: 'double' }])).toBe('[a] > 100');
+    expect(build([{ field: 'a', op: '>', val1: '100', colType: 'float' }])).toBe('[a] > 100');
   });
   it('numeric: strings quoted', () => {
-    expect(build([{ field: 'a', op: '=', val1: 'ABC', colType: 'double' }])).toBe('[a] = "ABC"');
+    expect(build([{ field: 'a', op: '=', val1: 'ABC', colType: 'float' }])).toBe('[a] = "ABC"');
   });
   it('text: numbers quoted', () => {
     expect(build([{ field: 'a', op: '=', val1: '123', colType: 'text' }])).toBe('[a] = "123"');
@@ -254,9 +219,14 @@ describe('FormFilter — type-aware value formatting', () => {
     );
   });
   it('quoteDslString escapes internal quotes', () => {
-    expect(quote('he said "hello"')).toBe('"he said \\"hello\\""');
+    expect(formatFilterConditionValue('he said "hello"', 'text')).toBe('"he said \\"hello\\""');
   });
-  it('whitespace-only preserved', () => {
-    expect(build([{ field: 'x', op: '=', val1: '   ', colType: 'text' }])).toBe('[x] =    ');
+  it('whitespace-only values are skipped', () => {
+    expect(build([{ field: 'x', op: '=', val1: '   ', colType: 'text' }])).toBeUndefined();
+  });
+  it('between is skipped when the second value is blank', () => {
+    expect(
+      build([{ field: 'x', op: 'between', val1: '1', val2: '   ', colType: 'integer' }])
+    ).toBeUndefined();
   });
 });
