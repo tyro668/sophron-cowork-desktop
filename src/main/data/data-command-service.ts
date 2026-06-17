@@ -468,9 +468,13 @@ export class DataCommandService {
     const spaceId = normalizeRequiredName(input.spaceId, 'Cloud spaceId is required');
     const projectId = normalizeRequiredName(input.projectId, 'Cloud projectId is required');
     try {
-      return {
-        tables: await this.createPersonalAnalysisClient(input).listTables(spaceId, projectId),
-      };
+      return await this.createPersonalAnalysisClient(input).listTables(spaceId, projectId, {
+        keyword: input.keyword,
+        page: input.page,
+        pageSize: input.pageSize,
+        sortBy: input.sortBy,
+        sortOrder: input.sortOrder,
+      });
     } catch (error) {
       throw toCommandError(error, 'RUN_FAILED');
     }
@@ -482,9 +486,12 @@ export class DataCommandService {
     try {
       const cloudTable =
         input.spaceId && input.projectId
-          ? (await client.listTables(input.spaceId, input.projectId)).find(
-              (table) => table.tableId === tableId
-            )
+          ? (
+              await client.listTables(input.spaceId, input.projectId, {
+                page: 1,
+                pageSize: 100,
+              })
+            ).tables.find((table) => table.tableId === tableId)
           : undefined;
       const csv = await client.exportTableCsv(tableId);
       const downloadedFilePath = await writeCloudCsvTempFile(tableId, csv);

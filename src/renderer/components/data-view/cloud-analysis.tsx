@@ -49,11 +49,46 @@ interface NoticeState {
   inputTableId?: string;
 }
 
+type CloudDataTranslate = (key: string, options?: Record<string, unknown>) => string;
+const CLOUD_TABLE_PAGE_SIZE = 10;
+
 interface PreviewState {
   table: PersonalAnalysisTable;
   loading: boolean;
   error: string | null;
   data: DataInputTablePreview | null;
+}
+
+interface TableCacheEntry {
+  tables: PersonalAnalysisTable[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+}
+
+function getCloudTableImportNotice(
+  error: unknown,
+  tableName: string,
+  t: CloudDataTranslate
+): Pick<NoticeState, 'type' | 'message'> {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+  const inputTableAlreadyExists =
+    message.includes('RESOURCE_ALREADY_EXISTS') ||
+    normalized.includes('input table already exists');
+
+  if (inputTableAlreadyExists) {
+    return {
+      type: 'error',
+      message: t('cloudData.importAlreadyExists', { name: tableName }),
+    };
+  }
+
+  return {
+    type: 'error',
+    message: getPersonalAnalysisErrorMessage(error, t),
+  };
 }
 
 function formatCount(value?: number) {
@@ -107,6 +142,13 @@ export function CloudAnalysisPanel() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [loadingTables, setLoadingTables] = useState(false);
+  const [loadingMoreTables, setLoadingMoreTables] = useState(false);
+  const [tablePageInfo, setTablePageInfo] = useState({
+    page: 1,
+    pageSize: CLOUD_TABLE_PAGE_SIZE,
+    total: 0,
+    hasMore: false,
+  });
   const [loginBusy, setLoginBusy] = useState(false);
   const [switchingToAccount, setSwitchingToAccount] = useState(false);
   const [importingTableId, setImportingTableId] = useState<string | null>(null);
@@ -119,6 +161,7 @@ export function CloudAnalysisPanel() {
   const previewRequestSeq = useRef(0);
   const importRequestSeq = useRef(0);
   const selectedProjectRef = useRef<SelectedProject | null>(null);
+  const tableCacheRef = useRef<Map<string, TableCacheEntry>>(new Map());
 
   const storedConnection = useMemo(
     () => appConfig?.personalAnalysis || EMPTY_PERSONAL_ANALYSIS_CONFIG,
@@ -183,15 +226,7 @@ export function CloudAnalysisPanel() {
         ) ?? null)
       : null;
 
-  const filteredTables = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return tables;
-    return tables.filter((table) =>
-      [table.tableName, table.tableId, table.sheetId]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(query))
-    );
-  }, [searchQuery, tables]);
+  const filteredTables = tables;
   const selectedTableIdSet = useMemo(() => new Set(selectedTableIds), [selectedTableIds]);
   const selectedTables = useMemo(
     () => tables.filter((table) => selectedTableIdSet.has(table.tableId)),
@@ -259,22 +294,98 @@ export function CloudAnalysisPanel() {
     }
   }, [setAppConfig, switchingToAccount, t]);
 
+  const getTableCacheKey = useCallback(
+    (
+      target: SelectedProject,
+      connection: CloudConnection = connectionPayload,
+      keyword = ''
+    ) =>
+      [
+        usesDesktopAuthConnection ? 'account' : 'api-key',
+        connection.apiOrigin || '',
+        storedConnection.updatedAt ?? '',
+        target.spaceId,
+        target.projectId,
+        keyword.trim().toLowerCase(),
+        CLOUD_TABLE_PAGE_SIZE,
+      ].join(':'),
+    [connectionPayload, storedConnection.updatedAt, usesDesktopAuthConnection]
+  );
+
   const loadTables = useCallback(
-    async (target: SelectedProject, connection: CloudConnection = connectionPayload) => {
+    async (
+      target: SelectedProject,
+      connection: CloudConnection = connectionPayload,
+      options: {
+        forceRefresh?: boolean;
+        keyword?: string;
+        page?: number;
+        append?: boolean;
+      } = {}
+    ) => {
       if (!window.electronAPI?.data) return;
       const requestId = ++tableRequestSeq.current;
-      setLoadingTables(true);
+      const keyword = options.keyword?.trim() ?? '';
+      const page = options.page ?? 1;
+      const cacheKey = getTableCacheKey(target, connection, keyword);
+      const cached = tableCacheRef.current.get(cacheKey);
+      if (!options.forceRefresh && !options.append && cached) {
+        setTables(cached.tables);
+        setTablePageInfo({
+          page: cached.page,
+          pageSize: cached.pageSize,
+          total: cached.total,
+          hasMore: cached.hasMore,
+        });
+        setLoadingTables(false);
+        return;
+      }
+
+      if (options.append) {
+        setLoadingMoreTables(true);
+      } else {
+        setLoadingTables(true);
+      }
       try {
         const result = await window.electronAPI.data.listCloudTables({
           ...connection,
           spaceId: target.spaceId,
           projectId: target.projectId,
+          keyword,
+          page,
+          pageSize: CLOUD_TABLE_PAGE_SIZE,
         });
         if (requestId !== tableRequestSeq.current) return;
-        setTables(result.tables);
+        const previousTables = options.append
+          ? (tableCacheRef.current.get(cacheKey)?.tables ?? [])
+          : [];
+        const nextTables = options.append ? [...previousTables, ...result.tables] : result.tables;
+        const nextEntry: TableCacheEntry = {
+          tables: nextTables,
+          page: result.page,
+          pageSize: result.pageSize,
+          total: result.total,
+          hasMore: result.hasMore,
+        };
+        tableCacheRef.current.set(cacheKey, nextEntry);
+        setTables(nextTables);
+        setTablePageInfo({
+          page: nextEntry.page,
+          pageSize: nextEntry.pageSize,
+          total: nextEntry.total,
+          hasMore: nextEntry.hasMore,
+        });
       } catch (error) {
         if (requestId !== tableRequestSeq.current) return;
-        setTables([]);
+        if (!options.append) {
+          setTables([]);
+          setTablePageInfo({
+            page: 1,
+            pageSize: CLOUD_TABLE_PAGE_SIZE,
+            total: 0,
+            hasMore: false,
+          });
+        }
         setNotice({
           type: 'error',
           message: getPersonalAnalysisErrorMessage(error, t),
@@ -282,10 +393,11 @@ export function CloudAnalysisPanel() {
       } finally {
         if (requestId === tableRequestSeq.current) {
           setLoadingTables(false);
+          setLoadingMoreTables(false);
         }
       }
     },
-    [connectionPayload, t]
+    [connectionPayload, getTableCacheKey, t]
   );
 
   const loadCatalog = useCallback(
@@ -293,10 +405,14 @@ export function CloudAnalysisPanel() {
       options: {
         announceSuccess?: boolean;
         connection?: CloudConnection;
+        forceRefresh?: boolean;
       } = {}
     ) => {
       const connection = options.connection ?? connectionPayload;
       if (!window.electronAPI?.data || !connection.apiOrigin) return;
+      if (options.forceRefresh) {
+        tableCacheRef.current.clear();
+      }
       const requestId = ++catalogRequestSeq.current;
       setLoadingCatalog(true);
       setNotice(null);
@@ -358,12 +474,24 @@ export function CloudAnalysisPanel() {
           tableRequestSeq.current += 1;
           setLoadingTables(false);
           setTables([]);
+          setTablePageInfo({
+            page: 1,
+            pageSize: CLOUD_TABLE_PAGE_SIZE,
+            total: 0,
+            hasMore: false,
+          });
         }
       } catch (error) {
         if (requestId !== catalogRequestSeq.current) return;
         setSpaces([]);
         setProjectsBySpace({});
         setTables([]);
+        setTablePageInfo({
+          page: 1,
+          pageSize: CLOUD_TABLE_PAGE_SIZE,
+          total: 0,
+          hasMore: false,
+        });
         setSelectedProject(null);
         setNotice({
           type: 'error',
@@ -384,6 +512,7 @@ export function CloudAnalysisPanel() {
     setPreview(null);
     setImportingTableId(null);
     setSelectedTableIds([]);
+    tableCacheRef.current.clear();
 
     if (connectionPayload.apiOrigin) {
       setSpaces([]);
@@ -399,10 +528,17 @@ export function CloudAnalysisPanel() {
     tableRequestSeq.current += 1;
     setLoadingCatalog(false);
     setLoadingTables(false);
+    setLoadingMoreTables(false);
     setSpaces([]);
     setProjectsBySpace({});
     setSelectedProject(null);
     setTables([]);
+    setTablePageInfo({
+      page: 1,
+      pageSize: CLOUD_TABLE_PAGE_SIZE,
+      total: 0,
+      hasMore: false,
+    });
   }, [connectionPayload, loadCatalog]);
 
   const selectProject = useCallback(
@@ -414,6 +550,34 @@ export function CloudAnalysisPanel() {
     },
     [loadTables]
   );
+
+  useEffect(() => {
+    if (!selectedProject || !connectionPayload.apiOrigin) return;
+
+    const timeout = window.setTimeout(() => {
+      void loadTables(selectedProject, connectionPayload, { keyword: searchQuery });
+    }, 250);
+
+    return () => window.clearTimeout(timeout);
+  }, [connectionPayload, loadTables, searchQuery, selectedProject]);
+
+  const loadMoreTables = useCallback(() => {
+    if (!selectedProject || loadingTables || loadingMoreTables || !tablePageInfo.hasMore) return;
+    void loadTables(selectedProject, connectionPayload, {
+      append: true,
+      keyword: searchQuery,
+      page: tablePageInfo.page + 1,
+    });
+  }, [
+    connectionPayload,
+    loadTables,
+    loadingMoreTables,
+    loadingTables,
+    searchQuery,
+    selectedProject,
+    tablePageInfo.hasMore,
+    tablePageInfo.page,
+  ]);
 
   const previewTable = useCallback(
     async (table: PersonalAnalysisTable) => {
@@ -466,10 +630,7 @@ export function CloudAnalysisPanel() {
         });
       } catch (error) {
         if (requestId !== importRequestSeq.current) return;
-        setNotice({
-          type: 'error',
-          message: getPersonalAnalysisErrorMessage(error, t),
-        });
+        setNotice(getCloudTableImportNotice(error, table.tableName, t));
       } finally {
         if (requestId === importRequestSeq.current) {
           setImportingTableId(null);
@@ -591,7 +752,7 @@ export function CloudAnalysisPanel() {
             )}
             <button
               type="button"
-              onClick={() => void loadCatalog()}
+              onClick={() => void loadCatalog({ forceRefresh: true })}
               disabled={loadingCatalog}
               className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted bg-background/60 px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -740,7 +901,7 @@ export function CloudAnalysisPanel() {
                   <div>{t('cloudData.noSpaces')}</div>
                   <button
                     type="button"
-                    onClick={() => void loadCatalog()}
+                    onClick={() => void loadCatalog({ forceRefresh: true })}
                     className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-accent-text transition-colors hover:bg-accent/10"
                   >
                     <RefreshCw className="h-3.5 w-3.5" />
@@ -819,7 +980,10 @@ export function CloudAnalysisPanel() {
                   </span>
                   {selectedProject && (
                     <span className="flex-shrink-0 rounded-md bg-accent/10 px-1.5 py-0.5 font-medium text-accent-text">
-                      {t('cloudData.tableCount', { count: tables.length })}
+                      {t('cloudData.tableCountLoaded', {
+                        count: tables.length,
+                        total: tablePageInfo.total,
+                      })}
                     </span>
                   )}
                 </div>
@@ -870,7 +1034,12 @@ export function CloudAnalysisPanel() {
                         {selectedProject && (
                           <button
                             type="button"
-                            onClick={() => void loadTables(selectedProject)}
+                            onClick={() =>
+                              void loadTables(selectedProject, connectionPayload, {
+                                forceRefresh: true,
+                                keyword: searchQuery,
+                              })
+                            }
                             className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-accent-text transition-colors hover:bg-accent/10"
                           >
                             <RefreshCw className="h-3.5 w-3.5" />
@@ -914,7 +1083,7 @@ export function CloudAnalysisPanel() {
                         </td>
                         <td className="px-3 text-text-secondary">{formatCount(table.rowCount)}</td>
                         <td className="px-3 text-text-secondary">
-                          {formatCount(table.columns?.length)}
+                          {formatCount(table.columnCount ?? table.columns?.length)}
                         </td>
                         <td className="px-3">
                           <div className="flex justify-end gap-2">
@@ -950,6 +1119,24 @@ export function CloudAnalysisPanel() {
                   )}
                 </tbody>
               </table>
+
+              {!loadingTables && tablePageInfo.hasMore && (
+                <div className="flex justify-center px-4 py-4">
+                  <button
+                    type="button"
+                    onClick={loadMoreTables}
+                    disabled={loadingMoreTables}
+                    className="inline-flex h-8 items-center gap-2 rounded-lg border border-border-muted bg-background/70 px-3 text-[12px] font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {loadingMoreTables ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    )}
+                    {t('cloudData.loadMoreTables')}
+                  </button>
+                </div>
+              )}
 
               {selectedTables.length > 0 && (
                 <div className="pointer-events-none sticky bottom-4 z-20 flex justify-center px-4">

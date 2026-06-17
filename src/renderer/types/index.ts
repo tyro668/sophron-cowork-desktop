@@ -9,6 +9,8 @@ import type {
   PersonalAnalysisProject,
   PersonalAnalysisSpace,
   PersonalAnalysisTable,
+  PersonalAnalysisTableListResult,
+  PersonalAnalysisTableSearchParams,
 } from '../../shared/personal-analysis-types';
 export type { DataColumnTypeInfo, DataFieldType } from '../../shared/data-field-types';
 export type {
@@ -18,6 +20,8 @@ export type {
   PersonalAnalysisProject,
   PersonalAnalysisSpace,
   PersonalAnalysisTable,
+  PersonalAnalysisTableListResult,
+  PersonalAnalysisTableSearchParams,
 } from '../../shared/personal-analysis-types';
 
 export interface CloudTableChatAttachment {
@@ -1445,14 +1449,14 @@ export interface ListCloudProjectsResult {
   projects: PersonalAnalysisProject[];
 }
 
-export interface ListCloudTablesInput extends PersonalAnalysisConnectionInput {
+export interface ListCloudTablesInput
+  extends PersonalAnalysisConnectionInput,
+    PersonalAnalysisTableSearchParams {
   spaceId: string;
   projectId: string;
 }
 
-export interface ListCloudTablesResult {
-  tables: PersonalAnalysisTable[];
-}
+export type ListCloudTablesResult = PersonalAnalysisTableListResult;
 
 export interface PreviewCloudTableInput extends PersonalAnalysisConnectionInput {
   tableId: string;
