@@ -16,14 +16,22 @@ import type {
   SandboxSetupProgress,
   SandboxSyncStatus,
   SkillsStorageChangeEvent,
+  DesktopAuthStatus,
+  CloudTableChatAttachment,
 } from '../types';
 import { applySessionUpdate } from '../utils/session-update';
 
 export type GlobalNoticeType = 'info' | 'warning' | 'error' | 'success';
 export type GlobalNoticeAction = 'open_api_settings';
-export type MainView = 'chat' | 'data' | 'skills' | 'automation';
+export type MainView = 'chat' | 'data' | 'cloud-data' | 'skills' | 'automation';
+export type DataWorkspaceTab = 'tasks' | 'input_tables' | 'output_tables' | 'cloud_analysis';
 
 export interface PendingDataNavigation extends DataResourceTarget {
+  nonce: number;
+}
+
+export interface PendingDataTabNavigation {
+  tab: DataWorkspaceTab;
   nonce: number;
 }
 
@@ -99,6 +107,7 @@ interface AppState {
   contextPanelCollapsed: boolean;
   showSettings: boolean;
   settingsTab: string | null;
+  desktopAuthStatus: DesktopAuthStatus;
 
   // Permission
   pendingPermission: PermissionRequest | null;
@@ -116,6 +125,11 @@ interface AppState {
   hasSeenInitialConfigStatus: boolean;
   globalNotice: GlobalNotice | null;
   pendingDataNavigation: PendingDataNavigation | null;
+  pendingDataTabNavigation: PendingDataTabNavigation | null;
+  pendingCloudTableChatAttachments: {
+    attachments: CloudTableChatAttachment[];
+    nonce: number;
+  } | null;
 
   // Working directory
   workingDir: string | null;
@@ -172,6 +186,7 @@ interface AppState {
   setContextPanelCollapsed: (collapsed: boolean) => void;
   setShowSettings: (show: boolean) => void;
   setSettingsTab: (tab: string | null) => void;
+  setDesktopAuthStatus: (status: DesktopAuthStatus) => void;
 
   setPendingPermission: (permission: PermissionRequest | null) => void;
 
@@ -188,7 +203,12 @@ interface AppState {
   setGlobalNotice: (notice: GlobalNotice | null) => void;
   clearGlobalNotice: () => void;
   navigateToDataElement: (target: DataResourceTarget) => void;
+  navigateToDataTab: (tab: DataWorkspaceTab) => void;
+  navigateToCloudData: () => void;
   clearDataNavigation: (nonce?: number) => void;
+  clearDataTabNavigation: (nonce?: number) => void;
+  addCloudTablesToChat: (attachments: CloudTableChatAttachment[]) => void;
+  clearPendingCloudTableChatAttachments: (nonce?: number) => void;
 
   // Working directory actions
   setWorkingDir: (path: string | null) => void;
@@ -232,6 +252,8 @@ const defaultSettings: Settings = {
 };
 
 let dataNavigationSeq = 0;
+let dataTabNavigationSeq = 0;
+let cloudTableChatAttachmentSeq = 0;
 
 export const useAppStore = create<AppState>((set) => ({
   // Initial state
@@ -245,6 +267,7 @@ export const useAppStore = create<AppState>((set) => ({
   contextPanelCollapsed: false,
   showSettings: false,
   settingsTab: null,
+  desktopAuthStatus: { authenticated: false, updatedAt: 0 },
   pendingPermission: null,
   pendingSudoPassword: null,
   settings: defaultSettings,
@@ -254,6 +277,8 @@ export const useAppStore = create<AppState>((set) => ({
   hasSeenInitialConfigStatus: false,
   globalNotice: null,
   pendingDataNavigation: null,
+  pendingDataTabNavigation: null,
+  pendingCloudTableChatAttachments: null,
   workingDir: null,
   sandboxSetupProgress: null,
   isSandboxSetupComplete: false,
@@ -316,7 +341,8 @@ export const useAppStore = create<AppState>((set) => ({
 
   removeSession: (sessionId) =>
     set((state) => {
-      const { [sessionId]: _, ...restSessionStates } = state.sessionStates;
+      const restSessionStates = { ...state.sessionStates };
+      delete restSessionStates[sessionId];
       return {
         sessions: state.sessions.filter((s) => s.id !== sessionId),
         sessionStates: restSessionStates,
@@ -601,6 +627,7 @@ export const useAppStore = create<AppState>((set) => ({
   setContextPanelCollapsed: (collapsed) => set({ contextPanelCollapsed: collapsed }),
   setShowSettings: (show) => set({ showSettings: show }),
   setSettingsTab: (tab) => set({ settingsTab: tab }),
+  setDesktopAuthStatus: (status) => set({ desktopAuthStatus: status }),
 
   // Permission actions
   setPendingPermission: (permission) => set({ pendingPermission: permission }),
@@ -638,12 +665,51 @@ export const useAppStore = create<AppState>((set) => ({
       showSettings: false,
       pendingDataNavigation: { ...target, nonce: ++dataNavigationSeq },
     }),
+  navigateToDataTab: (tab) =>
+    set({
+      mainView: 'data',
+      activeSessionId: null,
+      showSettings: false,
+      pendingDataTabNavigation: { tab, nonce: ++dataTabNavigationSeq },
+    }),
+  navigateToCloudData: () =>
+    set({
+      mainView: 'data',
+      activeSessionId: null,
+      showSettings: false,
+      pendingDataTabNavigation: { tab: 'cloud_analysis', nonce: ++dataTabNavigationSeq },
+    }),
   clearDataNavigation: (nonce) =>
     set((state) => {
       if (nonce !== undefined && state.pendingDataNavigation?.nonce !== nonce) {
         return {};
       }
       return { pendingDataNavigation: null };
+    }),
+  clearDataTabNavigation: (nonce) =>
+    set((state) => {
+      if (nonce !== undefined && state.pendingDataTabNavigation?.nonce !== nonce) {
+        return {};
+      }
+      return { pendingDataTabNavigation: null };
+    }),
+  addCloudTablesToChat: (attachments) => {
+    if (attachments.length === 0) return;
+    set({
+      mainView: 'chat',
+      showSettings: false,
+      pendingCloudTableChatAttachments: {
+        attachments,
+        nonce: ++cloudTableChatAttachmentSeq,
+      },
+    });
+  },
+  clearPendingCloudTableChatAttachments: (nonce) =>
+    set((state) => {
+      if (nonce !== undefined && state.pendingCloudTableChatAttachments?.nonce !== nonce) {
+        return {};
+      }
+      return { pendingCloudTableChatAttachments: null };
     }),
 
   // Working directory actions
@@ -692,6 +758,8 @@ if (typeof window !== 'undefined') {
       store.setShowSettings(false);
       store.setMainView('data');
       store.setActiveSession(null);
+    } else if (page === 'cloud-data') {
+      store.navigateToCloudData();
     } else if (page === 'skills') {
       store.setShowSettings(false);
       store.setMainView('skills');

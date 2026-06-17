@@ -27,6 +27,8 @@ import {
   shouldUseAnthropicAuthToken,
 } from './auth-utils';
 import { API_PROVIDER_PRESETS, PI_AI_CURATED_PRESETS } from '../../shared/api-model-presets';
+import { normalizePersonalAnalysisApiOrigin } from '../../shared/personal-analysis';
+import type { StoredPersonalAnalysisConfig } from '../../shared/personal-analysis-types';
 
 /**
  * Application configuration schema
@@ -40,6 +42,7 @@ export type ProviderType =
   | 'moonshot'
   | 'aliyun'
   | 'zai'
+  | 'sophron'
   | 'gemini'
   | 'ollama';
 export type CustomProtocolType = 'anthropic' | 'openai' | 'gemini';
@@ -52,6 +55,7 @@ export type ProviderProfileKey =
   | 'moonshot'
   | 'aliyun'
   | 'zai'
+  | 'sophron'
   | 'gemini'
   | 'ollama'
   | 'custom:anthropic'
@@ -59,6 +63,7 @@ export type ProviderProfileKey =
   | 'custom:gemini';
 export type ConfigSetId = string;
 export type CreateSetMode = 'blank' | 'clone';
+type ConfigurableProviderProfileKey = Exclude<ProviderProfileKey, 'sophron'>;
 
 export interface CreateConfigSetPayload {
   name: string;
@@ -97,6 +102,7 @@ export interface AppConfig {
 
   // Model selection
   model: string;
+  builtinLlmModel?: string;
   contextWindow?: number;
   maxTokens?: number;
 
@@ -133,7 +139,7 @@ export interface AppConfig {
   memoryRuntime: MemoryRuntimeConfig;
 
   // Personal Analysis / mock server connection
-  personalAnalysis: PersonalAnalysisConfig;
+  personalAnalysis: StoredPersonalAnalysisConfig;
 
   // Enable thinking mode (show thinking steps)
   enableThinking: boolean;
@@ -178,14 +184,8 @@ export interface MemoryRuntimeConfig {
   promptIterationRounds?: number;
 }
 
-export interface PersonalAnalysisConfig {
-  apiOrigin: string;
-  apiKey: string;
-  updatedAt: number;
-}
-
 type ConfigStoreUpdate = Partial<Omit<AppConfig, 'personalAnalysis'>> & {
-  personalAnalysis?: Partial<PersonalAnalysisConfig>;
+  personalAnalysis?: Partial<StoredPersonalAnalysisConfig>;
 };
 
 const DEFAULT_CONFIG_SET_ID = 'default';
@@ -196,6 +196,7 @@ const DIRECT_READ_KEYS = new Set<keyof AppConfig>([
   'apiKey',
   'baseUrl',
   'customProtocol',
+  'builtinLlmModel',
   'activeProfileKey',
   'activeConfigSetId',
   'claudeCodePath',
@@ -209,7 +210,7 @@ const DIRECT_READ_KEYS = new Set<keyof AppConfig>([
   'isConfigured',
 ]);
 
-const defaultProfiles: Record<ProviderProfileKey, ProviderProfile> = {
+const defaultProfiles: Record<ConfigurableProviderProfileKey, ProviderProfile> = {
   openrouter: {
     apiKey: '',
     baseUrl: 'https://openrouter.ai/api/v1',
@@ -276,9 +277,9 @@ const defaultConfigSet: ApiConfigSet = {
   id: DEFAULT_CONFIG_SET_ID,
   name: '默认方案',
   isSystem: true,
-  provider: 'deepseek',
+  provider: 'sophron',
   customProtocol: 'openai',
-  activeProfileKey: 'deepseek',
+  activeProfileKey: 'sophron',
   profiles: defaultProfiles,
   enableThinking: false,
   updatedAt: '1970-01-01T00:00:00.000Z',
@@ -286,10 +287,11 @@ const defaultConfigSet: ApiConfigSet = {
 
 const defaultConfig: AppConfig = {
   provider: defaultConfigSet.provider,
-  apiKey: defaultProfiles.deepseek.apiKey,
-  baseUrl: defaultProfiles.deepseek.baseUrl,
+  apiKey: '',
+  baseUrl: '',
   customProtocol: defaultConfigSet.customProtocol,
-  model: defaultProfiles.deepseek.model,
+  model: '',
+  builtinLlmModel: '',
   activeProfileKey: defaultConfigSet.activeProfileKey,
   profiles: defaultProfiles,
   activeConfigSetId: DEFAULT_CONFIG_SET_ID,
@@ -336,7 +338,7 @@ const defaultConfig: AppConfig = {
     updatedAt: 0,
   },
   enableThinking: false,
-  isConfigured: false,
+  isConfigured: true,
 };
 
 export const PROVIDER_PRESETS = API_PROVIDER_PRESETS;
@@ -399,6 +401,7 @@ const PROFILE_KEYS: ProviderProfileKey[] = [
   'moonshot',
   'aliyun',
   'zai',
+  'sophron',
   'gemini',
   'ollama',
   'custom:anthropic',
@@ -417,6 +420,7 @@ function isProviderType(value: unknown): value is ProviderType {
     value === 'moonshot' ||
     value === 'aliyun' ||
     value === 'zai' ||
+    value === 'sophron' ||
     value === 'gemini' ||
     value === 'ollama'
   );
@@ -501,13 +505,13 @@ function normalizeMemoryRuntimeConfig(raw: unknown): MemoryRuntimeConfig {
   };
 }
 
-function normalizePersonalAnalysisConfig(raw: unknown): PersonalAnalysisConfig {
+function normalizePersonalAnalysisConfig(raw: unknown): StoredPersonalAnalysisConfig {
   const value =
-    typeof raw === 'object' && raw !== null ? (raw as Partial<PersonalAnalysisConfig>) : {};
+    typeof raw === 'object' && raw !== null ? (raw as Partial<StoredPersonalAnalysisConfig>) : {};
   return {
     apiOrigin:
       typeof value.apiOrigin === 'string'
-        ? value.apiOrigin.trim().replace(/\/+$/, '')
+        ? normalizePersonalAnalysisApiOrigin(value.apiOrigin)
         : defaultConfig.personalAnalysis.apiOrigin,
     apiKey:
       typeof value.apiKey === 'string'
@@ -521,8 +525,8 @@ function normalizePersonalAnalysisConfig(raw: unknown): PersonalAnalysisConfig {
 }
 
 function personalAnalysisConnectionChanged(
-  previous: PersonalAnalysisConfig,
-  next: PersonalAnalysisConfig
+  previous: StoredPersonalAnalysisConfig,
+  next: StoredPersonalAnalysisConfig
 ): boolean {
   return previous.apiOrigin !== next.apiOrigin || previous.apiKey !== next.apiKey;
 }
@@ -574,6 +578,9 @@ function profileKeyToProvider(profileKey: ProviderProfileKey): {
   if (profileKey === 'zai') {
     return { provider: 'zai', customProtocol: 'openai' };
   }
+  if (profileKey === 'sophron') {
+    return { provider: 'sophron', customProtocol: 'openai' };
+  }
   if (profileKey === 'gemini') {
     return { provider: 'gemini', customProtocol: 'gemini' };
   }
@@ -617,6 +624,7 @@ function defaultProtocolForProvider(provider: ProviderType): CustomProtocolType 
     provider === 'moonshot' ||
     provider === 'aliyun' ||
     provider === 'zai' ||
+    provider === 'sophron' ||
     provider === 'ollama'
   ) {
     return 'openai';
@@ -693,6 +701,9 @@ export class ConfigStore {
   }
 
   private getDefaultProfile(profileKey: ProviderProfileKey): ProviderProfile {
+    if (profileKey === 'sophron') {
+      return { apiKey: '', baseUrl: '', model: '' };
+    }
     const fallback = defaultProfiles[profileKey];
     return {
       apiKey: fallback.apiKey,
@@ -1048,13 +1059,31 @@ export class ConfigStore {
     );
   }
 
+  private hasUsableCredentialsForConfigSet(configSet: ApiConfigSet): boolean {
+    const projected = this.projectFromConfigSet(configSet);
+    return this.hasUsableCredentialsForProjection({
+      provider: projected.provider,
+      customProtocol: projected.customProtocol,
+      apiKey: projected.apiKey,
+      baseUrl: projected.baseUrl,
+      model: projected.model,
+    });
+  }
+
+  private hasAnyUsableConfigSet(configSets: ApiConfigSet[]): boolean {
+    return configSets.some((configSet) => this.hasUsableCredentialsForConfigSet(configSet));
+  }
+
   private normalizeConfig(rawConfig: Partial<AppConfig> | undefined): AppConfig {
     const raw = rawConfig || {};
     const legacy = this.normalizeLegacyProjection(raw);
     const normalizedFromRaw = this.normalizeConfigSets(raw.configSets, legacy);
-    const configSets = this.shouldPreferLegacyConfigSetProjection(normalizedFromRaw, legacy)
+    let configSets = this.shouldPreferLegacyConfigSetProjection(normalizedFromRaw, legacy)
       ? [this.makeDefaultConfigSetFromLegacy(legacy)]
       : normalizedFromRaw;
+    if (!this.hasAnyUsableConfigSet(configSets)) {
+      configSets = [this.cloneConfigSet(defaultConfigSet)];
+    }
 
     const requestedActiveSetId = toNonEmptyString(raw.activeConfigSetId);
     const activeConfigSetId = configSets.some((set) => set.id === requestedActiveSetId)
@@ -1063,13 +1092,15 @@ export class ConfigStore {
 
     const activeConfigSet = configSets.find((set) => set.id === activeConfigSetId) || configSets[0];
     const projected = this.projectFromConfigSet(activeConfigSet);
+    const builtinLlmModel = toNonEmptyString(raw.builtinLlmModel) || '';
 
     const result: AppConfig = {
       provider: projected.provider,
       customProtocol: projected.customProtocol,
       apiKey: projected.apiKey,
       baseUrl: projected.baseUrl,
-      model: projected.model,
+      model: projected.provider === 'sophron' ? builtinLlmModel : projected.model,
+      builtinLlmModel,
       activeProfileKey: projected.activeProfileKey,
       profiles: projected.profiles,
       activeConfigSetId,
@@ -1089,7 +1120,7 @@ export class ConfigStore {
       memoryRuntime: normalizeMemoryRuntimeConfig(raw.memoryRuntime),
       personalAnalysis: normalizePersonalAnalysisConfig(raw.personalAnalysis),
       enableThinking: projected.enableThinking,
-      isConfigured: toBoolean(raw.isConfigured, defaultConfig.isConfigured),
+      isConfigured: this.hasAnyUsableConfigSet(configSets),
     };
     this.normalizeModelIds(result);
     return result;
@@ -1122,7 +1153,7 @@ export class ConfigStore {
       customProtocol: projected.customProtocol,
       apiKey: projected.apiKey,
       baseUrl: projected.baseUrl,
-      model: projected.model,
+      model: projected.provider === 'sophron' ? base.builtinLlmModel || '' : projected.model,
       activeProfileKey: projected.activeProfileKey,
       profiles: projected.profiles,
       enableThinking: projected.enableThinking,
@@ -1377,7 +1408,7 @@ export class ConfigStore {
       apiKey: projected.apiKey,
       baseUrl: projected.baseUrl,
       customProtocol: projected.customProtocol,
-      model: projected.model,
+      model: projected.provider === 'sophron' ? current.builtinLlmModel || '' : projected.model,
       contextWindow: projected.contextWindow,
       maxTokens: projected.maxTokens,
       enableThinking: projected.enableThinking,
@@ -1537,6 +1568,16 @@ export class ConfigStore {
         updates.memoryRuntime !== undefined
           ? normalizeMemoryRuntimeConfig(updates.memoryRuntime)
           : current.memoryRuntime,
+      builtinLlmModel:
+        updates.builtinLlmModel !== undefined
+          ? toNonEmptyString(updates.builtinLlmModel) || ''
+          : current.builtinLlmModel || '',
+      model:
+        projectedConfig.provider === 'sophron'
+          ? updates.builtinLlmModel !== undefined
+            ? toNonEmptyString(updates.builtinLlmModel) || ''
+            : current.builtinLlmModel || ''
+          : projectedConfig.model,
       personalAnalysis,
       isConfigured:
         updates.isConfigured !== undefined ? updates.isConfigured : current.isConfigured,
@@ -1559,6 +1600,9 @@ export class ConfigStore {
   }): boolean {
     if (projection.provider === 'ollama' && !projection.model?.trim()) {
       return false;
+    }
+    if (projection.provider === 'sophron') {
+      return true;
     }
     const apiKey = projection.apiKey?.trim();
     if (apiKey) {

@@ -10,6 +10,11 @@ import {
   Sun,
   Monitor,
   Settings,
+  LogIn,
+  LogOut,
+  ChartNoAxesCombined,
+  Loader2,
+  CircleDollarSign,
   Search as SearchIcon,
   Plus,
   Layers,
@@ -52,6 +57,9 @@ export function Sidebar() {
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const showSettings = useAppStore((s) => s.showSettings);
   const setShowSettings = useAppStore((s) => s.setShowSettings);
+  const desktopAuthStatus = useAppStore((s) => s.desktopAuthStatus);
+  const setDesktopAuthStatus = useAppStore((s) => s.setDesktopAuthStatus);
+  const setGlobalNotice = useAppStore((s) => s.setGlobalNotice);
   const {
     deleteSession,
     batchDeleteSessions,
@@ -75,6 +83,12 @@ export function Sidebar() {
   const [savingProjectRenameKey, setSavingProjectRenameKey] = useState<string | null>(null);
   const [projectNameDraft, setProjectNameDraft] = useState('');
   const [removingProjectKey, setRemovingProjectKey] = useState<string | null>(null);
+  const [authBusyMode, setAuthBusyMode] = useState<'login' | 'logout' | null>(null);
+  const [authMenuOpen, setAuthMenuOpen] = useState(false);
+  const [failedAuthAvatarUrls, setFailedAuthAvatarUrls] = useState<Set<string>>(() => new Set());
+  const isAuthBusy = authBusyMode !== null;
+  const isLoginBusy = authBusyMode === 'login';
+  const isLogoutBusy = authBusyMode === 'logout';
 
   const normalizedQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
   const rendererPlatform = typeof window !== 'undefined' ? window.electronAPI?.platform : undefined;
@@ -111,6 +125,139 @@ export function Sidebar() {
   const updateBadgeTitle = updateState?.availableVersion
     ? t('general.updateAvailableBadgeTitle', { version: updateState.availableVersion })
     : t('general.updateAvailableBadge');
+  const authUser = desktopAuthStatus.user;
+  const authAvatarUrl = authUser?.avatarUrl?.trim() || '';
+  const canUseAuthAvatar = Boolean(authAvatarUrl && !failedAuthAvatarUrls.has(authAvatarUrl));
+  const authDisplayName =
+    authUser?.displayName?.trim() || authUser?.username?.trim() || authUser?.userId?.trim() || '';
+  const authSecondaryText = isAuthBusy
+    ? isLoginBusy
+      ? t('sidebar.loginWaitingBrowser')
+      : t('sidebar.loginProcessing')
+    : desktopAuthStatus.authenticated
+      ? t('sidebar.loggedIn')
+      : t('sidebar.loginDesc');
+  const authCreditsLabel = t('sidebar.aiCredits');
+  const authCreditsText = useMemo(() => {
+    const value = desktopAuthStatus.aiCredits?.availableCredits;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return new Intl.NumberFormat(undefined, {
+        maximumFractionDigits: 4,
+      }).format(value);
+    }
+    return t('sidebar.creditsUnavailable');
+  }, [desktopAuthStatus.aiCredits?.availableCredits, t]);
+
+  const refreshDesktopAuthStatus = useCallback(async () => {
+    if (!isElectron || !window.electronAPI?.auth) return;
+    try {
+      const status = await window.electronAPI.auth.getStatus();
+      setDesktopAuthStatus(status);
+    } catch (error) {
+      setGlobalNotice({
+        id: `desktop-auth-status-${Date.now()}`,
+        type: 'warning',
+        message: error instanceof Error ? error.message : t('sidebar.loginStatusFailed'),
+      });
+    }
+  }, [isElectron, setDesktopAuthStatus, setGlobalNotice, t]);
+
+  const handleCancelLoginClick = useCallback(async () => {
+    if (!isElectron || !window.electronAPI?.auth || !isLoginBusy) return;
+
+    setAuthBusyMode(null);
+    try {
+      const status = await window.electronAPI.auth.cancelLogin();
+      setDesktopAuthStatus(status);
+    } catch (error) {
+      setGlobalNotice({
+        id: `desktop-auth-cancel-${Date.now()}`,
+        type: 'warning',
+        message: error instanceof Error ? error.message : t('sidebar.loginFailed'),
+      });
+    }
+  }, [isElectron, isLoginBusy, setDesktopAuthStatus, setGlobalNotice, t]);
+
+  const handleLoginEntryClick = useCallback(async () => {
+    if (!isElectron || !window.electronAPI?.auth || desktopAuthStatus.authenticated) {
+      return;
+    }
+
+    if (isLoginBusy) {
+      await handleCancelLoginClick();
+      return;
+    }
+
+    if (isAuthBusy) return;
+
+    setAuthBusyMode('login');
+    try {
+      const status = await window.electronAPI.auth.login();
+      setDesktopAuthStatus(status);
+    } catch (error) {
+      const isCancelled = error instanceof Error && error.message === 'Login cancelled';
+      setGlobalNotice({
+        id: `desktop-auth-login-${Date.now()}`,
+        type: isCancelled ? 'info' : 'error',
+        message: isCancelled
+          ? t('sidebar.loginCancelled')
+          : error instanceof Error
+            ? error.message
+            : t('sidebar.loginFailed'),
+      });
+    } finally {
+      setAuthBusyMode(null);
+    }
+  }, [
+    desktopAuthStatus.authenticated,
+    handleCancelLoginClick,
+    isAuthBusy,
+    isElectron,
+    isLoginBusy,
+    setDesktopAuthStatus,
+    setGlobalNotice,
+    t,
+  ]);
+
+  const handleLogoutClick = useCallback(async () => {
+    if (!isElectron || !window.electronAPI?.auth || isAuthBusy) return;
+
+    setAuthBusyMode('logout');
+    try {
+      const status = await window.electronAPI.auth.logout();
+      setDesktopAuthStatus(status);
+      setAuthMenuOpen(false);
+    } catch (error) {
+      setGlobalNotice({
+        id: `desktop-auth-logout-${Date.now()}`,
+        type: 'error',
+        message: error instanceof Error ? error.message : t('sidebar.logoutFailed'),
+      });
+    } finally {
+      setAuthBusyMode(null);
+    }
+  }, [isAuthBusy, isElectron, setDesktopAuthStatus, setGlobalNotice, t]);
+
+  const handleAuthMenuOpenChange = useCallback(
+    (open: boolean) => {
+      setAuthMenuOpen(open);
+      if (open && desktopAuthStatus.authenticated) {
+        void refreshDesktopAuthStatus();
+      }
+    },
+    [desktopAuthStatus.authenticated, refreshDesktopAuthStatus]
+  );
+
+  const handleAuthAvatarError = useCallback((avatarUrl: string) => {
+    setFailedAuthAvatarUrls((current) => {
+      if (current.has(avatarUrl)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.add(avatarUrl);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,6 +277,10 @@ export function Sidebar() {
       cleanup?.();
     };
   }, []);
+
+  useEffect(() => {
+    void refreshDesktopAuthStatus();
+  }, [refreshDesktopAuthStatus]);
 
   // Exit select mode when sidebar collapses
   useEffect(() => {
@@ -452,6 +603,67 @@ export function Sidebar() {
   const isDataPageActive = mainView === 'data' && !showSettings;
   const isSkillsPageActive = mainView === 'skills' && !showSettings;
   const isAutomationPageActive = mainView === 'automation' && !showSettings;
+  const renderAuthAvatar = (containerClassName: string, iconClassName: string) => {
+    const showAnalyticsAvatar = desktopAuthStatus.authenticated && !canUseAuthAvatar && !isAuthBusy;
+
+    return (
+      <span
+        className={`flex flex-shrink-0 items-center justify-center overflow-hidden rounded-full border ${
+          showAnalyticsAvatar
+            ? 'border-accent/25 bg-accent/10 text-accent shadow-soft'
+            : 'border-border-subtle bg-background/70 text-text-secondary'
+        } ${containerClassName}`}
+      >
+        {isAuthBusy ? (
+          <Loader2 className={`${iconClassName} animate-spin`} />
+        ) : canUseAuthAvatar ? (
+          <img
+            src={authAvatarUrl}
+            alt={t('sidebar.accountAvatar')}
+            className="h-full w-full object-cover"
+            onError={() => handleAuthAvatarError(authAvatarUrl)}
+          />
+        ) : desktopAuthStatus.authenticated ? (
+          <span className="relative flex h-full w-full items-center justify-center">
+            <span className="absolute inset-0 bg-accent/10" />
+            <span className="absolute left-[18%] top-[22%] h-1.5 w-1.5 rounded-full bg-accent/35" />
+            <span className="absolute bottom-[20%] right-[18%] h-2 w-2 rounded-full bg-accent/20" />
+            <ChartNoAxesCombined className={`relative z-10 ${iconClassName}`} />
+          </span>
+        ) : (
+          <LogIn className={iconClassName} />
+        )}
+      </span>
+    );
+  };
+  const authAccountMenu = (
+    <div className="w-64 p-1.5">
+      <div className="flex items-center gap-3 rounded-lg px-2.5 py-2">
+        {renderAuthAvatar('h-9 w-9', 'h-4 w-4')}
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[13px] font-semibold leading-5 text-text-primary">
+            {authDisplayName || t('sidebar.loggedIn')}
+          </div>
+        </div>
+      </div>
+      <div className="mx-1 my-1 h-px bg-border-subtle" />
+      <div className="mx-1 mb-1 flex items-center justify-between gap-3 rounded-lg bg-background/54 px-2.5 py-2 text-[12px]">
+        <span className="flex min-w-0 items-center gap-2 font-medium text-text-secondary">
+          <CircleDollarSign className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
+          <span className="truncate">{authCreditsLabel}</span>
+        </span>
+        <span className="flex-shrink-0 font-semibold text-text-primary">{authCreditsText}</span>
+      </div>
+      <GlassMenuItem
+        danger
+        disabled={isLogoutBusy}
+        icon={<LogOut className="h-3.5 w-3.5" />}
+        onSelect={() => void handleLogoutClick()}
+      >
+        {t('sidebar.logout')}
+      </GlassMenuItem>
+    </div>
+  );
 
   if (sidebarCollapsed) {
     return (
@@ -517,6 +729,37 @@ export function Sidebar() {
         </div>
 
         <div className="border-t border-border-subtle py-2 flex flex-col items-center gap-2">
+          {desktopAuthStatus.authenticated ? (
+            <GlassDropdownMenu
+              open={authMenuOpen}
+              onOpenChange={handleAuthMenuOpenChange}
+              align="start"
+              side="top"
+              sideOffset={6}
+              contentClassName="p-0"
+              trigger={
+                <button
+                  disabled={isLogoutBusy}
+                  className="relative flex h-9 w-full items-center justify-center text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-wait disabled:opacity-70"
+                  title={t('sidebar.accountMenu')}
+                >
+                  {renderAuthAvatar('h-5 w-5', 'h-4 w-4')}
+                  <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-success" />
+                </button>
+              }
+            >
+              {authAccountMenu}
+            </GlassDropdownMenu>
+          ) : (
+            <button
+              onClick={handleLoginEntryClick}
+              disabled={isAuthBusy && !isLoginBusy}
+              className="relative flex h-9 w-full items-center justify-center text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-wait disabled:opacity-70"
+              title={isLoginBusy ? t('sidebar.cancelLogin') : t('sidebar.login')}
+            >
+              {renderAuthAvatar('h-5 w-5 border-0 bg-transparent', 'h-4 w-4')}
+            </button>
+          )}
           <button
             onClick={toggleTheme}
             className="w-full h-9 flex items-center justify-center hover:bg-surface-hover transition-colors text-text-secondary"
@@ -915,18 +1158,48 @@ export function Sidebar() {
       ) : (
         <div className="border-t border-border-subtle">
           <div className="flex h-14 w-full items-center gap-2 bg-background/42 px-4 backdrop-blur-xl">
-            <button
-              onClick={() => setShowSettings(true)}
-              className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-2 text-left text-text-secondary transition-colors hover:text-text-primary"
-            >
-              <Settings className="w-4 h-4 flex-shrink-0" />
-              <span className="min-w-0 flex-shrink-0 text-[13px] font-medium text-text-primary">
-                {t('sidebar.settings')}
-              </span>
-              <span className="min-w-0 truncate text-[12px] font-medium text-text-muted">
-                {isConfigured ? t('sidebar.apiConfigured') : t('sidebar.apiNotConfigured')}
-              </span>
-            </button>
+            {desktopAuthStatus.authenticated ? (
+              <GlassDropdownMenu
+                open={authMenuOpen}
+                onOpenChange={handleAuthMenuOpenChange}
+                align="start"
+                side="top"
+                sideOffset={6}
+                contentClassName="p-0"
+                trigger={
+                  <button
+                    disabled={isLogoutBusy}
+                    className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-2 text-left text-text-secondary transition-colors hover:text-text-primary disabled:cursor-wait disabled:opacity-70"
+                    title={t('sidebar.accountMenu')}
+                  >
+                    {renderAuthAvatar('h-8 w-8', 'h-4 w-4')}
+                    <span className="min-w-0 flex-shrink-0 text-[13px] font-medium text-text-primary">
+                      {authDisplayName || t('sidebar.loggedIn')}
+                    </span>
+                    <span className="min-w-0 truncate text-[12px] font-medium text-text-muted">
+                      {authSecondaryText}
+                    </span>
+                  </button>
+                }
+              >
+                {authAccountMenu}
+              </GlassDropdownMenu>
+            ) : (
+              <button
+                onClick={handleLoginEntryClick}
+                disabled={isAuthBusy && !isLoginBusy}
+                className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-2 text-left text-text-secondary transition-colors hover:text-text-primary disabled:cursor-wait disabled:opacity-70"
+                title={isLoginBusy ? t('sidebar.cancelLogin') : t('sidebar.login')}
+              >
+                {renderAuthAvatar('h-8 w-8', 'h-4 w-4')}
+                <span className="min-w-0 flex-shrink-0 text-[13px] font-medium text-text-primary">
+                  {isLoginBusy ? t('sidebar.cancelLogin') : t('sidebar.login')}
+                </span>
+                <span className="min-w-0 truncate text-[12px] font-medium text-text-muted">
+                  {authSecondaryText}
+                </span>
+              </button>
+            )}
 
             <button
               onClick={toggleTheme}
@@ -934,6 +1207,16 @@ export function Sidebar() {
               title={t('sidebar.themeToggle')}
             >
               {themeIcon}
+            </button>
+            <button
+              onClick={() => setShowSettings(true)}
+              className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+              title={t('sidebar.settings')}
+            >
+              <Settings className="h-4 w-4" />
+              {!isConfigured && (
+                <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-accent" />
+              )}
             </button>
           </div>
         </div>

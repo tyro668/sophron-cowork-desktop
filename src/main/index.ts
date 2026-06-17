@@ -42,6 +42,7 @@ import { PluginCatalogService } from './skills/plugin-catalog-service';
 import { PluginRuntimeService } from './skills/plugin-runtime-service';
 import { MemoryService } from './memory/memory-service';
 import { MemoryExtension } from './memory/memory-extension';
+import { MemoryLLMClient } from './memory/memory-llm-client';
 import { AgentRuntimeExtensionManager } from './extensions/agent-runtime-extension-manager';
 import {
   configStore,
@@ -51,6 +52,7 @@ import {
   type CreateConfigSetPayload,
 } from './config/config-store';
 import { runConfigApiTest } from './config/config-test-routing';
+import { resolveDesktopAuthOrigin, resolveDesktopLlmBaseUrl } from './config/desktop-auth-config';
 import { listOllamaModels } from './config/ollama-api';
 import { setPermissionRules } from './config/permission-rules-store';
 import { mcpConfigStore } from './mcp/mcp-config-store';
@@ -67,6 +69,7 @@ import type {
   Session,
   ApiTestInput,
   ApiTestResult,
+  AgentRuntimeConfig,
   DiagnosticInput,
   ProviderModelInfo,
   DataCleaningTask,
@@ -89,6 +92,12 @@ import type {
   DataUpdateTaskInput,
   DataUpdateDatasetInput,
   DataWorkflowSaveInput,
+  ImportCloudTableInput,
+  ListCloudProjectsInput,
+  ListCloudSpacesInput,
+  ListCloudTablesInput,
+  PreviewCloudTableInput,
+  UploadDataTableToCloudInput,
 } from '../renderer/types';
 import { remoteManager, type AgentExecutor } from './remote/remote-manager';
 import { remoteConfigStore } from './remote/remote-config-store';
@@ -104,6 +113,7 @@ import { AutomationService } from './automation/automation-service';
 import { AutomationRunner } from './automation/automation-runner';
 import { AutomationScheduler } from './automation/automation-scheduler';
 import { createDefaultAutomationActionRegistry } from './automation/default-actions';
+import { DesktopAuthService } from './auth/desktop-auth-service';
 import type {
   Automation,
   AutomationActionGraph,
@@ -119,6 +129,7 @@ import {
   buildScheduledTaskTitle,
 } from '../shared/schedule/task-title';
 import { APP_INTERNAL_NAME, APP_NAME_EN } from '../shared/branding';
+import { BUILTIN_LLM_CONFIG_SET_ID, parseBuiltinLlmConfigSetId } from '../shared/builtin-llm';
 import {
   isUncPath,
   isWindowsDrivePath,
@@ -179,6 +190,70 @@ let automationService: AutomationService | null = null;
 let automationScheduler: AutomationScheduler | null = null;
 let dataTaskStore: DataTaskStore | null = null;
 let dataCommandService: DataCommandService | null = null;
+const desktopAuthService = new DesktopAuthService(() =>
+  resolveDesktopAuthOrigin(configStore.get('personalAnalysis')?.apiOrigin)
+);
+
+function withSophronRuntimeAuth<T extends AppConfig | AgentRuntimeConfig>(config: T): T {
+  if (config.provider !== 'sophron') {
+    return config;
+  }
+
+  const apiOrigin = configStore.get('personalAnalysis')?.apiOrigin;
+  return {
+    ...config,
+    provider: 'sophron',
+    customProtocol: 'openai',
+    apiKey: desktopAuthService.requireLlmAccessToken(),
+    baseUrl: resolveDesktopLlmBaseUrl(apiOrigin),
+  };
+}
+
+function resolveAgentRuntimeConfigForAuth(
+  config?: AgentRuntimeConfig | null
+): AgentRuntimeConfig | undefined {
+  const runtimeConfig =
+    config ?? configStore.getRuntimeConfigForSet(configStore.get('activeConfigSetId')) ?? undefined;
+  if (!runtimeConfig) {
+    return undefined;
+  }
+  return withSophronRuntimeAuth(runtimeConfig);
+}
+
+function resolveModelRuntimeConfigForAutomation(configSetId: string): AgentRuntimeConfig | null {
+  const builtinModel = parseBuiltinLlmConfigSetId(configSetId);
+  if (builtinModel) {
+    return (
+      resolveAgentRuntimeConfigForAuth({
+        provider: 'sophron',
+        apiKey: '',
+        baseUrl: '',
+        customProtocol: 'openai',
+        model: builtinModel,
+        enableThinking: false,
+      }) ?? null
+    );
+  }
+
+  return resolveAgentRuntimeConfigForAuth(configStore.getRuntimeConfigForSet(configSetId)) ?? null;
+}
+
+function resolveAppConfigForAuth(config: AppConfig = configStore.getAll()): AppConfig {
+  return withSophronRuntimeAuth(config);
+}
+
+function resolveApiTestInputForAuth(input: ApiTestInput): ApiTestInput {
+  if (input.provider !== 'sophron') {
+    return input;
+  }
+  const apiOrigin = configStore.get('personalAnalysis')?.apiOrigin;
+  return {
+    ...input,
+    customProtocol: 'openai',
+    apiKey: desktopAuthService.requireLlmAccessToken(),
+    baseUrl: resolveDesktopLlmBaseUrl(apiOrigin),
+  };
+}
 let updateService: UpdateService | null = null;
 let isInstallingUpdate = false;
 let startupUpdateCheckScheduled = false;
@@ -1040,12 +1115,19 @@ app
     updateService.initialize();
 
     pluginRuntimeService = new PluginRuntimeService(new PluginCatalogService());
-    memoryService = new MemoryService(db);
+    memoryService = new MemoryService(db, {
+      llmClient: new MemoryLLMClient(() => resolveAppConfigForAuth(configStore.getAll())),
+    });
     dataCommandService = new DataCommandService(
       initializedDataTaskStore,
-      createLlmInputTableNormalizerProjectGenerator(() => configStore.getAll()),
+      createLlmInputTableNormalizerProjectGenerator(() =>
+        resolveAppConfigForAuth(configStore.getAll())
+      ),
       () => configStore.get('personalAnalysis'),
-      { onTaskCompleted: notifyDataTaskCompleted }
+      {
+        onTaskCompleted: notifyDataTaskCompleted,
+        getPersonalAnalysisConnection: () => desktopAuthService.getPersonalAnalysisConnection(),
+      }
     );
     const dataToolService = new DataToolService(dataCommandService);
     const extensionManager = new AgentRuntimeExtensionManager([
@@ -1060,7 +1142,8 @@ app
       sendToRenderer,
       pluginRuntimeService,
       extensionManager,
-      notifyConversationCompleted
+      notifyConversationCompleted,
+      resolveAgentRuntimeConfigForAuth
     );
     skillsManager = new SkillsManager(db, {
       getConfiguredGlobalSkillsPath: () => configStore.get('globalSkillsPath') || '',
@@ -1129,7 +1212,7 @@ app
       dataTaskStore: initializedDataTaskStore,
       sessionManager,
       resolveProjectCwd: (projectId) => db.projects?.get(projectId)?.cwd ?? null,
-      resolveModelRuntimeConfig: (configSetId) => configStore.getRuntimeConfigForSet(configSetId),
+      resolveModelRuntimeConfig: resolveModelRuntimeConfigForAutomation,
       sendSessionUpdate: (started) => {
         sendToRenderer({
           type: 'session.update',
@@ -1433,6 +1516,30 @@ ipcMain.handle('update.checkAndInstall', async () => {
     throw new Error('Update service is not initialized');
   }
   return updateService.checkAndInstall();
+});
+
+ipcMain.handle('auth.getStatus', async () => {
+  return desktopAuthService.getStatus();
+});
+
+ipcMain.handle('auth.login', async () => {
+  try {
+    return await desktopAuthService.login();
+  } finally {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  }
+});
+
+ipcMain.handle('auth.cancelLogin', async () => {
+  return desktopAuthService.cancelLogin();
+});
+
+ipcMain.handle('auth.logout', async () => {
+  return desktopAuthService.logout();
 });
 
 ipcMain.handle('shell.openExternal', async (_event, url: string) => {
@@ -1813,9 +1920,14 @@ function requireDataCommandService(): DataCommandService {
   if (!dataCommandService) {
     dataCommandService = new DataCommandService(
       requireDataTaskStore(),
-      createLlmInputTableNormalizerProjectGenerator(() => configStore.getAll()),
+      createLlmInputTableNormalizerProjectGenerator(() =>
+        resolveAppConfigForAuth(configStore.getAll())
+      ),
       () => configStore.get('personalAnalysis'),
-      { onTaskCompleted: notifyDataTaskCompleted }
+      {
+        onTaskCompleted: notifyDataTaskCompleted,
+        getPersonalAnalysisConnection: () => desktopAuthService.getPersonalAnalysisConnection(),
+      }
     );
   }
   return dataCommandService;
@@ -1969,8 +2081,14 @@ ipcMain.handle(
   async (event, payload: DataGenerateInputTableNormalizerDraftInput) => {
     try {
       const progressId = payload.progressId?.trim();
+      const modelConfigSetId =
+        typeof payload.modelConfigSetId === 'string' ? payload.modelConfigSetId.trim() : '';
+      const runtimeConfig = modelConfigSetId
+        ? (resolveModelRuntimeConfigForAutomation(modelConfigSetId) ?? undefined)
+        : undefined;
       return await requireDataCommandService().generateInputTableNormalizerDraft({
         ...payload,
+        runtimeConfig,
         onProgress: progressId
           ? (progress) => {
               if (typeof progress.text !== 'string' || progress.text.length === 0) return;
@@ -2123,6 +2241,63 @@ ipcMain.handle('data.deleteDataset', async (_event, id: string) => {
   }
 });
 
+ipcMain.handle('data.listCloudSpaces', async (_event, payload?: ListCloudSpacesInput) => {
+  try {
+    return await requireDataCommandService().listCloudSpaces(payload ?? {});
+  } catch (error) {
+    logError('[Data] Error listing cloud spaces:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('data.listCloudProjects', async (_event, payload: ListCloudProjectsInput) => {
+  try {
+    return await requireDataCommandService().listCloudProjects(payload);
+  } catch (error) {
+    logError('[Data] Error listing cloud projects:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('data.listCloudTables', async (_event, payload: ListCloudTablesInput) => {
+  try {
+    return await requireDataCommandService().listCloudTables(payload);
+  } catch (error) {
+    logError('[Data] Error listing cloud tables:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('data.previewCloudTable', async (_event, payload: PreviewCloudTableInput) => {
+  try {
+    return await requireDataCommandService().previewCloudTable(payload);
+  } catch (error) {
+    logError('[Data] Error previewing cloud table:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('data.importCloudTable', async (_event, payload: ImportCloudTableInput) => {
+  try {
+    return await requireDataCommandService().importCloudTable(payload);
+  } catch (error) {
+    logError('[Data] Error importing cloud table:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle(
+  'data.uploadDataTableToCloud',
+  async (_event, payload: UploadDataTableToCloudInput) => {
+    try {
+      return await requireDataCommandService().uploadDataTableToCloud(payload);
+    } catch (error) {
+      logError('[Data] Error uploading data table to cloud:', error);
+      throw error;
+    }
+  }
+);
+
 // Config IPC handlers
 ipcMain.handle('config.get', () => {
   try {
@@ -2273,6 +2448,26 @@ ipcMain.handle('config.switchSet', async (_event, payload: { id: string }) => {
   return { success: true, config: updatedConfig };
 });
 
+ipcMain.handle('config.selectBuiltinModel', async (_event, payload: { model: string }) => {
+  const model = typeof payload.model === 'string' ? payload.model.trim() : '';
+  if (!model) {
+    throw new Error('Model is required');
+  }
+
+  log('[Config] Selecting built-in model:', { model });
+  const previousConfig = configStore.getAll();
+  configStore.update({
+    activeConfigSetId: BUILTIN_LLM_CONFIG_SET_ID,
+    provider: 'sophron',
+    customProtocol: 'openai',
+    builtinLlmModel: model,
+    apiKey: '',
+    baseUrl: '',
+  });
+  const updatedConfig = await syncConfigAfterMutation(previousConfig);
+  return { success: true, config: updatedConfig };
+});
+
 ipcMain.handle('config.isConfigured', () => {
   try {
     return configStore.isConfigured();
@@ -2284,7 +2479,8 @@ ipcMain.handle('config.isConfigured', () => {
 
 ipcMain.handle('config.test', async (_event, payload: ApiTestInput): Promise<ApiTestResult> => {
   try {
-    return await runConfigApiTest(payload, configStore.getAll());
+    const resolvedPayload = resolveApiTestInputForAuth(payload);
+    return await runConfigApiTest(resolvedPayload, resolveAppConfigForAuth(configStore.getAll()));
   } catch (error) {
     logError('[Config] API test failed:', error);
     return {
@@ -2301,6 +2497,9 @@ ipcMain.handle(
     _event,
     payload: { provider: AppConfig['provider']; apiKey: string; baseUrl?: string }
   ): Promise<ProviderModelInfo[]> => {
+    if (payload.provider === 'sophron') {
+      return desktopAuthService.listLlmModels();
+    }
     if (payload.provider !== 'ollama') {
       return [];
     }
@@ -2311,7 +2510,7 @@ ipcMain.handle(
 ipcMain.handle('config.diagnose', async (_event, payload: DiagnosticInput) => {
   try {
     const { runDiagnostics } = await import('./config/api-diagnostics');
-    return await runDiagnostics(payload);
+    return await runDiagnostics(resolveApiTestInputForAuth(payload));
   } catch (error) {
     logError('[Config] Error running diagnostics:', error);
     throw error;

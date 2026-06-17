@@ -68,6 +68,19 @@ import type {
   AutomationRun,
   AutomationRunQuery,
   AutomationUpdateInput,
+  DesktopAuthStatus,
+  ImportCloudTableInput,
+  ImportCloudTableResult,
+  ListCloudProjectsInput,
+  ListCloudProjectsResult,
+  ListCloudSpacesInput,
+  ListCloudSpacesResult,
+  ListCloudTablesInput,
+  ListCloudTablesResult,
+  PreviewCloudTableInput,
+  PreviewCloudTableResult,
+  UploadDataTableToCloudInput,
+  UploadDataTableToCloudResult,
 } from '../renderer/types';
 import type { DiagnosticInput, DiagnosticResult } from '../renderer/types';
 import { isAllowedClientEventType } from '../shared/client-event-allowlist';
@@ -159,6 +172,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('update.state', listener);
       return () => ipcRenderer.removeListener('update.state', listener);
     },
+  },
+
+  auth: {
+    getStatus: (): Promise<DesktopAuthStatus> => ipcRenderer.invoke('auth.getStatus'),
+    login: (): Promise<DesktopAuthStatus> => ipcRenderer.invoke('auth.login'),
+    cancelLogin: (): Promise<DesktopAuthStatus> => ipcRenderer.invoke('auth.cancelLogin'),
+    logout: (): Promise<DesktopAuthStatus> => ipcRenderer.invoke('auth.logout'),
   },
 
   // Open links in default browser
@@ -279,6 +299,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('data.deleteTask', id),
     deleteDataset: (id: string): Promise<{ success: boolean }> =>
       ipcRenderer.invoke('data.deleteDataset', id),
+    listCloudSpaces: (payload?: ListCloudSpacesInput): Promise<ListCloudSpacesResult> =>
+      ipcRenderer.invoke('data.listCloudSpaces', payload),
+    listCloudProjects: (payload: ListCloudProjectsInput): Promise<ListCloudProjectsResult> =>
+      ipcRenderer.invoke('data.listCloudProjects', payload),
+    listCloudTables: (payload: ListCloudTablesInput): Promise<ListCloudTablesResult> =>
+      ipcRenderer.invoke('data.listCloudTables', payload),
+    previewCloudTable: (payload: PreviewCloudTableInput): Promise<PreviewCloudTableResult> =>
+      ipcRenderer.invoke('data.previewCloudTable', payload),
+    importCloudTable: (payload: ImportCloudTableInput): Promise<ImportCloudTableResult> =>
+      ipcRenderer.invoke('data.importCloudTable', payload),
+    uploadDataTableToCloud: (
+      payload: UploadDataTableToCloudInput
+    ): Promise<UploadDataTableToCloudResult> =>
+      ipcRenderer.invoke('data.uploadDataTableToCloud', payload),
   },
 
   // Config methods
@@ -298,6 +332,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('config.deleteSet', payload),
     switchSet: (payload: { id: string }): Promise<{ success: boolean; config: AppConfig }> =>
       ipcRenderer.invoke('config.switchSet', payload),
+    selectBuiltinModel: (payload: {
+      model: string;
+    }): Promise<{ success: boolean; config: AppConfig }> =>
+      ipcRenderer.invoke('config.selectBuiltinModel', payload),
     isConfigured: (): Promise<boolean> => ipcRenderer.invoke('config.isConfigured'),
     test: (config: ApiTestInput): Promise<ApiTestResult> =>
       ipcRenderer.invoke('config.test', config),
@@ -617,6 +655,12 @@ declare global {
         checkAndInstall: () => Promise<AppUpdateState>;
         onState: (callback: (state: AppUpdateState) => void) => () => void;
       };
+      auth: {
+        getStatus: () => Promise<DesktopAuthStatus>;
+        login: () => Promise<DesktopAuthStatus>;
+        cancelLogin: () => Promise<DesktopAuthStatus>;
+        logout: () => Promise<DesktopAuthStatus>;
+      };
       openExternal: (url: string) => Promise<boolean>;
       showItemInFolder: (filePath: string, cwd?: string) => Promise<boolean>;
       openGeneratedReport: (filePath: string, cwd?: string) => Promise<boolean>;
@@ -680,6 +724,14 @@ declare global {
         ) => Promise<DataListInputTableNormalizerVersionsResult>;
         deleteTask: (id: string) => Promise<{ success: boolean }>;
         deleteDataset: (id: string) => Promise<{ success: boolean }>;
+        listCloudSpaces: (payload?: ListCloudSpacesInput) => Promise<ListCloudSpacesResult>;
+        listCloudProjects: (payload: ListCloudProjectsInput) => Promise<ListCloudProjectsResult>;
+        listCloudTables: (payload: ListCloudTablesInput) => Promise<ListCloudTablesResult>;
+        previewCloudTable: (payload: PreviewCloudTableInput) => Promise<PreviewCloudTableResult>;
+        importCloudTable: (payload: ImportCloudTableInput) => Promise<ImportCloudTableResult>;
+        uploadDataTableToCloud: (
+          payload: UploadDataTableToCloudInput
+        ) => Promise<UploadDataTableToCloudResult>;
       };
       config: {
         get: () => Promise<AppConfig>;
@@ -692,6 +744,9 @@ declare global {
         }) => Promise<{ success: boolean; config: AppConfig }>;
         deleteSet: (payload: { id: string }) => Promise<{ success: boolean; config: AppConfig }>;
         switchSet: (payload: { id: string }) => Promise<{ success: boolean; config: AppConfig }>;
+        selectBuiltinModel: (payload: {
+          model: string;
+        }) => Promise<{ success: boolean; config: AppConfig }>;
         isConfigured: () => Promise<boolean>;
         test: (config: ApiTestInput) => Promise<ApiTestResult>;
         listModels: (payload: {

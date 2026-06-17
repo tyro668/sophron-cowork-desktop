@@ -46,13 +46,12 @@ import type {
   Project,
 } from '../../types';
 import { useAppStore } from '../../store';
-import { useSkillMentions } from '../../hooks/useSkillMentions';
-import { AgentModelSelector, getAgentModelLabel } from '../AgentModelSelector';
+import { getAgentModelLabel } from '../AgentModelSelector';
 import { GlassDateTimePicker } from '../GlassDateTimePicker';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { GlassSelect } from '../GlassSelect';
 import { GlassSwitch } from '../GlassSwitch';
-import { SelectedSkillChips, SkillMentionMenu } from '../SkillMentionPicker';
+import { LlmPromptComposer } from '../LlmPromptComposer';
 import { formatAppDateTime } from '../../utils/i18n-format';
 import { getWorkingDirDisplayName } from '../../utils/working-dir-label';
 
@@ -1958,17 +1957,6 @@ function ActionConfigEditor({
     configRef.current = config;
     onChange({ ...node, config });
   };
-  const patchConfig = useCallback(
-    (patch: Record<string, unknown>) => {
-      const config = { ...configRef.current, ...patch };
-      configRef.current = config;
-      onChange({ ...node, config });
-    },
-    [node, onChange]
-  );
-  const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const conversationComposerRef = useRef<HTMLDivElement>(null);
-  const conversationTextareaRef = useRef<HTMLTextAreaElement>(null);
   const conversationPrompt = String(node.config.prompt ?? '');
   const conversationSelectedSkillNames = useMemo(
     () =>
@@ -1977,16 +1965,6 @@ function ActionConfigEditor({
         : [],
     [node.config.selectedSkillNames]
   );
-  const skillMentions = useSkillMentions({
-    prompt: conversationPrompt,
-    setPrompt: (prompt) => patchConfig({ prompt }),
-    textareaRef: conversationTextareaRef,
-    isElectron,
-    selectedSkillNames: conversationSelectedSkillNames,
-    onSelectedSkillNamesChange: (selectedSkillNames) => patchConfig({ selectedSkillNames }),
-    onSkillSelectionCommit: ({ prompt, selectedSkillNames }) =>
-      patchConfig({ prompt, selectedSkillNames }),
-  });
   const selectedModelConfigSetId =
     typeof node.config.modelConfigSetId === 'string' && node.config.modelConfigSetId.trim()
       ? node.config.modelConfigSetId
@@ -2062,52 +2040,29 @@ function ActionConfigEditor({
       )}
       {node.type === 'conversation.run' && (
         <ConfigRow label={tr('schedule.conversationPrompt', '任务内容')}>
-          <div
-            ref={conversationComposerRef}
-            className="chat-composer-panel relative flex min-h-[116px] flex-col px-3 py-2.5"
-          >
-            <SkillMentionMenu
-              open={skillMentions.isMentionMenuOpen}
-              skills={skillMentions.filteredSkills}
-              highlightedIndex={skillMentions.highlightedIndex}
-              onSelect={skillMentions.selectSkill}
-              anchorRef={conversationComposerRef}
-            />
-            <SelectedSkillChips
-              skills={skillMentions.selectedSkills}
-              onRemove={skillMentions.removeSkill}
-            />
-            <textarea
-              ref={conversationTextareaRef}
-              value={conversationPrompt}
-              onChange={skillMentions.handlePromptChange}
-              onKeyDown={(event) => {
-                skillMentions.handlePromptKeyDown(event);
-              }}
-              placeholder={tr('schedule.promptPlaceholder', '输入任务对话要执行的内容')}
-              className="min-h-[58px] flex-1 resize-none overflow-y-auto border-none bg-transparent text-[13px] leading-5 text-text-primary outline-none placeholder:text-text-muted"
-            />
-            <div className="mt-3 flex items-center justify-end gap-2">
-              <AgentModelSelector
-                open={modelMenuOpen}
-                onOpenChange={setModelMenuOpen}
-                appConfig={appConfig}
-                selectedConfigSetId={selectedModelConfigSetId}
-                fallbackLabel={tr('chat.noModel', '未配置模型')}
-                disabled={!appConfig?.model?.trim()}
-                side="bottom"
-                align="end"
-                triggerClassName="composer-flat-pill inline-flex h-8 min-w-0 max-w-full items-center gap-1.5 rounded-full px-3 text-xs font-medium"
-                onSelect={(configSetId) =>
-                  setConfig({
-                    ...node.config,
-                    modelConfigSetId: configSetId,
-                    model: getAgentModelLabel(appConfig, '', configSetId),
-                  })
-                }
-              />
-            </div>
-          </div>
+          <LlmPromptComposer
+            value={conversationPrompt}
+            onChange={(prompt) => setConfig({ ...node.config, prompt })}
+            selectedSkillNames={conversationSelectedSkillNames}
+            onSelectedSkillNamesChange={(selectedSkillNames) =>
+              setConfig({ ...node.config, selectedSkillNames })
+            }
+            onSkillSelectionCommit={({ value, selectedSkillNames }) =>
+              setConfig({ ...node.config, prompt: value, selectedSkillNames })
+            }
+            appConfig={appConfig}
+            selectedModelConfigSetId={selectedModelConfigSetId}
+            modelDisabled={!appConfig?.model?.trim()}
+            modelFallbackLabel={tr('chat.noModel', '未配置模型')}
+            placeholder={tr('schedule.promptPlaceholder', '输入任务对话要执行的内容')}
+            onModelSelect={({ configSetId, model }) =>
+              setConfig({
+                ...node.config,
+                modelConfigSetId: configSetId,
+                model,
+              })
+            }
+          />
         </ConfigRow>
       )}
     </div>

@@ -2,6 +2,7 @@ import { basename } from 'path';
 import type { AppConfig } from '../config/config-store';
 import { runPiAiOneShot } from '../claude/claude-sdk-one-shot';
 import type {
+  AgentRuntimeConfig,
   DataInputTableSourceSummary,
   DataNormalizerLanguage,
   DataNormalizerProjectFile,
@@ -15,7 +16,9 @@ export interface GenerateInputTableNormalizerProjectInput {
   name: string;
   primaryLanguage: DataNormalizerLanguage;
   rulePrompt: string;
+  selectedSkillNames?: string[];
   sourceSummary: DataInputTableSourceSummary;
+  runtimeConfig?: AgentRuntimeConfig;
   onProgress?: InputTableNormalizerProjectProgressCallback;
 }
 
@@ -51,14 +54,19 @@ export function createLlmInputTableNormalizerProjectGenerator(
         input.primaryLanguage,
         input.rulePrompt
       );
+      const generationInput = {
+        ...input,
+        rulePrompt: buildSkillAwareRulePrompt(input.rulePrompt, input.selectedSkillNames),
+      };
+      const runtimeConfig = input.runtimeConfig ?? getConfig();
       const sourceSummary = compactSourceSummary(input.sourceSummary);
       const analysisProgress = createJsonProgressWriter(input, 'source_analysis', '结构分析输出');
       const analysisResponse = await runWithProgressBlock(
         () =>
           runPiAiOneShot(
-            buildSourceAnalysisUserPrompt(input, sourceSummary),
+            buildSourceAnalysisUserPrompt(generationInput, sourceSummary),
             buildSourceAnalysisSystemPrompt(),
-            getConfig(),
+            runtimeConfig,
             {
               temperature: 0,
               maxTokens: 8_000,
@@ -73,9 +81,14 @@ export function createLlmInputTableNormalizerProjectGenerator(
       const response = await runWithProgressBlock(
         () =>
           runPiAiOneShot(
-            buildCodeGenerationUserPrompt(input, template, sourceSummary, sourceStructureAnalysis),
+            buildCodeGenerationUserPrompt(
+              generationInput,
+              template,
+              sourceSummary,
+              sourceStructureAnalysis
+            ),
             buildCodeGenerationSystemPrompt(input.primaryLanguage),
-            getConfig(),
+            runtimeConfig,
             {
               temperature: 0.1,
               maxTokens: 16_000,
@@ -98,6 +111,7 @@ export function createLlmInputTableNormalizerProjectGenerator(
           content: `${JSON.stringify(
             {
               rulePrompt: input.rulePrompt,
+              selectedSkillNames: normalizeSelectedSkillNames(input.selectedSkillNames),
               sourceSummaryHash: input.sourceSummary.hash,
               sourceStructureAnalysis,
             },
@@ -108,6 +122,31 @@ export function createLlmInputTableNormalizerProjectGenerator(
       };
     },
   };
+}
+
+function normalizeSelectedSkillNames(selectedSkillNames: string[] | undefined): string[] {
+  return Array.isArray(selectedSkillNames)
+    ? selectedSkillNames
+        .map((name) => name.trim())
+        .filter((name, index, names) => name.length > 0 && names.indexOf(name) === index)
+    : [];
+}
+
+function buildSkillAwareRulePrompt(
+  rulePrompt: string,
+  selectedSkillNames: string[] | undefined
+): string {
+  const normalizedSkillNames = normalizeSelectedSkillNames(selectedSkillNames);
+  if (normalizedSkillNames.length === 0) {
+    return rulePrompt;
+  }
+
+  return [
+    rulePrompt,
+    '',
+    `Selected skills from the UI: ${normalizedSkillNames.map((name) => `@${name}`).join(', ')}.`,
+    'Use these selected skills as user-provided context when interpreting the transformation rule.',
+  ].join('\n');
 }
 
 function emitProgress(
@@ -230,8 +269,7 @@ function buildSourceAnalysisUserPrompt(
 ): string {
   return JSON.stringify(
     {
-      task:
-        'Analyze the real input file/folder structure for a custom input table normalizer. This is step 1 of 2. Do not generate code.',
+      task: 'Analyze the real input file/folder structure for a custom input table normalizer. This is step 1 of 2. Do not generate code.',
       projectName: input.name,
       languageRequestedForFinalCode: input.primaryLanguage,
       rulePrompt: input.rulePrompt,
@@ -279,8 +317,7 @@ function buildCodeGenerationUserPrompt(
 ): string {
   return JSON.stringify(
     {
-      task:
-        'Generate final executable code for an input table normalizer project. This is step 2 of 2 and must follow the prior sourceStructureAnalysis.',
+      task: 'Generate final executable code for an input table normalizer project. This is step 2 of 2 and must follow the prior sourceStructureAnalysis.',
       projectName: input.name,
       language: input.primaryLanguage,
       rulePrompt: input.rulePrompt,
@@ -395,7 +432,10 @@ function validateGeneratedTransform(
   file: DataNormalizerProjectFile,
   language: DataNormalizerLanguage
 ): void {
-  if (file.content.includes('This project is a scaffold') || /TODO|Replace this draft/i.test(file.content)) {
+  if (
+    file.content.includes('This project is a scaffold') ||
+    /TODO|Replace this draft/i.test(file.content)
+  ) {
     throw new Error('LLM normalizer transform still contains scaffold placeholder text');
   }
   if (language === 'node' && !/export\s+async\s+function\s+transform/.test(file.content)) {

@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash2, Loader2, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, Loader2, ChevronDown, X, Layers } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
 import {
@@ -8,129 +8,109 @@ import {
   isTemporalDataFieldType,
   normalizeDataFieldType,
 } from '../../../shared/data-field-types';
-import { buildFilterCondition, type FilterConditionRow } from './shared/filter-condition';
+import {
+  buildFilterConditionTree,
+  parseConditionTree,
+  resetNodeIdCounter,
+  isLeaf,
+  isBranch,
+  createEmptyLeaf,
+  addLeafToBranch,
+  removeNodeFromBranch,
+  updateLeafInBranch,
+  wrapItemsInGroup,
+  MAX_NESTING_DEPTH,
+  splitInValues,
+  joinInValues,
+  type FilterConditionLeaf,
+  type FilterConditionBranch,
+  type FilterConditionNode,
+} from './shared/filter-condition';
 
 // ── Operator definitions ──────────────────────────────────────────────
 
 type OpDef = { label: string; value: string };
+type OpGroup = { group: string; items: OpDef[] };
 
-const ALL_OPERATORS: OpDef[] = [
-  { label: '', value: '=' },
-  { label: '', value: '>' },
-  { label: '', value: '<' },
-  { label: '', value: '<=' },
-  { label: '', value: '>=' },
-  { label: '', value: '!=' },
-  { label: '', value: 'between' },
+const ALL_OP_GROUPS: OpGroup[] = [
+  { group: '比较', items: [
+    { label: '等于', value: '=' },
+    { label: '不等于', value: '!=' },
+  ]},
+  { group: '范围', items: [
+    { label: '大于', value: '>' },
+    { label: '小于', value: '<' },
+    { label: '大于等于', value: '>=' },
+    { label: '小于等于', value: '<=' },
+    { label: '介于', value: 'between' },
+  ]},
+  { group: '集合', items: [
+    { label: '属于', value: 'in' },
+    { label: '不属于', value: 'not in' },
+  ]},
 ];
 
-const STRING_OPS: OpDef[] = [
-  { label: '', value: '=' },
-  { label: '', value: '!=' },
+const STRING_OP_GROUPS: OpGroup[] = [
+  { group: '比较', items: [
+    { label: '等于', value: '=' },
+    { label: '不等于', value: '!=' },
+  ]},
+  { group: '匹配', items: [
+    { label: '包含', value: 'like' },
+    { label: '不包含', value: 'not like' },
+    { label: '匹配', value: 'matches' },
+    { label: '不匹配', value: 'not matches' },
+  ]},
+  { group: '边界', items: [
+    { label: '开头是', value: 'begin' },
+    { label: '结尾是', value: 'end' },
+  ]},
+  { group: '集合', items: [
+    { label: '属于', value: 'in' },
+    { label: '不属于', value: 'not in' },
+  ]},
 ];
 
-const BOOLEAN_OPS: OpDef[] = [{ label: '', value: '=' }];
+const BOOLEAN_OP_GROUPS: OpGroup[] = [
+  { group: '比较', items: [
+    { label: '等于', value: '=' },
+  ]},
+];
 
-const OP_LABEL_KEYS: Record<string, string> = {
-  '=': 'filterOpEq',
-  '>': 'filterOpGt',
-  '<': 'filterOpLt',
-  '<=': 'filterOpLte',
-  '>=': 'filterOpGte',
-  '!=': 'filterOpNeq',
-  between: 'filterOpBetween',
-};
+const TEMPORAL_OP_GROUPS: OpGroup[] = [
+  { group: '比较', items: [
+    { label: '等于', value: '=' },
+    { label: '不等于', value: '!=' },
+  ]},
+  { group: '范围', items: [
+    { label: '晚于', value: '>' },
+    { label: '早于', value: '<' },
+    { label: '不晚于', value: '<=' },
+    { label: '不早于', value: '>=' },
+    { label: '介于', value: 'between' },
+  ]},
+  { group: '集合', items: [
+    { label: '属于', value: 'in' },
+    { label: '不属于', value: 'not in' },
+  ]},
+];
 
-function operatorsForType(colType: string | undefined): OpDef[] {
-  if (!colType) return ALL_OPERATORS;
+function operatorsForType(colType: string | undefined): OpGroup[] {
+  if (!colType) return ALL_OP_GROUPS;
   const type = normalizeDataFieldType(colType);
-  if (isNumericDataFieldType(type)) return ALL_OPERATORS;
-  if (type === 'text') return STRING_OPS;
-  if (isTemporalDataFieldType(type)) return ALL_OPERATORS;
-  if (type === 'boolean') return BOOLEAN_OPS;
-  return ALL_OPERATORS;
+  if (isNumericDataFieldType(type)) return ALL_OP_GROUPS;
+  if (type === 'text') return STRING_OP_GROUPS;
+  if (isTemporalDataFieldType(type)) return TEMPORAL_OP_GROUPS;
+  if (type === 'boolean') return BOOLEAN_OP_GROUPS;
+  return ALL_OP_GROUPS;
 }
 
-// ── Condition data types ──────────────────────────────────────────────
-
-type Connective = FilterConditionRow['connective'];
-type ConditionRow = FilterConditionRow;
-
-const EMPTY_ROW: ConditionRow = { field: '', op: '=', val1: '', val2: '', connective: 'and' };
-
-// ── Parse / Build ─────────────────────────────────────────────────────
-
-function parseSingleCondition(expr: string): ConditionRow | null {
-  const betweenMatch = expr.match(
-    /^\s*\[([^\]]+)\]\s+between\s+(.+?)\s+(?:and|%%PH%%)\s+(.+?)\s*$/i
-  );
-  if (betweenMatch) {
-    return {
-      field: betweenMatch[1],
-      op: 'between',
-      val1: betweenMatch[2].replace(/^["']|["']$/g, '').trim(),
-      val2: betweenMatch[3].replace(/^["']|["']$/g, '').trim(),
-      connective: 'and',
-    };
-  }
-  const cmpMatch = expr.match(/^\s*\[([^\]]+)\]\s*(>=?|<=?|!=?|=)\s*(.+?)\s*$/);
-  if (cmpMatch) {
-    return {
-      field: cmpMatch[1],
-      op: cmpMatch[2],
-      val1: cmpMatch[3].replace(/^["']|["']$/g, '').trim(),
-      val2: '',
-      connective: 'and',
-    };
-  }
-  return null;
+/** Flatten groups to a plain OpDef array for validation lookups. */
+function flattenOps(groups: OpGroup[]): OpDef[] {
+  return groups.flatMap((g) => g.items);
 }
 
-function parseCondition(condition: string | undefined): ConditionRow[] {
-  if (!condition) return [];
-  const betweenPattern = /\[([^\]]+)\]\s+between\s+(.+?)\s+and\s+(.+?)(?=\s*(?:$|and\s|or\s))/gi;
-  const placeholders: string[] = [];
-  const protected_ = condition.replace(betweenPattern, (_m, field, v1, v2) => {
-    const idx = placeholders.length;
-    placeholders.push(`[${field}] between ${v1} %%PH%% ${v2}`);
-    return `__BETWEEN_${idx}__`;
-  });
-
-  const tokens = protected_.split(/(\s+(?:and|or)\s+)/i);
-  const rows: ConditionRow[] = [];
-  for (let i = 0; i < tokens.length; i += 2) {
-    const expr = tokens[i];
-    if (!expr?.trim()) continue;
-    const restored = expr.replace(/__BETWEEN_(\d+)__/g, (_m, idx) => {
-      return placeholders[Number(idx)] ?? _m;
-    });
-    const row = parseSingleCondition(restored.trim());
-    if (!row) continue;
-    const connectiveToken = tokens[i - 1];
-    row.connective = connectiveToken ? (connectiveToken.trim().toLowerCase() as Connective) : 'and';
-    rows.push(row);
-  }
-  return rows;
-}
-
-function eqRows(a: ConditionRow[], b: ConditionRow[]): boolean {
-  if (a.length !== b.length) return false;
-  return a.every(
-    (r, i) =>
-      r.field === b[i].field &&
-      r.op === b[i].op &&
-      r.val1 === b[i].val1 &&
-      r.val2 === b[i].val2 &&
-      r.connective === b[i].connective
-  );
-}
-
-// ── Shared styles ─────────────────────────────────────────────────────
-
-const SELECT_BASE =
-  'h-8 rounded-md border border-border-muted bg-background/42 pl-2 pr-6 text-[12px] text-text-secondary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-40 appearance-none';
-
-// ── Searchable dropdown (field / value) ───────────────────────────────
+// ── Searchable dropdown (field selection) ─────────────────────────────
 
 function SearchableDropdown({
   value,
@@ -159,7 +139,6 @@ function SearchableDropdown({
 
   useEffect(() => setInput(value), [value]);
 
-  // Close on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
@@ -177,7 +156,6 @@ function SearchableDropdown({
 
   return (
     <div ref={ref} className="relative flex-1 min-w-0">
-      {/* Input row with dropdown button */}
       <div className="flex rounded-md border border-border-muted bg-background/42 focus-within:border-accent">
         <input
           ref={inputRef}
@@ -220,7 +198,6 @@ function SearchableDropdown({
         </button>
       </div>
 
-      {/* Dropdown */}
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 w-full min-w-[180px] rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl">
           <div className="max-h-48 overflow-y-auto">
@@ -256,7 +233,7 @@ function SearchableDropdown({
   );
 }
 
-// ── Value input (free text + dropdown suggestions) ───────────────────
+// ── Single value input (free text + dropdown suggestions) ─────────────
 
 function ValueInput({
   value,
@@ -294,7 +271,7 @@ function ValueInput({
   }, [input, suggestions]);
 
   return (
-    <div ref={ref} className="relative flex-1 min-w-0">
+    <div ref={ref} className="relative w-[200px] flex-shrink-0">
       <div className="flex rounded-md border border-border-muted bg-background/42 focus-within:border-accent">
         <input
           type="text"
@@ -308,6 +285,7 @@ function ValueInput({
               setOpen(false);
             }
           }}
+          onBlur={() => onChange(input)}
           placeholder={placeholder}
           className="h-8 flex-1 min-w-0 bg-transparent pl-2 text-[12px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-40"
         />
@@ -354,6 +332,506 @@ function ValueInput({
   );
 }
 
+// ── Multi-value input (for in / not in operators) ─────────────────────
+
+function MultiValueInput({
+  value,
+  suggestions,
+  isLoading,
+  disabled,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  suggestions: string[];
+  isLoading: boolean;
+  disabled?: boolean;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [inputText, setInputText] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const values = useMemo(() => splitInValues(value), [value]);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const filtered = useMemo(() => {
+    const available = suggestions.filter((s) => !values.includes(s));
+    if (!inputText) return available.slice(0, 20);
+    const lower = inputText.toLowerCase();
+    return available.filter((s) => s.toLowerCase().includes(lower)).slice(0, 20);
+  }, [inputText, suggestions, values]);
+
+  const addValue = useCallback(
+    (v: string) => {
+      const trimmed = v.trim();
+      if (!trimmed || values.includes(trimmed)) return;
+      const next = joinInValues([...values, trimmed]);
+      onChange(next);
+      setInputText('');
+    },
+    [values, onChange]
+  );
+
+  const removeValue = useCallback(
+    (idx: number) => {
+      const next = values.filter((_, i) => i !== idx);
+      onChange(joinInValues(next));
+    },
+    [values, onChange]
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addValue(inputText);
+      } else if (e.key === 'Backspace' && !inputText && values.length > 0) {
+        removeValue(values.length - 1);
+      } else if (e.key === 'Escape') {
+        setOpen(false);
+      }
+    },
+    [inputText, values.length, addValue, removeValue]
+  );
+
+  return (
+    <div ref={ref} className="relative w-[428px] flex-shrink-0">
+      <div
+        className={`flex h-8 flex-nowrap items-center gap-1 rounded-md border bg-background/42 px-1.5 py-0.5 transition-colors overflow-x-auto ${
+          open ? 'border-accent' : 'border-border-muted'
+        } ${disabled ? 'cursor-not-allowed opacity-40' : ''}`}
+      >
+        {values.map((v, i) => (
+          <span
+            key={i}
+            className="inline-flex items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent"
+          >
+            {v}
+            <button
+              type="button"
+              disabled={disabled}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                removeValue(i);
+              }}
+              className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
+            >
+              <X className="h-2.5 w-2.5" />
+            </button>
+          </span>
+        ))}
+        <input
+          ref={inputRef}
+          type="text"
+          value={inputText}
+          disabled={disabled}
+          onChange={(e) => setInputText(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setOpen(true)}
+          placeholder={values.length === 0 ? placeholder : ''}
+          className="h-6 min-w-[60px] flex-1 bg-transparent pl-0.5 text-[12px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed"
+        />
+        {isLoading && (
+          <Loader2 className="my-auto h-3.5 w-3.5 flex-shrink-0 animate-spin text-text-muted" />
+        )}
+        <button
+          type="button"
+          disabled={disabled}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setOpen(!open);
+          }}
+          className="flex h-6 w-5 items-center justify-center text-text-muted hover:text-text-secondary transition-colors"
+        >
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
+
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-full rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl">
+          {filtered.length > 0 && (
+            <div className="max-h-40 overflow-y-auto">
+              {filtered.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className="w-full px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-surface-hover text-text-secondary"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    addValue(s);
+                  }}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+          {inputText && !filtered.includes(inputText) && (
+            <button
+              type="button"
+              className="w-full px-2.5 py-1.5 text-left text-[12px] text-accent transition-colors hover:bg-surface-hover"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                addValue(inputText);
+              }}
+            >
+              添加 "{inputText}"
+            </button>
+          )}
+          {filtered.length === 0 && !inputText && (
+            <div className="px-3 py-3 text-center text-[12px] text-text-muted">暂无建议值</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Custom operator dropdown (grouped with separators) ────────────────
+
+function OperatorSelect({
+  value,
+  groups,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  groups: OpGroup[];
+  disabled?: boolean;
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const selectedLabel = useMemo(() => {
+    for (const g of groups) {
+      for (const o of g.items) {
+        if (o.value === value) return o.label || o.value;
+      }
+    }
+    return value;
+  }, [value, groups]);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative w-[100px] flex-shrink-0">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen(!open)}
+        className="flex h-8 w-[100px] items-center rounded-md border border-border-muted bg-background/42 text-[12px] text-text-secondary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <span className="flex-1 text-center">{selectedLabel}</span>
+        <ChevronDown className={`mr-1 h-3.5 w-3.5 flex-shrink-0 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-[100px] max-h-60 overflow-y-auto rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl">
+          {groups.map((g, gi) => (
+            <div key={g.group}>
+              {gi > 0 && <div className="mx-3 my-0.5 border-t border-border-muted" />}
+              {g.items.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  className={`w-full px-3 py-1.5 text-center text-[12px] transition-colors hover:bg-surface-hover ${
+                    o.value === value ? 'text-accent font-medium' : 'text-text-secondary'
+                  }`}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onChange(o.value);
+                    setOpen(false);
+                  }}
+                >
+                  {o.label || o.value}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Condition Leaf Row ────────────────────────────────────────────────
+
+interface LeafRowContext {
+  columnTypes: Record<string, string>;
+  columnValues: Record<string, string[]>;
+  loadingValues: Record<string, boolean>;
+  fieldCompletions: string[];
+  fetchColumnValues: (colName: string) => void;
+  updateLeaf: (leafId: string, patch: Partial<FilterConditionLeaf>) => void;
+  removeNode: (nodeId: string) => void;
+  addAfter: (branchId: string, afterIndex: number) => void;
+  addAndGroup: (branchId: string, leafId: string, afterIndex: number) => void;
+  tr: (key: string, fallback: string) => string;
+}
+
+function ConditionLeafRow({
+  leaf,
+  branchId,
+  index,
+  depth,
+  ctx,
+}: {
+  leaf: FilterConditionLeaf;
+  branchId: string;
+  index: number;
+  depth: number;
+  ctx: LeafRowContext;
+}) {
+  const fieldSelected = !!leaf.field;
+  const colType = ctx.columnTypes[leaf.field];
+  const opGroups = operatorsForType(colType);
+  const allOps = flattenOps(opGroups);
+  const validOps = allOps.map((o) => o.value);
+  const effectiveOp = validOps.includes(leaf.op) ? leaf.op : (allOps[0]?.value ?? '=');
+  const isBetween = effectiveOp === 'between';
+  const isMultiValue = effectiveOp === 'in' || effectiveOp === 'not in';
+  const colVals = ctx.columnValues[leaf.field] ?? [];
+  const isValsLoading = ctx.loadingValues[leaf.field] ?? false;
+
+  return (
+    <div className="group relative py-0.5">
+      <div className="flex items-center gap-2">
+        {/* Field */}
+        <div className="w-[140px] flex-shrink-0">
+          <SearchableDropdown
+            value={leaf.field}
+            suggestions={ctx.fieldCompletions}
+            onChange={(v) => {
+              ctx.fetchColumnValues(v);
+              ctx.updateLeaf(leaf.id, { field: v, op: effectiveOp });
+            }}
+            placeholder={ctx.tr('filterFieldPlaceholder', '选择字段')}
+            showSearch
+            noMatchText={ctx.tr('noMatch', '无匹配字段')}
+            emptyText={ctx.tr('noFields', '暂无可用字段')}
+          />
+        </div>
+
+        {/* Operator */}
+        <OperatorSelect
+          value={effectiveOp}
+          groups={opGroups}
+          disabled={!fieldSelected}
+          onChange={(v) => ctx.updateLeaf(leaf.id, { op: v })}
+        />
+
+        {/* Value(s) */}
+        {isMultiValue ? (
+          <MultiValueInput
+            value={leaf.val1}
+            suggestions={colVals}
+            isLoading={isValsLoading}
+            onChange={(v) => ctx.updateLeaf(leaf.id, { val1: v })}
+            placeholder={ctx.tr('filterValuesPlaceholder', '输入值后按 Enter 添加')}
+            disabled={!fieldSelected}
+          />
+        ) : (
+          <ValueInput
+            value={leaf.val1}
+            suggestions={colVals}
+            isLoading={isValsLoading}
+            onChange={(v) => ctx.updateLeaf(leaf.id, { val1: v })}
+            placeholder={ctx.tr('filterValuePlaceholder', '值')}
+            disabled={!fieldSelected}
+          />
+        )}
+
+        {isBetween && (
+          <>
+            <span className="text-[11px] text-text-muted flex-shrink-0">
+              {ctx.tr('filterAnd', '至')}
+            </span>
+            <ValueInput
+              value={leaf.val2}
+              suggestions={colVals}
+              isLoading={isValsLoading}
+              onChange={(v) => ctx.updateLeaf(leaf.id, { val2: v })}
+              placeholder={ctx.tr('filterValue2Placeholder', '值2')}
+              disabled={!fieldSelected}
+            />
+          </>
+        )}
+
+        {/* Push actions to far right */}
+        <div className="flex-1 min-w-0" />
+
+        {/* Local add button — insert condition after this row */}
+        <button
+          type="button"
+          onClick={() => ctx.addAfter(branchId, index)}
+          className="flex h-8 w-7 flex-shrink-0 items-center justify-center rounded-md text-text-muted/50 hover:text-accent hover:bg-accent/10 transition-colors"
+          title={ctx.tr('filterAddAfter', '在此条件后插入')}
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+
+        {/* Add condition + group (no-op at max depth) */}
+        <button
+          type="button"
+          onClick={() => {
+            if (depth >= MAX_NESTING_DEPTH) return;
+            ctx.addAndGroup(branchId, leaf.id, index);
+          }}
+          className={`flex h-8 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors ${
+            depth >= MAX_NESTING_DEPTH
+              ? 'text-text-muted/20 cursor-not-allowed'
+              : 'text-text-muted/50 hover:text-accent hover:bg-accent/10'
+          }`}
+          title={depth >= MAX_NESTING_DEPTH ? '已达最大嵌套深度' : ctx.tr('filterAddAndGroup', '增加条件并建组')}
+        >
+          <Layers className="h-3.5 w-3.5" />
+        </button>
+
+        {/* Delete */}
+        <button
+          type="button"
+          onClick={() => ctx.removeNode(leaf.id)}
+          className="flex h-8 w-7 flex-shrink-0 items-center justify-center rounded-md text-text-muted/50 hover:text-error hover:bg-error/10 transition-colors"
+          title={ctx.tr('filterDeleteCondition', '删除此条件')}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Branch Group Renderer (recursive) ─────────────────────────────────
+
+function BranchGroupRenderer({
+  branch,
+  root,
+  depth,
+  ctx,
+}: {
+  branch: FilterConditionBranch;
+  root: FilterConditionBranch;
+  depth: number;
+  ctx: LeafRowContext & {
+    updateBranch: (branchId: string, updater: (b: FilterConditionBranch) => FilterConditionBranch) => void;
+    toggleBranchConnective: (branchId: string) => void;
+  };
+}) {
+  const itemCount = branch.items.length;
+  const showBracket = itemCount > 1;
+
+  const renderItem = (item: FilterConditionNode, i: number) => {
+    if (isLeaf(item)) {
+      return (
+        <ConditionLeafRow
+          leaf={item}
+          branchId={branch.id}
+          index={i}
+          depth={depth}
+          ctx={ctx}
+        />
+      );
+    }
+    return (
+      <BranchGroupRenderer
+        branch={item}
+        root={root}
+        depth={depth + 1}
+        ctx={ctx}
+      />
+    );
+  };
+
+  // Empty state
+  if (itemCount === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-border-muted/70 px-4 py-6 text-center">
+        <p className="text-[12px] text-text-muted">
+          {ctx.tr('filterEmptyHint', '尚未添加筛选条件')}
+        </p>
+      </div>
+    );
+  }
+
+  // Single item: no bracket, just render directly
+  if (!showBracket) {
+    return <div>{branch.items.map((item, i) => <div key={item.id}>{renderItem(item, i)}</div>)}</div>;
+  }
+
+  // Multiple items: left-side bracket layout
+  // AND/OR button vertically centered via absolute positioning
+  return (
+    <div className="relative">
+      {/* AND/OR button + actions: absolutely centered vertically at far left */}
+      <div className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-0.5 z-10">
+        <button
+          type="button"
+          onClick={() => ctx.toggleBranchConnective(branch.id)}
+          className="rounded border border-border-muted/60 bg-background/50 px-2 py-0.5 text-[12px] text-center text-accent hover:bg-accent/10 hover:border-accent/30 transition-colors"
+          title={ctx.tr('filterToggleAndOr', '点击切换与 / 或')}
+        >
+          {branch.connective === 'and' ? '与' : '或'}
+        </button>
+      </div>
+
+      {/* Connector: horizontal bridge + bracket vertical line */}
+      <div className="absolute left-[6px] top-0 bottom-0 w-[10px]">
+        <span className="absolute inset-x-0 top-[24px] border-t border-accent/35" />
+        {/* Vertical line: endpoints align with first/last item T-junction */}
+        <span
+          className="absolute right-0 border-l border-accent/35"
+          style={{
+            top: isBranch(branch.items[0]) ? '50%' : '24px',
+            bottom: isBranch(branch.items[itemCount - 1]) ? '50%' : '16px',
+          }}
+        />
+      </div>
+
+      {/* Bracket body: T-junctions extend from vertical line to content */}
+      <div className="pl-[48px]">
+        {branch.items.map((item, i) => {
+          const isFirst = i === 0;
+          const isLast = i === itemCount - 1;
+          const isItemGroup = isBranch(item);
+          const horzClass = isItemGroup ? 'top-1/2 -translate-y-1/2' : 'top-6';
+          return (
+            <div key={item.id}>
+              <div className="relative">
+                {(isFirst || isLast) && (
+                  <span className={`absolute -left-[33px] ${horzClass} block w-[33px] border-t border-accent/35`} />
+                )}
+                <div className="py-0.5">{renderItem(item, i)}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Main FormFilter ───────────────────────────────────────────────────
 
 export default function FormFilter({
@@ -369,6 +847,8 @@ export default function FormFilter({
     [t]
   );
 
+  // ── Config sync ────────────────────────────────────────────────────
+
   const updateConfig = useCallback(
     (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
       onNodeChange((current) => ({
@@ -380,16 +860,11 @@ export default function FormFilter({
     [onNodeChange]
   );
 
-  const parsedFromConfig = useMemo(
-    () => parseCondition(node.config.condition as string | undefined),
-    [node.config.condition]
-  );
-  const [rows, setRows] = useState<ConditionRow[]>(parsedFromConfig);
-
-  // Column metadata caches
-  const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
-  const [columnValues, setColumnValues] = useState<Record<string, string[]>>({});
-  const [loadingValues, setLoadingValues] = useState<Record<string, boolean>>({});
+  // Parse condition from config into tree
+  const [root, setRoot] = useState<FilterConditionBranch>(() => {
+    resetNodeIdCounter();
+    return parseConditionTree(node.config.condition as string | undefined);
+  });
 
   const localUpdateRef = useRef(false);
 
@@ -399,14 +874,21 @@ export default function FormFilter({
       localUpdateRef.current = false;
       return;
     }
-    const fromRows = buildFilterCondition(rows, columnTypes);
+    const fromTree = buildFilterConditionTree(root);
     const fromConfig = node.config.condition as string | undefined;
-    if ((fromRows || undefined) === (fromConfig || undefined)) return;
-    if (!eqRows(rows, parsedFromConfig)) {
-      setRows(parsedFromConfig);
-    }
+    if ((fromTree || undefined) === (fromConfig || undefined)) return;
+    // Re-parse from config
+    resetNodeIdCounter();
+    const reparsed = parseConditionTree(node.config.condition as string | undefined);
+    setRoot(reparsed);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parsedFromConfig]);
+  }, [node.config.condition]);
+
+  // ── Column metadata ────────────────────────────────────────────────
+
+  const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
+  const [columnValues, setColumnValues] = useState<Record<string, string[]>>({});
+  const [loadingValues, setLoadingValues] = useState<Record<string, boolean>>({});
 
   // Fetch column types
   useEffect(() => {
@@ -428,187 +910,228 @@ export default function FormFilter({
       .catch(() => setColumnTypes({}));
   }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
 
-  // Fetch column distinct values
-  function fetchColumnValues(colName: string) {
-    if (!taskId || !sourceNode?.id || !colName) return;
-    if (columnValues[colName] || loadingValues[colName]) return;
-    const api = window.electronAPI?.data;
-    if (!api?.getWorkflowNodeColumnValues) return;
-    setLoadingValues((prev) => ({ ...prev, [colName]: true }));
-    api
-      .getWorkflowNodeColumnValues({
-        taskId,
-        nodeId: sourceNode.id,
-        nodeType: sourceNode.type as never,
-        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
-        column: colName,
-      })
-      .then((vals) => {
-        setColumnValues((prev) => ({ ...prev, [colName]: vals }));
-        setLoadingValues((prev) => ({ ...prev, [colName]: false }));
-      })
-      .catch(() => setLoadingValues((prev) => ({ ...prev, [colName]: false })));
-  }
+  const fetchColumnValues = useCallback(
+    (colName: string) => {
+      if (!taskId || !sourceNode?.id || !colName) return;
+      if (columnValues[colName] || loadingValues[colName]) return;
+      const api = window.electronAPI?.data;
+      if (!api?.getWorkflowNodeColumnValues) return;
+      setLoadingValues((prev) => ({ ...prev, [colName]: true }));
+      api
+        .getWorkflowNodeColumnValues({
+          taskId,
+          nodeId: sourceNode.id,
+          nodeType: sourceNode.type as never,
+          nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
+          column: colName,
+        })
+        .then((vals) => {
+          setColumnValues((prev) => ({ ...prev, [colName]: vals }));
+          setLoadingValues((prev) => ({ ...prev, [colName]: false }));
+        })
+        .catch(() => setLoadingValues((prev) => ({ ...prev, [colName]: false })));
+    },
+    [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config, columnValues, loadingValues]
+  );
 
-  function updateRows(next: ConditionRow[]) {
-    setRows(next);
-    const cond = buildFilterCondition(next, columnTypes);
-    localUpdateRef.current = true;
-    updateConfig((cfg) => ({ ...cfg, condition: cond }));
-  }
+  // ── Tree mutation handlers ──────────────────────────────────────────
 
-  function updateRow(i: number, patch: Partial<ConditionRow>) {
-    const next = rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r));
-    if (patch.field && patch.field !== rows[i].field) {
-      fetchColumnValues(patch.field);
-    }
-    updateRows(next);
-  }
+  const updateLeaf = useCallback(
+    (leafId: string, patch: Partial<FilterConditionLeaf>) => {
+      setRoot((prev) => {
+        const next = updateLeafInBranch(prev, leafId, patch);
+        localUpdateRef.current = true;
+        updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+        return next;
+      });
+    },
+    [updateConfig]
+  );
 
-  function removeRow(i: number) {
-    const next = rows.filter((_, idx) => idx !== i);
-    updateRows(next);
-  }
+  const removeNode = useCallback(
+    (nodeId: string) => {
+      setRoot((prev) => {
+        let next = removeNodeFromBranch(prev, nodeId);
+        if (next.items.length === 0) {
+          next = { ...next, items: [createEmptyLeaf()] };
+        }
+        localUpdateRef.current = true;
+        updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+        return next;
+      });
+    },
+    [updateConfig]
+  );
 
-  function addRow() {
-    updateRows([...rows, { ...EMPTY_ROW }]);
-  }
+  const addAfter = useCallback(
+    (branchId: string, afterIndex: number) => {
+      setRoot((prev) => {
+        const next = updateBranchInTree(prev, branchId, (b) => addLeafToBranch(b, afterIndex));
+        localUpdateRef.current = true;
+        updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+        return next;
+      });
+    },
+    [updateConfig]
+  );
+
+  const addAfterAndGroup = useCallback(
+    (branchId: string, leafId: string, afterIndex: number) => {
+      setRoot((prev) => {
+        let next = updateBranchInTree(prev, branchId, (b) => addLeafToBranch(b, afterIndex));
+        const newLeafId = findNewLeafId(next, branchId, afterIndex);
+        if (newLeafId) {
+          next = updateBranchInTree(next, branchId, (b) =>
+            wrapItemsInGroup(b, [leafId, newLeafId], 'and') ?? b
+          );
+        }
+        localUpdateRef.current = true;
+        updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+        return next;
+      });
+    },
+    [updateConfig]
+  );
+
+  const updateBranch = useCallback(
+    (branchId: string, updater: (b: FilterConditionBranch) => FilterConditionBranch) => {
+      setRoot((prev) => {
+        const next = updateBranchInTree(prev, branchId, updater);
+        localUpdateRef.current = true;
+        updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+        return next;
+      });
+    },
+    [updateConfig]
+  );
+
+  const toggleBranchConnective = useCallback(
+    (branchId: string) => {
+      setRoot((prev) => {
+        const next = updateBranchConnectiveInTree(prev, branchId);
+        localUpdateRef.current = true;
+        updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+        return next;
+      });
+    },
+    [updateConfig]
+  );
+
+  // Build leaf row context
+  const leafCtx = useMemo<LeafRowContext>(
+    () => ({
+      columnTypes,
+      columnValues,
+      loadingValues,
+      fieldCompletions,
+      fetchColumnValues,
+      updateLeaf,
+      removeNode,
+      addAfter,
+      addAndGroup: addAfterAndGroup,
+      tr,
+    }),
+    [columnTypes, columnValues, loadingValues, fieldCompletions, fetchColumnValues, updateLeaf, removeNode, addAfter, addAfterAndGroup, tr]
+  );
+
+  const branchCtx = useMemo(
+    () => ({
+      ...leafCtx,
+      updateBranch,
+      toggleBranchConnective,
+    }),
+    [leafCtx, updateBranch, toggleBranchConnective]
+  );
 
   return (
     <div className="grid content-start gap-2.5">
-      <GlassFormSection title={tr('filterTitle', '筛选条件')}>
-        <div className="grid gap-1">
-          {/* Empty state */}
-          {rows.length === 0 && (
-            <div className="rounded-lg border border-dashed border-border-muted/70 px-4 py-6 text-center">
-              <p className="text-[12px] text-text-muted">
-                {tr('filterEmptyHint', '尚未添加筛选条件，请点击下方按钮开始')}
-              </p>
-            </div>
-          )}
-
-          {/* Condition cards */}
-          {rows.map((row, i) => {
-            const fieldSelected = !!row.field;
-            const colType = columnTypes[row.field];
-            const ops = operatorsForType(colType);
-            const validOps = ops.map((o) => o.value);
-            const effectiveOp = validOps.includes(row.op) ? row.op : (ops[0]?.value ?? '=');
-            const isBetween = effectiveOp === 'between';
-            const colVals = columnValues[row.field] ?? [];
-            const isValsLoading = loadingValues[row.field] ?? false;
-
-            return (
-              <div key={i}>
-                {/* Connective separator pill (between conditions) */}
-                {i > 0 && (
-                  <div className="flex items-center justify-center py-1">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateRow(i, { connective: row.connective === 'and' ? 'or' : 'and' })
-                      }
-                      className="rounded-full border border-border-muted/70 bg-background/60 px-3 py-0.5 text-[11px] font-semibold tracking-wider text-accent hover:bg-accent/10 hover:border-accent/30 transition-colors"
-                      title={tr('filterToggleAndOr', '点击切换 AND / OR')}
-                    >
-                      {row.connective.toUpperCase()}
-                    </button>
-                  </div>
-                )}
-
-                {/* Condition card */}
-                <div className="group relative rounded-lg border border-border-muted/60 bg-background/30 px-3 pb-2.5 pt-2.5">
-                  {/* Row 1: field + operator */}
-                  <div className="flex items-center gap-2">
-                    {/* Field */}
-                    <SearchableDropdown
-                      value={row.field}
-                      suggestions={fieldCompletions}
-                      onChange={(v) => updateRow(i, { field: v, op: effectiveOp })}
-                      placeholder={tr('filterFieldPlaceholder', '选择字段')}
-                      showSearch
-                      noMatchText={tr('noMatch', '无匹配字段')}
-                      emptyText={tr('noFields', '暂无可用字段')}
-                    />
-
-                    {/* Operator */}
-                    <div className="relative w-20 flex-shrink-0">
-                      <select
-                        value={effectiveOp}
-                        disabled={!fieldSelected}
-                        onChange={(e) => updateRow(i, { op: e.target.value })}
-                        className={`${SELECT_BASE} w-20`}
-                      >
-                        {ops.map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {tr(OP_LABEL_KEYS[o.value] ?? '', o.value)}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
-                    </div>
-                  </div>
-
-                  {/* Row 2: values + delete */}
-                  <div className="mt-2 flex items-center gap-2">
-                    {/* Value 1 */}
-                    <ValueInput
-                      value={row.val1}
-                      suggestions={colVals}
-                      isLoading={isValsLoading}
-                      onChange={(v) => updateRow(i, { val1: v })}
-                      placeholder={tr('filterValuePlaceholder', '值')}
-                      disabled={!fieldSelected}
-                    />
-
-                    {/* Value 2 (between only) */}
-                    {isBetween && (
-                      <span className="text-[11px] text-text-muted flex-shrink-0">
-                        {tr('filterAnd', '至')}
-                      </span>
-                    )}
-                    {isBetween && (
-                      <ValueInput
-                        value={row.val2}
-                        suggestions={colVals}
-                        isLoading={isValsLoading}
-                        onChange={(v) => updateRow(i, { val2: v })}
-                        placeholder={tr('filterValue2Placeholder', '值2')}
-                        disabled={!fieldSelected}
-                      />
-                    )}
-
-                    {/* Delete */}
-                    <button
-                      type="button"
-                      onClick={() => removeRow(i)}
-                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-text-muted/50 hover:text-error hover:bg-error/10 transition-colors"
-                      title={tr('filterDeleteCondition', '删除此条件')}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Add button */}
+      <GlassFormSection>
+        {/* Global add button */}
         <button
           type="button"
-          onClick={addRow}
-          className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border-muted/70 py-2 text-[12px] text-text-muted hover:border-accent/40 hover:text-accent transition-colors"
+          onClick={() => {
+            setRoot((prev) => {
+              const next = addLeafToBranch(prev, prev.items.length - 1);
+              localUpdateRef.current = true;
+              updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+              return next;
+            });
+          }}
+          className="inline-flex h-7 items-center gap-1 rounded-md border border-border-muted bg-background/42 px-2 text-[11px] text-text-secondary hover:border-accent/30 hover:text-accent transition-colors"
         >
-          <Plus className="h-3.5 w-3.5" />
+          <Plus className="h-3 w-3" />
           {tr('filterAddCondition', '添加筛选条件')}
         </button>
 
-        {/* Hint */}
-        <p className="mt-2 text-[10px] leading-relaxed text-text-muted">
-          {tr('filterHint', '多个条件以 AND/OR 连接。选择字段后自动加载列值建议。')}
-        </p>
+        {/* Condition tree */}
+        <BranchGroupRenderer
+          branch={root}
+          root={root}
+          depth={0}
+          ctx={branchCtx}
+        />
+
       </GlassFormSection>
     </div>
   );
+}
+
+// ── Tree walking helpers ──────────────────────────────────────────────
+
+function updateBranchInTree(
+  branch: FilterConditionBranch,
+  branchId: string,
+  updater: (b: FilterConditionBranch) => FilterConditionBranch
+): FilterConditionBranch {
+  if (branch.id === branchId) {
+    return updater(branch);
+  }
+  const items = branch.items.map((item) => {
+    if (isBranch(item)) {
+      return updateBranchInTree(item, branchId, updater);
+    }
+    return item;
+  });
+  return { ...branch, items };
+}
+
+function updateBranchConnectiveInTree(
+  branch: FilterConditionBranch,
+  branchId: string
+): FilterConditionBranch {
+  if (branch.id === branchId) {
+    return {
+      ...branch,
+      connective: branch.connective === 'and' ? 'or' : 'and',
+    };
+  }
+  const items = branch.items.map((item) => {
+    if (isBranch(item)) {
+      return updateBranchConnectiveInTree(item, branchId);
+    }
+    return item;
+  });
+  return { ...branch, items };
+}
+
+/** Find the ID of the newly inserted leaf at afterIndex+1 in the given branch. */
+function findNewLeafId(
+  root: FilterConditionBranch,
+  branchId: string,
+  afterIndex: number
+): string | null {
+  function walk(branch: FilterConditionBranch): string | null {
+    if (branch.id === branchId) {
+      const item = branch.items[afterIndex + 1];
+      return item && isLeaf(item) ? item.id : null;
+    }
+    for (const item of branch.items) {
+      if (isBranch(item)) {
+        const found = walk(item);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+  return walk(root);
 }

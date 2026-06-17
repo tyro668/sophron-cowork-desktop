@@ -3,7 +3,39 @@ import type {
   PermissionRule as SharedPermissionRule,
 } from '../../shared/permission-policies';
 import type { DataColumnTypeInfo } from '../../shared/data-field-types';
+import type {
+  PersonalAnalysisConfig,
+  PersonalAnalysisConnectionInput,
+  PersonalAnalysisProject,
+  PersonalAnalysisSpace,
+  PersonalAnalysisTable,
+} from '../../shared/personal-analysis-types';
 export type { DataColumnTypeInfo, DataFieldType } from '../../shared/data-field-types';
+export type {
+  PersonalAnalysisConfig,
+  PersonalAnalysisConnectionInput,
+  PersonalAnalysisDatasource,
+  PersonalAnalysisProject,
+  PersonalAnalysisSpace,
+  PersonalAnalysisTable,
+} from '../../shared/personal-analysis-types';
+
+export interface CloudTableChatAttachment {
+  id: string;
+  tableId: string;
+  tableName: string;
+  spaceId?: string;
+  spaceName?: string;
+  projectId?: string;
+  projectName?: string;
+  datasourceId?: string;
+  folderId?: string;
+  rowCount?: number;
+  columns?: string[];
+  sampleRows?: Array<Record<string, unknown>>;
+  accessModeLabel?: string;
+  connectionLabel?: string;
+}
 export type {
   Automation,
   AutomationActionDefinitionSummary,
@@ -386,6 +418,9 @@ export interface DataGenerateInputTableNormalizerDraftInput {
   sourceKind?: DataInputTableSourceKind;
   config?: DataInputTableConfig;
   rulePrompt: string;
+  selectedSkillNames?: string[];
+  modelConfigSetId?: string | null;
+  model?: string | null;
   primaryLanguage?: DataNormalizerLanguage;
   progressId?: string;
 }
@@ -486,6 +521,9 @@ export interface DataInputTableHeaderCandidate {
 export interface DataInputTableCustomizeProcessingConfig {
   strategy: 'customize';
   rulePrompt: string;
+  selectedSkillNames?: string[];
+  modelConfigSetId?: string | null;
+  model?: string | null;
   artifactId?: string;
   artifactVersionId?: string;
   artifactVersionStatus?: 'draft' | 'published' | 'archived';
@@ -1229,6 +1267,7 @@ export type ProviderType =
   | 'moonshot'
   | 'aliyun'
   | 'zai'
+  | 'sophron'
   | 'gemini'
   | 'ollama';
 export type CustomProtocolType = 'anthropic' | 'openai' | 'gemini';
@@ -1241,6 +1280,7 @@ export type ProviderProfileKey =
   | 'moonshot'
   | 'aliyun'
   | 'zai'
+  | 'sophron'
   | 'gemini'
   | 'ollama'
   | 'custom:anthropic'
@@ -1304,6 +1344,7 @@ export interface AppConfig {
   baseUrl?: string;
   customProtocol?: CustomProtocolType;
   model: string;
+  builtinLlmModel?: string;
   contextWindow?: number;
   maxTokens?: number;
   activeProfileKey: ProviderProfileKey;
@@ -1322,16 +1363,151 @@ export interface AppConfig {
   isConfigured: boolean;
 }
 
-export interface PersonalAnalysisConfig {
-  apiOrigin: string;
-  apiKey: string;
-  updatedAt?: number;
+export type ListCloudSpacesInput = PersonalAnalysisConnectionInput;
+
+export interface ListCloudSpacesResult {
+  spaces: PersonalAnalysisSpace[];
 }
 
-export interface PersonalAnalysisDatasource {
-  datasourceId: string;
-  datasourceName?: string;
-  description?: string;
+export interface DesktopAuthUser {
+  userId: string;
+  username?: string;
+  displayName?: string;
+  email?: string;
+  avatarUrl?: string;
+  remainingCredits?: number | null;
+}
+
+export interface AiCreditUsageTotals {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  inputCredits: number;
+  outputCredits: number;
+  totalCredits: number;
+}
+
+export interface AiCreditUsageRecord {
+  recordId: string;
+  provider: string;
+  providerName?: string;
+  model: string;
+  mode: string;
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+  credits: {
+    inputCredits: number;
+    outputCredits: number;
+    totalCredits: number;
+  };
+  createdAt: string;
+}
+
+export interface AiCreditUsageSummary {
+  totals: AiCreditUsageTotals;
+  records?: AiCreditUsageRecord[];
+}
+
+export interface AiCreditBalance {
+  quotaCredits: number;
+  usedCredits: number;
+  availableCredits: number;
+  unit?: string;
+  exhausted?: boolean;
+  usage?: AiCreditUsageTotals;
+}
+
+export interface DesktopAuthStatus {
+  authenticated: boolean;
+  user?: DesktopAuthUser;
+  aiCredits?: AiCreditBalance;
+  aiCreditUsage?: AiCreditUsageSummary;
+  apiOrigin?: string;
+  expiresAt?: number;
+  updatedAt: number;
+  error?: string;
+}
+
+export interface ListCloudProjectsInput extends PersonalAnalysisConnectionInput {
+  spaceId: string;
+}
+
+export interface ListCloudProjectsResult {
+  projects: PersonalAnalysisProject[];
+}
+
+export interface ListCloudTablesInput extends PersonalAnalysisConnectionInput {
+  spaceId: string;
+  projectId: string;
+}
+
+export interface ListCloudTablesResult {
+  tables: PersonalAnalysisTable[];
+}
+
+export interface PreviewCloudTableInput extends PersonalAnalysisConnectionInput {
+  tableId: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface PreviewCloudTableResult {
+  cloudTableId: string;
+  downloadedFilePath: string;
+  preview: DataInputTablePreview;
+}
+
+export interface ImportCloudTableInput extends PersonalAnalysisConnectionInput {
+  tableId: string;
+  spaceId?: string;
+  projectId?: string;
+  name?: string;
+  previewRows?: number;
+}
+
+export interface ImportCloudTableResult {
+  inputTable: DataDataset;
+  preview?: DataInputTablePreview;
+  cloudTableId: string;
+  cloudTable?: PersonalAnalysisTable;
+  downloadedFilePath: string;
+}
+
+export interface UploadDataTableToCloudInput extends PersonalAnalysisConnectionInput {
+  tableKind: 'input' | 'output';
+  id: string;
+  writeMode: 'CREATE' | 'REPLACE';
+  datasourceId?: string;
+  folderId?: string;
+  projectId?: string;
+  spaceId?: string;
+  tableId?: string;
+  tableName?: string;
+  fileName?: string;
+  maxRows?: number;
+  waitForDone?: boolean;
+}
+
+export interface UploadDataTableToCloudResult {
+  sourceTable: {
+    tableKind: 'input' | 'output';
+    id: string;
+    name: string;
+    rowCount: number;
+    columnCount: number;
+  };
+  csvBytes: number;
+  upload: {
+    uploadTaskId: string;
+    importTaskId: string;
+    tableId: string;
+    sheetId?: string;
+    status: string;
+    table?: PersonalAnalysisTable;
+  };
 }
 
 export type AgentRuntimeConfig = Pick<
@@ -1363,6 +1539,7 @@ export interface ProviderPresets {
   moonshot: ProviderPreset;
   aliyun: ProviderPreset;
   zai: ProviderPreset;
+  sophron: ProviderPreset;
   gemini: ProviderPreset;
   ollama: ProviderPreset;
 }
@@ -1370,6 +1547,12 @@ export interface ProviderPresets {
 export interface ProviderModelInfo {
   id: string;
   name: string;
+  provider?: string;
+  upstreamModel?: string;
+  creditMultiplier?: number;
+  inputCreditMultiplier?: number;
+  outputCreditMultiplier?: number;
+  creditUnit?: string;
 }
 
 export interface ApiTestInput {

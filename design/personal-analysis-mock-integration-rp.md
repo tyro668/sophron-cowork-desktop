@@ -1,130 +1,374 @@
 # Personal Analysis Mock Server Integration
 
-## 背景
+## 目标
 
-本次任务是打通 personal analysis mock server 与 cowork 的数据链路：
+打通 cowork 与 Personal Analysis mock server 的本地联调链路，让用户可以在 cowork 中访问云分析空间、导入云端表，并将本地数据结果上传回 Personal Analysis。
 
-- mock server 可以提供云端分析空间、项目、表列表，并导出表 CSV。
-- cowork 可以把 mock server 表导入为本地 input table，进入现有数据处理流程。
-- cowork 处理后的 input/output table 可以再以 CSV 形式上传回 mock server，创建新表或替换已有表。
+当前产品定位：
 
-## 方案
+- 默认路径：用户登录后，以当前账号身份访问有权限的分析空间。
+- 高级路径：专业用户、开发者或集成场景可以配置 API Key，访问该 API Key 被授权的数据范围。
+- API Key 是显式高级凭证；一旦配置，优先级高于登录账号。
 
-新增一层 `PersonalAnalysisClient` 封装 mock server HTTP 协议，避免把云端接口细节散落在 cowork 的数据处理逻辑里。
+mock server 只用于本地联调。接入真实服务时，应尽量复用 cowork 侧的 client、command service、IPC 和 UI 流程。
 
-整体链路：
+## 访问身份模型
+
+### 账号模式
+
+用户通过桌面登录链路完成认证：
 
 ```text
-mock server HTTP API
-  -> PersonalAnalysisClient
+GET  /api/desktop/auth/authorize
+POST /api/desktop/auth/token
+GET  /api/desktop/auth/me
+```
+
+登录成功后，cowork 使用 desktop auth token 访问 Personal Analysis 业务 API。
+
+业务含义：
+
+- 当前访问身份是登录用户。
+- 展示当前账号有权限访问的分析空间、项目和表。
+- 适合作为普通用户的默认路径。
+
+### API Key 模式
+
+用户在设置中配置 Personal Analysis 服务地址和 API Key：
+
+```text
+API Key
+  -> POST /api/personal/api-keys/token
+  -> accessToken
+  -> Authorization: Bearer <accessToken>
+  -> /api/personal/analysis/v1/*
+```
+
+业务含义：
+
+- 当前访问身份是 API Key 凭证。
+- 展示该 API Key 被授权访问的数据范围。
+- 适合开发调试、测试环境、服务集成或特殊授权范围访问。
+
+### 优先级
+
+```text
+hasApiKeyConfig
+  -> API Key 模式
+else if isLoggedIn
+  -> 账号模式
+else
+  -> 未连接，引导登录
+```
+
+当用户同时已登录并配置了 API Key 时，页面应明确提示当前处于 API Key 模式，并提供“切换为账号访问”的入口。
+
+## 页面状态
+
+### 未登录 + 无 API Key
+
+显示登录引导页。
+
+主操作：
+
+- `登录并访问云分析空间`
+
+备用入口：
+
+- `开发者调试？使用 API Key 连接`
+
+### 已登录 + 无 API Key
+
+进入账号模式，自动加载当前账号有权限的云分析空间。
+
+顶部状态示例：
+
+```text
+账号模式 · 测试用户 · http://127.0.0.1:3000
+```
+
+### 未登录 + 有 API Key
+
+进入 API Key 模式，自动加载 API Key 授权范围内的云分析空间。
+
+顶部状态示例：
+
+```text
+API Key 模式 · 开发者连接 · http://127.0.0.1:3000
+```
+
+### 已登录 + 有 API Key
+
+API Key 优先。
+
+顶部状态示例：
+
+```text
+API Key 模式 · 已登录：测试用户 · http://127.0.0.1:3000
+```
+
+提供：
+
+- `切换为账号访问`
+- `刷新`
+- `管理连接`
+
+## 主要能力
+
+### 浏览云分析空间
+
+```text
+space
+  -> project
+  -> table
+```
+
+`CloudDataView` 使用两栏结构：
+
+- 左侧：分析空间和项目。
+- 右侧：当前项目下的表列表。
+
+表支持：
+
+- 搜索。
+- 预览。
+- 导入为 cowork 输入表。
+
+### 从云端导入到 cowork
+
+```text
+Personal Analysis table
+  -> export CSV
+  -> temporary CSV file
+  -> cowork input table
+  -> DuckDB
+```
+
+UI 入口：
+
+```text
+云分析空间
+  -> 选择空间
+  -> 选择项目
+  -> 选择表
+  -> 预览 / 导入为输入表
+```
+
+### 从 cowork 上传回 Personal Analysis
+
+上传入口放在 `数据 > 输出表`。
+
+原因：
+
+- 云分析空间页面负责浏览和导入云端资源。
+- 输出表是本地处理结果的主要承载对象。
+- 用户处理完数据后，从输出表发起上传更符合操作心智。
+
+上传支持：
+
+- 新建云端表：`writeMode=CREATE`
+- 替换已有云端表：`writeMode=REPLACE`
+
+## 技术链路
+
+UI / IPC 链路：
+
+```text
+Renderer UI
+  -> preload IPC
   -> DataCommandService
-  -> DataToolService / data-tool-definitions
-  -> cowork data tools
-  -> DataTaskStore / DuckDB
+  -> PersonalAnalysisClient
+  -> mock server HTTP API
 ```
 
-## 配置页产品化增量
-
-为了避免用户在每次工具调用时重复传入 host 和 API Key，cowork 设置页新增
-“个人分析 / Personal Analysis”配置项，并将配置持久化到 `configStore`。
-
-配置项：
-
-- `Host`：Personal Analysis 服务 origin，例如 `http://127.0.0.1:3000`。只保存 origin，不保存具体 API path。
-- `API Key`：个人 API Key 页面生成的 `X-API-Key` 值。设置页只保存 key 本体，不包含 `X-API-Key:` 前缀。
-
-Datasource 不再作为全局设置保存。它属于具体上传/导入操作的业务参数，应该在用户选择 space/project/table 后由服务端推导或按本次操作选择。
-
-datasource 上传解析流程：
+Agent 工具链路：
 
 ```text
-用户发起上传
-  -> 如果工具入参包含 datasourceId，直接使用
-  -> 如果没有 datasourceId，cowork 调用 /api/personal/analysis/v1/datasources
-  -> 如果服务端只返回一个 datasource，自动使用
-  -> 如果返回多个，提示用户为本次上传选择 datasourceId
+data tools
+  -> DataToolService
+  -> DataCommandService
+  -> PersonalAnalysisClient
+  -> mock server HTTP API
 ```
 
-mock server 可以保留 `datasource-demo` 作为本地联调数据源，但 cowork 客户端不写死该默认值。
+UI 和 Agent 共用 `DataCommandService`，避免导入、预览、上传逻辑分叉。
 
-## 主要改动
+## 关键代码
 
-1. 新增 `src/main/data/personal-analysis-client.ts`
-   - 负责 API Key 换 token。
-   - 查询 datasources。
-   - 查询 spaces / projects / tables。
-   - 创建导出任务并轮询 downloadUrl。
-   - 获取 uploadUrl、PUT CSV、提交 imports。
+### 共享层
 
-2. 扩展 `DataCommandService`
-   - `listCloudSpaces`
-   - `listCloudProjects`
-   - `listCloudTables`
-   - `importCloudTable`
-   - `uploadDataTableToCloud`
+- `src/shared/personal-analysis.ts`
+  - 默认配置。
+  - Host normalize。
+  - 连接校验。
+  - 错误文案映射。
+- `src/shared/personal-analysis-types.ts`
+  - Personal Analysis 共享类型。
 
-3. 扩展 `DataTaskStore`
-   - 新增 `exportDatasetCsv`，将 cowork input/output table 导出为 CSV 字符串。
-   - 增加导出行数上限，避免大表一次性进入内存。
-     - _目前加_ _maxRows_ _是为了保护 Electron 主进程，避免当前字符串式 CSV 导出在大表场景下 OOM。它适合 mock server 联调和中小表验证。后续如果要支持生产级大表上传，应该把_ _exportDatasetCsv_ _改造成基于 DuckDB_ _COPY TO_ _的文件导出，再用 stream 上传，届时可以去掉或放宽这个行数上限。_
-4. 扩展 data tools
-   - `data_list_cloud_spaces`
-   - `data_list_cloud_projects`
-   - `data_list_cloud_tables`
-   - `data_import_cloud_table`
-   - `data_upload_table_to_cloud`
+### 登录认证
 
-5. 更新工具提示和权限
-   - 让模型知道 cloud/mock 表的推荐操作流程。
-   - 将只读的 cloud list 工具加入默认 allow。
-   - 导入/上传仍走正常工具权限流。
+- `src/main/auth/desktop-auth-service.ts`
+  - 浏览器授权登录。
+  - 本地 callback server。
+  - 保存 desktop auth session。
+  - 提供 `getPersonalAnalysisConnection()` 供数据层使用。
 
-6. 新增设置页与配置持久化
-   - `src/renderer/components/settings/SettingsPersonalAnalysis.tsx`：个人分析配置页。
-   - `src/main/config/config-store.ts`：新增 `personalAnalysis` 配置段。
-   - `src/renderer/i18n/locales/*.json`：补齐中英文文案。
+### 协议客户端
 
-7. 输入校验
-   - Host 必填，且必须是合法 `http://` 或 `https://` URL。
-   - API Key 必填；如果用户粘贴 `X-API-Key:` 前缀，设置页给出明确提示。
+- `src/main/data/personal-analysis-client.ts`
+  - API Key 换 token。
+  - 复用传入的 access token。
+  - 查询 spaces / projects / tables。
+  - 导出云端表 CSV。
+  - 上传 CSV 并提交 import。
 
-## 使用流程
+### 数据命令服务
 
-从 mock server 导入到 cowork：
+- `src/main/data/data-command-service.ts`
+  - `listCloudSpaces`
+  - `listCloudProjects`
+  - `listCloudTables`
+  - `previewCloudTable`
+  - `importCloudTable`
+  - `uploadDataTableToCloud`
+
+创建 client 时的身份选择：
 
 ```text
-data_list_cloud_spaces
-data_list_cloud_projects
-data_list_cloud_tables
-data_import_cloud_table
+input accessToken
+  -> explicit API Key / configured API Key
+  -> desktop auth token fallback
 ```
 
-从 cowork 上传回 mock server：
+### Renderer
+
+- `src/renderer/components/CloudDataView.tsx`
+  - 登录引导。
+  - 账号模式 / API Key 模式状态显示。
+  - 云分析空间资源浏览。
+  - 表预览与导入。
+  - 切换为账号访问。
+- `src/renderer/components/settings/SettingsPersonalAnalysis.tsx`
+  - API Key 高级连接配置。
+  - 测试连接、保存、更换、断开。
+- `src/renderer/components/DataView.tsx`
+  - 输出表上传到 Personal Analysis。
+
+### IPC / preload
+
+- `src/main/index.ts`
+  - `auth.*`
+  - `data.listCloudSpaces`
+  - `data.listCloudProjects`
+  - `data.listCloudTables`
+  - `data.previewCloudTable`
+  - `data.importCloudTable`
+  - `data.uploadDataTableToCloud`
+- `src/preload/index.ts`
+  - 暴露 `window.electronAPI.auth.*`
+  - 暴露 `window.electronAPI.data.*`
+
+## Mock Server 约定
+
+业务 API：
 
 ```text
-设置页保存 Host / API Key
-data_upload_table_to_cloud
-缺少 datasourceId 时按服务端唯一 datasource 自动解析；多个 datasource 时提示用户选择
+/api/personal/analysis/v1/*
 ```
 
-`writeMode=CREATE` 创建新云端表；`writeMode=REPLACE` 替换已有云端表，必须传 `tableId`。
+本地调试内置：
+
+```text
+API Origin: http://127.0.0.1:3000
+API Key: mock-api-key
+```
+
+桌面登录测试账号：
+
+```text
+账号: 1
+密码: 1
+```
+
+mock server 当前允许两类 token 访问业务 API：
+
+- API Key 换取的 `pat_mock_*`
+- 桌面登录得到的 `dat_*`
+
+## Datasource
+
+Datasource 不作为全局设置保存。
+
+上传时的解析顺序：
+
+```text
+如果入参包含 datasourceId
+  -> 使用入参
+否则
+  -> 调用 /api/personal/analysis/v1/datasources
+  -> 如果只有一个 datasource，自动使用
+  -> 如果有多个，提示本次上传需要指定 datasourceId
+```
+
+cowork 客户端不写死 mock server 的 datasource。
+
+## 错误处理
+
+Renderer 使用 `getPersonalAnalysisErrorMessage` 将底层错误映射为用户可理解的文案。
+
+常见类型：
+
+- timeout：服务超时。
+- API Key / unauthorized：凭证无效或过期。
+- forbidden：当前凭证没有权限。
+- network / ECONNREFUSED / fetch failed：服务地址错误或服务未运行。
+
+当前第一版可以使用统一错误态：
+
+```text
+已登录，暂时无法加载云分析空间
+重新加载 / 重新登录 / 使用 API Key
+```
+
+后续可再细分 mock server 未启动、token 过期、无访问权限等状态。
 
 ## 验证
 
-已完成验证：
+cowork：
 
-- mock server 自测：`npm run client:test`
-- mock server datasource 接口验证：`GET /api/personal/analysis/v1/datasources`
-- cowork 类型检查：`npm run typecheck`
-- cowork 相关单测：`npm test -- data-tool-service.test.ts data-command-service.test.ts data-tool-prompt.test.ts`
-- cowork 本次相关单测：`npm test -- --run tests/personal-analysis-client.test.ts tests/data-command-service.test.ts tests/config-store-env.test.ts`
-- i18n JSON 与 key 覆盖检查通过。
-- UI 验证：通过 `data_import_cloud_table` 成功把 `table-demo` 导入为 cowork input table，并预览成功。
-- UI 验证：通过 `data_upload_table_to_cloud` 成功将 cowork 表上传回 mock server 并创建新表。
+```bash
+npm run typecheck
+```
+
+mock server：
+
+```bash
+npm start
+curl http://127.0.0.1:3000/health
+```
+
+登录 token 访问业务 API 的验证思路：
+
+```text
+登录获取 dat_* token
+  -> GET /api/personal/analysis/v1/spaces
+  -> Authorization: Bearer <dat_* token>
+```
+
+在 Codex 沙箱中启动本地端口可能遇到 `listen EPERM`，需要授权在沙箱外运行。
 
 ## 注意事项
 
-- mock server 当前状态保存在内存中，测试创建/替换的表会在服务运行期间累积。
-- 重新启动 mock server 后，会从 `catalog.json` 和 `data/seed-tables` 重新初始化。
-- 后续接真实云端服务时，优先替换 `PersonalAnalysisClient` 内部协议实现，尽量不改 cowork 本地数据处理链路。
-- 真实服务产品化时，优先保留 datasource 列表接口，不建议在客户端写死 datasource 默认值。
+- mock server 状态保存在内存中，重启后会从 seed 数据重新初始化。
+- 重新启动 mock server 会让已有 desktop token 失效，需要重新登录。
+- API Key 配置是高级路径，不应在普通用户主流程中过度突出。
+- 生产级大表上传需要流式导出和上传；当前 CSV 字符串方案适合 mock 联调和中小表验证。
+- 后续如果真实服务返回多个 datasource，需要在上传 UI 中支持选择 datasource。
+
+## 后续优化
+
+- 加载失败时细分错误状态。
+- 顶部增加更清晰的“当前访问身份”详情。
+- 支持临时切换访问身份，而不是通过清空 API Key 配置切换。
+- 云分析空间支持分页、排序和跨空间搜索。
+- 上传完成后自动刷新对应项目的云端表列表。

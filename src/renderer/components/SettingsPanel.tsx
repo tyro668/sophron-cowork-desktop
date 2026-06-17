@@ -124,7 +124,7 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
       id: 'personal-analysis' as TabId,
       label: t('settings.personalAnalysis', 'Personal Analysis'),
       icon: Database,
-      description: t('settings.personalAnalysisDesc', 'Mock Server 连接配置'),
+      description: t('settings.personalAnalysisDesc', '管理云端数据连接'),
     },
     {
       id: 'remote' as TabId,

@@ -10,6 +10,7 @@ const OPENAI_COMPATIBLE_ROUTE_PROVIDERS = new Set([
   'moonshot',
   'aliyun',
   'zai',
+  'sophron',
   'ollama',
 ]);
 const REASONING_MODEL_PATTERN =
@@ -144,7 +145,9 @@ const KNOWN_MODEL_SPECS: Record<string, { contextWindow: number; maxTokens: numb
 };
 
 function matchesKnownModelSpec(key: string, lowerModelId: string): boolean {
-  return lowerModelId === key || lowerModelId.startsWith(key + ':') || lowerModelId.startsWith(key + '-');
+  return (
+    lowerModelId === key || lowerModelId.startsWith(key + ':') || lowerModelId.startsWith(key + '-')
+  );
 }
 
 function lookupModelSpecs(
@@ -220,7 +223,9 @@ export function resolveSyntheticPiModelFallback(
   }
 
   const fallbackProvider =
-    input.rawProvider === 'custom' || input.rawProvider === 'ollama'
+    input.rawProvider === 'custom' ||
+    input.rawProvider === 'ollama' ||
+    input.rawProvider === 'sophron'
       ? input.routeProtocol || 'anthropic'
       : parsedProvider || input.rawProvider || input.routeProtocol || 'anthropic';
 
