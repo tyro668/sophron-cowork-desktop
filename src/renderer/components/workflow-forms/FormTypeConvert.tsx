@@ -84,7 +84,8 @@ export default function FormTypeConvert({
 }: OperatorFormProps) {
   const { t } = useTranslation();
   const tr = useCallback(
-    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    (key: string, fallback: string) =>
+      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
     [t]
   );
 
@@ -248,7 +249,7 @@ export default function FormTypeConvert({
                         {ON_ERROR_OPTIONS.map((o) => (
                           <option key={o.value} value={o.value}>
                             {t(
-                              `formLabels.${o.value === 'null' ? 'typeConvertNullify' : o.value === 'fail' ? 'typeConvertFail' : 'typeConvertKeep'}`,
+                              `data.workflow.formLabels.${o.value === 'null' ? 'typeConvertNullify' : o.value === 'fail' ? 'typeConvertFail' : 'typeConvertKeep'}`,
                               { defaultValue: o.label }
                             )}
                           </option>

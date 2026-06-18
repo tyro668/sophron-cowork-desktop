@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
+import { useCallback, useMemo, useState, useRef, useEffect, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash2, Loader2, ChevronDown, X, Layers } from 'lucide-react';
+import { Plus, Trash2, Loader2, ChevronDown, X } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
 import {
@@ -25,6 +25,7 @@ import {
   type FilterConditionLeaf,
   type FilterConditionBranch,
   type FilterConditionNode,
+  type FilterConditionConnective,
 } from './shared/filter-condition';
 
 // ── Operator definitions ──────────────────────────────────────────────
@@ -138,6 +139,18 @@ function flattenOps(groups: OpGroup[]): OpDef[] {
   return groups.flatMap((g) => g.items);
 }
 
+// ── Shared hook: close dropdown on outside click ──────────────────────
+
+function useClickOutside(ref: RefObject<HTMLElement | null>, onClose: () => void) {
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [ref, onClose]);
+}
+
 // ── Searchable dropdown (field selection) ─────────────────────────────
 
 function SearchableDropdown({
@@ -167,13 +180,7 @@ function SearchableDropdown({
 
   useEffect(() => setInput(value), [value]);
 
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
+  useClickOutside(ref, () => setOpen(false));
 
   const filtered = useMemo(() => {
     if (!showSearch) return suggestions.slice(0, 30);
@@ -284,13 +291,7 @@ function ValueInput({
 
   useEffect(() => setInput(value), [value]);
 
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
+  useClickOutside(ref, () => setOpen(false));
 
   const filtered = useMemo(() => {
     if (!input) return suggestions.slice(0, 20);
@@ -299,7 +300,7 @@ function ValueInput({
   }, [input, suggestions]);
 
   return (
-    <div ref={ref} className="relative w-[200px] flex-shrink-0">
+    <div ref={ref} className="relative flex-1 min-w-0">
       <div className="flex rounded-md border border-border-muted bg-background/42 focus-within:border-accent">
         <input
           type="text"
@@ -315,7 +316,7 @@ function ValueInput({
           }}
           onBlur={() => onChange(input)}
           placeholder={placeholder}
-          className="h-8 flex-1 min-w-0 bg-transparent pl-2 text-[12px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-40"
+          className="h-8 flex-1 min-w-[60px] bg-transparent pl-2 text-[12px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-40"
         />
         {isLoading && (
           <Loader2 className="my-auto h-3.5 w-3.5 flex-shrink-0 animate-spin text-text-muted" />
@@ -386,13 +387,7 @@ function MultiValueInput({
 
   const values = useMemo(() => splitInValues(value), [value]);
 
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
+  useClickOutside(ref, () => setOpen(false));
 
   const filtered = useMemo(() => {
     const available = suggestions.filter((s) => !values.includes(s));
@@ -435,43 +430,48 @@ function MultiValueInput({
   );
 
   return (
-    <div ref={ref} className="relative w-[428px] flex-shrink-0">
+    <div ref={ref} className="relative" style={{ width: 280, flexShrink: 0 }}>
       <div
-        className={`flex h-8 flex-nowrap items-center gap-1 rounded-md border bg-background/42 px-1.5 py-0.5 transition-colors overflow-x-auto ${
+        className={`flex h-8 w-full items-center gap-1 rounded-md border bg-background/42 pl-1.5 pr-1 py-0.5 transition-colors ${
           open ? 'border-accent' : 'border-border-muted'
         } ${disabled ? 'cursor-not-allowed opacity-40' : ''}`}
       >
-        {values.map((v, i) => (
-          <span
-            key={i}
-            className="inline-flex items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent"
-          >
-            {v}
-            <button
-              type="button"
-              disabled={disabled}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                removeValue(i);
-              }}
-              className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
+        {/* Tags + input — scrolls overflow, preserves input */}
+        <div className="flex flex-1 min-w-0 items-center gap-1 overflow-x-auto">
+          {values.map((v, i) => (
+            <span
+              key={i}
+              className="inline-flex flex-shrink-0 items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent"
             >
-              <X className="h-2.5 w-2.5" />
-            </button>
-          </span>
-        ))}
-        <input
-          ref={inputRef}
-          type="text"
-          value={inputText}
-          disabled={disabled}
-          onChange={(e) => setInputText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onFocus={() => setOpen(true)}
-          placeholder={values.length === 0 ? placeholder : ''}
-          className="h-6 min-w-[60px] flex-1 bg-transparent pl-0.5 text-[12px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed"
-        />
+              {v}
+              <button
+                type="button"
+                disabled={disabled}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  removeValue(i);
+                }}
+                className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </span>
+          ))}
+          <input
+            ref={inputRef}
+            type="text"
+            value={inputText}
+            disabled={disabled}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onFocus={() => setOpen(true)}
+            placeholder={values.length === 0 ? placeholder : ''}
+            className="h-6 min-w-[60px] bg-transparent pl-0.5 text-[12px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed"
+          />
+        </div>
+
+        {/* Loading + dropdown toggle — always visible */}
         {isLoading && (
           <Loader2 className="my-auto h-3.5 w-3.5 flex-shrink-0 animate-spin text-text-muted" />
         )}
@@ -483,7 +483,7 @@ function MultiValueInput({
             e.stopPropagation();
             setOpen(!open);
           }}
-          className="flex h-6 w-5 items-center justify-center text-text-muted hover:text-text-secondary transition-colors"
+          className="flex h-6 w-5 flex-shrink-0 items-center justify-center text-text-muted hover:text-text-secondary transition-colors"
         >
           <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
         </button>
@@ -560,30 +560,24 @@ function OperatorSelect({
     return value;
   }, [value, groups, tr]);
 
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
+  useClickOutside(ref, () => setOpen(false));
 
   return (
-    <div ref={ref} className="relative w-[100px] flex-shrink-0">
+    <div ref={ref} className="relative flex-shrink-0 min-w-[84px]">
       <button
         type="button"
         disabled={disabled}
         onClick={() => setOpen(!open)}
-        className="flex h-8 w-[100px] items-center rounded-md border border-border-muted bg-background/42 text-[12px] text-text-secondary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex h-8 min-w-[84px] items-center rounded-md border border-border-muted bg-background/42 text-[12px] text-text-secondary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-40"
       >
-        <span className="flex-1 text-center">{selectedLabel}</span>
+        <span className="flex-1 px-2 text-center whitespace-nowrap">{selectedLabel}</span>
         <ChevronDown
           className={`mr-1 h-3.5 w-3.5 flex-shrink-0 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`}
         />
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-[100px] max-h-60 overflow-y-auto rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl">
+        <div className="absolute left-0 top-full z-50 mt-1 min-w-full max-h-60 overflow-y-auto rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl">
           {groups.map((g, gi) => (
             <div key={g.groupKey}>
               {gi > 0 && <div className="mx-3 my-0.5 border-t border-border-muted" />}
@@ -623,7 +617,13 @@ interface LeafRowContext {
   updateLeaf: (leafId: string, patch: Partial<FilterConditionLeaf>) => void;
   removeNode: (nodeId: string) => void;
   addAfter: (branchId: string, afterIndex: number) => void;
-  addAndGroup: (branchId: string, leafId: string, afterIndex: number) => void;
+  addWithConnective: (
+    branchId: string,
+    afterIndex: number,
+    leafId: string,
+    parentConnective: FilterConditionConnective,
+    targetConnective: FilterConditionConnective
+  ) => void;
   tr: (key: string, fallback: string) => string;
 }
 
@@ -632,12 +632,14 @@ function ConditionLeafRow({
   branchId,
   index,
   depth,
+  parentConnective,
   ctx,
 }: {
   leaf: FilterConditionLeaf;
   branchId: string;
   index: number;
   depth: number;
+  parentConnective: FilterConditionConnective;
   ctx: LeafRowContext;
 }) {
   const fieldSelected = !!leaf.field;
@@ -653,9 +655,9 @@ function ConditionLeafRow({
 
   return (
     <div className="group relative py-0.5">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 min-w-0">
         {/* Field */}
-        <div className="w-[140px] flex-shrink-0">
+        <div className="flex-1 min-w-[100px] max-w-[180px]">
           <SearchableDropdown
             value={leaf.field}
             suggestions={ctx.fieldCompletions}
@@ -717,38 +719,52 @@ function ConditionLeafRow({
           </>
         )}
 
-        {/* Push actions to far right */}
         <div className="flex-1 min-w-0" />
 
-        {/* Local add button — insert condition after this row */}
-        <button
-          type="button"
-          onClick={() => ctx.addAfter(branchId, index)}
-          className="flex h-8 w-7 flex-shrink-0 items-center justify-center rounded-md text-text-muted/50 hover:text-accent hover:bg-accent/10 transition-colors"
-          title={ctx.tr('filterAddAfter', '在此条件后插入')}
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </button>
-
-        {/* Add condition + group (no-op at max depth) */}
+        {/* Add AND condition */}
         <button
           type="button"
           onClick={() => {
-            if (depth >= MAX_NESTING_DEPTH) return;
-            ctx.addAndGroup(branchId, leaf.id, index);
+            if (parentConnective !== 'and' && depth >= MAX_NESTING_DEPTH) return;
+            ctx.addWithConnective(branchId, index, leaf.id, parentConnective, 'and');
           }}
-          className={`flex h-8 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors ${
-            depth >= MAX_NESTING_DEPTH
+          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center transition-colors ${
+            parentConnective !== 'and' && depth >= MAX_NESTING_DEPTH
               ? 'text-text-muted/20 cursor-not-allowed'
-              : 'text-text-muted/50 hover:text-accent hover:bg-accent/10'
+              : 'text-text-muted/50 hover:text-accent'
           }`}
           title={
-            depth >= MAX_NESTING_DEPTH
+            parentConnective !== 'and' && depth >= MAX_NESTING_DEPTH
               ? ctx.tr('filterMaxDepth', '已达最大嵌套深度')
-              : ctx.tr('filterAddAndGroup', '增加条件并建组')
+              : ctx.tr('filterAddAnd', '添加与条件')
           }
         >
-          <Layers className="h-3.5 w-3.5" />
+          <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm border border-current text-[9px] font-bold leading-none">
+            A
+          </span>
+        </button>
+
+        {/* Add OR condition */}
+        <button
+          type="button"
+          onClick={() => {
+            if (parentConnective !== 'or' && depth >= MAX_NESTING_DEPTH) return;
+            ctx.addWithConnective(branchId, index, leaf.id, parentConnective, 'or');
+          }}
+          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center transition-colors ${
+            parentConnective !== 'or' && depth >= MAX_NESTING_DEPTH
+              ? 'text-text-muted/20 cursor-not-allowed'
+              : 'text-text-muted/50 hover:text-accent'
+          }`}
+          title={
+            parentConnective !== 'or' && depth >= MAX_NESTING_DEPTH
+              ? ctx.tr('filterMaxDepth', '已达最大嵌套深度')
+              : ctx.tr('filterAddOr', '添加或条件')
+          }
+        >
+          <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-current text-[9px] font-bold leading-none">
+            +
+          </span>
         </button>
 
         {/* Delete */}
@@ -786,14 +802,77 @@ function BranchGroupRenderer({
 }) {
   const itemCount = branch.items.length;
   const showBracket = itemCount > 1;
+  const groupRef = useRef<HTMLDivElement | null>(null);
+  const btnRef = useRef<HTMLDivElement | null>(null);
+  const firstRowRef = useRef<HTMLDivElement | null>(null);
+  const lastRowRef = useRef<HTMLDivElement | null>(null);
+  const [diagLines, setDiagLines] = useState<{ top: string; bottom: string } | null>(null);
+
+  const recalcDiag = useCallback(() => {
+    const group = groupRef.current;
+    const btn = btnRef.current;
+    const first = firstRowRef.current;
+    const last = lastRowRef.current;
+    if (!group || !btn || !first || !last) return;
+    const gr = group.getBoundingClientRect();
+    const br = btn.getBoundingClientRect();
+    const fr = first.getBoundingClientRect();
+    const lr = last.getBoundingClientRect();
+    const btnTop = br.top - gr.top;
+    const btnBottom = br.bottom - gr.top;
+    const btnRight = br.right - gr.left;
+    const firstLeft = fr.left - gr.left;
+    const lastLeft = lr.left - gr.left;
+    const firstY = (fr.top + fr.bottom) / 2 - gr.top;
+    const lastY = (lr.top + lr.bottom) / 2 - gr.top;
+    const next = {
+      top: `M${btnRight},${btnTop} L${firstLeft},${firstY}`,
+      bottom: `M${btnRight},${btnBottom} L${lastLeft},${lastY}`,
+    };
+    setDiagLines((prev) => (prev?.top === next.top && prev?.bottom === next.bottom ? prev : next));
+  }, []);
+
+  useEffect(() => {
+    recalcDiag();
+    const ro = new ResizeObserver(recalcDiag);
+    if (groupRef.current) ro.observe(groupRef.current);
+    return () => ro.disconnect();
+  }, [recalcDiag, itemCount]);
+
+  const singleItemRef = useCallback((el: HTMLDivElement | null) => {
+    firstRowRef.current = el;
+    lastRowRef.current = el;
+  }, []);
 
   const renderItem = (item: FilterConditionNode, i: number) => {
+    const isFirst = i === 0;
+    const isLast = i === itemCount - 1;
+    const ref =
+      isFirst && isLast ? singleItemRef : isFirst ? firstRowRef : isLast ? lastRowRef : undefined;
     if (isLeaf(item)) {
       return (
-        <ConditionLeafRow leaf={item} branchId={branch.id} index={i} depth={depth} ctx={ctx} />
+        <div ref={ref}>
+          <ConditionLeafRow
+            leaf={item}
+            branchId={branch.id}
+            index={i}
+            depth={depth}
+            parentConnective={branch.connective}
+            ctx={ctx}
+          />
+        </div>
       );
     }
-    return <BranchGroupRenderer branch={item} root={root} depth={depth + 1} ctx={ctx} />;
+    return (
+      <div ref={ref}>
+        <BranchGroupRenderer
+          branch={item}
+          root={root}
+          depth={item.items.length > 1 ? depth + 1 : depth}
+          ctx={ctx}
+        />
+      </div>
+    );
   };
 
   // Empty state
@@ -818,12 +897,14 @@ function BranchGroupRenderer({
     );
   }
 
-  // Multiple items: left-side bracket layout
-  // AND/OR button vertically centered via absolute positioning
+  // Multiple items: diagonal connector lines + AND/OR button
   return (
-    <div className="relative">
-      {/* AND/OR button + actions: absolutely centered vertically at far left */}
-      <div className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-0.5 z-10">
+    <div ref={groupRef} className="relative min-w-0">
+      {/* AND/OR button vertically centered at far left */}
+      <div
+        ref={btnRef}
+        className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-0.5 z-10"
+      >
         <button
           type="button"
           onClick={() => ctx.toggleBranchConnective(branch.id)}
@@ -837,34 +918,28 @@ function BranchGroupRenderer({
         </button>
       </div>
 
-      {/* Connector: horizontal bridge + bracket vertical line */}
-      <div className="absolute left-[6px] top-0 bottom-0 w-[10px]">
-        <span className="absolute inset-x-0 top-[24px] border-t border-accent/35" />
-        {/* Vertical line: endpoints align with first/last item T-junction */}
-        <span
-          className="absolute right-0 border-l border-accent/35"
-          style={{
-            top: isBranch(branch.items[0]) ? '50%' : '24px',
-            bottom: isBranch(branch.items[itemCount - 1]) ? '50%' : '16px',
-          }}
-        />
-      </div>
+      {/* Diagonal connector lines */}
+      {diagLines && (
+        <svg
+          className="absolute inset-0 pointer-events-none overflow-visible"
+          style={{ zIndex: 5 }}
+        >
+          <path d={diagLines.top} fill="none" stroke="rgba(139,148,158,0.35)" strokeWidth={1.2} />
+          <path
+            d={diagLines.bottom}
+            fill="none"
+            stroke="rgba(139,148,158,0.35)"
+            strokeWidth={1.2}
+          />
+        </svg>
+      )}
 
-      {/* Bracket body: T-junctions extend from vertical line to content */}
-      <div className="pl-[48px]">
+      {/* Content area — pushed right of the AND/OR button */}
+      <div className="pl-[56px]">
         {branch.items.map((item, i) => {
-          const isFirst = i === 0;
-          const isLast = i === itemCount - 1;
-          const isItemGroup = isBranch(item);
-          const horzClass = isItemGroup ? 'top-1/2 -translate-y-1/2' : 'top-6';
           return (
             <div key={item.id}>
               <div className="relative">
-                {(isFirst || isLast) && (
-                  <span
-                    className={`absolute -left-[33px] ${horzClass} block w-[33px] border-t border-accent/35`}
-                  />
-                )}
                 <div className="py-0.5">{renderItem(item, i)}</div>
               </div>
             </div>
@@ -886,7 +961,8 @@ export default function FormFilter({
 }: OperatorFormProps) {
   const { t } = useTranslation();
   const tr = useCallback(
-    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    (key: string, fallback: string) =>
+      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
     [t]
   );
 
@@ -1026,13 +1102,18 @@ export default function FormFilter({
   );
 
   const addAfterAndGroup = useCallback(
-    (branchId: string, leafId: string, afterIndex: number) => {
+    (
+      branchId: string,
+      leafId: string,
+      afterIndex: number,
+      connective: FilterConditionConnective = 'and'
+    ) => {
       setRoot((prev) => {
         const next = updateBranchInTree(prev, branchId, (b) => {
           const withNewLeaf = addLeafToBranch(b, afterIndex);
           const newLeafId = withNewLeaf.items[afterIndex + 1]?.id;
           if (newLeafId) {
-            return wrapItemsInGroup(withNewLeaf, [leafId, newLeafId], 'and') ?? withNewLeaf;
+            return wrapItemsInGroup(withNewLeaf, [leafId, newLeafId], connective) ?? withNewLeaf;
           }
           return withNewLeaf;
         });
@@ -1042,6 +1123,25 @@ export default function FormFilter({
       });
     },
     [updateConfig]
+  );
+
+  const addWithConnective = useCallback(
+    (
+      branchId: string,
+      afterIndex: number,
+      leafId: string,
+      parentConnective: FilterConditionConnective,
+      targetConnective: FilterConditionConnective
+    ) => {
+      if (targetConnective === parentConnective) {
+        // Same connective: just add a leaf after the current one
+        addAfter(branchId, afterIndex);
+      } else {
+        // Different connective: wrap current + new into a nested group
+        addAfterAndGroup(branchId, leafId, afterIndex, targetConnective);
+      }
+    },
+    [addAfter, addAfterAndGroup]
   );
 
   const updateBranch = useCallback(
@@ -1079,7 +1179,7 @@ export default function FormFilter({
       updateLeaf,
       removeNode,
       addAfter,
-      addAndGroup: addAfterAndGroup,
+      addWithConnective,
       tr,
     }),
     [
@@ -1091,7 +1191,7 @@ export default function FormFilter({
       updateLeaf,
       removeNode,
       addAfter,
-      addAfterAndGroup,
+      addWithConnective,
       tr,
     ]
   );
@@ -1106,7 +1206,7 @@ export default function FormFilter({
   );
 
   return (
-    <div className="grid content-start gap-2.5">
+    <div className="grid content-start gap-2.5 min-w-0">
       <GlassFormSection>
         {/* Global add button */}
         <button

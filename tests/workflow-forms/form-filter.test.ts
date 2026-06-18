@@ -646,3 +646,210 @@ describe('FilterCondition — createEmptyLeaf', () => {
     expect(a.id).not.toBe(b.id);
   });
 });
+
+// ── addAfterAndGroup with connective parameter ──────────────────────────
+
+describe('FilterCondition — addAfterAndGroup with connective', () => {
+  it('creates AND group when connective is "and"', () => {
+    resetNodeIdCounter();
+    const l1 = leaf('a', '=', '1');
+    const b: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'root',
+      connective: 'or',
+      items: [l1],
+    };
+    const withNew = addLeafToBranch(b, 0);
+    const newLeafId = withNew.items[1].id;
+    const result = wrapItemsInGroup(withNew, [l1.id, newLeafId], 'and');
+    expect(result).not.toBeNull();
+    expect(isBranch(result!.items[0])).toBe(true);
+    if (isBranch(result!.items[0])) {
+      expect(result!.items[0].connective).toBe('and');
+    }
+  });
+
+  it('creates OR group when connective is "or"', () => {
+    resetNodeIdCounter();
+    const l1 = leaf('a', '=', '1');
+    const b: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'root',
+      connective: 'and',
+      items: [l1],
+    };
+    const withNew = addLeafToBranch(b, 0);
+    const newLeafId = withNew.items[1].id;
+    const result = wrapItemsInGroup(withNew, [l1.id, newLeafId], 'or');
+    expect(result).not.toBeNull();
+    expect(isBranch(result!.items[0])).toBe(true);
+    if (isBranch(result!.items[0])) {
+      expect(result!.items[0].connective).toBe('or');
+    }
+  });
+
+  it('same connective stays flat (no group created)', () => {
+    resetNodeIdCounter();
+    const l1 = leaf('a', '=', '1');
+    const b: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'root',
+      connective: 'and',
+      items: [l1],
+    };
+    const withNew = addLeafToBranch(b, 0);
+    expect(withNew.items).toHaveLength(2);
+    expect(withNew.items.every((item) => isLeaf(item))).toBe(true);
+  });
+});
+
+// ── addWithConnective logical equivalence ──────────────────────────────
+
+describe('FilterCondition — addWithConnective logical equivalence', () => {
+  it('AND + AND = flat AND', () => {
+    resetNodeIdCounter();
+    const l1 = leaf('a', '=', '1');
+    const root: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'root',
+      connective: 'and',
+      items: [l1],
+    };
+    const result = addLeafToBranch(root, 0);
+    expect(result.items).toHaveLength(2);
+    expect(result.connective).toBe('and');
+    expect(result.items.every((item) => isLeaf(item))).toBe(true);
+  });
+
+  it('OR + OR = flat OR', () => {
+    resetNodeIdCounter();
+    const l1 = leaf('x', '>', '0');
+    const root: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'root',
+      connective: 'or',
+      items: [l1],
+    };
+    const result = addLeafToBranch(root, 0);
+    expect(result.items).toHaveLength(2);
+    expect(result.connective).toBe('or');
+    expect(result.items.every((item) => isLeaf(item))).toBe(true);
+  });
+
+  it('AND parent + OR child wraps into OR group', () => {
+    resetNodeIdCounter();
+    const l1 = leaf('a', '=', '1');
+    const root: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'root',
+      connective: 'and',
+      items: [l1],
+    };
+    const withNew = addLeafToBranch(root, 0);
+    const newLeafId = withNew.items[1].id;
+    const wrapped = wrapItemsInGroup(withNew, [l1.id, newLeafId], 'or');
+    expect(wrapped).not.toBeNull();
+    expect(wrapped!.items).toHaveLength(1);
+    expect(isBranch(wrapped!.items[0])).toBe(true);
+    if (isBranch(wrapped!.items[0])) {
+      expect(wrapped!.items[0].connective).toBe('or');
+      expect(wrapped!.items[0].items).toHaveLength(2);
+    }
+  });
+
+  it('OR parent + AND child wraps into AND group', () => {
+    resetNodeIdCounter();
+    const l1 = leaf('b', '>', '10');
+    const root: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'root',
+      connective: 'or',
+      items: [l1],
+    };
+    const withNew = addLeafToBranch(root, 0);
+    const newLeafId = withNew.items[1].id;
+    const wrapped = wrapItemsInGroup(withNew, [l1.id, newLeafId], 'and');
+    expect(wrapped).not.toBeNull();
+    expect(isBranch(wrapped!.items[0])).toBe(true);
+    if (isBranch(wrapped!.items[0])) {
+      expect(wrapped!.items[0].connective).toBe('and');
+    }
+  });
+
+  it('A AND B AND C round-trips flat (no redundant parens)', () => {
+    resetNodeIdCounter();
+    const tree = parseConditionTree('[a] = 1 and [b] = 2 and [c] = 3');
+    const dsl = buildFilterConditionTree(tree);
+    expect(dsl).toBe('[a] = 1 and [b] = 2 and [c] = 3');
+  });
+
+  it('A OR B OR C round-trips flat', () => {
+    resetNodeIdCounter();
+    const tree = parseConditionTree('[a] = 1 or [b] = 2 or [c] = 3');
+    const dsl = buildFilterConditionTree(tree);
+    expect(dsl).toBe('[a] = 1 or [b] = 2 or [c] = 3');
+  });
+});
+
+// ── Source inspection of FormFilter.tsx UI structure ────────────────────
+
+const fs = await import('node:fs');
+const path = await import('node:path');
+const formFilterSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/renderer/components/workflow-forms/FormFilter.tsx'),
+  'utf8'
+);
+
+describe('FormFilter — UI source inspection', () => {
+  it('has addWithConnective in LeafRowContext', () => {
+    expect(formFilterSource).toContain('addWithConnective');
+  });
+
+  it('has parentConnective prop in ConditionLeafRow', () => {
+    expect(formFilterSource).toContain('parentConnective');
+  });
+
+  it('AND button has square A icon', () => {
+    expect(formFilterSource).toContain('rounded-sm');
+    expect(formFilterSource).toContain('A</span>');
+  });
+
+  it('OR button has circle + icon', () => {
+    expect(formFilterSource).toContain('rounded-full');
+    expect(formFilterSource).toContain('+</span>');
+  });
+
+  it('AND button guards mismatched connective + max depth', () => {
+    expect(formFilterSource).toContain("parentConnective !== 'and' && depth >= MAX_NESTING_DEPTH");
+  });
+
+  it('OR button guards mismatched connective + max depth', () => {
+    expect(formFilterSource).toContain("parentConnective !== 'or' && depth >= MAX_NESTING_DEPTH");
+  });
+
+  it('MAX_NESTING_DEPTH is imported from shared filter-condition', () => {
+    expect(formFilterSource).toContain('MAX_NESTING_DEPTH');
+  });
+
+  it('single-item branch passes depth through unchanged', () => {
+    expect(formFilterSource).toContain('item.items.length > 1 ? depth + 1 : depth');
+  });
+
+  it('addAfterAndGroup accepts connective parameter', () => {
+    expect(formFilterSource).toContain("connective: FilterConditionConnective = 'and'");
+  });
+
+  it('delete button still present', () => {
+    expect(formFilterSource).toContain('Trash2');
+    expect(formFilterSource).toContain("ctx.tr('filterDeleteCondition'");
+  });
+
+  it('imports MAX_NESTING_DEPTH from shared module', () => {
+    expect(formFilterSource).toContain('MAX_NESTING_DEPTH');
+    expect(formFilterSource).toContain("from './shared/filter-condition'");
+  });
+
+  it('no longer imports Layers icon', () => {
+    expect(formFilterSource).not.toContain('Layers');
+  });
+});

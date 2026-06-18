@@ -19,7 +19,8 @@ interface PivotMetric {
 export default function FormPivot({ node, fieldCompletions, onNodeChange }: OperatorFormProps) {
   const { t } = useTranslation();
   const tr = useCallback(
-    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    (key: string, fallback: string) =>
+      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
     [t]
   );
 
