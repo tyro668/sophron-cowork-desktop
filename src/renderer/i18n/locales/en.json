@@ -1848,8 +1848,6 @@
     "watchProject": "Watch project",
     "watchPatterns": "File scope",
     "debounceSeconds": "Debounce seconds",
-    "fileChangeSummary": "Run automatically after file changes",
-    "fileChangeNeedsProject": "Select a project to watch file changes",
     "mode": "Run mode",
     "modeInterval": "Recurring",
     "every": "Every",

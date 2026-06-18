@@ -1751,12 +1751,6 @@ function FileChangeConfigCard({
             className="input h-9 w-full text-xs"
           />
         </ConfigRow>
-        <div className="mt-1 flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2.5 text-xs font-medium text-success">
-          <CalendarClock className="h-4 w-4" />
-          {projectId
-            ? tr('schedule.fileChangeSummary', '文件变更后自动执行')
-            : tr('schedule.fileChangeNeedsProject', '请选择一个项目用于监听文件变更')}
-        </div>
       </div>
     </div>
   );

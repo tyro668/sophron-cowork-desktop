@@ -1848,8 +1848,6 @@
     "watchProject": "监听项目",
     "watchPatterns": "文件范围",
     "debounceSeconds": "防抖秒数",
-    "fileChangeSummary": "文件变更后自动执行",
-    "fileChangeNeedsProject": "请选择一个项目用于监听文件变更",
     "mode": "执行模式",
     "modeInterval": "周期",
     "every": "每",
