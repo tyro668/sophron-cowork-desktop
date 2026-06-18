@@ -687,6 +687,8 @@
         "filterAddAndGroup": "增加条件并建组",
         "filterCreateGroup": "新建嵌套条件组",
         "filterMaxDepth": "已达最大嵌套深度",
+        "filterAddAnd": "添加与条件",
+        "filterAddOr": "添加或条件",
         "filterAddValue": "添加",
         "filterConnectiveAnd": "与",
         "filterConnectiveOr": "或",

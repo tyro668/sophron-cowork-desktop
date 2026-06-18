@@ -687,6 +687,8 @@
         "filterAddAndGroup": "Add condition and group",
         "filterCreateGroup": "Create nested group",
         "filterMaxDepth": "Max nesting depth reached",
+        "filterAddAnd": "Add AND condition",
+        "filterAddOr": "Add OR condition",
         "filterAddValue": "Add",
         "filterConnectiveAnd": "AND",
         "filterConnectiveOr": "OR",
