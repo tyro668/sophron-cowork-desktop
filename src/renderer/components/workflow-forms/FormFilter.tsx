@@ -728,7 +728,7 @@ function ConditionLeafRow({
             if (parentConnective !== 'and' && depth >= MAX_NESTING_DEPTH) return;
             ctx.addWithConnective(branchId, index, leaf.id, parentConnective, 'and');
           }}
-          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center transition-colors ${
+          className={`flex h-8 w-8 flex-shrink-0 items-center justify-center transition-colors ${
             parentConnective !== 'and' && depth >= MAX_NESTING_DEPTH
               ? 'text-text-muted/20 cursor-not-allowed'
               : 'text-text-muted/50 hover:text-accent'
@@ -751,7 +751,7 @@ function ConditionLeafRow({
             if (parentConnective !== 'or' && depth >= MAX_NESTING_DEPTH) return;
             ctx.addWithConnective(branchId, index, leaf.id, parentConnective, 'or');
           }}
-          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center transition-colors ${
+          className={`flex h-8 w-8 flex-shrink-0 items-center justify-center transition-colors ${
             parentConnective !== 'or' && depth >= MAX_NESTING_DEPTH
               ? 'text-text-muted/20 cursor-not-allowed'
               : 'text-text-muted/50 hover:text-accent'
@@ -771,7 +771,7 @@ function ConditionLeafRow({
         <button
           type="button"
           onClick={() => ctx.removeNode(leaf.id)}
-          className="flex h-8 w-7 flex-shrink-0 items-center justify-center rounded-md text-text-muted/50 hover:text-error hover:bg-error/10 transition-colors"
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-text-muted/50 hover:text-error hover:bg-error/10 transition-colors"
           title={ctx.tr('filterDeleteCondition', '删除此条件')}
         >
           <Trash2 className="h-3.5 w-3.5" />

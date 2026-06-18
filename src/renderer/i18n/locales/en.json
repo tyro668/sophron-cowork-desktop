@@ -655,6 +655,8 @@
         "fieldSelectTitle": "Field select",
         "fieldSelectPlaceholder": "Select fields...",
         "fieldSelectCount": "{{n}}/{{total}} fields selected",
+        "selectedFields": "Selected",
+        "noFieldsSelected": "No fields selected",
         "filterToggleAndOr": "Click to toggle AND / OR",
         "filterFieldPlaceholder": "Select field",
         "filterValuePlaceholder": "Value",
