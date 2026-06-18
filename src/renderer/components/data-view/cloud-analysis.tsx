@@ -108,6 +108,8 @@ export function CloudAnalysisPanel() {
   const setAppConfig = useAppStore((state) => state.setAppConfig);
   const navigateToDataElement = useAppStore((state) => state.navigateToDataElement);
   const addCloudTablesToChat = useAppStore((state) => state.addCloudTablesToChat);
+  const addCloudTablesToWelcomeChat = useAppStore((state) => state.addCloudTablesToWelcomeChat);
+  const activeSessionId = useAppStore((state) => state.activeSessionId);
   const [spaces, setSpaces] = useState<PersonalAnalysisSpace[]>([]);
   const [projectsBySpace, setProjectsBySpace] = useState<Record<string, PersonalAnalysisProject[]>>(
     {}
@@ -662,7 +664,11 @@ export function CloudAnalysisPanel() {
         })
       );
 
-      addCloudTablesToChat(attachments);
+      if (activeSessionId) {
+        addCloudTablesToChat(activeSessionId, attachments);
+      } else {
+        addCloudTablesToWelcomeChat(attachments);
+      }
       setSelectedTableIds([]);
     } catch (error) {
       setNotice({
@@ -674,7 +680,9 @@ export function CloudAnalysisPanel() {
     }
   }, [
     accessModeLabel,
+    activeSessionId,
     addCloudTablesToChat,
+    addCloudTablesToWelcomeChat,
     connectionLabel,
     connectionPayload,
     selectedProject,

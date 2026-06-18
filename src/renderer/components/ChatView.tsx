@@ -40,6 +40,8 @@ type AttachedFile = {
   inlineDataBase64?: string;
 };
 
+const EMPTY_CLOUD_TABLE_ATTACHMENTS: CloudTableChatAttachment[] = [];
+
 export function ChatView() {
   const { t } = useTranslation();
   // Scoped selectors — each subscription only re-renders when its slice changes
@@ -57,10 +59,13 @@ export function ChatView() {
   const setIsConfigured = useAppStore((s) => s.setIsConfigured);
   const setShowSettings = useAppStore((s) => s.setShowSettings);
   const setSettingsTab = useAppStore((s) => s.setSettingsTab);
-  const pendingCloudTableChatAttachments = useAppStore((s) => s.pendingCloudTableChatAttachments);
-  const clearPendingCloudTableChatAttachments = useAppStore(
-    (s) => s.clearPendingCloudTableChatAttachments
+  const attachedCloudTables = useAppStore((s) =>
+    activeSessionId
+      ? (s.cloudTableChatDraftsBySession[activeSessionId] ?? EMPTY_CLOUD_TABLE_ATTACHMENTS)
+      : EMPTY_CLOUD_TABLE_ATTACHMENTS
   );
+  const removeCloudTableFromChat = useAppStore((s) => s.removeCloudTableFromChat);
+  const clearCloudTablesFromChat = useAppStore((s) => s.clearCloudTablesFromChat);
   const { continueSession, stopSession, isElectron } = useIPC();
   const [prompt, setPrompt] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -75,7 +80,6 @@ export function ChatView() {
     Array<{ url: string; base64: string; mediaType: string }>
   >([]);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
-  const [attachedCloudTables, setAttachedCloudTables] = useState<CloudTableChatAttachment[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showPermissionMenu, setShowPermissionMenu] = useState(false);
@@ -547,25 +551,11 @@ export function ChatView() {
   };
 
   const removeCloudTable = (index: number) => {
-    setAttachedCloudTables((prev) => {
-      const updated = [...prev];
-      updated.splice(index, 1);
-      return updated;
-    });
+    if (!activeSessionId) return;
+    const table = attachedCloudTables[index];
+    if (!table) return;
+    removeCloudTableFromChat(activeSessionId, table.id);
   };
-
-  useEffect(() => {
-    if (!pendingCloudTableChatAttachments) return;
-
-    setAttachedCloudTables((prev) => {
-      const byId = new Map(prev.map((item) => [item.id, item]));
-      pendingCloudTableChatAttachments.attachments.forEach((item) => {
-        byId.set(item.id, item);
-      });
-      return Array.from(byId.values());
-    });
-    clearPendingCloudTableChatAttachments(pendingCloudTableChatAttachments.nonce);
-  }, [clearPendingCloudTableChatAttachments, pendingCloudTableChatAttachments]);
 
   const handleFileSelect = async () => {
     if (!isElectron || !window.electronAPI) {
@@ -789,7 +779,7 @@ export function ChatView() {
       pastedImages.forEach((img) => URL.revokeObjectURL(img.url));
       setPastedImages([]);
       setAttachedFiles([]);
-      setAttachedCloudTables([]);
+      clearCloudTablesFromChat(activeSessionId);
       skillMentions.clearSelectedSkills();
     } finally {
       setIsSubmitting(false);
