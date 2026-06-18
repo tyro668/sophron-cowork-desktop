@@ -655,6 +655,8 @@
         "fieldSelectTitle": "字段选择",
         "fieldSelectPlaceholder": "选择字段...",
         "fieldSelectCount": "已选 {{n}}/{{total}} 个字段",
+        "selectedFields": "已选字段",
+        "noFieldsSelected": "暂未选择字段",
         "filterToggleAndOr": "点击切换与 / 或",
         "filterFieldPlaceholder": "选择字段",
         "filterValuePlaceholder": "值",
