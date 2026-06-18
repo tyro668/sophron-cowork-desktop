@@ -485,6 +485,11 @@
       "viewExportDsl": "查看 / 导出 DSL",
       "copyDsl": "复制 DSL",
       "applyDsl": "应用 DSL",
+      "resizeOperatorDslSplit": "拖动调整分屏大小",
+      "showDslOnly": "仅显示 DSL",
+      "showFormOnly": "仅显示表单",
+      "restoreSplitView": "恢复分屏视图",
+      "splitModeSwitchBar": "分屏模式切换条",
       "dslPlaceholder": "粘贴数据任务 DSL...",
       "dslInvalid": "DSL 解析失败",
       "dslDiagnostics": {
