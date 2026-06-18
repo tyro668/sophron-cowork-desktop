@@ -49,6 +49,8 @@ const SPLIT_HANDLE_HEIGHT = 20;
 const DEFAULT_SPLIT_RATIO = 0.72;
 const PANEL_VERTICAL_PADDING = 16;
 
+type OperatorPanelSplitMode = 'split' | 'dsl-only' | 'form-only';
+
 function clampNumber(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
@@ -81,6 +83,7 @@ export function WorkflowOperatorConfigPanel({
   const { t } = useTranslation();
   const [isSummaryOpen, setIsSummaryOpen] = useState(false);
   const [splitRatio, setSplitRatio] = useState(DEFAULT_SPLIT_RATIO);
+  const [splitMode, setSplitMode] = useState<OperatorPanelSplitMode>('split');
   const [paneHeight, setPaneHeight] = useState(0);
   const [isDraggingSplit, setIsDraggingSplit] = useState(false);
   const paneRef = useRef<HTMLDivElement | null>(null);
@@ -93,6 +96,7 @@ export function WorkflowOperatorConfigPanel({
 
   useEffect(() => {
     setIsSummaryOpen(false);
+    setSplitMode('split');
     cleanupDragRef.current?.();
     setIsDraggingSplit(false);
   }, [node.id]);
@@ -119,6 +123,18 @@ export function WorkflowOperatorConfigPanel({
   }, [node.id]);
 
   const splitLayout = useMemo(() => {
+    if (splitMode !== 'split') {
+      const availableHeight = Math.max(
+        0,
+        paneHeight - SPLIT_HANDLE_HEIGHT - PANEL_VERTICAL_PADDING
+      );
+      return {
+        topHeight: splitMode === 'dsl-only' ? 0 : availableHeight,
+        bottomHeight: splitMode === 'form-only' ? 0 : availableHeight,
+        canDrag: false,
+      };
+    }
+
     const availableHeight = Math.max(0, paneHeight - SPLIT_HANDLE_HEIGHT - PANEL_VERTICAL_PADDING);
     const canDrag = availableHeight > CONFIG_MIN_HEIGHT + DSL_MIN_HEIGHT;
     const maxTopHeight = canDrag ? availableHeight - DSL_MIN_HEIGHT : availableHeight;
@@ -131,11 +147,11 @@ export function WorkflowOperatorConfigPanel({
       bottomHeight,
       canDrag,
     };
-  }, [paneHeight, splitRatio]);
+  }, [paneHeight, splitRatio, splitMode]);
 
   const handleSplitPointerDown = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
-      if (event.button !== 0 || !splitLayout.canDrag) return;
+      if (event.button !== 0 || splitMode !== 'split' || !splitLayout.canDrag) return;
       event.preventDefault();
       event.stopPropagation();
       try {
@@ -183,8 +199,16 @@ export function WorkflowOperatorConfigPanel({
       document.addEventListener('pointerup', handlePointerUp);
       document.addEventListener('pointercancel', handlePointerUp);
     },
-    [splitLayout.canDrag]
+    [splitLayout.canDrag, splitMode]
   );
+
+  const handleUpperTriangleClick = useCallback(() => {
+    setSplitMode((prev) => (prev === 'dsl-only' ? 'split' : 'dsl-only'));
+  }, []);
+
+  const handleLowerTriangleClick = useCallback(() => {
+    setSplitMode((prev) => (prev === 'form-only' ? 'split' : 'form-only'));
+  }, []);
 
   const copyDsl = useCallback(() => {
     void navigator.clipboard?.writeText(operatorDsl);
@@ -197,10 +221,14 @@ export function WorkflowOperatorConfigPanel({
         className={`relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden px-2 py-2 ${
           isDraggingSplit ? 'select-none' : ''
         }`}
-        style={{
-          minHeight:
-            CONFIG_MIN_HEIGHT + DSL_MIN_HEIGHT + SPLIT_HANDLE_HEIGHT + PANEL_VERTICAL_PADDING,
-        }}
+        style={
+          splitMode === 'split'
+            ? {
+                minHeight:
+                  CONFIG_MIN_HEIGHT + DSL_MIN_HEIGHT + SPLIT_HANDLE_HEIGHT + PANEL_VERTICAL_PADDING,
+              }
+            : undefined
+        }
       >
         <button
           type="button"
@@ -251,121 +279,181 @@ export function WorkflowOperatorConfigPanel({
           </div>
         )}
 
-        <div
-          className="min-h-0 shrink-0 overflow-y-auto pr-1"
-          style={{
-            flexBasis: splitLayout.topHeight,
-            height: splitLayout.topHeight,
-            minHeight: CONFIG_MIN_HEIGHT,
-          }}
-        >
-          <OperatorFormWrapper
-            key={`${node.id}-form`}
-            node={node}
-            taskId={node.taskId}
-            fieldCompletions={fieldCompletions}
-            otherNodes={workflowNodes}
-            sourceNode={sourceNode}
-            rightSourceNode={rightSourceNode}
-            upstreamRowCount={upstreamRowCount}
-            onNodeChange={onNodeChange}
-          />
-        </div>
+        {/* Form pane */}
+        {splitMode !== 'dsl-only' && (
+          <div
+            className="min-h-0 overflow-y-auto pr-1"
+            style={{
+              flexBasis: splitMode === 'split' ? splitLayout.topHeight : 'auto',
+              height: splitMode === 'split' ? splitLayout.topHeight : undefined,
+              flex: splitMode === 'form-only' ? 1 : undefined,
+              minHeight: splitMode === 'split' ? CONFIG_MIN_HEIGHT : undefined,
+            }}
+          >
+            <OperatorFormWrapper
+              key={`${node.id}-form`}
+              node={node}
+              taskId={node.taskId}
+              fieldCompletions={fieldCompletions}
+              otherNodes={workflowNodes}
+              sourceNode={sourceNode}
+              rightSourceNode={rightSourceNode}
+              upstreamRowCount={upstreamRowCount}
+              onNodeChange={onNodeChange}
+            />
+          </div>
+        )}
 
+        {/* Separator / mode-switch bar */}
         <div
-          role="separator"
-          aria-orientation="horizontal"
-          aria-label={t('data.workflow.resizeOperatorDslSplit', 'Drag to resize')}
-          onPointerDown={handleSplitPointerDown}
           className={`group relative z-10 -mx-2 flex h-6 shrink-0 items-center justify-center px-2 ${
-            splitLayout.canDrag ? 'cursor-ns-resize' : 'cursor-default'
-          } ${isDraggingSplit ? 'text-accent' : 'text-border-muted'}`}
+            isDraggingSplit ? 'text-accent' : 'text-border-muted'
+          }`}
           style={{ touchAction: 'none', userSelect: 'none' }}
         >
+          {/* Background line */}
           <div
             className={`pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 transition-colors ${
               isDraggingSplit ? 'bg-accent/60' : 'bg-border-muted/70 group-hover:bg-accent/35'
             }`}
           />
-          <span className="pointer-events-none relative h-4 w-5">
+
+          {/* Upper triangle button: toggle to DSL-only / restore split */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleUpperTriangleClick();
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            aria-label={
+              splitMode === 'dsl-only'
+                ? t('data.workflow.restoreSplitView', 'Restore split view')
+                : t('data.workflow.showDslOnly', 'Show DSL only')
+            }
+            aria-pressed={splitMode === 'dsl-only'}
+            className="relative z-20 flex h-5 w-5 items-start justify-center pt-[5px]"
+          >
             <span
-              className={`absolute left-1/2 top-0 -translate-x-1/2 border-x-[8px] border-b-[6px] border-x-transparent transition-colors ${
-                isDraggingSplit
+              className={`border-x-[7px] border-b-[5px] border-x-transparent transition-colors ${
+                splitMode === 'dsl-only'
                   ? 'border-b-accent'
-                  : 'border-b-border-muted/80 group-hover:border-b-accent/70'
+                  : isDraggingSplit
+                    ? 'border-b-accent'
+                    : 'border-b-border-muted/80 group-hover:border-b-accent/70'
               }`}
             />
+          </button>
+
+          {/* Drag handle (center zone) */}
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label={
+              splitMode === 'split'
+                ? t('data.workflow.resizeOperatorDslSplit', 'Drag to resize')
+                : t('data.workflow.splitModeSwitchBar', 'Split mode switch bar')
+            }
+            onPointerDown={handleSplitPointerDown}
+            className={`mx-1 h-full flex-1 ${
+              splitMode === 'split' && splitLayout.canDrag ? 'cursor-ns-resize' : 'cursor-default'
+            }`}
+            style={{ touchAction: splitMode === 'split' ? 'none' : undefined, userSelect: 'none' }}
+          />
+
+          {/* Lower triangle button: toggle to form-only / restore split */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleLowerTriangleClick();
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            aria-label={
+              splitMode === 'form-only'
+                ? t('data.workflow.restoreSplitView', 'Restore split view')
+                : t('data.workflow.showFormOnly', 'Show form only')
+            }
+            aria-pressed={splitMode === 'form-only'}
+            className="relative z-20 flex h-5 w-5 items-end justify-center pb-[5px]"
+          >
             <span
-              className={`absolute bottom-0 left-1/2 -translate-x-1/2 border-x-[8px] border-t-[6px] border-x-transparent transition-colors ${
-                isDraggingSplit
+              className={`border-x-[7px] border-t-[5px] border-x-transparent transition-colors ${
+                splitMode === 'form-only'
                   ? 'border-t-accent'
-                  : 'border-t-border-muted/80 group-hover:border-t-accent/70'
+                  : isDraggingSplit
+                    ? 'border-t-accent'
+                    : 'border-t-border-muted/80 group-hover:border-t-accent/70'
               }`}
             />
-          </span>
+          </button>
         </div>
 
-        <section
-          className="min-h-0 shrink-0 pb-3"
-          style={{
-            flexBasis: splitLayout.bottomHeight,
-            height: splitLayout.bottomHeight,
-            minHeight: DSL_MIN_HEIGHT,
-          }}
-        >
-          <div className="flex h-full min-h-0 flex-col">
-            <div className="flex h-8 shrink-0 items-center justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="text-[13px] font-medium text-text-secondary">DSL</span>
-                {operatorDslStatus && (
-                  <span className="inline-flex h-6 min-w-0 items-center rounded-full border border-success/20 bg-success/5 px-2 text-[11px] text-success">
-                    <CheckCircle2 className="mr-1 h-3 w-3 flex-shrink-0" />
-                    <span className="truncate">{operatorDslStatus}</span>
-                  </span>
-                )}
-                {hasErrors && !isEditingOperatorDsl && (
-                  <span className="inline-flex h-6 min-w-0 items-center rounded-full border border-error/20 bg-error/5 px-2 text-[11px] text-error">
-                    <AlertCircle className="mr-1 h-3 w-3 flex-shrink-0" />
-                    <span>{t('data.workflow.syntaxInvalid')}</span>
-                  </span>
-                )}
+        {/* DSL pane */}
+        {splitMode !== 'form-only' && (
+          <section
+            className="min-h-0 pb-3"
+            style={{
+              flexBasis: splitMode === 'split' ? splitLayout.bottomHeight : undefined,
+              height: splitMode === 'split' ? splitLayout.bottomHeight : undefined,
+              flex: splitMode === 'dsl-only' ? 1 : undefined,
+              minHeight: splitMode === 'split' ? DSL_MIN_HEIGHT : undefined,
+            }}
+          >
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="flex h-8 shrink-0 items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="text-[13px] font-medium text-text-secondary">DSL</span>
+                  {operatorDslStatus && (
+                    <span className="inline-flex h-6 min-w-0 items-center rounded-full border border-success/20 bg-success/5 px-2 text-[11px] text-success">
+                      <CheckCircle2 className="mr-1 h-3 w-3 flex-shrink-0" />
+                      <span className="truncate">{operatorDslStatus}</span>
+                    </span>
+                  )}
+                  {hasErrors && !isEditingOperatorDsl && (
+                    <span className="inline-flex h-6 min-w-0 items-center rounded-full border border-error/20 bg-error/5 px-2 text-[11px] text-error">
+                      <AlertCircle className="mr-1 h-3 w-3 flex-shrink-0" />
+                      <span>{t('data.workflow.syntaxInvalid')}</span>
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={copyDsl}
+                    className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/50 px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    {t('data.workflow.copyDsl', 'Copy DSL')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onStartDslEdit}
+                    className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/50 px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+                  >
+                    <Maximize2 className="h-3.5 w-3.5" />
+                    {t('common.expand', 'Expand')}
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={copyDsl}
-                  className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/50 px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                  {t('data.workflow.copyDsl', 'Copy DSL')}
-                </button>
-                <button
-                  type="button"
-                  onClick={onStartDslEdit}
-                  className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/50 px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
-                >
-                  <Maximize2 className="h-3.5 w-3.5" />
-                  {t('common.expand', 'Expand')}
-                </button>
+              <div className="mt-2 min-h-[52px] flex-1 overflow-hidden rounded-lg border border-border-muted/80 bg-[var(--glass-card-strong)] shadow-[inset_0_1px_0_rgba(255,255,255,0.45),0_1px_0_rgba(15,23,42,0.03)]">
+                <PrepDslEditor
+                  value={operatorDsl}
+                  operatorType={node.type}
+                  placeholderText={t('data.workflow.operatorDslPlaceholder')}
+                  completionLabels={editorCompletionLabels}
+                  formatDiagnostic={formatEditorDiagnostic}
+                  onChange={onDslChange}
+                  onDiagnosticsChange={onDiagnosticsChange}
+                  onRequestEdit={onStartDslEdit}
+                  fieldCompletions={fieldCompletions}
+                  editable={false}
+                  height="100%"
+                />
               </div>
             </div>
-            <div className="mt-2 min-h-[52px] flex-1 overflow-hidden rounded-lg border border-border-muted/80 bg-[var(--glass-card-strong)] shadow-[inset_0_1px_0_rgba(255,255,255,0.45),0_1px_0_rgba(15,23,42,0.03)]">
-              <PrepDslEditor
-                value={operatorDsl}
-                operatorType={node.type}
-                placeholderText={t('data.workflow.operatorDslPlaceholder')}
-                completionLabels={editorCompletionLabels}
-                formatDiagnostic={formatEditorDiagnostic}
-                onChange={onDslChange}
-                onDiagnosticsChange={onDiagnosticsChange}
-                onRequestEdit={onStartDslEdit}
-                fieldCompletions={fieldCompletions}
-                editable={false}
-                height="100%"
-              />
-            </div>
-          </div>
-        </section>
+          </section>
+        )}
       </div>
 
       {isEditingOperatorDsl && (

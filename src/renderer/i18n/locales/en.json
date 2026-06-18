@@ -485,6 +485,11 @@
       "viewExportDsl": "View / export DSL",
       "copyDsl": "Copy DSL",
       "applyDsl": "Apply DSL",
+      "resizeOperatorDslSplit": "Drag to resize split panels",
+      "showDslOnly": "Show DSL only",
+      "showFormOnly": "Show form only",
+      "restoreSplitView": "Restore split view",
+      "splitModeSwitchBar": "Split mode switch bar",
       "dslPlaceholder": "Paste data task DSL...",
       "dslInvalid": "DSL parse failed",
       "dslDiagnostics": {
