@@ -70,41 +70,65 @@ export class PersonalAnalysisClient {
     if (params.sortBy) query.set('sortBy', params.sortBy);
     if (params.sortOrder) query.set('sortOrder', params.sortOrder);
     const suffix = query.toString() ? `?${query.toString()}` : '';
-    const result = await this.apiJson<
-      | PersonalAnalysisTable[]
-      | {
-          items?: PersonalAnalysisTable[];
-          tables?: PersonalAnalysisTable[];
-          page?: number;
-          pageSize?: number;
-          total?: number;
-          hasMore?: boolean;
-        }
-    >(
+    const result = await this.apiJson<{
+      items?: PersonalAnalysisTable[];
+      tables?: PersonalAnalysisTable[];
+      page?: number;
+      pageSize?: number;
+      total?: number;
+      hasMore?: boolean;
+    }>(
       `/spaces/${encodeURIComponent(spaceId)}/projects/${encodeURIComponent(projectId)}/tables${suffix}`
     );
 
     if (Array.isArray(result)) {
-      // Legacy table-list responses are unpaged arrays, so treat them as complete.
-      const page = params.page ?? 1;
-      const pageSize = params.pageSize ?? result.length;
-      return {
-        tables: result,
-        page,
-        pageSize,
-        total: result.length,
-        hasMore: false,
-      };
+      throw new Error(
+        'Cloud table list API must return a paginated object with items/tables, page, pageSize, total, and hasMore.'
+      );
     }
 
-    const tables = result.items ?? result.tables ?? [];
+    if (!result || typeof result !== 'object') {
+      throw new Error('Cloud table list API returned an invalid response.');
+    }
+
+    const tables = result.items ?? result.tables;
+    if (!Array.isArray(tables)) {
+      throw new Error('Cloud table list API response must include an items or tables array.');
+    }
+
+    const page = result.page ?? params.page;
+    const pageSize = result.pageSize ?? params.pageSize;
+    if (
+      typeof page !== 'number' ||
+      typeof pageSize !== 'number' ||
+      typeof result.total !== 'number' ||
+      typeof result.hasMore !== 'boolean'
+    ) {
+      throw new Error(
+        'Cloud table list API response must include numeric page/pageSize/total and boolean hasMore.'
+      );
+    }
+
     return {
       tables,
-      page: result.page ?? params.page ?? 1,
-      pageSize: result.pageSize ?? params.pageSize ?? tables.length,
-      total: result.total ?? tables.length,
-      hasMore: result.hasMore ?? false,
+      page,
+      pageSize,
+      total: result.total,
+      hasMore: result.hasMore,
     };
+  }
+
+  async findTable(
+    spaceId: string,
+    projectId: string,
+    tableId: string
+  ): Promise<PersonalAnalysisTable | undefined> {
+    const result = await this.listTables(spaceId, projectId, {
+      keyword: tableId,
+      page: 1,
+      pageSize: 100,
+    });
+    return result.tables.find((table) => table.tableId === tableId);
   }
 
   async exportTableCsv(tableId: string): Promise<string> {

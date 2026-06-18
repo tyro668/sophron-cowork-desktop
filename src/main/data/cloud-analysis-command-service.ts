@@ -87,12 +87,7 @@ export class CloudAnalysisCommandService {
     try {
       const cloudTable =
         input.spaceId && input.projectId
-          ? (
-              await client.listTables(input.spaceId, input.projectId, {
-                page: 1,
-                pageSize: 100,
-              })
-            ).tables.find((table) => table.tableId === tableId)
+          ? await client.findTable(input.spaceId, input.projectId, tableId)
           : undefined;
       const csv = await client.exportTableCsv(tableId);
       const downloadedFilePath = await writeCloudCsvTempFile(tableId, csv);
