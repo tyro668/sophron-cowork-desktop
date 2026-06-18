@@ -126,10 +126,8 @@ interface AppState {
   globalNotice: GlobalNotice | null;
   pendingDataNavigation: PendingDataNavigation | null;
   pendingDataTabNavigation: PendingDataTabNavigation | null;
-  pendingCloudTableChatAttachments: {
-    attachments: CloudTableChatAttachment[];
-    nonce: number;
-  } | null;
+  welcomeCloudTableChatDrafts: CloudTableChatAttachment[];
+  cloudTableChatDraftsBySession: Record<string, CloudTableChatAttachment[]>;
 
   // Working directory
   workingDir: string | null;
@@ -207,8 +205,12 @@ interface AppState {
   navigateToCloudData: () => void;
   clearDataNavigation: (nonce?: number) => void;
   clearDataTabNavigation: (nonce?: number) => void;
-  addCloudTablesToChat: (attachments: CloudTableChatAttachment[]) => void;
-  clearPendingCloudTableChatAttachments: (nonce?: number) => void;
+  addCloudTablesToWelcomeChat: (attachments: CloudTableChatAttachment[]) => void;
+  removeCloudTableFromWelcomeChat: (attachmentId: string) => void;
+  clearCloudTablesFromWelcomeChat: () => void;
+  addCloudTablesToChat: (sessionId: string, attachments: CloudTableChatAttachment[]) => void;
+  removeCloudTableFromChat: (sessionId: string, attachmentId: string) => void;
+  clearCloudTablesFromChat: (sessionId: string) => void;
 
   // Working directory actions
   setWorkingDir: (path: string | null) => void;
@@ -253,8 +255,6 @@ const defaultSettings: Settings = {
 
 let dataNavigationSeq = 0;
 let dataTabNavigationSeq = 0;
-let cloudTableChatAttachmentSeq = 0;
-
 export const useAppStore = create<AppState>((set) => ({
   // Initial state
   sessions: [],
@@ -278,7 +278,8 @@ export const useAppStore = create<AppState>((set) => ({
   globalNotice: null,
   pendingDataNavigation: null,
   pendingDataTabNavigation: null,
-  pendingCloudTableChatAttachments: null,
+  welcomeCloudTableChatDrafts: [],
+  cloudTableChatDraftsBySession: {},
   workingDir: null,
   sandboxSetupProgress: null,
   isSandboxSetupComplete: false,
@@ -342,10 +343,13 @@ export const useAppStore = create<AppState>((set) => ({
   removeSession: (sessionId) =>
     set((state) => {
       const restSessionStates = { ...state.sessionStates };
+      const restCloudTableChatDrafts = { ...state.cloudTableChatDraftsBySession };
       delete restSessionStates[sessionId];
+      delete restCloudTableChatDrafts[sessionId];
       return {
         sessions: state.sessions.filter((s) => s.id !== sessionId),
         sessionStates: restSessionStates,
+        cloudTableChatDraftsBySession: restCloudTableChatDrafts,
         activeSessionId: state.activeSessionId === sessionId ? null : state.activeSessionId,
       };
     }),
@@ -354,13 +358,20 @@ export const useAppStore = create<AppState>((set) => ({
     set((state) => {
       const idSet = new Set(sessionIds);
       const newSessionStates: Record<string, SessionState> = {};
+      const newCloudTableChatDrafts: AppState['cloudTableChatDraftsBySession'] = {};
       for (const key of Object.keys(state.sessionStates)) {
         if (!idSet.has(key)) newSessionStates[key] = state.sessionStates[key];
+      }
+      for (const key of Object.keys(state.cloudTableChatDraftsBySession)) {
+        if (!idSet.has(key)) {
+          newCloudTableChatDrafts[key] = state.cloudTableChatDraftsBySession[key];
+        }
       }
 
       return {
         sessions: state.sessions.filter((s) => !idSet.has(s.id)),
         sessionStates: newSessionStates,
+        cloudTableChatDraftsBySession: newCloudTableChatDrafts,
         activeSessionId:
           state.activeSessionId && idSet.has(state.activeSessionId) ? null : state.activeSessionId,
       };
@@ -693,23 +704,71 @@ export const useAppStore = create<AppState>((set) => ({
       }
       return { pendingDataTabNavigation: null };
     }),
-  addCloudTablesToChat: (attachments) => {
+  addCloudTablesToWelcomeChat: (attachments) => {
     if (attachments.length === 0) return;
-    set({
-      mainView: 'chat',
-      showSettings: false,
-      pendingCloudTableChatAttachments: {
-        attachments,
-        nonce: ++cloudTableChatAttachmentSeq,
-      },
+    set((state) => {
+      const byId = new Map(state.welcomeCloudTableChatDrafts.map((item) => [item.id, item]));
+      attachments.forEach((item) => {
+        byId.set(item.id, item);
+      });
+      return {
+        mainView: 'chat',
+        activeSessionId: null,
+        showSettings: false,
+        welcomeCloudTableChatDrafts: Array.from(byId.values()),
+      };
     });
   },
-  clearPendingCloudTableChatAttachments: (nonce) =>
+  removeCloudTableFromWelcomeChat: (attachmentId) =>
     set((state) => {
-      if (nonce !== undefined && state.pendingCloudTableChatAttachments?.nonce !== nonce) {
-        return {};
+      const next = state.welcomeCloudTableChatDrafts.filter((item) => item.id !== attachmentId);
+      if (next.length === state.welcomeCloudTableChatDrafts.length) return {};
+      return { welcomeCloudTableChatDrafts: next };
+    }),
+  clearCloudTablesFromWelcomeChat: () =>
+    set((state) => {
+      if (state.welcomeCloudTableChatDrafts.length === 0) return {};
+      return { welcomeCloudTableChatDrafts: [] };
+    }),
+  addCloudTablesToChat: (sessionId, attachments) => {
+    if (attachments.length === 0) return;
+    set((state) => {
+      const byId = new Map(
+        (state.cloudTableChatDraftsBySession[sessionId] ?? []).map((item) => [item.id, item])
+      );
+      attachments.forEach((item) => {
+        byId.set(item.id, item);
+      });
+      return {
+        mainView: 'chat',
+        activeSessionId: sessionId,
+        showSettings: false,
+        cloudTableChatDraftsBySession: {
+          ...state.cloudTableChatDraftsBySession,
+          [sessionId]: Array.from(byId.values()),
+        },
+      };
+    });
+  },
+  removeCloudTableFromChat: (sessionId, attachmentId) =>
+    set((state) => {
+      const current = state.cloudTableChatDraftsBySession[sessionId] ?? [];
+      const nextDraft = current.filter((item) => item.id !== attachmentId);
+      if (nextDraft.length === current.length) return {};
+      const next = { ...state.cloudTableChatDraftsBySession };
+      if (nextDraft.length > 0) {
+        next[sessionId] = nextDraft;
+      } else {
+        delete next[sessionId];
       }
-      return { pendingCloudTableChatAttachments: null };
+      return { cloudTableChatDraftsBySession: next };
+    }),
+  clearCloudTablesFromChat: (sessionId) =>
+    set((state) => {
+      if (!state.cloudTableChatDraftsBySession[sessionId]) return {};
+      const next = { ...state.cloudTableChatDraftsBySession };
+      delete next[sessionId];
+      return { cloudTableChatDraftsBySession: next };
     }),
 
   // Working directory actions

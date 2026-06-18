@@ -8,7 +8,7 @@ import { BUILTIN_LLM_PROVIDER, parseBuiltinLlmConfigSetId } from '../../shared/b
 import { AgentModelSelector } from './AgentModelSelector';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
 import { SelectedSkillChips, SkillMentionMenu } from './SkillMentionPicker';
-import type { ContentBlock } from '../types';
+import type { CloudTableChatAttachment, ContentBlock } from '../types';
 import { getInitialSessionTitle } from '../../shared/session-title';
 import {
   FileText,
@@ -20,6 +20,7 @@ import {
   Plus,
   BookOpen,
   FileSearch,
+  Table2,
 } from 'lucide-react';
 
 type AttachedFile = {
@@ -29,6 +30,8 @@ type AttachedFile = {
   type: string;
   inlineDataBase64?: string;
 };
+
+const EMPTY_WELCOME_CLOUD_TABLE_ATTACHMENTS: CloudTableChatAttachment[] = [];
 
 export function WelcomeView() {
   const { t } = useTranslation();
@@ -53,11 +56,23 @@ export function WelcomeView() {
   const setIsConfigured = useAppStore((state) => state.setIsConfigured);
   const setShowSettings = useAppStore((state) => state.setShowSettings);
   const setSettingsTab = useAppStore((state) => state.setSettingsTab);
+  const attachedCloudTables = useAppStore(
+    (state) => state.welcomeCloudTableChatDrafts || EMPTY_WELCOME_CLOUD_TABLE_ATTACHMENTS
+  );
+  const removeCloudTableFromWelcomeChat = useAppStore(
+    (state) => state.removeCloudTableFromWelcomeChat
+  );
+  const clearCloudTablesFromWelcomeChat = useAppStore(
+    (state) => state.clearCloudTablesFromWelcomeChat
+  );
   const modelLabel = appConfig?.model?.trim() || t('chat.noModel');
   const hasSelectedModel = Boolean(appConfig?.model?.trim());
   const canSubmit =
     hasSelectedModel &&
-    (prompt.trim().length > 0 || pastedImages.length > 0 || attachedFiles.length > 0);
+    (prompt.trim().length > 0 ||
+      pastedImages.length > 0 ||
+      attachedFiles.length > 0 ||
+      attachedCloudTables.length > 0);
   const hasConfiguredModel = Boolean(
     isConfigured && (appConfig?.model?.trim() || appConfig?.provider === BUILTIN_LLM_PROVIDER)
   );
@@ -296,6 +311,12 @@ export function WelcomeView() {
     });
   };
 
+  const removeCloudTable = (index: number) => {
+    const table = attachedCloudTables[index];
+    if (!table) return;
+    removeCloudTableFromWelcomeChat(table.id);
+  };
+
   const handleFileSelect = async () => {
     if (!isElectron || !window.electronAPI) {
       console.log('[WelcomeView] Not in Electron, file selection not available');
@@ -393,7 +414,10 @@ export function WelcomeView() {
     const currentPrompt = textareaRef.current?.value || prompt;
 
     if (
-      (!currentPrompt.trim() && pastedImages.length === 0 && attachedFiles.length === 0) ||
+      (!currentPrompt.trim() &&
+        pastedImages.length === 0 &&
+        attachedFiles.length === 0 &&
+        attachedCloudTables.length === 0) ||
       !hasSelectedModel ||
       isSubmitting
     )
@@ -426,6 +450,13 @@ export function WelcomeView() {
       });
     });
 
+    if (attachedCloudTables.length > 0) {
+      contentBlocks.push({
+        type: 'cloud_table_attachment',
+        tables: attachedCloudTables,
+      });
+    }
+
     // Add text if present
     if (currentPrompt.trim()) {
       contentBlocks.push({
@@ -437,7 +468,10 @@ export function WelcomeView() {
     // Use the global working directory (always available after app startup)
     setIsSubmitting(true);
     try {
-      const sessionTitle = getInitialSessionTitle(currentPrompt, attachedFiles[0]?.name);
+      const sessionTitle = getInitialSessionTitle(
+        currentPrompt,
+        attachedFiles[0]?.name ?? attachedCloudTables[0]?.tableName
+      );
       const session = await startSession(sessionTitle, contentBlocks, workingDir || undefined, {
         selectedSkillNames: skillMentions.selectedSkillNames,
       });
@@ -449,6 +483,7 @@ export function WelcomeView() {
         pastedImages.forEach((img) => URL.revokeObjectURL(img.url));
         setPastedImages([]);
         setAttachedFiles([]);
+        clearCloudTablesFromWelcomeChat();
         skillMentions.clearSelectedSkills();
       }
     } finally {
@@ -642,6 +677,32 @@ export function WelcomeView() {
                     className="w-6 h-6 rounded-full bg-error/10 hover:bg-error/20 text-error flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {attachedCloudTables.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {attachedCloudTables.map((table, index) => (
+                <div
+                  key={table.id}
+                  className="group inline-flex max-w-full items-center gap-2 rounded-lg border border-accent/20 bg-accent/10 px-3 py-2 text-[13px] text-accent-text shadow-soft"
+                >
+                  <Table2 className="h-3.5 w-3.5 flex-shrink-0" />
+                  <span className="min-w-0 truncate font-medium">{table.tableName}</span>
+                  {table.projectName && (
+                    <span className="hidden flex-shrink-0 text-[11px] text-text-muted sm:inline">
+                      {table.projectName}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeCloudTable(index)}
+                    className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-background/60 text-text-muted opacity-70 transition-colors hover:bg-error/10 hover:text-error group-hover:opacity-100"
+                  >
+                    <X className="h-3 w-3" />
                   </button>
                 </div>
               ))}
