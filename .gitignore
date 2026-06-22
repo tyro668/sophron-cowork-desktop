@@ -55,6 +55,7 @@ coverage/
 .claude/*
 !.claude/skills/
 CLAUDE.md
+AGENTS.md
 
 
 # codex
