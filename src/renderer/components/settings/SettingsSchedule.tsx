@@ -74,7 +74,9 @@ function getProjectOptionLabel(
   );
 }
 
-type TriggerMode = AutomationTrigger['kind'];
+type EditableAutomationTrigger = Exclude<AutomationTrigger, { kind: 'cron' }>;
+type ScheduledAutomationTrigger = Exclude<EditableAutomationTrigger, { kind: 'file_change' }>;
+type TriggerMode = EditableAutomationTrigger['kind'];
 type ListTab = 'automations' | 'runs';
 type Banner = { tone: 'error' | 'success'; text: string };
 interface AutomationRunLogEntry {
@@ -462,12 +464,12 @@ interface AutomationDraft {
   projectId: string;
   enabled: boolean;
   triggerMode: TriggerMode;
-  trigger: AutomationTrigger;
+  trigger: EditableAutomationTrigger;
   actionGraph: AutomationActionGraph;
 }
 
 function createEmptyDraft(): AutomationDraft {
-  const trigger: AutomationTrigger = {
+  const trigger: EditableAutomationTrigger = {
     kind: 'once',
     runAt: Date.now() + 5 * 60 * 1000,
     timezone: SYSTEM_TIMEZONE,
@@ -519,13 +521,14 @@ function createEmptyDraft(): AutomationDraft {
 }
 
 function automationToDraft(automation: Automation): AutomationDraft {
+  const trigger = automation.trigger as EditableAutomationTrigger;
   return {
     name: automation.name,
     description: automation.description ?? '',
     projectId: automation.projectId ?? '',
     enabled: automation.enabled,
-    triggerMode: automation.trigger.kind,
-    trigger: automation.trigger,
+    triggerMode: trigger.kind,
+    trigger,
     actionGraph: automation.actionGraph.nodes.length
       ? automation.actionGraph
       : createEmptyDraft().actionGraph,
@@ -571,8 +574,11 @@ function enrichActionGraphDefaults(
   };
 }
 
-function normalizeDraftTrigger(mode: TriggerMode, trigger: AutomationTrigger): AutomationTrigger {
-  const timezone = trigger.timezone || SYSTEM_TIMEZONE;
+function normalizeDraftTrigger(
+  mode: TriggerMode,
+  trigger: EditableAutomationTrigger
+): EditableAutomationTrigger {
+  const timezone = SYSTEM_TIMEZONE;
   if (mode === 'file_change') {
     const source = trigger.kind === 'file_change' ? trigger : null;
     return {
@@ -606,13 +612,6 @@ function normalizeDraftTrigger(mode: TriggerMode, trigger: AutomationTrigger): A
       kind: 'weekly',
       weekdays: trigger.kind === 'weekly' ? trigger.weekdays : [1],
       times: trigger.kind === 'weekly' ? trigger.times : ['08:00'],
-      timezone,
-    };
-  }
-  if (mode === 'cron') {
-    return {
-      kind: 'cron',
-      expression: trigger.kind === 'cron' ? trigger.expression : '0 9 * * 1',
       timezone,
     };
   }
@@ -1573,13 +1572,12 @@ function ScheduledConfigCard({
   onChange,
   tr,
 }: {
-  trigger: Exclude<AutomationTrigger, { kind: 'file_change' }>;
+  trigger: ScheduledAutomationTrigger;
   mode: TriggerMode;
   onModeChange: (mode: TriggerMode) => void;
-  onChange: (trigger: AutomationTrigger) => void;
+  onChange: (trigger: ScheduledAutomationTrigger) => void;
   tr: (key: string, fallback: string) => string;
 }) {
-  const timezone = trigger.timezone || SYSTEM_TIMEZONE;
   return (
     <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
       <div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-success">
@@ -1595,7 +1593,6 @@ function ScheduledConfigCard({
               { value: 'daily', label: tr('schedule.modeDaily', '每天') },
               { value: 'weekly', label: tr('schedule.modeWeekly', '每周') },
               { value: 'interval', label: tr('schedule.modeInterval', '周期') },
-              { value: 'cron', label: tr('schedule.modeCron', 'Cron') },
             ]}
             onValueChange={(value: string) => onModeChange(value as TriggerMode)}
             triggerClassName="h-9 w-full justify-between"
@@ -1685,34 +1682,6 @@ function ScheduledConfigCard({
             </ConfigRow>
           </>
         )}
-        {trigger.kind === 'cron' && (
-          <ConfigRow label={tr('schedule.cronExpression', 'Cron 表达式')}>
-            <input
-              value={trigger.expression}
-              onChange={(event) => onChange({ ...trigger, expression: event.target.value })}
-              placeholder="0 9 * * 1"
-              className="input h-9 w-full text-xs"
-            />
-          </ConfigRow>
-        )}
-        <ConfigRow label={tr('schedule.timezone', '时区')}>
-          <GlassSelect
-            value={timezone}
-            options={Array.from(new Set([SYSTEM_TIMEZONE, 'Asia/Shanghai', 'UTC'])).map(
-              (value) => ({
-                value,
-                label: value,
-              })
-            )}
-            onValueChange={(value) => onChange({ ...trigger, timezone: value })}
-            triggerClassName="h-9 w-full justify-between"
-            contentClassName="w-[var(--radix-select-trigger-width)]"
-          />
-        </ConfigRow>
-        <div className="mt-1 flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2.5 text-xs font-medium text-success">
-          <CalendarClock className="h-4 w-4" />
-          {formatTriggerSummary(trigger, tr)}
-        </div>
       </div>
     </div>
   );
@@ -1726,7 +1695,7 @@ function FileChangeConfigCard({
   tr,
 }: {
   draft: AutomationDraft;
-  trigger: Extract<AutomationTrigger, { kind: 'file_change' }>;
+  trigger: Extract<EditableAutomationTrigger, { kind: 'file_change' }>;
   projects: Project[];
   onDraftChange: (draft: AutomationDraft) => void;
   tr: (key: string, fallback: string) => string;
@@ -1782,12 +1751,6 @@ function FileChangeConfigCard({
             className="input h-9 w-full text-xs"
           />
         </ConfigRow>
-        <div className="mt-1 flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2.5 text-xs font-medium text-success">
-          <CalendarClock className="h-4 w-4" />
-          {projectId
-            ? tr('schedule.fileChangeSummary', '文件变更后自动执行')
-            : tr('schedule.fileChangeNeedsProject', '请选择一个项目用于监听文件变更')}
-        </div>
       </div>
     </div>
   );
@@ -2157,41 +2120,6 @@ function getActionIcon(type: string): LucideIcon {
   if (type === 'conversation.run') return MessagesSquare;
   if (isDataActionType(type)) return Database;
   return CalendarClock;
-}
-
-function formatTriggerSummary(
-  trigger: Exclude<AutomationTrigger, { kind: 'file_change' }>,
-  tr: (key: string, fallback: string) => string
-): string {
-  if (trigger.kind === 'daily') {
-    return tr('schedule.summaryDaily', `每天 ${trigger.times[0] ?? '09:00'} 自动执行`).replace(
-      '{{time}}',
-      trigger.times[0] ?? '09:00'
-    );
-  }
-  if (trigger.kind === 'weekly') {
-    return tr(
-      'schedule.summaryWeekly',
-      `每周 ${trigger.weekdays.join(',')} ${trigger.times[0] ?? '09:00'} 自动执行`
-    )
-      .replace('{{weekdays}}', trigger.weekdays.join(','))
-      .replace('{{time}}', trigger.times[0] ?? '09:00');
-  }
-  if (trigger.kind === 'interval') {
-    return tr('schedule.summaryInterval', `每 ${trigger.every} ${trigger.unit} 自动执行`)
-      .replace('{{every}}', String(trigger.every))
-      .replace('{{unit}}', trigger.unit);
-  }
-  if (trigger.kind === 'cron') {
-    return tr('schedule.summaryCron', `按 Cron ${trigger.expression} 自动执行`).replace(
-      '{{expression}}',
-      trigger.expression
-    );
-  }
-  return tr('schedule.summaryOnce', `在 ${formatAppDateTime(trigger.runAt)} 自动执行`).replace(
-    '{{time}}',
-    formatAppDateTime(trigger.runAt)
-  );
 }
 
 function getNodeLabel(

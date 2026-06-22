@@ -831,6 +831,8 @@ export interface Skill {
   description?: string;
   descriptionEn?: string;
   descriptionZh?: string;
+  supportFeatures?: string[];
+  path?: string;
   type: SkillType;
   enabled: boolean;
   config?: Record<string, unknown>;

@@ -50,6 +50,8 @@ export function GlassSelect({
     ...option,
     value: normalizeSelectValue(option.value),
   }));
+  const selectedOption = normalizedOptions.find((option) => option.value === normalizedValue);
+  const displayLabel = selectedOption?.label ?? placeholder ?? '';
 
   return (
     <Select.Root
@@ -66,7 +68,7 @@ export function GlassSelect({
         )}
       >
         {triggerIcon}
-        <Select.Value placeholder={placeholder} />
+        <span className="min-w-0 flex-1 truncate text-left">{displayLabel}</span>
         <Select.Icon asChild>
           <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-muted" />
         </Select.Icon>

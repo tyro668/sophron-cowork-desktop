@@ -2374,6 +2374,22 @@ ipcMain.handle('skills.openStoragePath', async () => {
   return { success: true, path: storagePath };
 });
 
+ipcMain.handle('skills.openSkillPath', async (_event, skillId: string) => {
+  if (!skillsManager) {
+    throw new Error('SkillsManager not initialized');
+  }
+  await skillsManager.listSkills();
+  const skillPath = skillsManager.getSkillPath(skillId);
+  if (!skillPath) {
+    return { success: false, path: '', error: 'Skill path unavailable' };
+  }
+  const openResult = await shell.openPath(skillPath);
+  if (openResult) {
+    return { success: false, path: skillPath, error: openResult };
+  }
+  return { success: true, path: skillPath };
+});
+
 ipcMain.handle(
   'plugins.listCatalog',
   async (

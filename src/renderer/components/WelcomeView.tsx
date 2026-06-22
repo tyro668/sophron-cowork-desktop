@@ -15,12 +15,11 @@ import {
   BarChart3,
   FolderOpen,
   ArrowRight,
-  Mail,
   X,
   Plus,
   BookOpen,
-  FileSearch,
   Table2,
+  Sparkles,
 } from 'lucide-react';
 
 type AttachedFile = {
@@ -527,57 +526,49 @@ export function WelcomeView() {
     {
       id: 'create',
       label: t('welcome.createFile'),
+      description: t('welcome.createFileDesc'),
       icon: FileText,
       prompt: t('welcome.quickPromptCreate'),
     },
     {
       id: 'crunch',
       label: t('welcome.crunchData'),
+      description: t('welcome.crunchDataDesc'),
       icon: BarChart3,
       prompt: t('welcome.quickPromptCrunch'),
     },
     {
       id: 'organize',
       label: t('welcome.organizeFiles'),
+      description: t('welcome.organizeFilesDesc'),
       icon: FolderOpen,
       prompt: t('welcome.quickPromptOrganize'),
     },
     {
-      id: 'email',
-      label: t('welcome.checkEmails'),
-      icon: Mail,
-      prompt: t('welcome.quickPromptEmail'),
-      requiresChrome: true,
-    },
-    {
       id: 'papers',
       label: t('welcome.searchPapers'),
+      description: t('welcome.searchPapersDesc'),
       icon: BookOpen,
       prompt: t('welcome.quickPromptPapers'),
-      requiresChrome: true,
-    },
-    {
-      id: 'research-notion',
-      label: t('welcome.summarizePapersToNotion'),
-      icon: FileSearch,
-      prompt: t('welcome.quickPromptNotion'),
-      requiresNotion: true,
     },
   ];
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center bg-transparent px-4 py-6 md:px-8">
-      <div className="max-w-[880px] w-full space-y-4 animate-fade-in">
-        <div className="flex items-center justify-between gap-3 border-b border-border-subtle pb-3">
-          <h1 className="text-[17px] font-medium text-text-primary">{t('welcome.title')}</h1>
-          <span className="hidden rounded-full border border-border-subtle bg-background/58 px-3 py-1 text-xs text-text-muted shadow-soft sm:inline-flex">
-            {workingDirLabel}
-          </span>
+    <div className="flex flex-1 flex-col items-center justify-center bg-transparent px-4 py-6 md:px-8">
+      <div className="w-full max-w-[980px] animate-fade-in">
+        <div className="mx-auto max-w-[36rem] text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-border-subtle bg-background/58 text-accent shadow-soft">
+            <Sparkles className="h-6 w-6" />
+          </div>
+          <h1 className="mt-5 text-[24px] font-semibold tracking-normal text-text-primary">
+            {t('welcome.title')}
+          </h1>
+          <p className="mt-2 text-[14px] font-medium text-text-muted">{t('welcome.subtitle')}</p>
         </div>
 
         {/* API Not Configured Hint */}
         {!isConfigured && (
-          <p className="rounded-xl border border-warning/20 bg-warning/10 px-3 py-2 text-[13px] text-text-secondary shadow-soft">
+          <p className="mx-auto mt-5 max-w-[44rem] rounded-xl border border-warning/20 bg-warning/10 px-3 py-2 text-center text-[13px] text-text-secondary shadow-soft">
             {t('welcome.apiNotConfigured')}{' '}
             <button
               type="button"
@@ -594,36 +585,32 @@ export function WelcomeView() {
         )}
 
         {/* Quick Action Tags */}
-        <div className="flex flex-wrap gap-2 px-1">
+        <div className="mx-auto mt-10 grid w-full max-w-[860px] gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {quickTags.map((tag) => (
             <button
               key={tag.id}
               onClick={() => handleTagClick(tag.id, tag.prompt)}
-              className={`inline-flex h-8 items-center gap-2 rounded-xl border px-3 text-[13px] font-medium shadow-soft transition-colors ${
+              className={`group flex min-h-[8.5rem] flex-col items-start rounded-xl border px-5 py-4 text-left shadow-soft transition-all ${
                 selectedTag === tag.id
-                  ? 'border-accent/30 bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/15'
-                  : 'border-border-muted bg-background/68 text-text-secondary hover:border-accent/25 hover:bg-surface-hover hover:text-text-primary'
-              } ${
-                ('requiresChrome' in tag && tag.requiresChrome) ||
-                ('requiresNotion' in tag && tag.requiresNotion)
-                  ? 'relative'
-                  : ''
+                  ? 'border-accent/35 bg-accent/10 ring-1 ring-inset ring-accent/20'
+                  : 'border-border-subtle bg-background/62 hover:border-accent/25 hover:bg-surface-hover/70'
               }`}
             >
-              <tag.icon
-                className={`w-4 h-4 ${selectedTag === tag.id ? 'text-accent' : 'text-text-muted'}`}
-              />
-              <span>{tag.label}</span>
-              {'requiresChrome' in tag && tag.requiresChrome && (
-                <span className="ml-1 px-1.5 py-px text-[9px] rounded bg-surface-active text-text-muted">
-                  {t('welcome.chromeRequired')}
-                </span>
-              )}
-              {'requiresNotion' in tag && tag.requiresNotion && (
-                <span className="ml-1 px-1.5 py-px text-[9px] rounded bg-surface-active text-text-muted">
-                  {t('welcome.notionRequired')}
-                </span>
-              )}
+              <span
+                className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                  selectedTag === tag.id
+                    ? 'bg-accent/15 text-accent'
+                    : 'bg-accent/10 text-accent group-hover:bg-accent/15'
+                }`}
+              >
+                <tag.icon className="h-5 w-5" />
+              </span>
+              <span className="mt-4 text-[15px] font-semibold text-text-primary">
+                {tag.label}
+              </span>
+              <span className="mt-1 text-[12px] leading-5 text-text-muted">
+                {tag.description}
+              </span>
             </button>
           ))}
         </div>
@@ -634,26 +621,26 @@ export function WelcomeView() {
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`chat-composer-panel relative px-4 py-3 transition-colors sm:px-5 sm:py-4 ${
+          className={`chat-composer-panel relative mx-auto mt-10 w-full max-w-[860px] px-4 py-3 transition-colors sm:px-5 sm:py-4 ${
             isDragging ? 'ring-2 ring-accent bg-accent-muted' : ''
           }`}
         >
           {/* Image previews */}
           {pastedImages.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 pb-2 border-b border-border w-full">
+            <div className="grid w-full grid-cols-2 gap-2 border-b border-border pb-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {pastedImages.map((img, index) => (
-                <div key={index} className="relative group">
+                <div key={index} className="group relative">
                   <img
                     src={img.url}
                     alt={t('welcome.pastedImageAlt', { index: index + 1 })}
-                    className="w-full aspect-square object-cover rounded-lg border border-border"
+                    className="aspect-square w-full rounded-lg border border-border object-cover"
                   />
                   <button
                     type="button"
                     onClick={() => removeImage(index)}
-                    className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-error text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-error text-white opacity-0 transition-opacity group-hover:opacity-100"
                   >
-                    <X className="w-3 h-3" />
+                    <X className="h-3 w-3" />
                   </button>
                 </div>
               ))}
@@ -662,21 +649,21 @@ export function WelcomeView() {
 
           {/* File attachments */}
           {attachedFiles.length > 0 && (
-            <div className="space-y-2 mb-3">
+            <div className="mb-3 space-y-2">
               {attachedFiles.map((file, index) => (
                 <div
                   key={index}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-muted border border-border group"
+                  className="group flex items-center gap-2 rounded-lg border border-border bg-surface-muted px-3 py-2"
                 >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-text-primary truncate">{file.name}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-text-primary">{file.name}</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => removeFile(index)}
-                    className="w-6 h-6 rounded-full bg-error/10 hover:bg-error/20 text-error flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="flex h-6 w-6 items-center justify-center rounded-full bg-error/10 text-error opacity-0 transition-opacity hover:bg-error/20 group-hover:opacity-100"
                   >
-                    <X className="w-3.5 h-3.5" />
+                    <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
               ))}
@@ -756,7 +743,7 @@ export function WelcomeView() {
 
           {/* Bottom Actions */}
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <div className="flex min-w-0 flex-1 items-center gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
               <button
                 type="button"
                 onClick={handleFileSelect}
@@ -766,22 +753,25 @@ export function WelcomeView() {
                 <Plus className="h-5 w-5" />
               </button>
 
+              <span className="h-5 w-px bg-border-subtle" />
+
               <PermissionPolicySelector
                 open={showPermissionMenu}
                 onOpenChange={handlePermissionMenuOpenChange}
                 buttonClassName="composer-flat-pill inline-flex h-9 shrink-0 items-center gap-2 rounded-full px-3 text-[13px] font-medium"
               />
 
+              <span className="h-5 w-px bg-border-subtle" />
+
               <button
                 type="button"
                 onClick={handleSelectFolder}
-                className={`composer-flat-pill inline-flex h-9 min-w-0 flex-1 items-center gap-2 rounded-full px-3 text-[13px] font-medium sm:flex-none ${
+                className={`composer-flat-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
                   workingDir ? '' : 'text-accent hover:text-accent-hover'
                 }`}
-                title={workingDir || t('welcome.selectWorkingFolder')}
+                title={workingDir || workingDirLabel}
               >
                 <FolderOpen className="h-[18px] w-[18px] shrink-0" />
-                <span className="truncate">{workingDirLabel}</span>
               </button>
             </div>
 
@@ -817,7 +807,7 @@ export function WelcomeView() {
                 className="composer-flat-pill inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-full px-3 text-[13px] font-medium text-accent disabled:cursor-not-allowed disabled:text-text-muted"
               >
                 <span>{isSubmitting ? t('welcome.starting') : t('welcome.letsGo')}</span>
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="h-4 w-4" />
               </button>
             </div>
           </div>
