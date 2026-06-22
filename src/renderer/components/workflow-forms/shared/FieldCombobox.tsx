@@ -13,6 +13,7 @@ interface FieldComboboxProps {
   emptyText?: string;
   disabledOptions?: Set<string>;
   className?: string;
+  showType?: boolean;
 }
 
 export function FieldCombobox({
@@ -25,6 +26,7 @@ export function FieldCombobox({
   emptyText,
   disabledOptions,
   className,
+  showType = false,
 }: FieldComboboxProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -189,7 +191,20 @@ export function FieldCombobox({
         ].join(' ')}
       >
         <span className="truncate">
-          {value || <span className="text-text-muted">{placeholder}</span>}
+          {value ? (
+            showType && columnTypes[value] ? (
+              <>
+                {value}
+                <span className="ml-1 text-[11px] text-text-muted">
+                  ({dataFieldTypeLabel(columnTypes[value])})
+                </span>
+              </>
+            ) : (
+              value
+            )
+          ) : (
+            <span className="text-text-muted">{placeholder}</span>
+          )}
         </span>
         <ChevronDown
           className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`}
