@@ -290,9 +290,10 @@ function formatMetric(item: Record<string, unknown>): string {
 
 function formatSortKeys(value: unknown): string {
   return objectArray(value)
+    .filter((key) => key.field)
     .map((key) => {
       const nulls = typeof key.nulls === 'string' ? ` nulls ${key.nulls}` : '';
-      return `${formatFieldRef(String(key.field ?? 'field'))} ${String(key.direction ?? 'asc')}${nulls}`;
+      return `${formatFieldRef(String(key.field))} ${String(key.direction ?? 'asc')}${nulls}`;
     })
     .join(', ');
 }

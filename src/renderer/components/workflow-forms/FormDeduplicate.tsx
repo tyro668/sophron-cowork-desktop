@@ -45,8 +45,7 @@ export default function FormDeduplicate({
         for (const t of types) map[t.name] = t.type;
         setColumnTypes(map);
       })
-      .catch((err) => {
-        console.error('Failed to fetch column types for dedup:', err);
+      .catch(() => {
         setColumnTypes({});
       });
   }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
@@ -161,10 +160,9 @@ export default function FormDeduplicate({
   // ── Sort key actions ──
   const commitSortKeys = useCallback(
     (next: SortKeyEntry[]) => {
-      const valid = next.filter((k) => k.field !== '');
       updateConfig((cfg) => ({
         ...cfg,
-        orderBy: valid.length > 0 ? valid : undefined,
+        orderBy: next,
       }));
     },
     [updateConfig]
@@ -253,7 +251,7 @@ export default function FormDeduplicate({
 
   return (
     <div className="flex flex-col min-h-0 overflow-hidden" style={{ height: '100%' }}>
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
         {/* ── 已选字段（全宽） ── */}
         {columns.length > 0 && (
           <div
@@ -261,6 +259,15 @@ export default function FormDeduplicate({
             style={{ maxHeight: '2.25rem' }}
           >
             <div className="flex flex-nowrap gap-1 overflow-x-auto">
+              <button
+                type="button"
+                onClick={clearAll}
+                className="inline-flex flex-shrink-0 items-center justify-center rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
+                title={tr('clearAll', '清空字段')}
+                aria-label={tr('clearAll', '清空字段')}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
               {columns.map((col) => (
                 <span
                   key={col}
@@ -270,7 +277,8 @@ export default function FormDeduplicate({
                   <button
                     type="button"
                     onClick={() => removeColumn(col)}
-                    className="inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
+                    className="inline-flex h-3 w-3 cursor-pointer items-center justify-center rounded-full hover:bg-accent/20 transition-colors"
+                    aria-label={tr('removeField', '移除字段')}
                   >
                     <X className="h-2.5 w-2.5" />
                   </button>
@@ -285,42 +293,21 @@ export default function FormDeduplicate({
           </p>
         )}
 
-        <div className="grid grid-cols-[46fr_54fr] gap-3 min-h-full">
+        <div className="grid grid-cols-[46fr_54fr] gap-3 flex-1 min-h-0">
           {/* ═══ LEFT: 选择字段 ═══ */}
           <div className="flex min-h-0 flex-col rounded-lg border border-border-muted bg-background/60">
-            {/* Search + count */}
-            <div className="flex items-center gap-1.5 border-b border-border-subtle px-2.5 py-1">
-              <div className="flex flex-1 items-center gap-1 rounded border border-border-muted bg-background/42 px-1.5 py-0.5">
-                <Search className="h-3 w-3 flex-shrink-0 text-text-muted" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={tr('searchField', '搜索字段')}
-                  className="h-5 w-full bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
-                />
-              </div>
-              <span className="text-[11px] text-text-muted tabular-nums flex-shrink-0">
-                {tr('dedupByFields', '已选择 {{count}} 个').replace(
-                  '{{count}}',
-                  String(columns.length)
-                )}
-              </span>
-              {columns.length > 0 && (
-                <button
-                  type="button"
-                  onClick={clearAll}
-                  className="text-[11px] text-text-muted hover:text-error transition-colors flex-shrink-0"
-                >
-                  {tr('clearAll', '清空')}
-                </button>
-              )}
-            </div>
-
-            {/* Field table header */}
-            <div className="flex items-center gap-2 border-b border-border-subtle px-2.5 py-0.5 text-[10px] font-medium text-text-muted">
+            {/* Search + select all + clear */}
+            <div className="flex items-center gap-2 border-b border-border-subtle px-2.5 py-1">
+              <Search className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={tr('searchField', '搜索字段')}
+                className="h-5 flex-1 min-w-0 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
+              />
               <label
-                className="flex cursor-pointer items-center gap-1.5 flex-1 min-w-0"
+                className="flex cursor-pointer items-center gap-1 flex-shrink-0"
                 onMouseDown={(e) => e.preventDefault()}
               >
                 <input
@@ -329,9 +316,10 @@ export default function FormDeduplicate({
                   onChange={toggleAll}
                   className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
                 />
-                <span>{tr('selectAll', '全选')}</span>
+                <span className="text-[11px] text-text-secondary font-medium">
+                  {tr('selectAll', '全选')}
+                </span>
               </label>
-              <span className="w-14 flex-shrink-0 text-right">{tr('dataType', '数据类型')}</span>
             </div>
 
             {/* Field list */}
@@ -369,151 +357,146 @@ export default function FormDeduplicate({
           </div>
 
           {/* ═══ RIGHT: 保留策略 + 排序设置 ═══ */}
-          <div className="grid content-start gap-2 min-h-0">
-            {/* ── 保留策略 ── */}
-            <div className="flex items-center gap-2 text-[12px] text-text-secondary">
-              <span>{tr('dedupKeepStrategy', '保留策略')}</span>
-              <label
-                className="flex items-center gap-1 cursor-pointer"
-                onMouseDown={(e) => e.preventDefault()}
-              >
-                <input
-                  type="radio"
-                  name="keepStrategy"
-                  checked={keep === 'first'}
-                  onChange={() => updateConfig((cfg) => ({ ...cfg, keep: 'first' }))}
-                  className="h-3.5 w-3.5 accent-accent"
-                />
-                <span className={keep === 'first' ? 'text-text-primary font-medium' : ''}>
-                  {tr('first', '第一条')}
-                </span>
-              </label>
-              <label
-                className="flex items-center gap-1 cursor-pointer"
-                onMouseDown={(e) => e.preventDefault()}
-              >
-                <input
-                  type="radio"
-                  name="keepStrategy"
-                  checked={keep === 'last'}
-                  onChange={() => updateConfig((cfg) => ({ ...cfg, keep: 'last' }))}
-                  className="h-3.5 w-3.5 accent-accent"
-                />
-                <span className={keep === 'last' ? 'text-text-primary font-medium' : ''}>
-                  {tr('last', '最后一条')}
-                </span>
-              </label>
-            </div>
+          <div className="overflow-y-auto min-h-0">
+            <div className="grid content-start gap-2">
+              {/* ── 保留策略 ── */}
+              <div className="flex items-center gap-2 text-[12px] text-text-secondary">
+                <span>{tr('dedupKeepStrategy', '保留策略')}</span>
+                <label
+                  className="flex items-center gap-1 cursor-pointer"
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  <input
+                    type="radio"
+                    name="keepStrategy"
+                    checked={keep === 'first'}
+                    onChange={() => updateConfig((cfg) => ({ ...cfg, keep: 'first' }))}
+                    className="h-3.5 w-3.5 accent-accent"
+                  />
+                  <span className={keep === 'first' ? 'text-text-primary font-medium' : ''}>
+                    {tr('first', '第一条')}
+                  </span>
+                </label>
+                <label
+                  className="flex items-center gap-1 cursor-pointer"
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  <input
+                    type="radio"
+                    name="keepStrategy"
+                    checked={keep === 'last'}
+                    onChange={() => updateConfig((cfg) => ({ ...cfg, keep: 'last' }))}
+                    className="h-3.5 w-3.5 accent-accent"
+                  />
+                  <span className={keep === 'last' ? 'text-text-primary font-medium' : ''}>
+                    {tr('last', '最后一条')}
+                  </span>
+                </label>
+              </div>
 
-            {/* ── 排序设置 ── */}
-            <div className="rounded-lg border border-border-muted bg-background/60 p-2">
-              <div className="space-y-1">
-                {activeKeys.map((key, i) => {
-                  const isDuplicate =
-                    key.field &&
-                    usedSortFields.has(key.field) &&
-                    activeKeys.findIndex((k) => k.field === key.field) !== i;
-                  const isFirstDuplicate =
-                    key.field && activeKeys.findIndex((k) => k.field === key.field) === i;
+              {/* ── 排序设置 ── */}
+              <div className="rounded-lg border border-border-muted bg-background/60 p-2">
+                <div className="space-y-1">
+                  {activeKeys.map((key, i) => {
+                    const isDuplicate =
+                      key.field &&
+                      usedSortFields.has(key.field) &&
+                      activeKeys.findIndex((k) => k.field === key.field) !== i;
+                    const isFirstDuplicate =
+                      key.field && activeKeys.findIndex((k) => k.field === key.field) === i;
 
-                  return (
-                    <div key={i} className="flex items-center gap-1 px-0.5">
-                      {/* Drag handle */}
-                      <div
-                        draggable
-                        onDragStart={() => handleDragStart(i)}
-                        onDragOver={(e) => handleDragOver(e, i)}
-                        onDragEnd={handleDragEnd}
-                        className="flex-shrink-0 cursor-grab active:cursor-grabbing text-text-muted hover:text-text-secondary transition-colors"
-                      >
-                        <GripVertical className="h-4 w-4" />
-                      </div>
+                    return (
+                      <div key={i} className="flex items-center gap-1 px-0.5">
+                        {/* Drag handle */}
+                        <div
+                          draggable
+                          onDragStart={() => handleDragStart(i)}
+                          onDragOver={(e) => handleDragOver(e, i)}
+                          onDragEnd={handleDragEnd}
+                          className="flex-shrink-0 cursor-grab active:cursor-grabbing text-text-muted hover:text-text-secondary transition-colors"
+                          title={tr('dragToReorder', '拖拽排序')}
+                          aria-label={tr('dragToReorder', '拖拽排序')}
+                        >
+                          <GripVertical className="h-4 w-4" />
+                        </div>
 
-                      {/* Sort field */}
-                      <select
-                        value={key.field}
-                        onChange={(e) => updateSortKey(i, { field: e.target.value })}
-                        className={`h-6 flex-[4] min-w-0 text-center rounded border bg-background/60 px-1.5 text-[11px] outline-none ${
-                          isDuplicate && !isFirstDuplicate
-                            ? 'border-warning/40 text-text-primary'
-                            : 'border-border-muted text-text-primary'
-                        }`}
-                        title={
-                          isDuplicate && !isFirstDuplicate
-                            ? tr('dedupFieldAlreadyUsed', '该字段已在排序规则中使用')
-                            : undefined
-                        }
-                      >
-                        <option value="" disabled>
-                          {tr('sortSelectField', '请选择字段')}
-                        </option>
-                        {fieldCompletions.map((col) => (
-                          <option key={col} value={col}>
-                            {col}
-                          </option>
-                        ))}
-                      </select>
-
-                      {/* Sort direction */}
-                      <select
-                        value={key.direction}
-                        onChange={(e) =>
-                          updateSortKey(i, { direction: e.target.value as 'asc' | 'desc' })
-                        }
-                        className="h-6 flex-[2] min-w-0 text-center rounded border border-border-muted bg-background/60 px-1 text-[11px] text-text-secondary outline-none"
-                      >
-                        <option value="asc">{tr('asc', '升序')}</option>
-                        <option value="desc">{tr('desc', '降序')}</option>
-                      </select>
-
-                      {/* NULL handling */}
-                      <select
-                        value={key.nulls ?? ''}
-                        onChange={(e) =>
-                          updateSortKey(i, {
-                            nulls: (e.target.value || undefined) as 'first' | 'last' | undefined,
-                          })
-                        }
-                        className="h-6 flex-[3] min-w-0 text-center rounded border border-border-muted bg-background/60 px-1 text-[11px] text-text-secondary outline-none"
-                      >
-                        <option value="">{tr('nullsDefault', '默认')}</option>
-                        <option value="first">{tr('nullsFirst', 'NULL 置前')}</option>
-                        <option value="last">{tr('nullsLast', 'NULL 置后')}</option>
-                      </select>
-
-                      {/* Add sort key */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!key.field) {
-                            // Could show a toast or inline warning, but for now skip silently
-                            return;
+                        {/* Sort field */}
+                        <select
+                          value={key.field}
+                          onChange={(e) => updateSortKey(i, { field: e.target.value })}
+                          className={`h-6 flex-[4] min-w-0 text-center rounded border bg-background/60 px-1.5 text-[11px] outline-none ${
+                            isDuplicate && !isFirstDuplicate
+                              ? 'border-warning/40 text-text-primary'
+                              : 'border-border-muted text-text-primary'
+                          }`}
+                          title={
+                            isDuplicate && !isFirstDuplicate
+                              ? tr('dedupFieldAlreadyUsed', '该字段已在排序规则中使用')
+                              : undefined
                           }
-                          addSortKeyAfter(i);
-                        }}
-                        disabled={!key.field}
-                        className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-text-muted hover:text-accent hover:bg-accent/10 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                        title={
-                          !key.field
-                            ? tr('dedupCompleteSortRow', '请先选择当前行的排序字段')
-                            : tr('sortAddKey', '添加排序键')
-                        }
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                      </button>
+                        >
+                          <option value="" disabled>
+                            {tr('sortSelectField', '请选择字段')}
+                          </option>
+                          {fieldCompletions.map((col) => (
+                            <option key={col} value={col}>
+                              {col}
+                            </option>
+                          ))}
+                        </select>
 
-                      {/* Delete sort key */}
-                      <button
-                        type="button"
-                        onClick={() => removeSortKey(i)}
-                        className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-text-muted hover:text-error hover:bg-error/10 transition-colors"
-                        title={tr('filterDeleteCondition', '删除')}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  );
-                })}
+                        {/* Sort direction */}
+                        <select
+                          value={key.direction}
+                          onChange={(e) =>
+                            updateSortKey(i, { direction: e.target.value as 'asc' | 'desc' })
+                          }
+                          className="h-6 flex-[2] min-w-0 text-center rounded border border-border-muted bg-background/60 px-1 text-[11px] text-text-secondary outline-none"
+                        >
+                          <option value="asc">{tr('asc', '升序')}</option>
+                          <option value="desc">{tr('desc', '降序')}</option>
+                        </select>
+
+                        {/* NULL handling */}
+                        <select
+                          value={key.nulls ?? ''}
+                          onChange={(e) =>
+                            updateSortKey(i, {
+                              nulls: (e.target.value || undefined) as 'first' | 'last' | undefined,
+                            })
+                          }
+                          className="h-6 flex-[3] min-w-0 text-center rounded border border-border-muted bg-background/60 px-1 text-[11px] text-text-secondary outline-none"
+                        >
+                          <option value="">{tr('nullsDefault', '默认')}</option>
+                          <option value="first">{tr('nullsFirst', 'NULL 置前')}</option>
+                          <option value="last">{tr('nullsLast', 'NULL 置后')}</option>
+                        </select>
+
+                        {/* Add sort key */}
+                        <button
+                          type="button"
+                          onClick={() => addSortKeyAfter(i)}
+                          className="inline-flex h-6 w-6 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted hover:text-accent hover:bg-accent/10 transition-colors"
+                          title={tr('sortAddKey', '添加排序键')}
+                          aria-label={tr('sortAddKey', '添加排序键')}
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </button>
+
+                        {/* Delete sort key */}
+                        <button
+                          type="button"
+                          onClick={() => removeSortKey(i)}
+                          className="inline-flex h-6 w-6 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted hover:text-error hover:bg-error/10 transition-colors"
+                          title={tr('filterDeleteCondition', '删除')}
+                          aria-label={tr('filterDeleteCondition', '删除')}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>
