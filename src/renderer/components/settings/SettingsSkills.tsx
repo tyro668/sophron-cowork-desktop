@@ -21,17 +21,21 @@ import {
   PowerOff,
   Loader2,
   RefreshCw,
-  Search,
   ShoppingBag,
   Table2,
-  MoreHorizontal,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Skill, PluginCatalogItemV2, InstalledPlugin } from '../../types';
 import { useAppStore } from '../../store';
 import type { LocalizedBanner } from './shared';
 import { getLocalizedSkillDescription } from '../../utils/localized-skill';
-import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
+import {
+  DataMoreMenu,
+  DataTableSearch,
+  DataToolbarButton,
+  StatCard,
+  TabButton,
+} from '../data-view/shared';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 const SKILLHUB_MARKET_PAGE_SIZE = 50;
@@ -536,46 +540,49 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
       )}
 
       <section className="grid flex-shrink-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <SkillSummaryCard
-          icon={Box}
+        <StatCard
+          Icon={Box}
           value={installedCount}
           label={t('skills.workspace.installedCount')}
           description={t('skills.workspace.installedCountDesc')}
+          iconClassName="bg-accent/10 text-accent"
         />
-        <SkillSummaryCard
-          icon={Layers}
+        <StatCard
+          Icon={Layers}
           value={builtinSkills.length}
           label={t('skills.workspace.builtinCount')}
           description={t('skills.workspace.builtinCountDesc')}
+          iconClassName="bg-accent/10 text-accent"
         />
-        <SkillSummaryCard
-          icon={Cloud}
+        <StatCard
+          Icon={Cloud}
           value={onlineCount}
           label={t('skills.workspace.onlineCount')}
           description={t('skills.workspace.onlineCountDesc')}
+          iconClassName="bg-accent/10 text-accent"
         />
-        <SkillSummaryCard
-          icon={Clock3}
+        <StatCard
+          Icon={Clock3}
           value={recentUpdatedCount || enabledCount}
           label={t('skills.workspace.recentCount')}
           description={t('skills.workspace.recentCountDesc')}
-          tone="warning"
+          iconClassName="bg-warning/10 text-warning"
         />
       </section>
 
       <section className="mt-3 flex min-h-0 flex-1 flex-col">
-        <div className="flex h-10 flex-shrink-0 items-end gap-6 border-b border-border-subtle">
-          <SkillTabButton
+        <div className="flex h-9 flex-shrink-0 items-end gap-3 border-b border-border-subtle">
+          <TabButton
             active={activeWorkspaceTab === 'installed'}
             label={t('skills.workspace.installedTab')}
             onClick={() => setActiveWorkspaceTab('installed')}
           />
-          <SkillTabButton
+          <TabButton
             active={activeWorkspaceTab === 'builtin'}
             label={t('skills.workspace.builtinTab')}
             onClick={() => setActiveWorkspaceTab('builtin')}
           />
-          <SkillTabButton
+          <TabButton
             active={activeWorkspaceTab === 'market'}
             label={t('skills.workspace.marketTab')}
             onClick={() => void handleBrowseMarket()}
@@ -584,21 +591,20 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
 
         <div className="mt-3 flex flex-shrink-0 flex-col gap-2.5 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 flex-1 items-center">
-            <div className="relative h-9 w-full max-w-[360px] flex-1 xl:flex-none">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-              <input
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder={t('skills.workspace.searchPlaceholder')}
-                className="h-full w-full rounded-lg border border-border-muted bg-background/56 pl-9 pr-3 text-[13px] font-medium text-text-primary shadow-soft outline-none transition-colors placeholder:font-normal placeholder:text-text-muted hover:border-border focus:border-accent focus:ring-2 focus:ring-accent/15"
-              />
-            </div>
+            <DataTableSearch
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder={t('skills.workspace.searchPlaceholder')}
+            />
           </div>
 
           {activeWorkspaceTab === 'market' && (
             <div className="flex flex-shrink-0 items-center gap-2">
-              <button
-                type="button"
+              <DataToolbarButton
+                icon={<Plus className="h-3.5 w-3.5" />}
+                label={
+                  selectedPluginInstalled ? t('skills.pluginInstalled') : t('skills.pluginInstall')
+                }
                 onClick={() => void handleSelectedDelete()}
                 disabled={
                   !selectedPlugin ||
@@ -606,72 +612,57 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                   pluginActionKey !== null ||
                   isLoading
                 }
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border-muted bg-background/42 px-3 text-[12px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                {selectedPluginInstalled ? t('skills.pluginInstalled') : t('skills.pluginInstall')}
-              </button>
+              />
 
-              <GlassDropdownMenu
-                sideOffset={4}
-                trigger={
-                  <button
-                    type="button"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border-muted bg-background/42 text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary"
-                    aria-label={t('data.actions.more')}
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
-                  </button>
-                }
-              >
-                <GlassMenuItem
-                  icon={<RefreshCw className="h-3.5 w-3.5" />}
-                  onSelect={() => void loadPlugins(true)}
-                >
-                  {t('skills.refreshSkills')}
-                </GlassMenuItem>
-                <GlassMenuItem
-                  icon={<Plus className="h-3.5 w-3.5" />}
-                  onSelect={() => void handleInstall()}
-                >
-                  {t('skills.installSkillFromFolder')}
-                </GlassMenuItem>
-              </GlassDropdownMenu>
+              <DataMoreMenu
+                items={[
+                  {
+                    key: 'refresh',
+                    label: t('skills.refreshSkills'),
+                    icon: <RefreshCw className="h-3.5 w-3.5" />,
+                    onClick: () => void loadPlugins(true),
+                  },
+                  {
+                    key: 'install-folder',
+                    label: t('skills.installSkillFromFolder'),
+                    icon: <Plus className="h-3.5 w-3.5" />,
+                    onClick: () => void handleInstall(),
+                  },
+                ]}
+              />
             </div>
           )}
 
           {activeWorkspaceTab !== 'market' && (
             <div className="flex flex-shrink-0 items-center gap-2">
-              <button
-                type="button"
+              <DataToolbarButton
+                icon={
+                  selectedSkill?.enabled ? (
+                    <PowerOff className="h-3.5 w-3.5" />
+                  ) : (
+                    <Power className="h-3.5 w-3.5" />
+                  )
+                }
+                label={
+                  selectedSkill?.enabled ? t('skills.pluginDisable') : t('skills.pluginEnable')
+                }
                 onClick={() => selectedSkill && void handleToggleEnabled(selectedSkill)}
                 disabled={!selectedSkill || isLoading}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border-muted bg-background/42 px-3 text-[12px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                {selectedSkill?.enabled ? (
-                  <PowerOff className="h-3.5 w-3.5" />
-                ) : (
-                  <Power className="h-3.5 w-3.5" />
-                )}
-                {selectedSkill?.enabled ? t('skills.pluginDisable') : t('skills.pluginEnable')}
-              </button>
+              />
 
-              <button
-                type="button"
+              <DataToolbarButton
+                icon={<FolderOpen className="h-3.5 w-3.5" />}
+                label={t('skills.openSkillPath')}
                 onClick={() => selectedSkill && void handleOpenSkillPath(selectedSkill)}
                 disabled={!selectedSkill || isLoading}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border-muted bg-background/42 px-3 text-[12px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                <FolderOpen className="h-3.5 w-3.5" />
-                {t('skills.openSkillPath')}
-              </button>
+              />
             </div>
           )}
         </div>
 
         <div className="mt-3 grid min-h-0 min-w-0 flex-1 gap-3 overflow-hidden xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="glass-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl">
-            <div className="grid h-10 flex-shrink-0 grid-cols-[36px_minmax(0,1fr)_76px_86px] items-center border-b border-border-muted bg-accent/5 px-3 text-[12px] font-medium text-text-secondary 2xl:grid-cols-[36px_minmax(0,1fr)_84px_92px_104px]">
+            <div className="grid h-10 flex-shrink-0 grid-cols-[36px_minmax(0,1fr)_76px_86px] items-center border-b border-border-muted bg-[var(--data-grid-header-surface)] px-3 text-xs font-medium text-text-muted backdrop-blur-xl 2xl:grid-cols-[36px_minmax(0,1fr)_84px_92px_104px]">
               <span />
               <span>{t('skills.workspace.table.skill')}</span>
               <span>{t('skills.workspace.table.type')}</span>
@@ -755,7 +746,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                   </div>
                 </div>
 
-                <p className="mt-4 line-clamp-4 break-words text-[13px] leading-6 text-text-secondary">
+                <p className="mt-4 line-clamp-4 break-words text-[13px] leading-5 text-text-secondary">
                   {selectedItem.description || t('skills.installSkillsDesc')}
                 </p>
 
@@ -803,32 +794,32 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
 
                 {(selectedPlugin || (selectedSkill && selectedSkill.type !== 'builtin')) && (
                   <div className="mt-auto pt-4">
-                  <button
-                    type="button"
-                    onClick={() => void handleSelectedDelete()}
-                    disabled={
-                      (!selectedPlugin && (!selectedSkill || selectedSkill.type === 'builtin')) ||
-                      selectedPluginInstalled ||
-                      pluginActionKey !== null ||
-                      isLoading
-                    }
-                    className={`inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border px-3 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
-                      selectedPlugin
-                        ? 'border-accent/20 bg-accent/5 text-accent hover:bg-accent/10'
-                        : 'border-error/20 bg-error/5 text-error hover:bg-error/10'
-                    }`}
-                  >
-                    {selectedPlugin ? (
-                      <Plus className="h-3.5 w-3.5" />
-                    ) : (
-                      <Trash2 className="h-3.5 w-3.5" />
-                    )}
-                    {selectedPlugin
-                      ? selectedPluginInstalled
-                        ? t('skills.pluginInstalled')
-                        : t('skills.pluginInstall')
-                      : t('skills.pluginManageUninstall')}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleSelectedDelete()}
+                      disabled={
+                        (!selectedPlugin && (!selectedSkill || selectedSkill.type === 'builtin')) ||
+                        selectedPluginInstalled ||
+                        pluginActionKey !== null ||
+                        isLoading
+                      }
+                      className={`inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border px-3 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                        selectedPlugin
+                          ? 'border-accent/20 bg-accent/5 text-accent hover:bg-accent/10'
+                          : 'border-error/20 bg-error/5 text-error hover:bg-error/10'
+                      }`}
+                    >
+                      {selectedPlugin ? (
+                        <Plus className="h-3.5 w-3.5" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" />
+                      )}
+                      {selectedPlugin
+                        ? selectedPluginInstalled
+                          ? t('skills.pluginInstalled')
+                          : t('skills.pluginInstall')
+                        : t('skills.pluginManageUninstall')}
+                    </button>
                   </div>
                 )}
               </>
@@ -851,60 +842,6 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
         </div>
       )}
     </div>
-  );
-}
-
-function SkillSummaryCard({
-  icon: Icon,
-  value,
-  label,
-  description,
-  tone = 'accent',
-}: {
-  icon: LucideIcon;
-  value: number;
-  label: string;
-  description: string;
-  tone?: 'accent' | 'warning';
-}) {
-  const toneClass = tone === 'warning' ? 'bg-warning/10 text-warning' : 'bg-accent/10 text-accent';
-
-  return (
-    <div className="glass-card flex h-[92px] items-center gap-3 rounded-xl px-4">
-      <div
-        className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${toneClass}`}
-      >
-        <Icon className="h-6 w-6" />
-      </div>
-      <div className="min-w-0">
-        <div className="text-[20px] font-semibold leading-none text-text-primary">{value}</div>
-        <div className="mt-1 text-[13px] font-medium text-text-primary">{label}</div>
-        <div className="mt-0.5 truncate text-[11px] text-text-secondary">{description}</div>
-      </div>
-    </div>
-  );
-}
-
-function SkillTabButton({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`relative h-10 px-1 text-[14px] font-semibold transition-colors ${
-        active ? 'text-accent' : 'text-text-secondary hover:text-text-primary'
-      }`}
-    >
-      {label}
-      {active && <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-accent" />}
-    </button>
   );
 }
 
@@ -946,11 +883,11 @@ function SkillTableRow({
         />
       </span>
       <span className="flex min-w-0 items-center gap-2.5">
-        <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
           <Icon className="h-4 w-4" />
         </span>
         <span className="min-w-0">
-          <span className="block truncate text-[13px] font-semibold text-text-primary">
+          <span className="block truncate text-[13px] font-medium text-text-secondary">
             {item.name}
           </span>
         </span>
@@ -971,7 +908,7 @@ function SkillTableRow({
 function SkillTypeBadge({ item }: { item: SkillTableItem }) {
   return (
     <span
-      className={`inline-flex h-6 max-w-full items-center rounded-full px-2 text-[11px] font-semibold ${
+      className={`inline-flex h-6 max-w-full items-center rounded-full px-2 text-xs font-medium ${
         item.type === 'plugin'
           ? 'bg-mcp/10 text-mcp'
           : item.type === 'builtin'
@@ -992,7 +929,7 @@ function SkillStatusBadge({ item }: { item: SkillTableItem }) {
 
   return (
     <span
-      className={`inline-flex h-6 max-w-full items-center gap-1 rounded-full px-2 text-[11px] font-semibold ${
+      className={`inline-flex h-6 max-w-full items-center gap-1 rounded-full px-2 text-xs font-medium ${
         installable
           ? 'bg-warning/10 text-warning'
           : item.enabled
