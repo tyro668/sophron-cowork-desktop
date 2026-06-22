@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Search, X, Plus, Trash2, GripVertical } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { DATA_FIELD_TYPE_LABELS, normalizeDataFieldType } from '../../../shared/data-field-types';
+import { FieldCombobox } from './shared/FieldCombobox';
 
 interface SortKeyEntry {
   field: string;
@@ -293,7 +294,7 @@ export default function FormDeduplicate({
           </p>
         )}
 
-        <div className="grid grid-cols-[46fr_54fr] gap-3 flex-1 min-h-0">
+        <div className="grid grid-cols-[40fr_60fr] gap-3 flex-1 min-h-0">
           {/* ═══ LEFT: 选择字段 ═══ */}
           <div className="flex min-h-0 flex-col rounded-lg border border-border-muted bg-background/60">
             {/* Search + select all + clear */}
@@ -395,15 +396,26 @@ export default function FormDeduplicate({
               </div>
 
               {/* ── 排序设置 ── */}
-              <div className="rounded-lg border border-border-muted bg-background/60 p-2">
-                <div className="space-y-1">
+              <div className="rounded-lg border border-border-muted bg-background/60">
+                {/* Column headers */}
+                <div className="flex items-center gap-1 border-b border-border-subtle px-2.5 py-1.5 text-[11px] font-medium text-text-muted">
+                  <span className="w-4 flex-shrink-0" aria-hidden="true" />
+                  <span className="flex-[4] min-w-0 text-center">
+                    {tr('sortFieldHeader', '排序字段')}
+                  </span>
+                  <span className="flex-[2] min-w-0 text-center">
+                    {tr('sortDirectionHeader', '排序方式')}
+                  </span>
+                  <span className="flex-[3] min-w-0 text-center">
+                    {tr('sortNullsHeader', '空值处理')}
+                  </span>
+                  <span className="w-[3.25rem] flex-shrink-0" aria-hidden="true" />
+                </div>
+
+                <div className="space-y-1 p-2">
                   {activeKeys.map((key, i) => {
-                    const isDuplicate =
-                      key.field &&
-                      usedSortFields.has(key.field) &&
-                      activeKeys.findIndex((k) => k.field === key.field) !== i;
-                    const isFirstDuplicate =
-                      key.field && activeKeys.findIndex((k) => k.field === key.field) === i;
+                    const disabledSortFields = new Set(usedSortFields);
+                    if (key.field) disabledSortFields.delete(key.field);
 
                     return (
                       <div key={i} className="flex items-center gap-1 px-0.5">
@@ -421,29 +433,17 @@ export default function FormDeduplicate({
                         </div>
 
                         {/* Sort field */}
-                        <select
+                        <FieldCombobox
                           value={key.field}
-                          onChange={(e) => updateSortKey(i, { field: e.target.value })}
-                          className={`h-6 flex-[4] min-w-0 text-center rounded border bg-background/60 px-1.5 text-[11px] outline-none ${
-                            isDuplicate && !isFirstDuplicate
-                              ? 'border-warning/40 text-text-primary'
-                              : 'border-border-muted text-text-primary'
-                          }`}
-                          title={
-                            isDuplicate && !isFirstDuplicate
-                              ? tr('dedupFieldAlreadyUsed', '该字段已在排序规则中使用')
-                              : undefined
-                          }
-                        >
-                          <option value="" disabled>
-                            {tr('sortSelectField', '请选择字段')}
-                          </option>
-                          {fieldCompletions.map((col) => (
-                            <option key={col} value={col}>
-                              {col}
-                            </option>
-                          ))}
-                        </select>
+                          options={fieldCompletions}
+                          columnTypes={columnTypes}
+                          onChange={(value) => updateSortKey(i, { field: value })}
+                          placeholder={tr('sortSelectField', '请选择字段')}
+                          searchPlaceholder={tr('searchField', '搜索字段')}
+                          emptyText={tr('noMatch', '无匹配字段')}
+                          disabledOptions={disabledSortFields}
+                          className="flex-[4] min-w-0"
+                        />
 
                         {/* Sort direction */}
                         <select
@@ -457,7 +457,7 @@ export default function FormDeduplicate({
                           <option value="desc">{tr('desc', '降序')}</option>
                         </select>
 
-                        {/* NULL handling */}
+                        {/* Null handling */}
                         <select
                           value={key.nulls ?? ''}
                           onChange={(e) =>
@@ -468,8 +468,8 @@ export default function FormDeduplicate({
                           className="h-6 flex-[3] min-w-0 text-center rounded border border-border-muted bg-background/60 px-1 text-[11px] text-text-secondary outline-none"
                         >
                           <option value="">{tr('nullsDefault', '默认')}</option>
-                          <option value="first">{tr('nullsFirst', 'NULL 置前')}</option>
-                          <option value="last">{tr('nullsLast', 'NULL 置后')}</option>
+                          <option value="first">{tr('nullsFirst', '空值置前')}</option>
+                          <option value="last">{tr('nullsLast', '空值置后')}</option>
                         </select>
 
                         {/* Add sort key */}
