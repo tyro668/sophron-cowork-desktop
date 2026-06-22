@@ -262,7 +262,7 @@ export function PaginationFooter({
   return (
     <div
       className={`flex min-h-11 flex-col items-center justify-between gap-2 px-4 text-xs font-medium text-text-secondary sm:flex-row ${
-        embedded ? 'border-t border-border-muted py-2.5' : 'mt-3'
+        embedded ? 'border-t border-border-muted py-1' : 'mt-3'
       }`}
     >
       <span>{t('data.totalCount', { count })}</span>

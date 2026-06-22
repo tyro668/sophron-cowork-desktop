@@ -5,6 +5,7 @@ import {
   ArrowUpDown,
   Cloud,
   Eye,
+  Info,
   LogIn,
   PencilLine,
   Plus,
@@ -952,19 +953,37 @@ export function OutputTableEditor({
 
       <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border-muted bg-surface p-4 shadow-card">
         <div className="grid gap-5 lg:grid-cols-[8rem_minmax(0,1fr)] lg:items-center">
-          <InputTableFormLabel>{t('data.outputTables.editor.inputTable')}</InputTableFormLabel>
+          <InputTableFormLabel>
+            <span className="inline-flex items-center gap-1.5">
+              {t('data.outputTables.editor.inputTable')}
+              <InlineInfoTooltip label={t('data.outputTables.editor.inputTableInfo')} />
+            </span>
+          </InputTableFormLabel>
           <InputTableSelect
             value={sourceDatasetId}
             options={inputTableOptions}
             disabled={isBusy || isInputTablesLoading}
             onChange={setSourceDatasetId}
           />
-
-          <div className="lg:col-start-2">
-            <InputTableInfo>{t('data.outputTables.editor.inputTableInfo')}</InputTableInfo>
-          </div>
         </div>
       </div>
     </section>
+  );
+}
+
+function InlineInfoTooltip({ label }: { label: string }) {
+  return (
+    <span className="group relative inline-flex">
+      <button
+        type="button"
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-accent/10 hover:text-accent focus:bg-accent/10 focus:text-accent focus:outline-none"
+        aria-label={label}
+      >
+        <Info className="h-3.5 w-3.5" />
+      </button>
+      <span className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-72 rounded-lg border border-border-subtle bg-[var(--glass-card-strong)] px-3 py-2 text-left text-[12px] font-medium leading-5 text-text-secondary shadow-elevated backdrop-blur-xl group-hover:block group-focus-within:block">
+        {label}
+      </span>
+    </span>
   );
 }

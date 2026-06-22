@@ -435,6 +435,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }> => ipcRenderer.invoke('skills.setStoragePath', targetPath, migrate),
     openStoragePath: (): Promise<{ success: boolean; path: string; error?: string }> =>
       ipcRenderer.invoke('skills.openStoragePath'),
+    openSkillPath: (skillId: string): Promise<{ success: boolean; path: string; error?: string }> =>
+      ipcRenderer.invoke('skills.openSkillPath', skillId),
   },
 
   plugins: {
@@ -856,6 +858,9 @@ declare global {
           error?: string;
         }>;
         openStoragePath: () => Promise<{ success: boolean; path: string; error?: string }>;
+        openSkillPath: (
+          skillId: string
+        ) => Promise<{ success: boolean; path: string; error?: string }>;
       };
       plugins: {
         listCatalog: (options?: {
