@@ -71,6 +71,7 @@ interface SkillMetadata {
   description: string;
   descriptionEn?: string;
   descriptionZh?: string;
+  supportFeatures?: string[];
 }
 
 interface PluginManifest {
@@ -96,6 +97,136 @@ export interface SetGlobalSkillsPathResult {
   path: string;
   migratedCount: number;
   skippedCount: number;
+}
+
+const MAX_SUPPORT_FEATURES = 6;
+const GENERIC_README_HEADINGS = new Set([
+  'all files',
+  'all excel files',
+  'common workflow',
+  'correct',
+  'examples',
+  'financial models',
+  'guide',
+  'important requirements',
+  'overview',
+  'quick reference',
+  'quick start',
+  'requirements',
+  'required format rules',
+  'rules',
+  'setup',
+  'standards',
+  'wrong',
+]);
+
+function stripSkillFrontMatter(content: string): string {
+  return content.replace(/^---\r?\n[\s\S]*?\r?\n---\s*/, '').trim();
+}
+
+function normalizeReadmeFeature(text: string): string {
+  return text
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/<[^>]+>/g, '')
+    .replace(/^[\d.、)\s-]+/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[：:]\s*$/, '');
+}
+
+function isUsefulReadmeFeature(text: string): boolean {
+  const normalized = normalizeReadmeFeature(text);
+  const lower = normalized.toLowerCase();
+  if (normalized.length < 2 || normalized.length > 72) return false;
+  if (GENERIC_README_HEADINGS.has(lower)) return false;
+  if (/^(❌|✅|note|notes?|example|examples?|tip|warning|critical)\b/i.test(normalized)) {
+    return false;
+  }
+  if (/\b(requirements?|standards?|rules?|conventions?|guidelines?)\b/i.test(normalized)) {
+    return false;
+  }
+
+  return (
+    /\b(analy[sz]e|create|edit|extract|fill|generate|merge|read|review|rotate|split|visuali[sz]e|convert|recalculate|process|parse)\b/i.test(
+      normalized
+    ) || /提取|生成|合并|拆分|填写|创建|编辑|审阅|分析|转换|解析|处理|可视化/.test(normalized)
+  );
+}
+
+function addReadmeFeature(features: string[], candidate: string): void {
+  const feature = normalizeReadmeFeature(candidate);
+  if (!isUsefulReadmeFeature(feature)) return;
+  const key = feature.toLowerCase();
+  if (features.some((item) => item.toLowerCase() === key)) return;
+  features.push(feature);
+}
+
+function extractTableFeaturesFromReadme(body: string): string[] {
+  const features: string[] = [];
+  const lines = body.split(/\r?\n/);
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (!line.startsWith('|') || !line.endsWith('|')) continue;
+
+    const cells = line
+      .split('|')
+      .slice(1, -1)
+      .map((cell) => normalizeReadmeFeature(cell));
+    const firstHeader = cells[0]?.toLowerCase();
+    if (!firstHeader || !/(task|capability|feature|功能|能力|任务)/i.test(firstHeader)) continue;
+
+    for (let rowIndex = index + 1; rowIndex < lines.length; rowIndex += 1) {
+      const row = lines[rowIndex].trim();
+      if (!row.startsWith('|') || !row.endsWith('|')) break;
+      const rowCells = row
+        .split('|')
+        .slice(1, -1)
+        .map((cell) => normalizeReadmeFeature(cell));
+      const firstCell = rowCells[0] || '';
+      if (/^-+$/.test(firstCell.replace(/\s+/g, ''))) continue;
+      addReadmeFeature(features, firstCell);
+      if (features.length >= MAX_SUPPORT_FEATURES) return features;
+    }
+  }
+
+  return features;
+}
+
+function extractHeadingFeaturesFromReadme(body: string): string[] {
+  const features: string[] = [];
+  const lines = body.split(/\r?\n/);
+
+  for (const line of lines) {
+    const match = line.match(/^#{2,4}\s+(.+)$/);
+    if (!match) continue;
+    addReadmeFeature(features, match[1]);
+    if (features.length >= MAX_SUPPORT_FEATURES) break;
+  }
+
+  return features;
+}
+
+function extractDescriptionFeatures(description: string): string[] {
+  return description
+    .split(/,|;|；|、|\band\b/i)
+    .map((part) => normalizeReadmeFeature(part))
+    .filter(Boolean)
+    .slice(0, MAX_SUPPORT_FEATURES);
+}
+
+function extractSupportFeaturesFromSkillReadme(content: string, description: string): string[] {
+  const body = stripSkillFrontMatter(content);
+  const tableFeatures = extractTableFeaturesFromReadme(body);
+  if (tableFeatures.length > 0) return tableFeatures;
+
+  const headingFeatures = extractHeadingFeaturesFromReadme(body);
+  if (headingFeatures.length > 0) return headingFeatures;
+
+  return extractDescriptionFeatures(description);
 }
 
 /**
@@ -174,6 +305,8 @@ export class SkillsManager {
             description: metadata.description,
             descriptionEn: metadata.descriptionEn,
             descriptionZh: metadata.descriptionZh,
+            supportFeatures: metadata.supportFeatures,
+            path: skillPath,
             type: 'builtin',
             enabled: true,
             createdAt: Date.now(),
@@ -621,6 +754,8 @@ export class SkillsManager {
               description: metadata.description,
               descriptionEn: metadata.descriptionEn,
               descriptionZh: metadata.descriptionZh,
+              supportFeatures: metadata.supportFeatures,
+              path: entryPath,
               type: 'custom',
               enabled: true,
               createdAt: Date.now(),
@@ -642,6 +777,7 @@ export class SkillsManager {
               description: config.description,
               descriptionEn: config.descriptionEn,
               descriptionZh: config.descriptionZh,
+              path: entryPath,
               type: config.type === 'mcp' ? 'mcp' : 'custom',
               enabled: config.enabled !== false,
               config: config.mcp ? { mcp: config.mcp } : undefined,
@@ -774,6 +910,14 @@ export class SkillsManager {
    */
   getAllSkills(): Skill[] {
     return this.deduplicateSkills(Array.from(this.loadedSkills.values()));
+  }
+
+  getSkillPath(skillId: string): string | null {
+    const skill = this.loadedSkills.get(skillId);
+    if (!skill?.path) {
+      return null;
+    }
+    return skill.path;
   }
 
   /**
@@ -921,6 +1065,7 @@ export class SkillsManager {
         description,
         descriptionEn,
         descriptionZh,
+        supportFeatures: extractSupportFeaturesFromSkillReadme(content, description),
       };
     } catch (error) {
       logError(`Failed to parse SKILL.md from ${skillPath}:`, error);

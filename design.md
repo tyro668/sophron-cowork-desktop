@@ -16,6 +16,7 @@ This app follows a compact desktop operations style: a macOS-like glass workspac
 
 - Keep application pages full height and work-surface first. The first viewport should show actionable content.
 - Main page content sits in a frosted central panel with a compact header and scrollable body.
+- Main workspace pages use the data page as the spacing baseline: the page shell should be `mx-auto w-full px-3 py-3 sm:px-4 flex h-full min-h-0 flex-col`. Use `max-w-[1120px]` for list-only workspaces and `max-w-[1500px]` for split inspector/editor workspaces such as data editors or the skills inventory with a right detail panel.
 - Sidebars use translucent surfaces with visible separators and compact navigation rows.
 - Right context panels are secondary utility columns. Keep them narrow, segmented, and low contrast.
 - Avoid nested card stacks. Use cards for repeated items, tables, inspectors, and dialogs only.

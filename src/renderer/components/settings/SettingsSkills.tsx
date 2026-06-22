@@ -2,28 +2,110 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AlertCircle,
+  BarChart3,
+  Box,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle,
+  CheckCircle2,
+  Clock3,
+  Cloud,
+  FileText,
+  FolderOpen,
+  GitBranch,
+  Layers,
   Package,
-  Power,
-  PowerOff,
   Trash2,
   Plus,
+  Power,
+  PowerOff,
   Loader2,
-  FolderOpen,
-  Globe,
   RefreshCw,
-  X,
+  Search,
+  ShoppingBag,
+  Table2,
+  MoreHorizontal,
 } from 'lucide-react';
-import type { Skill, PluginCatalogItemV2, InstalledPlugin, PluginComponentKind } from '../../types';
+import type { LucideIcon } from 'lucide-react';
+import type { Skill, PluginCatalogItemV2, InstalledPlugin } from '../../types';
 import { useAppStore } from '../../store';
 import type { LocalizedBanner } from './shared';
 import { getLocalizedSkillDescription } from '../../utils/localized-skill';
+import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 const SKILLHUB_MARKET_PAGE_SIZE = 50;
+const SKILL_TABLE_PAGE_SIZE = 10;
+
+type SkillWorkspaceTab = 'installed' | 'builtin' | 'market';
+
+type SkillTableItem =
+  | {
+      kind: 'skill';
+      id: string;
+      name: string;
+      description: string;
+      type: Skill['type'];
+      typeLabel: string;
+      enabled: boolean;
+      updatedAt: number;
+      raw: Skill;
+      tags: string[];
+    }
+  | {
+      kind: 'plugin';
+      id: string;
+      name: string;
+      description: string;
+      type: 'plugin';
+      typeLabel: string;
+      enabled: boolean;
+      updatedAt: number;
+      raw: PluginCatalogItemV2;
+      installed: boolean;
+      tags: string[];
+    };
+
+function normalizePluginLookupKey(value: string | undefined): string {
+  if (!value) {
+    return '';
+  }
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function getCatalogLookupKeys(plugin: PluginCatalogItemV2): string[] {
+  const keys = new Set<string>();
+  const addKey = (value: string | undefined) => {
+    if (!value) {
+      return;
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return;
+    }
+    keys.add(trimmed);
+    keys.add(trimmed.toLowerCase());
+    const normalized = normalizePluginLookupKey(trimmed);
+    if (normalized) {
+      keys.add(normalized);
+    }
+  };
+
+  addKey(plugin.name);
+  addKey(plugin.pluginId);
+  addKey(plugin.skillHubSlug);
+
+  const marketplaceId = plugin.pluginId?.split('@')[0];
+  addKey(marketplaceId);
+
+  return [...keys];
+}
 
 export function SettingsSkills({ isActive }: { isActive: boolean }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const tRef = useRef(t);
   useEffect(() => {
     tRef.current = t;
@@ -31,61 +113,23 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
   const skillsStorageChangedAt = useAppStore((state) => state.skillsStorageChangedAt);
   const skillsStorageChangeEvent = useAppStore((state) => state.skillsStorageChangeEvent);
   const [skills, setSkills] = useState<Skill[]>([]);
-  const [storagePath, setStoragePath] = useState('');
   const [plugins, setPlugins] = useState<PluginCatalogItemV2[]>([]);
   const [installedPluginsByKey, setInstalledPluginsByKey] = useState<
     Record<string, InstalledPlugin>
   >({});
   const [isLoading, setIsLoading] = useState(false);
-  const [isPluginLoading, setIsPluginLoading] = useState(false);
   const [isPluginLoadingMore, setIsPluginLoadingMore] = useState(false);
-  const [isPluginModalOpen, setIsPluginModalOpen] = useState(false);
-  const [pluginPage, setPluginPage] = useState(0);
+  const pluginPageRef = useRef(0);
   const [hasMorePlugins, setHasMorePlugins] = useState(false);
   const [pluginActionKey, setPluginActionKey] = useState<string | null>(null);
   const [pluginToastMessage, setPluginToastMessage] = useState('');
   const [error, setError] = useState<LocalizedBanner | null>(null);
   const [success, setSuccess] = useState<LocalizedBanner | null>(null);
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<SkillWorkspaceTab>('installed');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
   const pluginToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const componentOrder: PluginComponentKind[] = ['skills', 'commands', 'agents', 'hooks', 'mcp'];
-
-  function normalizePluginLookupKey(value: string | undefined): string {
-    if (!value) {
-      return '';
-    }
-    return value
-      .toLowerCase()
-      .replace(/[^a-z0-9-]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-  }
-
-  function getCatalogLookupKeys(plugin: PluginCatalogItemV2): string[] {
-    const keys = new Set<string>();
-    const addKey = (value: string | undefined) => {
-      if (!value) {
-        return;
-      }
-      const trimmed = value.trim();
-      if (!trimmed) {
-        return;
-      }
-      keys.add(trimmed);
-      keys.add(trimmed.toLowerCase());
-      const normalized = normalizePluginLookupKey(trimmed);
-      if (normalized) {
-        keys.add(normalized);
-      }
-    };
-
-    addKey(plugin.name);
-    addKey(plugin.pluginId);
-    addKey(plugin.skillHubSlug);
-
-    const marketplaceId = plugin.pluginId?.split('@')[0];
-    addKey(marketplaceId);
-
-    return [...keys];
-  }
 
   const installedSkillsByKey = useMemo(() => {
     const nextInstalledByKey: Record<string, Skill> = {};
@@ -139,35 +183,8 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
 
   const loadSkills = useCallback(async (silent = false) => {
     try {
-      const [skillsResult, storagePathResult] = await Promise.allSettled([
-        window.electronAPI.skills.getAll(),
-        window.electronAPI.skills.getStoragePath(),
-      ]);
-      const errors: string[] = [];
-
-      if (skillsResult.status === 'fulfilled') {
-        setSkills(skillsResult.value || []);
-      } else {
-        errors.push(
-          skillsResult.reason instanceof Error
-            ? skillsResult.reason.message
-            : tRef.current('skills.failedToLoad')
-        );
-      }
-      if (storagePathResult.status === 'fulfilled') {
-        setStoragePath(storagePathResult.value || '');
-      } else {
-        errors.push(
-          storagePathResult.reason instanceof Error
-            ? storagePathResult.reason.message
-            : tRef.current('skills.storagePathUnavailable')
-        );
-      }
-
-      if (errors.length > 0) {
-        throw new Error(errors.join(' | '));
-      }
-
+      const skillsResult = await window.electronAPI.skills.getAll();
+      setSkills(skillsResult || []);
       if (!silent) {
         setError(null);
       }
@@ -184,6 +201,68 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
     }
   }, []);
 
+  const loadPlugins = useCallback(
+    async (reset = true) => {
+      const nextPage = reset ? 1 : pluginPageRef.current + 1;
+      try {
+        if (!reset) {
+          setIsPluginLoadingMore(true);
+        }
+        const [catalog, installed] = await Promise.all([
+          window.electronAPI.plugins.listCatalog({
+            installableOnly: false,
+            source: 'skillhub',
+            page: nextPage,
+            pageSize: SKILLHUB_MARKET_PAGE_SIZE,
+          }),
+          window.electronAPI.plugins.listInstalled(),
+        ]);
+        const nextCatalog = catalog || [];
+        setPlugins((current) => {
+          if (reset) {
+            return nextCatalog;
+          }
+          const seen = new Set(current.map((plugin) => plugin.pluginId || plugin.name));
+          return [
+            ...current,
+            ...nextCatalog.filter((plugin) => !seen.has(plugin.pluginId || plugin.name)),
+          ];
+        });
+        pluginPageRef.current = nextPage;
+        setHasMorePlugins(nextCatalog.length >= SKILLHUB_MARKET_PAGE_SIZE);
+        const nextInstalledByKey: Record<string, InstalledPlugin> = {};
+        const addLookupKey = (key: string, plugin: InstalledPlugin) => {
+          if (!key || nextInstalledByKey[key]) {
+            return;
+          }
+          nextInstalledByKey[key] = plugin;
+        };
+        for (const plugin of installed || []) {
+          const candidates = [
+            plugin.name,
+            plugin.name?.toLowerCase(),
+            normalizePluginLookupKey(plugin.name),
+            plugin.pluginId,
+            plugin.pluginId?.toLowerCase(),
+            normalizePluginLookupKey(plugin.pluginId),
+          ].filter((value): value is string => Boolean(value));
+          for (const key of candidates) {
+            addLookupKey(key, plugin);
+          }
+        }
+        setInstalledPluginsByKey(nextInstalledByKey);
+        setError(null);
+      } catch (err) {
+        setError({ text: err instanceof Error ? err.message : t('skills.pluginInstallFailed') });
+      } finally {
+        if (!reset) {
+          setIsPluginLoadingMore(false);
+        }
+      }
+    },
+    [t]
+  );
+
   useEffect(() => {
     if (!isElectron || !isActive) {
       return () => {
@@ -194,89 +273,20 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
     }
 
     void loadSkills();
+    void loadPlugins(true);
 
     return () => {
       if (pluginToastTimerRef.current) {
         clearTimeout(pluginToastTimerRef.current);
       }
     };
-  }, [isActive, loadSkills]);
+  }, [isActive, loadPlugins, loadSkills]);
 
   useEffect(() => {
     if (isElectron && isActive && skillsStorageChangedAt > 0) {
       void loadSkills(true);
     }
   }, [isActive, loadSkills, skillsStorageChangedAt]);
-
-  async function loadPlugins(reset = true) {
-    const nextPage = reset ? 1 : pluginPage + 1;
-    try {
-      if (reset) {
-        setIsPluginLoading(true);
-      } else {
-        setIsPluginLoadingMore(true);
-      }
-      const [catalog, installed] = await Promise.all([
-        window.electronAPI.plugins.listCatalog({
-          installableOnly: false,
-          source: 'skillhub',
-          page: nextPage,
-          pageSize: SKILLHUB_MARKET_PAGE_SIZE,
-        }),
-        window.electronAPI.plugins.listInstalled(),
-      ]);
-      const nextCatalog = catalog || [];
-      setPlugins((current) => {
-        if (reset) {
-          return nextCatalog;
-        }
-        const seen = new Set(current.map((plugin) => plugin.pluginId || plugin.name));
-        return [
-          ...current,
-          ...nextCatalog.filter((plugin) => !seen.has(plugin.pluginId || plugin.name)),
-        ];
-      });
-      setPluginPage(nextPage);
-      setHasMorePlugins(nextCatalog.length >= SKILLHUB_MARKET_PAGE_SIZE);
-      const nextInstalledByKey: Record<string, InstalledPlugin> = {};
-      const addLookupKey = (key: string, plugin: InstalledPlugin) => {
-        if (!key || nextInstalledByKey[key]) {
-          return;
-        }
-        nextInstalledByKey[key] = plugin;
-      };
-      for (const plugin of installed || []) {
-        const candidates = [
-          plugin.name,
-          plugin.name?.toLowerCase(),
-          normalizePluginLookupKey(plugin.name),
-          plugin.pluginId,
-          plugin.pluginId?.toLowerCase(),
-          normalizePluginLookupKey(plugin.pluginId),
-        ].filter((value): value is string => Boolean(value));
-        for (const key of candidates) {
-          addLookupKey(key, plugin);
-        }
-      }
-      setInstalledPluginsByKey(nextInstalledByKey);
-      setError(null);
-    } catch (err) {
-      setError({ text: err instanceof Error ? err.message : t('skills.pluginInstallFailed') });
-    } finally {
-      if (reset) {
-        setIsPluginLoading(false);
-      } else {
-        setIsPluginLoadingMore(false);
-      }
-    }
-  }
-
-  async function handleBrowsePlugins() {
-    setIsPluginModalOpen(true);
-    setPluginPage(0);
-    setHasMorePlugins(false);
-    await Promise.all([loadSkills(true), loadPlugins(true)]);
-  }
 
   async function handleInstall() {
     try {
@@ -307,63 +317,6 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
     }
   }
 
-  async function handleSelectStoragePath() {
-    try {
-      const folderPath = await window.electronAPI.invoke<string | null>({
-        type: 'folder.select',
-        payload: {},
-      });
-      if (!folderPath) return;
-
-      setIsLoading(true);
-      const result = await window.electronAPI.skills.setStoragePath(folderPath, true);
-      if (result.success) {
-        setStoragePath(result.path);
-        await loadSkills(true);
-        setError(null);
-        setSuccess({
-          text: t('skills.storagePathUpdated', {
-            migrated: result.migratedCount,
-            skipped: result.skippedCount,
-          }),
-        });
-        setTimeout(() => setSuccess(null), 5000);
-      }
-    } catch (err) {
-      setError({
-        text: err instanceof Error ? err.message : t('skills.storagePathUpdateFailed'),
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  async function handleOpenStoragePath() {
-    setIsLoading(true);
-    try {
-      const result = await window.electronAPI.skills.openStoragePath();
-      if (!result.success) {
-        setError({ text: result.error || t('skills.storagePathOpenFailed') });
-        return;
-      }
-      setStoragePath(result.path);
-      setError(null);
-    } catch (err) {
-      setError({ text: err instanceof Error ? err.message : t('skills.storagePathOpenFailed') });
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  async function handleRefreshSkills() {
-    setIsLoading(true);
-    try {
-      await loadSkills();
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
   async function handleDelete(skillId: string, skillName: string) {
     if (!confirm(t('skills.deleteSkill', { name: skillName }))) return;
 
@@ -383,8 +336,25 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
     try {
       await window.electronAPI.skills.setEnabled(skill.id, !skill.enabled);
       await loadSkills();
+      setError(null);
     } catch (err) {
       setError({ text: err instanceof Error ? err.message : t('skills.failedToToggle') });
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function handleOpenSkillPath(skill: Skill) {
+    setIsLoading(true);
+    try {
+      const result = await window.electronAPI.skills.openSkillPath(skill.id);
+      if (!result.success) {
+        setError({ text: result.error || t('skills.skillPathOpenFailed') });
+        return;
+      }
+      setError(null);
+    } catch (err) {
+      setError({ text: err instanceof Error ? err.message : t('skills.skillPathOpenFailed') });
     } finally {
       setIsLoading(false);
     }
@@ -422,425 +392,455 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
     }
   }
 
-  async function handleSetPluginEnabled(plugin: InstalledPlugin, enabled: boolean) {
-    setPluginActionKey(`enabled:${plugin.pluginId}`);
-    setError(null);
-    try {
-      await window.electronAPI.plugins.setEnabled(plugin.pluginId, enabled);
-      await loadPlugins();
-    } catch (err) {
-      setError({ text: err instanceof Error ? err.message : t('skills.pluginInstallFailed') });
-    } finally {
-      setPluginActionKey(null);
-    }
-  }
+  const builtinSkills = skills.filter((s) => s.type === 'builtin');
+  const language = i18n.resolvedLanguage || i18n.language;
+  const installedCount = skills.length;
+  const enabledCount = skills.filter((skill) => skill.enabled).length;
+  const recentUpdatedCount = skills.filter((skill) => {
+    const createdAt = typeof skill.createdAt === 'number' ? skill.createdAt : 0;
+    return createdAt > 0 && Date.now() - createdAt <= 7 * 24 * 60 * 60 * 1000;
+  }).length;
+  const onlineCount = plugins.length;
 
-  async function handleSetComponentEnabled(
-    plugin: InstalledPlugin,
-    component: PluginComponentKind,
-    enabled: boolean
-  ) {
-    setPluginActionKey(`component:${plugin.pluginId}:${component}`);
-    setError(null);
-    try {
-      await window.electronAPI.plugins.setComponentEnabled(plugin.pluginId, component, enabled);
-      await loadPlugins();
-    } catch (err) {
-      setError({ text: err instanceof Error ? err.message : t('skills.pluginInstallFailed') });
-    } finally {
-      setPluginActionKey(null);
-    }
-  }
+  const tableItems = useMemo<SkillTableItem[]>(() => {
+    const query = searchQuery.trim().toLocaleLowerCase();
+    const skillRows = skills
+      .filter((skill) => {
+        if (activeWorkspaceTab === 'builtin' && skill.type !== 'builtin') return false;
+        if (activeWorkspaceTab === 'market') return false;
+        if (!query) return true;
+        const description = getLocalizedSkillDescription(skill, language);
+        return `${skill.name} ${description} ${skill.type}`.toLocaleLowerCase().includes(query);
+      })
+      .map((skill) => {
+        const description = getLocalizedSkillDescription(skill, language);
+        return {
+          kind: 'skill' as const,
+          id: `skill:${skill.id}`,
+          name: skill.name,
+          description,
+          type: skill.type,
+          typeLabel: t(`skills.skillTypes.${skill.type}`, { defaultValue: skill.type }),
+          enabled: skill.enabled,
+          updatedAt: skill.createdAt,
+          raw: skill,
+          tags: getSkillSupportFeatures(skill, description),
+        };
+      });
 
-  async function handleUninstallPlugin(plugin: InstalledPlugin) {
-    if (!confirm(t('skills.pluginUninstall', { name: plugin.name }))) {
+    const pluginRows =
+      activeWorkspaceTab === 'market'
+        ? plugins
+            .filter((plugin) => {
+              if (!query) return true;
+              return `${plugin.name} ${plugin.description ?? ''} ${plugin.catalogSource ?? ''}`
+                .toLocaleLowerCase()
+                .includes(query);
+            })
+            .map((plugin) => {
+              const installedPlugin = getCatalogLookupKeys(plugin)
+                .map((key) => installedPluginsByKey[key])
+                .find((item): item is InstalledPlugin => Boolean(item));
+              const installedSkill = getCatalogLookupKeys(plugin)
+                .map((key) => installedSkillsByKey[key])
+                .find((item): item is Skill => Boolean(item));
+              const installed = Boolean(installedPlugin || installedSkill);
+              return {
+                kind: 'plugin' as const,
+                id: `plugin:${plugin.pluginId || plugin.skillHubSlug || plugin.name}`,
+                name: plugin.name,
+                description: plugin.description || t('skills.skillHubSkillPackage'),
+                type: 'plugin' as const,
+                typeLabel: t('skills.skillTypes.plugin', { defaultValue: '插件' }),
+                enabled: installed,
+                updatedAt: installedPlugin?.updatedAt ?? installedSkill?.createdAt ?? 0,
+                raw: plugin,
+                installed,
+                tags: getPluginTags(plugin, t),
+              };
+            })
+        : [];
+
+    return [...skillRows, ...pluginRows];
+  }, [
+    activeWorkspaceTab,
+    installedPluginsByKey,
+    installedSkillsByKey,
+    language,
+    plugins,
+    searchQuery,
+    skills,
+    t,
+  ]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeWorkspaceTab, searchQuery]);
+
+  const pageCount = Math.max(1, Math.ceil(tableItems.length / SKILL_TABLE_PAGE_SIZE));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
+  const pageItems = tableItems.slice(
+    (safeCurrentPage - 1) * SKILL_TABLE_PAGE_SIZE,
+    safeCurrentPage * SKILL_TABLE_PAGE_SIZE
+  );
+  const selectedItem =
+    tableItems.find((item) => item.id === selectedSkillId) ?? tableItems[0] ?? null;
+  const selectedSkill = selectedItem?.kind === 'skill' ? selectedItem.raw : null;
+  const selectedPlugin = selectedItem?.kind === 'plugin' ? selectedItem.raw : null;
+  const selectedPluginInstalled = selectedItem?.kind === 'plugin' ? selectedItem.installed : false;
+  const SelectedIcon = selectedItem
+    ? getSkillVisualIcon(selectedItem.name, selectedItem.type)
+    : Package;
+  const hasNextPage =
+    safeCurrentPage < pageCount || (activeWorkspaceTab === 'market' && hasMorePlugins);
+
+  const handleBrowseMarket = async () => {
+    setActiveWorkspaceTab('market');
+    await loadPlugins(true);
+  };
+
+  const handleSelectedDelete = async () => {
+    if (selectedSkill && selectedSkill.type !== 'builtin') {
+      await handleDelete(selectedSkill.id, selectedSkill.name);
       return;
     }
-
-    setPluginActionKey(`uninstall:${plugin.pluginId}`);
-    setError(null);
-    try {
-      await window.electronAPI.plugins.uninstall(plugin.pluginId);
-      await loadPlugins();
-      showPluginInstallToast(t('skills.pluginUninstalled', { name: plugin.name }));
-    } catch (err) {
-      setError({ text: err instanceof Error ? err.message : t('skills.pluginInstallFailed') });
-    } finally {
-      setPluginActionKey(null);
+    if (selectedPlugin && !selectedPluginInstalled) {
+      await handleInstallPlugin(selectedPlugin);
     }
-  }
+  };
 
-  const builtinSkills = skills.filter((s) => s.type === 'builtin');
-  const customSkills = skills.filter((s) => s.type !== 'builtin');
+  const handleNextPage = async () => {
+    if (safeCurrentPage < pageCount) {
+      setCurrentPage((page) => Math.min(pageCount, page + 1));
+      return;
+    }
+    if (activeWorkspaceTab === 'market' && hasMorePlugins && !isPluginLoadingMore) {
+      await loadPlugins(false);
+      setCurrentPage((page) => page + 1);
+    }
+  };
 
   return (
-    <div className="space-y-4">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-error/20 bg-error/5 px-3 py-2 text-[13px] text-error">
+        <div className="mb-3 flex flex-shrink-0 items-center gap-2 rounded-lg border border-error/20 bg-error/5 px-3 py-2 text-[13px] text-error">
           <AlertCircle className="h-4 w-4 flex-shrink-0" />
           {error.key ? t(error.key) : error.text}
         </div>
       )}
       {success && (
-        <div className="flex items-center gap-2 rounded-lg border border-success/20 bg-success/5 px-3 py-2 text-[13px] text-success">
+        <div className="mb-3 flex flex-shrink-0 items-center gap-2 rounded-lg border border-success/20 bg-success/5 px-3 py-2 text-[13px] text-success">
           <CheckCircle className="h-4 w-4 flex-shrink-0" />
           {success.key ? t(success.key) : success.text}
         </div>
       )}
 
-      <section className="glass-card rounded-xl px-3 py-3">
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-          <div className="min-w-0">
-            <h2 className="text-[13px] font-medium text-text-primary">
-              {t('skills.storagePathTitle')}
-            </h2>
-            <p className="mt-1 break-all text-[12px] leading-5 text-text-secondary">
-              {storagePath || t('skills.storagePathUnavailable')}
-            </p>
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:flex lg:items-center">
-            <button
-              onClick={handleSelectStoragePath}
-              disabled={isLoading}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border-muted bg-background/68 px-3 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
-            >
-              <FolderOpen className="h-4 w-4" />
-              {t('skills.selectStoragePath')}
-            </button>
-            <button
-              onClick={handleOpenStoragePath}
-              disabled={isLoading}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border-muted bg-background/68 px-3 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
-            >
-              <Globe className="h-4 w-4" />
-              {t('skills.openStoragePath')}
-            </button>
-            <button
-              onClick={handleRefreshSkills}
-              disabled={isLoading}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border-muted bg-background/68 px-3 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
-            >
-              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-              {t('skills.refreshSkills')}
-            </button>
-          </div>
-        </div>
+      <section className="grid flex-shrink-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <SkillSummaryCard
+          icon={Box}
+          value={installedCount}
+          label={t('skills.workspace.installedCount')}
+          description={t('skills.workspace.installedCountDesc')}
+        />
+        <SkillSummaryCard
+          icon={Layers}
+          value={builtinSkills.length}
+          label={t('skills.workspace.builtinCount')}
+          description={t('skills.workspace.builtinCountDesc')}
+        />
+        <SkillSummaryCard
+          icon={Cloud}
+          value={onlineCount}
+          label={t('skills.workspace.onlineCount')}
+          description={t('skills.workspace.onlineCountDesc')}
+        />
+        <SkillSummaryCard
+          icon={Clock3}
+          value={recentUpdatedCount || enabledCount}
+          label={t('skills.workspace.recentCount')}
+          description={t('skills.workspace.recentCountDesc')}
+          tone="warning"
+        />
       </section>
 
-      <section className="space-y-2">
-        <div className="flex items-center gap-2">
-          <h2 className="text-[15px] font-semibold text-text-primary">
-            {t('skills.builtinSkills')}
-          </h2>
-          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-accent/10 px-1.5 text-xs font-medium text-accent">
-            {builtinSkills.length}
-          </span>
+      <section className="mt-3 flex min-h-0 flex-1 flex-col">
+        <div className="flex h-10 flex-shrink-0 items-end gap-6 border-b border-border-subtle">
+          <SkillTabButton
+            active={activeWorkspaceTab === 'installed'}
+            label={t('skills.workspace.installedTab')}
+            onClick={() => setActiveWorkspaceTab('installed')}
+          />
+          <SkillTabButton
+            active={activeWorkspaceTab === 'builtin'}
+            label={t('skills.workspace.builtinTab')}
+            onClick={() => setActiveWorkspaceTab('builtin')}
+          />
+          <SkillTabButton
+            active={activeWorkspaceTab === 'market'}
+            label={t('skills.workspace.marketTab')}
+            onClick={() => void handleBrowseMarket()}
+          />
         </div>
-        <div className="glass-card overflow-hidden rounded-xl">
-          {builtinSkills.map((skill) => (
-            <SkillRow
-              key={skill.id}
-              skill={skill}
-              onToggleEnabled={() => handleToggleEnabled(skill)}
-              onDelete={null}
-              isLoading={isLoading}
-            />
-          ))}
-        </div>
-      </section>
 
-      <section className="space-y-2">
-        <h2 className="text-[15px] font-semibold text-text-primary">{t('skills.customSkills')}</h2>
-        <div className="glass-card overflow-hidden rounded-xl">
-          {customSkills.length === 0 ? (
-            <div className="flex items-center gap-3 px-4 py-3 text-text-muted">
-              <Package className="h-8 w-8 flex-shrink-0 opacity-45" />
-              <div className="min-w-0">
-                <p className="text-[13px] font-medium text-text-primary">
-                  {t('skills.noCustomSkills')}
-                </p>
-                <p className="mt-0.5 text-[12px] leading-5 text-text-muted">
-                  {t('skills.installSkillsDesc')}
-                </p>
-              </div>
-            </div>
-          ) : (
-            customSkills.map((skill) => (
-              <SkillRow
-                key={skill.id}
-                skill={skill}
-                onToggleEnabled={() => handleToggleEnabled(skill)}
-                onDelete={() => handleDelete(skill.id, skill.name)}
-                isLoading={isLoading}
+        <div className="mt-3 flex flex-shrink-0 flex-col gap-2.5 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex min-w-0 flex-1 items-center">
+            <div className="relative h-9 w-full max-w-[360px] flex-1 xl:flex-none">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+              <input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder={t('skills.workspace.searchPlaceholder')}
+                className="h-full w-full rounded-lg border border-border-muted bg-background/56 pl-9 pr-3 text-[13px] font-medium text-text-primary shadow-soft outline-none transition-colors placeholder:font-normal placeholder:text-text-muted hover:border-border focus:border-accent focus:ring-2 focus:ring-accent/15"
               />
-            ))
-          )}
-        </div>
-      </section>
+            </div>
+          </div>
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <button
-          onClick={handleBrowsePlugins}
-          disabled={isLoading || isPluginLoading}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border-muted bg-background/42 px-3 text-[13px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
-        >
-          {isPluginLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Package className="h-4 w-4" />
-          )}
-          {t('skills.browsePlugins')}
-        </button>
-        <button
-          onClick={handleInstall}
-          disabled={isLoading}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border-muted bg-background/42 px-3 text-[13px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
-        >
-          <Plus className="h-4 w-4" />
-          {t('skills.installSkillFromFolder')}
-        </button>
-      </div>
-
-      {isPluginModalOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
-          <div className="w-full max-w-3xl max-h-[80vh] overflow-hidden rounded-lg border border-border bg-surface shadow-elevated">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-              <h3 className="text-lg font-semibold text-text-primary">
-                {t('skills.pluginListTitle')}
-              </h3>
+          {activeWorkspaceTab === 'market' && (
+            <div className="flex flex-shrink-0 items-center gap-2">
               <button
-                onClick={() => setIsPluginModalOpen(false)}
-                className="p-2 rounded-lg hover:bg-surface-hover transition-colors"
+                type="button"
+                onClick={() => void handleSelectedDelete()}
+                disabled={
+                  !selectedPlugin ||
+                  selectedPluginInstalled ||
+                  pluginActionKey !== null ||
+                  isLoading
+                }
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border-muted bg-background/42 px-3 text-[12px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
               >
-                <X className="w-5 h-5 text-text-secondary" />
+                <Plus className="h-3.5 w-3.5" />
+                {selectedPluginInstalled ? t('skills.pluginInstalled') : t('skills.pluginInstall')}
+              </button>
+
+              <GlassDropdownMenu
+                sideOffset={4}
+                trigger={
+                  <button
+                    type="button"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border-muted bg-background/42 text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary"
+                    aria-label={t('data.actions.more')}
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </button>
+                }
+              >
+                <GlassMenuItem
+                  icon={<RefreshCw className="h-3.5 w-3.5" />}
+                  onSelect={() => void loadPlugins(true)}
+                >
+                  {t('skills.refreshSkills')}
+                </GlassMenuItem>
+                <GlassMenuItem
+                  icon={<Plus className="h-3.5 w-3.5" />}
+                  onSelect={() => void handleInstall()}
+                >
+                  {t('skills.installSkillFromFolder')}
+                </GlassMenuItem>
+              </GlassDropdownMenu>
+            </div>
+          )}
+
+          {activeWorkspaceTab !== 'market' && (
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => selectedSkill && void handleToggleEnabled(selectedSkill)}
+                disabled={!selectedSkill || isLoading}
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border-muted bg-background/42 px-3 text-[12px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                {selectedSkill?.enabled ? (
+                  <PowerOff className="h-3.5 w-3.5" />
+                ) : (
+                  <Power className="h-3.5 w-3.5" />
+                )}
+                {selectedSkill?.enabled ? t('skills.pluginDisable') : t('skills.pluginEnable')}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => selectedSkill && void handleOpenSkillPath(selectedSkill)}
+                disabled={!selectedSkill || isLoading}
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border-muted bg-background/42 px-3 text-[12px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                <FolderOpen className="h-3.5 w-3.5" />
+                {t('skills.openSkillPath')}
               </button>
             </div>
-            <div className="p-5 space-y-3 overflow-y-auto max-h-[65vh]">
-              {isPluginLoading ? (
-                <div className="py-8 flex items-center justify-center gap-2 text-text-secondary">
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>{t('common.loading')}</span>
+          )}
+        </div>
+
+        <div className="mt-3 grid min-h-0 min-w-0 flex-1 gap-3 overflow-hidden xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="glass-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl">
+            <div className="grid h-10 flex-shrink-0 grid-cols-[36px_minmax(0,1fr)_76px_86px] items-center border-b border-border-muted bg-accent/5 px-3 text-[12px] font-medium text-text-secondary 2xl:grid-cols-[36px_minmax(0,1fr)_84px_92px_104px]">
+              <span />
+              <span>{t('skills.workspace.table.skill')}</span>
+              <span>{t('skills.workspace.table.type')}</span>
+              <span>{t('skills.workspace.table.status')}</span>
+              <span className="hidden 2xl:block">{t('skills.workspace.table.updatedAt')}</span>
+            </div>
+
+            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+              {pageItems.length === 0 ? (
+                <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 px-6 text-center text-text-muted">
+                  <Package className="h-10 w-10 opacity-40" />
+                  <div className="text-[13px] font-medium text-text-secondary">
+                    {t('skills.workspace.emptyTitle')}
+                  </div>
                 </div>
-              ) : plugins.length === 0 ? (
-                <div className="py-8 text-center text-text-muted">{t('skills.noPluginsFound')}</div>
               ) : (
-                <>
-                  {plugins.map((plugin) => (
-                    <div
-                      key={plugin.pluginId || plugin.name}
-                      className="rounded-lg border border-border bg-surface-hover p-4"
-                    >
-                      {(() => {
-                        const installedPlugin = getCatalogLookupKeys(plugin)
-                          .map((key) => installedPluginsByKey[key])
-                          .find((item): item is InstalledPlugin => Boolean(item));
-                        const installedSkill = getCatalogLookupKeys(plugin)
-                          .map((key) => installedSkillsByKey[key])
-                          .find((item): item is Skill => Boolean(item));
-                        const installTarget = plugin.pluginId ?? plugin.name;
-                        const isInstalling = pluginActionKey === `install:${installTarget}`;
-                        const componentEntries = componentOrder.filter(
-                          (component) => plugin.componentCounts[component] > 0
-                        );
-                        const isSkillHubCatalog = plugin.catalogSource === 'skillhub';
-                        const isMarketplaceCatalog = plugin.catalogSource === 'claude-marketplace';
-                        const hasKnownComponents = componentEntries.length > 0;
-                        const isInstallable = plugin.installable;
-                        const isInstalled = Boolean(installedPlugin || installedSkill);
-                        return (
-                          <>
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h4 className="font-medium text-text-primary truncate">
-                                    {plugin.name}
-                                  </h4>
-                                  {plugin.version && (
-                                    <span className="text-xs px-2 py-0.5 rounded bg-surface text-text-muted">
-                                      v{plugin.version}
-                                    </span>
-                                  )}
-                                  <span
-                                    className={`text-xs px-2 py-0.5 rounded ${
-                                      isSkillHubCatalog
-                                        ? 'bg-success/10 text-success'
-                                        : 'bg-accent/10 text-accent'
-                                    }`}
-                                  >
-                                    {isSkillHubCatalog
-                                      ? t('skills.skillHubSource')
-                                      : t('skills.claudeMarketplaceSource')}
-                                  </span>
-                                </div>
-                                {plugin.description && (
-                                  <p className="text-sm text-text-muted line-clamp-2">
-                                    {plugin.description}
-                                  </p>
-                                )}
-                                {isSkillHubCatalog ? (
-                                  <p className="text-xs text-text-muted mt-2">
-                                    {plugin.requiresApiKey
-                                      ? t('skills.skillHubRequiresApiKey')
-                                      : t('skills.skillHubSkillPackage')}
-                                  </p>
-                                ) : hasKnownComponents ? (
-                                  <p className="text-xs text-text-muted mt-2">
-                                    {t('skills.pluginComponents', {
-                                      skills: plugin.componentCounts.skills,
-                                      commands: plugin.componentCounts.commands,
-                                      agents: plugin.componentCounts.agents,
-                                      hooks: plugin.componentCounts.hooks,
-                                      mcp: plugin.componentCounts.mcp,
-                                    })}
-                                  </p>
-                                ) : (
-                                  isMarketplaceCatalog &&
-                                  !installedPlugin && (
-                                    <p className="text-xs text-text-muted mt-2">
-                                      {t('skills.pluginComponentsAvailableAfterInstall')}
-                                    </p>
-                                  )
-                                )}
-                                {hasKnownComponents &&
-                                  plugin.componentCounts.hooks > 0 &&
-                                  !installedPlugin && (
-                                    <p className="text-xs text-warning mt-1">
-                                      {t('skills.pluginComponentHooksDisabledByDefault')}
-                                    </p>
-                                  )}
-                                {hasKnownComponents &&
-                                  plugin.componentCounts.mcp > 0 &&
-                                  !installedPlugin && (
-                                    <p className="text-xs text-warning mt-1">
-                                      {t('skills.pluginComponentMcpDisabledByDefault')}
-                                    </p>
-                                  )}
-                                {!isInstallable && !isMarketplaceCatalog && (
-                                  <p className="text-xs text-error mt-1">
-                                    {t('skills.pluginNoComponents')}
-                                  </p>
-                                )}
-                              </div>
-                              {isInstalled ? (
-                                <span className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-success/10 text-success text-sm">
-                                  <CheckCircle className="w-4 h-4" />
-                                  {t('skills.pluginInstalled')}
-                                </span>
-                              ) : (
-                                <button
-                                  onClick={() => handleInstallPlugin(plugin)}
-                                  disabled={!isInstallable || pluginActionKey !== null}
-                                  className="px-3 py-2 rounded-lg bg-accent text-white hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                                >
-                                  {isInstalling ? (
-                                    <span className="inline-flex items-center gap-1">
-                                      <Loader2 className="w-4 h-4 animate-spin" />
-                                      {t('common.install')}
-                                    </span>
-                                  ) : (
-                                    t('skills.pluginInstall')
-                                  )}
-                                </button>
-                              )}
-                            </div>
-                            {installedPlugin && (
-                              <div className="mt-3 pt-3 border-t border-border space-y-2">
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="text-xs text-text-muted">
-                                    {installedPlugin.enabled
-                                      ? t('skills.pluginAppliedInRuntime')
-                                      : t('skills.pluginDisabled')}
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      onClick={() =>
-                                        handleSetPluginEnabled(
-                                          installedPlugin,
-                                          !installedPlugin.enabled
-                                        )
-                                      }
-                                      disabled={pluginActionKey !== null}
-                                      className={`px-3 py-1.5 rounded-md text-xs ${
-                                        installedPlugin.enabled
-                                          ? 'bg-warning/10 text-warning hover:bg-warning/20'
-                                          : 'bg-success/10 text-success hover:bg-success/20'
-                                      } disabled:opacity-50`}
-                                    >
-                                      {installedPlugin.enabled
-                                        ? t('skills.pluginDisable')
-                                        : t('skills.pluginEnable')}
-                                    </button>
-                                    <button
-                                      onClick={() => handleUninstallPlugin(installedPlugin)}
-                                      disabled={pluginActionKey !== null}
-                                      className="px-3 py-1.5 rounded-md text-xs bg-error/10 text-error hover:bg-error/20 disabled:opacity-50"
-                                    >
-                                      {t('skills.pluginManageUninstall')}
-                                    </button>
-                                  </div>
-                                </div>
-                                <div className="space-y-1">
-                                  {componentEntries.map((component) => {
-                                    const enabled = installedPlugin.componentsEnabled[component];
-                                    return (
-                                      <div
-                                        key={`${installedPlugin.pluginId}:${component}`}
-                                        className="flex items-center justify-between gap-2"
-                                      >
-                                        <div className="text-xs text-text-secondary">
-                                          <span className="font-medium">{component}</span>
-                                          <span className="text-text-muted">
-                                            {' '}
-                                            ({plugin.componentCounts[component]})
-                                          </span>
-                                        </div>
-                                        <button
-                                          onClick={() =>
-                                            handleSetComponentEnabled(
-                                              installedPlugin,
-                                              component,
-                                              !enabled
-                                            )
-                                          }
-                                          disabled={pluginActionKey !== null}
-                                          className={`px-2 py-1 rounded text-xs ${
-                                            enabled
-                                              ? 'bg-success/10 text-success hover:bg-success/20'
-                                              : 'bg-surface text-text-muted hover:bg-surface-active'
-                                          } disabled:opacity-50`}
-                                        >
-                                          {enabled
-                                            ? t('skills.pluginDisable')
-                                            : t('skills.pluginEnable')}
-                                        </button>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </div>
-                  ))}
-                  {hasMorePlugins && (
-                    <button
-                      type="button"
-                      onClick={() => loadPlugins(false)}
-                      disabled={isPluginLoadingMore}
-                      className="flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-border-muted bg-background/52 px-3 text-[13px] font-medium text-text-secondary transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
-                    >
-                      {isPluginLoadingMore && <Loader2 className="h-4 w-4 animate-spin" />}
-                      {t('skills.loadMore')}
-                    </button>
-                  )}
-                </>
+                pageItems.map((item) => (
+                  <SkillTableRow
+                    key={item.id}
+                    item={item}
+                    selected={selectedItem?.id === item.id}
+                    onSelect={() => setSelectedSkillId(item.id)}
+                  />
+                ))
               )}
             </div>
+
+            <div className="flex min-h-11 flex-shrink-0 items-center justify-between gap-2 border-t border-border-muted px-4 py-1 text-xs font-medium text-text-secondary">
+              <span className="min-w-0 truncate">
+                {t('skills.workspace.totalCount', {
+                  count: tableItems.length,
+                  defaultValue: `共 ${tableItems.length} 个技能`,
+                })}
+              </span>
+              <div className="flex flex-shrink-0 items-center gap-2">
+                <span className="inline-flex h-8 items-center rounded-lg border border-border-muted bg-background/42 px-3">
+                  {t('data.rowsPerPage', { count: SKILL_TABLE_PAGE_SIZE })}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={safeCurrentPage <= 1}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/42 text-text-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-accent/25 bg-accent/10 px-2 text-accent">
+                  {safeCurrentPage}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void handleNextPage()}
+                  disabled={!hasNextPage || isPluginLoadingMore}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/42 text-text-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  {isPluginLoadingMore ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
+
+          <aside className="glass-card hidden min-h-0 min-w-0 flex-col overflow-hidden rounded-xl p-4 xl:flex">
+            {selectedItem ? (
+              <>
+                <div className="flex items-start gap-3">
+                  <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
+                    <SelectedIcon className="h-7 w-7" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-[16px] font-semibold text-text-primary">
+                      {selectedItem.name}
+                    </h3>
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <SkillTypeBadge item={selectedItem} />
+                      <SkillStatusBadge item={selectedItem} />
+                    </div>
+                  </div>
+                </div>
+
+                <p className="mt-4 line-clamp-4 break-words text-[13px] leading-6 text-text-secondary">
+                  {selectedItem.description || t('skills.installSkillsDesc')}
+                </p>
+
+                <div className="mt-4 border-t border-border-muted pt-4">
+                  <h4 className="text-[13px] font-semibold text-text-primary">
+                    {t('skills.workspace.supportedCapabilities')}
+                  </h4>
+                  <div className="mt-3 space-y-2">
+                    {selectedItem.tags.map((tag) => (
+                      <div
+                        key={`${selectedItem.id}:${tag}`}
+                        className="flex min-w-0 items-center gap-2 text-[12px] font-medium text-text-secondary"
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
+                        <span className="min-w-0 flex-1 truncate" title={tag}>
+                          {tag}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <dl className="mt-4 space-y-3 border-t border-border-muted pt-4 text-[12px]">
+                  <div>
+                    <dt className="font-semibold text-text-primary">
+                      {t('skills.workspace.table.updatedAt')}
+                    </dt>
+                    <dd className="mt-1 text-text-secondary">
+                      {formatSkillDate(selectedItem.updatedAt)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="font-semibold text-text-primary">
+                      {t('skills.workspace.source')}
+                    </dt>
+                    <dd className="mt-1 text-text-secondary">
+                      {selectedItem.kind === 'plugin'
+                        ? t('skills.skillHubSource')
+                        : selectedItem.type === 'builtin'
+                          ? t('skills.workspace.systemBuiltin')
+                          : t('skills.customSkills')}
+                    </dd>
+                  </div>
+                </dl>
+
+                {(selectedPlugin || (selectedSkill && selectedSkill.type !== 'builtin')) && (
+                  <div className="mt-auto pt-4">
+                  <button
+                    type="button"
+                    onClick={() => void handleSelectedDelete()}
+                    disabled={
+                      (!selectedPlugin && (!selectedSkill || selectedSkill.type === 'builtin')) ||
+                      selectedPluginInstalled ||
+                      pluginActionKey !== null ||
+                      isLoading
+                    }
+                    className={`inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border px-3 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                      selectedPlugin
+                        ? 'border-accent/20 bg-accent/5 text-accent hover:bg-accent/10'
+                        : 'border-error/20 bg-error/5 text-error hover:bg-error/10'
+                    }`}
+                  >
+                    {selectedPlugin ? (
+                      <Plus className="h-3.5 w-3.5" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                    {selectedPlugin
+                      ? selectedPluginInstalled
+                        ? t('skills.pluginInstalled')
+                        : t('skills.pluginInstall')
+                      : t('skills.pluginManageUninstall')}
+                  </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-text-muted">
+                <Package className="h-10 w-10 opacity-40" />
+                <p className="text-[13px] font-medium">{t('skills.workspace.emptyTitle')}</p>
+              </div>
+            )}
+          </aside>
         </div>
-      )}
+      </section>
 
       {pluginToastMessage && (
         <div className="fixed right-6 bottom-6 z-[80] max-w-md rounded-lg border border-success/30 bg-surface px-4 py-3 shadow-elevated">
@@ -854,72 +854,228 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
   );
 }
 
-function SkillRow({
-  skill,
-  onToggleEnabled,
-  onDelete,
-  isLoading,
+function SkillSummaryCard({
+  icon: Icon,
+  value,
+  label,
+  description,
+  tone = 'accent',
 }: {
-  skill: Skill;
-  onToggleEnabled: () => void;
-  onDelete: (() => void) | null;
-  isLoading: boolean;
+  icon: LucideIcon;
+  value: number;
+  label: string;
+  description: string;
+  tone?: 'accent' | 'warning';
 }) {
-  const { t, i18n } = useTranslation();
-  const isBuiltin = skill.type === 'builtin';
-  const description = getLocalizedSkillDescription(skill, i18n.resolvedLanguage || i18n.language);
-  const typeLabel = t(`skills.skillTypes.${skill.type}`);
+  const toneClass = tone === 'warning' ? 'bg-warning/10 text-warning' : 'bg-accent/10 text-accent';
 
   return (
-    <div className="flex min-h-[64px] items-center gap-3 border-b border-border-muted px-3 py-2.5 last:border-b-0">
+    <div className="glass-card flex h-[92px] items-center gap-3 rounded-xl px-4">
       <div
-        className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${
-          skill.enabled ? 'bg-success' : 'bg-text-muted'
-        }`}
-      />
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <h3 className="truncate text-[14px] font-medium text-text-primary">{skill.name}</h3>
-          <span
-            className={`inline-flex h-5 items-center rounded-md border px-1.5 text-[11px] font-medium leading-none ${
-              isBuiltin
-                ? 'border-accent/20 bg-accent/5 text-accent'
-                : skill.type === 'mcp'
-                  ? 'border-mcp/20 bg-mcp/5 text-mcp'
-                  : 'border-success/20 bg-success/5 text-success'
-            }`}
-          >
-            {typeLabel}
-          </span>
-        </div>
-        {description && (
-          <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-text-muted">{description}</p>
-        )}
+        className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${toneClass}`}
+      >
+        <Icon className="h-6 w-6" />
       </div>
-      <div className="flex flex-shrink-0 items-center gap-1">
-        <button
-          onClick={onToggleEnabled}
-          disabled={isLoading}
-          className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors disabled:opacity-50 ${
-            skill.enabled
-              ? 'text-success hover:bg-success/10'
-              : 'text-text-muted hover:bg-surface-hover hover:text-text-secondary'
-          }`}
-          title={skill.enabled ? t('common.disable') : t('common.enable')}
-        >
-          {skill.enabled ? <Power className="h-4 w-4" /> : <PowerOff className="h-4 w-4" />}
-        </button>
-        {onDelete && (
-          <button
-            onClick={onDelete}
-            disabled={isLoading}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-error transition-colors hover:bg-error/10 disabled:opacity-50"
-            title={t('common.delete')}
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        )}
+      <div className="min-w-0">
+        <div className="text-[20px] font-semibold leading-none text-text-primary">{value}</div>
+        <div className="mt-1 text-[13px] font-medium text-text-primary">{label}</div>
+        <div className="mt-0.5 truncate text-[11px] text-text-secondary">{description}</div>
       </div>
     </div>
   );
+}
+
+function SkillTabButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative h-10 px-1 text-[14px] font-semibold transition-colors ${
+        active ? 'text-accent' : 'text-text-secondary hover:text-text-primary'
+      }`}
+    >
+      {label}
+      {active && <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-accent" />}
+    </button>
+  );
+}
+
+function SkillTableRow({
+  item,
+  selected,
+  onSelect,
+}: {
+  item: SkillTableItem;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const Icon = getSkillVisualIcon(item.name, item.type);
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
+      className={`grid h-[3.25rem] w-full cursor-pointer grid-cols-[36px_minmax(0,1fr)_76px_86px] items-center border-b border-border-muted/85 px-3 text-left transition-colors last:border-b-0 2xl:grid-cols-[36px_minmax(0,1fr)_84px_92px_104px] ${
+        selected ? 'bg-accent/10 ring-1 ring-inset ring-accent/20' : 'hover:bg-surface-hover/35'
+      }`}
+    >
+      <span className="flex items-center">
+        <input
+          type="radio"
+          name="skill-selection"
+          checked={selected}
+          onChange={onSelect}
+          onClick={(event) => event.stopPropagation()}
+          className="h-3.5 w-3.5 accent-accent"
+          aria-label={item.name}
+        />
+      </span>
+      <span className="flex min-w-0 items-center gap-2.5">
+        <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+          <Icon className="h-4 w-4" />
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate text-[13px] font-semibold text-text-primary">
+            {item.name}
+          </span>
+        </span>
+      </span>
+      <span className="min-w-0">
+        <SkillTypeBadge item={item} />
+      </span>
+      <span className="min-w-0">
+        <SkillStatusBadge item={item} />
+      </span>
+      <span className="hidden truncate text-[12px] font-medium text-text-secondary 2xl:block">
+        {formatSkillDate(item.updatedAt)}
+      </span>
+    </div>
+  );
+}
+
+function SkillTypeBadge({ item }: { item: SkillTableItem }) {
+  return (
+    <span
+      className={`inline-flex h-6 max-w-full items-center rounded-full px-2 text-[11px] font-semibold ${
+        item.type === 'plugin'
+          ? 'bg-mcp/10 text-mcp'
+          : item.type === 'builtin'
+            ? 'bg-accent/10 text-accent'
+            : item.type === 'mcp'
+              ? 'bg-mcp/10 text-mcp'
+              : 'bg-success/10 text-success'
+      }`}
+    >
+      <span className="truncate">{item.typeLabel}</span>
+    </span>
+  );
+}
+
+function SkillStatusBadge({ item }: { item: SkillTableItem }) {
+  const { t } = useTranslation();
+  const installable = item.kind === 'plugin' && !item.installed;
+
+  return (
+    <span
+      className={`inline-flex h-6 max-w-full items-center gap-1 rounded-full px-2 text-[11px] font-semibold ${
+        installable
+          ? 'bg-warning/10 text-warning'
+          : item.enabled
+            ? 'bg-success/10 text-success'
+            : 'bg-text-muted/10 text-text-muted'
+      }`}
+    >
+      <span
+        className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${
+          installable ? 'bg-warning' : item.enabled ? 'bg-success' : 'bg-text-muted'
+        }`}
+      />
+      <span className="truncate">
+        {installable
+          ? t('skills.workspace.installable')
+          : item.enabled
+            ? t('skills.workspace.enabled')
+            : t('skills.workspace.disabled')}
+      </span>
+    </span>
+  );
+}
+
+function getSkillVisualIcon(name: string, type: Skill['type'] | 'plugin'): LucideIcon {
+  const normalized = name.toLowerCase();
+  if (normalized.includes('github')) return GitBranch;
+  if (normalized.includes('pdf') || normalized.includes('document')) return FileText;
+  if (normalized.includes('table') || normalized.includes('excel') || normalized.includes('sheet'))
+    return Table2;
+  if (normalized.includes('data') || normalized.includes('分析')) return BarChart3;
+  if (type === 'plugin') return ShoppingBag;
+  if (type === 'builtin') return Layers;
+  return Package;
+}
+
+function normalizeSkillFeature(text: string): string {
+  return text
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getSkillSupportFeatures(skill: Skill, fallbackDescription: string): string[] {
+  const features = (skill.supportFeatures ?? [])
+    .map(normalizeSkillFeature)
+    .filter((feature) => feature.length > 0)
+    .slice(0, 6);
+
+  if (features.length > 0) {
+    return features;
+  }
+
+  return fallbackDescription
+    .split(/,|;|；|、|\band\b/i)
+    .map(normalizeSkillFeature)
+    .filter((feature) => feature.length > 0)
+    .slice(0, 6);
+}
+
+function getPluginTags(
+  plugin: PluginCatalogItemV2,
+  t: ReturnType<typeof useTranslation>['t']
+): string[] {
+  const tags = [
+    t('skills.workspace.capabilities.onlineInstall'),
+    plugin.requiresApiKey
+      ? t('skills.workspace.capabilities.apiConfig')
+      : t('skills.workspace.capabilities.readyToUse'),
+  ];
+  if (plugin.componentCounts.skills > 0) tags.push(t('skills.workspace.capabilities.skillPackage'));
+  if (plugin.componentCounts.commands > 0)
+    tags.push(t('skills.workspace.capabilities.commandActions'));
+  return tags.slice(0, 4);
+}
+
+function formatSkillDate(value?: number): string {
+  if (!value) return '-';
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
 }
