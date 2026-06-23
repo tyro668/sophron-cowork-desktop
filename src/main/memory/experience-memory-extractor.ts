@@ -51,24 +51,38 @@ export class ExperienceMemoryExtractor {
       sessionSummary?: unknown;
       session_keywords?: unknown;
       sessionKeywords?: unknown;
+      session_confidence?: unknown;
+      sessionConfidence?: unknown;
       chunks?: unknown;
     };
     const rawChunks = Array.isArray(record.chunks) ? record.chunks : [];
+    const sessionSummary =
+      typeof record.session_summary === 'string'
+        ? record.session_summary.trim()
+        : typeof record.sessionSummary === 'string'
+          ? record.sessionSummary.trim()
+          : '';
+    const sessionConfidence = normalizeConfidence(
+      record.session_confidence ?? record.sessionConfidence
+    );
+    if (!sessionSummary || sessionConfidence === null) {
+      return {
+        sessionSummary: '',
+        sessionKeywords: [],
+        chunks: [],
+      };
+    }
 
     return {
-      sessionSummary:
-        typeof record.session_summary === 'string'
-          ? record.session_summary.trim()
-          : typeof record.sessionSummary === 'string'
-            ? record.sessionSummary.trim()
-            : '',
+      sessionSummary,
       sessionKeywords: Array.isArray(record.session_keywords)
         ? record.session_keywords.filter((item): item is string => typeof item === 'string')
         : Array.isArray(record.sessionKeywords)
           ? record.sessionKeywords.filter((item): item is string => typeof item === 'string')
           : [],
+      sessionConfidence,
       chunks: rawChunks
-        .map((item) => {
+        .map((item): ExperienceSessionExtract['chunks'][number] | null => {
           if (!item || typeof item !== 'object') {
             return null;
           }
@@ -78,13 +92,14 @@ export class ExperienceMemoryExtractor {
             keywords?: unknown;
             source_turns?: unknown;
             sourceTurns?: unknown;
+            confidence?: unknown;
           };
           const sourceTurns = Array.isArray(chunk.source_turns)
             ? chunk.source_turns.filter((value): value is number => typeof value === 'number')
             : Array.isArray(chunk.sourceTurns)
               ? chunk.sourceTurns.filter((value): value is number => typeof value === 'number')
               : [];
-          return {
+          const normalized: ExperienceSessionExtract['chunks'][number] = {
             summary: typeof chunk.summary === 'string' ? chunk.summary.trim() : '',
             details:
               typeof chunk.details === 'string'
@@ -97,6 +112,12 @@ export class ExperienceMemoryExtractor {
               : [],
             sourceTurns,
           };
+          const confidence = normalizeConfidence(chunk.confidence);
+          if (confidence === null) {
+            return null;
+          }
+          normalized.confidence = confidence;
+          return normalized;
         })
         .filter(
           (
@@ -106,4 +127,11 @@ export class ExperienceMemoryExtractor {
         ),
     };
   }
+}
+
+function normalizeConfidence(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return null;
+  }
+  return Math.max(0, Math.min(1, value));
 }

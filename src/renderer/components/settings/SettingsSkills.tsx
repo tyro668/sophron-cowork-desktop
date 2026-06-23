@@ -36,6 +36,7 @@ import {
   StatCard,
   TabButton,
 } from '../data-view/shared';
+import { useConfirmDialog } from '../ConfirmDialog';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 const SKILLHUB_MARKET_PAGE_SIZE = 50;
@@ -110,6 +111,7 @@ function getCatalogLookupKeys(plugin: PluginCatalogItemV2): string[] {
 
 export function SettingsSkills({ isActive }: { isActive: boolean }) {
   const { t, i18n } = useTranslation();
+  const { confirmDelete } = useConfirmDialog();
   const tRef = useRef(t);
   useEffect(() => {
     tRef.current = t;
@@ -322,7 +324,10 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
   }
 
   async function handleDelete(skillId: string, skillName: string) {
-    if (!confirm(t('skills.deleteSkill', { name: skillName }))) return;
+    const confirmed = await confirmDelete({
+      message: t('skills.deleteSkill', { name: skillName }),
+    });
+    if (!confirmed) return;
 
     setIsLoading(true);
     try {

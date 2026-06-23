@@ -91,6 +91,8 @@ class MockMemoryLLMClient implements MemoryLLMClientLike {
           category: 'identity',
           key: 'name',
           value: 'Jack',
+          source_type: 'explicit_user_statement',
+          confidence: 0.94,
         });
       }
       if (request.userPrompt.includes('中文')) {
@@ -99,6 +101,8 @@ class MockMemoryLLMClient implements MemoryLLMClientLike {
           category: 'preferences',
           key: 'response_language',
           value: '中文',
+          source_type: 'explicit_user_statement',
+          confidence: 0.92,
         });
       }
       return { text: JSON.stringify({ actions }) };
@@ -114,12 +118,14 @@ class MockMemoryLLMClient implements MemoryLLMClientLike {
           text: JSON.stringify({
             session_summary: '在当前 workspace 中实现并整理 gateway token rotation 相关改动',
             session_keywords: ['gateway', 'token', 'rotation'],
+            session_confidence: 0.84,
             chunks: [
               {
                 summary: '实现 gateway token rotation 的主要改动',
                 details: '记录了 gateway token rotation 的实现细节，并同步 remote gateway 行为。',
                 keywords: ['gateway', 'rotation', 'remote'],
                 source_turns: [1, 2, 3, 4],
+                confidence: 0.82,
               },
             ],
           }),
@@ -130,12 +136,14 @@ class MockMemoryLLMClient implements MemoryLLMClientLike {
         text: JSON.stringify({
           session_summary: '记录用户稳定偏好',
           session_keywords: ['preference'],
+          session_confidence: 0.86,
           chunks: [
             {
               summary: '用户声明希望用中文回答',
               details: '对话中明确要求默认使用中文交流。',
               keywords: ['中文', '偏好'],
               source_turns: [1, 2],
+              confidence: 0.88,
             },
           ],
         }),
@@ -408,6 +416,44 @@ describe('MemoryService', () => {
     const experience = service.readFile(experienceFile!.filePath);
     expect(JSON.stringify(experience.parsed)).toContain('gateway token rotation');
     expect(JSON.stringify(experience.parsed)).toContain('remote gateway');
+  });
+
+  it('removes core and project memory entries when deleted by management APIs', async () => {
+    await service.enqueueIngestion({
+      session: makeSession('session-a', 'Gateway fixes', '/repo/a'),
+      prompt: '修复 gateway token rotation',
+      messages: makeMessages('session-a', [
+        { role: 'user', text: '请用中文回答，我叫 Jack。', timestamp: 1 },
+        { role: 'assistant', text: '好的。', timestamp: 2 },
+        {
+          role: 'user',
+          text: '我们修复 gateway token rotation，并更新 remote gateway 的行为。',
+          timestamp: 3,
+        },
+        { role: 'assistant', text: '已经完成 gateway token rotation。', timestamp: 4 },
+      ]),
+    });
+
+    const coreEntry = service
+      .listCoreEntries()
+      .find((entry) => entry.combinedKey === 'identity.name');
+    const projectEntry = service.listProjectEntries('/repo/a')[0];
+    expect(coreEntry).toBeTruthy();
+    expect(projectEntry).toBeTruthy();
+
+    expect(service.deleteCoreEntry(coreEntry!.combinedKey).success).toBe(true);
+    expect(service.deleteProjectEntry(projectEntry.id).success).toBe(true);
+
+    expect(service.listCoreEntries().some((entry) => entry.combinedKey === 'identity.name')).toBe(
+      false
+    );
+    expect(service.listProjectEntries('/repo/a')).toHaveLength(0);
+
+    const reloaded = new MemoryService(db, { llmClient: new MockMemoryLLMClient() });
+    expect(reloaded.listCoreEntries().some((entry) => entry.combinedKey === 'identity.name')).toBe(
+      false
+    );
+    expect(reloaded.listProjectEntries('/repo/a')).toHaveLength(0);
   });
 
   it('builds progressive prompt context and supports search/read/debug inspection', async () => {

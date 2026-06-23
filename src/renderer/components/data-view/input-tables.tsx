@@ -47,6 +47,7 @@ import { GlassDataGridPreview } from '../GlassDataGridPreview';
 import { MessageCard } from '../MessageCard';
 import { getAgentModelLabel } from '../AgentModelSelector';
 import { LlmPromptComposer } from '../LlmPromptComposer';
+import { useConfirmDialog } from '../ConfirmDialog';
 import {
   DataMoreMenu,
   DataTableSearch,
@@ -637,6 +638,7 @@ function InputTableEditorWorkbench({
   onUpdateDatasetConfig,
 }: InputTableEditorProps) {
   const { t } = useTranslation();
+  const { confirmDelete } = useConfirmDialog();
   const appConfig = useAppStore((state) => state.appConfig);
   const targetId = draft?.id ?? dataset?.id ?? '';
   const initialName = draft?.name ?? dataset?.name ?? '';
@@ -1044,11 +1046,11 @@ function InputTableEditorWorkbench({
       setCustomizeGenerationError(t('data.inputTables.editor.deletePublishedVersionBlocked'));
       return;
     }
-    const confirmed = window.confirm(
-      t('data.inputTables.editor.deleteVersionConfirm', {
+    const confirmed = await confirmDelete({
+      message: t('data.inputTables.editor.deleteVersionConfirm', {
         version: version.version,
-      })
-    );
+      }),
+    });
     if (!confirmed) return;
     setDeletingNormalizerVersionId(version.id);
     setCustomizeGenerationError(null);

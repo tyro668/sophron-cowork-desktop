@@ -31,6 +31,7 @@ import {
   Trash2,
   type LucideIcon,
 } from 'lucide-react';
+import { useConfirmDialog } from '../ConfirmDialog';
 import type {
   Automation,
   AutomationActionDefinitionSummary,
@@ -86,6 +87,7 @@ interface AutomationRunLogEntry {
 
 export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const { t } = useTranslation();
+  const { confirmDelete } = useConfirmDialog();
   const projects = useAppStore((state) => state.projects);
   const appConfig = useAppStore((state) => state.appConfig);
   const tr = useCallback(
@@ -301,7 +303,10 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
 
   const remove = async () => {
     if (!selectedAutomation) return;
-    if (!window.confirm(tr('schedule.deleteConfirm', '确认删除这个自动化？'))) return;
+    const confirmed = await confirmDelete({
+      message: tr('schedule.deleteConfirm', '确认删除这个自动化？'),
+    });
+    if (!confirmed) return;
     await window.electronAPI.automation.delete(selectedAutomation.id);
     setSelectedId(null);
     setAutomationRunLogs([]);
