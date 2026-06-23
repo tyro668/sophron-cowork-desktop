@@ -2028,26 +2028,33 @@ function InputTableVersionHistoryPanel({
 
 export function InputTablePreviewDialog({
   tableKind = 'input',
+  title,
+  subtitle,
   preview,
   isLoading,
   error,
   currentPage,
   onPageChange,
   onClose,
+  footer,
 }: {
   tableKind?: 'input' | 'output';
+  title?: string;
+  subtitle?: string;
   preview: DataInputTablePreview | null;
   isLoading: boolean;
   error: string | null;
   currentPage: number;
   onPageChange: (page: number) => void;
   onClose: () => void;
+  footer?: ReactNode;
 }) {
   const { t } = useTranslation();
   const previewTitle =
-    tableKind === 'output'
+    title ??
+    (tableKind === 'output'
       ? t('data.outputTables.previewTitle')
-      : t('data.inputTables.editor.previewTitle');
+      : t('data.inputTables.editor.previewTitle'));
   const previewEmpty =
     tableKind === 'output'
       ? t('data.outputTables.previewEmpty')
@@ -2058,7 +2065,10 @@ export function InputTablePreviewDialog({
       <div className="flex h-[42rem] max-h-[calc(100vh-3rem)] w-[72rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl">
         <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between px-4">
           <div className="min-w-0">
-            <div className="text-[14px] font-semibold text-text-primary">{previewTitle}</div>
+            <div className="truncate text-[14px] font-semibold text-text-primary">
+              {previewTitle}
+            </div>
+            {subtitle && <div className="truncate text-[11px] text-text-muted">{subtitle}</div>}
           </div>
           <button
             type="button"
@@ -2086,6 +2096,11 @@ export function InputTablePreviewDialog({
             }}
           />
         </div>
+        {footer && (
+          <div className="flex h-12 flex-shrink-0 items-center justify-end gap-2 border-t border-border-subtle bg-background/70 px-4">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );
