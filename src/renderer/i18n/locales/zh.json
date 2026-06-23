@@ -702,6 +702,7 @@
         "noMatch": "无匹配字段",
         "noFields": "暂无可用字段",
         "noSuggestions": "暂无建议值",
+        "filterClearValues": "清空输入框",
         "dedupTitle": "去重",
         "dedupDescription": "对选择字段（组）的数据行进行去重，可保留第一条或最后一条，并支持设置结果排序。",
         "dedupSelectFields": "选择字段",

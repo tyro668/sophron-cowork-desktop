@@ -702,6 +702,7 @@
         "noMatch": "No match",
         "noFields": "No fields available",
         "noSuggestions": "No suggestions",
+        "filterClearValues": "Clear input",
         "dedupTitle": "Deduplicate",
         "dedupDescription": "Deduplicate rows by selected field(s). Choose to keep the first or last record, with optional output ordering.",
         "dedupSelectFields": "Select fields",

@@ -1,9 +1,12 @@
-import { useCallback, useMemo, useState, useRef, useEffect, type RefObject } from 'react';
+import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash2, Loader2, ChevronDown, X } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
+import { GlassValueInput } from './shared/GlassValueInput';
+import { GlassMultiValueInput } from './shared/GlassMultiValueInput';
+import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import {
   isNumericDataFieldType,
   isTemporalDataFieldType,
@@ -21,8 +24,6 @@ import {
   updateLeafInBranch,
   wrapItemsInGroup,
   MAX_NESTING_DEPTH,
-  splitInValues,
-  joinInValues,
   type FilterConditionLeaf,
   type FilterConditionBranch,
   type FilterConditionNode,
@@ -140,356 +141,6 @@ function flattenOps(groups: OpGroup[]): OpDef[] {
   return groups.flatMap((g) => g.items);
 }
 
-// ── Shared hook: close dropdown on outside click ──────────────────────
-
-function useClickOutside(ref: RefObject<HTMLElement | null>, onClose: () => void) {
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [ref, onClose]);
-}
-
-// ── Single value input (free text + dropdown suggestions) ─────────────
-
-function ValueInput({
-  value,
-  suggestions,
-  isLoading,
-  disabled,
-  onChange,
-  placeholder,
-}: {
-  value: string;
-  suggestions: string[];
-  isLoading: boolean;
-  disabled?: boolean;
-  onChange: (v: string) => void;
-  placeholder: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [input, setInput] = useState(value);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => setInput(value), [value]);
-
-  useClickOutside(ref, () => setOpen(false));
-
-  const filtered = useMemo(() => {
-    if (!input) return suggestions.slice(0, 20);
-    const lower = input.toLowerCase();
-    return suggestions.filter((s) => s.toLowerCase().includes(lower)).slice(0, 20);
-  }, [input, suggestions]);
-
-  return (
-    <div ref={ref} className="relative flex-1 min-w-0">
-      <div className="flex rounded-md border border-border-muted bg-background/42 focus-within:border-accent">
-        <input
-          type="text"
-          value={input}
-          disabled={disabled}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') setOpen(false);
-            else if (e.key === 'Enter') {
-              onChange(input);
-              setOpen(false);
-            }
-          }}
-          onBlur={() => onChange(input)}
-          placeholder={placeholder}
-          className="h-8 flex-1 min-w-[60px] bg-transparent pl-2 text-[12px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-40"
-        />
-        {isLoading && (
-          <Loader2 className="my-auto h-3.5 w-3.5 flex-shrink-0 animate-spin text-text-muted" />
-        )}
-        <button
-          type="button"
-          disabled={disabled}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setOpen(!open);
-          }}
-          className="flex w-7 items-center justify-center border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
-        </button>
-      </div>
-      {open && filtered.length > 0 && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-full rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl">
-          <div className="max-h-40 overflow-y-auto">
-            {filtered.map((s) => (
-              <button
-                key={s}
-                type="button"
-                className={`w-full px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-surface-hover ${
-                  s === input ? 'text-accent' : 'text-text-secondary'
-                }`}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  setInput(s);
-                  onChange(s);
-                  setOpen(false);
-                }}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Multi-value input (for in / not in operators) ─────────────────────
-
-function MultiValueInput({
-  value,
-  suggestions,
-  isLoading,
-  disabled,
-  onChange,
-  placeholder,
-  tr,
-}: {
-  value: string;
-  suggestions: string[];
-  isLoading: boolean;
-  disabled?: boolean;
-  onChange: (v: string) => void;
-  placeholder: string;
-  tr: (key: string, fallback: string) => string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [inputText, setInputText] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const values = useMemo(() => splitInValues(value), [value]);
-
-  useClickOutside(ref, () => setOpen(false));
-
-  const filtered = useMemo(() => {
-    const available = suggestions.filter((s) => !values.includes(s));
-    if (!inputText) return available.slice(0, 20);
-    const lower = inputText.toLowerCase();
-    return available.filter((s) => s.toLowerCase().includes(lower)).slice(0, 20);
-  }, [inputText, suggestions, values]);
-
-  const addValue = useCallback(
-    (v: string) => {
-      const trimmed = v.trim();
-      if (!trimmed || values.includes(trimmed)) return;
-      const next = joinInValues([...values, trimmed]);
-      onChange(next);
-      setInputText('');
-    },
-    [values, onChange]
-  );
-
-  const removeValue = useCallback(
-    (idx: number) => {
-      const next = values.filter((_, i) => i !== idx);
-      onChange(joinInValues(next));
-    },
-    [values, onChange]
-  );
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        addValue(inputText);
-      } else if (e.key === 'Backspace' && !inputText && values.length > 0) {
-        removeValue(values.length - 1);
-      } else if (e.key === 'Escape') {
-        setOpen(false);
-      }
-    },
-    [inputText, values.length, addValue, removeValue]
-  );
-
-  return (
-    <div ref={ref} className="relative" style={{ width: 280, flexShrink: 0 }}>
-      <div
-        className={`flex h-8 w-full items-center gap-1 rounded-md border bg-background/42 pl-1.5 pr-1 py-0.5 transition-colors ${
-          open ? 'border-accent' : 'border-border-muted'
-        } ${disabled ? 'cursor-not-allowed opacity-40' : ''}`}
-      >
-        {/* Tags + input — scrolls overflow, preserves input */}
-        <div className="flex flex-1 min-w-0 items-center gap-1 overflow-x-auto">
-          {values.map((v, i) => (
-            <span
-              key={i}
-              className="inline-flex flex-shrink-0 items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent"
-            >
-              {v}
-              <button
-                type="button"
-                disabled={disabled}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  removeValue(i);
-                }}
-                className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
-              >
-                <X className="h-2.5 w-2.5" />
-              </button>
-            </span>
-          ))}
-          <input
-            ref={inputRef}
-            type="text"
-            value={inputText}
-            disabled={disabled}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onFocus={() => setOpen(true)}
-            placeholder={values.length === 0 ? placeholder : ''}
-            className="h-6 min-w-[60px] bg-transparent pl-0.5 text-[12px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed"
-          />
-        </div>
-
-        {/* Loading + dropdown toggle — always visible */}
-        {isLoading && (
-          <Loader2 className="my-auto h-3.5 w-3.5 flex-shrink-0 animate-spin text-text-muted" />
-        )}
-        <button
-          type="button"
-          disabled={disabled}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setOpen(!open);
-          }}
-          className="flex h-6 w-5 flex-shrink-0 items-center justify-center text-text-muted hover:text-text-secondary transition-colors"
-        >
-          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
-        </button>
-      </div>
-
-      {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-full rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl">
-          {filtered.length > 0 && (
-            <div className="max-h-40 overflow-y-auto">
-              {filtered.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  className="w-full px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-surface-hover text-text-secondary"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    addValue(s);
-                  }}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          )}
-          {inputText && !filtered.includes(inputText) && (
-            <button
-              type="button"
-              className="w-full px-2.5 py-1.5 text-left text-[12px] text-accent transition-colors hover:bg-surface-hover"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                addValue(inputText);
-              }}
-            >
-              {tr('filterAddValue', '添加')} "{inputText}"
-            </button>
-          )}
-          {filtered.length === 0 && !inputText && (
-            <div className="px-3 py-3 text-center text-[12px] text-text-muted">
-              {tr('noSuggestions', '暂无建议值')}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Custom operator dropdown (grouped with separators) ────────────────
-
-function OperatorSelect({
-  value,
-  groups,
-  disabled,
-  onChange,
-  tr,
-}: {
-  value: string;
-  groups: OpGroup[];
-  disabled?: boolean;
-  onChange: (v: string) => void;
-  tr: (key: string, fallback: string) => string;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  const selectedLabel = useMemo(() => {
-    for (const g of groups) {
-      for (const o of g.items) {
-        if (o.value === value) return tr(o.labelKey, o.value);
-      }
-    }
-    return value;
-  }, [value, groups, tr]);
-
-  useClickOutside(ref, () => setOpen(false));
-
-  return (
-    <div ref={ref} className="relative flex-shrink-0 min-w-[84px]">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen(!open)}
-        className="flex h-8 min-w-[84px] items-center rounded-md border border-border-muted bg-background/42 text-[12px] text-text-secondary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        <span className="flex-1 px-2 text-center whitespace-nowrap">{selectedLabel}</span>
-        <ChevronDown
-          className={`mr-1 h-3.5 w-3.5 flex-shrink-0 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`}
-        />
-      </button>
-
-      {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 min-w-full max-h-60 overflow-y-auto rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl">
-          {groups.map((g, gi) => (
-            <div key={g.groupKey}>
-              {gi > 0 && <div className="mx-3 my-0.5 border-t border-border-muted" />}
-              {g.items.map((o) => (
-                <button
-                  key={o.value}
-                  type="button"
-                  className={`w-full px-3 py-1.5 text-center text-[12px] transition-colors hover:bg-surface-hover ${
-                    o.value === value ? 'text-accent font-medium' : 'text-text-secondary'
-                  }`}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onChange(o.value);
-                    setOpen(false);
-                  }}
-                >
-                  {tr(o.labelKey, o.value)}
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Condition Leaf Row ────────────────────────────────────────────────
 
 interface LeafRowContext {
@@ -528,7 +179,15 @@ function ConditionLeafRow({
 }) {
   const fieldSelected = !!leaf.field;
   const colType = ctx.columnTypes[leaf.field];
-  const opGroups = operatorsForType(colType);
+  const opGroups = useMemo(() => operatorsForType(colType), [colType]);
+  const opGroupsTranslated = useMemo(
+    () =>
+      opGroups.map((g) => ({
+        key: g.groupKey,
+        items: g.items.map((o) => ({ value: o.value, label: ctx.tr(o.labelKey, o.value) })),
+      })),
+    [opGroups, ctx.tr]
+  );
   const allOps = flattenOps(opGroups);
   const validOps = allOps.map((o) => o.value);
   const effectiveOp = validOps.includes(leaf.op) ? leaf.op : (allOps[0]?.value ?? '=');
@@ -557,27 +216,28 @@ function ConditionLeafRow({
         </div>
 
         {/* Operator */}
-        <OperatorSelect
+        <GlassOperatorSelect
           value={effectiveOp}
-          groups={opGroups}
+          groups={opGroupsTranslated}
           disabled={!fieldSelected}
           onChange={(v) => ctx.updateLeaf(leaf.id, { op: v })}
-          tr={ctx.tr}
         />
 
         {/* Value(s) */}
         {isMultiValue ? (
-          <MultiValueInput
+          <GlassMultiValueInput
             value={leaf.val1}
             suggestions={colVals}
             isLoading={isValsLoading}
             onChange={(v) => ctx.updateLeaf(leaf.id, { val1: v })}
             placeholder={ctx.tr('filterValuesPlaceholder', '输入值后按 Enter 添加')}
             disabled={!fieldSelected}
-            tr={ctx.tr}
+            addLabel={ctx.tr('filterAddValue', '添加')}
+            noSuggestionsLabel={ctx.tr('noSuggestions', '暂无建议值')}
+            clearLabel={ctx.tr('filterClearValues', '清空输入框')}
           />
         ) : (
-          <ValueInput
+          <GlassValueInput
             value={leaf.val1}
             suggestions={colVals}
             isLoading={isValsLoading}
@@ -592,7 +252,7 @@ function ConditionLeafRow({
             <span className="text-[11px] text-text-muted flex-shrink-0">
               {ctx.tr('filterAnd', '至')}
             </span>
-            <ValueInput
+            <GlassValueInput
               value={leaf.val2}
               suggestions={colVals}
               isLoading={isValsLoading}
