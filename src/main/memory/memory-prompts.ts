@@ -30,6 +30,10 @@ Extraction standard:
 - Merge repeated evidence into broader, more abstract memories
 - Avoid tiny fragmented keys; prefer a smaller number of durable, abstract entries
 - Delete memories that are contradicted or clearly obsolete
+- For every upsert, include source_type and confidence:
+  - explicit_user_statement: the user directly said it as a stable fact or preference
+  - llm_inference: inferred from behavior or repeated context, weaker than a direct statement
+  - confidence is 0-1 and should reflect extraction certainty only, not importance
 
 Return JSON only:
 {
@@ -39,6 +43,8 @@ Return JSON only:
       "category": "identity|interests|skills|preferences",
       "key": "short_chinese_key",
       "value": "抽象、稳定、可跨任务复用的描述",
+      "source_type": "explicit_user_statement|llm_inference",
+      "confidence": 0.92,
       "reason": "为什么这是 durable core memory"
     },
     {
@@ -84,17 +90,20 @@ Write retrieval-friendly content:
 - summary: short, specific, high-signal retrieval line
 - details: richer reusable description that captures rationale, constraint, or implementation substance
 - keywords: durable retrieval terms, not stop words
+- confidence is 0-1 extraction certainty. Use higher confidence for concrete outcomes with clear source turns, lower confidence for inferred or incomplete work memory.
 
 Return JSON only:
 {
   "session_summary": "One-line summary of the session's lasting value",
   "session_keywords": ["keyword1", "keyword2"],
+  "session_confidence": 0.72,
   "chunks": [
     {
       "summary": "Short retrieval-friendly summary of one reusable work unit.",
       "details": "Richer reusable description covering goal/decision/implementation/constraint/result/unresolved as relevant.",
       "keywords": ["kw1", "kw2"],
-      "source_turns": [1, 2, 3]
+      "source_turns": [1, 2, 3],
+      "confidence": 0.78
     }
   ]
 }

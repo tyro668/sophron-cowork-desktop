@@ -1,6 +1,7 @@
 import { CORE_MEMORY_UPDATE_SYSTEM_PROMPT } from './memory-prompts';
 import type { MemoryLLMClientLike } from './memory-llm-client';
 import type { CoreMemoryActionInput, MemoryTranscriptTurn } from './memory-types';
+import { normalizeConfidence, normalizeConfidenceSourceType } from './memory-confidence';
 import { compactTranscript, extractJson } from './memory-utils';
 
 export class CoreMemoryExtractor {
@@ -57,6 +58,10 @@ export class CoreMemoryExtractor {
           category?: unknown;
           key?: unknown;
           value?: unknown;
+          confidence?: unknown;
+          sourceType?: unknown;
+          source_type?: unknown;
+          reason?: unknown;
         };
         const op = typeof input.op === 'string' ? input.op.toLowerCase().trim() : '';
         if (op !== 'add' && op !== 'update' && op !== 'upsert' && op !== 'delete') {
@@ -64,6 +69,11 @@ export class CoreMemoryExtractor {
         }
         const key = typeof input.key === 'string' ? input.key.trim() : '';
         if (!key) {
+          return null;
+        }
+        const confidence = normalizeConfidence(input.confidence);
+        const sourceType = normalizeConfidenceSourceType(input.sourceType ?? input.source_type);
+        if (op !== 'delete' && (!sourceType || confidence === null)) {
           return null;
         }
         return {
@@ -74,6 +84,9 @@ export class CoreMemoryExtractor {
               : undefined,
           key,
           value: typeof input.value === 'string' ? input.value.trim() : null,
+          confidence: confidence ?? undefined,
+          sourceType: sourceType ?? undefined,
+          reason: typeof input.reason === 'string' ? input.reason.trim() : undefined,
         } satisfies CoreMemoryActionInput;
       })
       .filter((item): item is CoreMemoryActionInput => Boolean(item));

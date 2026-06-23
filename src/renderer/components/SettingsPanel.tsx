@@ -208,8 +208,8 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
         {/* Content */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4">
-            <div className="max-w-[1120px] w-full min-w-0 mx-auto">
-              <div className="">
+            <div className="max-w-[1120px] h-full w-full min-w-0 mx-auto">
+              <div className="h-full">
                 <div className={activeTab === 'api' ? '' : 'hidden'}>
                   {viewedTabs.has('api') && (
                     <>
@@ -225,7 +225,7 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
                     <SettingsConnectors isActive={activeTab === 'connectors'} />
                   )}
                 </div>
-                <div className={activeTab === 'memory' ? '' : 'hidden'}>
+                <div className={activeTab === 'memory' ? 'h-full' : 'hidden'}>
                   {viewedTabs.has('memory') && <SettingsMemory />}
                 </div>
                 <div className={activeTab === 'personal-analysis' ? '' : 'hidden'}>

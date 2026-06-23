@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { ExperienceMemoryStore } from '../../main/memory/experience-memory-store';
-import type { ChunkMemoryItem, SessionMemoryItem } from '../../main/memory/memory-types';
+
+type SessionInput = Parameters<ExperienceMemoryStore['replaceSession']>[1];
+type ChunkInput = Parameters<ExperienceMemoryStore['replaceSession']>[2][number];
 
 describe('ExperienceMemoryStore', () => {
   let tempRoot: string;
@@ -21,7 +23,7 @@ describe('ExperienceMemoryStore', () => {
   function createSessionInput(
     sessionId: string,
     summary: string
-  ): Omit<SessionMemoryItem, 'id' | 'confidence' | 'status' | 'supersededBy'> {
+  ): SessionInput {
     return {
       sessionId,
       sourceWorkspace: '/repo/a',
@@ -37,13 +39,14 @@ describe('ExperienceMemoryStore', () => {
       createdAt: '2026-06-17T00:00:00',
       ingestedAt: '2026-06-17T00:00:00',
       embedding: [],
+      confidence: 0.82,
     };
   }
 
   function createChunkInput(
     sessionId: string,
     summary: string
-  ): Omit<ChunkMemoryItem, 'id' | 'confidence' | 'status' | 'supersededBy'> {
+  ): ChunkInput {
     return {
       sessionId,
       sourceWorkspace: '/repo/a',
@@ -60,6 +63,7 @@ describe('ExperienceMemoryStore', () => {
       createdAt: '2026-06-17T00:00:00',
       ingestedAt: '2026-06-17T00:00:00',
       embedding: [],
+      confidence: 0.78,
     };
   }
 

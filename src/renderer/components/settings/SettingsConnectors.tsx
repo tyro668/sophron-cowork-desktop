@@ -15,11 +15,13 @@ import {
   X,
 } from 'lucide-react';
 import type { MCPServerConfig, MCPServerStatus, MCPToolInfo, MCPPreset } from './shared';
+import { useConfirmDialog } from '../ConfirmDialog';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 
 export function SettingsConnectors({ isActive }: { isActive: boolean }) {
   const { t } = useTranslation();
+  const { confirmDelete } = useConfirmDialog();
   const tRef = useRef(t);
   useEffect(() => {
     tRef.current = t;
@@ -166,7 +168,10 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
   }
 
   async function handleDeleteServer(serverId: string) {
-    if (!confirm(t('mcp.deleteConnectorConfirm'))) return;
+    const confirmed = await confirmDelete({
+      message: t('mcp.deleteConnectorConfirm'),
+    });
+    if (!confirmed) return;
     setIsLoading(true);
     try {
       await window.electronAPI.mcp.deleteServer(serverId);

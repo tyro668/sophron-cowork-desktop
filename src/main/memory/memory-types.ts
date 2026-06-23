@@ -12,6 +12,11 @@ export type MemorySearchKind =
   | 'raw_session';
 export type MemoryNavigationActionType = 'expand_chunk' | 'expand_session' | 'get_raw_session';
 export type MemoryItemStatus = 'active' | 'pending' | 'rejected' | 'archived';
+export type MemoryConfidenceSourceType =
+  | 'explicit_user_statement'
+  | 'conversation_summary'
+  | 'llm_inference'
+  | 'manual_edit';
 
 export interface MemoryTranscriptTurn {
   role: string;
@@ -26,6 +31,8 @@ export interface CoreMemoryActionInput {
   key: string;
   value?: string | null;
   reason?: string;
+  confidence?: number;
+  sourceType?: MemoryConfidenceSourceType;
 }
 
 export interface AppliedCoreMemoryAction {
@@ -45,12 +52,25 @@ export interface MemoryEvidenceRef {
   createdAt?: string;
 }
 
+export interface MemoryConfidenceSignals {
+  sourceType: MemoryConfidenceSourceType;
+  extractionConfidence: number;
+  evidenceCount: number;
+  corroborationCount: number;
+  contradictionCount: number;
+  userVerified: boolean;
+  lastVerifiedAt?: string;
+  calculationVersion: number;
+  reason?: string;
+}
+
 export interface CoreMemoryEntry {
   combinedKey: string;
   category?: CoreMemoryCategory;
   key: string;
   value: string;
   confidence: number;
+  confidenceSignals: MemoryConfidenceSignals;
   status: MemoryItemStatus;
   evidence: MemoryEvidenceRef[];
   createdAt: string;
@@ -64,6 +84,7 @@ export interface ProjectMemoryEntry {
   key: string;
   value: string;
   confidence: number;
+  confidenceSignals: MemoryConfidenceSignals;
   status: MemoryItemStatus;
   evidence: MemoryEvidenceRef[];
   createdAt: string;
@@ -88,6 +109,7 @@ export interface ChunkMemoryItem {
   ingestedAt: string;
   embedding: number[];
   confidence: number;
+  confidenceSignals: MemoryConfidenceSignals;
   status: MemoryItemStatus;
   supersededBy?: string;
 }
@@ -109,6 +131,7 @@ export interface SessionMemoryItem {
   ingestedAt: string;
   embedding: number[];
   confidence: number;
+  confidenceSignals: MemoryConfidenceSignals;
   status: MemoryItemStatus;
   supersededBy?: string;
 }
@@ -197,6 +220,7 @@ export interface MemorySearchResult {
   sessionTitle?: string;
   category?: CoreMemoryCategory;
   confidence?: number;
+  confidenceSignals?: MemoryConfidenceSignals;
   status?: MemoryItemStatus;
   score: number;
   createdAt: number;
@@ -288,11 +312,13 @@ export interface MemoryOverview {
 export interface ExperienceSessionExtract {
   sessionSummary: string;
   sessionKeywords: string[];
+  sessionConfidence?: number;
   chunks: Array<{
     summary: string;
     details: string;
     keywords: string[];
     sourceTurns: number[];
+    confidence?: number;
   }>;
 }
 

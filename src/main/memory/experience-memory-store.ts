@@ -10,6 +10,12 @@ import type {
   SessionMemoryItem,
 } from './memory-types';
 import {
+  buildConfidenceSignals,
+  calculateMemoryConfidence,
+  confidenceSignalsToFileRecord,
+  normalizeConfidenceSignals,
+} from './memory-confidence';
+import {
   cosineSimilarity,
   lexicalScore,
   loadJsonFile,
@@ -46,9 +52,9 @@ function normalizeStatus(value: unknown): MemoryItemStatus {
     : 'active';
 }
 
-function normalizeConfidence(value: unknown, fallback = 0.72): number {
+function requireConfidence(value: unknown, context: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return fallback;
+    throw new Error(`memory.${context}ConfidenceRequired`);
   }
   return Math.max(0, Math.min(1, value));
 }
@@ -58,6 +64,13 @@ function normalizeChunk(item: Record<string, unknown>): ChunkMemoryItem | null {
     return null;
   }
   const sessionId = item.session_id;
+  const sourceTurns = Array.isArray(item.source_turns)
+    ? item.source_turns.filter((turn): turn is number => typeof turn === 'number')
+    : [];
+  const confidenceSignals = normalizeConfidenceSignals(item.confidenceSignals ?? item.confidence_signals);
+  if (!confidenceSignals) {
+    return null;
+  }
   return {
     id: item.id,
     sessionId,
@@ -78,15 +91,14 @@ function normalizeChunk(item: Record<string, unknown>): ChunkMemoryItem | null {
           ? item.summary
           : '',
     keywords: toStringArray(item.keywords),
-    sourceTurns: Array.isArray(item.source_turns)
-      ? item.source_turns.filter((turn): turn is number => typeof turn === 'number')
-      : [],
+    sourceTurns,
     rawText: typeof item.raw_text === 'string' ? item.raw_text : '',
     sessionDate: typeof item.session_date === 'string' ? item.session_date : '',
     createdAt: typeof item.created_at === 'string' ? item.created_at : '',
     ingestedAt: typeof item.ingested_at === 'string' ? item.ingested_at : '',
     embedding: toNumberArray(item.embedding),
-    confidence: normalizeConfidence(item.confidence),
+    confidence: calculateMemoryConfidence(confidenceSignals),
+    confidenceSignals,
     status: normalizeStatus(item.status),
     supersededBy: typeof item.superseded_by === 'string' ? item.superseded_by : undefined,
   };
@@ -124,6 +136,10 @@ function normalizeSession(item: Record<string, unknown>): SessionMemoryItem | nu
         .filter((turn): turn is MemoryTranscriptTurn => Boolean(turn))
     : [];
 
+  const confidenceSignals = normalizeConfidenceSignals(item.confidenceSignals ?? item.confidence_signals);
+  if (!confidenceSignals) {
+    return null;
+  }
   return {
     id: item.id,
     sessionId,
@@ -144,7 +160,8 @@ function normalizeSession(item: Record<string, unknown>): SessionMemoryItem | nu
     createdAt: typeof item.created_at === 'string' ? item.created_at : '',
     ingestedAt: typeof item.ingested_at === 'string' ? item.ingested_at : '',
     embedding: toNumberArray(item.embedding),
-    confidence: normalizeConfidence(item.confidence),
+    confidence: calculateMemoryConfidence(confidenceSignals),
+    confidenceSignals,
     status: normalizeStatus(item.status),
     supersededBy: typeof item.superseded_by === 'string' ? item.superseded_by : undefined,
   };
@@ -169,6 +186,7 @@ function chunkToFileRecord(item: ChunkMemoryItem): Record<string, unknown> {
     ingested_at: item.ingestedAt,
     embedding: item.embedding,
     confidence: item.confidence,
+    confidence_signals: confidenceSignalsToFileRecord(item.confidenceSignals),
     status: item.status,
     superseded_by: item.supersededBy ?? '',
   };
@@ -192,6 +210,7 @@ function sessionToFileRecord(item: SessionMemoryItem): Record<string, unknown> {
     ingested_at: item.ingestedAt,
     embedding: item.embedding,
     confidence: item.confidence,
+    confidence_signals: confidenceSignalsToFileRecord(item.confidenceSignals),
     status: item.status,
     superseded_by: item.supersededBy ?? '',
   };
@@ -304,20 +323,36 @@ export class ExperienceMemoryStore {
 
   replaceSession(
     sessionId: string,
-    sessionInput: Omit<SessionMemoryItem, 'id' | 'confidence' | 'status' | 'supersededBy'> &
-      Partial<Pick<SessionMemoryItem, 'id' | 'confidence' | 'status' | 'supersededBy'>>,
+    sessionInput: Omit<
+      SessionMemoryItem,
+      'id' | 'confidence' | 'confidenceSignals' | 'status' | 'supersededBy'
+    > &
+      Partial<
+        Pick<SessionMemoryItem, 'id' | 'confidence' | 'confidenceSignals' | 'status' | 'supersededBy'>
+      >,
     chunkInputs: Array<
-      Omit<ChunkMemoryItem, 'id' | 'confidence' | 'status' | 'supersededBy'> &
-        Partial<Pick<ChunkMemoryItem, 'id' | 'confidence' | 'status' | 'supersededBy'>>
+      Omit<ChunkMemoryItem, 'id' | 'confidence' | 'confidenceSignals' | 'status' | 'supersededBy'> &
+        Partial<
+          Pick<ChunkMemoryItem, 'id' | 'confidence' | 'confidenceSignals' | 'status' | 'supersededBy'>
+        >
     >
   ): SessionMemoryItem {
     this.removeSession(sessionId);
 
     const chunks = chunkInputs.map((item) => {
+      const confidenceSignals =
+        item.confidenceSignals ??
+        buildConfidenceSignals({
+          sourceType: 'conversation_summary',
+          extractionConfidence: requireConfidence(item.confidence, 'chunk'),
+          evidenceCount: item.sourceTurns.length ? 1 : 0,
+          reason: 'Extracted from session chunk summary',
+        });
       const chunk: ChunkMemoryItem = {
         ...item,
         id: item.id || randomUUID(),
-        confidence: item.confidence ?? 0.72,
+        confidence: calculateMemoryConfidence(confidenceSignals),
+        confidenceSignals,
         status: item.status ?? 'active',
       };
       return chunk;
@@ -328,16 +363,26 @@ export class ExperienceMemoryStore {
       this.chunkIndex.set(chunk.id, chunk);
     }
 
+    const sessionConfidenceSignals =
+      sessionInput.confidenceSignals ??
+      buildConfidenceSignals({
+        sourceType: 'conversation_summary',
+        extractionConfidence: requireConfidence(sessionInput.confidence, 'session'),
+        evidenceCount: chunks.length,
+        reason: 'Extracted from session summary',
+      });
     const session: SessionMemoryItem = {
       ...sessionInput,
       id: sessionInput.id || randomUUID(),
       chunkIds: chunks.map((chunk) => chunk.id),
-      confidence: sessionInput.confidence ?? 0.72,
+      confidence: calculateMemoryConfidence(sessionConfidenceSignals),
+      confidenceSignals: sessionConfidenceSignals,
       status: sessionInput.status ?? 'active',
     };
     this.markSupersededSessions(session);
     this.sessions.push(session);
     this.sessionIndex.set(session.sessionId, session);
+    this.save();
     return session;
   }
 
@@ -347,14 +392,13 @@ export class ExperienceMemoryStore {
       return;
     }
     this.sessionIndex.delete(sessionId);
-    const nextSessions = this.sessions.filter((item) => item.sessionId !== sessionId);
-    this.sessions.splice(0, this.sessions.length, ...nextSessions);
-
     const chunkIds = new Set(existing.chunkIds);
     for (const chunkId of chunkIds) {
       this.chunkIndex.delete(chunkId);
     }
+    const nextSessions = this.sessions.filter((item) => item.sessionId !== sessionId);
     const nextChunks = this.chunks.filter((item) => !chunkIds.has(item.id));
+    this.sessions.splice(0, this.sessions.length, ...nextSessions);
     this.chunks.splice(0, this.chunks.length, ...nextChunks);
   }
 

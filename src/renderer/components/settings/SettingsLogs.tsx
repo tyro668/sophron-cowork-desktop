@@ -4,11 +4,13 @@ import { AlertCircle, CheckCircle, Loader2, Save, Globe, Trash2, Copy } from 'lu
 import { formatAppDateTime } from '../../utils/i18n-format';
 import { SettingsContentSection } from './shared';
 import { GlassSwitch } from '../GlassSwitch';
+import { useConfirmDialog } from '../ConfirmDialog';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 
 export function SettingsLogs({ isActive }: { isActive: boolean }) {
   const { t } = useTranslation();
+  const { confirmDelete } = useConfirmDialog();
   const [logFiles, setLogFiles] = useState<
     Array<{ name: string; path: string; size: number; mtime: Date }>
   >([]);
@@ -108,9 +110,11 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
   }
 
   async function handleClear() {
-    if (!confirm(t('logs.clearConfirm'))) {
-      return;
-    }
+    const confirmed = await confirmDelete({
+      title: t('logs.clearLogs', '清空日志'),
+      message: t('logs.clearConfirm'),
+    });
+    if (!confirmed) return;
 
     setIsLoading(true);
     setError('');

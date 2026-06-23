@@ -6,6 +6,15 @@ import type {
   MemoryItemStatus,
 } from './memory-types';
 import {
+  buildConfidenceSignals,
+  calculateMemoryConfidence,
+  confidenceSignalsToFileRecord,
+  mergeConfidenceSignals,
+  normalizeConfidence,
+  normalizeConfidenceSourceType,
+  normalizeConfidenceSignals,
+} from './memory-confidence';
+import {
   coreMemoryToPromptBlock,
   isoNow,
   loadJsonFile,
@@ -20,7 +29,6 @@ interface CoreMemoryFile {
 
 type CoreMemoryUpdate = Partial<Pick<CoreMemoryEntry, 'key' | 'value' | 'confidence' | 'status'>>;
 
-const DEFAULT_CONFIDENCE = 0.74;
 const ACTIVE_STATUS: MemoryItemStatus = 'active';
 const MEMORY_STATUSES = new Set<MemoryItemStatus>(['active', 'pending', 'rejected', 'archived']);
 
@@ -28,13 +36,6 @@ function normalizeStatus(value: unknown): MemoryItemStatus {
   return typeof value === 'string' && MEMORY_STATUSES.has(value as MemoryItemStatus)
     ? (value as MemoryItemStatus)
     : ACTIVE_STATUS;
-}
-
-function normalizeConfidence(value: unknown, fallback = DEFAULT_CONFIDENCE): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return fallback;
-  }
-  return Math.max(0, Math.min(1, value));
 }
 
 function normalizeEvidence(value: unknown): MemoryEvidenceRef[] {
@@ -85,23 +86,6 @@ function normalizeEvidence(value: unknown): MemoryEvidenceRef[] {
     .filter((item): item is MemoryEvidenceRef => Boolean(item));
 }
 
-function normalizeEntry(combinedKey: string, value: unknown): CoreMemoryEntry | null {
-  const parsed = parseCoreCombinedKey(combinedKey);
-  if (!parsed.combinedKey || typeof value !== 'string' || !value.trim()) {
-    return null;
-  }
-  const now = isoNow();
-  return {
-    ...parsed,
-    value: value.trim(),
-    confidence: DEFAULT_CONFIDENCE,
-    status: ACTIVE_STATUS,
-    evidence: [],
-    createdAt: now,
-    updatedAt: now,
-  };
-}
-
 function normalizeStructuredEntry(item: Record<string, unknown>): CoreMemoryEntry | null {
   const combinedKey =
     typeof item.combinedKey === 'string'
@@ -122,12 +106,18 @@ function normalizeStructuredEntry(item: Record<string, unknown>): CoreMemoryEntr
     return null;
   }
   const now = isoNow();
+  const evidence = normalizeEvidence(item.evidence);
+  const confidenceSignals = normalizeConfidenceSignals(item.confidenceSignals ?? item.confidence_signals);
+  if (!confidenceSignals) {
+    return null;
+  }
   return {
     ...parsed,
     value,
-    confidence: normalizeConfidence(item.confidence),
+    confidence: calculateMemoryConfidence(confidenceSignals),
+    confidenceSignals,
     status: normalizeStatus(item.status),
-    evidence: normalizeEvidence(item.evidence),
+    evidence,
     createdAt:
       typeof item.createdAt === 'string'
         ? item.createdAt
@@ -150,6 +140,7 @@ function entryToFileRecord(item: CoreMemoryEntry): Record<string, unknown> {
     key: item.key,
     value: item.value,
     confidence: item.confidence,
+    confidence_signals: confidenceSignalsToFileRecord(item.confidenceSignals),
     status: item.status,
     evidence: item.evidence.map((evidence) => ({
       session_id: evidence.sessionId,
@@ -203,14 +194,6 @@ export class CoreMemoryStore {
         }
       }
       return;
-    }
-    if (raw && typeof raw === 'object') {
-      for (const [combinedKey, value] of Object.entries(raw as Record<string, unknown>)) {
-        const entry = normalizeEntry(combinedKey.trim(), value);
-        if (entry) {
-          this.entries.set(entry.combinedKey, entry);
-        }
-      }
     }
   }
 
@@ -276,11 +259,27 @@ export class CoreMemoryStore {
       if (!value) {
         continue;
       }
+      const sourceType = normalizeConfidenceSourceType(action.sourceType);
+      const extractionConfidence = normalizeConfidence(action.confidence);
+      if (!sourceType || extractionConfidence === null) {
+        continue;
+      }
+      const incomingSignals = buildConfidenceSignals({
+        sourceType,
+        extractionConfidence,
+        evidenceCount: evidence.length,
+        corroborationCount: existing ? 1 : 0,
+        reason: action.reason,
+      });
+      const confidenceSignals = existing?.confidenceSignals
+        ? mergeConfidenceSignals(existing.confidenceSignals, incomingSignals)
+        : incomingSignals;
 
       this.entries.set(combinedKey, {
         ...parsed,
         value,
-        confidence: existing?.confidence ?? DEFAULT_CONFIDENCE,
+        confidence: calculateMemoryConfidence(confidenceSignals),
+        confidenceSignals,
         status: ACTIVE_STATUS,
         evidence: mergeEvidence(existing?.evidence ?? [], evidence),
         createdAt: existing?.createdAt || now,
@@ -318,14 +317,32 @@ export class CoreMemoryStore {
       return null;
     }
     const parsed = parseCoreCombinedKey(nextKey);
+    let nextConfidence = existing.confidence;
+    let nextConfidenceSignals = existing.confidenceSignals;
+    if (updates.confidence !== undefined) {
+      const extractionConfidence = normalizeConfidence(updates.confidence);
+      if (extractionConfidence === null) {
+        return null;
+      }
+      nextConfidenceSignals = mergeConfidenceSignals(
+        existing.confidenceSignals,
+        buildConfidenceSignals({
+          sourceType: 'manual_edit',
+          extractionConfidence,
+          evidenceCount: existing.evidence.length,
+          userVerified: true,
+          lastVerifiedAt: isoNow(),
+          reason: 'Manually adjusted confidence',
+        })
+      );
+      nextConfidence = calculateMemoryConfidence(nextConfidenceSignals);
+    }
     const updated: CoreMemoryEntry = {
       ...existing,
       ...parsed,
       value: nextValue,
-      confidence:
-        updates.confidence === undefined
-          ? existing.confidence
-          : normalizeConfidence(updates.confidence, existing.confidence),
+      confidence: nextConfidence,
+      confidenceSignals: nextConfidenceSignals,
       status: updates.status === undefined ? existing.status : normalizeStatus(updates.status),
       updatedAt: isoNow(),
     };
@@ -338,15 +355,10 @@ export class CoreMemoryStore {
   }
 
   deleteEntry(combinedKey: string): { success: boolean } {
-    const existing = this.entries.get(combinedKey);
-    if (!existing) {
+    if (!this.entries.has(combinedKey)) {
       return { success: false };
     }
-    this.entries.set(combinedKey, {
-      ...existing,
-      status: 'archived',
-      updatedAt: isoNow(),
-    });
+    this.entries.delete(combinedKey);
     this.save();
     return { success: true };
   }
