@@ -38,6 +38,7 @@ import {
   OutputTablesPanel,
   UploadOutputTableToCloudDialog,
 } from './data-view/output-tables';
+import { useConfirmDialog } from './ConfirmDialog';
 
 type StoredPreviewTarget =
   | { kind: 'input'; dataset: DataDataset }
@@ -68,6 +69,7 @@ const EMPTY_DASHBOARD: DataDashboard = {
 
 export function DataView() {
   const { t } = useTranslation();
+  const { confirmDelete } = useConfirmDialog();
   const pendingDataNavigation = useAppStore((state) => state.pendingDataNavigation);
   const pendingDataTabNavigation = useAppStore((state) => state.pendingDataTabNavigation);
   const clearDataNavigation = useAppStore((state) => state.clearDataNavigation);
@@ -787,7 +789,9 @@ export function DataView() {
   const handleDeleteTask = useCallback(
     async (task: DataCleaningTask) => {
       if (!window.electronAPI?.data) return;
-      const confirmed = window.confirm(t('data.deleteTaskConfirm', { name: task.name }));
+      const confirmed = await confirmDelete({
+        message: t('data.deleteTaskConfirm', { name: task.name }),
+      });
       if (!confirmed) return;
       setActionId(task.id);
       setError(null);
@@ -807,14 +811,16 @@ export function DataView() {
         setActionId(null);
       }
     },
-    [editingTaskId, loadDashboard, t]
+    [confirmDelete, editingTaskId, loadDashboard, t]
   );
 
   const handleDeleteAllTasks = useCallback(async () => {
     if (!window.electronAPI?.data) return;
     const count = dashboard.totalTasks;
     if (count <= 0) return;
-    const confirmed = window.confirm(t('data.deleteAllTasksConfirm', { count }));
+    const confirmed = await confirmDelete({
+      message: t('data.deleteAllTasksConfirm', { count }),
+    });
     if (!confirmed) return;
     setActionId('delete-all-tasks');
     setError(null);
@@ -847,12 +853,14 @@ export function DataView() {
     } finally {
       setActionId(null);
     }
-  }, [dashboard.totalTasks, loadDashboard, searchQuery, t]);
+  }, [confirmDelete, dashboard.totalTasks, loadDashboard, searchQuery, t]);
 
   const handleDeleteInputTable = useCallback(
     async (dataset: DataDataset) => {
       if (!window.electronAPI?.data?.deleteDataset) return;
-      const confirmed = window.confirm(t('data.inputTables.deleteConfirm', { name: dataset.name }));
+      const confirmed = await confirmDelete({
+        message: t('data.inputTables.deleteConfirm', { name: dataset.name }),
+      });
       if (!confirmed) return;
       setActionId(dataset.id);
       setError(null);
@@ -871,7 +879,7 @@ export function DataView() {
         setActionId(null);
       }
     },
-    [loadInputTables, t]
+    [confirmDelete, loadInputTables, t]
   );
 
   const handleDeleteAllInputTables = useCallback(async () => {
@@ -884,7 +892,9 @@ export function DataView() {
         : [];
     const count = totalInputTableDatasets + draftIds.length;
     if (count <= 0) return;
-    const confirmed = window.confirm(t('data.inputTables.deleteAllConfirm', { count }));
+    const confirmed = await confirmDelete({
+      message: t('data.inputTables.deleteAllConfirm', { count }),
+    });
     if (!confirmed) return;
     setActionId('delete-all-input-tables');
     setError(null);
@@ -927,6 +937,7 @@ export function DataView() {
   }, [
     inputTableDrafts,
     inputTableSourceFilter,
+    confirmDelete,
     loadInputTables,
     searchQuery,
     t,
@@ -1032,9 +1043,9 @@ export function DataView() {
   const handleDeleteOutputTable = useCallback(
     async (outputTable: DataOutputTable) => {
       if (!window.electronAPI?.data?.deleteDataset) return;
-      const confirmed = window.confirm(
-        t('data.outputTables.deleteConfirm', { name: outputTable.name })
-      );
+      const confirmed = await confirmDelete({
+        message: t('data.outputTables.deleteConfirm', { name: outputTable.name }),
+      });
       if (!confirmed) return;
       setActionId(outputTable.id);
       setError(null);
@@ -1057,14 +1068,16 @@ export function DataView() {
         setActionId(null);
       }
     },
-    [editingOutputTableId, loadDashboard, t, uploadCloudOutputTable?.id]
+    [confirmDelete, editingOutputTableId, loadDashboard, t, uploadCloudOutputTable?.id]
   );
 
   const handleDeleteAllOutputTables = useCallback(async () => {
     if (!window.electronAPI?.data?.deleteDataset) return;
     const count = dashboard.totalOutputTables;
     if (count <= 0) return;
-    const confirmed = window.confirm(t('data.outputTables.deleteAllConfirm', { count }));
+    const confirmed = await confirmDelete({
+      message: t('data.outputTables.deleteAllConfirm', { count }),
+    });
     if (!confirmed) return;
     setActionId('delete-all-output-tables');
     setError(null);
@@ -1101,7 +1114,7 @@ export function DataView() {
     } finally {
       setActionId(null);
     }
-  }, [dashboard.totalOutputTables, loadDashboard, searchQuery, t]);
+  }, [confirmDelete, dashboard.totalOutputTables, loadDashboard, searchQuery, t]);
 
   return (
     <div className="flex-1 min-h-0 overflow-hidden bg-transparent">

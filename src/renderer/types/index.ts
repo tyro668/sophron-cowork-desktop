@@ -944,6 +944,11 @@ export type MemorySearchKind =
   | 'experience_chunk'
   | 'raw_session';
 export type MemoryItemStatus = 'active' | 'pending' | 'rejected' | 'archived';
+export type MemoryConfidenceSourceType =
+  | 'explicit_user_statement'
+  | 'conversation_summary'
+  | 'llm_inference'
+  | 'manual_edit';
 
 export interface MemoryTranscriptTurn {
   role: string;
@@ -961,12 +966,25 @@ export interface MemoryEvidenceRef {
   createdAt?: string;
 }
 
+export interface MemoryConfidenceSignals {
+  sourceType: MemoryConfidenceSourceType;
+  extractionConfidence: number;
+  evidenceCount: number;
+  corroborationCount: number;
+  contradictionCount: number;
+  userVerified: boolean;
+  lastVerifiedAt?: string;
+  calculationVersion: number;
+  reason?: string;
+}
+
 export interface CoreMemoryEntry {
   combinedKey: string;
   category?: 'identity' | 'preferences' | 'skills' | 'interests';
   key: string;
   value: string;
   confidence: number;
+  confidenceSignals: MemoryConfidenceSignals;
   status: MemoryItemStatus;
   evidence: MemoryEvidenceRef[];
   createdAt: string;
@@ -980,6 +998,7 @@ export interface ProjectMemoryEntry {
   key: string;
   value: string;
   confidence: number;
+  confidenceSignals: MemoryConfidenceSignals;
   status: MemoryItemStatus;
   evidence: MemoryEvidenceRef[];
   createdAt: string;
@@ -1004,6 +1023,7 @@ export interface ChunkMemoryItem {
   ingestedAt: string;
   embedding: number[];
   confidence: number;
+  confidenceSignals: MemoryConfidenceSignals;
   status: MemoryItemStatus;
   supersededBy?: string;
 }
@@ -1025,6 +1045,7 @@ export interface SessionMemoryItem {
   ingestedAt: string;
   embedding: number[];
   confidence: number;
+  confidenceSignals: MemoryConfidenceSignals;
   status: MemoryItemStatus;
   supersededBy?: string;
 }

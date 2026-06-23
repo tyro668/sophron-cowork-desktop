@@ -25,6 +25,7 @@ import { SandboxSetupDialog } from './components/SandboxSetupDialog';
 import { SandboxSyncToast } from './components/SandboxSyncToast';
 import { GlobalNoticeToast } from './components/GlobalNoticeToast';
 import { PanelErrorBoundary } from './components/PanelErrorBoundary';
+import { ConfirmDialogProvider } from './components/ConfirmDialog';
 import type { AppConfig } from './types';
 import type { GlobalNoticeAction } from './store';
 
@@ -268,91 +269,95 @@ function App() {
   ];
 
   return (
-    <div className="h-full w-full min-h-0 flex flex-col overflow-hidden bg-[var(--app-backdrop)] text-text-primary">
-      {/* Titlebar - draggable region */}
-      <Titlebar />
+    <ConfirmDialogProvider>
+      <div className="h-full w-full min-h-0 flex flex-col overflow-hidden bg-[var(--app-backdrop)] text-text-primary">
+        {/* Titlebar - draggable region */}
+        <Titlebar />
 
-      {/* Main Content */}
-      <div className="flex-1 min-h-0 flex overflow-hidden px-3 pb-3">
-        {/* Sidebar */}
-        <PanelErrorBoundary name="Sidebar" fallback={<div className="w-0" />}>
-          <Sidebar />
+        {/* Main Content */}
+        <div className="flex-1 min-h-0 flex overflow-hidden px-3 pb-3">
+          {/* Sidebar */}
+          <PanelErrorBoundary name="Sidebar" fallback={<div className="w-0" />}>
+            <Sidebar />
+          </PanelErrorBoundary>
+
+          {/* Main Content Area */}
+          <main className="app-main-panel flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
+            {mainPanelRoutes
+              .filter((route) => route.mounted)
+              .map((route) => (
+                <div
+                  key={route.id}
+                  className={
+                    activeMainRouteId === route.id ? 'flex h-full min-h-0 w-full' : 'hidden'
+                  }
+                >
+                  <PanelErrorBoundary
+                    name={route.name}
+                    resetKey={route.resetKey}
+                    fallback={<MainPanelFallback />}
+                  >
+                    <Suspense fallback={<MainPanelFallback />}>{route.element}</Suspense>
+                  </PanelErrorBoundary>
+                </div>
+              ))}
+
+            {activeMainRouteId === 'welcome' && <WelcomeView />}
+          </main>
+
+          {/* Context Panel - only show when in session and not in settings */}
+          {activeSessionId && mountedMainRouteIds.has('chat') && (
+            <div className={activeMainRouteId === 'chat' ? 'contents' : 'hidden'}>
+              <PanelErrorBoundary
+                name="ContextPanel"
+                resetKey={activeSessionId}
+                fallback={<ContextPanelFallback />}
+              >
+                <Suspense fallback={<ContextPanelFallback />}>
+                  <ContextPanel />
+                </Suspense>
+              </PanelErrorBoundary>
+            </div>
+          )}
+        </div>
+
+        {/* Permission Dialog */}
+        {pendingPermission && <PermissionDialog permission={pendingPermission} />}
+
+        {/* Sudo Password Dialog */}
+        {pendingSudoPassword && <SudoPasswordDialog request={pendingSudoPassword} />}
+
+        {/* Config Modal */}
+        <PanelErrorBoundary name="ConfigModal" fallback={null}>
+          <Suspense fallback={null}>
+            <ConfigModal
+              isOpen={showConfigModal}
+              onClose={handleConfigClose}
+              onSave={handleConfigSave}
+              initialConfig={appConfig}
+              isFirstRun={!isConfigured}
+            />
+          </Suspense>
         </PanelErrorBoundary>
 
-        {/* Main Content Area */}
-        <main className="app-main-panel flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
-          {mainPanelRoutes
-            .filter((route) => route.mounted)
-            .map((route) => (
-              <div
-                key={route.id}
-                className={activeMainRouteId === route.id ? 'flex h-full min-h-0 w-full' : 'hidden'}
-              >
-                <PanelErrorBoundary
-                  name={route.name}
-                  resetKey={route.resetKey}
-                  fallback={<MainPanelFallback />}
-                >
-                  <Suspense fallback={<MainPanelFallback />}>{route.element}</Suspense>
-                </PanelErrorBoundary>
-              </div>
-            ))}
-
-          {activeMainRouteId === 'welcome' && <WelcomeView />}
-        </main>
-
-        {/* Context Panel - only show when in session and not in settings */}
-        {activeSessionId && mountedMainRouteIds.has('chat') && (
-          <div className={activeMainRouteId === 'chat' ? 'contents' : 'hidden'}>
-            <PanelErrorBoundary
-              name="ContextPanel"
-              resetKey={activeSessionId}
-              fallback={<ContextPanelFallback />}
-            >
-              <Suspense fallback={<ContextPanelFallback />}>
-                <ContextPanel />
-              </Suspense>
-            </PanelErrorBoundary>
-          </div>
-        )}
-      </div>
-
-      {/* Permission Dialog */}
-      {pendingPermission && <PermissionDialog permission={pendingPermission} />}
-
-      {/* Sudo Password Dialog */}
-      {pendingSudoPassword && <SudoPasswordDialog request={pendingSudoPassword} />}
-
-      {/* Config Modal */}
-      <PanelErrorBoundary name="ConfigModal" fallback={null}>
-        <Suspense fallback={null}>
-          <ConfigModal
-            isOpen={showConfigModal}
-            onClose={handleConfigClose}
-            onSave={handleConfigSave}
-            initialConfig={appConfig}
-            isFirstRun={!isConfigured}
+        {/* Sandbox Setup Dialog */}
+        {showSandboxSetup && (
+          <SandboxSetupDialog
+            progress={sandboxSetupProgress}
+            onComplete={handleSandboxSetupComplete}
           />
-        </Suspense>
-      </PanelErrorBoundary>
+        )}
 
-      {/* Sandbox Setup Dialog */}
-      {showSandboxSetup && (
-        <SandboxSetupDialog
-          progress={sandboxSetupProgress}
-          onComplete={handleSandboxSetupComplete}
+        {/* Sandbox Sync Toast */}
+        <SandboxSyncToast status={sandboxSyncStatus} />
+
+        <GlobalNoticeToast
+          notice={globalNotice}
+          onDismiss={clearGlobalNotice}
+          onAction={handleGlobalNoticeAction}
         />
-      )}
-
-      {/* Sandbox Sync Toast */}
-      <SandboxSyncToast status={sandboxSyncStatus} />
-
-      <GlobalNoticeToast
-        notice={globalNotice}
-        onDismiss={clearGlobalNotice}
-        onAction={handleGlobalNoticeAction}
-      />
-    </div>
+      </div>
+    </ConfirmDialogProvider>
   );
 }
 

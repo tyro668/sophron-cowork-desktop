@@ -17,6 +17,7 @@ import { DEFAULT_MEMORY_PROMPTS, type MemoryPromptSet } from './memory-prompts';
 import { MemoryRetriever } from './memory-retriever';
 import { MemorySessionStateStore } from './memory-state-store';
 import { ProjectMemoryStore } from './project-memory-store';
+import { buildConfidenceSignals } from './memory-confidence';
 import type {
   ChunkMemoryItem,
   CoreMemoryEntry,
@@ -794,13 +795,22 @@ export class MemoryService {
     fullTurns: MemoryTranscriptTurn[];
     extracted: Awaited<ReturnType<ExperienceMemoryExtractor['extractSession']>>;
   }): Promise<void> {
+    if (!input.extracted.sessionSummary.trim() || input.extracted.sessionConfidence === undefined) {
+      return;
+    }
     const store = this.getExperienceStore();
     const existing = store.getSession(input.sessionId);
     const ingestedAt = isoNow();
     const sourceWorkspaceLabel = this.resolveWorkspaceLabel(input.sourceWorkspace);
 
-    const chunkInputs: Array<Omit<ChunkMemoryItem, 'id'>> = [];
+    const chunkInputs: Array<
+      Omit<ChunkMemoryItem, 'id' | 'confidence' | 'confidenceSignals' | 'status' | 'supersededBy'> &
+        Partial<Pick<ChunkMemoryItem, 'confidence' | 'confidenceSignals' | 'status'>>
+    > = [];
     for (const chunk of input.extracted.chunks) {
+      if (chunk.confidence === undefined) {
+        continue;
+      }
       const rawText = this.extractRawText(input.fullTurns, chunk.sourceTurns);
       const searchableText = [chunk.summary, chunk.details, ...chunk.keywords].join(' ').trim();
       chunkInputs.push({
@@ -819,7 +829,13 @@ export class MemoryService {
         createdAt: existing?.createdAt || new Date(input.sessionCreatedAt).toISOString(),
         ingestedAt,
         embedding: await this.embedText(searchableText),
-        confidence: 0.72,
+        confidence: chunk.confidence,
+        confidenceSignals: buildConfidenceSignals({
+          sourceType: 'conversation_summary',
+          extractionConfidence: chunk.confidence,
+          evidenceCount: chunk.sourceTurns.length ? 1 : 0,
+          reason: 'Extracted from session chunk summary',
+        }),
         status: 'active',
       });
     }
@@ -846,7 +862,13 @@ export class MemoryService {
         createdAt: existing?.createdAt || new Date(input.sessionCreatedAt).toISOString(),
         ingestedAt,
         embedding: await this.embedText(sessionSearchable),
-        confidence: 0.72,
+        confidence: input.extracted.sessionConfidence,
+        confidenceSignals: buildConfidenceSignals({
+          sourceType: 'conversation_summary',
+          extractionConfidence: input.extracted.sessionConfidence,
+          evidenceCount: input.extracted.chunks.length,
+          reason: 'Extracted from session summary',
+        }),
         status: 'active',
       },
       chunkInputs
@@ -860,6 +882,7 @@ export class MemoryService {
       summary: input.extracted.sessionSummary,
       keywords: input.extracted.sessionKeywords,
       sourceTurns: input.extracted.chunks.flatMap((chunk) => chunk.sourceTurns),
+      extractionConfidence: input.extracted.sessionConfidence,
     });
   }
 

@@ -1,6 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import type { MemoryEvidenceRef, MemoryItemStatus, ProjectMemoryEntry } from './memory-types';
 import {
+  buildConfidenceSignals,
+  calculateMemoryConfidence,
+  confidenceSignalsToFileRecord,
+  mergeConfidenceSignals,
+  normalizeConfidence,
+  normalizeConfidenceSignals,
+} from './memory-confidence';
+import {
   extractKeywords,
   isoNow,
   lexicalScore,
@@ -18,20 +26,12 @@ type ProjectMemoryUpdate = Partial<
   Pick<ProjectMemoryEntry, 'key' | 'value' | 'confidence' | 'status'>
 >;
 
-const DEFAULT_CONFIDENCE = 0.68;
 const MEMORY_STATUSES = new Set<MemoryItemStatus>(['active', 'pending', 'rejected', 'archived']);
 
 function normalizeStatus(value: unknown): MemoryItemStatus {
   return typeof value === 'string' && MEMORY_STATUSES.has(value as MemoryItemStatus)
     ? (value as MemoryItemStatus)
     : 'active';
-}
-
-function normalizeConfidence(value: unknown, fallback = DEFAULT_CONFIDENCE): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return fallback;
-  }
-  return Math.max(0, Math.min(1, value));
 }
 
 function normalizeEvidence(value: unknown): MemoryEvidenceRef[] {
@@ -118,6 +118,11 @@ function normalizeEntry(item: Record<string, unknown>): ProjectMemoryEntry | nul
     return null;
   }
   const now = isoNow();
+  const evidence = normalizeEvidence(item.evidence);
+  const confidenceSignals = normalizeConfidenceSignals(item.confidenceSignals ?? item.confidence_signals);
+  if (!confidenceSignals) {
+    return null;
+  }
   return {
     id,
     workspaceKey,
@@ -129,9 +134,10 @@ function normalizeEntry(item: Record<string, unknown>): ProjectMemoryEntry | nul
           : undefined,
     key,
     value,
-    confidence: normalizeConfidence(item.confidence),
+    confidence: calculateMemoryConfidence(confidenceSignals),
+    confidenceSignals,
     status: normalizeStatus(item.status),
-    evidence: normalizeEvidence(item.evidence),
+    evidence,
     createdAt:
       typeof item.createdAt === 'string'
         ? item.createdAt
@@ -155,6 +161,7 @@ function entryToFileRecord(item: ProjectMemoryEntry): Record<string, unknown> {
     key: item.key,
     value: item.value,
     confidence: item.confidence,
+    confidence_signals: confidenceSignalsToFileRecord(item.confidenceSignals),
     status: item.status,
     evidence: item.evidence.map((evidence) => ({
       session_id: evidence.sessionId,
@@ -228,6 +235,7 @@ export class ProjectMemoryStore {
     summary: string;
     keywords: string[];
     sourceTurns?: number[];
+    extractionConfidence?: number;
   }): ProjectMemoryEntry | null {
     const workspaceKey = normalizeWorkspaceKey(input.workspaceKey);
     const summary = input.summary.trim();
@@ -243,6 +251,10 @@ export class ProjectMemoryStore {
     if (!key) {
       return null;
     }
+    const extractionConfidence = normalizeConfidence(input.extractionConfidence);
+    if (extractionConfidence === null) {
+      return null;
+    }
     const evidence: MemoryEvidenceRef = {
       sessionId: input.sessionId,
       sourceWorkspace: workspaceKey,
@@ -252,13 +264,24 @@ export class ProjectMemoryStore {
       createdAt: now,
     };
     const existing = this.findMergeTarget(workspaceKey, key, summary);
+    const incomingSignals = buildConfidenceSignals({
+      sourceType: 'conversation_summary',
+      extractionConfidence,
+      evidenceCount: 1,
+      corroborationCount: existing ? 1 : 0,
+      reason: 'Derived from summarized workspace experience',
+    });
+    const mergedSignals = existing?.confidenceSignals
+      ? mergeConfidenceSignals(existing.confidenceSignals, incomingSignals)
+      : incomingSignals;
     const next: ProjectMemoryEntry = existing
       ? {
           ...existing,
           workspaceLabel: input.workspaceLabel || existing.workspaceLabel,
           key: existing.key || key,
           value: summary.length >= existing.value.length ? summary : existing.value,
-          confidence: Math.max(existing.confidence, DEFAULT_CONFIDENCE),
+          confidence: calculateMemoryConfidence(mergedSignals),
+          confidenceSignals: mergedSignals,
           status: existing.status === 'archived' ? 'active' : existing.status,
           evidence: mergeEvidence(existing.evidence, [evidence]),
           updatedAt: now,
@@ -269,7 +292,8 @@ export class ProjectMemoryStore {
           workspaceLabel: input.workspaceLabel,
           key,
           value: summary,
-          confidence: DEFAULT_CONFIDENCE,
+          confidence: calculateMemoryConfidence(mergedSignals),
+          confidenceSignals: mergedSignals,
           status: 'active',
           evidence: [evidence],
           createdAt: now,
@@ -290,14 +314,32 @@ export class ProjectMemoryStore {
     if (!key || !value) {
       return null;
     }
+    let nextConfidence = existing.confidence;
+    let nextConfidenceSignals = existing.confidenceSignals;
+    if (updates.confidence !== undefined) {
+      const extractionConfidence = normalizeConfidence(updates.confidence);
+      if (extractionConfidence === null) {
+        return null;
+      }
+      nextConfidenceSignals = mergeConfidenceSignals(
+        existing.confidenceSignals,
+        buildConfidenceSignals({
+          sourceType: 'manual_edit',
+          extractionConfidence,
+          evidenceCount: existing.evidence.length,
+          userVerified: true,
+          lastVerifiedAt: isoNow(),
+          reason: 'Manually adjusted confidence',
+        })
+      );
+      nextConfidence = calculateMemoryConfidence(nextConfidenceSignals);
+    }
     const next: ProjectMemoryEntry = {
       ...existing,
       key,
       value,
-      confidence:
-        updates.confidence === undefined
-          ? existing.confidence
-          : normalizeConfidence(updates.confidence, existing.confidence),
+      confidence: nextConfidence,
+      confidenceSignals: nextConfidenceSignals,
       status: updates.status === undefined ? existing.status : normalizeStatus(updates.status),
       updatedAt: isoNow(),
     };
@@ -307,15 +349,10 @@ export class ProjectMemoryStore {
   }
 
   deleteEntry(id: string): { success: boolean } {
-    const existing = this.entries.get(id);
-    if (!existing) {
+    if (!this.entries.has(id)) {
       return { success: false };
     }
-    this.entries.set(id, {
-      ...existing,
-      status: 'archived',
-      updatedAt: isoNow(),
-    });
+    this.entries.delete(id);
     this.save();
     return { success: true };
   }

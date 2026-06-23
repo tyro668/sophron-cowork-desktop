@@ -37,6 +37,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { GlassSelect } from '../GlassSelect';
+import { useConfirmDialog } from '../ConfirmDialog';
 import {
   AlertCircle,
   ArrowLeft,
@@ -310,6 +311,7 @@ export function TaskEditor({
   onWorkflowSaved: () => void | Promise<void>;
 }) {
   const { t } = useTranslation();
+  const { confirmDelete } = useConfirmDialog();
   const [workflow, setWorkflow] = useState<DataTaskWorkflow | null>(null);
   const [savedWorkflowSignature, setSavedWorkflowSignature] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -724,11 +726,11 @@ export function TaskEditor({
     });
   }, [selectedNode]);
 
-  const deleteSelectedNode = useCallback(() => {
+  const deleteSelectedNode = useCallback(async () => {
     if (!selectedNode) return;
-    const confirmed = window.confirm(
-      t('data.workflow.deleteOperatorConfirm', { name: selectedNode.label })
-    );
+    const confirmed = await confirmDelete({
+      message: t('data.workflow.deleteOperatorConfirm', { name: selectedNode.label }),
+    });
     if (!confirmed) return;
     setWorkflow((current) =>
       current
@@ -743,7 +745,7 @@ export function TaskEditor({
         : current
     );
     setSelectedNodeId((current) => (current === selectedNode.id ? null : current));
-  }, [selectedNode, t]);
+  }, [confirmDelete, selectedNode, t]);
 
   const saveWorkflow = useCallback(async (): Promise<DataTaskWorkflow | null> => {
     if (!workflow || !window.electronAPI?.data) return null;
