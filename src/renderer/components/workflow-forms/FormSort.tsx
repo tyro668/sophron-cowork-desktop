@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash2, GripVertical } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
 import { GlassDirectionToggle } from './shared/GlassDirectionToggle';
 import { GlassNullsSelect } from './shared/GlassNullsSelect';
+import { GlassRowList } from './shared/GlassRowList';
 
 interface SortKey {
   field: string;
@@ -13,9 +13,6 @@ interface SortKey {
 }
 
 const DEFAULT_SORT_KEY: SortKey = { field: '', direction: 'asc' };
-
-const SELECT_CLASS =
-  'h-6 rounded border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-secondary outline-none focus:border-accent';
 
 export default function FormSort({
   node,
@@ -174,99 +171,64 @@ export default function FormSort({
       {/* Left: sort keys */}
       <div className="flex min-h-0 flex-col overflow-hidden border-r border-border-muted">
         <div className="flex-1 space-y-0.5 overflow-y-auto px-2 pr-3 pb-2 pt-1">
-          {/* Header */}
-          <div className="flex items-center gap-1 px-1.5 pb-0.5 text-[11px] font-medium text-text-muted">
-            <span
-              className="flex h-6 w-4 flex-shrink-0 items-center justify-center"
-              aria-hidden="true"
-            />
-            <span className="flex-[4] min-w-0 text-center">
-              {tr('sortFieldHeader', '待排序字段')}
-            </span>
-            <span className="flex-[2] min-w-0 text-center">
-              {tr('sortDirectionHeader', '排序方式')}
-            </span>
-            <span className="flex-[3] min-w-0 text-center">
-              {tr('sortNullsHeader', '空值处理方式')}
-            </span>
-            <span className="flex h-6 w-[3.25rem] flex-shrink-0" aria-hidden="true" />
-          </div>
-
-          {activeKeys.map((key, i) => {
-            const disabledOptions = new Set(usedFields);
-            if (key.field) disabledOptions.delete(key.field);
-
-            return (
-              <div
-                key={i}
-                className={`flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-surface-hover/40 ${
-                  dragKeys && dragIndexRef.current === i ? 'opacity-50' : ''
-                }`}
-                onDragOver={(e) => handleDragOver(e, i)}
-              >
-                {/* Drag handle */}
-                <div
-                  draggable
-                  onDragStart={() => handleDragStart(i)}
-                  onDragEnd={handleDragEnd}
-                  className="flex h-6 w-4 flex-shrink-0 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
-                  title={tr('dragToReorder', '拖拽排序')}
-                  aria-label={tr('dragToReorder', '拖拽排序')}
-                >
-                  <GripVertical className="h-4 w-4" />
-                </div>
-
-                {/* Field */}
-                <GlassFieldCombo
-                  value={key.field}
-                  options={fieldCompletions}
-                  columnTypes={columnTypes}
-                  onChange={(value) => updateKey(i, { field: value })}
-                  placeholder={tr('sortSelectField', '选择字段')}
-                  searchPlaceholder={tr('searchField', '搜索字段')}
-                  emptyText={tr('noMatch', '无匹配字段')}
-                  disabledOptions={disabledOptions}
-                  className="flex-[4] min-w-0"
-                />
-
-                {/* Direction */}
-                <GlassDirectionToggle
-                  value={key.direction}
-                  onChange={(v) => updateKey(i, { direction: v })}
-                  className="flex h-6 flex-[2] min-w-0 px-1.5 text-[12px]"
-                />
-
-                {/* Nulls */}
-                <GlassNullsSelect
-                  value={key.nulls}
-                  onChange={(v) => updateKey(i, { nulls: v })}
-                  className={SELECT_CLASS + ' flex-[3] min-w-0 text-center'}
-                />
-
-                {/* Add */}
-                <button
-                  type="button"
-                  onClick={() => addKeyAfter(i)}
-                  className="inline-flex h-6 w-6 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-accent"
-                  title={tr('sortAddKey', '添加排序键')}
-                  aria-label={tr('sortAddKey', '添加排序键')}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </button>
-
-                {/* Delete */}
-                <button
-                  type="button"
-                  onClick={() => removeKey(i)}
-                  className="inline-flex h-6 w-6 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:text-error hover:bg-error/10"
-                  title={tr('sortRemoveKey', '删除排序键')}
-                  aria-label={tr('sortRemoveKey', '删除排序键')}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            );
-          })}
+          <GlassRowList
+            items={activeKeys}
+            columns={[
+              {
+                flex: 'flex-[4]',
+                header: tr('sortFieldHeader', '待排序字段'),
+                render: (key: SortKey, i) => {
+                  const disabledOptions = new Set(usedFields);
+                  if (key.field) disabledOptions.delete(key.field);
+                  return (
+                    <GlassFieldCombo
+                      value={key.field}
+                      options={fieldCompletions}
+                      columnTypes={columnTypes}
+                      onChange={(value) => updateKey(i, { field: value })}
+                      placeholder={tr('sortSelectField', '选择字段')}
+                      searchPlaceholder={tr('searchField', '搜索字段')}
+                      emptyText={tr('noMatch', '无匹配字段')}
+                      disabledOptions={disabledOptions}
+                      className="w-full"
+                    />
+                  );
+                },
+              },
+              {
+                flex: 'flex-[2]',
+                header: tr('sortDirectionHeader', '排序方式'),
+                render: (key: SortKey, i) => (
+                  <GlassDirectionToggle
+                    value={key.direction}
+                    onChange={(v) => updateKey(i, { direction: v })}
+                    className="h-6 w-full px-1.5 text-[12px]"
+                  />
+                ),
+              },
+              {
+                flex: 'flex-[3]',
+                header: tr('sortNullsHeader', '空值处理方式'),
+                render: (key: SortKey, i) => (
+                  <GlassNullsSelect
+                    value={key.nulls}
+                    onChange={(v) => updateKey(i, { nulls: v })}
+                    className="h-6 w-full text-center rounded border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-secondary outline-none focus:border-accent"
+                  />
+                ),
+              },
+            ]}
+            onAdd={addKeyAfter}
+            onRemove={removeKey}
+            addTitle={tr('sortAddKey', '添加排序键')}
+            removeTitle={tr('sortRemoveKey', '删除排序键')}
+            draggable
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+            getRowOpacity={(i) => !!(dragKeys && dragIndexRef.current === i)}
+            dragTitle={tr('dragToReorder', '拖拽排序')}
+          />
         </div>
       </div>
 

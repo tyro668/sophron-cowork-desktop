@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle, CheckCircle2, ChevronDown, Code2, Copy, Maximize2, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Code2, Copy, Maximize2, X } from 'lucide-react';
 import type { DataWorkflowNode, DataWorkflowOperatorType } from '../../types';
 import type { PrepDiagnostic } from '../../../shared/prep-dsl';
 import { OperatorFormWrapper } from '../workflow-forms/OperatorFormWrapper';
@@ -62,9 +62,9 @@ export function WorkflowOperatorConfigPanel({
   rightSourceNode,
   fieldCompletions,
   upstreamRowCount,
-  summaryRows,
-  summaryTitle,
-  summaryEmptyText,
+  summaryRows: _summaryRows,
+  summaryTitle: _summaryTitle,
+  summaryEmptyText: _summaryEmptyText,
   operatorDsl,
   operatorDslStatus,
   operatorDslDiagnostics,
@@ -81,7 +81,6 @@ export function WorkflowOperatorConfigPanel({
   onApplyDsl,
 }: WorkflowOperatorConfigPanelProps) {
   const { t } = useTranslation();
-  const [isSummaryOpen, setIsSummaryOpen] = useState(false);
   const [splitRatio, setSplitRatio] = useState(DEFAULT_SPLIT_RATIO);
   const [splitMode, setSplitMode] = useState<OperatorPanelSplitMode>('split');
   const [paneHeight, setPaneHeight] = useState(0);
@@ -95,7 +94,6 @@ export function WorkflowOperatorConfigPanel({
   const hasErrors = visibleDiagnostics.length > 0;
 
   useEffect(() => {
-    setIsSummaryOpen(false);
     setSplitMode('split');
     cleanupDragRef.current?.();
     setIsDraggingSplit(false);
@@ -230,54 +228,7 @@ export function WorkflowOperatorConfigPanel({
             : undefined
         }
       >
-        <button
-          type="button"
-          onClick={() => setIsSummaryOpen((current) => !current)}
-          className="absolute right-2 top-2 z-20 inline-flex h-8 items-center gap-1.5 rounded-none border border-border-muted bg-[var(--glass-card-strong)] px-2.5 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
-          aria-expanded={isSummaryOpen}
-        >
-          <ChevronDown
-            className={`h-3.5 w-3.5 transition-transform ${isSummaryOpen ? 'rotate-180' : ''}`}
-          />
-          {summaryTitle}
-        </button>
-
-        {isSummaryOpen && (
-          <div className="absolute right-2 top-10 z-20 w-[19rem] max-w-[calc(100%-1rem)] border border-border-muted bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl">
-            <div className="flex h-8 items-center justify-between border-b border-border-muted px-2.5 text-xs font-medium text-text-secondary">
-              <span>{summaryTitle}</span>
-              <button
-                type="button"
-                onClick={() => setIsSummaryOpen(false)}
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-accent/10 hover:text-accent"
-                title={t('common.close')}
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-            <div className="max-h-52 overflow-y-auto text-xs">
-              {summaryRows.length > 0 ? (
-                summaryRows.map((row) => (
-                  <div
-                    key={`${row.label}-${row.value}`}
-                    className="grid grid-cols-[5.5rem_minmax(0,1fr)] border-b border-border-muted last:border-b-0"
-                  >
-                    <div className="bg-background/72 px-2 py-1.5 text-text-muted">{row.label}</div>
-                    <div
-                      className={`min-w-0 break-words px-2 py-1.5 text-text-secondary ${
-                        row.mono ? 'font-mono text-[10.5px]' : ''
-                      }`}
-                    >
-                      {row.value}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="px-2.5 py-2 text-text-muted">{summaryEmptyText}</div>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Config summary — hidden for now */}
 
         {/* Form pane */}
         {splitMode !== 'dsl-only' && (

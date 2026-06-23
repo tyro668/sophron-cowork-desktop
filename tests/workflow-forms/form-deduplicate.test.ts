@@ -230,7 +230,7 @@ describe('FormDeduplicate — 组件结构检查', () => {
 
   it('排序区域包含拖拽手柄', () => {
     expect(src).toContain('draggable');
-    expect(src).toContain('GripVertical');
+    expect(src).toContain('GlassRowList');
   });
 
   it('排序字段支持 NULL 位置配置', () => {

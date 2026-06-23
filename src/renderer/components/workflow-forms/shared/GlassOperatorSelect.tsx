@@ -59,12 +59,12 @@ export function GlassOperatorSelect({
   useClickOutside(ref, () => setOpen(false));
 
   return (
-    <div ref={ref} className={`relative flex-shrink-0 min-w-[84px] ${className ?? ''}`}>
+    <div ref={ref} className={`relative min-w-[84px] ${className ?? ''}`}>
       <button
         type="button"
         disabled={disabled}
         onClick={() => setOpen(!open)}
-        className="flex h-8 min-w-[84px] items-center rounded-md border border-border-muted bg-background/42 text-[12px] text-text-secondary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex h-8 w-full min-w-[84px] items-center rounded-md border border-border-muted bg-background/42 text-[12px] text-text-secondary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-40"
       >
         <span className="flex-1 px-2 text-center whitespace-nowrap">{selectedLabel}</span>
         <ChevronDown
