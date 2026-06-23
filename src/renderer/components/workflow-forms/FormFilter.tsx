@@ -177,6 +177,7 @@ function ConditionLeafRow({
   parentConnective: FilterConditionConnective;
   ctx: LeafRowContext;
 }) {
+  const { tr } = ctx;
   const fieldSelected = !!leaf.field;
   const colType = ctx.columnTypes[leaf.field];
   const opGroups = useMemo(() => operatorsForType(colType), [colType]);
@@ -184,9 +185,9 @@ function ConditionLeafRow({
     () =>
       opGroups.map((g) => ({
         key: g.groupKey,
-        items: g.items.map((o) => ({ value: o.value, label: ctx.tr(o.labelKey, o.value) })),
+        items: g.items.map((o) => ({ value: o.value, label: tr(o.labelKey, o.value) })),
       })),
-    [opGroups, ctx.tr]
+    [opGroups, tr]
   );
   const allOps = flattenOps(opGroups);
   const validOps = allOps.map((o) => o.value);
