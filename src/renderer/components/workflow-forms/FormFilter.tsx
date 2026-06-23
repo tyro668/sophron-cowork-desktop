@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Plus, Trash2, Loader2, ChevronDown, X } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
+import { GlassFieldCombo } from './shared/GlassFieldCombo';
 import {
   isNumericDataFieldType,
   isTemporalDataFieldType,
@@ -149,123 +150,6 @@ function useClickOutside(ref: RefObject<HTMLElement | null>, onClose: () => void
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [ref, onClose]);
-}
-
-// ── Searchable dropdown (field selection) ─────────────────────────────
-
-function SearchableDropdown({
-  value,
-  suggestions,
-  onChange,
-  placeholder,
-  disabled,
-  showSearch,
-  noMatchText = '无匹配结果',
-  emptyText = '暂无选项',
-}: {
-  value: string;
-  suggestions: string[];
-  onChange: (v: string) => void;
-  placeholder: string;
-  disabled?: boolean;
-  showSearch?: boolean;
-  noMatchText?: string;
-  emptyText?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [input, setInput] = useState(value);
-  const [search, setSearch] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => setInput(value), [value]);
-
-  useClickOutside(ref, () => setOpen(false));
-
-  const filtered = useMemo(() => {
-    if (!showSearch) return suggestions.slice(0, 30);
-    if (!search.trim()) return suggestions.slice(0, 30);
-    const lower = search.toLowerCase();
-    return suggestions.filter((s) => s.toLowerCase().includes(lower)).slice(0, 30);
-  }, [search, suggestions, showSearch]);
-
-  return (
-    <div ref={ref} className="relative flex-1 min-w-0">
-      <div className="flex rounded-md border border-border-muted bg-background/42 focus-within:border-accent">
-        <input
-          ref={inputRef}
-          type="text"
-          value={open ? search : input}
-          disabled={disabled}
-          onChange={(e) => {
-            if (open) {
-              setSearch(e.target.value);
-            } else {
-              setInput(e.target.value);
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              setOpen(false);
-              inputRef.current?.blur();
-            } else if (e.key === 'Enter') {
-              const confirmed = open ? search || input : input;
-              setInput(confirmed);
-              onChange(confirmed);
-              setOpen(false);
-            }
-          }}
-          placeholder={placeholder}
-          className="h-8 flex-1 min-w-0 bg-transparent pl-2 text-[12px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-40"
-        />
-        <button
-          type="button"
-          disabled={disabled}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (!open) setSearch(input);
-            setOpen(!open);
-          }}
-          className="flex w-7 items-center justify-center border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
-        </button>
-      </div>
-
-      {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-full min-w-[180px] rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl">
-          <div className="max-h-48 overflow-y-auto">
-            {filtered.length === 0 ? (
-              <div className="px-3 py-3 text-center text-[12px] text-text-muted">
-                {search ? noMatchText : emptyText}
-              </div>
-            ) : (
-              filtered.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  className={`w-full px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-surface-hover ${
-                    s === input ? 'text-accent' : 'text-text-secondary'
-                  }`}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setInput(s);
-                    setSearch('');
-                    onChange(s);
-                    setOpen(false);
-                  }}
-                >
-                  {s}
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ── Single value input (free text + dropdown suggestions) ─────────────
@@ -658,17 +542,17 @@ function ConditionLeafRow({
       <div className="flex items-center gap-2 min-w-0">
         {/* Field */}
         <div className="flex-1 min-w-[100px] max-w-[180px]">
-          <SearchableDropdown
+          <GlassFieldCombo
             value={leaf.field}
-            suggestions={ctx.fieldCompletions}
+            options={ctx.fieldCompletions}
+            columnTypes={ctx.columnTypes}
             onChange={(v) => {
               ctx.fetchColumnValues(v);
               ctx.updateLeaf(leaf.id, { field: v, op: effectiveOp });
             }}
             placeholder={ctx.tr('filterFieldPlaceholder', '选择字段')}
-            showSearch
-            noMatchText={ctx.tr('noMatch', '无匹配字段')}
-            emptyText={ctx.tr('noFields', '暂无可用字段')}
+            emptyText={ctx.tr('noMatch', '无匹配字段')}
+            className="h-8"
           />
         </div>
 

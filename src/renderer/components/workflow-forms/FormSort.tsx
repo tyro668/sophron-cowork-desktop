@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash2, GripVertical } from 'lucide-react';
 import type { OperatorFormProps } from './index';
-import { FieldCombobox } from './shared/FieldCombobox';
+import { GlassFieldCombo } from './shared/GlassFieldCombo';
+import { GlassDirectionToggle } from './shared/GlassDirectionToggle';
+import { GlassNullsSelect } from './shared/GlassNullsSelect';
 
 interface SortKey {
   field: string;
@@ -215,7 +217,7 @@ export default function FormSort({
                 </div>
 
                 {/* Field */}
-                <FieldCombobox
+                <GlassFieldCombo
                   value={key.field}
                   options={fieldCompletions}
                   columnTypes={columnTypes}
@@ -228,37 +230,18 @@ export default function FormSort({
                 />
 
                 {/* Direction */}
-                <button
-                  type="button"
-                  onClick={() =>
-                    updateKey(i, { direction: key.direction === 'asc' ? 'desc' : 'asc' })
-                  }
-                  className={`flex h-6 flex-[2] min-w-0 items-center justify-center rounded border px-1.5 text-[12px] outline-none transition-colors focus:border-accent ${
-                    key.direction === 'asc'
-                      ? 'border-accent/30 bg-accent/10 text-accent'
-                      : 'border-border-muted bg-background/42 text-text-secondary hover:border-accent/30'
-                  }`}
-                  title={key.direction === 'asc' ? tr('asc', '升序') : tr('desc', '降序')}
-                  aria-label={key.direction === 'asc' ? tr('asc', '升序') : tr('desc', '降序')}
-                >
-                  {key.direction === 'asc' ? tr('asc', '升序') : tr('desc', '降序')}
-                </button>
+                <GlassDirectionToggle
+                  value={key.direction}
+                  onChange={(v) => updateKey(i, { direction: v })}
+                  className="flex h-6 flex-[2] min-w-0 px-1.5 text-[12px]"
+                />
 
                 {/* Nulls */}
-                <select
-                  value={key.nulls ?? ''}
-                  onChange={(e) =>
-                    updateKey(i, {
-                      nulls: (e.target.value || undefined) as 'first' | 'last' | undefined,
-                    })
-                  }
+                <GlassNullsSelect
+                  value={key.nulls}
+                  onChange={(v) => updateKey(i, { nulls: v })}
                   className={SELECT_CLASS + ' flex-[3] min-w-0 text-center'}
-                  aria-label={tr('sortNullsHeader', '空值处理方式')}
-                >
-                  <option value="">{tr('sortNullsDefault', '空值默认')}</option>
-                  <option value="first">{tr('sortNullsFirst', '空值在前')}</option>
-                  <option value="last">{tr('sortNullsLast', '空值在后')}</option>
-                </select>
+                />
 
                 {/* Add */}
                 <button

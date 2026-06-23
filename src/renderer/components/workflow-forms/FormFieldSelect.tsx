@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormSection } from './shared/GlassFormSection';
-import { DATA_FIELD_TYPE_LABELS, normalizeDataFieldType } from '../../../shared/data-field-types';
+import { GlassFieldSelector } from './shared/GlassFieldSelector';
 
 export default function FormFieldSelect({
   node,
@@ -40,15 +40,6 @@ export default function FormFieldSelect({
       .catch(() => setColumnTypes({}));
   }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
 
-  const typeLabel = useCallback(
-    (col: string) => {
-      const raw = columnTypes[col];
-      if (!raw) return '';
-      return DATA_FIELD_TYPE_LABELS[normalizeDataFieldType(raw)] ?? '';
-    },
-    [columnTypes]
-  );
-
   const updateConfig = useCallback(
     (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
       onNodeChange((current) => ({
@@ -61,21 +52,9 @@ export default function FormFieldSelect({
   );
 
   const columns: string[] = (node.config.columns as string[]) ?? [];
-  const [search, setSearch] = useState('');
-  const listRef = useRef<HTMLDivElement | null>(null);
-  const savedScrollRef = useRef(0);
-
-  // Restore scroll when React remounts the list DOM element.
-  const setListRef = useCallback((el: HTMLDivElement | null) => {
-    listRef.current = el;
-    if (el && savedScrollRef.current > 0 && el.scrollHeight > savedScrollRef.current) {
-      el.scrollTop = savedScrollRef.current;
-    }
-  }, []);
 
   const commitColumns = useCallback(
     (next: string[]) => {
-      savedScrollRef.current = listRef.current?.scrollTop ?? 0;
       updateConfig((cfg) => ({
         ...cfg,
         mode: 'include',
@@ -83,52 +62,6 @@ export default function FormFieldSelect({
       }));
     },
     [updateConfig]
-  );
-
-  // Restore scroll after DOM reconciliation. Never clears savedScrollRef —
-  // React's multi-pass commit briefly empties then refills the list DOM,
-  // so saved stays alive across all passes. Only commitColumns overwrites it.
-  useLayoutEffect(() => {
-    const el = listRef.current;
-    const saved = savedScrollRef.current;
-    if (!el || saved <= 0 || el.scrollHeight <= saved) return;
-    el.scrollTop = saved;
-  });
-
-  const filtered = useMemo(() => {
-    const lower = search.toLowerCase().trim();
-    if (!lower) return fieldCompletions;
-    return fieldCompletions.filter((c) => {
-      if (c.toLowerCase().includes(lower)) return true;
-      const raw = columnTypes[c];
-      if (!raw) return false;
-      const label = DATA_FIELD_TYPE_LABELS[normalizeDataFieldType(raw)] ?? '';
-      return label.includes(lower);
-    });
-  }, [fieldCompletions, search, columnTypes]);
-
-  const allFilteredSelected = filtered.length > 0 && filtered.every((c) => columns.includes(c));
-
-  const toggleAll = useCallback(() => {
-    if (filtered.length === 0) return;
-    if (allFilteredSelected) {
-      const filteredSet = new Set(filtered);
-      commitColumns(columns.filter((c) => !filteredSet.has(c)));
-    } else {
-      const toAdd = filtered.filter((c) => !columns.includes(c));
-      commitColumns([...columns, ...toAdd]);
-    }
-  }, [filtered, allFilteredSelected, columns, commitColumns]);
-
-  const toggleColumn = useCallback(
-    (col: string) => {
-      if (columns.includes(col)) {
-        commitColumns(columns.filter((c) => c !== col));
-      } else {
-        commitColumns([...columns, col]);
-      }
-    },
-    [columns, commitColumns]
   );
 
   const removeColumn = useCallback(
@@ -143,10 +76,10 @@ export default function FormFieldSelect({
   }, [commitColumns]);
 
   return (
-    <div className="grid content-start gap-2.5">
-      <GlassFormSection>
+    <div className="flex flex-col min-h-0 overflow-hidden" style={{ height: '100%' }}>
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
         {/* Title bar */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between py-1.5">
           <span className="text-[12px] text-text-muted">
             {tr('fieldSelectCount', '已选 {{n}}/{{total}} 个字段')
               .replace('{{n}}', String(columns.length))
@@ -166,67 +99,15 @@ export default function FormFieldSelect({
         </div>
 
         {/* Dual-pane layout */}
-        <div className="grid grid-cols-2 gap-3 min-h-0">
+        <div className="grid grid-cols-2 gap-3 flex-1 min-h-0">
           {/* Left: field library */}
-          <div className="flex min-h-0 flex-col rounded-lg border border-border-muted bg-background/42">
-            {/* Search */}
-            <div className="flex items-center gap-1.5 border-b border-border-subtle px-2 py-1.5">
-              <Search className="h-3 w-3 flex-shrink-0 text-text-muted" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={tr('searchField', '搜索字段...')}
-                className="h-6 w-full bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
-              />
-            </div>
-
-            {/* Select all toggle */}
-            <label
-              className="flex cursor-pointer items-center gap-1.5 border-b border-border-subtle px-2.5 py-1.5 text-[12px] text-text-muted hover:text-text-secondary"
-              onMouseDown={(e) => e.preventDefault()}
-            >
-              <input
-                type="checkbox"
-                checked={allFilteredSelected}
-                onChange={toggleAll}
-                className="h-4 w-4 rounded border-border-muted accent-accent"
-              />
-              {allFilteredSelected ? tr('deselectAll', '取消全选') : tr('selectAll', '全选')}
-            </label>
-
-            {/* Field list — fixed height so scroll position is independent of right panel */}
-            <div ref={setListRef} className="overflow-y-auto" style={{ height: '280px' }}>
-              {filtered.length === 0 ? (
-                <div className="px-3 py-6 text-center text-[12px] text-text-muted">
-                  {search ? tr('noMatch', '无匹配字段') : tr('noFields', '暂无可用字段')}
-                </div>
-              ) : (
-                filtered.map((col) => (
-                  <label
-                    key={col}
-                    className={`flex cursor-pointer items-center gap-2 px-2.5 py-[6px] text-[13px] transition-colors hover:bg-surface-hover ${
-                      columns.includes(col) ? 'text-text-primary' : 'text-text-secondary'
-                    }`}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={columns.includes(col)}
-                      onChange={() => toggleColumn(col)}
-                      className="h-4 w-4 rounded border-border-muted accent-accent"
-                    />
-                    <span className="flex-1 min-w-0 truncate">{col}</span>
-                    <span className="flex-shrink-0 text-[11px] text-text-muted tabular-nums">
-                      {typeLabel(col)}
-                    </span>
-                  </label>
-                ))
-              )}
-            </div>
-          </div>
+          <GlassFieldSelector
+            columns={fieldCompletions}
+            selected={columns}
+            onChange={commitColumns}
+            columnTypes={columnTypes}
+            maxHeight="none"
+          />
 
           {/* Right: selected fields */}
           <div className="flex min-h-0 flex-col rounded-lg border border-border-subtle bg-background/24">
@@ -263,7 +144,7 @@ export default function FormFieldSelect({
             </div>
           </div>
         </div>
-      </GlassFormSection>
+      </div>
     </div>
   );
 }

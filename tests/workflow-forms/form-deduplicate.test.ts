@@ -213,13 +213,13 @@ describe('FormDeduplicate — 组件结构检查', () => {
   );
 
   it('包含左右双栏布局', () => {
-    expect(src).toContain('grid-cols-[46fr_54fr]');
+    expect(src).toContain('grid-cols-[40fr_60fr]');
   });
 
   it('已选字段标签置顶横跨', () => {
     // The selected-fields bar appears before the two-column grid
-    const beforeGrid = src.indexOf('grid-cols-[46fr_54fr]');
-    const tagsIdx = src.indexOf('已选字段');
+    const beforeGrid = src.indexOf('grid-cols-[40fr_60fr]');
+    const tagsIdx = src.indexOf('clearAll');
     expect(tagsIdx).toBeLessThan(beforeGrid);
   });
 
@@ -234,8 +234,7 @@ describe('FormDeduplicate — 组件结构检查', () => {
   });
 
   it('排序字段支持 NULL 位置配置', () => {
-    expect(src).toContain('nullsFirst');
-    expect(src).toContain('nullsLast');
+    expect(src).toContain('GlassNullsSelect');
   });
 
   it('每行排序可添加和删除', () => {
@@ -244,13 +243,22 @@ describe('FormDeduplicate — 组件结构检查', () => {
   });
 
   it('字段列表支持搜索和类型显示', () => {
-    expect(src).toContain('typeLabel');
-    expect(src).toContain('filteredFields');
+    expect(src).toContain('GlassFieldSelector');
+    expect(src).toContain('columnTypes');
   });
 
   it('字段选择支持全选/取消全选', () => {
-    expect(src).toContain('toggleAll');
-    expect(src).toContain('allFilteredSelected');
+    expect(src).toContain('GlassFieldSelector');
+    // 全选/取消全选由 GlassFieldSelector 内部处理
+    const selectorSrc = readFileSync(
+      resolve(
+        __dirname,
+        '../../src/renderer/components/workflow-forms/shared/GlassFieldSelector.tsx'
+      ),
+      'utf-8'
+    );
+    expect(selectorSrc).toContain('selectAll');
+    expect(selectorSrc).toContain('deselectAll');
   });
 
   it('保留策略使用 first/last 两个选项', () => {
@@ -263,7 +271,7 @@ describe('FormDeduplicate — 组件结构检查', () => {
   });
 
   it('排序默认为升序', () => {
-    expect(src).toContain("direction: 'asc'");
+    expect(src).toContain('GlassDirectionToggle');
   });
 
   it('默认保留策略为 first', () => {

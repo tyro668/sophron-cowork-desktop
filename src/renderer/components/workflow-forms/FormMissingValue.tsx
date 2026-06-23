@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, GripVertical, Plus, X, Trash2 } from 'lucide-react';
+import { GlassFieldCombo } from './shared/GlassFieldCombo';
 import type { OperatorFormProps } from './index';
 import { GlassColumnSelector } from './shared/GlassColumnSelector';
 import {
@@ -525,8 +526,10 @@ export default function FormMissingValue({
 
                     {/* Field */}
                     <div className="flex-[2] min-w-0">
-                      <SelectField
+                      <GlassFieldCombo
                         value={item.column}
+                        options={fieldCompletions}
+                        columnTypes={columnTypes}
                         onChange={(col) => {
                           if (isSentinel) {
                             updateDisplayRule(i, { column: col });
@@ -542,13 +545,8 @@ export default function FormMissingValue({
                           });
                         }}
                         placeholder={tr('selectField', '选择字段')}
-                      >
-                        {fieldCompletions.map((col) => (
-                          <option key={col} value={col}>
-                            {col}
-                          </option>
-                        ))}
-                      </SelectField>
+                        className="h-8 w-full"
+                      />
                     </div>
 
                     {/* Method */}

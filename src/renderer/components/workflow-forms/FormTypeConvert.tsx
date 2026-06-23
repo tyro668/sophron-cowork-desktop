@@ -8,7 +8,7 @@ import {
   normalizeDataFieldType,
   type DataFieldType,
 } from '../../../shared/data-field-types';
-import { FieldCombobox } from './shared/FieldCombobox';
+import { GlassFieldCombo } from './shared/GlassFieldCombo';
 
 interface ConversionEntry {
   column: string;
@@ -294,7 +294,7 @@ export default function FormTypeConvert({
                   </div>
 
                   {/* Source field with type */}
-                  <FieldCombobox
+                  <GlassFieldCombo
                     value={conv.column}
                     options={fieldCompletions}
                     columnTypes={columnTypes}

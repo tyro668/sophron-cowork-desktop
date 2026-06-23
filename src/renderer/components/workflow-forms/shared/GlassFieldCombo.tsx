@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, Search } from 'lucide-react';
 import { dataFieldTypeLabel } from '@/shared/data-field-types';
 
-interface FieldComboboxProps {
+interface GlassFieldComboProps {
   value: string;
   options: string[];
   columnTypes?: Record<string, string>;
@@ -16,7 +16,7 @@ interface FieldComboboxProps {
   showType?: boolean;
 }
 
-export function FieldCombobox({
+export function GlassFieldCombo({
   value,
   options,
   columnTypes = {},
@@ -27,7 +27,7 @@ export function FieldCombobox({
   disabledOptions,
   className,
   showType = false,
-}: FieldComboboxProps) {
+}: GlassFieldComboProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -185,7 +185,7 @@ export function FieldCombobox({
         aria-expanded={open}
         aria-label={placeholder}
         className={[
-          'inline-flex h-6 min-w-0 items-center justify-between gap-1 rounded border px-1.5 text-[12px] outline-none transition-colors',
+          'inline-flex h-6 w-full min-w-0 items-center justify-between gap-1 rounded border px-1.5 text-[12px] outline-none transition-colors',
           'border-border-muted bg-background/42 text-text-primary hover:bg-surface-hover focus:border-accent',
           className || '',
         ].join(' ')}

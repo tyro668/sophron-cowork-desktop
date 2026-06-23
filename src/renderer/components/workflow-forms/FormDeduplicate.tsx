@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, X, Plus, Trash2, GripVertical } from 'lucide-react';
+import { X, Plus, Trash2, GripVertical } from 'lucide-react';
 import type { OperatorFormProps } from './index';
-import { DATA_FIELD_TYPE_LABELS, normalizeDataFieldType } from '../../../shared/data-field-types';
-import { FieldCombobox } from './shared/FieldCombobox';
+import { GlassFieldCombo } from './shared/GlassFieldCombo';
+import { GlassFieldSelector } from './shared/GlassFieldSelector';
+import { GlassDirectionToggle } from './shared/GlassDirectionToggle';
+import { GlassNullsSelect } from './shared/GlassNullsSelect';
 
 interface SortKeyEntry {
   field: string;
@@ -51,15 +53,6 @@ export default function FormDeduplicate({
       });
   }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
 
-  const typeLabel = useCallback(
-    (col: string) => {
-      const raw = columnTypes[col];
-      if (!raw) return '';
-      return DATA_FIELD_TYPE_LABELS[normalizeDataFieldType(raw)] ?? '';
-    },
-    [columnTypes]
-  );
-
   // ── Config ──
   const updateConfig = useCallback(
     (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
@@ -76,38 +69,8 @@ export default function FormDeduplicate({
   const keep = (node.config?.keep as string) ?? 'first';
   const orderBy: SortKeyEntry[] = (node.config?.orderBy as SortKeyEntry[]) ?? [];
 
-  // ── Field search ──
-  const [search, setSearch] = useState('');
-
-  const filteredFields = useMemo(() => {
-    const lower = search.toLowerCase().trim();
-    if (!lower) return fieldCompletions;
-    return fieldCompletions.filter((c) => {
-      if (c.toLowerCase().includes(lower)) return true;
-      const raw = columnTypes[c];
-      if (!raw) return false;
-      const label = DATA_FIELD_TYPE_LABELS[normalizeDataFieldType(raw)] ?? '';
-      return label.includes(lower);
-    });
-  }, [fieldCompletions, search, columnTypes]);
-
-  const allFilteredSelected =
-    filteredFields.length > 0 && filteredFields.every((c) => columns.includes(c));
-
-  // ── Scroll preservation ──
-  const listRef = useRef<HTMLDivElement | null>(null);
-  const savedScrollRef = useRef(0);
-
-  const setListRef = useCallback((el: HTMLDivElement | null) => {
-    listRef.current = el;
-    if (el && savedScrollRef.current > 0 && el.scrollHeight > savedScrollRef.current) {
-      el.scrollTop = savedScrollRef.current;
-    }
-  }, []);
-
   const commitColumns = useCallback(
     (next: string[]) => {
-      savedScrollRef.current = listRef.current?.scrollTop ?? 0;
       updateConfig((cfg) => ({
         ...cfg,
         strategy: next.length > 0 ? 'by_columns' : 'all_columns',
@@ -115,36 +78,6 @@ export default function FormDeduplicate({
       }));
     },
     [updateConfig]
-  );
-
-  useLayoutEffect(() => {
-    const el = listRef.current;
-    const saved = savedScrollRef.current;
-    if (!el || saved <= 0 || el.scrollHeight <= saved) return;
-    el.scrollTop = saved;
-  });
-
-  // ── Field selection actions ──
-  const toggleAll = useCallback(() => {
-    if (filteredFields.length === 0) return;
-    if (allFilteredSelected) {
-      const filteredSet = new Set(filteredFields);
-      commitColumns(columns.filter((c) => !filteredSet.has(c)));
-    } else {
-      const toAdd = filteredFields.filter((c) => !columns.includes(c));
-      commitColumns([...columns, ...toAdd]);
-    }
-  }, [filteredFields, allFilteredSelected, columns, commitColumns]);
-
-  const toggleColumn = useCallback(
-    (col: string) => {
-      if (columns.includes(col)) {
-        commitColumns(columns.filter((c) => c !== col));
-      } else {
-        commitColumns([...columns, col]);
-      }
-    },
-    [columns, commitColumns]
   );
 
   const removeColumn = useCallback(
@@ -296,66 +229,13 @@ export default function FormDeduplicate({
 
         <div className="grid grid-cols-[40fr_60fr] gap-3 flex-1 min-h-0">
           {/* ═══ LEFT: 选择字段 ═══ */}
-          <div className="flex min-h-0 flex-col rounded-lg border border-border-muted bg-background/60">
-            {/* Search + select all + clear */}
-            <div className="flex items-center gap-2 border-b border-border-subtle px-2.5 py-1">
-              <Search className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={tr('searchField', '搜索字段')}
-                className="h-5 flex-1 min-w-0 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
-              />
-              <label
-                className="flex cursor-pointer items-center gap-1 flex-shrink-0"
-                onMouseDown={(e) => e.preventDefault()}
-              >
-                <input
-                  type="checkbox"
-                  checked={allFilteredSelected}
-                  onChange={toggleAll}
-                  className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
-                />
-                <span className="text-[11px] text-text-secondary font-medium">
-                  {tr('selectAll', '全选')}
-                </span>
-              </label>
-            </div>
-
-            {/* Field list */}
-            <div ref={setListRef} className="flex-1 min-h-0 overflow-y-auto">
-              {filteredFields.length === 0 ? (
-                <div className="px-3 py-8 text-center text-[12px] text-text-muted">
-                  {search ? tr('noMatch', '无匹配字段') : tr('noFields', '暂无可用字段')}
-                </div>
-              ) : (
-                filteredFields.map((col) => {
-                  const checked = columns.includes(col);
-                  return (
-                    <label
-                      key={col}
-                      className={`flex cursor-pointer items-center gap-2 px-2.5 py-[4px] text-[12px] transition-colors hover:bg-surface-hover ${
-                        checked ? 'text-text-primary' : 'text-text-secondary'
-                      }`}
-                      onMouseDown={(e) => e.preventDefault()}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleColumn(col)}
-                        className="h-3.5 w-3.5 rounded border-border-muted accent-accent flex-shrink-0"
-                      />
-                      <span className="flex-1 min-w-0 truncate">{col}</span>
-                      <span className="w-14 flex-shrink-0 text-right text-[11px] text-text-muted tabular-nums">
-                        {typeLabel(col)}
-                      </span>
-                    </label>
-                  );
-                })
-              )}
-            </div>
-          </div>
+          <GlassFieldSelector
+            columns={fieldCompletions}
+            selected={columns}
+            onChange={commitColumns}
+            columnTypes={columnTypes}
+            maxHeight="none"
+          />
 
           {/* ═══ RIGHT: 保留策略 + 排序设置 ═══ */}
           <div className="overflow-y-auto min-h-0">
@@ -433,7 +313,7 @@ export default function FormDeduplicate({
                         </div>
 
                         {/* Sort field */}
-                        <FieldCombobox
+                        <GlassFieldCombo
                           value={key.field}
                           options={fieldCompletions}
                           columnTypes={columnTypes}
@@ -446,31 +326,18 @@ export default function FormDeduplicate({
                         />
 
                         {/* Sort direction */}
-                        <select
+                        <GlassDirectionToggle
                           value={key.direction}
-                          onChange={(e) =>
-                            updateSortKey(i, { direction: e.target.value as 'asc' | 'desc' })
-                          }
-                          className="h-6 flex-[2] min-w-0 text-center rounded border border-border-muted bg-background/60 px-1 text-[11px] text-text-secondary outline-none"
-                        >
-                          <option value="asc">{tr('asc', '升序')}</option>
-                          <option value="desc">{tr('desc', '降序')}</option>
-                        </select>
+                          onChange={(v) => updateSortKey(i, { direction: v })}
+                          className="h-6 flex-[2] min-w-0 px-1 text-[11px]"
+                        />
 
                         {/* Null handling */}
-                        <select
-                          value={key.nulls ?? ''}
-                          onChange={(e) =>
-                            updateSortKey(i, {
-                              nulls: (e.target.value || undefined) as 'first' | 'last' | undefined,
-                            })
-                          }
+                        <GlassNullsSelect
+                          value={key.nulls}
+                          onChange={(v) => updateSortKey(i, { nulls: v })}
                           className="h-6 flex-[3] min-w-0 text-center rounded border border-border-muted bg-background/60 px-1 text-[11px] text-text-secondary outline-none"
-                        >
-                          <option value="">{tr('nullsDefault', '默认')}</option>
-                          <option value="first">{tr('nullsFirst', '空值置前')}</option>
-                          <option value="last">{tr('nullsLast', '空值置后')}</option>
-                        </select>
+                        />
 
                         {/* Add sort key */}
                         <button
