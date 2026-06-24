@@ -675,6 +675,7 @@
         "calcFieldCompleteExpr": "请补全表达式",
         "calcFieldCompleteBoth": "请补全目标字段和表达式",
         "calcFieldAddRule": "添加规则",
+        "calcFieldRemove": "删除规则",
         "calcFieldInsertTo": "插入到",
         "calcFieldExpressionNth": "第 {{n}} 条表达式",
         "calcFieldExpressionLabel": "表达式",

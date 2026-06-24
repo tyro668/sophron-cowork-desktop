@@ -675,6 +675,7 @@
         "calcFieldCompleteExpr": "Please fill in expression",
         "calcFieldCompleteBoth": "Please fill in target field and expression",
         "calcFieldAddRule": "Add rule",
+        "calcFieldRemove": "Delete rule",
         "calcFieldInsertTo": "Insert into",
         "calcFieldExpressionNth": "{{n}}th expression",
         "calcFieldExpressionLabel": "Expression",
