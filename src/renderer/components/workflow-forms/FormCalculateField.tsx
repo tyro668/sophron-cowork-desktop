@@ -62,20 +62,20 @@ export default function FormCalculateField({
     () => (node.config.calculations as CalculationConfigEntry[] | undefined) ?? [],
     [node.config.calculations]
   );
-  const calculations = useMemo(
-    () => normalizeCalculationEntries(rawCalculations),
-    [rawCalculations]
-  );
+  const items = useMemo(() => {
+    const normalized = normalizeCalculationEntries(rawCalculations);
+    return normalized.length > 0 ? normalized : [createCalculationRow()];
+  }, [rawCalculations]);
   const needsNormalization = useMemo(
     () => needsCalculationIdNormalization(rawCalculations),
     [rawCalculations]
   );
 
   const storeCalculations = useCallback(
-    (items: CalculationRow[]) => {
+    (next: CalculationRow[]) => {
       updateConfig((cfg) => ({
         ...cfg,
-        calculations: items.length > 0 ? items : undefined,
+        calculations: next.length > 0 ? next : undefined,
       }));
     },
     [updateConfig]
@@ -83,27 +83,29 @@ export default function FormCalculateField({
 
   useEffect(() => {
     if (!needsNormalization) return;
-    storeCalculations(calculations);
-  }, [calculations, needsNormalization, storeCalculations]);
+    const persisted = normalizeCalculationEntries(rawCalculations);
+    if (persisted.length > 0) {
+      storeCalculations(persisted);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsNormalization]);
 
-  function handleChange(items: CalculationRow[]) {
-    storeCalculations(normalizeCalculationEntries(items));
+  function handleChange(next: CalculationRow[]) {
+    storeCalculations(normalizeCalculationEntries(next));
   }
 
   function updateItem(index: number, patch: Partial<CalculationRow>) {
-    handleChange(calculations.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+    handleChange(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
 
   function addAfter(index: number) {
     const entry = createCalculationRow();
-    handleChange([...calculations.slice(0, index + 1), entry, ...calculations.slice(index + 1)]);
+    handleChange([...items.slice(0, index + 1), entry, ...items.slice(index + 1)]);
   }
 
   function removeItem(index: number) {
-    handleChange(calculations.filter((_, i) => i !== index));
+    handleChange(items.filter((_, i) => i !== index));
   }
-
-  const items = calculations.length > 0 ? calculations : [createCalculationRow()];
 
   return (
     <div className="flex flex-col min-h-0 overflow-hidden" style={{ height: '100%' }}>
