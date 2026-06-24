@@ -1531,6 +1531,13 @@ export interface ListCloudTablesInput
 
 export type ListCloudTablesResult = PersonalAnalysisTableListResult;
 
+export interface SearchCloudTablesInput
+  extends PersonalAnalysisConnectionInput, PersonalAnalysisTableSearchParams {
+  keyword: string;
+}
+
+export type SearchCloudTablesResult = PersonalAnalysisTableListResult;
+
 export interface PreviewCloudTableInput extends PersonalAnalysisConnectionInput {
   tableId: string;
   limit?: number;

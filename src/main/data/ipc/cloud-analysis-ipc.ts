@@ -4,6 +4,7 @@ import type {
   ListCloudSpacesInput,
   ListCloudTablesInput,
   PreviewCloudTableInput,
+  SearchCloudTablesInput,
   UploadDataTableToCloudInput,
 } from '../../../renderer/types';
 import type { DataIpcContext } from './types';
@@ -36,6 +37,15 @@ export function registerCloudAnalysisIpc({
       return await requireDataCommandService().listCloudTables(payload);
     } catch (error) {
       logError('[Data] Error listing cloud tables:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('data.searchCloudTables', async (_event, payload: SearchCloudTablesInput) => {
+    try {
+      return await requireDataCommandService().searchCloudTables(payload);
+    } catch (error) {
+      logError('[Data] Error searching cloud tables:', error);
       throw error;
     }
   });

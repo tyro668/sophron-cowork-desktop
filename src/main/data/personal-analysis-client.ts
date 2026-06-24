@@ -29,9 +29,30 @@ interface HiResponse<T> {
   data?: T;
 }
 
+interface PaginatedTableApiResult {
+  items?: PersonalAnalysisTable[];
+  tables?: PersonalAnalysisTable[];
+  page?: number;
+  pageSize?: number;
+  total?: number;
+  hasMore?: boolean;
+}
+
 const DEFAULT_RETRY_ATTEMPTS = 20;
 const DEFAULT_RETRY_DELAY_MS = 250;
 const DEFAULT_FETCH_TIMEOUT_MS = 30_000;
+
+export class PersonalAnalysisHttpError extends Error {
+  readonly status: number;
+  readonly code?: string;
+
+  constructor(label: string, status: number, code: string | undefined, message: string) {
+    super([label, 'failed: HTTP', String(status), code, message].filter(Boolean).join(' '));
+    this.name = 'PersonalAnalysisHttpError';
+    this.status = status;
+    this.code = code;
+  }
+}
 
 export class PersonalAnalysisClient {
   private readonly apiOrigin: string;
@@ -70,52 +91,36 @@ export class PersonalAnalysisClient {
     if (params.sortBy) query.set('sortBy', params.sortBy);
     if (params.sortOrder) query.set('sortOrder', params.sortOrder);
     const suffix = query.toString() ? `?${query.toString()}` : '';
-    const result = await this.apiJson<{
-      items?: PersonalAnalysisTable[];
-      tables?: PersonalAnalysisTable[];
-      page?: number;
-      pageSize?: number;
-      total?: number;
-      hasMore?: boolean;
-    }>(
+    const result = await this.apiJson<PaginatedTableApiResult | PersonalAnalysisTable[]>(
       `/spaces/${encodeURIComponent(spaceId)}/projects/${encodeURIComponent(projectId)}/tables${suffix}`
     );
 
-    if (Array.isArray(result)) {
-      throw new Error(
-        'Cloud table list API must return a paginated object with items/tables, page, pageSize, total, and hasMore.'
-      );
+    return parsePaginatedTableResult(result, params, 'Cloud table list API');
+  }
+
+  async searchTables(
+    params: PersonalAnalysisTableSearchParams = {}
+  ): Promise<PersonalAnalysisTableListResult> {
+    const keyword = params.keyword?.trim();
+    if (!keyword) {
+      throw new Error('Cloud table global search requires a keyword');
     }
 
-    if (!result || typeof result !== 'object') {
-      throw new Error('Cloud table list API returned an invalid response.');
-    }
+    const query = new URLSearchParams();
+    query.set('keyword', keyword);
+    if (params.spaceId?.trim()) query.set('spaceId', params.spaceId.trim());
+    if (params.projectId?.trim()) query.set('projectId', params.projectId.trim());
+    if (params.matchField) query.set('matchField', params.matchField);
+    if (params.page) query.set('page', String(params.page));
+    if (params.pageSize) query.set('pageSize', String(params.pageSize));
+    if (params.sortBy) query.set('sortBy', params.sortBy);
+    if (params.sortOrder) query.set('sortOrder', params.sortOrder);
 
-    const tables = result.items ?? result.tables;
-    if (!Array.isArray(tables)) {
-      throw new Error('Cloud table list API response must include an items or tables array.');
-    }
+    const result = await this.apiJson<PaginatedTableApiResult | PersonalAnalysisTable[]>(
+      `/tables/search?${query.toString()}`
+    );
 
-    const page = result.page ?? params.page;
-    const pageSize = result.pageSize ?? params.pageSize;
-    if (
-      typeof page !== 'number' ||
-      typeof pageSize !== 'number' ||
-      typeof result.total !== 'number' ||
-      typeof result.hasMore !== 'boolean'
-    ) {
-      throw new Error(
-        'Cloud table list API response must include numeric page/pageSize/total and boolean hasMore.'
-      );
-    }
-
-    return {
-      tables,
-      page,
-      pageSize,
-      total: result.total,
-      hasMore: result.hasMore,
-    };
+    return parsePaginatedTableResult(result, params, 'Cloud table search API');
   }
 
   async findTable(
@@ -343,14 +348,57 @@ async function parseHiResponse<T>(response: Response, text: string, label: strin
   }
 
   if (!response.ok || body.success === false) {
-    throw new Error(
-      `${label} failed: HTTP ${response.status} ${body.errorCode || body.code || ''} ${
-        body.message || text.slice(0, 200)
-      }`.trim()
+    throw new PersonalAnalysisHttpError(
+      label,
+      response.status,
+      body.errorCode || body.code,
+      body.message || text.slice(0, 200)
     );
   }
 
   return body.data as T;
+}
+
+function parsePaginatedTableResult(
+  result: PaginatedTableApiResult | PersonalAnalysisTable[],
+  params: PersonalAnalysisTableSearchParams,
+  label: string
+): PersonalAnalysisTableListResult {
+  if (Array.isArray(result)) {
+    throw new Error(
+      `${label} must return a paginated object with items/tables, page, pageSize, total, and hasMore.`
+    );
+  }
+
+  if (!result || typeof result !== 'object') {
+    throw new Error(`${label} returned an invalid response.`);
+  }
+
+  const tables = result.items ?? result.tables;
+  if (!Array.isArray(tables)) {
+    throw new Error(`${label} response must include an items or tables array.`);
+  }
+
+  const page = result.page ?? params.page;
+  const pageSize = result.pageSize ?? params.pageSize;
+  if (
+    typeof page !== 'number' ||
+    typeof pageSize !== 'number' ||
+    typeof result.total !== 'number' ||
+    typeof result.hasMore !== 'boolean'
+  ) {
+    throw new Error(
+      `${label} response must include numeric page/pageSize/total and boolean hasMore.`
+    );
+  }
+
+  return {
+    tables,
+    page,
+    pageSize,
+    total: result.total,
+    hasMore: result.hasMore,
+  };
 }
 
 async function retry<T>(
