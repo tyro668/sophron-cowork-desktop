@@ -89,10 +89,13 @@ export function tokenizeExpression(input: string): ExprToken[] {
         while (i < input.length && isDigit(input[i])) i++;
       }
       if (i < input.length && (input[i] === 'e' || input[i] === 'E')) {
+        const beforeE = i;
         i++;
         if (i < input.length && (input[i] === '+' || input[i] === '-')) i++;
         if (i < input.length && isDigit(input[i])) {
           while (i < input.length && isDigit(input[i])) i++;
+        } else {
+          i = beforeE;
         }
       }
       tokens.push({ type: 'Number', value: input.slice(start, i), start, end: i });
