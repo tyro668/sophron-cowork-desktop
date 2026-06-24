@@ -224,10 +224,7 @@ export default function FormAggregate({
         )}
 
         {/* Metrics */}
-        <GlassFormSection
-          title={tr('aggregateMetrics', '聚合指标')}
-          className="flex-1 min-h-0 overflow-y-auto"
-        >
+        <GlassFormSection className="flex-1 min-h-0 overflow-y-auto">
           <GlassRowList
             items={metrics}
             columns={[

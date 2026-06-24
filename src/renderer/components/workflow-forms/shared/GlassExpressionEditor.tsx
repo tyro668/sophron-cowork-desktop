@@ -75,14 +75,14 @@ const exprLanguage = StreamLanguage.define({
   token(stream) {
     if (stream.eatSpace()) return null;
 
-    if (stream.match(/\[[\p{L}_][\p{L}\p{N}_]*\]/u)) return 'variableName';
+    if (stream.match(/\[[^\]]*\]/)) return 'variableName';
 
     if (stream.match(/'(?:[^'\\]|\\.)*'/)) return 'string';
     if (stream.match(/"(?:[^"\\]|\\.)*"/)) return 'string';
 
     if (stream.match(/\d+(?:\.\d+)?/)) return 'number';
 
-    if (stream.match(/\b(?:if|then|else|end|null|and|or|not|as)\b/)) return 'keyword';
+    if (stream.match(/\b(?:if|then|else|end|null|and|or|not|as|case|when)\b/)) return 'keyword';
 
     if (stream.match(/\b(?:true|false)\b/)) return 'atom';
 
