@@ -12,6 +12,7 @@ import type {
 import { DATA_FIELD_TYPES, isDataFieldType } from '../data-field-types';
 import { createPrepDiagnostic } from './diagnostics';
 import { prepDslLexer, tokenizePrepDsl } from './tokens';
+import { tokenizeExpression } from '../expression-tokenizer';
 
 const OPERATOR_LABELS: Record<PrepOperatorType, string> = {
   input_source: 'input_source',
@@ -48,11 +49,8 @@ interface Clause {
   value: string;
 }
 
-const FIELD_REF_TOKEN_PATTERN = '(?:\\[`(?:[^`\\\\]|\\\\.)*`\\]|\\[[\\p{L}_][\\p{L}\\p{N}_]*\\])';
-const FIELD_REF_PATTERN = new RegExp(
-  `^(${FIELD_REF_TOKEN_PATTERN})(?:\\.(${FIELD_REF_TOKEN_PATTERN}))?`,
-  'u'
-);
+const FIELD_REF_REGEX = '\\[[^\\]]*\\]';
+const FIELD_REF_QUALIFIED_REGEX = `${FIELD_REF_REGEX}(?:\\.${FIELD_REF_REGEX})?`;
 
 export function parsePrepDsl(input: string): PrepParseResult {
   const diagnostics = collectInitialDiagnostics(input);
@@ -600,11 +598,10 @@ function parseSetOp(text: string): PrepOperatorAst {
 }
 
 function parseUnnest(text: string): PrepOperatorAst {
-  const fieldPattern = `${FIELD_REF_TOKEN_PATTERN}(?:\\.${FIELD_REF_TOKEN_PATTERN})?`;
   const isJson = text.startsWith('explode json ');
   if (isJson) {
     const match = new RegExp(
-      `^explode\\s+json\\s+(${fieldPattern})\\s+path\\s+("(?:[^"\\\\]|\\\\.)*")\\s+as\\s+(${fieldPattern})(.*)$`,
+      `^explode\\s+json\\s+(${FIELD_REF_QUALIFIED_REGEX})\\s+path\\s+("(?:[^"\\\\]|\\\\.)*")\\s+as\\s+(${FIELD_REF_QUALIFIED_REGEX})(.*)$`,
       'u'
     ).exec(text);
     const column = match ? parseFieldRef(match[1].trim()) : null;
@@ -618,7 +615,7 @@ function parseUnnest(text: string): PrepOperatorAst {
     });
   }
   const match = new RegExp(
-    `^(unnest|explode)\\s+(${fieldPattern})\\s+as\\s+(${fieldPattern})(.*)$`,
+    `^(unnest|explode)\\s+(${FIELD_REF_QUALIFIED_REGEX})\\s+as\\s+(${FIELD_REF_QUALIFIED_REGEX})(.*)$`,
     'u'
   ).exec(text);
   const column = match ? parseFieldRef(match[2].trim()) : null;
@@ -828,14 +825,17 @@ function parseUnnestOptions(value: string): Record<string, unknown> {
 
 function collectInitialDiagnostics(input: string): PrepDiagnostic[] {
   const diagnostics = tokenizePrepDsl(input).diagnostics;
-  const invalidQualified = input.match(/\[[^\][]+\.[^\][]+\]/g) ?? [];
-  for (const match of invalidQualified) {
-    diagnostics.push({
-      severity: 'error',
-      code: 'invalidQualifiedField',
-      message: `Invalid field reference ${match}; use [table_name].[field_name]`,
-      params: { value: match },
-    });
+  const refs = input.match(/\[[^\]]+\]/g) ?? [];
+  for (const ref of refs) {
+    const inner = ref.slice(1, -1);
+    if (inner.includes('.') && !inner.startsWith('`')) {
+      diagnostics.push({
+        severity: 'error',
+        code: 'invalidQualifiedField',
+        message: `Invalid field reference ${ref}; use [table_name].[field_name]`,
+        params: { value: ref },
+      });
+    }
   }
   return diagnostics;
 }
@@ -929,15 +929,35 @@ function parseFieldRefs(value: string): PrepFieldRef[] {
 }
 
 function parseFieldRef(value: string): PrepFieldRef | null {
-  const match = FIELD_REF_PATTERN.exec(value.trim());
-  if (!match) return null;
-  const sourceOrName = unwrapFieldName(match[1]);
-  const field = match[2] ? unwrapFieldName(match[2]) : undefined;
-  return {
-    raw: match[0],
-    source: field ? sourceOrName : undefined,
-    name: field ?? sourceOrName,
-  };
+  try {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const tokens = tokenizeExpression(trimmed);
+    let idx = 0;
+
+    if (tokens[idx]?.type === 'FieldRef') {
+      const raw = tokens[idx].value;
+      idx++;
+
+      if (tokens[idx]?.type === 'Dot' && tokens[idx + 1]?.type === 'FieldRef') {
+        return {
+          raw: `${raw}.${tokens[idx + 1].value}`,
+          source: unwrapFieldName(raw),
+          name: unwrapFieldName(tokens[idx + 1].value),
+        };
+      }
+
+      return {
+        raw,
+        source: undefined,
+        name: unwrapFieldName(raw),
+      };
+    }
+  } catch {
+    // Tokenization error - not a valid field reference
+  }
+
+  return null;
 }
 
 function parseSortKeys(value: string): Array<Record<string, string>> {

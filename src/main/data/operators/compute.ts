@@ -1,19 +1,28 @@
 import { quoteValueIdentifier, unwrapFieldToken, unquoteDslString, literalToSql } from './utils';
-
-const SQL_FIELD_REF_TOKEN_PATTERN = '\\[[^\\]]*\\]';
-const SQL_SCALAR_TOKEN_PATTERN = new RegExp(
-  `"(?:[^"\\\\]|\\\\.)*"|(${SQL_FIELD_REF_TOKEN_PATTERN})(?:\\.(${SQL_FIELD_REF_TOKEN_PATTERN}))?`,
-  'gu'
-);
+import { tokenizeExpression } from '../../../shared/expression-tokenizer';
 
 export function compileScalarExpression(expression: string): string {
-  return expression.replace(
-    SQL_SCALAR_TOKEN_PATTERN,
-    (match, first: string | undefined, second: string | undefined) => {
-      if (match.startsWith('"')) {
-        return literalToSql(unquoteDslString(match));
-      }
-      return quoteValueIdentifier(unwrapFieldToken(second ?? first ?? match));
+  const tokens = tokenizeExpression(expression);
+  const replacements: Array<[number, number, string]> = [];
+
+  for (const token of tokens) {
+    if (token.type === 'EOF') break;
+    if (token.type === 'FieldRef') {
+      replacements.push([
+        token.start,
+        token.end,
+        quoteValueIdentifier(unwrapFieldToken(token.value)),
+      ]);
+    } else if (token.type === 'StringLiteral') {
+      replacements.push([token.start, token.end, literalToSql(unquoteDslString(token.value))]);
     }
-  );
+  }
+
+  let result = expression;
+  for (let i = replacements.length - 1; i >= 0; i--) {
+    const [start, end, replacement] = replacements[i];
+    result = result.slice(0, start) + replacement + result.slice(end);
+  }
+
+  return result;
 }

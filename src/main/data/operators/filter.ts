@@ -1,3 +1,16 @@
+/**
+ * 内联词法分析器 & 递归下降编译器（不用共享 expression-tokenizer）
+ *
+ * 原因：filter.ts 要把 UI 过滤条件编译为 DuckDB SQL WHERE 子句，
+ * 需要处理运算符优先级（or < and < not）、SQL 函数（regexp_matches、
+ * starts_with、CAST）、IN 列表、括号嵌套 —— 本质是一个完整的解析 +
+ * 编译管道。
+ *
+ * 共享 tokenizer 只产出扁平 token 序列，不提供预处理层级和编译能力。
+ * 如果将共享 tokenizer 用于 tokenize 阶段，Compiler 类仍无法复用，
+ * 且引入额外依赖反而增加维护成本，因此保留内联实现。
+ */
+
 import { quoteValueIdentifier, literalToSql, unwrapFieldToken } from './utils';
 
 type TokenType =
