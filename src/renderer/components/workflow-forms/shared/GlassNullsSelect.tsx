@@ -1,5 +1,6 @@
-import { useCallback } from 'react';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { GlassOperatorSelect } from './GlassOperatorSelect';
 
 interface GlassNullsSelectProps {
   value: 'first' | 'last' | undefined | null | '';
@@ -9,22 +10,27 @@ interface GlassNullsSelectProps {
 
 export function GlassNullsSelect({ value, onChange, className }: GlassNullsSelectProps) {
   const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
+
+  const groups = useMemo(
+    () => [
+      {
+        key: 'nulls',
+        items: [
+          { value: '', label: t('data.workflow.formLabels.sortNullsDefault', '空值默认') },
+          { value: 'first', label: t('data.workflow.formLabels.sortNullsFirst', '空值在前') },
+          { value: 'last', label: t('data.workflow.formLabels.sortNullsLast', '空值在后') },
+        ],
+      },
+    ],
     [t]
   );
 
   return (
-    <select
+    <GlassOperatorSelect
       value={value ?? ''}
-      onChange={(e) => onChange((e.target.value || undefined) as 'first' | 'last' | undefined)}
+      groups={groups}
+      onChange={(v) => onChange((v || undefined) as 'first' | 'last' | undefined)}
       className={className}
-      aria-label={tr('sortNullsHeader', '空值处理方式')}
-    >
-      <option value="">{tr('sortNullsDefault', '空值默认')}</option>
-      <option value="first">{tr('sortNullsFirst', '空值在前')}</option>
-      <option value="last">{tr('sortNullsLast', '空值在后')}</option>
-    </select>
+    />
   );
 }
