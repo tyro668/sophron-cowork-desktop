@@ -14,10 +14,12 @@
 import { beforeEach, describe, it, expect } from 'vitest';
 import {
   decidePermission,
+  clearSessionPermissionRules,
   forgetSessionPermissions,
   getPermissionRules,
   rememberAlwaysAllow,
   setPermissionRules,
+  setSessionPermissionRules,
 } from '../../main/config/permission-rules-store';
 import { getPermissionRulesForPolicy } from '../../shared/permission-policies';
 
@@ -30,6 +32,8 @@ function resetToDefaults(): void {
   setPermissionRules(null);
   forgetSessionPermissions(SESSION_A);
   forgetSessionPermissions(SESSION_B);
+  clearSessionPermissionRules(SESSION_A);
+  clearSessionPermissionRules(SESSION_B);
 }
 
 describe('permission-rules-store', () => {
@@ -93,6 +97,17 @@ describe('permission-rules-store', () => {
       expect(decidePermission(SESSION_A, 'write', { path: '/tmp/out.txt' })).toBe('allow');
       expect(decidePermission(SESSION_A, 'edit', { path: '/tmp/out.txt' })).toBe('allow');
       expect(decidePermission(SESSION_A, 'bash', { command: 'npm test' })).toBe('allow');
+      expect(decidePermission(SESSION_A, 'unknown_tool', {})).toBe('ask');
+    });
+
+    it('uses session-scoped rules without mutating the global policy', () => {
+      setPermissionRules(getPermissionRulesForPolicy('default'));
+      setSessionPermissionRules(SESSION_A, getPermissionRulesForPolicy('full_access'));
+
+      expect(decidePermission(SESSION_A, 'unknown_tool', {})).toBe('allow');
+      expect(decidePermission(SESSION_B, 'unknown_tool', {})).toBe('ask');
+
+      clearSessionPermissionRules(SESSION_A);
       expect(decidePermission(SESSION_A, 'unknown_tool', {})).toBe('ask');
     });
   });

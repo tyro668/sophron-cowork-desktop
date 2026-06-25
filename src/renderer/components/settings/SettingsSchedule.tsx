@@ -2,6 +2,7 @@ import {
   startTransition,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -16,10 +17,13 @@ import {
   Bell,
   CalendarClock,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Clock3,
+  Cloud,
   Database,
   Folder,
+  Loader2,
   MessagesSquare,
   MoreHorizontal,
   PencilLine,
@@ -28,7 +32,10 @@ import {
   RefreshCw,
   Save,
   Search,
+  ShieldCheck,
   Trash2,
+  UploadCloud,
+  Wand2,
   type LucideIcon,
 } from 'lucide-react';
 import { useConfirmDialog } from '../ConfirmDialog';
@@ -44,6 +51,10 @@ import type {
   AppConfig,
   DataCleaningTask,
   DataDashboard,
+  DesktopAuthStatus,
+  PersonalAnalysisProject,
+  PersonalAnalysisSpace,
+  PersonalAnalysisTable,
   Project,
 } from '../../types';
 import { useAppStore } from '../../store';
@@ -55,12 +66,58 @@ import { GlassSwitch } from '../GlassSwitch';
 import { LlmPromptComposer } from '../LlmPromptComposer';
 import { formatAppDateTime } from '../../utils/i18n-format';
 import { getWorkingDirDisplayName } from '../../utils/working-dir-label';
+import {
+  normalizePermissionPolicy,
+  type PermissionPolicyId,
+} from '../../../shared/permission-policies';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 const SYSTEM_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 const AUTOMATION_TABLE_PAGE_SIZE = 10;
+const CLOUD_TARGET_TABLE_PAGE_SIZE = 50;
 const ACTION_MENU_TYPES = ['conversation.run', 'data.task.run'];
-const DATA_ACTION_TYPES = ['data.task.run', 'data.input.preview', 'data.output.preview'];
+const CLOUD_TABLE_PROCESS_ACTION_TYPE = 'cloud.table.process';
+const DATA_ACTION_TYPES = ['data.task.run'];
+const DATA_PREVIEW_ACTION_TYPES = ['data.input.preview', 'data.output.preview'];
+
+type CloudAutomationWriteMode = 'create' | 'replace';
+
+interface CloudAutomationSourceTable {
+  tableId: string;
+  tableName: string;
+  spaceId?: string;
+  spaceName?: string;
+  projectId?: string;
+  projectName?: string;
+  datasourceId?: string;
+  rowCount?: number | null;
+  columns?: Array<string | { name?: string; type?: string }>;
+}
+
+interface PendingCloudAutomationTemplate {
+  createdAt: number;
+  source: CloudAutomationSourceTable;
+  accessModeLabel?: string;
+  connectionLabel?: string;
+}
+
+interface CloudTableAutomationConfig {
+  kind: 'cloud_table_auto_process';
+  source: CloudAutomationSourceTable;
+  processRequirement: string;
+  output: {
+    writeMode: CloudAutomationWriteMode;
+    targetTableId: string;
+    tableName: string;
+  };
+  accessModeLabel?: string;
+  connectionLabel?: string;
+}
+
+interface CloudConnectionPayload {
+  apiOrigin: string;
+  apiKey?: string;
+}
 
 function getProjectOptionLabel(
   project: Project,
@@ -87,9 +144,15 @@ interface AutomationRunLogEntry {
 
 export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const { t } = useTranslation();
-  const { confirmDelete } = useConfirmDialog();
+  const { confirm, confirmDelete } = useConfirmDialog();
   const projects = useAppStore((state) => state.projects);
   const appConfig = useAppStore((state) => state.appConfig);
+  const pendingCloudAutomationTemplateNavigation = useAppStore(
+    (state) => state.pendingCloudAutomationTemplateNavigation
+  );
+  const clearCloudAutomationTemplateNavigation = useAppStore(
+    (state) => state.clearCloudAutomationTemplateNavigation
+  );
   const tr = useCallback(
     (key: string, fallback: string) => t(key, { defaultValue: fallback }),
     [t]
@@ -110,6 +173,14 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const [isRunsLoading, setIsRunsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [banner, setBanner] = useState<Banner | null>(null);
+  const automationsRef = useRef<Automation[]>([]);
+  const isMountedRef = useRef(true);
+  const loadRequestSeq = useRef(0);
+  const loadRunsRequestSeq = useRef(0);
+  const selectedIdRef = useRef<string | null>(selectedId);
+  const skipNextAutoSelectRef = useRef(false);
+  const suppressSelectedAutomationSyncRef = useRef(false);
+  const consumedCloudTemplateNonceRef = useRef<number | null>(null);
   const updateDraftEnabled = useCallback((enabled: boolean) => {
     startTransition(() => {
       setDraft((current) => ({ ...current, enabled }));
@@ -140,49 +211,86 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     const start = (safeCurrentPage - 1) * AUTOMATION_TABLE_PAGE_SIZE;
     return filteredAutomations.slice(start, start + AUTOMATION_TABLE_PAGE_SIZE);
   }, [filteredAutomations, safeCurrentPage]);
+  const hasRunningAutomation = useMemo(
+    () => automations.some((automation) => automation.status === 'running'),
+    [automations]
+  );
 
   useEffect(() => {
     setCurrentPage(1);
   }, [search]);
 
-  const load = useCallback(async () => {
-    if (!isElectron) return;
-    setIsLoading(true);
-    setBanner(null);
-    try {
-      const [automationRows, actions, dashboard] = await Promise.all([
-        window.electronAPI.automation.list(),
-        window.electronAPI.automation.listActionDefinitions(),
-        window.electronAPI.data.getDashboard({
-          includeSummary: false,
-          includeTasks: true,
-          includeDatasets: true,
-          includeOutputTables: true,
-          taskLimit: 200,
-          datasetLimit: 200,
-          outputLimit: 200,
-        }),
-      ]);
-      setAutomations(automationRows);
-      setActionDefinitions(actions);
-      setDataDashboard(dashboard);
-      if (!selectedId && automationRows[0]) {
-        setSelectedId(automationRows[0].id);
-        setDraft(automationToDraft(automationRows[0]));
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
+
+  useEffect(() => {
+    automationsRef.current = automations;
+  }, [automations]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      loadRequestSeq.current += 1;
+      loadRunsRequestSeq.current += 1;
+    };
+  }, []);
+
+  const load = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!isElectron) return;
+      const requestId = ++loadRequestSeq.current;
+      if (!silent) {
+        setIsLoading(true);
+        setBanner(null);
       }
-    } catch (error) {
-      setBanner({
-        tone: 'error',
-        text: error instanceof Error ? error.message : tr('schedule.loadFailed', '加载自动化失败'),
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedId, tr]);
+      try {
+        const [automationRows, actions, dashboard] = await Promise.all([
+          window.electronAPI.automation.list(),
+          window.electronAPI.automation.listActionDefinitions(),
+          window.electronAPI.data.getDashboard({
+            includeSummary: false,
+            includeTasks: true,
+            includeDatasets: true,
+            includeOutputTables: true,
+            taskLimit: 200,
+            datasetLimit: 200,
+            outputLimit: 200,
+          }),
+        ]);
+        if (!isMountedRef.current || requestId !== loadRequestSeq.current) return;
+        automationsRef.current = automationRows;
+        setAutomations(automationRows);
+        setActionDefinitions(actions);
+        setDataDashboard(dashboard);
+        if (!skipNextAutoSelectRef.current && !selectedIdRef.current && automationRows[0]) {
+          setSelectedId(automationRows[0].id);
+          setDraft(automationToDraft(automationRows[0]));
+        }
+        skipNextAutoSelectRef.current = false;
+      } catch (error) {
+        if (!isMountedRef.current || requestId !== loadRequestSeq.current) return;
+        if (!silent) {
+          setBanner({
+            tone: 'error',
+            text:
+              error instanceof Error ? error.message : tr('schedule.loadFailed', '加载自动化失败'),
+          });
+        }
+      } finally {
+        if (!silent && isMountedRef.current && requestId === loadRequestSeq.current) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [tr]
+  );
 
   const loadRuns = useCallback(
-    async (sourceAutomations = automations) => {
+    async (sourceAutomations = automationsRef.current) => {
       if (!isElectron) return;
+      const requestId = ++loadRunsRequestSeq.current;
       if (sourceAutomations.length === 0) {
         setAutomationRunLogs([]);
         return;
@@ -206,8 +314,10 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           .flat()
           .sort((left, right) => getRunSortTime(right.run) - getRunSortTime(left.run))
           .slice(0, 100);
+        if (!isMountedRef.current || requestId !== loadRunsRequestSeq.current) return;
         setAutomationRunLogs(entries);
       } catch (error) {
+        if (!isMountedRef.current || requestId !== loadRunsRequestSeq.current) return;
         setBanner({
           tone: 'error',
           text:
@@ -216,11 +326,47 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
               : tr('schedule.runsLoadFailed', '加载执行日志失败'),
         });
       } finally {
-        setIsRunsLoading(false);
+        if (isMountedRef.current && requestId === loadRunsRequestSeq.current) {
+          setIsRunsLoading(false);
+        }
       }
     },
-    [automations, tr]
+    [tr]
   );
+
+  const applyCloudAutomationTemplate = useCallback(
+    (rawTemplate: string, nonce?: number) => {
+      if (nonce !== undefined) {
+        if (consumedCloudTemplateNonceRef.current === nonce) return;
+        consumedCloudTemplateNonceRef.current = nonce;
+      }
+      const template = parsePendingCloudAutomationTemplate(rawTemplate);
+      if (nonce !== undefined) {
+        clearCloudAutomationTemplateNavigation(nonce);
+      }
+      if (!template) return;
+      skipNextAutoSelectRef.current = true;
+      suppressSelectedAutomationSyncRef.current = true;
+      setSelectedId(null);
+      setDraft(createCloudTableAutomationDraft(template, tr));
+      setViewMode('detail');
+      setActiveListTab('automations');
+      setBanner({
+        tone: 'success',
+        text: tr(
+          'schedule.cloudTemplateLoaded',
+          '已从云表创建自动处理草稿，请补充处理方式和执行频率'
+        ),
+      });
+    },
+    [clearCloudAutomationTemplateNavigation, tr]
+  );
+
+  useLayoutEffect(() => {
+    if (!pendingCloudAutomationTemplateNavigation) return;
+    const { rawTemplate, nonce } = pendingCloudAutomationTemplateNavigation;
+    applyCloudAutomationTemplate(rawTemplate, nonce);
+  }, [applyCloudAutomationTemplate, pendingCloudAutomationTemplateNavigation]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -233,11 +379,24 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   }, [activeListTab, isActive, loadRuns]);
 
   useEffect(() => {
+    if (!isActive || !hasRunningAutomation) return;
+    const timer = window.setInterval(() => {
+      void load({ silent: true });
+      if (activeListTab === 'runs') {
+        void loadRuns();
+      }
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [activeListTab, hasRunningAutomation, isActive, load, loadRuns]);
+
+  useEffect(() => {
     if (!selectedAutomation) return;
+    if (suppressSelectedAutomationSyncRef.current) return;
     setDraft(automationToDraft(selectedAutomation));
   }, [selectedAutomation]);
 
   const createNew = () => {
+    suppressSelectedAutomationSyncRef.current = false;
     setSelectedId(null);
     setDraft(createEmptyDraft());
     setViewMode('detail');
@@ -246,6 +405,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
 
   const openSelectedDetail = () => {
     if (!selectedAutomation) return;
+    suppressSelectedAutomationSyncRef.current = false;
     setDraft(automationToDraft(selectedAutomation));
     setViewMode('detail');
     setBanner(null);
@@ -260,6 +420,58 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       setBanner({ tone: 'error', text: tr('schedule.actionRequired', '至少添加一个动作') });
       return;
     }
+    const cloudAutomations = getCloudAutomationConfigsFromDraft(draft);
+    if (
+      cloudAutomations.some(
+        (cloudAutomation) =>
+          !cloudAutomation.source.tableId.trim() || !cloudAutomation.source.tableName.trim()
+      )
+    ) {
+      setBanner({ tone: 'error', text: tr('schedule.cloudSourceRequired', '请选择输入云表') });
+      return;
+    }
+    if (
+      cloudAutomations.some(
+        (cloudAutomation) =>
+          cloudAutomation.output.writeMode === 'replace' &&
+          !cloudAutomation.output.targetTableId.trim()
+      )
+    ) {
+      setBanner({ tone: 'error', text: tr('schedule.cloudTargetRequired', '请选择目标云表') });
+      return;
+    }
+    const previousPermissionPolicy = selectedAutomation
+      ? getAutomationPermissionPolicy(selectedAutomation.actionGraph)
+      : null;
+    if (draft.permissionPolicy === 'full_access' && previousPermissionPolicy !== 'full_access') {
+      const confirmed = await confirm({
+        title: tr('schedule.fullAccessConfirmTitle', '确认以完全访问权限运行？'),
+        message: (
+          <div className="space-y-2">
+            <p>
+              {tr(
+                'schedule.fullAccessConfirmIntro',
+                '这条自动化将跳过大多数运行时权限确认，适合无人值守执行，但也意味着它可以直接执行高风险操作。'
+              )}
+            </p>
+            <ul className="list-disc space-y-1 pl-4">
+              <li>
+                {tr('schedule.fullAccessConfirmReadWrite', '读取、创建或修改工作区内文件与数据表')}
+              </li>
+              <li>
+                {tr('schedule.fullAccessConfirmCommands', '调用连接器、运行命令或发起网络请求')}
+              </li>
+              <li>
+                {tr('schedule.fullAccessConfirmCloud', '按自动化配置访问外部服务或写回云分析空间')}
+              </li>
+            </ul>
+          </div>
+        ),
+        confirmLabel: tr('schedule.fullAccessConfirmSave', '确认保存'),
+        cancelLabel: tr('common.cancel', '取消'),
+      });
+      if (!confirmed) return;
+    }
     setIsSaving(true);
     setBanner(null);
     try {
@@ -272,7 +484,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       }
       await load();
       setSelectedId(saved.id);
-      setDraft(automationToDraft(saved));
+      suppressSelectedAutomationSyncRef.current = false;
       setViewMode('detail');
     } catch (error) {
       setBanner({
@@ -402,6 +614,9 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
               outputTables={outputTables}
               appConfig={appConfig}
               onDraftChange={setDraft}
+              onPermissionPolicyChange={(permissionPolicy) =>
+                setDraft((current) => ({ ...current, permissionPolicy }))
+              }
               tr={tr}
             />
           </div>
@@ -444,6 +659,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
             onEdit={openSelectedDetail}
             onDelete={() => void remove()}
             onSelect={(automation) => {
+              suppressSelectedAutomationSyncRef.current = false;
               setSelectedId(automation.id);
               setDraft(automationToDraft(automation));
             }}
@@ -468,6 +684,7 @@ interface AutomationDraft {
   description: string;
   projectId: string;
   enabled: boolean;
+  permissionPolicy: PermissionPolicyId;
   triggerMode: TriggerMode;
   trigger: EditableAutomationTrigger;
   actionGraph: AutomationActionGraph;
@@ -486,6 +703,7 @@ function createEmptyDraft(): AutomationDraft {
     description: '',
     projectId: '',
     enabled: true,
+    permissionPolicy: 'full_access',
     triggerMode: 'once',
     trigger,
     actionGraph: {
@@ -505,6 +723,7 @@ function createEmptyDraft(): AutomationDraft {
             completionMode: 'wait',
             timeoutMs: 30 * 60 * 1000,
             collectArtifacts: true,
+            permissionPolicy: 'full_access',
           },
         },
         {
@@ -525,6 +744,243 @@ function createEmptyDraft(): AutomationDraft {
   };
 }
 
+function createCloudTableAutomationDraft(
+  template: PendingCloudAutomationTemplate,
+  tr: (key: string, fallback: string) => string
+): AutomationDraft {
+  const trigger: EditableAutomationTrigger = {
+    kind: 'daily',
+    times: ['09:00'],
+    timezone: SYSTEM_TIMEZONE,
+  };
+  const config: CloudTableAutomationConfig = {
+    kind: 'cloud_table_auto_process',
+    source: template.source,
+    processRequirement: '',
+    output: {
+      writeMode: 'create',
+      targetTableId: '',
+      tableName: `${template.source.tableName || 'cloud_table'}_processed`,
+    },
+    accessModeLabel: template.accessModeLabel,
+    connectionLabel: template.connectionLabel,
+  };
+  const tableName = template.source.tableName || tr('schedule.cloudTableFallbackName', '云表');
+  return {
+    name: tr('schedule.cloudAutomationDefaultName', '{{name}}自动处理').replace(
+      '{{name}}',
+      tableName
+    ),
+    description: tr(
+      'schedule.cloudAutomationDescription',
+      '自动导入云分析表，完成数据处理后回写云端'
+    ),
+    projectId: '',
+    enabled: true,
+    permissionPolicy: 'full_access',
+    triggerMode: 'daily',
+    trigger,
+    actionGraph: {
+      version: 1,
+      nodes: [
+        {
+          id: crypto.randomUUID(),
+          type: 'conversation.run',
+          label: tr('schedule.cloudAutoProcessTitle', '云表自动处理'),
+          enabled: true,
+          config: {
+            prompt: buildCloudAutomationPrompt(config),
+            selectedSkillNames: [],
+            projectId: '',
+            modelConfigSetId: null,
+            model: null,
+            completionMode: 'wait',
+            timeoutMs: 30 * 60 * 1000,
+            collectArtifacts: true,
+            permissionPolicy: 'full_access',
+            cloudAutomation: config,
+          },
+        },
+      ],
+      edges: [],
+    },
+  };
+}
+
+function createEmptyCloudTableAutomationConfig(): CloudTableAutomationConfig {
+  return {
+    kind: 'cloud_table_auto_process',
+    source: {
+      tableId: '',
+      tableName: '',
+      columns: [],
+      rowCount: null,
+    },
+    processRequirement: '',
+    output: {
+      writeMode: 'create',
+      targetTableId: '',
+      tableName: 'cloud_table_processed',
+    },
+  };
+}
+
+function createCloudTableProcessNode(
+  tr: (key: string, fallback: string) => string
+): AutomationActionNode {
+  const config = createEmptyCloudTableAutomationConfig();
+  return {
+    id: crypto.randomUUID(),
+    type: 'conversation.run',
+    label: tr('schedule.cloudProcessActionTitle', '处理云端表'),
+    enabled: true,
+    config: {
+      ...defaultConfigForAction('conversation.run'),
+      prompt: buildCloudAutomationPrompt(config),
+      cloudAutomation: config,
+    },
+  };
+}
+
+function parsePendingCloudAutomationTemplate(raw: string): PendingCloudAutomationTemplate | null {
+  try {
+    const value = JSON.parse(raw) as Partial<PendingCloudAutomationTemplate>;
+    if (!value.source || typeof value.source.tableId !== 'string') return null;
+    return {
+      createdAt: typeof value.createdAt === 'number' ? value.createdAt : Date.now(),
+      source: {
+        tableId: value.source.tableId,
+        tableName:
+          typeof value.source.tableName === 'string' && value.source.tableName.trim()
+            ? value.source.tableName
+            : value.source.tableId,
+        spaceId: typeof value.source.spaceId === 'string' ? value.source.spaceId : undefined,
+        spaceName: typeof value.source.spaceName === 'string' ? value.source.spaceName : undefined,
+        projectId: typeof value.source.projectId === 'string' ? value.source.projectId : undefined,
+        projectName:
+          typeof value.source.projectName === 'string' ? value.source.projectName : undefined,
+        datasourceId:
+          typeof value.source.datasourceId === 'string' ? value.source.datasourceId : undefined,
+        rowCount:
+          typeof value.source.rowCount === 'number' && Number.isFinite(value.source.rowCount)
+            ? value.source.rowCount
+            : null,
+        columns: Array.isArray(value.source.columns) ? value.source.columns : [],
+      },
+      accessModeLabel:
+        typeof value.accessModeLabel === 'string' ? value.accessModeLabel : undefined,
+      connectionLabel:
+        typeof value.connectionLabel === 'string' ? value.connectionLabel : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseCloudAutomationConfig(value: unknown): CloudTableAutomationConfig | null {
+  if (!value || typeof value !== 'object') return null;
+  const config = value as Partial<CloudTableAutomationConfig>;
+  if (config.kind !== 'cloud_table_auto_process') return null;
+  const source = config.source;
+  if (!source || typeof source.tableId !== 'string') return null;
+  const output = config.output ?? {
+    writeMode: 'create' as const,
+    targetTableId: '',
+    tableName: `${source.tableName || source.tableId}_processed`,
+  };
+  const writeMode: CloudAutomationWriteMode = output.writeMode === 'replace' ? 'replace' : 'create';
+  return {
+    kind: 'cloud_table_auto_process',
+    source: {
+      ...source,
+      tableName:
+        typeof source.tableName === 'string' && source.tableName.trim()
+          ? source.tableName
+          : source.tableId,
+      columns: Array.isArray(source.columns) ? source.columns : [],
+    },
+    processRequirement:
+      typeof config.processRequirement === 'string' ? config.processRequirement : '',
+    output: {
+      writeMode,
+      targetTableId:
+        typeof output.targetTableId === 'string' && output.targetTableId.trim()
+          ? output.targetTableId
+          : writeMode === 'replace'
+            ? source.tableId
+            : '',
+      tableName:
+        typeof output.tableName === 'string' && output.tableName.trim()
+          ? output.tableName
+          : `${source.tableName || source.tableId}_processed`,
+    },
+    accessModeLabel:
+      typeof config.accessModeLabel === 'string' ? config.accessModeLabel : undefined,
+    connectionLabel:
+      typeof config.connectionLabel === 'string' ? config.connectionLabel : undefined,
+  };
+}
+
+function getCloudAutomationConfigsFromDraft(draft: AutomationDraft): CloudTableAutomationConfig[] {
+  return draft.actionGraph.nodes
+    .map((node) => parseCloudAutomationConfig(node.config.cloudAutomation))
+    .filter((config): config is CloudTableAutomationConfig => Boolean(config));
+}
+
+function getAutomationPermissionPolicy(actionGraph: AutomationActionGraph): PermissionPolicyId {
+  const conversationNode = actionGraph.nodes.find((node) => node.type === 'conversation.run');
+  return normalizePermissionPolicy(conversationNode?.config.permissionPolicy);
+}
+
+function buildCloudAutomationPrompt(config: CloudTableAutomationConfig): string {
+  const source = config.source;
+  const sourceLocation = [
+    source.spaceName || source.spaceId,
+    source.projectName || source.projectId,
+  ]
+    .filter(Boolean)
+    .join(' / ');
+  const columns =
+    source.columns && source.columns.length > 0
+      ? source.columns
+          .slice(0, 20)
+          .map((column) => (typeof column === 'string' ? column : column.name))
+          .filter(Boolean)
+          .join(', ')
+      : '未知';
+  const outputInstruction =
+    config.output.writeMode === 'replace'
+      ? `将处理后的输出表覆盖上传到云表 ${config.output.targetTableId || '（待填写）'}。`
+      : `将处理后的输出表上传为新的云表，建议表名为 ${config.output.tableName || '处理结果表'}。`;
+  const requirement =
+    config.processRequirement.trim() || '请根据云表字段与业务含义生成合理的数据清洗流程。';
+
+  return [
+    '请执行一个云分析表自动处理流程。',
+    '',
+    '输入云表：',
+    `- 表名：${source.tableName}`,
+    `- 表 ID：${source.tableId}`,
+    sourceLocation ? `- 空间/项目：${sourceLocation}` : '',
+    typeof source.rowCount === 'number' ? `- 行数：${source.rowCount}` : '',
+    `- 字段：${columns}`,
+    '',
+    '处理方式：',
+    '- 根据处理要求创建或更新一个数据任务，在数据任务中完成筛选、字段选择、去重、缺失值处理、汇总统计等步骤。',
+    `- 处理要求：${requirement}`,
+    '',
+    '输出方式：',
+    `- ${outputInstruction}`,
+    '',
+    '执行要求：',
+    '- 自动完成云表导入、本地数据处理、输出表上传，除非遇到会破坏数据的覆盖风险。',
+    '- 每个关键步骤完成后说明输入表、数据任务、输出表或云表的名称与 ID。',
+    '- 如果字段结构不匹配、权限不足或目标表不可覆盖，请停止并说明具体原因。',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
 function automationToDraft(automation: Automation): AutomationDraft {
   const trigger = automation.trigger as EditableAutomationTrigger;
   return {
@@ -532,6 +988,7 @@ function automationToDraft(automation: Automation): AutomationDraft {
     description: automation.description ?? '',
     projectId: automation.projectId ?? '',
     enabled: automation.enabled,
+    permissionPolicy: getAutomationPermissionPolicy(automation.actionGraph),
     triggerMode: trigger.kind,
     trigger,
     actionGraph: automation.actionGraph.nodes.length
@@ -550,27 +1007,36 @@ function draftToPayload(
     projectId: draft.projectId || null,
     enabled: draft.enabled,
     trigger: normalizeDraftTrigger(draft.triggerMode, draft.trigger),
-    actionGraph: relinkLinearGraph(enrichActionGraphDefaults(draft.actionGraph, appConfig)),
+    actionGraph: relinkLinearGraph(
+      enrichActionGraphDefaults(draft.actionGraph, appConfig, draft.permissionPolicy)
+    ),
   };
 }
 
 function enrichActionGraphDefaults(
   actionGraph: AutomationActionGraph,
-  appConfig: AppConfig | null
+  appConfig: AppConfig | null,
+  permissionPolicy: PermissionPolicyId
 ): AutomationActionGraph {
   return {
     ...actionGraph,
     nodes: actionGraph.nodes.map((node) => {
       if (node.type !== 'conversation.run') return node;
+      const cloudAutomation = parseCloudAutomationConfig(node.config.cloudAutomation);
       const modelConfigSetId =
         typeof node.config.modelConfigSetId === 'string' && node.config.modelConfigSetId.trim()
           ? node.config.modelConfigSetId
           : appConfig?.activeConfigSetId;
-      if (!modelConfigSetId) return node;
+      const nextConfig = {
+        ...node.config,
+        permissionPolicy,
+        ...(cloudAutomation ? { prompt: buildCloudAutomationPrompt(cloudAutomation) } : {}),
+      };
+      if (!modelConfigSetId) return { ...node, config: nextConfig };
       return {
         ...node,
         config: {
-          ...node.config,
+          ...nextConfig,
           modelConfigSetId,
           model: getAgentModelLabel(appConfig, '', modelConfigSetId) || node.config.model || null,
         },
@@ -1049,6 +1515,43 @@ const AUTOMATION_ICON_STYLES: Array<{ Icon: LucideIcon; className: string }> = [
   { Icon: Bell, className: 'bg-warning/10 text-warning' },
 ];
 
+const AUTOMATION_STATUS_TONES: Record<Automation['status'], string> = {
+  enabled: 'bg-success/10 text-success',
+  disabled: 'bg-bg-tertiary text-text-muted',
+  failed: 'bg-error/10 text-error',
+  paused: 'bg-bg-tertiary text-text-muted',
+  running: 'bg-warning/10 text-warning',
+};
+
+const AUTOMATION_RUN_STATUS_TONES: Record<AutomationRun['status'], string> = {
+  cancelled: 'bg-bg-tertiary text-text-muted',
+  failed: 'bg-error/10 text-error',
+  queued: 'bg-warning/10 text-warning',
+  running: 'bg-warning/10 text-warning',
+  succeeded: 'bg-success/10 text-success',
+};
+
+function StatusBadge({
+  status,
+  labelKeyPrefix,
+  tone,
+  tr,
+}: {
+  status: string;
+  labelKeyPrefix: string;
+  tone: string;
+  tr: (key: string, fallback: string) => string;
+}) {
+  return (
+    <span
+      className={`inline-flex h-6 min-w-[4.5rem] items-center justify-center gap-1.5 rounded-full px-2.5 text-xs font-medium ${tone}`}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {tr(`${labelKeyPrefix}.${status}`, status)}
+    </span>
+  );
+}
+
 function AutomationStatusBadge({
   automation,
   tr,
@@ -1057,22 +1560,10 @@ function AutomationStatusBadge({
   tr: (key: string, fallback: string) => string;
 }) {
   const tone =
-    automation.status === 'failed'
-      ? 'bg-error/10 text-error'
-      : automation.status === 'running'
-        ? 'bg-warning/10 text-warning'
-        : automation.status === 'paused'
-          ? 'bg-bg-tertiary text-text-muted'
-          : automation.enabled
-            ? 'bg-success/10 text-success'
-            : 'bg-bg-tertiary text-text-muted';
+    AUTOMATION_STATUS_TONES[automation.status] ??
+    (automation.enabled ? 'bg-success/10 text-success' : 'bg-bg-tertiary text-text-muted');
   return (
-    <span
-      className={`inline-flex h-6 min-w-[4.5rem] items-center justify-center gap-1.5 rounded-full px-2.5 text-xs font-medium ${tone}`}
-    >
-      <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      {tr(`schedule.status.${automation.status}`, automation.status)}
-    </span>
+    <StatusBadge status={automation.status} labelKeyPrefix="schedule.status" tone={tone} tr={tr} />
   );
 }
 
@@ -1083,21 +1574,13 @@ function AutomationRunStatusBadge({
   status: AutomationRun['status'];
   tr: (key: string, fallback: string) => string;
 }) {
-  const tone =
-    status === 'failed'
-      ? 'bg-error/10 text-error'
-      : status === 'running' || status === 'queued'
-        ? 'bg-warning/10 text-warning'
-        : status === 'succeeded'
-          ? 'bg-success/10 text-success'
-          : 'bg-bg-tertiary text-text-muted';
   return (
-    <span
-      className={`inline-flex h-6 min-w-[4.5rem] items-center justify-center gap-1.5 rounded-full px-2.5 text-xs font-medium ${tone}`}
-    >
-      <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      {tr(`schedule.runStatus.${status}`, status)}
-    </span>
+    <StatusBadge
+      status={status}
+      labelKeyPrefix="schedule.runStatus"
+      tone={AUTOMATION_RUN_STATUS_TONES[status]}
+      tr={tr}
+    />
   );
 }
 
@@ -1263,7 +1746,6 @@ function PaginationFooter({
   embedded?: boolean;
 }) {
   const pageCount = Math.max(1, Math.ceil(count / AUTOMATION_TABLE_PAGE_SIZE));
-  const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
 
   return (
     <div
@@ -1278,18 +1760,18 @@ function PaginationFooter({
         </button>
         <button
           className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-border-muted bg-surface px-2 text-text-secondary shadow-soft disabled:cursor-not-allowed disabled:opacity-45"
-          disabled={safeCurrentPage <= 1}
-          onClick={() => onPageChange(safeCurrentPage - 1)}
+          disabled={currentPage <= 1}
+          onClick={() => onPageChange(currentPage - 1)}
         >
           ‹
         </button>
         <span className="min-w-[4rem] text-center">
-          {safeCurrentPage} / {pageCount}
+          {currentPage} / {pageCount}
         </span>
         <button
           className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-border-muted bg-surface px-2 text-text-secondary shadow-soft disabled:cursor-not-allowed disabled:opacity-45"
-          disabled={safeCurrentPage >= pageCount}
-          onClick={() => onPageChange(safeCurrentPage + 1)}
+          disabled={currentPage >= pageCount}
+          onClick={() => onPageChange(currentPage + 1)}
         >
           ›
         </button>
@@ -1501,6 +1983,184 @@ function ExecutionProjectPanel({
         />
       </div>
     </section>
+  );
+}
+
+function AutomationPermissionPolicyMenu({
+  value,
+  onChange,
+  tr,
+}: {
+  value: PermissionPolicyId;
+  onChange: (policy: PermissionPolicyId) => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  const activePolicy = normalizePermissionPolicy(value);
+  const options = getCloudPermissionPolicyOptions(tr);
+  const activeOption = options.find((option) => option.value === activePolicy) ?? options[0];
+
+  return (
+    <div className="space-y-2">
+      <GlassDropdownMenu
+        open={open}
+        onOpenChange={setOpen}
+        align="start"
+        side="bottom"
+        contentClassName="w-[30rem] max-w-[calc(100vw-3rem)] p-2"
+        trigger={
+          <button
+            type="button"
+            className="flex min-h-10 w-full items-center gap-2 rounded-lg border border-border-muted bg-background/70 px-3 py-2 text-left text-[13px] text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-surface-hover hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/20"
+          >
+            <ShieldCheck className="h-4 w-4 flex-shrink-0 text-success" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-medium text-text-primary">
+                {activeOption.label}
+              </span>
+              <span className="mt-0.5 block truncate text-[11px] text-text-muted">
+                {activeOption.shortDescription}
+              </span>
+            </span>
+            <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+          </button>
+        }
+      >
+        <div className="space-y-1">
+          {options.map((option) => {
+            const selected = option.value === activePolicy;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
+                  selected
+                    ? 'bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/20'
+                    : 'text-text-secondary hover:bg-background/58 hover:text-text-primary'
+                }`}
+              >
+                <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center">
+                  {selected ? (
+                    <CheckCircle2 className="h-4 w-4 text-accent" />
+                  ) : option.value === 'full_access' ? (
+                    <AlertCircle className="h-4 w-4 text-warning" />
+                  ) : (
+                    <ShieldCheck className="h-4 w-4 text-text-muted" />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-1.5 text-[13px] font-semibold">
+                    {option.label}
+                  </span>
+                  <span className="mt-1 block text-[12px] leading-5 text-text-muted">
+                    {option.description}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </GlassDropdownMenu>
+    </div>
+  );
+}
+
+function getCloudPermissionPolicyOptions(tr: (key: string, fallback: string) => string): Array<{
+  value: PermissionPolicyId;
+  label: string;
+  shortDescription: string;
+  description: string;
+}> {
+  return [
+    {
+      value: 'full_access',
+      label: tr('schedule.cloudPermissionFullAccessRecommended', '完全访问权限（推荐）'),
+      shortDescription: tr('schedule.cloudPermissionFullAccessShort', '适合无人值守的自动化任务'),
+      description: tr(
+        'schedule.cloudPermissionFullAccessDesc',
+        '推荐用于无人值守的自动化任务。系统会在该自动化执行会话中跳过大多数权限确认，避免定时任务被中断。'
+      ),
+    },
+    {
+      value: 'auto_review',
+      label: tr('chat.permissionPolicyAutoReview', '自动审查'),
+      shortDescription: tr(
+        'schedule.cloudPermissionAutoReviewShort',
+        '常见操作自动通过，未知操作仍确认'
+      ),
+      description: tr(
+        'schedule.cloudPermissionAutoReviewDesc',
+        '适合需要保留一层审查的自动化任务。常见数据处理和写入会自动通过，未知或高风险操作仍会请求确认。'
+      ),
+    },
+    {
+      value: 'default',
+      label: tr('chat.permissionPolicyDefault', '默认权限'),
+      shortDescription: tr('schedule.cloudPermissionDefaultShort', '敏感操作需要用户确认'),
+      description: tr(
+        'schedule.cloudPermissionDefaultDesc',
+        '适合调试或手动监督的自动化任务。执行到写入、命令等敏感操作时会请求确认，定时任务可能因此暂停等待。'
+      ),
+    },
+  ];
+}
+
+function AutomationPromptPermissionFields({
+  value,
+  onChange,
+  selectedSkillNames,
+  onSelectedSkillNamesChange,
+  onSkillSelectionCommit,
+  appConfig,
+  selectedModelConfigSetId,
+  onModelSelect,
+  permissionPolicy,
+  onPermissionPolicyChange,
+  placeholder,
+  tr,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  selectedSkillNames: string[];
+  onSelectedSkillNamesChange: (names: string[]) => void;
+  onSkillSelectionCommit: (selection: { value: string; selectedSkillNames: string[] }) => void;
+  appConfig: AppConfig | null;
+  selectedModelConfigSetId?: string;
+  onModelSelect: (selection: { configSetId: string; model: string }) => void;
+  permissionPolicy: PermissionPolicyId;
+  onPermissionPolicyChange: (policy: PermissionPolicyId) => void;
+  placeholder: string;
+  tr: (key: string, fallback: string) => string;
+}) {
+  return (
+    <>
+      <ConfigRow label={tr('schedule.conversationPrompt', '任务内容')}>
+        <LlmPromptComposer
+          value={value}
+          onChange={onChange}
+          selectedSkillNames={selectedSkillNames}
+          onSelectedSkillNamesChange={onSelectedSkillNamesChange}
+          onSkillSelectionCommit={onSkillSelectionCommit}
+          appConfig={appConfig}
+          selectedModelConfigSetId={selectedModelConfigSetId}
+          modelDisabled={!appConfig?.model?.trim()}
+          modelFallbackLabel={tr('chat.noModel', '未配置模型')}
+          placeholder={placeholder}
+          onModelSelect={onModelSelect}
+        />
+      </ConfigRow>
+      <ConfigRow label={tr('schedule.permissionPolicy', '权限策略')}>
+        <AutomationPermissionPolicyMenu
+          value={permissionPolicy}
+          onChange={onPermissionPolicyChange}
+          tr={tr}
+        />
+      </ConfigRow>
+    </>
   );
 }
 
@@ -1761,6 +2421,756 @@ function FileChangeConfigCard({
   );
 }
 
+function CloudTableProcessActionEditor({
+  node,
+  config,
+  appConfig,
+  permissionPolicy,
+  onPermissionPolicyChange,
+  onChange,
+  tr,
+}: {
+  node: AutomationActionNode;
+  config: CloudTableAutomationConfig;
+  appConfig: AppConfig | null;
+  permissionPolicy: PermissionPolicyId;
+  onPermissionPolicyChange: (permissionPolicy: PermissionPolicyId) => void;
+  onChange: (node: AutomationActionNode) => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  const desktopAuthStatus = useAppStore((state) => state.desktopAuthStatus);
+  const cloudConnection = useMemo(
+    () => getCloudConnectionPayload(appConfig, desktopAuthStatus),
+    [appConfig, desktopAuthStatus]
+  );
+  const conversationSelectedSkillNames = Array.isArray(node.config.selectedSkillNames)
+    ? node.config.selectedSkillNames.filter((name): name is string => typeof name === 'string')
+    : [];
+  const selectedModelConfigSetId =
+    typeof node.config.modelConfigSetId === 'string' && node.config.modelConfigSetId.trim()
+      ? node.config.modelConfigSetId
+      : appConfig?.activeConfigSetId;
+
+  const updateConfig = (
+    next: CloudTableAutomationConfig,
+    nodeConfigUpdates: Record<string, unknown> = {}
+  ) => {
+    onChange({
+      ...node,
+      label: tr('schedule.cloudProcessActionTitle', '处理云端表'),
+      config: {
+        ...node.config,
+        prompt: buildCloudAutomationPrompt(next),
+        cloudAutomation: next,
+        ...nodeConfigUpdates,
+      },
+    });
+  };
+  const updateSource = (source: CloudAutomationSourceTable) => {
+    const previousDefaultName = `${config.source.tableName || 'cloud_table'}_processed`;
+    const nextDefaultName = `${source.tableName || 'cloud_table'}_processed`;
+    updateConfig({
+      ...config,
+      source,
+      output: {
+        ...config.output,
+        tableName:
+          !config.output.tableName || config.output.tableName === previousDefaultName
+            ? nextDefaultName
+            : config.output.tableName,
+        targetTableId:
+          config.output.writeMode === 'replace' &&
+          config.output.targetTableId === config.source.tableId
+            ? source.tableId
+            : config.output.targetTableId,
+      },
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
+        <div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-success">
+          <Cloud className="h-4 w-4" />
+          {tr('schedule.cloudInputTable', '输入云表')}
+        </div>
+        <CloudSourceTableSelector
+          source={config.source}
+          connection={cloudConnection}
+          onSourceChange={updateSource}
+          tr={tr}
+        />
+      </div>
+
+      <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
+        <div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-success">
+          <Wand2 className="h-4 w-4" />
+          {tr('schedule.cloudProcessSection', '处理方式')}
+        </div>
+        <div className="space-y-4">
+          <AutomationPromptPermissionFields
+            value={config.processRequirement}
+            onChange={(processRequirement) =>
+              updateConfig({
+                ...config,
+                processRequirement,
+              })
+            }
+            selectedSkillNames={conversationSelectedSkillNames}
+            onSelectedSkillNamesChange={(selectedSkillNames) =>
+              updateConfig(config, { selectedSkillNames })
+            }
+            onSkillSelectionCommit={({ value, selectedSkillNames }) =>
+              updateConfig(
+                {
+                  ...config,
+                  processRequirement: value,
+                },
+                { selectedSkillNames }
+              )
+            }
+            appConfig={appConfig}
+            selectedModelConfigSetId={selectedModelConfigSetId}
+            onModelSelect={({ configSetId, model }) =>
+              updateConfig(config, {
+                modelConfigSetId: configSetId,
+                model,
+              })
+            }
+            permissionPolicy={permissionPolicy}
+            onPermissionPolicyChange={onPermissionPolicyChange}
+            placeholder={tr('schedule.promptPlaceholder', '输入任务对话要执行的内容')}
+            tr={tr}
+          />
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
+        <div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-success">
+          <UploadCloud className="h-4 w-4" />
+          {tr('schedule.cloudOutputSection', '输出到云分析')}
+        </div>
+        <div className="space-y-3.5">
+          <ConfigRow label={tr('schedule.cloudWriteMode', '写入方式')}>
+            <GlassSelect
+              value={config.output.writeMode}
+              options={[
+                { value: 'create', label: tr('schedule.cloudWriteCreate', '新建结果表') },
+                { value: 'replace', label: tr('schedule.cloudWriteReplace', '覆盖指定表') },
+              ]}
+              onValueChange={(value) =>
+                updateConfig({
+                  ...config,
+                  output: {
+                    ...config.output,
+                    writeMode: value as CloudAutomationWriteMode,
+                    targetTableId:
+                      value === 'replace'
+                        ? config.output.targetTableId || config.source.tableId
+                        : config.output.targetTableId,
+                  },
+                })
+              }
+              triggerClassName="h-9 w-full justify-between"
+              contentClassName="w-[var(--radix-select-trigger-width)]"
+            />
+          </ConfigRow>
+          {config.output.writeMode === 'replace' ? (
+            <ConfigRow label={tr('schedule.cloudTargetTable', '目标表')}>
+              <CloudReplaceTargetSelector
+                config={config}
+                connection={cloudConnection}
+                onTargetChange={(tableId) =>
+                  updateConfig({
+                    ...config,
+                    output: { ...config.output, targetTableId: tableId },
+                  })
+                }
+                tr={tr}
+              />
+            </ConfigRow>
+          ) : (
+            <ConfigRow label={tr('schedule.cloudOutputTableName', '结果表名')}>
+              <input
+                value={config.output.tableName}
+                onChange={(event) =>
+                  updateConfig({
+                    ...config,
+                    output: { ...config.output, tableName: event.target.value },
+                  })
+                }
+                className="input h-9 w-full text-xs"
+              />
+            </ConfigRow>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CloudSourceTableSelector({
+  source,
+  connection,
+  onSourceChange,
+  tr,
+}: {
+  source: CloudAutomationSourceTable;
+  connection: CloudConnectionPayload;
+  onSourceChange: (source: CloudAutomationSourceTable) => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  const [spaces, setSpaces] = useState<PersonalAnalysisSpace[]>([]);
+  const [projects, setProjects] = useState<PersonalAnalysisProject[]>([]);
+  const [tables, setTables] = useState<PersonalAnalysisTable[]>([]);
+  const [keyword, setKeyword] = useState('');
+  const [loadingSpaces, setLoadingSpaces] = useState(false);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [loadingTables, setLoadingTables] = useState(false);
+  const [spacesError, setSpacesError] = useState<string | null>(null);
+  const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [tablesError, setTablesError] = useState<string | null>(null);
+  const spacesRequestSeq = useRef(0);
+  const projectsRequestSeq = useRef(0);
+  const tablesRequestSeq = useRef(0);
+  const canBrowseCloud = Boolean(connection.apiOrigin && isElectron && window.electronAPI?.data);
+  const error = tablesError ?? projectsError ?? spacesError;
+
+  useEffect(() => {
+    if (!canBrowseCloud) {
+      setSpaces([]);
+      setLoadingSpaces(false);
+      spacesRequestSeq.current += 1;
+      return;
+    }
+    const requestId = ++spacesRequestSeq.current;
+    setLoadingSpaces(true);
+    setSpacesError(null);
+    void window.electronAPI.data
+      .listCloudSpaces(connection)
+      .then((result) => {
+        if (requestId !== spacesRequestSeq.current) return;
+        setSpaces(result.spaces);
+      })
+      .catch((loadError) => {
+        if (requestId !== spacesRequestSeq.current) return;
+        setSpaces([]);
+        setSpacesError(
+          loadError instanceof Error
+            ? loadError.message
+            : tr('schedule.cloudCatalogLoadFailed', '加载云分析空间失败')
+        );
+      })
+      .finally(() => {
+        if (requestId === spacesRequestSeq.current) {
+          setLoadingSpaces(false);
+        }
+      });
+  }, [canBrowseCloud, connection, tr]);
+
+  useEffect(() => {
+    if (!canBrowseCloud || !source.spaceId) {
+      setProjects([]);
+      setLoadingProjects(false);
+      setProjectsError(null);
+      projectsRequestSeq.current += 1;
+      return;
+    }
+    const requestId = ++projectsRequestSeq.current;
+    setLoadingProjects(true);
+    setProjectsError(null);
+    void window.electronAPI.data
+      .listCloudProjects({ ...connection, spaceId: source.spaceId })
+      .then((result) => {
+        if (requestId !== projectsRequestSeq.current) return;
+        setProjects(result.projects);
+      })
+      .catch((loadError) => {
+        if (requestId !== projectsRequestSeq.current) return;
+        setProjects([]);
+        setProjectsError(
+          loadError instanceof Error
+            ? loadError.message
+            : tr('schedule.cloudProjectsLoadFailed', '加载云分析项目失败')
+        );
+      })
+      .finally(() => {
+        if (requestId === projectsRequestSeq.current) {
+          setLoadingProjects(false);
+        }
+      });
+  }, [canBrowseCloud, connection, source.spaceId, tr]);
+
+  useEffect(() => {
+    if (!canBrowseCloud || !source.spaceId || !source.projectId) {
+      setTables([]);
+      setLoadingTables(false);
+      setTablesError(null);
+      tablesRequestSeq.current += 1;
+      return;
+    }
+    const requestId = ++tablesRequestSeq.current;
+    setLoadingTables(true);
+    setTablesError(null);
+    void window.electronAPI.data
+      .listCloudTables({
+        ...connection,
+        spaceId: source.spaceId,
+        projectId: source.projectId,
+        keyword: keyword.trim(),
+        page: 1,
+        pageSize: CLOUD_TARGET_TABLE_PAGE_SIZE,
+        sortBy: 'updatedAt',
+        sortOrder: 'desc',
+      })
+      .then((result) => {
+        if (requestId !== tablesRequestSeq.current) return;
+        setTables(result.tables);
+      })
+      .catch((loadError) => {
+        if (requestId !== tablesRequestSeq.current) return;
+        setTables([]);
+        setTablesError(
+          loadError instanceof Error
+            ? loadError.message
+            : tr('schedule.cloudTablesLoadFailed', '加载云分析表格失败')
+        );
+      })
+      .finally(() => {
+        if (requestId === tablesRequestSeq.current) {
+          setLoadingTables(false);
+        }
+      });
+  }, [canBrowseCloud, connection, keyword, source.projectId, source.spaceId, tr]);
+
+  const spaceOptions = [
+    { value: '', label: tr('schedule.cloudSpacePlaceholder', '选择空间') },
+    ...spaces.map((space) => ({ value: space.spaceId, label: space.spaceName || space.spaceId })),
+  ];
+  const projectOptions = [
+    { value: '', label: tr('schedule.cloudProjectPlaceholder', '选择项目') },
+    ...projects.map((project) => ({
+      value: project.projectId,
+      label: project.projectName || project.projectId,
+    })),
+  ];
+  const tableOptions = [
+    { value: '', label: tr('schedule.cloudTablePlaceholder', '选择云表') },
+    ...tables.map((table) => ({
+      value: table.tableId,
+      label: `${table.tableName} (${table.tableId})`,
+    })),
+  ];
+  if (source.tableId && !tableOptions.some((option) => option.value === source.tableId)) {
+    tableOptions.push({
+      value: source.tableId,
+      label: `${source.tableName || source.tableId} (${source.tableId})`,
+    });
+  }
+
+  const selectedTable =
+    tables.find((table) => table.tableId === source.tableId) ??
+    (source.tableId
+      ? ({
+          tableId: source.tableId,
+          tableName: source.tableName || source.tableId,
+          spaceId: source.spaceId,
+          projectId: source.projectId || '',
+          datasourceId: source.datasourceId,
+          columns: source.columns
+            ?.map((column) => (typeof column === 'string' ? column : column.name))
+            .filter((column): column is string => Boolean(column)),
+          rowCount: typeof source.rowCount === 'number' ? source.rowCount : undefined,
+        } satisfies PersonalAnalysisTable)
+      : null);
+
+  return (
+    <div className="space-y-3.5">
+      <ConfigRow label={tr('schedule.cloudSpace', '空间')}>
+        <div className="relative">
+          <GlassSelect
+            value={source.spaceId || ''}
+            options={spaceOptions}
+            onValueChange={(spaceId) => {
+              const nextSpace = spaces.find((space) => space.spaceId === spaceId);
+              onSourceChange({
+                tableId: '',
+                tableName: '',
+                spaceId: spaceId || undefined,
+                spaceName: nextSpace?.spaceName,
+                columns: [],
+                rowCount: null,
+              });
+            }}
+            disabled={!canBrowseCloud}
+            triggerClassName="h-9 w-full justify-between"
+            contentClassName="w-[var(--radix-select-trigger-width)]"
+          />
+          {loadingSpaces && (
+            <Loader2 className="absolute top-1/2 right-8 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-text-muted" />
+          )}
+        </div>
+      </ConfigRow>
+      <ConfigRow label={tr('schedule.cloudProject', '项目')}>
+        <div className="relative">
+          <GlassSelect
+            value={source.projectId || ''}
+            options={projectOptions}
+            onValueChange={(projectId) => {
+              const nextProject = projects.find((project) => project.projectId === projectId);
+              onSourceChange({
+                tableId: '',
+                tableName: '',
+                spaceId: source.spaceId,
+                spaceName: source.spaceName,
+                projectId: projectId || undefined,
+                projectName: nextProject?.projectName,
+                columns: [],
+                rowCount: null,
+              });
+            }}
+            disabled={!canBrowseCloud || !source.spaceId}
+            triggerClassName="h-9 w-full justify-between"
+            contentClassName="w-[var(--radix-select-trigger-width)]"
+          />
+          {loadingProjects && (
+            <Loader2 className="absolute top-1/2 right-8 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-text-muted" />
+          )}
+        </div>
+      </ConfigRow>
+      <ConfigRow label={tr('schedule.cloudTable', '云表')}>
+        <div className="space-y-2">
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(12rem,0.55fr)]">
+            <GlassSelect
+              value={source.tableId || ''}
+              options={tableOptions}
+              onValueChange={(tableId) => {
+                const nextTable = tables.find((table) => table.tableId === tableId);
+                onSourceChange({
+                  tableId,
+                  tableName: nextTable?.tableName || '',
+                  spaceId: nextTable?.spaceId || source.spaceId,
+                  spaceName: source.spaceName,
+                  projectId: nextTable?.projectId || source.projectId,
+                  projectName: source.projectName,
+                  datasourceId: nextTable?.datasourceId,
+                  rowCount: nextTable?.rowCount ?? null,
+                  columns: nextTable?.columns ?? [],
+                });
+              }}
+              disabled={!canBrowseCloud || !source.spaceId || !source.projectId}
+              triggerClassName="h-9 w-full justify-between"
+              contentClassName="w-[var(--radix-select-trigger-width)]"
+            />
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+              <input
+                value={keyword}
+                onChange={(event) => setKeyword(event.target.value)}
+                disabled={!canBrowseCloud || !source.spaceId || !source.projectId}
+                placeholder={tr('schedule.cloudSourceSearchPlaceholder', '搜索云表')}
+                className="input h-9 w-full pr-9 pl-8 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              {loadingTables && (
+                <Loader2 className="absolute top-1/2 right-3 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-text-muted" />
+              )}
+            </div>
+          </div>
+          {selectedTable && (
+            <div className="rounded-lg border border-border-muted bg-bg-secondary/30 px-3 py-3 text-[12px] leading-5 text-text-secondary">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <CloudTargetInfoItem
+                  label={tr('schedule.cloudTableName', '表名')}
+                  value={selectedTable.tableName}
+                />
+                <CloudTargetInfoItem
+                  label={tr('schedule.cloudTableId', '表 ID')}
+                  value={selectedTable.tableId}
+                  mono
+                />
+                <CloudTargetInfoItem
+                  label={tr('schedule.cloudTableLocation', '位置')}
+                  value={formatCloudTargetLocation(selectedTable, source)}
+                />
+                <CloudTargetInfoItem
+                  label={tr('schedule.cloudTableRows', '行数')}
+                  value={formatCloudTargetRows(selectedTable)}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </ConfigRow>
+
+      {!canBrowseCloud && (
+        <div className="rounded-lg border border-border-muted bg-bg-secondary/30 px-3 py-2 text-[12px] leading-5 text-text-muted">
+          {tr('schedule.cloudConnectRequired', '请先连接云分析空间后再选择云端表。')}
+        </div>
+      )}
+      {error && (
+        <div className="rounded-lg border border-warning/25 bg-warning/10 px-3 py-2 text-[12px] leading-5 text-warning">
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CloudReplaceTargetSelector({
+  config,
+  connection,
+  onTargetChange,
+  tr,
+}: {
+  config: CloudTableAutomationConfig;
+  connection: CloudConnectionPayload;
+  onTargetChange: (tableId: string) => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  const [keyword, setKeyword] = useState('');
+  const [tables, setTables] = useState<PersonalAnalysisTable[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const requestSeq = useRef(0);
+  const source = config.source;
+  const sourceTable = useMemo<PersonalAnalysisTable>(
+    () => ({
+      tableId: source.tableId,
+      tableName: source.tableName,
+      spaceId: source.spaceId,
+      projectId: source.projectId || '',
+      datasourceId: source.datasourceId,
+      columns: source.columns
+        ?.map((column) => (typeof column === 'string' ? column : column.name))
+        .filter((column): column is string => Boolean(column)),
+      rowCount: typeof source.rowCount === 'number' ? source.rowCount : undefined,
+    }),
+    [source]
+  );
+  const canBrowseProjectTables = Boolean(
+    connection.apiOrigin &&
+    source.spaceId &&
+    source.projectId &&
+    isElectron &&
+    window.electronAPI?.data
+  );
+  const selectedTargetId = config.output.targetTableId || source.tableId;
+
+  useEffect(() => {
+    if (!canBrowseProjectTables || !source.spaceId || !source.projectId) {
+      setTables([]);
+      setLoading(false);
+      setError(null);
+      requestSeq.current += 1;
+      return;
+    }
+
+    const requestId = ++requestSeq.current;
+    setLoading(true);
+    setError(null);
+    void window.electronAPI.data
+      .listCloudTables({
+        ...connection,
+        spaceId: source.spaceId,
+        projectId: source.projectId,
+        keyword: keyword.trim(),
+        page: 1,
+        pageSize: CLOUD_TARGET_TABLE_PAGE_SIZE,
+        sortBy: 'updatedAt',
+        sortOrder: 'desc',
+      })
+      .then((result) => {
+        if (requestId !== requestSeq.current) return;
+        setTables(result.tables);
+      })
+      .catch((loadError) => {
+        if (requestId !== requestSeq.current) return;
+        setTables([]);
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : tr('schedule.cloudTargetLoadFailed', '加载同项目云表失败')
+        );
+      })
+      .finally(() => {
+        if (requestId === requestSeq.current) {
+          setLoading(false);
+        }
+      });
+  }, [canBrowseProjectTables, connection, keyword, source.projectId, source.spaceId, tr]);
+
+  const targetTables = useMemo(() => {
+    const byId = new Map<string, PersonalAnalysisTable>();
+    byId.set(sourceTable.tableId, sourceTable);
+    for (const table of tables) {
+      byId.set(table.tableId, table);
+    }
+    return Array.from(byId.values());
+  }, [sourceTable, tables]);
+  const selectedTable =
+    targetTables.find((table) => table.tableId === selectedTargetId) ??
+    (selectedTargetId === source.tableId ? sourceTable : null);
+  const isReplacingSource = selectedTargetId === source.tableId;
+  const options = [
+    {
+      value: source.tableId,
+      label: tr('schedule.cloudReplaceSourceOption', '覆盖源表：{{name}}').replace(
+        '{{name}}',
+        source.tableName
+      ),
+    },
+    ...targetTables
+      .filter((table) => table.tableId !== source.tableId)
+      .map((table) => ({
+        value: table.tableId,
+        label: `${table.tableName} (${table.tableId})`,
+      })),
+  ];
+  if (selectedTargetId && !options.some((option) => option.value === selectedTargetId)) {
+    options.push({
+      value: selectedTargetId,
+      label: tr('schedule.cloudSelectedTargetFallback', '已选目标表：{{id}}').replace(
+        '{{id}}',
+        selectedTargetId
+      ),
+    });
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(12rem,0.55fr)]">
+        <GlassSelect
+          value={selectedTargetId}
+          options={options}
+          onValueChange={onTargetChange}
+          triggerClassName="h-9 w-full justify-between"
+          contentClassName="w-[var(--radix-select-trigger-width)]"
+        />
+        <div className="relative">
+          <Search className="pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+          <input
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            disabled={!canBrowseProjectTables}
+            placeholder={tr('schedule.cloudTargetSearchPlaceholder', '搜索同项目云表')}
+            className="input h-9 w-full pr-9 pl-8 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+          />
+          {loading && (
+            <Loader2 className="absolute top-1/2 right-3 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-text-muted" />
+          )}
+        </div>
+      </div>
+
+      {!canBrowseProjectTables && (
+        <div className="rounded-lg border border-border-muted bg-bg-secondary/30 px-3 py-2 text-[12px] leading-5 text-text-muted">
+          {tr(
+            'schedule.cloudTargetBrowseUnavailable',
+            '当前连接或源表项目信息不足，暂时只能默认覆盖源表。'
+          )}
+        </div>
+      )}
+      {error && (
+        <div className="rounded-lg border border-warning/25 bg-warning/10 px-3 py-2 text-[12px] leading-5 text-warning">
+          {error}
+        </div>
+      )}
+
+      {selectedTable && (
+        <div className="rounded-lg border border-border-muted bg-bg-secondary/30 px-3 py-3 text-[12px] leading-5 text-text-secondary">
+          <div
+            className={`mb-2 flex items-center gap-2 font-semibold ${
+              isReplacingSource ? 'text-error' : 'text-warning'
+            }`}
+          >
+            <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+            {isReplacingSource
+              ? tr('schedule.cloudReplaceSourceWarningTitle', '将覆盖原始输入云表')
+              : tr('schedule.cloudReplaceTargetWarningTitle', '将覆盖所选云表')}
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <CloudTargetInfoItem
+              label={tr('schedule.cloudTableName', '表名')}
+              value={selectedTable.tableName}
+            />
+            <CloudTargetInfoItem
+              label={tr('schedule.cloudTableLocation', '位置')}
+              value={formatCloudTargetLocation(selectedTable, source)}
+            />
+            <CloudTargetInfoItem
+              label={tr('schedule.cloudTableId', '表 ID')}
+              value={selectedTable.tableId}
+              mono
+            />
+            <CloudTargetInfoItem
+              label={tr('schedule.cloudTableRows', '行数')}
+              value={formatCloudTargetRows(selectedTable)}
+            />
+          </div>
+          <div className="mt-2 text-[12px] text-text-muted">
+            {isReplacingSource
+              ? tr(
+                  'schedule.cloudReplaceSourceWarningDesc',
+                  '运行后会用处理结果覆盖这张源表的数据，请确认这是预期操作。'
+                )
+              : tr(
+                  'schedule.cloudReplaceTargetWarningDesc',
+                  '运行后会用处理结果覆盖目标表数据，请确认目标表选择正确。'
+                )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CloudTargetInfoItem({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="text-text-muted">{label}</div>
+      <div className={`mt-0.5 truncate text-text-primary ${mono ? 'font-mono text-[11px]' : ''}`}>
+        {value || '-'}
+      </div>
+    </div>
+  );
+}
+
+function getCloudConnectionPayload(
+  appConfig: AppConfig | null,
+  desktopAuthStatus: DesktopAuthStatus
+): CloudConnectionPayload {
+  const storedConnection = appConfig?.personalAnalysis;
+  if (desktopAuthStatus.authenticated && desktopAuthStatus.apiOrigin) {
+    return { apiOrigin: desktopAuthStatus.apiOrigin };
+  }
+  if (storedConnection?.apiOrigin && storedConnection.apiKey) {
+    return { apiOrigin: storedConnection.apiOrigin, apiKey: storedConnection.apiKey };
+  }
+  return { apiOrigin: storedConnection?.apiOrigin || '' };
+}
+
+function formatCloudTargetLocation(
+  table: PersonalAnalysisTable,
+  source: CloudAutomationSourceTable
+): string {
+  const space =
+    table.spaceId === source.spaceId ? source.spaceName || table.spaceId : table.spaceId;
+  const project =
+    table.projectId === source.projectId ? source.projectName || table.projectId : table.projectId;
+  return [space, project].filter(Boolean).join(' / ') || '-';
+}
+
+function formatCloudTargetRows(table: PersonalAnalysisTable): string {
+  return typeof table.rowCount === 'number' ? String(table.rowCount) : '-';
+}
+
 function ActionChainSection({
   draft,
   actionDefinitions,
@@ -1769,6 +3179,7 @@ function ActionChainSection({
   outputTables,
   appConfig,
   onDraftChange,
+  onPermissionPolicyChange,
   tr,
 }: {
   draft: AutomationDraft;
@@ -1778,6 +3189,7 @@ function ActionChainSection({
   outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
   onDraftChange: (draft: AutomationDraft) => void;
+  onPermissionPolicyChange: (permissionPolicy: PermissionPolicyId) => void;
   tr: (key: string, fallback: string) => string;
 }) {
   const nodes = draft.actionGraph.nodes;
@@ -1787,9 +3199,17 @@ function ActionChainSection({
       actionGraph: relinkLinearGraph({ version: 1, nodes: nextNodes, edges: [] }),
     });
   const availableActionTypes = new Set(actionDefinitions.map((definition) => definition.type));
-  const menuActionTypes = ACTION_MENU_TYPES.filter((type) => availableActionTypes.has(type));
+  const menuActionTypes = [
+    ...ACTION_MENU_TYPES.filter((type) => availableActionTypes.has(type)),
+    ...(availableActionTypes.has('conversation.run') ? [CLOUD_TABLE_PROCESS_ACTION_TYPE] : []),
+  ];
   const addNode = (type: string) => {
+    if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE) {
+      updateNodes([...nodes, createCloudTableProcessNode(tr)]);
+      return;
+    }
     updateNodes([
+      ...nodes,
       {
         id: crypto.randomUUID(),
         type,
@@ -1797,7 +3217,6 @@ function ActionChainSection({
         enabled: true,
         config: defaultConfigForAction(type),
       },
-      ...nodes,
     ]);
   };
   const addActionButton = (
@@ -1834,6 +3253,8 @@ function ActionChainSection({
             inputTables={inputTables}
             outputTables={outputTables}
             appConfig={appConfig}
+            permissionPolicy={draft.permissionPolicy}
+            onPermissionPolicyChange={onPermissionPolicyChange}
             onRemove={() => updateNodes(nodes.filter((item) => item.id !== node.id))}
             onChange={(next) =>
               updateNodes(nodes.map((item) => (item.id === next.id ? next : item)))
@@ -1853,6 +3274,8 @@ function ActionStepCard({
   inputTables,
   outputTables,
   appConfig,
+  permissionPolicy,
+  onPermissionPolicyChange,
   onRemove,
   onChange,
   tr,
@@ -1863,11 +3286,13 @@ function ActionStepCard({
   inputTables: DataDashboard['datasets'];
   outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
+  permissionPolicy: PermissionPolicyId;
+  onPermissionPolicyChange: (permissionPolicy: PermissionPolicyId) => void;
   onRemove: () => void;
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
 }) {
-  const Icon = getActionIcon(node.type);
+  const Icon = getActionIcon(node.type, node);
   return (
     <div className="rounded-lg border border-border-muted bg-bg-secondary/20 p-4">
       <div className="mb-5 flex items-center gap-3">
@@ -1893,6 +3318,8 @@ function ActionStepCard({
         inputTables={inputTables}
         outputTables={outputTables}
         appConfig={appConfig}
+        permissionPolicy={permissionPolicy}
+        onPermissionPolicyChange={onPermissionPolicyChange}
         onChange={onChange}
         tr={tr}
       />
@@ -1906,6 +3333,8 @@ function ActionConfigEditor({
   inputTables,
   outputTables,
   appConfig,
+  permissionPolicy,
+  onPermissionPolicyChange,
   onChange,
   tr,
 }: {
@@ -1914,6 +3343,8 @@ function ActionConfigEditor({
   inputTables: DataDashboard['datasets'];
   outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
+  permissionPolicy: PermissionPolicyId;
+  onPermissionPolicyChange: (permissionPolicy: PermissionPolicyId) => void;
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
 }) {
@@ -1937,6 +3368,7 @@ function ActionConfigEditor({
     typeof node.config.modelConfigSetId === 'string' && node.config.modelConfigSetId.trim()
       ? node.config.modelConfigSetId
       : appConfig?.activeConfigSetId;
+  const cloudAutomation = parseCloudAutomationConfig(node.config.cloudAutomation);
   const dataTypeOptions = DATA_ACTION_TYPES.map((type) => ({
     value: type,
     label: getDataActionTypeTitle(type, tr),
@@ -1996,7 +3428,7 @@ function ActionConfigEditor({
           />
         </ConfigRow>
       )}
-      {(node.type === 'data.output.preview' || node.type === 'data.output.export') && (
+      {node.type === 'data.output.preview' && (
         <ConfigRow label={tr('schedule.outputDataLabel', '输出表')}>
           <SelectLine
             value={String(node.config.outputTableId ?? '')}
@@ -2006,32 +3438,42 @@ function ActionConfigEditor({
           />
         </ConfigRow>
       )}
-      {node.type === 'conversation.run' && (
-        <ConfigRow label={tr('schedule.conversationPrompt', '任务内容')}>
-          <LlmPromptComposer
-            value={conversationPrompt}
-            onChange={(prompt) => setConfig({ ...node.config, prompt })}
-            selectedSkillNames={conversationSelectedSkillNames}
-            onSelectedSkillNamesChange={(selectedSkillNames) =>
-              setConfig({ ...node.config, selectedSkillNames })
-            }
-            onSkillSelectionCommit={({ value, selectedSkillNames }) =>
-              setConfig({ ...node.config, prompt: value, selectedSkillNames })
-            }
-            appConfig={appConfig}
-            selectedModelConfigSetId={selectedModelConfigSetId}
-            modelDisabled={!appConfig?.model?.trim()}
-            modelFallbackLabel={tr('chat.noModel', '未配置模型')}
-            placeholder={tr('schedule.promptPlaceholder', '输入任务对话要执行的内容')}
-            onModelSelect={({ configSetId, model }) =>
-              setConfig({
-                ...node.config,
-                modelConfigSetId: configSetId,
-                model,
-              })
-            }
-          />
-        </ConfigRow>
+      {node.type === 'conversation.run' && cloudAutomation && (
+        <CloudTableProcessActionEditor
+          node={node}
+          config={cloudAutomation}
+          appConfig={appConfig}
+          permissionPolicy={permissionPolicy}
+          onPermissionPolicyChange={onPermissionPolicyChange}
+          onChange={onChange}
+          tr={tr}
+        />
+      )}
+      {node.type === 'conversation.run' && !cloudAutomation && (
+        <AutomationPromptPermissionFields
+          value={conversationPrompt}
+          onChange={(prompt) => setConfig({ ...node.config, prompt })}
+          selectedSkillNames={conversationSelectedSkillNames}
+          onSelectedSkillNamesChange={(selectedSkillNames) =>
+            setConfig({ ...node.config, selectedSkillNames })
+          }
+          onSkillSelectionCommit={({ value, selectedSkillNames }) =>
+            setConfig({ ...node.config, prompt: value, selectedSkillNames })
+          }
+          appConfig={appConfig}
+          selectedModelConfigSetId={selectedModelConfigSetId}
+          onModelSelect={({ configSetId, model }) =>
+            setConfig({
+              ...node.config,
+              modelConfigSetId: configSetId,
+              model,
+            })
+          }
+          permissionPolicy={permissionPolicy}
+          onPermissionPolicyChange={onPermissionPolicyChange}
+          placeholder={tr('schedule.promptPlaceholder', '输入任务对话要执行的内容')}
+          tr={tr}
+        />
       )}
     </div>
   );
@@ -2093,8 +3535,14 @@ function getActionTitle(
   fallback: string,
   tr: (key: string, fallback: string) => string
 ): string {
+  if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE) {
+    return tr('schedule.cloudProcessActionTitle', '处理云端表');
+  }
   if (type === 'conversation.run') {
     return tr('schedule.actionTypes.conversationRun.title', fallback);
+  }
+  if (type === 'data.task.run') {
+    return tr('schedule.actionTypes.dataTaskRun.title', fallback);
   }
   if (isDataActionType(type)) {
     return tr('schedule.actionTypes.data.title', fallback);
@@ -2115,13 +3563,11 @@ function getDataActionTypeTitle(
   if (type === 'data.output.preview') {
     return tr('schedule.actionTypes.dataOutputPreview.title', 'Output table');
   }
-  if (type === 'data.output.export') {
-    return tr('schedule.actionTypes.dataOutputExport.title', 'Export output table');
-  }
   return type;
 }
 
-function getActionIcon(type: string): LucideIcon {
+function getActionIcon(type: string, node?: AutomationActionNode): LucideIcon {
+  if (node && parseCloudAutomationConfig(node.config.cloudAutomation)) return Cloud;
   if (type === 'conversation.run') return MessagesSquare;
   if (isDataActionType(type)) return Database;
   return CalendarClock;
@@ -2131,6 +3577,9 @@ function getNodeLabel(
   node: AutomationActionNode,
   tr: (key: string, fallback: string) => string
 ): string {
+  if (parseCloudAutomationConfig(node.config.cloudAutomation)) {
+    return tr('schedule.cloudProcessActionTitle', '处理云端表');
+  }
   const fallback = getActionTitle(node.type, node.type, tr);
   if (!node.label || node.label === node.type) return fallback;
   if (node.type === 'conversation.run' && node.label === 'Conversation') return fallback;
@@ -2149,17 +3598,17 @@ function defaultConfigForAction(type: string): Record<string, unknown> {
       completionMode: 'wait',
       timeoutMs: 30 * 60 * 1000,
       collectArtifacts: true,
+      permissionPolicy: 'full_access',
     };
   }
   if (type === 'data.task.run') return { taskId: '', outputMode: 'persisted' };
   if (type === 'data.input.preview') return { inputTableId: '', limit: 20 };
   if (type === 'data.output.preview') return { outputTableId: '', limit: 20 };
-  if (type === 'data.output.export') return { outputTableId: '', format: 'csv' };
   return {};
 }
 
 function isDataActionType(type: string): boolean {
-  return DATA_ACTION_TYPES.includes(type);
+  return DATA_ACTION_TYPES.includes(type) || DATA_PREVIEW_ACTION_TYPES.includes(type);
 }
 
 function splitCsv(value: string): string[] {
