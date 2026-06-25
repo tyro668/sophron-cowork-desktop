@@ -43,6 +43,9 @@ export interface PersonalAnalysisTable {
   projectId: string;
   datasourceId?: string;
   folderId?: string;
+  sourceType?: string;
+  source?: string;
+  sourceObjectKey?: string;
   columns?: string[];
   rowCount?: number;
   columnCount?: number;
