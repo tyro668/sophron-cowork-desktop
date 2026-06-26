@@ -158,7 +158,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                 updateConfig((cfg) => ({ ...cfg, unit: value }));
                 setErrors(runValidation(limit, offset, value));
               }}
-              className="w-full"
+              className="h-8 min-w-[84px] rounded-md text-[12px] w-full"
             />
           </label>
           <label className="grid gap-1.5">

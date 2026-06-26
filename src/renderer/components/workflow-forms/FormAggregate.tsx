@@ -236,7 +236,7 @@ export default function FormAggregate({
                     value={item.function}
                     groups={functionGroups}
                     onChange={(v) => updateMetric(index, { function: v })}
-                    className="w-full"
+                    className="h-8 min-w-[84px] rounded-md text-[12px] w-full"
                   />
                 ),
               },
