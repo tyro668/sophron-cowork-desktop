@@ -1,6 +1,5 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowRight } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
@@ -36,168 +35,199 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
   const depth = (() => {
     if (!recursive) return 0;
     if (typeof node.config.maxDepth === 'number') return Number(node.config.maxDepth);
-    return -1; // unlimited
+    return -1;
   })();
 
   return (
     <div className="grid content-start gap-2.5">
-      {/* Three column boxes */}
       <div className="flex items-stretch gap-0">
-        {/* ═══ 数据来源 ═══ */}
-        <div className="flex-[2] rounded-lg border border-border-muted bg-background/42 grid content-start">
-          <div className="px-3 py-1.5 text-[11px] font-medium text-text-muted">
-            {tr('unnestSourceHeader', '数据来源')}
+        {/* ═══ 步骤1: 数据来源 ═══ */}
+        <div className="flex-1 flex flex-col gap-2">
+          <div className="flex items-end gap-3 px-0.5">
+            <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
+              1
+            </span>
+            <div className="grid">
+              <span className="text-[13px] font-semibold text-text-primary">
+                {tr('unnestSourceHeader', '数据来源')}
+              </span>
+              <span className="text-[10px] text-text-muted">
+                {tr('unnestSourceHint', '请选择待展开的源字段')}
+              </span>
+            </div>
           </div>
-          <div className="border-t border-border-muted" />
-          <div className="p-3 grid gap-2.5">
-            <label className="grid gap-1">
-              <GlassFormLabel>{tr('unnestSourceField', '源字段')}</GlassFormLabel>
-              <GlassFieldCombo
-                value={column}
-                options={fieldCompletions}
-                onChange={(v) => updateConfig((cfg) => ({ ...cfg, column: v || undefined }))}
-                placeholder={tr('unnestSelectField', '选择字段')}
-                className="w-full"
-              />
-            </label>
-
-            <GlassRadioSelect
-              value={sourceKind}
-              options={[
-                { value: 'list', label: 'List' },
-                { value: 'json', label: 'JSON' },
-              ]}
-              onChange={(v) => updateConfig((cfg) => ({ ...cfg, sourceKind: v }))}
-              label={tr('unnestSourceType', '源类型')}
-            />
-          </div>
-        </div>
-
-        {/* Arrow */}
-        <div className="flex items-center justify-center px-3">
-          <ArrowRight className="h-5 w-5 text-text-muted" />
-        </div>
-
-        {/* ═══ 展开规则 ═══ */}
-        <div className="flex-[4] rounded-lg border border-border-muted bg-background/42 grid content-start">
-          <div className="px-3 py-1.5 text-[11px] font-medium text-text-muted">
-            {tr('unnestRulesHeader', '展开规则')}
-          </div>
-          <div className="border-t border-border-muted" />
-          <div className="p-3 grid gap-2.5">
-            <label className="grid gap-1">
-              <GlassFormLabel>{tr('unnestAlias', '展开后的别名')}</GlassFormLabel>
-              <GlassFormTextInput
-                value={alias}
-                onChange={(v) => updateConfig((cfg) => ({ ...cfg, alias: v || undefined }))}
-                placeholder={tr('unnestAliasPlaceholder', '如 item')}
-              />
-            </label>
-
-            {sourceKind === 'json' && (
+          <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
+            <div className="p-3 grid gap-2.5">
               <label className="grid gap-1">
-                <GlassFormLabel>{tr('unnestJsonPath', 'JSON 路径')}</GlassFormLabel>
-                <GlassFormTextInput
-                  value={path}
-                  onChange={(v) => updateConfig((cfg) => ({ ...cfg, path: v || undefined }))}
-                  placeholder={tr('unnestJsonPathPlaceholder', '如 $.items')}
+                <GlassFormLabel>{tr('unnestSourceField', '源字段')}</GlassFormLabel>
+                <GlassFieldCombo
+                  value={column}
+                  options={fieldCompletions}
+                  onChange={(v) => updateConfig((cfg) => ({ ...cfg, column: v || undefined }))}
+                  placeholder={tr('unnestSelectField', '选择字段')}
+                  className="w-full"
                 />
               </label>
-            )}
+
+              <GlassRadioSelect
+                value={sourceKind}
+                options={[
+                  { value: 'list', label: 'List' },
+                  { value: 'json', label: 'JSON' },
+                ]}
+                onChange={(v) => updateConfig((cfg) => ({ ...cfg, sourceKind: v }))}
+                label={tr('unnestSourceType', '源类型')}
+              />
+            </div>
           </div>
         </div>
 
         {/* Arrow */}
-        <div className="flex items-center justify-center px-3">
-          <ArrowRight className="h-5 w-5 text-text-muted" />
+        <div className="flex items-start pt-[12px] px-2">
+          <span className="text-text-muted font-bold text-base leading-none">❯</span>
         </div>
 
-        {/* ═══ 输出配置 ═══ */}
-        <div className="flex-[2] rounded-lg border border-border-muted bg-background/42 grid content-start">
-          <div className="px-3 py-1.5 text-[11px] font-medium text-text-muted">
-            {tr('unnestOutputHeader', '输出配置')}
+        {/* ═══ 步骤2: 展开规则 ═══ */}
+        <div className="flex-1 flex flex-col gap-2">
+          <div className="flex items-end gap-3 px-0.5">
+            <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
+              2
+            </span>
+            <div className="grid">
+              <span className="text-[13px] font-semibold text-text-primary">
+                {tr('unnestRulesHeader', '展开规则')}
+              </span>
+              <span className="text-[10px] text-text-muted">
+                {tr('unnestRulesHint', '配置展开后的别名与路径')}
+              </span>
+            </div>
           </div>
-          <div className="border-t border-border-muted" />
-          <div className="p-3 grid gap-2.5">
-            <div className="grid gap-1">
-              <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
-                <input
-                  type="checkbox"
-                  checked={!!withIndex}
-                  onChange={(e) =>
-                    updateConfig((cfg) => ({
-                      ...cfg,
-                      withIndex: e.target.checked
-                        ? cfg.withIndex && typeof cfg.withIndex === 'string'
-                          ? cfg.withIndex
-                          : 'index'
-                        : undefined,
-                    }))
-                  }
-                  className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
+          <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
+            <div className="p-3 grid gap-2.5">
+              <label className="grid gap-1">
+                <GlassFormLabel>{tr('unnestAlias', '展开后的别名')}</GlassFormLabel>
+                <GlassFormTextInput
+                  value={alias}
+                  onChange={(v) => updateConfig((cfg) => ({ ...cfg, alias: v || undefined }))}
+                  placeholder={tr('unnestAliasPlaceholder', '如 item')}
                 />
-                {tr('unnestIndexCol', '索引列')}
               </label>
-              <GlassFormTextInput
-                value={withIndex}
-                disabled={!withIndex}
-                onChange={(v) => updateConfig((cfg) => ({ ...cfg, withIndex: v || undefined }))}
-                placeholder={tr('unnestIndexColPlaceholder', '如 item_index')}
-                className="disabled:cursor-not-allowed disabled:opacity-40"
-              />
-            </div>
 
-            <div className="grid gap-1">
-              <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
-                <input
-                  type="checkbox"
-                  checked={recursive}
-                  onChange={(e) =>
-                    updateConfig((cfg) => ({
-                      ...cfg,
-                      recursive: e.target.checked ? true : undefined,
-                      maxDepth: e.target.checked ? cfg.maxDepth : undefined,
-                    }))
-                  }
-                  className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
-                />
-                {tr('unnestRecursive', '递归展开')}
-              </label>
-              <GlassFormTextInput
-                value={depth === -1 ? '' : String(depth)}
-                disabled={!recursive}
-                inputMode="numeric"
-                onChange={(v) => {
-                  const n = v === '' ? -1 : Number(v);
-                  if (Number.isNaN(n)) return;
-                  if (n <= 0) {
-                    // empty / 0 / negative → unlimited
-                    updateConfig((cfg) => ({ ...cfg, recursive: true, maxDepth: undefined }));
-                  } else {
-                    updateConfig((cfg) => ({ ...cfg, recursive: true, maxDepth: n }));
-                  }
-                }}
-                placeholder={tr('unnestMaxDepthPlaceholder', '不限制深度')}
-                className="disabled:cursor-not-allowed disabled:opacity-40"
-              />
+              {sourceKind === 'json' && (
+                <label className="grid gap-1">
+                  <GlassFormLabel>{tr('unnestJsonPath', 'JSON 路径')}</GlassFormLabel>
+                  <GlassFormTextInput
+                    value={path}
+                    onChange={(v) => updateConfig((cfg) => ({ ...cfg, path: v || undefined }))}
+                    placeholder={tr('unnestJsonPathPlaceholder', '如 $.items')}
+                  />
+                </label>
+              )}
             </div>
+          </div>
+        </div>
 
-            {sourceKind === 'json' && (
-              <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
-                <input
-                  type="checkbox"
-                  checked={keepParentNames}
-                  onChange={(e) =>
-                    updateConfig((cfg) => ({
-                      ...cfg,
-                      keepParentNames: e.target.checked || undefined,
-                    }))
-                  }
-                  className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
+        {/* Arrow */}
+        <div className="flex items-start pt-[12px] px-2">
+          <span className="text-text-muted font-bold text-base leading-none">❯</span>
+        </div>
+
+        {/* ═══ 步骤3: 输出配置 ═══ */}
+        <div className="flex-1 flex flex-col gap-2">
+          <div className="flex items-end gap-3 px-0.5">
+            <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
+              3
+            </span>
+            <div className="grid">
+              <span className="text-[13px] font-semibold text-text-primary">
+                {tr('unnestOutputHeader', '输出配置')}
+              </span>
+              <span className="text-[10px] text-text-muted">
+                {tr('unnestOutputHint', '配置索引列与递归选项')}
+              </span>
+            </div>
+          </div>
+          <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
+            <div className="p-3 grid gap-2.5">
+              <div className="grid gap-1">
+                <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
+                  <input
+                    type="checkbox"
+                    checked={!!withIndex}
+                    onChange={(e) =>
+                      updateConfig((cfg) => ({
+                        ...cfg,
+                        withIndex: e.target.checked
+                          ? cfg.withIndex && typeof cfg.withIndex === 'string'
+                            ? cfg.withIndex
+                            : 'index'
+                          : undefined,
+                      }))
+                    }
+                    className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
+                  />
+                  {tr('unnestIndexCol', '索引列')}
+                </label>
+                <GlassFormTextInput
+                  value={withIndex}
+                  disabled={!withIndex}
+                  onChange={(v) => updateConfig((cfg) => ({ ...cfg, withIndex: v || undefined }))}
+                  placeholder={tr('unnestIndexColPlaceholder', '如 item_index')}
+                  className="disabled:cursor-not-allowed disabled:opacity-40"
                 />
-                {tr('unnestKeepParent', '保留父字段名')}
-              </label>
-            )}
+              </div>
+
+              <div className="grid gap-1">
+                <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
+                  <input
+                    type="checkbox"
+                    checked={recursive}
+                    onChange={(e) =>
+                      updateConfig((cfg) => ({
+                        ...cfg,
+                        recursive: e.target.checked ? true : undefined,
+                        maxDepth: e.target.checked ? cfg.maxDepth : undefined,
+                      }))
+                    }
+                    className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
+                  />
+                  {tr('unnestRecursive', '递归展开')}
+                </label>
+                <GlassFormTextInput
+                  value={depth === -1 ? '' : String(depth)}
+                  disabled={!recursive}
+                  inputMode="numeric"
+                  onChange={(v) => {
+                    const n = v === '' ? -1 : Number(v);
+                    if (Number.isNaN(n)) return;
+                    if (n <= 0) {
+                      updateConfig((cfg) => ({ ...cfg, recursive: true, maxDepth: undefined }));
+                    } else {
+                      updateConfig((cfg) => ({ ...cfg, recursive: true, maxDepth: n }));
+                    }
+                  }}
+                  placeholder={tr('unnestMaxDepthPlaceholder', '不限制深度')}
+                  className="disabled:cursor-not-allowed disabled:opacity-40"
+                />
+              </div>
+
+              {sourceKind === 'json' && (
+                <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
+                  <input
+                    type="checkbox"
+                    checked={keepParentNames}
+                    onChange={(e) =>
+                      updateConfig((cfg) => ({
+                        ...cfg,
+                        keepParentNames: e.target.checked || undefined,
+                      }))
+                    }
+                    className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
+                  />
+                  {tr('unnestKeepParent', '保留父字段名')}
+                </label>
+              )}
+            </div>
           </div>
         </div>
       </div>

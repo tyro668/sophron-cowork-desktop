@@ -146,7 +146,7 @@ export default function FormSetOp({
     <div className="grid content-start gap-2.5">
       <div className="flex items-stretch gap-0">
         {/* ═══ 步骤1: 数据源 ═══ */}
-        <div className="flex-1 flex flex-col gap-1">
+        <div className="flex-1 flex flex-col gap-2">
           <div className="flex items-end gap-3 px-0.5">
             <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
               1
@@ -188,7 +188,7 @@ export default function FormSetOp({
         </div>
 
         {/* ═══ 步骤2: 连接方式 ═══ */}
-        <div className="flex-1 flex flex-col gap-1">
+        <div className="flex-1 flex flex-col gap-2">
           <div className="flex items-end gap-3 px-0.5">
             <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
               2
@@ -247,7 +247,7 @@ export default function FormSetOp({
         </div>
 
         {/* ═══ 步骤3: 配置选择 ═══ */}
-        <div className="flex-1 flex flex-col gap-1">
+        <div className="flex-1 flex flex-col gap-2">
           <div className="flex items-end gap-3 px-0.5">
             <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
               3
