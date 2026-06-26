@@ -25,6 +25,7 @@ interface GlassOperatorSelectProps {
   onChange: (value: string) => void;
   disabled?: boolean;
   className?: string;
+  placeholder?: string;
 }
 
 function useClickOutside(ref: React.RefObject<HTMLElement | null>, onClose: () => void) {
@@ -43,6 +44,7 @@ export function GlassOperatorSelect({
   disabled,
   onChange,
   className,
+  placeholder,
 }: GlassOperatorSelectProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -66,7 +68,15 @@ export function GlassOperatorSelect({
         onClick={() => setOpen(!open)}
         className={`flex w-full items-center rounded border border-border-muted bg-background/42 text-text-secondary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-40 ${className ?? ''}`}
       >
-        <span className="flex-1 px-2 text-center whitespace-nowrap">{selectedLabel}</span>
+        <span className="flex-1 px-2 text-center whitespace-nowrap truncate">
+          {value ? (
+            selectedLabel
+          ) : placeholder ? (
+            <span className="text-text-muted">{placeholder}</span>
+          ) : (
+            selectedLabel
+          )}
+        </span>
         <ChevronDown
           className={`mr-1 h-3.5 w-3.5 flex-shrink-0 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`}
         />
