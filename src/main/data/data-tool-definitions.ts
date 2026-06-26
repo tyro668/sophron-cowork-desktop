@@ -189,7 +189,7 @@ export function createDataCustomTools(
       name: 'data_upload_table_to_cloud',
       label: 'Upload table to cloud',
       description:
-        'Export a cowork input/output table to CSV, upload it to personal analysis cloud/mock storage, and submit an import with CREATE or REPLACE mode.' +
+        'Export a cowork input/output table to CSV, upload it to personal analysis cloud/mock storage, and submit an import with CREATE or REPLACE mode. For workflow outputs, only upload after a mode=persisted run and an output-table preview confirms the final rows.' +
         CLOUD_CONNECTION_RETRY_GUIDANCE,
       parameters: Type.Object({
         ...CloudConnectionProperties,
@@ -214,7 +214,7 @@ export function createDataCustomTools(
         fileName: Type.Optional(
           Type.String({ description: 'CSV file name sent to the upload API.' })
         ),
-        maxRows: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000000 })),
+        maxRows: Type.Optional(Type.Integer({ minimum: 1 })),
         waitForDone: Type.Optional(Type.Boolean()),
       }),
       execute: async (_toolCallId, params) =>
@@ -551,7 +551,7 @@ export function createDataCustomTools(
       name: 'data_run_task',
       label: 'Run data task',
       description:
-        'Run a data task. Use mode=temporary for validation before mode=persisted writes formal outputs. If workflowDsl is provided, inputTableId/outputTableId can bind resources without guessing node IDs.',
+        'Run a data task. mode=temporary only validates a preview and does not update reusable output tables; mode=persisted writes formal outputs. If workflowDsl is provided without saveWorkflow=true, it is only used for this run and is not saved to task nodes.',
       parameters: Type.Object({
         taskId: Type.String({ minLength: 1 }),
         mode: Type.Optional(Type.Union([Type.Literal('temporary'), Type.Literal('persisted')])),

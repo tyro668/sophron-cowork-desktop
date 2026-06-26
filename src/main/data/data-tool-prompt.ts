@@ -26,6 +26,7 @@ function buildRoutingSection(): string {
     'Before referencing a table, output table, or task by name, call the relevant list tool and use returned IDs. If multiple resources match, ask the user to choose.',
     'When data tools return Markdown links for input tables, output tables, or data tasks, preserve those links in your user-facing response so the user can click through to the resource.',
     'Within a fixed workflow, validate with dryRun and run with mode=temporary before persisted writes.',
+    'A temporary run only validates a preview and never updates reusable output tables. Do not upload an output table to cloud after only a temporary run.',
     'Creating input tables from local files/folders, persisted runs, output overwrite, and replacing physical data must go through the normal tool permission flow.',
   ].join('\n');
 }
@@ -74,10 +75,11 @@ function buildToolGuideSection(): string {
     '- Save workflow logic: data_apply_workflow_dsl with dryRun=true first, then dryRun=false after validation.',
     '- data_apply_workflow_dsl expects text prep DSL, not JSON. Never pass JSON nodes/edges/commands as the dsl string.',
     '- When the workflow should read a created input table or write to a reusable output table, pass inputTableId and outputTableId directly to data_apply_workflow_dsl. This binds the first input_source/output node and avoids guessing node IDs.',
+    '- If a field name contains spaces or special characters, reference it as [`field name`], for example [`Year of Transaction Date`]. Use [field_name] only for simple identifier-like fields.',
     '- Edit existing workflow nodes: data_configure_input_operator, data_apply_operator_dsl, data_configure_output_operator.',
     '- Use configure_* tools only after data_get_task_workflow or data_apply_workflow_dsl returns the real node IDs. Do not invent node IDs like input_1, output_1, node_2, or n0.',
-    '- Execute workflows: data_run_task with mode=temporary first; use mode=persisted only when the user wants the formal output updated.',
-    '- Read results: data_get_run_result or data_preview_table on the output table id.',
+    '- Execute workflows: data_run_task with mode=temporary first; then run mode=persisted before any cloud upload or formal output delivery.',
+    '- Read results: data_get_run_result for the latest run, and data_preview_table on the output table id after mode=persisted to confirm the reusable output table was updated.',
     'Workflow DSL notes:',
     '- Use input source dataset "<inputTableId>" as alias when the workflow reads a created input table.',
     '- For a new task, prefer binding outputTableId on data_apply_workflow_dsl instead of calling data_configure_output_operator.',
@@ -95,8 +97,8 @@ function buildWorkflowRecipesSection(): string {
     '0. From personal analysis cloud/mock: list cloud spaces/projects/tables, call data_import_cloud_table, then use the returned inputTable id in the normal workflow.',
     '1. From a user-authorized file/folder: call data_create_input_table_with_processing_strategy, using strategy=customize when the source needs LLM-generated standardization code and strategy=auto otherwise. Inspect the preview, create an output table if needed, create a task with sourceInputTableId/outputTableId, apply text workflow DSL with inputTableId/outputTableId and dryRun=true, then save and temporary run.',
     '2. From existing tables: list matching input/output tables, preview schemas, create or select a task with sourceInputTableId/outputTableId, apply text DSL using returned IDs, then temporary run.',
-    '3. To publish formal output: configure the output operator with outputTableId, run mode=temporary for validation, then run mode=persisted only after the user confirms.',
-    '4. To send a finished table back to personal analysis cloud/mock, preview or run the output first, then call data_upload_table_to_cloud with writeMode=CREATE for a new cloud table or REPLACE with tableId for an existing cloud table.',
+    '3. To publish formal output: configure the output operator with outputTableId, run mode=temporary for validation, then run mode=persisted to update the reusable output table.',
+    '4. To send a finished table back to personal analysis cloud/mock, first run mode=persisted, then preview the output table id and only then call data_upload_table_to_cloud with writeMode=CREATE for a new cloud table or REPLACE with tableId for an existing cloud table.',
     '5. If the user only asks to explore or analyze once, do not create a task automatically. Ask whether to turn it into a reusable data task.',
   ].join('\n');
 }

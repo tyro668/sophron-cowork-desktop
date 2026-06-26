@@ -140,7 +140,7 @@ const OVERVIEW = [
   'Data workflow DSL is a text pipeline language for reusable data tasks. It is not JSON.',
   'Always use data_get_workflow_dsl_reference for DSL help. Do not read source-tree design docs; packaged apps may not include them.',
   'A workflow starts with one or more input source lines, optionally chooses a main source with from <alias>, then pipes operators with lines starting with |.',
-  'Fields use bracket syntax: [field_name]. Qualified fields use [table_alias].[field_name], never [table_alias.field_name].',
+  'Fields use bracket syntax: [field_name]. For names with spaces or special characters, use backtick field syntax: [`Year of Transaction Date`]. Qualified fields use [table_alias].[field_name] or [table_alias].[`field name`], never [table_alias.field_name].',
   'Cast target types are text, date, datetime, integer, float, decimal, and boolean.',
   'For created input/output tables, prefer passing inputTableId and outputTableId to data_apply_workflow_dsl instead of embedding or guessing node ids.',
 ].join('\n');
@@ -150,6 +150,7 @@ const WORKFLOW = [
   'input source dataset "<inputTableId>" as src',
   '  | select [col1], [col2]',
   '  | filter [amount] > 0',
+  '  | filter [`field with spaces`] = "value"',
   '  | output table "Result table" mode replace',
   '',
   'Input source forms:',
