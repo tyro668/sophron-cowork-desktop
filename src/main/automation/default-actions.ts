@@ -2,6 +2,10 @@ import type { DataTaskStore } from '../data/data-task-store';
 import type { SessionManager } from '../session/session-manager';
 import type { AgentRuntimeConfig } from '../../renderer/types';
 import { buildScheduledTaskFallbackTitle } from '../../shared/schedule/task-title';
+import {
+  getPermissionRulesForPolicy,
+  normalizePermissionPolicy,
+} from '../../shared/permission-policies';
 import { AutomationActionRegistry, objectSchema } from './automation-action-registry';
 
 interface DefaultAutomationActionOptions {
@@ -35,6 +39,7 @@ export function createDefaultAutomationActionRegistry(
       completionMode: 'wait',
       timeoutMs: 30 * 60 * 1000,
       collectArtifacts: true,
+      permissionPolicy: 'auto_review',
     },
     configSchema: objectSchema(
       {
@@ -56,6 +61,12 @@ export function createDefaultAutomationActionRegistry(
         },
         timeoutMs: { type: 'integer', title: 'Timeout' },
         collectArtifacts: { type: 'boolean', title: 'Collect artifacts', default: true },
+        permissionPolicy: {
+          type: 'string',
+          title: 'Permission policy',
+          enum: ['default', 'auto_review', 'full_access'],
+          default: 'auto_review',
+        },
       },
       ['prompt']
     ),
@@ -83,6 +94,7 @@ export function createDefaultAutomationActionRegistry(
             .map((name) => (typeof name === 'string' ? name.trim() : ''))
             .filter(Boolean)
         : [];
+      const permissionPolicy = normalizePermissionPolicy(config.permissionPolicy);
       const title = buildScheduledTaskFallbackTitle(prompt);
       const session = await options.sessionManager.startSession(
         title,
@@ -92,7 +104,11 @@ export function createDefaultAutomationActionRegistry(
         undefined,
         undefined,
         runtimeConfig,
-        { suppressCompletionNotification: true, selectedSkillNames }
+        {
+          suppressCompletionNotification: true,
+          selectedSkillNames,
+          permissionRules: getPermissionRulesForPolicy(permissionPolicy),
+        }
       );
       options.sendSessionUpdate?.(session);
       context.emitArtifact({
@@ -230,7 +246,7 @@ async function waitForSession(
   const deadline = now() + timeoutMs;
   while (now() < deadline) {
     const session = sessionManager.listSessions().find((row) => row.id === sessionId);
-    if (!session || session.status === 'completed') return;
+    if (!session || session.status === 'completed' || session.status === 'idle') return;
     if (session.status === 'error') {
       throw new Error(`Conversation failed: ${session.title}`);
     }

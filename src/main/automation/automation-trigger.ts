@@ -4,6 +4,7 @@ import type {
   AutomationTriggerDaily,
   AutomationTriggerFileChange,
   AutomationTriggerInterval,
+  AutomationTriggerManual,
   AutomationTriggerOnce,
   AutomationTriggerWeekly,
 } from '../../shared/automation/types';
@@ -11,6 +12,9 @@ import type {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function normalizeAutomationTrigger(trigger: AutomationTrigger): AutomationTrigger {
+  if (trigger.kind === 'manual') {
+    return normalizeManualTrigger(trigger);
+  }
   if (trigger.kind === 'interval') {
     return normalizeIntervalTrigger(trigger);
   }
@@ -33,6 +37,9 @@ export function computeNextAutomationRunAt(
   trigger: AutomationTrigger,
   now: number = Date.now()
 ): number | null {
+  if (trigger.kind === 'manual') {
+    return null;
+  }
   if (trigger.kind === 'once') {
     return trigger.runAt > now ? trigger.runAt : null;
   }
@@ -55,6 +62,13 @@ export function computeNextAutomationRunAt(
     return null;
   }
   return computeNextCronRunAt(trigger, now);
+}
+
+function normalizeManualTrigger(trigger: AutomationTriggerManual): AutomationTriggerManual {
+  return {
+    kind: 'manual',
+    timezone: normalizeTimezone(trigger.timezone),
+  };
 }
 
 function normalizeOnceTrigger(trigger: AutomationTriggerOnce): AutomationTriggerOnce {

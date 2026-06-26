@@ -22,6 +22,7 @@ let rules: PermissionRule[] = [...DEFAULT_PERMISSION_RULES];
 
 /** Session-scoped "always allow" decisions, keyed by sessionId → set of lowercase tool names. */
 const alwaysAllowBySession = new Map<string, Set<string>>();
+const scopedRulesBySession = new Map<string, PermissionRule[]>();
 
 /**
  * Sanitize an untrusted rules payload from IPC. Drops entries with empty
@@ -60,6 +61,22 @@ export function getPermissionRules(): PermissionRule[] {
   return rules.map((r) => ({ ...r }));
 }
 
+export function setSessionPermissionRules(sessionId: string, next: unknown): void {
+  const sanitized = sanitizeRules(next);
+  if (sanitized && sanitized.length > 0) {
+    scopedRulesBySession.set(
+      sessionId,
+      sanitized.map((rule) => ({ ...rule }))
+    );
+  } else {
+    scopedRulesBySession.delete(sessionId);
+  }
+}
+
+export function clearSessionPermissionRules(sessionId: string): void {
+  scopedRulesBySession.delete(sessionId);
+}
+
 /**
  * Decide how a given tool call should be handled.
  *
@@ -86,8 +103,9 @@ export function decidePermission(
   if (session?.has(lowered)) return 'allow';
 
   const inputStr = safeStringify(input);
+  const activeRules = scopedRulesBySession.get(sessionId) ?? rules;
 
-  for (const rule of rules) {
+  for (const rule of activeRules) {
     const tool = rule.tool.toLowerCase();
     if (tool !== '*' && tool !== lowered) continue;
     if (rule.pattern && !matchesPattern(rule.pattern, inputStr)) continue;
@@ -104,6 +122,7 @@ export function rememberAlwaysAllow(sessionId: string, toolName: string): void {
 
 export function forgetSessionPermissions(sessionId: string): void {
   alwaysAllowBySession.delete(sessionId);
+  scopedRulesBySession.delete(sessionId);
 }
 
 function safeStringify(v: unknown): string {

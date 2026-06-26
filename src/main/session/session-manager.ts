@@ -19,6 +19,7 @@ import type {
   Message,
   ServerEvent,
   PermissionResult,
+  PermissionRule,
   ContentBlock,
   TextContent,
   TraceStep,
@@ -41,7 +42,11 @@ import { MCPManager } from '../mcp/mcp-manager';
 import { mcpConfigStore } from '../mcp/mcp-config-store';
 import { PluginRuntimeService } from '../skills/plugin-runtime-service';
 import { AgentRuntimeExtensionManager } from '../extensions/agent-runtime-extension-manager';
-import { forgetSessionPermissions } from '../config/permission-rules-store';
+import {
+  clearSessionPermissionRules,
+  forgetSessionPermissions,
+  setSessionPermissionRules,
+} from '../config/permission-rules-store';
 import {
   log,
   logError,
@@ -79,6 +84,7 @@ interface SessionStartOptions {
 
 interface SessionRunOptions {
   selectedSkillNames?: string[];
+  permissionRules?: PermissionRule[];
 }
 
 type RuntimeConfigResolver = (config?: AgentRuntimeConfig | null) => AgentRuntimeConfig | undefined;
@@ -305,6 +311,7 @@ export class SessionManager {
     // Start processing the prompt with content blocks
     this.enqueuePrompt(session, prompt, content, {
       selectedSkillNames: options?.selectedSkillNames,
+      permissionRules: options?.permissionRules,
     });
 
     return session;
@@ -781,14 +788,24 @@ export class SessionManager {
           });
         }
 
-        // Run the agent
-        await this.agentRunner.run(
-          session,
-          enhancedPrompt,
-          messagesForContext,
-          runtimeConfig,
-          options
-        );
+        const hasScopedPermissionRules = Array.isArray(options?.permissionRules);
+        if (hasScopedPermissionRules) {
+          setSessionPermissionRules(session.id, options.permissionRules);
+        }
+        try {
+          // Run the agent
+          await this.agentRunner.run(
+            session,
+            enhancedPrompt,
+            messagesForContext,
+            runtimeConfig,
+            options
+          );
+        } finally {
+          if (hasScopedPermissionRules) {
+            clearSessionPermissionRules(session.id);
+          }
+        }
 
         if (this.extensionManager) {
           const stableMessages = this.getMessages(session.id);
