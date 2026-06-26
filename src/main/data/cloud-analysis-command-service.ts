@@ -16,6 +16,8 @@ import {
   type ListCloudTablesResult,
   type PreviewCloudTableCommand,
   type PreviewCloudTableResult,
+  type SearchCloudTablesCommand,
+  type SearchCloudTablesResult,
   type UploadDataTableToCloudCommand,
   type UploadDataTableToCloudResult,
 } from './data-command-types';
@@ -71,6 +73,24 @@ export class CloudAnalysisCommandService {
     try {
       return await this.createPersonalAnalysisClient(input).listTables(spaceId, projectId, {
         keyword: input.keyword,
+        page: input.page,
+        pageSize: input.pageSize,
+        sortBy: input.sortBy,
+        sortOrder: input.sortOrder,
+      });
+    } catch (error) {
+      throw toCommandError(error, 'RUN_FAILED');
+    }
+  }
+
+  async searchCloudTables(input: SearchCloudTablesCommand): Promise<SearchCloudTablesResult> {
+    const keyword = normalizeRequiredName(input.keyword, 'Cloud table search keyword is required');
+    try {
+      return await this.createPersonalAnalysisClient(input).searchTables({
+        keyword,
+        spaceId: input.spaceId,
+        projectId: input.projectId,
+        matchField: input.matchField,
         page: input.page,
         pageSize: input.pageSize,
         sortBy: input.sortBy,
@@ -272,15 +292,33 @@ function toCommandError(error: unknown, fallbackCode: DataCommandError['code']):
   if (error instanceof DataCommandError) {
     return error;
   }
+  const status = getErrorStatus(error);
+  const apiCode = getErrorApiCode(error);
   const message = error instanceof Error ? error.message : String(error);
+  if (status === 404) {
+    return new DataCommandError('RESOURCE_NOT_FOUND', message, {
+      status,
+      code: apiCode,
+    });
+  }
   if (
     /source|file|folder|path|unsupported|does not exist/i.test(message) &&
     fallbackCode === 'FILE_ACCESS_DENIED'
   ) {
     return new DataCommandError('FILE_ACCESS_DENIED', message);
   }
-  if (/not found|does not exist|not exist/i.test(message)) {
+  if (/\bRESOURCE_NOT_FOUND\b|\bHTTP 404\b/i.test(message)) {
     return new DataCommandError('RESOURCE_NOT_FOUND', message);
   }
   return new DataCommandError(fallbackCode, message || 'Data command failed');
+}
+
+function getErrorStatus(error: unknown): number | undefined {
+  const status = (error as { status?: unknown })?.status;
+  return typeof status === 'number' && Number.isFinite(status) ? status : undefined;
+}
+
+function getErrorApiCode(error: unknown): string | undefined {
+  const code = (error as { code?: unknown })?.code;
+  return typeof code === 'string' && code ? code : undefined;
 }

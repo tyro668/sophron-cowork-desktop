@@ -82,6 +82,8 @@ import type {
   ListCloudTablesResult,
   PreviewCloudTableInput,
   PreviewCloudTableResult,
+  SearchCloudTablesInput,
+  SearchCloudTablesResult,
   UploadDataTableToCloudInput,
   UploadDataTableToCloudResult,
 } from '../renderer/types';
@@ -337,6 +339,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       invokeDataCommand('data.listCloudProjects', payload),
     listCloudTables: (payload: ListCloudTablesInput): Promise<ListCloudTablesResult> =>
       invokeDataCommand('data.listCloudTables', payload),
+    searchCloudTables: (payload: SearchCloudTablesInput): Promise<SearchCloudTablesResult> =>
+      invokeDataCommand('data.searchCloudTables', payload),
     previewCloudTable: (payload: PreviewCloudTableInput): Promise<PreviewCloudTableResult> =>
       invokeDataCommand('data.previewCloudTable', payload),
     importCloudTable: (payload: ImportCloudTableInput): Promise<ImportCloudTableResult> =>
@@ -790,6 +794,7 @@ declare global {
         listCloudSpaces: (payload?: ListCloudSpacesInput) => Promise<ListCloudSpacesResult>;
         listCloudProjects: (payload: ListCloudProjectsInput) => Promise<ListCloudProjectsResult>;
         listCloudTables: (payload: ListCloudTablesInput) => Promise<ListCloudTablesResult>;
+        searchCloudTables: (payload: SearchCloudTablesInput) => Promise<SearchCloudTablesResult>;
         previewCloudTable: (payload: PreviewCloudTableInput) => Promise<PreviewCloudTableResult>;
         importCloudTable: (payload: ImportCloudTableInput) => Promise<ImportCloudTableResult>;
         uploadDataTableToCloud: (

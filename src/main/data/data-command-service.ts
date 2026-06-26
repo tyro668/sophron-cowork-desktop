@@ -62,6 +62,8 @@ import {
   type RunResult,
   type RunTaskCommand,
   type RunTaskResult,
+  type SearchCloudTablesCommand,
+  type SearchCloudTablesResult,
   type SummarizeInputTableSourceCommand,
   type SummarizeInputTableSourceResult,
   type TaskResult,
@@ -185,6 +187,10 @@ export class DataCommandService {
 
   async listCloudTables(input: ListCloudTablesCommand): Promise<ListCloudTablesResult> {
     return this.cloudAnalysis.listCloudTables(input);
+  }
+
+  async searchCloudTables(input: SearchCloudTablesCommand): Promise<SearchCloudTablesResult> {
+    return this.cloudAnalysis.searchCloudTables(input);
   }
 
   async importCloudTable(input: ImportCloudTableCommand): Promise<ImportCloudTableResult> {

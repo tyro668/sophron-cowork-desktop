@@ -51,6 +51,9 @@ export interface PersonalAnalysisTable {
 
 export interface PersonalAnalysisTableSearchParams {
   keyword?: string;
+  spaceId?: string;
+  projectId?: string;
+  matchField?: 'table' | 'field' | 'all';
   page?: number;
   pageSize?: number;
   sortBy?: 'tableName' | 'updatedAt' | 'rowCount';

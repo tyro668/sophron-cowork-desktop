@@ -218,13 +218,19 @@ export interface ListCloudProjectsResult {
 }
 
 export interface ListCloudTablesCommand
-  extends PersonalAnalysisConnectionCommand,
-    PersonalAnalysisTableSearchParams {
+  extends PersonalAnalysisConnectionCommand, PersonalAnalysisTableSearchParams {
   spaceId: string;
   projectId: string;
 }
 
 export type ListCloudTablesResult = PersonalAnalysisTableListResult;
+
+export interface SearchCloudTablesCommand
+  extends PersonalAnalysisConnectionCommand, PersonalAnalysisTableSearchParams {
+  keyword: string;
+}
+
+export type SearchCloudTablesResult = PersonalAnalysisTableListResult;
 
 export interface ImportCloudTableCommand extends PersonalAnalysisConnectionCommand {
   tableId: string;
