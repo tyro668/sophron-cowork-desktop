@@ -33,7 +33,7 @@ function RadioRow({
 }
 
 const INPUT_CLASS =
-  'h-8 w-full rounded-md border border-border-muted bg-background/60 px-2 text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent';
+  'h-6 w-full rounded-md border border-border-muted bg-background/60 px-2 text-center text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent';
 
 export default function FormLimit({ node, fieldCompletions, onNodeChange }: OperatorFormProps) {
   const { t } = useTranslation();
@@ -125,9 +125,9 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
       </div>
 
       <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-3 -mt-[5mm]">
           <label className="grid gap-1.5">
-            <span className="text-[11px] font-medium text-text-secondary">
+            <span className="text-center text-[11px] font-medium text-text-secondary">
               {tr('limitCount', '数量')}
             </span>
             <input
@@ -140,7 +140,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
             />
           </label>
           <label className="grid gap-1.5">
-            <span className="text-[11px] font-medium text-text-secondary">
+            <span className="text-center text-[11px] font-medium text-text-secondary">
               {tr('limitUnit', '单位')}
             </span>
             <GlassOperatorSelect
@@ -158,11 +158,11 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                 updateConfig((cfg) => ({ ...cfg, unit: value }));
                 setErrors(runValidation(limit, offset, value));
               }}
-              className="h-8 min-w-[84px] rounded-md text-[12px] w-full"
+              className="h-6 min-w-[84px] rounded-md text-center text-[12px] text-text-muted w-full"
             />
           </label>
           <label className="grid gap-1.5">
-            <span className="text-[11px] font-medium text-text-secondary">
+            <span className="text-center text-[11px] font-medium text-text-secondary">
               {tr('limitOffset', '偏移量（行数）')}
             </span>
             <input
@@ -183,13 +183,18 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
         ))}
 
         {isTopMode && (
-          <GlassSortKeyEditor
-            keys={orderBy}
-            fieldCompletions={fieldCompletions}
-            onChange={(keys) =>
-              updateConfig((cfg) => ({ ...cfg, orderBy: keys.length > 0 ? keys : undefined }))
-            }
-          />
+          <>
+            <div className="border-t border-border-muted" />
+            <div className="-mt-2">
+              <GlassSortKeyEditor
+                keys={orderBy}
+                fieldCompletions={fieldCompletions}
+                onChange={(keys) =>
+                  updateConfig((cfg) => ({ ...cfg, orderBy: keys.length > 0 ? keys : undefined }))
+                }
+              />
+            </div>
+          </>
         )}
       </div>
     </div>
