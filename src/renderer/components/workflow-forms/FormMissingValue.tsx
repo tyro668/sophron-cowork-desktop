@@ -4,6 +4,7 @@ import { ChevronDown, GripVertical, Plus, X, Trash2 } from 'lucide-react';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
 import type { OperatorFormProps } from './index';
 import { GlassColumnSelector } from './shared/GlassColumnSelector';
+import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import {
   isNumericDataFieldType,
   isTemporalDataFieldType,
@@ -54,34 +55,6 @@ function createDefault(overrides: Partial<MissingRule> = {}): MissingRule {
 }
 
 type TabMode = 'row' | 'column';
-
-function RadioRow({
-  selected,
-  label,
-  onClick,
-}: {
-  selected: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] transition-colors ${
-        selected
-          ? 'bg-accent/10 font-medium text-accent'
-          : 'text-text-secondary hover:bg-surface-hover'
-      }`}
-    >
-      <span
-        className={`h-2 w-2 rounded-full ${selected ? 'bg-accent' : 'bg-border-muted'}`}
-        aria-hidden="true"
-      />
-      {label}
-    </button>
-  );
-}
 
 function SelectField({
   value,
@@ -361,43 +334,32 @@ export default function FormMissingValue({
       {/* Left sidebar — global config */}
       <div className="flex w-[180px] shrink-0 flex-col gap-3.5 border-r border-border-muted bg-surface/40 p-3.5">
         <section className="flex flex-col gap-1.5">
-          <h4 className="text-[11px] font-medium text-text-muted">
-            {tr('missingProcessMode', '处理模式')}
-          </h4>
-          <RadioRow
-            selected={tabMode === 'row'}
-            label={tr('rowProcess', '按行处理')}
-            onClick={() => {
-              if (tabMode !== 'row') setRowMode('any_null');
+          <GlassRadioSelect
+            value={tabMode}
+            options={[
+              { value: 'row', label: tr('rowProcess', '按行处理') },
+              { value: 'column', label: tr('colProcess', '按列处理') },
+            ]}
+            onChange={(v) => {
+              if (v === 'row') setRowMode('any_null');
+              else setColumnMode();
             }}
-          />
-          <RadioRow
-            selected={tabMode === 'column'}
-            label={tr('colProcess', '按列处理')}
-            onClick={() => {
-              if (tabMode !== 'column') setColumnMode();
-            }}
+            label={tr('missingProcessMode', '处理模式')}
           />
         </section>
 
         {tabMode === 'row' && (
           <>
             <div className="h-px bg-border-muted" />
-            <section className="flex flex-col gap-1.5">
-              <h4 className="text-[11px] font-medium text-text-muted">
-                {tr('missingTriggerCondition', '触发条件')}
-              </h4>
-              <RadioRow
-                selected={rowCondition === 'all_null'}
-                label={tr('allNull', '全部为空')}
-                onClick={() => setRowMode('all_null')}
-              />
-              <RadioRow
-                selected={rowCondition === 'any_null'}
-                label={tr('anyNull', '任一为空')}
-                onClick={() => setRowMode('any_null')}
-              />
-            </section>
+            <GlassRadioSelect
+              value={rowCondition}
+              options={[
+                { value: 'all_null', label: tr('allNull', '全部为空') },
+                { value: 'any_null', label: tr('anyNull', '任一为空') },
+              ]}
+              onChange={(v) => setRowMode(v as 'all_null' | 'any_null')}
+              label={tr('missingTriggerCondition', '触发条件')}
+            />
           </>
         )}
       </div>
