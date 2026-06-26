@@ -75,14 +75,24 @@ const isElectron = typeof window !== 'undefined' && window.electronAPI !== undef
 const SYSTEM_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 const AUTOMATION_TABLE_PAGE_SIZE = 10;
 const CLOUD_TARGET_TABLE_PAGE_SIZE = 50;
-const ACTION_MENU_TYPES = ['conversation.run', 'data.task.run'];
+// Top-level "添加动作" menu only exposes two intents: a free-form task (conversation.run)
+// and the unified data-processing action (CLOUD_TABLE_PROCESS_ACTION_TYPE). "复用数据任务"
+// (data.task.run) is no longer a separate entry — it is a mode inside 数据处理.
+const ACTION_MENU_TYPES = ['conversation.run'];
 const CLOUD_TABLE_PROCESS_ACTION_TYPE = 'cloud.table.process';
 const DATA_ACTION_TYPES = ['data.task.run'];
 const DATA_PREVIEW_ACTION_TYPES = ['data.input.preview', 'data.output.preview'];
+const DATA_PROCESS_AI_CONFIG_KEY = '__dataProcessAiConfig';
+const DATA_PROCESS_TASK_CONFIG_KEY = '__dataProcessTaskConfig';
 
 type CloudAutomationWriteMode = 'create' | 'replace';
+// Where an AI-described data-processing action reads from / writes to. For 'local',
+// `tableId`/`tableName` carry the local dataset (source) or output-table (target) id+name,
+// and cloud-only fields stay empty. Defaults to 'cloud' so existing saved configs are unchanged.
+type DataProcessLocation = 'cloud' | 'local';
 
 interface CloudAutomationSourceTable {
+  location?: DataProcessLocation;
   tableId: string;
   tableName: string;
   spaceId?: string;
@@ -106,12 +116,25 @@ interface CloudTableAutomationConfig {
   source: CloudAutomationSourceTable;
   processRequirement: string;
   output: {
+    location?: DataProcessLocation;
     writeMode: CloudAutomationWriteMode;
     targetTableId: string;
     tableName: string;
   };
   accessModeLabel?: string;
   connectionLabel?: string;
+}
+
+function normalizeDataProcessLocation(location: unknown): DataProcessLocation {
+  return location === 'local' ? 'local' : 'cloud';
+}
+
+function getSourceLocation(config: CloudTableAutomationConfig): DataProcessLocation {
+  return normalizeDataProcessLocation(config.source.location);
+}
+
+function getOutputLocation(config: CloudTableAutomationConfig): DataProcessLocation {
+  return normalizeDataProcessLocation(config.output.location);
 }
 
 interface CloudConnectionPayload {
@@ -133,7 +156,10 @@ function getProjectOptionLabel(
 }
 
 type EditableAutomationTrigger = Exclude<AutomationTrigger, { kind: 'cron' }>;
-type ScheduledAutomationTrigger = Exclude<EditableAutomationTrigger, { kind: 'file_change' }>;
+type ScheduledAutomationTrigger = Exclude<
+  EditableAutomationTrigger,
+  { kind: 'file_change' | 'manual' }
+>;
 type TriggerMode = EditableAutomationTrigger['kind'];
 type ListTab = 'automations' | 'runs';
 type Banner = { tone: 'error' | 'success'; text: string };
@@ -355,7 +381,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         tone: 'success',
         text: tr(
           'schedule.cloudTemplateLoaded',
-          '已从云表创建自动处理草稿，请补充处理方式和执行频率'
+          '已从云表创建自动处理草稿，请补充处理方式和执行频率。'
         ),
       });
     },
@@ -421,23 +447,33 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       return;
     }
     const cloudAutomations = getCloudAutomationConfigsFromDraft(draft);
-    if (
-      cloudAutomations.some(
-        (cloudAutomation) =>
-          !cloudAutomation.source.tableId.trim() || !cloudAutomation.source.tableName.trim()
-      )
-    ) {
-      setBanner({ tone: 'error', text: tr('schedule.cloudSourceRequired', '请选择输入云表') });
+    const missingSource = cloudAutomations.find(
+      (cloudAutomation) =>
+        !cloudAutomation.source.tableId.trim() || !cloudAutomation.source.tableName.trim()
+    );
+    if (missingSource) {
+      setBanner({
+        tone: 'error',
+        text:
+          getSourceLocation(missingSource) === 'local'
+            ? tr('schedule.localSourceRequired', '请选择输入数据表')
+            : tr('schedule.cloudSourceRequired', '请选择输入云表'),
+      });
       return;
     }
-    if (
-      cloudAutomations.some(
-        (cloudAutomation) =>
-          cloudAutomation.output.writeMode === 'replace' &&
-          !cloudAutomation.output.targetTableId.trim()
-      )
-    ) {
-      setBanner({ tone: 'error', text: tr('schedule.cloudTargetRequired', '请选择目标云表') });
+    const missingTarget = cloudAutomations.find(
+      (cloudAutomation) =>
+        cloudAutomation.output.writeMode === 'replace' &&
+        !cloudAutomation.output.targetTableId.trim()
+    );
+    if (missingTarget) {
+      setBanner({
+        tone: 'error',
+        text:
+          getOutputLocation(missingTarget) === 'local'
+            ? tr('schedule.localTargetRequired', '请选择目标输出表')
+            : tr('schedule.cloudTargetRequired', '请选择目标云表'),
+      });
       return;
     }
     const previousPermissionPolicy = selectedAutomation
@@ -692,8 +728,8 @@ interface AutomationDraft {
 
 function createEmptyDraft(): AutomationDraft {
   const trigger: EditableAutomationTrigger = {
-    kind: 'once',
-    runAt: Date.now() + 5 * 60 * 1000,
+    kind: 'daily',
+    times: ['09:00'],
     timezone: SYSTEM_TIMEZONE,
   };
   const conversationNodeId = crypto.randomUUID();
@@ -704,7 +740,7 @@ function createEmptyDraft(): AutomationDraft {
     projectId: '',
     enabled: true,
     permissionPolicy: 'full_access',
-    triggerMode: 'once',
+    triggerMode: 'daily',
     trigger,
     actionGraph: {
       version: 1,
@@ -755,9 +791,10 @@ function createCloudTableAutomationDraft(
   };
   const config: CloudTableAutomationConfig = {
     kind: 'cloud_table_auto_process',
-    source: template.source,
+    source: { ...template.source, location: 'cloud' },
     processRequirement: '',
     output: {
+      location: 'cloud',
       writeMode: 'create',
       targetTableId: '',
       tableName: `${template.source.tableName || 'cloud_table'}_processed`,
@@ -808,9 +845,12 @@ function createCloudTableAutomationDraft(
 }
 
 function createEmptyCloudTableAutomationConfig(): CloudTableAutomationConfig {
+  // Manually added 数据处理 actions default to local→local: most users without a connected
+  // cloud-analysis space can use it immediately. The cloud deep-link overrides to cloud.
   return {
     kind: 'cloud_table_auto_process',
     source: {
+      location: 'local',
       tableId: '',
       tableName: '',
       columns: [],
@@ -818,21 +858,20 @@ function createEmptyCloudTableAutomationConfig(): CloudTableAutomationConfig {
     },
     processRequirement: '',
     output: {
+      location: 'local',
       writeMode: 'create',
       targetTableId: '',
-      tableName: 'cloud_table_processed',
+      tableName: 'processed_table',
     },
   };
 }
 
-function createCloudTableProcessNode(
-  tr: (key: string, fallback: string) => string
-): AutomationActionNode {
+function createCloudTableProcessNode(): AutomationActionNode {
   const config = createEmptyCloudTableAutomationConfig();
   return {
     id: crypto.randomUUID(),
     type: 'conversation.run',
-    label: tr('schedule.cloudProcessActionTitle', '处理云端表'),
+    label: '',
     enabled: true,
     config: {
       ...defaultConfigForAction('conversation.run'),
@@ -889,10 +928,13 @@ function parseCloudAutomationConfig(value: unknown): CloudTableAutomationConfig 
     tableName: `${source.tableName || source.tableId}_processed`,
   };
   const writeMode: CloudAutomationWriteMode = output.writeMode === 'replace' ? 'replace' : 'create';
+  const sourceLocation = normalizeDataProcessLocation(source.location);
+  const outputLocation = normalizeDataProcessLocation(output.location);
   return {
     kind: 'cloud_table_auto_process',
     source: {
       ...source,
+      location: sourceLocation,
       tableName:
         typeof source.tableName === 'string' && source.tableName.trim()
           ? source.tableName
@@ -902,11 +944,15 @@ function parseCloudAutomationConfig(value: unknown): CloudTableAutomationConfig 
     processRequirement:
       typeof config.processRequirement === 'string' ? config.processRequirement : '',
     output: {
+      location: outputLocation,
       writeMode,
+      // Only cloud "replace" falls back to the source table id (overwrite the same cloud
+      // table). For local, never default the target to the input — that would overwrite the
+      // source dataset; require an explicit target instead.
       targetTableId:
         typeof output.targetTableId === 'string' && output.targetTableId.trim()
           ? output.targetTableId
-          : writeMode === 'replace'
+          : writeMode === 'replace' && outputLocation === 'cloud'
             ? source.tableId
             : '',
       tableName:
@@ -934,10 +980,9 @@ function getAutomationPermissionPolicy(actionGraph: AutomationActionGraph): Perm
 
 function buildCloudAutomationPrompt(config: CloudTableAutomationConfig): string {
   const source = config.source;
-  const sourceLocation = [
-    source.spaceName || source.spaceId,
-    source.projectName || source.projectId,
-  ]
+  const sourceLocation = getSourceLocation(config);
+  const outputLocation = getOutputLocation(config);
+  const spacePath = [source.spaceName || source.spaceId, source.projectName || source.projectId]
     .filter(Boolean)
     .join(' / ');
   const columns =
@@ -948,34 +993,66 @@ function buildCloudAutomationPrompt(config: CloudTableAutomationConfig): string 
           .filter(Boolean)
           .join(', ')
       : '未知';
-  const outputInstruction =
-    config.output.writeMode === 'replace'
+
+  const isLocalSource = sourceLocation === 'local';
+  const isLocalOutput = outputLocation === 'local';
+
+  const sourceLines = isLocalSource
+    ? [
+        '输入数据表（本地）：',
+        `- 表名：${source.tableName || '（待选择）'}`,
+        `- 输入表 ID：${source.tableId || '（待选择）'}`,
+        typeof source.rowCount === 'number' ? `- 行数：${source.rowCount}` : '',
+        `- 字段：${columns}`,
+      ]
+    : [
+        '输入云表：',
+        `- 表名：${source.tableName}`,
+        `- 表 ID：${source.tableId}`,
+        spacePath ? `- 空间/项目：${spacePath}` : '',
+        typeof source.rowCount === 'number' ? `- 行数：${source.rowCount}` : '',
+        `- 字段：${columns}`,
+      ];
+
+  const outputInstruction = isLocalOutput
+    ? config.output.writeMode === 'replace'
+      ? `将处理后的结果覆盖写入本地输出表 ${config.output.targetTableId || '（待填写）'}。`
+      : `将处理后的结果保存为新的本地输出表，建议表名为 ${config.output.tableName || '处理结果表'}。`
+    : config.output.writeMode === 'replace'
       ? `将处理后的输出表覆盖上传到云表 ${config.output.targetTableId || '（待填写）'}。`
       : `将处理后的输出表上传为新的云表，建议表名为 ${config.output.tableName || '处理结果表'}。`;
   const requirement =
-    config.processRequirement.trim() || '请根据云表字段与业务含义生成合理的数据清洗流程。';
+    config.processRequirement.trim() ||
+    (isLocalSource
+      ? '请根据输入表字段与业务含义生成合理的数据清洗流程。'
+      : '请根据云表字段与业务含义生成合理的数据清洗流程。');
+
+  const sourceStep = isLocalSource
+    ? '- 直接读取上述本地输入表。'
+    : '- 先将上述云表导入为本地输入表。';
+  const executionLines = [
+    '执行要求：',
+    isLocalSource && isLocalOutput
+      ? '- 完成本地数据处理并产出输出表，除非遇到会破坏数据的覆盖风险。'
+      : '- 自动完成数据导入、本地数据处理、结果输出，除非遇到会破坏数据的覆盖风险。',
+    '- 每个关键步骤完成后说明输入表、数据任务、输出表或云表的名称与 ID。',
+    '- 如果字段结构不匹配、权限不足或目标表不可覆盖，请停止并说明具体原因。',
+  ];
 
   return [
-    '请执行一个云分析表自动处理流程。',
+    isLocalSource ? '请执行一个数据表自动处理流程。' : '请执行一个云分析表自动处理流程。',
     '',
-    '输入云表：',
-    `- 表名：${source.tableName}`,
-    `- 表 ID：${source.tableId}`,
-    sourceLocation ? `- 空间/项目：${sourceLocation}` : '',
-    typeof source.rowCount === 'number' ? `- 行数：${source.rowCount}` : '',
-    `- 字段：${columns}`,
+    ...sourceLines,
     '',
     '处理方式：',
+    sourceStep,
     '- 根据处理要求创建或更新一个数据任务，在数据任务中完成筛选、字段选择、去重、缺失值处理、汇总统计等步骤。',
     `- 处理要求：${requirement}`,
     '',
     '输出方式：',
     `- ${outputInstruction}`,
     '',
-    '执行要求：',
-    '- 自动完成云表导入、本地数据处理、输出表上传，除非遇到会破坏数据的覆盖风险。',
-    '- 每个关键步骤完成后说明输入表、数据任务、输出表或云表的名称与 ID。',
-    '- 如果字段结构不匹配、权限不足或目标表不可覆盖，请停止并说明具体原因。',
+    ...executionLines,
   ]
     .filter(Boolean)
     .join('\n');
@@ -1050,6 +1127,12 @@ function normalizeDraftTrigger(
   trigger: EditableAutomationTrigger
 ): EditableAutomationTrigger {
   const timezone = SYSTEM_TIMEZONE;
+  if (mode === 'manual') {
+    return {
+      kind: 'manual',
+      timezone,
+    };
+  }
   if (mode === 'file_change') {
     const source = trigger.kind === 'file_change' ? trigger : null;
     return {
@@ -1493,9 +1576,7 @@ function AutomationTable({
                   {automation.actionGraph.nodes.length}
                 </td>
                 <td className="truncate whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
-                  <span className="truncate">
-                    {automation.nextRunAt ? formatAppDateTime(automation.nextRunAt) : '-'}
-                  </span>
+                  <span className="truncate">{formatAutomationNextRun(automation, tr)}</span>
                 </td>
                 <td className="truncate whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
                   <span className="truncate">{formatAppDateTime(automation.updatedAt)}</span>
@@ -1565,6 +1646,16 @@ function AutomationStatusBadge({
   return (
     <StatusBadge status={automation.status} labelKeyPrefix="schedule.status" tone={tone} tr={tr} />
   );
+}
+
+function formatAutomationNextRun(
+  automation: Automation,
+  tr: (key: string, fallback: string) => string
+): string {
+  if (automation.trigger.kind === 'manual') {
+    return tr('schedule.manualNextRun', '手动执行');
+  }
+  return automation.nextRunAt ? formatAppDateTime(automation.nextRunAt) : '-';
 }
 
 function AutomationRunStatusBadge({
@@ -1937,6 +2028,23 @@ function TaskStatusSection({
   );
 }
 
+function ManualConfigCard({ tr }: { tr: (key: string, fallback: string) => string }) {
+  return (
+    <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
+      <div className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-success">
+        <Play className="h-4 w-4" />
+        {tr('schedule.manualConfig', '手动执行')}
+      </div>
+      <p className="text-[12px] leading-5 text-text-muted">
+        {tr(
+          'schedule.manualConfigDesc',
+          '任务保存后不会自动触发。你可以在自动化列表或详情页点击“运行”立即执行。'
+        )}
+      </p>
+    </div>
+  );
+}
+
 function ExecutionProjectPanel({
   draft,
   projects,
@@ -2176,7 +2284,12 @@ function TriggerConditionPanel({
   tr: (key: string, fallback: string) => string;
 }) {
   const trigger = normalizeDraftTrigger(draft.triggerMode, draft.trigger);
-  const triggerMethod = draft.triggerMode === 'file_change' ? 'file_change' : 'scheduled';
+  const triggerMethod =
+    draft.triggerMode === 'manual'
+      ? 'manual'
+      : draft.triggerMode === 'file_change'
+        ? 'file_change'
+        : 'scheduled';
   const setMode = (mode: TriggerMode) => {
     onDraftChange({
       ...draft,
@@ -2197,10 +2310,17 @@ function TriggerConditionPanel({
           <GlassSelect
             value={triggerMethod}
             options={[
+              { value: 'manual', label: tr('schedule.triggerManual', '手动执行') },
               { value: 'scheduled', label: tr('schedule.triggerScheduled', '定时触发') },
               { value: 'file_change', label: tr('schedule.triggerFileChange', '文件变更时触发') },
             ]}
-            onValueChange={(value) => setMode(value === 'file_change' ? 'file_change' : 'daily')}
+            onValueChange={(value) => {
+              if (value === 'manual') {
+                setMode('manual');
+                return;
+              }
+              setMode(value === 'file_change' ? 'file_change' : 'daily');
+            }}
             triggerClassName="h-9 w-full justify-between"
             contentClassName="w-[var(--radix-select-trigger-width)]"
           />
@@ -2208,7 +2328,9 @@ function TriggerConditionPanel({
       </div>
 
       <div className="mt-6 min-h-0 flex-1">
-        {trigger.kind === 'file_change' ? (
+        {trigger.kind === 'manual' ? (
+          <ManualConfigCard tr={tr} />
+        ) : trigger.kind === 'file_change' ? (
           <FileChangeConfigCard
             draft={draft}
             trigger={trigger}
@@ -2424,6 +2546,8 @@ function FileChangeConfigCard({
 function CloudTableProcessActionEditor({
   node,
   config,
+  inputTables,
+  outputTables,
   appConfig,
   permissionPolicy,
   onPermissionPolicyChange,
@@ -2432,12 +2556,16 @@ function CloudTableProcessActionEditor({
 }: {
   node: AutomationActionNode;
   config: CloudTableAutomationConfig;
+  inputTables: DataDashboard['datasets'];
+  outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
   permissionPolicy: PermissionPolicyId;
   onPermissionPolicyChange: (permissionPolicy: PermissionPolicyId) => void;
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
 }) {
+  const sourceLocation = getSourceLocation(config);
+  const outputLocation = getOutputLocation(config);
   const desktopAuthStatus = useAppStore((state) => state.desktopAuthStatus);
   const cloudConnection = useMemo(
     () => getCloudConnectionPayload(appConfig, desktopAuthStatus),
@@ -2457,7 +2585,7 @@ function CloudTableProcessActionEditor({
   ) => {
     onChange({
       ...node,
-      label: tr('schedule.cloudProcessActionTitle', '处理云端表'),
+      label: '',
       config: {
         ...node.config,
         prompt: buildCloudAutomationPrompt(next),
@@ -2486,20 +2614,67 @@ function CloudTableProcessActionEditor({
       },
     });
   };
+  const updateSourceLocation = (location: DataProcessLocation) => {
+    if (location === sourceLocation) return;
+    updateSource({ location, tableId: '', tableName: '', columns: [], rowCount: null });
+  };
+  const updateLocalSource = (datasetId: string) => {
+    const dataset = inputTables.find((table) => table.id === datasetId);
+    updateSource({
+      location: 'local',
+      tableId: datasetId,
+      tableName: dataset?.name ?? datasetId,
+      columns: [],
+      rowCount: dataset?.rowCount ?? null,
+    });
+  };
+  const updateOutputLocation = (location: DataProcessLocation) => {
+    if (location === outputLocation) return;
+    // Target tables differ between cloud and local, so clear the target on switch.
+    updateConfig({ ...config, output: { ...config.output, location, targetTableId: '' } });
+  };
 
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
-        <div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-success">
-          <Cloud className="h-4 w-4" />
-          {tr('schedule.cloudInputTable', '输入云表')}
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-[13px] font-semibold text-success">
+            {sourceLocation === 'local' ? (
+              <Database className="h-4 w-4" />
+            ) : (
+              <Cloud className="h-4 w-4" />
+            )}
+            {sourceLocation === 'local'
+              ? tr('schedule.localInputSection', '输入数据表')
+              : tr('schedule.cloudInputTable', '输入云表')}
+          </div>
+          <SegmentedControl<DataProcessLocation>
+            value={sourceLocation}
+            options={[
+              { value: 'cloud', label: tr('schedule.dataSourceCloud', '云端表') },
+              { value: 'local', label: tr('schedule.dataSourceLocal', '本地表') },
+            ]}
+            onChange={updateSourceLocation}
+          />
         </div>
-        <CloudSourceTableSelector
-          source={config.source}
-          connection={cloudConnection}
-          onSourceChange={updateSource}
-          tr={tr}
-        />
+        {sourceLocation === 'local' ? (
+          <ConfigRow label={tr('schedule.localInputTable', '数据表')}>
+            <LocalTableSelect
+              value={config.source.tableId}
+              tables={inputTables}
+              placeholder={tr('schedule.inputTablePlaceholder', '选择输入表')}
+              searchPlaceholder={tr('schedule.localInputSearchPlaceholder', '搜索数据表')}
+              onChange={updateLocalSource}
+            />
+          </ConfigRow>
+        ) : (
+          <CloudSourceTableSelector
+            source={config.source}
+            connection={cloudConnection}
+            onSourceChange={updateSource}
+            tr={tr}
+          />
+        )}
       </div>
 
       <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
@@ -2539,16 +2714,42 @@ function CloudTableProcessActionEditor({
             }
             permissionPolicy={permissionPolicy}
             onPermissionPolicyChange={onPermissionPolicyChange}
-            placeholder={tr('schedule.promptPlaceholder', '输入任务对话要执行的内容')}
+            placeholder={
+              sourceLocation === 'local'
+                ? tr(
+                    'schedule.dataProcessRequirementPlaceholder',
+                    '描述你希望对这张表做的处理，例如：筛选 Profit > 0 的数据，保留指定字段，去重后按地区汇总销售额。'
+                  )
+                : tr(
+                    'schedule.cloudProcessRequirementPlaceholder',
+                    '描述你希望对云表做的处理，例如：筛选 Profit > 0 的数据，保留指定字段，去重后按地区汇总销售额。'
+                  )
+            }
             tr={tr}
           />
         </div>
       </div>
 
       <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
-        <div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-success">
-          <UploadCloud className="h-4 w-4" />
-          {tr('schedule.cloudOutputSection', '输出到云分析')}
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-[13px] font-semibold text-success">
+            {outputLocation === 'local' ? (
+              <Save className="h-4 w-4" />
+            ) : (
+              <UploadCloud className="h-4 w-4" />
+            )}
+            {outputLocation === 'local'
+              ? tr('schedule.localOutputSection', '输出到本地')
+              : tr('schedule.cloudOutputSection', '输出到云分析')}
+          </div>
+          <SegmentedControl<DataProcessLocation>
+            value={outputLocation}
+            options={[
+              { value: 'cloud', label: tr('schedule.dataOutputCloud', '云分析') },
+              { value: 'local', label: tr('schedule.dataOutputLocal', '本地') },
+            ]}
+            onChange={updateOutputLocation}
+          />
         </div>
         <div className="space-y-3.5">
           <ConfigRow label={tr('schedule.cloudWriteMode', '写入方式')}>
@@ -2566,7 +2767,8 @@ function CloudTableProcessActionEditor({
                     writeMode: value as CloudAutomationWriteMode,
                     targetTableId:
                       value === 'replace'
-                        ? config.output.targetTableId || config.source.tableId
+                        ? config.output.targetTableId ||
+                          (outputLocation === 'cloud' ? config.source.tableId : '')
                         : config.output.targetTableId,
                   },
                 })
@@ -2576,19 +2778,36 @@ function CloudTableProcessActionEditor({
             />
           </ConfigRow>
           {config.output.writeMode === 'replace' ? (
-            <ConfigRow label={tr('schedule.cloudTargetTable', '目标表')}>
-              <CloudReplaceTargetSelector
-                config={config}
-                connection={cloudConnection}
-                onTargetChange={(tableId) =>
-                  updateConfig({
-                    ...config,
-                    output: { ...config.output, targetTableId: tableId },
-                  })
-                }
-                tr={tr}
-              />
-            </ConfigRow>
+            outputLocation === 'local' ? (
+              <ConfigRow label={tr('schedule.localTargetOutputTable', '目标输出表')}>
+                <LocalTableSelect
+                  value={config.output.targetTableId}
+                  tables={outputTables}
+                  placeholder={tr('schedule.outputTablePlaceholder', '选择输出表')}
+                  searchPlaceholder={tr('schedule.localOutputSearchPlaceholder', '搜索输出表')}
+                  onChange={(tableId) =>
+                    updateConfig({
+                      ...config,
+                      output: { ...config.output, targetTableId: tableId },
+                    })
+                  }
+                />
+              </ConfigRow>
+            ) : (
+              <ConfigRow label={tr('schedule.cloudTargetTable', '目标表')}>
+                <CloudReplaceTargetSelector
+                  config={config}
+                  connection={cloudConnection}
+                  onTargetChange={(tableId) =>
+                    updateConfig({
+                      ...config,
+                      output: { ...config.output, targetTableId: tableId },
+                    })
+                  }
+                  tr={tr}
+                />
+              </ConfigRow>
+            )
           ) : (
             <ConfigRow label={tr('schedule.cloudOutputTableName', '结果表名')}>
               <input
@@ -3205,7 +3424,7 @@ function ActionChainSection({
   ];
   const addNode = (type: string) => {
     if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE) {
-      updateNodes([...nodes, createCloudTableProcessNode(tr)]);
+      updateNodes([...nodes, createCloudTableProcessNode()]);
       return;
     }
     updateNodes([
@@ -3327,6 +3546,160 @@ function ActionStepCard({
   );
 }
 
+function SegmentedControl<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: Array<{ value: T; label: string }>;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="inline-flex h-9 items-center gap-0.5 rounded-lg border border-border-muted bg-bg-secondary/30 p-0.5">
+      {options.map((option) => {
+        const active = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            className={`h-8 rounded-md px-3 text-[12px] font-medium transition-colors ${
+              active ? 'bg-success/15 text-success' : 'text-text-muted hover:text-text-secondary'
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+type DataProcessMode = 'ai' | 'task';
+
+// Unified "数据处理" action editor. A single "处理方式" switch toggles between describing
+// the transformation with AI (a cloud-table conversation node) and reusing a saved data
+// task (a data.task.run node). Switching modes rewrites the underlying node type in place.
+function getStashedDataProcessConfig(
+  config: Record<string, unknown>,
+  key: typeof DATA_PROCESS_AI_CONFIG_KEY | typeof DATA_PROCESS_TASK_CONFIG_KEY
+): Record<string, unknown> | null {
+  const value = config[key];
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function DataProcessActionEditor({
+  node,
+  dataTasks,
+  inputTables,
+  outputTables,
+  appConfig,
+  permissionPolicy,
+  onPermissionPolicyChange,
+  onChange,
+  tr,
+}: {
+  node: AutomationActionNode;
+  dataTasks: DataCleaningTask[];
+  inputTables: DataDashboard['datasets'];
+  outputTables: DataDashboard['outputTables'];
+  appConfig: AppConfig | null;
+  permissionPolicy: PermissionPolicyId;
+  onPermissionPolicyChange: (permissionPolicy: PermissionPolicyId) => void;
+  onChange: (node: AutomationActionNode) => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  const cloudAutomation = parseCloudAutomationConfig(node.config.cloudAutomation);
+  const mode: DataProcessMode = node.type === 'data.task.run' ? 'task' : 'ai';
+  const setConfig = (config: Record<string, unknown>) => onChange({ ...node, config });
+  const switchMode = (next: DataProcessMode) => {
+    if (next === mode) return;
+    if (next === 'task') {
+      const stashedTaskConfig =
+        getStashedDataProcessConfig(node.config, DATA_PROCESS_TASK_CONFIG_KEY) ??
+        defaultConfigForAction('data.task.run');
+      onChange({
+        ...node,
+        type: 'data.task.run',
+        label: '',
+        config: {
+          ...stashedTaskConfig,
+          [DATA_PROCESS_AI_CONFIG_KEY]: node.config,
+        },
+      });
+      return;
+    }
+    const cloudNode = createCloudTableProcessNode();
+    const stashedAiConfig =
+      getStashedDataProcessConfig(node.config, DATA_PROCESS_AI_CONFIG_KEY) ?? cloudNode.config;
+    onChange({
+      ...node,
+      type: 'conversation.run',
+      label: '',
+      config: {
+        ...stashedAiConfig,
+        [DATA_PROCESS_TASK_CONFIG_KEY]: node.config,
+      },
+    });
+  };
+  return (
+    <div className="space-y-4">
+      <ConfigRow label={tr('schedule.dataProcessModeLabel', '处理方式')}>
+        <SegmentedControl<DataProcessMode>
+          value={mode}
+          options={[
+            { value: 'ai', label: tr('schedule.dataProcessModeAi', 'AI 描述') },
+            { value: 'task', label: tr('schedule.dataProcessModeTask', '复用数据任务') },
+          ]}
+          onChange={switchMode}
+        />
+      </ConfigRow>
+      {mode === 'ai' && cloudAutomation && (
+        <CloudTableProcessActionEditor
+          node={node}
+          config={cloudAutomation}
+          inputTables={inputTables}
+          outputTables={outputTables}
+          appConfig={appConfig}
+          permissionPolicy={permissionPolicy}
+          onPermissionPolicyChange={onPermissionPolicyChange}
+          onChange={onChange}
+          tr={tr}
+        />
+      )}
+      {mode === 'task' && (
+        <>
+          <ConfigRow label={tr('schedule.dataTaskLabel', '数据任务')}>
+            <LocalTableSelect
+              value={String(node.config.taskId ?? '')}
+              tables={dataTasks}
+              placeholder={tr('schedule.dataTaskPlaceholder', '选择数据任务')}
+              searchPlaceholder={tr('schedule.dataTaskSearchPlaceholder', '搜索数据任务')}
+              onChange={(value) =>
+                setConfig({ ...node.config, taskId: value, outputMode: 'persisted' })
+              }
+            />
+          </ConfigRow>
+          <ConfigRow label={tr('schedule.executionMode', '执行方式')}>
+            <GlassSelect
+              value={String(node.config.outputMode ?? 'persisted')}
+              options={[
+                { value: 'persisted', label: tr('schedule.executionImmediate', '立即执行') },
+                { value: 'temporary', label: tr('schedule.executionTemporary', '临时执行') },
+              ]}
+              onValueChange={(value) => setConfig({ ...node.config, outputMode: value })}
+              triggerClassName="h-9 w-full justify-between"
+              contentClassName="w-[var(--radix-select-trigger-width)]"
+            />
+          </ConfigRow>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ActionConfigEditor({
   node,
   dataTasks,
@@ -3369,54 +3742,20 @@ function ActionConfigEditor({
       ? node.config.modelConfigSetId
       : appConfig?.activeConfigSetId;
   const cloudAutomation = parseCloudAutomationConfig(node.config.cloudAutomation);
-  const dataTypeOptions = DATA_ACTION_TYPES.map((type) => ({
-    value: type,
-    label: getDataActionTypeTitle(type, tr),
-  }));
-  const changeDataType = (type: string) => {
-    onChange({
-      ...node,
-      type,
-      label: '',
-      config: defaultConfigForAction(type),
-    });
-  };
   return (
     <div className="space-y-4">
-      {isDataActionType(node.type) && (
-        <ConfigRow label={tr('schedule.dataTypeLabel', '数据类型')}>
-          <SelectLine
-            value={node.type}
-            options={dataTypeOptions}
-            placeholder={tr('schedule.dataTypePlaceholder', '选择数据类型')}
-            onChange={changeDataType}
-          />
-        </ConfigRow>
-      )}
-      {node.type === 'data.task.run' && (
-        <>
-          <ConfigRow label={tr('schedule.dataTaskLabel', '任务')}>
-            <SelectLine
-              value={String(node.config.taskId ?? '')}
-              options={dataTasks.map((task) => ({ value: task.id, label: task.name }))}
-              placeholder={tr('schedule.dataTaskPlaceholder', '选择数据任务')}
-              onChange={(value) =>
-                setConfig({ ...node.config, taskId: value, outputMode: 'persisted' })
-              }
-            />
-          </ConfigRow>
-          <ConfigRow label={tr('schedule.executionMode', '执行方式')}>
-            <SelectLine
-              value={String(node.config.outputMode ?? 'persisted')}
-              options={[
-                { value: 'persisted', label: tr('schedule.executionImmediate', '立即执行') },
-                { value: 'temporary', label: tr('schedule.executionTemporary', '临时执行') },
-              ]}
-              placeholder={tr('schedule.executionImmediate', '立即执行')}
-              onChange={(value) => setConfig({ ...node.config, outputMode: value })}
-            />
-          </ConfigRow>
-        </>
+      {isDataProcessNode(node) && (
+        <DataProcessActionEditor
+          node={node}
+          dataTasks={dataTasks}
+          inputTables={inputTables}
+          outputTables={outputTables}
+          appConfig={appConfig}
+          permissionPolicy={permissionPolicy}
+          onPermissionPolicyChange={onPermissionPolicyChange}
+          onChange={onChange}
+          tr={tr}
+        />
       )}
       {node.type === 'data.input.preview' && (
         <ConfigRow label={tr('schedule.inputDataLabel', '输入数据')}>
@@ -3437,17 +3776,6 @@ function ActionConfigEditor({
             onChange={(value) => setConfig({ ...node.config, outputTableId: value, limit: 20 })}
           />
         </ConfigRow>
-      )}
-      {node.type === 'conversation.run' && cloudAutomation && (
-        <CloudTableProcessActionEditor
-          node={node}
-          config={cloudAutomation}
-          appConfig={appConfig}
-          permissionPolicy={permissionPolicy}
-          onPermissionPolicyChange={onPermissionPolicyChange}
-          onChange={onChange}
-          tr={tr}
-        />
       )}
       {node.type === 'conversation.run' && !cloudAutomation && (
         <AutomationPromptPermissionFields
@@ -3511,6 +3839,56 @@ function SelectLine({
   );
 }
 
+// A dropdown paired with a client-side name filter, mirroring the cloud table picker layout.
+// Use for local input/output tables, where the full list can be large.
+function LocalTableSelect({
+  value,
+  tables,
+  placeholder,
+  searchPlaceholder,
+  onChange,
+}: {
+  value: string;
+  tables: Array<{ id: string; name: string }>;
+  placeholder: string;
+  searchPlaceholder: string;
+  onChange: (value: string) => void;
+}) {
+  const [keyword, setKeyword] = useState('');
+  const normalized = keyword.trim().toLowerCase();
+  const filtered = normalized
+    ? tables.filter((table) => table.name.toLowerCase().includes(normalized))
+    : tables;
+  const selected = tables.find((table) => table.id === value);
+  // Keep the selected table in the option list even when filtered out, so its label still shows.
+  const visible =
+    selected && !filtered.some((table) => table.id === value) ? [selected, ...filtered] : filtered;
+  return (
+    <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(11rem,0.5fr)]">
+      <GlassSelect
+        value={value}
+        options={[
+          { value: '', label: placeholder },
+          ...visible.map((table) => ({ value: table.id, label: table.name })),
+        ]}
+        onValueChange={onChange}
+        placeholder={placeholder}
+        triggerClassName="h-9 w-full justify-between"
+        contentClassName="w-[var(--radix-select-trigger-width)]"
+      />
+      <div className="relative">
+        <Search className="pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+        <input
+          value={keyword}
+          onChange={(event) => setKeyword(event.target.value)}
+          placeholder={searchPlaceholder}
+          className="input h-9 w-full pr-3 pl-8 text-xs"
+        />
+      </div>
+    </div>
+  );
+}
+
 function MiniIcon({
   onClick,
   children,
@@ -3536,7 +3914,7 @@ function getActionTitle(
   tr: (key: string, fallback: string) => string
 ): string {
   if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE) {
-    return tr('schedule.cloudProcessActionTitle', '处理云端表');
+    return tr('schedule.dataProcessActionTitle', '数据处理');
   }
   if (type === 'conversation.run') {
     return tr('schedule.actionTypes.conversationRun.title', fallback);
@@ -3550,35 +3928,29 @@ function getActionTitle(
   return fallback;
 }
 
-function getDataActionTypeTitle(
-  type: string,
-  tr: (key: string, fallback: string) => string
-): string {
-  if (type === 'data.task.run') {
-    return tr('schedule.actionTypes.dataTaskRun.title', 'Data task');
-  }
-  if (type === 'data.input.preview') {
-    return tr('schedule.actionTypes.dataInputPreview.title', 'Input table');
-  }
-  if (type === 'data.output.preview') {
-    return tr('schedule.actionTypes.dataOutputPreview.title', 'Output table');
-  }
-  return type;
-}
-
 function getActionIcon(type: string, node?: AutomationActionNode): LucideIcon {
-  if (node && parseCloudAutomationConfig(node.config.cloudAutomation)) return Cloud;
+  if (node && isDataProcessNode(node)) return Database;
   if (type === 'conversation.run') return MessagesSquare;
   if (isDataActionType(type)) return Database;
   return CalendarClock;
+}
+
+// A node belongs to the unified "数据处理" action when it either runs a saved data task
+// (复用数据任务) or is a cloud-table conversation carrying a cloudAutomation config (AI 描述).
+function isDataProcessNode(node: AutomationActionNode): boolean {
+  if (node.type === 'data.task.run') return true;
+  return (
+    node.type === 'conversation.run' &&
+    Boolean(parseCloudAutomationConfig(node.config.cloudAutomation))
+  );
 }
 
 function getNodeLabel(
   node: AutomationActionNode,
   tr: (key: string, fallback: string) => string
 ): string {
-  if (parseCloudAutomationConfig(node.config.cloudAutomation)) {
-    return tr('schedule.cloudProcessActionTitle', '处理云端表');
+  if (isDataProcessNode(node)) {
+    return tr('schedule.dataProcessActionTitle', '数据处理');
   }
   const fallback = getActionTitle(node.type, node.type, tr);
   if (!node.label || node.label === node.type) return fallback;

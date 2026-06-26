@@ -285,6 +285,7 @@ export function CloudAnalysisPanel() {
   const [tableSearchScope, setTableSearchScope] = useState<TableSearchScope>('project');
   const [globalSearchDisabled, setGlobalSearchDisabled] = useState(false);
   const [projectFilterQuery, setProjectFilterQuery] = useState('');
+  const [catalogCollapsed, setCatalogCollapsed] = useState(false);
   const [tableLookupStarted, setTableLookupStarted] = useState(false);
   const [expandedSpaceIds, setExpandedSpaceIds] = useState<string[]>([]);
   const [loadingProjectsBySpace, setLoadingProjectsBySpace] = useState<Record<string, boolean>>({});
@@ -1340,128 +1341,186 @@ export function CloudAnalysisPanel() {
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 gap-0 overflow-hidden px-5 py-4">
-          <aside className="w-[260px] flex-shrink-0 overflow-hidden rounded-l-xl border border-border-subtle bg-background/54">
-            <div className="flex h-10 items-center justify-between border-b border-border-subtle px-3">
-              <span className="text-[12px] font-semibold text-text-secondary">
-                {t('cloudData.spaceProject')}
-              </span>
-              {loadingCatalog && <Loader2 className="h-3.5 w-3.5 animate-spin text-text-muted" />}
-            </div>
-            <div className="border-b border-border-subtle px-2 py-2">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
-                <input
-                  value={projectFilterQuery}
-                  onChange={(event) => setProjectFilterQuery(event.target.value)}
-                  placeholder={t('cloudData.filterProjects')}
-                  className="h-8 w-full rounded-lg border border-border-muted bg-background/72 pl-8 pr-3 text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
-                />
-              </div>
-              {projectFilterQuery.trim() && (
-                <div className="mt-1 px-1 text-[11px] leading-4 text-text-muted">
-                  {t('cloudData.projectFilterLoadedOnly')}
-                </div>
+          <aside
+            className={`flex-shrink-0 overflow-hidden rounded-l-xl border border-border-subtle bg-background/54 transition-[width] duration-200 ${
+              catalogCollapsed ? 'w-[52px]' : 'w-[260px]'
+            }`}
+          >
+            <div
+              className={`flex h-10 items-center border-b border-border-subtle px-3 ${
+                catalogCollapsed ? 'justify-center' : 'justify-between'
+              }`}
+            >
+              {catalogCollapsed ? (
+                <button
+                  type="button"
+                  onClick={() => setCatalogCollapsed(false)}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+                  aria-label={t('cloudData.expandSpaceTree')}
+                  title={t('cloudData.expandSpaceTree')}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              ) : (
+                <>
+                  <span className="text-[12px] font-semibold text-text-secondary">
+                    {t('cloudData.spaceProject')}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {loadingCatalog && (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-text-muted" />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setCatalogCollapsed(true)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+                      aria-label={t('cloudData.collapseSpaceTree')}
+                      title={t('cloudData.collapseSpaceTree')}
+                    >
+                      <ChevronRight className="h-4 w-4 rotate-180" />
+                    </button>
+                  </div>
+                </>
               )}
             </div>
-            <div className="h-[calc(100%-5.5rem)] overflow-y-auto p-2">
-              {spaces.length === 0 && !loadingCatalog ? (
-                <div className="px-2 py-6 text-[13px] text-text-muted">
-                  <div>{t('cloudData.noSpaces')}</div>
+            {catalogCollapsed ? (
+              <div className="flex h-[calc(100%-2.5rem)] flex-col items-center gap-3 px-2 py-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10 text-accent-text">
+                  <Database className="h-4 w-4" />
+                </div>
+                {selectedProjectRecord && (
                   <button
                     type="button"
-                    onClick={() => void loadCatalog({ forceRefresh: true })}
-                    className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-accent-text transition-colors hover:bg-accent/10"
+                    onClick={() => setCatalogCollapsed(false)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-background/72 text-text-secondary ring-1 ring-border-subtle transition-colors hover:bg-surface-hover hover:text-text-primary"
+                    aria-label={selectedProjectRecord.projectName}
+                    title={`${selectedSpace?.spaceName ?? ''} / ${selectedProjectRecord.projectName}`}
                   >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    {t('cloudData.refreshTables')}
+                    <FolderKanban className="h-4 w-4" />
                   </button>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="border-b border-border-subtle px-2 py-2">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+                    <input
+                      value={projectFilterQuery}
+                      onChange={(event) => setProjectFilterQuery(event.target.value)}
+                      placeholder={t('cloudData.filterProjects')}
+                      className="h-8 w-full rounded-lg border border-border-muted bg-background/72 pl-8 pr-3 text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+                    />
+                  </div>
+                  {projectFilterQuery.trim() && (
+                    <div className="mt-1 px-1 text-[11px] leading-4 text-text-muted">
+                      {t('cloudData.projectFilterLoadedOnly')}
+                    </div>
+                  )}
                 </div>
-              ) : filteredSpaces.length === 0 && !loadingCatalog ? (
-                <div className="px-2 py-6 text-[13px] text-text-muted">
-                  {t('cloudData.noProjectMatches')}
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {filteredSpaces.map(({ space, projects }) => {
-                    const expanded = expandedSpaceIds.includes(space.spaceId);
-                    const projectsLoaded = Object.prototype.hasOwnProperty.call(
-                      projectsBySpace,
-                      space.spaceId
-                    );
-                    const projectCount = projectsLoaded ? projects.length : space.projectCount || 0;
-                    const loadingProjects = Boolean(loadingProjectsBySpace[space.spaceId]);
+                <div className="h-[calc(100%-5.5rem)] overflow-y-auto p-2">
+                  {spaces.length === 0 && !loadingCatalog ? (
+                    <div className="px-2 py-6 text-[13px] text-text-muted">
+                      <div>{t('cloudData.noSpaces')}</div>
+                      <button
+                        type="button"
+                        onClick={() => void loadCatalog({ forceRefresh: true })}
+                        className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-accent-text transition-colors hover:bg-accent/10"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        {t('cloudData.refreshTables')}
+                      </button>
+                    </div>
+                  ) : filteredSpaces.length === 0 && !loadingCatalog ? (
+                    <div className="px-2 py-6 text-[13px] text-text-muted">
+                      {t('cloudData.noProjectMatches')}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {filteredSpaces.map(({ space, projects }) => {
+                        const expanded = expandedSpaceIds.includes(space.spaceId);
+                        const projectsLoaded = Object.prototype.hasOwnProperty.call(
+                          projectsBySpace,
+                          space.spaceId
+                        );
+                        const projectCount = projectsLoaded
+                          ? projects.length
+                          : space.projectCount || 0;
+                        const loadingProjects = Boolean(loadingProjectsBySpace[space.spaceId]);
 
-                    return (
-                      <section key={space.spaceId} className="space-y-1">
-                        <button
-                          type="button"
-                          onClick={() => toggleSpace(space.spaceId)}
-                          className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-surface-hover"
-                        >
-                          <ChevronRight
-                            className={`h-3.5 w-3.5 flex-shrink-0 text-text-muted transition-transform ${
-                              expanded ? 'rotate-90' : ''
-                            }`}
-                          />
-                          <Database className="h-3.5 w-3.5 flex-shrink-0 text-accent-text" />
-                          <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-text-primary">
-                            {space.spaceName}
-                          </span>
-                          {loadingProjects ? (
-                            <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin text-text-muted" />
-                          ) : (
-                            <span className="flex-shrink-0 text-[11px] font-medium text-text-muted">
-                              {t('cloudData.projectCount', { count: projectCount })}
-                            </span>
-                          )}
-                        </button>
-                        {expanded && (
-                          <div className="ml-[21px] space-y-0.5 border-l border-border-subtle pl-2">
-                            {!projectsLoaded || loadingProjects ? (
-                              <div className="h-8 px-2 py-2 text-[12px] text-text-muted">
-                                {t('cloudData.loadingProjects')}
+                        return (
+                          <section key={space.spaceId} className="space-y-1">
+                            <button
+                              type="button"
+                              onClick={() => toggleSpace(space.spaceId)}
+                              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-surface-hover"
+                            >
+                              <ChevronRight
+                                className={`h-3.5 w-3.5 flex-shrink-0 text-text-muted transition-transform ${
+                                  expanded ? 'rotate-90' : ''
+                                }`}
+                              />
+                              <Database className="h-3.5 w-3.5 flex-shrink-0 text-accent-text" />
+                              <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-text-primary">
+                                {space.spaceName}
+                              </span>
+                              {loadingProjects ? (
+                                <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin text-text-muted" />
+                              ) : (
+                                <span className="flex-shrink-0 text-[11px] font-medium text-text-muted">
+                                  {t('cloudData.projectCount', { count: projectCount })}
+                                </span>
+                              )}
+                            </button>
+                            {expanded && (
+                              <div className="ml-[21px] space-y-0.5 border-l border-border-subtle pl-2">
+                                {!projectsLoaded || loadingProjects ? (
+                                  <div className="h-8 px-2 py-2 text-[12px] text-text-muted">
+                                    {t('cloudData.loadingProjects')}
+                                  </div>
+                                ) : projects.length === 0 ? (
+                                  <div className="h-8 px-2 py-2 text-[12px] text-text-muted">
+                                    {t('cloudData.noProjects')}
+                                  </div>
+                                ) : (
+                                  projects.map((project) => {
+                                    const active =
+                                      selectedProject?.spaceId === space.spaceId &&
+                                      selectedProject.projectId === project.projectId;
+                                    return (
+                                      <button
+                                        key={project.projectId}
+                                        type="button"
+                                        onClick={() =>
+                                          selectProject({
+                                            spaceId: space.spaceId,
+                                            projectId: project.projectId,
+                                          })
+                                        }
+                                        className={`flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-medium transition-colors ${
+                                          active
+                                            ? 'bg-accent/10 text-accent-text ring-1 ring-inset ring-accent/15'
+                                            : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                                        }`}
+                                      >
+                                        <FolderKanban className="h-3.5 w-3.5 flex-shrink-0" />
+                                        <span className="min-w-0 flex-1 truncate">
+                                          {project.projectName}
+                                        </span>
+                                      </button>
+                                    );
+                                  })
+                                )}
                               </div>
-                            ) : projects.length === 0 ? (
-                              <div className="h-8 px-2 py-2 text-[12px] text-text-muted">
-                                {t('cloudData.noProjects')}
-                              </div>
-                            ) : (
-                              projects.map((project) => {
-                                const active =
-                                  selectedProject?.spaceId === space.spaceId &&
-                                  selectedProject.projectId === project.projectId;
-                                return (
-                                  <button
-                                    key={project.projectId}
-                                    type="button"
-                                    onClick={() =>
-                                      selectProject({
-                                        spaceId: space.spaceId,
-                                        projectId: project.projectId,
-                                      })
-                                    }
-                                    className={`flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-medium transition-colors ${
-                                      active
-                                        ? 'bg-accent/10 text-accent-text ring-1 ring-inset ring-accent/15'
-                                        : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-                                    }`}
-                                  >
-                                    <FolderKanban className="h-3.5 w-3.5 flex-shrink-0" />
-                                    <span className="min-w-0 flex-1 truncate">
-                                      {project.projectName}
-                                    </span>
-                                  </button>
-                                );
-                              })
                             )}
-                          </div>
-                        )}
-                      </section>
-                    );
-                  })}
+                          </section>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </>
+            )}
           </aside>
 
           <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-r-xl border-y border-r border-border-subtle bg-background/48">

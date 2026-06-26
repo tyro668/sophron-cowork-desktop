@@ -12,12 +12,18 @@ export type AutomationTriggerReason =
 export type AutomationDeliveryStatus = 'pending' | 'succeeded' | 'partial' | 'failed' | 'skipped';
 
 export type AutomationTrigger =
+  | AutomationTriggerManual
   | AutomationTriggerOnce
   | AutomationTriggerInterval
   | AutomationTriggerDaily
   | AutomationTriggerWeekly
   | AutomationTriggerCron
   | AutomationTriggerFileChange;
+
+export interface AutomationTriggerManual {
+  kind: 'manual';
+  timezone: string;
+}
 
 export interface AutomationTriggerOnce {
   kind: 'once';
