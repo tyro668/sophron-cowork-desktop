@@ -608,7 +608,7 @@
         "joinConfigHeader": "配置",
         "joinConfigHint": "配置保留字段、基数与冲突规则",
         "joinSourcesHeader": "数据源",
-        "joinSourcesHint": "选择连接类型与数据源",
+        "joinSourcesHint": "配置连接类型与数据源",
         "keepFieldsCount": "已选",
         "keepFieldsCountSuffix": "个字段",
         "keepModeAll": "全部保留",
