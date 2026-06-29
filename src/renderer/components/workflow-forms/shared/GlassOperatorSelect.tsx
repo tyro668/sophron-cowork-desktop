@@ -47,6 +47,7 @@ export function GlassOperatorSelect({
   placeholder,
 }: GlassOperatorSelectProps) {
   const [open, setOpen] = useState(false);
+  const [openUp, setOpenUp] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const selectedLabel = useMemo(() => {
@@ -59,6 +60,14 @@ export function GlassOperatorSelect({
   }, [value, groups]);
 
   useClickOutside(ref, () => setOpen(false));
+
+  useEffect(() => {
+    if (!open || !ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    setOpenUp(spaceBelow < 180 && spaceAbove > spaceBelow);
+  }, [open]);
 
   return (
     <div ref={ref} className="relative">
@@ -83,7 +92,11 @@ export function GlassOperatorSelect({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 min-w-full max-h-60 overflow-y-auto rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl">
+        <div
+          className={`absolute left-0 z-50 min-w-full max-h-60 overflow-y-auto rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl ${
+            openUp ? 'bottom-full mb-1' : 'top-full mt-1'
+          }`}
+        >
           {groups.map((g, gi) => (
             <div key={g.key}>
               {gi > 0 && <div className="mx-3 my-0.5 border-t border-border-muted" />}
