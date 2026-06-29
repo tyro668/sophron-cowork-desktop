@@ -372,6 +372,7 @@ export class DataToolService {
     return toolResult(
       [
         `Ran data task: ${formatTask(result.task)}`,
+        formatRunTaskSafetyNotes(input),
         formatPreview(result.preview),
         formatDiagnostics(result.diagnostics),
       ]
@@ -447,6 +448,21 @@ function formatTask(task: DataCleaningTask): string {
   const rows = task.rowCount === null ? 'n/a' : task.rowCount;
   const columns = task.columnCount === null ? 'n/a' : task.columnCount;
   return `${formatDataResourceLink('task', task.id, task.name)} (${task.id}) status=${task.status} nodes=${task.nodeCount} rows=${rows} columns=${columns}`;
+}
+
+function formatRunTaskSafetyNotes(input: RunTaskCommand): string {
+  const notes: string[] = [];
+  if (input.mode !== 'persisted') {
+    notes.push(
+      'Temporary run only validates a preview; it does not update reusable output tables. Run mode=persisted and preview the output table before uploading it to cloud.'
+    );
+  }
+  if (input.workflowDsl && input.saveWorkflow !== true) {
+    notes.push(
+      'The workflowDsl was used only for this run and was not saved to task nodes. Save the workflow before treating this task as reusable.'
+    );
+  }
+  return notes.length ? `Run notes:\n${notes.map((note) => `- ${note}`).join('\n')}` : '';
 }
 
 function formatDataResourceLink(kind: DataResourceKind, id: string, label: string): string {

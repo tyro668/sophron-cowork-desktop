@@ -242,7 +242,7 @@ function App() {
       name: 'AutomationView',
       resetKey: 'automation',
       mounted: activeMainRouteId === 'automation' || mountedMainRouteIds.has('automation'),
-      element: <AutomationView />,
+      element: <AutomationView isActive={activeMainRouteId === 'automation'} />,
     },
     {
       id: 'chat' as MainPanelRouteId,

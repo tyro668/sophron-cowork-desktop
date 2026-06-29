@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   ArrowRight,
+  CalendarClock,
   ChevronRight,
   CheckCircle2,
   Cloud,
@@ -48,6 +49,14 @@ type CloudConnection = Pick<PersonalAnalysisConfig, 'apiOrigin'> & {
 
 type TableSearchScope = 'global' | 'project';
 
+const CLOUD_TABLE_SOURCE_TYPE_LABELS: Record<string, string> = {
+  csv: 'CSV',
+  xls: 'Excel',
+  xlsx: 'Excel',
+  json: 'JSON',
+  parquet: 'Parquet',
+};
+
 interface NoticeState {
   type: 'success' | 'error' | 'info';
   message: string;
@@ -92,6 +101,24 @@ interface TableQueryInput {
   requireKeyword?: boolean;
   fetchTables: (input: { keyword: string; page: number }) => Promise<TableCacheEntry>;
   onResourceNotFound?: () => void;
+}
+
+function getCloudTableSourceType(table: PersonalAnalysisTable, fallback: string): string {
+  if (typeof table.sourceType === 'string' && table.sourceType.trim()) {
+    return table.sourceType.trim();
+  }
+  const source = [table.sourceObjectKey, table.source].find(
+    (value): value is string => typeof value === 'string' && value.trim().length > 0
+  );
+  if (!source) return fallback;
+  const normalizedSource = source.trim().toLowerCase();
+  const extension = normalizedSource.match(/\.([a-z0-9]+)(?:[?#].*)?$/)?.[1];
+  if (extension && CLOUD_TABLE_SOURCE_TYPE_LABELS[extension]) {
+    return CLOUD_TABLE_SOURCE_TYPE_LABELS[extension];
+  }
+  if (normalizedSource.includes('csv')) return CLOUD_TABLE_SOURCE_TYPE_LABELS.csv;
+  if (normalizedSource.includes('excel')) return CLOUD_TABLE_SOURCE_TYPE_LABELS.xlsx;
+  return fallback;
 }
 
 const EMPTY_TABLE_PAGE_INFO = {
@@ -240,6 +267,9 @@ export function CloudAnalysisPanel() {
   const setDesktopAuthStatus = useAppStore((state) => state.setDesktopAuthStatus);
   const setSettingsTab = useAppStore((state) => state.setSettingsTab);
   const setShowSettings = useAppStore((state) => state.setShowSettings);
+  const navigateToCloudAutomationTemplate = useAppStore(
+    (state) => state.navigateToCloudAutomationTemplate
+  );
   const setAppConfig = useAppStore((state) => state.setAppConfig);
   const navigateToDataElement = useAppStore((state) => state.navigateToDataElement);
   const addCloudTablesToChat = useAppStore((state) => state.addCloudTablesToChat);
@@ -255,6 +285,7 @@ export function CloudAnalysisPanel() {
   const [tableSearchScope, setTableSearchScope] = useState<TableSearchScope>('project');
   const [globalSearchDisabled, setGlobalSearchDisabled] = useState(false);
   const [projectFilterQuery, setProjectFilterQuery] = useState('');
+  const [catalogCollapsed, setCatalogCollapsed] = useState(false);
   const [tableLookupStarted, setTableLookupStarted] = useState(false);
   const [expandedSpaceIds, setExpandedSpaceIds] = useState<string[]>([]);
   const [loadingProjectsBySpace, setLoadingProjectsBySpace] = useState<Record<string, boolean>>({});
@@ -276,6 +307,10 @@ export function CloudAnalysisPanel() {
   const previewRequestSeq = useRef(0);
   const importRequestSeq = useRef(0);
   const selectedProjectRef = useRef<SelectedProject | null>(null);
+  const expandedSpaceIdsRef = useRef<string[]>([]);
+  const searchQueryRef = useRef('');
+  const tableSearchScopeRef = useRef<TableSearchScope>('project');
+  const tableLookupStartedRef = useRef(false);
   const tablesRef = useRef<PersonalAnalysisTable[]>([]);
   const tableCacheRef = useRef<Map<string, TableCacheEntry>>(new Map());
 
@@ -336,6 +371,22 @@ export function CloudAnalysisPanel() {
   useEffect(() => {
     selectedProjectRef.current = selectedProject;
   }, [selectedProject]);
+
+  useEffect(() => {
+    expandedSpaceIdsRef.current = expandedSpaceIds;
+  }, [expandedSpaceIds]);
+
+  useEffect(() => {
+    searchQueryRef.current = searchQuery;
+  }, [searchQuery]);
+
+  useEffect(() => {
+    tableSearchScopeRef.current = tableSearchScope;
+  }, [tableSearchScope]);
+
+  useEffect(() => {
+    tableLookupStartedRef.current = tableLookupStarted;
+  }, [tableLookupStarted]);
 
   useEffect(() => {
     tablesRef.current = tables;
@@ -676,6 +727,16 @@ export function CloudAnalysisPanel() {
     ) => {
       const connection = options.connection ?? connectionPayload;
       if (!window.electronAPI?.data || !connection.apiOrigin) return;
+      const preserveView = Boolean(options.forceRefresh);
+      const viewSnapshot = preserveView
+        ? {
+            expandedSpaceIds: expandedSpaceIdsRef.current,
+            selectedProject: selectedProjectRef.current,
+            searchQuery: searchQueryRef.current,
+            tableSearchScope: tableSearchScopeRef.current,
+            tableLookupStarted: tableLookupStartedRef.current,
+          }
+        : null;
       if (options.forceRefresh) {
         tableCacheRef.current.clear();
         projectRequestSeq.current = {};
@@ -687,11 +748,35 @@ export function CloudAnalysisPanel() {
         const spaceResult = await window.electronAPI.data.listCloudSpaces(connection);
         const nextSpaces = spaceResult.spaces;
         if (requestId !== catalogRequestSeq.current) return;
+        const nextSpaceIds = new Set(nextSpaces.map((space) => space.spaceId));
+        const preservedSelectedProject =
+          viewSnapshot?.selectedProject && nextSpaceIds.has(viewSnapshot.selectedProject.spaceId)
+            ? viewSnapshot.selectedProject
+            : null;
+        const preservedExpandedSpaceIds = viewSnapshot
+          ? Array.from(
+              new Set([
+                ...viewSnapshot.expandedSpaceIds.filter((spaceId) => nextSpaceIds.has(spaceId)),
+                ...(preservedSelectedProject ? [preservedSelectedProject.spaceId] : []),
+              ])
+            )
+          : [];
         setSpaces(nextSpaces);
-        setProjectsBySpace({});
-        setExpandedSpaceIds([]);
+        setProjectsBySpace((current) => {
+          if (!viewSnapshot) return {};
+          return preservedExpandedSpaceIds.reduce<Record<string, PersonalAnalysisProject[]>>(
+            (next, spaceId) => {
+              if (current[spaceId]) {
+                next[spaceId] = current[spaceId];
+              }
+              return next;
+            },
+            {}
+          );
+        });
+        setExpandedSpaceIds(preservedExpandedSpaceIds);
         setLoadingProjectsBySpace({});
-        setSelectedProject(null);
+        setSelectedProject(preservedSelectedProject);
 
         const projectCount = nextSpaces.reduce(
           (count, space) => count + (space.projectCount || 0),
@@ -706,8 +791,57 @@ export function CloudAnalysisPanel() {
             }),
           });
         }
-        resetTableResults({ cancelRequests: true });
-        setTableLookupStarted(false);
+        if (viewSnapshot) {
+          for (const spaceId of preservedExpandedSpaceIds) {
+            const projectRequestId = (projectRequestSeq.current[spaceId] ?? 0) + 1;
+            projectRequestSeq.current = {
+              ...projectRequestSeq.current,
+              [spaceId]: projectRequestId,
+            };
+            setLoadingProjectsBySpace((current) => ({ ...current, [spaceId]: true }));
+            void window.electronAPI.data
+              .listCloudProjects({
+                ...connection,
+                spaceId,
+              })
+              .then((result) => {
+                if (projectRequestSeq.current[spaceId] !== projectRequestId) return;
+                setProjectsBySpace((current) => ({
+                  ...current,
+                  [spaceId]: result.projects,
+                }));
+              })
+              .catch((error) => {
+                if (projectRequestSeq.current[spaceId] !== projectRequestId) return;
+                setNotice({
+                  type: 'error',
+                  message: getPersonalAnalysisErrorMessage(error, t),
+                });
+              })
+              .finally(() => {
+                if (projectRequestSeq.current[spaceId] === projectRequestId) {
+                  setLoadingProjectsBySpace((current) => ({ ...current, [spaceId]: false }));
+                }
+              });
+          }
+
+          const shouldRefreshTables =
+            viewSnapshot.tableLookupStarted || Boolean(viewSnapshot.searchQuery.trim());
+          if (shouldRefreshTables && viewSnapshot.tableSearchScope === 'global') {
+            void searchGlobalTables(connection, {
+              forceRefresh: true,
+              keyword: viewSnapshot.searchQuery,
+            });
+          } else if (shouldRefreshTables && preservedSelectedProject) {
+            void loadTables(preservedSelectedProject, connection, {
+              forceRefresh: true,
+              keyword: viewSnapshot.searchQuery,
+            });
+          }
+        } else {
+          resetTableResults({ cancelRequests: true });
+          setTableLookupStarted(false);
+        }
       } catch (error) {
         if (requestId !== catalogRequestSeq.current) return;
         setSpaces([]);
@@ -724,37 +858,10 @@ export function CloudAnalysisPanel() {
         }
       }
     },
-    [connectionPayload, resetTableResults, t]
+    [connectionPayload, loadTables, resetTableResults, searchGlobalTables, t]
   );
 
-  useEffect(() => {
-    previewRequestSeq.current += 1;
-    importRequestSeq.current += 1;
-    setPreview(null);
-    setPreviewPage(1);
-    setImportingTableId(null);
-    setSelectedTableIds([]);
-    tableCacheRef.current.clear();
-
-    if (connectionPayload.apiOrigin) {
-      setSpaces([]);
-      setProjectsBySpace({});
-      setExpandedSpaceIds([]);
-      setLoadingProjectsBySpace({});
-      projectRequestSeq.current = {};
-      setSelectedProject(null);
-      setSearchQuery('');
-      setTableSearchScope('project');
-      setGlobalSearchDisabled(false);
-      setProjectFilterQuery('');
-      setTableLookupStarted(false);
-      resetTableResults({ cancelRequests: true });
-      void loadCatalog({ connection: connectionPayload });
-      return;
-    }
-
-    catalogRequestSeq.current += 1;
-    setLoadingCatalog(false);
+  const resetConnectionState = useCallback(() => {
     setSpaces([]);
     setProjectsBySpace({});
     setExpandedSpaceIds([]);
@@ -767,7 +874,27 @@ export function CloudAnalysisPanel() {
     setProjectFilterQuery('');
     setTableLookupStarted(false);
     resetTableResults({ cancelRequests: true });
-  }, [connectionPayload, loadCatalog, resetTableResults]);
+  }, [resetTableResults]);
+
+  useEffect(() => {
+    previewRequestSeq.current += 1;
+    importRequestSeq.current += 1;
+    setPreview(null);
+    setPreviewPage(1);
+    setImportingTableId(null);
+    setSelectedTableIds([]);
+    tableCacheRef.current.clear();
+
+    if (connectionPayload.apiOrigin) {
+      resetConnectionState();
+      void loadCatalog({ connection: connectionPayload });
+      return;
+    }
+
+    catalogRequestSeq.current += 1;
+    setLoadingCatalog(false);
+    resetConnectionState();
+  }, [connectionPayload, loadCatalog, resetConnectionState]);
 
   const selectProject = useCallback(
     (target: SelectedProject) => {
@@ -905,6 +1032,39 @@ export function CloudAnalysisPanel() {
       }
     },
     [connectionPayload, selectedProject, t]
+  );
+
+  const startCloudTableAutomation = useCallback(
+    (table: PersonalAnalysisTable) => {
+      const targetSpaceId = table.spaceId || selectedProject?.spaceId || '';
+      const targetProjectId = table.projectId || selectedProject?.projectId || '';
+      const payload = {
+        createdAt: Date.now(),
+        source: {
+          tableId: table.tableId,
+          tableName: table.tableName,
+          spaceId: targetSpaceId,
+          spaceName: selectedSpace?.spaceName || '',
+          projectId: targetProjectId,
+          projectName: selectedProjectRecord?.projectName || '',
+          datasourceId: table.datasourceId,
+          rowCount: table.rowCount,
+          columns: table.columns ?? [],
+        },
+        accessModeLabel,
+        connectionLabel,
+      };
+      const rawTemplate = JSON.stringify(payload);
+      navigateToCloudAutomationTemplate(rawTemplate);
+    },
+    [
+      accessModeLabel,
+      connectionLabel,
+      navigateToCloudAutomationTemplate,
+      selectedProject,
+      selectedProjectRecord?.projectName,
+      selectedSpace?.spaceName,
+    ]
   );
 
   const toggleTableSelection = useCallback((tableId: string) => {
@@ -1181,128 +1341,186 @@ export function CloudAnalysisPanel() {
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 gap-0 overflow-hidden px-5 py-4">
-          <aside className="w-[260px] flex-shrink-0 overflow-hidden rounded-l-xl border border-border-subtle bg-background/54">
-            <div className="flex h-10 items-center justify-between border-b border-border-subtle px-3">
-              <span className="text-[12px] font-semibold text-text-secondary">
-                {t('cloudData.spaceProject')}
-              </span>
-              {loadingCatalog && <Loader2 className="h-3.5 w-3.5 animate-spin text-text-muted" />}
-            </div>
-            <div className="border-b border-border-subtle px-2 py-2">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
-                <input
-                  value={projectFilterQuery}
-                  onChange={(event) => setProjectFilterQuery(event.target.value)}
-                  placeholder={t('cloudData.filterProjects')}
-                  className="h-8 w-full rounded-lg border border-border-muted bg-background/72 pl-8 pr-3 text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
-                />
-              </div>
-              {projectFilterQuery.trim() && (
-                <div className="mt-1 px-1 text-[11px] leading-4 text-text-muted">
-                  {t('cloudData.projectFilterLoadedOnly')}
-                </div>
+          <aside
+            className={`flex-shrink-0 overflow-hidden rounded-l-xl border border-border-subtle bg-background/54 transition-[width] duration-200 ${
+              catalogCollapsed ? 'w-[52px]' : 'w-[260px]'
+            }`}
+          >
+            <div
+              className={`flex h-10 items-center border-b border-border-subtle px-3 ${
+                catalogCollapsed ? 'justify-center' : 'justify-between'
+              }`}
+            >
+              {catalogCollapsed ? (
+                <button
+                  type="button"
+                  onClick={() => setCatalogCollapsed(false)}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+                  aria-label={t('cloudData.expandSpaceTree')}
+                  title={t('cloudData.expandSpaceTree')}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              ) : (
+                <>
+                  <span className="text-[12px] font-semibold text-text-secondary">
+                    {t('cloudData.spaceProject')}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {loadingCatalog && (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-text-muted" />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setCatalogCollapsed(true)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+                      aria-label={t('cloudData.collapseSpaceTree')}
+                      title={t('cloudData.collapseSpaceTree')}
+                    >
+                      <ChevronRight className="h-4 w-4 rotate-180" />
+                    </button>
+                  </div>
+                </>
               )}
             </div>
-            <div className="h-[calc(100%-5.5rem)] overflow-y-auto p-2">
-              {spaces.length === 0 && !loadingCatalog ? (
-                <div className="px-2 py-6 text-[13px] text-text-muted">
-                  <div>{t('cloudData.noSpaces')}</div>
+            {catalogCollapsed ? (
+              <div className="flex h-[calc(100%-2.5rem)] flex-col items-center gap-3 px-2 py-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10 text-accent-text">
+                  <Database className="h-4 w-4" />
+                </div>
+                {selectedProjectRecord && (
                   <button
                     type="button"
-                    onClick={() => void loadCatalog({ forceRefresh: true })}
-                    className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-accent-text transition-colors hover:bg-accent/10"
+                    onClick={() => setCatalogCollapsed(false)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-background/72 text-text-secondary ring-1 ring-border-subtle transition-colors hover:bg-surface-hover hover:text-text-primary"
+                    aria-label={selectedProjectRecord.projectName}
+                    title={`${selectedSpace?.spaceName ?? ''} / ${selectedProjectRecord.projectName}`}
                   >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    {t('cloudData.refreshTables')}
+                    <FolderKanban className="h-4 w-4" />
                   </button>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="border-b border-border-subtle px-2 py-2">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+                    <input
+                      value={projectFilterQuery}
+                      onChange={(event) => setProjectFilterQuery(event.target.value)}
+                      placeholder={t('cloudData.filterProjects')}
+                      className="h-8 w-full rounded-lg border border-border-muted bg-background/72 pl-8 pr-3 text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+                    />
+                  </div>
+                  {projectFilterQuery.trim() && (
+                    <div className="mt-1 px-1 text-[11px] leading-4 text-text-muted">
+                      {t('cloudData.projectFilterLoadedOnly')}
+                    </div>
+                  )}
                 </div>
-              ) : filteredSpaces.length === 0 && !loadingCatalog ? (
-                <div className="px-2 py-6 text-[13px] text-text-muted">
-                  {t('cloudData.noProjectMatches')}
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {filteredSpaces.map(({ space, projects }) => {
-                    const expanded = expandedSpaceIds.includes(space.spaceId);
-                    const projectsLoaded = Object.prototype.hasOwnProperty.call(
-                      projectsBySpace,
-                      space.spaceId
-                    );
-                    const projectCount = projectsLoaded ? projects.length : space.projectCount || 0;
-                    const loadingProjects = Boolean(loadingProjectsBySpace[space.spaceId]);
+                <div className="h-[calc(100%-5.5rem)] overflow-y-auto p-2">
+                  {spaces.length === 0 && !loadingCatalog ? (
+                    <div className="px-2 py-6 text-[13px] text-text-muted">
+                      <div>{t('cloudData.noSpaces')}</div>
+                      <button
+                        type="button"
+                        onClick={() => void loadCatalog({ forceRefresh: true })}
+                        className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-accent-text transition-colors hover:bg-accent/10"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        {t('cloudData.refreshTables')}
+                      </button>
+                    </div>
+                  ) : filteredSpaces.length === 0 && !loadingCatalog ? (
+                    <div className="px-2 py-6 text-[13px] text-text-muted">
+                      {t('cloudData.noProjectMatches')}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {filteredSpaces.map(({ space, projects }) => {
+                        const expanded = expandedSpaceIds.includes(space.spaceId);
+                        const projectsLoaded = Object.prototype.hasOwnProperty.call(
+                          projectsBySpace,
+                          space.spaceId
+                        );
+                        const projectCount = projectsLoaded
+                          ? projects.length
+                          : space.projectCount || 0;
+                        const loadingProjects = Boolean(loadingProjectsBySpace[space.spaceId]);
 
-                    return (
-                      <section key={space.spaceId} className="space-y-1">
-                        <button
-                          type="button"
-                          onClick={() => toggleSpace(space.spaceId)}
-                          className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-surface-hover"
-                        >
-                          <ChevronRight
-                            className={`h-3.5 w-3.5 flex-shrink-0 text-text-muted transition-transform ${
-                              expanded ? 'rotate-90' : ''
-                            }`}
-                          />
-                          <Database className="h-3.5 w-3.5 flex-shrink-0 text-accent-text" />
-                          <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-text-primary">
-                            {space.spaceName}
-                          </span>
-                          {loadingProjects ? (
-                            <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin text-text-muted" />
-                          ) : (
-                            <span className="flex-shrink-0 text-[11px] font-medium text-text-muted">
-                              {t('cloudData.projectCount', { count: projectCount })}
-                            </span>
-                          )}
-                        </button>
-                        {expanded && (
-                          <div className="ml-[21px] space-y-0.5 border-l border-border-subtle pl-2">
-                            {!projectsLoaded || loadingProjects ? (
-                              <div className="h-8 px-2 py-2 text-[12px] text-text-muted">
-                                {t('cloudData.loadingProjects')}
+                        return (
+                          <section key={space.spaceId} className="space-y-1">
+                            <button
+                              type="button"
+                              onClick={() => toggleSpace(space.spaceId)}
+                              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-surface-hover"
+                            >
+                              <ChevronRight
+                                className={`h-3.5 w-3.5 flex-shrink-0 text-text-muted transition-transform ${
+                                  expanded ? 'rotate-90' : ''
+                                }`}
+                              />
+                              <Database className="h-3.5 w-3.5 flex-shrink-0 text-accent-text" />
+                              <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-text-primary">
+                                {space.spaceName}
+                              </span>
+                              {loadingProjects ? (
+                                <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin text-text-muted" />
+                              ) : (
+                                <span className="flex-shrink-0 text-[11px] font-medium text-text-muted">
+                                  {t('cloudData.projectCount', { count: projectCount })}
+                                </span>
+                              )}
+                            </button>
+                            {expanded && (
+                              <div className="ml-[21px] space-y-0.5 border-l border-border-subtle pl-2">
+                                {!projectsLoaded || loadingProjects ? (
+                                  <div className="h-8 px-2 py-2 text-[12px] text-text-muted">
+                                    {t('cloudData.loadingProjects')}
+                                  </div>
+                                ) : projects.length === 0 ? (
+                                  <div className="h-8 px-2 py-2 text-[12px] text-text-muted">
+                                    {t('cloudData.noProjects')}
+                                  </div>
+                                ) : (
+                                  projects.map((project) => {
+                                    const active =
+                                      selectedProject?.spaceId === space.spaceId &&
+                                      selectedProject.projectId === project.projectId;
+                                    return (
+                                      <button
+                                        key={project.projectId}
+                                        type="button"
+                                        onClick={() =>
+                                          selectProject({
+                                            spaceId: space.spaceId,
+                                            projectId: project.projectId,
+                                          })
+                                        }
+                                        className={`flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-medium transition-colors ${
+                                          active
+                                            ? 'bg-accent/10 text-accent-text ring-1 ring-inset ring-accent/15'
+                                            : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                                        }`}
+                                      >
+                                        <FolderKanban className="h-3.5 w-3.5 flex-shrink-0" />
+                                        <span className="min-w-0 flex-1 truncate">
+                                          {project.projectName}
+                                        </span>
+                                      </button>
+                                    );
+                                  })
+                                )}
                               </div>
-                            ) : projects.length === 0 ? (
-                              <div className="h-8 px-2 py-2 text-[12px] text-text-muted">
-                                {t('cloudData.noProjects')}
-                              </div>
-                            ) : (
-                              projects.map((project) => {
-                                const active =
-                                  selectedProject?.spaceId === space.spaceId &&
-                                  selectedProject.projectId === project.projectId;
-                                return (
-                                  <button
-                                    key={project.projectId}
-                                    type="button"
-                                    onClick={() =>
-                                      selectProject({
-                                        spaceId: space.spaceId,
-                                        projectId: project.projectId,
-                                      })
-                                    }
-                                    className={`flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-medium transition-colors ${
-                                      active
-                                        ? 'bg-accent/10 text-accent-text ring-1 ring-inset ring-accent/15'
-                                        : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-                                    }`}
-                                  >
-                                    <FolderKanban className="h-3.5 w-3.5 flex-shrink-0" />
-                                    <span className="min-w-0 flex-1 truncate">
-                                      {project.projectName}
-                                    </span>
-                                  </button>
-                                );
-                              })
                             )}
-                          </div>
-                        )}
-                      </section>
-                    );
-                  })}
+                          </section>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </>
+            )}
           </aside>
 
           <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-r-xl border-y border-r border-border-subtle bg-background/48">
@@ -1442,25 +1660,26 @@ export function CloudAnalysisPanel() {
                   </div>
                 ) : (
                   <>
-                    <table className="w-full min-w-[560px] table-fixed border-collapse text-left">
+                    <table className="w-full min-w-[860px] table-fixed border-collapse text-left">
                       <thead className="sticky top-0 z-10 bg-[var(--data-grid-header-surface)] text-[12px] font-medium text-text-secondary">
                         <tr className="h-10 border-b border-border-subtle">
                           <th className="w-[6%] px-3" aria-hidden="true" />
-                          <th className="w-[64%] px-3">{t('cloudData.tableName')}</th>
-                          <th className="w-[30%] px-3 text-right">{t('cloudData.actions')}</th>
+                          <th className="w-[44%] px-3">{t('cloudData.tableName')}</th>
+                          <th className="w-[14%] px-3">{t('cloudData.sourceType')}</th>
+                          <th className="w-[36%] px-3 text-right">{t('cloudData.actions')}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border-subtle text-[13px]">
                         {loadingTables ? (
                           <tr>
-                            <td colSpan={3} className="h-28 px-3 text-center text-text-muted">
+                            <td colSpan={4} className="h-28 px-3 text-center text-text-muted">
                               <Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />
                               {t('cloudData.loadingTables')}
                             </td>
                           </tr>
                         ) : tables.length === 0 ? (
                           <tr>
-                            <td colSpan={3} className="h-28 px-3 text-center text-text-muted">
+                            <td colSpan={4} className="h-28 px-3 text-center text-text-muted">
                               <div>{t('cloudData.noTables')}</div>
                               {(tableSearchScope === 'global'
                                 ? Boolean(searchQuery.trim())
@@ -1493,6 +1712,10 @@ export function CloudAnalysisPanel() {
                         ) : (
                           tables.map((table) => {
                             const isSelected = selectedTableIdSet.has(table.tableId);
+                            const sourceType = getCloudTableSourceType(
+                              table,
+                              t('cloudData.unknownSourceType')
+                            );
 
                             return (
                               <tr
@@ -1539,14 +1762,19 @@ export function CloudAnalysisPanel() {
                                   </div>
                                 </td>
                                 <td className="px-3">
-                                  <div className="flex justify-end gap-2">
+                                  <span className="inline-flex h-6 max-w-full items-center rounded-md bg-accent/10 px-2 text-[11px] font-semibold text-accent-text">
+                                    <span className="truncate">{sourceType}</span>
+                                  </span>
+                                </td>
+                                <td className="px-3">
+                                  <div className="flex flex-nowrap justify-end gap-2">
                                     <button
                                       type="button"
                                       onClick={(event) => {
                                         event.stopPropagation();
                                         void previewTable(table, 1);
                                       }}
-                                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/60 px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                                      className="inline-flex h-8 flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border-muted bg-background/60 px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
                                     >
                                       <Eye className="h-3.5 w-3.5" />
                                       {t('cloudData.preview')}
@@ -1558,7 +1786,7 @@ export function CloudAnalysisPanel() {
                                         void importTable(table);
                                       }}
                                       disabled={importingTableId === table.tableId}
-                                      className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                                      className={`inline-flex h-8 flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                                         importingTableId === table.tableId
                                           ? 'border-accent bg-accent text-white shadow-soft'
                                           : 'border-accent/25 bg-accent/10 text-accent-text hover:bg-accent hover:text-white'
@@ -1570,6 +1798,17 @@ export function CloudAnalysisPanel() {
                                         <Database className="h-3.5 w-3.5" />
                                       )}
                                       {t('cloudData.importAsInput')}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        startCloudTableAutomation(table);
+                                      }}
+                                      className="inline-flex h-8 flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-success/30 bg-success/10 px-2.5 text-[12px] font-medium text-success transition-colors hover:bg-success hover:text-white"
+                                    >
+                                      <CalendarClock className="h-3.5 w-3.5" />
+                                      {t('cloudData.autoProcess')}
                                     </button>
                                   </div>
                                 </td>
@@ -1660,6 +1899,17 @@ export function CloudAnalysisPanel() {
                   <Database className="h-3.5 w-3.5" />
                 )}
                 {t('cloudData.importAsInput')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  startCloudTableAutomation(preview.table);
+                  closePreview();
+                }}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-3 text-[12px] font-medium text-success shadow-soft transition-colors hover:bg-success hover:text-white"
+              >
+                <CalendarClock className="h-3.5 w-3.5" />
+                {t('cloudData.autoProcess')}
               </button>
             </>
           }

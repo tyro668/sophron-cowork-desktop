@@ -35,6 +35,11 @@ export interface PendingDataTabNavigation {
   nonce: number;
 }
 
+export interface PendingCloudAutomationTemplateNavigation {
+  rawTemplate: string;
+  nonce: number;
+}
+
 export interface GlobalNotice {
   id: string;
   message: string;
@@ -126,6 +131,7 @@ interface AppState {
   globalNotice: GlobalNotice | null;
   pendingDataNavigation: PendingDataNavigation | null;
   pendingDataTabNavigation: PendingDataTabNavigation | null;
+  pendingCloudAutomationTemplateNavigation: PendingCloudAutomationTemplateNavigation | null;
   welcomeCloudTableChatDrafts: CloudTableChatAttachment[];
   cloudTableChatDraftsBySession: Record<string, CloudTableChatAttachment[]>;
 
@@ -203,8 +209,10 @@ interface AppState {
   navigateToDataElement: (target: DataResourceTarget) => void;
   navigateToDataTab: (tab: DataWorkspaceTab) => void;
   navigateToCloudData: () => void;
+  navigateToCloudAutomationTemplate: (rawTemplate: string) => void;
   clearDataNavigation: (nonce?: number) => void;
   clearDataTabNavigation: (nonce?: number) => void;
+  clearCloudAutomationTemplateNavigation: (nonce?: number) => void;
   addCloudTablesToWelcomeChat: (attachments: CloudTableChatAttachment[]) => void;
   removeCloudTableFromWelcomeChat: (attachmentId: string) => void;
   clearCloudTablesFromWelcomeChat: () => void;
@@ -255,7 +263,8 @@ const defaultSettings: Settings = {
 
 let dataNavigationSeq = 0;
 let dataTabNavigationSeq = 0;
-export const useAppStore = create<AppState>((set) => ({
+let cloudAutomationTemplateNavigationSeq = 0;
+export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
   sessions: [],
   projects: [],
@@ -278,6 +287,7 @@ export const useAppStore = create<AppState>((set) => ({
   globalNotice: null,
   pendingDataNavigation: null,
   pendingDataTabNavigation: null,
+  pendingCloudAutomationTemplateNavigation: null,
   welcomeCloudTableChatDrafts: [],
   cloudTableChatDraftsBySession: {},
   workingDir: null,
@@ -340,19 +350,7 @@ export const useAppStore = create<AppState>((set) => ({
       sessions: applySessionUpdate(state.sessions, sessionId, updates),
     })),
 
-  removeSession: (sessionId) =>
-    set((state) => {
-      const restSessionStates = { ...state.sessionStates };
-      const restCloudTableChatDrafts = { ...state.cloudTableChatDraftsBySession };
-      delete restSessionStates[sessionId];
-      delete restCloudTableChatDrafts[sessionId];
-      return {
-        sessions: state.sessions.filter((s) => s.id !== sessionId),
-        sessionStates: restSessionStates,
-        cloudTableChatDraftsBySession: restCloudTableChatDrafts,
-        activeSessionId: state.activeSessionId === sessionId ? null : state.activeSessionId,
-      };
-    }),
+  removeSession: (sessionId) => get().removeSessions([sessionId]),
 
   removeSessions: (sessionIds) =>
     set((state) => {
@@ -690,6 +688,16 @@ export const useAppStore = create<AppState>((set) => ({
       showSettings: false,
       pendingDataTabNavigation: { tab: 'cloud_analysis', nonce: ++dataTabNavigationSeq },
     }),
+  navigateToCloudAutomationTemplate: (rawTemplate) =>
+    set({
+      mainView: 'automation',
+      activeSessionId: null,
+      showSettings: false,
+      pendingCloudAutomationTemplateNavigation: {
+        rawTemplate,
+        nonce: ++cloudAutomationTemplateNavigationSeq,
+      },
+    }),
   clearDataNavigation: (nonce) =>
     set((state) => {
       if (nonce !== undefined && state.pendingDataNavigation?.nonce !== nonce) {
@@ -703,6 +711,13 @@ export const useAppStore = create<AppState>((set) => ({
         return {};
       }
       return { pendingDataTabNavigation: null };
+    }),
+  clearCloudAutomationTemplateNavigation: (nonce) =>
+    set((state) => {
+      if (nonce !== undefined && state.pendingCloudAutomationTemplateNavigation?.nonce !== nonce) {
+        return {};
+      }
+      return { pendingCloudAutomationTemplateNavigation: null };
     }),
   addCloudTablesToWelcomeChat: (attachments) => {
     if (attachments.length === 0) return;

@@ -1746,9 +1746,9 @@ export class DataTaskStore {
     await this.ensureMetadataReady();
     await this.requireTask(id);
     const updatedAt = this.now();
-    let nodes = normalizeWorkflowNodeInputs(input.nodes);
-    const nodeIds = new Set(nodes.map((node) => node.id));
-    const edges = normalizeWorkflowEdgeInputs(input.edges, nodeIds);
+    const scopedWorkflow = normalizeScopedWorkflowInputs(id, input);
+    let nodes = scopedWorkflow.nodes;
+    const edges = scopedWorkflow.edges;
 
     await this.metaRunSql('BEGIN TRANSACTION');
     try {
@@ -3886,6 +3886,41 @@ function normalizeWorkflowEdgeInputs(
   return normalized;
 }
 
+function normalizeScopedWorkflowInputs(
+  taskId: string,
+  input: DataWorkflowSaveInput
+): { nodes: DataWorkflowNodeInput[]; edges: DataWorkflowEdgeInput[] } {
+  const nodes = normalizeWorkflowNodeInputs(input.nodes);
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const idByOriginalNodeId = new Map(
+    nodes.map((node) => [node.id, scopedWorkflowEntityId(taskId, node.id)])
+  );
+  const scopedNodes = nodes.map((node) => ({
+    ...node,
+    id: idByOriginalNodeId.get(node.id) ?? node.id,
+  }));
+  const edges = normalizeWorkflowEdgeInputs(input.edges, nodeIds);
+  const scopedEdges = edges.flatMap((edge) => {
+    const sourceNodeId = idByOriginalNodeId.get(edge.sourceNodeId);
+    const targetNodeId = idByOriginalNodeId.get(edge.targetNodeId);
+    if (!sourceNodeId || !targetNodeId) return [];
+    return [
+      {
+        ...edge,
+        id: scopedWorkflowEntityId(taskId, edge.id),
+        sourceNodeId,
+        targetNodeId,
+      },
+    ];
+  });
+  return { nodes: scopedNodes, edges: scopedEdges };
+}
+
+function scopedWorkflowEntityId(taskId: string, id: string): string {
+  const prefix = `${taskId.replace(/[^A-Za-z0-9]+/g, '_') || 'task'}__`;
+  return id.startsWith(prefix) ? id : `${prefix}${id}`;
+}
+
 function normalizeRuntimeWorkflowInput(
   taskId: string,
   input: DataWorkflowSaveInput,
@@ -4696,9 +4731,9 @@ function normalizePreviewOffset(offset: number | undefined): number {
 
 function normalizeCsvExportMaxRows(value: number | undefined): number {
   if (!Number.isFinite(value)) {
-    return 100_000;
+    return Number.POSITIVE_INFINITY;
   }
-  return Math.max(1, Math.min(1_000_000, Math.floor(Number(value))));
+  return Math.max(1, Math.floor(Number(value)));
 }
 
 function csvCell(value: unknown): string {

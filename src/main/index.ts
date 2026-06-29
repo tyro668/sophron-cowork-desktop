@@ -277,8 +277,15 @@ function notifyConversationCompleted(session: Session): void {
 function notifyAutomationRunFinished(automation: Automation, run: AutomationRun): void {
   if (automation.trigger.kind === 'file_change') return;
   const succeeded = run.status === 'succeeded';
+  const isManualTrigger = automation.trigger.kind === 'manual';
   sendSystemNotification({
-    title: succeeded ? '定时任务执行完成' : '定时任务执行失败',
+    title: succeeded
+      ? isManualTrigger
+        ? '任务执行完成'
+        : '定时任务执行完成'
+      : isManualTrigger
+        ? '任务执行失败'
+        : '定时任务执行失败',
     body: succeeded ? automation.name : `${automation.name}${run.error ? `：${run.error}` : ''}`,
   });
 }
