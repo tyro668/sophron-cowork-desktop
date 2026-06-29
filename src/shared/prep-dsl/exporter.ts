@@ -219,6 +219,8 @@ function formatJoin(config: Record<string, unknown> | undefined): string {
     const keep = formatJoinKeep(config?.keep);
     if (keep) parts.push(`keep ${keep}`);
     if (typeof config?.cardinality === 'string') parts.push(`expect ${config.cardinality}`);
+    const conflict = formatJoinConflict(config?.conflict);
+    if (conflict) parts.push(conflict);
     return parts.join(' ');
   }
   const parts = [`join ${joinType} ${rightInput}`];
@@ -227,7 +229,23 @@ function formatJoin(config: Record<string, unknown> | undefined): string {
   const keep = formatJoinKeep(config?.keep);
   if (keep) parts.push(`keep ${keep}`);
   if (typeof config?.cardinality === 'string') parts.push(`expect ${config.cardinality}`);
+  const conflict = formatJoinConflict(config?.conflict);
+  if (conflict) parts.push(conflict);
   return parts.join(' ');
+}
+
+function formatJoinConflict(value: unknown): string | null {
+  const obj = objectValue(value);
+  if (!obj) return null;
+  if (obj.strategy === 'right_prefix' && typeof obj.rightPrefix === 'string') {
+    return `right_prefix ${quoteString(obj.rightPrefix)}`;
+  }
+  if (obj.strategy === 'suffix') {
+    const left = typeof obj.leftSuffix === 'string' ? obj.leftSuffix : '_left';
+    const right = typeof obj.rightSuffix === 'string' ? obj.rightSuffix : '_right';
+    return `suffix ${left} ${right}`;
+  }
+  return null;
 }
 
 function formatLimit(config: Record<string, unknown> | undefined): string {
