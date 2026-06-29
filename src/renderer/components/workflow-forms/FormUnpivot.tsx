@@ -1,20 +1,45 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, X } from 'lucide-react';
+import { Trash2, X } from 'lucide-react';
 import type { OperatorFormProps } from './index';
-import { GlassFormSection } from './shared/GlassFormSection';
-import { GlassColumnSelector } from './shared/GlassColumnSelector';
+import { GlassFormLabel } from './shared/GlassFormLabel';
+import { GlassFormTextInput } from './shared/GlassFormTextInput';
+import { GlassFieldSelector } from './shared/GlassFieldSelector';
 
-const INPUT_CLASS =
-  'h-7 w-full rounded-md border border-border-muted bg-background/42 px-2 text-[12px] text-text-primary outline-none focus:border-accent';
-
-export default function FormUnpivot({ node, fieldCompletions, onNodeChange }: OperatorFormProps) {
+export default function FormUnpivot({
+  node,
+  taskId,
+  fieldCompletions,
+  sourceNode,
+  onNodeChange,
+}: OperatorFormProps) {
   const { t } = useTranslation();
   const tr = useCallback(
     (key: string, fallback: string) =>
       t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
     [t]
   );
+
+  const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!taskId || !sourceNode?.id) return;
+    const api = window.electronAPI?.data;
+    if (!api?.getWorkflowNodeColumnTypes) return;
+    api
+      .getWorkflowNodeColumnTypes({
+        taskId,
+        nodeId: sourceNode.id,
+        nodeType: sourceNode.type as never,
+        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
+      })
+      .then((types) => {
+        const map: Record<string, string> = {};
+        for (const t of types) map[t.name] = t.type;
+        setColumnTypes(map);
+      })
+      .catch(() => setColumnTypes({}));
+  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
 
   const updateConfig = useCallback(
     (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
@@ -31,10 +56,6 @@ export default function FormUnpivot({ node, fieldCompletions, onNodeChange }: Op
   const nameColumn = String(node.config.nameColumn ?? '');
   const valueColumn = String(node.config.valueColumn ?? '');
   const includeNulls = Boolean(node.config.includeNulls ?? false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showFieldPicker, setShowFieldPicker] = useState(false);
-  const pickerRef = useRef<HTMLLabelElement>(null);
-  const removingRef = useRef(false);
 
   const handleColumnsSelect = useCallback(
     (next: string[]) => {
@@ -44,157 +65,150 @@ export default function FormUnpivot({ node, fieldCompletions, onNodeChange }: Op
   );
 
   const removeColumn = useCallback(
-    (col: string) => {
-      if (removingRef.current) return;
-      removingRef.current = true;
-      updateConfig((cfg) => ({
-        ...cfg,
-        columns: ((cfg.columns as string[]) ?? []).filter((c) => c !== col),
-      }));
-      requestAnimationFrame(() => {
-        removingRef.current = false;
-      });
-    },
-    [updateConfig]
+    (col: string) => handleColumnsSelect(columns.filter((c) => c !== col)),
+    [handleColumnsSelect, columns]
   );
+
+  const clearColumns = useCallback(() => handleColumnsSelect([]), [handleColumnsSelect]);
+
+  const [columnsOpen, setColumnsOpen] = useState(false);
+
+  function TagBar({
+    items,
+    onRemove,
+    onClear,
+    open,
+    onToggle,
+  }: {
+    items: string[];
+    onRemove: (col: string) => void;
+    onClear: () => void;
+    open: boolean;
+    onToggle: () => void;
+  }) {
+    return (
+      <div className="rounded border border-border-muted bg-background/60 px-2 py-1 overflow-hidden">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onClear}
+            className="inline-flex flex-shrink-0 items-center justify-center rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
+            title={tr('clearAll', '清空字段')}
+            aria-label={tr('clearAll', '清空字段')}
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+          {items.length === 0 && (
+            <span className="text-[11px] text-text-muted italic">
+              {tr('noFieldsSelected', '暂未选择字段')}
+            </span>
+          )}
+          <div className="flex flex-1 flex-wrap gap-1">
+            {items.map((col) => (
+              <span
+                key={col}
+                className="inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent"
+              >
+                {col}
+                <button
+                  type="button"
+                  onClick={() => onRemove(col)}
+                  className="inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20 transition-colors"
+                  aria-label={tr('removeField', '移除字段')}
+                >
+                  <X className="h-2 w-2" />
+                </button>
+              </span>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={onToggle}
+            className="inline-flex flex-shrink-0 items-center justify-center rounded px-1.5 py-0.5 text-[11px] text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
+          >
+            {open ? '收起 ▲' : '展开 ▼'}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="grid content-start gap-2.5">
-      {/* Main: combobox columns + output names */}
-      <GlassFormSection title={tr('unpivotMode', '列展开')}>
-        <div className="grid gap-2.5">
-          {/* Columns — combobox: tags + text input + dropdown button */}
-          <label className="grid gap-1" ref={pickerRef}>
-            <span className="text-[11px] font-medium text-text-secondary">
-              {tr('unpivotExpandCols', '要展开的列')}
+      {/* ═══ 步骤1: 列展开 ═══ */}
+      <div className="rounded-lg border border-border-muted bg-background/42">
+        <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5">
+          <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
+            1
+          </span>
+          <div className="grid">
+            <span className="text-[13px] font-semibold text-text-primary">
+              {tr('unpivotMode', '列展开')}
             </span>
-            <div className="flex min-h-7 rounded-md border border-border-muted bg-background/42 focus-within:border-accent">
-              {/* Tags */}
-              <div className="flex flex-1 flex-wrap items-center gap-1 px-1.5 py-1">
-                {columns.map((col) => (
-                  <span
-                    key={col}
-                    className="inline-flex items-center gap-0.5 rounded bg-surface-active/80 px-1.5 py-0.5 text-[11px] text-text-primary"
-                  >
-                    {col}
-                    <button
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        removeColumn(col);
-                      }}
-                      className="ml-0.5 flex-shrink-0 rounded-full p-0.5 hover:bg-surface-hover transition-colors"
-                    >
-                      <X className="h-2.5 w-2.5 text-text-muted" />
-                    </button>
-                  </span>
-                ))}
-                <input
-                  type="text"
-                  placeholder={
-                    columns.length === 0
-                      ? tr('unpivotColsPlaceholder', '输入字段名，用逗号分隔...')
-                      : ''
-                  }
-                  className="h-5 min-w-[60px] flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
-                />
-              </div>
-              {/* Dropdown toggle */}
-              <button
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setShowFieldPicker((v) => !v);
-                }}
-                className="flex w-7 items-center justify-center border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
-              >
-                <ChevronDown
-                  className={`h-3.5 w-3.5 transition-transform ${showFieldPicker ? 'rotate-180' : ''}`}
-                />
-              </button>
-            </div>
-            {/* Dropdown */}
-            {showFieldPicker && (
-              <GlassColumnSelector
+            <span className="text-[10px] text-text-muted">
+              {tr('unpivotConfigHint', '选择要展开的列与输出名称')}
+            </span>
+          </div>
+        </div>
+        <div className="px-3 pb-3 grid gap-2.5">
+          <div className="grid gap-1">
+            <GlassFormLabel>{tr('unpivotExpandCols', '要展开的列')}</GlassFormLabel>
+            <TagBar
+              items={columns}
+              onRemove={removeColumn}
+              onClear={clearColumns}
+              open={columnsOpen}
+              onToggle={() => setColumnsOpen((v) => !v)}
+            />
+            {columnsOpen && (
+              <GlassFieldSelector
                 columns={fieldCompletions}
                 selected={columns}
                 onChange={handleColumnsSelect}
+                columnTypes={columnTypes}
+                maxHeight="180px"
               />
             )}
-          </label>
+          </div>
 
-          {/* Output names — two columns */}
           <div className="grid grid-cols-2 gap-2">
-            <label className="grid gap-1">
-              <span className="text-[11px] font-medium text-text-secondary">
-                {tr('unpivotNameCol', '名称列')}
-                <span className="ml-0.5 text-xs text-text-muted">
-                  {tr('unpivotNameColHint', '（默认 name）')}
-                </span>
-              </span>
-              <input
-                type="text"
+            <div className="grid gap-1">
+              <GlassFormLabel>{tr('unpivotNameCol', '名称列')}</GlassFormLabel>
+              <GlassFormTextInput
                 value={nameColumn}
-                onChange={(e) =>
-                  updateConfig((cfg) => ({ ...cfg, nameColumn: e.target.value || undefined }))
-                }
+                onChange={(v) => updateConfig((cfg) => ({ ...cfg, nameColumn: v || undefined }))}
                 placeholder="name"
-                className={INPUT_CLASS}
+                className="w-full"
+                style={{ height: '1.75rem' }}
               />
-            </label>
-            <label className="grid gap-1">
-              <span className="text-[11px] font-medium text-text-secondary">
-                {tr('unpivotValueCol', '值列')}
-                <span className="ml-0.5 text-xs text-text-muted">
-                  {tr('unpivotValueColHint', '（默认 value）')}
-                </span>
-              </span>
-              <input
-                type="text"
+            </div>
+            <div className="grid gap-1">
+              <GlassFormLabel>{tr('unpivotValueCol', '值列')}</GlassFormLabel>
+              <GlassFormTextInput
                 value={valueColumn}
-                onChange={(e) =>
-                  updateConfig((cfg) => ({ ...cfg, valueColumn: e.target.value || undefined }))
-                }
+                onChange={(v) => updateConfig((cfg) => ({ ...cfg, valueColumn: v || undefined }))}
                 placeholder="value"
-                className={INPUT_CLASS}
+                className="w-full"
+                style={{ height: '1.75rem' }}
               />
-            </label>
+            </div>
           </div>
-        </div>
-      </GlassFormSection>
 
-      {/* Advanced — collapsible */}
-      <div className="rounded-lg border border-border-muted/70 bg-background/18">
-        <button
-          type="button"
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          className="flex w-full items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-text-muted hover:text-text-secondary transition-colors"
-        >
-          <ChevronDown
-            className={`h-3 w-3 transition-transform ${showAdvanced ? '' : '-rotate-90'}`}
-          />
-          {tr('unpivotOptions', '高级选项')}
-        </button>
-        {showAdvanced && (
-          <div className="border-t border-border-muted/50 px-3 pb-2.5 pt-2">
-            <label className="flex cursor-pointer items-center gap-2 text-[12px] text-text-secondary">
-              <input
-                type="checkbox"
-                checked={includeNulls}
-                onChange={(e) =>
-                  updateConfig((cfg) => ({
-                    ...cfg,
-                    includeNulls: e.target.checked || undefined,
-                  }))
-                }
-                className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
-              />
-              {tr('unpivotIncludeNulls', '包含空值行 (include nulls)')}
-            </label>
-          </div>
-        )}
+          <label className="flex cursor-pointer items-center gap-2 text-[12px] text-text-secondary">
+            <input
+              type="checkbox"
+              checked={includeNulls}
+              onChange={(e) =>
+                updateConfig((cfg) => ({
+                  ...cfg,
+                  includeNulls: e.target.checked || undefined,
+                }))
+              }
+              className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
+            />
+            {tr('unpivotIncludeNulls', '包含空值行')}
+          </label>
+        </div>
       </div>
     </div>
   );

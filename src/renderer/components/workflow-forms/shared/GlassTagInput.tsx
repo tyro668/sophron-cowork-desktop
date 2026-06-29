@@ -6,6 +6,7 @@ interface GlassTagInputProps {
   suggestions?: string[];
   onChange: (value: string[]) => void;
   placeholder?: string;
+  style?: React.CSSProperties;
 }
 
 export function GlassTagInput({
@@ -13,6 +14,7 @@ export function GlassTagInput({
   suggestions = [],
   onChange,
   placeholder,
+  style,
 }: GlassTagInputProps) {
   const [input, setInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -64,9 +66,10 @@ export function GlassTagInput({
   }, []);
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative" style={style}>
       <div
-        className="flex min-h-[32px] flex-wrap items-center gap-1 rounded-lg border border-border-muted bg-background/42 px-2 py-1.5 cursor-text"
+        className="flex flex-wrap items-center gap-1 rounded-lg border border-border-muted bg-background/42 px-2 cursor-text"
+        style={{ minHeight: '1.75rem' }}
         onClick={() => inputRef.current?.focus()}
       >
         {value.map((tag) => (
