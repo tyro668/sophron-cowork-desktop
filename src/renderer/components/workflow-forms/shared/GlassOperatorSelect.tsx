@@ -1,41 +1,34 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
 
-/**
- * 运算符分组（组之间显示分割线）
- */
+function flattenItems(groups: GlassOperatorGroup[]): GlassOperatorOption[] {
+  const result: GlassOperatorOption[] = [];
+  for (const g of groups) {
+    for (const o of g.items) {
+      result.push(o);
+    }
+  }
+  return result;
+}
+
 interface GlassOperatorGroup {
-  /** 分组 key（仅用于 React 渲染，不显示） */
   key: string;
-  /** 该组的运算符选项 */
   items: GlassOperatorOption[];
 }
 
 interface GlassOperatorOption {
-  /** 运算符值，如 "="、"in"、"matches" */
   value: string;
-  /** 已翻译的显示文本 */
   label: string;
 }
 
 interface GlassOperatorSelectProps {
   value: string;
-  /** 分组列表，每组的 items.label 需由调用方预翻译 */
   groups: GlassOperatorGroup[];
   onChange: (value: string) => void;
   disabled?: boolean;
   className?: string;
   placeholder?: string;
-}
-
-function useClickOutside(ref: React.RefObject<HTMLElement | null>, onClose: () => void) {
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [ref, onClose]);
 }
 
 export function GlassOperatorSelect({
@@ -47,8 +40,16 @@ export function GlassOperatorSelect({
   placeholder,
 }: GlassOperatorSelectProps) {
   const [open, setOpen] = useState(false);
-  const [openUp, setOpenUp] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ left: number; top: number; width: number } | null>(
+    null
+  );
+  const [maxHeight, setMaxHeight] = useState(240);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const flattenedItems = useMemo(() => flattenItems(groups), [groups]);
 
   const selectedLabel = useMemo(() => {
     for (const g of groups) {
@@ -59,22 +60,127 @@ export function GlassOperatorSelect({
     return value;
   }, [value, groups]);
 
-  useClickOutside(ref, () => setOpen(false));
+  const updatePosition = useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setPosition({ left: rect.left, top: rect.bottom + 2, width: rect.width });
+    const spaceBelow = window.innerHeight - rect.bottom - 4;
+    setMaxHeight(Math.min(240, Math.max(100, spaceBelow)));
+  }, []);
 
+  const handleClose = useCallback(() => {
+    setOpen(false);
+  }, []);
+
+  // Click outside
   useEffect(() => {
-    if (!open || !ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const spaceAbove = rect.top;
-    setOpenUp(spaceBelow < 180 && spaceAbove > spaceBelow);
-  }, [open]);
+    if (!open) return;
+    const handleDocClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (!triggerRef.current?.contains(target) && !dropdownRef.current?.contains(target)) {
+        handleClose();
+      }
+    };
+    document.addEventListener('mousedown', handleDocClick);
+    return () => document.removeEventListener('mousedown', handleDocClick);
+  }, [open, handleClose]);
+
+  // Close on resize
+  useEffect(() => {
+    if (!open) return;
+    window.addEventListener('resize', handleClose);
+    return () => window.removeEventListener('resize', handleClose);
+  }, [open, handleClose]);
+
+  function toggleOpen() {
+    if (open) {
+      handleClose();
+    } else {
+      updatePosition();
+      setOpen(true);
+      const idx = flattenedItems.findIndex((o) => o.value === value);
+      setHighlightedIndex(Math.max(0, idx));
+    }
+  }
+
+  const handleTriggerKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLButtonElement>) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleOpen();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (open) {
+          const el = dropdownRef.current?.querySelector(
+            `[data-index="${highlightedIndex}"]`
+          ) as HTMLElement | null;
+          el?.focus();
+        } else {
+          toggleOpen();
+        }
+      } else if (e.key === 'Escape') {
+        if (open) handleClose();
+      }
+    },
+    [open, highlightedIndex]
+  );
+
+  const handleDropdownKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleClose();
+        triggerRef.current?.focus();
+        return;
+      }
+      if (flattenedItems.length === 0) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setHighlightedIndex((prev) => Math.min(flattenedItems.length - 1, prev + 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setHighlightedIndex((prev) => Math.max(0, prev - 1));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const opt = flattenedItems[highlightedIndex];
+        if (opt) {
+          onChange(opt.value);
+          handleClose();
+        }
+      }
+    },
+    [flattenedItems, highlightedIndex, onChange, handleClose]
+  );
+
+  // Scroll highlighted item into view
+  useEffect(() => {
+    if (!open) return;
+    const el = dropdownRef.current?.querySelector(
+      `[data-index="${highlightedIndex}"]`
+    ) as HTMLElement | null;
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [highlightedIndex, open]);
+
+  // Focus highlighted option on open so keyboard navigation works immediately
+  useEffect(() => {
+    if (!open) return;
+    const id = window.setTimeout(() => {
+      const el = dropdownRef.current?.querySelector(
+        `[data-index="${highlightedIndex}"]`
+      ) as HTMLElement | null;
+      el?.focus();
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [open, highlightedIndex]);
 
   return (
-    <div ref={ref} className="relative">
+    <>
       <button
+        ref={triggerRef}
         type="button"
         disabled={disabled}
-        onClick={() => setOpen(!open)}
+        onClick={toggleOpen}
+        onKeyDown={handleTriggerKeyDown}
         className={`flex w-full items-center rounded border border-border-muted bg-background/42 text-text-secondary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-40 ${className ?? ''}`}
       >
         <span className="flex-1 px-2 text-center whitespace-nowrap truncate">
@@ -91,36 +197,52 @@ export function GlassOperatorSelect({
         />
       </button>
 
-      {open && (
-        <div
-          className={`absolute left-0 z-50 min-w-full max-h-60 overflow-y-auto rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl ${
-            openUp ? 'bottom-full mb-1' : 'top-full mt-1'
-          }`}
-        >
-          {groups.map((g, gi) => (
-            <div key={g.key}>
-              {gi > 0 && <div className="mx-3 my-0.5 border-t border-border-muted" />}
-              {g.items.map((o) => (
-                <button
-                  key={o.value}
-                  type="button"
-                  className={`w-full whitespace-nowrap px-3 py-1.5 text-center text-[12px] transition-colors hover:bg-surface-hover ${
-                    o.value === value ? 'text-accent font-medium' : 'text-text-secondary'
-                  }`}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onChange(o.value);
-                    setOpen(false);
-                  }}
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+      {open &&
+        position &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            onKeyDown={handleDropdownKeyDown}
+            role="listbox"
+            style={{ left: position.left, top: position.top, width: position.width, maxHeight }}
+            className="fixed z-50 overflow-y-auto rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl"
+          >
+            {groups.map((g, gi) => (
+              <div key={g.key}>
+                {gi > 0 && <div className="mx-3 my-0.5 border-t border-border-muted" />}
+                {g.items.map((o, oi) => {
+                  const globalIdx =
+                    groups.slice(0, gi).reduce((sum, g) => sum + g.items.length, 0) + oi;
+                  const selected = o.value === value;
+                  return (
+                    <button
+                      key={o.value}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      data-index={globalIdx}
+                      className={`w-full whitespace-nowrap px-3 py-1.5 text-center text-[12px] transition-colors ${
+                        selected
+                          ? 'text-accent font-medium bg-accent/10 ring-1 ring-inset ring-accent/20'
+                          : 'text-text-secondary hover:bg-surface-hover'
+                      } ${globalIdx === highlightedIndex && !selected ? 'bg-surface-hover' : ''}`}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onChange(o.value);
+                        handleClose();
+                      }}
+                      onMouseEnter={() => setHighlightedIndex(globalIdx)}
+                    >
+                      {o.label}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>,
+          document.body
+        )}
+    </>
   );
 }

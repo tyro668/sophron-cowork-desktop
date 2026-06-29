@@ -34,6 +34,7 @@ export function GlassFieldCombo({
   const [position, setPosition] = useState<{ left: number; top: number; width: number } | null>(
     null
   );
+  const [maxHeight, setMaxHeight] = useState(240);
 
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -63,6 +64,8 @@ export function GlassFieldCombo({
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
     setPosition({ left: rect.left, top: rect.bottom + 2, width: rect.width });
+    const spaceBelow = window.innerHeight - rect.bottom - 4;
+    setMaxHeight(Math.min(240, Math.max(100, spaceBelow)));
   }, []);
 
   const handleClose = useCallback(() => {
@@ -219,8 +222,8 @@ export function GlassFieldCombo({
             onKeyDown={handleListKeyDown}
             role="listbox"
             aria-label={placeholder}
-            style={{ left: position.left, top: position.top, width: position.width }}
-            className="fixed z-50 flex max-h-60 flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-elevated backdrop-blur-xl"
+            style={{ left: position.left, top: position.top, width: position.width, maxHeight }}
+            className="fixed z-50 flex flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-elevated backdrop-blur-xl"
           >
             <div className="flex items-center gap-1.5 border-b border-border-subtle px-2 py-1.5">
               <Search className="h-3 w-3 flex-shrink-0 text-text-muted" />

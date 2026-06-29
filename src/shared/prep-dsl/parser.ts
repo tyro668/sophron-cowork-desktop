@@ -744,11 +744,12 @@ function parseAsofClause(
 function parseJoinConditions(value: string): PrepJoinCondition[] {
   if (!value) return [];
   return value.split(/\s+and\s+/).flatMap((part) => {
-    const match = /^(.+?)\s*=\s*(.+)$/.exec(part.trim());
+    const match = /^(.+?)\s*(>=|<=|!=|<>|>|=|<)\s*(.+)$/.exec(part.trim());
     const left = match ? parseFieldRef(match[1].trim()) : null;
-    const right = match ? parseFieldRef(match[2].trim()) : null;
+    const op = match ? (match[2] === '<>' ? '!=' : match[2]) : '=';
+    const right = match ? parseFieldRef(match[3].trim()) : null;
     return left && right
-      ? [{ left: toQualifiedName(left), operator: '=', right: toQualifiedName(right) }]
+      ? [{ left: toQualifiedName(left), operator: op, right: toQualifiedName(right) }]
       : [];
   });
 }

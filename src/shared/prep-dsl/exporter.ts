@@ -318,12 +318,11 @@ function formatSortKeys(value: unknown): string {
 
 function formatJoinConditions(value: unknown): string {
   return objectArray(value)
-    .map(
-      (condition) =>
-        `${formatFieldRef(String(condition.left ?? 'left.id'))} = ${formatFieldRef(
-          String(condition.right ?? 'right.id')
-        )}`
-    )
+    .map((condition) => {
+      const op =
+        typeof condition.operator === 'string' && condition.operator ? condition.operator : '=';
+      return `${formatFieldRef(String(condition.left ?? 'left.id'))} ${op} ${formatFieldRef(String(condition.right ?? 'right.id'))}`;
+    })
     .join(' and ');
 }
 
