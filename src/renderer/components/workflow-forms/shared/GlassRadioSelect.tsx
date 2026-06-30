@@ -1,6 +1,7 @@
 interface RadioOption {
   value: string;
   label: string;
+  tip?: string;
 }
 
 interface GlassRadioSelectProps {
@@ -18,6 +19,7 @@ export function GlassRadioSelect({ value, options, onChange, label }: GlassRadio
         <button
           key={opt.value}
           type="button"
+          title={opt.tip}
           onClick={() => onChange(opt.value)}
           className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] transition-colors ${
             value === opt.value

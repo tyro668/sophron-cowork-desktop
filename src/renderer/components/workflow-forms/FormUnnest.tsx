@@ -72,8 +72,16 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
               <GlassRadioSelect
                 value={sourceKind}
                 options={[
-                  { value: 'list', label: 'List' },
-                  { value: 'json', label: 'JSON' },
+                  {
+                    value: 'list',
+                    label: 'List',
+                    tip: tr('unnestSourceTypeList', '直接展开字段中的数组元素'),
+                  },
+                  {
+                    value: 'json',
+                    label: 'JSON',
+                    tip: tr('unnestSourceTypeJson', '通过 JSON 路径定位子数组再展开'),
+                  },
                 ]}
                 onChange={(v) => updateConfig((cfg) => ({ ...cfg, sourceKind: v }))}
                 label={tr('unnestSourceType', '源类型')}
@@ -120,9 +128,12 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                   <GlassFormTextInput
                     value={path}
                     onChange={(v) => updateConfig((cfg) => ({ ...cfg, path: v || undefined }))}
-                    placeholder={tr('unnestJsonPathPlaceholder', '如 $.items')}
+                    placeholder={tr('unnestJsonPathPlaceholder', '如 $.data.items')}
                     className="w-full"
                   />
+                  <span className="text-[10px] text-text-muted">
+                    {tr('unnestJsonPathHint', '$ 代表根节点，如 $.items 表示取 items 键对应的数组')}
+                  </span>
                 </label>
               )}
             </div>
