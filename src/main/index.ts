@@ -1192,6 +1192,14 @@ app
 
     automationStore = createAutomationStore(db);
     automationStore.migrateScheduledTasks();
+    const recoveredAutomationRuns = automationStore.recoverInterruptedRuns();
+    if (
+      recoveredAutomationRuns.failedRunningRuns > 0 ||
+      recoveredAutomationRuns.cancelledQueuedRuns > 0 ||
+      recoveredAutomationRuns.releasedAutomations > 0
+    ) {
+      log('[Automation] Recovered interrupted runs:', recoveredAutomationRuns);
+    }
     const automationActionRegistry = createDefaultAutomationActionRegistry({
       dataTaskStore: initializedDataTaskStore,
       sessionManager,

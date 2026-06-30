@@ -619,7 +619,7 @@ export function CloudAnalysisPanel() {
             keyword: queryKeyword,
             page,
             pageSize: CLOUD_TABLE_PAGE_SIZE,
-            matchField: 'all',
+            matchField: 'table',
             sortBy: 'updatedAt',
             sortOrder: 'desc',
           }),

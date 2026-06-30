@@ -29,7 +29,11 @@ export class AutomationRunner {
   private readonly deliver?: AutomationRunnerOptions['deliver'];
   private readonly notifyRunFinished?: AutomationRunnerOptions['notifyRunFinished'];
   private runningCount = 0;
-  private readonly queued: Array<{ automation: Automation; reason: AutomationTriggerReason }> = [];
+  private readonly queued: Array<{
+    automation: Automation;
+    reason: AutomationTriggerReason;
+    runId: string;
+  }> = [];
 
   constructor(options: AutomationRunnerOptions) {
     this.store = options.store;
@@ -48,7 +52,7 @@ export class AutomationRunner {
         triggerReason: reason,
         queuedAt: this.now(),
       });
-      this.queued.push({ automation, reason });
+      this.queued.push({ automation, reason, runId: queuedRun.id });
       return queuedRun;
     }
     return this.execute(automation, reason);
@@ -56,16 +60,24 @@ export class AutomationRunner {
 
   private async execute(
     automation: Automation,
-    reason: AutomationTriggerReason
+    reason: AutomationTriggerReason,
+    existingRunId?: string
   ): Promise<AutomationRun> {
     this.runningCount += 1;
     const startedAt = this.now();
-    let run = this.store.createRun({
-      automationId: automation.id,
-      status: 'running',
-      triggerReason: reason,
-      startedAt,
-    });
+    // When draining a queued entry, advance its existing run record to `running`
+    // instead of orphaning it as a stale `queued` row (which recovery would later
+    // mark `cancelled`). Fall back to a fresh run if the record went missing.
+    let run =
+      (existingRunId
+        ? this.store.updateRun(existingRunId, { status: 'running', startedAt })
+        : null) ??
+      this.store.createRun({
+        automationId: automation.id,
+        status: 'running',
+        triggerReason: reason,
+        startedAt,
+      });
     this.store.setRuntimeState(automation.id, {
       status: 'running',
       lockedRunId: run.id,
@@ -174,7 +186,7 @@ export class AutomationRunner {
     while (this.runningCount < this.maxConcurrentRuns && this.queued.length > 0) {
       const next = this.queued.shift();
       if (!next) return;
-      await this.execute(next.automation, next.reason);
+      await this.execute(next.automation, next.reason, next.runId);
     }
   }
 }
