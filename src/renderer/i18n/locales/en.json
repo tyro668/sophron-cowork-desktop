@@ -647,7 +647,7 @@
         "aggregateFn_approx_count_distinct": "approx count distinct",
         "aggregateFn_approx_quantile": "approx quantile",
         "aggregateFn_approx_top_k": "approx top K",
-        "aggregateAlias": "Alias (as)",
+        "aggregateAlias": "Alias",
         "aggregateAliasPlaceholder": "e.g. total_revenue",
         "aggregateExpressionPlaceholder": "Enter expression, e.g. [price] * [qty]",
         "aggregateAddMetric": "Add metric",

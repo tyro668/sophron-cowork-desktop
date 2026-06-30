@@ -181,9 +181,9 @@ export default function FormPivot({
   }
 
   return (
-    <div className="grid content-start gap-2.5">
-      {/* ═══ 步骤1: 行列字段选择 ═══ */}
-      <div className="rounded-lg border border-border-muted bg-background/42">
+    <div className="flex gap-2.5">
+      {/* ═══ 左列: 行列字段选择 ═══ */}
+      <div className="flex-1 rounded-lg border border-border-muted bg-background/42 content-start">
         <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5">
           <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
             1
@@ -197,7 +197,7 @@ export default function FormPivot({
             </span>
           </div>
         </div>
-        <div className="px-3 pb-3 grid grid-cols-2 gap-3">
+        <div className="px-3 pb-3 grid gap-3 content-start">
           <div className="grid gap-1.5 content-start">
             <GlassFormLabel>{tr('pivotOnLabel', '透视列')}</GlassFormLabel>
             <TagBar
@@ -218,7 +218,10 @@ export default function FormPivot({
             )}
           </div>
           <div className="grid gap-1.5 content-start">
-            <GlassFormLabel>{tr('pivotGroupByLabel', '行标识')}</GlassFormLabel>
+            <GlassFormLabel>
+              {tr('pivotGroupByLabel', '行标识')}
+              <span className="text-[10px] text-text-muted ml-1">(可选)</span>
+            </GlassFormLabel>
             <TagBar
               items={groupBy}
               onRemove={removeGroupBy}
@@ -239,8 +242,8 @@ export default function FormPivot({
         </div>
       </div>
 
-      {/* ═══ 步骤2: 聚合指标 ═══ */}
-      <div className="rounded-lg border border-border-muted bg-background/42">
+      {/* ═══ 右列: 聚合指标 ═══ */}
+      <div className="flex-[1] rounded-lg border border-border-muted bg-background/42 content-start">
         <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5">
           <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
             2
@@ -254,44 +257,57 @@ export default function FormPivot({
             </span>
           </div>
         </div>
-        <div className="px-3 pb-3 flex items-end gap-3">
-          <div className="grid gap-1 w-28">
-            <GlassFormLabel>{tr('aggregateFunction', '聚合函数')}</GlassFormLabel>
-            <GlassOperatorSelect
-              value={singleMetric.function}
-              groups={fnGroups}
-              onChange={(v) => handleMetricChange({ function: v })}
-              className="h-7 text-[12px] [&>span]:text-left w-full"
-            />
+        <div className="px-3 pb-3 grid gap-3 content-start">
+          <div className="flex gap-3">
+            <div className="grid gap-1 flex-1 min-w-0">
+              <GlassFormLabel>{tr('aggregateFunction', '聚合函数')}</GlassFormLabel>
+              <GlassOperatorSelect
+                value={singleMetric.function}
+                groups={fnGroups}
+                onChange={(v) => handleMetricChange({ function: v })}
+                className="h-7 text-[12px] [&>span]:text-left w-full"
+              />
+            </div>
+            <div className="grid gap-1 flex-1 min-w-0">
+              <GlassFormLabel>
+                {tr('aggregateExpression', '聚合表达式')}
+                <span className="text-[10px] text-text-muted ml-1">(可选)</span>
+              </GlassFormLabel>
+              <GlassExpressionInput
+                value={singleMetric.expression}
+                onChange={(v) => handleMetricChange({ expression: v })}
+                fieldCompletions={fieldCompletions}
+                columnTypes={columnTypes}
+                placeholder={tr('pivotExpressionPlaceholder', '* 或 [revenue]')}
+              />
+            </div>
           </div>
-          <div className="grid gap-1 flex-1 min-w-0">
-            <GlassFormLabel>{tr('aggregateExpression', '聚合表达式')}</GlassFormLabel>
-            <GlassExpressionInput
-              value={singleMetric.expression}
-              onChange={(v) => handleMetricChange({ expression: v })}
-              fieldCompletions={fieldCompletions}
-              columnTypes={columnTypes}
-              placeholder={tr('pivotExpressionPlaceholder', '* 或 [revenue]')}
-            />
-          </div>
-          <div className="grid gap-1 w-28 shrink-0">
-            <GlassFormLabel>{tr('aggregateAlias', '别名 (as)')}</GlassFormLabel>
-            <GlassFormTextInput
-              value={singleMetric.alias ?? ''}
-              onChange={(v) => handleMetricChange({ alias: v || undefined })}
-              placeholder={tr('aggregateAliasPlaceholder', '如 total_revenue')}
-              className="w-full"
-              style={{ height: '1.75rem' }}
-            />
-          </div>
-          <div className="grid gap-1 flex-1 min-w-0">
-            <GlassFormLabel>{tr('pivotInLabel', '固定值域')}</GlassFormLabel>
-            <GlassTagInput
-              value={values}
-              onChange={handleValuesChange}
-              placeholder={tr('pivotInPlaceholder', '2024, 2025, 2026')}
-              style={{ height: '1.75rem' }}
-            />
+          <div className="flex gap-3">
+            <div className="grid gap-1 flex-1 min-w-0">
+              <GlassFormLabel>
+                {tr('aggregateAlias', '别名')}
+                <span className="text-[10px] text-text-muted ml-1">(可选)</span>
+              </GlassFormLabel>
+              <GlassFormTextInput
+                value={singleMetric.alias ?? ''}
+                onChange={(v) => handleMetricChange({ alias: v || undefined })}
+                placeholder={tr('aggregateAliasPlaceholder', '如 total_revenue')}
+                className="w-full"
+                style={{ height: '1.75rem' }}
+              />
+            </div>
+            <div className="grid gap-1 flex-1 min-w-0">
+              <GlassFormLabel>
+                {tr('pivotInLabel', '固定值域')}
+                <span className="text-[10px] text-text-muted ml-1">(可选)</span>
+              </GlassFormLabel>
+              <GlassTagInput
+                value={values}
+                onChange={handleValuesChange}
+                placeholder={tr('pivotInPlaceholder', '2024, 2025, 2026')}
+                style={{ height: '1.75rem' }}
+              />
+            </div>
           </div>
         </div>
       </div>
