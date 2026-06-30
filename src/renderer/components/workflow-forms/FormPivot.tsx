@@ -7,7 +7,8 @@ import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSelector } from './shared/GlassFieldSelector';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
-import { GlassTagInput } from './shared/GlassTagInput';
+import { GlassValueSelector } from './shared/GlassValueSelector';
+import { useWorkflowNodeColumnValues } from '../../hooks/useWorkflowNodeColumnValues';
 
 const PIVOT_FUNCTIONS = ['sum', 'avg', 'min', 'max', 'count', 'count_distinct'];
 
@@ -98,6 +99,12 @@ export default function FormPivot({
 
   const singleMetricRef = useRef(singleMetric);
   singleMetricRef.current = singleMetric;
+
+  const distinctValues = useWorkflowNodeColumnValues({
+    taskId,
+    sourceNode,
+    column: onFields[0],
+  });
 
   const handleMetricChange = useCallback(
     (patch: Partial<PivotMetric>) => {
@@ -259,7 +266,7 @@ export default function FormPivot({
         </div>
         <div className="px-3 pb-3 grid gap-3 content-start">
           <div className="flex gap-3">
-            <div className="grid gap-1 flex-1 min-w-0">
+            <div className="grid gap-1 flex-[1] min-w-0">
               <GlassFormLabel>{tr('aggregateFunction', '聚合函数')}</GlassFormLabel>
               <GlassOperatorSelect
                 value={singleMetric.function}
@@ -268,11 +275,8 @@ export default function FormPivot({
                 className="h-7 text-[12px] [&>span]:text-left w-full"
               />
             </div>
-            <div className="grid gap-1 flex-1 min-w-0">
-              <GlassFormLabel>
-                {tr('aggregateExpression', '聚合表达式')}
-                <span className="text-[10px] text-text-muted ml-1">(可选)</span>
-              </GlassFormLabel>
+            <div className="grid gap-1 flex-[2] min-w-0">
+              <GlassFormLabel>{tr('aggregateExpression', '聚合表达式')}</GlassFormLabel>
               <GlassExpressionInput
                 value={singleMetric.expression}
                 onChange={(v) => handleMetricChange({ expression: v })}
@@ -281,9 +285,7 @@ export default function FormPivot({
                 placeholder={tr('pivotExpressionPlaceholder', '* 或 [revenue]')}
               />
             </div>
-          </div>
-          <div className="flex gap-3">
-            <div className="grid gap-1 flex-1 min-w-0">
+            <div className="grid gap-1 flex-[1] min-w-0">
               <GlassFormLabel>
                 {tr('aggregateAlias', '别名')}
                 <span className="text-[10px] text-text-muted ml-1">(可选)</span>
@@ -296,18 +298,18 @@ export default function FormPivot({
                 style={{ height: '1.75rem' }}
               />
             </div>
-            <div className="grid gap-1 flex-1 min-w-0">
-              <GlassFormLabel>
-                {tr('pivotInLabel', '固定值域')}
-                <span className="text-[10px] text-text-muted ml-1">(可选)</span>
-              </GlassFormLabel>
-              <GlassTagInput
-                value={values}
-                onChange={handleValuesChange}
-                placeholder={tr('pivotInPlaceholder', '2024, 2025, 2026')}
-                style={{ height: '1.75rem' }}
-              />
-            </div>
+          </div>
+          <div className="grid gap-1">
+            <GlassFormLabel>
+              {tr('pivotInLabel', '固定值域')}
+              <span className="text-[10px] text-text-muted ml-1">(可选)</span>
+            </GlassFormLabel>
+            <GlassValueSelector
+              values={distinctValues}
+              selected={values}
+              onChange={handleValuesChange}
+              placeholder={tr('pivotInPlaceholder', '2024, 2025, 2026')}
+            />
           </div>
         </div>
       </div>
