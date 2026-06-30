@@ -1,4 +1,12 @@
-import { quoteIdentifier, objectArray, getRightPrefix, lastQualifiedPart } from './utils';
+import {
+  quoteIdentifier,
+  objectArray,
+  isRecord,
+  getRightPrefix,
+  getConflictAlias,
+  lastQualifiedPart,
+} from './utils';
+import { parseFieldRef } from '../../../shared/prep-dsl/parser';
 
 export function compileSetOpSql(
   output: string,
@@ -16,13 +24,14 @@ export function compileJoinConditionList(value: unknown): string {
   const conditions = objectArray(value);
   return (
     conditions
-      .flatMap((condition) =>
-        typeof condition.left === 'string' && typeof condition.right === 'string'
-          ? [
-              `l.${quoteIdentifier(lastQualifiedPart(condition.left))} = r.${quoteIdentifier(lastQualifiedPart(condition.right))}`,
-            ]
-          : []
-      )
+      .flatMap((condition) => {
+        if (typeof condition.left !== 'string' || typeof condition.right !== 'string') return [];
+        const leftRef = parseFieldRef(condition.left);
+        const rightRef = parseFieldRef(condition.right);
+        const leftName = leftRef?.name ?? lastQualifiedPart(condition.left);
+        const rightName = rightRef?.name ?? lastQualifiedPart(condition.right);
+        return [`l.${quoteIdentifier(leftName)} = r.${quoteIdentifier(rightName)}`];
+      })
       .join(' AND ') || 'true'
   );
 }
@@ -36,6 +45,19 @@ export function compileJoinProjection(
 ): string {
   const items = objectArray(keep);
   if (items.length === 0) {
+    const isSuffix = isRecord(conflict) && conflict.strategy === 'suffix';
+    if (isSuffix) {
+      return [
+        ...leftColumns.map(
+          (column) =>
+            `l.${quoteIdentifier(column)} AS ${quoteIdentifier(getConflictAlias(conflict, 'left', column))}`
+        ),
+        ...rightColumns.map(
+          (column) =>
+            `r.${quoteIdentifier(column)} AS ${quoteIdentifier(getConflictAlias(conflict, 'right', column))}`
+        ),
+      ].join(', ');
+    }
     const rightPrefix = getRightPrefix(conflict);
     return [
       'l.*',
@@ -49,16 +71,22 @@ export function compileJoinProjection(
       if (item.side === 'left' && item.wildcard) return ['l.*'];
       if (item.side === 'right' && item.wildcard) return ['r.*'];
       if (typeof item.source !== 'string') return [];
+      const ref = parseFieldRef(item.source);
+      const fieldName = ref?.name ?? lastQualifiedPart(item.source);
       const side =
-        rightAlias && item.source.startsWith(`${rightAlias}.`)
+        ref?.source && rightAlias && ref.source === rightAlias
           ? 'r'
-          : leftColumns.includes(lastQualifiedPart(item.source))
+          : ref?.source
             ? 'l'
-            : 'r';
-      const alias = typeof item.alias === 'string' ? item.alias : lastQualifiedPart(item.source);
-      return [
-        `${side}.${quoteIdentifier(lastQualifiedPart(item.source))} AS ${quoteIdentifier(alias)}`,
-      ];
+            : leftColumns.includes(fieldName)
+              ? 'l'
+              : 'r';
+      const conflictSide = side === 'r' ? 'right' : 'left';
+      const alias =
+        typeof item.alias === 'string'
+          ? (parseFieldRef(item.alias)?.name ?? item.alias)
+          : getConflictAlias(conflict, conflictSide, fieldName);
+      return [`${side}.${quoteIdentifier(fieldName)} AS ${quoteIdentifier(alias)}`];
     })
     .join(', ');
 }

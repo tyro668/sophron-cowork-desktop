@@ -1,5 +1,13 @@
 import { quoteIdentifier, objectArray, isRecord, durationToMilliseconds } from './utils';
 import { compileJoinProjection } from './set-op';
+import { parseFieldRef } from '../../../shared/prep-dsl/parser';
+
+function extractFieldName(value: string): string {
+  const ref = parseFieldRef(value);
+  if (ref) return ref.name;
+  const raw = value.includes('.') ? (value.split('.').at(-1) ?? value) : value;
+  return raw.replace(/^\[|\]$/g, '');
+}
 
 export function compileAsofJoinSql(
   output: string,
@@ -10,15 +18,15 @@ export function compileAsofJoinSql(
   config: Record<string, unknown>
 ): string {
   const asof = isRecord(config.asof) ? config.asof : {};
-  const leftTime = lastQualifiedPart(String(asof.leftTime ?? ''));
-  const rightTime = lastQualifiedPart(String(asof.rightTime ?? ''));
+  const leftTime = extractFieldName(String(asof.leftTime ?? ''));
+  const rightTime = extractFieldName(String(asof.rightTime ?? ''));
   const operator = asof.operator === '<=' ? '>=' : '<=';
   const direction = asof.operator === '<=' ? 'ASC' : 'DESC';
   const byConditions = objectArray(asof.by)
     .flatMap((condition) =>
       typeof condition.left === 'string' && typeof condition.right === 'string'
         ? [
-            `r.${quoteIdentifier(lastQualifiedPart(condition.right))} = l.${quoteIdentifier(lastQualifiedPart(condition.left))}`,
+            `r.${quoteIdentifier(extractFieldName(condition.right))} = l.${quoteIdentifier(extractFieldName(condition.left))}`,
           ]
         : []
     )
@@ -48,8 +56,4 @@ export function compileAsofJoinSql(
       LIMIT 1
     ) r ON true
   `;
-}
-
-function lastQualifiedPart(value: string): string {
-  return value.includes('.') ? (value.split('.').at(-1) ?? value) : value;
 }

@@ -94,17 +94,19 @@ export function GlassConditionEditor({
     <div className="space-y-1">
       {displayConditions.map((cond, i) => (
         <div key={i} className="flex items-center gap-1">
-          {i > 0 && (
-            <span className="shrink-0 text-[10px] font-semibold tracking-wider text-accent/50 ml-0.5">
-              且
+          {displayConditions.length > 1 || i > 0 ? (
+            <span
+              className={`shrink-0 text-[10px] font-semibold tracking-wider text-accent/50 w-6 text-center ${i === 0 ? 'invisible' : ''}`}
+            >
+              {i > 0 ? '且' : ''}
             </span>
-          )}
+          ) : null}
           <GlassFieldCombo
             value={cond.left}
             options={leftFieldCompletions}
             onChange={(v) => handleChange(i, { left: v })}
             placeholder={resolvedLeftLabel}
-            className="h-7 min-w-0 flex-1 text-[12px]"
+            className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
           />
           <GlassOperatorSelect
             value={cond.operator}
@@ -117,7 +119,7 @@ export function GlassConditionEditor({
             options={rightFieldCompletions}
             onChange={(v) => handleChange(i, { right: v })}
             placeholder={resolvedRightLabel}
-            className="h-7 min-w-0 flex-1 text-[12px]"
+            className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
           />
           <button
             type="button"

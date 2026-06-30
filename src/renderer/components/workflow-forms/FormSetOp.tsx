@@ -174,7 +174,7 @@ export default function FormSetOp({
                   value={rawRightInput}
                   groups={rightInputGroups}
                   onChange={(v) => updateConfig((cfg) => ({ ...cfg, rightInput: v || undefined }))}
-                  className="h-7 text-[12px] [&>span]:text-left"
+                  className="h-7 text-[12px] [&>span]:text-left w-full"
                   placeholder={tr('setOpRightInputPlaceholder', '请选择输入源')}
                 />
               </label>

@@ -261,7 +261,7 @@ export default function FormPivot({
               value={singleMetric.function}
               groups={fnGroups}
               onChange={(v) => handleMetricChange({ function: v })}
-              className="h-7 text-[12px] [&>span]:text-left"
+              className="h-7 text-[12px] [&>span]:text-left w-full"
             />
           </div>
           <div className="grid gap-1 flex-1 min-w-0">

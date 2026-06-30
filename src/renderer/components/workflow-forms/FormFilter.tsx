@@ -222,7 +222,7 @@ function ConditionLeafRow({
           groups={opGroupsTranslated}
           disabled={!fieldSelected}
           onChange={(v) => ctx.updateLeaf(leaf.id, { op: v })}
-          className="h-8 min-w-[84px] rounded-md text-[12px]"
+          className="h-8 min-w-[84px] rounded-md text-[12px] w-full"
         />
 
         {/* Value(s) */}

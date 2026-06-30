@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Search } from 'lucide-react';
 import { dataFieldTypeLabel } from '@/shared/data-field-types';
+import { parseFieldRef } from '@/shared/prep-dsl/parser';
+
+function extractFieldName(value: string): string {
+  return parseFieldRef(value)?.name ?? value;
+}
 
 interface GlassFieldComboProps {
   value: string;
@@ -14,6 +19,7 @@ interface GlassFieldComboProps {
   disabledOptions?: Set<string>;
   className?: string;
   showType?: boolean;
+  displayLabel?: string;
 }
 
 export function GlassFieldCombo({
@@ -27,6 +33,7 @@ export function GlassFieldCombo({
   disabledOptions,
   className,
   showType = false,
+  displayLabel,
 }: GlassFieldComboProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -44,7 +51,8 @@ export function GlassFieldCombo({
     const lower = search.toLowerCase().trim();
     if (!lower) return options;
     return options.filter((opt) => {
-      if (opt.toLowerCase().includes(lower)) return true;
+      const label = extractFieldName(opt).toLowerCase();
+      if (label.includes(lower)) return true;
       const type = columnTypes[opt];
       if (!type) return false;
       return dataFieldTypeLabel(type).toLowerCase().includes(lower);
@@ -188,7 +196,7 @@ export function GlassFieldCombo({
         aria-expanded={open}
         aria-label={placeholder}
         className={[
-          'inline-flex h-6 w-full min-w-0 items-center justify-between gap-1 rounded border px-1.5 text-[12px] outline-none transition-colors',
+          'inline-flex h-6 min-w-0 items-center justify-between gap-1 rounded border px-1.5 text-[12px] outline-none transition-colors',
           'border-border-muted bg-background/42 text-text-primary hover:bg-surface-hover focus:border-accent',
           className || '',
         ].join(' ')}
@@ -197,13 +205,13 @@ export function GlassFieldCombo({
           {value ? (
             showType && columnTypes[value] ? (
               <>
-                {value}
+                {displayLabel || value}
                 <span className="ml-1 text-[11px] text-text-muted">
                   ({dataFieldTypeLabel(columnTypes[value])})
                 </span>
               </>
             ) : (
-              value
+              displayLabel || value
             )
           ) : (
             <span className="text-text-muted">{placeholder}</span>
@@ -246,6 +254,7 @@ export function GlassFieldCombo({
                 filteredOptions.map((opt, idx) => {
                   const disabled = disabledOptions?.has(opt) ?? false;
                   const selected = opt === value;
+                  const optLabel = extractFieldName(opt);
                   return (
                     <button
                       key={opt}
@@ -267,7 +276,7 @@ export function GlassFieldCombo({
                           : '',
                       ].join(' ')}
                     >
-                      <span className="min-w-0 flex-1 truncate">{opt}</span>
+                      <span className="min-w-0 flex-1 truncate">{optLabel}</span>
                       {columnTypes[opt] && (
                         <span className="flex-shrink-0 text-[11px] text-text-muted tabular-nums">
                           {dataFieldTypeLabel(columnTypes[opt])}

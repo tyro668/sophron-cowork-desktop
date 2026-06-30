@@ -867,7 +867,7 @@ function summarizeDiagnostics(diagnostics: PrepDiagnostic[]): string {
 
 function sanitizeAlias(value: string | undefined): string {
   const normalized = value?.trim() ?? '';
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(normalized) ? normalized : '';
+  return /^[_\p{L}][_\p{L}\p{N}]*$/u.test(normalized) ? normalized : '';
 }
 
 function escapeDslString(value: string): string {

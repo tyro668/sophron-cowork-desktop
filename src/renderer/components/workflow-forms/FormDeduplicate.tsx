@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X } from 'lucide-react';
+import { X, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
 import { GlassFieldSelector } from './shared/GlassFieldSelector';

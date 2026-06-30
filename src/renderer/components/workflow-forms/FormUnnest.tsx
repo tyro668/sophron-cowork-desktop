@@ -110,6 +110,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                   value={alias}
                   onChange={(v) => updateConfig((cfg) => ({ ...cfg, alias: v || undefined }))}
                   placeholder={tr('unnestAliasPlaceholder', '如 item')}
+                  className="w-full"
                 />
               </label>
 
@@ -120,6 +121,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                     value={path}
                     onChange={(v) => updateConfig((cfg) => ({ ...cfg, path: v || undefined }))}
                     placeholder={tr('unnestJsonPathPlaceholder', '如 $.items')}
+                    className="w-full"
                   />
                 </label>
               )}
@@ -172,8 +174,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                   value={withIndex}
                   disabled={!withIndex}
                   onChange={(v) => updateConfig((cfg) => ({ ...cfg, withIndex: v || undefined }))}
-                  placeholder={tr('unnestIndexColPlaceholder', '如 item_index')}
-                  className="disabled:cursor-not-allowed disabled:opacity-40"
+                  className="w-full disabled:cursor-not-allowed disabled:opacity-40"
                 />
               </div>
 
@@ -207,7 +208,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                     }
                   }}
                   placeholder={tr('unnestMaxDepthPlaceholder', '不限制深度')}
-                  className="disabled:cursor-not-allowed disabled:opacity-40"
+                  className="w-full"
                 />
               </div>
 

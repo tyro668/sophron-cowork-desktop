@@ -1,4 +1,5 @@
 import type { PrepOperatorType } from './ast';
+import { parseFieldRef } from './parser';
 
 export interface PrepFlowNodeLike {
   id: string;
@@ -337,15 +338,17 @@ function formatJoinKeep(value: unknown): string {
 }
 
 function formatFieldRef(value: string): string {
-  const parts = value.split('.');
-  if (parts.length === 2) return `${formatFieldName(parts[0])}.${formatFieldName(parts[1])}`;
+  const ref = parseFieldRef(value);
+  if (ref) {
+    const name = formatFieldName(ref.name);
+    return ref.source ? `${formatFieldName(ref.source)}.${name}` : name;
+  }
   return formatFieldName(value);
 }
 
 function formatFieldName(value: string): string {
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value)
-    ? `[${value}]`
-    : `[\`${value.replace(/`/g, '\\`')}\`]`;
+  const raw = value.replace(/^\[`?|`?\]$/g, '');
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(raw) ? `[${raw}]` : `[\`${raw.replace(/`/g, '\\`')}\`]`;
 }
 
 function literalToDsl(value: unknown): string {

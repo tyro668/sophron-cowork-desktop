@@ -44,7 +44,8 @@ export function positiveNumber(value: unknown, fallback: number): number {
 }
 
 export function lastQualifiedPart(value: string): string {
-  return value.includes('.') ? (value.split('.').at(-1) ?? value) : value;
+  const raw = value.includes('.') ? (value.split('.').at(-1) ?? value) : value;
+  return raw.replace(/^\[|\]$/g, '');
 }
 
 export function unwrapFieldToken(token: string): string {
@@ -65,6 +66,24 @@ export function getRightPrefix(conflict: unknown): string {
     return conflict.rightPrefix;
   }
   return 'right_';
+}
+
+export function getConflictAlias(
+  conflict: unknown,
+  side: 'left' | 'right',
+  fieldName: string
+): string {
+  if (isRecord(conflict) && conflict.strategy === 'suffix') {
+    const leftSuffix = typeof conflict.leftSuffix === 'string' ? conflict.leftSuffix : '_left';
+    const rightSuffix = typeof conflict.rightSuffix === 'string' ? conflict.rightSuffix : '_right';
+    const suffix = side === 'left' ? leftSuffix : rightSuffix;
+    return `${fieldName}${suffix}`;
+  }
+  if (side === 'right') {
+    const prefix = getRightPrefix(conflict);
+    return `${prefix}${fieldName}`;
+  }
+  return fieldName;
 }
 
 export function durationToMilliseconds(value: string): number {

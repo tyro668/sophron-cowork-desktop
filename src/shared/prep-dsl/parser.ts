@@ -651,9 +651,7 @@ function parseJoin(command: CommandLine, diagnostics: PrepDiagnostic[]): PrepOpe
     return parseAsofJoin(command, diagnostics);
   }
   const match =
-    /^join\s+(inner|left|right|full|cross|semi|anti)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?(.*)$/s.exec(
-      text
-    );
+    /^join\s+(inner|left|right|full|cross|semi|anti)\s+(\S+)(?:\s+as\s+(\S+))?(.*)$/s.exec(text);
   if (!match) {
     diagnostics.push({
       ...createPrepDiagnostic('invalidJoin', `Cannot parse join: ${text}`, { value: text }),
@@ -670,7 +668,7 @@ function parseJoin(command: CommandLine, diagnostics: PrepDiagnostic[]): PrepOpe
     conditions,
     keep: parseJoinKeep(findClause(clauses, 'keep') ?? ''),
     cardinality: findClause(clauses, 'expect'),
-    conflict: parseJoinConflict(clauses, match[3] ?? match[2]),
+    conflict: parseJoinConflict(clauses),
   });
 }
 
@@ -679,8 +677,7 @@ function parseAsofJoin(
   diagnostics: PrepDiagnostic[]
 ): PrepOperatorAst | null {
   const text = command.text;
-  const match =
-    /^join\s+asof\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?(.*)$/s.exec(text);
+  const match = /^join\s+asof\s+(\S+)(?:\s+as\s+(\S+))?(.*)$/s.exec(text);
   if (!match) {
     diagnostics.push({
       ...createPrepDiagnostic('invalidAsofJoin', `Cannot parse asof join: ${text}`, {
@@ -713,7 +710,7 @@ function parseAsofJoin(
     asof,
     keep: parseJoinKeep(findClause(clauses, 'keep') ?? ''),
     cardinality: findClause(clauses, 'expect'),
-    conflict: parseJoinConflict(clauses, match[2] ?? match[1]),
+    conflict: parseJoinConflict(clauses),
   });
 }
 
@@ -769,7 +766,7 @@ function parseJoinKeep(value: string): unknown[] | undefined {
   });
 }
 
-function parseJoinConflict(clauses: Clause[], rightAlias: string): Record<string, string> {
+function parseJoinConflict(clauses: Clause[]): Record<string, string> {
   const rightPrefix = findClause(clauses, 'right_prefix');
   const suffix = findClause(clauses, 'suffix');
   if (rightPrefix) {
@@ -783,7 +780,7 @@ function parseJoinConflict(clauses: Clause[], rightAlias: string): Record<string
       rightSuffix: unquoteMaybe(parts[1] ?? '_right'),
     };
   }
-  return { strategy: 'right_prefix', rightPrefix: `${rightAlias}_` };
+  return { strategy: 'suffix', leftSuffix: '_left', rightSuffix: '_right' };
 }
 
 function parseMetricList(value: string, requireAlias: boolean): Array<Record<string, unknown>> {
@@ -929,7 +926,7 @@ function parseFieldRefs(value: string): PrepFieldRef[] {
   });
 }
 
-function parseFieldRef(value: string): PrepFieldRef | null {
+export function parseFieldRef(value: string): PrepFieldRef | null {
   try {
     const trimmed = value.trim();
     if (!trimmed) return null;
@@ -1045,15 +1042,15 @@ function sourceAlias(source: PrepOperatorAst): string | undefined {
   return typeof alias === 'string' ? alias : undefined;
 }
 
-function toFieldName(field: PrepFieldRef): string {
+export function toFieldName(field: PrepFieldRef): string {
   return field.name;
 }
 
-function toQualifiedName(field: PrepFieldRef): string {
+export function toQualifiedName(field: PrepFieldRef): string {
   return field.source ? `${field.source}.${field.name}` : field.name;
 }
 
-function unwrapFieldName(value: string): string {
+export function unwrapFieldName(value: string): string {
   const inner = value.slice(1, -1);
   return inner.startsWith('`') && inner.endsWith('`')
     ? inner.slice(1, -1).replace(/\\`/g, '`')

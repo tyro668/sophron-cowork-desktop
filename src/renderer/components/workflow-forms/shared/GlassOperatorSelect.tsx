@@ -181,7 +181,7 @@ export function GlassOperatorSelect({
         disabled={disabled}
         onClick={toggleOpen}
         onKeyDown={handleTriggerKeyDown}
-        className={`flex w-full items-center rounded border border-border-muted bg-background/42 text-text-secondary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-40 ${className ?? ''}`}
+        className={`flex items-center rounded border border-border-muted bg-background/42 text-text-secondary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-40 ${className ?? ''}`}
       >
         <span className="flex-1 px-2 text-center whitespace-nowrap truncate">
           {value ? (

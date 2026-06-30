@@ -180,7 +180,7 @@ export default function FormFieldMapping({
                 value={item.target}
                 onChange={(value) => updateMapping(i, { target: value })}
                 placeholder={tr('fieldMappingTargetPlaceholder', '目标字段名')}
-                className={`h-6 px-1.5 text-[12px] ${err ? 'border-warning/70' : ''}`}
+                className={`h-6 px-1.5 text-[12px] w-full ${err ? 'border-warning/70' : ''}`}
               />
               {err && (
                 <span

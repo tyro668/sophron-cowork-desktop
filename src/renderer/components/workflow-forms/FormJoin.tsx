@@ -1,13 +1,26 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Settings } from 'lucide-react';
-import type { DataWorkflowOperatorType } from '../../types';
 import type { OperatorFormProps } from './index';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import { GlassConditionEditor, type ConditionEntry } from './shared/GlassConditionEditor';
+import { isTemporalDataFieldType } from '@/shared/data-field-types';
+import { parseFieldRef } from '@/shared/prep-dsl/parser';
+
+function isLeftField(source: string, leftAlias: string): boolean {
+  const ref = parseFieldRef(source);
+  if (ref?.source) return ref.source === leftAlias;
+  return source.startsWith(`${leftAlias}.`);
+}
+
+function isRightField(source: string, rightAlias: string): boolean {
+  const ref = parseFieldRef(source);
+  if (ref?.source) return ref.source === rightAlias;
+  return source.startsWith(`${rightAlias}.`);
+}
 
 // ── Venn-diagram SVG for each join type ──
 function JoinVennSVG({ type, selected }: { type: string; selected: boolean }) {
@@ -170,7 +183,7 @@ export default function FormJoin({
     () => (node.config.conflict as Record<string, unknown>) ?? {},
     [node.config.conflict]
   );
-  const conflictStrategy = (conflict.strategy as string) ?? 'right_prefix';
+  const conflictStrategy = (conflict.strategy as string) ?? 'suffix';
   const rightPrefix = (conflict.rightPrefix as string) ?? '';
   const keepItems = useMemo(
     () => (node.config.keep as Array<Record<string, unknown>>) ?? [],
@@ -208,9 +221,13 @@ export default function FormJoin({
   const leftAlias = leftSourceLabel || 'left';
   const rightAlias = rightSourceLabel || 'right_source';
 
-  // Right table column names (fetched from DuckDB via IPC)
+  // Column types for both tables
+  // Right table column names (fetched via IPC, same as before)
   const [rightRawColumns, setRightRawColumns] = useState<string[]>([]);
   const [rightColumnsError, setRightColumnsError] = useState(false);
+  // Optional column type info for ASOF time field filtering
+  const [leftColumnTypes, setLeftColumnTypes] = useState<Record<string, string>>({});
+  const [rightColumnTypes, setRightColumnTypes] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setRightRawColumns([]);
@@ -222,10 +239,10 @@ export default function FormJoin({
       .electronAPI!.data.getWorkflowNodeColumns({
         taskId,
         nodeId: rightSourceNode.id,
-        nodeType: rightSourceNode.type as DataWorkflowOperatorType,
+        nodeType: rightSourceNode.type as never,
         nodeConfig: rightSourceNode.config,
       })
-      .then((cols) => {
+      .then((cols: string[]) => {
         setRightRawColumns(cols);
         setRightColumnsError(false);
       })
@@ -234,6 +251,45 @@ export default function FormJoin({
         setRightColumnsError(true);
       });
   }, [rightSourceNode, taskId]);
+
+  // Optional column type info for ASOF time field filtering
+  useEffect(() => {
+    if (!taskId || !sourceNode?.id) return;
+    const api = window.electronAPI?.data;
+    if (!api?.getWorkflowNodeColumnTypes) return;
+    api
+      .getWorkflowNodeColumnTypes({
+        taskId,
+        nodeId: sourceNode.id,
+        nodeType: sourceNode.type as never,
+        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
+      })
+      .then((types: Array<{ name: string; type: string }>) => {
+        const map: Record<string, string> = {};
+        for (const t of types) map[t.name] = t.type;
+        setLeftColumnTypes(map);
+      })
+      .catch(() => setLeftColumnTypes({}));
+  }, [taskId, sourceNode?.id]);
+
+  useEffect(() => {
+    if (!rightSourceNode || typeof taskId !== 'string') return;
+    const api = window.electronAPI?.data;
+    if (!api?.getWorkflowNodeColumnTypes) return;
+    api
+      .getWorkflowNodeColumnTypes({
+        taskId,
+        nodeId: rightSourceNode.id,
+        nodeType: rightSourceNode.type as never,
+        nodeConfig: (rightSourceNode.config ?? {}) as Record<string, unknown>,
+      })
+      .then((types: Array<{ name: string; type: string }>) => {
+        const map: Record<string, string> = {};
+        for (const t of types) map[t.name] = t.type;
+        setRightColumnTypes(map);
+      })
+      .catch(() => setRightColumnTypes({}));
+  }, [taskId, rightSourceNode?.id]);
 
   const joinTypes = useMemo(
     () => [
@@ -287,8 +343,41 @@ export default function FormJoin({
   }, [rightAlias, rightRawColumns, rightSourceLabel]);
 
   const leftFieldCompletions = useMemo(
-    () => fieldCompletions.map((c) => `[${c}]`),
-    [fieldCompletions]
+    () => fieldCompletions.map((c) => `[${leftAlias}].[${c}]`),
+    [fieldCompletions, leftAlias]
+  );
+
+  const hasLeftTypes = Object.keys(leftColumnTypes).length > 0;
+  const hasRightTypes = Object.keys(rightColumnTypes).length > 0;
+  const leftColumnTypesQualified = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const [name, type] of Object.entries(leftColumnTypes)) {
+      map[`[${leftAlias}].[${name}]`] = type;
+    }
+    return map;
+  }, [leftColumnTypes, leftAlias]);
+  const asofLeftTimeOptions = useMemo(() => {
+    const filtered = hasLeftTypes
+      ? fieldCompletions.filter((c) => isTemporalDataFieldType(leftColumnTypes[c]))
+      : fieldCompletions;
+    return filtered.map((c) => `[${leftAlias}].[${c}]`);
+  }, [fieldCompletions, leftColumnTypes, hasLeftTypes, leftAlias]);
+  const rightColumnTypesQualified = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const [name, type] of Object.entries(rightColumnTypes)) {
+      map[`[${rightAlias}].[${name}]`] = type;
+    }
+    return map;
+  }, [rightColumnTypes, rightAlias]);
+  const asofRightTimeOptions = useMemo(
+    () =>
+      hasRightTypes
+        ? rightFieldCompletions.filter((opt) => {
+            const m = opt.match(/\[.*?\]\.\[(.+?)\]/);
+            return m ? isTemporalDataFieldType(rightColumnTypes[m[1]]) : false;
+          })
+        : rightFieldCompletions,
+    [rightFieldCompletions, rightColumnTypes, hasRightTypes]
   );
 
   function handleJoinTypeChange(value: string) {
@@ -309,25 +398,44 @@ export default function FormJoin({
   const [draftKeepAll, setDraftKeepAll] = useState(true);
   const [draftLeftSel, setDraftLeftSel] = useState(new Set<string>());
   const [draftRightSel, setDraftRightSel] = useState(new Set<string>());
+  const [draftLeftAliases, setDraftLeftAliases] = useState(new Map<string, string>());
+  const [draftRightAliases, setDraftRightAliases] = useState(new Map<string, string>());
 
   function openKeepDialog() {
     const hasWildcards = keepItems.some((i) => i.wildcard);
     const specific = keepItems.filter((i) => !i.wildcard);
     setDraftKeepAll(hasWildcards);
+
+    const leftAliases = new Map<string, string>();
     setDraftLeftSel(
       new Set(
         specific
-          .filter((i) => String(i.source).startsWith(leftAlias + '.'))
-          .map((i) => String(i.source))
+          .filter((i) => isLeftField(String(i.source), leftAlias))
+          .map((i) => {
+            if (typeof i.alias === 'string') {
+              leftAliases.set(String(i.source), i.alias);
+            }
+            return String(i.source);
+          })
       )
     );
+    setDraftLeftAliases(leftAliases);
+
+    const rightAliases = new Map<string, string>();
     setDraftRightSel(
       new Set(
         specific
-          .filter((i) => String(i.source).startsWith(rightAlias + '.'))
-          .map((i) => String(i.source))
+          .filter((i) => isRightField(String(i.source), rightAlias))
+          .map((i) => {
+            if (typeof i.alias === 'string') {
+              rightAliases.set(String(i.source), i.alias);
+            }
+            return String(i.source);
+          })
       )
     );
+    setDraftRightAliases(rightAliases);
+
     setKeepDialogOpen(true);
   }
 
@@ -336,8 +444,14 @@ export default function FormJoin({
     if (draftKeepAll) {
       items.push({ side: 'left', wildcard: true }, { side: 'right', wildcard: true });
     } else {
-      for (const f of draftLeftSel) items.push({ source: f });
-      for (const f of draftRightSel) items.push({ source: f });
+      for (const f of draftLeftSel) {
+        const alias = draftLeftAliases.get(f);
+        items.push(alias ? { source: f, alias } : { source: f });
+      }
+      for (const f of draftRightSel) {
+        const alias = draftRightAliases.get(f);
+        items.push(alias ? { source: f, alias } : { source: f });
+      }
     }
     handleKeepChange(items);
     setKeepDialogOpen(false);
@@ -350,8 +464,16 @@ export default function FormJoin({
   function toggleDraftLeftField(field: string) {
     setDraftLeftSel((prev) => {
       const next = new Set(prev);
-      if (next.has(field)) next.delete(field);
-      else next.add(field);
+      if (next.has(field)) {
+        next.delete(field);
+        setDraftLeftAliases((a) => {
+          const m = new Map(a);
+          m.delete(field);
+          return m;
+        });
+      } else {
+        next.add(field);
+      }
       return next;
     });
   }
@@ -359,20 +481,46 @@ export default function FormJoin({
   function toggleDraftRightField(field: string) {
     setDraftRightSel((prev) => {
       const next = new Set(prev);
-      if (next.has(field)) next.delete(field);
-      else next.add(field);
+      if (next.has(field)) {
+        next.delete(field);
+        setDraftRightAliases((a) => {
+          const m = new Map(a);
+          m.delete(field);
+          return m;
+        });
+      } else {
+        next.add(field);
+      }
       return next;
     });
   }
 
   function toggleDraftLeftAll() {
-    const allFields = fieldCompletions.map((f) => `${leftAlias}.${f}`);
+    const allFields = fieldCompletions.map((f) => `[${leftAlias}].[${f}]`);
     setDraftLeftSel((prev) => (prev.size > 0 ? new Set() : new Set(allFields)));
   }
 
   function toggleDraftRightAll() {
-    const allFields = rightRawColumns.map((f) => `${rightAlias}.${f}`);
+    const allFields = rightRawColumns.map((f) => `[${rightAlias}].[${f}]`);
     setDraftRightSel((prev) => (prev.size > 0 ? new Set() : new Set(allFields)));
+  }
+
+  function updateLeftAlias(field: string, alias: string) {
+    setDraftLeftAliases((prev) => {
+      const next = new Map(prev);
+      if (alias) next.set(field, alias);
+      else next.delete(field);
+      return next;
+    });
+  }
+
+  function updateRightAlias(field: string, alias: string) {
+    setDraftRightAliases((prev) => {
+      const next = new Map(prev);
+      if (alias) next.set(field, alias);
+      else next.delete(field);
+      return next;
+    });
   }
 
   const draftLeftAllChecked = useMemo(
@@ -387,17 +535,35 @@ export default function FormJoin({
   const leftKeepCount = useMemo(() => {
     const wildcardItem = keepItems.find((i) => i.side === 'left' && i.wildcard);
     if (wildcardItem) return fieldCompletions.length;
-    return keepItems.filter(
-      (i) => !i.wildcard && String(i.source ?? '').startsWith(leftAlias + '.')
-    ).length;
+    return keepItems.filter((i) => !i.wildcard && isLeftField(String(i.source ?? ''), leftAlias))
+      .length;
   }, [keepItems, fieldCompletions, leftAlias]);
   const rightKeepCount = useMemo(() => {
     const wildcardItem = keepItems.find((i) => i.side === 'right' && i.wildcard);
     if (wildcardItem) return rightRawColumns.length;
-    return keepItems.filter(
-      (i) => !i.wildcard && String(i.source ?? '').startsWith(rightAlias + '.')
-    ).length;
+    return keepItems.filter((i) => !i.wildcard && isRightField(String(i.source ?? ''), rightAlias))
+      .length;
   }, [keepItems, rightRawColumns, rightAlias]);
+
+  const leftRenameCount = useMemo(() => {
+    return keepItems.filter(
+      (i) =>
+        !i.wildcard &&
+        isLeftField(String(i.source ?? ''), leftAlias) &&
+        typeof i.alias === 'string' &&
+        i.alias
+    ).length;
+  }, [keepItems, leftAlias]);
+
+  const rightRenameCount = useMemo(() => {
+    return keepItems.filter(
+      (i) =>
+        !i.wildcard &&
+        isRightField(String(i.source ?? ''), rightAlias) &&
+        typeof i.alias === 'string' &&
+        i.alias
+    ).length;
+  }, [keepItems, rightAlias]);
 
   // ── Inline condition handlers ──
   function handleConditionsChange(next: ConditionEntry[]) {
@@ -466,7 +632,7 @@ export default function FormJoin({
               <div className="flex gap-2">
                 <div className="flex-1 flex items-center gap-2">
                   <span className="shrink-0 text-[11px] font-medium text-text-secondary">
-                    {tr('leftInput', '左数据源')}
+                    {tr('leftInput', '左表数据源')}
                   </span>
                   <div className="flex-1 flex items-center rounded-md border border-border-muted/70 bg-background/28 px-2 h-7 min-w-0">
                     <span className="text-[12px] text-text-primary truncate">
@@ -476,7 +642,7 @@ export default function FormJoin({
                 </div>
                 <div className="flex-1 flex items-center gap-2">
                   <span className="shrink-0 text-[11px] font-medium text-text-secondary">
-                    {tr('rightInput', '右数据源')}
+                    {tr('rightInput', '右表数据源')}
                   </span>
                   <div className="flex-1 flex items-center rounded-md border border-border-muted/70 bg-background/28 px-2 h-7 min-w-0">
                     <span className="text-[12px] text-text-primary truncate">
@@ -486,7 +652,7 @@ export default function FormJoin({
                 </div>
               </div>
 
-              <div className="grid gap-1">
+              <div className="grid gap-1 text-center">
                 <GlassFormLabel>{tr('joinType', '连接类型')}</GlassFormLabel>
                 <div className="grid grid-cols-8 gap-1">
                   {joinTypes.map((jt) => (
@@ -543,7 +709,9 @@ export default function FormJoin({
                   <div className="flex items-center gap-1.5">
                     <GlassFieldCombo
                       value={asofLeftTime}
-                      options={fieldCompletions}
+                      options={asofLeftTimeOptions}
+                      columnTypes={leftColumnTypesQualified}
+                      showType
                       onChange={(v) =>
                         updateConfig((cfg) => ({
                           ...cfg,
@@ -554,7 +722,7 @@ export default function FormJoin({
                         }))
                       }
                       placeholder={tr('leftTimeCol', '左表时间')}
-                      className="h-7 flex-1 min-w-0 text-[12px]"
+                      className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
                     />
                     <GlassOperatorSelect
                       value={asofOperator}
@@ -578,7 +746,9 @@ export default function FormJoin({
                     />
                     <GlassFieldCombo
                       value={asofRightTime}
-                      options={rightFieldCompletions}
+                      options={asofRightTimeOptions}
+                      columnTypes={rightColumnTypesQualified}
+                      showType
                       onChange={(v) =>
                         updateConfig((cfg) => ({
                           ...cfg,
@@ -589,7 +759,7 @@ export default function FormJoin({
                         }))
                       }
                       placeholder={tr('rightTimeCol', '右表时间')}
-                      className="h-7 flex-1 min-w-0 text-[12px]"
+                      className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
                     />
                     <GlassFormTextInput
                       value={(asof.tolerance as string) ?? ''}
@@ -680,11 +850,11 @@ export default function FormJoin({
             {/* Keep left fields */}
             <div className="flex items-center justify-between px-0.5">
               <span className="text-[12px] text-text-primary">
-                {tr('keepLeftFields', '保留左表字段')}
+                {tr('keepFieldStatsLeft', '左表保留/重命名/全字段数')}
               </span>
               <div className="flex items-center gap-1">
-                <span className="text-[11px] text-text-muted">
-                  {leftKeepCount > 0 ? leftKeepCount : 0}
+                <span className="text-[12px] text-text-muted tabular-nums">
+                  {leftKeepCount}/{leftRenameCount}/{fieldCompletions.length}
                 </span>
                 <button
                   type="button"
@@ -700,11 +870,11 @@ export default function FormJoin({
             {/* Keep right fields */}
             <div className="flex items-center justify-between px-0.5">
               <span className="text-[12px] text-text-primary">
-                {tr('keepRightFields', '保留右表字段')}
+                {tr('keepFieldStatsRight', '右表保留/重命名/全字段数')}
               </span>
               <div className="flex items-center gap-1">
-                <span className="text-[11px] text-text-muted">
-                  {rightKeepCount > 0 ? rightKeepCount : 0}
+                <span className="text-[12px] text-text-muted tabular-nums">
+                  {rightKeepCount}/{rightRenameCount}/{rightRawColumns.length}
                 </span>
                 <button
                   type="button"
@@ -726,7 +896,7 @@ export default function FormJoin({
                 value={cardinality}
                 groups={cardinalityGroups}
                 onChange={(v) => updateConfig((cfg) => ({ ...cfg, cardinality: v || undefined }))}
-                className="h-7 text-[12px] [&>span]:text-left"
+                className="h-7 text-[12px] [&>span]:text-left w-full"
               />
             </div>
 
@@ -747,7 +917,7 @@ export default function FormJoin({
                     },
                   }))
                 }
-                className="h-7 text-[12px] [&>span]:text-left"
+                className="h-7 text-[12px] [&>span]:text-left w-full"
               />
               {conflictStrategy === 'right_prefix' && (
                 <GlassFormTextInput
@@ -781,7 +951,7 @@ export default function FormJoin({
             if (e.target === e.currentTarget) cancelKeep();
           }}
         >
-          <div className="flex max-h-full w-[520px] flex-col rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl">
+          <div className="flex max-h-full w-[680px] flex-col rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl">
             <div className="flex items-center justify-between border-b border-border-muted/50 px-4 py-3">
               <h3 className="text-[13px] font-semibold text-text-primary">
                 {tr('selectKeepFields', '选择保留字段')}
@@ -789,10 +959,11 @@ export default function FormJoin({
             </div>
             <div className="flex gap-4 overflow-y-auto p-4">
               {/* Left table fields */}
-              <div className="flex-1">
-                <h4 className="mb-2 text-[12px] font-medium text-text-secondary">
+              <div className="flex-1 border-r border-border-muted/50 pr-4">
+                <h4 className="mb-1 text-[12px] font-medium text-text-secondary">
                   {leftSourceLabel || tr('leftInput', '左表')}
                 </h4>
+                <p className="mb-2 text-[10px] text-text-muted">勾选字段后可输入别名</p>
                 <label className="flex cursor-pointer items-center gap-1.5 mb-1.5 text-[12px] text-text-secondary font-medium">
                   <input
                     type="checkbox"
@@ -804,29 +975,43 @@ export default function FormJoin({
                 </label>
                 <div className="space-y-1 max-h-48 overflow-y-auto">
                   {fieldCompletions.map((f) => {
-                    const qualified = `${leftAlias}.${f}`;
+                    const qualified = `[${leftAlias}].[${f}]`;
+                    const isChecked = draftLeftSel.has(qualified);
+                    const alias = draftLeftAliases.get(qualified) ?? '';
                     return (
-                      <label
+                      <div
                         key={f}
-                        className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-primary"
+                        className="flex items-center gap-1.5 text-[12px] text-text-primary"
                       >
-                        <input
-                          type="checkbox"
-                          checked={draftLeftSel.has(qualified)}
-                          onChange={() => toggleDraftLeftField(qualified)}
-                          className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
-                        />
-                        <span className="truncate">{f}</span>
-                      </label>
+                        <label className="flex cursor-pointer items-center gap-1.5 flex-1 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleDraftLeftField(qualified)}
+                            className="h-3.5 w-3.5 shrink-0 rounded border-border-muted accent-accent"
+                          />
+                          <span className="truncate">{f}</span>
+                        </label>
+                        {isChecked && (
+                          <input
+                            type="text"
+                            value={alias}
+                            onChange={(e) => updateLeftAlias(qualified, e.target.value)}
+                            placeholder={f}
+                            className="h-5 w-28 shrink-0 rounded border border-border-muted/50 bg-background/30 px-1.5 text-[11px] text-text-primary outline-none focus:border-accent placeholder:text-text-muted/50"
+                          />
+                        )}
+                      </div>
                     );
                   })}
                 </div>
               </div>
               {/* Right table fields */}
-              <div className="flex-1">
-                <h4 className="mb-2 text-[12px] font-medium text-text-secondary">
+              <div className="flex-1 pl-4">
+                <h4 className="mb-1 text-[12px] font-medium text-text-secondary">
                   {rightSourceLabel || tr('rightInput', '右表')}
                 </h4>
+                <p className="mb-2 text-[10px] text-text-muted">勾选字段后可输入别名</p>
                 <label className="flex cursor-pointer items-center gap-1.5 mb-1.5 text-[12px] text-text-secondary font-medium">
                   <input
                     type="checkbox"
@@ -838,20 +1023,33 @@ export default function FormJoin({
                 </label>
                 <div className="space-y-1 max-h-48 overflow-y-auto">
                   {rightRawColumns.map((f) => {
-                    const qualified = `${rightAlias}.${f}`;
+                    const qualified = `[${rightAlias}].[${f}]`;
+                    const isChecked = draftRightSel.has(qualified);
+                    const alias = draftRightAliases.get(qualified) ?? '';
                     return (
-                      <label
+                      <div
                         key={f}
-                        className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-primary"
+                        className="flex items-center gap-1.5 text-[12px] text-text-primary"
                       >
-                        <input
-                          type="checkbox"
-                          checked={draftRightSel.has(qualified)}
-                          onChange={() => toggleDraftRightField(qualified)}
-                          className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
-                        />
-                        <span className="truncate">{f}</span>
-                      </label>
+                        <label className="flex cursor-pointer items-center gap-1.5 flex-1 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleDraftRightField(qualified)}
+                            className="h-3.5 w-3.5 shrink-0 rounded border-border-muted accent-accent"
+                          />
+                          <span className="truncate">{f}</span>
+                        </label>
+                        {isChecked && (
+                          <input
+                            type="text"
+                            value={alias}
+                            onChange={(e) => updateRightAlias(qualified, e.target.value)}
+                            placeholder={f}
+                            className="h-5 w-28 shrink-0 rounded border border-border-muted/50 bg-background/30 px-1.5 text-[11px] text-text-primary outline-none focus:border-accent placeholder:text-text-muted/50"
+                          />
+                        )}
+                      </div>
                     );
                   })}
                 </div>
