@@ -3,7 +3,8 @@ import { DayPicker } from '@daypicker/react';
 import { enUS, zhCN } from '@daypicker/react/locale';
 import { CalendarClock, Check, ChevronDown, Clock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { GlassDropdownMenu } from './GlassDropdownMenu';
+import { GlassDropdownMenu, glassTriggerButtonClass } from './GlassDropdownMenu';
+import { GlassTimePickerColumns } from './GlassTimePicker';
 
 function pad2(value: number): string {
   return String(value).padStart(2, '0');
@@ -49,6 +50,7 @@ export function GlassDateTimePicker({
 }: GlassDateTimePickerProps) {
   const { i18n, t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [timeOpen, setTimeOpen] = useState(false);
   const selectedDate = useMemo(() => new Date(value), [value]);
   const [displayMonth, setDisplayMonth] = useState(selectedDate);
   const selectedYear = selectedDate.getFullYear();
@@ -76,6 +78,8 @@ export function GlassDateTimePicker({
   useEffect(() => {
     if (open) {
       setDisplayMonth(new Date(selectedYear, selectedMonth, 1));
+    } else {
+      setTimeOpen(false);
     }
   }, [open, selectedMonth, selectedYear]);
 
@@ -85,12 +89,12 @@ export function GlassDateTimePicker({
       onOpenChange={setOpen}
       align="start"
       sideOffset={4}
-      contentClassName={`w-[19.5rem] p-3 ${className ?? ''}`}
+      contentClassName={`w-[19.5rem] !overflow-visible p-3 ${className ?? ''}`}
       trigger={
         <button
           type="button"
           disabled={disabled}
-          className={`inline-flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-border-muted bg-background/42 px-3 text-left text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors hover:border-accent/25 hover:bg-surface-hover focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-55 ${triggerClassName ?? ''}`}
+          className={`${glassTriggerButtonClass} ${triggerClassName ?? ''}`}
         >
           <span className="inline-flex min-w-0 items-center gap-2">
             <CalendarClock className="h-3.5 w-3.5 shrink-0 text-text-muted" />
@@ -137,15 +141,27 @@ export function GlassDateTimePicker({
           }}
         />
         <div className="mt-3 flex items-center gap-2 border-t border-border-muted pt-3">
-          <label className="inline-flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-border-muted bg-background/42 px-2.5 shadow-soft">
-            <Clock className="h-3.5 w-3.5 shrink-0 text-text-muted" />
-            <input
-              type="time"
-              value={getTimeValue(selectedDate)}
-              onChange={(event) => onChange(applyTimePart(value, event.target.value))}
-              className="h-8 min-w-0 flex-1 bg-transparent text-xs font-medium text-text-secondary outline-none"
-            />
-          </label>
+          <div className="relative min-w-0 flex-1">
+            <button
+              type="button"
+              onClick={() => setTimeOpen((next) => !next)}
+              className="inline-flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-border-muted bg-background/42 px-2.5 text-left text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors hover:border-accent/25 hover:bg-surface-hover focus:border-accent focus:ring-2 focus:ring-accent/20"
+            >
+              <span className="inline-flex min-w-0 items-center gap-2">
+                <Clock className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                <span className="min-w-0 truncate tabular-nums">{getTimeValue(selectedDate)}</span>
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+            </button>
+            {timeOpen && (
+              <div className="absolute left-0 top-full z-10 mt-1 w-32 rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] p-2 shadow-elevated backdrop-blur-xl">
+                <GlassTimePickerColumns
+                  value={getTimeValue(selectedDate)}
+                  onChange={(time) => onChange(applyTimePart(value, time))}
+                />
+              </div>
+            )}
+          </div>
           <button
             type="button"
             onClick={handleToday}

@@ -6,6 +6,11 @@ function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
 }
 
+// Shared trigger-button styling for glass dropdown/picker triggers
+// (GlassDateTimePicker, GlassTimePicker, …). Append a per-instance triggerClassName after it.
+export const glassTriggerButtonClass =
+  'inline-flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-border-muted bg-background/42 px-3 text-left text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors hover:border-accent/25 hover:bg-surface-hover focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-55';
+
 interface GlassDropdownMenuProps {
   trigger: ReactNode;
   children: ReactNode;
@@ -55,6 +60,7 @@ interface GlassMenuItemProps {
   danger?: boolean;
   disabled?: boolean;
   icon?: ReactNode;
+  description?: ReactNode;
   className?: string;
   closeOnSelect?: boolean;
 }
@@ -66,6 +72,7 @@ export function GlassMenuItem({
   danger = false,
   disabled = false,
   icon,
+  description,
   className,
   closeOnSelect = true,
 }: GlassMenuItemProps) {
@@ -79,7 +86,8 @@ export function GlassMenuItem({
         onSelect?.();
       }}
       className={cx(
-        'flex min-h-8 w-full cursor-default select-none items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] font-medium outline-none transition-colors disabled:pointer-events-none disabled:opacity-45',
+        'flex min-h-8 w-full cursor-default select-none gap-2 rounded-lg px-3 py-2 text-left text-[13px] font-medium outline-none transition-colors disabled:pointer-events-none disabled:opacity-45',
+        description ? 'items-start' : 'items-center',
         selected
           ? 'bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/20'
           : danger
@@ -89,7 +97,12 @@ export function GlassMenuItem({
       )}
     >
       {icon}
-      <span className="min-w-0 flex-1 truncate">{children}</span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="truncate">{children}</span>
+        {description && (
+          <span className="truncate text-[12px] font-normal text-text-muted">{description}</span>
+        )}
+      </span>
       {selected && <Check className="h-4 w-4 shrink-0 text-accent" />}
     </DropdownMenu.Item>
   );
