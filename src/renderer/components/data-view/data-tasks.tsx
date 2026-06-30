@@ -1636,7 +1636,7 @@ function WorkflowOperatorNode({ data, selected }: NodeProps<WorkflowFlowNode>) {
         selected ? 'border-accent text-accent ring-2 ring-accent/15' : catalog.nodeClassName
       } ${disabled ? 'opacity-45 grayscale' : ''}`}
     >
-      {node.type === 'join' ? (
+      {node.type === 'join' || node.type === 'set_op' ? (
         <>
           <Handle
             id="left"
@@ -2517,7 +2517,7 @@ function getWorkflowFieldSourceNode(
   edges: DataWorkflowEdge[]
 ): DataWorkflowNode | null {
   if (!node) return null;
-  const preferredHandle = node.type === 'join' ? 'left' : 'input';
+  const preferredHandle = node.type === 'join' || node.type === 'set_op' ? 'left' : 'input';
   const edge =
     edges.find(
       (item) => item.targetNodeId === node.id && (item.targetHandle ?? 'input') === preferredHandle
@@ -2531,7 +2531,7 @@ function getWorkflowRightSourceNode(
   nodes: DataWorkflowNode[],
   edges: DataWorkflowEdge[]
 ): DataWorkflowNode | null {
-  if (!node || node.type !== 'join') return null;
+  if (!node || (node.type !== 'join' && node.type !== 'set_op')) return null;
   const edge = edges.find((item) => item.targetNodeId === node.id && item.targetHandle === 'right');
   if (!edge) return null;
   return nodes.find((item) => item.id === edge.sourceNodeId) ?? null;

@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
-import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 
 function VennSVG({ type }: { type: 'union' | 'intersect' | 'except' }) {
   const id = useId();
@@ -131,16 +130,11 @@ export default function FormSetOp({
     () => resolveNodeLabel(sourceNode),
     [sourceNode, resolveNodeLabel]
   );
-
-  const inputSourceNodes = otherNodes.filter((n) => n.type === 'input_source');
-
-  const rightInputGroups = useMemo(() => {
-    const items = inputSourceNodes.map((n) => ({
-      value: n.id,
-      label: (n.config?.alias as string) || n.label,
-    }));
-    return [{ key: 'sources', items }];
-  }, [inputSourceNodes]);
+  const rightSourceLabel = useMemo(() => {
+    if (!rawRightInput) return '';
+    const node = otherNodes.find((n) => n.id === rawRightInput);
+    return node ? (node.config?.alias as string) || node.label || rawRightInput : rawRightInput;
+  }, [rawRightInput, otherNodes]);
 
   return (
     <div className="grid content-start gap-2.5">
@@ -156,28 +150,24 @@ export default function FormSetOp({
                 {tr('setOpSources', '数据源')}
               </span>
               <span className="text-[10px] text-text-muted">
-                {tr('setOpSourcesHint', '请选择参与运算的右数据源')}
+                {tr('setOpSourcesHint', '请在上方选择参与运算的两个数据集')}
               </span>
             </div>
           </div>
           <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
             <div className="p-3 grid gap-2.5">
               <div className="grid gap-1">
-                <GlassFormLabel>{tr('leftInput', '左数据源')}</GlassFormLabel>
+                <GlassFormLabel>{tr('leftInput', '左表数据源')}</GlassFormLabel>
                 <div className="h-7 flex items-center rounded-md border border-border-muted/70 bg-background/28 px-2 text-[12px] text-text-muted">
                   {leftSourceLabel || tr('noLeftSource', '上游节点')}
                 </div>
               </div>
-              <label className="grid gap-1">
-                <GlassFormLabel>{tr('setOpRightInput', '右数据源')}</GlassFormLabel>
-                <GlassOperatorSelect
-                  value={rawRightInput}
-                  groups={rightInputGroups}
-                  onChange={(v) => updateConfig((cfg) => ({ ...cfg, rightInput: v || undefined }))}
-                  className="h-7 text-[12px] [&>span]:text-left w-full"
-                  placeholder={tr('setOpRightInputPlaceholder', '请选择输入源')}
-                />
-              </label>
+              <div className="grid gap-1">
+                <GlassFormLabel>{tr('setOpRightInput', '右表数据源')}</GlassFormLabel>
+                <div className="h-7 flex items-center rounded-md border border-border-muted/70 bg-background/28 px-2 text-[12px] text-text-muted">
+                  {rightSourceLabel || tr('noRightSource', '未连接右表')}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -198,7 +188,7 @@ export default function FormSetOp({
                 {tr('setOpConnection', '连接方式')}
               </span>
               <span className="text-[10px] text-text-muted">
-                {tr('setOpConnectionHint', '请选择两张表之间的集合运算方式')}
+                {tr('setOpConnectionHint', '选择行级合并方式：并集、交集或差集')}
               </span>
             </div>
           </div>
@@ -257,7 +247,7 @@ export default function FormSetOp({
                 {tr('setOpConfig', '配置选择')}
               </span>
               <span className="text-[10px] text-text-muted">
-                {tr('setOpConfigHint', '请配置去重与字段匹配规则')}
+                {tr('setOpConfigHint', '配置去重方式与字段匹配规则')}
               </span>
             </div>
           </div>
@@ -266,18 +256,34 @@ export default function FormSetOp({
               <GlassRadioSelect
                 value={mode}
                 options={[
-                  { value: 'all', label: tr('setOpAll', '保留重复') },
-                  { value: 'distinct', label: tr('setOpDistinct', '去重') },
+                  {
+                    value: 'all',
+                    label: tr('setOpAll', '保留重复'),
+                    tip: tr('setOpAllTip', '将两个表的数据全部合并，包括重复的行'),
+                  },
+                  {
+                    value: 'distinct',
+                    label: tr('setOpDistinct', '去重'),
+                    tip: tr('setOpDistinctTip', '合并后自动去除重复的行'),
+                  },
                 ]}
                 onChange={(v) => updateConfig((cfg) => ({ ...cfg, mode: v }))}
-                label={tr('setOpDedupMode', '去重模式')}
+                label={tr('setOpDedupMode', '重复行处理')}
               />
               {operation === 'union' && (
                 <GlassRadioSelect
                   value={match}
                   options={[
-                    { value: 'by_name', label: tr('setOpByName', '按名称') },
-                    { value: 'by_position', label: tr('setOpByPosition', '按位置') },
+                    {
+                      value: 'by_name',
+                      label: tr('setOpByName', '按名称'),
+                      tip: tr('setOpByNameTip', '根据列名自动匹配，列数或顺序不一致时自动对齐'),
+                    },
+                    {
+                      value: 'by_position',
+                      label: tr('setOpByPosition', '按位置'),
+                      tip: tr('setOpByPositionTip', '按列的顺序位置匹配，两表列数必须一致'),
+                    },
                   ]}
                   onChange={(v) => updateConfig((cfg) => ({ ...cfg, match: v }))}
                   label={tr('setOpMatchMode', '匹配方式')}

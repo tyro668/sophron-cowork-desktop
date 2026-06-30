@@ -12,12 +12,38 @@ export function compileSetOpSql(
   output: string,
   left: string,
   right: string,
-  config: Record<string, unknown>
+  config: Record<string, unknown>,
+  leftColumns?: string[],
+  rightColumns?: string[]
 ): string {
   const operation = String(config.operation ?? 'union').toUpperCase();
   const mode = config.mode === 'all' ? ' ALL' : '';
-  const byName = operation === 'UNION' && config.match === 'by_name' ? ' BY NAME' : '';
-  return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${left} ${operation}${mode}${byName} SELECT * FROM ${right}`;
+  const match = config.match as string | undefined;
+
+  if (operation === 'UNION' && match === 'by_name') {
+    return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${left} ${operation}${mode} BY NAME SELECT * FROM ${right}`;
+  }
+
+  if (leftColumns && rightColumns && leftColumns.length !== rightColumns.length) {
+    const allColumns = [...new Set([...leftColumns, ...rightColumns])];
+    const leftProj = allColumns
+      .map((col) =>
+        leftColumns.includes(col)
+          ? `${left}.${quoteIdentifier(col)}`
+          : `NULL AS ${quoteIdentifier(col)}`
+      )
+      .join(', ');
+    const rightProj = allColumns
+      .map((col) =>
+        rightColumns.includes(col)
+          ? `${right}.${quoteIdentifier(col)}`
+          : `NULL AS ${quoteIdentifier(col)}`
+      )
+      .join(', ');
+    return `CREATE TEMP TABLE ${output} AS SELECT ${leftProj} FROM ${left} ${operation}${mode} SELECT ${rightProj} FROM ${right}`;
+  }
+
+  return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${left} ${operation}${mode} SELECT * FROM ${right}`;
 }
 
 export function compileJoinConditionList(value: unknown): string {

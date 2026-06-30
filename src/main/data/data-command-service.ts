@@ -468,7 +468,7 @@ export class DataCommandService {
       return {
         task,
         preview,
-        diagnostics: compiled?.diagnostics,
+        diagnostics: [...(compiled?.diagnostics ?? []), ...this.store.getExecutionDiagnostics()],
       };
     } catch (error) {
       throw toCommandError(error, 'RUN_FAILED');

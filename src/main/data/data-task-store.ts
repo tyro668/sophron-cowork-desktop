@@ -51,6 +51,7 @@ import type {
   DataWorkflowOperatorType,
   DataWorkflowSaveInput,
 } from '../../renderer/types';
+import type { PrepDiagnostic } from '../../shared/prep-dsl/ast';
 import {
   dataFieldTypeFromDuckDbType,
   duckDbTypeForDataFieldType,
@@ -862,7 +863,14 @@ export class DataTaskStore {
     return this.requireTask(task.id);
   }
 
+  private _executionDiagnostics: PrepDiagnostic[] = [];
+
+  getExecutionDiagnostics(): PrepDiagnostic[] {
+    return this._executionDiagnostics;
+  }
+
   async runTask(id: string, input: DataRunTaskInput = {}): Promise<DataCleaningTask> {
+    this._executionDiagnostics = [];
     await this.ensureReady();
     await this.cleanupExpiredWorkflowNodeCaches();
     const task = await this.requireTask(id);
@@ -2432,7 +2440,7 @@ export class DataTaskStore {
 
         if (node.config.disabled === true) {
           const passthroughNodeId =
-            node.type === 'join'
+            node.type === 'join' || node.type === 'set_op'
               ? (this.findIncomingNodeId(node.id, edges, 'left') ??
                 this.findIncomingNodeId(node.id, edges, 'input') ??
                 this.findIncomingNodeId(node.id, edges, 'right'))
@@ -2445,11 +2453,13 @@ export class DataTaskStore {
           return relation;
         }
 
-        if (node.type === 'join') {
+        if (node.type === 'join' || node.type === 'set_op') {
           const leftNodeId = this.findIncomingNodeId(node.id, edges, 'left');
           const rightNodeId = this.findIncomingNodeId(node.id, edges, 'right');
           if (!leftNodeId || !rightNodeId) {
-            throw new Error(`Join node requires left and right inputs: ${node.id}`);
+            throw new Error(
+              `${node.type === 'join' ? 'Join' : 'Set operation'} node requires left and right inputs: ${node.id}`
+            );
           }
           await materializeNode(leftNodeId);
           await materializeNode(rightNodeId);
@@ -2798,7 +2808,13 @@ export class DataTaskStore {
       return this.compileJoinSql(node, outputRelation, relationByNode, edges);
     }
     if (node.type === 'set_op') {
-      return this.compileSetOpSql(node, outputRelation, relationByNode, edges);
+      return this.compileSetOpSql(
+        node,
+        outputRelation,
+        relationByNode,
+        edges,
+        this._executionDiagnostics
+      );
     }
     const inputId = this.findIncomingNodeId(node.id, edges, 'input');
     const inputRelation = inputId ? relationByNode.get(inputId) : null;
@@ -2846,7 +2862,8 @@ export class DataTaskStore {
     node: DataWorkflowNode,
     outputRelation: string,
     relationByNode: Map<string, string>,
-    edges: DataWorkflowEdge[]
+    edges: DataWorkflowEdge[],
+    diagnostics: PrepDiagnostic[]
   ): Promise<string> {
     const leftNodeId = this.findIncomingNodeId(node.id, edges, 'left');
     const rightNodeId = this.findIncomingNodeId(node.id, edges, 'right');
@@ -2855,11 +2872,65 @@ export class DataTaskStore {
     if (!leftRelation || !rightRelation) {
       throw new Error(`Set operation node requires left and right inputs: ${node.id}`);
     }
+    const leftColumns = await this.getTableColumns(leftRelation);
+    const rightColumns = await this.getTableColumns(rightRelation);
+    const config = node.config;
+
+    // 前置检查：列数不一致（仅对非 UNION BY NAME 场景）
+    const isUnionByName =
+      String(config.operation ?? 'union') === 'union' && config.match === 'by_name';
+    if (!isUnionByName && leftColumns.length !== rightColumns.length) {
+      diagnostics.push({
+        severity: 'warning',
+        message: `左右两表列数不一致（左表 ${leftColumns.length} 列，右表 ${rightColumns.length} 列），缺失列已自动填充 NULL`,
+      });
+    }
+
+    // 前置检查：按位置匹配时列名不同
+    if (config.match !== 'by_name') {
+      const minLen = Math.min(leftColumns.length, rightColumns.length);
+      const mismatches: string[] = [];
+      for (let i = 0; i < minLen; i++) {
+        if (leftColumns[i] !== rightColumns[i]) {
+          mismatches.push(`第 ${i + 1} 列：左表「${leftColumns[i]}」≠ 右表「${rightColumns[i]}」`);
+        }
+      }
+      if (mismatches.length > 0) {
+        diagnostics.push({
+          severity: 'warning',
+          message: `左右两表按位置匹配，但列名不同：${mismatches.join('；')}`,
+        });
+      }
+    }
+
+    // 前置检查：类型兼容性
+    const leftTypes = await this.getTableColumnTypes(leftRelation);
+    const rightTypes = await this.getTableColumnTypes(rightRelation);
+    const minTypeLen = Math.min(leftTypes.length, rightTypes.length);
+    for (let i = 0; i < minTypeLen; i++) {
+      const lt = leftTypes[i].type;
+      const rt = rightTypes[i].type;
+      if (lt !== rt) {
+        const bothNumeric =
+          ['integer', 'float', 'decimal'].includes(lt) &&
+          ['integer', 'float', 'decimal'].includes(rt);
+        const bothTemporal = ['date', 'datetime'].includes(lt) && ['date', 'datetime'].includes(rt);
+        if (!bothNumeric && !bothTemporal && lt !== 'text' && rt !== 'text') {
+          diagnostics.push({
+            severity: 'warning',
+            message: `第 ${i + 1} 列类型不兼容（左表「${leftColumns[i]}」: ${lt}，右表「${rightColumns[i]}」: ${rt}），可能导致执行错误或精度丢失`,
+          });
+        }
+      }
+    }
+
     return compileSetOpSql(
       quoteIdentifier(outputRelation),
       quoteIdentifier(leftRelation),
       quoteIdentifier(rightRelation),
-      node.config
+      config,
+      leftColumns,
+      rightColumns
     );
   }
 
