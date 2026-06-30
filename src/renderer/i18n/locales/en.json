@@ -839,11 +839,16 @@
         "typeConvertNeedConfig": "Config required",
         "typeConvertNoConfigNeeded": "No config needed",
         "unpivotMode": "Unpivot",
-        "unpivotConfigHint": "Select columns to expand and output names",
+        "unpivotConfigHint": "Melt multiple columns into rows, keeping original names and values",
         "unpivotExpandCols": "Columns to expand",
         "unpivotNameCol": "Name column",
+        "unpivotNameColTip": "New column name for the original field names",
+        "unpivotNameColPlaceholder": "name",
         "unpivotValueCol": "Value column",
+        "unpivotValueColTip": "New column name for the original field values",
+        "unpivotValueColPlaceholder": "value",
         "unpivotIncludeNulls": "Include null rows",
+        "unpivotIncludeNullsTip": "When checked, NULL values also produce a row",
         "expressionLabel": "Expression"
       },
       "operators": {

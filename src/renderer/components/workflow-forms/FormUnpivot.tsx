@@ -53,8 +53,8 @@ export default function FormUnpivot({
   );
 
   const columns: string[] = (node.config.columns as string[]) ?? [];
-  const nameColumn = String(node.config.nameColumn ?? '');
-  const valueColumn = String(node.config.valueColumn ?? '');
+  const nameColumn = String(node.config.nameColumn ?? 'name');
+  const valueColumn = String(node.config.valueColumn ?? 'value');
   const includeNulls = Boolean(node.config.includeNulls ?? false);
 
   const handleColumnsSelect = useCallback(
@@ -173,28 +173,47 @@ export default function FormUnpivot({
 
           <div className="grid grid-cols-2 gap-2">
             <div className="grid gap-1">
-              <GlassFormLabel>{tr('unpivotNameCol', '名称列')}</GlassFormLabel>
+              <GlassFormLabel>
+                {tr('unpivotNameCol', '名称列')}
+                <span
+                  className="text-[10px] text-text-muted ml-1"
+                  title={tr('unpivotNameColTip', '新列的列名，存放原字段的名称')}
+                >
+                  (可选)
+                </span>
+              </GlassFormLabel>
               <GlassFormTextInput
                 value={nameColumn}
                 onChange={(v) => updateConfig((cfg) => ({ ...cfg, nameColumn: v || undefined }))}
-                placeholder="name"
+                placeholder={tr('unpivotNameColPlaceholder', 'name')}
                 className="w-full"
                 style={{ height: '1.75rem' }}
               />
             </div>
             <div className="grid gap-1">
-              <GlassFormLabel>{tr('unpivotValueCol', '值列')}</GlassFormLabel>
+              <GlassFormLabel>
+                {tr('unpivotValueCol', '值列')}
+                <span
+                  className="text-[10px] text-text-muted ml-1"
+                  title={tr('unpivotValueColTip', '新列的列名，存放原字段的值')}
+                >
+                  (可选)
+                </span>
+              </GlassFormLabel>
               <GlassFormTextInput
                 value={valueColumn}
                 onChange={(v) => updateConfig((cfg) => ({ ...cfg, valueColumn: v || undefined }))}
-                placeholder="value"
+                placeholder={tr('unpivotValueColPlaceholder', 'value')}
                 className="w-full"
                 style={{ height: '1.75rem' }}
               />
             </div>
           </div>
 
-          <label className="flex cursor-pointer items-center gap-2 text-[12px] text-text-secondary">
+          <label
+            className="flex cursor-pointer items-center gap-2 text-[12px] text-text-secondary"
+            title={tr('unpivotIncludeNullsTip', '勾选后，空值也会生成对应行')}
+          >
             <input
               type="checkbox"
               checked={includeNulls}

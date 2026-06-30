@@ -839,11 +839,16 @@
         "typeConvertNeedConfig": "需要配置",
         "typeConvertNoConfigNeeded": "无需配置",
         "unpivotMode": "列展开",
-        "unpivotConfigHint": "选择要展开的列与输出名称",
+        "unpivotConfigHint": "把多列「融化」成行，每行保留原列名和值",
         "unpivotExpandCols": "要展开的列",
         "unpivotNameCol": "名称列",
+        "unpivotNameColTip": "新列的列名，存放原字段的名称",
+        "unpivotNameColPlaceholder": "name",
         "unpivotValueCol": "值列",
+        "unpivotValueColTip": "新列的列名，存放原字段的值",
+        "unpivotValueColPlaceholder": "value",
         "unpivotIncludeNulls": "包含空值行",
+        "unpivotIncludeNullsTip": "勾选后，空值也会生成对应行",
         "expressionLabel": "表达式"
       },
       "operators": {
