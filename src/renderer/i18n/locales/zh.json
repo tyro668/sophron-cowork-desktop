@@ -647,6 +647,7 @@
         "aggregateFn_approx_count_distinct": "近似去重计数",
         "aggregateFn_approx_quantile": "近似分位数",
         "aggregateFn_approx_top_k": "近似Top K",
+        "aggregateExpression": "聚合表达式",
         "aggregateAlias": "别名",
         "aggregateAliasPlaceholder": "如 total_revenue",
         "aggregateExpressionPlaceholder": "输入表达式，如 [price] * [qty]",
