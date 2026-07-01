@@ -6,9 +6,14 @@ import {
   parsePrepOperatorDsl,
   type PrepDiagnostic,
 } from '../../shared/prep-dsl';
+import { runPiAiOneShot } from '../claude/claude-sdk-one-shot';
+import { getWorkflowDslQuickReference } from './data-dsl-reference';
 import type {
+  AgentRuntimeConfig,
   DataCleaningTask,
+  DataDataset,
   DataInputTablePreview,
+  DataOutputTable,
   DataRunTaskInput,
   DataTaskWorkflow,
   DataWorkflowEdge,
@@ -33,6 +38,8 @@ import {
   type ExportWorkflowDslCommand,
   type GenerateInputTableNormalizerDraftCommand,
   type GenerateInputTableNormalizerDraftResult,
+  type GenerateTaskFromRequirementCommand,
+  type GenerateTaskFromRequirementResult,
   type GetRunResultCommand,
   type GetTaskWorkflowCommand,
   type InputTableResult,
@@ -60,6 +67,8 @@ import {
   type PublishInputTableNormalizerVersionCommand,
   type PublishInputTableNormalizerVersionResult,
   type RunResult,
+  type RunGeneratedTaskCommand,
+  type RunGeneratedTaskResult,
   type RunTaskCommand,
   type RunTaskResult,
   type SearchCloudTablesCommand,
@@ -150,6 +159,71 @@ export class DataCommandService {
     input: GenerateInputTableNormalizerDraftCommand
   ): Promise<GenerateInputTableNormalizerDraftResult> {
     return this.inputTables.generateInputTableNormalizerDraft(input);
+  }
+
+  async generateTaskFromRequirement(
+    input: GenerateTaskFromRequirementCommand
+  ): Promise<GenerateTaskFromRequirementResult> {
+    const processRequirement = normalizeRequiredName(
+      input.processRequirement,
+      'Processing requirement is required'
+    );
+    const preparedInput = await this.prepareGeneratedTaskInput(input);
+    const outputTable = await this.resolveGeneratedOutputTable(
+      input.output,
+      preparedInput.inputTable.name
+    );
+    const reusableTask = await this.resolveReusableGeneratedTask(input.reuseTaskId);
+    const task =
+      reusableTask ??
+      (
+        await this.createTask({
+          name: await this.createUniqueTaskName(
+            `${preparedInput.inputTable.name || '数据表'}_自动处理`
+          ),
+          sourceInputTableId: preparedInput.inputTable.id,
+          outputTableId: outputTable.id,
+        })
+      ).task;
+    const generated = await generateWorkflowDslFromRequirement({
+      inputTableId: preparedInput.inputTable.id,
+      outputTableName: outputTable.name,
+      requirement: processRequirement,
+      columns: preparedInput.columnsSnapshot,
+      runtimeConfig: input.runtimeConfig,
+    });
+    const dryRun = await this.applyWorkflowDsl({
+      taskId: task.id,
+      dsl: generated.workflowDsl,
+      inputTableId: preparedInput.inputTable.id,
+      outputTableId: outputTable.id,
+      dryRun: true,
+    });
+    const dryRunErrors = diagnosticsWithSeverity(dryRun.diagnostics ?? [], 'error');
+    if (dryRunErrors.length > 0) {
+      throw new DataCommandError('DSL_PARSE_FAILED', summarizeDiagnostics(dryRunErrors), {
+        diagnostics: dryRun.diagnostics,
+      });
+    }
+    await this.applyWorkflowDsl({
+      taskId: task.id,
+      dsl: generated.workflowDsl,
+      inputTableId: preparedInput.inputTable.id,
+      outputTableId: outputTable.id,
+      dryRun: false,
+    });
+    return {
+      taskId: task.id,
+      taskName: task.name,
+      outputTableId: outputTable.id,
+      outputTableName: outputTable.name,
+      workflowDsl: generated.workflowDsl,
+      requiredColumns: generated.requiredColumns,
+      columnsSnapshot: preparedInput.columnsSnapshot,
+      sourceSummaryHash: hashColumns(preparedInput.columnsSnapshot),
+      version: nextGeneratedTaskVersion(input.currentVersion),
+      generatedAt: Date.now(),
+    };
   }
 
   async listOutputTables(input: ListInputTablesInput = {}): Promise<ListOutputTablesResult> {
@@ -475,6 +549,104 @@ export class DataCommandService {
     }
   }
 
+  async runGeneratedTask(input: RunGeneratedTaskCommand): Promise<RunGeneratedTaskResult> {
+    const preparedInput = await this.prepareGeneratedTaskInput({
+      source: input.source,
+      processRequirement: '',
+      output: input.output,
+    });
+    validateGeneratedTaskSchema(
+      preparedInput.columnsSnapshot,
+      input.requiredColumns ?? [],
+      input.schemaPolicy ?? 'required_subset'
+    );
+    const outputTable = await this.resolveGeneratedOutputTable(
+      input.output,
+      preparedInput.inputTable.name
+    );
+    const result = await this.runTask({
+      taskId: input.taskId,
+      mode: input.mode ?? 'persisted',
+      workflowDsl: input.workflowDsl,
+      saveWorkflow: false,
+      inputTableId: preparedInput.inputTable.id,
+      outputTableId: outputTable.id,
+      previewRows: input.previewRows,
+    });
+    let uploaded: RunGeneratedTaskResult['uploaded'];
+    if (input.output.location === 'cloud') {
+      const folderId = await this.resolveCloudOutputFolderId(input);
+      if (input.output.writeMode === 'create' && !folderId) {
+        throw new DataCommandError(
+          'INVALID_ARGUMENT',
+          'Cloud output folderId is required. Please reselect the input cloud table or target project before running the automation.'
+        );
+      }
+      uploaded = await this.uploadDataTableToCloud({
+        tableKind: 'output',
+        id: outputTable.id,
+        writeMode: input.output.writeMode === 'replace' ? 'REPLACE' : 'CREATE',
+        tableId: input.output.writeMode === 'replace' ? input.output.targetTableId : undefined,
+        tableName: input.output.tableName || outputTable.name,
+        spaceId: input.output.spaceId,
+        projectId: input.output.projectId,
+        datasourceId: input.output.datasourceId,
+        folderId,
+        waitForDone: true,
+      });
+    }
+    return {
+      ...result,
+      inputTableId: preparedInput.inputTable.id,
+      outputTableId: outputTable.id,
+      uploaded,
+      tokenUsage: 0,
+    };
+  }
+
+  private async resolveCloudOutputFolderId(
+    input: RunGeneratedTaskCommand
+  ): Promise<string | undefined> {
+    const configuredFolderId =
+      normalizeOptionalName(input.output.folderId) ?? normalizeOptionalName(input.source.folderId);
+    if (configuredFolderId) return configuredFolderId;
+
+    const spaceId =
+      normalizeOptionalName(input.output.spaceId) ?? normalizeOptionalName(input.source.spaceId);
+    const projectId =
+      normalizeOptionalName(input.output.projectId) ??
+      normalizeOptionalName(input.source.projectId);
+    if (!spaceId || !projectId) return undefined;
+
+    const projects = await this.cloudAnalysis.listCloudProjects({ spaceId });
+    return projects.projects.find((project) => project.projectId === projectId)?.folderId;
+  }
+
+  private async resolveGeneratedOutputTable(
+    output: GenerateTaskFromRequirementCommand['output'],
+    inputTableName: string
+  ): Promise<DataOutputTable> {
+    if (output.location === 'local' && output.writeMode === 'replace') {
+      return this.requireOutputTable(
+        normalizeRequiredName(output.targetTableId ?? '', 'Output table id is required')
+      );
+    }
+    if (output.localOutputTableId) {
+      return this.requireOutputTable(output.localOutputTableId);
+    }
+    const outputTableName =
+      normalizeOptionalName(output.tableName) || `${inputTableName || 'processed_table'}_processed`;
+    return (await this.createOutputTable({ name: outputTableName })).outputTable;
+  }
+
+  private async resolveReusableGeneratedTask(
+    taskId: string | null | undefined
+  ): Promise<DataCleaningTask | null> {
+    const normalizedTaskId = normalizeOptionalName(taskId ?? undefined);
+    if (!normalizedTaskId) return null;
+    return this.store.getTaskRecord(normalizedTaskId);
+  }
+
   async getRunResult(input: GetRunResultCommand): Promise<RunResult> {
     const task = await this.requireTask(input.taskId);
     const preview = await this.previewTaskOutput(
@@ -705,6 +877,64 @@ export class DataCommandService {
     });
   }
 
+  private async prepareGeneratedTaskInput(
+    input: Pick<GenerateTaskFromRequirementCommand, 'source' | 'output' | 'processRequirement'>
+  ): Promise<{
+    inputTable: DataDataset;
+    columnsSnapshot: Array<{ name: string; type?: string }>;
+  }> {
+    if (input.source.location === 'cloud') {
+      const imported = await this.refreshAutomationCloudMirrorInputTable(input.source);
+      return {
+        inputTable: imported.inputTable,
+        columnsSnapshot: normalizeColumnSnapshot(
+          imported.preview?.columnTypes,
+          input.source.columnsSnapshot
+        ),
+      };
+    }
+    const inputTable = await this.requireInputTable(
+      normalizeRequiredName(input.source.tableId, 'Input table id is required')
+    );
+    let columnsSnapshot = normalizeColumnSnapshot(undefined, input.source.columnsSnapshot);
+    if (columnsSnapshot.length === 0) {
+      try {
+        const preview = await this.previewDataset(inputTable.id, 20);
+        columnsSnapshot = normalizeColumnSnapshot(preview.columnTypes);
+      } catch {
+        columnsSnapshot = [];
+      }
+    }
+    return { inputTable, columnsSnapshot };
+  }
+
+  private async refreshAutomationCloudMirrorInputTable(
+    source: GenerateTaskFromRequirementCommand['source']
+  ): Promise<InputTableResult> {
+    const tableId = normalizeRequiredName(source.tableId, 'Cloud table id is required');
+    const mirrorName = buildAutomationCloudMirrorInputName(source.tableName, tableId);
+    const downloaded = await this.cloudAnalysis.previewCloudTable({
+      tableId,
+      limit: 50,
+    });
+    const existing = await this.findInputTableByExactName(mirrorName);
+    if (existing) {
+      return this.updateInputTable({
+        id: existing.id,
+        name: mirrorName,
+        sourceKind: 'csv',
+        filePath: downloaded.downloadedFilePath,
+        previewRows: 50,
+      });
+    }
+    return this.createInputTable({
+      name: mirrorName,
+      sourceKind: 'csv',
+      filePath: downloaded.downloadedFilePath,
+      previewRows: 50,
+    });
+  }
+
   private async requireTask(id: string): Promise<DataCleaningTask> {
     const task = await this.store.getTaskRecord(id);
     if (!task) {
@@ -730,16 +960,43 @@ export class DataCommandService {
   }
 
   private async ensureUniqueTaskName(name: string, excludeId?: string): Promise<void> {
-    const result = await this.listTasks({ query: name, limit: MAX_LIST_LIMIT });
-    const existing = result.tasks.find(
-      (item) => item.id !== excludeId && item.name.toLowerCase() === name.toLowerCase()
-    );
+    const existing = await this.findTaskByExactName(name, excludeId);
     if (existing) {
       throw new DataCommandError('RESOURCE_ALREADY_EXISTS', `Data task already exists: ${name}`, {
         id: existing.id,
         name: existing.name,
       });
     }
+  }
+
+  private async createUniqueTaskName(baseName: string): Promise<string> {
+    const base = normalizeRequiredName(baseName, 'Task name is required');
+    for (let index = 0; index < 100; index += 1) {
+      const candidate = index === 0 ? base : `${base}_${index + 1}`;
+      if (!(await this.findTaskByExactName(candidate))) {
+        return candidate;
+      }
+    }
+    return `${base}_${Date.now()}`;
+  }
+
+  private async findTaskByExactName(
+    name: string,
+    excludeId?: string
+  ): Promise<DataCleaningTask | null> {
+    const result = await this.listTasks({ query: name, limit: MAX_LIST_LIMIT });
+    return (
+      result.tasks.find(
+        (item) => item.id !== excludeId && item.name.toLowerCase() === name.toLowerCase()
+      ) ?? null
+    );
+  }
+
+  private async findInputTableByExactName(name: string): Promise<DataDataset | null> {
+    const result = await this.listInputTables({ query: name, limit: MAX_LIST_LIMIT });
+    return (
+      result.inputTables.find((item) => item.name.toLowerCase() === name.toLowerCase()) ?? null
+    );
   }
 }
 
@@ -784,6 +1041,233 @@ function normalizeRequiredName(name: string, message: string): string {
     throw new DataCommandError('INVALID_ARGUMENT', message);
   }
   return normalized;
+}
+
+function buildAutomationCloudMirrorInputName(
+  tableName: string | undefined,
+  tableId: string
+): string {
+  const baseName = normalizeOptionalName(tableName) || `cloud_table_${tableId.slice(0, 8)}`;
+  return `${baseName}_自动化镜像_${tableId.slice(0, 8)}`;
+}
+
+function nextGeneratedTaskVersion(currentVersion: number | null | undefined): number {
+  return Number.isFinite(currentVersion) && Number(currentVersion) > 0
+    ? Math.floor(Number(currentVersion)) + 1
+    : 1;
+}
+
+function normalizeColumnSnapshot(
+  primary?: Array<{ name?: string; type?: string }>,
+  fallback?: Array<{ name?: string; type?: string }>
+): Array<{ name: string; type?: string }> {
+  const source = primary?.length ? primary : fallback;
+  return (source ?? [])
+    .map((column) => ({
+      name: String(column.name ?? '').trim(),
+      type: typeof column.type === 'string' ? column.type : undefined,
+    }))
+    .filter((column) => Boolean(column.name));
+}
+
+async function generateWorkflowDslFromRequirement({
+  inputTableId,
+  outputTableName,
+  requirement,
+  columns,
+  runtimeConfig,
+}: {
+  inputTableId: string;
+  outputTableName: string;
+  requirement: string;
+  columns: Array<{ name: string; type?: string }>;
+  runtimeConfig?: AgentRuntimeConfig;
+}): Promise<{ workflowDsl: string; requiredColumns: Array<{ name: string; type?: string }> }> {
+  const config = requireGenerationRuntimeConfig(runtimeConfig);
+  try {
+    const response = await runPiAiOneShot(
+      buildWorkflowDslGenerationUserPrompt({
+        inputTableId,
+        outputTableName,
+        requirement,
+        columns,
+      }),
+      buildWorkflowDslGenerationSystemPrompt(),
+      config,
+      { temperature: 0, maxTokens: 4_000 }
+    );
+    return parseGeneratedWorkflowDslResponse(response.text, columns);
+  } catch (error) {
+    if (error instanceof DataCommandError) throw error;
+    throw new DataCommandError(
+      'GENERATION_FAILED',
+      `Failed to generate data task workflow: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+
+function requireGenerationRuntimeConfig(runtimeConfig?: AgentRuntimeConfig): AgentRuntimeConfig {
+  if (!runtimeConfig || !normalizeOptionalName(runtimeConfig.model)) {
+    throw new DataCommandError(
+      'INVALID_ARGUMENT',
+      'Model configuration is required to generate a data task. Please select an available model and try again.'
+    );
+  }
+  return runtimeConfig;
+}
+
+function buildWorkflowDslGenerationSystemPrompt(): string {
+  return [
+    'You generate reusable data-processing workflow DSL for Sophron Prep DSL.',
+    'Return only strict JSON. Do not return markdown, comments, explanations, or code fences.',
+    'Use only the provided input columns. Do not invent field names.',
+    'The DSL must start with the provided input source dataset line and end with the provided output table line.',
+    'For string values, preserve the semantic value only. For example Chinese text like "过滤掉Market为EU的数据" means value "EU", not "EU的数据".',
+    'If the requirement is ambiguous, generate the safest valid DSL and include only columns actually used by transformation conditions in requiredColumns.',
+  ].join('\n');
+}
+
+function buildWorkflowDslGenerationUserPrompt(input: {
+  inputTableId: string;
+  outputTableName: string;
+  requirement: string;
+  columns: Array<{ name: string; type?: string }>;
+}): string {
+  return JSON.stringify(
+    {
+      task: 'Convert the user requirement into Sophron Prep DSL.',
+      requirement: input.requirement,
+      inputColumns: input.columns,
+      requiredDslLines: {
+        first: `input source dataset "${input.inputTableId}" as src`,
+        last: `output table "${input.outputTableName}" mode replace`,
+      },
+      dslReference: getWorkflowDslQuickReference(),
+      outputJsonSchema: {
+        workflowDsl: 'complete multiline Prep DSL string',
+        requiredColumns: [{ name: 'column used by filters/sorts/aggregations', type: 'optional' }],
+      },
+      example: {
+        requirement: '过滤掉Market为EU的数据',
+        workflowDsl: `input source dataset "${input.inputTableId}" as src\n  | filter [Market] <> 'EU'\n  | output table "${input.outputTableName}" mode replace`,
+        requiredColumns: [{ name: 'Market' }],
+      },
+    },
+    null,
+    2
+  );
+}
+
+function parseGeneratedWorkflowDslResponse(
+  text: string,
+  columns: Array<{ name: string; type?: string }>
+): { workflowDsl: string; requiredColumns: Array<{ name: string; type?: string }> } {
+  const parsed = JSON.parse(extractJsonObject(text)) as unknown;
+  if (!isRecord(parsed) || typeof parsed.workflowDsl !== 'string') {
+    throw new Error('Workflow DSL generation response must include workflowDsl');
+  }
+  const columnsByName = new Map(columns.map((column) => [column.name.toLowerCase(), column]));
+  const unknownRequiredColumnNames: string[] = [];
+  const requiredColumns = Array.isArray(parsed.requiredColumns)
+    ? parsed.requiredColumns
+        .map((column) => {
+          const name = isRecord(column) ? String(column.name ?? '').trim() : '';
+          if (!name) return null;
+          const knownColumn = columnsByName.get(name.toLowerCase());
+          if (!knownColumn) {
+            unknownRequiredColumnNames.push(name);
+            return null;
+          }
+          return knownColumn;
+        })
+        .filter((column): column is { name: string; type?: string } => Boolean(column))
+    : [];
+  if (unknownRequiredColumnNames.length > 0) {
+    throw new DataCommandError(
+      'VALIDATION_FAILED',
+      `Generated workflow references unknown required column(s): ${unknownRequiredColumnNames.join(
+        ', '
+      )}`
+    );
+  }
+  return {
+    workflowDsl: parsed.workflowDsl.trim(),
+    requiredColumns,
+  };
+}
+
+function hashColumns(columns: Array<{ name: string; type?: string }>): string {
+  const value = JSON.stringify(
+    columns.map((column) => ({ name: column.name, type: column.type ?? null }))
+  );
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
+  }
+  return `columns_${Math.abs(hash).toString(16)}`;
+}
+
+function validateGeneratedTaskSchema(
+  actualColumns: Array<{ name: string; type?: string }>,
+  requiredColumns: Array<{ name: string; type?: string }>,
+  policy: 'strict' | 'required_subset'
+): void {
+  const actualByName = new Map(actualColumns.map((column) => [column.name.toLowerCase(), column]));
+  const missing = requiredColumns.filter((column) => !actualByName.has(column.name.toLowerCase()));
+  if (missing.length > 0) {
+    throw new DataCommandError(
+      'VALIDATION_FAILED',
+      `Input schema drift detected. Missing required column(s): ${missing
+        .map((column) => column.name)
+        .join(', ')}`
+    );
+  }
+  const incompatible = requiredColumns.filter((column) => {
+    if (!column.type) return false;
+    const actual = actualByName.get(column.name.toLowerCase());
+    return Boolean(
+      actual?.type && normalizeColumnType(actual.type) !== normalizeColumnType(column.type)
+    );
+  });
+  if (incompatible.length > 0) {
+    throw new DataCommandError(
+      'VALIDATION_FAILED',
+      `Input schema drift detected. Incompatible required column type(s): ${incompatible
+        .map((column) => {
+          const actual = actualByName.get(column.name.toLowerCase());
+          return `${column.name} expected ${column.type}, got ${actual?.type}`;
+        })
+        .join(', ')}`
+    );
+  }
+  if (policy === 'strict' && actualColumns.length !== requiredColumns.length) {
+    throw new DataCommandError(
+      'VALIDATION_FAILED',
+      'Input schema drift detected. Strict schema policy requires the same column set.'
+    );
+  }
+}
+
+function normalizeColumnType(type: string): string {
+  return type.trim().toLowerCase();
+}
+
+function extractJsonObject(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) return trimmed;
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) {
+    const content = fenced[1].trim();
+    if (content.startsWith('{') && content.endsWith('}')) return content;
+  }
+  const start = trimmed.indexOf('{');
+  const end = trimmed.lastIndexOf('}');
+  if (start >= 0 && end > start) return trimmed.slice(start, end + 1);
+  throw new Error('No JSON object found in LLM response');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function findWorkflowNode(workflow: DataTaskWorkflow, nodeId: string): DataWorkflowNode {

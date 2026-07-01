@@ -1,4 +1,5 @@
 import type { DataTaskStore } from '../data/data-task-store';
+import type { DataCommandService } from '../data/data-command-service';
 import type { SessionManager } from '../session/session-manager';
 import type { AgentRuntimeConfig } from '../../renderer/types';
 import { buildScheduledTaskFallbackTitle } from '../../shared/schedule/task-title';
@@ -10,6 +11,7 @@ import { AutomationActionRegistry, objectSchema } from './automation-action-regi
 
 interface DefaultAutomationActionOptions {
   dataTaskStore: DataTaskStore;
+  dataCommandService?: DataCommandService;
   sessionManager: SessionManager;
   resolveProjectCwd?: (projectId: string) => string | null;
   resolveModelRuntimeConfig?: (configSetId: string) => AgentRuntimeConfig | null;
@@ -169,6 +171,97 @@ export function createDefaultAutomationActionRegistry(
         dataRef: { kind: 'output_table', id: task.id },
       });
       return task;
+    },
+  });
+
+  registry.register({
+    type: 'cloud.table.process',
+    title: 'Process cloud/local table',
+    description: 'Run a generated data task with runtime input/output bindings without LLM tokens.',
+    category: 'data',
+    icon: 'database',
+    version: 1,
+    defaultConfig: {
+      taskId: '',
+      workflowDsl: '',
+      source: null,
+      output: null,
+      requiredColumns: [],
+      columnsSnapshot: [],
+      schemaPolicy: 'required_subset',
+      outputMode: 'persisted',
+    },
+    configSchema: objectSchema(
+      {
+        taskId: { type: 'string', title: 'Data task' },
+        workflowDsl: { type: 'string', title: 'Workflow DSL' },
+        source: { type: 'object', title: 'Runtime source' },
+        output: { type: 'object', title: 'Runtime output' },
+        requiredColumns: { type: 'array', title: 'Required columns', items: { type: 'object' } },
+        columnsSnapshot: { type: 'array', title: 'Column snapshot', items: { type: 'object' } },
+        schemaPolicy: {
+          type: 'string',
+          title: 'Schema policy',
+          enum: ['strict', 'required_subset'],
+          default: 'required_subset',
+        },
+        outputMode: {
+          type: 'string',
+          title: 'Output mode',
+          enum: ['persisted', 'temporary'],
+          default: 'persisted',
+        },
+      },
+      ['taskId', 'workflowDsl', 'source', 'output']
+    ),
+    validate: (config) => {
+      if (!options.dataCommandService) {
+        throw new Error('cloud.table.process requires DataCommandService');
+      }
+      if (!String(config.taskId ?? '').trim()) {
+        throw new Error('cloud.table.process requires taskId');
+      }
+      if (!String(config.workflowDsl ?? '').trim()) {
+        throw new Error('cloud.table.process requires workflowDsl');
+      }
+      if (!config.source || typeof config.source !== 'object') {
+        throw new Error('cloud.table.process requires source');
+      }
+      if (!config.output || typeof config.output !== 'object') {
+        throw new Error('cloud.table.process requires output');
+      }
+    },
+    execute: async (config, context, node) => {
+      if (!options.dataCommandService) {
+        throw new Error('cloud.table.process requires DataCommandService');
+      }
+      context.log({
+        level: 'info',
+        message: 'Running generated data task without model tokens',
+        details: { tokenUsage: 0 },
+      });
+      const result = await options.dataCommandService.runGeneratedTask({
+        taskId: String(config.taskId),
+        workflowDsl: String(config.workflowDsl),
+        source: config.source as never,
+        output: config.output as never,
+        requiredColumns: Array.isArray(config.requiredColumns)
+          ? (config.requiredColumns as never)
+          : [],
+        schemaPolicy: config.schemaPolicy === 'strict' ? 'strict' : 'required_subset',
+        mode: config.outputMode === 'temporary' ? 'temporary' : 'persisted',
+      });
+      context.emitArtifact({
+        sourceNodeId: node.id,
+        kind: 'data_output',
+        title: result.task.name,
+        summary:
+          result.task.rowCount === null
+            ? 'Generated data task completed with 0 model tokens'
+            : `${result.task.rowCount} rows, ${result.task.columnCount ?? 0} columns, 0 model tokens`,
+        dataRef: { kind: 'output_table', id: result.outputTableId },
+      });
+      return result;
     },
   });
 

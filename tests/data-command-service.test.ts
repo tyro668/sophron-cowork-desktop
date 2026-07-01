@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -7,9 +7,40 @@ import { DataCommandService } from '../src/main/data/data-command-service';
 import { createDataTaskStore, type DataTaskStore } from '../src/main/data/data-task-store';
 import type { InputTableNormalizerProjectGenerator } from '../src/main/data/input-table-normalizer-generator';
 import { createInputTableNormalizerProjectTemplate } from '../src/shared/input-table-normalizer/templates';
+import { runPiAiOneShot } from '../src/main/claude/claude-sdk-one-shot';
+import type { AgentRuntimeConfig } from '../src/renderer/types';
+
+vi.mock('../src/main/claude/claude-sdk-one-shot', () => ({
+  runPiAiOneShot: vi.fn(async () => ({
+    text: JSON.stringify({
+      workflowDsl:
+        'input source dataset "input" as src\n  | filter [Market] <> \'EU\'\n  | output table "output" mode replace',
+      requiredColumns: [{ name: 'Market' }],
+    }),
+    hasThinking: false,
+    durationMs: 1,
+  })),
+}));
 
 const tempRoots: string[] = [];
 const stores: DataTaskStore[] = [];
+const testRuntimeConfig: AgentRuntimeConfig = {
+  provider: 'openai',
+  apiKey: 'test-key',
+  model: 'test-model',
+};
+
+beforeEach(() => {
+  vi.mocked(runPiAiOneShot).mockResolvedValue({
+    text: JSON.stringify({
+      workflowDsl:
+        'input source dataset "input" as src\n  | filter [Market] <> \'EU\'\n  | output table "output" mode replace',
+      requiredColumns: [{ name: 'Market' }],
+    }),
+    hasThinking: false,
+    durationMs: 1,
+  });
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -313,7 +344,7 @@ describe('DataCommandService', () => {
       () => ({
         apiOrigin: '',
         apiKey: '',
-        datasourceId: '',
+        updatedAt: 0,
       }),
       { onTaskCompleted }
     );
@@ -798,6 +829,274 @@ describe('DataCommandService', () => {
         }),
       ])
     );
+  });
+
+  it('trims Chinese object suffixes when generating workflow DSL from a requirement', async () => {
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'market.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'market input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '过滤掉Market为EU的数据',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'market processed',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
+    expect(generated.workflowDsl).not.toContain('EU的数据');
+  });
+
+  it('fails data task generation when the model call fails', async () => {
+    vi.mocked(runPiAiOneShot).mockRejectedValueOnce(new Error('model unavailable'));
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'market.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'market input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    await expect(
+      service.generateTaskFromRequirement({
+        source: {
+          location: 'local',
+          tableId: input.inputTable.id,
+          tableName: input.inputTable.name,
+        },
+        processRequirement: '过滤掉Market为EU的数据',
+        output: {
+          location: 'local',
+          writeMode: 'create',
+          tableName: 'market processed',
+        },
+        runtimeConfig: testRuntimeConfig,
+      })
+    ).rejects.toMatchObject({ code: 'GENERATION_FAILED' });
+  });
+
+  it('reuses generated task and output table when regenerating', async () => {
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'market.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'market input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const first = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '过滤掉Market为EU的数据',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'market processed',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+    const second = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '过滤掉Market为EU的数据',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'market processed',
+        localOutputTableId: first.outputTableId,
+      },
+      reuseTaskId: first.taskId,
+      currentVersion: first.version,
+      runtimeConfig: testRuntimeConfig,
+    });
+    const tasks = await service.listTasks({ query: 'market input_自动处理' });
+    const outputs = await service.listOutputTables({ query: 'market processed' });
+
+    expect(second.taskId).toBe(first.taskId);
+    expect(second.outputTableId).toBe(first.outputTableId);
+    expect(second.version).toBe(2);
+    expect(
+      tasks.tasks.filter((task) => task.name.startsWith('market input_自动处理'))
+    ).toHaveLength(1);
+    expect(outputs.outputTables.filter((table) => table.name === 'market processed')).toHaveLength(
+      1
+    );
+  });
+
+  it('refreshes a stable local mirror for cloud generated tasks', async () => {
+    const { service } = createService({
+      personalAnalysis: {
+        apiOrigin: 'http://cloud.mock',
+        apiKey: 'cloud-key',
+        updatedAt: 1,
+      },
+    });
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const href = String(url);
+      if (href.endsWith('/api/personal/api-keys/token')) {
+        return jsonResponse({ success: true, data: { accessToken: 'cloud-token' } });
+      }
+      if (href.endsWith('/api/personal/analysis/v1/tables/tbl-12345678/exports')) {
+        expect(init?.method).toBe('POST');
+        return jsonResponse({ success: true, data: { taskId: 'export-1', status: 'RUNNING' } });
+      }
+      if (href.endsWith('/api/personal/analysis/v1/exports/export-1/download')) {
+        return jsonResponse({
+          success: true,
+          data: { status: 'DONE', downloadUrl: 'http://download.mock/tbl-12345678.csv' },
+        });
+      }
+      if (href === 'http://download.mock/tbl-12345678.csv') {
+        return new Response('Market,Sales\nEU,10\nUS,20\n', {
+          status: 200,
+          headers: { 'Content-Type': 'text/csv' },
+        });
+      }
+      throw new Error(`Unexpected request: ${href} ${init?.method || 'GET'}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'cloud',
+        tableId: 'tbl-12345678',
+        tableName: 'Cloud Orders',
+      },
+      processRequirement: '过滤掉Market为EU的数据',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'cloud orders processed',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    await service.runGeneratedTask({
+      taskId: generated.taskId,
+      workflowDsl: generated.workflowDsl,
+      source: {
+        location: 'cloud',
+        tableId: 'tbl-12345678',
+        tableName: 'Cloud Orders',
+      },
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        localOutputTableId: generated.outputTableId,
+      },
+      requiredColumns: generated.requiredColumns,
+    });
+    await service.runGeneratedTask({
+      taskId: generated.taskId,
+      workflowDsl: generated.workflowDsl,
+      source: {
+        location: 'cloud',
+        tableId: 'tbl-12345678',
+        tableName: 'Cloud Orders',
+      },
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        localOutputTableId: generated.outputTableId,
+      },
+      requiredColumns: generated.requiredColumns,
+    });
+    const mirrors = await service.listInputTables({ query: 'Cloud Orders_自动化镜像' });
+
+    expect(mirrors.inputTables).toHaveLength(1);
+    expect(mirrors.inputTables[0]?.name).toBe('Cloud Orders_自动化镜像_tbl-1234');
+  });
+
+  it('rejects generated required columns that are not in the source schema', async () => {
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        workflowDsl: 'input source dataset "input" as src\n  | output table "output" mode replace',
+        requiredColumns: [{ name: 'NotAColumn' }],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'market.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'market input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    await expect(
+      service.generateTaskFromRequirement({
+        source: {
+          location: 'local',
+          tableId: input.inputTable.id,
+          tableName: input.inputTable.name,
+        },
+        processRequirement: '复制数据',
+        output: {
+          location: 'local',
+          writeMode: 'create',
+          tableName: 'market processed',
+        },
+        runtimeConfig: testRuntimeConfig,
+      })
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+  });
+
+  it('stops generated task runs when required columns drift', async () => {
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'market.csv');
+    fs.writeFileSync(csvPath, 'Region,Sales\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'region input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+    const output = await service.createOutputTable({ name: 'region output' });
+    const task = await service.createTask({
+      name: 'region task',
+      sourceInputTableId: input.inputTable.id,
+      outputTableId: output.outputTable.id,
+    });
+
+    await expect(
+      service.runGeneratedTask({
+        taskId: task.task.id,
+        workflowDsl: `input source dataset "${input.inputTable.id}" as src\n  | output table "${output.outputTable.name}" mode replace`,
+        source: {
+          location: 'local',
+          tableId: input.inputTable.id,
+          tableName: input.inputTable.name,
+        },
+        output: {
+          location: 'local',
+          writeMode: 'replace',
+          targetTableId: output.outputTable.id,
+        },
+        requiredColumns: [{ name: 'Market' }],
+      })
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
   });
 });
 

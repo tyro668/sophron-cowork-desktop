@@ -1,6 +1,7 @@
 import type {
   DataCreateTaskInput,
   DataDashboardQuery,
+  DataGenerateTaskFromRequirementInput,
   DataPreviewWorkflowNodeInput,
   DataRunTaskInput,
   DataUpdateTaskInput,
@@ -11,6 +12,8 @@ import type { DataIpcContext } from './types';
 export function registerDataTasksIpc({
   ipcMain,
   requireDataTaskStore,
+  requireDataCommandService,
+  resolveModelRuntimeConfig,
   notifyDataTaskCompleted,
   logError,
 }: DataIpcContext): void {
@@ -40,6 +43,26 @@ export function registerDataTasksIpc({
       throw error;
     }
   });
+
+  ipcMain.handle(
+    'data.generateTaskFromRequirement',
+    async (_event, payload: DataGenerateTaskFromRequirementInput) => {
+      try {
+        const modelConfigSetId =
+          typeof payload.modelConfigSetId === 'string' ? payload.modelConfigSetId.trim() : '';
+        const runtimeConfig = modelConfigSetId
+          ? (resolveModelRuntimeConfig(modelConfigSetId) ?? undefined)
+          : undefined;
+        return await requireDataCommandService().generateTaskFromRequirement({
+          ...payload,
+          runtimeConfig,
+        });
+      } catch (error) {
+        logError('[Data] Error generating task from requirement:', error);
+        throw error;
+      }
+    }
+  );
 
   ipcMain.handle('data.updateTask', async (_event, payload: DataUpdateTaskInput) => {
     try {

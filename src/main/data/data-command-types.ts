@@ -6,6 +6,8 @@ import type {
   DataDeleteInputTableNormalizerVersionResult,
   DataGenerateInputTableNormalizerDraftInput,
   DataGenerateInputTableNormalizerDraftResult,
+  DataGenerateTaskFromRequirementInput,
+  DataGenerateTaskFromRequirementResult,
   DataInputTableNormalizerArtifact,
   DataInputTableNormalizerArtifactVersion,
   DataInputTableNormalizerDraftProgressEvent,
@@ -40,6 +42,7 @@ export type DataCommandErrorCode =
   | 'RESOURCE_ALREADY_EXISTS'
   | 'AMBIGUOUS_RESOURCE'
   | 'FILE_ACCESS_DENIED'
+  | 'GENERATION_FAILED'
   | 'DSL_PARSE_FAILED'
   | 'VALIDATION_FAILED'
   | 'RUN_FAILED'
@@ -148,6 +151,12 @@ export type GenerateInputTableNormalizerDraftCommand =
   };
 
 export type GenerateInputTableNormalizerDraftResult = DataGenerateInputTableNormalizerDraftResult;
+
+export type GenerateTaskFromRequirementCommand = DataGenerateTaskFromRequirementInput & {
+  runtimeConfig?: AgentRuntimeConfig;
+};
+
+export type GenerateTaskFromRequirementResult = DataGenerateTaskFromRequirementResult;
 
 export type PublishInputTableNormalizerVersionCommand = DataPublishInputTableNormalizerVersionInput;
 
@@ -382,6 +391,24 @@ export interface RunTaskResult {
   task: DataCleaningTask;
   preview?: DataInputTablePreview;
   diagnostics?: PrepDiagnostic[];
+}
+
+export interface RunGeneratedTaskCommand {
+  taskId: string;
+  workflowDsl: string;
+  source: DataGenerateTaskFromRequirementInput['source'];
+  output: DataGenerateTaskFromRequirementInput['output'];
+  requiredColumns?: DataGenerateTaskFromRequirementResult['requiredColumns'];
+  schemaPolicy?: 'strict' | 'required_subset';
+  mode?: 'temporary' | 'persisted';
+  previewRows?: number;
+}
+
+export interface RunGeneratedTaskResult extends RunTaskResult {
+  inputTableId: string;
+  outputTableId: string;
+  uploaded?: UploadDataTableToCloudResult;
+  tokenUsage: 0;
 }
 
 export interface GetRunResultCommand {
