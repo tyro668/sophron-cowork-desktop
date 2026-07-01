@@ -313,6 +313,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('data.inputTableNormalizerDraftProgress', listener);
       return () => ipcRenderer.removeListener('data.inputTableNormalizerDraftProgress', listener);
     },
+    onSetOpConfirm: (callback: (payload: { channel: string; warnings: string[] }) => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: { channel: string; warnings: string[] }
+      ) => callback(payload);
+      ipcRenderer.on('data.setOpConfirm', listener);
+      return () => ipcRenderer.removeListener('data.setOpConfirm', listener);
+    },
+    confirmSetOp: (channel: string, confirmed: boolean): Promise<boolean> =>
+      ipcRenderer.invoke(channel, confirmed),
     previewInputTableNormalizerVersion: (
       payload: DataPreviewInputTableNormalizerVersionInput
     ): Promise<{ preview: DataInputTablePreview }> =>
@@ -777,6 +787,10 @@ declare global {
         onInputTableNormalizerDraftProgress: (
           callback: (event: DataInputTableNormalizerDraftProgressEvent) => void
         ) => () => void;
+        onSetOpConfirm: (
+          callback: (payload: { channel: string; warnings: string[] }) => void
+        ) => () => void;
+        confirmSetOp: (channel: string, confirmed: boolean) => Promise<boolean>;
         previewInputTableNormalizerVersion: (
           payload: DataPreviewInputTableNormalizerVersionInput
         ) => Promise<{ preview: DataInputTablePreview }>;

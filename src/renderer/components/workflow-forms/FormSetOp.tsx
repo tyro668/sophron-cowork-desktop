@@ -1,8 +1,64 @@
-import { useCallback, useMemo, useId } from 'react';
+import { useCallback, useEffect, useMemo, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
+import { useConfirmDialog } from '../../components/ConfirmDialog';
+import type { DataColumnTypeInfo } from '../../../shared/data-field-types';
+
+const NUMERIC_TYPES = ['integer', 'float', 'decimal'];
+const TEMPORAL_TYPES = ['date', 'datetime'];
+
+function checkTypeWarnings(
+  leftTypes: DataColumnTypeInfo[],
+  rightTypes: DataColumnTypeInfo[],
+  leftColumns: string[],
+  rightColumns: string[],
+  operation: string,
+  match: string
+): string[] {
+  const warnings: string[] = [];
+
+  const isUnionByName = operation === 'union' && match === 'by_name';
+
+  if (!isUnionByName && leftColumns.length !== rightColumns.length) {
+    warnings.push(
+      `左右两表列数不一致（左表 ${leftColumns.length} 列，右表 ${rightColumns.length} 列），缺失列已自动填充 NULL`
+    );
+  }
+
+  if (match !== 'by_name') {
+    const minLen = Math.min(leftColumns.length, rightColumns.length);
+    const mismatches: string[] = [];
+    for (let i = 0; i < minLen; i++) {
+      if (leftColumns[i] !== rightColumns[i]) {
+        mismatches.push(`第 ${i + 1} 列：左表「${leftColumns[i]}」≠ 右表「${rightColumns[i]}」`);
+      }
+    }
+    if (mismatches.length > 0) {
+      warnings.push(`左右两表按位置匹配，但列名不同：${mismatches.join('；')}`);
+    }
+  }
+
+  const minLen = Math.min(leftTypes.length, rightTypes.length);
+  for (let i = 0; i < minLen; i++) {
+    const lt = leftTypes[i].type;
+    const rt = rightTypes[i].type;
+    if (lt === rt) continue;
+    if (NUMERIC_TYPES.includes(lt) && NUMERIC_TYPES.includes(rt)) continue;
+    if (TEMPORAL_TYPES.includes(lt) && TEMPORAL_TYPES.includes(rt)) continue;
+    if (lt === 'text' || rt === 'text') {
+      warnings.push(
+        `第 ${i + 1} 列「${leftTypes[i].name}」类型不一致（${lt} vs ${rt}），可能导致数据转换异常`
+      );
+    } else {
+      warnings.push(
+        `第 ${i + 1} 列「${leftTypes[i].name}」类型不兼容（${lt} vs ${rt}），可能导致执行错误`
+      );
+    }
+  }
+  return warnings;
+}
 
 function VennSVG({ type }: { type: 'union' | 'intersect' | 'except' }) {
   const id = useId();
@@ -89,6 +145,7 @@ function VennSVG({ type }: { type: 'union' | 'intersect' | 'except' }) {
 
 export default function FormSetOp({
   node,
+  taskId,
   otherNodes,
   sourceNode,
   onNodeChange,
@@ -135,6 +192,63 @@ export default function FormSetOp({
     const node = otherNodes.find((n) => n.id === rawRightInput);
     return node ? (node.config?.alias as string) || node.label || rawRightInput : rawRightInput;
   }, [rawRightInput, otherNodes]);
+  const { confirm } = useConfirmDialog();
+
+  useEffect(() => {
+    if (!taskId || !sourceNode?.id || !rawRightInput) return;
+    const api = window.electronAPI?.data;
+    if (!api?.getWorkflowNodeColumnTypes) return;
+
+    const rightNode = otherNodes.find(
+      (n) => (n.config?.alias as string) === rawRightInput || n.id === rawRightInput
+    );
+    const rightNodeId = rightNode?.id;
+    if (!rightNodeId) return;
+
+    Promise.all([
+      api.getWorkflowNodeColumnTypes({
+        taskId,
+        nodeId: sourceNode.id,
+        nodeType: sourceNode.type as never,
+        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
+      }),
+      api.getWorkflowNodeColumnTypes({
+        taskId,
+        nodeId: rightNodeId,
+        nodeType: rightNode.type as never,
+        nodeConfig: (rightNode.config ?? {}) as Record<string, unknown>,
+      }),
+    ])
+      .then(async ([leftTypes, rightTypes]) => {
+        const leftCols = leftTypes.map((t) => t.name);
+        const rightCols = rightTypes.map((t) => t.name);
+        const warnings = checkTypeWarnings(
+          leftTypes,
+          rightTypes,
+          leftCols,
+          rightCols,
+          operation,
+          match
+        );
+        if (warnings.length > 0) {
+          const confirmed = await confirm({
+            title: '列类型不匹配',
+            message: (
+              <div>
+                <p>左右两表的列类型不完全匹配，执行时可能出现数据转换异常：</p>
+                <pre className="mt-2 whitespace-pre-wrap text-[12px]">{warnings.join('\n')}</pre>
+              </div>
+            ),
+            confirmLabel: '忽略警告',
+            cancelLabel: '取消',
+          });
+          if (!confirmed) {
+            updateConfig((cfg) => ({ ...cfg, rightInput: undefined }));
+          }
+        }
+      })
+      .catch(() => {});
+  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config, rawRightInput, otherNodes]);
 
   return (
     <div className="grid content-start gap-2.5">

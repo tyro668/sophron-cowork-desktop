@@ -25,6 +25,26 @@ export function compileSetOpSql(
   }
 
   if (leftColumns && rightColumns && leftColumns.length !== rightColumns.length) {
+    if (operation === 'INTERSECT' || operation === 'EXCEPT') {
+      const matchLen = Math.min(leftColumns.length, rightColumns.length);
+      const leftCols = leftColumns.slice(0, matchLen);
+      const rightCols = rightColumns.slice(0, matchLen);
+      const joinClause = leftCols
+        .map(
+          (col, i) =>
+            `CAST(${left}.${quoteIdentifier(col)} AS VARCHAR) IS NOT DISTINCT FROM CAST(${right}.${quoteIdentifier(rightCols[i])} AS VARCHAR)`
+        )
+        .join(' AND ');
+      const keyword = operation === 'EXCEPT' ? 'NOT EXISTS' : 'EXISTS';
+      return `
+        CREATE TEMP TABLE ${output} AS
+        SELECT ${left}.* FROM ${left}
+        WHERE ${keyword} (
+          SELECT 1 FROM ${right}
+          WHERE ${joinClause}
+        )
+      `;
+    }
     const allColumns = [...new Set([...leftColumns, ...rightColumns])];
     const leftProj = allColumns
       .map((col) =>

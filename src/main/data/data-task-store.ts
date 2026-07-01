@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { BrowserWindow, ipcMain } from 'electron';
 import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api';
 import type Database from 'better-sqlite3';
 import * as XLSX from 'xlsx';
@@ -2904,23 +2905,47 @@ export class DataTaskStore {
     }
 
     // 前置检查：类型兼容性
+    const NUMERIC_TYPES = ['integer', 'float', 'decimal'];
+    const TEMPORAL_TYPES = ['date', 'datetime'];
     const leftTypes = await this.getTableColumnTypes(leftRelation);
     const rightTypes = await this.getTableColumnTypes(rightRelation);
     const minTypeLen = Math.min(leftTypes.length, rightTypes.length);
     for (let i = 0; i < minTypeLen; i++) {
       const lt = leftTypes[i].type;
       const rt = rightTypes[i].type;
-      if (lt !== rt) {
-        const bothNumeric =
-          ['integer', 'float', 'decimal'].includes(lt) &&
-          ['integer', 'float', 'decimal'].includes(rt);
-        const bothTemporal = ['date', 'datetime'].includes(lt) && ['date', 'datetime'].includes(rt);
-        if (!bothNumeric && !bothTemporal && lt !== 'text' && rt !== 'text') {
-          diagnostics.push({
-            severity: 'warning',
-            message: `第 ${i + 1} 列类型不兼容（左表「${leftColumns[i]}」: ${lt}，右表「${rightColumns[i]}」: ${rt}），可能导致执行错误或精度丢失`,
-          });
-        }
+      if (lt === rt) continue;
+      const bothNumeric = NUMERIC_TYPES.includes(lt) && NUMERIC_TYPES.includes(rt);
+      const bothTemporal = TEMPORAL_TYPES.includes(lt) && TEMPORAL_TYPES.includes(rt);
+      if (bothNumeric || bothTemporal) continue;
+      if (lt === 'text' || rt === 'text') {
+        diagnostics.push({
+          severity: 'warning',
+          message: `第 ${i + 1} 列类型不一致（左表「${leftColumns[i]}」: ${lt}，右表「${rightColumns[i]}」: ${rt}），可能导致数据转换异常`,
+        });
+      } else {
+        diagnostics.push({
+          severity: 'warning',
+          message: `第 ${i + 1} 列类型不兼容（左表「${leftColumns[i]}」: ${lt}，右表「${rightColumns[i]}」: ${rt}），可能导致执行错误`,
+        });
+      }
+    }
+
+    const typeWarnings = diagnostics.filter(
+      (d) => d.severity === 'warning' && d.message.includes('类型')
+    );
+    if (typeWarnings.length > 0) {
+      const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
+      if (!win) throw new Error('无法找到窗口来显示确认对话框');
+      const channel = `set-op:${Date.now()}`;
+      win.webContents.send('data.setOpConfirm', {
+        channel,
+        warnings: typeWarnings.map((d) => d.message),
+      });
+      const confirmed = await new Promise<boolean>((resolve) => {
+        ipcMain.handleOnce(channel, (_event, result: boolean) => resolve(result));
+      });
+      if (!confirmed) {
+        throw new Error('用户取消了集合操作执行：列类型不匹配');
       }
     }
 
