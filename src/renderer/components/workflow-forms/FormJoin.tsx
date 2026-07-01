@@ -578,11 +578,11 @@ export default function FormJoin({
 
   return (
     <div className="grid content-start gap-2.5">
-      {/* ═══ Big card: 2:1 two-column layout ═══ */}
+      {/* ═══ Big card: 1:1 two-column layout ═══ */}
       <div className="rounded-lg border border-border-muted bg-background/42">
         <div className="flex">
-          {/* ── Left column (flex-[2.5]) ── */}
-          <div className="flex-[2.5] border-r border-border-muted/50">
+          {/* ── Left column (flex-1): only Step 1 ── */}
+          <div className="flex-[4] border-r border-border-muted/50">
             {/* Data source section */}
             <div className="p-3 grid gap-2.5">
               <div className="flex items-end gap-3 px-0.5">
@@ -624,7 +624,7 @@ export default function FormJoin({
 
               <div className="grid gap-1 text-center">
                 <GlassFormLabel>{tr('joinType', '连接类型')}</GlassFormLabel>
-                <div className="grid grid-cols-8 gap-1">
+                <div className="grid grid-cols-4 gap-1">
                   {joinTypes.map((jt) => (
                     <button
                       key={jt.value}
@@ -648,11 +648,11 @@ export default function FormJoin({
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* ── Separator ── */}
-            <div className="border-t border-border-muted/50" />
-
-            {/* Condition section */}
+          {/* ── Right column (flex-[6]): Steps 2 + 3 stacked ── */}
+          <div className="flex-[6] flex flex-col">
+            {/* Step 2: Condition section */}
             <div className="p-3 grid gap-2">
               <div className="flex items-end gap-3 px-0.5">
                 <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
@@ -663,7 +663,7 @@ export default function FormJoin({
                     {tr('joinConditionsHeader', '连接条件')}
                   </span>
                   <span className="text-[10px] text-text-muted">
-                    {tr('joinConditionsHint', '配置字段匹配条件')}
+                    {tr('joinConditionsHint', '配置字段匹配条件，多条条件之间为「且」关系')}
                   </span>
                 </div>
               </div>
@@ -777,8 +777,8 @@ export default function FormJoin({
                       leftFieldCompletions={leftFieldCompletions}
                       rightFieldCompletions={rightFieldCompletions}
                       onChange={handleAsofByChange}
-                      leftLabel={tr('leftField', '[左字段]')}
-                      rightLabel={tr('rightField', '[右表].[字段]')}
+                      leftLabel={tr('leftField', '[左表字段]')}
+                      rightLabel={tr('rightField', '[右表字段]')}
                     />
                   </div>
                 </div>
@@ -789,8 +789,8 @@ export default function FormJoin({
                     leftFieldCompletions={leftFieldCompletions}
                     rightFieldCompletions={rightFieldCompletions}
                     onChange={handleConditionsChange}
-                    leftLabel={tr('leftField', '[左字段]')}
-                    rightLabel={tr('rightField', '[右表].[字段]')}
+                    leftLabel={tr('leftField', '[左表字段]')}
+                    rightLabel={tr('rightField', '[右表字段]')}
                   />
                 </div>
               ) : (
@@ -799,86 +799,85 @@ export default function FormJoin({
                 </div>
               )}
             </div>
-          </div>
 
-          {/* ── Right column (flex-[1]) ── */}
-          <div className="flex-[1] p-3 grid gap-3 content-start">
-            <div className="flex items-end gap-3 px-0.5">
-              <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
-                3
-              </span>
-              <div className="grid">
-                <span className="text-[13px] font-semibold text-text-primary">
-                  {tr('joinConfigHeader', '配置')}
+            {/* ── Separator ── */}
+            <div className="border-t border-border-muted/50" />
+
+            {/* Step 3: Config section */}
+            <div className="p-3 grid gap-3 content-start">
+              <div className="flex items-end gap-3 px-0.5">
+                <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
+                  3
                 </span>
-                <span className="text-[10px] text-text-muted">
-                  {tr('joinConfigHint', '配置保留字段、基数与冲突规则')}
-                </span>
+                <div className="grid">
+                  <span className="text-[13px] font-semibold text-text-primary">
+                    {tr('joinConfigHeader', '配置')}
+                  </span>
+                  <span className="text-[10px] text-text-muted">
+                    {tr('joinConfigHint', '配置保留字段、基数与冲突规则')}
+                  </span>
+                </div>
               </div>
-            </div>
 
-            {/* Keep left fields */}
-            <div className="flex items-center justify-between px-0.5">
-              <span className="text-[12px] text-text-primary">
-                {tr('keepFieldStatsLeft', '左表保留/重命名/全字段数')}
-              </span>
-              <div className="flex items-center gap-1">
-                <span className="text-[12px] text-text-muted tabular-nums">
-                  {leftKeepCount}/{leftRenameCount}/{fieldCompletions.length}
-                </span>
-                <button
-                  type="button"
-                  onClick={openKeepDialog}
-                  className="flex h-6 w-6 items-center justify-center rounded text-text-muted/50 hover:text-accent transition-colors"
-                  title={tr('adjustKeepFields', '调整选择')}
-                >
-                  <Settings className="h-3.5 w-3.5" />
-                </button>
+              {/* Keep fields */}
+              <div className="flex gap-4 px-0.5">
+                <div className="flex-1 flex items-center justify-between">
+                  <span className="text-[12px] text-text-primary">
+                    {tr('keepFieldStatsLeft', '左表保留/重命名/全字段数')}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[12px] text-text-muted tabular-nums">
+                      {leftKeepCount}/{leftRenameCount}/{fieldCompletions.length}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={openKeepDialog}
+                      className="flex h-6 w-6 items-center justify-center rounded text-text-muted/50 hover:text-accent transition-colors"
+                      title={tr('adjustKeepFields', '调整选择')}
+                    >
+                      <Settings className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex-1 flex items-center justify-between">
+                  <span className="text-[12px] text-text-primary">
+                    {tr('keepFieldStatsRight', '右表保留/重命名/全字段数')}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[12px] text-text-muted tabular-nums">
+                      {rightKeepCount}/{rightRenameCount}/{rightRawColumns.length}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={openKeepDialog}
+                      className="flex h-6 w-6 items-center justify-center rounded text-text-muted/50 hover:text-accent transition-colors"
+                      title={tr('adjustKeepFields', '调整选择')}
+                    >
+                      <Settings className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
 
-            {/* Keep right fields */}
-            <div className="flex items-center justify-between px-0.5">
-              <span className="text-[12px] text-text-primary">
-                {tr('keepFieldStatsRight', '右表保留/重命名/全字段数')}
-              </span>
-              <div className="flex items-center gap-1">
-                <span className="text-[12px] text-text-muted tabular-nums">
-                  {rightKeepCount}/{rightRenameCount}/{rightRawColumns.length}
+              {/* Conflict */}
+              <div className="flex items-center gap-2 px-0.5">
+                <span className="shrink-0 text-[11px] font-medium text-text-secondary">
+                  {tr('conflict', '同名字段冲突')}
                 </span>
-                <button
-                  type="button"
-                  onClick={openKeepDialog}
-                  className="flex h-6 w-6 items-center justify-center rounded text-text-muted/50 hover:text-accent transition-colors"
-                  title={tr('adjustKeepFields', '调整选择')}
-                >
-                  <Settings className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-
-            <hr className="border-border-muted/50" />
-
-            <hr className="border-border-muted/50" />
-
-            {/* Conflict */}
-            <div className="grid gap-1.5 px-0.5">
-              <GlassFormLabel>{tr('conflict', '同名字段冲突')}</GlassFormLabel>
-              <GlassOperatorSelect
-                value={conflictStrategy}
-                groups={conflictGroups}
-                onChange={(v) =>
-                  updateConfig((cfg) => ({
-                    ...cfg,
-                    conflict: {
-                      ...((cfg.conflict as Record<string, unknown>) ?? {}),
-                      strategy: v,
-                    },
-                  }))
-                }
-                className="h-7 text-[12px] [&>span]:text-left w-full"
-              />
-              {conflictStrategy === 'right_prefix' && (
+                <GlassOperatorSelect
+                  value={conflictStrategy}
+                  groups={conflictGroups}
+                  onChange={(v) =>
+                    updateConfig((cfg) => ({
+                      ...cfg,
+                      conflict: {
+                        ...((cfg.conflict as Record<string, unknown>) ?? {}),
+                        strategy: v,
+                      },
+                    }))
+                  }
+                  className="h-7 text-[12px] [&>span]:text-left flex-1 min-w-0"
+                />
                 <GlassFormTextInput
                   value={rightPrefix}
                   onChange={(v) =>
@@ -891,10 +890,10 @@ export default function FormJoin({
                     }))
                   }
                   placeholder={tr('prefix', '前缀，如 customers_')}
-                  className="w-full"
+                  className={`flex-1 min-w-0 ${conflictStrategy !== 'right_prefix' ? 'invisible' : ''}`}
                   style={{ height: '1.75rem' }}
                 />
-              )}
+              </div>
             </div>
           </div>
         </div>

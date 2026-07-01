@@ -45,8 +45,8 @@ export function GlassConditionEditor({
     [t]
   );
 
-  const resolvedLeftLabel = leftLabel ?? tr('leftField', '[左字段]');
-  const resolvedRightLabel = rightLabel ?? tr('rightField', '[右表].[字段]');
+  const resolvedLeftLabel = leftLabel ?? tr('leftField', '[左表字段]');
+  const resolvedRightLabel = rightLabel ?? tr('rightField', '[右表字段]');
 
   const operators = OPERATOR_KEYS.map((op) => ({
     value: op.value,
@@ -94,13 +94,6 @@ export function GlassConditionEditor({
     <div className="space-y-1">
       {displayConditions.map((cond, i) => (
         <div key={i} className="flex items-center gap-1">
-          {displayConditions.length > 1 || i > 0 ? (
-            <span
-              className={`shrink-0 text-[10px] font-semibold tracking-wider text-accent/50 w-6 text-center ${i === 0 ? 'invisible' : ''}`}
-            >
-              {i > 0 ? '且' : ''}
-            </span>
-          ) : null}
           <GlassFieldCombo
             value={cond.left}
             options={leftFieldCompletions}
