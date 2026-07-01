@@ -145,7 +145,7 @@ export function createDataCustomTools(
         ...CloudConnectionProperties,
         spaceId: Type.String({ minLength: 1 }),
         projectId: Type.String({ minLength: 1 }),
-        keyword: Type.Optional(Type.String({ description: 'Search by cloud table name or id.' })),
+        keyword: Type.Optional(Type.String({ description: 'Search by cloud table name.' })),
         page: Type.Optional(Type.Integer({ minimum: 1 })),
         pageSize: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
         sortBy: Type.Optional(

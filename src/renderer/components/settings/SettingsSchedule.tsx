@@ -62,6 +62,7 @@ import { getAgentModelLabel } from '../AgentModelSelector';
 import { GlassDateTimePicker } from '../GlassDateTimePicker';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { GlassSelect } from '../GlassSelect';
+import { GlassTimePicker } from '../GlassTimePicker';
 import { GlassSwitch } from '../GlassSwitch';
 import { LlmPromptComposer } from '../LlmPromptComposer';
 import { formatAppDateTime } from '../../utils/i18n-format';
@@ -73,6 +74,7 @@ import {
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 const SYSTEM_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+const DEFAULT_TIME = '09:00';
 const AUTOMATION_TABLE_PAGE_SIZE = 10;
 const CLOUD_TARGET_TABLE_PAGE_SIZE = 50;
 // Top-level "添加动作" menu only exposes two intents: a free-form task (conversation.run)
@@ -446,6 +448,11 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       setBanner({ tone: 'error', text: tr('schedule.actionRequired', '至少添加一个动作') });
       return;
     }
+    const normalizedTrigger = normalizeDraftTrigger(draft.triggerMode, draft.trigger);
+    if (normalizedTrigger.kind === 'weekly' && normalizedTrigger.weekdays.length === 0) {
+      setBanner({ tone: 'error', text: tr('schedule.weekdayRequired', '请至少选择一个执行星期') });
+      return;
+    }
     const cloudAutomations = getCloudAutomationConfigsFromDraft(draft);
     const missingSource = cloudAutomations.find(
       (cloudAutomation) =>
@@ -552,7 +559,10 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const remove = async () => {
     if (!selectedAutomation) return;
     const confirmed = await confirmDelete({
-      message: tr('schedule.deleteConfirm', '确认删除这个自动化？'),
+      message: t('schedule.deleteConfirm', {
+        title: selectedAutomation.name,
+        defaultValue: '确认删除自动化「{{title}}」？',
+      }),
     });
     if (!confirmed) return;
     await window.electronAPI.automation.delete(selectedAutomation.id);
@@ -1157,7 +1167,7 @@ function normalizeDraftTrigger(
   if (mode === 'daily') {
     return {
       kind: 'daily',
-      times: trigger.kind === 'daily' ? trigger.times : ['08:00'],
+      times: trigger.kind === 'daily' && trigger.times.length ? trigger.times : [DEFAULT_TIME],
       timezone,
     };
   }
@@ -1165,7 +1175,7 @@ function normalizeDraftTrigger(
     return {
       kind: 'weekly',
       weekdays: trigger.kind === 'weekly' ? trigger.weekdays : [1],
-      times: trigger.kind === 'weekly' ? trigger.times : ['08:00'],
+      times: trigger.kind === 'weekly' && trigger.times.length ? trigger.times : [DEFAULT_TIME],
       timezone,
     };
   }
@@ -1978,7 +1988,7 @@ function EditorHeader({
             className="inline-flex h-9 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors"
           >
             <Play className="h-3.5 w-3.5" />
-            {tr('schedule.runNow', '立即运行')}
+            {tr('schedule.runNowDetail', '立即运行')}
           </button>
         )}
       </div>
@@ -2033,7 +2043,7 @@ function ManualConfigCard({ tr }: { tr: (key: string, fallback: string) => strin
     <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
       <div className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-success">
         <Play className="h-4 w-4" />
-        {tr('schedule.manualConfig', '手动执行')}
+        {tr('schedule.manualConfig', '手动触发')}
       </div>
       <p className="text-[12px] leading-5 text-text-muted">
         {tr(
@@ -2229,6 +2239,7 @@ function AutomationPromptPermissionFields({
   permissionPolicy,
   onPermissionPolicyChange,
   placeholder,
+  label,
   tr,
 }: {
   value: string;
@@ -2242,11 +2253,12 @@ function AutomationPromptPermissionFields({
   permissionPolicy: PermissionPolicyId;
   onPermissionPolicyChange: (policy: PermissionPolicyId) => void;
   placeholder: string;
+  label?: string;
   tr: (key: string, fallback: string) => string;
 }) {
   return (
     <>
-      <ConfigRow label={tr('schedule.conversationPrompt', '任务内容')}>
+      <ConfigRow label={label ?? tr('schedule.conversationPrompt', '指令内容')}>
         <LlmPromptComposer
           value={value}
           onChange={onChange}
@@ -2310,7 +2322,7 @@ function TriggerConditionPanel({
           <GlassSelect
             value={triggerMethod}
             options={[
-              { value: 'manual', label: tr('schedule.triggerManual', '手动执行') },
+              { value: 'manual', label: tr('schedule.triggerManual', '手动触发') },
               { value: 'scheduled', label: tr('schedule.triggerScheduled', '定时触发') },
               { value: 'file_change', label: tr('schedule.triggerFileChange', '文件变更时触发') },
             ]}
@@ -2352,6 +2364,109 @@ function TriggerConditionPanel({
   );
 }
 
+// Display order Monday→Sunday; encoding stays 0=Sunday … 6=Saturday.
+const WEEKDAY_ORDER: Array<0 | 1 | 2 | 3 | 4 | 5 | 6> = [1, 2, 3, 4, 5, 6, 0];
+const WEEKDAY_SHORT_FALLBACK: Record<number, string> = {
+  0: '日',
+  1: '一',
+  2: '二',
+  3: '三',
+  4: '四',
+  5: '五',
+  6: '六',
+};
+
+function WeekdayPicker({
+  value,
+  onChange,
+  tr,
+}: {
+  value: Array<0 | 1 | 2 | 3 | 4 | 5 | 6>;
+  onChange: (value: Array<0 | 1 | 2 | 3 | 4 | 5 | 6>) => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  const selected = new Set(value ?? []);
+  const toggle = (day: 0 | 1 | 2 | 3 | 4 | 5 | 6) => {
+    const next = new Set(selected);
+    if (next.has(day)) {
+      // Keep at least one weekday selected — an empty list never computes a next run.
+      if (next.size <= 1) return;
+      next.delete(day);
+    } else {
+      next.add(day);
+    }
+    onChange(WEEKDAY_ORDER.filter((day) => next.has(day)));
+  };
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {WEEKDAY_ORDER.map((day) => {
+        const active = selected.has(day);
+        return (
+          <button
+            key={day}
+            type="button"
+            aria-pressed={active}
+            onClick={() => toggle(day)}
+            className={`inline-flex h-8 min-w-8 items-center justify-center rounded-lg border px-2 text-[12px] font-medium transition-colors ${
+              active
+                ? 'border-success bg-success text-white shadow-soft'
+                : 'border-border-muted bg-background/42 text-text-secondary hover:border-accent/25 hover:bg-accent/10 hover:text-accent'
+            }`}
+          >
+            {tr(`schedule.weekdayShort${day}`, WEEKDAY_SHORT_FALLBACK[day])}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function TimesEditor({
+  times,
+  onChange,
+  tr,
+}: {
+  times: string[];
+  onChange: (times: string[]) => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  const safeTimes = times && times.length > 0 ? times : [DEFAULT_TIME];
+  const updateAt = (index: number, time: string) => {
+    onChange(safeTimes.map((existing, position) => (position === index ? time : existing)));
+  };
+  const removeAt = (index: number) => {
+    onChange(safeTimes.filter((_, position) => position !== index));
+  };
+  return (
+    <div className="space-y-1.5">
+      {safeTimes.map((time, index) => (
+        <div key={index} className="flex items-center gap-1.5">
+          <GlassTimePicker value={time} onChange={(next) => updateAt(index, next)} />
+          {safeTimes.length > 1 && (
+            <button
+              type="button"
+              onClick={() => removeAt(index)}
+              title={tr('schedule.removeTime', '删除')}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border-muted text-text-muted transition-colors hover:border-error/30 hover:bg-error/10 hover:text-error"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span className="sr-only">{tr('schedule.removeTime', '删除')}</span>
+            </button>
+          )}
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => onChange([...safeTimes, DEFAULT_TIME])}
+        className="inline-flex h-8 items-center gap-1 rounded-lg border border-dashed border-border-muted px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        {tr('schedule.addTime', '添加时间')}
+      </button>
+    </div>
+  );
+}
+
 function ScheduledConfigCard({
   trigger,
   mode,
@@ -2372,64 +2487,75 @@ function ScheduledConfigCard({
         {tr('schedule.scheduledConfig', '定时配置')}
       </div>
       <div className="space-y-3.5">
-        <ConfigRow label={tr('schedule.frequency', '频率')}>
-          <GlassSelect
-            value={mode === 'file_change' ? 'daily' : mode}
+        <ConfigRow label={tr('schedule.frequency', '执行频率')}>
+          <SegmentedControl<'recurring' | 'interval' | 'once'>
+            value={mode === 'interval' ? 'interval' : mode === 'once' ? 'once' : 'recurring'}
             options={[
+              { value: 'recurring', label: tr('schedule.familyRecurring', '周期') },
+              { value: 'interval', label: tr('schedule.familyInterval', '按间隔') },
               { value: 'once', label: tr('schedule.modeOnce', '单次') },
-              { value: 'daily', label: tr('schedule.modeDaily', '每天') },
-              { value: 'weekly', label: tr('schedule.modeWeekly', '每周') },
-              { value: 'interval', label: tr('schedule.modeInterval', '周期') },
             ]}
-            onValueChange={(value: string) => onModeChange(value as TriggerMode)}
-            triggerClassName="h-9 w-full justify-between"
+            onChange={(family) =>
+              onModeChange(
+                family === 'interval' ? 'interval' : family === 'once' ? 'once' : 'daily'
+              )
+            }
           />
         </ConfigRow>
+        {(mode === 'daily' || mode === 'weekly') && (
+          <ConfigRow label={tr('schedule.repeat', '重复')}>
+            <GlassSelect
+              value={mode}
+              options={[
+                { value: 'daily', label: tr('schedule.modeDaily', '每天') },
+                { value: 'weekly', label: tr('schedule.modeWeekly', '每周') },
+              ]}
+              onValueChange={(value: string) => onModeChange(value as TriggerMode)}
+              triggerClassName="h-9 w-full justify-between"
+            />
+          </ConfigRow>
+        )}
         {trigger.kind === 'once' && (
           <ConfigRow label={tr('schedule.executionTime', '执行时间')}>
-            <GlassDateTimePicker
-              value={trigger.runAt}
-              onChange={(runAt) => onChange({ ...trigger, runAt })}
-            />
+            <div className="space-y-1.5">
+              <GlassDateTimePicker
+                value={trigger.runAt}
+                onChange={(runAt) => onChange({ ...trigger, runAt })}
+              />
+              {trigger.runAt < Date.now() && (
+                <p className="text-[11px] font-medium text-warning">
+                  {tr(
+                    'schedule.pastTimeWarning',
+                    '所选时间已过去，保存后不会触发，请选择未来的时间。'
+                  )}
+                </p>
+              )}
+            </div>
           </ConfigRow>
         )}
         {trigger.kind === 'daily' && (
           <ConfigRow label={tr('schedule.executionTime', '执行时间')}>
-            <input
-              type="time"
-              value={trigger.times[0] ?? '09:00'}
-              onChange={(event) => onChange({ ...trigger, times: [event.target.value || '09:00'] })}
-              className="input h-9 w-full text-xs"
+            <TimesEditor
+              times={trigger.times}
+              onChange={(times) => onChange({ ...trigger, times })}
+              tr={tr}
             />
           </ConfigRow>
         )}
         {trigger.kind === 'weekly' && (
           <>
-            <ConfigRow label={tr('schedule.weekday', '星期')}>
-              <input
-                value={trigger.weekdays.join(',')}
-                onChange={(event) =>
-                  onChange({
-                    ...trigger,
-                    weekdays: splitCsv(event.target.value)
-                      .map(Number)
-                      .filter(
-                        (value) => Number.isInteger(value) && value >= 0 && value <= 6
-                      ) as Array<0 | 1 | 2 | 3 | 4 | 5 | 6>,
-                  })
-                }
-                placeholder="1,2,3,4,5"
-                className="input h-9 w-full text-xs"
+            <ConfigRow label={tr('schedule.weekday', '执行星期')}>
+              <WeekdayPicker
+                value={trigger.weekdays}
+                onChange={(weekdays) => onChange({ ...trigger, weekdays })}
+                tr={tr}
               />
             </ConfigRow>
             <ConfigRow label={tr('schedule.executionTime', '执行时间')}>
-              <input
-                type="time"
-                value={trigger.times[0] ?? '09:00'}
-                onChange={(event) =>
-                  onChange({ ...trigger, times: [event.target.value || '09:00'] })
-                }
-                className="input h-9 w-full text-xs"
+              <TimesEditor
+                times={trigger.times}
+                onChange={(times) => onChange({ ...trigger, times })}
+                tr={tr}
               />
             </ConfigRow>
           </>
@@ -2437,28 +2563,33 @@ function ScheduledConfigCard({
         {trigger.kind === 'interval' && (
           <>
             <ConfigRow label={tr('schedule.every', '每')}>
-              <div className="grid grid-cols-[1fr_108px] gap-2">
-                <input
-                  type="number"
-                  min={1}
-                  value={trigger.every}
-                  onChange={(event) =>
-                    onChange({ ...trigger, every: Number(event.target.value) || 1 })
-                  }
-                  className="input h-9 w-full text-xs"
-                />
-                <GlassSelect
-                  value={trigger.unit}
-                  options={[
-                    { value: 'minute', label: tr('schedule.repeatUnitMinute', '分钟') },
-                    { value: 'hour', label: tr('schedule.repeatUnitHour', '小时') },
-                    { value: 'day', label: tr('schedule.repeatUnitDay', '天') },
-                  ]}
-                  onValueChange={(value: string) =>
-                    onChange({ ...trigger, unit: value as 'minute' | 'hour' | 'day' })
-                  }
-                  triggerClassName="h-9 w-full justify-between"
-                />
+              <div className="space-y-1.5">
+                <div className="grid grid-cols-[1fr_108px] gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    value={trigger.every}
+                    onChange={(event) =>
+                      onChange({ ...trigger, every: Number(event.target.value) || 1 })
+                    }
+                    className="input h-9 w-full text-xs"
+                  />
+                  <GlassSelect
+                    value={trigger.unit}
+                    options={[
+                      { value: 'minute', label: tr('schedule.repeatUnitMinute', '分钟') },
+                      { value: 'hour', label: tr('schedule.repeatUnitHour', '小时') },
+                      { value: 'day', label: tr('schedule.repeatUnitDay', '天') },
+                    ]}
+                    onValueChange={(value: string) =>
+                      onChange({ ...trigger, unit: value as 'minute' | 'hour' | 'day' })
+                    }
+                    triggerClassName="h-9 w-full justify-between"
+                  />
+                </div>
+                <p className="text-[11px] text-text-muted">
+                  {tr('schedule.intervalHint', '从开始时间起，每隔固定时长重复一次。')}
+                </p>
               </div>
             </ConfigRow>
             <ConfigRow label={tr('schedule.startAt', '开始')}>
@@ -2466,6 +2597,34 @@ function ScheduledConfigCard({
                 value={trigger.startAt}
                 onChange={(startAt) => onChange({ ...trigger, startAt })}
               />
+            </ConfigRow>
+            <ConfigRow label={tr('schedule.endAtLabel', '结束')}>
+              {trigger.endAt == null ? (
+                <button
+                  type="button"
+                  onClick={() => onChange({ ...trigger, endAt: trigger.startAt + 86400000 })}
+                  className="inline-flex h-9 items-center gap-1 self-start rounded-lg border border-dashed border-border-muted px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  {tr('schedule.setEndAt', '设置结束时间')}
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <GlassDateTimePicker
+                    value={trigger.endAt}
+                    onChange={(endAt) => onChange({ ...trigger, endAt })}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onChange({ ...trigger, endAt: null })}
+                    title={tr('schedule.clearEndAt', '清除结束时间')}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border-muted text-text-muted transition-colors hover:border-error/30 hover:bg-error/10 hover:text-error"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span className="sr-only">{tr('schedule.clearEndAt', '清除结束时间')}</span>
+                  </button>
+                </div>
+              )}
             </ConfigRow>
           </>
         )}
@@ -2680,7 +2839,7 @@ function CloudTableProcessActionEditor({
       <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
         <div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-success">
           <Wand2 className="h-4 w-4" />
-          {tr('schedule.cloudProcessSection', '处理方式')}
+          {tr('schedule.cloudProcessSection', '处理逻辑')}
         </div>
         <div className="space-y-4">
           <AutomationPromptPermissionFields
@@ -2714,6 +2873,7 @@ function CloudTableProcessActionEditor({
             }
             permissionPolicy={permissionPolicy}
             onPermissionPolicyChange={onPermissionPolicyChange}
+            label={tr('schedule.cloudProcessRequirement', '处理要求')}
             placeholder={
               sourceLocation === 'local'
                 ? tr(
@@ -2745,8 +2905,8 @@ function CloudTableProcessActionEditor({
           <SegmentedControl<DataProcessLocation>
             value={outputLocation}
             options={[
-              { value: 'cloud', label: tr('schedule.dataOutputCloud', '云分析') },
-              { value: 'local', label: tr('schedule.dataOutputLocal', '本地') },
+              { value: 'cloud', label: tr('schedule.dataOutputCloud', '云端表') },
+              { value: 'local', label: tr('schedule.dataOutputLocal', '本地表') },
             ]}
             onChange={updateOutputLocation}
           />
@@ -3448,7 +3608,11 @@ function ActionChainSection({
       }
     >
       {menuActionTypes.map((type) => (
-        <GlassMenuItem key={type} onSelect={() => addNode(type)}>
+        <GlassMenuItem
+          key={type}
+          onSelect={() => addNode(type)}
+          description={getActionMenuDescription(type, tr)}
+        >
           {getActionTitle(type, type, tr)}
         </GlassMenuItem>
       ))}
@@ -3650,7 +3814,7 @@ function DataProcessActionEditor({
         <SegmentedControl<DataProcessMode>
           value={mode}
           options={[
-            { value: 'ai', label: tr('schedule.dataProcessModeAi', 'AI 描述') },
+            { value: 'ai', label: tr('schedule.dataProcessModeAi', 'AI 处理') },
             { value: 'task', label: tr('schedule.dataProcessModeTask', '复用数据任务') },
           ]}
           onChange={switchMode}
@@ -3686,7 +3850,7 @@ function DataProcessActionEditor({
             <GlassSelect
               value={String(node.config.outputMode ?? 'persisted')}
               options={[
-                { value: 'persisted', label: tr('schedule.executionImmediate', '立即执行') },
+                { value: 'persisted', label: tr('schedule.executionFormal', '正式执行') },
                 { value: 'temporary', label: tr('schedule.executionTemporary', '临时执行') },
               ]}
               onValueChange={(value) => setConfig({ ...node.config, outputMode: value })}
@@ -3926,6 +4090,25 @@ function getActionTitle(
     return tr('schedule.actionTypes.data.title', fallback);
   }
   return fallback;
+}
+
+function getActionMenuDescription(
+  type: string,
+  tr: (key: string, fallback: string) => string
+): string | undefined {
+  if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE) {
+    return tr(
+      'schedule.dataProcessActionDescription',
+      '对指定数据表做结构化加工（AI 生成或复用已有数据任务）'
+    );
+  }
+  if (type === 'conversation.run') {
+    return tr(
+      'schedule.actionTypes.conversationRun.description',
+      '用自然语言下达开放式指令，由 AI 自主完成'
+    );
+  }
+  return undefined;
 }
 
 function getActionIcon(type: string, node?: AutomationActionNode): LucideIcon {
