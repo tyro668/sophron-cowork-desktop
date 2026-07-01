@@ -36,6 +36,26 @@ interface PrepDslEditorProps {
   height?: number | string;
 }
 
+const DSL_KEYWORDS = [
+  'input', 'source', 'from', 'select', 'drop', 'map', 'rename', 'to', 'as',
+  'filter', 'or', 'not', 'in', 'between', 'like', 'matches',
+  'deduplicate', 'by', 'keep', 'first', 'last', 'order',
+  'missing', 'value', 'row', 'when', 'all_null', 'any_null', 'nullify', 'values', 'fill',
+  'forward', 'backward', 'mean', 'median', 'mode',
+  'cast', 'on_error',
+  'sort',
+  'derive', 'if', 'then', 'else', 'over', 'partition', 'rows', 'unbounded', 'preceding',
+  'aggregate', 'all', 'rollup', 'cube', 'grouping', 'sets', 'metrics', 'count', 'sum', 'avg', 'min', 'max',
+  'join', 'inner', 'left', 'right', 'full', 'cross', 'semi', 'anti', 'asof', 'on', 'and',
+  'direction', 'tolerance', 'suffix', 'right_prefix', 'expect',
+  'limit', 'top', 'offset', 'percent',
+  'pivot', 'using', 'group',
+  'unpivot', 'into', 'except', 'nulls', 'include',
+  'union', 'intersect', 'mode', 'position',
+  'unnest', 'explode', 'json', 'path', 'with', 'index', 'recursive', 'max_depth',
+  'output', 'table', 'dataset', 'file', 'format', 'name', 'append', 'error_if_exists',
+];
+
 const prepDslLanguage = StreamLanguage.define({
   name: 'prep-dsl',
   token(stream) {
@@ -49,11 +69,7 @@ const prepDslLanguage = StreamLanguage.define({
       return 'variableName';
     }
     if (stream.match(/-?(?:0|[1-9]\d*)(?:\.\d+)?(?:ms|s|m|h|d)?/)) return 'number';
-    if (
-      stream.match(
-        /\b(?:input|source|from|select|drop|map|rename|to|as|filter|deduplicate|by|keep|first|last|order|missing|value|row|when|all_null|any_null|nullify|values|fill|forward|backward|mean|median|mode|cast|on_error|sort|derive|aggregate|metrics|join|inner|left|right|full|cross|semi|anti|asof|on|and|direction|tolerance|suffix|right_prefix|expect|output|table|dataset|file|format|name)\b/
-      )
-    ) {
+    if (stream.match(new RegExp(`\\b(?:${DSL_KEYWORDS.join('|')})\\b`))) {
       return 'keyword';
     }
     if (stream.match(/\b(?:text|date|datetime|integer|float|decimal|boolean)\b/)) {
