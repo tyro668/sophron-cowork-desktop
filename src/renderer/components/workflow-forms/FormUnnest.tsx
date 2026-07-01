@@ -52,7 +52,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                 {tr('unnestSourceHeader', '数据来源')}
               </span>
               <span className="text-[10px] text-text-muted">
-                {tr('unnestSourceHint', '请选择待展开的源字段')}
+                {tr('unnestSourceHint', '选择包含数组或 JSON 的字段及类型')}
               </span>
             </div>
           </div>
@@ -75,12 +75,18 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                   {
                     value: 'list',
                     label: 'List',
-                    tip: tr('unnestSourceTypeList', '直接展开字段中的数组元素'),
+                    tip: tr(
+                      'unnestSourceTypeList',
+                      '用于原生 DuckDB 数组（LIST 类型），如 [1,2,3]、["a","b"]；元素可以是标量或结构体'
+                    ),
                   },
                   {
                     value: 'json',
                     label: 'JSON',
-                    tip: tr('unnestSourceTypeJson', '通过 JSON 路径定位子数组再展开'),
+                    tip: tr(
+                      'unnestSourceTypeJson',
+                      '用于 JSON 字符串或对象，如 \'[{"product":"手机"}]\'；支持路径定位子数组'
+                    ),
                   },
                 ]}
                 onChange={(v) => updateConfig((cfg) => ({ ...cfg, sourceKind: v }))}

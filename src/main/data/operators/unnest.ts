@@ -19,32 +19,14 @@ export function compileUnnestSql(
   const keepParentNames = Boolean(config.keepParentNames);
 
   const isJson = config.sourceKind === 'json';
+
   const path = isJson ? literalToSql(config.path ?? '$') : "'$'";
-
   const aliasCol = keepParentNames && isJson ? quoteIdentifier(`${rawColumn}_${rawAlias}`) : alias;
-
-  const indexSql = withIndex ? `, ROW_NUMBER() OVER () - 1 AS ${quoteIdentifier(withIndex)}` : '';
-
   const jsonCol = castToJsonExpr(`base.${column}`);
 
-  if (recursive) {
-    const depthLimit = maxDepth != null ? ` AND flatten."_depth" < ${maxDepth}` : '';
-    const source = `json_each(${jsonCol}, ${isJson ? path : "'$'"}) AS item`;
-    return `
-      CREATE TEMP TABLE ${output} AS
-      WITH RECURSIVE flatten AS (
-        SELECT base.*, item.value AS "_val", 1 AS "_depth"
-        FROM ${input} base, ${source}
-        UNION ALL
-        SELECT flatten.* EXCLUDE ("_val", "_depth"), sub.value AS "_val", flatten."_depth" + 1 AS "_depth"
-        FROM flatten, LATERAL json_each(flatten."_val"::JSON, '$') AS sub
-        WHERE json_type(flatten."_val") = 'ARRAY'${depthLimit}
-      )
-      SELECT * EXCLUDE ("_val", "_depth")${indexSql} FROM flatten
-    `;
-  }
-
+  // JSON mode — keep json_each (native DuckDB)
   if (isJson) {
+    const indexSql = withIndex ? `, ROW_NUMBER() OVER () - 1 AS ${quoteIdentifier(withIndex)}` : '';
     return `
       CREATE TEMP TABLE ${output} AS
       SELECT base.*, item.value AS ${aliasCol}${indexSql}
@@ -52,9 +34,30 @@ export function compileUnnestSql(
     `;
   }
 
+  // List mode — native UNNEST (only for native DuckDB arrays)
+  if (recursive) {
+    const depthLimit = maxDepth != null ? ` AND "_depth" < ${maxDepth}` : '';
+    const indexSql = withIndex ? `, ROW_NUMBER() OVER () - 1 AS ${quoteIdentifier(withIndex)}` : '';
+    return `
+      CREATE TEMP TABLE ${output} AS
+      WITH RECURSIVE flatten AS (
+        SELECT base.*, u AS "_val", 1 AS "_depth"
+        FROM ${input} base, UNNEST(base.${column}) AS t(u)
+        UNION ALL
+        SELECT flatten.* EXCLUDE ("_val", "_depth"), u AS "_val", flatten."_depth" + 1 AS "_depth"
+        FROM flatten, UNNEST(flatten."_val") AS t(u)
+        WHERE typeof(flatten."_val") LIKE '%[]%'${depthLimit}
+      )
+      SELECT * EXCLUDE ("_val", "_depth")${indexSql} FROM flatten
+    `;
+  }
+
+  const idxCols = withIndex ? `(${alias}, "_ordinal")` : `(${alias})`;
+  const idxClause = withIndex ? ' WITH ORDINALITY' : '';
+  const idxSelect = withIndex ? `, item."_ordinal" - 1 AS ${quoteIdentifier(withIndex)}` : '';
   return `
     CREATE TEMP TABLE ${output} AS
-    SELECT base.*, item.value AS ${alias}${indexSql}
-    FROM ${input} base, json_each(${jsonCol}, '$') AS item
+    SELECT base.*, item.${alias} AS ${alias}${idxSelect}
+    FROM ${input} base, UNNEST(base.${column})${idxClause} AS item${idxCols}
   `;
 }
