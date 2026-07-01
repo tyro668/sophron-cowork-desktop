@@ -313,15 +313,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('data.inputTableNormalizerDraftProgress', listener);
       return () => ipcRenderer.removeListener('data.inputTableNormalizerDraftProgress', listener);
     },
-    onSetOpConfirm: (callback: (payload: { channel: string; warnings: string[] }) => void) => {
+    onOperatorConfirm: (
+      callback: (payload: {
+        channel: string;
+        title?: string;
+        message: string;
+        detail?: string;
+        confirmLabel?: string;
+        cancelLabel?: string;
+      }) => void
+    ) => {
       const listener = (
         _event: Electron.IpcRendererEvent,
-        payload: { channel: string; warnings: string[] }
+        payload: {
+          channel: string;
+          title?: string;
+          message: string;
+          detail?: string;
+          confirmLabel?: string;
+          cancelLabel?: string;
+        }
       ) => callback(payload);
-      ipcRenderer.on('data.setOpConfirm', listener);
-      return () => ipcRenderer.removeListener('data.setOpConfirm', listener);
+      ipcRenderer.on('data.operatorConfirm', listener);
+      return () => ipcRenderer.removeListener('data.operatorConfirm', listener);
     },
-    confirmSetOp: (channel: string, confirmed: boolean): Promise<boolean> =>
+    respondOperatorConfirm: (channel: string, confirmed: boolean): Promise<boolean> =>
       ipcRenderer.invoke(channel, confirmed),
     previewInputTableNormalizerVersion: (
       payload: DataPreviewInputTableNormalizerVersionInput
@@ -787,10 +803,17 @@ declare global {
         onInputTableNormalizerDraftProgress: (
           callback: (event: DataInputTableNormalizerDraftProgressEvent) => void
         ) => () => void;
-        onSetOpConfirm: (
-          callback: (payload: { channel: string; warnings: string[] }) => void
+        onOperatorConfirm: (
+          callback: (payload: {
+            channel: string;
+            title?: string;
+            message: string;
+            detail?: string;
+            confirmLabel?: string;
+            cancelLabel?: string;
+          }) => void
         ) => () => void;
-        confirmSetOp: (channel: string, confirmed: boolean) => Promise<boolean>;
+        respondOperatorConfirm: (channel: string, confirmed: boolean) => Promise<boolean>;
         previewInputTableNormalizerVersion: (
           payload: DataPreviewInputTableNormalizerVersionInput
         ) => Promise<{ preview: DataInputTablePreview }>;
