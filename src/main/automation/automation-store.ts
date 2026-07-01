@@ -20,6 +20,14 @@ import { computeNextAutomationRunAt, normalizeAutomationTrigger } from './automa
 
 const AUTOMATION_MIGRATION_VERSION = '1';
 const AUTOMATION_MIGRATION_KEY = 'automation_migration_version';
+const INTERRUPTED_RUN_ERROR = 'App restarted or the process was interrupted; marked as failed.';
+const ORPHANED_QUEUED_RUN_ERROR = 'Queued run became invalid after app restart.';
+
+export interface AutomationRunRecoveryResult {
+  failedRunningRuns: number;
+  cancelledQueuedRuns: number;
+  releasedAutomations: number;
+}
 
 export interface AutomationStore {
   list(query?: AutomationListQuery): Automation[];
@@ -49,6 +57,7 @@ export interface AutomationStore {
   createArtifact(input: AutomationArtifactCreateInput): AutomationArtifact;
   listArtifacts(runId: string): AutomationArtifact[];
   migrateScheduledTasks(): void;
+  recoverInterruptedRuns(now?: number): AutomationRunRecoveryResult;
 }
 
 interface AutomationRow {
@@ -411,6 +420,83 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
     migrateScheduledTasks: () => {
       migrateScheduledTasksToAutomations(db);
     },
+
+    recoverInterruptedRuns: (now = Date.now()) => {
+      return recoverInterruptedAutomationRuns(raw, now);
+    },
+  };
+}
+
+function recoverInterruptedAutomationRuns(
+  raw: DatabaseInstance['raw'],
+  now: number
+): AutomationRunRecoveryResult {
+  const runningRows = raw
+    .prepare(
+      `SELECT * FROM automation_runs
+       WHERE status = 'running'
+         AND finished_at IS NULL`
+    )
+    .all() as AutomationRunRow[];
+  const queuedRows = raw
+    .prepare(
+      `SELECT * FROM automation_runs
+       WHERE status = 'queued'
+         AND finished_at IS NULL`
+    )
+    .all() as AutomationRunRow[];
+
+  const updateRun = raw.prepare(
+    `UPDATE automation_runs
+     SET status = ?, finished_at = ?, duration_ms = ?, error = ?
+     WHERE id = ?`
+  );
+  const getLockedAutomation = raw.prepare('SELECT * FROM automations WHERE locked_run_id = ?');
+  const releaseAutomation = raw.prepare(
+    `UPDATE automations
+     SET status = CASE WHEN enabled = 1 THEN 'enabled' ELSE 'disabled' END,
+         locked_run_id = NULL,
+         next_run_at = ?,
+         last_run_at = ?,
+         last_run_status = 'failed',
+         last_error = ?,
+         updated_at = ?
+     WHERE locked_run_id = ?`
+  );
+
+  const transaction = raw.transaction(() => {
+    let releasedAutomations = 0;
+
+    for (const row of runningRows) {
+      const startedAt = row.started_at ?? row.created_at;
+      updateRun.run('failed', now, Math.max(0, now - startedAt), INTERRUPTED_RUN_ERROR, row.id);
+      const automationRow = getLockedAutomation.get(row.id) as AutomationRow | undefined;
+      const nextRunAt = automationRow
+        ? computeNextAutomationRunAt(mapAutomationRow(automationRow).trigger, now)
+        : null;
+      releasedAutomations += Number(
+        releaseAutomation.run(nextRunAt, now, INTERRUPTED_RUN_ERROR, now, row.id).changes
+      );
+    }
+
+    for (const row of queuedRows) {
+      const queuedAt = row.queued_at ?? row.created_at;
+      updateRun.run(
+        'cancelled',
+        now,
+        Math.max(0, now - queuedAt),
+        ORPHANED_QUEUED_RUN_ERROR,
+        row.id
+      );
+    }
+
+    return releasedAutomations;
+  });
+
+  return {
+    failedRunningRuns: runningRows.length,
+    cancelledQueuedRuns: queuedRows.length,
+    releasedAutomations: transaction(),
   };
 }
 

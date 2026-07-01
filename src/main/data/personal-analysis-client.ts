@@ -128,12 +128,25 @@ export class PersonalAnalysisClient {
     projectId: string,
     tableId: string
   ): Promise<PersonalAnalysisTable | undefined> {
-    const result = await this.listTables(spaceId, projectId, {
-      keyword: tableId,
-      page: 1,
-      pageSize: 100,
-    });
-    return result.tables.find((table) => table.tableId === tableId);
+    const MAX_LOOKUP_PAGES = 100;
+    let page = 1;
+    while (page <= MAX_LOOKUP_PAGES) {
+      const result = await this.listTables(spaceId, projectId, {
+        page,
+        pageSize: 100,
+      });
+      const matched = result.tables.find((table) => table.tableId === tableId);
+      if (matched) return matched;
+      // Genuinely exhausted the catalog without a match — the table does not exist here.
+      if (!result.hasMore) return undefined;
+      page += 1;
+    }
+    // Hit the page cap while more pages remain: surface a clear error instead of a
+    // silent "not found", so an oversized project / wrong id stays diagnosable.
+    throw new Error(
+      `Cloud table ${tableId} was not found within the first ${MAX_LOOKUP_PAGES} pages ` +
+        `of project ${projectId} (space ${spaceId}); narrow the lookup or verify the table id.`
+    );
   }
 
   async exportTableCsv(tableId: string): Promise<string> {
