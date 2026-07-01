@@ -24,12 +24,10 @@ export function useWorkflowNodeColumnValues({
   const [values, setValues] = useState<string[]>([]);
 
   useEffect(() => {
-    if (!taskId || !sourceNode?.id || !column) {
-      setValues([]);
-      return;
-    }
+    if (!taskId || !sourceNode?.id || !column) return;
     const api = window.electronAPI?.data;
     if (!api?.getWorkflowNodeColumnValues) return;
+    let cancelled = false;
     api
       .getWorkflowNodeColumnValues({
         taskId,
@@ -38,8 +36,15 @@ export function useWorkflowNodeColumnValues({
         nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
         column,
       })
-      .then(setValues)
-      .catch(() => setValues([]));
+      .then((result) => {
+        if (!cancelled) setValues(result);
+      })
+      .catch(() => {
+        if (!cancelled) setValues([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config, column]);
 
   return values;

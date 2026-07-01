@@ -1668,12 +1668,41 @@ export class DataTaskStore {
       updatedAt: 0,
     };
 
-    const tableName = await this.resolveWorkflowNodePreviewTable(task, node);
+    let tableName = await this.resolveWorkflowNodePreviewTable(task, node);
     if (!tableName || !(await this.physicalTableExists(tableName))) {
-      return [];
+      // 缓存表不存在，尝试从源文件加载数据创建临时表
+      if (node.type !== 'input_source' || node.config.disabled === true) {
+        return [];
+      }
+      const source =
+        typeof node.config.source === 'string'
+          ? node.config.source
+          : stringConfigValue(node.config.datasetId)
+            ? 'dataset'
+            : 'task';
+      if (source === 'dataset') {
+        return [];
+      }
+      const filePath =
+        source === 'file' && typeof node.config.filePath === 'string'
+          ? normalizeSourcePath(node.config.filePath)
+          : task.sourcePath;
+      if (!filePath) {
+        return [];
+      }
+      tableName = tableNameFromId('workflow_preview_values', node.id);
+      await this.dropTableIfExists(tableName);
+      const relation = readRelationForPath(filePath, 'sourcePath');
+      await this.runSql(
+        `CREATE TEMP TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`,
+        { sourcePath: filePath }
+      );
     }
 
     const colName = input.column.replace(/^\[|\]$/g, '');
+    if (tableName && !(await this.physicalTableExists(tableName))) {
+      return [];
+    }
     const quotedCol = quoteIdentifier(colName);
     const quotedTable = quoteIdentifier(tableName);
     const rows = await this.queryRows<{ val: string }>(

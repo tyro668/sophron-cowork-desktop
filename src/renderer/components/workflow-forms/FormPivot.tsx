@@ -190,7 +190,7 @@ export default function FormPivot({
   return (
     <div className="flex gap-2.5">
       {/* ═══ 左列: 行列字段选择 ═══ */}
-      <div className="flex-1 rounded-lg border border-border-muted bg-background/42 content-start">
+      <div className="flex-[4] rounded-lg border border-border-muted bg-background/42 content-start">
         <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5">
           <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
             1
@@ -250,7 +250,7 @@ export default function FormPivot({
       </div>
 
       {/* ═══ 右列: 聚合指标 ═══ */}
-      <div className="flex-[1] rounded-lg border border-border-muted bg-background/42 content-start">
+      <div className="flex-[6] rounded-lg border border-border-muted bg-background/42 content-start">
         <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5">
           <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
             2
