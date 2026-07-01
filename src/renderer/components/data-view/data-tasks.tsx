@@ -2933,7 +2933,6 @@ function getJoinConfigSummary(
   const primary = [
     summaryRow(t, 'joinType', translateWorkflowValue(t, 'joinTypes', joinType)),
     summaryRow(t, 'rightInput', stringValue(config.rightInput)),
-    summaryRow(t, 'cardinality', stringValue(config.cardinality)),
   ];
   const details = [
     summaryRow(

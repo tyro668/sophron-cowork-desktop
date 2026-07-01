@@ -659,7 +659,7 @@ function parseJoin(command: CommandLine, diagnostics: PrepDiagnostic[]): PrepOpe
     });
     return null;
   }
-  const clauses = parseClauses(match[4] ?? '', ['on', 'keep', 'suffix', 'right_prefix', 'expect']);
+  const clauses = parseClauses(match[4] ?? '', ['on', 'keep', 'suffix', 'right_prefix']);
   const conditions = parseJoinConditions(findClause(clauses, 'on') ?? '');
   return makeOperator('join', text, {
     joinType: match[1],
@@ -667,7 +667,6 @@ function parseJoin(command: CommandLine, diagnostics: PrepDiagnostic[]): PrepOpe
     rightAlias: match[3] ?? match[2],
     conditions,
     keep: parseJoinKeep(findClause(clauses, 'keep') ?? ''),
-    cardinality: findClause(clauses, 'expect'),
     conflict: parseJoinConflict(clauses),
   });
 }
@@ -695,7 +694,6 @@ function parseAsofJoin(
     'keep',
     'suffix',
     'right_prefix',
-    'expect',
   ]);
   const asof = parseAsofClause(
     findClause(clauses, 'on') ?? '',
@@ -709,7 +707,6 @@ function parseAsofJoin(
     rightAlias: match[2] ?? match[1],
     asof,
     keep: parseJoinKeep(findClause(clauses, 'keep') ?? ''),
-    cardinality: findClause(clauses, 'expect'),
     conflict: parseJoinConflict(clauses),
   });
 }

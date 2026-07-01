@@ -189,7 +189,6 @@ describe('operator forms — config ↔ DSL round-trip', () => {
         joinType: 'inner',
         rightInput: 'customers',
         conditions: [{ left: 'orders.customer_id', operator: '=', right: 'customers.customer_id' }],
-        cardinality: 'many_to_one',
       },
       'join'
     );

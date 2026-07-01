@@ -219,7 +219,6 @@ function formatJoin(config: Record<string, unknown> | undefined): string {
     if (typeof asof?.tolerance === 'string') parts.push(`tolerance ${asof.tolerance}`);
     const keep = formatJoinKeep(config?.keep);
     if (keep) parts.push(`keep ${keep}`);
-    if (typeof config?.cardinality === 'string') parts.push(`expect ${config.cardinality}`);
     const conflict = formatJoinConflict(config?.conflict);
     if (conflict) parts.push(conflict);
     return parts.join(' ');
@@ -229,7 +228,6 @@ function formatJoin(config: Record<string, unknown> | undefined): string {
   if (joinType !== 'cross') parts.push(`on ${conditions || '[left].[id] = [right_source].[id]'}`);
   const keep = formatJoinKeep(config?.keep);
   if (keep) parts.push(`keep ${keep}`);
-  if (typeof config?.cardinality === 'string') parts.push(`expect ${config.cardinality}`);
   const conflict = formatJoinConflict(config?.conflict);
   if (conflict) parts.push(conflict);
   return parts.join(' ');

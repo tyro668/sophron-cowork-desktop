@@ -131,21 +131,6 @@ function JoinVennSVG({ type, selected }: { type: string; selected: boolean }) {
   );
 }
 
-const CARDINALITY_LABELS: Record<string, string> = {
-  '': 'cardinalityNone',
-  one_to_one: 'cardinalityOneToOne',
-  one_to_many: 'cardinalityOneToMany',
-  many_to_one: 'cardinalityManyToOne',
-  many_to_many: 'cardinalityManyToMany',
-};
-const CARDINALITY_FALLBACKS: Record<string, string> = {
-  '': '不限制',
-  one_to_one: '一对一',
-  one_to_many: '一对多',
-  many_to_one: '多对一',
-  many_to_many: '多对多',
-};
-
 export default function FormJoin({
   node,
   taskId,
@@ -178,7 +163,6 @@ export default function FormJoin({
     () => (node.config.conditions as ConditionEntry[]) ?? [],
     [node.config.conditions]
   );
-  const cardinality = (node.config.cardinality as string) ?? '';
   const conflict = useMemo(
     () => (node.config.conflict as Record<string, unknown>) ?? {},
     [node.config.conflict]
@@ -580,20 +564,6 @@ export default function FormJoin({
     }));
   }
 
-  // ── Cardinality select options ──
-  const cardinalityOptions = useMemo(
-    () =>
-      Object.keys(CARDINALITY_LABELS).map((value) => ({
-        value,
-        label: tr(CARDINALITY_LABELS[value], CARDINALITY_FALLBACKS[value]),
-      })),
-    [tr]
-  );
-  const cardinalityGroups = useMemo(
-    () => [{ key: 'cardinality', items: cardinalityOptions }],
-    [cardinalityOptions]
-  );
-
   const conflictOptions = useMemo(
     () => [
       { value: 'right_prefix', label: tr('conflictPrefix', '右表字段加前缀') },
@@ -888,17 +858,6 @@ export default function FormJoin({
             </div>
 
             <hr className="border-border-muted/50" />
-
-            {/* Cardinality */}
-            <div className="grid gap-1 px-0.5">
-              <GlassFormLabel>{tr('cardinality', '基数约束')}</GlassFormLabel>
-              <GlassOperatorSelect
-                value={cardinality}
-                groups={cardinalityGroups}
-                onChange={(v) => updateConfig((cfg) => ({ ...cfg, cardinality: v || undefined }))}
-                className="h-7 text-[12px] [&>span]:text-left w-full"
-              />
-            </div>
 
             <hr className="border-border-muted/50" />
 
