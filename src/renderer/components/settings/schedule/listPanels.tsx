@@ -327,26 +327,26 @@ function AutomationTable({
     return <EmptyState label={tr('schedule.empty', '还没有自动化')} />;
   }
   return (
-    <div className="min-w-0 overflow-hidden">
-      <table className="w-full table-fixed border-collapse text-left">
+    <div className="min-w-0 overflow-x-auto">
+      <table className="min-w-[72rem] w-full table-fixed border-collapse text-left">
+        <colgroup>
+          <col className="w-12" />
+          <col />
+          <col className="w-36" />
+          <col className="w-24" />
+          <col className="w-64" />
+          <col className="w-52" />
+        </colgroup>
         <thead>
           <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted backdrop-blur-xl">
-            <th className="w-[3%] px-3">
+            <th className="px-3">
               <span className="sr-only">{tr('schedule.selection', '选择')}</span>
             </th>
-            <th className="w-[39%] whitespace-nowrap px-2">
-              {tr('schedule.columns.name', '名称')}
-            </th>
-            <th className="w-[14%] whitespace-nowrap px-2">
-              {tr('schedule.columns.status', '状态')}
-            </th>
-            <th className="w-[10%] whitespace-nowrap px-2">
-              {tr('schedule.columns.actions', '动作')}
-            </th>
-            <th className="w-[24%] whitespace-nowrap px-2">
-              {tr('schedule.columns.nextRun', '下次执行')}
-            </th>
-            <th className="w-[10%] whitespace-nowrap px-2">
+            <th className="whitespace-nowrap px-2">{tr('schedule.columns.name', '名称')}</th>
+            <th className="whitespace-nowrap px-2">{tr('schedule.columns.status', '状态')}</th>
+            <th className="whitespace-nowrap px-2">{tr('schedule.columns.actions', '动作')}</th>
+            <th className="whitespace-nowrap px-2">{tr('schedule.columns.nextRun', '下次执行')}</th>
+            <th className="whitespace-nowrap px-2">
               <span className="inline-flex items-center gap-1">
                 {tr('schedule.columns.updatedAt', '更新时间')}
                 <ArrowUpDown className="h-3 w-3" />
@@ -409,8 +409,8 @@ function AutomationTable({
                 <td className="truncate whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
                   <span className="truncate">{formatAutomationNextRun(automation, tr)}</span>
                 </td>
-                <td className="truncate whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
-                  <span className="truncate">{formatAppDateTime(automation.updatedAt)}</span>
+                <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+                  {formatAppDateTime(automation.updatedAt)}
                 </td>
               </tr>
             );

@@ -918,6 +918,7 @@ function CloudTableProcessActionEditor({
   appConfig,
   permissionPolicy,
   onPermissionPolicyChange,
+  onGeneratedTaskSuccess,
   onChange,
   tr,
 }: {
@@ -929,6 +930,7 @@ function CloudTableProcessActionEditor({
   permissionPolicy: PermissionPolicyId;
   onPermissionPolicyChange: (permissionPolicy: PermissionPolicyId) => void;
   onChange: (node: AutomationActionNode) => void;
+  onGeneratedTaskSuccess: () => void;
   tr: (key: string, fallback: string) => string;
 }) {
   const sourceLocation = getSourceLocation(config);
@@ -1015,6 +1017,15 @@ function CloudTableProcessActionEditor({
         node.config,
         DATA_PROCESS_TASK_CONFIG_KEY
       );
+      const reusableTaskSource =
+        reusableTaskConfig?.source &&
+        typeof reusableTaskConfig.source === 'object' &&
+        !Array.isArray(reusableTaskConfig.source)
+          ? (reusableTaskConfig.source as Record<string, unknown>)
+          : null;
+      const canReuseGeneratedTask =
+        reusableTaskSource?.location === sourceLocation &&
+        reusableTaskSource.tableId === config.source.tableId;
       const result = await window.electronAPI.data.generateTaskFromRequirement({
         source: {
           location: sourceLocation,
@@ -1039,6 +1050,7 @@ function CloudTableProcessActionEditor({
           datasourceId: config.output.datasourceId || config.source.datasourceId,
           folderId: config.output.folderId || config.source.folderId,
           localOutputTableId:
+            canReuseGeneratedTask &&
             typeof reusableTaskConfig?.output === 'object' &&
             reusableTaskConfig.output &&
             'localOutputTableId' in reusableTaskConfig.output &&
@@ -1049,13 +1061,16 @@ function CloudTableProcessActionEditor({
         modelConfigSetId: selectedModelConfigSetId,
         model: typeof node.config.model === 'string' ? node.config.model : undefined,
         reuseTaskId:
-          typeof reusableTaskConfig?.taskId === 'string' ? reusableTaskConfig.taskId : undefined,
+          canReuseGeneratedTask && typeof reusableTaskConfig?.taskId === 'string'
+            ? reusableTaskConfig.taskId
+            : undefined,
         currentVersion:
-          typeof reusableTaskConfig?.generatedVersion === 'number'
+          canReuseGeneratedTask && typeof reusableTaskConfig?.generatedVersion === 'number'
             ? reusableTaskConfig.generatedVersion
             : undefined,
       });
       onChange(createGeneratedCloudTableProcessNode(node, config, result));
+      onGeneratedTaskSuccess();
     } catch (error) {
       setGenerationError(
         error instanceof Error
@@ -1161,37 +1176,29 @@ function CloudTableProcessActionEditor({
             }
             tr={tr}
           />
-          <div className="rounded-lg border border-border-muted bg-background/42 px-3 py-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0 text-[12px] leading-5 text-text-muted">
-                {tr(
-                  'schedule.generateTaskHint',
-                  'AI 只在配置期生成一次数据任务；确认后运行期将复用数据任务，0 token 执行。'
-                )}
-              </div>
-              <button
-                type="button"
-                disabled={
-                  isGeneratingTask ||
-                  !config.source.tableId.trim() ||
-                  !config.processRequirement.trim() ||
-                  (config.output.writeMode === 'replace' && !config.output.targetTableId.trim())
-                }
-                onClick={() => void generateTask()}
-                className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-success bg-success/5 px-3 text-xs font-semibold text-success transition-colors hover:bg-success/10 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isGeneratingTask ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Wand2 className="h-3.5 w-3.5" />
-                )}
-                {isGeneratingTask
-                  ? tr('schedule.generatingTask', '正在生成')
-                  : tr('schedule.generateDataTask', '生成数据任务')}
-              </button>
-            </div>
+          <div className="flex flex-col items-stretch gap-2 sm:items-end">
+            <button
+              type="button"
+              disabled={
+                isGeneratingTask ||
+                !config.source.tableId.trim() ||
+                !config.processRequirement.trim() ||
+                (config.output.writeMode === 'replace' && !config.output.targetTableId.trim())
+              }
+              onClick={() => void generateTask()}
+              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-success bg-success/5 px-3 text-xs font-semibold text-success transition-colors hover:bg-success/10 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            >
+              {isGeneratingTask ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Wand2 className="h-3.5 w-3.5" />
+              )}
+              {isGeneratingTask
+                ? tr('schedule.generatingTask', '正在生成')
+                : tr('schedule.generateDataTask', '生成数据任务')}
+            </button>
             {generationError && (
-              <div className="mt-2 rounded-md border border-warning/25 bg-warning/10 px-2.5 py-2 text-[12px] leading-5 text-warning">
+              <div className="w-full rounded-md border border-warning/25 bg-warning/10 px-2.5 py-2 text-[12px] leading-5 text-warning">
                 {generationError}
               </div>
             )}
@@ -1882,6 +1889,7 @@ export function ActionChainSection({
   appConfig,
   onDraftChange,
   onPermissionPolicyChange,
+  onGeneratedTaskSuccess,
   tr,
 }: {
   draft: AutomationDraft;
@@ -1892,6 +1900,7 @@ export function ActionChainSection({
   appConfig: AppConfig | null;
   onDraftChange: (draft: AutomationDraft) => void;
   onPermissionPolicyChange: (permissionPolicy: PermissionPolicyId) => void;
+  onGeneratedTaskSuccess: () => void;
   tr: (key: string, fallback: string) => string;
 }) {
   const nodes = draft.actionGraph.nodes;
@@ -1964,6 +1973,7 @@ export function ActionChainSection({
             appConfig={appConfig}
             permissionPolicy={draft.permissionPolicy}
             onPermissionPolicyChange={onPermissionPolicyChange}
+            onGeneratedTaskSuccess={onGeneratedTaskSuccess}
             onRemove={() => updateNodes(nodes.filter((item) => item.id !== node.id))}
             onChange={(next) =>
               updateNodes(nodes.map((item) => (item.id === next.id ? next : item)))
@@ -1985,6 +1995,7 @@ function ActionStepCard({
   appConfig,
   permissionPolicy,
   onPermissionPolicyChange,
+  onGeneratedTaskSuccess,
   onRemove,
   onChange,
   tr,
@@ -1997,6 +2008,7 @@ function ActionStepCard({
   appConfig: AppConfig | null;
   permissionPolicy: PermissionPolicyId;
   onPermissionPolicyChange: (permissionPolicy: PermissionPolicyId) => void;
+  onGeneratedTaskSuccess: () => void;
   onRemove: () => void;
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
@@ -2029,6 +2041,7 @@ function ActionStepCard({
         appConfig={appConfig}
         permissionPolicy={permissionPolicy}
         onPermissionPolicyChange={onPermissionPolicyChange}
+        onGeneratedTaskSuccess={onGeneratedTaskSuccess}
         onChange={onChange}
         tr={tr}
       />
@@ -2095,6 +2108,7 @@ function DataProcessActionEditor({
   appConfig,
   permissionPolicy,
   onPermissionPolicyChange,
+  onGeneratedTaskSuccess,
   onChange,
   tr,
 }: {
@@ -2105,6 +2119,7 @@ function DataProcessActionEditor({
   appConfig: AppConfig | null;
   permissionPolicy: PermissionPolicyId;
   onPermissionPolicyChange: (permissionPolicy: PermissionPolicyId) => void;
+  onGeneratedTaskSuccess: () => void;
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
 }) {
@@ -2176,19 +2191,12 @@ function DataProcessActionEditor({
           permissionPolicy={permissionPolicy}
           onPermissionPolicyChange={onPermissionPolicyChange}
           onChange={onChange}
+          onGeneratedTaskSuccess={onGeneratedTaskSuccess}
           tr={tr}
         />
       )}
       {mode === 'task' && (
         <>
-          {node.type === CLOUD_TABLE_PROCESS_ACTION_TYPE && (
-            <div className="rounded-lg border border-success/20 bg-success/10 px-3 py-2 text-[12px] leading-5 text-success">
-              {tr(
-                'schedule.generatedTaskReady',
-                '已生成数据任务。运行期将直接执行该任务，不再调用大模型。'
-              )}
-            </div>
-          )}
           <ConfigRow label={tr('schedule.dataTaskLabel', '数据任务')}>
             <LocalTableSelect
               value={selectedTaskId}
@@ -2240,11 +2248,8 @@ function GeneratedTaskReviewCard({
     : [];
   return (
     <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-3">
-      <div className="mb-2 flex items-center justify-between gap-2 text-[12px] font-semibold text-text-secondary">
+      <div className="mb-2 text-[12px] font-semibold text-text-secondary">
         <span>{tr('schedule.generatedTaskReview', '生成结果')}</span>
-        <span className="rounded-full bg-success/10 px-2 py-0.5 text-[11px] text-success">
-          {tr('schedule.zeroTokenRuntime', '运行期 0 token')}
-        </span>
       </div>
       {requiredColumns.length > 0 && (
         <div className="mb-2 text-[12px] leading-5 text-text-muted">
@@ -2274,6 +2279,7 @@ function ActionConfigEditor({
   appConfig,
   permissionPolicy,
   onPermissionPolicyChange,
+  onGeneratedTaskSuccess,
   onChange,
   tr,
 }: {
@@ -2284,6 +2290,7 @@ function ActionConfigEditor({
   appConfig: AppConfig | null;
   permissionPolicy: PermissionPolicyId;
   onPermissionPolicyChange: (permissionPolicy: PermissionPolicyId) => void;
+  onGeneratedTaskSuccess: () => void;
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
 }) {
@@ -2319,6 +2326,7 @@ function ActionConfigEditor({
           appConfig={appConfig}
           permissionPolicy={permissionPolicy}
           onPermissionPolicyChange={onPermissionPolicyChange}
+          onGeneratedTaskSuccess={onGeneratedTaskSuccess}
           onChange={onChange}
           tr={tr}
         />

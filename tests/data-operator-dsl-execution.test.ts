@@ -137,6 +137,131 @@ describe('operator DSL execution cases', () => {
       { order_id: '4', region: 'West', revenue: 5, rn: 2 },
     ]);
   });
+
+  it('overwrites an existing field when derive targets the same field name', async () => {
+    const { dbPath, store, tempRoot } = createStore();
+    const pricesPath = path.join(tempRoot, 'prices.csv');
+    fs.writeFileSync(
+      pricesPath,
+      ['Ticker,Adj Close', 'FIRE,$8.34', 'SYMC,$16.14'].join('\n') + '\n',
+      'utf8'
+    );
+
+    const task = await store.createTask({
+      name: 'Executable same-field derive',
+      sourcePath: pricesPath,
+    });
+    await saveWorkflowDsl(
+      store,
+      task.id,
+      `
+        input source task as prices
+          | derive [\`Adj Close\`] = CAST(REPLACE([\`Adj Close\`], '$', '') AS DECIMAL(18,2))
+          | output table "operator_same_field_derive_output" mode replace
+      `
+    );
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    expect(completed.outputTable).toBe('operator_same_field_derive_output');
+
+    const rows = await queryRows(
+      dbPath,
+      'SELECT "Ticker", "Adj Close" FROM operator_same_field_derive_output ORDER BY "Ticker"'
+    );
+    expect(rows.map((row) => row.Ticker)).toEqual(['FIRE', 'SYMC']);
+    expect(Number(rows[0]['Adj Close'])).toBe(8.34);
+    expect(Number(rows[1]['Adj Close'])).toBe(16.14);
+  });
+
+  it('preserves decimal values when filtering and sorting by the same column', async () => {
+    const { dbPath, store, tempRoot } = createStore();
+    const profitPath = path.join(tempRoot, 'profit.csv');
+    fs.writeFileSync(
+      profitPath,
+      [
+        'Row ID,Profit,Sales',
+        '1,-5.5,10',
+        '2,29.64,66.12',
+        '3,3.12,314.22',
+        '4,106.14,408.3',
+        '5,0,12',
+      ].join('\n') + '\n',
+      'utf8'
+    );
+
+    const task = await store.createTask({
+      name: 'Executable profit filter sort',
+      sourcePath: profitPath,
+    });
+    await saveWorkflowDsl(
+      store,
+      task.id,
+      `
+        input source task as profit
+          | filter [Profit] >= 0
+          | sort by [Profit] asc
+          | output table "operator_profit_filter_sort_output" mode replace
+      `
+    );
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    expect(completed.outputTable).toBe('operator_profit_filter_sort_output');
+
+    const rows = await queryRows(
+      dbPath,
+      'SELECT "Row ID", Profit, Sales FROM operator_profit_filter_sort_output ORDER BY Profit ASC'
+    );
+    expect(rows.map((row) => Number(row.Profit))).toEqual([0, 3.12, 29.64, 106.14]);
+  });
+
+  it('preserves decimal values when filtering and sorting a dataset input source', async () => {
+    const { dbPath, store, tempRoot } = createStore();
+    const profitPath = path.join(tempRoot, 'profit-dataset.csv');
+    fs.writeFileSync(
+      profitPath,
+      [
+        'Row ID,Profit,Sales',
+        '1,-5.5,10',
+        '2,29.64,66.12',
+        '3,3.12,314.22',
+        '4,106.14,408.3',
+        '5,0,12',
+      ].join('\n') + '\n',
+      'utf8'
+    );
+    const input = await store.importDataset({
+      name: 'profit dataset',
+      sourceKind: 'csv',
+      filePath: profitPath,
+    });
+
+    const task = await store.createTask({
+      name: 'Executable profit dataset filter sort',
+      sourceInputTableId: input.id,
+    });
+    await saveWorkflowDsl(
+      store,
+      task.id,
+      `
+        input source dataset "${input.id}" as src
+          | filter [Profit] >= 0
+          | sort by [Profit] asc
+          | output table "operator_profit_dataset_filter_sort_output" mode replace
+      `
+    );
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    expect(completed.outputTable).toBe('operator_profit_dataset_filter_sort_output');
+
+    const rows = await queryRows(
+      dbPath,
+      'SELECT "Row ID", Profit, Sales FROM operator_profit_dataset_filter_sort_output ORDER BY Profit ASC'
+    );
+    expect(rows.map((row) => Number(row.Profit))).toEqual([0, 3.12, 29.64, 106.14]);
+  });
 });
 
 function createStore(): { dbPath: string; store: DataTaskStore; tempRoot: string } {

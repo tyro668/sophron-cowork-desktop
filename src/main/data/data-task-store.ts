@@ -2799,7 +2799,7 @@ export class DataTaskStore {
       case 'sort':
         return compileSortSql(output, input, node.config);
       case 'calculate_field':
-        return compileCalculateFieldSql(output, input, node.config);
+        return compileCalculateFieldSql(output, input, columns, node.config);
       case 'aggregate':
         return compileAggregateSql(output, input, node.config);
       case 'limit':
@@ -4141,19 +4141,25 @@ function compileSortSql(output: string, input: string, config: Record<string, un
 function compileCalculateFieldSql(
   output: string,
   input: string,
+  columns: string[],
   config: Record<string, unknown>
 ): string {
   const calculations = objectArray(config.calculations);
-  const additions = calculations.flatMap((calculation) =>
-    typeof calculation.field === 'string' && typeof calculation.expression === 'string'
-      ? [
-          `${compileScalarExpression(calculation.expression)} AS ${quoteIdentifier(calculation.field)}`,
-        ]
-      : []
+  const expressionsByField = new Map(
+    calculations.flatMap((calculation) =>
+      typeof calculation.field === 'string' && typeof calculation.expression === 'string'
+        ? [[calculation.field, compileScalarExpression(calculation.expression)] as const]
+        : []
+    )
   );
-  return `CREATE TEMP TABLE ${output} AS SELECT *${
-    additions.length > 0 ? `, ${additions.join(', ')}` : ''
-  } FROM ${input}`;
+  const projections = columns.map((column) => {
+    const expression = expressionsByField.get(column);
+    return `${expression ?? quoteIdentifier(column)} AS ${quoteIdentifier(column)}`;
+  });
+  const additions = [...expressionsByField]
+    .filter(([field]) => !columns.includes(field))
+    .map(([field, expression]) => `${expression} AS ${quoteIdentifier(field)}`);
+  return `CREATE TEMP TABLE ${output} AS SELECT ${[...projections, ...additions].join(', ')} FROM ${input}`;
 }
 
 function compileAggregateSql(

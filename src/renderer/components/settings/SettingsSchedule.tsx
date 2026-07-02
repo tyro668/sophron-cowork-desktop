@@ -92,6 +92,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const skipNextAutoSelectRef = useRef(false);
   const suppressSelectedAutomationSyncRef = useRef(false);
   const consumedCloudTemplateNonceRef = useRef<number | null>(null);
+  const transientBannerTimerRef = useRef<number | null>(null);
   const updateDraftEnabled = useCallback((enabled: boolean) => {
     startTransition(() => {
       setDraft((current) => ({ ...current, enabled }));
@@ -145,7 +146,22 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       isMountedRef.current = false;
       loadRequestSeq.current += 1;
       loadRunsRequestSeq.current += 1;
+      if (transientBannerTimerRef.current !== null) {
+        window.clearTimeout(transientBannerTimerRef.current);
+        transientBannerTimerRef.current = null;
+      }
     };
+  }, []);
+
+  const showTransientBanner = useCallback((nextBanner: Banner, durationMs = 2400) => {
+    if (transientBannerTimerRef.current !== null) {
+      window.clearTimeout(transientBannerTimerRef.current);
+    }
+    setBanner(nextBanner);
+    transientBannerTimerRef.current = window.setTimeout(() => {
+      transientBannerTimerRef.current = null;
+      setBanner((current) => (current === nextBanner ? null : current));
+    }, durationMs);
   }, []);
 
   const load = useCallback(
@@ -560,6 +576,12 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
               onDraftChange={setDraft}
               onPermissionPolicyChange={(permissionPolicy) =>
                 setDraft((current) => ({ ...current, permissionPolicy }))
+              }
+              onGeneratedTaskSuccess={() =>
+                showTransientBanner({
+                  tone: 'success',
+                  text: tr('schedule.generatedTaskReady', '数据任务已生成，后续将复用该任务执行。'),
+                })
               }
               tr={tr}
             />
