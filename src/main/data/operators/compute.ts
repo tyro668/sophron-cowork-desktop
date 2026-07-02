@@ -1,8 +1,17 @@
 import { quoteValueIdentifier, unwrapFieldToken, unquoteDslString, literalToSql } from './utils';
 import { tokenizeExpression } from '../../../shared/expression-tokenizer';
 
+function transformDslKeywords(expr: string): string {
+  return expr
+    .replace(/\bif\b/gi, 'CASE WHEN')
+    .replace(/\bthen\b/gi, 'THEN')
+    .replace(/\belse\b/gi, 'ELSE')
+    .replace(/\bend\b/gi, 'END');
+}
+
 export function compileScalarExpression(expression: string): string {
-  const tokens = tokenizeExpression(expression);
+  const sqlExpr = transformDslKeywords(expression);
+  const tokens = tokenizeExpression(sqlExpr);
   const replacements: Array<[number, number, string]> = [];
 
   for (const token of tokens) {
@@ -18,7 +27,7 @@ export function compileScalarExpression(expression: string): string {
     }
   }
 
-  let result = expression;
+  let result = sqlExpr;
   for (let i = replacements.length - 1; i >= 0; i--) {
     const [start, end, replacement] = replacements[i];
     result = result.slice(0, start) + replacement + result.slice(end);

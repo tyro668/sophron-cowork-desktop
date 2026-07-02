@@ -8,6 +8,7 @@ interface GlassExpressionInputProps {
   fieldCompletions: string[];
   columnTypes?: Record<string, string>;
   placeholder?: string;
+  excludeFunctionCategories?: string[];
 }
 
 export function GlassExpressionInput({
@@ -16,6 +17,7 @@ export function GlassExpressionInput({
   fieldCompletions,
   columnTypes,
   placeholder,
+  excludeFunctionCategories,
 }: GlassExpressionInputProps) {
   const [open, setOpen] = useState(false);
 
@@ -39,6 +41,7 @@ export function GlassExpressionInput({
           fieldCompletions={fieldCompletions}
           columnTypes={columnTypes}
           onClose={() => setOpen(false)}
+          excludeFunctionCategories={excludeFunctionCategories}
         />
       )}
     </>
