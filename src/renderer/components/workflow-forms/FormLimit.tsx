@@ -46,6 +46,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
 
   function pushLimit(value: string) {
     setLocalLimit(value);
+    if (value === '') return;
     const n = Math.max(1, Number(value) || 1);
     const clamped = String(n);
     if (clamped !== value) setLocalLimit(clamped);
@@ -55,6 +56,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
 
   function pushOffset(value: string) {
     setLocalOffset(value);
+    if (value === '') return;
     const n = Math.max(0, Number(value) || 0);
     const clamped = String(n);
     if (clamped !== value) setLocalOffset(clamped);
@@ -74,6 +76,13 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
   return (
     <div className="flex h-full min-h-0 flex-1 gap-0 overflow-hidden">
       <div className="flex w-[180px] shrink-0 flex-col gap-3.5 border-r border-border-muted bg-surface/40 p-3.5">
+        <div className="flex items-end gap-3 px-0.5">
+          <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">1</span>
+          <div className="grid">
+            <span className="text-[13px] font-semibold text-text-primary">{tr('limitModeHeader', '模式选择')}</span>
+            <span className="text-[10px] text-text-muted">{tr('limitModeHint', '选择限制方式')}</span>
+          </div>
+        </div>
         <section className="flex flex-col gap-1.5">
           <GlassRadioSelect
             value={mode}
@@ -94,6 +103,13 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
       </div>
 
       <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
+        <div className="flex items-end gap-3 px-0.5">
+          <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">2</span>
+          <div className="grid">
+            <span className="text-[13px] font-semibold text-text-primary">{tr('limitConfigHeader', '参数配置')}</span>
+            <span className="text-[10px] text-text-muted">{tr('limitConfigHint', '配置行数限制')}</span>
+          </div>
+        </div>
         <div className="grid grid-cols-3 gap-3 -mt-[5mm]">
           <label className="grid gap-1.5">
             <span className="text-center text-[11px] font-medium text-text-secondary">
@@ -154,6 +170,13 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
         {isTopMode && (
           <>
             <div className="border-t border-border-muted" />
+            <div className="flex items-end gap-3 px-0.5">
+              <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">3</span>
+              <div className="grid">
+                <span className="text-[13px] font-semibold text-text-primary">{tr('limitSortHeader', '排序规则')}</span>
+                <span className="text-[10px] text-text-muted">{tr('limitSortHint', '设置排序条件，默认 AND 连接')}</span>
+              </div>
+            </div>
             <div className="-mt-2">
               <GlassSortKeyEditor
                 keys={orderBy}

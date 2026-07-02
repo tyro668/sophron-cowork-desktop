@@ -1799,7 +1799,8 @@ function WorkflowInspector({
 
   useEffect(() => {
     if (!node || !usesOperatorDsl || isEditingOperatorDsl) return;
-    const nextDsl = exportPrepOperatorDsl(node);
+    const cleanNode = { ...node, config: { ...node.config, dsl: undefined } };
+    const nextDsl = exportPrepOperatorDsl(cleanNode);
     setOperatorDsl(nextDsl);
     setOperatorDslBeforeEdit(nextDsl);
     setOperatorDslDiagnostics([]);
