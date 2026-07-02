@@ -2,11 +2,17 @@ import { quoteValueIdentifier, unwrapFieldToken, unquoteDslString, literalToSql 
 import { tokenizeExpression } from '../../../shared/expression-tokenizer';
 
 function transformDslKeywords(expr: string): string {
-  return expr
+  const refs: string[] = [];
+  const masked = expr.replace(/\[[^\]]*\]/g, (m) => {
+    refs.push(m);
+    return '@@' + String(refs.length - 1) + '@@';
+  });
+  const transformed = masked
     .replace(/\bif\b/gi, 'CASE WHEN')
     .replace(/\bthen\b/gi, 'THEN')
     .replace(/\belse\b/gi, 'ELSE')
     .replace(/\bend\b/gi, 'END');
+  return transformed.replace(/@@(\d+)@@/g, (_, i) => refs[Number(i)]);
 }
 
 export function compileScalarExpression(expression: string): string {

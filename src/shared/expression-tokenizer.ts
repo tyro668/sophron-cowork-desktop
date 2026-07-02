@@ -104,7 +104,13 @@ export function tokenizeExpression(input: string): ExprToken[] {
 
     if (i + 1 < input.length) {
       const twoChar = input.slice(i, i + 2);
-      if (twoChar === '!=' || twoChar === '<>' || twoChar === '>=' || twoChar === '<=') {
+      if (
+        twoChar === '!=' ||
+        twoChar === '<>' ||
+        twoChar === '>=' ||
+        twoChar === '<=' ||
+        twoChar === '||'
+      ) {
         tokens.push({ type: 'Operator', value: twoChar, start: i, end: i + 2 });
         i += 2;
         continue;
@@ -116,10 +122,12 @@ export function tokenizeExpression(input: string): ExprToken[] {
       ch === '-' ||
       ch === '*' ||
       ch === '/' ||
+      ch === '%' ||
       ch === '=' ||
       ch === '<' ||
       ch === '>' ||
-      ch === '!'
+      ch === '!' ||
+      ch === '|'
     ) {
       tokens.push({ type: 'Operator', value: ch, start: i, end: i + 1 });
       i++;
