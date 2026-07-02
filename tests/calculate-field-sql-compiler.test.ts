@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { DuckDBInstance } from '@duckdb/node-api';
+import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api';
 import { compileScalarExpression } from '../src/main/data/operators/compute';
 import { compileCalculateFieldSql } from '../src/main/data/operators/calculate-field';
 
-async function runSql(sql: string): Promise<Record<string, unknown>[]> {
+async function connect(): Promise<DuckDBConnection> {
   const instance = await DuckDBInstance.create(':memory:');
-  const conn = await instance.connect();
+  return await instance.connect();
+}
+
+async function runSql(sql: string): Promise<Record<string, unknown>[]> {
+  const conn = await connect();
   await conn.run(
     'CREATE TABLE inp (revenue DOUBLE, cost DOUBLE, amount DOUBLE, region VARCHAR, name VARCHAR)'
   );
@@ -450,8 +454,7 @@ describe('DuckDB integration — compileCalculateFieldSql execution', () => {
   });
 
   it('coalesce replaces null', async () => {
-    const instance = await DuckDBInstance.create(':memory:');
-    const conn = await instance.connect();
+    const conn = await connect();
     await conn.run('CREATE TABLE null_test (x DOUBLE, y DOUBLE)');
     await conn.run('INSERT INTO null_test VALUES (1, NULL), (NULL, 2), (NULL, NULL), (3, 4)');
     await conn.run(
@@ -468,8 +471,7 @@ describe('DuckDB integration — compileCalculateFieldSql execution', () => {
   });
 
   it('string literal with Chinese characters', async () => {
-    const instance = await DuckDBInstance.create(':memory:');
-    const conn = await instance.connect();
+    const conn = await connect();
     await conn.run('CREATE TABLE t (s VARCHAR)');
     await conn.run("INSERT INTO t VALUES ('hello'), ('world')");
     await conn.run(
@@ -480,5 +482,334 @@ describe('DuckDB integration — compileCalculateFieldSql execution', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ s: 'hello', greeting: '你好' });
     expect(rows[1]).toMatchObject({ s: 'world', greeting: '世界' });
+  });
+});
+
+describe('DuckDB integration — new date functions', () => {
+  async function runDateSql(
+    sql: string,
+    createTable: string,
+    insertRows: string
+  ): Promise<Record<string, unknown>[]> {
+    const conn = await connect();
+    await conn.run(createTable);
+    await conn.run(insertRows);
+    await conn.run(sql);
+    const reader = await conn.runAndReadAll('SELECT * FROM out');
+    const rows = reader.getRowObjectsJson() as Record<string, unknown>[];
+    return rows;
+  }
+
+  it('year extracts year from date', async () => {
+    const rows = await runDateSql(
+      `CREATE TEMP TABLE out AS SELECT year(d) AS y FROM dates`,
+      `CREATE TABLE dates (d DATE)`,
+      `INSERT INTO dates VALUES ('2024-03-15'), ('2023-12-31')`
+    );
+    expect(Number(rows[0].y)).toBe(2024);
+    expect(Number(rows[1].y)).toBe(2023);
+  });
+
+  it('month extracts month from date', async () => {
+    const rows = await runDateSql(
+      `CREATE TEMP TABLE out AS SELECT month(d) AS m FROM dates`,
+      `CREATE TABLE dates (d DATE)`,
+      `INSERT INTO dates VALUES ('2024-01-15'), ('2024-12-31')`
+    );
+    expect(Number(rows[0].m)).toBe(1);
+    expect(Number(rows[1].m)).toBe(12);
+  });
+
+  it('day extracts day from date', async () => {
+    const rows = await runDateSql(
+      `CREATE TEMP TABLE out AS SELECT day(d) AS d FROM dates`,
+      `CREATE TABLE dates (d DATE)`,
+      `INSERT INTO dates VALUES ('2024-01-01'), ('2024-01-31')`
+    );
+    expect(Number(rows[0].d)).toBe(1);
+    expect(Number(rows[1].d)).toBe(31);
+  });
+
+  it('date_diff computes difference in days', async () => {
+    const rows = await runDateSql(
+      `CREATE TEMP TABLE out AS SELECT date_diff('day', d1, d2) AS diff FROM dates`,
+      `CREATE TABLE dates (d1 DATE, d2 DATE)`,
+      `INSERT INTO dates VALUES ('2024-01-01', '2024-01-10'), ('2024-01-01', '2024-02-01')`
+    );
+    expect(Number(rows[0].diff)).toBe(9);
+    expect(Number(rows[1].diff)).toBe(31);
+  });
+
+  it('date_trunc truncates to month start', async () => {
+    const rows = await runDateSql(
+      `CREATE TEMP TABLE out AS SELECT date_trunc('month', d) AS m FROM dates`,
+      `CREATE TABLE dates (d DATE)`,
+      `INSERT INTO dates VALUES ('2024-03-15'), ('2024-03-31')`
+    );
+    expect(String(rows[0].m).startsWith('2024-03-01')).toBe(true);
+    expect(String(rows[1].m).startsWith('2024-03-01')).toBe(true);
+  });
+
+  it('strptime parses string to date', async () => {
+    const rows = await runDateSql(
+      `CREATE TEMP TABLE out AS SELECT strptime(s, '%Y%m%d') AS d FROM dates`,
+      `CREATE TABLE dates (s VARCHAR)`,
+      `INSERT INTO dates VALUES ('20240315'), ('20241201')`
+    );
+    expect(String(rows[0].d).startsWith('2024-03-15')).toBe(true);
+    expect(String(rows[1].d).startsWith('2024-12-01')).toBe(true);
+  });
+
+  it('current_date returns today', async () => {
+    const rows = await runDateSql(
+      `CREATE TEMP TABLE out AS SELECT current_date = current_date AS same FROM (SELECT 1) AS t(x)`,
+      `CREATE TABLE t (x INT)`,
+      `INSERT INTO t VALUES (1)`
+    );
+    expect(rows[0].same).toBe(true);
+  });
+
+  it('now returns current timestamp', async () => {
+    const rows = await runDateSql(
+      `CREATE TEMP TABLE out AS SELECT typeof(now()) AS t FROM (SELECT 1) AS t(x)`,
+      `CREATE TABLE t (x INT)`,
+      `INSERT INTO t VALUES (1)`
+    );
+    expect(rows[0].t).toBe('TIMESTAMP WITH TIME ZONE');
+  });
+});
+
+describe('DuckDB integration — new window functions', () => {
+  async function runWindowSql(sql: string, insertRows: string): Promise<Record<string, unknown>[]> {
+    const conn = await connect();
+    await conn.run('CREATE TABLE inp (id INT, region VARCHAR, score INT, amount INT)');
+    await conn.run(insertRows);
+    await conn.run(sql);
+    const reader = await conn.runAndReadAll('SELECT * FROM out ORDER BY id');
+    const rows = reader.getRowObjectsJson() as Record<string, unknown>[];
+    return rows;
+  }
+
+  it('dense_rank without gaps', async () => {
+    const rows = await runWindowSql(
+      `CREATE TEMP TABLE out AS SELECT id, dense_rank() over(order by score desc) AS r FROM inp`,
+      `INSERT INTO inp VALUES (1, 'A', 100, 10), (2, 'A', 100, 20), (3, 'A', 90, 30), (4, 'A', 80, 40)`
+    );
+    expect(Number(rows[0].r)).toBe(1);
+    expect(Number(rows[1].r)).toBe(1);
+    expect(Number(rows[2].r)).toBe(2);
+    expect(Number(rows[3].r)).toBe(3);
+  });
+
+  it('ntile divides into buckets', async () => {
+    const rows = await runWindowSql(
+      `CREATE TEMP TABLE out AS SELECT id, ntile(2) over(order by score) AS b FROM inp`,
+      `INSERT INTO inp VALUES (1, 'A', 10, 1), (2, 'A', 20, 2), (3, 'A', 30, 3), (4, 'A', 40, 4)`
+    );
+    expect(Number(rows[0].b)).toBe(1);
+    expect(Number(rows[1].b)).toBe(1);
+    expect(Number(rows[2].b)).toBe(2);
+    expect(Number(rows[3].b)).toBe(2);
+  });
+
+  it('first_value returns first in window', async () => {
+    const rows = await runWindowSql(
+      `CREATE TEMP TABLE out AS SELECT id, region, first_value(amount) over(partition by region order by score) AS fv FROM inp`,
+      `INSERT INTO inp VALUES (1, 'A', 10, 100), (2, 'A', 20, 200), (3, 'B', 5, 300), (4, 'B', 15, 400)`
+    );
+    const a = rows.filter((r) => r.region === 'A').sort((a, b) => Number(a.id) - Number(b.id));
+    expect(Number(a[0].fv)).toBe(100);
+    expect(Number(a[1].fv)).toBe(100);
+    const b = rows.filter((r) => r.region === 'B').sort((a, b) => Number(a.id) - Number(b.id));
+    expect(Number(b[0].fv)).toBe(300);
+    expect(Number(b[1].fv)).toBe(300);
+  });
+
+  it('last_value returns last in window frame', async () => {
+    // last_value in DuckDB uses default frame ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    const rows = await runWindowSql(
+      `CREATE TEMP TABLE out AS SELECT id, region, last_value(amount) over(partition by region order by score) AS lv FROM inp`,
+      `INSERT INTO inp VALUES (1, 'A', 10, 100), (2, 'A', 20, 200), (3, 'B', 5, 300), (4, 'B', 15, 400)`
+    );
+    const a = rows.filter((r) => r.region === 'A').sort((a, b) => Number(a.id) - Number(b.id));
+    // First row in A (score=10): frame is just itself, last_value=100
+    expect(Number(a[0].lv)).toBe(100);
+    // Second row in A (score=20): frame is rows 1-2, last_value=200
+    expect(Number(a[1].lv)).toBe(200);
+    const b = rows.filter((r) => r.region === 'B').sort((a, b) => Number(a.id) - Number(b.id));
+    expect(Number(b[0].lv)).toBe(300);
+    expect(Number(b[1].lv)).toBe(400);
+  });
+});
+
+describe('DuckDB integration — new math functions', () => {
+  it('ceil rounds up', async () => {
+    const rows = await runSql(
+      compileCalculateFieldSql('out', 'inp', {
+        calculations: [{ field: 'r', expression: 'ceil([amount])' }],
+      })
+    );
+    // ORDER BY revenue: amounts are 15, 5, 20
+    expect(Number(rows[0].r)).toBe(15);
+    expect(Number(rows[1].r)).toBe(5);
+    expect(Number(rows[2].r)).toBe(20);
+  });
+
+  it('floor rounds down', async () => {
+    const rows = await runSql(
+      compileCalculateFieldSql('out', 'inp', {
+        calculations: [{ field: 'r', expression: 'floor([amount])' }],
+      })
+    );
+    expect(Number(rows[0].r)).toBe(15);
+    expect(Number(rows[1].r)).toBe(5);
+    expect(Number(rows[2].r)).toBe(20);
+  });
+});
+
+describe('DuckDB integration — new string functions', () => {
+  it('contains returns true/false', async () => {
+    const rows = await runSql(
+      compileCalculateFieldSql('out', 'inp', {
+        calculations: [{ field: 'r', expression: "contains([name], 'li')" }],
+      })
+    );
+    // ORDER BY revenue: Charlie(50), Alice(100), Bob(200)
+    // contains('Charlie', 'li')=true, contains('Alice', 'li')=true, contains('Bob', 'li')=false
+    expect(rows[0].r).toBe(true);
+    expect(rows[1].r).toBe(true);
+    expect(rows[2].r).toBe(false);
+  });
+
+  it('starts_with', async () => {
+    const rows = await runSql(
+      compileCalculateFieldSql('out', 'inp', {
+        calculations: [{ field: 'r', expression: "starts_with([name], 'A')" }],
+      })
+    );
+    // ORDER BY revenue: Charlie, Alice(starts with A), Bob
+    expect(rows[0].r).toBe(false);
+    expect(rows[1].r).toBe(true);
+    expect(rows[2].r).toBe(false);
+  });
+
+  it('ends_with', async () => {
+    const rows = await runSql(
+      compileCalculateFieldSql('out', 'inp', {
+        calculations: [{ field: 'r', expression: "ends_with([name], 'e')" }],
+      })
+    );
+    // ORDER BY revenue: Charlie(ends with e), Alice(ends with e), Bob
+    expect(rows[0].r).toBe(true);
+    expect(rows[1].r).toBe(true);
+    expect(rows[2].r).toBe(false);
+  });
+
+  it('replace', async () => {
+    const rows = await runSql(
+      compileCalculateFieldSql('out', 'inp', {
+        calculations: [{ field: 'r', expression: "replace([name], 'lic', 'X')" }],
+      })
+    );
+    const alice = rows.find((row) => row.name === 'Alice');
+    expect(alice!.r).toBe('AXe');
+  });
+
+  it('regexp_replace', async () => {
+    const rows = await runSql(
+      compileCalculateFieldSql('out', 'inp', {
+        calculations: [
+          { field: 'r', expression: "regexp_replace([name], '[aeiouAEIOU]', '*', 'g')" },
+        ],
+      })
+    );
+    const alice = rows.find((row) => row.name === 'Alice');
+    expect(alice!.r).toBe('*l*c*');
+  });
+
+  it('lpad', async () => {
+    const rows = await runSql(
+      compileCalculateFieldSql('out', 'inp', {
+        calculations: [{ field: 'r', expression: "lpad([name], 10, '*')" }],
+      })
+    );
+    const bob = rows.find((row) => row.name === 'Bob');
+    // Bob is 3 chars, padded to 10 = 7 stars
+    expect(bob!.r).toBe('*******Bob');
+  });
+
+  it('rpad', async () => {
+    const rows = await runSql(
+      compileCalculateFieldSql('out', 'inp', {
+        calculations: [{ field: 'r', expression: "rpad([name], 10, '*')" }],
+      })
+    );
+    const bob = rows.find((row) => row.name === 'Bob');
+    expect(bob!.r).toBe('Bob*******');
+  });
+
+  it('reverse', async () => {
+    const rows = await runSql(
+      compileCalculateFieldSql('out', 'inp', {
+        calculations: [{ field: 'r', expression: 'reverse([name])' }],
+      })
+    );
+    const alice = rows.find((row) => row.name === 'Alice');
+    const charlie = rows.find((row) => row.name === 'Charlie');
+    expect(alice!.r).toBe('ecilA');
+    expect(charlie!.r).toBe('eilrahC');
+  });
+
+  it('repeat', async () => {
+    const rows = await runSql(
+      compileCalculateFieldSql('out', 'inp', {
+        calculations: [{ field: 'r', expression: "repeat([name] || '-', 2)" }],
+      })
+    );
+    const alice = rows.find((row) => row.name === 'Alice');
+    expect(alice!.r).toBe('Alice-Alice-');
+  });
+});
+
+describe('DuckDB integration — new null functions', () => {
+  it('nullif with empty string converts to null', async () => {
+    const conn = await connect();
+    await conn.run('CREATE TABLE t (s VARCHAR)');
+    await conn.run("INSERT INTO t VALUES ('hello'), (''), ('world')");
+    await conn.run(
+      "CREATE TEMP TABLE out AS SELECT nullif(s, '') AS r FROM t ORDER BY s NULLS FIRST"
+    );
+    const reader = await conn.runAndReadAll('SELECT * FROM out');
+    const rows = reader.getRowObjectsJson() as Record<string, unknown>[];
+    expect(rows[0].r).toBe(null);
+    expect(rows[1].r).toBe('hello');
+    expect(rows[2].r).toBe('world');
+  });
+});
+
+describe('DuckDB integration — new type functions', () => {
+  it('try_cast returns null on failure', async () => {
+    const conn = await connect();
+    await conn.run('CREATE TABLE t (s VARCHAR)');
+    await conn.run("INSERT INTO t VALUES ('123'), ('abc'), ('456')");
+    await conn.run(`CREATE TEMP TABLE out AS SELECT try_cast(s AS int) AS r FROM t ORDER BY s`);
+    const reader = await conn.runAndReadAll('SELECT * FROM out');
+    const rows = reader.getRowObjectsJson() as Record<string, unknown>[];
+    // ORDER BY s string sort: '123', '456', 'abc'
+    expect(Number(rows[0].r)).toBe(123);
+    expect(Number(rows[1].r)).toBe(456);
+    expect(rows[2].r).toBe(null);
+  });
+
+  it('try_cast parses string to number', async () => {
+    const conn = await connect();
+    await conn.run('CREATE TABLE t (s VARCHAR)');
+    await conn.run("INSERT INTO t VALUES ('123.45'), ('-67.89')");
+    await conn.run(`CREATE TEMP TABLE out AS SELECT try_cast(s AS double) AS r FROM t ORDER BY s`);
+    const reader = await conn.runAndReadAll('SELECT * FROM out');
+    const rows = reader.getRowObjectsJson() as Record<string, unknown>[];
+    // ORDER BY s string sort: '-67.89', '123.45' (because '-' < '1')
+    expect(Number(rows[0].r)).toBeCloseTo(-67.89, 1);
+    expect(Number(rows[1].r)).toBeCloseTo(123.45, 1);
   });
 });

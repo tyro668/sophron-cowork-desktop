@@ -80,6 +80,69 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
     ],
   },
   {
+    i18nKey: 'calcFieldCategoryDate',
+    tokens: [
+      functionToken('year', 'calcFieldDesc_year', [{ name: 'date', type: 'date' }], 'int', [
+        'year([order_date])',
+      ]),
+      functionToken('month', 'calcFieldDesc_month', [{ name: 'date', type: 'date' }], 'int', [
+        'month([order_date])',
+      ]),
+      functionToken('day', 'calcFieldDesc_day', [{ name: 'date', type: 'date' }], 'int', [
+        'day([order_date])',
+      ]),
+      functionToken(
+        'date_diff',
+        'calcFieldDesc_date_diff',
+        [
+          { name: 'part', type: 'string' },
+          { name: 'start', type: 'date' },
+          { name: 'end', type: 'date' },
+        ],
+        'int',
+        ["date_diff('day', [start], [end])"]
+      ),
+      functionToken(
+        'date_trunc',
+        'calcFieldDesc_date_trunc',
+        [
+          { name: 'part', type: 'string' },
+          { name: 'date', type: 'date' },
+        ],
+        'date',
+        ["date_trunc('month', [date])"]
+      ),
+      functionToken(
+        'strptime',
+        'calcFieldDesc_parse_date',
+        [
+          { name: 'str', type: 'string' },
+          { name: 'format', type: 'string' },
+        ],
+        'date',
+        ["strptime([dt], '%Y-%m-%d')", "strptime([dt], '%Y%m%d')"]
+      ),
+      {
+        label: 'current_date',
+        apply: 'current_date',
+        cursorOffset: 12,
+        i18nDescKey: 'calcFieldDesc_current_date',
+        params: [],
+        returnType: 'date',
+        examples: ['current_date'],
+      },
+      {
+        label: 'now',
+        apply: 'now()',
+        cursorOffset: 4,
+        i18nDescKey: 'calcFieldDesc_now',
+        params: [],
+        returnType: 'timestamp',
+        examples: ['now()'],
+      },
+    ],
+  },
+  {
     i18nKey: 'calcFieldCategoryWindow',
     tokens: [
       functionToken('row_number', 'calcFieldDesc_rowNumber', [], 'int', [
@@ -88,6 +151,26 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       functionToken('rank', 'calcFieldDesc_rank', [], 'int', [
         'rank() over(order by [score] desc)',
       ]),
+      functionToken('dense_rank', 'calcFieldDesc_dense_rank', [], 'int', [
+        'dense_rank() over(order by [score] desc)',
+      ]),
+      functionToken('ntile', 'calcFieldDesc_ntile', [{ name: 'buckets', type: 'int' }], 'int', [
+        'ntile(4) over(order by [amount] desc)',
+      ]),
+      functionToken(
+        'first_value',
+        'calcFieldDesc_first_value',
+        [{ name: 'expr', type: 'any' }],
+        'any',
+        ['first_value([amount]) over(partition by [dept] order by [date])']
+      ),
+      functionToken(
+        'last_value',
+        'calcFieldDesc_last_value',
+        [{ name: 'expr', type: 'any' }],
+        'any',
+        ['last_value([amount]) over(partition by [dept] order by [date])']
+      ),
       functionToken(
         'lag',
         'calcFieldDesc_lag',
@@ -151,6 +234,12 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         'number',
         ['round([amount])', 'round([amount], 2)']
       ),
+      functionToken('ceil', 'calcFieldDesc_ceil', [{ name: 'expr', type: 'number' }], 'number', [
+        'ceil([amount])',
+      ]),
+      functionToken('floor', 'calcFieldDesc_floor', [{ name: 'expr', type: 'number' }], 'number', [
+        'floor([amount])',
+      ]),
     ],
   },
   {
@@ -200,6 +289,97 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         'string',
         ["concat([first], ' ', [last])"]
       ),
+      functionToken(
+        'contains',
+        'calcFieldDesc_contains',
+        [
+          { name: 'str', type: 'string' },
+          { name: 'substr', type: 'string' },
+        ],
+        'boolean',
+        ["contains([name], 'abc')"]
+      ),
+      functionToken(
+        'starts_with',
+        'calcFieldDesc_starts_with',
+        [
+          { name: 'str', type: 'string' },
+          { name: 'prefix', type: 'string' },
+        ],
+        'boolean',
+        ["starts_with([code], 'A')"]
+      ),
+      functionToken(
+        'ends_with',
+        'calcFieldDesc_ends_with',
+        [
+          { name: 'str', type: 'string' },
+          { name: 'suffix', type: 'string' },
+        ],
+        'boolean',
+        ["ends_with([email], '.cn')"]
+      ),
+      functionToken(
+        'replace',
+        'calcFieldDesc_replace',
+        [
+          { name: 'str', type: 'string' },
+          { name: 'search', type: 'string' },
+          { name: 'replacement', type: 'string' },
+        ],
+        'string',
+        ["replace([phone], '-', '')"]
+      ),
+      functionToken(
+        'regexp_replace',
+        'calcFieldDesc_regexp_replace',
+        [
+          { name: 'str', type: 'string' },
+          { name: 'pattern', type: 'string' },
+          { name: 'replacement', type: 'string' },
+        ],
+        'string',
+        ["regexp_replace([phone], '[^0-9]', '')"]
+      ),
+      functionToken(
+        'lpad',
+        'calcFieldDesc_lpad',
+        [
+          { name: 'str', type: 'string' },
+          { name: 'len', type: 'int' },
+          { name: 'pad', type: 'string' },
+        ],
+        'string',
+        ["lpad([code], 6, '0')"]
+      ),
+      functionToken(
+        'rpad',
+        'calcFieldDesc_rpad',
+        [
+          { name: 'str', type: 'string' },
+          { name: 'len', type: 'int' },
+          { name: 'pad', type: 'string' },
+        ],
+        'string',
+        ["rpad([code], 10, ' ')"]
+      ),
+      functionToken(
+        'reverse',
+        'calcFieldDesc_reverse',
+        [{ name: 'str', type: 'string' }],
+        'string',
+        ['reverse([name])']
+      ),
+      functionToken(
+        'repeat',
+        'calcFieldDesc_repeat',
+        [
+          { name: 'str', type: 'string' },
+          { name: 'count', type: 'int' },
+        ],
+        'string',
+        ['repeat([ch], 3)']
+      ),
     ],
   },
   {
@@ -225,7 +405,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
           { name: 'expr2', type: 'any' },
         ],
         returnType: 'any',
-        examples: ["nullif([status], 'CANCELLED')"],
+        examples: ["nullif([status], 'CANCELLED')", "nullif([name], '')"],
       },
     ],
   },
@@ -243,6 +423,18 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         ],
         returnType: 'any',
         examples: ['CAST([amount] AS double)', 'CAST([date] AS date)'],
+      },
+      {
+        label: 'try_cast',
+        apply: 'try_cast( AS )',
+        cursorOffset: 9,
+        i18nDescKey: 'calcFieldDesc_try_cast',
+        params: [
+          { name: 'expr', type: 'any' },
+          { name: 'type', type: 'type' },
+        ],
+        returnType: 'any',
+        examples: ['try_cast([amount] AS int)', 'try_cast([revenue] AS double)'],
       },
     ],
   },
