@@ -187,7 +187,7 @@ export default function FormCalculateField({
     ];
     const base = [
       {
-        flex: 'flex-[0.8]',
+        flex: 'flex-[1.2]',
         header: tr('calcFieldActionHeader', '插入模式'),
         render: (item: CalculationRow, index: number) => (
           <GlassOperatorSelect
@@ -209,21 +209,21 @@ export default function FormCalculateField({
               columnTypes={columnTypes}
               onChange={(v) => updateItem(index, { field: v })}
               placeholder={tr('calcFieldSelectPlaceholder', '选择字段')}
-              className="h-7 text-[12px]"
+              className="h-7 w-full text-[12px]"
             />
           ) : (
             <GlassFormTextInput
               value={item.field}
               onChange={(v) => updateItem(index, { field: v })}
               placeholder={tr('calcFieldTargetPlaceholder', '如 margin')}
-              className="h-7 text-[12px] shadow-none focus:ring-0"
+              className="!h-7 w-full rounded-md px-1.5 text-[12px] shadow-none focus:ring-0"
             />
           ),
       },
     ];
     if (mode === 'row') {
       base.push({
-        flex: 'flex-[5]',
+        flex: 'flex-[4]',
         header: tr('calcFieldExpressionLabel', '表达式'),
         render: (item: CalculationRow, index: number) => (
           <GlassExpressionInput
