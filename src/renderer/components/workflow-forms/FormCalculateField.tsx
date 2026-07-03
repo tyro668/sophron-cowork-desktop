@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X } from 'lucide-react';
+import { ChevronDown, Trash2, X } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
-import { GlassFieldSelector } from './shared/GlassFieldSelector';
+import { GlassColumnSelector } from './shared/GlassColumnSelector';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
-import { GlassRowList } from './shared/GlassRowList';
+import { GlassRowList, type GlassRowListColumn } from './shared/GlassRowList';
 import {
   createCalculationRow,
   exprFromParts,
@@ -173,11 +173,21 @@ export default function FormCalculateField({
   const [orderOpen, setOrderOpen] = useState<Record<number, boolean>>({});
 
   const fnGroups = useMemo(
-    () => [
-      { key: 'agg', items: AGG_FUNCTIONS.map((f) => ({ value: f, label: f })) },
-      { key: 'window', items: WINDOW_FUNCTIONS.map((f) => ({ value: f, label: f })) },
-    ],
-    []
+    () => ({
+      agg: [
+        {
+          key: 'agg' as const,
+          items: AGG_FUNCTIONS.map((f) => ({ value: f, label: tr('calcFieldFn_' + f, f) })),
+        },
+      ],
+      window: [
+        {
+          key: 'window' as const,
+          items: WINDOW_FUNCTIONS.map((f) => ({ value: f, label: tr('calcFieldFn_' + f, f) })),
+        },
+      ],
+    }),
+    [tr]
   );
 
   function rowColumns(mode: 'row' | 'agg' | 'window') {
@@ -185,222 +195,338 @@ export default function FormCalculateField({
       { value: 'add', label: tr('calcFieldActionAdd', '新增字段') },
       { value: 'replace', label: tr('calcFieldActionReplace', '替换字段') },
     ];
-    const base = [
-      {
-        flex: 'flex-[1.2]',
-        header: tr('calcFieldActionHeader', '插入模式'),
-        render: (item: CalculationRow, index: number) => (
-          <GlassOperatorSelect
-            value={item.action || 'add'}
-            groups={[{ key: 'action', items: actionOptions }]}
-            onChange={(v) => updateItem(index, { action: v as 'add' | 'replace' })}
-            className="h-7 text-[12px] [&>span]:text-left w-full"
-          />
-        ),
-      },
-      {
-        flex: 'flex-[1.5]',
-        header: tr('calcFieldTargetField', '目标字段'),
-        render: (item: CalculationRow, index: number) =>
-          item.action === 'replace' ? (
-            <GlassFieldCombo
-              value={fieldCompletions.includes(item.field) ? item.field : ''}
-              options={fieldCompletions}
-              columnTypes={columnTypes}
-              onChange={(v) => updateItem(index, { field: v })}
-              placeholder={tr('calcFieldSelectPlaceholder', '选择字段')}
-              className="h-7 w-full text-[12px]"
-            />
-          ) : (
-            <GlassFormTextInput
-              value={item.field}
-              onChange={(v) => updateItem(index, { field: v })}
-              placeholder={tr('calcFieldTargetPlaceholder', '如 margin')}
-              className="!h-7 w-full rounded-md px-1.5 text-[12px] shadow-none focus:ring-0"
-            />
-          ),
-      },
-    ];
-    if (mode === 'row') {
-      base.push({
-        flex: 'flex-[4]',
-        header: tr('calcFieldExpressionLabel', '表达式'),
-        render: (item: CalculationRow, index: number) => (
-          <GlassExpressionInput
-            value={item.expression}
-            onChange={(v) =>
-              updateItem(index, {
-                expression: v,
-                ...(v && item.type === 'row' ? { type: 'row' as const } : {}),
-              })
-            }
-            fieldCompletions={fieldCompletions}
-            columnTypes={columnTypes}
-            placeholder={tr('calcFieldExpressionPlaceholder', '如 [revenue] - [cost]')}
-            excludeFunctionCategories={EXCLUDE_ROW_FUNCTIONS}
-          />
-        ),
-      });
-      return base;
-    }
-    base.push({
+
+    const insertModeCol: GlassRowListColumn<CalculationRow> = {
       flex: 'flex-[1]',
-      header: tr('calcFieldFunction', '函数'),
+      header: '',
       render: (item: CalculationRow, index: number) => (
         <GlassOperatorSelect
-          value={item.fn || 'sum'}
-          groups={fnGroups}
+          value={item.action || 'add'}
+          groups={[{ key: 'action', items: actionOptions }]}
+          onChange={(v) => updateItem(index, { action: v as 'add' | 'replace' })}
+          className="h-7 text-[12px] [&>span]:text-left w-full"
+        />
+      ),
+    };
+    const targetFieldCol: GlassRowListColumn<CalculationRow> = {
+      flex: 'flex-[1]',
+      header: '',
+      render: (item: CalculationRow, index: number) =>
+        item.action === 'replace' ? (
+          <GlassFieldCombo
+            value={fieldCompletions.includes(item.field) ? item.field : ''}
+            options={fieldCompletions}
+            columnTypes={columnTypes}
+            onChange={(v) => updateItem(index, { field: v })}
+            placeholder={tr('calcFieldSelectPlaceholder', '选择字段')}
+            className="h-7 w-full text-[12px]"
+          />
+        ) : (
+          <GlassFormTextInput
+            value={item.field}
+            onChange={(v) => updateItem(index, { field: v })}
+            placeholder={tr('calcFieldTargetPlaceholder', '如 margin')}
+            className="!h-7 w-full rounded-md px-1.5 text-[12px] shadow-none focus:ring-0"
+          />
+        ),
+    };
+
+    if (mode === 'row') {
+      return [
+        { ...insertModeCol, header: tr('calcFieldActionHeader', '插入模式') },
+        { ...targetFieldCol, header: tr('calcFieldTargetField', '目标字段') },
+        {
+          flex: 'flex-[4]',
+          header: tr('calcFieldExpressionLabel', '表达式'),
+          render: (item: CalculationRow, index: number) => (
+            <GlassExpressionInput
+              value={item.expression}
+              onChange={(v) =>
+                updateItem(index, {
+                  expression: v,
+                  ...(v && item.type === 'row' ? { type: 'row' as const } : {}),
+                })
+              }
+              fieldCompletions={fieldCompletions}
+              columnTypes={columnTypes}
+              placeholder={tr('calcFieldExpressionPlaceholder', '如 [revenue] - [cost]')}
+              excludeFunctionCategories={EXCLUDE_ROW_FUNCTIONS}
+            />
+          ),
+        },
+      ];
+    }
+
+    // Agg/window layout
+    const fnCol: GlassRowListColumn<CalculationRow> = {
+      flex: 'flex-[1]',
+      header: '',
+      render: (item: CalculationRow, index: number) => (
+        <GlassOperatorSelect
+          value={item.fn || (mode === 'agg' ? 'sum' : 'row_number')}
+          groups={fnGroups[mode === 'agg' ? 'agg' : 'window']}
           onChange={(v) => updateItem(index, { fn: v })}
           className="h-7 text-[12px] [&>span]:text-left w-full"
         />
       ),
-    });
-    base.push({
-      flex: 'flex-[1.5]',
-      header: tr('calcFieldFnArg', '字段'),
+    };
+    const fnArgCol: GlassRowListColumn<CalculationRow> = {
+      flex: mode === 'agg' ? 'flex-[1.5]' : 'flex-[1]',
+      header: '',
       render: (item: CalculationRow, index: number) => (
-        <input
-          type="text"
+        <GlassFieldCombo
           value={item.fnArg ?? ''}
-          onChange={(e) => updateItem(index, { fnArg: e.target.value })}
+          options={fieldCompletions}
+          columnTypes={columnTypes}
+          onChange={(v) => updateItem(index, { fnArg: v })}
           placeholder={tr('calcFieldFnArgPlaceholder', '[amount]')}
-          className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+          className="h-7 w-full text-[12px]"
         />
       ),
-    });
-    base.push({
-      flex: 'flex-[1.5]',
-      header: tr('calcFieldPartitionBy', '分区字段'),
-      render: (item: CalculationRow, index: number) => (
-        <div className="flex items-center gap-1">
-          {item.partitionBy?.map((col) => (
-            <span
-              key={col}
-              className="inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent"
-            >
-              {col}
+    };
+    const partitionByCol: GlassRowListColumn<CalculationRow> = {
+      flex: mode === 'agg' ? 'flex-[2.5]' : 'flex-[3]',
+      header: '',
+      render: (item: CalculationRow, index: number) => {
+        const open = partitionOpen[index];
+        return (
+          <div className="relative w-full">
+            <div className="flex min-h-7 items-center rounded-md border border-border-muted bg-background/42 focus-within:border-accent">
+              {item.partitionBy?.length ? (
+                <button
+                  type="button"
+                  onClick={() => updateItem(index, { partitionBy: undefined })}
+                  className="ml-1 inline-flex flex-shrink-0 items-center justify-center self-stretch rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
+                  title={tr('clearAll', '清空')}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              ) : null}
+              <div className="flex flex-1 items-center gap-1 px-1.5 min-w-0 overflow-x-auto">
+                {item.partitionBy?.map((col) => (
+                  <span
+                    key={col}
+                    className="inline-flex shrink-0 items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[12px] font-medium text-accent"
+                  >
+                    {col}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateItem(index, {
+                          partitionBy: item.partitionBy?.filter((c) => c !== col),
+                        })
+                      }
+                      className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </span>
+                ))}
+                <input
+                  type="text"
+                  readOnly
+                  placeholder={
+                    !item.partitionBy?.length
+                      ? tr('calcFieldPartitionPlaceholder', '选择分区字段')
+                      : ''
+                  }
+                  onFocus={() => setPartitionOpen((o) => ({ ...o, [index]: true }))}
+                  onBlur={() =>
+                    setTimeout(() => setPartitionOpen((o) => ({ ...o, [index]: false })), 150)
+                  }
+                  className="h-5 min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted cursor-pointer"
+                />
+              </div>
               <button
                 type="button"
-                onClick={() =>
-                  updateItem(index, { partitionBy: item.partitionBy?.filter((c) => c !== col) })
-                }
-                className="h-3 w-3 flex items-center justify-center rounded-full hover:bg-accent/20"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setPartitionOpen((o) => ({ ...o, [index]: !open }))}
+                className="flex w-7 flex-shrink-0 items-center justify-center self-stretch border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
               >
-                <X className="h-2 w-2" />
+                <ChevronDown
+                  className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`}
+                />
               </button>
-            </span>
-          ))}
-          <button
-            type="button"
-            onClick={() => setPartitionOpen((o) => ({ ...o, [index]: !o[index] }))}
-            className="shrink-0 flex items-center justify-center rounded px-1.5 py-0.5 text-[11px] text-text-muted hover:text-text-primary transition-colors"
-          >
-            {partitionOpen[index] ? '收起 ▲' : '展开 ▼'}
-          </button>
-          {partitionOpen[index] && (
-            <div
-              className="absolute z-10 mt-1 rounded border bg-background/95 shadow-md"
-              style={{ top: '100%', left: 0 }}
-            >
-              <GlassFieldSelector
-                columns={fieldCompletions}
-                selected={item.partitionBy ?? []}
-                onChange={(v) => updateItem(index, { partitionBy: v.length > 0 ? v : undefined })}
-                columnTypes={columnTypes}
-                maxHeight="160px"
-              />
             </div>
-          )}
-        </div>
-      ),
-    });
-    base.push({
-      flex: 'flex-[1.5]',
-      header: tr('calcFieldOrderBy', '排序字段'),
-      render: (item: CalculationRow, index: number) => (
-        <div className="flex items-center gap-1">
-          {item.orderBy?.map((o) => (
-            <span
-              key={o.field}
-              className="inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent"
-            >
-              {o.field}
-              <button
-                type="button"
-                onClick={() =>
-                  updateItem(index, { orderBy: item.orderBy?.filter((x) => x.field !== o.field) })
-                }
-                className="h-3 w-3 flex items-center justify-center rounded-full hover:bg-accent/20"
-              >
-                <X className="h-2 w-2" />
-              </button>
-            </span>
-          ))}
-          <button
-            type="button"
-            onClick={() => setOrderOpen((o) => ({ ...o, [index]: !o[index] }))}
-            className="shrink-0 flex items-center justify-center rounded px-1.5 py-0.5 text-[11px] text-text-muted hover:text-text-primary transition-colors"
-          >
-            {orderOpen[index] ? '收起 ▲' : '展开 ▼'}
-          </button>
-          {orderOpen[index] && (
-            <div
-              className="absolute z-10 mt-1 rounded border bg-background/95 shadow-md"
-              style={{ top: '100%', left: 0 }}
-            >
-              <GlassFieldSelector
-                columns={fieldCompletions}
-                selected={item.orderBy?.map((o) => o.field) ?? []}
-                onChange={(v) =>
-                  updateItem(index, {
-                    orderBy:
-                      v.length > 0
-                        ? v.map((f) => ({ field: f, direction: 'asc' as const }))
-                        : undefined,
-                  })
-                }
-                columnTypes={columnTypes}
-                maxHeight="160px"
-              />
-            </div>
-          )}
-        </div>
-      ),
-    });
-    if (mode === 'window') {
-      base.push({
-        flex: 'flex-[2]',
-        header: tr('calcFieldFrame', '行范围'),
-        render: (item: CalculationRow, index: number) => (
-          <div className="flex items-center gap-1">
-            <select
-              value={item.frameStart ?? 'unbounded preceding'}
-              onChange={(e) => updateItem(index, { frameStart: e.target.value })}
-              className="h-6 w-[100px] rounded border border-border-muted bg-background/42 px-1 text-[11px] text-text-primary outline-none"
-            >
-              {FRAME_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            <span className="text-[10px] text-text-muted">→</span>
-            <select
-              value={item.frameEnd ?? 'current row'}
-              onChange={(e) => updateItem(index, { frameEnd: e.target.value })}
-              className="h-6 w-[100px] rounded border border-border-muted bg-background/42 px-1 text-[11px] text-text-primary outline-none"
-            >
-              {FRAME_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+            {open && (
+              <div className="absolute z-10 left-0 right-0 mt-0.5">
+                <GlassColumnSelector
+                  columns={fieldCompletions}
+                  selected={item.partitionBy ?? []}
+                  onChange={(v) => updateItem(index, { partitionBy: v.length > 0 ? v : undefined })}
+                  columnTypes={columnTypes}
+                  maxHeight="160px"
+                />
+              </div>
+            )}
           </div>
-        ),
-      });
+        );
+      },
+    };
+
+    const row1Cols: GlassRowListColumn<CalculationRow>[] = [
+      insertModeCol,
+      targetFieldCol,
+      fnCol,
+      fnArgCol,
+    ];
+
+    if (mode === 'agg') {
+      return [
+        insertModeCol,
+        targetFieldCol,
+        { flex: 'flex-[2]', header: '', render: () => null },
+        fnCol,
+        fnArgCol,
+        partitionByCol,
+      ];
     }
-    return base;
+
+    // window mode
+    const orderByCol: GlassRowListColumn<CalculationRow> = {
+      flex: 'flex-[3]',
+      header: '',
+      render: (item: CalculationRow, index: number) => {
+        const open = orderOpen[index];
+        return (
+          <div className="relative w-full">
+            <div className="flex min-h-7 items-center rounded-md border border-border-muted bg-background/42 focus-within:border-accent">
+              {item.orderBy?.length ? (
+                <button
+                  type="button"
+                  onClick={() => updateItem(index, { orderBy: undefined })}
+                  className="ml-1 inline-flex flex-shrink-0 items-center justify-center self-stretch rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
+                  title={tr('clearAll', '清空')}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              ) : null}
+              <div className="flex flex-1 items-center gap-1 px-1.5 min-w-0 overflow-x-auto">
+                {item.orderBy?.map((o) => (
+                  <span
+                    key={o.field}
+                    className="inline-flex shrink-0 items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[12px] font-medium text-accent"
+                  >
+                    {o.field}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateItem(index, {
+                          orderBy: item.orderBy?.map((x) =>
+                            x.field === o.field
+                              ? {
+                                  ...x,
+                                  direction:
+                                    x.direction === 'desc' ? ('asc' as const) : ('desc' as const),
+                                }
+                              : x
+                          ),
+                        })
+                      }
+                      className="text-[11px] leading-none px-0.5 hover:text-text-primary rounded"
+                      title={o.direction === 'asc' ? tr('asc', '升序') : tr('desc', '降序')}
+                    >
+                      {o.direction === 'asc' ? '↑' : '↓'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateItem(index, {
+                          orderBy: item.orderBy?.filter((x) => x.field !== o.field),
+                        })
+                      }
+                      className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </span>
+                ))}
+                <input
+                  type="text"
+                  readOnly
+                  placeholder={
+                    !item.orderBy?.length ? tr('calcFieldOrderPlaceholder', '选择排序字段') : ''
+                  }
+                  onFocus={() => setOrderOpen((o) => ({ ...o, [index]: true }))}
+                  onBlur={() =>
+                    setTimeout(() => setOrderOpen((o) => ({ ...o, [index]: false })), 150)
+                  }
+                  className="h-5 min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted cursor-pointer"
+                />
+              </div>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setOrderOpen((o) => ({ ...o, [index]: !open }))}
+                className="flex w-7 flex-shrink-0 items-center justify-center self-stretch border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
+              >
+                <ChevronDown
+                  className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`}
+                />
+              </button>
+            </div>
+            {open && (
+              <div className="absolute z-10 left-0 right-0 mt-0.5">
+                <GlassColumnSelector
+                  columns={fieldCompletions}
+                  selected={item.orderBy?.map((o) => o.field) ?? []}
+                  onChange={(v) =>
+                    updateItem(index, {
+                      orderBy:
+                        v.length > 0
+                          ? v.map((f) => {
+                              const existing = item.orderBy?.find((x) => x.field === f);
+                              return {
+                                field: f,
+                                direction: existing?.direction ?? ('asc' as const),
+                              };
+                            })
+                          : undefined,
+                    })
+                  }
+                  columnTypes={columnTypes}
+                  maxHeight="160px"
+                />
+              </div>
+            )}
+          </div>
+        );
+      },
+    };
+
+    const frameCol: GlassRowListColumn<CalculationRow> = {
+      flex: 'flex-[1]',
+      header: '',
+      render: (item: CalculationRow, index: number) => (
+        <div className="flex items-center gap-1">
+          <select
+            value={item.frameStart ?? 'unbounded preceding'}
+            onChange={(e) => updateItem(index, { frameStart: e.target.value })}
+            className="h-6 w-[100px] rounded border border-border-muted bg-background/42 px-1 text-[11px] text-text-primary outline-none"
+          >
+            {FRAME_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <span className="text-[10px] text-text-muted">→</span>
+          <select
+            value={item.frameEnd ?? 'current row'}
+            onChange={(e) => updateItem(index, { frameEnd: e.target.value })}
+            className="h-6 w-[100px] rounded border border-border-muted bg-background/42 px-1 text-[11px] text-text-primary outline-none"
+          >
+            {FRAME_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      ),
+    };
+
+    return { row1: row1Cols, row2: [partitionByCol, orderByCol, frameCol] };
   }
 
   return (
@@ -460,20 +586,50 @@ export default function FormCalculateField({
               {activeMode === 'row'
                 ? tr('calcFieldConfigHintRow', '定义新字段及其计算表达式')
                 : activeMode === 'agg'
-                  ? tr('calcFieldConfigHintAgg', '选择聚合/排名函数、分区和排序字段')
-                  : tr('calcFieldConfigHintWindow', '选择窗口函数、分区、排序和行范围')}
+                  ? tr('calcFieldConfigHintAgg', '选择聚合/排名函数、参数字段和分区字段')
+                  : tr('calcFieldConfigHintWindow', '选择窗口函数、参数字段、分区、排序和行范围')}
             </span>
           </div>
         </div>
         <div className="px-3 pb-3 overflow-y-auto flex-1 min-h-0">
-          <GlassRowList
-            items={visibleItems}
-            columns={rowColumns(activeMode)}
-            onAdd={addAfter}
-            onRemove={removeItem}
-            addTitle={tr('calcFieldAddRule', '添加规则')}
-            removeTitle={tr('calcFieldRemove', '删除规则')}
-          />
+          {(() => {
+            const cols = rowColumns(activeMode);
+            if (Array.isArray(cols)) {
+              return (
+                <GlassRowList
+                  items={visibleItems}
+                  columns={cols}
+                  onAdd={addAfter}
+                  onRemove={removeItem}
+                  addTitle={tr('calcFieldAddRule', '添加规则')}
+                  removeTitle={tr('calcFieldRemove', '删除规则')}
+                  breakAt={activeMode === 'agg' ? 3 : undefined}
+                  inlineActions={activeMode === 'agg'}
+                  hideHeader={activeMode === 'agg'}
+                />
+              );
+            }
+            return (
+              <div className="flex flex-col gap-2">
+                <GlassRowList
+                  items={visibleItems}
+                  columns={cols.row1}
+                  onAdd={addAfter}
+                  onRemove={removeItem}
+                  addTitle={tr('calcFieldAddRule', '添加规则')}
+                  removeTitle={tr('calcFieldRemove', '删除规则')}
+                />
+                <GlassRowList
+                  items={visibleItems}
+                  columns={cols.row2}
+                  onAdd={addAfter}
+                  onRemove={removeItem}
+                  addTitle={tr('calcFieldAddRule', '添加规则')}
+                  removeTitle={tr('calcFieldRemove', '删除规则')}
+                />
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>

@@ -10,7 +10,12 @@ export function compileCalculateFieldSql(
   const replaces: string[] = [];
   const additions: string[] = [];
   for (const calculation of calculations) {
-    if (typeof calculation.field !== 'string' || typeof calculation.expression !== 'string')
+    if (
+      typeof calculation.field !== 'string' ||
+      !calculation.field.trim() ||
+      typeof calculation.expression !== 'string' ||
+      !calculation.expression.trim()
+    )
       continue;
     const compiled = `${compileScalarExpression(calculation.expression)} AS ${quoteIdentifier(calculation.field)}`;
     if (calculation.action === 'replace') {

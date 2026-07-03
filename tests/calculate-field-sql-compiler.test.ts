@@ -289,7 +289,7 @@ describe('compileCalculateFieldSql', () => {
     );
   });
 
-  it('empty field name produces empty alias — compileCalculateFieldSql does not skip empty field', () => {
+  it('skips calculation with empty field name', () => {
     const sql = compileCalculateFieldSql('out', 'inp', {
       calculations: [
         { field: 'good', expression: '[a] + [b]' },
@@ -298,10 +298,8 @@ describe('compileCalculateFieldSql', () => {
         { field: 'also_good', expression: '[c]' },
       ],
     });
-    // field: '' passes typeof check and produces AS ""
-    // missing 'field' key fails typeof check and is skipped
     expect(sql).toBe(
-      'CREATE TEMP TABLE out AS SELECT *, "a" + "b" AS "good", "x" AS "", "c" AS "also_good" FROM inp'
+      'CREATE TEMP TABLE out AS SELECT *, "a" + "b" AS "good", "c" AS "also_good" FROM inp'
     );
   });
 

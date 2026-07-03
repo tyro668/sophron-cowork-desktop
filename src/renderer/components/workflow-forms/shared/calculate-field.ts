@@ -75,7 +75,8 @@ export function exprFromParts(item: CalculationRow): string {
   if (item.type === 'row') return item.expression || '';
   const fn = item.fn || 'sum';
   const arg = item.fnArg || '*';
-  const fnCall = fn === 'count_distinct' ? `count(DISTINCT ${arg})` : `${fn}(${arg})`;
+  const wrappedArg = arg === '*' || arg.startsWith('[') ? arg : `[${arg}]`;
+  const fnCall = fn === 'count_distinct' ? `count(DISTINCT ${wrappedArg})` : `${fn}(${wrappedArg})`;
   const parts: string[] = [fnCall];
   const partition = item.partitionBy?.filter(Boolean);
   const order = item.orderBy?.filter((o) => o.field);

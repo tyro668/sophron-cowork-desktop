@@ -127,10 +127,10 @@ export function GlassColumnSelector({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={tr('searchField', '搜索字段...')}
-          className="h-6 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
+          className="h-6 min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
         />
         <label
-          className="flex cursor-pointer items-center gap-1 text-[11px] text-text-muted hover:text-text-secondary"
+          className="flex shrink-0 cursor-pointer items-center gap-1 text-[11px] text-text-muted hover:text-text-secondary"
           onMouseDown={(e) => {
             e.preventDefault();
             lockScrollTop();
