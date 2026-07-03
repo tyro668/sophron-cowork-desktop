@@ -40,6 +40,8 @@ import type {
   DataDeleteInputTableNormalizerVersionResult,
   DataGenerateInputTableNormalizerDraftInput,
   DataGenerateInputTableNormalizerDraftResult,
+  DataGenerateTaskFromRequirementInput,
+  DataGenerateTaskFromRequirementResult,
   DataInputTableNormalizerDraftProgressEvent,
   DataInputTablePreview,
   DataInputTableSourceSummary,
@@ -303,6 +305,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       payload: DataGenerateInputTableNormalizerDraftInput
     ): Promise<DataGenerateInputTableNormalizerDraftResult> =>
       ipcRenderer.invoke('data.generateInputTableNormalizerDraft', payload),
+    generateTaskFromRequirement: (
+      payload: DataGenerateTaskFromRequirementInput
+    ): Promise<DataGenerateTaskFromRequirementResult> =>
+      ipcRenderer.invoke('data.generateTaskFromRequirement', payload),
     onInputTableNormalizerDraftProgress: (
       callback: (event: DataInputTableNormalizerDraftProgressEvent) => void
     ) => {
@@ -800,6 +806,9 @@ declare global {
         generateInputTableNormalizerDraft: (
           payload: DataGenerateInputTableNormalizerDraftInput
         ) => Promise<DataGenerateInputTableNormalizerDraftResult>;
+        generateTaskFromRequirement: (
+          payload: DataGenerateTaskFromRequirementInput
+        ) => Promise<DataGenerateTaskFromRequirementResult>;
         onInputTableNormalizerDraftProgress: (
           callback: (event: DataInputTableNormalizerDraftProgressEvent) => void
         ) => () => void;

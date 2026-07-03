@@ -1202,6 +1202,7 @@ app
     }
     const automationActionRegistry = createDefaultAutomationActionRegistry({
       dataTaskStore: initializedDataTaskStore,
+      dataCommandService: dataCommandService ?? undefined,
       sessionManager,
       resolveProjectCwd: (projectId) => db.projects?.get(projectId)?.cwd ?? null,
       resolveModelRuntimeConfig: resolveModelRuntimeConfigForAutomation,

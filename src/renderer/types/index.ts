@@ -665,6 +665,62 @@ export interface DataRunTaskInput {
   outputMode?: 'persisted' | 'temporary';
 }
 
+export type DataAutomationLocation = 'cloud' | 'local';
+
+export interface DataAutomationColumnSnapshot {
+  name: string;
+  type?: string;
+}
+
+export interface DataAutomationSourceBinding {
+  location: DataAutomationLocation;
+  tableId: string;
+  tableName?: string;
+  spaceId?: string;
+  spaceName?: string;
+  projectId?: string;
+  projectName?: string;
+  datasourceId?: string;
+  folderId?: string;
+  columnsSnapshot?: DataAutomationColumnSnapshot[];
+  requiredColumns?: DataAutomationColumnSnapshot[];
+}
+
+export interface DataAutomationOutputBinding {
+  location: DataAutomationLocation;
+  writeMode: 'create' | 'replace';
+  targetTableId?: string;
+  tableName?: string;
+  spaceId?: string;
+  projectId?: string;
+  datasourceId?: string;
+  folderId?: string;
+  localOutputTableId?: string;
+}
+
+export interface DataGenerateTaskFromRequirementInput {
+  source: DataAutomationSourceBinding;
+  processRequirement: string;
+  output: DataAutomationOutputBinding;
+  modelConfigSetId?: string | null;
+  model?: string | null;
+  reuseTaskId?: string | null;
+  currentVersion?: number | null;
+}
+
+export interface DataGenerateTaskFromRequirementResult {
+  taskId: string;
+  taskName: string;
+  outputTableId: string;
+  outputTableName: string;
+  workflowDsl: string;
+  requiredColumns: DataAutomationColumnSnapshot[];
+  columnsSnapshot: DataAutomationColumnSnapshot[];
+  sourceSummaryHash: string;
+  version: number;
+  generatedAt: number;
+}
+
 export interface DataImportDatasetInput {
   filePath: string;
   name?: string;

@@ -170,6 +170,7 @@ const OPERATORS = [
   '- output table "Result table" mode replace',
   '',
   'Expressions are compiled for DuckDB-like execution. Common functions such as CAST(...) and split_part(...) can be used in derive/filter expressions.',
+  'Use DECIMAL or DECIMAL(18,2) rather than FLOAT for money, prices, rates, percentages, and other fixed-decimal business values.',
   'Window analysis is expressed with derive ... over(...); do not use a standalone window operator.',
 ].join('\n');
 
