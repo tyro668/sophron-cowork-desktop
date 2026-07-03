@@ -5,7 +5,9 @@ import type { OperatorFormProps } from './index';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
+import { GlassFieldCombo } from './shared/GlassFieldCombo';
 import { GlassFieldSelector } from './shared/GlassFieldSelector';
+import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassRowList } from './shared/GlassRowList';
 import {
   createCalculationRow,
@@ -179,64 +181,44 @@ export default function FormCalculateField({
   );
 
   function rowColumns(mode: 'row' | 'agg' | 'window') {
+    const actionOptions = [
+      { value: 'add', label: tr('calcFieldActionAdd', '新增字段') },
+      { value: 'replace', label: tr('calcFieldActionReplace', '替换字段') },
+    ];
     const base = [
       {
-        flex: 'flex-[2]',
-        header: tr('calcFieldTargetField', '目标字段'),
+        flex: 'flex-[0.8]',
+        header: tr('calcFieldActionHeader', '插入模式'),
         render: (item: CalculationRow, index: number) => (
-          <div className="flex items-center gap-1">
-            {/* Action toggle */}
-            <div className="flex shrink-0 overflow-hidden rounded border border-border-muted text-[10px] leading-none">
-              <button
-                type="button"
-                onClick={() => updateItem(index, { action: 'add' })}
-                className={`px-1.5 py-1 transition-colors ${
-                  item.action === 'add'
-                    ? 'bg-accent text-white'
-                    : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'
-                }`}
-              >
-                {tr('calcFieldActionAdd', '新增')}
-              </button>
-              <button
-                type="button"
-                onClick={() => updateItem(index, { action: 'replace' })}
-                className={`px-1.5 py-1 transition-colors ${
-                  item.action === 'replace'
-                    ? 'bg-accent text-white'
-                    : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'
-                }`}
-              >
-                {tr('calcFieldActionReplace', '替换')}
-              </button>
-            </div>
-            {/* Field name */}
-            {item.action === 'replace' ? (
-              <select
-                value={fieldCompletions.includes(item.field) ? item.field : ''}
-                onChange={(e) => updateItem(index, { field: e.target.value })}
-                className="h-7 flex-1 min-w-0 rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none"
-              >
-                <option value="">{tr('calcFieldSelectPlaceholder', '选择字段')}</option>
-                {fieldCompletions.map((f) => (
-                  <option key={f} value={f}>
-                    {f}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type="text"
-                value={item.field}
-                onChange={(e) => updateItem(index, { field: e.target.value })}
-                placeholder={tr('calcFieldTargetPlaceholder', '如 margin')}
-                className={`h-7 flex-1 min-w-0 rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent ${
-                  !item.field.trim() ? '!border-warning/60' : ''
-                }`}
-              />
-            )}
-          </div>
+          <GlassOperatorSelect
+            value={item.action || 'add'}
+            groups={[{ key: 'action', items: actionOptions }]}
+            onChange={(v) => updateItem(index, { action: v as 'add' | 'replace' })}
+            className="h-7 text-[12px] [&>span]:text-left w-full"
+          />
         ),
+      },
+      {
+        flex: 'flex-[1.5]',
+        header: tr('calcFieldTargetField', '目标字段'),
+        render: (item: CalculationRow, index: number) =>
+          item.action === 'replace' ? (
+            <GlassFieldCombo
+              value={fieldCompletions.includes(item.field) ? item.field : ''}
+              options={fieldCompletions}
+              columnTypes={columnTypes}
+              onChange={(v) => updateItem(index, { field: v })}
+              placeholder={tr('calcFieldSelectPlaceholder', '选择字段')}
+              className="h-7 text-[12px]"
+            />
+          ) : (
+            <GlassFormTextInput
+              value={item.field}
+              onChange={(v) => updateItem(index, { field: v })}
+              placeholder={tr('calcFieldTargetPlaceholder', '如 margin')}
+              className="h-7 text-[12px] shadow-none focus:ring-0"
+            />
+          ),
       },
     ];
     if (mode === 'row') {
