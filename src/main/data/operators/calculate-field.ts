@@ -7,14 +7,21 @@ export function compileCalculateFieldSql(
   config: Record<string, unknown>
 ): string {
   const calculations = objectArray(config.calculations);
-  const additions = calculations.flatMap((calculation) =>
-    typeof calculation.field === 'string' && typeof calculation.expression === 'string'
-      ? [
-          `${compileScalarExpression(calculation.expression)} AS ${quoteIdentifier(calculation.field)}`,
-        ]
-      : []
-  );
-  return `CREATE TEMP TABLE ${output} AS SELECT *${
-    additions.length > 0 ? `, ${additions.join(', ')}` : ''
-  } FROM ${input}`;
+  const replaces: string[] = [];
+  const additions: string[] = [];
+  for (const calculation of calculations) {
+    if (typeof calculation.field !== 'string' || typeof calculation.expression !== 'string')
+      continue;
+    const compiled = `${compileScalarExpression(calculation.expression)} AS ${quoteIdentifier(calculation.field)}`;
+    if (calculation.action === 'replace') {
+      replaces.push(compiled);
+    } else {
+      additions.push(compiled);
+    }
+  }
+  let sql = `CREATE TEMP TABLE ${output} AS SELECT *`;
+  if (replaces.length > 0) sql += ` REPLACE (${replaces.join(', ')})`;
+  if (additions.length > 0) sql += `, ${additions.join(', ')}`;
+  sql += ` FROM ${input}`;
+  return sql;
 }

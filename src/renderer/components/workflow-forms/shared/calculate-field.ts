@@ -3,6 +3,7 @@ export interface CalculationConfigEntry {
   field: string;
   expression: string;
   type?: 'row' | 'agg' | 'window';
+  action?: 'add' | 'replace';
   fn?: string;
   fnArg?: string;
   partitionBy?: string[];
@@ -16,6 +17,7 @@ export interface CalculationRow {
   field: string;
   expression: string;
   type?: 'row' | 'agg' | 'window';
+  action?: 'add' | 'replace';
   fn?: string;
   fnArg?: string;
   partitionBy?: string[];
@@ -38,6 +40,7 @@ export function createCalculationRow(): CalculationRow {
     field: '',
     expression: '',
     type: 'row',
+    action: 'add',
   };
 }
 
@@ -57,6 +60,7 @@ export function normalizeCalculationEntries(
       field: typeof entry.field === 'string' ? entry.field : '',
       expression: typeof entry.expression === 'string' ? entry.expression : '',
       type: entry.type === 'agg' || entry.type === 'window' ? entry.type : 'row',
+      action: entry.action === 'replace' ? 'replace' : 'add',
       fn: typeof entry.fn === 'string' ? entry.fn : undefined,
       fnArg: typeof entry.fnArg === 'string' ? entry.fnArg : undefined,
       partitionBy: Array.isArray(entry.partitionBy) ? entry.partitionBy : undefined,
