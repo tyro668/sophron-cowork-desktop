@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X } from 'lucide-react';
+import { Lock, LockOpen, X } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassFieldSelector } from './shared/GlassFieldSelector';
-import { GlassRowList } from './shared/GlassRowList';
+import { GlassRowList, type GlassRowListColumn } from './shared/GlassRowList';
 import {
   createCalculationRow,
   exprFromParts,
@@ -50,25 +50,68 @@ export default function FormCalculateField({
   );
 
   const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
+  const [cachedFields, setCachedFields] = useState<string[]>([]);
+
+  const fetchColumns = useCallback(
+    (tid: string, nid: string, ntype: string, nconfig: Record<string, unknown>) => {
+      const api = window.electronAPI?.data;
+      if (!api?.getWorkflowNodeColumnTypes) return Promise.resolve([]);
+      return api
+        .getWorkflowNodeColumnTypes({
+          taskId: tid,
+          nodeId: nid,
+          nodeType: ntype as never,
+          nodeConfig: nconfig,
+        })
+        .then((types: Array<{ name: string; type: string }>) => types)
+        .catch(() => []);
+    },
+    []
+  );
 
   useEffect(() => {
     if (!taskId || !sourceNode?.id) return;
-    const api = window.electronAPI?.data;
-    if (!api?.getWorkflowNodeColumnTypes) return;
-    api
-      .getWorkflowNodeColumnTypes({
-        taskId,
-        nodeId: sourceNode.id,
-        nodeType: sourceNode.type as never,
-        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
-      })
-      .then((types: Array<{ name: string; type: string }>) => {
-        const map: Record<string, string> = {};
-        for (const t of types) map[t.name] = t.type;
-        setColumnTypes(map);
-      })
-      .catch(() => {});
-  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
+    fetchColumns(
+      taskId,
+      sourceNode.id,
+      sourceNode.type,
+      (sourceNode.config ?? {}) as Record<string, unknown>
+    ).then((types) => {
+      const map: Record<string, string> = {};
+      for (const t of types) map[t.name] = t.type;
+      setColumnTypes(map);
+    });
+  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config, fetchColumns]);
+
+  // Fetch this node's cached output columns for field completion & auto-lock
+  useEffect(() => {
+    if (!taskId || !node.id) return;
+    fetchColumns(taskId, node.id, node.type, (node.config ?? {}) as Record<string, unknown>).then(
+      (types) => {
+        const fields = types.map((t) => t.name);
+        setCachedFields(fields);
+        setColumnTypes((prev) => {
+          const merged = { ...prev };
+          for (const t of types) merged[t.name] ??= t.type;
+          return merged;
+        });
+        // Auto-lock rows whose field matches a cached column
+        const fieldSet = new Set(fields);
+        let changed = false;
+        const next = items.map((item) => {
+          if (fieldSet.has(item.field) && !item.locked) {
+            changed = true;
+            return { ...item, locked: true };
+          }
+          return item;
+        });
+        if (changed) {
+          storeCalculations(normalizeCalculationEntries(next));
+        }
+      }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId, node.id, node.type, node.config, fetchColumns]);
 
   const updateConfig = useCallback(
     (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
@@ -115,7 +158,9 @@ export default function FormCalculateField({
 
   const visibleItems = useMemo(() => {
     const filtered = items.filter((i) => i.type === activeMode);
-    return filtered.length > 0 ? filtered : [{ ...createCalculationRow(), type: activeMode }];
+    return filtered.length > 0
+      ? filtered
+      : [{ ...createCalculationRow(), type: activeMode, locked: false }];
   }, [items, activeMode]);
 
   function toBackingIndex(visibleIndex: number): number {
@@ -133,6 +178,17 @@ export default function FormCalculateField({
     storeCalculations(normalizeCalculationEntries(next));
   }
 
+  function isLocked(item: CalculationRow): boolean {
+    return item.locked === true;
+  }
+
+  function toggleLock(visibleIndex: number) {
+    const bi = toBackingIndex(visibleIndex);
+    if (bi === -1) return;
+    const item = items[bi];
+    updateItem(visibleIndex, { locked: !item.locked });
+  }
+
   function updateItem(visibleIndex: number, patch: Partial<CalculationRow>) {
     const bi = toBackingIndex(visibleIndex);
     if (bi === -1) {
@@ -141,6 +197,8 @@ export default function FormCalculateField({
       handleChange([...items, entry]);
       return;
     }
+    // Locked rows cannot be modified (except toggling the lock itself)
+    if (isLocked(items[bi]) && !('locked' in patch)) return;
     handleChange(
       items.map((item, i) => {
         if (i !== bi) return item;
@@ -153,22 +211,28 @@ export default function FormCalculateField({
 
   function addAfter(visibleIndex: number) {
     const bi = toBackingIndex(visibleIndex);
+    const entry = { ...createCalculationRow(), type: activeMode, locked: false };
     if (bi === -1) {
-      handleChange([...items, { ...createCalculationRow(), type: activeMode }]);
+      handleChange([...items, entry]);
       return;
     }
-    const entry = { ...createCalculationRow(), type: activeMode };
     handleChange([...items.slice(0, bi + 1), entry, ...items.slice(bi + 1)]);
   }
 
   function removeItem(visibleIndex: number) {
     const bi = toBackingIndex(visibleIndex);
     if (bi === -1) return;
+    if (isLocked(items[bi])) return;
     handleChange(items.filter((_, i) => i !== bi));
   }
 
   const [partitionOpen, setPartitionOpen] = useState<Record<number, boolean>>({});
   const [orderOpen, setOrderOpen] = useState<Record<number, boolean>>({});
+
+  const mergedFieldCompletions = useMemo(
+    () => [...new Set([...fieldCompletions, ...cachedFields])],
+    [fieldCompletions, cachedFields]
+  );
 
   const fnGroups = useMemo(
     () => [
@@ -179,200 +243,269 @@ export default function FormCalculateField({
   );
 
   function rowColumns(mode: 'row' | 'agg' | 'window') {
-    const base = [
+    const base: GlassRowListColumn<CalculationRow>[] = [
+      {
+        flex: 'flex-[0.5]',
+        header: '',
+        render: (item: CalculationRow, index: number) => {
+          const locked = isLocked(item);
+          return (
+            <button
+              type="button"
+              onClick={() => toggleLock(index)}
+              className="flex h-6 w-full cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:text-accent"
+              title={locked ? '已锁定，点击解锁编辑' : '点击锁定'}
+              aria-label={locked ? '解锁' : '锁定'}
+            >
+              {locked ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5" />}
+            </button>
+          );
+        },
+      },
       {
         flex: 'flex-[1.5]',
         header: tr('calcFieldTargetField', '目标字段'),
-        render: (item: CalculationRow, index: number) => (
-          <input
-            type="text"
-            value={item.field}
-            onChange={(e) => updateItem(index, { field: e.target.value })}
-            placeholder={tr('calcFieldTargetPlaceholder', '如 margin')}
-            className={`h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent ${
-              !item.field.trim() ? '!border-warning/60' : ''
-            }`}
-          />
-        ),
+        render: (item: CalculationRow, index: number) => {
+          const locked = isLocked(item);
+          return (
+            <input
+              type="text"
+              value={item.field}
+              onChange={(e) => updateItem(index, { field: e.target.value })}
+              placeholder={tr('calcFieldTargetPlaceholder', '如 margin')}
+              disabled={locked}
+              className={`h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent disabled:cursor-not-allowed disabled:opacity-40 ${
+                !item.field.trim() ? '!border-warning/60' : ''
+              }`}
+            />
+          );
+        },
       },
     ];
     if (mode === 'row') {
       base.push({
         flex: 'flex-[5]',
         header: tr('calcFieldExpressionLabel', '表达式'),
-        render: (item: CalculationRow, index: number) => (
-          <GlassExpressionInput
-            value={item.expression}
-            onChange={(v) =>
-              updateItem(index, {
-                expression: v,
-                ...(v && item.type === 'row' ? { type: 'row' as const } : {}),
-              })
-            }
-            fieldCompletions={fieldCompletions}
-            columnTypes={columnTypes}
-            placeholder={tr('calcFieldExpressionPlaceholder', '如 [revenue] - [cost]')}
-            excludeFunctionCategories={EXCLUDE_ROW_FUNCTIONS}
-          />
-        ),
+        render: (item: CalculationRow, index: number) => {
+          const locked = isLocked(item);
+          if (locked) {
+            return (
+              <div className="flex h-7 w-full items-center rounded-md border border-border-muted bg-background/20 px-1.5 text-[12px] text-text-muted opacity-40">
+                <span className="truncate">
+                  {item.expression || tr('calcFieldExpressionPlaceholder', '如 [revenue] - [cost]')}
+                </span>
+              </div>
+            );
+          }
+          return (
+            <GlassExpressionInput
+              value={item.expression}
+              onChange={(v) =>
+                updateItem(index, {
+                  expression: v,
+                  ...(v && item.type === 'row' ? { type: 'row' as const } : {}),
+                })
+              }
+              fieldCompletions={mergedFieldCompletions}
+              columnTypes={columnTypes}
+              placeholder={tr('calcFieldExpressionPlaceholder', '如 [revenue] - [cost]')}
+              excludeFunctionCategories={EXCLUDE_ROW_FUNCTIONS}
+            />
+          );
+        },
       });
       return base;
     }
     base.push({
       flex: 'flex-[1]',
       header: tr('calcFieldFunction', '函数'),
-      render: (item: CalculationRow, index: number) => (
-        <GlassOperatorSelect
-          value={item.fn || 'sum'}
-          groups={fnGroups}
-          onChange={(v) => updateItem(index, { fn: v })}
-          className="h-7 text-[12px] [&>span]:text-left w-full"
-        />
-      ),
+      render: (item: CalculationRow, index: number) => {
+        const locked = isLocked(item);
+        if (locked) {
+          return (
+            <div className="flex h-7 w-full items-center rounded-md border border-border-muted bg-background/20 px-1.5 text-[12px] text-text-muted opacity-40">
+              <span className="truncate">{item.fn || 'sum'}</span>
+            </div>
+          );
+        }
+        return (
+          <GlassOperatorSelect
+            value={item.fn || 'sum'}
+            groups={fnGroups}
+            onChange={(v) => updateItem(index, { fn: v })}
+            className="h-7 text-[12px] [&>span]:text-left w-full"
+          />
+        );
+      },
     });
     base.push({
       flex: 'flex-[1.5]',
       header: tr('calcFieldFnArg', '字段'),
-      render: (item: CalculationRow, index: number) => (
-        <input
-          type="text"
-          value={item.fnArg ?? ''}
-          onChange={(e) => updateItem(index, { fnArg: e.target.value })}
-          placeholder={tr('calcFieldFnArgPlaceholder', '[amount]')}
-          className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
-        />
-      ),
+      render: (item: CalculationRow, index: number) => {
+        const locked = isLocked(item);
+        return (
+          <input
+            type="text"
+            value={item.fnArg ?? ''}
+            onChange={(e) => updateItem(index, { fnArg: e.target.value })}
+            placeholder={tr('calcFieldFnArgPlaceholder', '[amount]')}
+            disabled={locked}
+            className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent disabled:cursor-not-allowed disabled:opacity-40"
+          />
+        );
+      },
     });
     base.push({
       flex: 'flex-[1.5]',
       header: tr('calcFieldPartitionBy', '分区字段'),
-      render: (item: CalculationRow, index: number) => (
-        <div className="flex items-center gap-1">
-          {item.partitionBy?.map((col) => (
-            <span
-              key={col}
-              className="inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent"
-            >
-              {col}
+      render: (item: CalculationRow, index: number) => {
+        const locked = isLocked(item);
+        return (
+          <div className="flex items-center gap-1">
+            {item.partitionBy?.map((col) => (
+              <span
+                key={col}
+                className="inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent"
+              >
+                {col}
+                {!locked && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateItem(index, { partitionBy: item.partitionBy?.filter((c) => c !== col) })
+                    }
+                    className="h-3 w-3 flex items-center justify-center rounded-full hover:bg-accent/20"
+                  >
+                    <X className="h-2 w-2" />
+                  </button>
+                )}
+              </span>
+            ))}
+            {!locked && (
               <button
                 type="button"
-                onClick={() =>
-                  updateItem(index, { partitionBy: item.partitionBy?.filter((c) => c !== col) })
-                }
-                className="h-3 w-3 flex items-center justify-center rounded-full hover:bg-accent/20"
+                onClick={() => setPartitionOpen((o) => ({ ...o, [index]: !o[index] }))}
+                className="shrink-0 flex items-center justify-center rounded px-1.5 py-0.5 text-[11px] text-text-muted hover:text-text-primary transition-colors"
               >
-                <X className="h-2 w-2" />
+                {partitionOpen[index] ? '收起 ▲' : '展开 ▼'}
               </button>
-            </span>
-          ))}
-          <button
-            type="button"
-            onClick={() => setPartitionOpen((o) => ({ ...o, [index]: !o[index] }))}
-            className="shrink-0 flex items-center justify-center rounded px-1.5 py-0.5 text-[11px] text-text-muted hover:text-text-primary transition-colors"
-          >
-            {partitionOpen[index] ? '收起 ▲' : '展开 ▼'}
-          </button>
-          {partitionOpen[index] && (
-            <div
-              className="absolute z-10 mt-1 rounded border bg-background/95 shadow-md"
-              style={{ top: '100%', left: 0 }}
-            >
-              <GlassFieldSelector
-                columns={fieldCompletions}
-                selected={item.partitionBy ?? []}
-                onChange={(v) => updateItem(index, { partitionBy: v.length > 0 ? v : undefined })}
-                columnTypes={columnTypes}
-                maxHeight="160px"
-              />
-            </div>
-          )}
-        </div>
-      ),
+            )}
+            {partitionOpen[index] && !locked && (
+              <div
+                className="absolute z-10 mt-1 rounded border bg-background/95 shadow-md"
+                style={{ top: '100%', left: 0 }}
+              >
+                <GlassFieldSelector
+                  columns={mergedFieldCompletions}
+                  selected={item.partitionBy ?? []}
+                  onChange={(v) => updateItem(index, { partitionBy: v.length > 0 ? v : undefined })}
+                  columnTypes={columnTypes}
+                  maxHeight="160px"
+                />
+              </div>
+            )}
+          </div>
+        );
+      },
     });
     base.push({
       flex: 'flex-[1.5]',
       header: tr('calcFieldOrderBy', '排序字段'),
-      render: (item: CalculationRow, index: number) => (
-        <div className="flex items-center gap-1">
-          {item.orderBy?.map((o) => (
-            <span
-              key={o.field}
-              className="inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent"
-            >
-              {o.field}
+      render: (item: CalculationRow, index: number) => {
+        const locked = isLocked(item);
+        return (
+          <div className="flex items-center gap-1">
+            {item.orderBy?.map((o) => (
+              <span
+                key={o.field}
+                className="inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent"
+              >
+                {o.field}
+                {!locked && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateItem(index, {
+                        orderBy: item.orderBy?.filter((x) => x.field !== o.field),
+                      })
+                    }
+                    className="h-3 w-3 flex items-center justify-center rounded-full hover:bg-accent/20"
+                  >
+                    <X className="h-2 w-2" />
+                  </button>
+                )}
+              </span>
+            ))}
+            {!locked && (
               <button
                 type="button"
-                onClick={() =>
-                  updateItem(index, { orderBy: item.orderBy?.filter((x) => x.field !== o.field) })
-                }
-                className="h-3 w-3 flex items-center justify-center rounded-full hover:bg-accent/20"
+                onClick={() => setOrderOpen((o) => ({ ...o, [index]: !o[index] }))}
+                className="shrink-0 flex items-center justify-center rounded px-1.5 py-0.5 text-[11px] text-text-muted hover:text-text-primary transition-colors"
               >
-                <X className="h-2 w-2" />
+                {orderOpen[index] ? '收起 ▲' : '展开 ▼'}
               </button>
-            </span>
-          ))}
-          <button
-            type="button"
-            onClick={() => setOrderOpen((o) => ({ ...o, [index]: !o[index] }))}
-            className="shrink-0 flex items-center justify-center rounded px-1.5 py-0.5 text-[11px] text-text-muted hover:text-text-primary transition-colors"
-          >
-            {orderOpen[index] ? '收起 ▲' : '展开 ▼'}
-          </button>
-          {orderOpen[index] && (
-            <div
-              className="absolute z-10 mt-1 rounded border bg-background/95 shadow-md"
-              style={{ top: '100%', left: 0 }}
-            >
-              <GlassFieldSelector
-                columns={fieldCompletions}
-                selected={item.orderBy?.map((o) => o.field) ?? []}
-                onChange={(v) =>
-                  updateItem(index, {
-                    orderBy:
-                      v.length > 0
-                        ? v.map((f) => ({ field: f, direction: 'asc' as const }))
-                        : undefined,
-                  })
-                }
-                columnTypes={columnTypes}
-                maxHeight="160px"
-              />
-            </div>
-          )}
-        </div>
-      ),
+            )}
+            {orderOpen[index] && !locked && (
+              <div
+                className="absolute z-10 mt-1 rounded border bg-background/95 shadow-md"
+                style={{ top: '100%', left: 0 }}
+              >
+                <GlassFieldSelector
+                  columns={mergedFieldCompletions}
+                  selected={item.orderBy?.map((o) => o.field) ?? []}
+                  onChange={(v) =>
+                    updateItem(index, {
+                      orderBy:
+                        v.length > 0
+                          ? v.map((f) => ({ field: f, direction: 'asc' as const }))
+                          : undefined,
+                    })
+                  }
+                  columnTypes={columnTypes}
+                  maxHeight="160px"
+                />
+              </div>
+            )}
+          </div>
+        );
+      },
     });
     if (mode === 'window') {
       base.push({
         flex: 'flex-[2]',
         header: tr('calcFieldFrame', '行范围'),
-        render: (item: CalculationRow, index: number) => (
-          <div className="flex items-center gap-1">
-            <select
-              value={item.frameStart ?? 'unbounded preceding'}
-              onChange={(e) => updateItem(index, { frameStart: e.target.value })}
-              className="h-6 w-[100px] rounded border border-border-muted bg-background/42 px-1 text-[11px] text-text-primary outline-none"
-            >
-              {FRAME_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            <span className="text-[10px] text-text-muted">→</span>
-            <select
-              value={item.frameEnd ?? 'current row'}
-              onChange={(e) => updateItem(index, { frameEnd: e.target.value })}
-              className="h-6 w-[100px] rounded border border-border-muted bg-background/42 px-1 text-[11px] text-text-primary outline-none"
-            >
-              {FRAME_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        ),
+        render: (item: CalculationRow, index: number) => {
+          const locked = isLocked(item);
+          return (
+            <div className="flex items-center gap-1">
+              <select
+                value={item.frameStart ?? 'unbounded preceding'}
+                onChange={(e) => updateItem(index, { frameStart: e.target.value })}
+                disabled={locked}
+                className="h-6 w-[100px] rounded border border-border-muted bg-background/42 px-1 text-[11px] text-text-primary outline-none disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {FRAME_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <span className="text-[10px] text-text-muted">→</span>
+              <select
+                value={item.frameEnd ?? 'current row'}
+                onChange={(e) => updateItem(index, { frameEnd: e.target.value })}
+                disabled={locked}
+                className="h-6 w-[100px] rounded border border-border-muted bg-background/42 px-1 text-[11px] text-text-primary outline-none disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {FRAME_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          );
+        },
       });
     }
     return base;
@@ -448,6 +581,7 @@ export default function FormCalculateField({
             onRemove={removeItem}
             addTitle={tr('calcFieldAddRule', '添加规则')}
             removeTitle={tr('calcFieldRemove', '删除规则')}
+            canDelete={(item) => !isLocked(item)}
           />
         </div>
       </div>

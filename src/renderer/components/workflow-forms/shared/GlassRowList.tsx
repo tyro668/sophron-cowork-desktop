@@ -20,6 +20,7 @@ interface GlassRowListProps<T> {
   onDragEnd?: () => void;
   getRowOpacity?: (index: number) => boolean;
   dragTitle?: string;
+  canDelete?: (item: T, index: number) => boolean;
 }
 
 export function GlassRowList<T>({
@@ -35,6 +36,7 @@ export function GlassRowList<T>({
   onDragEnd,
   getRowOpacity,
   dragTitle = '拖拽排序',
+  canDelete,
 }: GlassRowListProps<T>) {
   return (
     <div className="flex flex-col gap-2">
@@ -96,15 +98,17 @@ export function GlassRowList<T>({
           </button>
 
           {/* Delete */}
-          <button
-            type="button"
-            onClick={() => onRemove(index)}
-            className="inline-flex h-6 w-6 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:text-error hover:bg-error/10"
-            title={removeTitle}
-            aria-label={removeTitle}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+          {(!canDelete || canDelete(item, index)) && (
+            <button
+              type="button"
+              onClick={() => onRemove(index)}
+              className="inline-flex h-6 w-6 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:text-error hover:bg-error/10"
+              title={removeTitle}
+              aria-label={removeTitle}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
       ))}
     </div>

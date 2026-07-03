@@ -9,6 +9,7 @@ export interface CalculationConfigEntry {
   orderBy?: Array<{ field: string; direction?: 'asc' | 'desc' }>;
   frameStart?: string;
   frameEnd?: string;
+  locked?: boolean;
 }
 
 export interface CalculationRow {
@@ -22,6 +23,7 @@ export interface CalculationRow {
   orderBy?: Array<{ field: string; direction?: 'asc' | 'desc' }>;
   frameStart?: string;
   frameEnd?: string;
+  locked?: boolean;
 }
 
 export function createCalculationId(): string {
@@ -38,6 +40,7 @@ export function createCalculationRow(): CalculationRow {
     field: '',
     expression: '',
     type: 'row',
+    locked: false,
   };
 }
 
@@ -63,6 +66,7 @@ export function normalizeCalculationEntries(
       orderBy: Array.isArray(entry.orderBy) ? entry.orderBy : undefined,
       frameStart: typeof entry.frameStart === 'string' ? entry.frameStart : undefined,
       frameEnd: typeof entry.frameEnd === 'string' ? entry.frameEnd : undefined,
+      locked: entry.locked === true ? true : entry.locked === false ? false : undefined,
     };
   });
 }
