@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, Trash2, X } from 'lucide-react';
 import type { OperatorFormProps } from './index';
@@ -31,10 +31,18 @@ const WINDOW_FUNCTIONS = [
 ];
 const EXCLUDE_ROW_FUNCTIONS = ['calcFieldCategoryWindow', 'calcFieldCategoryAggregate'];
 
-const FRAME_OPTIONS = [
-  { value: 'unbounded preceding', label: '前无限行' },
-  { value: 'unbounded following', label: '后无限行' },
-  { value: 'current row', label: '当前行' },
+const FRAME_PRESETS = [
+  {
+    value: 'unbounded preceding|current row',
+    label: '累计到当前行',
+    key: 'calcFieldFrameCumulative',
+  },
+  {
+    value: 'current row|unbounded following',
+    label: '从当前行累计',
+    key: 'calcFieldFrameRemaining',
+  },
+  { value: 'unbounded preceding|unbounded following', label: '整个分区', key: 'calcFieldFrameAll' },
 ];
 
 export default function FormCalculateField({
@@ -87,14 +95,23 @@ export default function FormCalculateField({
     () => (node.config.calculations as CalculationConfigEntry[] | undefined) ?? [],
     [node.config.calculations]
   );
-  const items = useMemo(() => {
-    const normalized = normalizeCalculationEntries(rawCalculations);
-    return normalized.length > 0 ? normalized : [createCalculationRow()];
-  }, [rawCalculations]);
+  const [localItems, setLocalItems] = useState<CalculationRow[]>(() =>
+    normalizeCalculationEntries(rawCalculations)
+  );
   const needsNormalization = useMemo(
     () => needsCalculationIdNormalization(rawCalculations),
     [rawCalculations]
   );
+
+  // Sync from config when it changes externally (skip initial)
+  const initialRef = useRef(true);
+  useEffect(() => {
+    if (initialRef.current) {
+      initialRef.current = false;
+      return;
+    }
+    setLocalItems(normalizeCalculationEntries(rawCalculations));
+  }, [rawCalculations]);
 
   const storeCalculations = useCallback(
     (next: CalculationRow[]) => {
@@ -116,14 +133,14 @@ export default function FormCalculateField({
   const [activeMode, setActiveMode] = useState<'row' | 'agg' | 'window'>('row');
 
   const visibleItems = useMemo(() => {
-    const filtered = items.filter((i) => i.type === activeMode);
+    const filtered = localItems.filter((i) => i.type === activeMode);
     return filtered.length > 0 ? filtered : [{ ...createCalculationRow(), type: activeMode }];
-  }, [items, activeMode]);
+  }, [localItems, activeMode]);
 
   function toBackingIndex(visibleIndex: number): number {
     let count = 0;
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].type === activeMode) {
+    for (let i = 0; i < localItems.length; i++) {
+      if (localItems[i].type === activeMode) {
         if (count === visibleIndex) return i;
         count++;
       }
@@ -132,7 +149,9 @@ export default function FormCalculateField({
   }
 
   function handleChange(next: CalculationRow[]) {
-    storeCalculations(normalizeCalculationEntries(next));
+    const normalized = normalizeCalculationEntries(next);
+    setLocalItems(normalized);
+    storeCalculations(normalized);
   }
 
   function updateItem(visibleIndex: number, patch: Partial<CalculationRow>) {
@@ -140,11 +159,11 @@ export default function FormCalculateField({
     if (bi === -1) {
       const entry = { ...createCalculationRow(), type: activeMode, ...patch };
       if (entry.type !== 'row') entry.expression = exprFromParts(entry);
-      handleChange([...items, entry]);
+      handleChange([...localItems, entry]);
       return;
     }
     handleChange(
-      items.map((item, i) => {
+      localItems.map((item, i) => {
         if (i !== bi) return item;
         const updated = { ...item, ...patch };
         if (updated.type !== 'row') updated.expression = exprFromParts(updated);
@@ -154,19 +173,27 @@ export default function FormCalculateField({
   }
 
   function addAfter(visibleIndex: number) {
+    console.log(
+      '[+] addAfter: visibleIdx',
+      visibleIndex,
+      'localItems',
+      localItems.length,
+      'type',
+      activeMode
+    );
     const bi = toBackingIndex(visibleIndex);
     if (bi === -1) {
-      handleChange([...items, { ...createCalculationRow(), type: activeMode }]);
+      handleChange([...localItems, { ...createCalculationRow(), type: activeMode }]);
       return;
     }
     const entry = { ...createCalculationRow(), type: activeMode };
-    handleChange([...items.slice(0, bi + 1), entry, ...items.slice(bi + 1)]);
+    handleChange([...localItems.slice(0, bi + 1), entry, ...localItems.slice(bi + 1)]);
   }
 
   function removeItem(visibleIndex: number) {
     const bi = toBackingIndex(visibleIndex);
     if (bi === -1) return;
-    handleChange(items.filter((_, i) => i !== bi));
+    handleChange(localItems.filter((_, i) => i !== bi));
   }
 
   const [partitionOpen, setPartitionOpen] = useState<Record<number, boolean>>({});
@@ -197,7 +224,7 @@ export default function FormCalculateField({
     ];
 
     const insertModeCol: GlassRowListColumn<CalculationRow> = {
-      flex: 'flex-[1]',
+      flex: mode === 'window' ? 'flex-[0.5]' : 'flex-[1]',
       header: '',
       render: (item: CalculationRow, index: number) => (
         <GlassOperatorSelect
@@ -259,7 +286,7 @@ export default function FormCalculateField({
 
     // Agg/window layout
     const fnCol: GlassRowListColumn<CalculationRow> = {
-      flex: 'flex-[1]',
+      flex: mode === 'window' ? 'flex-[0.5]' : 'flex-[1]',
       header: '',
       render: (item: CalculationRow, index: number) => (
         <GlassOperatorSelect
@@ -285,7 +312,7 @@ export default function FormCalculateField({
       ),
     };
     const partitionByCol: GlassRowListColumn<CalculationRow> = {
-      flex: mode === 'agg' ? 'flex-[2.5]' : 'flex-[3]',
+      flex: mode === 'agg' ? 'flex-[2.5]' : 'flex-[2]',
       header: '',
       render: (item: CalculationRow, index: number) => {
         const open = partitionOpen[index];
@@ -364,13 +391,6 @@ export default function FormCalculateField({
       },
     };
 
-    const row1Cols: GlassRowListColumn<CalculationRow>[] = [
-      insertModeCol,
-      targetFieldCol,
-      fnCol,
-      fnArgCol,
-    ];
-
     if (mode === 'agg') {
       return [
         insertModeCol,
@@ -384,7 +404,7 @@ export default function FormCalculateField({
 
     // window mode
     const orderByCol: GlassRowListColumn<CalculationRow> = {
-      flex: 'flex-[3]',
+      flex: 'flex-[2]',
       header: '',
       render: (item: CalculationRow, index: number) => {
         const open = orderOpen[index];
@@ -497,36 +517,35 @@ export default function FormCalculateField({
     const frameCol: GlassRowListColumn<CalculationRow> = {
       flex: 'flex-[1]',
       header: '',
-      render: (item: CalculationRow, index: number) => (
-        <div className="flex items-center gap-1">
-          <select
-            value={item.frameStart ?? 'unbounded preceding'}
-            onChange={(e) => updateItem(index, { frameStart: e.target.value })}
-            className="h-6 w-[100px] rounded border border-border-muted bg-background/42 px-1 text-[11px] text-text-primary outline-none"
-          >
-            {FRAME_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-          <span className="text-[10px] text-text-muted">→</span>
-          <select
-            value={item.frameEnd ?? 'current row'}
-            onChange={(e) => updateItem(index, { frameEnd: e.target.value })}
-            className="h-6 w-[100px] rounded border border-border-muted bg-background/42 px-1 text-[11px] text-text-primary outline-none"
-          >
-            {FRAME_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      ),
+      render: (item: CalculationRow, index: number) => {
+        const currentKey = `${item.frameStart ?? 'unbounded preceding'}|${item.frameEnd ?? 'unbounded following'}`;
+        const presets = FRAME_PRESETS.map((p) => ({
+          value: p.value,
+          label: tr(p.key, p.label),
+        }));
+        return (
+          <GlassOperatorSelect
+            value={currentKey}
+            groups={[{ key: 'frame', items: presets }]}
+            onChange={(v) => {
+              const [frameStart, frameEnd] = v.split('|');
+              updateItem(index, { frameStart, frameEnd });
+            }}
+            className="h-7 text-[12px] [&>span]:text-left w-full"
+          />
+        );
+      },
     };
 
-    return { row1: row1Cols, row2: [partitionByCol, orderByCol, frameCol] };
+    return [
+      insertModeCol,
+      targetFieldCol,
+      fnCol,
+      fnArgCol,
+      partitionByCol,
+      orderByCol,
+      frameCol,
+    ] as GlassRowListColumn<CalculationRow>[];
   }
 
   return (
@@ -593,41 +612,40 @@ export default function FormCalculateField({
         </div>
         <div className="px-3 pb-3 overflow-y-auto flex-1 min-h-0">
           {(() => {
+            console.log(
+              '[render] visibleItems:',
+              visibleItems.length,
+              'localItems:',
+              localItems.length,
+              'mode:',
+              activeMode
+            );
             const cols = rowColumns(activeMode);
-            if (Array.isArray(cols)) {
+            if (activeMode === 'row') {
               return (
                 <GlassRowList
                   items={visibleItems}
-                  columns={cols}
+                  columns={cols as GlassRowListColumn<CalculationRow>[]}
                   onAdd={addAfter}
                   onRemove={removeItem}
                   addTitle={tr('calcFieldAddRule', '添加规则')}
                   removeTitle={tr('calcFieldRemove', '删除规则')}
-                  breakAt={activeMode === 'agg' ? 3 : undefined}
-                  inlineActions={activeMode === 'agg'}
-                  hideHeader={activeMode === 'agg'}
                 />
               );
             }
+            const breakAtValue = activeMode === 'agg' ? 3 : 4;
             return (
-              <div className="flex flex-col gap-2">
-                <GlassRowList
-                  items={visibleItems}
-                  columns={cols.row1}
-                  onAdd={addAfter}
-                  onRemove={removeItem}
-                  addTitle={tr('calcFieldAddRule', '添加规则')}
-                  removeTitle={tr('calcFieldRemove', '删除规则')}
-                />
-                <GlassRowList
-                  items={visibleItems}
-                  columns={cols.row2}
-                  onAdd={addAfter}
-                  onRemove={removeItem}
-                  addTitle={tr('calcFieldAddRule', '添加规则')}
-                  removeTitle={tr('calcFieldRemove', '删除规则')}
-                />
-              </div>
+              <GlassRowList
+                items={visibleItems}
+                columns={cols as GlassRowListColumn<CalculationRow>[]}
+                onAdd={addAfter}
+                onRemove={removeItem}
+                addTitle={tr('calcFieldAddRule', '添加规则')}
+                removeTitle={tr('calcFieldRemove', '删除规则')}
+                breakAt={breakAtValue}
+                inlineActions
+                hideHeader
+              />
             );
           })()}
         </div>
