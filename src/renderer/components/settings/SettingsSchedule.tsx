@@ -32,7 +32,6 @@ import {
   createCloudTableAutomationDraft,
   createEmptyDraft,
   draftToPayload,
-  getAutomationPermissionPolicy,
   getCloudAutomationConfigsFromDraft,
   normalizeDraftTrigger,
   parsePendingCloudAutomationTemplate,
@@ -55,7 +54,7 @@ import {
 
 export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const { t } = useTranslation();
-  const { confirm, confirmDelete } = useConfirmDialog();
+  const { confirmDelete } = useConfirmDialog();
   const projects = useAppStore((state) => state.projects);
   const appConfig = useAppStore((state) => state.appConfig);
   const pendingCloudAutomationTemplateNavigation = useAppStore(
@@ -387,38 +386,6 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       });
       return;
     }
-    const previousPermissionPolicy = selectedAutomation
-      ? getAutomationPermissionPolicy(selectedAutomation.actionGraph)
-      : null;
-    if (draft.permissionPolicy === 'full_access' && previousPermissionPolicy !== 'full_access') {
-      const confirmed = await confirm({
-        title: tr('schedule.fullAccessConfirmTitle', '确认以完全访问权限运行？'),
-        message: (
-          <div className="space-y-2">
-            <p>
-              {tr(
-                'schedule.fullAccessConfirmIntro',
-                '这条自动化将跳过大多数运行时权限确认，适合无人值守执行，但也意味着它可以直接执行高风险操作。'
-              )}
-            </p>
-            <ul className="list-disc space-y-1 pl-4">
-              <li>
-                {tr('schedule.fullAccessConfirmReadWrite', '读取、创建或修改工作区内文件与数据表')}
-              </li>
-              <li>
-                {tr('schedule.fullAccessConfirmCommands', '调用连接器、运行命令或发起网络请求')}
-              </li>
-              <li>
-                {tr('schedule.fullAccessConfirmCloud', '按自动化配置访问外部服务或写回云分析空间')}
-              </li>
-            </ul>
-          </div>
-        ),
-        confirmLabel: tr('schedule.fullAccessConfirmSave', '确认保存'),
-        cancelLabel: tr('common.cancel', '取消'),
-      });
-      if (!confirmed) return;
-    }
     setIsSaving(true);
     setBanner(null);
     try {
@@ -574,9 +541,6 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
               outputTables={outputTables}
               appConfig={appConfig}
               onDraftChange={setDraft}
-              onPermissionPolicyChange={(permissionPolicy) =>
-                setDraft((current) => ({ ...current, permissionPolicy }))
-              }
               onGeneratedTaskSuccess={() =>
                 showTransientBanner({
                   tone: 'success',
