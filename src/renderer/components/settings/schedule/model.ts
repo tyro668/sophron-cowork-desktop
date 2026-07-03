@@ -8,10 +8,6 @@ import type {
   AppConfig,
 } from '../../../types';
 import {
-  normalizePermissionPolicy,
-  type PermissionPolicyId,
-} from '../../../../shared/permission-policies';
-import {
   CLOUD_TABLE_PROCESS_ACTION_TYPE,
   DATA_PROCESS_AI_CONFIG_KEY,
   DEFAULT_TIME,
@@ -380,13 +376,6 @@ export function validateEnabledActionNodes(
   return null;
 }
 
-export function getAutomationPermissionPolicy(
-  actionGraph: AutomationActionGraph
-): PermissionPolicyId {
-  const conversationNode = actionGraph.nodes.find((node) => node.type === 'conversation.run');
-  return normalizePermissionPolicy(conversationNode?.config.permissionPolicy);
-}
-
 export function buildCloudAutomationPrompt(config: CloudTableAutomationConfig): string {
   const source = config.source;
   const sourceLocation = getSourceLocation(config);
@@ -468,13 +457,20 @@ export function buildCloudAutomationPrompt(config: CloudTableAutomationConfig): 
 }
 
 export function automationToDraft(automation: Automation): AutomationDraft {
-  const trigger = automation.trigger as EditableAutomationTrigger;
+  const trigger =
+    automation.trigger.kind === 'manual'
+      ? ({
+          kind: 'daily',
+          times: [DEFAULT_TIME],
+          timezone: SYSTEM_TIMEZONE,
+        } satisfies EditableAutomationTrigger)
+      : (automation.trigger as EditableAutomationTrigger);
   return {
     name: automation.name,
     description: automation.description ?? '',
     projectId: automation.projectId ?? '',
     enabled: automation.enabled,
-    permissionPolicy: getAutomationPermissionPolicy(automation.actionGraph),
+    permissionPolicy: 'full_access',
     triggerMode: trigger.kind,
     trigger,
     actionGraph: automation.actionGraph.nodes.length
@@ -493,16 +489,13 @@ export function draftToPayload(
     projectId: draft.projectId || null,
     enabled: draft.enabled,
     trigger: normalizeDraftTrigger(draft.triggerMode, draft.trigger),
-    actionGraph: relinkLinearGraph(
-      enrichActionGraphDefaults(draft.actionGraph, appConfig, draft.permissionPolicy)
-    ),
+    actionGraph: relinkLinearGraph(enrichActionGraphDefaults(draft.actionGraph, appConfig)),
   };
 }
 
 export function enrichActionGraphDefaults(
   actionGraph: AutomationActionGraph,
-  appConfig: AppConfig | null,
-  permissionPolicy: PermissionPolicyId
+  appConfig: AppConfig | null
 ): AutomationActionGraph {
   return {
     ...actionGraph,
@@ -515,7 +508,7 @@ export function enrichActionGraphDefaults(
           : appConfig?.activeConfigSetId;
       const nextConfig = {
         ...node.config,
-        permissionPolicy,
+        permissionPolicy: 'full_access',
         ...(cloudAutomation ? { prompt: buildCloudAutomationPrompt(cloudAutomation) } : {}),
       };
       if (!modelConfigSetId) return { ...node, config: nextConfig };
@@ -536,12 +529,6 @@ export function normalizeDraftTrigger(
   trigger: EditableAutomationTrigger
 ): EditableAutomationTrigger {
   const timezone = SYSTEM_TIMEZONE;
-  if (mode === 'manual') {
-    return {
-      kind: 'manual',
-      timezone,
-    };
-  }
   if (mode === 'file_change') {
     const source = trigger.kind === 'file_change' ? trigger : null;
     return {

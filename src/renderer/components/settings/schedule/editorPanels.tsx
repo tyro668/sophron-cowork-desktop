@@ -11,8 +11,6 @@ import {
   AlertCircle,
   ArrowLeft,
   CalendarClock,
-  CheckCircle2,
-  ChevronDown,
   Clock,
   Cloud,
   Database,
@@ -24,7 +22,6 @@ import {
   Plus,
   Save,
   Search,
-  ShieldCheck,
   Trash2,
   UploadCloud,
   Wand2,
@@ -51,10 +48,6 @@ import { GlassSelect } from '../../GlassSelect';
 import { GlassSwitch } from '../../GlassSwitch';
 import { GlassTimePicker } from '../../GlassTimePicker';
 import { LlmPromptComposer } from '../../LlmPromptComposer';
-import {
-  normalizePermissionPolicy,
-  type PermissionPolicyId,
-} from '../../../../shared/permission-policies';
 import {
   ACTION_MENU_TYPES,
   CLOUD_TABLE_PROCESS_ACTION_TYPE,
@@ -245,23 +238,6 @@ export function TaskStatusSection({
   );
 }
 
-function ManualConfigCard({ tr }: { tr: (key: string, fallback: string) => string }) {
-  return (
-    <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
-      <div className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-success">
-        <Play className="h-4 w-4" />
-        {tr('schedule.manualConfig', '手动触发')}
-      </div>
-      <p className="text-[12px] leading-5 text-text-muted">
-        {tr(
-          'schedule.manualConfigDesc',
-          '任务保存后不会自动触发。你可以在自动化列表或详情页点击“运行”立即执行。'
-        )}
-      </p>
-    </div>
-  );
-}
-
 export function ExecutionProjectPanel({
   draft,
   projects,
@@ -311,129 +287,6 @@ export function ExecutionProjectPanel({
   );
 }
 
-function AutomationPermissionPolicyMenu({
-  value,
-  onChange,
-  tr,
-}: {
-  value: PermissionPolicyId;
-  onChange: (policy: PermissionPolicyId) => void;
-  tr: (key: string, fallback: string) => string;
-}) {
-  const [open, setOpen] = useState(false);
-  const activePolicy = normalizePermissionPolicy(value);
-  const options = getCloudPermissionPolicyOptions(tr);
-  const activeOption = options.find((option) => option.value === activePolicy) ?? options[0];
-
-  return (
-    <div className="space-y-2">
-      <GlassDropdownMenu
-        open={open}
-        onOpenChange={setOpen}
-        align="start"
-        side="bottom"
-        contentClassName="w-[30rem] max-w-[calc(100vw-3rem)] p-2"
-        trigger={
-          <button
-            type="button"
-            className="flex min-h-10 w-full items-center gap-2 rounded-lg border border-border-muted bg-background/70 px-3 py-2 text-left text-[13px] text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-surface-hover hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/20"
-          >
-            <ShieldCheck className="h-4 w-4 flex-shrink-0 text-success" />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-medium text-text-primary">
-                {activeOption.label}
-              </span>
-              <span className="mt-0.5 block truncate text-[11px] text-text-muted">
-                {activeOption.shortDescription}
-              </span>
-            </span>
-            <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
-          </button>
-        }
-      >
-        <div className="space-y-1">
-          {options.map((option) => {
-            const selected = option.value === activePolicy;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => {
-                  onChange(option.value);
-                  setOpen(false);
-                }}
-                className={`flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
-                  selected
-                    ? 'bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/20'
-                    : 'text-text-secondary hover:bg-background/58 hover:text-text-primary'
-                }`}
-              >
-                <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center">
-                  {selected ? (
-                    <CheckCircle2 className="h-4 w-4 text-accent" />
-                  ) : option.value === 'full_access' ? (
-                    <AlertCircle className="h-4 w-4 text-warning" />
-                  ) : (
-                    <ShieldCheck className="h-4 w-4 text-text-muted" />
-                  )}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex flex-wrap items-center gap-1.5 text-[13px] font-semibold">
-                    {option.label}
-                  </span>
-                  <span className="mt-1 block text-[12px] leading-5 text-text-muted">
-                    {option.description}
-                  </span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </GlassDropdownMenu>
-    </div>
-  );
-}
-
-function getCloudPermissionPolicyOptions(tr: (key: string, fallback: string) => string): Array<{
-  value: PermissionPolicyId;
-  label: string;
-  shortDescription: string;
-  description: string;
-}> {
-  return [
-    {
-      value: 'full_access',
-      label: tr('schedule.cloudPermissionFullAccessRecommended', '完全访问权限（推荐）'),
-      shortDescription: tr('schedule.cloudPermissionFullAccessShort', '适合无人值守的自动化任务'),
-      description: tr(
-        'schedule.cloudPermissionFullAccessDesc',
-        '推荐用于无人值守的自动化任务。系统会在该自动化执行会话中跳过大多数权限确认，避免定时任务被中断。'
-      ),
-    },
-    {
-      value: 'auto_review',
-      label: tr('chat.permissionPolicyAutoReview', '自动审查'),
-      shortDescription: tr(
-        'schedule.cloudPermissionAutoReviewShort',
-        '常见操作自动通过，未知操作仍确认'
-      ),
-      description: tr(
-        'schedule.cloudPermissionAutoReviewDesc',
-        '适合需要保留一层审查的自动化任务。常见数据处理和写入会自动通过，未知或高风险操作仍会请求确认。'
-      ),
-    },
-    {
-      value: 'default',
-      label: tr('chat.permissionPolicyDefault', '默认权限'),
-      shortDescription: tr('schedule.cloudPermissionDefaultShort', '敏感操作需要用户确认'),
-      description: tr(
-        'schedule.cloudPermissionDefaultDesc',
-        '适合调试或手动监督的自动化任务。执行到写入、命令等敏感操作时会请求确认，定时任务可能因此暂停等待。'
-      ),
-    },
-  ];
-}
-
 function AutomationPromptPermissionFields({
   value,
   onChange,
@@ -443,8 +296,6 @@ function AutomationPromptPermissionFields({
   appConfig,
   selectedModelConfigSetId,
   onModelSelect,
-  permissionPolicy,
-  onPermissionPolicyChange,
   placeholder,
   label,
   tr,
@@ -457,8 +308,6 @@ function AutomationPromptPermissionFields({
   appConfig: AppConfig | null;
   selectedModelConfigSetId?: string;
   onModelSelect: (selection: { configSetId: string; model: string }) => void;
-  permissionPolicy: PermissionPolicyId;
-  onPermissionPolicyChange: (policy: PermissionPolicyId) => void;
   placeholder: string;
   label?: string;
   tr: (key: string, fallback: string) => string;
@@ -480,13 +329,6 @@ function AutomationPromptPermissionFields({
           onModelSelect={onModelSelect}
         />
       </ConfigRow>
-      <ConfigRow label={tr('schedule.permissionPolicy', '权限策略')}>
-        <AutomationPermissionPolicyMenu
-          value={permissionPolicy}
-          onChange={onPermissionPolicyChange}
-          tr={tr}
-        />
-      </ConfigRow>
     </>
   );
 }
@@ -503,12 +345,7 @@ export function TriggerConditionPanel({
   tr: (key: string, fallback: string) => string;
 }) {
   const trigger = normalizeDraftTrigger(draft.triggerMode, draft.trigger);
-  const triggerMethod =
-    draft.triggerMode === 'manual'
-      ? 'manual'
-      : draft.triggerMode === 'file_change'
-        ? 'file_change'
-        : 'scheduled';
+  const triggerMethod = draft.triggerMode === 'file_change' ? 'file_change' : 'scheduled';
   const setMode = (mode: TriggerMode) => {
     onDraftChange({
       ...draft,
@@ -529,15 +366,10 @@ export function TriggerConditionPanel({
           <GlassSelect
             value={triggerMethod}
             options={[
-              { value: 'manual', label: tr('schedule.triggerManual', '手动触发') },
               { value: 'scheduled', label: tr('schedule.triggerScheduled', '定时触发') },
               { value: 'file_change', label: tr('schedule.triggerFileChange', '文件变更时触发') },
             ]}
             onValueChange={(value) => {
-              if (value === 'manual') {
-                setMode('manual');
-                return;
-              }
               setMode(value === 'file_change' ? 'file_change' : 'daily');
             }}
             triggerClassName="h-9 w-full justify-between"
@@ -547,9 +379,7 @@ export function TriggerConditionPanel({
       </div>
 
       <div className="mt-6 min-h-0 flex-1">
-        {trigger.kind === 'manual' ? (
-          <ManualConfigCard tr={tr} />
-        ) : trigger.kind === 'file_change' ? (
+        {trigger.kind === 'file_change' ? (
           <FileChangeConfigCard
             draft={draft}
             trigger={trigger}
@@ -916,8 +746,6 @@ function CloudTableProcessActionEditor({
   inputTables,
   outputTables,
   appConfig,
-  permissionPolicy,
-  onPermissionPolicyChange,
   onGeneratedTaskSuccess,
   onChange,
   tr,
@@ -927,8 +755,6 @@ function CloudTableProcessActionEditor({
   inputTables: DataDashboard['datasets'];
   outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
-  permissionPolicy: PermissionPolicyId;
-  onPermissionPolicyChange: (permissionPolicy: PermissionPolicyId) => void;
   onChange: (node: AutomationActionNode) => void;
   onGeneratedTaskSuccess: () => void;
   tr: (key: string, fallback: string) => string;
@@ -1160,8 +986,6 @@ function CloudTableProcessActionEditor({
                 model,
               })
             }
-            permissionPolicy={permissionPolicy}
-            onPermissionPolicyChange={onPermissionPolicyChange}
             label={tr('schedule.cloudProcessRequirement', '处理要求')}
             placeholder={
               sourceLocation === 'local'
@@ -1888,7 +1712,6 @@ export function ActionChainSection({
   outputTables,
   appConfig,
   onDraftChange,
-  onPermissionPolicyChange,
   onGeneratedTaskSuccess,
   tr,
 }: {
@@ -1899,7 +1722,6 @@ export function ActionChainSection({
   outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
   onDraftChange: (draft: AutomationDraft) => void;
-  onPermissionPolicyChange: (permissionPolicy: PermissionPolicyId) => void;
   onGeneratedTaskSuccess: () => void;
   tr: (key: string, fallback: string) => string;
 }) {
@@ -1971,8 +1793,6 @@ export function ActionChainSection({
             inputTables={inputTables}
             outputTables={outputTables}
             appConfig={appConfig}
-            permissionPolicy={draft.permissionPolicy}
-            onPermissionPolicyChange={onPermissionPolicyChange}
             onGeneratedTaskSuccess={onGeneratedTaskSuccess}
             onRemove={() => updateNodes(nodes.filter((item) => item.id !== node.id))}
             onChange={(next) =>
@@ -1993,8 +1813,6 @@ function ActionStepCard({
   inputTables,
   outputTables,
   appConfig,
-  permissionPolicy,
-  onPermissionPolicyChange,
   onGeneratedTaskSuccess,
   onRemove,
   onChange,
@@ -2006,8 +1824,6 @@ function ActionStepCard({
   inputTables: DataDashboard['datasets'];
   outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
-  permissionPolicy: PermissionPolicyId;
-  onPermissionPolicyChange: (permissionPolicy: PermissionPolicyId) => void;
   onGeneratedTaskSuccess: () => void;
   onRemove: () => void;
   onChange: (node: AutomationActionNode) => void;
@@ -2039,8 +1855,6 @@ function ActionStepCard({
         inputTables={inputTables}
         outputTables={outputTables}
         appConfig={appConfig}
-        permissionPolicy={permissionPolicy}
-        onPermissionPolicyChange={onPermissionPolicyChange}
         onGeneratedTaskSuccess={onGeneratedTaskSuccess}
         onChange={onChange}
         tr={tr}
@@ -2106,8 +1920,6 @@ function DataProcessActionEditor({
   inputTables,
   outputTables,
   appConfig,
-  permissionPolicy,
-  onPermissionPolicyChange,
   onGeneratedTaskSuccess,
   onChange,
   tr,
@@ -2117,8 +1929,6 @@ function DataProcessActionEditor({
   inputTables: DataDashboard['datasets'];
   outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
-  permissionPolicy: PermissionPolicyId;
-  onPermissionPolicyChange: (permissionPolicy: PermissionPolicyId) => void;
   onGeneratedTaskSuccess: () => void;
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
@@ -2188,8 +1998,6 @@ function DataProcessActionEditor({
           inputTables={inputTables}
           outputTables={outputTables}
           appConfig={appConfig}
-          permissionPolicy={permissionPolicy}
-          onPermissionPolicyChange={onPermissionPolicyChange}
           onChange={onChange}
           onGeneratedTaskSuccess={onGeneratedTaskSuccess}
           tr={tr}
@@ -2277,8 +2085,6 @@ function ActionConfigEditor({
   inputTables,
   outputTables,
   appConfig,
-  permissionPolicy,
-  onPermissionPolicyChange,
   onGeneratedTaskSuccess,
   onChange,
   tr,
@@ -2288,8 +2094,6 @@ function ActionConfigEditor({
   inputTables: DataDashboard['datasets'];
   outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
-  permissionPolicy: PermissionPolicyId;
-  onPermissionPolicyChange: (permissionPolicy: PermissionPolicyId) => void;
   onGeneratedTaskSuccess: () => void;
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
@@ -2324,8 +2128,6 @@ function ActionConfigEditor({
           inputTables={inputTables}
           outputTables={outputTables}
           appConfig={appConfig}
-          permissionPolicy={permissionPolicy}
-          onPermissionPolicyChange={onPermissionPolicyChange}
           onGeneratedTaskSuccess={onGeneratedTaskSuccess}
           onChange={onChange}
           tr={tr}
@@ -2371,8 +2173,6 @@ function ActionConfigEditor({
               model,
             })
           }
-          permissionPolicy={permissionPolicy}
-          onPermissionPolicyChange={onPermissionPolicyChange}
           placeholder={tr('schedule.promptPlaceholder', '输入任务对话要执行的内容')}
           tr={tr}
         />

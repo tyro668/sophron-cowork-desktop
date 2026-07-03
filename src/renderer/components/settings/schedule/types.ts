@@ -92,10 +92,10 @@ export function getProjectOptionLabel(
   );
 }
 
-export type EditableAutomationTrigger = Exclude<AutomationTrigger, { kind: 'cron' }>;
+export type EditableAutomationTrigger = Exclude<AutomationTrigger, { kind: 'cron' | 'manual' }>;
 export type ScheduledAutomationTrigger = Exclude<
   EditableAutomationTrigger,
-  { kind: 'file_change' | 'manual' }
+  { kind: 'file_change' }
 >;
 export type TriggerMode = EditableAutomationTrigger['kind'];
 export type ListTab = 'automations' | 'runs';

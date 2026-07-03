@@ -1020,6 +1020,62 @@ describe('DataCommandService', () => {
     ]);
   });
 
+  it('allows generated plans to reference columns renamed by earlier operations', async () => {
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        operations: [
+          { type: 'drop', column: '记录数' },
+          { type: 'rename', source: 'Adj Close', target: 'adj_close' },
+          { type: 'convert_type', column: 'adj_close', targetType: 'decimal', removePrefix: '$' },
+        ],
+        requiredColumns: [],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'prices.csv');
+    fs.writeFileSync(
+      csvPath,
+      [
+        'Company Name,Date,Ticker,Adj Close,Close value in reference period,记录数',
+        'Sourcefire,2012-12-31,FIRE,$8.34,NULL,1',
+        'Symantec,2012-12-31,SYMC,$16.14,NULL,1',
+      ].join('\n'),
+      'utf8'
+    );
+    const input = await service.createInputTable({
+      name: 'prices input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement:
+        '把这张 CSV 清洗成标准价格明细表：删除“记录数”，统一字段名，Adj Close 去掉 $ 转数值，NULL 置空，Ticker 转大写，并从 Date 提取年份和月份。',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'prices processed',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(generated.workflowDsl).toContain('drop [记录数]');
+    expect(generated.workflowDsl).toContain('map [`Adj Close`] to [adj_close]');
+    expect(generated.workflowDsl).toContain('derive [adj_close] = CAST');
+    expect(generated.workflowDsl).toContain("REPLACE(CAST([adj_close] AS VARCHAR), '$', '')");
+    expect(generated.requiredColumns).toEqual([
+      { name: '记录数', type: 'integer' },
+      { name: 'Adj Close', type: 'text' },
+    ]);
+  });
+
   it('falls back to advanced DSL generation for unsupported operations', async () => {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
