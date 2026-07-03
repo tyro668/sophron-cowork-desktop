@@ -111,37 +111,39 @@ export default function FormCalculateField({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsNormalization]);
 
-  const mode = useMemo(() => items[0]?.type ?? 'row', [items]);
+  const [activeMode, setActiveMode] = useState<'row' | 'agg' | 'window'>('row');
 
-  function handleModeChange(newMode: 'row' | 'agg' | 'window') {
-    updateConfig((cfg) => {
-      const entries = (cfg.calculations as CalculationConfigEntry[] | undefined) ?? [];
-      return {
-        ...cfg,
-        calculations:
-          entries.length > 0
-            ? entries.map((entry) => ({
-                ...entry,
-                type: newMode,
-                expression:
-                  newMode === 'row'
-                    ? ''
-                    : entry.expression ||
-                      exprFromParts({ ...entry, type: newMode } as CalculationRow),
-              }))
-            : [{ field: '', expression: '', type: newMode as string }],
-      };
-    });
+  const visibleItems = useMemo(() => {
+    const filtered = items.filter((i) => i.type === activeMode);
+    return filtered.length > 0 ? filtered : [{ ...createCalculationRow(), type: activeMode }];
+  }, [items, activeMode]);
+
+  function toBackingIndex(visibleIndex: number): number {
+    let count = 0;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type === activeMode) {
+        if (count === visibleIndex) return i;
+        count++;
+      }
+    }
+    return -1;
   }
 
   function handleChange(next: CalculationRow[]) {
     storeCalculations(normalizeCalculationEntries(next));
   }
 
-  function updateItem(index: number, patch: Partial<CalculationRow>) {
+  function updateItem(visibleIndex: number, patch: Partial<CalculationRow>) {
+    const bi = toBackingIndex(visibleIndex);
+    if (bi === -1) {
+      const entry = { ...createCalculationRow(), type: activeMode, ...patch };
+      if (entry.type !== 'row') entry.expression = exprFromParts(entry);
+      handleChange([...items, entry]);
+      return;
+    }
     handleChange(
       items.map((item, i) => {
-        if (i !== index) return item;
+        if (i !== bi) return item;
         const updated = { ...item, ...patch };
         if (updated.type !== 'row') updated.expression = exprFromParts(updated);
         return updated;
@@ -149,13 +151,20 @@ export default function FormCalculateField({
     );
   }
 
-  function addAfter(index: number) {
-    const entry = { ...createCalculationRow(), type: mode };
-    handleChange([...items.slice(0, index + 1), entry, ...items.slice(index + 1)]);
+  function addAfter(visibleIndex: number) {
+    const bi = toBackingIndex(visibleIndex);
+    if (bi === -1) {
+      handleChange([...items, { ...createCalculationRow(), type: activeMode }]);
+      return;
+    }
+    const entry = { ...createCalculationRow(), type: activeMode };
+    handleChange([...items.slice(0, bi + 1), entry, ...items.slice(bi + 1)]);
   }
 
-  function removeItem(index: number) {
-    handleChange(items.filter((_, i) => i !== index));
+  function removeItem(visibleIndex: number) {
+    const bi = toBackingIndex(visibleIndex);
+    if (bi === -1) return;
+    handleChange(items.filter((_, i) => i !== bi));
   }
 
   const [partitionOpen, setPartitionOpen] = useState<Record<number, boolean>>({});
@@ -388,7 +397,7 @@ export default function FormCalculateField({
         </div>
         <div className="px-3 pb-3">
           <GlassRadioSelect
-            value={mode}
+            value={activeMode}
             options={[
               {
                 value: 'row',
@@ -406,7 +415,7 @@ export default function FormCalculateField({
                 tip: tr('calcFieldModeWindowTip', '累计、移动平均等需指定行范围的计算'),
               },
             ]}
-            onChange={(v) => handleModeChange(v as 'row' | 'agg' | 'window')}
+            onChange={(v) => setActiveMode(v as 'row' | 'agg' | 'window')}
             label={tr('calcFieldMode', '模式')}
           />
         </div>
@@ -423,9 +432,9 @@ export default function FormCalculateField({
               {tr('calcFieldConfigHeader', '计算配置')}
             </span>
             <span className="text-[10px] text-text-muted">
-              {mode === 'row'
+              {activeMode === 'row'
                 ? tr('calcFieldConfigHintRow', '定义新字段及其计算表达式')
-                : mode === 'agg'
+                : activeMode === 'agg'
                   ? tr('calcFieldConfigHintAgg', '选择聚合/排名函数、分区和排序字段')
                   : tr('calcFieldConfigHintWindow', '选择窗口函数、分区、排序和行范围')}
             </span>
@@ -433,8 +442,8 @@ export default function FormCalculateField({
         </div>
         <div className="px-3 pb-3 overflow-y-auto flex-1 min-h-0">
           <GlassRowList
-            items={items}
-            columns={rowColumns(mode)}
+            items={visibleItems}
+            columns={rowColumns(activeMode)}
             onAdd={addAfter}
             onRemove={removeItem}
             addTitle={tr('calcFieldAddRule', '添加规则')}
