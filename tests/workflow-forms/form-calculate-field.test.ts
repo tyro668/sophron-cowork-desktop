@@ -357,4 +357,268 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
       '([sales] - lag([sales], 12) OVER (ORDER BY [ym])) / lag([sales], 12) OVER (ORDER BY [ym])'
     );
   });
+
+  // ── No-arg functions ──
+  it('row_number() — no arguments', () => {
+    const result = exprFromParts({
+      id: 'n1',
+      field: 'rn',
+      expression: '',
+      type: 'window',
+      fn: 'row_number',
+      partitionBy: ['region'],
+      orderBy: [{ field: 'id', direction: 'asc' }],
+    });
+    expect(result).toBe('row_number() OVER (PARTITION BY [region] ORDER BY [id])');
+  });
+
+  it('rank() — no arguments', () => {
+    const result = exprFromParts({
+      id: 'n2',
+      field: 'r',
+      expression: '',
+      type: 'window',
+      fn: 'rank',
+      fnArg: '[amount]',
+      orderBy: [{ field: 'amount', direction: 'desc' }],
+    });
+    expect(result).toBe('rank() OVER (ORDER BY [amount] desc)');
+  });
+
+  it('dense_rank() — no arguments', () => {
+    const result = exprFromParts({
+      id: 'n3',
+      field: 'dr',
+      expression: '',
+      type: 'window',
+      fn: 'dense_rank',
+      orderBy: [{ field: 'score', direction: 'desc' }],
+    });
+    expect(result).toBe('dense_rank() OVER (ORDER BY [score] desc)');
+  });
+
+  it('percent_rank() — no arguments', () => {
+    const result = exprFromParts({
+      id: 'n4',
+      field: 'pr',
+      expression: '',
+      type: 'window',
+      fn: 'percent_rank',
+      orderBy: [{ field: 'amount', direction: 'asc' }],
+    });
+    expect(result).toBe('percent_rank() OVER (ORDER BY [amount])');
+  });
+
+  it('cume_dist() — no arguments', () => {
+    const result = exprFromParts({
+      id: 'n5',
+      field: 'cd',
+      expression: '',
+      type: 'window',
+      fn: 'cume_dist',
+      partitionBy: ['region'],
+      orderBy: [{ field: 'amount', direction: 'asc' }],
+    });
+    expect(result).toBe('cume_dist() OVER (PARTITION BY [region] ORDER BY [amount])');
+  });
+
+  // ── ntile ──
+  it('ntile(4) — integer argument, strips brackets', () => {
+    const result = exprFromParts({
+      id: 'nt1',
+      field: 'bucket',
+      expression: '',
+      type: 'window',
+      fn: 'ntile',
+      fnArg: '[4]',
+      orderBy: [{ field: 'amount', direction: 'desc' }],
+    });
+    expect(result).toBe('ntile(4) OVER (ORDER BY [amount] desc)');
+  });
+
+  it('ntile(*) defaults to 4', () => {
+    const result = exprFromParts({
+      id: 'nt2',
+      field: 'bucket',
+      expression: '',
+      type: 'window',
+      fn: 'ntile',
+      orderBy: [{ field: 'id', direction: 'asc' }],
+    });
+    expect(result).toBe('ntile(4) OVER (ORDER BY [id])');
+  });
+
+  // ── Basic aggregates ──
+  it('sum([amount]) OVER (PARTITION BY region)', () => {
+    const result = exprFromParts({
+      id: 'a1',
+      field: 'total',
+      expression: '',
+      type: 'agg',
+      fn: 'sum',
+      fnArg: '[amount]',
+      partitionBy: ['region'],
+    });
+    expect(result).toBe('sum([amount]) OVER (PARTITION BY [region])');
+  });
+
+  it('min/max/count produce correct DSL', () => {
+    for (const fn of ['min', 'max', 'count']) {
+      const result = exprFromParts({
+        id: 'a',
+        field: 'r',
+        expression: '',
+        type: 'agg',
+        fn,
+        fnArg: '[amount]',
+        partitionBy: ['region'],
+      });
+      expect(result).toBe(`${fn}([amount]) OVER (PARTITION BY [region])`);
+    }
+  });
+
+  it('count_distinct produces count(DISTINCT [arg])', () => {
+    const result = exprFromParts({
+      id: 'a2',
+      field: 'cnt',
+      expression: '',
+      type: 'agg',
+      fn: 'count_distinct',
+      fnArg: '[customer_id]',
+      partitionBy: ['region'],
+    });
+    expect(result).toBe('count(DISTINCT [customer_id]) OVER (PARTITION BY [region])');
+  });
+
+  // ── Statistical aggregates ──
+  it('median/stddev/var produce correct DSL', () => {
+    for (const fn of ['median', 'stddev', 'var']) {
+      const result = exprFromParts({
+        id: 's',
+        field: 'r',
+        expression: '',
+        type: 'agg',
+        fn,
+        fnArg: '[amount]',
+        partitionBy: ['region'],
+      });
+      expect(result).toBe(`${fn}([amount]) OVER (PARTITION BY [region])`);
+    }
+  });
+
+  it('mode([amount]) produces correct DSL', () => {
+    const result = exprFromParts({
+      id: 'm1',
+      field: 'm',
+      expression: '',
+      type: 'agg',
+      fn: 'mode',
+      fnArg: '[amount]',
+    });
+    expect(result).toBe('mode([amount])');
+  });
+
+  it('quantile_cont([amount], 0.5) produces correct DSL', () => {
+    const result = exprFromParts({
+      id: 'q1',
+      field: 'q',
+      expression: '',
+      type: 'agg',
+      fn: 'quantile_cont',
+      fnArg: '[amount]',
+    });
+    expect(result).toBe('quantile_cont([amount])');
+  });
+
+  it('product([amount]) produces correct DSL', () => {
+    const result = exprFromParts({
+      id: 'p1',
+      field: 'prod',
+      expression: '',
+      type: 'agg',
+      fn: 'product',
+      fnArg: '[amount]',
+      partitionBy: ['region'],
+    });
+    expect(result).toBe('product([amount]) OVER (PARTITION BY [region])');
+  });
+
+  // ── Value functions ──
+  it('first_value([amount]) OVER (...) produces correct DSL', () => {
+    const result = exprFromParts({
+      id: 'v1',
+      field: 'fv',
+      expression: '',
+      type: 'window',
+      fn: 'first_value',
+      fnArg: '[amount]',
+      partitionBy: ['region'],
+      orderBy: [{ field: 'date', direction: 'asc' }],
+    });
+    expect(result).toBe('first_value([amount]) OVER (PARTITION BY [region] ORDER BY [date])');
+  });
+
+  it('last_value([amount]) OVER (...) with frame', () => {
+    const result = exprFromParts({
+      id: 'v2',
+      field: 'lv',
+      expression: '',
+      type: 'window',
+      fn: 'last_value',
+      fnArg: '[amount]',
+      partitionBy: ['region'],
+      orderBy: [{ field: 'date', direction: 'asc' }],
+      frameStart: 'unbounded preceding',
+      frameEnd: 'unbounded following',
+    });
+    expect(result).toBe(
+      'last_value([amount]) OVER (PARTITION BY [region] ORDER BY [date]) ROWS BETWEEN unbounded preceding AND unbounded following'
+    );
+  });
+
+  it('nth_value([amount], 2) OVER (...) produces correct DSL', () => {
+    const result = exprFromParts({
+      id: 'v3',
+      field: 'nv',
+      expression: '',
+      type: 'window',
+      fn: 'nth_value',
+      fnArg: '[amount]',
+      orderBy: [{ field: 'date', direction: 'asc' }],
+      frameStart: 'unbounded preceding',
+      frameEnd: 'unbounded following',
+    });
+    expect(result).toBe(
+      'nth_value([amount]) OVER (ORDER BY [date]) ROWS BETWEEN unbounded preceding AND unbounded following'
+    );
+  });
+
+  // ── Offset functions ──
+  it('lag([amount]) OVER (...) produces correct DSL', () => {
+    const result = exprFromParts({
+      id: 'o1',
+      field: 'prev',
+      expression: '',
+      type: 'window',
+      fn: 'lag',
+      fnArg: '[amount]',
+      partitionBy: ['region'],
+      orderBy: [{ field: 'date', direction: 'asc' }],
+    });
+    expect(result).toBe('lag([amount]) OVER (PARTITION BY [region] ORDER BY [date])');
+  });
+
+  it('lead([amount]) OVER (...) produces correct DSL', () => {
+    const result = exprFromParts({
+      id: 'o2',
+      field: 'next',
+      expression: '',
+      type: 'window',
+      fn: 'lead',
+      fnArg: '[amount]',
+      partitionBy: ['region'],
+      orderBy: [{ field: 'date', direction: 'asc' }],
+    });
+    expect(result).toBe('lead([amount]) OVER (PARTITION BY [region] ORDER BY [date])');
+  });
 });

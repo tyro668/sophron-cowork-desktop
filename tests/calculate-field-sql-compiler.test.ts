@@ -811,3 +811,170 @@ describe('DuckDB integration — new type functions', () => {
     expect(Number(rows[1].r)).toBeCloseTo(123.45, 1);
   });
 });
+
+describe('DuckDB integration — cross-row window functions', () => {
+  async function runW(expression: string): Promise<Record<string, unknown>[]> {
+    const conn = await connect();
+    await conn.run('CREATE TABLE w (id INTEGER, amount DOUBLE, region VARCHAR, name VARCHAR)');
+    await conn.run(
+      "INSERT INTO w VALUES (1, 100, 'East', 'Alice'), (2, 200, 'West', 'Bob'), (3, 50, 'East', 'Charlie')"
+    );
+    await conn.run(
+      compileCalculateFieldSql('out', 'w', { calculations: [{ field: 'r', expression }] })
+    );
+    const reader = await conn.runAndReadAll('SELECT * FROM out ORDER BY id');
+    return reader.getRowObjectsJson() as Record<string, unknown>[];
+  }
+
+  // ── Partitioned aggregates ──
+  it('sum([amount]) OVER (PARTITION BY region)', async () => {
+    const rows = await runW('sum([amount]) OVER (PARTITION BY region)');
+    // East: 100+50=150, West: 200
+    expect(rows[0].r).toBe(150); // Alice (East)
+    expect(rows[1].r).toBe(200); // Bob (West)
+    expect(rows[2].r).toBe(150); // Charlie (East)
+  });
+
+  it('avg([amount]) OVER (PARTITION BY region)', async () => {
+    const rows = await runW('avg([amount]) OVER (PARTITION BY region)');
+    expect(rows[0].r).toBe(75); // (100+50)/2
+    expect(rows[1].r).toBe(200); // West single value
+    expect(rows[2].r).toBe(75); // (100+50)/2
+  });
+
+  it('min([amount]) OVER (PARTITION BY region)', async () => {
+    const rows = await runW('min([amount]) OVER (PARTITION BY region)');
+    expect(rows[0].r).toBe(50); // Alice (East min)
+    expect(rows[1].r).toBe(200); // Bob (West min)
+    expect(rows[2].r).toBe(50); // Charlie (East min)
+  });
+
+  it('max([amount]) OVER (PARTITION BY region)', async () => {
+    const rows = await runW('max([amount]) OVER (PARTITION BY region)');
+    expect(rows[0].r).toBe(100); // Alice (East max)
+    expect(rows[1].r).toBe(200); // Bob (West max)
+    expect(rows[2].r).toBe(100); // Charlie (East max)
+  });
+
+  it('count(*) OVER () returns total row count', async () => {
+    const rows = await runW('count(*) OVER ()');
+    expect(rows[0].r).toBe('3'); // DuckDB count returns string
+    expect(rows[1].r).toBe('3');
+    expect(rows[2].r).toBe('3');
+  });
+
+  // ── Ranking ──
+  it('rank() OVER (ORDER BY amount DESC)', async () => {
+    const rows = await runW('rank() OVER (ORDER BY amount DESC)');
+    // 200(Bob) rank1, 100(Alice) rank2, 50(Charlie) rank3
+    expect(rows[0].r).toBe('2'); // Alice rank 2
+    expect(rows[1].r).toBe('1'); // Bob rank 1
+    expect(rows[2].r).toBe('3'); // Charlie rank 3
+  });
+
+  it('row_number() OVER (ORDER BY id)', async () => {
+    const rows = await runW('row_number() OVER (ORDER BY id)');
+    expect(rows[0].r).toBe('1');
+    expect(rows[1].r).toBe('2');
+    expect(rows[2].r).toBe('3');
+  });
+
+  it('dense_rank() OVER (PARTITION BY region ORDER BY amount)', async () => {
+    const rows = await runW('dense_rank() OVER (PARTITION BY region ORDER BY amount)');
+    // East: 50(Charlie)=1, 100(Alice)=2; West: 200(Bob)=1
+    expect(rows[0].r).toBe('2'); // Alice (East, amount=100 rank2)
+    expect(rows[1].r).toBe('1'); // Bob (West, amount=200 rank1)
+    expect(rows[2].r).toBe('1'); // Charlie (East, amount=50 rank1)
+  });
+
+  it('ntile(2) OVER (ORDER BY id) divides into 2 buckets', async () => {
+    const rows = await runW('ntile(2) OVER (ORDER BY id)');
+    // 3 rows, 2 buckets: 1→bucket1, 2→bucket1, 3→bucket2
+    expect(rows[0].r).toBe('1');
+    expect(rows[1].r).toBe('1');
+    expect(rows[2].r).toBe('2');
+  });
+
+  // ── Offset ──
+  it('lag([amount]) OVER (ORDER BY id) returns previous row value', async () => {
+    const rows = await runW('lag([amount]) OVER (ORDER BY id)');
+    expect(rows[0].r).toBe(null); // Alice: no previous
+    expect(rows[1].r).toBe(100); // Bob: previous=100
+    expect(rows[2].r).toBe(200); // Charlie: previous=200
+  });
+
+  it('lead([amount]) OVER (ORDER BY id) returns next row value', async () => {
+    const rows = await runW('lead([amount]) OVER (ORDER BY id)');
+    expect(rows[0].r).toBe(200); // Alice: next=200
+    expect(rows[1].r).toBe(50); // Bob: next=50
+    expect(rows[2].r).toBe(null); // Charlie: no next
+  });
+
+  // ── Frame ──
+  it('sum([amount]) OVER (ORDER BY id ROWS UNBOUNDED PRECEDING) running total', async () => {
+    const rows = await runW(
+      'sum([amount]) OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)'
+    );
+    expect(rows[0].r).toBe(100); // 100
+    expect(rows[1].r).toBe(300); // 100+200
+    expect(rows[2].r).toBe(350); // 100+200+50
+  });
+
+  it('avg([amount]) OVER (ORDER BY id ROWS 1 PRECEDING) moving average 2 rows', async () => {
+    const rows = await runW(
+      'avg([amount]) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)'
+    );
+    expect(rows[0].r).toBe(100); // (100)/1
+    expect(rows[1].r).toBe(150); // (100+200)/2
+    expect(rows[2].r).toBe(125); // (200+50)/2
+  });
+
+  // ── Value ──
+  it('first_value([amount]) OVER (PARTITION BY region ORDER BY id)', async () => {
+    const rows = await runW('first_value([amount]) OVER (PARTITION BY region ORDER BY id)');
+    // East: first=100(Alice), West: first=200(Bob)
+    expect(rows[0].r).toBe(100); // Alice (East, first=100)
+    expect(rows[1].r).toBe(200); // Bob (West, first=200)
+    expect(rows[2].r).toBe(100); // Charlie (East, first=100)
+  });
+
+  it('last_value([amount]) OVER (PARTITION BY region ORDER BY id ROWS UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)', async () => {
+    const rows = await runW(
+      'last_value([amount]) OVER (PARTITION BY region ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)'
+    );
+    // East: last=50(Charlie), West: last=200(Bob)
+    expect(rows[0].r).toBe(50); // Alice (East, last=50)
+    expect(rows[1].r).toBe(200); // Bob (West, last=200)
+    expect(rows[2].r).toBe(50); // Charlie (East, last=50)
+  });
+
+  // ── Percentage ──
+  it('[amount] / sum([amount]) OVER () calculates percentage of total', async () => {
+    const rows = await runW('[amount] / sum([amount]) OVER ()');
+    // Total=350, Alice=100/350, Bob=200/350, Charlie=50/350
+    expect(Number(rows[0].r)).toBeCloseTo(100 / 350, 5);
+    expect(Number(rows[1].r)).toBeCloseTo(200 / 350, 5);
+    expect(Number(rows[2].r)).toBeCloseTo(50 / 350, 5);
+  });
+
+  // ── Multiple calculations ──
+  it('multiple calculations in one node', async () => {
+    const conn = await connect();
+    await conn.run('CREATE TABLE w (id INTEGER, amount DOUBLE, region VARCHAR)');
+    await conn.run("INSERT INTO w VALUES (1, 100, 'East'), (2, 200, 'West'), (3, 50, 'East')");
+    await conn.run(
+      compileCalculateFieldSql('out', 'w', {
+        calculations: [
+          { field: 'total', expression: 'sum([amount]) OVER ()' },
+          { field: 'rn', expression: 'row_number() OVER (ORDER BY id)' },
+        ],
+      })
+    );
+    const reader = await conn.runAndReadAll('SELECT total, rn FROM out ORDER BY id');
+    const rows = reader.getRowObjectsJson() as Record<string, unknown>[];
+    expect(rows[0].total).toBe(350);
+    expect(rows[0].rn).toBe('1');
+    expect(rows[1].total).toBe(350);
+    expect(rows[1].rn).toBe('2');
+  });
+});
