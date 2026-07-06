@@ -59,6 +59,64 @@ const FRAME_PRESETS = [
   { value: 'custom', label: '自定义', key: 'calcFieldFrameCustom' },
 ];
 
+const SCENARIO_OPTIONS = [
+  {
+    value: 'group',
+    key: 'calcFieldScenarioGroup',
+    label: '分组统计',
+    tip: '分区聚合、中位数、占比',
+  },
+  {
+    value: 'sorted',
+    key: 'calcFieldScenarioSorted',
+    label: '排序计算',
+    tip: '累计、移动平均、自定义滑动窗口、前后行值',
+  },
+  { value: 'rank', key: 'calcFieldScenarioRank', label: '排序编号', tip: '行号、排名、分桶' },
+  { value: 'period', key: 'calcFieldScenarioPeriod', label: '周期对比', tip: '同比/环比' },
+];
+
+const SCENARIO_FUNCTIONS: Record<string, string[]> = {
+  group: [
+    'sum',
+    'avg',
+    'min',
+    'max',
+    'count',
+    'count_distinct',
+    'median',
+    'stddev',
+    'var',
+    'mode',
+    'quantile_cont',
+    'first_value',
+    'last_value',
+    'nth_value',
+    'percentage',
+  ],
+  sorted: [
+    'sum',
+    'avg',
+    'min',
+    'max',
+    'count',
+    'count_distinct',
+    'median',
+    'stddev',
+    'var',
+    'mode',
+    'quantile_cont',
+    'product',
+    'first_value',
+    'last_value',
+    'nth_value',
+    'lag',
+    'lead',
+  ],
+  rank: ['row_number', 'rank', 'dense_rank', 'ntile', 'percent_rank', 'cume_dist'],
+  period: ['period_yoy_value', 'period_yoy_rate', 'period_mom_value', 'period_mom_rate'],
+};
+
 function parseFrameN(frameStart: string | undefined): number {
   if (!frameStart || frameStart === 'unbounded preceding') return -1;
   const m = frameStart.match(/^(\d+) preceding$/);
@@ -147,17 +205,24 @@ export default function FormCalculateField({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsNormalization]);
 
-  const [activeMode, setActiveMode] = useState<'row' | 'agg' | 'window'>('row');
+  const [activeMode, setActiveMode] = useState<'row' | 'cross'>('row');
+  const [activeScenario, setActiveScenario] = useState<string>('group');
 
   const visibleItems = useMemo(() => {
-    const filtered = localItems.filter((i) => i.type === activeMode);
-    return filtered.length > 0 ? filtered : [{ ...createCalculationRow(), type: activeMode }];
+    const filtered = localItems.filter((i) =>
+      activeMode === 'row' ? i.type === 'row' : i.type !== 'row'
+    );
+    if (filtered.length > 0) return filtered;
+    if (activeMode === 'row') return [createCalculationRow()];
+    return [{ ...createCalculationRow(), type: 'cross' as const }] as CalculationRow[];
   }, [localItems, activeMode]);
 
   function toBackingIndex(visibleIndex: number): number {
     let count = 0;
     for (let i = 0; i < localItems.length; i++) {
-      if (localItems[i].type === activeMode) {
+      const match =
+        activeMode === 'row' ? localItems[i].type === 'row' : localItems[i].type !== 'row';
+      if (match) {
         if (count === visibleIndex) return i;
         count++;
       }
@@ -190,14 +255,6 @@ export default function FormCalculateField({
   }
 
   function addAfter(visibleIndex: number) {
-    console.log(
-      '[+] addAfter: visibleIdx',
-      visibleIndex,
-      'localItems',
-      localItems.length,
-      'type',
-      activeMode
-    );
     const bi = toBackingIndex(visibleIndex);
     if (bi === -1) {
       handleChange([...localItems, { ...createCalculationRow(), type: activeMode }]);
@@ -234,7 +291,27 @@ export default function FormCalculateField({
     [tr]
   );
 
-  function rowColumns(mode: 'row' | 'agg' | 'window') {
+  function rowColumns(mode: 'row' | 'agg' | 'window' | 'cross') {
+    const scenarioDefaults: Record<string, string> = {
+      group: 'sum',
+      sorted: 'sum',
+      rank: 'row_number',
+      period: 'period_yoy_value',
+    };
+    const currentFnGroups =
+      mode === 'cross'
+        ? [
+            {
+              key: 'scenario',
+              items: SCENARIO_FUNCTIONS[activeScenario].map((f) => ({
+                value: f,
+                label: tr('calcFieldFn_' + f, f),
+              })),
+            },
+          ]
+        : fnGroups[mode === 'agg' ? 'agg' : 'window'];
+    const defaultFn =
+      mode === 'cross' ? scenarioDefaults[activeScenario] : mode === 'agg' ? 'sum' : 'row_number';
     const actionOptions = [
       { value: 'add', label: tr('calcFieldActionAdd', '新增字段') },
       { value: 'replace', label: tr('calcFieldActionReplace', '替换字段') },
@@ -307,8 +384,8 @@ export default function FormCalculateField({
       header: '',
       render: (item: CalculationRow, index: number) => (
         <GlassOperatorSelect
-          value={item.fn || (mode === 'agg' ? 'sum' : 'row_number')}
-          groups={fnGroups[mode === 'agg' ? 'agg' : 'window']}
+          value={item.fn || defaultFn}
+          groups={currentFnGroups}
           onChange={(v) => updateItem(index, { fn: v })}
           className="h-7 text-[12px] [&>span]:text-left w-full"
         />
@@ -597,6 +674,39 @@ export default function FormCalculateField({
       },
     };
 
+    if (mode === 'cross') {
+      if (activeScenario === 'sorted') {
+        return [
+          insertModeCol,
+          targetFieldCol,
+          fnCol,
+          fnArgCol,
+          orderByCol,
+          partitionByCol,
+          { flex: 'w-full h-0', header: '', render: () => null },
+          frameCol,
+        ] as GlassRowListColumn<CalculationRow>[];
+      }
+      if (activeScenario === 'group') {
+        return [
+          insertModeCol,
+          targetFieldCol,
+          fnCol,
+          fnArgCol,
+          partitionByCol,
+        ] as GlassRowListColumn<CalculationRow>[];
+      }
+      // rank, period: no frame, with orderBy
+      return [
+        insertModeCol,
+        targetFieldCol,
+        fnCol,
+        fnArgCol,
+        orderByCol,
+        partitionByCol,
+      ] as GlassRowListColumn<CalculationRow>[];
+    }
+
     return [
       insertModeCol,
       targetFieldCol,
@@ -626,7 +736,7 @@ export default function FormCalculateField({
             </span>
           </div>
         </div>
-        <div className="px-3 pb-3">
+        <div className="px-3 pb-3 flex flex-col gap-1.5">
           <GlassRadioSelect
             value={activeMode}
             options={[
@@ -636,19 +746,30 @@ export default function FormCalculateField({
                 tip: tr('calcFieldModeRowTip', '基于当前行的字段做运算，不依赖其他行'),
               },
               {
-                value: 'agg',
-                label: tr('calcFieldModeAgg', '跨行计算'),
-                tip: tr('calcFieldModeAggTip', '按分区汇总、排名、前后行对比'),
-              },
-              {
-                value: 'window',
-                label: tr('calcFieldModeWindow', '窗口计算'),
-                tip: tr('calcFieldModeWindowTip', '累计、移动平均等需指定行范围的计算'),
+                value: 'cross',
+                label: tr('calcFieldModeCross', '跨行计算'),
+                tip: tr('calcFieldModeCrossTip', '按分区汇总、排名、滑动窗口、周期对比等'),
               },
             ]}
-            onChange={(v) => setActiveMode(v as 'row' | 'agg' | 'window')}
-            label={tr('calcFieldMode', '模式')}
+            onChange={(v) => setActiveMode(v as 'row' | 'cross')}
+            label={tr('calcFieldModeHeader', '计算模式')}
           />
+          {activeMode === 'cross' && (
+            <GlassOperatorSelect
+              value={activeScenario}
+              groups={[
+                {
+                  key: 'scenario',
+                  items: SCENARIO_OPTIONS.map((s) => ({
+                    value: s.value,
+                    label: tr(s.key, s.label),
+                  })),
+                },
+              ]}
+              onChange={(v) => setActiveScenario(v)}
+              className="h-7 text-[12px] w-full"
+            />
+          )}
         </div>
       </div>
 
@@ -665,20 +786,20 @@ export default function FormCalculateField({
             <span className="text-[10px] text-text-muted">
               {activeMode === 'row'
                 ? tr('calcFieldConfigHintRow', '定义新字段及其计算表达式')
-                : activeMode === 'agg'
-                  ? tr('calcFieldConfigHintAgg', '选择聚合/排名函数、参数字段和分区字段')
-                  : tr('calcFieldConfigHintWindow', '选择窗口函数、参数字段、分区、排序和行范围')}
+                : tr(
+                    activeScenario + 'Hint',
+                    SCENARIO_OPTIONS.find((s) => s.value === activeScenario)?.tip || '跨行计算配置'
+                  )}
             </span>
           </div>
         </div>
         <div className="px-3 pb-3 overflow-y-auto flex-1 min-h-0">
           {(() => {
-            const cols = rowColumns(activeMode);
             if (activeMode === 'row') {
               return (
                 <GlassRowList
-                  items={visibleItems}
-                  columns={cols as GlassRowListColumn<CalculationRow>[]}
+                  items={visibleItems as CalculationRow[]}
+                  columns={rowColumns('row')}
                   onAdd={addAfter}
                   onRemove={removeItem}
                   addTitle={tr('calcFieldAddRule', '添加规则')}
@@ -686,16 +807,16 @@ export default function FormCalculateField({
                 />
               );
             }
-            const breakAtValue = activeMode === 'agg' ? 3 : 4;
             return (
               <GlassRowList
-                items={visibleItems}
-                columns={cols as GlassRowListColumn<CalculationRow>[]}
+                key={activeScenario}
+                items={visibleItems as CalculationRow[]}
+                columns={rowColumns('cross')}
                 onAdd={addAfter}
                 onRemove={removeItem}
                 addTitle={tr('calcFieldAddRule', '添加规则')}
                 removeTitle={tr('calcFieldRemove', '删除规则')}
-                breakAt={breakAtValue}
+                breakAt={activeScenario === 'group' ? 3 : 4}
                 inlineActions
                 hideHeader
               />

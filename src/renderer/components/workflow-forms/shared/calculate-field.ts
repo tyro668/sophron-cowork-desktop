@@ -2,7 +2,7 @@ export interface CalculationConfigEntry {
   id?: string;
   field: string;
   expression: string;
-  type?: 'row' | 'agg' | 'window';
+  type?: 'row' | 'agg' | 'window' | 'cross';
   action?: 'add' | 'replace';
   fn?: string;
   fnArg?: string;
@@ -16,7 +16,7 @@ export interface CalculationRow {
   id: string;
   field: string;
   expression: string;
-  type?: 'row' | 'agg' | 'window';
+  type?: 'row' | 'agg' | 'window' | 'cross';
   action?: 'add' | 'replace';
   fn?: string;
   fnArg?: string;
@@ -59,7 +59,10 @@ export function normalizeCalculationEntries(
       id,
       field: typeof entry.field === 'string' ? entry.field : '',
       expression: typeof entry.expression === 'string' ? entry.expression : '',
-      type: entry.type === 'agg' || entry.type === 'window' ? entry.type : 'row',
+      type:
+        entry.type === 'agg' || entry.type === 'window' || entry.type === 'cross'
+          ? entry.type
+          : 'row',
       action: entry.action === 'replace' ? 'replace' : 'add',
       fn: typeof entry.fn === 'string' ? entry.fn : undefined,
       fnArg: typeof entry.fnArg === 'string' ? entry.fnArg : undefined,

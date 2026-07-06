@@ -14,6 +14,7 @@ function flattenItems(groups: GlassOperatorGroup[]): GlassOperatorOption[] {
 
 interface GlassOperatorGroup {
   key: string;
+  header?: string;
   items: GlassOperatorOption[];
 }
 
@@ -209,7 +210,14 @@ export function GlassOperatorSelect({
           >
             {groups.map((g, gi) => (
               <div key={g.key}>
-                {gi > 0 && <div className="mx-3 my-0.5 border-t border-border-muted" />}
+                {gi > 0 && !g.header && (
+                  <div className="mx-3 my-0.5 border-t border-border-muted" />
+                )}
+                {g.header && (
+                  <div className="px-3 py-1 text-[10px] font-medium text-text-muted uppercase">
+                    {g.header}
+                  </div>
+                )}
                 {g.items.map((o, oi) => {
                   const globalIdx =
                     groups.slice(0, gi).reduce((sum, g) => sum + g.items.length, 0) + oi;
