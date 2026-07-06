@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, Trash2, X } from 'lucide-react';
 import type { OperatorFormProps } from './index';
@@ -56,7 +56,21 @@ const FRAME_PRESETS = [
     key: 'calcFieldFrameRemaining',
   },
   { value: 'unbounded preceding|unbounded following', label: '整个分区', key: 'calcFieldFrameAll' },
+  { value: 'custom', label: '自定义', key: 'calcFieldFrameCustom' },
 ];
+
+function parseFrameN(frameStart: string | undefined): number {
+  if (!frameStart || frameStart === 'unbounded preceding') return -1;
+  const m = frameStart.match(/^(\d+) preceding$/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+function parseFrameM(frameEnd: string | undefined): number {
+  if (!frameEnd || frameEnd === 'unbounded following') return -1;
+  if (frameEnd === 'current row') return 0;
+  const m = frameEnd.match(/^(\d+) following$/);
+  return m ? parseInt(m[1], 10) : 0;
+}
 
 export default function FormCalculateField({
   node,
@@ -115,16 +129,6 @@ export default function FormCalculateField({
     () => needsCalculationIdNormalization(rawCalculations),
     [rawCalculations]
   );
-
-  // Sync from config when it changes externally (skip initial)
-  const initialRef = useRef(true);
-  useEffect(() => {
-    if (initialRef.current) {
-      initialRef.current = false;
-      return;
-    }
-    setLocalItems(normalizeCalculationEntries(rawCalculations));
-  }, [rawCalculations]);
 
   const storeCalculations = useCallback(
     (next: CalculationRow[]) => {
@@ -325,7 +329,7 @@ export default function FormCalculateField({
       ),
     };
     const partitionByCol: GlassRowListColumn<CalculationRow> = {
-      flex: mode === 'agg' ? 'flex-[2.5]' : 'flex-[2]',
+      flex: mode === 'agg' ? 'flex-[2.5]' : 'flex-[1]',
       header: '',
       render: (item: CalculationRow, index: number) => {
         const open = partitionOpen[index];
@@ -417,7 +421,7 @@ export default function FormCalculateField({
 
     // window mode
     const orderByCol: GlassRowListColumn<CalculationRow> = {
-      flex: 'flex-[2]',
+      flex: 'flex-[1]',
       header: '',
       render: (item: CalculationRow, index: number) => {
         const open = orderOpen[index];
@@ -532,20 +536,63 @@ export default function FormCalculateField({
       header: '',
       render: (item: CalculationRow, index: number) => {
         const currentKey = `${item.frameStart ?? 'unbounded preceding'}|${item.frameEnd ?? 'unbounded following'}`;
+        const isCustom = !FRAME_PRESETS.filter((p) => p.value !== 'custom').some(
+          (p) => p.value === currentKey
+        );
         const presets = FRAME_PRESETS.map((p) => ({
           value: p.value,
           label: tr(p.key, p.label),
         }));
+        const n = isCustom ? parseFrameN(item.frameStart) : 0;
+        const m = isCustom ? parseFrameM(item.frameEnd) : 0;
+
         return (
-          <GlassOperatorSelect
-            value={currentKey}
-            groups={[{ key: 'frame', items: presets }]}
-            onChange={(v) => {
-              const [frameStart, frameEnd] = v.split('|');
-              updateItem(index, { frameStart, frameEnd });
-            }}
-            className="h-7 text-[12px] [&>span]:text-left w-full"
-          />
+          <div className="flex flex-row items-center gap-1 w-full">
+            <GlassOperatorSelect
+              value={isCustom ? 'custom' : currentKey}
+              groups={[{ key: 'frame', items: presets }]}
+              onChange={(v) => {
+                if (v === 'custom') {
+                  updateItem(index, { frameStart: '1 preceding', frameEnd: 'current row' });
+                  return;
+                }
+                const [frameStart, frameEnd] = v.split('|');
+                updateItem(index, { frameStart, frameEnd });
+              }}
+              className={`h-7 text-[12px] [&>span]:text-left ${isCustom ? 'flex-1 min-w-0' : 'w-full'}`}
+            />
+            {isCustom && (
+              <div className="flex-1 min-w-0 flex items-center gap-1 text-[12px] text-text-muted">
+                <span className="shrink-0">前</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={n < 0 ? '' : n}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (isNaN(val) || val < 0) return;
+                    updateItem(index, { frameStart: val > 0 ? `${val} preceding` : 'current row' });
+                  }}
+                  placeholder="∞"
+                  className="h-6 w-12 rounded border border-border-muted bg-background/42 px-1 text-center text-[12px] text-text-primary outline-none"
+                />
+                <span className="shrink-0">行 → 后</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={m < 0 ? '' : m}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (isNaN(val) || val < 0) return;
+                    updateItem(index, { frameEnd: val > 0 ? `${val} following` : 'current row' });
+                  }}
+                  placeholder="∞"
+                  className="h-6 w-12 rounded border border-border-muted bg-background/42 px-1 text-center text-[12px] text-text-primary outline-none"
+                />
+                <span className="shrink-0">行</span>
+              </div>
+            )}
+          </div>
         );
       },
     };
@@ -555,8 +602,9 @@ export default function FormCalculateField({
       targetFieldCol,
       fnCol,
       fnArgCol,
-      partitionByCol,
       orderByCol,
+      partitionByCol,
+      { flex: 'w-full h-0', header: '', render: () => null },
       frameCol,
     ] as GlassRowListColumn<CalculationRow>[];
   }
@@ -625,14 +673,6 @@ export default function FormCalculateField({
         </div>
         <div className="px-3 pb-3 overflow-y-auto flex-1 min-h-0">
           {(() => {
-            console.log(
-              '[render] visibleItems:',
-              visibleItems.length,
-              'localItems:',
-              localItems.length,
-              'mode:',
-              activeMode
-            );
             const cols = rowColumns(activeMode);
             if (activeMode === 'row') {
               return (
