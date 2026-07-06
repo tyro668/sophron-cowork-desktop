@@ -723,6 +723,7 @@
         "calcFieldModeWindowTip": "Cumulative, moving average with frame specification",
         "calcFieldConfigHeader": "Calculation config",
         "calcFieldConfigHintRow": "Define new fields and their expressions",
+        "calcFieldConfigHintCross": "Select mode and configure",
         "calcFieldConfigHintAgg": "Select aggregation/ranking function, parameter field, and partition",
         "calcFieldConfigHintWindow": "Select window function, parameter, partition, order and frame range",
         "calcFieldFunction": "Function",

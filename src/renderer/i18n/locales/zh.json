@@ -723,6 +723,7 @@
         "calcFieldModeWindowTip": "累计、移动平均等需指定行范围的计算",
         "calcFieldConfigHeader": "计算配置",
         "calcFieldConfigHintRow": "定义新字段及其计算表达式",
+        "calcFieldConfigHintCross": "选择模式并进行配置",
         "calcFieldConfigHintAgg": "选择聚合/排名函数、参数字段和分区字段",
         "calcFieldConfigHintWindow": "选择窗口函数、参数字段、分区、排序和行范围",
         "calcFieldFunction": "函数",

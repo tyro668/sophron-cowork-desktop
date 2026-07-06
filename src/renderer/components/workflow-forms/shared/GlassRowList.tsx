@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, RotateCcw, Trash2, GripVertical } from 'lucide-react';
+import { Plus, Trash2, GripVertical } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 export interface GlassRowListColumn<T> {
@@ -25,8 +25,6 @@ interface GlassRowListProps<T> {
   inlineActions?: boolean;
   hideHeader?: boolean;
   hideActions?: boolean;
-  onReset?: (index: number) => void;
-  resetTitle?: string;
 }
 
 export function GlassRowList<T>({
@@ -46,8 +44,6 @@ export function GlassRowList<T>({
   inlineActions,
   hideHeader,
   hideActions,
-  onReset,
-  resetTitle,
 }: GlassRowListProps<T>) {
   const displayBreak = breakAt !== undefined;
 
@@ -143,19 +139,6 @@ export function GlassRowList<T>({
                       </button>
                     </div>
                   )}
-                  {inlineActions && onReset && (
-                    <div className="ml-auto flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => onReset(index)}
-                        className="inline-flex h-6 w-6 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:text-accent"
-                        title={resetTitle || removeTitle}
-                        aria-label={resetTitle || removeTitle}
-                      >
-                        <RotateCcw className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  )}
                   <div className="w-full h-0" />
                 </React.Fragment>
               );
@@ -185,17 +168,6 @@ export function GlassRowList<T>({
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
             </>
-          )}
-          {onReset && (
-            <button
-              type="button"
-              onClick={() => onReset(index)}
-              className="inline-flex h-6 w-6 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:text-accent"
-              title={resetTitle || removeTitle}
-              aria-label={resetTitle || removeTitle}
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-            </button>
           )}
         </div>
       ))}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, Trash2, X } from 'lucide-react';
+import { ChevronDown, RotateCcw, Trash2, X } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
@@ -348,8 +348,8 @@ export default function FormCalculateField({
 
     if (mode === 'row') {
       return [
-        { ...insertModeCol, header: tr('calcFieldActionHeader', '插入模式') },
-        { ...targetFieldCol, header: tr('calcFieldTargetField', '目标字段') },
+        { ...insertModeCol, flex: 'flex-[1]', header: tr('calcFieldActionHeader', '插入模式') },
+        { ...targetFieldCol, flex: 'flex-[2]', header: tr('calcFieldTargetField', '目标字段') },
         {
           flex: 'flex-[4]',
           header: tr('calcFieldExpressionLabel', '表达式'),
@@ -716,7 +716,7 @@ export default function FormCalculateField({
   return (
     <div className="flex gap-2.5 h-full min-h-0">
       {/* Left panel — mode selection */}
-      <div className="flex-[2] rounded-lg border border-border-muted bg-background/42 content-start">
+      <div className="flex-[1] rounded-lg border border-border-muted bg-background/42 content-start">
         <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5">
           <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
             1
@@ -752,20 +752,35 @@ export default function FormCalculateField({
       </div>
 
       {/* Right panel — expression list */}
-      <div className="flex-[6] rounded-lg border border-border-muted bg-background/42 content-start overflow-hidden flex flex-col">
+      <div className="flex-[4] rounded-lg border border-border-muted bg-background/42 content-start overflow-hidden flex flex-col">
         <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5 shrink-0">
           <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
             2
           </span>
-          <div className="grid">
-            <span className="text-[13px] font-semibold text-text-primary">
-              {tr('calcFieldConfigHeader', '计算配置')}
-            </span>
-            {activeMode === 'row' && (
-              <span className="text-[10px] text-text-muted">
-                {tr('calcFieldConfigHintRow', '定义新字段及其计算表达式')}
+          <div className="flex items-start gap-2 min-w-0 flex-1">
+            <div className="grid min-w-0 flex-1">
+              <span className="text-[13px] font-semibold text-text-primary">
+                {tr('calcFieldConfigHeader', '计算配置')}
               </span>
-            )}
+              {activeMode === 'row' && (
+                <span className="text-[10px] text-text-muted">
+                  {tr('calcFieldConfigHintRow', '定义新字段及其计算表达式')}
+                </span>
+              )}
+              {activeMode === 'cross' && (
+                <span className="text-[10px] text-text-muted">
+                  {tr('calcFieldConfigHintCross', '选择模式并进行配置')}
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => resetItem(0)}
+              className="mt-0.5 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-text-muted transition-colors hover:text-accent"
+              title={tr('calcFieldReset', '重置配置')}
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
           </div>
         </div>
         {activeMode === 'cross' && (
@@ -809,8 +824,6 @@ export default function FormCalculateField({
                   addTitle=""
                   removeTitle=""
                   hideActions
-                  onReset={resetItem}
-                  resetTitle={tr('calcFieldReset', '重置配置')}
                 />
               );
             }
@@ -824,8 +837,6 @@ export default function FormCalculateField({
                 addTitle=""
                 removeTitle=""
                 hideActions
-                onReset={resetItem}
-                resetTitle={tr('calcFieldReset', '重置配置')}
                 breakAt={activeScenario === 'group' ? 3 : 4}
                 inlineActions
                 hideHeader
