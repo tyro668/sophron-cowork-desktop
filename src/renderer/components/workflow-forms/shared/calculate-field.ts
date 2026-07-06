@@ -79,22 +79,47 @@ export function exprFromParts(item: CalculationRow): string {
   const fn = item.fn || 'sum';
   const arg = item.fnArg || '*';
   const wrappedArg = arg === '*' || arg.startsWith('[') ? arg : `[${arg}]`;
-  const fnCall = fn === 'count_distinct' ? `count(DISTINCT ${wrappedArg})` : `${fn}(${wrappedArg})`;
-  const parts: string[] = [fnCall];
   const partition = item.partitionBy?.filter(Boolean);
   const order = item.orderBy?.filter((o) => o.field);
-  const over: string[] = [];
-  if (partition?.length) over.push(`PARTITION BY [${partition.join('], [')}]`);
-  if (order?.length)
-    over.push(
-      `ORDER BY ${order.map((o) => `[${o.field}]${o.direction === 'desc' ? ' desc' : ''}`).join(', ')}`
-    );
-  parts.push(`OVER (${over.join(' ')})`);
+
+  function overStr(useOrder: boolean): string {
+    const parts: string[] = [];
+    if (partition?.length) parts.push(`PARTITION BY [${partition.join('], [')}]`);
+    if (useOrder && order?.length)
+      parts.push(
+        `ORDER BY ${order.map((o) => `[${o.field}]${o.direction === 'desc' ? ' desc' : ''}`).join(', ')}`
+      );
+    return parts.length ? ` OVER (${parts.join(' ')})` : '';
+  }
+
+  // percentage: [arg] / sum([arg]) OVER (PARTITION BY ...)  — no ORDER BY
+  if (fn === 'percentage') {
+    return `${wrappedArg} / sum(${wrappedArg})${overStr(false)}`;
+  }
+
+  // Period comparison types
+  if (
+    fn === 'period_mom_value' ||
+    fn === 'period_mom_rate' ||
+    fn === 'period_yoy_value' ||
+    fn === 'period_yoy_rate'
+  ) {
+    const offset = fn === 'period_mom_value' || fn === 'period_mom_rate' ? 1 : 12;
+    const isRate = fn.endsWith('_rate');
+    const lag = `lag(${wrappedArg}, ${offset})${overStr(true)}`;
+    if (isRate) return `(${wrappedArg} - ${lag}) / ${lag}`;
+    return `${wrappedArg} - ${lag}`;
+  }
+
+  // Generic: fn([arg]) OVER (PARTITION BY ... ORDER BY ...)
+  const fnCall = fn === 'count_distinct' ? `count(DISTINCT ${wrappedArg})` : `${fn}(${wrappedArg})`;
+  const over = overStr(true);
+  let result = fnCall + over;
   if (item.type === 'window' && item.frameStart && order?.length) {
     const end = item.frameEnd || 'current row';
-    parts.push(`ROWS BETWEEN ${item.frameStart} AND ${end}`);
+    result += ` ROWS BETWEEN ${item.frameStart} AND ${end}`;
   }
-  return parts.join(' ');
+  return result;
 }
 
 export function needsCalculationIdNormalization(

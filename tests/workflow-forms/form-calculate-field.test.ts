@@ -274,4 +274,87 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
     expect(calc.expression).toContain('over(partition by [region]');
     expect(calc.expression).toContain('order by [amount] desc');
   });
+
+  it('percentage produces [arg] / sum([arg]) OVER (...) — no ORDER BY', () => {
+    const result = exprFromParts({
+      id: 'p1',
+      field: 'pct',
+      expression: '',
+      type: 'agg',
+      fn: 'percentage',
+      fnArg: '[amount]',
+      partitionBy: ['region'],
+    });
+    expect(result).toBe('[amount] / sum([amount]) OVER (PARTITION BY [region])');
+  });
+
+  it('percentage without partition uses empty OVER clause', () => {
+    const result = exprFromParts({
+      id: 'p2',
+      field: 'pct',
+      expression: '',
+      type: 'agg',
+      fn: 'percentage',
+      fnArg: '[amount]',
+    });
+    expect(result).toBe('[amount] / sum([amount])');
+  });
+
+  it('period_mom_value produces value - lag(value, 1)', () => {
+    const result = exprFromParts({
+      id: 'pm1',
+      field: 'mom',
+      expression: '',
+      type: 'agg',
+      fn: 'period_mom_value',
+      fnArg: '[amount]',
+      partitionBy: ['dept'],
+      orderBy: [{ field: 'month', direction: 'asc' }],
+    });
+    expect(result).toBe('[amount] - lag([amount], 1) OVER (PARTITION BY [dept] ORDER BY [month])');
+  });
+
+  it('period_mom_rate produces (value - lag(value, 1)) / lag(value, 1)', () => {
+    const result = exprFromParts({
+      id: 'pm2',
+      field: 'mom_rate',
+      expression: '',
+      type: 'agg',
+      fn: 'period_mom_rate',
+      fnArg: '[amount]',
+      partitionBy: ['dept'],
+      orderBy: [{ field: 'month', direction: 'asc' }],
+    });
+    expect(result).toBe(
+      '([amount] - lag([amount], 1) OVER (PARTITION BY [dept] ORDER BY [month])) / lag([amount], 1) OVER (PARTITION BY [dept] ORDER BY [month])'
+    );
+  });
+
+  it('period_yoy_value produces value - lag(value, 12)', () => {
+    const result = exprFromParts({
+      id: 'py1',
+      field: 'yoy',
+      expression: '',
+      type: 'agg',
+      fn: 'period_yoy_value',
+      fnArg: '[sales]',
+      orderBy: [{ field: 'ym', direction: 'asc' }],
+    });
+    expect(result).toBe('[sales] - lag([sales], 12) OVER (ORDER BY [ym])');
+  });
+
+  it('period_yoy_rate produces (value - lag(value, 12)) / lag(value, 12)', () => {
+    const result = exprFromParts({
+      id: 'py2',
+      field: 'yoy_rate',
+      expression: '',
+      type: 'agg',
+      fn: 'period_yoy_rate',
+      fnArg: '[sales]',
+      orderBy: [{ field: 'ym', direction: 'asc' }],
+    });
+    expect(result).toBe(
+      '([sales] - lag([sales], 12) OVER (ORDER BY [ym])) / lag([sales], 12) OVER (ORDER BY [ym])'
+    );
+  });
 });
