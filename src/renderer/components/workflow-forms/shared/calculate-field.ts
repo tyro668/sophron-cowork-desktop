@@ -112,7 +112,18 @@ export function exprFromParts(item: CalculationRow): string {
   }
 
   // Generic: fn([arg]) OVER (PARTITION BY ... ORDER BY ...)
-  const fnCall = fn === 'count_distinct' ? `count(DISTINCT ${wrappedArg})` : `${fn}(${wrappedArg})`;
+  const noArgFns = new Set(['row_number', 'rank', 'dense_rank', 'percent_rank', 'cume_dist']);
+  let fnCall: string;
+  if (noArgFns.has(fn)) {
+    fnCall = `${fn}()`;
+  } else if (fn === 'ntile') {
+    const numArg = arg === '*' ? '4' : arg.replace(/\[|\]/g, '');
+    fnCall = `ntile(${numArg})`;
+  } else if (fn === 'count_distinct') {
+    fnCall = `count(DISTINCT ${wrappedArg})`;
+  } else {
+    fnCall = `${fn}(${wrappedArg})`;
+  }
   const over = overStr(true);
   let result = fnCall + over;
   if (item.type === 'window' && item.frameStart && order?.length) {
