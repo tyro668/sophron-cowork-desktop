@@ -212,7 +212,7 @@ export default function FormCalculateField({
     const filtered = localItems.filter((i) =>
       activeMode === 'row' ? i.type === 'row' : i.type !== 'row'
     );
-    if (filtered.length > 0) return filtered;
+    if (filtered.length > 0) return [filtered[0]];
     if (activeMode === 'row') return [createCalculationRow()];
     return [{ ...createCalculationRow(), type: 'cross' as const }] as CalculationRow[];
   }, [localItems, activeMode]);
@@ -233,7 +233,7 @@ export default function FormCalculateField({
   function handleChange(next: CalculationRow[]) {
     const normalized = normalizeCalculationEntries(next);
     setLocalItems(normalized);
-    storeCalculations(normalized);
+    storeCalculations(normalized.slice(0, 1));
   }
 
   function updateItem(visibleIndex: number, patch: Partial<CalculationRow>) {
@@ -254,20 +254,14 @@ export default function FormCalculateField({
     );
   }
 
-  function addAfter(visibleIndex: number) {
-    const bi = toBackingIndex(visibleIndex);
-    if (bi === -1) {
-      handleChange([...localItems, { ...createCalculationRow(), type: activeMode }]);
-      return;
-    }
-    const entry = { ...createCalculationRow(), type: activeMode };
-    handleChange([...localItems.slice(0, bi + 1), entry, ...localItems.slice(bi + 1)]);
-  }
-
-  function removeItem(visibleIndex: number) {
+  function resetItem(visibleIndex: number) {
     const bi = toBackingIndex(visibleIndex);
     if (bi === -1) return;
-    handleChange(localItems.filter((_, i) => i !== bi));
+    handleChange(
+      localItems.map((it, i) =>
+        i !== bi ? it : { ...createCalculationRow(), type: it.type, action: it.action }
+      )
+    );
   }
 
   const [partitionOpen, setPartitionOpen] = useState<Record<number, boolean>>({});
@@ -810,10 +804,13 @@ export default function FormCalculateField({
                 <GlassRowList
                   items={visibleItems as CalculationRow[]}
                   columns={rowColumns('row')}
-                  onAdd={addAfter}
-                  onRemove={removeItem}
-                  addTitle={tr('calcFieldAddRule', '添加规则')}
-                  removeTitle={tr('calcFieldRemove', '删除规则')}
+                  onAdd={() => {}}
+                  onRemove={() => {}}
+                  addTitle=""
+                  removeTitle=""
+                  hideActions
+                  onReset={resetItem}
+                  resetTitle={tr('calcFieldReset', '重置配置')}
                 />
               );
             }
@@ -822,10 +819,13 @@ export default function FormCalculateField({
                 key={activeScenario}
                 items={visibleItems as CalculationRow[]}
                 columns={rowColumns('cross')}
-                onAdd={addAfter}
-                onRemove={removeItem}
-                addTitle={tr('calcFieldAddRule', '添加规则')}
-                removeTitle={tr('calcFieldRemove', '删除规则')}
+                onAdd={() => {}}
+                onRemove={() => {}}
+                addTitle=""
+                removeTitle=""
+                hideActions
+                onReset={resetItem}
+                resetTitle={tr('calcFieldReset', '重置配置')}
                 breakAt={activeScenario === 'group' ? 3 : 4}
                 inlineActions
                 hideHeader
