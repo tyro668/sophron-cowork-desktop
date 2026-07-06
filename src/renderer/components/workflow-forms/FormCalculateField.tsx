@@ -18,7 +18,17 @@ import {
   type CalculationRow,
 } from './shared/calculate-field';
 
-const AGG_FUNCTIONS = ['sum', 'avg', 'min', 'max', 'count', 'count_distinct'];
+const AGG_FUNCTIONS = [
+  'sum',
+  'avg',
+  'min',
+  'max',
+  'count',
+  'count_distinct',
+  'median',
+  'stddev',
+  'var',
+];
 const WINDOW_FUNCTIONS = [
   'row_number',
   'rank',
@@ -28,6 +38,9 @@ const WINDOW_FUNCTIONS = [
   'lead',
   'first_value',
   'last_value',
+  'percent_rank',
+  'cume_dist',
+  'nth_value',
 ];
 const EXCLUDE_ROW_FUNCTIONS = ['calcFieldCategoryWindow', 'calcFieldCategoryAggregate'];
 
