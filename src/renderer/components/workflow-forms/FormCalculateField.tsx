@@ -346,7 +346,7 @@ export default function FormCalculateField({
           <GlassFormTextInput
             value={item.field}
             onChange={(v) => updateItem(index, { field: v })}
-            placeholder={tr('calcFieldTargetPlaceholder', '如 margin')}
+            placeholder={tr('calcFieldTargetPlaceholder', '请输入字段名')}
             className="!h-7 w-full rounded-md px-1.5 text-[12px] shadow-none focus:ring-0"
           />
         ),
@@ -370,7 +370,7 @@ export default function FormCalculateField({
               }
               fieldCompletions={fieldCompletions}
               columnTypes={columnTypes}
-              placeholder={tr('calcFieldExpressionPlaceholder', '如 [revenue] - [cost]')}
+              placeholder={tr('calcFieldExpressionPlaceholder', '请输入表达式')}
               excludeFunctionCategories={EXCLUDE_ROW_FUNCTIONS}
             />
           ),
@@ -400,7 +400,7 @@ export default function FormCalculateField({
           options={fieldCompletions}
           columnTypes={columnTypes}
           onChange={(v) => updateItem(index, { fnArg: v })}
-          placeholder={tr('calcFieldFnArgPlaceholder', '[amount]')}
+          placeholder={tr('calcFieldFnArgPlaceholder', '选择字段')}
           className="h-7 w-full text-[12px]"
         />
       ),
@@ -754,22 +754,6 @@ export default function FormCalculateField({
             onChange={(v) => setActiveMode(v as 'row' | 'cross')}
             label={tr('calcFieldModeHeader', '计算模式')}
           />
-          {activeMode === 'cross' && (
-            <GlassOperatorSelect
-              value={activeScenario}
-              groups={[
-                {
-                  key: 'scenario',
-                  items: SCENARIO_OPTIONS.map((s) => ({
-                    value: s.value,
-                    label: tr(s.key, s.label),
-                  })),
-                },
-              ]}
-              onChange={(v) => setActiveScenario(v)}
-              className="h-7 text-[12px] w-full"
-            />
-          )}
         </div>
       </div>
 
@@ -783,16 +767,42 @@ export default function FormCalculateField({
             <span className="text-[13px] font-semibold text-text-primary">
               {tr('calcFieldConfigHeader', '计算配置')}
             </span>
-            <span className="text-[10px] text-text-muted">
-              {activeMode === 'row'
-                ? tr('calcFieldConfigHintRow', '定义新字段及其计算表达式')
-                : tr(
-                    activeScenario + 'Hint',
-                    SCENARIO_OPTIONS.find((s) => s.value === activeScenario)?.tip || '跨行计算配置'
-                  )}
-            </span>
+            {activeMode === 'row' && (
+              <span className="text-[10px] text-text-muted">
+                {tr('calcFieldConfigHintRow', '定义新字段及其计算表达式')}
+              </span>
+            )}
           </div>
         </div>
+        {activeMode === 'cross' && (
+          <div className="px-3 pb-2 flex flex-row flex-wrap items-center gap-2">
+            <span className="text-[11px] font-medium text-text-muted whitespace-nowrap">
+              {tr('calcFieldScenarioLabel', '请选择计算类别')}
+            </span>
+            <div className="w-1/4 min-w-[120px]">
+              <GlassOperatorSelect
+                value={activeScenario}
+                groups={[
+                  {
+                    key: 'scenario',
+                    items: SCENARIO_OPTIONS.map((s) => ({
+                      value: s.value,
+                      label: tr(s.key, s.label),
+                    })),
+                  },
+                ]}
+                onChange={(v) => setActiveScenario(v)}
+                className="h-7 text-[12px] w-full"
+              />
+            </div>
+            <span className="text-[10px] text-text-muted">
+              {tr(
+                activeScenario + 'Hint',
+                SCENARIO_OPTIONS.find((s) => s.value === activeScenario)?.tip || ''
+              )}
+            </span>
+          </div>
+        )}
         <div className="px-3 pb-3 overflow-y-auto flex-1 min-h-0">
           {(() => {
             if (activeMode === 'row') {
