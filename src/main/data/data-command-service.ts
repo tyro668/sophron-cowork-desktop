@@ -1286,6 +1286,7 @@ function buildWorkflowDslGenerationSystemPrompt(): string {
     'Return only strict JSON. Do not return markdown, comments, explanations, or code fences.',
     'Use only the provided input columns. Do not invent field names.',
     'Do not write Sophron Prep DSL or SQL. Return operations only; the application compiles operations to DSL.',
+    'Operation column references must use the current field name at that point in the operation list. Before a rename, use the original input column name exactly; after a rename, later operations may use the renamed field.',
     'For string values, preserve the semantic value only. For example Chinese text like "过滤掉Market为EU的数据" means value "EU", not "EU的数据".',
     'For money, prices, rates, percentages, and other fixed-decimal business values, use targetType "decimal" and a scale such as 2. Avoid float unless approximate binary floating point is explicitly requested.',
     'If the requirement is ambiguous, generate the safest valid operations and include only input columns actually used by the operations in requiredColumns.',
@@ -1482,11 +1483,21 @@ type GeneratedWorkflowRequiredColumnResolver = (
   context?: string
 ) => { name: string; type?: string };
 
+interface GeneratedWorkflowColumnBinding {
+  name: string;
+  type?: string;
+  sourceColumn?: { name: string; type?: string };
+}
+
 interface GeneratedWorkflowOperationCompileContext {
   columns: Array<{ name: string; type?: string }>;
   lines: string[];
   requirement: string;
   requireColumn: GeneratedWorkflowRequiredColumnResolver;
+  renameColumn: (sourceName: string, targetName: string) => void;
+  upsertColumn: (name: string, sourceColumn?: { name: string; type?: string }) => void;
+  removeColumn: (name: string) => void;
+  keepColumns: (names: string[]) => void;
 }
 
 interface GeneratedWorkflowOperationDefinition {
@@ -1502,7 +1513,8 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
     filter: {
       promptSpec: {
         type: 'filter',
-        column: 'existing input column',
+        column:
+          'current field name; use original input column unless an earlier rename created a new field name',
         operator: '= | <> | > | >= | < | <= | contains | not_contains | is_null | is_not_null',
         value: 'literal value; omit for null checks',
       },
@@ -1522,7 +1534,8 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
     sort: {
       promptSpec: {
         type: 'sort',
-        column: 'existing input column',
+        column:
+          'current field name; use original input column unless an earlier rename created a new field name',
         direction: 'asc | desc',
       },
       compile(operation, context) {
@@ -1538,7 +1551,8 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
     convert_type: {
       promptSpec: {
         type: 'convert_type',
-        column: 'existing input column to overwrite',
+        column:
+          'current field name to overwrite; use original input column unless an earlier rename created a new field name',
         targetType: 'text | integer | float | decimal | date | datetime | boolean',
         removePrefix: 'optional string prefix to remove before casting',
         removeChars: 'optional array of literal strings to remove before casting',
@@ -1580,6 +1594,7 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
         );
         if (selected.length > 0) {
           context.lines.push(`  | select ${selected.map(formatDslField).join(', ')}`);
+          context.keepColumns(selected);
         }
       },
     },
@@ -1591,6 +1606,7 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
         );
         if (dropped.length > 0) {
           context.lines.push(`  | drop ${dropped.map(formatDslField).join(', ')}`);
+          dropped.forEach((name) => context.removeColumn(name));
         }
       },
     },
@@ -1610,6 +1626,7 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
           'Generated rename operation requires target'
         );
         context.lines.push(`  | map ${formatDslField(source.name)} to ${formatDslField(target)}`);
+        context.renameColumn(source.name, target);
       },
     },
     derive: {
@@ -1628,6 +1645,7 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
           'Generated derive operation requires expression'
         );
         context.lines.push(`  | derive ${formatDslField(column)} = ${expression}`);
+        context.upsertColumn(column);
       },
     },
     aggregate: {
@@ -1682,7 +1700,12 @@ function compileGeneratedWorkflowPlan({
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
 }): { workflowDsl: string; requiredColumns: Array<{ name: string; type?: string }> } {
-  const columnsByName = new Map(columns.map((column) => [column.name.toLowerCase(), column]));
+  const columnsByName = new Map<string, GeneratedWorkflowColumnBinding>(
+    columns.map((column) => [
+      column.name.toLowerCase(),
+      { name: column.name, type: column.type, sourceColumn: column },
+    ])
+  );
   const requiredColumnsByName = new Map<string, { name: string; type?: string }>();
   const requireColumn = (name: unknown, context = 'operation'): { name: string; type?: string } => {
     const normalized = typeof name === 'string' ? name.trim() : '';
@@ -1699,8 +1722,41 @@ function compileGeneratedWorkflowPlan({
         `Generated workflow plan ${context} references unknown input column: ${String(name)}`
       );
     }
-    requiredColumnsByName.set(column.name.toLowerCase(), column);
-    return column;
+    if (column.sourceColumn) {
+      requiredColumnsByName.set(column.sourceColumn.name.toLowerCase(), column.sourceColumn);
+    }
+    return { name: column.name, type: column.type };
+  };
+  const renameColumn = (sourceName: string, targetName: string) => {
+    const source = columnsByName.get(sourceName.toLowerCase());
+    if (!source) return;
+    columnsByName.delete(sourceName.toLowerCase());
+    columnsByName.set(targetName.toLowerCase(), {
+      name: targetName,
+      type: source.type,
+      sourceColumn: source.sourceColumn,
+    });
+  };
+  const upsertColumn = (name: string, sourceColumn?: { name: string; type?: string }) => {
+    columnsByName.set(name.toLowerCase(), {
+      name,
+      type: sourceColumn?.type,
+      sourceColumn,
+    });
+  };
+  const removeColumn = (name: string) => {
+    columnsByName.delete(name.toLowerCase());
+  };
+  const keepColumns = (names: string[]) => {
+    const kept = new Map<string, GeneratedWorkflowColumnBinding>();
+    for (const name of names) {
+      const column = columnsByName.get(name.toLowerCase());
+      if (column) kept.set(column.name.toLowerCase(), column);
+    }
+    columnsByName.clear();
+    for (const [key, column] of kept) {
+      columnsByName.set(key, column);
+    }
   };
   const lines = [`input source dataset "${escapeDslString(inputTableId)}" as src`];
   const context: GeneratedWorkflowOperationCompileContext = {
@@ -1708,6 +1764,10 @@ function compileGeneratedWorkflowPlan({
     lines,
     requirement,
     requireColumn,
+    renameColumn,
+    upsertColumn,
+    removeColumn,
+    keepColumns,
   };
   for (const rawOperationInput of operations) {
     const rawOperation = normalizeGeneratedWorkflowOperation(rawOperationInput);
@@ -1965,27 +2025,16 @@ function parseGeneratedWorkflowDslResponse(
         })
         .filter((column): column is { name: string; type?: string } => Boolean(column))
     : [];
-  const extractedColumnNames = extractRequiredColumnNamesFromWorkflow(parsedDsl.ast.operators);
-  const unknownExtractedColumnNames = extractedColumnNames.filter(
-    (name) => !columnsByName.has(name.toLowerCase())
+  const extractedColumns = resolveRequiredInputColumnsFromWorkflow(
+    parsedDsl.ast.operators,
+    columns
   );
-  if (unknownExtractedColumnNames.length > 0) {
-    throw new DataCommandError(
-      'VALIDATION_FAILED',
-      `Generated workflow references unknown input column(s): ${unknownExtractedColumnNames.join(
-        ', '
-      )}`
-    );
-  }
   const requiredColumnsByName = new Map<string, { name: string; type?: string }>();
   for (const column of modelRequiredColumns) {
     requiredColumnsByName.set(column.name.toLowerCase(), column);
   }
-  for (const name of extractedColumnNames) {
-    const knownColumn = columnsByName.get(name.toLowerCase());
-    if (knownColumn) {
-      requiredColumnsByName.set(knownColumn.name.toLowerCase(), knownColumn);
-    }
+  for (const column of extractedColumns) {
+    requiredColumnsByName.set(column.name.toLowerCase(), column);
   }
   return {
     workflowDsl,
@@ -2017,91 +2066,148 @@ function validateGeneratedWorkflowAst(operators: PrepOperatorAst[]): void {
   }
 }
 
-function extractRequiredColumnNamesFromWorkflow(operators: PrepOperatorAst[]): string[] {
-  const names = new Set<string>();
-  const addName = (value: unknown) => {
-    if (typeof value === 'string' && value.trim()) {
-      names.add(stripQualifiedFieldName(value.trim()));
+function resolveRequiredInputColumnsFromWorkflow(
+  operators: PrepOperatorAst[],
+  columns: Array<{ name: string; type?: string }>
+): Array<{ name: string; type?: string }> {
+  const availableColumns = new Map<string, GeneratedWorkflowColumnBinding>(
+    columns.map((column) => [
+      column.name.toLowerCase(),
+      { name: column.name, type: column.type, sourceColumn: column },
+    ])
+  );
+  const requiredColumnsByName = new Map<string, { name: string; type?: string }>();
+  const requireName = (value: unknown) => {
+    if (typeof value !== 'string' || !value.trim()) return null;
+    const name = stripQualifiedFieldName(value.trim());
+    const column = availableColumns.get(name.toLowerCase());
+    if (!column) {
+      throw new DataCommandError(
+        'VALIDATION_FAILED',
+        `Generated workflow references unknown input column(s): ${name}`
+      );
     }
+    if (column.sourceColumn) {
+      requiredColumnsByName.set(column.sourceColumn.name.toLowerCase(), column.sourceColumn);
+    }
+    return column;
   };
-  const addNames = (value: unknown) => {
-    if (Array.isArray(value)) value.forEach(addName);
+  const requireNames = (value: unknown) => {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map(requireName)
+      .filter((column): column is GeneratedWorkflowColumnBinding => Boolean(column));
   };
-  const addExpression = (value: unknown) => {
+  const requireExpression = (value: unknown) => {
     if (typeof value !== 'string') return;
-    extractFieldNamesFromExpression(value).forEach((name) => names.add(name));
+    extractFieldNamesFromExpression(value).forEach((name) => requireName(name));
+  };
+  const removeName = (value: unknown) => {
+    if (typeof value !== 'string' || !value.trim()) return;
+    availableColumns.delete(stripQualifiedFieldName(value.trim()).toLowerCase());
+  };
+  const upsertName = (name: unknown, source?: GeneratedWorkflowColumnBinding | null) => {
+    if (typeof name !== 'string' || !name.trim()) return;
+    const normalized = stripQualifiedFieldName(name.trim());
+    availableColumns.set(normalized.toLowerCase(), {
+      name: normalized,
+      type: source?.type,
+      sourceColumn: source?.sourceColumn,
+    });
+  };
+  const keepNames = (names: unknown) => {
+    if (!Array.isArray(names)) return;
+    const kept = new Map<string, GeneratedWorkflowColumnBinding>();
+    for (const item of names) {
+      const column = requireName(item);
+      if (column) kept.set(column.name.toLowerCase(), column);
+    }
+    availableColumns.clear();
+    for (const [key, column] of kept) {
+      availableColumns.set(key, column);
+    }
   };
 
   for (const operator of operators) {
     const config = operator.config ?? {};
     switch (operator.type) {
       case 'field_select':
-        addNames(config.columns);
+        if (config.mode === 'exclude') {
+          requireNames(config.columns);
+          if (Array.isArray(config.columns)) config.columns.forEach(removeName);
+        } else {
+          keepNames(config.columns);
+        }
         break;
       case 'field_mapping':
-        objectArray(config.mappings).forEach((mapping) => addName(mapping.source));
+        objectArray(config.mappings).forEach((mapping) => {
+          const source = requireName(mapping.source);
+          removeName(mapping.source);
+          upsertName(mapping.target, source);
+        });
         break;
       case 'filter':
-        addExpression(config.condition);
+        requireExpression(config.condition);
         break;
       case 'deduplicate':
-        addNames(config.columns);
-        objectArray(config.orderBy).forEach((key) => addName(key.field));
+        requireNames(config.columns);
+        objectArray(config.orderBy).forEach((key) => requireName(key.field));
         break;
       case 'missing_value':
-        addNames(config.columns);
-        objectArray(config.rules).forEach((rule) => addName(rule.column));
+        requireNames(config.columns);
+        objectArray(config.rules).forEach((rule) => requireName(rule.column));
         break;
       case 'type_convert':
-        objectArray(config.conversions).forEach((conversion) => addName(conversion.column));
+        objectArray(config.conversions).forEach((conversion) => requireName(conversion.column));
         break;
       case 'sort':
-        objectArray(config.keys).forEach((key) => addName(key.field));
+        objectArray(config.keys).forEach((key) => requireName(key.field));
         break;
       case 'aggregate':
-        addNames(config.groupBy);
+        requireNames(config.groupBy);
         objectArray(config.metrics).forEach((metric) => {
-          if (metric.expression !== '*') addExpression(metric.expression);
+          if (metric.expression !== '*') requireExpression(metric.expression);
         });
         break;
       case 'calculate_field':
         objectArray(config.calculations).forEach((calculation) =>
-          addExpression(calculation.expression)
+          requireExpression(calculation.expression)
         );
+        objectArray(config.calculations).forEach((calculation) => upsertName(calculation.field));
         break;
       case 'pivot':
-        addNames(config.on);
-        addNames(config.groupBy);
+        requireNames(config.on);
+        requireNames(config.groupBy);
         objectArray(config.using).forEach((metric) => {
-          if (metric.expression !== '*') addExpression(metric.expression);
+          if (metric.expression !== '*') requireExpression(metric.expression);
         });
         break;
       case 'unpivot':
-        addNames(config.columns);
+        requireNames(config.columns);
         break;
       case 'unnest':
-        addName(config.column);
+        requireName(config.column);
         break;
       case 'join':
         objectArray(config.conditions).forEach((condition) => {
-          addName(condition.left);
-          addName(condition.right);
+          requireName(condition.left);
+          requireName(condition.right);
         });
         if (isRecord(config.asof)) {
-          addName(config.asof.leftTime);
-          addName(config.asof.rightTime);
+          requireName(config.asof.leftTime);
+          requireName(config.asof.rightTime);
           objectArray(config.asof.by).forEach((condition) => {
-            addName(condition.left);
-            addName(condition.right);
+            requireName(condition.left);
+            requireName(condition.right);
           });
         }
-        objectArray(config.keep).forEach((item) => addName(item.source));
+        objectArray(config.keep).forEach((item) => requireName(item.source));
         break;
       default:
         break;
     }
   }
-  return [...names];
+  return [...requiredColumnsByName.values()];
 }
 
 const DSL_FIELD_REF_TOKEN_PATTERN = '\\[(?:`((?:[^`\\\\]|\\\\.)*)`|([\\p{L}_][\\p{L}\\p{N}_]*))\\]';

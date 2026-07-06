@@ -484,7 +484,7 @@ function formatAutomationNextRun(
   tr: (key: string, fallback: string) => string
 ): string {
   if (automation.trigger.kind === 'manual') {
-    return tr('schedule.manualNextRun', '手动执行');
+    return tr('schedule.noAutoTrigger', '无自动触发');
   }
   return automation.nextRunAt ? formatAppDateTime(automation.nextRunAt) : '-';
 }
