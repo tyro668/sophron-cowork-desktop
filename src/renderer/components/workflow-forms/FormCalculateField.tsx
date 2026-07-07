@@ -59,7 +59,7 @@ const SCENARIO_OPTIONS = [
     value: 'period',
     key: 'calcFieldScenarioPeriod',
     label: '周期对比',
-    tip: '同比值、同比率、环比值、环比率',
+    tip: '同比值/率、环比值/率、自定义偏移差值/率',
   },
 ];
 
@@ -139,7 +139,14 @@ const FUNCTION_CATEGORIES: Record<string, { key: string; header: string; items: 
     {
       key: 'period',
       header: 'calcFieldCatPeriod',
-      items: ['period_yoy_value', 'period_yoy_rate', 'period_mom_value', 'period_mom_rate'],
+      items: [
+        'period_yoy_value',
+        'period_yoy_rate',
+        'period_mom_value',
+        'period_mom_rate',
+        'offset_diff',
+        'offset_rate',
+      ],
     },
   ],
 };
@@ -232,8 +239,12 @@ export default function FormCalculateField({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsNormalization]);
 
-  const [activeMode, setActiveMode] = useState<'row' | 'cross'>('row');
-  const [activeScenario, setActiveScenario] = useState<string>('group');
+  const [activeMode, setActiveMode] = useState<'row' | 'cross'>(
+    () => (node.config?._activeMode as 'row' | 'cross') || 'row'
+  );
+  const [activeScenario, setActiveScenario] = useState<string>(
+    () => (node.config?._activeScenario as string) || 'group'
+  );
 
   const visibleItems = useMemo(() => {
     const filtered = localItems.filter((i) =>
@@ -374,6 +385,27 @@ export default function FormCalculateField({
     const partOpen = partitionOpen[index];
     const ordOpen = orderOpen[index];
 
+    const FN_ARG2_DEFAULTS: Record<string, string> = {
+      ntile: '4',
+      nth_value: '2',
+      quantile_cont: '0.5',
+      lag: '1',
+      lead: '1',
+      offset_diff: '1',
+      offset_rate: '1',
+    };
+
+    const NUM_PLACEHOLDER: Record<string, string> = {
+      ntile_fnArg: tr('calcFieldPlaceholderBuckets', '桶数'),
+      nth_value_fnArg2: tr('calcFieldPlaceholderNth', '第N行'),
+      quantile_cont_fnArg2: tr('calcFieldPlaceholderQuantile', '分位值 (0-1)'),
+      lag_fnArg2: tr('calcFieldPlaceholderOffset', '偏移行数'),
+      lead_fnArg2: tr('calcFieldPlaceholderOffset', '偏移行数'),
+      offset_diff_fnArg2: tr('calcFieldPlaceholderOffset', '偏移行数'),
+      offset_rate_fnArg2: tr('calcFieldPlaceholderOffset', '偏移行数'),
+      string_agg_fnArg2: tr('calcFieldPlaceholderDelimiter', '分隔符'),
+    };
+
     const fnGroupOptions = (FUNCTION_CATEGORIES[scenario] || []).map((cat) => ({
       key: cat.key,
       header: tr(cat.header, cat.header),
@@ -409,7 +441,10 @@ export default function FormCalculateField({
                   })),
                 },
               ]}
-              onChange={(v) => setActiveScenario(v)}
+              onChange={(v) => {
+                setActiveScenario(v);
+                updateConfig((cfg) => ({ ...cfg, _activeScenario: v }));
+              }}
               className="h-7 text-[12px] w-28"
             />
           </div>
@@ -466,7 +501,12 @@ export default function FormCalculateField({
             <GlassOperatorSelect
               value={currentFn}
               groups={fnGroupOptions}
-              onChange={(v) => updateItem(index, { fn: v })}
+              onChange={(v) => {
+                const defaultVal = FN_ARG2_DEFAULTS[v];
+                const patch: Partial<CalculationRow> = { fn: v };
+                if (defaultVal !== undefined && !item.fnArg2) patch.fnArg2 = defaultVal;
+                updateItem(index, patch);
+              }}
               className="h-7 text-[12px] w-28"
             />
           </div>
@@ -487,6 +527,19 @@ export default function FormCalculateField({
                     placeholder={tr('calcFieldFnArgPlaceholder', '选择字段')}
                     className="h-7 w-full text-[12px]"
                   />
+                ) : s.type === 'text' ? (
+                  <input
+                    type="text"
+                    value={item[s.key] ?? ''}
+                    onChange={(e) =>
+                      updateItem(index, { [s.key]: e.target.value } as Partial<CalculationRow>)
+                    }
+                    placeholder={
+                      NUM_PLACEHOLDER[currentFn + '_' + s.key] ||
+                      tr('calcFieldFnArgNumPlaceholder', '参数')
+                    }
+                    className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent placeholder:text-text-muted"
+                  />
                 ) : (
                   <input
                     type="number"
@@ -495,7 +548,10 @@ export default function FormCalculateField({
                     onChange={(e) =>
                       updateItem(index, { [s.key]: e.target.value } as Partial<CalculationRow>)
                     }
-                    placeholder={tr('calcFieldFnArgNumPlaceholder', '常数')}
+                    placeholder={
+                      NUM_PLACEHOLDER[currentFn + '_' + s.key] ||
+                      tr('calcFieldFnArgNumPlaceholder', '参数')
+                    }
                     className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent placeholder:text-text-muted"
                   />
                 )}
@@ -757,7 +813,7 @@ export default function FormCalculateField({
                         const [frameStart, frameEnd] = v.split('|');
                         updateItem(index, { frameStart, frameEnd });
                       }}
-                      className={`h-7 text-[12px] [&>span]:text-left ${isCustom ? 'w-36' : 'w-36'}`}
+                      className="h-7 text-[12px] [&>span]:text-left w-36"
                     />
                     {isCustom && (
                       <div className="flex items-center gap-1 text-[12px] text-text-muted">
@@ -836,7 +892,10 @@ export default function FormCalculateField({
                 tip: tr('calcFieldModeCrossTip', '按分区汇总、排名、滑动窗口、周期对比等'),
               },
             ]}
-            onChange={(v) => setActiveMode(v as 'row' | 'cross')}
+            onChange={(v) => {
+              setActiveMode(v as 'row' | 'cross');
+              updateConfig((cfg) => ({ ...cfg, _activeMode: v }));
+            }}
           />
         </div>
       </div>

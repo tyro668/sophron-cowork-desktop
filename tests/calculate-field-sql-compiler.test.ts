@@ -980,6 +980,71 @@ describe('DuckDB integration — cross-row window functions', () => {
     expect(rows[2].r).toBe(250);
   });
 
+  // ── Custom offset types ──
+  it('offset_diff with N=2 compares against 2 rows back', async () => {
+    const conn = await connect();
+    await conn.run('CREATE TABLE w (id INTEGER, amount DOUBLE)');
+    await conn.run('INSERT INTO w VALUES (1, 100), (2, 200), (3, 50)');
+    await conn.run(
+      compileCalculateFieldSql('out', 'w', {
+        calculations: [
+          {
+            field: 'r',
+            expression: '[amount] - lag([amount], 2) OVER (ORDER BY id)',
+          },
+        ],
+      })
+    );
+    const reader = await conn.runAndReadAll('SELECT r FROM out ORDER BY id');
+    const rows = reader.getRowObjectsJson() as Record<string, unknown>[];
+    expect(rows[0].r).toBe(null); // id=1: no row 2 back
+    expect(rows[1].r).toBe(null); // id=2: no row 2 back
+    expect(rows[2].r).toBe(-50); // id=3: 50 - 100(1) = -50
+  });
+
+  it('offset_rate with N=2 calculates rate against 2 rows back', async () => {
+    const conn = await connect();
+    await conn.run('CREATE TABLE w (id INTEGER, amount DOUBLE)');
+    await conn.run('INSERT INTO w VALUES (1, 100), (2, 200), (3, 50)');
+    await conn.run(
+      compileCalculateFieldSql('out', 'w', {
+        calculations: [
+          {
+            field: 'r',
+            expression:
+              '([amount] - lag([amount], 2) OVER (ORDER BY id)) / lag([amount], 2) OVER (ORDER BY id)',
+          },
+        ],
+      })
+    );
+    const reader = await conn.runAndReadAll('SELECT r FROM out ORDER BY id');
+    const rows = reader.getRowObjectsJson() as Record<string, unknown>[];
+    expect(rows[0].r).toBe(null); // id=1: no row 2 back
+    expect(rows[1].r).toBe(null); // id=2: no row 2 back
+    expect(Number(rows[2].r)).toBeCloseTo(-0.5, 5); // (50-100)/100 = -0.5
+  });
+
+  // ── String aggregate ──
+  it("string_agg([name], ', ') OVER (PARTITION BY region) concatenates names", async () => {
+    const conn = await connect();
+    await conn.run('CREATE TABLE w (id INTEGER, name VARCHAR, region VARCHAR)');
+    await conn.run(
+      "INSERT INTO w VALUES (1, 'Alice', 'East'), (2, 'Bob', 'West'), (3, 'Charlie', 'East')"
+    );
+    await conn.run(
+      compileCalculateFieldSql('out', 'w', {
+        calculations: [
+          { field: 'r', expression: "string_agg([name], ', ') OVER (PARTITION BY region)" },
+        ],
+      })
+    );
+    const reader = await conn.runAndReadAll('SELECT * FROM out ORDER BY id');
+    const rows = reader.getRowObjectsJson() as Record<string, unknown>[];
+    expect(rows[0].r).toBe('Alice, Charlie'); // East
+    expect(rows[1].r).toBe('Bob'); // West
+    expect(rows[2].r).toBe('Alice, Charlie'); // East
+  });
+
   // ── Multiple calculations ──
   it('multiple calculations in one node', async () => {
     const conn = await connect();

@@ -375,6 +375,50 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
     );
   });
 
+  it('offset_diff produces value - lag(value, N) with custom N', () => {
+    const result = exprFromParts({
+      id: 'od1',
+      field: 'diff',
+      expression: '',
+      type: 'agg',
+      fn: 'offset_diff',
+      fnArg: '[amount]',
+      fnArg2: '3',
+      partitionBy: ['dept'],
+      orderBy: [{ field: 'month', direction: 'asc' }],
+    });
+    expect(result).toBe('[amount] - lag([amount], 3) OVER (PARTITION BY [dept] ORDER BY [month])');
+  });
+
+  it('offset_rate produces (value - lag(value, N)) / lag(value, N) with custom N', () => {
+    const result = exprFromParts({
+      id: 'or1',
+      field: 'rate',
+      expression: '',
+      type: 'agg',
+      fn: 'offset_rate',
+      fnArg: '[sales]',
+      fnArg2: '6',
+      orderBy: [{ field: 'month', direction: 'asc' }],
+    });
+    expect(result).toBe(
+      '([sales] - lag([sales], 6) OVER (ORDER BY [month])) / lag([sales], 6) OVER (ORDER BY [month])'
+    );
+  });
+
+  it('offset_diff defaults to N=1 when fnArg2 is empty', () => {
+    const result = exprFromParts({
+      id: 'od2',
+      field: 'diff',
+      expression: '',
+      type: 'agg',
+      fn: 'offset_diff',
+      fnArg: '[amount]',
+      orderBy: [{ field: 'month', direction: 'asc' }],
+    });
+    expect(result).toBe('[amount] - lag([amount], 1) OVER (ORDER BY [month])');
+  });
+
   // ── No-arg functions ──
   it('row_number() — no arguments', () => {
     const result = exprFromParts({
@@ -632,7 +676,7 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
       frameEnd: 'unbounded following',
     });
     expect(result).toBe(
-      'last_value([amount]) OVER (PARTITION BY [region] ORDER BY [date]) ROWS BETWEEN unbounded preceding AND unbounded following'
+      'last_value([amount]) OVER (PARTITION BY [region] ORDER BY [date] ROWS BETWEEN unbounded preceding AND unbounded following)'
     );
   });
 
@@ -650,7 +694,7 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
       frameEnd: 'unbounded following',
     });
     expect(result).toBe(
-      'nth_value([amount], 2) OVER (ORDER BY [date]) ROWS BETWEEN unbounded preceding AND unbounded following'
+      'nth_value([amount], 2) OVER (ORDER BY [date] ROWS BETWEEN unbounded preceding AND unbounded following)'
     );
   });
 

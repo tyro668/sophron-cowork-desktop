@@ -30,7 +30,7 @@ export interface CalculationRow {
 
 export interface ParamSpec {
   key: 'fnArg' | 'fnArg2';
-  type: 'field' | 'number';
+  type: 'field' | 'number' | 'text';
 }
 
 export const FN_ARG_SPEC: Record<string, ParamSpec[]> = {
@@ -51,6 +51,18 @@ export const FN_ARG_SPEC: Record<string, ParamSpec[]> = {
   lead: [
     { key: 'fnArg', type: 'field' },
     { key: 'fnArg2', type: 'number' },
+  ],
+  offset_diff: [
+    { key: 'fnArg', type: 'field' },
+    { key: 'fnArg2', type: 'number' },
+  ],
+  offset_rate: [
+    { key: 'fnArg', type: 'field' },
+    { key: 'fnArg2', type: 'number' },
+  ],
+  string_agg: [
+    { key: 'fnArg', type: 'field' },
+    { key: 'fnArg2', type: 'text' },
   ],
 };
 
@@ -116,6 +128,10 @@ export function exprFromParts(item: CalculationRow): string {
       parts.push(
         `ORDER BY ${order.map((o) => `[${o.field}]${o.direction === 'desc' ? ' desc' : ''}`).join(', ')}`
       );
+    if (item.frameStart && order?.length) {
+      const end = item.frameEnd || 'current row';
+      parts.push(`ROWS BETWEEN ${item.frameStart} AND ${end}`);
+    }
     return parts.length > 0 ? ` OVER (${parts.join(' ')})` : ' OVER ()';
   }
 
@@ -143,6 +159,14 @@ export function exprFromParts(item: CalculationRow): string {
     return `${wrappedFieldArg} - ${lag}`;
   }
 
+  // Custom offset types
+  if (fn === 'offset_diff' || fn === 'offset_rate') {
+    const offset = parseInt(item.fnArg2 || '1', 10);
+    const isRate = fn === 'offset_rate';
+    const lag = `lag(${wrappedFieldArg}, ${offset})${overStr(true)}`;
+    if (isRate) return `(${wrappedFieldArg} - ${lag}) / ${lag}`;
+    return `${wrappedFieldArg} - ${lag}`;
+  }
   // Generic: fn(args) OVER (PARTITION BY ... ORDER BY ...)
   const fnSqlMap: Record<string, string> = {
     var: 'var_pop',
@@ -167,12 +191,7 @@ export function exprFromParts(item: CalculationRow): string {
     fnCall = `${sqlFn}(${args.join(', ')})`;
   }
   const over = overStr(true);
-  let result = fnCall + over;
-  if ((item.type === 'window' || item.type === 'cross') && item.frameStart && order?.length) {
-    const end = item.frameEnd || 'current row';
-    result += ` ROWS BETWEEN ${item.frameStart} AND ${end}`;
-  }
-  return result;
+  return fnCall + over;
 }
 
 export function needsCalculationIdNormalization(
