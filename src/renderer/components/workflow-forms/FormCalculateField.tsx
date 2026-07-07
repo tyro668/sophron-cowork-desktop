@@ -233,7 +233,7 @@ export default function FormCalculateField({
   function handleChange(next: CalculationRow[]) {
     const normalized = normalizeCalculationEntries(next);
     setLocalItems(normalized);
-    storeCalculations(normalized.slice(0, 1));
+    storeCalculations(normalized);
   }
 
   function updateItem(visibleIndex: number, patch: Partial<CalculationRow>) {
