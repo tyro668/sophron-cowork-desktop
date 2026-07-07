@@ -21,6 +21,7 @@ interface GlassOperatorGroup {
 interface GlassOperatorOption {
   value: string;
   label: string;
+  description?: string;
 }
 
 interface GlassOperatorSelectProps {
@@ -229,7 +230,7 @@ export function GlassOperatorSelect({
                       role="option"
                       aria-selected={selected}
                       data-index={globalIdx}
-                      className={`w-full whitespace-nowrap px-3 py-1.5 text-center text-[12px] transition-colors ${
+                      className={`w-full px-3 py-1.5 text-left text-[12px] transition-colors ${
                         selected
                           ? 'text-accent font-medium bg-accent/10 ring-1 ring-inset ring-accent/20'
                           : 'text-text-secondary hover:bg-surface-hover'
@@ -242,7 +243,12 @@ export function GlassOperatorSelect({
                       }}
                       onMouseEnter={() => setHighlightedIndex(globalIdx)}
                     >
-                      {o.label}
+                      <div className="whitespace-nowrap">{o.label}</div>
+                      {o.description && (
+                        <div className="text-[10px] text-text-muted leading-tight truncate">
+                          {o.description}
+                        </div>
+                      )}
                     </button>
                   );
                 })}

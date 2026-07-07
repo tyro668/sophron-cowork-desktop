@@ -957,6 +957,29 @@ describe('DuckDB integration — cross-row window functions', () => {
     expect(Number(rows[2].r)).toBeCloseTo(50 / 350, 5);
   });
 
+  // ── Cross type frame ──
+  it('cross type with frame produces correct running total', async () => {
+    const conn = await connect();
+    await conn.run('CREATE TABLE wf (id INTEGER, amount DOUBLE)');
+    await conn.run('INSERT INTO wf VALUES (1, 100), (2, 200), (3, 50)');
+    await conn.run(
+      compileCalculateFieldSql('out', 'wf', {
+        calculations: [
+          {
+            field: 'r',
+            expression: 'sum([amount]) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)',
+            action: 'add',
+          },
+        ],
+      })
+    );
+    const reader = await conn.runAndReadAll('SELECT r FROM out ORDER BY id');
+    const rows = reader.getRowObjectsJson() as Record<string, unknown>[];
+    expect(rows[0].r).toBe(100);
+    expect(rows[1].r).toBe(300);
+    expect(rows[2].r).toBe(250);
+  });
+
   // ── Multiple calculations ──
   it('multiple calculations in one node', async () => {
     const conn = await connect();

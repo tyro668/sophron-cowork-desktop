@@ -12,6 +12,7 @@ import { GlassRowList, type GlassRowListColumn } from './shared/GlassRowList';
 import {
   createCalculationRow,
   exprFromParts,
+  FN_ARG_SPEC,
   needsCalculationIdNormalization,
   normalizeCalculationEntries,
   type CalculationConfigEntry,
@@ -93,6 +94,9 @@ const SCENARIO_FUNCTIONS: Record<string, string[]> = {
     'last_value',
     'nth_value',
     'percentage',
+    'string_agg',
+    'bool_and',
+    'bool_or',
   ],
   sorted: [
     'sum',
@@ -112,9 +116,93 @@ const SCENARIO_FUNCTIONS: Record<string, string[]> = {
     'nth_value',
     'lag',
     'lead',
+    'string_agg',
+    'bool_and',
+    'bool_or',
   ],
   rank: ['row_number', 'rank', 'dense_rank', 'ntile', 'percent_rank', 'cume_dist'],
   period: ['period_yoy_value', 'period_yoy_rate', 'period_mom_value', 'period_mom_rate'],
+};
+
+const FUNCTION_CATEGORIES: Record<string, { key: string; header: string; items: string[] }[]> = {
+  group: [
+    {
+      key: 'agg',
+      header: 'calcFieldCatAgg',
+      items: [
+        'sum',
+        'avg',
+        'min',
+        'max',
+        'count',
+        'count_distinct',
+        'median',
+        'stddev',
+        'var',
+        'mode',
+        'quantile_cont',
+      ],
+    },
+    {
+      key: 'value',
+      header: 'calcFieldCatValue',
+      items: ['first_value', 'last_value', 'nth_value'],
+    },
+    {
+      key: 'text',
+      header: 'calcFieldCatTextLogical',
+      items: ['string_agg', 'bool_and', 'bool_or'],
+    },
+    {
+      key: 'special',
+      header: 'calcFieldCatSpecial',
+      items: ['percentage'],
+    },
+  ],
+  sorted: [
+    {
+      key: 'agg',
+      header: 'calcFieldCatAgg',
+      items: [
+        'sum',
+        'avg',
+        'min',
+        'max',
+        'count',
+        'count_distinct',
+        'median',
+        'stddev',
+        'var',
+        'mode',
+        'quantile_cont',
+        'product',
+      ],
+    },
+    {
+      key: 'value',
+      header: 'calcFieldCatValue',
+      items: ['first_value', 'last_value', 'nth_value', 'lag', 'lead'],
+    },
+    {
+      key: 'text',
+      header: 'calcFieldCatTextLogical',
+      items: ['string_agg', 'bool_and', 'bool_or'],
+    },
+  ],
+  rank: [
+    {
+      key: 'rank',
+      header: 'calcFieldCatRank',
+      items: ['row_number', 'rank', 'dense_rank', 'ntile', 'percent_rank', 'cume_dist'],
+    },
+  ],
+  period: [
+    {
+      key: 'period',
+      header: 'calcFieldCatPeriod',
+      items: ['period_yoy_value', 'period_yoy_rate', 'period_mom_value', 'period_mom_rate'],
+    },
+  ],
 };
 
 function parseFrameN(frameStart: string | undefined): number {
@@ -294,15 +382,25 @@ export default function FormCalculateField({
     };
     const currentFnGroups =
       mode === 'cross'
-        ? [
-            {
-              key: 'scenario',
-              items: SCENARIO_FUNCTIONS[activeScenario].map((f) => ({
+        ? FUNCTION_CATEGORIES[activeScenario]
+          ? FUNCTION_CATEGORIES[activeScenario].map((cat) => ({
+              key: cat.key,
+              header: tr(cat.header, cat.header),
+              items: cat.items.map((f) => ({
                 value: f,
                 label: tr('calcFieldFn_' + f, f),
+                description: tr('calcFieldFnDesc_' + f, ''),
               })),
-            },
-          ]
+            }))
+          : [
+              {
+                key: 'scenario',
+                items: SCENARIO_FUNCTIONS[activeScenario].map((f) => ({
+                  value: f,
+                  label: tr('calcFieldFn_' + f, f),
+                })),
+              },
+            ]
         : fnGroups[mode === 'agg' ? 'agg' : 'window'];
     const defaultFn =
       mode === 'cross' ? scenarioDefaults[activeScenario] : mode === 'agg' ? 'sum' : 'row_number';
@@ -386,92 +484,143 @@ export default function FormCalculateField({
       ),
     };
     const fnArgCol: GlassRowListColumn<CalculationRow> = {
-      flex: mode === 'agg' ? 'flex-[1.5]' : 'flex-[1]',
-      header: '',
-      render: (item: CalculationRow, index: number) => (
-        <GlassFieldCombo
-          value={item.fnArg ?? ''}
-          options={fieldCompletions}
-          columnTypes={columnTypes}
-          onChange={(v) => updateItem(index, { fnArg: v })}
-          placeholder={tr('calcFieldFnArgPlaceholder', '选择字段')}
-          className="h-7 w-full text-[12px]"
-        />
-      ),
-    };
-    const partitionByCol: GlassRowListColumn<CalculationRow> = {
-      flex: mode === 'agg' ? 'flex-[2.5]' : 'flex-[1]',
+      flex: 'flex-[1.5]',
       header: '',
       render: (item: CalculationRow, index: number) => {
+        const currentFn = item.fn || defaultFn;
+        const specs = FN_ARG_SPEC[currentFn] || FN_ARG_SPEC['*'];
+        return (
+          <div className="flex items-center gap-1 w-full">
+            {specs.map((s) => (
+              <div key={s.key} className="flex-1 min-w-0">
+                {s.type === 'field' ? (
+                  <GlassFieldCombo
+                    value={item[s.key] ?? ''}
+                    options={fieldCompletions}
+                    columnTypes={columnTypes}
+                    onChange={(v) => updateItem(index, { [s.key]: v } as Partial<CalculationRow>)}
+                    placeholder={tr('calcFieldFnArgPlaceholder', '选择字段')}
+                    className="h-7 w-full text-[12px]"
+                  />
+                ) : (
+                  <input
+                    type="number"
+                    min={0}
+                    value={item[s.key] ?? ''}
+                    onChange={(e) =>
+                      updateItem(index, { [s.key]: e.target.value } as Partial<CalculationRow>)
+                    }
+                    placeholder={tr('calcFieldFnArgNumPlaceholder', '参数')}
+                    className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent placeholder:text-text-muted"
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        );
+      },
+    };
+    const partitionByCol: GlassRowListColumn<CalculationRow> = {
+      flex: 'flex-[1.8]',
+      header: '',
+      render: (item: CalculationRow, index: number) => {
+        const isPartition = item.partitionBy !== undefined;
         const open = partitionOpen[index];
         return (
-          <div className="relative w-full">
-            <div className="flex min-h-7 items-center rounded-md border border-border-muted bg-background/42 focus-within:border-accent">
-              {item.partitionBy?.length ? (
-                <button
-                  type="button"
-                  onClick={() => updateItem(index, { partitionBy: undefined })}
-                  className="ml-1 inline-flex flex-shrink-0 items-center justify-center self-stretch rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
-                  title={tr('clearAll', '清空')}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </button>
-              ) : null}
-              <div className="flex flex-1 items-center gap-1 px-1.5 min-w-0 overflow-x-auto">
-                {item.partitionBy?.map((col) => (
-                  <span
-                    key={col}
-                    className="inline-flex shrink-0 items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[12px] font-medium text-accent"
-                  >
-                    {col}
+          <div className="flex flex-col gap-1 w-full">
+            <GlassOperatorSelect
+              value={isPartition ? 'partition' : 'all'}
+              groups={[
+                {
+                  key: 'partitionMode',
+                  items: [
+                    { value: 'all', label: tr('calcFieldPartitionAll', '全表') },
+                    { value: 'partition', label: tr('calcFieldPartitionSelect', '分区') },
+                  ],
+                },
+              ]}
+              onChange={(v) => {
+                if (v === 'all') {
+                  updateItem(index, { partitionBy: undefined });
+                } else {
+                  updateItem(index, { partitionBy: [] });
+                  setPartitionOpen((o) => ({ ...o, [index]: true }));
+                }
+              }}
+              className="h-7 text-[12px] w-full"
+            />
+            {isPartition && (
+              <div className="relative w-full">
+                <div className="flex min-h-7 items-center rounded-md border border-border-muted bg-background/42 focus-within:border-accent">
+                  {item.partitionBy?.length ? (
                     <button
                       type="button"
-                      onClick={() =>
-                        updateItem(index, {
-                          partitionBy: item.partitionBy?.filter((c) => c !== col),
-                        })
-                      }
-                      className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
+                      onClick={() => updateItem(index, { partitionBy: [] })}
+                      className="ml-1 inline-flex flex-shrink-0 items-center justify-center self-stretch rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
+                      title={tr('clearAll', '清空')}
                     >
-                      <X className="h-2.5 w-2.5" />
+                      <Trash2 className="h-3 w-3" />
                     </button>
-                  </span>
-                ))}
-                <input
-                  type="text"
-                  readOnly
-                  placeholder={
-                    !item.partitionBy?.length
-                      ? tr('calcFieldPartitionPlaceholder', '选择分区字段')
-                      : ''
-                  }
-                  onFocus={() => setPartitionOpen((o) => ({ ...o, [index]: true }))}
-                  onBlur={() =>
-                    setTimeout(() => setPartitionOpen((o) => ({ ...o, [index]: false })), 150)
-                  }
-                  className="h-5 min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted cursor-pointer"
-                />
-              </div>
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => setPartitionOpen((o) => ({ ...o, [index]: !open }))}
-                className="flex w-7 flex-shrink-0 items-center justify-center self-stretch border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
-              >
-                <ChevronDown
-                  className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`}
-                />
-              </button>
-            </div>
-            {open && (
-              <div className="absolute z-10 left-0 right-0 mt-0.5">
-                <GlassColumnSelector
-                  columns={fieldCompletions}
-                  selected={item.partitionBy ?? []}
-                  onChange={(v) => updateItem(index, { partitionBy: v.length > 0 ? v : undefined })}
-                  columnTypes={columnTypes}
-                  maxHeight="160px"
-                />
+                  ) : null}
+                  <div className="flex flex-1 items-center gap-1 px-1.5 min-w-0 overflow-x-auto">
+                    {item.partitionBy?.map((col) => (
+                      <span
+                        key={col}
+                        className="inline-flex shrink-0 items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[12px] font-medium text-accent"
+                      >
+                        {col}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateItem(index, {
+                              partitionBy: item.partitionBy?.filter((c) => c !== col),
+                            })
+                          }
+                          className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      </span>
+                    ))}
+                    <input
+                      type="text"
+                      readOnly
+                      placeholder={
+                        !item.partitionBy?.length
+                          ? tr('calcFieldPartitionPlaceholder', '选择分区字段')
+                          : ''
+                      }
+                      onFocus={() => setPartitionOpen((o) => ({ ...o, [index]: true }))}
+                      onBlur={() =>
+                        setTimeout(() => setPartitionOpen((o) => ({ ...o, [index]: false })), 150)
+                      }
+                      className="h-5 min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted cursor-pointer"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => setPartitionOpen((o) => ({ ...o, [index]: !open }))}
+                    className="flex w-7 flex-shrink-0 items-center justify-center self-stretch border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
+                  >
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+                </div>
+                {open && (
+                  <div className="absolute z-10 left-0 right-0 mt-0.5">
+                    <GlassColumnSelector
+                      columns={fieldCompletions}
+                      selected={item.partitionBy ?? []}
+                      onChange={(v) =>
+                        updateItem(index, { partitionBy: v.length > 0 ? v : undefined })
+                      }
+                      columnTypes={columnTypes}
+                      maxHeight="160px"
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -224,6 +224,23 @@ describe('FormCalculateField — exprFromParts', () => {
     });
     expect(result).toContain('current row');
   });
+
+  it('cross mode sorted scenario includes ROWS BETWEEN', () => {
+    const result = exprFromParts({
+      id: 't8',
+      field: 'running_sum',
+      expression: '',
+      type: 'cross',
+      fn: 'sum',
+      fnArg: '[amount]',
+      orderBy: [{ field: 'id', direction: 'asc' }],
+      frameStart: '1 preceding',
+      frameEnd: 'current row',
+    });
+    expect(result).toContain('ROWS BETWEEN 1 preceding AND current row');
+    expect(result).toContain('ORDER BY [id]');
+    expect(result).toContain('sum([amount])');
+  });
 });
 
 describe('FormCalculateField — agg/window DSL round-trip', () => {
@@ -288,7 +305,7 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
     expect(result).toBe('[amount] / sum([amount]) OVER (PARTITION BY [region])');
   });
 
-  it('percentage without partition uses empty OVER clause', () => {
+  it('percentage without partition uses OVER ()', () => {
     const result = exprFromParts({
       id: 'p2',
       field: 'pct',
@@ -297,7 +314,7 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
       fn: 'percentage',
       fnArg: '[amount]',
     });
-    expect(result).toBe('[amount] / sum([amount])');
+    expect(result).toBe('[amount] / sum([amount]) OVER ()');
   });
 
   it('period_mom_value produces value - lag(value, 1)', () => {
@@ -423,20 +440,20 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
   });
 
   // ── ntile ──
-  it('ntile(4) — integer argument, strips brackets', () => {
+  it('ntile(4) — integer argument', () => {
     const result = exprFromParts({
       id: 'nt1',
       field: 'bucket',
       expression: '',
       type: 'window',
       fn: 'ntile',
-      fnArg: '[4]',
+      fnArg: '4',
       orderBy: [{ field: 'amount', direction: 'desc' }],
     });
     expect(result).toBe('ntile(4) OVER (ORDER BY [amount] desc)');
   });
 
-  it('ntile(*) defaults to 4', () => {
+  it('ntile with empty arg produces ntile()', () => {
     const result = exprFromParts({
       id: 'nt2',
       field: 'bucket',
@@ -445,7 +462,7 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
       fn: 'ntile',
       orderBy: [{ field: 'id', direction: 'asc' }],
     });
-    expect(result).toBe('ntile(4) OVER (ORDER BY [id])');
+    expect(result).toBe('ntile() OVER (ORDER BY [id])');
   });
 
   // ── Basic aggregates ──
@@ -492,6 +509,7 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
 
   // ── Statistical aggregates ──
   it('median/stddev/var produce correct DSL', () => {
+    const sqlMap: Record<string, string> = { var: 'var_pop' };
     for (const fn of ['median', 'stddev', 'var']) {
       const result = exprFromParts({
         id: 's',
@@ -502,7 +520,8 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
         fnArg: '[amount]',
         partitionBy: ['region'],
       });
-      expect(result).toBe(`${fn}([amount]) OVER (PARTITION BY [region])`);
+      const sqlFn = sqlMap[fn] || fn;
+      expect(result).toBe(`${sqlFn}([amount]) OVER (PARTITION BY [region])`);
     }
   });
 
@@ -515,7 +534,7 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
       fn: 'mode',
       fnArg: '[amount]',
     });
-    expect(result).toBe('mode([amount])');
+    expect(result).toBe('mode([amount]) OVER ()');
   });
 
   it('quantile_cont([amount], 0.5) produces correct DSL', () => {
@@ -526,8 +545,9 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
       type: 'agg',
       fn: 'quantile_cont',
       fnArg: '[amount]',
+      fnArg2: '0.5',
     });
-    expect(result).toBe('quantile_cont([amount])');
+    expect(result).toBe('quantile_cont([amount], 0.5) OVER ()');
   });
 
   it('product([amount]) produces correct DSL', () => {
@@ -541,6 +561,46 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
       partitionBy: ['region'],
     });
     expect(result).toBe('product([amount]) OVER (PARTITION BY [region])');
+  });
+
+  // ── String / Boolean functions ──
+  it('string_agg([col]) OVER (PARTITION BY ...) produces correct DSL', () => {
+    const result = exprFromParts({
+      id: 's1',
+      field: 'concatenated',
+      expression: '',
+      type: 'agg',
+      fn: 'string_agg',
+      fnArg: '[col]',
+      partitionBy: ['region'],
+    });
+    expect(result).toBe('string_agg([col]) OVER (PARTITION BY [region])');
+  });
+
+  it('bool_and([flag]) OVER (PARTITION BY ...) produces correct DSL', () => {
+    const result = exprFromParts({
+      id: 'b1',
+      field: 'all_ok',
+      expression: '',
+      type: 'agg',
+      fn: 'bool_and',
+      fnArg: '[flag]',
+      partitionBy: ['region'],
+    });
+    expect(result).toBe('bool_and([flag]) OVER (PARTITION BY [region])');
+  });
+
+  it('bool_or([flag]) OVER (PARTITION BY ...) produces correct DSL', () => {
+    const result = exprFromParts({
+      id: 'b2',
+      field: 'any_ok',
+      expression: '',
+      type: 'agg',
+      fn: 'bool_or',
+      fnArg: '[flag]',
+      partitionBy: ['region'],
+    });
+    expect(result).toBe('bool_or([flag]) OVER (PARTITION BY [region])');
   });
 
   // ── Value functions ──
@@ -584,12 +644,13 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
       type: 'window',
       fn: 'nth_value',
       fnArg: '[amount]',
+      fnArg2: '2',
       orderBy: [{ field: 'date', direction: 'asc' }],
       frameStart: 'unbounded preceding',
       frameEnd: 'unbounded following',
     });
     expect(result).toBe(
-      'nth_value([amount]) OVER (ORDER BY [date]) ROWS BETWEEN unbounded preceding AND unbounded following'
+      'nth_value([amount], 2) OVER (ORDER BY [date]) ROWS BETWEEN unbounded preceding AND unbounded following'
     );
   });
 

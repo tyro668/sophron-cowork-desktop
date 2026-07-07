@@ -6,6 +6,7 @@ export interface CalculationConfigEntry {
   action?: 'add' | 'replace';
   fn?: string;
   fnArg?: string;
+  fnArg2?: string;
   partitionBy?: string[];
   orderBy?: Array<{ field: string; direction?: 'asc' | 'desc' }>;
   frameStart?: string;
@@ -20,11 +21,38 @@ export interface CalculationRow {
   action?: 'add' | 'replace';
   fn?: string;
   fnArg?: string;
+  fnArg2?: string;
   partitionBy?: string[];
   orderBy?: Array<{ field: string; direction?: 'asc' | 'desc' }>;
   frameStart?: string;
   frameEnd?: string;
 }
+
+export interface ParamSpec {
+  key: 'fnArg' | 'fnArg2';
+  type: 'field' | 'number';
+}
+
+export const FN_ARG_SPEC: Record<string, ParamSpec[]> = {
+  '*': [{ key: 'fnArg', type: 'field' }],
+  ntile: [{ key: 'fnArg', type: 'number' }],
+  nth_value: [
+    { key: 'fnArg', type: 'field' },
+    { key: 'fnArg2', type: 'number' },
+  ],
+  quantile_cont: [
+    { key: 'fnArg', type: 'field' },
+    { key: 'fnArg2', type: 'number' },
+  ],
+  lag: [
+    { key: 'fnArg', type: 'field' },
+    { key: 'fnArg2', type: 'number' },
+  ],
+  lead: [
+    { key: 'fnArg', type: 'field' },
+    { key: 'fnArg2', type: 'number' },
+  ],
+};
 
 export function createCalculationId(): string {
   const globalCrypto = globalThis.crypto;
@@ -66,6 +94,7 @@ export function normalizeCalculationEntries(
       action: entry.action === 'replace' ? 'replace' : 'add',
       fn: typeof entry.fn === 'string' ? entry.fn : undefined,
       fnArg: typeof entry.fnArg === 'string' ? entry.fnArg : undefined,
+      fnArg2: typeof entry.fnArg2 === 'string' ? entry.fnArg2 : undefined,
       partitionBy: Array.isArray(entry.partitionBy) ? entry.partitionBy : undefined,
       orderBy: Array.isArray(entry.orderBy) ? entry.orderBy : undefined,
       frameStart: typeof entry.frameStart === 'string' ? entry.frameStart : undefined,
@@ -77,8 +106,6 @@ export function normalizeCalculationEntries(
 export function exprFromParts(item: CalculationRow): string {
   if (item.type === 'row') return item.expression || '';
   const fn = item.fn || 'sum';
-  const arg = item.fnArg || '*';
-  const wrappedArg = arg === '*' || arg.startsWith('[') ? arg : `[${arg}]`;
   const partition = item.partitionBy?.filter(Boolean);
   const order = item.orderBy?.filter((o) => o.field);
 
@@ -89,12 +116,17 @@ export function exprFromParts(item: CalculationRow): string {
       parts.push(
         `ORDER BY ${order.map((o) => `[${o.field}]${o.direction === 'desc' ? ' desc' : ''}`).join(', ')}`
       );
-    return parts.length ? ` OVER (${parts.join(' ')})` : '';
+    return parts.length > 0 ? ` OVER (${parts.join(' ')})` : ' OVER ()';
   }
 
-  // percentage: [arg] / sum([arg]) OVER (PARTITION BY ...)  — no ORDER BY
+  // Special branches: percentage, period comparison, count_distinct
+  // These compile to complex expressions beyond generic fn(args) OVER (...)
+  const fieldArg = item.fnArg || '*';
+  const wrappedFieldArg = fieldArg === '*' || fieldArg.startsWith('[') ? fieldArg : `[${fieldArg}]`;
+
+  // percentage: [arg] / sum([arg]) OVER (...)  — no ORDER BY
   if (fn === 'percentage') {
-    return `${wrappedArg} / sum(${wrappedArg})${overStr(false)}`;
+    return `${wrappedFieldArg} / sum(${wrappedFieldArg})${overStr(false)}`;
   }
 
   // Period comparison types
@@ -106,27 +138,37 @@ export function exprFromParts(item: CalculationRow): string {
   ) {
     const offset = fn === 'period_mom_value' || fn === 'period_mom_rate' ? 1 : 12;
     const isRate = fn.endsWith('_rate');
-    const lag = `lag(${wrappedArg}, ${offset})${overStr(true)}`;
-    if (isRate) return `(${wrappedArg} - ${lag}) / ${lag}`;
-    return `${wrappedArg} - ${lag}`;
+    const lag = `lag(${wrappedFieldArg}, ${offset})${overStr(true)}`;
+    if (isRate) return `(${wrappedFieldArg} - ${lag}) / ${lag}`;
+    return `${wrappedFieldArg} - ${lag}`;
   }
 
-  // Generic: fn([arg]) OVER (PARTITION BY ... ORDER BY ...)
+  // Generic: fn(args) OVER (PARTITION BY ... ORDER BY ...)
+  const fnSqlMap: Record<string, string> = {
+    var: 'var_pop',
+  };
   const noArgFns = new Set(['row_number', 'rank', 'dense_rank', 'percent_rank', 'cume_dist']);
   let fnCall: string;
   if (noArgFns.has(fn)) {
     fnCall = `${fn}()`;
-  } else if (fn === 'ntile') {
-    const numArg = arg === '*' ? '4' : arg.replace(/\[|\]/g, '');
-    fnCall = `ntile(${numArg})`;
   } else if (fn === 'count_distinct') {
-    fnCall = `count(DISTINCT ${wrappedArg})`;
+    fnCall = `count(DISTINCT ${wrappedFieldArg})`;
   } else {
-    fnCall = `${fn}(${wrappedArg})`;
+    const sqlFn = fnSqlMap[fn] || fn;
+    const specs = FN_ARG_SPEC[fn] || FN_ARG_SPEC['*'];
+    const args = specs
+      .map((s) => {
+        const raw = item[s.key];
+        if (!raw) return s.type === 'field' ? '*' : '';
+        if (s.type === 'field') return raw.startsWith('[') ? raw : `[${raw}]`;
+        return raw;
+      })
+      .filter((a) => a !== '');
+    fnCall = `${sqlFn}(${args.join(', ')})`;
   }
   const over = overStr(true);
   let result = fnCall + over;
-  if (item.type === 'window' && item.frameStart && order?.length) {
+  if ((item.type === 'window' || item.type === 'cross') && item.frameStart && order?.length) {
     const end = item.frameEnd || 'current row';
     result += ` ROWS BETWEEN ${item.frameStart} AND ${end}`;
   }
