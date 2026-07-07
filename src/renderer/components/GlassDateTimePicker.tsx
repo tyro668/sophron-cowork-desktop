@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { DayPicker } from '@daypicker/react';
 import { enUS, zhCN } from '@daypicker/react/locale';
 import { CalendarClock, Check, ChevronDown, Clock } from 'lucide-react';
@@ -33,6 +33,11 @@ function applyTimePart(currentTimestamp: number, timeValue: string): number {
   return next.getTime();
 }
 
+const DROPDOWN_COLLISION_PADDING = 12;
+const DATE_PICKER_SIDE_OFFSET = 4;
+// Includes the calendar, footer controls, and the time columns opened below the footer.
+const EXPANDED_PICKER_HEIGHT = 620;
+
 interface GlassDateTimePickerProps {
   value: number;
   onChange: (value: number) => void;
@@ -51,6 +56,8 @@ export function GlassDateTimePicker({
   const { i18n, t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [timeOpen, setTimeOpen] = useState(false);
+  const [pickerSide, setPickerSide] = useState<'bottom' | 'top'>('bottom');
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const selectedDate = useMemo(() => new Date(value), [value]);
   const [displayMonth, setDisplayMonth] = useState(selectedDate);
   const selectedYear = selectedDate.getFullYear();
@@ -75,6 +82,23 @@ export function GlassDateTimePicker({
     onChange(Date.now());
   };
 
+  const updatePickerSide = () => {
+    if (typeof window === 'undefined') return;
+    const triggerRect = triggerRef.current?.getBoundingClientRect();
+    if (!triggerRect) return;
+
+    const availableBelow =
+      window.innerHeight -
+      triggerRect.bottom -
+      DATE_PICKER_SIDE_OFFSET -
+      DROPDOWN_COLLISION_PADDING;
+    const availableAbove = triggerRect.top - DATE_PICKER_SIDE_OFFSET - DROPDOWN_COLLISION_PADDING;
+
+    setPickerSide(
+      availableBelow < EXPANDED_PICKER_HEIGHT && availableAbove > availableBelow ? 'top' : 'bottom'
+    );
+  };
+
   useEffect(() => {
     if (open) {
       setDisplayMonth(new Date(selectedYear, selectedMonth, 1));
@@ -86,12 +110,19 @@ export function GlassDateTimePicker({
   return (
     <GlassDropdownMenu
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen) {
+          updatePickerSide();
+        }
+        setOpen(nextOpen);
+      }}
       align="start"
+      side={pickerSide}
       sideOffset={4}
       contentClassName={`w-[19.5rem] !overflow-visible p-3 ${className ?? ''}`}
       trigger={
         <button
+          ref={triggerRef}
           type="button"
           disabled={disabled}
           className={`${glassTriggerButtonClass} ${triggerClassName ?? ''}`}
@@ -144,7 +175,10 @@ export function GlassDateTimePicker({
           <div className="relative min-w-0 flex-1">
             <button
               type="button"
-              onClick={() => setTimeOpen((next) => !next)}
+              onClick={() => {
+                updatePickerSide();
+                setTimeOpen((next) => !next);
+              }}
               className="inline-flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-border-muted bg-background/42 px-2.5 text-left text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors hover:border-accent/25 hover:bg-surface-hover focus:border-accent focus:ring-2 focus:ring-accent/20"
             >
               <span className="inline-flex min-w-0 items-center gap-2">

@@ -932,6 +932,252 @@ describe('DataCommandService', () => {
     expect(generated.requiredColumns).toEqual([{ name: 'Unit Price', type: 'integer' }]);
   });
 
+  it('normalizes bare backtick field refs in generated derive expressions', async () => {
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        operations: [
+          {
+            type: 'derive',
+            column: 'Customer ID Number',
+            expression: "REGEXP_EXTRACT(`Customer ID`, '\\\\d+')",
+          },
+          { type: 'drop', columns: ['记录数'] },
+          { type: 'filter', column: 'Profit', operator: '>', value: 0 },
+          { type: 'sort', column: 'Profit', direction: 'desc' },
+        ],
+        requiredColumns: [],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'orders.csv');
+    fs.writeFileSync(csvPath, 'Customer ID,记录数,Profit\nCUS-001,1,10\nCUS-002,1,-5\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'orders input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '提取 Customer ID 中的数字，删除记录数，只保留 Profit 大于 0 并降序',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'orders processed',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(generated.workflowDsl).toContain(
+      "derive [`Customer ID Number`] = REGEXP_EXTRACT([`Customer ID`], '[0-9]+')"
+    );
+    expect(generated.workflowDsl).not.toContain('REGEXP_EXTRACT(`Customer ID`');
+  });
+
+  it('keeps valid DSL field refs in generated derive expressions unchanged', async () => {
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        operations: [
+          {
+            type: 'derive',
+            column: 'Customer ID Number',
+            expression: "REGEXP_EXTRACT([`Customer ID`], '\\\\d+')",
+          },
+        ],
+        requiredColumns: [],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'orders.csv');
+    fs.writeFileSync(csvPath, 'Customer ID\nCUS-001\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'orders input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '提取 Customer ID 中的数字',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'orders processed',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(generated.workflowDsl).toContain(
+      "derive [`Customer ID Number`] = REGEXP_EXTRACT([`Customer ID`], '[0-9]+')"
+    );
+    expect(generated.workflowDsl).not.toContain('[[`Customer ID`]]');
+  });
+
+  it('treats DSL field refs in generated filter values as field comparisons', async () => {
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        operations: [{ type: 'filter', column: 'Profit', operator: '<', value: '[Target Profit]' }],
+        requiredColumns: [],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'profits.csv');
+    fs.writeFileSync(csvPath, 'Profit,Target Profit\n100,150\n200,180\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'profits input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '只保留 Profit 小于 Target Profit 的记录',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'profits processed',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(generated.workflowDsl).toContain('filter [Profit] < [`Target Profit`]');
+    expect(generated.workflowDsl).not.toContain("'[Target Profit]'");
+    expect(generated.requiredColumns).toEqual([
+      { name: 'Profit', type: 'integer' },
+      { name: 'Target Profit', type: 'integer' },
+    ]);
+  });
+
+  it('normalizes bracket field refs with spaces in generated derive expressions', async () => {
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        operations: [
+          { type: 'filter', column: 'Profit', operator: '<', rightColumn: 'Target Profit' },
+          {
+            type: 'derive',
+            column: 'Profit Shortfall',
+            expression: '[Target Profit] - [Profit]',
+          },
+          { type: 'sort', column: 'Profit Shortfall', direction: 'desc' },
+        ],
+        requiredColumns: [],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'profits.csv');
+    fs.writeFileSync(csvPath, 'Profit,Target Profit\n100,150\n200,180\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'profits input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement:
+        '只保留 Profit 小于 Target Profit 的记录，新增 Profit Shortfall = Target Profit - Profit，并按 Profit Shortfall 降序排序',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'profits processed',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(generated.workflowDsl).toContain('filter [Profit] < [`Target Profit`]');
+    expect(generated.workflowDsl).toContain(
+      'derive [`Profit Shortfall`] = [`Target Profit`] - [Profit]'
+    );
+    expect(generated.workflowDsl).not.toContain('[Target Profit] - [Profit]');
+  });
+
+  it('allows sorting by aggregate metric aliases', async () => {
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        operations: [
+          {
+            type: 'aggregate',
+            groupBy: ['Market', 'Product Type'],
+            metrics: [
+              { function: 'sum', column: 'Sales', alias: 'Sales 总和' },
+              { function: 'sum', column: 'Profit', alias: 'Profit 总和' },
+              { function: 'sum', column: 'Marketing', alias: 'Marketing 总和' },
+              { function: 'count', column: '*', alias: '记录数' },
+            ],
+          },
+          { type: 'sort', column: 'Sales 总和', direction: 'desc' },
+        ],
+        requiredColumns: [],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'coffee.csv');
+    fs.writeFileSync(
+      csvPath,
+      'Market,Product Type,Sales,Profit,Marketing\nCentral,Coffee,100,30,10\nEast,Tea,80,20,8\n',
+      'utf8'
+    );
+    const input = await service.createInputTable({
+      name: 'coffee input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement:
+        '按 Market 和 Product Type 分组，统计 Sales 总和、Profit 总和、Marketing 总和、记录数，并按 Sales 总和降序排列。',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'coffee processed',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(generated.workflowDsl).toContain(
+      'aggregate by [Market], [`Product Type`] metrics sum([Sales]) as [`Sales 总和`]'
+    );
+    expect(generated.workflowDsl).toContain('sort by [`Sales 总和`] desc');
+    expect(generated.requiredColumns).toEqual([
+      { name: 'Market', type: 'text' },
+      { name: 'Product Type', type: 'text' },
+      { name: 'Sales', type: 'integer' },
+      { name: 'Profit', type: 'integer' },
+      { name: 'Marketing', type: 'integer' },
+    ]);
+  });
+
   it('accepts single-column drop plans before sorting', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
@@ -1366,6 +1612,56 @@ describe('DataCommandService', () => {
 
     expect(regenerated.taskId).toBe(first.taskId);
     expect(regenerated.outputTableId).not.toBe(first.outputTableId);
+    expect(regenerated.version).toBe(2);
+  });
+
+  it('creates a new output table when regenerating with a changed output name', async () => {
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'market.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'market input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+    const first = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '过滤掉Market为EU的数据',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'market processed 1',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    const regenerated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '过滤掉Market为EU的数据',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'market processed 2',
+        localOutputTableId: first.outputTableId,
+      },
+      reuseTaskId: first.taskId,
+      currentVersion: first.version,
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(regenerated.taskId).toBe(first.taskId);
+    expect(regenerated.outputTableId).not.toBe(first.outputTableId);
+    expect(regenerated.outputTableName).toBe('market processed 2');
+    expect(regenerated.workflowDsl).toContain('output table "market processed 2" mode replace');
+    expect(regenerated.workflowDsl).not.toContain('output table "market processed 1"');
     expect(regenerated.version).toBe(2);
   });
 
