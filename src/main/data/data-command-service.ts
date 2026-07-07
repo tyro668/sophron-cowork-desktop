@@ -650,14 +650,14 @@ export class DataCommandService {
         normalizeRequiredName(output.targetTableId ?? '', 'Output table id is required')
       );
     }
+    const outputTableName =
+      normalizeOptionalName(output.tableName) || `${inputTableName || 'processed_table'}_processed`;
     if (output.localOutputTableId) {
       const existingOutputTable = await this.store.getOutputTableRecord(output.localOutputTableId);
-      if (existingOutputTable) {
+      if (existingOutputTable && existingOutputTable.name === outputTableName) {
         return existingOutputTable;
       }
     }
-    const outputTableName =
-      normalizeOptionalName(output.tableName) || `${inputTableName || 'processed_table'}_processed`;
     const existingOutputTable = await this.findOutputTableByExactName(outputTableName);
     if (existingOutputTable) {
       return existingOutputTable;
@@ -1287,6 +1287,10 @@ function buildWorkflowDslGenerationSystemPrompt(): string {
     'Use only the provided input columns. Do not invent field names.',
     'Do not write Sophron Prep DSL or SQL. Return operations only; the application compiles operations to DSL.',
     'Operation column references must use the current field name at that point in the operation list. Before a rename, use the original input column name exactly; after a rename, later operations may use the renamed field.',
+    'For field-to-field filters, put the right-side field name in rightColumn. Do not put field references such as [Target Profit] in value, because value is for literal constants.',
+    'Expression syntax: in operation.expression, reference fields with Prep DSL syntax only. Use [FieldName] for simple field names and [`Field Name`] for names with spaces, punctuation, Chinese characters, or other special characters.',
+    "Never use SQL identifier syntax in operation.expression, including bare backticks like `Field Name`, double-quoted identifiers like \"Field Name\", or table.column references. Example: use REGEXP_EXTRACT([`Customer ID`], '\\\\d+'), not REGEXP_EXTRACT(`Customer ID`, '\\\\d+').",
+    "For regex digit matching in operation.expression, prefer [0-9]+ over \\d+ to avoid JSON/DSL/SQL escaping ambiguity. Example: REGEXP_EXTRACT([`Customer ID`], '[0-9]+').",
     'For string values, preserve the semantic value only. For example Chinese text like "过滤掉Market为EU的数据" means value "EU", not "EU的数据".',
     'For money, prices, rates, percentages, and other fixed-decimal business values, use targetType "decimal" and a scale such as 2. Avoid float unless approximate binary floating point is explicitly requested.',
     'If the requirement is ambiguous, generate the safest valid operations and include only input columns actually used by the operations in requiredColumns.',
@@ -1300,6 +1304,7 @@ function buildAdvancedWorkflowDslGenerationSystemPrompt(): string {
     'Use only the provided input columns. Do not invent field names.',
     'The workflowDsl must start with the provided input source dataset line and end with the provided output table line.',
     'If a field name contains spaces or special characters, reference it as [`field name`].',
+    'In expressions, reference fields with [field] or [`field name`]. Never use bare SQL identifier syntax such as `field name` or "field name".',
     'Prefer deterministic, readable Prep DSL. Do not use SQL syntax unless the Prep DSL reference explicitly supports it.',
   ].join('\n');
 }
@@ -1494,10 +1499,12 @@ interface GeneratedWorkflowOperationCompileContext {
   lines: string[];
   requirement: string;
   requireColumn: GeneratedWorkflowRequiredColumnResolver;
+  normalizeExpression: (expression: string) => string;
   renameColumn: (sourceName: string, targetName: string) => void;
   upsertColumn: (name: string, sourceColumn?: { name: string; type?: string }) => void;
   removeColumn: (name: string) => void;
   keepColumns: (names: string[]) => void;
+  replaceColumns: (columns: GeneratedWorkflowColumnBinding[]) => void;
 }
 
 interface GeneratedWorkflowOperationDefinition {
@@ -1517,17 +1524,25 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
           'current field name; use original input column unless an earlier rename created a new field name',
         operator: '= | <> | > | >= | < | <= | contains | not_contains | is_null | is_not_null',
         value: 'literal value; omit for null checks',
+        rightColumn:
+          'optional current field name for field-to-field comparisons, for example Profit < Target Profit. Use this instead of value when the right side is a field.',
       },
       compile(operation, context) {
         const column = context.requireColumn(columnNameFromPlan(operation), 'filter.column');
         const operator = normalizePlanFilterOperator(operation.operator);
         const field = formatDslField(column.name);
+        const rightColumnName = resolvePlanFilterRightColumnName(operation);
+        const rightColumn = rightColumnName
+          ? context.requireColumn(rightColumnName, 'filter.rightColumn')
+          : null;
         const condition =
           operator === 'is_null' || operator === 'is_not_null'
             ? `${field} ${operator === 'is_null' ? 'IS NULL' : 'IS NOT NULL'}`
             : operator === 'contains' || operator === 'not_contains'
               ? `${operator === 'not_contains' ? 'NOT ' : ''}contains(CAST(${field} AS VARCHAR), ${literalToDsl(operation.value)})`
-              : `${field} ${operator} ${literalToDsl(operation.value)}`;
+              : rightColumn
+                ? `${field} ${operator} ${formatDslField(rightColumn.name)}`
+                : `${field} ${operator} ${literalToDsl(operation.value)}`;
         context.lines.push(`  | filter ${condition}`);
       },
     },
@@ -1633,7 +1648,8 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
       promptSpec: {
         type: 'derive',
         column: 'output column name to create or overwrite',
-        expression: 'Prep scalar expression only when no structured operation can express it',
+        expression:
+          'Prep scalar expression only when no structured operation can express it. Reference fields with [field] or [`field name`]. Never use bare SQL identifiers/backticks such as `field name`.',
       },
       compile(operation, context) {
         const column = normalizeRequiredName(
@@ -1644,7 +1660,9 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
           typeof operation.expression === 'string' ? operation.expression : '',
           'Generated derive operation requires expression'
         );
-        context.lines.push(`  | derive ${formatDslField(column)} = ${expression}`);
+        context.lines.push(
+          `  | derive ${formatDslField(column)} = ${context.normalizeExpression(expression)}`
+        );
         context.upsertColumn(column);
       },
     },
@@ -1656,15 +1674,13 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
           'array of { function: sum|avg|min|max|count|count_distinct, column: existing input column or "*", alias: output column name }',
       },
       compile(operation, context) {
-        const groupBy = stringArrayFromPlan(operation.groupBy).map(
-          (name) => context.requireColumn(name, 'aggregate.groupBy').name
+        const groupBy = stringArrayFromPlan(operation.groupBy).map((name) =>
+          context.requireColumn(name, 'aggregate.groupBy')
         );
         const metrics = Array.isArray(operation.metrics)
           ? operation.metrics
               .filter(isRecord)
-              .map((metric) =>
-                compilePlanAggregateMetric(metric, context.requireColumn, 'aggregate.metrics')
-              )
+              .map((metric) => compilePlanAggregateMetric(metric, context.requireColumn))
           : [];
         if (metrics.length === 0) {
           throw new DataCommandError(
@@ -1674,9 +1690,19 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
         }
         context.lines.push(
           `  | aggregate ${
-            groupBy.length > 0 ? `by ${groupBy.map(formatDslField).join(', ')}` : 'all'
-          } metrics ${metrics.join(', ')}`
+            groupBy.length > 0
+              ? `by ${groupBy.map((column) => formatDslField(column.name)).join(', ')}`
+              : 'all'
+          } metrics ${metrics.map((metric) => metric.dsl).join(', ')}`
         );
+        context.replaceColumns([
+          ...groupBy.map((column) => ({
+            name: column.name,
+            type: column.type,
+            sourceColumn: column,
+          })),
+          ...metrics.map((metric) => ({ name: metric.alias })),
+        ]);
       },
     },
   };
@@ -1758,16 +1784,25 @@ function compileGeneratedWorkflowPlan({
       columnsByName.set(key, column);
     }
   };
+  const replaceColumns = (columns: GeneratedWorkflowColumnBinding[]) => {
+    columnsByName.clear();
+    for (const column of columns) {
+      columnsByName.set(column.name.toLowerCase(), column);
+    }
+  };
   const lines = [`input source dataset "${escapeDslString(inputTableId)}" as src`];
   const context: GeneratedWorkflowOperationCompileContext = {
     columns,
     lines,
     requirement,
     requireColumn,
+    normalizeExpression: (expression) =>
+      normalizeGeneratedPlanExpression(expression, columnsByName),
     renameColumn,
     upsertColumn,
     removeColumn,
     keepColumns,
+    replaceColumns,
   };
   for (const rawOperationInput of operations) {
     const rawOperation = normalizeGeneratedWorkflowOperation(rawOperationInput);
@@ -1804,6 +1839,129 @@ function normalizeGeneratedWorkflowOperation(operation: unknown): Record<string,
   };
 }
 
+function normalizeGeneratedPlanExpression(
+  expression: string,
+  columnsByName: Map<string, GeneratedWorkflowColumnBinding>
+): string {
+  let normalized = '';
+  let index = 0;
+  let quote: '"' | "'" | null = null;
+
+  while (index < expression.length) {
+    const char = expression[index];
+    if (quote) {
+      if (char === '\\') {
+        const next = expression[index + 1];
+        if (next !== undefined) {
+          const following = expression[index + 2];
+          if (next === '\\' && following === 'd') {
+            normalized += '[0-9]';
+            index += 3;
+            continue;
+          }
+          normalized += normalizeGeneratedRegexEscape(next);
+          index += 2;
+          continue;
+        }
+      }
+      normalized += char;
+      if (char === quote) {
+        quote = null;
+      }
+      index += 1;
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      normalized += char;
+      index += 1;
+      continue;
+    }
+
+    if (char === '[' && expression[index + 1] === '`') {
+      const fieldEnd = findDslBacktickFieldEnd(expression, index + 2);
+      if (fieldEnd !== null) {
+        normalized += expression.slice(index, fieldEnd + 1);
+        index = fieldEnd + 1;
+        continue;
+      }
+    }
+
+    if (char === '[') {
+      const parsed = readBracketFieldToken(expression, index);
+      if (parsed) {
+        const column = columnsByName.get(parsed.value.toLowerCase());
+        normalized += column ? formatDslField(column.name) : parsed.raw;
+        index = parsed.end;
+        continue;
+      }
+    }
+
+    if (char === '`') {
+      const parsed = readBacktickToken(expression, index);
+      if (parsed) {
+        const column = columnsByName.get(parsed.value.toLowerCase());
+        normalized += column ? formatDslField(column.name) : parsed.raw;
+        index = parsed.end;
+        continue;
+      }
+    }
+
+    normalized += char;
+    index += 1;
+  }
+
+  return normalized;
+}
+
+function normalizeGeneratedRegexEscape(char: string): string {
+  return char === 'd' ? '[0-9]' : `\\${char}`;
+}
+
+function readBacktickToken(
+  expression: string,
+  start: number
+): { raw: string; value: string; end: number } | null {
+  let raw = '`';
+  let value = '';
+  for (let index = start + 1; index < expression.length; index += 1) {
+    const char = expression[index];
+    raw += char;
+    if (char === '\\') {
+      const next = expression[index + 1];
+      if (next !== undefined) {
+        raw += next;
+        value += next;
+        index += 1;
+      }
+      continue;
+    }
+    if (char === '`') {
+      return { raw, value, end: index + 1 };
+    }
+    value += char;
+  }
+  return null;
+}
+
+function readBracketFieldToken(
+  expression: string,
+  start: number
+): { raw: string; value: string; end: number } | null {
+  let raw = '[';
+  let value = '';
+  for (let index = start + 1; index < expression.length; index += 1) {
+    const char = expression[index];
+    raw += char;
+    if (char === ']') {
+      return { raw, value: value.trim(), end: index + 1 };
+    }
+    value += char;
+  }
+  return null;
+}
+
 function normalizePlanFilterOperator(operator: unknown): string {
   switch (operator) {
     case '=':
@@ -1823,6 +1981,27 @@ function normalizePlanFilterOperator(operator: unknown): string {
         `Generated filter operation uses unsupported operator: ${String(operator)}`
       );
   }
+}
+
+function resolvePlanFilterRightColumnName(operation: Record<string, unknown>): string {
+  for (const key of ['rightColumn', 'compareColumn', 'rightField', 'fieldValue']) {
+    const value = operation[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return parseDslFieldRefName(operation.value);
+}
+
+function parseDslFieldRefName(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  const backtickMatch = /^\[\s*`((?:[^`\\]|\\.)*)`\s*\]$/u.exec(trimmed);
+  if (backtickMatch?.[1]) {
+    return unescapeDslBacktickField(backtickMatch[1]);
+  }
+  const simpleMatch = /^\[\s*([\p{L}_][\p{L}\p{N}_]*)\s*\]$/u.exec(trimmed);
+  if (simpleMatch?.[1]) return simpleMatch[1];
+  const looseMatch = /^\[\s*([^\]]+?)\s*\]$/u.exec(trimmed);
+  return looseMatch?.[1]?.trim() ?? '';
 }
 
 function normalizePlanSortDirection(direction: unknown): 'asc' | 'desc' {
@@ -1883,20 +2062,21 @@ function normalizeDecimalScale(scale: unknown): number {
 
 function compilePlanAggregateMetric(
   metric: Record<string, unknown>,
-  requireColumn: (name: unknown, context?: string) => { name: string; type?: string },
-  context: string
-): string {
+  requireColumn: (name: unknown, context?: string) => { name: string; type?: string }
+): { dsl: string; alias: string } {
   const fn = normalizePlanAggregateFunction(metric.function);
   const column =
     metric.column === '*'
       ? '*'
-      : formatDslField(requireColumn(metric.column ?? metric.expression, `${context}.column`).name);
+      : formatDslField(
+          requireColumn(metric.column ?? metric.expression, 'aggregate.metrics.column').name
+        );
   const alias = normalizeRequiredName(
     typeof metric.alias === 'string' ? metric.alias : `${fn}_${String(metric.column ?? 'all')}`,
     'Generated aggregate metric requires alias'
   );
   const metricFunction = fn === 'count_distinct' ? 'count_distinct' : fn;
-  return `${metricFunction}(${column}) as ${formatDslField(alias)}`;
+  return { dsl: `${metricFunction}(${column}) as ${formatDslField(alias)}`, alias };
 }
 
 function normalizePlanAggregateFunction(fn: unknown): string {
@@ -2050,6 +2230,56 @@ function validateGeneratedWorkflowDslText(workflowDsl: string): void {
       'Generated workflow uses invalid quoted field syntax. Use [`field name`] for fields with spaces.'
     );
   }
+  if (hasBareBacktickOutsideString(workflowDsl)) {
+    throw new DataCommandError(
+      'VALIDATION_FAILED',
+      'Generated workflow uses invalid bare backtick field syntax. Use [`field name`] inside expressions.'
+    );
+  }
+}
+
+function hasBareBacktickOutsideString(value: string): boolean {
+  let quote: '"' | "'" | null = null;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (quote) {
+      if (char === '\\') {
+        index += 1;
+      } else if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === '[' && value[index + 1] === '`') {
+      const fieldEnd = findDslBacktickFieldEnd(value, index + 2);
+      if (fieldEnd !== null) {
+        index = fieldEnd;
+        continue;
+      }
+    }
+    if (char === '`') {
+      return true;
+    }
+  }
+  return false;
+}
+
+function findDslBacktickFieldEnd(value: string, start: number): number | null {
+  for (let index = start; index < value.length; index += 1) {
+    const char = value[index];
+    if (char === '\\') {
+      index += 1;
+      continue;
+    }
+    if (char === '`') {
+      return value[index + 1] === ']' ? index + 1 : null;
+    }
+  }
+  return null;
 }
 
 function validateGeneratedWorkflowAst(operators: PrepOperatorAst[]): void {
