@@ -19,30 +19,6 @@ import {
   type CalculationRow,
 } from './shared/calculate-field';
 
-const AGG_FUNCTIONS = [
-  'sum',
-  'avg',
-  'min',
-  'max',
-  'count',
-  'count_distinct',
-  'median',
-  'stddev',
-  'var',
-];
-const WINDOW_FUNCTIONS = [
-  'row_number',
-  'rank',
-  'dense_rank',
-  'ntile',
-  'lag',
-  'lead',
-  'first_value',
-  'last_value',
-  'percent_rank',
-  'cume_dist',
-  'nth_value',
-];
 const EXCLUDE_ROW_FUNCTIONS = ['calcFieldCategoryWindow', 'calcFieldCategoryAggregate'];
 
 const FRAME_PRESETS = [
@@ -65,64 +41,27 @@ const SCENARIO_OPTIONS = [
     value: 'group',
     key: 'calcFieldScenarioGroup',
     label: '分组统计',
-    tip: '分区聚合、中位数、占比',
+    tip: '按分区聚合数据：求和/平均/计数/中位数/标准差/方差/众数/分位数/占比',
   },
   {
     value: 'sorted',
     key: 'calcFieldScenarioSorted',
-    label: '排序计算',
-    tip: '累计、移动平均、自定义滑动窗口、前后行值',
+    label: '窗口计算',
+    tip: '累计求和、移动平均、自定义窗口范围、前后行值引用',
   },
-  { value: 'rank', key: 'calcFieldScenarioRank', label: '排序编号', tip: '行号、排名、分桶' },
-  { value: 'period', key: 'calcFieldScenarioPeriod', label: '周期对比', tip: '同比/环比' },
+  {
+    value: 'rank',
+    key: 'calcFieldScenarioRank',
+    label: '排序编号',
+    tip: '行号、排名、密集排名、百分比排名、累积分布、分桶',
+  },
+  {
+    value: 'period',
+    key: 'calcFieldScenarioPeriod',
+    label: '周期对比',
+    tip: '同比值、同比率、环比值、环比率',
+  },
 ];
-
-const SCENARIO_FUNCTIONS: Record<string, string[]> = {
-  group: [
-    'sum',
-    'avg',
-    'min',
-    'max',
-    'count',
-    'count_distinct',
-    'median',
-    'stddev',
-    'var',
-    'mode',
-    'quantile_cont',
-    'first_value',
-    'last_value',
-    'nth_value',
-    'percentage',
-    'string_agg',
-    'bool_and',
-    'bool_or',
-  ],
-  sorted: [
-    'sum',
-    'avg',
-    'min',
-    'max',
-    'count',
-    'count_distinct',
-    'median',
-    'stddev',
-    'var',
-    'mode',
-    'quantile_cont',
-    'product',
-    'first_value',
-    'last_value',
-    'nth_value',
-    'lag',
-    'lead',
-    'string_agg',
-    'bool_and',
-    'bool_or',
-  ],
-  rank: ['row_number', 'rank', 'dense_rank', 'ntile', 'percent_rank', 'cume_dist'],
-  period: ['period_yoy_value', 'period_yoy_rate', 'period_mom_value', 'period_mom_rate'],
-};
 
 const FUNCTION_CATEGORIES: Record<string, { key: string; header: string; items: string[] }[]> = {
   group: [
@@ -355,62 +294,14 @@ export default function FormCalculateField({
   const [partitionOpen, setPartitionOpen] = useState<Record<number, boolean>>({});
   const [orderOpen, setOrderOpen] = useState<Record<number, boolean>>({});
 
-  const fnGroups = useMemo(
-    () => ({
-      agg: [
-        {
-          key: 'agg' as const,
-          items: AGG_FUNCTIONS.map((f) => ({ value: f, label: tr('calcFieldFn_' + f, f) })),
-        },
-      ],
-      window: [
-        {
-          key: 'window' as const,
-          items: WINDOW_FUNCTIONS.map((f) => ({ value: f, label: tr('calcFieldFn_' + f, f) })),
-        },
-      ],
-    }),
-    [tr]
-  );
-
-  function rowColumns(mode: 'row' | 'agg' | 'window' | 'cross') {
-    const scenarioDefaults: Record<string, string> = {
-      group: 'sum',
-      sorted: 'sum',
-      rank: 'row_number',
-      period: 'period_yoy_value',
-    };
-    const currentFnGroups =
-      mode === 'cross'
-        ? FUNCTION_CATEGORIES[activeScenario]
-          ? FUNCTION_CATEGORIES[activeScenario].map((cat) => ({
-              key: cat.key,
-              header: tr(cat.header, cat.header),
-              items: cat.items.map((f) => ({
-                value: f,
-                label: tr('calcFieldFn_' + f, f),
-                description: tr('calcFieldFnDesc_' + f, ''),
-              })),
-            }))
-          : [
-              {
-                key: 'scenario',
-                items: SCENARIO_FUNCTIONS[activeScenario].map((f) => ({
-                  value: f,
-                  label: tr('calcFieldFn_' + f, f),
-                })),
-              },
-            ]
-        : fnGroups[mode === 'agg' ? 'agg' : 'window'];
-    const defaultFn =
-      mode === 'cross' ? scenarioDefaults[activeScenario] : mode === 'agg' ? 'sum' : 'row_number';
+  function rowColumns() {
     const actionOptions = [
       { value: 'add', label: tr('calcFieldActionAdd', '新增字段') },
       { value: 'replace', label: tr('calcFieldActionReplace', '替换字段') },
     ];
 
     const insertModeCol: GlassRowListColumn<CalculationRow> = {
-      flex: mode === 'window' ? 'flex-[0.5]' : 'flex-[1]',
+      flex: 'flex-[1]',
       header: '',
       render: (item: CalculationRow, index: number) => (
         <GlassOperatorSelect
@@ -444,55 +335,149 @@ export default function FormCalculateField({
         ),
     };
 
-    if (mode === 'row') {
-      return [
-        { ...insertModeCol, flex: 'flex-[1]', header: tr('calcFieldActionHeader', '插入模式') },
-        { ...targetFieldCol, flex: 'flex-[2]', header: tr('calcFieldTargetField', '目标字段') },
-        {
-          flex: 'flex-[4]',
-          header: tr('calcFieldExpressionLabel', '表达式'),
-          render: (item: CalculationRow, index: number) => (
-            <GlassExpressionInput
-              value={item.expression}
-              onChange={(v) =>
-                updateItem(index, {
-                  expression: v,
-                  ...(v && item.type === 'row' ? { type: 'row' as const } : {}),
-                })
-              }
-              fieldCompletions={fieldCompletions}
-              columnTypes={columnTypes}
-              placeholder={tr('calcFieldExpressionPlaceholder', '请输入表达式')}
-              excludeFunctionCategories={EXCLUDE_ROW_FUNCTIONS}
-            />
-          ),
-        },
-      ];
-    }
+    return [
+      { ...insertModeCol, flex: 'flex-[1]', header: tr('calcFieldActionHeader', '插入模式') },
+      { ...targetFieldCol, flex: 'flex-[2]', header: tr('calcFieldTargetField', '目标字段') },
+      {
+        flex: 'flex-[4]',
+        header: tr('calcFieldExpressionLabel', '表达式'),
+        render: (item: CalculationRow, index: number) => (
+          <GlassExpressionInput
+            value={item.expression}
+            onChange={(v) =>
+              updateItem(index, {
+                expression: v,
+                ...(v && item.type === 'row' ? { type: 'row' as const } : {}),
+              })
+            }
+            fieldCompletions={fieldCompletions}
+            columnTypes={columnTypes}
+            placeholder={tr('calcFieldExpressionPlaceholder', '请输入表达式')}
+            excludeFunctionCategories={EXCLUDE_ROW_FUNCTIONS}
+          />
+        ),
+      },
+    ];
+  }
 
-    // Agg/window layout
-    const fnCol: GlassRowListColumn<CalculationRow> = {
-      flex: mode === 'window' ? 'flex-[0.5]' : 'flex-[1]',
-      header: '',
-      render: (item: CalculationRow, index: number) => (
-        <GlassOperatorSelect
-          value={item.fn || defaultFn}
-          groups={currentFnGroups}
-          onChange={(v) => updateItem(index, { fn: v })}
-          className="h-7 text-[12px] [&>span]:text-left w-full"
-        />
-      ),
+  function renderCrossLayout(item: CalculationRow, index: number, scenario: string) {
+    const scenarioDefaults: Record<string, string> = {
+      group: 'sum',
+      sorted: 'sum',
+      rank: 'row_number',
+      period: 'period_yoy_value',
     };
-    const fnArgCol: GlassRowListColumn<CalculationRow> = {
-      flex: 'flex-[1.5]',
-      header: '',
-      render: (item: CalculationRow, index: number) => {
-        const currentFn = item.fn || defaultFn;
-        const specs = FN_ARG_SPEC[currentFn] || FN_ARG_SPEC['*'];
-        return (
-          <div className="flex items-center gap-1 w-full">
-            {specs.map((s) => (
-              <div key={s.key} className="flex-1 min-w-0">
+    const defaultFn = scenarioDefaults[scenario] || 'sum';
+    const currentFn = item.fn || defaultFn;
+    const specs = FN_ARG_SPEC[currentFn] || FN_ARG_SPEC['*'];
+    const isPartition = item.partitionBy !== undefined;
+    const partOpen = partitionOpen[index];
+    const ordOpen = orderOpen[index];
+
+    const fnGroupOptions = (FUNCTION_CATEGORIES[scenario] || []).map((cat) => ({
+      key: cat.key,
+      header: tr(cat.header, cat.header),
+      items: cat.items.map((f) => ({
+        value: f,
+        label: tr('calcFieldFn_' + f, f),
+      })),
+    }));
+
+    const actionOptions = [
+      { value: 'add', label: tr('calcFieldActionAdd', '新增字段') },
+      { value: 'replace', label: tr('calcFieldActionReplace', '替换字段') },
+    ];
+
+    const showOrderBy = scenario !== 'group';
+
+    return (
+      <div className="flex flex-col gap-3">
+        {/* Row 0: 计算类别 */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
+              {tr('calcFieldScenarioLabel', '计算类别')}
+            </span>
+            <GlassOperatorSelect
+              value={activeScenario}
+              groups={[
+                {
+                  key: 'scenario',
+                  items: SCENARIO_OPTIONS.map((s) => ({
+                    value: s.value,
+                    label: tr(s.key, s.label),
+                  })),
+                },
+              ]}
+              onChange={(v) => setActiveScenario(v)}
+              className="h-7 text-[12px] w-28"
+            />
+          </div>
+          <span className="text-[10px] text-text-muted">
+            {tr(scenario + 'Hint', SCENARIO_OPTIONS.find((s) => s.value === scenario)?.tip || '')}
+          </span>
+        </div>
+
+        {/* Row 1: 插入模式 + 目标字段 */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
+              {tr('calcFieldActionHeader', '插入模式')}
+            </span>
+            <GlassOperatorSelect
+              value={item.action || 'add'}
+              groups={[{ key: 'action', items: actionOptions }]}
+              onChange={(v) => updateItem(index, { action: v as 'add' | 'replace' })}
+              className="h-7 text-[12px] w-28"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
+              {tr('calcFieldTargetField', '目标字段')}
+            </span>
+            <div className="w-36">
+              {item.action === 'replace' ? (
+                <GlassFieldCombo
+                  value={fieldCompletions.includes(item.field) ? item.field : ''}
+                  options={fieldCompletions}
+                  columnTypes={columnTypes}
+                  onChange={(v) => updateItem(index, { field: v })}
+                  placeholder={tr('calcFieldSelectPlaceholder', '选择字段')}
+                  className="h-7 w-full text-[12px]"
+                />
+              ) : (
+                <GlassFormTextInput
+                  value={item.field}
+                  onChange={(v) => updateItem(index, { field: v })}
+                  placeholder={tr('calcFieldTargetPlaceholder', '请输入字段名')}
+                  className="!h-7 w-full rounded-md px-1.5 text-[12px] shadow-none focus:ring-0"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Row 2: 计算函数 + 参数 */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
+              {tr('calcFieldFunction', '计算函数')}
+            </span>
+            <GlassOperatorSelect
+              value={currentFn}
+              groups={fnGroupOptions}
+              onChange={(v) => updateItem(index, { fn: v })}
+              className="h-7 text-[12px] w-28"
+            />
+          </div>
+          {specs.map((s) => (
+            <div key={s.key} className="flex items-center gap-2">
+              <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
+                {s.type === 'field'
+                  ? tr('calcFieldFnArg', '参数字段')
+                  : tr('calcFieldFnArgConst', '参数常数')}
+              </span>
+              <div className={s.type === 'field' ? 'w-36' : 'w-28'}>
                 {s.type === 'field' ? (
                   <GlassFieldCombo
                     value={item[s.key] ?? ''}
@@ -510,24 +495,21 @@ export default function FormCalculateField({
                     onChange={(e) =>
                       updateItem(index, { [s.key]: e.target.value } as Partial<CalculationRow>)
                     }
-                    placeholder={tr('calcFieldFnArgNumPlaceholder', '参数')}
+                    placeholder={tr('calcFieldFnArgNumPlaceholder', '常数')}
                     className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent placeholder:text-text-muted"
                   />
                 )}
               </div>
-            ))}
-          </div>
-        );
-      },
-    };
-    const partitionByCol: GlassRowListColumn<CalculationRow> = {
-      flex: 'flex-[1.8]',
-      header: '',
-      render: (item: CalculationRow, index: number) => {
-        const isPartition = item.partitionBy !== undefined;
-        const open = partitionOpen[index];
-        return (
-          <div className="flex flex-col gap-1 w-full">
+            </div>
+          ))}
+        </div>
+
+        {/* Row 3: 分区范围 */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
+              {tr('calcFieldPartitionRange', '分区范围')}
+            </span>
             <GlassOperatorSelect
               value={isPartition ? 'partition' : 'all'}
               groups={[
@@ -535,7 +517,7 @@ export default function FormCalculateField({
                   key: 'partitionMode',
                   items: [
                     { value: 'all', label: tr('calcFieldPartitionAll', '全表') },
-                    { value: 'partition', label: tr('calcFieldPartitionSelect', '分区') },
+                    { value: 'partition', label: tr('calcFieldPartitionSelect', '部分') },
                   ],
                 },
               ]}
@@ -547,10 +529,15 @@ export default function FormCalculateField({
                   setPartitionOpen((o) => ({ ...o, [index]: true }));
                 }
               }}
-              className="h-7 text-[12px] w-full"
+              className="h-7 text-[12px] w-28"
             />
-            {isPartition && (
-              <div className="relative w-full">
+          </div>
+          {isPartition && (
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
+                {tr('calcFieldPartitionBy', '分区字段')}
+              </span>
+              <div className="w-72 min-w-0 relative">
                 <div className="flex min-h-7 items-center rounded-md border border-border-muted bg-background/42 focus-within:border-accent">
                   {item.partitionBy?.length ? (
                     <button
@@ -600,15 +587,15 @@ export default function FormCalculateField({
                   <button
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => setPartitionOpen((o) => ({ ...o, [index]: !open }))}
+                    onClick={() => setPartitionOpen((o) => ({ ...o, [index]: !partOpen }))}
                     className="flex w-7 flex-shrink-0 items-center justify-center self-stretch border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
                   >
                     <ChevronDown
-                      className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`}
+                      className={`h-3.5 w-3.5 transition-transform ${partOpen ? 'rotate-180' : ''}`}
                     />
                   </button>
                 </div>
-                {open && (
+                {partOpen && (
                   <div className="absolute z-10 left-0 right-0 mt-0.5">
                     <GlassColumnSelector
                       columns={fieldCompletions}
@@ -622,244 +609,199 @@ export default function FormCalculateField({
                   </div>
                 )}
               </div>
-            )}
-          </div>
-        );
-      },
-    };
-
-    if (mode === 'agg') {
-      return [
-        insertModeCol,
-        targetFieldCol,
-        { flex: 'flex-[2]', header: '', render: () => null },
-        fnCol,
-        fnArgCol,
-        partitionByCol,
-      ];
-    }
-
-    // window mode
-    const orderByCol: GlassRowListColumn<CalculationRow> = {
-      flex: 'flex-[1]',
-      header: '',
-      render: (item: CalculationRow, index: number) => {
-        const open = orderOpen[index];
-        return (
-          <div className="relative w-full">
-            <div className="flex min-h-7 items-center rounded-md border border-border-muted bg-background/42 focus-within:border-accent">
-              {item.orderBy?.length ? (
-                <button
-                  type="button"
-                  onClick={() => updateItem(index, { orderBy: undefined })}
-                  className="ml-1 inline-flex flex-shrink-0 items-center justify-center self-stretch rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
-                  title={tr('clearAll', '清空')}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </button>
-              ) : null}
-              <div className="flex flex-1 items-center gap-1 px-1.5 min-w-0 overflow-x-auto">
-                {item.orderBy?.map((o) => (
-                  <span
-                    key={o.field}
-                    className="inline-flex shrink-0 items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[12px] font-medium text-accent"
-                  >
-                    {o.field}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateItem(index, {
-                          orderBy: item.orderBy?.map((x) =>
-                            x.field === o.field
-                              ? {
-                                  ...x,
-                                  direction:
-                                    x.direction === 'desc' ? ('asc' as const) : ('desc' as const),
-                                }
-                              : x
-                          ),
-                        })
-                      }
-                      className="text-[11px] leading-none px-0.5 hover:text-text-primary rounded"
-                      title={o.direction === 'asc' ? tr('asc', '升序') : tr('desc', '降序')}
-                    >
-                      {o.direction === 'asc' ? '↑' : '↓'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateItem(index, {
-                          orderBy: item.orderBy?.filter((x) => x.field !== o.field),
-                        })
-                      }
-                      className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
-                    >
-                      <X className="h-2.5 w-2.5" />
-                    </button>
-                  </span>
-                ))}
-                <input
-                  type="text"
-                  readOnly
-                  placeholder={
-                    !item.orderBy?.length ? tr('calcFieldOrderPlaceholder', '选择排序字段') : ''
-                  }
-                  onFocus={() => setOrderOpen((o) => ({ ...o, [index]: true }))}
-                  onBlur={() =>
-                    setTimeout(() => setOrderOpen((o) => ({ ...o, [index]: false })), 150)
-                  }
-                  className="h-5 min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted cursor-pointer"
-                />
-              </div>
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => setOrderOpen((o) => ({ ...o, [index]: !open }))}
-                className="flex w-7 flex-shrink-0 items-center justify-center self-stretch border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
-              >
-                <ChevronDown
-                  className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`}
-                />
-              </button>
             </div>
-            {open && (
-              <div className="absolute z-10 left-0 right-0 mt-0.5">
-                <GlassColumnSelector
-                  columns={fieldCompletions}
-                  selected={item.orderBy?.map((o) => o.field) ?? []}
-                  onChange={(v) =>
-                    updateItem(index, {
-                      orderBy:
-                        v.length > 0
-                          ? v.map((f) => {
-                              const existing = item.orderBy?.find((x) => x.field === f);
-                              return {
-                                field: f,
-                                direction: existing?.direction ?? ('asc' as const),
-                              };
+          )}
+        </div>
+
+        {/* Row 4: 排序字段 (sorted, rank, period) */}
+        {showOrderBy && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
+                {tr('calcFieldOrderBy', '排序字段')}
+              </span>
+              <div className="w-72 min-w-0 relative">
+                <div className="flex min-h-7 items-center rounded-md border border-border-muted bg-background/42 focus-within:border-accent">
+                  {item.orderBy?.length ? (
+                    <button
+                      type="button"
+                      onClick={() => updateItem(index, { orderBy: undefined })}
+                      className="ml-1 inline-flex flex-shrink-0 items-center justify-center self-stretch rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
+                      title={tr('clearAll', '清空')}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  ) : null}
+                  <div className="flex flex-1 items-center gap-1 px-1.5 min-w-0 overflow-x-auto">
+                    {item.orderBy?.map((o) => (
+                      <span
+                        key={o.field}
+                        className="inline-flex shrink-0 items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[12px] font-medium text-accent"
+                      >
+                        {o.field}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateItem(index, {
+                              orderBy: item.orderBy?.map((x) =>
+                                x.field === o.field
+                                  ? {
+                                      ...x,
+                                      direction:
+                                        x.direction === 'desc'
+                                          ? ('asc' as const)
+                                          : ('desc' as const),
+                                    }
+                                  : x
+                              ),
                             })
-                          : undefined,
-                    })
-                  }
-                  columnTypes={columnTypes}
-                  maxHeight="160px"
-                />
+                          }
+                          className="text-[11px] leading-none px-0.5 hover:text-text-primary rounded"
+                          title={o.direction === 'asc' ? tr('asc', '升序') : tr('desc', '降序')}
+                        >
+                          {o.direction === 'asc' ? '↑' : '↓'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateItem(index, {
+                              orderBy: item.orderBy?.filter((x) => x.field !== o.field),
+                            })
+                          }
+                          className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      </span>
+                    ))}
+                    <input
+                      type="text"
+                      readOnly
+                      placeholder={
+                        !item.orderBy?.length ? tr('calcFieldOrderPlaceholder', '选择排序字段') : ''
+                      }
+                      onFocus={() => setOrderOpen((o) => ({ ...o, [index]: true }))}
+                      onBlur={() =>
+                        setTimeout(() => setOrderOpen((o) => ({ ...o, [index]: false })), 150)
+                      }
+                      className="h-5 min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted cursor-pointer"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => setOrderOpen((o) => ({ ...o, [index]: !ordOpen }))}
+                    className="flex w-7 flex-shrink-0 items-center justify-center self-stretch border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
+                  >
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 transition-transform ${ordOpen ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+                </div>
+                {ordOpen && (
+                  <div className="absolute z-10 left-0 right-0 mt-0.5">
+                    <GlassColumnSelector
+                      columns={fieldCompletions}
+                      selected={item.orderBy?.map((o) => o.field) ?? []}
+                      onChange={(v) =>
+                        updateItem(index, {
+                          orderBy:
+                            v.length > 0
+                              ? v.map((f) => ({
+                                  field: f,
+                                  direction:
+                                    item.orderBy?.find((x) => x.field === f)?.direction ??
+                                    ('asc' as const),
+                                }))
+                              : undefined,
+                        })
+                      }
+                      columnTypes={columnTypes}
+                      maxHeight="160px"
+                    />
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
-        );
-      },
-    };
+        )}
 
-    const frameCol: GlassRowListColumn<CalculationRow> = {
-      flex: 'flex-[1]',
-      header: '',
-      render: (item: CalculationRow, index: number) => {
-        const currentKey = `${item.frameStart ?? 'unbounded preceding'}|${item.frameEnd ?? 'unbounded following'}`;
-        const isCustom = !FRAME_PRESETS.filter((p) => p.value !== 'custom').some(
-          (p) => p.value === currentKey
-        );
-        const presets = FRAME_PRESETS.map((p) => ({
-          value: p.value,
-          label: tr(p.key, p.label),
-        }));
-        const n = isCustom ? parseFrameN(item.frameStart) : 0;
-        const m = isCustom ? parseFrameM(item.frameEnd) : 0;
-
-        return (
-          <div className="flex flex-row items-center gap-1 w-full">
-            <GlassOperatorSelect
-              value={isCustom ? 'custom' : currentKey}
-              groups={[{ key: 'frame', items: presets }]}
-              onChange={(v) => {
-                if (v === 'custom') {
-                  updateItem(index, { frameStart: '1 preceding', frameEnd: 'current row' });
-                  return;
-                }
-                const [frameStart, frameEnd] = v.split('|');
-                updateItem(index, { frameStart, frameEnd });
-              }}
-              className={`h-7 text-[12px] [&>span]:text-left ${isCustom ? 'flex-1 min-w-0' : 'w-full'}`}
-            />
-            {isCustom && (
-              <div className="flex-1 min-w-0 flex items-center gap-1 text-[12px] text-text-muted">
-                <span className="shrink-0">前</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={n < 0 ? '' : n}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (isNaN(val) || val < 0) return;
-                    updateItem(index, { frameStart: val > 0 ? `${val} preceding` : 'current row' });
-                  }}
-                  placeholder="∞"
-                  className="h-6 w-12 rounded border border-border-muted bg-background/42 px-1 text-center text-[12px] text-text-primary outline-none"
-                />
-                <span className="shrink-0">行 → 后</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={m < 0 ? '' : m}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (isNaN(val) || val < 0) return;
-                    updateItem(index, { frameEnd: val > 0 ? `${val} following` : 'current row' });
-                  }}
-                  placeholder="∞"
-                  className="h-6 w-12 rounded border border-border-muted bg-background/42 px-1 text-center text-[12px] text-text-primary outline-none"
-                />
-                <span className="shrink-0">行</span>
-              </div>
-            )}
+        {/* Row 5: 窗口帧 (sorted only) */}
+        {scenario === 'sorted' && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
+                {tr('calcFieldFrame', '窗口范围')}
+              </span>
+              {(() => {
+                const currentKey = `${item.frameStart ?? 'unbounded preceding'}|${item.frameEnd ?? 'unbounded following'}`;
+                const isCustom = !FRAME_PRESETS.filter((p) => p.value !== 'custom').some(
+                  (p) => p.value === currentKey
+                );
+                const presets = FRAME_PRESETS.map((p) => ({
+                  value: p.value,
+                  label: tr(p.key, p.label),
+                }));
+                const n = isCustom ? parseFrameN(item.frameStart) : 0;
+                const m = isCustom ? parseFrameM(item.frameEnd) : 0;
+                return (
+                  <div className="flex items-center gap-1 w-full">
+                    <GlassOperatorSelect
+                      value={isCustom ? 'custom' : currentKey}
+                      groups={[{ key: 'frame', items: presets }]}
+                      onChange={(v) => {
+                        if (v === 'custom') {
+                          updateItem(index, { frameStart: '1 preceding', frameEnd: 'current row' });
+                          return;
+                        }
+                        const [frameStart, frameEnd] = v.split('|');
+                        updateItem(index, { frameStart, frameEnd });
+                      }}
+                      className={`h-7 text-[12px] [&>span]:text-left ${isCustom ? 'w-36' : 'w-36'}`}
+                    />
+                    {isCustom && (
+                      <div className="flex items-center gap-1 text-[12px] text-text-muted">
+                        <span className="shrink-0">前</span>
+                        <input
+                          type="number"
+                          min={0}
+                          value={n < 0 ? '' : n}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            if (isNaN(val) || val < 0) return;
+                            updateItem(index, {
+                              frameStart: val > 0 ? `${val} preceding` : 'current row',
+                            });
+                          }}
+                          placeholder="∞"
+                          className="h-6 w-12 rounded border border-border-muted bg-background/42 px-1 text-center text-[12px] text-text-primary outline-none"
+                        />
+                        <span className="shrink-0">行 → 后</span>
+                        <input
+                          type="number"
+                          min={0}
+                          value={m < 0 ? '' : m}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            if (isNaN(val) || val < 0) return;
+                            updateItem(index, {
+                              frameEnd: val > 0 ? `${val} following` : 'current row',
+                            });
+                          }}
+                          placeholder="∞"
+                          className="h-6 w-12 rounded border border-border-muted bg-background/42 px-1 text-center text-[12px] text-text-primary outline-none"
+                        />
+                        <span className="shrink-0">行</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
           </div>
-        );
-      },
-    };
-
-    if (mode === 'cross') {
-      if (activeScenario === 'sorted') {
-        return [
-          insertModeCol,
-          targetFieldCol,
-          fnCol,
-          fnArgCol,
-          orderByCol,
-          partitionByCol,
-          { flex: 'w-full h-0', header: '', render: () => null },
-          frameCol,
-        ] as GlassRowListColumn<CalculationRow>[];
-      }
-      if (activeScenario === 'group') {
-        return [
-          insertModeCol,
-          targetFieldCol,
-          fnCol,
-          fnArgCol,
-          partitionByCol,
-        ] as GlassRowListColumn<CalculationRow>[];
-      }
-      // rank, period: no frame, with orderBy
-      return [
-        insertModeCol,
-        targetFieldCol,
-        fnCol,
-        fnArgCol,
-        orderByCol,
-        partitionByCol,
-      ] as GlassRowListColumn<CalculationRow>[];
-    }
-
-    return [
-      insertModeCol,
-      targetFieldCol,
-      fnCol,
-      fnArgCol,
-      orderByCol,
-      partitionByCol,
-      { flex: 'w-full h-0', header: '', render: () => null },
-      frameCol,
-    ] as GlassRowListColumn<CalculationRow>[];
+        )}
+      </div>
+    );
   }
 
   return (
@@ -895,7 +837,6 @@ export default function FormCalculateField({
               },
             ]}
             onChange={(v) => setActiveMode(v as 'row' | 'cross')}
-            label={tr('calcFieldModeHeader', '计算模式')}
           />
         </div>
       </div>
@@ -932,66 +873,20 @@ export default function FormCalculateField({
             </button>
           </div>
         </div>
-        {activeMode === 'cross' && (
-          <div className="px-3 pb-2 flex flex-row flex-wrap items-center gap-2">
-            <span className="text-[11px] font-medium text-text-muted whitespace-nowrap">
-              {tr('calcFieldScenarioLabel', '请选择计算类别')}
-            </span>
-            <div className="w-1/4 min-w-[120px]">
-              <GlassOperatorSelect
-                value={activeScenario}
-                groups={[
-                  {
-                    key: 'scenario',
-                    items: SCENARIO_OPTIONS.map((s) => ({
-                      value: s.value,
-                      label: tr(s.key, s.label),
-                    })),
-                  },
-                ]}
-                onChange={(v) => setActiveScenario(v)}
-                className="h-7 text-[12px] w-full"
-              />
-            </div>
-            <span className="text-[10px] text-text-muted">
-              {tr(
-                activeScenario + 'Hint',
-                SCENARIO_OPTIONS.find((s) => s.value === activeScenario)?.tip || ''
-              )}
-            </span>
-          </div>
-        )}
         <div className="px-3 pb-3 overflow-y-auto flex-1 min-h-0">
-          {(() => {
-            if (activeMode === 'row') {
-              return (
-                <GlassRowList
-                  items={visibleItems as CalculationRow[]}
-                  columns={rowColumns('row')}
-                  onAdd={() => {}}
-                  onRemove={() => {}}
-                  addTitle=""
-                  removeTitle=""
-                  hideActions
-                />
-              );
-            }
-            return (
-              <GlassRowList
-                key={activeScenario}
-                items={visibleItems as CalculationRow[]}
-                columns={rowColumns('cross')}
-                onAdd={() => {}}
-                onRemove={() => {}}
-                addTitle=""
-                removeTitle=""
-                hideActions
-                breakAt={activeScenario === 'group' ? 3 : 4}
-                inlineActions
-                hideHeader
-              />
-            );
-          })()}
+          {activeMode === 'row' ? (
+            <GlassRowList
+              items={visibleItems as CalculationRow[]}
+              columns={rowColumns()}
+              onAdd={() => {}}
+              onRemove={() => {}}
+              addTitle=""
+              removeTitle=""
+              hideActions
+            />
+          ) : (
+            renderCrossLayout(visibleItems[0], 0, activeScenario)
+          )}
         </div>
       </div>
     </div>
