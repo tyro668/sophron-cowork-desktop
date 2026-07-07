@@ -852,6 +852,19 @@ function CloudTableProcessActionEditor({
       const canReuseGeneratedTask =
         reusableTaskSource?.location === sourceLocation &&
         reusableTaskSource.tableId === config.source.tableId;
+      const reusableTaskOutput =
+        reusableTaskConfig?.output &&
+        typeof reusableTaskConfig.output === 'object' &&
+        !Array.isArray(reusableTaskConfig.output)
+          ? (reusableTaskConfig.output as Record<string, unknown>)
+          : null;
+      const canReuseGeneratedOutputTable =
+        canReuseGeneratedTask &&
+        reusableTaskOutput?.tableName === config.output.tableName &&
+        typeof reusableTaskOutput.localOutputTableId === 'string';
+      const reusableLocalOutputTableId = canReuseGeneratedOutputTable
+        ? String(reusableTaskOutput.localOutputTableId)
+        : undefined;
       const result = await window.electronAPI.data.generateTaskFromRequirement({
         source: {
           location: sourceLocation,
@@ -875,14 +888,7 @@ function CloudTableProcessActionEditor({
           projectId: config.output.projectId || config.source.projectId,
           datasourceId: config.output.datasourceId || config.source.datasourceId,
           folderId: config.output.folderId || config.source.folderId,
-          localOutputTableId:
-            canReuseGeneratedTask &&
-            typeof reusableTaskConfig?.output === 'object' &&
-            reusableTaskConfig.output &&
-            'localOutputTableId' in reusableTaskConfig.output &&
-            typeof reusableTaskConfig.output.localOutputTableId === 'string'
-              ? reusableTaskConfig.output.localOutputTableId
-              : undefined,
+          localOutputTableId: reusableLocalOutputTableId,
         },
         modelConfigSetId: selectedModelConfigSetId,
         model: typeof node.config.model === 'string' ? node.config.model : undefined,
