@@ -212,7 +212,7 @@ function ConditionLeafRow({
             }}
             placeholder={ctx.tr('filterFieldPlaceholder', '选择字段')}
             emptyText={ctx.tr('noMatch', '无匹配字段')}
-            className="h-8"
+            className="h-8 w-full"
           />
         </div>
 
@@ -222,7 +222,7 @@ function ConditionLeafRow({
           groups={opGroupsTranslated}
           disabled={!fieldSelected}
           onChange={(v) => ctx.updateLeaf(leaf.id, { op: v })}
-          className="h-8 min-w-[84px] rounded-md text-[12px] w-full"
+          className="h-8 w-28 rounded-md text-[12px]"
         />
 
         {/* Value(s) */}
@@ -601,7 +601,10 @@ export default function FormFilter({
           setColumnValues((prev) => ({ ...prev, [colName]: vals }));
           setLoadingValues((prev) => ({ ...prev, [colName]: false }));
         })
-        .catch(() => setLoadingValues((prev) => ({ ...prev, [colName]: false })));
+        .catch(() => {
+          setColumnValues((prev) => ({ ...prev, [colName]: [] }));
+          setLoadingValues((prev) => ({ ...prev, [colName]: false }));
+        });
     },
     [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config, columnValues, loadingValues]
   );

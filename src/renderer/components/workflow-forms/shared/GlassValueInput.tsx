@@ -51,7 +51,10 @@ export function GlassValueInput({
           type="text"
           value={input}
           disabled={disabled}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            setInput(e.target.value);
+            setOpen(true);
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Escape') setOpen(false);
             else if (e.key === 'Enter') {
@@ -59,7 +62,8 @@ export function GlassValueInput({
               setOpen(false);
             }
           }}
-          onBlur={() => onChange(input)}
+          onBlur={() => setTimeout(() => onChange(input), 100)}
+          onFocus={() => setOpen(true)}
           placeholder={placeholder}
           className="h-8 flex-1 min-w-[60px] bg-transparent pl-2 text-[12px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-40"
         />
@@ -79,27 +83,33 @@ export function GlassValueInput({
           <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
         </button>
       </div>
-      {open && filtered.length > 0 && (
+      {open && (
         <div className="absolute left-0 top-full z-50 mt-1 w-full rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl">
-          <div className="max-h-40 overflow-y-auto">
-            {filtered.map((s) => (
-              <button
-                key={s}
-                type="button"
-                className={`w-full px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-surface-hover ${
-                  s === input ? 'text-accent' : 'text-text-secondary'
-                }`}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  setInput(s);
-                  onChange(s);
-                  setOpen(false);
-                }}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
+          {filtered.length > 0 ? (
+            <div className="max-h-40 overflow-y-auto">
+              {filtered.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className={`w-full px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-surface-hover ${
+                    s === input ? 'text-accent' : 'text-text-secondary'
+                  }`}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setInput(s);
+                    onChange(s);
+                    setOpen(false);
+                  }}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="px-2.5 py-4 text-center text-[12px] text-text-muted">
+              {isLoading ? '加载中…' : '无匹配值'}
+            </div>
+          )}
         </div>
       )}
     </div>
