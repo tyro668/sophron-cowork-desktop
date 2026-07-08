@@ -533,6 +533,9 @@
         "selectColumns": "Select columns",
         "removeField": "Remove field",
         "searchField": "Search fields...",
+        "moveToTop": "Move to top",
+        "moveToBottom": "Move to bottom",
+        "reorderHint": "Drag to reorder fields",
         "add": "Add",
         "remove": "Remove",
         "first": "First",
@@ -825,6 +828,8 @@
         "fieldSelectCount": "{{n}}/{{total}} fields selected",
         "selectedFields": "Selected",
         "noFieldsSelected": "No fields selected",
+        "clearAllConfirm": "Clear all?",
+        "clearAllConfirmMessage": "This will remove all selected fields",
         "filterToggleAndOr": "Click to toggle AND / OR",
         "filterFieldPlaceholder": "Select field",
         "filterValuePlaceholder": "Value",
@@ -1055,8 +1060,7 @@
           "dataset": "Dataset"
         },
         "selectModes": {
-          "include": "Include fields",
-          "exclude": "Drop fields"
+          "include": "Include fields"
         },
         "mappingModes": {
           "map": "Field mapping",

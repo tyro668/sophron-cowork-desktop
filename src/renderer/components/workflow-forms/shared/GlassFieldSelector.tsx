@@ -136,7 +136,7 @@ export function GlassFieldSelector({
               onChange={toggleAll}
               className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
             />
-            <span className="text-[11px] text-text-secondary font-medium whitespace-nowrap">
+            <span className="text-[12px] text-text-secondary font-medium whitespace-nowrap">
               {allFilteredSelected ? tr('deselectAll', '取消全选') : tr('selectAll', '全选')}
             </span>
           </label>
@@ -158,7 +158,7 @@ export function GlassFieldSelector({
             return (
               <label
                 key={col}
-                className={`flex cursor-pointer items-center gap-2 px-2.5 py-[4px] text-[12px] transition-colors hover:bg-surface-hover ${
+                className={`flex cursor-pointer items-center gap-2 px-2.5 py-[4px] text-[13px] transition-colors hover:bg-surface-hover ${
                   checked ? 'text-text-primary' : 'text-text-secondary'
                 }`}
                 onMouseDown={(e) => {

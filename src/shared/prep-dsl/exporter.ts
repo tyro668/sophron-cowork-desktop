@@ -102,7 +102,7 @@ function formatOperator(node: PrepFlowNodeLike): string | null {
 
 function formatFieldSelect(config: Record<string, unknown> | undefined): string {
   const columns = stringArray(config?.columns).map(formatFieldRef).join(', ');
-  return `${config?.mode === 'exclude' ? 'drop' : 'select'} ${columns || '[field]'}`;
+  return `select ${columns || '[field]'}`;
 }
 
 function formatTypeConvert(config: Record<string, unknown> | undefined): string {

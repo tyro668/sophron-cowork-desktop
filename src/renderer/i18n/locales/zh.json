@@ -533,6 +533,9 @@
         "selectColumns": "选择字段",
         "removeField": "移除字段",
         "searchField": "搜索字段...",
+        "moveToTop": "置顶",
+        "moveToBottom": "置底",
+        "reorderHint": "可拖拽调整字段顺序",
         "add": "添加",
         "remove": "删除",
         "first": "第一条",
@@ -825,6 +828,8 @@
         "fieldSelectCount": "已选 {{n}}/{{total}} 个字段",
         "selectedFields": "已选字段",
         "noFieldsSelected": "暂未选择字段",
+        "clearAllConfirm": "确认清空？",
+        "clearAllConfirmMessage": "将移除所有已选字段",
         "filterToggleAndOr": "点击切换与 / 或",
         "filterFieldPlaceholder": "选择字段",
         "filterValuePlaceholder": "值",
@@ -1055,8 +1060,7 @@
           "dataset": "数据集"
         },
         "selectModes": {
-          "include": "保留字段",
-          "exclude": "删除字段"
+          "include": "保留字段"
         },
         "mappingModes": {
           "map": "字段映射",

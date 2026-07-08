@@ -189,11 +189,6 @@ function parseOperator(
       mode: 'include',
       columns: parseFieldRefs(text.slice(7)).map(toFieldName),
     });
-  if (text.startsWith('drop '))
-    return makeOperator('field_select', text, {
-      mode: 'exclude',
-      columns: parseFieldRefs(text.slice(5)).map(toFieldName),
-    });
   if (text.startsWith('map ') || text.startsWith('rename '))
     return parseMapping(command, diagnostics);
   if (text.startsWith('filter '))

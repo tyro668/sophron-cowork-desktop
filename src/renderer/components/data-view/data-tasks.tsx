@@ -2709,11 +2709,7 @@ function getWorkflowConfigSummary(node: DataWorkflowNode, t: TranslateFn): Workf
     case 'field_select':
       summary = {
         primary: [
-          summaryRow(
-            t,
-            'mode',
-            translateWorkflowValue(t, 'selectModes', stringValue(config.mode, 'include'))
-          ),
+          summaryRow(t, 'mode', translateWorkflowValue(t, 'selectModes', 'include')),
           summaryRow(t, 'columns', formatCount(stringArray(config.columns).length)),
         ],
         details: [summaryRow(t, 'fields', formatList(stringArray(config.columns), t), true)],
