@@ -1776,28 +1776,6 @@ function WorkflowInspector({
   );
 
   useEffect(() => {
-    const nextNodeKey = node && usesOperatorDsl ? `${node.id}:${node.type}` : '';
-    if (operatorDslNodeKeyRef.current === nextNodeKey) return;
-    operatorDslNodeKeyRef.current = nextNodeKey;
-    if (!node || !usesOperatorDsl) {
-      setOperatorDsl('');
-      setOperatorDslBeforeEdit('');
-      setIsEditingOperatorDsl(false);
-      setOperatorFieldCompletions([]);
-      setOperatorDslDiagnostics([]);
-      setOperatorDslStatus(null);
-      return;
-    }
-    const nextDsl = exportPrepOperatorDsl(node);
-    setOperatorDsl(nextDsl);
-    setOperatorDslBeforeEdit(nextDsl);
-    setIsEditingOperatorDsl(false);
-    setOperatorFieldCompletions([]);
-    setOperatorDslDiagnostics([]);
-    setOperatorDslStatus(null);
-  }, [node, node?.id, node?.type, usesOperatorDsl]);
-
-  useEffect(() => {
     if (!node || !usesOperatorDsl || isEditingOperatorDsl) return;
     const cleanNode = { ...node, config: { ...node.config, dsl: undefined } };
     const nextDsl = exportPrepOperatorDsl(cleanNode);
@@ -1805,7 +1783,14 @@ function WorkflowInspector({
     setOperatorDslBeforeEdit(nextDsl);
     setOperatorDslDiagnostics([]);
     setOperatorDslStatus(null);
-  }, [isEditingOperatorDsl, node, node?.config, node?.label, usesOperatorDsl]);
+  }, [
+    isEditingOperatorDsl,
+    node,
+    node?.config,
+    node?.config?.calculations,
+    node?.label,
+    usesOperatorDsl,
+  ]);
 
   useEffect(() => {
     const requestSeq = operatorFieldsRequestSeq.current + 1;

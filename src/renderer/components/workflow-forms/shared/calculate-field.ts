@@ -7,6 +7,7 @@ export interface CalculationConfigEntry {
   fn?: string;
   fnArg?: string;
   fnArg2?: string;
+  scenario?: string;
   partitionBy?: string[];
   orderBy?: Array<{ field: string; direction?: 'asc' | 'desc' }>;
   frameStart?: string;
@@ -22,6 +23,7 @@ export interface CalculationRow {
   fn?: string;
   fnArg?: string;
   fnArg2?: string;
+  scenario?: string;
   partitionBy?: string[];
   orderBy?: Array<{ field: string; direction?: 'asc' | 'desc' }>;
   frameStart?: string;
@@ -107,6 +109,7 @@ export function normalizeCalculationEntries(
       fn: typeof entry.fn === 'string' ? entry.fn : undefined,
       fnArg: typeof entry.fnArg === 'string' ? entry.fnArg : undefined,
       fnArg2: typeof entry.fnArg2 === 'string' ? entry.fnArg2 : undefined,
+      scenario: typeof entry.scenario === 'string' ? entry.scenario : undefined,
       partitionBy: Array.isArray(entry.partitionBy) ? entry.partitionBy : undefined,
       orderBy: Array.isArray(entry.orderBy) ? entry.orderBy : undefined,
       frameStart: typeof entry.frameStart === 'string' ? entry.frameStart : undefined,

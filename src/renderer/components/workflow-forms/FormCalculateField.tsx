@@ -222,15 +222,59 @@ export default function FormCalculateField({
     [rawCalculations]
   );
 
+  const [activeMode, setActiveMode] = useState<'row' | 'cross'>(
+    () => (node.config?._activeMode as 'row' | 'cross') || 'row'
+  );
+  const [activeScenario, setActiveScenario] = useState<string>(
+    () => (node.config?._activeScenario as string) || 'group'
+  );
+
   const storeCalculations = useCallback(
     (next: CalculationRow[]) => {
+      const toPersist = next.filter((i) =>
+        activeMode === 'row'
+          ? i.type === 'row'
+          : i.type !== 'row' && (i.scenario || activeScenario) === activeScenario
+      );
       updateConfig((cfg) => ({
         ...cfg,
-        calculations: next.length > 0 ? next : undefined,
+        calculations: toPersist.length > 0 ? toPersist : undefined,
       }));
     },
-    [updateConfig]
+    [updateConfig, activeMode, activeScenario]
   );
+
+  useEffect(() => {
+    const hasItems = localItems.some((i) =>
+      activeMode === 'row'
+        ? i.type === 'row'
+        : i.type !== 'row' && (i.scenario || activeScenario) === activeScenario
+    );
+
+    if (!hasItems && activeMode === 'cross') {
+      const defaults: Record<string, string> = {
+        group: 'sum',
+        sorted: 'sum',
+        rank: 'row_number',
+        period: 'period_yoy_value',
+      };
+      updateItem(0, { fn: defaults[activeScenario] || 'sum' });
+      return;
+    }
+
+    const toPersist = localItems.filter((i) =>
+      activeMode === 'row'
+        ? i.type === 'row'
+        : i.type !== 'row' && (i.scenario || activeScenario) === activeScenario
+    );
+    updateConfig((cfg) => ({
+      ...cfg,
+      _activeMode: activeMode,
+      _activeScenario: activeScenario,
+      calculations: toPersist.length > 0 ? toPersist : undefined,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMode, activeScenario]);
 
   useEffect(() => {
     if (!needsNormalization) return;
@@ -239,27 +283,27 @@ export default function FormCalculateField({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsNormalization]);
 
-  const [activeMode, setActiveMode] = useState<'row' | 'cross'>(
-    () => (node.config?._activeMode as 'row' | 'cross') || 'row'
-  );
-  const [activeScenario, setActiveScenario] = useState<string>(
-    () => (node.config?._activeScenario as string) || 'group'
-  );
-
   const visibleItems = useMemo(() => {
     const filtered = localItems.filter((i) =>
-      activeMode === 'row' ? i.type === 'row' : i.type !== 'row'
+      activeMode === 'row'
+        ? i.type === 'row'
+        : i.type !== 'row' && (i.scenario || activeScenario) === activeScenario
     );
     if (filtered.length > 0) return [filtered[0]];
     if (activeMode === 'row') return [createCalculationRow()];
-    return [{ ...createCalculationRow(), type: 'cross' as const }] as CalculationRow[];
-  }, [localItems, activeMode]);
+    return [
+      { ...createCalculationRow(), type: 'cross' as const, scenario: activeScenario },
+    ] as CalculationRow[];
+  }, [localItems, activeMode, activeScenario]);
 
   function toBackingIndex(visibleIndex: number): number {
     let count = 0;
     for (let i = 0; i < localItems.length; i++) {
       const match =
-        activeMode === 'row' ? localItems[i].type === 'row' : localItems[i].type !== 'row';
+        activeMode === 'row'
+          ? localItems[i].type === 'row'
+          : localItems[i].type !== 'row' &&
+            (localItems[i].scenario || activeScenario) === activeScenario;
       if (match) {
         if (count === visibleIndex) return i;
         count++;
@@ -268,16 +312,24 @@ export default function FormCalculateField({
     return -1;
   }
 
-  function handleChange(next: CalculationRow[]) {
-    const normalized = normalizeCalculationEntries(next);
-    setLocalItems(normalized);
-    storeCalculations(normalized);
-  }
+  const handleChange = useCallback(
+    (next: CalculationRow[]) => {
+      const normalized = normalizeCalculationEntries(next);
+      setLocalItems(normalized);
+      storeCalculations(normalized);
+    },
+    [storeCalculations]
+  );
 
   function updateItem(visibleIndex: number, patch: Partial<CalculationRow>) {
     const bi = toBackingIndex(visibleIndex);
     if (bi === -1) {
-      const entry = { ...createCalculationRow(), type: activeMode, ...patch };
+      const entry = {
+        ...createCalculationRow(),
+        type: activeMode,
+        scenario: activeMode === 'cross' ? activeScenario : undefined,
+        ...patch,
+      };
       if (entry.type !== 'row') entry.expression = exprFromParts(entry);
       handleChange([...localItems, entry]);
       return;
@@ -297,7 +349,9 @@ export default function FormCalculateField({
     if (bi === -1) return;
     handleChange(
       localItems.map((it, i) =>
-        i !== bi ? it : { ...createCalculationRow(), type: it.type, action: it.action }
+        i !== bi
+          ? it
+          : { ...createCalculationRow(), type: it.type, action: it.action, scenario: it.scenario }
       )
     );
   }
@@ -441,10 +495,7 @@ export default function FormCalculateField({
                   })),
                 },
               ]}
-              onChange={(v) => {
-                setActiveScenario(v);
-                updateConfig((cfg) => ({ ...cfg, _activeScenario: v }));
-              }}
+              onChange={(v) => setActiveScenario(v)}
               className="h-7 text-[12px] w-28"
             />
           </div>
@@ -892,10 +943,7 @@ export default function FormCalculateField({
                 tip: tr('calcFieldModeCrossTip', '按分区汇总、排名、滑动窗口、周期对比等'),
               },
             ]}
-            onChange={(v) => {
-              setActiveMode(v as 'row' | 'cross');
-              updateConfig((cfg) => ({ ...cfg, _activeMode: v }));
-            }}
+            onChange={(v) => setActiveMode(v as 'row' | 'cross')}
           />
         </div>
       </div>
