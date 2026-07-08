@@ -32,9 +32,17 @@ export interface ScheduledTaskWeeklyScheduleConfig {
   times: string[];
 }
 
+export interface ScheduledTaskMonthlyScheduleConfig {
+  kind: 'monthly';
+  daysOfMonth: number[];
+  includeLastDay?: boolean;
+  times: string[];
+}
+
 export type ScheduledTaskScheduleConfig =
   | ScheduledTaskDailyScheduleConfig
-  | ScheduledTaskWeeklyScheduleConfig;
+  | ScheduledTaskWeeklyScheduleConfig
+  | ScheduledTaskMonthlyScheduleConfig;
 
 export interface ScheduledTask {
   id: string;
@@ -441,6 +449,15 @@ function normalizeScheduleConfig(
     }
     return { kind: 'weekly', weekdays, times };
   }
+  if (value.kind === 'monthly') {
+    const times = normalizeScheduleTimes(value.times);
+    const daysOfMonth = normalizeDaysOfMonth(value.daysOfMonth);
+    const includeLastDay = value.includeLastDay === true;
+    if (times.length === 0 || (daysOfMonth.length === 0 && !includeLastDay)) {
+      return null;
+    }
+    return { kind: 'monthly', daysOfMonth, includeLastDay, times };
+  }
   return null;
 }
 
@@ -495,6 +512,15 @@ function normalizeWeekdays(days: number[]): ScheduledTaskWeekday[] {
   return normalized.sort((left, right) => left - right);
 }
 
+function normalizeDaysOfMonth(days: number[]): number[] {
+  if (!Array.isArray(days)) {
+    return [];
+  }
+  return Array.from(
+    new Set(days.filter((day) => Number.isInteger(day) && day >= 1 && day <= 31))
+  ).sort((left, right) => left - right);
+}
+
 function compareTimeStrings(left: string, right: string): number {
   return toTimeMinutes(left) - toTimeMinutes(right);
 }
@@ -511,7 +537,10 @@ function computeNextRunAtFromScheduleConfig(
   if (scheduleConfig.kind === 'daily') {
     return findNextScheduledSlot(now, scheduleConfig.times);
   }
-  return findNextScheduledSlot(now, scheduleConfig.times, scheduleConfig.weekdays);
+  if (scheduleConfig.kind === 'weekly') {
+    return findNextScheduledSlot(now, scheduleConfig.times, scheduleConfig.weekdays);
+  }
+  return findNextMonthlySlot(now, scheduleConfig);
 }
 
 function findNextScheduledSlot(
@@ -552,6 +581,57 @@ function findNextScheduledSlot(
       ).getTime();
       if (candidate > now) {
         return candidate;
+      }
+    }
+  }
+
+  return null;
+}
+
+function findNextMonthlySlot(
+  now: number,
+  scheduleConfig: ScheduledTaskMonthlyScheduleConfig
+): number | null {
+  const normalizedTimes = normalizeScheduleTimes(scheduleConfig.times);
+  const daysOfMonth = normalizeDaysOfMonth(scheduleConfig.daysOfMonth);
+  const includeLastDay = scheduleConfig.includeLastDay === true;
+  if (normalizedTimes.length === 0 || (daysOfMonth.length === 0 && !includeLastDay)) {
+    return null;
+  }
+
+  const nowDate = new Date(now);
+  const startMonth = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1, 0, 0, 0, 0);
+  for (let monthOffset = 0; monthOffset <= 24; monthOffset += 1) {
+    const monthDate = new Date(
+      startMonth.getFullYear(),
+      startMonth.getMonth() + monthOffset,
+      1,
+      0,
+      0,
+      0,
+      0
+    );
+    const lastDay = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+    const candidateDays = new Set(daysOfMonth.filter((day) => day <= lastDay));
+    if (includeLastDay) {
+      candidateDays.add(lastDay);
+    }
+
+    for (const day of Array.from(candidateDays).sort((left, right) => left - right)) {
+      for (const time of normalizedTimes) {
+        const [hour, minute] = time.split(':').map(Number);
+        const candidate = new Date(
+          monthDate.getFullYear(),
+          monthDate.getMonth(),
+          day,
+          hour,
+          minute,
+          0,
+          0
+        ).getTime();
+        if (candidate > now) {
+          return candidate;
+        }
       }
     }
   }

@@ -47,6 +47,14 @@ function createWeeklySchedule(weekdays: number[], times: string[]): ScheduledTas
   return { kind: 'weekly', weekdays, times };
 }
 
+function createMonthlySchedule(
+  daysOfMonth: number[],
+  times: string[],
+  includeLastDay = false
+): ScheduledTaskScheduleConfig {
+  return { kind: 'monthly', daysOfMonth, includeLastDay, times };
+}
+
 function createStore(initialTasks: ScheduledTask[]): ScheduledTaskStore {
   const tasks = new Map<string, ScheduledTask>(initialTasks.map((task) => [task.id, task]));
 
@@ -460,6 +468,50 @@ describe('ScheduledTaskManager', () => {
 
     expect(toggled?.enabled).toBe(true);
     expect(toggled?.nextRunAt).toBe(toLocalTimestamp(2026, 3, 5, 0, 30));
+  });
+
+  it('advances monthly day schedule to the next monthly slot after execution', async () => {
+    const now = toLocalTimestamp(2026, 3, 15, 9, 0);
+    vi.setSystemTime(now);
+    const store = createStore([
+      createTask({
+        id: 'monthly-day',
+        runAt: now,
+        nextRunAt: now,
+        scheduleConfig: createMonthlySchedule([15], ['09:00']),
+      }),
+    ]);
+    const executeTask = vi.fn().mockResolvedValue({ sessionId: 'session-monthly-day' });
+    const manager = new ScheduledTaskManager({ store, executeTask, now: () => Date.now() });
+    manager.start();
+
+    await vi.runOnlyPendingTimersAsync();
+
+    const after = store.get('monthly-day');
+    expect(executeTask).toHaveBeenCalledTimes(1);
+    expect(after?.enabled).toBe(true);
+    expect(after?.nextRunAt).toBe(toLocalTimestamp(2026, 4, 15, 9, 0));
+  });
+
+  it('re-enables monthly day schedule with the nearest future day slot', () => {
+    const now = toLocalTimestamp(2026, 3, 16, 9, 15);
+    vi.setSystemTime(now);
+    const store = createStore([
+      createTask({
+        id: 'monthly-reenable',
+        enabled: false,
+        runAt: toLocalTimestamp(2026, 3, 15, 9, 0),
+        nextRunAt: null,
+        scheduleConfig: createMonthlySchedule([15, 20], ['09:00', '18:00']),
+      }),
+    ]);
+    const executeTask = vi.fn().mockResolvedValue({ sessionId: 'session-monthly-reenable' });
+    const manager = new ScheduledTaskManager({ store, executeTask, now: () => Date.now() });
+
+    const toggled = manager.toggle('monthly-reenable', true);
+
+    expect(toggled?.enabled).toBe(true);
+    expect(toggled?.nextRunAt).toBe(toLocalTimestamp(2026, 3, 20, 9, 0));
   });
 
   it('sorts list by enabled then nearest nextRunAt', () => {
