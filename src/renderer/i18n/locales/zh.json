@@ -744,7 +744,7 @@
         "calcFieldFnArgNumPlaceholder": "参数",
         "calcFieldPlaceholderBuckets": "桶数",
         "calcFieldPlaceholderNth": "第N行",
-        "calcFieldPlaceholderQuantile": "分位值 (0-1)",
+        "calcFieldPlaceholderQuantile": "分位值",
         "calcFieldPlaceholderOffset": "偏移行数",
         "calcFieldPlaceholderDelimiter": "分隔符",
         "calcFieldPartitionAll": "全表",

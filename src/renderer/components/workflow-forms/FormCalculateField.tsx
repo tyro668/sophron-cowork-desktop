@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, RotateCcw, Trash2, X } from 'lucide-react';
+import { ChevronDown, Trash2, X } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
@@ -244,21 +244,25 @@ export default function FormCalculateField({
     [updateConfig, activeMode, activeScenario]
   );
 
-  useEffect(() => {
-    const hasItems = localItems.some((i) =>
-      activeMode === 'row'
-        ? i.type === 'row'
-        : i.type !== 'row' && (i.scenario || activeScenario) === activeScenario
-    );
+  const isMountedRef = useRef(false);
 
-    if (!hasItems && activeMode === 'cross') {
-      const defaults: Record<string, string> = {
-        group: 'sum',
-        sorted: 'sum',
-        rank: 'row_number',
-        period: 'period_yoy_value',
-      };
-      updateItem(0, { fn: defaults[activeScenario] || 'sum' });
+  useEffect(() => {
+    if (!isMountedRef.current) {
+      isMountedRef.current = true;
+      if (activeMode === 'cross') {
+        const hasItems = localItems.some(
+          (i) => i.type !== 'row' && (i.scenario || activeScenario) === activeScenario
+        );
+        if (!hasItems) {
+          const defaults: Record<string, string> = {
+            group: 'sum',
+            sorted: 'sum',
+            rank: 'row_number',
+            period: 'period_yoy_value',
+          };
+          updateItem(0, { fn: defaults[activeScenario] || 'sum' });
+        }
+      }
       return;
     }
 
@@ -344,20 +348,9 @@ export default function FormCalculateField({
     );
   }
 
-  function resetItem(visibleIndex: number) {
-    const bi = toBackingIndex(visibleIndex);
-    if (bi === -1) return;
-    handleChange(
-      localItems.map((it, i) =>
-        i !== bi
-          ? it
-          : { ...createCalculationRow(), type: it.type, action: it.action, scenario: it.scenario }
-      )
-    );
-  }
-
   const [partitionOpen, setPartitionOpen] = useState<Record<number, boolean>>({});
   const [orderOpen, setOrderOpen] = useState<Record<number, boolean>>({});
+  const lastPartitionByRef = useRef<Record<string, string[] | undefined>>({});
 
   function rowColumns() {
     const actionOptions = [
@@ -449,15 +442,19 @@ export default function FormCalculateField({
       offset_rate: '1',
     };
 
-    const NUM_PLACEHOLDER: Record<string, string> = {
+    const FN_ARG2_LABELS: Record<string, string> = {
       ntile_fnArg: tr('calcFieldPlaceholderBuckets', '桶数'),
       nth_value_fnArg2: tr('calcFieldPlaceholderNth', '第N行'),
-      quantile_cont_fnArg2: tr('calcFieldPlaceholderQuantile', '分位值 (0-1)'),
+      quantile_cont_fnArg2: tr('calcFieldPlaceholderQuantile', '分位值'),
       lag_fnArg2: tr('calcFieldPlaceholderOffset', '偏移行数'),
       lead_fnArg2: tr('calcFieldPlaceholderOffset', '偏移行数'),
       offset_diff_fnArg2: tr('calcFieldPlaceholderOffset', '偏移行数'),
       offset_rate_fnArg2: tr('calcFieldPlaceholderOffset', '偏移行数'),
       string_agg_fnArg2: tr('calcFieldPlaceholderDelimiter', '分隔符'),
+    };
+
+    const NUM_PLACEHOLDER: Record<string, string> = {
+      ...FN_ARG2_LABELS,
     };
 
     const fnGroupOptions = (FUNCTION_CATEGORIES[scenario] || []).map((cat) => ({
@@ -566,7 +563,8 @@ export default function FormCalculateField({
               <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
                 {s.type === 'field'
                   ? tr('calcFieldFnArg', '参数字段')
-                  : tr('calcFieldFnArgConst', '参数常数')}
+                  : FN_ARG2_LABELS[currentFn + '_' + s.key] ||
+                    tr('calcFieldFnArgConst', '参数常数')}
               </span>
               <div className={s.type === 'field' ? 'w-36' : 'w-28'}>
                 {s.type === 'field' ? (
@@ -629,10 +627,12 @@ export default function FormCalculateField({
                 },
               ]}
               onChange={(v) => {
+                const cacheKey = `${scenario}_${index}`;
                 if (v === 'all') {
+                  lastPartitionByRef.current[cacheKey] = item.partitionBy;
                   updateItem(index, { partitionBy: undefined });
                 } else {
-                  updateItem(index, { partitionBy: [] });
+                  updateItem(index, { partitionBy: lastPartitionByRef.current[cacheKey] ?? [] });
                   setPartitionOpen((o) => ({ ...o, [index]: true }));
                 }
               }}
@@ -970,14 +970,6 @@ export default function FormCalculateField({
                 </span>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => resetItem(0)}
-              className="mt-0.5 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-text-muted transition-colors hover:text-accent"
-              title={tr('calcFieldReset', '重置配置')}
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-            </button>
           </div>
         </div>
         <div className="px-3 pb-3 overflow-y-auto flex-1 min-h-0">

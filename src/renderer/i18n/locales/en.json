@@ -744,7 +744,7 @@
         "calcFieldFnArgNumPlaceholder": "Value",
         "calcFieldPlaceholderBuckets": "Buckets",
         "calcFieldPlaceholderNth": "Nth row",
-        "calcFieldPlaceholderQuantile": "Quantile (0-1)",
+        "calcFieldPlaceholderQuantile": "Quantile",
         "calcFieldPlaceholderOffset": "Offset rows",
         "calcFieldPlaceholderDelimiter": "Delimiter",
         "calcFieldPartitionAll": "All rows",
