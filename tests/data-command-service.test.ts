@@ -9,6 +9,7 @@ import type { InputTableNormalizerProjectGenerator } from '../src/main/data/inpu
 import { createInputTableNormalizerProjectTemplate } from '../src/shared/input-table-normalizer/templates';
 import { runPiAiOneShot } from '../src/main/claude/claude-sdk-one-shot';
 import type { AgentRuntimeConfig } from '../src/renderer/types';
+import type { PersonalAnalysisConnectionInput } from '../src/shared/personal-analysis-types';
 
 vi.mock('../src/main/claude/claude-sdk-one-shot', () => ({
   runPiAiOneShot: vi.fn(async () => ({
@@ -142,6 +143,50 @@ describe('DataCommandService', () => {
       'http://new.mock/api/personal/api-keys/token',
       expect.objectContaining({
         headers: { 'X-API-Key': 'new-key' },
+      })
+    );
+  });
+
+  it('uses account token instead of configured API key when account mode is explicit', async () => {
+    const { service } = createService({
+      personalAnalysis: {
+        apiOrigin: 'http://configured.mock',
+        apiKey: 'configured-key',
+        updatedAt: 1,
+      },
+      getPersonalAnalysisConnection: () => ({
+        apiOrigin: 'http://account.mock',
+        accessToken: 'account-token',
+      }),
+    });
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const href = String(url);
+      if (href.endsWith('/api/personal/api-keys/token')) {
+        throw new Error('API key token exchange should not be called in account mode');
+      }
+      if (href.endsWith('/api/personal/analysis/v1/spaces')) {
+        return jsonResponse({
+          success: true,
+          data: [{ spaceId: 'space-account', spaceName: 'Account Space' }],
+        });
+      }
+      throw new Error(`Unexpected request: ${href} ${init?.method || 'GET'}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await service.listCloudSpaces({
+      connectionMode: 'account',
+      apiOrigin: 'http://account.mock',
+    });
+
+    expect(result.spaces[0]?.spaceName).toBe('Account Space');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://account.mock/api/personal/analysis/v1/spaces',
+      expect.objectContaining({
+        method: 'GET',
+        headers: { Authorization: 'Bearer account-token' },
+        signal: expect.any(AbortSignal),
       })
     );
   });
@@ -1867,6 +1912,7 @@ function createService(
       apiKey: string;
       updatedAt: number;
     };
+    getPersonalAnalysisConnection?: () => PersonalAnalysisConnectionInput | null;
   } = {}
 ): { service: DataCommandService; store: DataTaskStore; tempRoot: string } {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-data-command-'));
@@ -1886,7 +1932,10 @@ function createService(
             apiKey: '',
           }),
           updatedAt: options.personalAnalysis?.updatedAt ?? 0,
-        }))
+        })),
+      {
+        getPersonalAnalysisConnection: options.getPersonalAnalysisConnection,
+      }
     ),
     store,
     tempRoot,

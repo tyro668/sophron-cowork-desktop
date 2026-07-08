@@ -8,7 +8,7 @@
 
 - 默认路径：用户登录后，以当前账号身份访问有权限的分析空间。
 - 高级路径：专业用户、开发者或集成场景可以配置 API Key，访问该 API Key 被授权的数据范围。
-- API Key 是显式高级凭证；一旦配置，优先级高于登录账号。
+- API Key 是显式高级凭证；当用户同时已登录并配置 API Key 时，默认使用账号模式，并允许用户临时切换为 API Key 模式。
 
 mock server 只用于本地联调。接入真实服务时，应尽量复用 cowork 侧的 client、command service、IPC 和 UI 流程。
 
@@ -53,15 +53,15 @@ API Key
 ### 优先级
 
 ```text
-hasApiKeyConfig
-  -> API Key 模式
-else if isLoggedIn
+isLoggedIn
   -> 账号模式
+else if hasApiKeyConfig
+  -> API Key 模式
 else
   -> 未连接，引导登录
 ```
 
-当用户同时已登录并配置了 API Key 时，页面应明确提示当前处于 API Key 模式，并提供“切换为账号访问”的入口。
+当用户同时已登录并配置了 API Key 时，页面默认处于账号模式，并提供“切换为 API Key 访问”的入口；切换为 API Key 模式后也应提供“切换为账号访问”的入口。切换访问身份不应清空 API Key 配置，只改变当前云分析页面和后续云分析请求的 `connectionMode`。
 
 ## 页面状态
 
@@ -99,15 +99,27 @@ API Key 模式 · 开发者连接 · http://127.0.0.1:3000
 
 ### 已登录 + 有 API Key
 
-API Key 优先。
+账号模式优先，自动加载当前登录账号有权限的云分析空间。
 
 顶部状态示例：
+
+```text
+账号模式 · 测试用户 · http://127.0.0.1:3000
+```
+
+提供：
+
+- `切换为 API Key 访问`
+- `刷新`
+- `管理连接`
+
+用户切换到 API Key 模式后，顶部状态示例：
 
 ```text
 API Key 模式 · 已登录：测试用户 · http://127.0.0.1:3000
 ```
 
-提供：
+此时提供：
 
 - `切换为账号访问`
 - `刷新`
@@ -235,9 +247,12 @@ UI 和 Agent 共用 `DataCommandService`，避免导入、预览、上传逻辑�
 创建 client 时的身份选择：
 
 ```text
-input accessToken
+connectionMode = account
+  -> input accessToken / desktop auth token
+connectionMode = apiKey
   -> explicit API Key / configured API Key
-  -> desktop auth token fallback
+connectionMode omitted
+  -> legacy fallback: input accessToken -> explicit API Key / configured API Key -> desktop auth token
 ```
 
 ### Renderer
@@ -247,7 +262,7 @@ input accessToken
   - 账号模式 / API Key 模式状态显示。
   - 云分析空间资源浏览。
   - 表预览与导入。
-  - 切换为账号访问。
+  - 临时切换账号访问 / API Key 访问，不清空 API Key 配置。
 - `src/renderer/components/settings/SettingsPersonalAnalysis.tsx`
   - API Key 高级连接配置。
   - 测试连接、保存、更换、断开。
@@ -369,6 +384,5 @@ curl http://127.0.0.1:3000/health
 
 - 加载失败时细分错误状态。
 - 顶部增加更清晰的“当前访问身份”详情。
-- 支持临时切换访问身份，而不是通过清空 API Key 配置切换。
 - 云分析空间支持分页、排序和跨空间搜索。
 - 上传完成后自动刷新对应项目的云端表列表。

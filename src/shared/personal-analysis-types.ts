@@ -12,6 +12,7 @@ export interface PersonalAnalysisConnectionInput {
   apiOrigin?: string;
   apiKey?: string;
   accessToken?: string;
+  connectionMode?: 'account' | 'apiKey';
 }
 
 export interface PersonalAnalysisSpace {

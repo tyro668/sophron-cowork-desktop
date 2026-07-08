@@ -216,6 +216,21 @@ export class CloudAnalysisCommandService {
     const inputApiKey = input.apiKey?.trim() || '';
     const inputAccessToken = input.accessToken?.trim() || '';
     const fallbackAccessToken = authenticated?.accessToken?.trim() || '';
+    const connectionMode = input.connectionMode;
+
+    if (connectionMode === 'account') {
+      return createPersonalAnalysisClient({
+        apiOrigin: input.apiOrigin || authenticated?.apiOrigin || configured.apiOrigin,
+        accessToken: inputAccessToken || fallbackAccessToken,
+      });
+    }
+
+    if (connectionMode === 'apiKey') {
+      return createPersonalAnalysisClient({
+        apiOrigin: input.apiOrigin || configured.apiOrigin || authenticated?.apiOrigin,
+        apiKey: inputApiKey || configuredApiKey,
+      });
+    }
 
     return createPersonalAnalysisClient({
       apiOrigin: input.apiOrigin || configured.apiOrigin || authenticated?.apiOrigin,
