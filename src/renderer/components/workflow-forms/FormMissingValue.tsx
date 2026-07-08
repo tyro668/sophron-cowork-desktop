@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, GripVertical, Plus, X, Trash2 } from 'lucide-react';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
+import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import type { OperatorFormProps } from './index';
 import { GlassColumnSelector } from './shared/GlassColumnSelector';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
@@ -55,36 +56,6 @@ function createDefault(overrides: Partial<MissingRule> = {}): MissingRule {
 }
 
 type TabMode = 'row' | 'column';
-
-function SelectField({
-  value,
-  onChange,
-  placeholder,
-  disabled,
-  children,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  disabled?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <select
-      value={value}
-      disabled={disabled}
-      onChange={(e) => onChange(e.target.value)}
-      className="h-8 w-full rounded-md border border-border-muted bg-background/60 px-2 text-[12px] text-text-primary outline-none transition-colors focus:border-accent disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      {placeholder && (
-        <option value="" disabled>
-          {placeholder}
-        </option>
-      )}
-      {children}
-    </select>
-  );
-}
 
 function TextField({
   value,
@@ -370,7 +341,7 @@ export default function FormMissingValue({
           <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
             {/* Judge fields */}
             <div className="grid gap-1.5">
-              <div className="flex rounded-md border border-border-muted bg-background/60 focus-within:border-accent transition-colors">
+              <div className="flex items-center rounded-md border border-border-muted bg-background/60 focus-within:border-accent transition-colors">
                 {rowColumns.length > 0 && (
                   <button
                     type="button"
@@ -382,7 +353,7 @@ export default function FormMissingValue({
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 )}
-                <div className="flex flex-1 flex-wrap items-center gap-1 px-2 py-1.5">
+                <div className="flex flex-1 flex-nowrap items-center gap-1 overflow-x-auto px-2">
                   {rowColumns.map((col) => (
                     <span
                       key={col}
@@ -513,7 +484,7 @@ export default function FormMissingValue({
 
                     {/* Method */}
                     <div className="flex-[1.5] min-w-0">
-                      <SelectField
+                      <GlassOperatorSelect
                         value={effectiveMethod}
                         disabled={!item.column}
                         onChange={(m) => {
@@ -524,13 +495,17 @@ export default function FormMissingValue({
                             value: m === 'literal_fill' ? (item.value ?? '') : undefined,
                           });
                         }}
-                      >
-                        {availableMethods.map((m) => (
-                          <option key={m.value} value={m.value}>
-                            {methodLabel(m.value)}
-                          </option>
-                        ))}
-                      </SelectField>
+                        groups={[
+                          {
+                            key: 'methods',
+                            items: availableMethods.map((m) => ({
+                              value: m.value,
+                              label: methodLabel(m.value),
+                            })),
+                          },
+                        ]}
+                        className="h-8 w-full text-[12px]"
+                      />
                     </div>
 
                     {/* Value */}
