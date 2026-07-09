@@ -743,8 +743,7 @@ export default function FormJoin({
                         }))
                       }
                       placeholder={tr('tolerance', '时间差')}
-                      className="w-[72px] shrink-0"
-                      style={{ height: '1.75rem' }}
+                      className="h-7 text-[13px] w-[72px] shrink-0"
                     />
                     <GlassOperatorSelect
                       value={(asof.direction as string) ?? ''}
@@ -890,8 +889,7 @@ export default function FormJoin({
                     }))
                   }
                   placeholder={tr('prefix', '前缀，如 customers_')}
-                  className={`flex-1 min-w-0 ${conflictStrategy !== 'right_prefix' ? 'invisible' : ''}`}
-                  style={{ height: '1.75rem' }}
+                  className={`h-7 text-[13px] flex-1 min-w-0 ${conflictStrategy !== 'right_prefix' ? 'invisible' : ''}`}
                 />
               </div>
             </div>

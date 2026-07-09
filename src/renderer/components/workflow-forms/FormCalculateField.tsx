@@ -533,7 +533,7 @@ export default function FormCalculateField({
                   value={item.field}
                   onChange={(v) => updateItem(index, { field: v })}
                   placeholder={tr('calcFieldTargetPlaceholder', '请输入字段名')}
-                  className="!h-7 w-full rounded-md px-1.5 text-[12px] shadow-none focus:ring-0"
+                  className="h-7 w-full rounded-md px-1.5 text-[12px] shadow-none focus:ring-0"
                 />
               )}
             </div>

@@ -124,7 +124,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                   value={alias}
                   onChange={(v) => updateConfig((cfg) => ({ ...cfg, alias: v || undefined }))}
                   placeholder={tr('unnestAliasPlaceholder', '如 item')}
-                  className="w-full"
+                  className="h-8 text-[13px] w-full"
                 />
               </label>
 
@@ -135,7 +135,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                     value={path}
                     onChange={(v) => updateConfig((cfg) => ({ ...cfg, path: v || undefined }))}
                     placeholder={tr('unnestJsonPathPlaceholder', '如 $.data.items')}
-                    className="w-full"
+                    className="h-8 text-[13px] w-full"
                   />
                   <span className="text-[10px] text-text-muted">
                     {tr('unnestJsonPathHint', '$ 代表根节点，如 $.items 表示取 items 键对应的数组')}
@@ -191,7 +191,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                   value={withIndex}
                   disabled={!withIndex}
                   onChange={(v) => updateConfig((cfg) => ({ ...cfg, withIndex: v || undefined }))}
-                  className="w-full disabled:cursor-not-allowed disabled:opacity-40"
+                  className="h-8 text-[13px] w-full disabled:cursor-not-allowed disabled:opacity-40"
                 />
               </div>
 
@@ -225,7 +225,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                     }
                   }}
                   placeholder={tr('unnestMaxDepthPlaceholder', '不限制深度')}
-                  className="w-full"
+                  className="h-8 text-[13px] w-full"
                 />
               </div>
 

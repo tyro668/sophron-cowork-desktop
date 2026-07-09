@@ -18,7 +18,7 @@ export function GlassFormTextInput({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className={`h-8 rounded-lg border border-border-muted bg-background/42 px-2.5 text-[13px] text-text-primary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 ${className}`}
+      className={`rounded-lg border border-border-muted bg-background/42 px-2.5 text-text-primary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 ${className}`}
       {...rest}
     />
   );

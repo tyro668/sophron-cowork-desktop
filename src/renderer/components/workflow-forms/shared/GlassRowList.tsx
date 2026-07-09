@@ -51,7 +51,7 @@ export function GlassRowList<T>({
     <div className="flex flex-col gap-2">
       {/* Header */}
       {!hideHeader && (
-        <div className="flex items-center gap-1 px-0.5 pb-0.5 text-[11px] font-medium text-text-muted">
+        <div className="flex items-center gap-1 px-0.5 pb-0.5 text-[13px] font-medium text-text-muted">
           {draggable && (
             <span
               className="flex h-6 w-4 flex-shrink-0 items-center justify-center"

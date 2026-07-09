@@ -186,8 +186,7 @@ export default function FormUnpivot({
                 value={nameColumn}
                 onChange={(v) => updateConfig((cfg) => ({ ...cfg, nameColumn: v || undefined }))}
                 placeholder={tr('unpivotNameColPlaceholder', 'name')}
-                className="w-full"
-                style={{ height: '1.75rem' }}
+                className="h-7 text-[13px] w-full"
               />
             </div>
             <div className="grid gap-1">
@@ -204,8 +203,7 @@ export default function FormUnpivot({
                 value={valueColumn}
                 onChange={(v) => updateConfig((cfg) => ({ ...cfg, valueColumn: v || undefined }))}
                 placeholder={tr('unpivotValueColPlaceholder', 'value')}
-                className="w-full"
-                style={{ height: '1.75rem' }}
+                className="h-7 text-[13px] w-full"
               />
             </div>
           </div>

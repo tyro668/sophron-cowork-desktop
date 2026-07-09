@@ -294,8 +294,7 @@ export default function FormPivot({
                 value={singleMetric.alias ?? ''}
                 onChange={(v) => handleMetricChange({ alias: v || undefined })}
                 placeholder={tr('aggregateAliasPlaceholder', '如 total_revenue')}
-                className="w-full"
-                style={{ height: '1.75rem' }}
+                className="h-8 text-[13px] w-full"
               />
             </div>
           </div>

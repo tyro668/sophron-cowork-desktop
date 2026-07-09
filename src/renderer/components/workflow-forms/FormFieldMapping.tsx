@@ -1,6 +1,5 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowRight } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
@@ -41,6 +40,14 @@ export default function FormFieldMapping({
     [node.config.mappings]
   );
 
+  // Auto-initialize with one empty row
+  useEffect(() => {
+    if (mappings.length === 0) {
+      commitMappings([{ ...DEFAULT_MAPPING }]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const commitMappings = useCallback(
     (next: MappingEntry[]) => {
       updateConfig((cfg) => ({ ...cfg, mappings: next.length > 0 ? next : undefined }));
@@ -48,9 +55,44 @@ export default function FormFieldMapping({
     [updateConfig]
   );
 
-  const displayMappings = useMemo(() => {
-    return mappings.length > 0 ? mappings : [{ ...DEFAULT_MAPPING }];
-  }, [mappings]);
+  // ── Drag-to-reorder state ──
+  const dragIndexRef = useRef<number | null>(null);
+  const dropTargetRef = useRef<number | null>(null);
+  const [sortedMappings, setSortedMappings] = useState<MappingEntry[] | null>(null);
+
+  const activeMappings = sortedMappings ?? mappings;
+
+  const handleDragStart = useCallback(
+    (index: number) => {
+      dragIndexRef.current = index;
+      setSortedMappings([...activeMappings]);
+    },
+    [activeMappings]
+  );
+
+  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    dropTargetRef.current = index;
+    if (dragIndexRef.current === null || dragIndexRef.current === index) return;
+    const from = dragIndexRef.current;
+    setSortedMappings((prev) => {
+      if (!prev) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(index, 0, moved);
+      return next;
+    });
+    dragIndexRef.current = index;
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    if (sortedMappings && dragIndexRef.current !== null) {
+      commitMappings(sortedMappings);
+    }
+    dragIndexRef.current = null;
+    dropTargetRef.current = null;
+    setSortedMappings(null);
+  }, [sortedMappings, commitMappings]);
 
   const occupiedNames = useMemo(() => {
     const renamed = new Set(mappings.map((m) => m.source));
@@ -72,67 +114,33 @@ export default function FormFieldMapping({
 
   const updateMapping = useCallback(
     (index: number, patch: Partial<MappingEntry>) => {
-      const next = displayMappings.map((m, i) => (i === index ? { ...m, ...patch } : m));
+      const next = activeMappings.map((m, i) => (i === index ? { ...m, ...patch } : m));
       commitMappings(next);
     },
-    [displayMappings, commitMappings]
+    [activeMappings, commitMappings]
   );
 
   const addMappingAfter = useCallback(
     (index: number) => {
-      const next = [...displayMappings];
+      const hasEmpty = activeMappings.some((m) => !m.source);
+      if (hasEmpty || activeMappings.length >= fieldCompletions.length) return;
+      const next = [...activeMappings];
       next.splice(index + 1, 0, { ...DEFAULT_MAPPING });
       commitMappings(next);
     },
-    [displayMappings, commitMappings]
+    [activeMappings, fieldCompletions.length, commitMappings]
   );
 
   const removeMapping = useCallback(
     (index: number) => {
-      if (displayMappings.length <= 1) {
-        commitMappings([]);
+      if (activeMappings.length <= 1) {
+        commitMappings([{ ...DEFAULT_MAPPING }]);
         return;
       }
-      commitMappings(displayMappings.filter((_, i) => i !== index));
+      commitMappings(activeMappings.filter((_, i) => i !== index));
     },
-    [displayMappings, commitMappings]
+    [activeMappings, commitMappings]
   );
-
-  // Drag reorder state
-  const dragIndexRef = useRef<number | null>(null);
-  const [sortedMappings, setSortedMappings] = useState<MappingEntry[] | null>(null);
-
-  const handleDragStart = useCallback(
-    (index: number) => {
-      dragIndexRef.current = index;
-      setSortedMappings([...displayMappings]);
-    },
-    [displayMappings]
-  );
-
-  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    if (dragIndexRef.current === null || dragIndexRef.current === index) return;
-    const from = dragIndexRef.current;
-    setSortedMappings((prev) => {
-      if (!prev) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(index, 0, moved);
-      return next;
-    });
-    dragIndexRef.current = index;
-  }, []);
-
-  const handleDragEnd = useCallback(() => {
-    if (sortedMappings && dragIndexRef.current !== null) {
-      commitMappings(sortedMappings);
-    }
-    dragIndexRef.current = null;
-    setSortedMappings(null);
-  }, [sortedMappings, commitMappings]);
-
-  const activeMappings = sortedMappings ?? displayMappings;
 
   const usedFields = useMemo(() => {
     const used = new Set<string>();
@@ -141,8 +149,6 @@ export default function FormFieldMapping({
     }
     return used;
   }, [activeMappings]);
-
-  const realMappings = useMemo(() => activeMappings.filter((m) => m.source), [activeMappings]);
 
   const columns = useMemo<GlassRowListColumn<MappingEntry>[]>(
     () => [
@@ -162,9 +168,12 @@ export default function FormFieldMapping({
                 searchPlaceholder={tr('searchField', '搜索字段')}
                 emptyText={tr('noMatch', '无匹配字段')}
                 disabledOptions={disabledFields}
-                className="flex-1 min-w-0"
+                className="flex-1 min-w-0 h-7"
               />
-              <ArrowRight className="w-5 flex-shrink-0 text-text-muted" />
+              <div className="flex items-center gap-0.5 w-5 flex-shrink-0 justify-center">
+                <div className="h-[2px] w-[10px] bg-text-muted rounded-full" />
+                <div className="h-0 w-0 border-l-[6px] border-l-text-muted border-y-[4.5px] border-y-transparent" />
+              </div>
             </div>
           );
         },
@@ -180,7 +189,7 @@ export default function FormFieldMapping({
                 value={item.target}
                 onChange={(value) => updateMapping(i, { target: value })}
                 placeholder={tr('fieldMappingTargetPlaceholder', '目标字段名')}
-                className={`h-6 px-1.5 text-[12px] w-full ${err ? 'border-warning/70' : ''}`}
+                className={`h-7 px-2 text-[12px] w-full ${err ? 'border-warning/70' : ''}`}
               />
               {err && (
                 <span
@@ -205,8 +214,8 @@ export default function FormFieldMapping({
   );
 
   return (
-    <div className="grid h-full grid-cols-[7fr_3fr] overflow-hidden">
-      <div className="flex min-h-0 flex-col overflow-hidden border-r border-border-muted">
+    <div className="flex h-full overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
           <GlassRowList
             items={activeMappings}
@@ -222,39 +231,6 @@ export default function FormFieldMapping({
             getRowOpacity={(i) => !!(sortedMappings && dragIndexRef.current === i)}
             dragTitle={tr('dragToReorder', '拖拽排序')}
           />
-        </div>
-      </div>
-
-      <div className="flex min-h-0 flex-col gap-3 overflow-y-auto px-2 pb-2 pt-1 pl-3">
-        <div>
-          <h5 className="mb-2 text-[11px] font-medium text-text-muted">
-            {tr('fieldMappingCurrentRules', '当前字段映射')}
-          </h5>
-          {realMappings.length === 0 ? (
-            <p className="text-[12px] leading-5 text-text-secondary">
-              {tr('fieldMappingNoRules', '未设置字段映射，请在左侧添加。')}
-            </p>
-          ) : (
-            <ol className="space-y-1.5">
-              {realMappings.map((m, i) => (
-                <li key={i} className="flex items-start gap-2 text-[12px]">
-                  <span className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded bg-surface text-[10px] font-medium tabular-nums text-text-muted">
-                    {i + 1}
-                  </span>
-                  <span className="leading-4 text-text-primary">
-                    {m.source}
-                    <span className="text-text-secondary"> → {m.target || '…'}</span>
-                  </span>
-                </li>
-              ))}
-            </ol>
-          )}
-        </div>
-
-        <div className="rounded-md border border-border-muted bg-background/42 px-2.5 py-2">
-          <p className="text-[11px] leading-4 text-text-muted">
-            {tr('fieldMappingHint', '提示：拖拽可调整映射顺序。')}
-          </p>
         </div>
       </div>
     </div>
