@@ -488,10 +488,7 @@ function parseCast(command: CommandLine, diagnostics: PrepDiagnostic[]): PrepOpe
       {
         column: field ? toFieldName(field) : match[1].trim(),
         type: targetType,
-        format: pickQuotedOption(rest, 'format'),
         onError: pickWordOption(rest, 'on_error') ?? 'null',
-        locale: pickQuotedOption(rest, 'locale'),
-        timezone: pickQuotedOption(rest, 'timezone'),
       },
     ];
   });
@@ -1056,11 +1053,6 @@ function unquote(value: string): string {
 function unquoteMaybe(value: string): string {
   const trimmed = value.trim();
   return trimmed.startsWith('"') && trimmed.endsWith('"') ? unquote(trimmed) : trimmed;
-}
-
-function pickQuotedOption(value: string, key: string): string | undefined {
-  const match = new RegExp(`\\s${key}\\s+("(?:[^"\\\\]|\\\\.)*")`).exec(value);
-  return match ? unquote(match[1]) : undefined;
 }
 
 function pickWordOption(value: string, key: string): string | undefined {

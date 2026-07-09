@@ -1748,7 +1748,6 @@ function WorkflowInspector({
   const [nodePreviewLoading, setNodePreviewLoading] = useState(false);
   const [nodePreviewError, setNodePreviewError] = useState<string | null>(null);
   const [nodePreviewPage, setNodePreviewPage] = useState(1);
-  const operatorDslNodeKeyRef = useRef('');
   const nodeTitleInputRef = useRef<HTMLInputElement | null>(null);
   const nodePreviewRequestSeq = useRef(0);
   const operatorFieldsRequestSeq = useRef(0);

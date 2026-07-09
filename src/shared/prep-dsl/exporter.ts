@@ -110,12 +110,9 @@ function formatTypeConvert(config: Record<string, unknown> | undefined): string 
   if (conversions.length === 0) return 'cast [field] as text';
   return `cast ${conversions
     .map((item) => {
-      const options = [
-        typeof item.format === 'string' ? `format ${quoteString(item.format)}` : '',
-        typeof item.onError === 'string' ? `on_error ${item.onError}` : '',
-        typeof item.locale === 'string' ? `locale ${quoteString(item.locale)}` : '',
-        typeof item.timezone === 'string' ? `timezone ${quoteString(item.timezone)}` : '',
-      ].filter(Boolean);
+      const options = [typeof item.onError === 'string' ? `on_error ${item.onError}` : ''].filter(
+        Boolean
+      );
       return `${formatFieldRef(String(item.column ?? 'field'))} as ${String(item.type ?? 'text')}${
         options.length > 0 ? ` ${options.join(' ')}` : ''
       }`;

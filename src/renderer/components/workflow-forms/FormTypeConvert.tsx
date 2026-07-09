@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash2, GripVertical, ArrowRight, Settings } from 'lucide-react';
+import { Plus, Trash2, GripVertical } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import {
   DATA_FIELD_TYPES,
@@ -9,59 +9,15 @@ import {
   type DataFieldType,
 } from '../../../shared/data-field-types';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
+import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 
 interface ConversionEntry {
   column: string;
   type: string;
-  format?: string;
   onError?: string;
-  locale?: string;
-  timezone?: string;
 }
 
 const DEFAULT_CONVERSION: ConversionEntry = { column: '', type: 'text' };
-
-const DATE_FORMATS = [
-  'yyyy-MM-dd',
-  'yyyy/MM/dd',
-  'yyyy.MM.dd',
-  'dd/MM/yyyy',
-  'MM/dd/yyyy',
-  'yyyy-MM-dd HH:mm:ss',
-  'yyyy/MM/dd HH:mm:ss',
-  'yyyy-MM-dd HH:mm',
-  'yyyyMMdd',
-];
-
-const TIMESTAMP_FORMATS = [
-  'yyyy-MM-dd HH:mm:ss',
-  'yyyy/MM/dd HH:mm:ss',
-  'yyyy-MM-dd HH:mm:ss.SSS',
-  'yyyy-MM-dd HH:mm',
-  'yyyy-MM-dd',
-  'yyyyMMddHHmmss',
-];
-
-const TIMEZONE_OPTIONS = [
-  'Asia/Shanghai',
-  'Asia/Tokyo',
-  'Asia/Seoul',
-  'Asia/Singapore',
-  'Asia/Kolkata',
-  'Europe/London',
-  'Europe/Berlin',
-  'Europe/Paris',
-  'America/New_York',
-  'America/Chicago',
-  'America/Los_Angeles',
-  'UTC',
-];
-
-const ON_ERROR_OPTIONS = [
-  { value: 'null', label: '置空' },
-  { value: 'fail', label: '报错' },
-  { value: 'keep', label: '保留' },
-];
 
 export default function FormTypeConvert({
   node,
@@ -129,6 +85,7 @@ export default function FormTypeConvert({
 
   // ── Drag-to-reorder state ──
   const dragIndexRef = useRef<number | null>(null);
+  const dropTargetRef = useRef<number | null>(null);
   const [dragConversions, setDragConversions] = useState<ConversionEntry[] | null>(null);
 
   useEffect(() => {
@@ -139,21 +96,6 @@ export default function FormTypeConvert({
 
   // ── Selected index for right panel ──
   const [selectedIndex, setSelectedIndex] = useState(0);
-
-  // ── Expanded config panels ──
-  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
-
-  const toggleRowExpanded = useCallback((index: number) => {
-    setExpandedRows((prev) => {
-      const next = new Set(prev);
-      if (next.has(index)) {
-        next.delete(index);
-      } else {
-        next.add(index);
-      }
-      return next;
-    });
-  }, []);
 
   const updateConversion = useCallback(
     (index: number, patch: Partial<ConversionEntry>) => {
@@ -196,6 +138,7 @@ export default function FormTypeConvert({
 
   const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
     e.preventDefault();
+    dropTargetRef.current = index;
     if (dragIndexRef.current === null || dragIndexRef.current === index) return;
     const from = dragIndexRef.current;
     setDragConversions((prev) => {
@@ -213,6 +156,7 @@ export default function FormTypeConvert({
       commitConversions(dragConversions);
     }
     dragIndexRef.current = null;
+    dropTargetRef.current = null;
     setDragConversions(null);
   }, [dragConversions, commitConversions]);
 
@@ -225,60 +169,57 @@ export default function FormTypeConvert({
     return used;
   }, [activeConversions]);
 
-  // Real conversions (with field selected)
-  const realConversions = useMemo(
-    () => activeConversions.filter((c) => c.column),
-    [activeConversions]
+  const onErrorOptions = useMemo(
+    () => [
+      { value: 'null', label: tr('typeConvertErrorNull', '转换出错则填充空值') },
+      { value: 'fail', label: tr('typeConvertErrorFail', '转换出错则显示报错') },
+      { value: 'keep', label: tr('typeConvertErrorKeep', '转换出错则保留原值') },
+    ],
+    [tr]
   );
 
-  // Available target types (exclude current source type)
-  const availableTargetTypes = useMemo(() => {
-    return DATA_FIELD_TYPES;
-  }, []);
-
   return (
-    <div className="grid h-full grid-cols-[7fr_3fr] overflow-hidden">
+    <div className="flex h-full overflow-hidden">
       {/* Left: conversion rules */}
-      <div className="flex min-h-0 flex-col overflow-hidden border-r border-border-muted">
-        <div className="flex-1 space-y-0.5 overflow-y-auto px-2 pr-3 pb-2 pt-1">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex-1 space-y-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
           {/* Header */}
-          <div className="flex items-center gap-1 px-1.5 pb-0.5 text-[11px] font-medium text-text-muted">
-            <span className="flex h-6 w-4 flex-shrink-0" aria-hidden="true" />
-            <span className="flex-[5] min-w-0 text-center">
+          <div className="flex items-center gap-1.5 px-1.5 pb-1 text-[12px] font-medium text-text-muted">
+            <span className="flex h-7 w-4 flex-shrink-0" aria-hidden="true" />
+            <span className="flex flex-[3] min-w-0 items-center justify-center">
               {tr('typeConvertSourceField', '待转换字段')}
             </span>
-            <span className="w-6 flex-shrink-0" aria-hidden="true" />
-            <span className="flex-[3] min-w-0 text-center">
+            <span className="flex w-14 flex-shrink-0 items-center justify-center">
+              {tr('typeConvertOriginalType', '原类型')}
+            </span>
+            <span className="flex flex-[2] min-w-0 items-center justify-center">
               {tr('typeConvertTargetType', '目标类型')}
             </span>
-            <span className="flex-[2] min-w-0 text-center">
+            <span className="flex flex-[2] min-w-0 items-center justify-center">
               {tr('typeConvertErrorHandling', '错误处理')}
             </span>
-            <span className="flex h-6 w-6 flex-shrink-0" aria-hidden="true" />
-            <span className="flex h-6 w-6 flex-shrink-0" aria-hidden="true" />
-            <span className="flex h-6 w-6 flex-shrink-0" aria-hidden="true" />
+            <span className="flex h-7 w-7 flex-shrink-0" aria-hidden="true" />
+            <span className="flex h-7 w-7 flex-shrink-0" aria-hidden="true" />
           </div>
 
           {activeConversions.map((conv, i) => {
             const disabledFields = new Set(usedFields);
             if (conv.column) disabledFields.delete(conv.column);
             const normalizedType = normalizeDataFieldType(conv.type);
-            const needsConfig =
-              normalizedType === 'date' ||
-              normalizedType === 'datetime' ||
-              normalizedType === 'decimal';
-            const isExpanded = expandedRows.has(i);
-            const showFormat = normalizedType === 'date' || normalizedType === 'datetime';
-            const showTimezone = normalizedType === 'datetime';
-            const showLocale = normalizedType === 'decimal';
-            const hasConfig = conv.format || conv.timezone || conv.locale;
 
             return (
-              <div key={i} onDragOver={(e) => handleDragOver(e, i)}>
+              <div
+                key={i}
+                onDragOver={(e) => handleDragOver(e, i)}
+                className={`${dragConversions && dropTargetRef.current === i && dragIndexRef.current !== i ? 'relative' : ''}`}
+              >
+                {dragConversions && dropTargetRef.current === i && dragIndexRef.current !== i && (
+                  <div className="pointer-events-none absolute -top-0.5 left-0 right-0 h-0.5 bg-accent" />
+                )}
                 <div
-                  className={`flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-surface-hover/40 ${
+                  className={`flex items-center gap-1.5 rounded px-1.5 py-1 transition-colors hover:bg-surface-hover/40 group ${
                     dragConversions && dragIndexRef.current === i ? 'opacity-50' : ''
-                  } ${selectedIndex === i ? 'bg-surface-hover/30' : ''}`}
+                  } ${selectedIndex === i ? 'bg-accent/5 ring-1 ring-inset ring-accent/20' : ''}`}
                   onClick={() => setSelectedIndex(i)}
                 >
                   {/* Drag handle */}
@@ -293,7 +234,7 @@ export default function FormTypeConvert({
                     <GripVertical className="h-4 w-4" />
                   </div>
 
-                  {/* Source field with type */}
+                  {/* Source field */}
                   <GlassFieldCombo
                     value={conv.column}
                     options={fieldCompletions}
@@ -303,220 +244,84 @@ export default function FormTypeConvert({
                     searchPlaceholder={tr('searchField', '搜索字段')}
                     emptyText={tr('noMatch', '无匹配字段')}
                     disabledOptions={disabledFields}
-                    className="flex-[5] min-w-0"
-                    showType
+                    className="flex-[3] min-w-0"
                   />
 
+                  {/* Original type badge */}
+                  {conv.column && columnTypes?.[conv.column] && (
+                    <span className="w-14 flex-shrink-0 text-center text-[11px] text-text-muted tabular-nums">
+                      {dataFieldTypeLabel(columnTypes[conv.column])}
+                    </span>
+                  )}
+                  {!conv.column && <span className="w-14 flex-shrink-0" />}
+
                   {/* Arrow */}
-                  <ArrowRight className="w-6 flex-shrink-0 text-text-muted" />
+                  <div className="flex items-center gap-0.5 w-7 flex-shrink-0 justify-center transition-colors group-hover:text-accent">
+                    <div className="h-[2.5px] w-[14px] bg-current rounded-full" />
+                    <div className="h-0 w-0 border-l-[9px] border-l-current border-y-[7px] border-y-transparent" />
+                  </div>
 
                   {/* Target type */}
-                  <select
+                  <GlassOperatorSelect
                     value={normalizedType}
-                    onChange={(e) => updateConversion(i, { type: e.target.value as DataFieldType })}
-                    className="h-6 flex-[3] min-w-0 rounded border border-border-muted bg-background/42 px-1.5 text-center text-[12px] text-text-primary outline-none focus:border-accent"
-                  >
-                    {availableTargetTypes.map((t) => (
-                      <option key={t} value={t}>
-                        {dataFieldTypeLabel(t)}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => updateConversion(i, { type: v as DataFieldType })}
+                    groups={[
+                      {
+                        key: 'types',
+                        items: DATA_FIELD_TYPES.map((t) => ({
+                          value: t,
+                          label: dataFieldTypeLabel(t),
+                        })),
+                      },
+                    ]}
+                    className="h-6 flex-[2] min-w-0 text-[12px]"
+                  />
 
                   {/* Error handling */}
-                  <select
+                  <GlassOperatorSelect
                     value={conv.onError ?? 'null'}
-                    onChange={(e) =>
+                    onChange={(v) =>
                       updateConversion(i, {
-                        onError: e.target.value !== 'null' ? e.target.value : undefined,
+                        onError: v !== 'null' ? v : undefined,
                       })
                     }
-                    className="h-6 flex-[2] min-w-0 rounded border border-border-muted bg-background/42 px-1.5 text-center text-[12px] text-text-secondary outline-none focus:border-accent"
-                  >
-                    {ON_ERROR_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-
-                  {/* Config toggle - always visible, disabled when not applicable */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      if (needsConfig) {
-                        e.stopPropagation();
-                        toggleRowExpanded(i);
-                      }
-                    }}
-                    disabled={!needsConfig}
-                    className={`inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition-colors ${
-                      needsConfig
-                        ? hasConfig
-                          ? 'cursor-pointer text-accent hover:bg-accent/10'
-                          : isExpanded
-                            ? 'cursor-pointer text-accent hover:bg-accent/10'
-                            : 'cursor-pointer text-warning hover:bg-warning/10'
-                        : 'cursor-not-allowed text-text-muted/40'
-                    }`}
-                    title={
-                      needsConfig
-                        ? hasConfig
-                          ? tr('typeConvertEditConfig', '编辑配置')
-                          : tr('typeConvertNeedConfig', '需要配置')
-                        : tr('typeConvertNoConfigNeeded', '无需配置')
-                    }
-                  >
-                    <Settings className="h-3.5 w-3.5" />
-                  </button>
+                    groups={[
+                      {
+                        key: 'errors',
+                        items: onErrorOptions.map((o) => ({
+                          value: o.value,
+                          label: o.label,
+                        })),
+                      },
+                    ]}
+                    className="h-6 flex-[2] min-w-0 text-[12px]"
+                  />
 
                   {/* Add */}
                   <button
                     type="button"
                     onClick={() => addConversionAfter(i)}
-                    className="inline-flex h-6 w-6 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-accent"
+                    className="inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-accent"
                     title={tr('typeConvertAdd', '添加转换')}
                     aria-label={tr('typeConvertAdd', '添加转换')}
                   >
-                    <Plus className="h-3.5 w-3.5" />
+                    <Plus className="h-4 w-4" />
                   </button>
 
                   {/* Delete */}
                   <button
                     type="button"
                     onClick={() => removeConversion(i)}
-                    className="inline-flex h-6 w-6 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:text-error hover:bg-error/10"
+                    className="inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:text-error hover:bg-error/10"
                     title={tr('typeConvertRemove', '删除转换')}
                     aria-label={tr('typeConvertRemove', '删除转换')}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
-
-                {/* Expanded config panel */}
-                {isExpanded && needsConfig && (
-                  <div className="ml-6 mt-1 mb-1 space-y-1.5 rounded border border-border-muted bg-background/20 p-2">
-                    {showFormat && (
-                      <div className="flex items-center gap-2">
-                        <label className="w-16 flex-shrink-0 text-[11px] text-text-secondary">
-                          {tr('typeConvertDateFormat', '日期格式')}
-                        </label>
-                        <input
-                          type="text"
-                          list={`fmt-list-${i}`}
-                          value={conv.format ?? ''}
-                          onChange={(e) =>
-                            updateConversion(i, { format: e.target.value || undefined })
-                          }
-                          placeholder={
-                            normalizedType === 'datetime' ? 'yyyy-MM-dd HH:mm:ss' : 'yyyy-MM-dd'
-                          }
-                          className="h-6 flex-1 rounded border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
-                        />
-                        <datalist id={`fmt-list-${i}`}>
-                          {(normalizedType === 'datetime' ? TIMESTAMP_FORMATS : DATE_FORMATS).map(
-                            (f) => (
-                              <option key={f} value={f} />
-                            )
-                          )}
-                        </datalist>
-                      </div>
-                    )}
-
-                    {showTimezone && (
-                      <div className="flex items-center gap-2">
-                        <label className="w-16 flex-shrink-0 text-[11px] text-text-secondary">
-                          {tr('typeConvertTimezone', '时区')}
-                        </label>
-                        <input
-                          type="text"
-                          list={`tz-list-${i}`}
-                          value={conv.timezone ?? ''}
-                          onChange={(e) =>
-                            updateConversion(i, { timezone: e.target.value || undefined })
-                          }
-                          placeholder="Asia/Shanghai"
-                          className="h-6 flex-1 rounded border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
-                        />
-                        <datalist id={`tz-list-${i}`}>
-                          {TIMEZONE_OPTIONS.map((tz) => (
-                            <option key={tz} value={tz} />
-                          ))}
-                        </datalist>
-                      </div>
-                    )}
-
-                    {showLocale && (
-                      <div className="flex items-center gap-2">
-                        <label className="w-16 flex-shrink-0 text-[11px] text-text-secondary">
-                          {tr('typeConvertLocale', '区域')}
-                        </label>
-                        <input
-                          type="text"
-                          value={conv.locale ?? ''}
-                          onChange={(e) =>
-                            updateConversion(i, { locale: e.target.value || undefined })
-                          }
-                          placeholder="de_DE"
-                          className="h-6 flex-1 rounded border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             );
           })}
-        </div>
-      </div>
-
-      {/* Right: summary */}
-      <div className="flex min-h-0 flex-col gap-3 overflow-y-auto px-2 pb-2 pt-1 pl-3">
-        <div>
-          <h5 className="mb-2 text-[11px] font-medium text-text-muted">
-            {tr('typeConvertCurrentRules', '当前转换规则')}
-          </h5>
-          {realConversions.length === 0 ? (
-            <p className="text-[12px] leading-5 text-text-secondary">
-              {tr('typeConvertNoRules', '未设置转换规则，请在左侧添加。')}
-            </p>
-          ) : (
-            <ol className="space-y-1.5">
-              {realConversions.map((c, i) => {
-                const normalizedType = normalizeDataFieldType(c.type);
-                const configParts: string[] = [];
-                if (c.format) configParts.push(c.format);
-                if (c.timezone) configParts.push(c.timezone);
-                if (c.locale) configParts.push(c.locale);
-                const configStr = configParts.length > 0 ? ` (${configParts.join(', ')})` : '';
-
-                return (
-                  <li key={i} className="flex items-start gap-2 text-[12px]">
-                    <span className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded bg-surface text-[10px] font-medium tabular-nums text-text-muted">
-                      {i + 1}
-                    </span>
-                    <span className="leading-4 text-text-primary">
-                      {c.column}
-                      <span className="text-text-secondary">
-                        {' '}
-                        → {dataFieldTypeLabel(normalizedType)}
-                      </span>
-                      {configStr && <span className="text-text-muted">{configStr}</span>}
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
-          )}
-        </div>
-
-        <div className="rounded-md border border-border-muted bg-background/42 px-2.5 py-2">
-          <p className="text-[11px] leading-4 text-text-muted">
-            {tr(
-              'typeConvertHint',
-              '提示：拖拽可调整执行顺序，点击齿轮图标可配置日期格式、时区等选项。'
-            )}
-          </p>
         </div>
       </div>
     </div>

@@ -14,10 +14,9 @@ function ok(config: Record<string, unknown>) {
 describe('FormTypeConvert — config ↔ DSL', () => {
   it('single conversion to date', () => {
     const r = ok({
-      conversions: [{ column: 'order_date', type: 'date', format: 'yyyy-MM-dd' }],
+      conversions: [{ column: 'order_date', type: 'date' }],
     });
     expect(r.dsl).toContain('cast [order_date] as date');
-    expect(r.dsl).toContain('format "yyyy-MM-dd"');
   });
 
   it('conversion to float with on_error', () => {
@@ -35,33 +34,29 @@ describe('FormTypeConvert — config ↔ DSL', () => {
     expect(r.dsl).toContain('on_error fail');
   });
 
-  it('datetime with format and timezone', () => {
+  it('datetime conversion', () => {
     const r = ok({
       conversions: [
         {
           column: 'created_at',
           type: 'datetime',
-          format: 'yyyy-MM-dd HH:mm:ss',
-          timezone: 'Asia/Shanghai',
         },
       ],
     });
     expect(r.dsl).toContain('datetime');
-    expect(r.dsl).toContain('timezone "Asia/Shanghai"');
   });
 
-  it('decimal with locale', () => {
+  it('decimal conversion', () => {
     const r = ok({
-      conversions: [{ column: 'price', type: 'decimal', locale: 'de_DE' }],
+      conversions: [{ column: 'price', type: 'decimal' }],
     });
     expect(r.dsl).toContain('decimal');
-    expect(r.dsl).toContain('locale');
   });
 
   it('multiple conversions', () => {
     const r = ok({
       conversions: [
-        { column: 'dt', type: 'date', format: 'yyyy-MM-dd' },
+        { column: 'dt', type: 'date' },
         { column: 'rev', type: 'float', onError: 'null' },
         { column: 'qty', type: 'integer', onError: 'fail' },
       ],
@@ -85,31 +80,24 @@ describe('FormTypeConvert — config ↔ DSL', () => {
   });
 });
 
-describe('FormTypeConvert — format detection', () => {
-  // Simulate needsFormat from FormTypeConvert
-  function needsFormat(type: string): boolean {
-    return type === 'date' || type === 'datetime';
-  }
+import { duckDbTypeForDataFieldType } from '../../src/shared/data-field-types';
 
-  it('date needs format', () => expect(needsFormat('date')).toBe(true));
-  it('datetime needs format', () => expect(needsFormat('datetime')).toBe(true));
-  it('integer does not need format', () => expect(needsFormat('integer')).toBe(false));
-  it('text does not need format', () => expect(needsFormat('text')).toBe(false));
-  it('boolean does not need format', () => expect(needsFormat('boolean')).toBe(false));
+describe('FormTypeConvert — type detection', () => {
+  it('date resolves to TIMESTAMPTZ', () => {
+    expect(duckDbTypeForDataFieldType('datetime')).toBe('TIMESTAMPTZ');
+  });
 });
 
 describe('FormTypeConvert — DSL idempotent', () => {
   it('export→parse→export produces same DSL', () => {
     const configs = [
-      { conversions: [{ column: 'dt', type: 'date', format: 'yyyy-MM-dd' }] },
+      { conversions: [{ column: 'dt', type: 'date' }] },
       { conversions: [{ column: 'rev', type: 'float', onError: 'null' }] },
       {
         conversions: [
           {
             column: 'ts',
             type: 'datetime',
-            format: 'yyyy-MM-dd HH:mm:ss',
-            timezone: 'Asia/Shanghai',
           },
         ],
       },
