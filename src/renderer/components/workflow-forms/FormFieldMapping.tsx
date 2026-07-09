@@ -1,16 +1,49 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Copy, Plus, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
+import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import { GlassRowList, type GlassRowListColumn } from './shared/GlassRowList';
 
-interface MappingEntry {
+export interface MappingEntry {
   source: string;
-  target: string;
+  targetMode: 'prefix' | 'suffix' | 'rename';
+  targetValue: string;
 }
 
-const DEFAULT_MAPPING: MappingEntry = { source: '', target: '' };
+function computeTarget(m: MappingEntry): string {
+  if (!m.source) return '';
+  if (m.targetMode === 'rename') return m.targetValue || '';
+  return m.targetMode === 'prefix' ? `${m.targetValue}${m.source}` : `${m.source}${m.targetValue}`;
+}
+
+function migrateEntry(e: Record<string, unknown>): MappingEntry {
+  const source = (e.source as string) || '';
+  const target = (e.target as string) || '';
+  const targetMode = e.targetMode as string;
+  if (targetMode === 'prefix' || targetMode === 'suffix' || targetMode === 'rename') {
+    const targetValue = (e.targetValue as string) || '';
+    return { source, targetMode, targetValue };
+  }
+  if (!source || !target) return { source, targetMode: 'rename', targetValue: target };
+  if (target.startsWith(source))
+    return {
+      source,
+      targetMode: 'suffix',
+      targetValue: target.slice(source.length).replace(/^_/, ''),
+    };
+  if (target.endsWith(source))
+    return {
+      source,
+      targetMode: 'prefix',
+      targetValue: target.slice(0, -source.length).replace(/_$/, ''),
+    };
+  return { source, targetMode: 'rename', targetValue: target };
+}
+
+const DEFAULT_MAPPING: MappingEntry = { source: '', targetMode: 'rename', targetValue: '' };
 
 export default function FormFieldMapping({
   node,
@@ -36,7 +69,7 @@ export default function FormFieldMapping({
   );
 
   const mappings = useMemo<MappingEntry[]>(
-    () => (node.config.mappings as MappingEntry[]) ?? [],
+    () => ((node.config.mappings as Record<string, unknown>[]) ?? []).map(migrateEntry),
     [node.config.mappings]
   );
 
@@ -94,23 +127,13 @@ export default function FormFieldMapping({
     setSortedMappings(null);
   }, [sortedMappings, commitMappings]);
 
-  const occupiedNames = useMemo(() => {
-    const renamed = new Set(mappings.map((m) => m.source));
-    return new Set(fieldCompletions.filter((c) => !renamed.has(c)));
-  }, [fieldCompletions, mappings]);
-
-  const getTargetError = useCallback(
-    (item: MappingEntry, index: number): string | null => {
-      const tgt = item.target.trim();
-      if (!tgt) return null;
-      if (tgt === item.source) return tr('fieldMappingErrSameSource', '不能与原字段名相同');
-      if (occupiedNames.has(tgt)) return tr('fieldMappingErrConflict', '与已有字段名冲突');
-      if (mappings.some((m, i) => i !== index && m.target.trim() === tgt))
-        return tr('fieldMappingErrDuplicate', '目标字段名重复');
-      return null;
-    },
-    [mappings, occupiedNames, tr]
-  );
+  const usedFields = useMemo(() => {
+    const used = new Set<string>();
+    for (const m of activeMappings) {
+      if (m.source) used.add(m.source);
+    }
+    return used;
+  }, [activeMappings]);
 
   const updateMapping = useCallback(
     (index: number, patch: Partial<MappingEntry>) => {
@@ -131,6 +154,21 @@ export default function FormFieldMapping({
     [activeMappings, fieldCompletions.length, commitMappings]
   );
 
+  const copyMapping = useCallback(
+    (index: number) => {
+      if (activeMappings.length >= fieldCompletions.length) return;
+      const source = activeMappings[index];
+      const next = [...activeMappings];
+      next.splice(index + 1, 0, {
+        source: '',
+        targetMode: source.targetMode,
+        targetValue: source.targetValue,
+      } as MappingEntry);
+      commitMappings(next);
+    },
+    [activeMappings, fieldCompletions.length, commitMappings]
+  );
+
   const removeMapping = useCallback(
     (index: number) => {
       if (activeMappings.length <= 1) {
@@ -142,75 +180,138 @@ export default function FormFieldMapping({
     [activeMappings, commitMappings]
   );
 
-  const usedFields = useMemo(() => {
-    const used = new Set<string>();
-    for (const m of activeMappings) {
-      if (m.source) used.add(m.source);
-    }
-    return used;
-  }, [activeMappings]);
+  const canAdd = useMemo(
+    () => !activeMappings.some((m) => !m.source) && activeMappings.length < fieldCompletions.length,
+    [activeMappings, fieldCompletions.length]
+  );
+
+  const targetModeOptions = useMemo(
+    () => [
+      { value: 'prefix', label: tr('fieldMappingModePrefix', '加前缀') },
+      { value: 'suffix', label: tr('fieldMappingModeSuffix', '加后缀') },
+      { value: 'rename', label: tr('fieldMappingModeRename', '改名') },
+    ],
+    [tr]
+  );
 
   const columns = useMemo<GlassRowListColumn<MappingEntry>[]>(
     () => [
       {
-        flex: 'flex-[5]',
+        flex: 'flex-[3]',
         header: tr('fieldMappingSourceField', '源字段'),
         render: (item, i) => {
           const disabledFields = new Set(usedFields);
           if (item.source) disabledFields.delete(item.source);
           return (
-            <div className="flex items-center gap-1">
-              <GlassFieldCombo
-                value={item.source}
-                options={fieldCompletions}
-                onChange={(value) => updateMapping(i, { source: value })}
-                placeholder={tr('fieldMappingSelectField', '选择字段')}
-                searchPlaceholder={tr('searchField', '搜索字段')}
-                emptyText={tr('noMatch', '无匹配字段')}
-                disabledOptions={disabledFields}
-                className="flex-1 min-w-0 h-7"
-              />
-              <div className="flex items-center gap-0.5 w-5 flex-shrink-0 justify-center">
-                <div className="h-[2px] w-[10px] bg-text-muted rounded-full" />
-                <div className="h-0 w-0 border-l-[6px] border-l-text-muted border-y-[4.5px] border-y-transparent" />
-              </div>
-            </div>
+            <GlassFieldCombo
+              value={item.source}
+              options={fieldCompletions}
+              onChange={(value) => updateMapping(i, { source: value })}
+              placeholder={tr('fieldMappingSelectField', '选择字段')}
+              searchPlaceholder={tr('searchField', '搜索字段')}
+              emptyText={tr('noMatch', '无匹配字段')}
+              disabledOptions={disabledFields}
+              className="flex-1 min-w-0 h-7"
+            />
           );
         },
       },
       {
-        flex: 'flex-[5]',
-        header: tr('fieldMappingTargetField', '目标字段名'),
-        render: (item, i) => {
-          const err = getTargetError(item, i);
+        flex: 'flex-[1.5]',
+        header: tr('fieldMappingMode', '模式'),
+        render: (item, i) => (
+          <GlassOperatorSelect
+            value={item.targetMode}
+            onChange={(v) => updateMapping(i, { targetMode: v as MappingEntry['targetMode'] })}
+            groups={[{ key: 'mode', items: targetModeOptions }]}
+            className="h-7 w-full text-[12px]"
+          />
+        ),
+      },
+      {
+        flex: 'flex-[2.5]',
+        header: tr('fieldMappingValue', '值'),
+        render: (item, i) => (
+          <GlassFormTextInput
+            value={item.targetValue}
+            onChange={(v) => updateMapping(i, { targetValue: v })}
+            placeholder={
+              item.targetMode === 'rename'
+                ? tr('fieldMappingRenamePlaceholder', '新字段名')
+                : item.targetMode === 'prefix'
+                  ? tr('fieldMappingPrefixPlaceholder', '前缀')
+                  : tr('fieldMappingSuffixPlaceholder', '后缀')
+            }
+            className="h-7 px-1.5 text-[12px] w-full"
+          />
+        ),
+      },
+      {
+        flex: 'w-8',
+        header: '',
+        render: () => <div />,
+      },
+      {
+        flex: 'flex-[2]',
+        header: tr('fieldMappingTargetField', '新字段名'),
+        render: (item, _i) => {
+          const target = computeTarget(item);
           return (
-            <div className="flex items-center gap-1">
-              <GlassFormTextInput
-                value={item.target}
-                onChange={(value) => updateMapping(i, { target: value })}
-                placeholder={tr('fieldMappingTargetPlaceholder', '目标字段名')}
-                className={`h-7 px-2 text-[12px] w-full ${err ? 'border-warning/70' : ''}`}
-              />
-              {err && (
-                <span
-                  className="inline-flex h-5 w-5 flex-shrink-0 items-center justify-center"
-                  title={err}
-                >
-                  <svg
-                    className="h-3.5 w-3.5 text-warning/70"
-                    viewBox="0 0 16 16"
-                    fill="currentColor"
-                  >
-                    <path d="M8 1a7 7 0 100 14A7 7 0 008 1zM7 5h2v4H7V5zm0 5h2v2H7v-2z" />
-                  </svg>
-                </span>
-              )}
-            </div>
+            <span className="truncate text-[12px] text-text-muted" title={target}>
+              {target || '—'}
+            </span>
           );
         },
       },
+      {
+        flex: 'flex-[1.5]',
+        header: '',
+        render: (_item, i) => (
+          <div className="flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => addMappingAfter(i)}
+              className="inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+              title={tr('fieldMappingAdd', '添加映射')}
+              aria-label={tr('fieldMappingAdd', '添加映射')}
+              disabled={!canAdd}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => copyMapping(i)}
+              className="inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+              title={tr('fieldMappingCopy', '复制行')}
+              aria-label={tr('fieldMappingCopy', '复制行')}
+              disabled={!canAdd}
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => removeMapping(i)}
+              className="inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:text-error hover:bg-error/10"
+              title={tr('fieldMappingRemove', '删除映射')}
+              aria-label={tr('fieldMappingRemove', '删除映射')}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ),
+      },
     ],
-    [fieldCompletions, usedFields, tr, getTargetError, updateMapping]
+    [
+      fieldCompletions,
+      usedFields,
+      tr,
+      updateMapping,
+      canAdd,
+      addMappingAfter,
+      copyMapping,
+      removeMapping,
+      targetModeOptions,
+    ]
   );
 
   return (
@@ -225,6 +326,7 @@ export default function FormFieldMapping({
             addTitle={tr('fieldMappingAdd', '添加映射')}
             removeTitle={tr('fieldMappingRemove', '删除映射')}
             draggable
+            hideActions
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}

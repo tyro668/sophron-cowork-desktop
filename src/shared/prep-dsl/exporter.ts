@@ -124,13 +124,25 @@ function formatFieldMapping(config: Record<string, unknown> | undefined): string
   const mappings = objectArray(config?.mappings);
   if (mappings.length === 0) return 'map [source_field] to [target_field]';
   return `map ${mappings
-    .map(
-      (item) =>
-        `${formatFieldRef(String(item.source ?? 'source_field'))} to ${formatFieldRef(
-          String(item.target ?? 'target_field')
-        )}`
-    )
+    .map((item) => {
+      const source = String(item.source ?? 'source_field');
+      const target = computeMappingTarget(item);
+      return `${formatFieldRef(source)} to ${formatFieldRef(target || 'target_field')}`;
+    })
     .join(', ')}`;
+}
+
+function computeMappingTarget(mapping: Record<string, unknown>): string {
+  const source = typeof mapping.source === 'string' ? mapping.source : '';
+  const target = typeof mapping.target === 'string' ? mapping.target : '';
+  const targetMode = typeof mapping.targetMode === 'string' ? mapping.targetMode : '';
+  const targetValue = typeof mapping.targetValue === 'string' ? mapping.targetValue : '';
+  if (target && !targetMode) return target;
+  if (!source || !targetMode) return target || '';
+  if (targetMode === 'rename') return targetValue || target;
+  if (targetMode === 'prefix') return `${targetValue}${source}`;
+  if (targetMode === 'suffix') return `${source}${targetValue}`;
+  return target || '';
 }
 
 function formatMissingValue(config: Record<string, unknown> | undefined): string {

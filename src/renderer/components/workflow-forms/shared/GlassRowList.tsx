@@ -112,8 +112,8 @@ export function GlassRowList<T>({
           {/* Column cells */}
           {columns.map((col, i) => {
             const cell = (
-              <div key={i} className={`${col.flex} min-w-0`}>
-                {col.render(item, index)}
+              <div key={i} className={`flex items-center justify-center ${col.flex} min-w-0`}>
+                <div className="w-full flex">{col.render(item, index)}</div>
               </div>
             );
             if (displayBreak && i === breakAt - 1) {

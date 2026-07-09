@@ -88,6 +88,7 @@ import {
 } from './data-command-types';
 import type { InputTableNormalizerProjectGenerator } from './input-table-normalizer-generator';
 import { configStore } from '../config/config-store';
+import { computeMappingTarget } from './operators/utils';
 import { CloudAnalysisCommandService } from './cloud-analysis-command-service';
 import { InputTablesCommandService } from './input-tables-command-service';
 import { OutputTablesCommandService } from './output-tables-command-service';
@@ -2373,7 +2374,7 @@ function resolveRequiredInputColumnsFromWorkflow(
         objectArray(config.mappings).forEach((mapping) => {
           const source = requireName(mapping.source);
           removeName(mapping.source);
-          upsertName(mapping.target, source);
+          upsertName(computeMappingTarget(mapping), source);
         });
         break;
       case 'filter':

@@ -192,6 +192,22 @@ export function normalizeListWindow(
   return { offset: normalizedOffset, limit: normalizedLimit };
 }
 
+export function computeMappingTarget(mapping: Record<string, unknown>): string {
+  const source = typeof mapping.source === 'string' ? mapping.source : '';
+  const target = typeof mapping.target === 'string' ? mapping.target : '';
+  const targetMode = typeof mapping.targetMode === 'string' ? mapping.targetMode : '';
+  const targetValue = typeof mapping.targetValue === 'string' ? mapping.targetValue : '';
+
+  // Legacy config with direct target
+  if (target && !targetMode) return target;
+
+  if (!source || !targetMode) return target || '';
+  if (targetMode === 'rename') return targetValue || target;
+  if (targetMode === 'prefix') return `${targetValue}${source}`;
+  if (targetMode === 'suffix') return `${source}${targetValue}`;
+  return target || '';
+}
+
 export type DataTaskStatus = 'running' | 'completed' | 'stopped' | 'draft' | 'pending' | 'failed';
 
 export type { DataFieldType };

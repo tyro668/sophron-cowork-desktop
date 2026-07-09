@@ -1,4 +1,4 @@
-import { quoteIdentifier, objectArray } from './utils';
+import { quoteIdentifier, objectArray, computeMappingTarget } from './utils';
 
 export function compileFieldMappingSql(
   output: string,
@@ -6,13 +6,12 @@ export function compileFieldMappingSql(
   columns: string[],
   config: Record<string, unknown>
 ): string {
-  const mappings = objectArray(config.mappings);
   const sourceToTarget = new Map(
-    mappings.flatMap((mapping) =>
-      typeof mapping.source === 'string' && typeof mapping.target === 'string'
-        ? [[mapping.source, mapping.target] as const]
-        : []
-    )
+    objectArray(config.mappings).flatMap((mapping) => {
+      const source = typeof mapping.source === 'string' ? mapping.source : '';
+      const target = computeMappingTarget(mapping);
+      return source && target ? [[source, target] as const] : [];
+    })
   );
   const projections = columns.map((column) => {
     const target = sourceToTarget.get(column);
