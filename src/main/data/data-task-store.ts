@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { BrowserWindow, ipcMain } from 'electron';
 import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api';
 import type Database from 'better-sqlite3';
 import * as XLSX from 'xlsx';
@@ -51,13 +52,41 @@ import type {
   DataWorkflowOperatorType,
   DataWorkflowSaveInput,
 } from '../../renderer/types';
+import type { PrepDiagnostic } from '../../shared/prep-dsl/ast';
 import {
   dataFieldTypeFromDuckDbType,
   duckDbTypeForDataFieldType,
-  requireDataFieldType,
   type DataFieldType,
 } from '../../shared/data-field-types';
 import { runInputTableNormalizerProject } from './input-table-normalizer-runner';
+import {
+  compileFieldSelectSql,
+  compileFieldMappingSql,
+  compileMissingValueSql,
+  compileTypeConvertSql,
+  compileDeduplicateSql,
+  compileSortSql,
+  compileCalculateFieldSql,
+  compileAggregateSql,
+  compileLimitSql,
+  compilePivotSql,
+  compileUnpivotSql,
+  compileUnnestSql,
+  compileFilterConditionExpression,
+  compileSetOpSql,
+  compileJoinConditionList,
+  compileJoinProjection,
+  compileAsofJoinSql,
+  quoteIdentifier,
+  quoteValueIdentifier,
+  stringArray,
+  isRecord,
+  compileTypedProjection,
+  normalizeStatus,
+  normalizeListWindow,
+  toNumber,
+  toFiniteNumber,
+} from './operators';
 
 interface DataTaskStoreOptions {
   now?: () => number;
@@ -835,7 +864,14 @@ export class DataTaskStore {
     return this.requireTask(task.id);
   }
 
+  private _executionDiagnostics: PrepDiagnostic[] = [];
+
+  getExecutionDiagnostics(): PrepDiagnostic[] {
+    return this._executionDiagnostics;
+  }
+
   async runTask(id: string, input: DataRunTaskInput = {}): Promise<DataCleaningTask> {
+    this._executionDiagnostics = [];
     await this.ensureReady();
     await this.cleanupExpiredWorkflowNodeCaches();
     const task = await this.requireTask(id);
@@ -1632,12 +1668,41 @@ export class DataTaskStore {
       updatedAt: 0,
     };
 
-    const tableName = await this.resolveWorkflowNodePreviewTable(task, node);
+    let tableName = await this.resolveWorkflowNodePreviewTable(task, node);
     if (!tableName || !(await this.physicalTableExists(tableName))) {
-      return [];
+      // 缓存表不存在，尝试从源文件加载数据创建临时表
+      if (node.type !== 'input_source' || node.config.disabled === true) {
+        return [];
+      }
+      const source =
+        typeof node.config.source === 'string'
+          ? node.config.source
+          : stringConfigValue(node.config.datasetId)
+            ? 'dataset'
+            : 'task';
+      if (source === 'dataset') {
+        return [];
+      }
+      const filePath =
+        source === 'file' && typeof node.config.filePath === 'string'
+          ? normalizeSourcePath(node.config.filePath)
+          : task.sourcePath;
+      if (!filePath) {
+        return [];
+      }
+      tableName = tableNameFromId('workflow_preview_values', node.id);
+      await this.dropTableIfExists(tableName);
+      const relation = readRelationForPath(filePath, 'sourcePath');
+      await this.runSql(
+        `CREATE TEMP TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`,
+        { sourcePath: filePath }
+      );
     }
 
     const colName = input.column.replace(/^\[|\]$/g, '');
+    if (tableName && !(await this.physicalTableExists(tableName))) {
+      return [];
+    }
     const quotedCol = quoteIdentifier(colName);
     const quotedTable = quoteIdentifier(tableName);
     const rows = await this.queryRows<{ val: string }>(
@@ -2405,7 +2470,7 @@ export class DataTaskStore {
 
         if (node.config.disabled === true) {
           const passthroughNodeId =
-            node.type === 'join'
+            node.type === 'join' || node.type === 'set_op'
               ? (this.findIncomingNodeId(node.id, edges, 'left') ??
                 this.findIncomingNodeId(node.id, edges, 'input') ??
                 this.findIncomingNodeId(node.id, edges, 'right'))
@@ -2418,11 +2483,13 @@ export class DataTaskStore {
           return relation;
         }
 
-        if (node.type === 'join') {
+        if (node.type === 'join' || node.type === 'set_op') {
           const leftNodeId = this.findIncomingNodeId(node.id, edges, 'left');
           const rightNodeId = this.findIncomingNodeId(node.id, edges, 'right');
           if (!leftNodeId || !rightNodeId) {
-            throw new Error(`Join node requires left and right inputs: ${node.id}`);
+            throw new Error(
+              `${node.type === 'join' ? 'Join' : 'Set operation'} node requires left and right inputs: ${node.id}`
+            );
           }
           await materializeNode(leftNodeId);
           await materializeNode(rightNodeId);
@@ -2771,7 +2838,13 @@ export class DataTaskStore {
       return this.compileJoinSql(node, outputRelation, relationByNode, edges);
     }
     if (node.type === 'set_op') {
-      return this.compileSetOpSql(node, outputRelation, relationByNode, edges);
+      return this.compileSetOpSql(
+        node,
+        outputRelation,
+        relationByNode,
+        edges,
+        this._executionDiagnostics
+      );
     }
     const inputId = this.findIncomingNodeId(node.id, edges, 'input');
     const inputRelation = inputId ? relationByNode.get(inputId) : null;
@@ -2791,7 +2864,7 @@ export class DataTaskStore {
       case 'type_convert':
         return compileTypeConvertSql(output, input, columns, node.config);
       case 'filter':
-        return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} WHERE ${compileScalarExpression(
+        return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} WHERE ${compileFilterConditionExpression(
           String(node.config.condition ?? 'true')
         )}`;
       case 'deduplicate':
@@ -2799,7 +2872,7 @@ export class DataTaskStore {
       case 'sort':
         return compileSortSql(output, input, node.config);
       case 'calculate_field':
-        return compileCalculateFieldSql(output, input, columns, node.config);
+        return compileCalculateFieldSql(output, input, node.config);
       case 'aggregate':
         return compileAggregateSql(output, input, node.config);
       case 'limit':
@@ -2819,7 +2892,8 @@ export class DataTaskStore {
     node: DataWorkflowNode,
     outputRelation: string,
     relationByNode: Map<string, string>,
-    edges: DataWorkflowEdge[]
+    edges: DataWorkflowEdge[],
+    diagnostics: PrepDiagnostic[]
   ): Promise<string> {
     const leftNodeId = this.findIncomingNodeId(node.id, edges, 'left');
     const rightNodeId = this.findIncomingNodeId(node.id, edges, 'right');
@@ -2828,11 +2902,93 @@ export class DataTaskStore {
     if (!leftRelation || !rightRelation) {
       throw new Error(`Set operation node requires left and right inputs: ${node.id}`);
     }
+    const leftColumns = await this.getTableColumns(leftRelation);
+    const rightColumns = await this.getTableColumns(rightRelation);
+    const config = node.config;
+
+    // 前置检查：列数不一致（仅对非 UNION BY NAME 场景）
+    const isUnionByName =
+      String(config.operation ?? 'union') === 'union' && config.match === 'by_name';
+    if (!isUnionByName && leftColumns.length !== rightColumns.length) {
+      diagnostics.push({
+        severity: 'warning',
+        message: `左右两表列数不一致（左表 ${leftColumns.length} 列，右表 ${rightColumns.length} 列），缺失列已自动填充 NULL`,
+      });
+    }
+
+    // 前置检查：按位置匹配时列名不同
+    if (config.match !== 'by_name') {
+      const minLen = Math.min(leftColumns.length, rightColumns.length);
+      const mismatches: string[] = [];
+      for (let i = 0; i < minLen; i++) {
+        if (leftColumns[i] !== rightColumns[i]) {
+          mismatches.push(`第 ${i + 1} 列：左表「${leftColumns[i]}」≠ 右表「${rightColumns[i]}」`);
+        }
+      }
+      if (mismatches.length > 0) {
+        diagnostics.push({
+          severity: 'warning',
+          message: `左右两表按位置匹配，但列名不同：${mismatches.join('；')}`,
+        });
+      }
+    }
+
+    // 前置检查：类型兼容性
+    const NUMERIC_TYPES = ['integer', 'float', 'decimal'];
+    const TEMPORAL_TYPES = ['date', 'datetime'];
+    const leftTypes = await this.getTableColumnTypes(leftRelation);
+    const rightTypes = await this.getTableColumnTypes(rightRelation);
+    const minTypeLen = Math.min(leftTypes.length, rightTypes.length);
+    for (let i = 0; i < minTypeLen; i++) {
+      const lt = leftTypes[i].type;
+      const rt = rightTypes[i].type;
+      if (lt === rt) continue;
+      const bothNumeric = NUMERIC_TYPES.includes(lt) && NUMERIC_TYPES.includes(rt);
+      const bothTemporal = TEMPORAL_TYPES.includes(lt) && TEMPORAL_TYPES.includes(rt);
+      if (bothNumeric || bothTemporal) continue;
+      if (lt === 'text' || rt === 'text') {
+        diagnostics.push({
+          severity: 'warning',
+          message: `第 ${i + 1} 列类型不一致（左表「${leftColumns[i]}」: ${lt}，右表「${rightColumns[i]}」: ${rt}），可能导致数据转换异常`,
+        });
+      } else {
+        diagnostics.push({
+          severity: 'warning',
+          message: `第 ${i + 1} 列类型不兼容（左表「${leftColumns[i]}」: ${lt}，右表「${rightColumns[i]}」: ${rt}），可能导致执行错误`,
+        });
+      }
+    }
+
+    const typeWarnings = diagnostics.filter(
+      (d) => d.severity === 'warning' && d.message.includes('类型')
+    );
+    if (typeWarnings.length > 0) {
+      const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
+      if (!win) throw new Error('无法找到窗口来显示确认对话框');
+      const channel = `operator-confirm:${Date.now()}`;
+      win.webContents.send('data.operatorConfirm', {
+        channel,
+        title: '列类型不匹配',
+        message: '左右两表的列类型不完全匹配，执行时可能出现数据转换异常或精度丢失。',
+        detail: typeWarnings.map((d) => d.message).join('\n'),
+        confirmLabel: '忽略警告，继续执行',
+        cancelLabel: '取消执行',
+      });
+      const confirmed = await new Promise<boolean>((resolve) => {
+        ipcMain.handleOnce(channel, (_event, result: boolean) => resolve(result));
+      });
+      if (!confirmed) {
+        throw new Error('用户取消了集合操作执行：列类型不匹配');
+      }
+    }
+
     return compileSetOpSql(
       quoteIdentifier(outputRelation),
       quoteIdentifier(leftRelation),
       quoteIdentifier(rightRelation),
-      node.config
+      config,
+      leftColumns,
+      rightColumns
     );
   }
 
@@ -4003,451 +4159,8 @@ function findWorkflowTerminalNodeId(
   return [...nonOutputIds].pop() ?? null;
 }
 
-function compileFieldSelectSql(
-  output: string,
-  input: string,
-  columns: string[],
-  config: Record<string, unknown>
-): string {
-  const selected = stringArray(config.columns);
-  const outputColumns =
-    config.mode === 'exclude'
-      ? columns.filter((column) => !selected.includes(column))
-      : selected.length > 0
-        ? selected
-        : columns;
-  return `CREATE TEMP TABLE ${output} AS SELECT ${quoteColumnList(outputColumns)} FROM ${input}`;
-}
-
-function compileFieldMappingSql(
-  output: string,
-  input: string,
-  columns: string[],
-  config: Record<string, unknown>
-): string {
-  const mappings = objectArray(config.mappings);
-  const sourceToTarget = new Map(
-    mappings.flatMap((mapping) =>
-      typeof mapping.source === 'string' && typeof mapping.target === 'string'
-        ? [[mapping.source, mapping.target] as const]
-        : []
-    )
-  );
-  const projections = columns.map((column) => {
-    const target = sourceToTarget.get(column);
-    return target
-      ? `${quoteIdentifier(column)} AS ${quoteIdentifier(target)}`
-      : quoteIdentifier(column);
-  });
-  return `CREATE TEMP TABLE ${output} AS SELECT ${projections.join(', ')} FROM ${input}`;
-}
-
-function compileMissingValueSql(
-  output: string,
-  input: string,
-  columns: string[],
-  config: Record<string, unknown>
-): string {
-  if (config.strategy === 'drop_empty_rows') {
-    const nonEmptyFilter =
-      columns.length > 0
-        ? columns.map((column) => `${quoteIdentifier(column)} IS NOT NULL`).join(' OR ')
-        : 'true';
-    return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} WHERE ${nonEmptyFilter}`;
-  }
-  const rules = objectArray(config.rules);
-  const expressions = new Map(columns.map((column) => [column, quoteIdentifier(column)]));
-  const filters: string[] = [];
-  for (const rule of rules) {
-    if (typeof rule.column !== 'string' || !columns.includes(rule.column)) continue;
-    const current = expressions.get(rule.column) ?? quoteIdentifier(rule.column);
-    switch (rule.method) {
-      case 'nullify_values':
-        expressions.set(
-          rule.column,
-          `CASE WHEN ${current} IN (${unknownArray(rule.values).map(literalToSql).join(', ')}) THEN NULL ELSE ${current} END`
-        );
-        break;
-      case 'literal_fill':
-        expressions.set(rule.column, `COALESCE(${current}, ${literalToSql(rule.value)})`);
-        break;
-      case 'drop':
-        filters.push(`${quoteIdentifier(rule.column)} IS NOT NULL`);
-        break;
-      default:
-        break;
-    }
-  }
-  const projections = columns.map(
-    (column) =>
-      `${expressions.get(column) ?? quoteIdentifier(column)} AS ${quoteIdentifier(column)}`
-  );
-  return `CREATE TEMP TABLE ${output} AS SELECT ${projections.join(', ')} FROM ${input}${
-    filters.length > 0 ? ` WHERE ${filters.join(' AND ')}` : ''
-  }`;
-}
-
-function compileTypeConvertSql(
-  output: string,
-  input: string,
-  columns: string[],
-  config: Record<string, unknown>
-): string {
-  const conversions = objectArray(config.conversions);
-  const byColumn = new Map(
-    conversions.flatMap((conversion) =>
-      typeof conversion.column === 'string' && typeof conversion.type === 'string'
-        ? [[conversion.column, conversion] as const]
-        : []
-    )
-  );
-  const projections = columns.map((column) => {
-    const conversion = byColumn.get(column);
-    return conversion
-      ? `${compileTypeConversionExpression(column, conversion)} AS ${quoteIdentifier(column)}`
-      : quoteIdentifier(column);
-  });
-  return `CREATE TEMP TABLE ${output} AS SELECT ${projections.join(', ')} FROM ${input}`;
-}
-
-function compileDeduplicateSql(
-  output: string,
-  input: string,
-  columns: string[],
-  config: Record<string, unknown>
-): string {
-  const keys = stringArray(config.columns);
-  if (keys.length === 0) {
-    return `CREATE TEMP TABLE ${output} AS SELECT DISTINCT * FROM ${input}`;
-  }
-  const partitionBy = keys.map(quoteIdentifier).join(', ');
-  const orderBy = sortKeysToSql(config.orderBy);
-  return `
-    CREATE TEMP TABLE ${output} AS
-    SELECT ${quoteColumnList(columns)}
-    FROM (
-      SELECT *, ROW_NUMBER() OVER (PARTITION BY ${partitionBy}${orderBy ? ` ORDER BY ${orderBy}` : ''}) AS __rn
-      FROM ${input}
-    )
-    WHERE __rn = 1
-  `;
-}
-
-function compileSortSql(output: string, input: string, config: Record<string, unknown>): string {
-  const orderBy = sortKeysToSql(config.keys);
-  return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input}${orderBy ? ` ORDER BY ${orderBy}` : ''}`;
-}
-
-function compileCalculateFieldSql(
-  output: string,
-  input: string,
-  columns: string[],
-  config: Record<string, unknown>
-): string {
-  const calculations = objectArray(config.calculations);
-  const expressionsByField = new Map(
-    calculations.flatMap((calculation) =>
-      typeof calculation.field === 'string' && typeof calculation.expression === 'string'
-        ? [[calculation.field, compileScalarExpression(calculation.expression)] as const]
-        : []
-    )
-  );
-  const projections = columns.map((column) => {
-    const expression = expressionsByField.get(column);
-    return `${expression ?? quoteIdentifier(column)} AS ${quoteIdentifier(column)}`;
-  });
-  const additions = [...expressionsByField]
-    .filter(([field]) => !columns.includes(field))
-    .map(([field, expression]) => `${expression} AS ${quoteIdentifier(field)}`);
-  return `CREATE TEMP TABLE ${output} AS SELECT ${[...projections, ...additions].join(', ')} FROM ${input}`;
-}
-
-function compileAggregateSql(
-  output: string,
-  input: string,
-  config: Record<string, unknown>
-): string {
-  const groupBy = stringArray(config.groupBy);
-  const metrics = objectArray(config.metrics).flatMap((metric) => {
-    if (
-      typeof metric.function !== 'string' ||
-      typeof metric.expression !== 'string' ||
-      typeof metric.alias !== 'string'
-    ) {
-      return [];
-    }
-    const expression = metric.expression === '*' ? '*' : compileScalarExpression(metric.expression);
-    return [
-      metric.function === 'count_distinct'
-        ? `COUNT(DISTINCT ${expression}) AS ${quoteIdentifier(metric.alias)}`
-        : `${metric.function.toUpperCase()}(${expression}) AS ${quoteIdentifier(metric.alias)}`,
-    ];
-  });
-  const groupProjection = groupBy.map(quoteIdentifier);
-  const projection = [...groupProjection, ...metrics].join(', ') || 'COUNT(*) AS "row_count"';
-  return `CREATE TEMP TABLE ${output} AS SELECT ${projection} FROM ${input}${
-    groupBy.length > 0 ? ` GROUP BY ${groupProjection.join(', ')}` : ''
-  }`;
-}
-
-function compileLimitSql(
-  output: string,
-  input: string,
-  columns: string[],
-  config: Record<string, unknown>
-): string {
-  const limit = positiveNumber(config.limit, 100);
-  if (config.unit === 'percent') {
-    const projection = columns.map((column) => quoteIdentifier(column)).join(', ') || '*';
-    const orderBy = sortKeysToSql(config.orderBy);
-    return `
-      CREATE TEMP TABLE ${output} AS
-      SELECT ${projection}
-      FROM (
-        SELECT *, ROW_NUMBER() OVER (${orderBy ? `ORDER BY ${orderBy}` : ''}) AS __rn, COUNT(*) OVER () AS __total_rows
-        FROM ${input}
-      )
-      WHERE __rn <= CEIL(__total_rows * ${Math.min(limit, 100)} / 100.0)
-    `;
-  }
-  const orderBy = config.mode === 'top' ? sortKeysToSql(config.orderBy) : '';
-  const offset =
-    typeof config.offset === 'number' && config.offset > 0 ? ` OFFSET ${config.offset}` : '';
-  return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input}${
-    orderBy ? ` ORDER BY ${orderBy}` : ''
-  } LIMIT ${Math.floor(limit)}${offset}`;
-}
-
-function compilePivotSql(output: string, input: string, config: Record<string, unknown>): string {
-  const on = stringArray(config.on);
-  const metrics = objectArray(config.using);
-  const groupBy = stringArray(config.groupBy);
-  const values = unknownArray(config.values);
-  if (on.length === 1 && values.length > 0) {
-    const onColumn = quoteIdentifier(on[0]);
-    const groupProjection = groupBy.map(quoteIdentifier);
-    const metric = metrics[0] ?? { function: 'count', expression: '*', alias: 'row_count' };
-    const fn = String(metric.function ?? 'count').toUpperCase();
-    const expression =
-      String(metric.expression ?? '*') === '*'
-        ? '*'
-        : compileScalarExpression(String(metric.expression ?? '*'));
-    const alias = typeof metric.alias === 'string' ? metric.alias : fn.toLowerCase();
-    const pivotColumns = values.map((value) => {
-      const columnName = `${String(value)}_${alias}`;
-      const valueSql = literalToSql(value);
-      const aggregateExpression =
-        expression === '*'
-          ? `${fn}(CASE WHEN ${onColumn} = ${valueSql} THEN 1 ELSE NULL END)`
-          : `${fn}(CASE WHEN ${onColumn} = ${valueSql} THEN ${expression} ELSE NULL END)`;
-      return `${aggregateExpression} AS ${quoteIdentifier(columnName)}`;
-    });
-    return `CREATE TEMP TABLE ${output} AS SELECT ${[...groupProjection, ...pivotColumns].join(
-      ', '
-    )} FROM ${input}${groupProjection.length > 0 ? ` GROUP BY ${groupProjection.join(', ')}` : ''}`;
-  }
-  const onSql = on.map(quoteIdentifier).join(', ') || '1';
-  const usingSql = metrics.map((metric) => formatAggregateCall(metric)).join(', ') || 'count(*)';
-  const groupSql = groupBy.length > 0 ? ` GROUP BY ${groupBy.map(quoteIdentifier).join(', ')}` : '';
-  return `CREATE TEMP TABLE ${output} AS PIVOT ${input} ON ${onSql} USING ${usingSql}${groupSql}`;
-}
-
-function compileUnpivotSql(
-  output: string,
-  input: string,
-  columns: string[],
-  config: Record<string, unknown>
-): string {
-  const configured = stringArray(config.columns);
-  const unpivotColumns =
-    config.mode === 'except'
-      ? columns.filter((column) => !configured.includes(column))
-      : configured.filter((column) => columns.includes(column));
-  const keepColumns = columns.filter((column) => !unpivotColumns.includes(column));
-  const nameColumn = typeof config.nameColumn === 'string' ? config.nameColumn : 'name';
-  const valueColumn = typeof config.valueColumn === 'string' ? config.valueColumn : 'value';
-  const branches = unpivotColumns.map((column) => {
-    const projection = [
-      ...keepColumns.map(quoteIdentifier),
-      `${literalToSql(column)} AS ${quoteIdentifier(nameColumn)}`,
-      `${quoteIdentifier(column)} AS ${quoteIdentifier(valueColumn)}`,
-    ].join(', ');
-    return `SELECT ${projection} FROM ${input}${
-      config.includeNulls ? '' : ` WHERE ${quoteIdentifier(column)} IS NOT NULL`
-    }`;
-  });
-  return `CREATE TEMP TABLE ${output} AS ${branches.join(' UNION ALL ') || `SELECT * FROM ${input}`}`;
-}
-
-function compileSetOpSql(
-  output: string,
-  left: string,
-  right: string,
-  config: Record<string, unknown>
-): string {
-  const operation = String(config.operation ?? 'union').toUpperCase();
-  const mode = config.mode === 'all' ? ' ALL' : '';
-  const byName = operation === 'UNION' && config.match === 'by_name' ? ' BY NAME' : '';
-  return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${left} ${operation}${mode}${byName} SELECT * FROM ${right}`;
-}
-
-function compileUnnestSql(output: string, input: string, config: Record<string, unknown>): string {
-  const column = quoteIdentifier(String(config.column ?? 'items'));
-  const alias = quoteIdentifier(String(config.alias ?? 'item'));
-  if (config.sourceKind === 'json') {
-    const path = literalToSql(config.path ?? '$');
-    return `
-      CREATE TEMP TABLE ${output} AS
-      SELECT base.*, item.value AS ${alias}
-      FROM ${input} base, json_each(base.${column}::JSON, ${path}) AS item
-    `;
-  }
-  return `
-    CREATE TEMP TABLE ${output} AS
-    SELECT base.*, item.${alias} AS ${alias}
-    FROM ${input} base, UNNEST(base.${column}) AS item(${alias})
-  `;
-}
-
-function compileJoinConditionList(value: unknown): string {
-  const conditions = objectArray(value);
-  return (
-    conditions
-      .flatMap((condition) =>
-        typeof condition.left === 'string' && typeof condition.right === 'string'
-          ? [
-              `l.${quoteIdentifier(lastQualifiedPart(condition.left))} = r.${quoteIdentifier(lastQualifiedPart(condition.right))}`,
-            ]
-          : []
-      )
-      .join(' AND ') || 'true'
-  );
-}
-
-function compileJoinProjection(
-  keep: unknown,
-  leftColumns: string[],
-  rightColumns: string[],
-  conflict: unknown,
-  rightAlias?: string
-): string {
-  const items = objectArray(keep);
-  if (items.length === 0) {
-    const rightPrefix = getRightPrefix(conflict);
-    return [
-      'l.*',
-      ...rightColumns.map(
-        (column) => `r.${quoteIdentifier(column)} AS ${quoteIdentifier(`${rightPrefix}${column}`)}`
-      ),
-    ].join(', ');
-  }
-  return items
-    .flatMap((item) => {
-      if (item.side === 'left' && item.wildcard) return ['l.*'];
-      if (item.side === 'right' && item.wildcard) return ['r.*'];
-      if (typeof item.source !== 'string') return [];
-      const side =
-        rightAlias && item.source.startsWith(`${rightAlias}.`)
-          ? 'r'
-          : leftColumns.includes(lastQualifiedPart(item.source))
-            ? 'l'
-            : 'r';
-      const alias = typeof item.alias === 'string' ? item.alias : lastQualifiedPart(item.source);
-      return [
-        `${side}.${quoteIdentifier(lastQualifiedPart(item.source))} AS ${quoteIdentifier(alias)}`,
-      ];
-    })
-    .join(', ');
-}
-
-function compileAsofJoinSql(
-  output: string,
-  left: string,
-  right: string,
-  leftColumns: string[],
-  rightColumns: string[],
-  config: Record<string, unknown>
-): string {
-  const asof = isRecord(config.asof) ? config.asof : {};
-  const leftTime = lastQualifiedPart(String(asof.leftTime ?? ''));
-  const rightTime = lastQualifiedPart(String(asof.rightTime ?? ''));
-  const operator = asof.operator === '<=' ? '>=' : '<=';
-  const direction = asof.operator === '<=' ? 'ASC' : 'DESC';
-  const byConditions = objectArray(asof.by)
-    .flatMap((condition) =>
-      typeof condition.left === 'string' && typeof condition.right === 'string'
-        ? [
-            `r.${quoteIdentifier(lastQualifiedPart(condition.right))} = l.${quoteIdentifier(lastQualifiedPart(condition.left))}`,
-          ]
-        : []
-    )
-    .join(' AND ');
-  const tolerance = typeof asof.tolerance === 'string' ? asof.tolerance : '';
-  const toleranceClause = tolerance
-    ? ` AND ABS(EPOCH_MS(r.${quoteIdentifier(rightTime)}) - EPOCH_MS(l.${quoteIdentifier(leftTime)})) <= ${durationToMilliseconds(tolerance)}`
-    : '';
-  const projection = compileJoinProjection(
-    config.keep,
-    leftColumns,
-    rightColumns,
-    config.conflict,
-    typeof config.rightAlias === 'string' ? config.rightAlias : undefined
-  );
-  return `
-    CREATE TEMP TABLE ${output} AS
-    SELECT ${projection}
-    FROM ${left} l
-    LEFT JOIN LATERAL (
-      SELECT *
-      FROM ${right} r
-      WHERE r.${quoteIdentifier(rightTime)} ${operator} l.${quoteIdentifier(leftTime)}
-        ${byConditions ? `AND ${byConditions}` : ''}
-        ${toleranceClause}
-      ORDER BY r.${quoteIdentifier(rightTime)} ${direction}
-      LIMIT 1
-    ) r ON true
-  `;
-}
-
 function toPersistentCreateTableSql(sql: string): string {
   return sql.replace(/\bCREATE\s+TEMP\s+TABLE\b/i, 'CREATE TABLE');
-}
-
-const SQL_FIELD_REF_TOKEN_PATTERN =
-  '(?:\\[`(?:[^`\\\\]|\\\\.)*`\\]|\\[[\\p{L}_][\\p{L}\\p{N}_]*\\])';
-const SQL_SCALAR_TOKEN_PATTERN = new RegExp(
-  `"(?:[^"\\\\]|\\\\.)*"|(${SQL_FIELD_REF_TOKEN_PATTERN})(?:\\.(${SQL_FIELD_REF_TOKEN_PATTERN}))?`,
-  'gu'
-);
-
-function compileScalarExpression(expression: string): string {
-  return expression.replace(
-    SQL_SCALAR_TOKEN_PATTERN,
-    (match, first: string | undefined, second: string | undefined) => {
-      if (match.startsWith('"')) {
-        return literalToSql(unquoteDslString(match));
-      }
-      return quoteValueIdentifier(unwrapFieldToken(second ?? first ?? match));
-    }
-  );
-}
-
-function sortKeysToSql(value: unknown): string {
-  return objectArray(value)
-    .flatMap((key) =>
-      typeof key.field === 'string'
-        ? [
-            `${quoteIdentifier(key.field)} ${
-              key.direction === 'desc' ? 'DESC' : 'ASC'
-            }${key.nulls === 'first' || key.nulls === 'last' ? ` NULLS ${String(key.nulls).toUpperCase()}` : ''}`,
-          ]
-        : []
-    )
-    .join(', ');
-}
-
-function quoteColumnList(columns: string[]): string {
-  return columns.map(quoteIdentifier).join(', ') || '*';
 }
 
 function inferWorkbookColumnTypes(parsed: ParsedWorkbookRows): DataFieldType[] {
@@ -4573,178 +4286,6 @@ function normalizeWorkbookValueForDuckDb(
     return normalizeNumericText(value) ?? value;
   }
   return value;
-}
-
-function compileTypedProjection(column: DataColumnTypeInfo, sourceExpression: string): string {
-  const targetType = duckDbTypeForDataFieldType(column.type);
-  const expression =
-    column.type === 'text'
-      ? `CAST(${sourceExpression} AS VARCHAR)`
-      : `TRY_CAST(${sourceExpression} AS ${targetType})`;
-  return `${expression} AS ${quoteIdentifier(column.name)}`;
-}
-
-function compileTypeConversionExpression(
-  column: string,
-  conversion: Record<string, unknown>
-): string {
-  const source = quoteIdentifier(column);
-  const targetType = requireDataFieldType(
-    typeof conversion.type === 'string' ? conversion.type : 'text',
-    'cast target type'
-  );
-  if (conversion.onError === 'keep') {
-    return source;
-  }
-  const failOnError = conversion.onError === 'fail';
-  const storageType = duckDbTypeForDataFieldType(targetType);
-  const format = typeof conversion.format === 'string' ? conversion.format.trim() : '';
-  if ((targetType === 'date' || targetType === 'datetime') && format) {
-    const parser = failOnError ? 'strptime' : 'try_strptime';
-    const parsed = `${parser}(CAST(${source} AS VARCHAR), ${literalToSql(
-      normalizeDuckDbDateFormat(format)
-    )})`;
-    return targetType === 'date' ? `CAST(${parsed} AS DATE)` : parsed;
-  }
-  return `${failOnError ? 'CAST' : 'TRY_CAST'}(${source} AS ${storageType})`;
-}
-
-function normalizeDuckDbDateFormat(format: string): string {
-  return format
-    .replace(/yyyy/g, '%Y')
-    .replace(/YYYY/g, '%Y')
-    .replace(/MM/g, '%m')
-    .replace(/dd/g, '%d')
-    .replace(/DD/g, '%d')
-    .replace(/HH/g, '%H')
-    .replace(/hh/g, '%H')
-    .replace(/mm/g, '%M')
-    .replace(/ss/g, '%S')
-    .replace(/SSS/g, '%f');
-}
-
-function literalToSql(value: unknown): string {
-  if (value === null || value === undefined) return 'NULL';
-  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL';
-  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
-  return `'${String(value).replace(/'/g, "''")}'`;
-}
-
-function positiveNumber(value: unknown, fallback: number): number {
-  const numberValue = typeof value === 'number' ? value : Number(value);
-  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : fallback;
-}
-
-function formatAggregateCall(metric: Record<string, unknown>): string {
-  const fn = String(metric.function ?? 'count').toUpperCase();
-  const expression =
-    String(metric.expression ?? '*') === '*'
-      ? '*'
-      : compileScalarExpression(String(metric.expression ?? '*'));
-  return `${fn}(${expression})`;
-}
-
-function lastQualifiedPart(value: string): string {
-  return value.includes('.') ? (value.split('.').at(-1) ?? value) : value;
-}
-
-function unwrapFieldToken(token: string): string {
-  const inner = token.slice(1, -1);
-  return inner.startsWith('`') && inner.endsWith('`') ? inner.slice(1, -1) : inner;
-}
-
-function unquoteDslString(value: string): string {
-  try {
-    return JSON.parse(value) as string;
-  } catch {
-    return value.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-  }
-}
-
-function getRightPrefix(conflict: unknown): string {
-  if (isRecord(conflict) && typeof conflict.rightPrefix === 'string') {
-    return conflict.rightPrefix;
-  }
-  return 'right_';
-}
-
-function durationToMilliseconds(value: string): number {
-  const match = /^(\d+(?:\.\d+)?)(ms|s|m|h|d)$/.exec(value);
-  if (!match) return 0;
-  const amount = Number(match[1]);
-  const unit = match[2];
-  const multipliers: Record<string, number> = {
-    ms: 1,
-    s: 1_000,
-    m: 60_000,
-    h: 3_600_000,
-    d: 86_400_000,
-  };
-  return amount * (multipliers[unit] ?? 0);
-}
-
-function stringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === 'string')
-    : [];
-}
-
-function unknownArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function objectArray(value: unknown): Array<Record<string, unknown>> {
-  return Array.isArray(value) ? value.filter(isRecord) : [];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
-
-function normalizeStatus(value: string): DataTaskStatus {
-  if (
-    value === 'running' ||
-    value === 'completed' ||
-    value === 'stopped' ||
-    value === 'draft' ||
-    value === 'pending' ||
-    value === 'failed'
-  ) {
-    return value;
-  }
-  return 'draft';
-}
-
-function normalizeListWindow(
-  offset: number | null | undefined,
-  limit: number | null | undefined
-): { offset: number; limit: number } {
-  const normalizedOffset = Math.max(0, Math.floor(toFiniteNumber(offset, 0)));
-  const normalizedLimit =
-    limit === 0 ? 0 : Math.min(200, Math.max(1, Math.floor(toFiniteNumber(limit, 200))));
-  return { offset: normalizedOffset, limit: normalizedLimit };
-}
-
-function toNumber(value: number | string | bigint | null | undefined): number {
-  if (value === null || value === undefined) {
-    return 0;
-  }
-  if (typeof value === 'number') {
-    return value;
-  }
-  if (typeof value === 'bigint') {
-    return Number(value);
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function toFiniteNumber(value: number | string | null | undefined, fallback: number): number {
-  if (value === null || value === undefined) {
-    return fallback;
-  }
-  const parsed = toNumber(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function normalizeSourcePath(filePath: string): string {
@@ -5698,14 +5239,6 @@ function hasCellValue(value: string | number | boolean | null | undefined): bool
     return false;
   }
   return typeof value === 'string' ? value.trim().length > 0 : true;
-}
-
-function quoteIdentifier(identifier: string): string {
-  return quoteValueIdentifier(identifier);
-}
-
-function quoteValueIdentifier(identifier: string): string {
-  return `"${identifier.replace(/"/g, '""')}"`;
 }
 
 function tableNameFromId(prefix: string, id: string): string {

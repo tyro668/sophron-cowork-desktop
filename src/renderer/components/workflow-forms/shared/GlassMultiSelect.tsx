@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, Search, X } from 'lucide-react';
+import { ChevronDown, Search, Trash2, X } from 'lucide-react';
 
 interface GlassMultiSelectProps {
   value: string[];
@@ -19,7 +19,8 @@ export function GlassMultiSelect({
 }: GlassMultiSelectProps) {
   const { t } = useTranslation();
   const tr = useCallback(
-    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    (key: string, fallback: string) =>
+      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
     [t]
   );
   const resolvedPlaceholder = placeholder ?? tr('aggregateGroupByPlaceholder', '选择字段...');
@@ -192,25 +193,39 @@ export function GlassMultiSelect({
           {value.length === 0 ? (
             <span className="text-text-muted">{resolvedPlaceholder}</span>
           ) : (
-            value.map((col) => (
-              <span
-                key={col}
-                className="inline-flex items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent"
+            <>
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onChange([]);
+                }}
+                className="inline-flex flex-shrink-0 items-center justify-center rounded px-0.5 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
+                title={tr('clearAll', '清空')}
               >
-                {col}
-                <button
-                  type="button"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    remove(col);
-                  }}
-                  className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
+                <Trash2 className="h-3 w-3" />
+              </button>
+              {value.map((col) => (
+                <span
+                  key={col}
+                  className="inline-flex items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent"
                 >
-                  <X className="h-2.5 w-2.5" />
-                </button>
-              </span>
-            ))
+                  {col}
+                  <button
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      remove(col);
+                    }}
+                    className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </span>
+              ))}
+            </>
           )}
         </div>
         <button

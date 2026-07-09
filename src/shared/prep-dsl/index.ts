@@ -14,7 +14,14 @@ export type {
   PrepWorkflowNodeInput,
 } from './ast';
 export { createPrepDiagnostic } from './diagnostics';
-export { parsePrepDsl, parsePrepOperatorDsl } from './parser';
+export {
+  parsePrepDsl,
+  parsePrepOperatorDsl,
+  parseFieldRef,
+  toFieldName,
+  toQualifiedName,
+  unwrapFieldName,
+} from './parser';
 export { tokenizePrepDsl } from './tokens';
 export { validatePrepWorkflow } from './validator';
 export {

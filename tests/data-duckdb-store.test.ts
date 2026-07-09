@@ -1167,6 +1167,108 @@ describe('DuckDB data task store', () => {
     expect(preview.rows[0]?.['订单ID']).toBe('A1000001');
   });
 
+  it('executes filter conditions with matches, not matches, begin, end, and nested groups', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const dbPath = path.join(tempRoot, 'workspace.duckdb');
+    const citiesPath = path.join(tempRoot, 'cities.csv');
+    fs.writeFileSync(
+      citiesPath,
+      [
+        'City,Category',
+        'Aachen,Furniture',
+        'Albany,Technology',
+        'Bremen,Technology',
+        'Camden,Office Supplies',
+      ].join('\n'),
+      'utf8'
+    );
+
+    const store = createDataTaskStore(dbPath, {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+
+    const task = await store.createTask({
+      name: 'Regex filter conditions',
+      sourcePath: citiesPath,
+    });
+    const parsed = parsePrepDsl(`
+      input source task as cities
+
+      from cities
+        | filter ([City] matches ".*en$" or [City] begin "Al") and [Category] not matches "Office.*"
+        | output table "filtered_cities_regex" mode replace
+    `);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const saved = await store.saveTaskWorkflow(task.id, {
+      nodes: compiled.nodes,
+      edges: compiled.edges,
+    });
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    expect(completed.rowCount).toBe(3);
+
+    const filterNode = saved.nodes.find((node) => node.type === 'filter');
+    expect(filterNode).toBeTruthy();
+    const preview = await store.previewWorkflowNode({
+      taskId: task.id,
+      nodeId: filterNode!.id,
+      nodeType: filterNode!.type,
+      nodeConfig: filterNode!.config,
+    });
+    expect(preview.columns).toEqual(['City', 'Category']);
+    expect(preview.rows.map((row) => row.City)).toEqual(['Aachen', 'Albany', 'Bremen']);
+  });
+
+  it('preserves like and end filter behavior during execution', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const dbPath = path.join(tempRoot, 'workspace.duckdb');
+    const citiesPath = path.join(tempRoot, 'cities-like.csv');
+    fs.writeFileSync(
+      citiesPath,
+      ['City,Category', 'Aachen,Furniture', 'Albany,Technology', 'Camden,Office Supplies'].join(
+        '\n'
+      ),
+      'utf8'
+    );
+
+    const store = createDataTaskStore(dbPath, {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+
+    const task = await store.createTask({ name: 'Like filter conditions', sourcePath: citiesPath });
+    const parsed = parsePrepDsl(`
+      input source task as cities
+
+      from cities
+        | filter [City] like "%ach%" and [Category] not like "Office%" and [City] end "en"
+        | output table "filtered_cities_like" mode replace
+    `);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const saved = await store.saveTaskWorkflow(task.id, {
+      nodes: compiled.nodes,
+      edges: compiled.edges,
+    });
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    expect(completed.rowCount).toBe(1);
+
+    const filterNode = saved.nodes.find((node) => node.type === 'filter');
+    expect(filterNode).toBeTruthy();
+    const preview = await store.previewWorkflowNode({
+      taskId: task.id,
+      nodeId: filterNode!.id,
+      nodeType: filterNode!.type,
+      nodeConfig: filterNode!.config,
+    });
+    expect(preview.rows.map((row) => row.City)).toEqual(['Aachen']);
+  });
+
   it('executes saved workflows by walking backward from the output node', async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
     tempRoots.push(tempRoot);

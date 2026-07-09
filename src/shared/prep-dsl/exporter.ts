@@ -1,4 +1,5 @@
 import type { PrepOperatorType } from './ast';
+import { parseFieldRef } from './parser';
 
 export interface PrepFlowNodeLike {
   id: string;
@@ -101,7 +102,7 @@ function formatOperator(node: PrepFlowNodeLike): string | null {
 
 function formatFieldSelect(config: Record<string, unknown> | undefined): string {
   const columns = stringArray(config?.columns).map(formatFieldRef).join(', ');
-  return `${config?.mode === 'exclude' ? 'drop' : 'select'} ${columns || '[field]'}`;
+  return `select ${columns || '[field]'}`;
 }
 
 function formatTypeConvert(config: Record<string, unknown> | undefined): string {
@@ -109,12 +110,9 @@ function formatTypeConvert(config: Record<string, unknown> | undefined): string 
   if (conversions.length === 0) return 'cast [field] as text';
   return `cast ${conversions
     .map((item) => {
-      const options = [
-        typeof item.format === 'string' ? `format ${quoteString(item.format)}` : '',
-        typeof item.onError === 'string' ? `on_error ${item.onError}` : '',
-        typeof item.locale === 'string' ? `locale ${quoteString(item.locale)}` : '',
-        typeof item.timezone === 'string' ? `timezone ${quoteString(item.timezone)}` : '',
-      ].filter(Boolean);
+      const options = [typeof item.onError === 'string' ? `on_error ${item.onError}` : ''].filter(
+        Boolean
+      );
       return `${formatFieldRef(String(item.column ?? 'field'))} as ${String(item.type ?? 'text')}${
         options.length > 0 ? ` ${options.join(' ')}` : ''
       }`;
@@ -126,13 +124,25 @@ function formatFieldMapping(config: Record<string, unknown> | undefined): string
   const mappings = objectArray(config?.mappings);
   if (mappings.length === 0) return 'map [source_field] to [target_field]';
   return `map ${mappings
-    .map(
-      (item) =>
-        `${formatFieldRef(String(item.source ?? 'source_field'))} to ${formatFieldRef(
-          String(item.target ?? 'target_field')
-        )}`
-    )
+    .map((item) => {
+      const source = String(item.source ?? 'source_field');
+      const target = computeMappingTarget(item);
+      return `${formatFieldRef(source)} to ${formatFieldRef(target || 'target_field')}`;
+    })
     .join(', ')}`;
+}
+
+function computeMappingTarget(mapping: Record<string, unknown>): string {
+  const source = typeof mapping.source === 'string' ? mapping.source : '';
+  const target = typeof mapping.target === 'string' ? mapping.target : '';
+  const targetMode = typeof mapping.targetMode === 'string' ? mapping.targetMode : '';
+  const targetValue = typeof mapping.targetValue === 'string' ? mapping.targetValue : '';
+  if (target && !targetMode) return target;
+  if (!source || !targetMode) return target || '';
+  if (targetMode === 'rename') return targetValue || target;
+  if (targetMode === 'prefix') return `${targetValue}${source}`;
+  if (targetMode === 'suffix') return `${source}${targetValue}`;
+  return target || '';
 }
 
 function formatMissingValue(config: Record<string, unknown> | undefined): string {
@@ -218,7 +228,8 @@ function formatJoin(config: Record<string, unknown> | undefined): string {
     if (typeof asof?.tolerance === 'string') parts.push(`tolerance ${asof.tolerance}`);
     const keep = formatJoinKeep(config?.keep);
     if (keep) parts.push(`keep ${keep}`);
-    if (typeof config?.cardinality === 'string') parts.push(`expect ${config.cardinality}`);
+    const conflict = formatJoinConflict(config?.conflict);
+    if (conflict) parts.push(conflict);
     return parts.join(' ');
   }
   const parts = [`join ${joinType} ${rightInput}`];
@@ -226,8 +237,23 @@ function formatJoin(config: Record<string, unknown> | undefined): string {
   if (joinType !== 'cross') parts.push(`on ${conditions || '[left].[id] = [right_source].[id]'}`);
   const keep = formatJoinKeep(config?.keep);
   if (keep) parts.push(`keep ${keep}`);
-  if (typeof config?.cardinality === 'string') parts.push(`expect ${config.cardinality}`);
+  const conflict = formatJoinConflict(config?.conflict);
+  if (conflict) parts.push(conflict);
   return parts.join(' ');
+}
+
+function formatJoinConflict(value: unknown): string | null {
+  const obj = objectValue(value);
+  if (!obj) return null;
+  if (obj.strategy === 'right_prefix' && typeof obj.rightPrefix === 'string') {
+    return `right_prefix ${quoteString(obj.rightPrefix)}`;
+  }
+  if (obj.strategy === 'suffix') {
+    const left = typeof obj.leftSuffix === 'string' ? obj.leftSuffix : '_left';
+    const right = typeof obj.rightSuffix === 'string' ? obj.rightSuffix : '_right';
+    return `suffix ${left} ${right}`;
+  }
+  return null;
 }
 
 function formatLimit(config: Record<string, unknown> | undefined): string {
@@ -290,21 +316,21 @@ function formatMetric(item: Record<string, unknown>): string {
 
 function formatSortKeys(value: unknown): string {
   return objectArray(value)
+    .filter((key) => key.field)
     .map((key) => {
       const nulls = typeof key.nulls === 'string' ? ` nulls ${key.nulls}` : '';
-      return `${formatFieldRef(String(key.field ?? 'field'))} ${String(key.direction ?? 'asc')}${nulls}`;
+      return `${formatFieldRef(String(key.field))} ${String(key.direction ?? 'asc')}${nulls}`;
     })
     .join(', ');
 }
 
 function formatJoinConditions(value: unknown): string {
   return objectArray(value)
-    .map(
-      (condition) =>
-        `${formatFieldRef(String(condition.left ?? 'left.id'))} = ${formatFieldRef(
-          String(condition.right ?? 'right.id')
-        )}`
-    )
+    .map((condition) => {
+      const op =
+        typeof condition.operator === 'string' && condition.operator ? condition.operator : '=';
+      return `${formatFieldRef(String(condition.left ?? 'left.id'))} ${op} ${formatFieldRef(String(condition.right ?? 'right.id'))}`;
+    })
     .join(' and ');
 }
 
@@ -319,15 +345,17 @@ function formatJoinKeep(value: unknown): string {
 }
 
 function formatFieldRef(value: string): string {
-  const parts = value.split('.');
-  if (parts.length === 2) return `${formatFieldName(parts[0])}.${formatFieldName(parts[1])}`;
+  const ref = parseFieldRef(value);
+  if (ref) {
+    const name = formatFieldName(ref.name);
+    return ref.source ? `${formatFieldName(ref.source)}.${name}` : name;
+  }
   return formatFieldName(value);
 }
 
 function formatFieldName(value: string): string {
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value)
-    ? `[${value}]`
-    : `[\`${value.replace(/`/g, '\\`')}\`]`;
+  const raw = value.replace(/^\[`?|`?\]$/g, '');
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(raw) ? `[${raw}]` : `[\`${raw.replace(/`/g, '\\`')}\`]`;
 }
 
 function literalToDsl(value: unknown): string {

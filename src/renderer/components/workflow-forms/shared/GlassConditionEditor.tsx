@@ -1,6 +1,8 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash2 } from 'lucide-react';
+import { GlassFieldCombo } from './GlassFieldCombo';
+import { GlassOperatorSelect } from './GlassOperatorSelect';
 
 export interface ConditionEntry {
   left: string;
@@ -15,12 +17,18 @@ interface GlassConditionEditorProps {
   onChange: (conditions: ConditionEntry[]) => void;
   leftLabel?: string;
   rightLabel?: string;
-  operators?: { value: string; label: string }[];
 }
 
 const DEFAULT_CONDITION: ConditionEntry = { left: '', operator: '=', right: '' };
 
-const DEFAULT_OPERATORS = [{ value: '=', label: '=' }];
+const OPERATOR_KEYS = [
+  { value: '=', key: 'operatorEq', fallback: '等于' },
+  { value: '!=', key: 'operatorNeq', fallback: '不等于' },
+  { value: '<', key: 'operatorLt', fallback: '小于' },
+  { value: '<=', key: 'operatorLte', fallback: '小于等于' },
+  { value: '>', key: 'operatorGt', fallback: '大于' },
+  { value: '>=', key: 'operatorGte', fallback: '大于等于' },
+];
 
 export function GlassConditionEditor({
   conditions,
@@ -29,95 +37,100 @@ export function GlassConditionEditor({
   onChange,
   leftLabel,
   rightLabel,
-  operators = DEFAULT_OPERATORS,
 }: GlassConditionEditorProps) {
   const { t } = useTranslation();
   const tr = useCallback(
-    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    (key: string, fallback: string) =>
+      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
     [t]
   );
 
-  const resolvedLeftLabel = leftLabel ?? tr('leftField', '[左字段]');
-  const resolvedRightLabel = rightLabel ?? tr('rightField', '[右表].[字段]');
+  const resolvedLeftLabel = leftLabel ?? tr('leftField', '[左表字段]');
+  const resolvedRightLabel = rightLabel ?? tr('rightField', '[右表字段]');
 
-  function updateCondition(index: number, patch: Partial<ConditionEntry>) {
-    onChange(conditions.map((c, i) => (i === index ? { ...c, ...patch } : c)));
+  const operators = OPERATOR_KEYS.map((op) => ({
+    value: op.value,
+    label: tr(op.key, op.fallback),
+  }));
+
+  const [pending, setPending] = useState<ConditionEntry>({ ...DEFAULT_CONDITION });
+  const isEmpty = conditions.length === 0;
+  const displayConditions = isEmpty ? [pending] : conditions;
+
+  function handleChange(index: number, patch: Partial<ConditionEntry>) {
+    if (isEmpty) {
+      const next = { ...pending, ...patch };
+      setPending(next);
+      if (next.left || next.right) {
+        setPending({ ...DEFAULT_CONDITION });
+        onChange([next]);
+      }
+    } else {
+      onChange(conditions.map((c, i) => (i === index ? { ...c, ...patch } : c)));
+    }
   }
 
-  function removeCondition(index: number) {
-    onChange(conditions.filter((_, i) => i !== index));
+  function handleRemove(index: number) {
+    if (isEmpty) {
+      setPending({ ...DEFAULT_CONDITION });
+    } else {
+      onChange(conditions.filter((_, i) => i !== index));
+    }
   }
 
-  function addCondition() {
-    onChange([...conditions, { ...DEFAULT_CONDITION }]);
+  function handleAdd(index: number) {
+    if (isEmpty) {
+      if (!pending.left && !pending.right) return;
+      onChange([pending, { ...DEFAULT_CONDITION }]);
+      setPending({ ...DEFAULT_CONDITION });
+    } else {
+      const next = [...conditions];
+      next.splice(index + 1, 0, { ...DEFAULT_CONDITION });
+      onChange(next);
+    }
   }
 
   return (
-    <div className="space-y-1.5">
-      {conditions.length === 0 ? (
-        <div className="py-4 text-center text-[12px] text-text-muted">
-          {tr('noConditions', '暂无连接条件')}
+    <div className="space-y-1">
+      {displayConditions.map((cond, i) => (
+        <div key={i} className="flex items-center gap-1">
+          <GlassFieldCombo
+            value={cond.left}
+            options={leftFieldCompletions}
+            onChange={(v) => handleChange(i, { left: v })}
+            placeholder={resolvedLeftLabel}
+            className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
+          />
+          <GlassOperatorSelect
+            value={cond.operator}
+            groups={[{ key: 'op', items: operators }]}
+            onChange={(v) => handleChange(i, { operator: v })}
+            className="h-7 w-[72px] shrink-0 text-[12px] [&>span]:text-center"
+          />
+          <GlassFieldCombo
+            value={cond.right}
+            options={rightFieldCompletions}
+            onChange={(v) => handleChange(i, { right: v })}
+            placeholder={resolvedRightLabel}
+            className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
+          />
+          <button
+            type="button"
+            onClick={() => handleAdd(i)}
+            className="h-6 w-6 flex shrink-0 items-center justify-center rounded text-text-muted/40 hover:text-accent transition-colors"
+            title={tr('addCondition', '添加条件')}
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleRemove(i)}
+            className="h-6 w-6 flex shrink-0 items-center justify-center rounded text-text-muted/40 hover:text-error transition-colors"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
         </div>
-      ) : (
-        conditions.map((cond, i) => (
-          <div key={i} className="flex items-center gap-1.5">
-            <select
-              value={cond.left}
-              onChange={(e) => updateCondition(i, { left: e.target.value })}
-              className="h-7 flex-1 rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent"
-            >
-              <option value="" disabled>
-                {resolvedLeftLabel}
-              </option>
-              {leftFieldCompletions.map((col) => (
-                <option key={col} value={col}>
-                  {col}
-                </option>
-              ))}
-            </select>
-            <select
-              value={cond.operator}
-              onChange={(e) => updateCondition(i, { operator: e.target.value })}
-              className="h-7 w-14 shrink-0 rounded-md border border-border-muted bg-background/42 px-1 text-center text-[12px] text-text-secondary outline-none focus:border-accent"
-            >
-              {operators.map((op) => (
-                <option key={op.value} value={op.value}>
-                  {op.label}
-                </option>
-              ))}
-            </select>
-            <select
-              value={cond.right}
-              onChange={(e) => updateCondition(i, { right: e.target.value })}
-              className="h-7 flex-1 rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent"
-            >
-              <option value="" disabled>
-                {resolvedRightLabel}
-              </option>
-              {rightFieldCompletions.map((col) => (
-                <option key={col} value={col}>
-                  {col}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={() => removeCondition(i)}
-              className="h-7 w-7 flex shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-surface-hover hover:text-error transition-colors"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        ))
-      )}
-      <button
-        type="button"
-        onClick={addCondition}
-        className="inline-flex h-7 items-center gap-1 rounded-md border border-border-muted bg-background/42 px-2 text-[11px] text-text-secondary hover:border-accent/30 hover:text-accent transition-colors"
-      >
-        <Plus className="h-3 w-3" />
-        {tr('addCondition', '添加条件')}
-      </button>
+      ))}
     </div>
   );
 }

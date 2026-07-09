@@ -51,7 +51,6 @@ export const PREP_DSL_WORKFLOW_EXAMPLES: PrepDslWorkflowExample[] = [
 
 export const PREP_DSL_OPERATOR_EXAMPLES: PrepDslOperatorExample[] = [
   { type: 'field_select', title: 'Select fields', dsl: 'select [order_id], [region]' },
-  { type: 'field_select', title: 'Drop fields', dsl: 'drop [internal_note], [debug_flag]' },
   { type: 'filter', title: 'Filter rows', dsl: 'filter [amount] > 0' },
   {
     type: 'calculate_field',

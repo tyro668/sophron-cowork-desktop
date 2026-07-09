@@ -88,6 +88,7 @@ import {
 } from './data-command-types';
 import type { InputTableNormalizerProjectGenerator } from './input-table-normalizer-generator';
 import { configStore } from '../config/config-store';
+import { computeMappingTarget } from './operators/utils';
 import { CloudAnalysisCommandService } from './cloud-analysis-command-service';
 import { InputTablesCommandService } from './input-tables-command-service';
 import { OutputTablesCommandService } from './output-tables-command-service';
@@ -561,7 +562,7 @@ export class DataCommandService {
       return {
         task,
         preview,
-        diagnostics: compiled?.diagnostics,
+        diagnostics: [...(compiled?.diagnostics ?? []), ...this.store.getExecutionDiagnostics()],
       };
     } catch (error) {
       throw toCommandError(error, 'RUN_FAILED');
@@ -2373,7 +2374,7 @@ function resolveRequiredInputColumnsFromWorkflow(
         objectArray(config.mappings).forEach((mapping) => {
           const source = requireName(mapping.source);
           removeName(mapping.source);
-          upsertName(mapping.target, source);
+          upsertName(computeMappingTarget(mapping), source);
         });
         break;
       case 'filter':
@@ -2623,7 +2624,7 @@ function summarizeDiagnostics(diagnostics: PrepDiagnostic[]): string {
 
 function sanitizeAlias(value: string | undefined): string {
   const normalized = value?.trim() ?? '';
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(normalized) ? normalized : '';
+  return /^[_\p{L}][_\p{L}\p{N}]*$/u.test(normalized) ? normalized : '';
 }
 
 function escapeDslString(value: string): string {

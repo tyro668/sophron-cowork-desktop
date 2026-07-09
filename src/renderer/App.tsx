@@ -26,6 +26,7 @@ import { SandboxSyncToast } from './components/SandboxSyncToast';
 import { GlobalNoticeToast } from './components/GlobalNoticeToast';
 import { PanelErrorBoundary } from './components/PanelErrorBoundary';
 import { ConfirmDialogProvider } from './components/ConfirmDialog';
+import { OperatorConfirmWatcher } from './components/data-view/OperatorConfirmWatcher';
 import type { AppConfig } from './types';
 import type { GlobalNoticeAction } from './store';
 
@@ -270,6 +271,7 @@ function App() {
 
   return (
     <ConfirmDialogProvider>
+      <OperatorConfirmWatcher />
       <div className="h-full w-full min-h-0 flex flex-col overflow-hidden bg-[var(--app-backdrop)] text-text-primary">
         {/* Titlebar - draggable region */}
         <Titlebar />

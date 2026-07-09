@@ -85,7 +85,7 @@ export interface PrepWorkflowCompileResult {
 
 export interface PrepJoinCondition {
   left: string;
-  operator: '=';
+  operator: string;
   right: string;
 }
 

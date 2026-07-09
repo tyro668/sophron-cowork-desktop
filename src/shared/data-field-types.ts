@@ -85,7 +85,7 @@ export function duckDbTypeForDataFieldType(value: string | null | undefined): st
     case 'date':
       return 'DATE';
     case 'datetime':
-      return 'TIMESTAMP';
+      return 'TIMESTAMPTZ';
     case 'integer':
       return 'BIGINT';
     case 'float':

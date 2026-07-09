@@ -2,6 +2,7 @@ import {
   isNumericDataFieldType,
   normalizeDataFieldType,
 } from '../../../../shared/data-field-types';
+import { tokenizeExpression } from '../../../../shared/expression-tokenizer';
 
 export type FilterConditionConnective = 'and' | 'or';
 
@@ -467,7 +468,20 @@ export function formatFilterConditionValue(value: string, colType: string | unde
 }
 
 function isDslFieldReference(value: string): boolean {
-  return /^\[(?:`(?:[^`\\]|\\.)+`|[^\]]+)\](?:\.\[(?:`(?:[^`\\]|\\.)+`|[^\]]+)\])?$/.test(value);
+  try {
+    const tokens = tokenizeExpression(value);
+    const first = tokens[0];
+    if (!first || first.type !== 'FieldRef') return false;
+    // Simple: [field]
+    if (tokens[1]?.type === 'EOF' || tokens[1]?.type === undefined) return true;
+    // Qualified: [source].[field]
+    if (tokens[1]?.type === 'Dot' && tokens[2]?.type === 'FieldRef') {
+      return tokens[3]?.type === 'EOF' || tokens[3]?.type === undefined;
+    }
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 function unwrapQuotedValue(value: string): string {

@@ -1636,7 +1636,7 @@ function WorkflowOperatorNode({ data, selected }: NodeProps<WorkflowFlowNode>) {
         selected ? 'border-accent text-accent ring-2 ring-accent/15' : catalog.nodeClassName
       } ${disabled ? 'opacity-45 grayscale' : ''}`}
     >
-      {node.type === 'join' ? (
+      {node.type === 'join' || node.type === 'set_op' ? (
         <>
           <Handle
             id="left"
@@ -1748,7 +1748,6 @@ function WorkflowInspector({
   const [nodePreviewLoading, setNodePreviewLoading] = useState(false);
   const [nodePreviewError, setNodePreviewError] = useState<string | null>(null);
   const [nodePreviewPage, setNodePreviewPage] = useState(1);
-  const operatorDslNodeKeyRef = useRef('');
   const nodeTitleInputRef = useRef<HTMLInputElement | null>(null);
   const nodePreviewRequestSeq = useRef(0);
   const operatorFieldsRequestSeq = useRef(0);
@@ -1776,35 +1775,21 @@ function WorkflowInspector({
   );
 
   useEffect(() => {
-    const nextNodeKey = node && usesOperatorDsl ? `${node.id}:${node.type}` : '';
-    if (operatorDslNodeKeyRef.current === nextNodeKey) return;
-    operatorDslNodeKeyRef.current = nextNodeKey;
-    if (!node || !usesOperatorDsl) {
-      setOperatorDsl('');
-      setOperatorDslBeforeEdit('');
-      setIsEditingOperatorDsl(false);
-      setOperatorFieldCompletions([]);
-      setOperatorDslDiagnostics([]);
-      setOperatorDslStatus(null);
-      return;
-    }
-    const nextDsl = exportPrepOperatorDsl(node);
-    setOperatorDsl(nextDsl);
-    setOperatorDslBeforeEdit(nextDsl);
-    setIsEditingOperatorDsl(false);
-    setOperatorFieldCompletions([]);
-    setOperatorDslDiagnostics([]);
-    setOperatorDslStatus(null);
-  }, [node, node?.id, node?.type, usesOperatorDsl]);
-
-  useEffect(() => {
     if (!node || !usesOperatorDsl || isEditingOperatorDsl) return;
-    const nextDsl = exportPrepOperatorDsl(node);
+    const cleanNode = { ...node, config: { ...node.config, dsl: undefined } };
+    const nextDsl = exportPrepOperatorDsl(cleanNode);
     setOperatorDsl(nextDsl);
     setOperatorDslBeforeEdit(nextDsl);
     setOperatorDslDiagnostics([]);
     setOperatorDslStatus(null);
-  }, [isEditingOperatorDsl, node, node?.config, node?.label, usesOperatorDsl]);
+  }, [
+    isEditingOperatorDsl,
+    node,
+    node?.config,
+    node?.config?.calculations,
+    node?.label,
+    usesOperatorDsl,
+  ]);
 
   useEffect(() => {
     const requestSeq = operatorFieldsRequestSeq.current + 1;
@@ -2517,7 +2502,7 @@ function getWorkflowFieldSourceNode(
   edges: DataWorkflowEdge[]
 ): DataWorkflowNode | null {
   if (!node) return null;
-  const preferredHandle = node.type === 'join' ? 'left' : 'input';
+  const preferredHandle = node.type === 'join' || node.type === 'set_op' ? 'left' : 'input';
   const edge =
     edges.find(
       (item) => item.targetNodeId === node.id && (item.targetHandle ?? 'input') === preferredHandle
@@ -2531,7 +2516,7 @@ function getWorkflowRightSourceNode(
   nodes: DataWorkflowNode[],
   edges: DataWorkflowEdge[]
 ): DataWorkflowNode | null {
-  if (!node || node.type !== 'join') return null;
+  if (!node || (node.type !== 'join' && node.type !== 'set_op')) return null;
   const edge = edges.find((item) => item.targetNodeId === node.id && item.targetHandle === 'right');
   if (!edge) return null;
   return nodes.find((item) => item.id === edge.sourceNodeId) ?? null;
@@ -2723,11 +2708,7 @@ function getWorkflowConfigSummary(node: DataWorkflowNode, t: TranslateFn): Workf
     case 'field_select':
       summary = {
         primary: [
-          summaryRow(
-            t,
-            'mode',
-            translateWorkflowValue(t, 'selectModes', stringValue(config.mode, 'include'))
-          ),
+          summaryRow(t, 'mode', translateWorkflowValue(t, 'selectModes', 'include')),
           summaryRow(t, 'columns', formatCount(stringArray(config.columns).length)),
         ],
         details: [summaryRow(t, 'fields', formatList(stringArray(config.columns), t), true)],
@@ -2933,7 +2914,6 @@ function getJoinConfigSummary(
   const primary = [
     summaryRow(t, 'joinType', translateWorkflowValue(t, 'joinTypes', joinType)),
     summaryRow(t, 'rightInput', stringValue(config.rightInput)),
-    summaryRow(t, 'cardinality', stringValue(config.cardinality)),
   ];
   const details = [
     summaryRow(

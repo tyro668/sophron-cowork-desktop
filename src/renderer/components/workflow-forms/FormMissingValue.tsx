@@ -1,35 +1,33 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, X } from 'lucide-react';
+import { ChevronDown, GripVertical, Plus, X, Trash2 } from 'lucide-react';
+import { GlassFieldCombo } from './shared/GlassFieldCombo';
+import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import type { OperatorFormProps } from './index';
-import { GlassFormSection } from './shared/GlassFormSection';
 import { GlassColumnSelector } from './shared/GlassColumnSelector';
-import { GlassListEditor } from './shared/GlassListEditor';
+import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import {
   isNumericDataFieldType,
   isTemporalDataFieldType,
   normalizeDataFieldType,
 } from '../../../shared/data-field-types';
 
-const SELECT_CLASS =
-  'h-7 rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-secondary outline-none focus:border-accent';
-
 const BASE_METHODS = [
-  { value: 'skip', label: '不处理' },
-  { value: 'nullify_values', label: '特殊值转空' },
-  { value: 'literal_fill', label: '固定值填充' },
-  { value: 'drop', label: '删除含缺失的行' },
+  { value: 'skip', labelKey: 'ruleMethods.skip', label: '不处理' },
+  { value: 'nullify_values', labelKey: 'ruleMethods.nullify_values', label: '特殊值转空' },
+  { value: 'literal_fill', labelKey: 'ruleMethods.literal_fill', label: '固定值填充' },
+  { value: 'drop', labelKey: 'ruleMethods.drop', label: '删除含缺失的行' },
 ];
 
 const STATISTICAL_METHODS = [
-  { value: 'mean_fill', label: '均值填充' },
-  { value: 'median_fill', label: '中位数填充' },
-  { value: 'mode_fill', label: '众数填充' },
+  { value: 'mean_fill', labelKey: 'ruleMethods.mean_fill', label: '均值填充' },
+  { value: 'median_fill', labelKey: 'ruleMethods.median_fill', label: '中位数填充' },
+  { value: 'mode_fill', labelKey: 'ruleMethods.mode_fill', label: '众数填充' },
 ];
 
 const ORDERED_METHODS = [
-  { value: 'forward_fill', label: '前向填充' },
-  { value: 'backward_fill', label: '后向填充' },
+  { value: 'forward_fill', labelKey: 'ruleMethods.forward_fill', label: '前向填充' },
+  { value: 'backward_fill', labelKey: 'ruleMethods.backward_fill', label: '后向填充' },
 ];
 
 function methodsForType(colType: string | undefined) {
@@ -42,17 +40,45 @@ function methodsForType(colType: string | undefined) {
 }
 
 interface MissingRule {
+  id?: string;
   column: string;
   method: string;
   values?: string[];
   value?: unknown;
 }
 
-function createDefault(): MissingRule {
-  return { column: '', method: 'literal_fill', value: '' };
+function generateId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function createDefault(overrides: Partial<MissingRule> = {}): MissingRule {
+  return { id: generateId(), column: '', method: 'literal_fill', value: '', ...overrides };
 }
 
 type TabMode = 'row' | 'column';
+
+function TextField({
+  value,
+  onChange,
+  placeholder,
+  disabled,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <input
+      type="text"
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className="h-8 w-full rounded-md border border-border-muted bg-background/60 px-2 text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent disabled:cursor-not-allowed disabled:opacity-50"
+    />
+  );
+}
 
 export default function FormMissingValue({
   node,
@@ -63,7 +89,8 @@ export default function FormMissingValue({
 }: OperatorFormProps) {
   const { t } = useTranslation();
   const tr = useCallback(
-    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    (key: string, fallback: string) =>
+      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
     [t]
   );
 
@@ -79,18 +106,25 @@ export default function FormMissingValue({
   );
 
   const strategy = (node.config.strategy as string) ?? 'by_column';
-  const rules: MissingRule[] = (node.config.rules as MissingRule[]) ?? [];
-  const rowColumns: string[] = (node.config.columns as string[]) ?? [];
+  const rules = useMemo<MissingRule[]>(
+    () => (node.config.rules as MissingRule[]) ?? [],
+    [node.config.rules]
+  );
+  const rowColumns = useMemo<string[]>(
+    () => (node.config.columns as string[]) ?? [],
+    [node.config.columns]
+  );
 
   const tabMode: TabMode =
     strategy === 'drop_empty_rows' || strategy === 'drop_rows_by_nulls' ? 'row' : 'column';
-  const rowSubMode = strategy === 'drop_empty_rows' ? 'all' : 'any';
+  const rowCondition: string =
+    strategy === 'drop_empty_rows' ? 'all_null' : ((node.config.condition as string) ?? 'any_null');
 
-  // Row mode combobox state
-  const [showFieldPicker, setShowFieldPicker] = useState(false);
+  const [showFieldPicker, setShowFieldPicker] = useState(true);
   const removingRef = useRef(false);
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
 
-  // Column types
   const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
   useEffect(() => {
     if (!taskId || !sourceNode?.id) return;
@@ -111,34 +145,41 @@ export default function FormMissingValue({
       .catch(() => setColumnTypes({}));
   }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
 
-  function switchTab(tab: TabMode) {
-    if (tab === 'column') {
-      updateConfig((cfg) => ({
-        ...cfg,
-        strategy: 'by_column',
-        condition: undefined,
-        columns: undefined,
-      }));
-    } else {
-      updateConfig((cfg) => ({
-        ...cfg,
-        strategy: 'drop_rows_by_nulls',
-        condition: 'any_null',
-        rules: undefined,
-      }));
-    }
+  function setRowMode(condition: 'all_null' | 'any_null') {
+    updateConfig((cfg) => {
+      const columns = cfg.columns as string[] | undefined;
+      if (condition === 'all_null' && (!columns || columns.length === 0)) {
+        return { ...cfg, strategy: 'drop_empty_rows', condition: 'all_null' };
+      }
+      return { ...cfg, strategy: 'drop_rows_by_nulls', condition };
+    });
+  }
+
+  function setColumnMode() {
+    updateConfig((cfg) => ({
+      ...cfg,
+      strategy: 'by_column',
+      condition: undefined,
+      columns: undefined,
+    }));
   }
 
   function handleRulesChange(items: MissingRule[]) {
-    updateConfig((cfg) => ({ ...cfg, rules: items.length > 0 ? items : undefined }));
+    const itemsWithId = items.map((item) => (item.id ? item : { ...item, id: generateId() }));
+    updateConfig((cfg) => ({ ...cfg, rules: itemsWithId.length > 0 ? itemsWithId : undefined }));
   }
 
   const handleRowsColumnsChange = useCallback(
     (next: string[]) => {
-      updateConfig((cfg) => ({
-        ...cfg,
-        columns: next.length > 0 ? next : undefined,
-      }));
+      updateConfig((cfg) => {
+        const condition = cfg.condition as string | undefined;
+        const isAllNull = !condition || condition === 'all_null';
+        const hasColumns = next.length > 0;
+        if (isAllNull && !hasColumns) {
+          return { ...cfg, strategy: 'drop_empty_rows', columns: undefined };
+        }
+        return { ...cfg, strategy: 'drop_rows_by_nulls', columns: hasColumns ? next : undefined };
+      });
     },
     [updateConfig]
   );
@@ -149,8 +190,13 @@ export default function FormMissingValue({
       removingRef.current = true;
       updateConfig((cfg) => {
         const next = ((cfg.columns as string[]) ?? []).filter((c) => c !== col);
+        const isAllNull = (cfg.condition as string | undefined) === 'all_null';
+        if (isAllNull && next.length === 0) {
+          return { ...cfg, strategy: 'drop_empty_rows', columns: undefined };
+        }
         return {
           ...cfg,
+          strategy: 'drop_rows_by_nulls',
           columns: next.length > 0 ? next : undefined,
         };
       });
@@ -161,254 +207,371 @@ export default function FormMissingValue({
     [updateConfig]
   );
 
+  function updateRule(index: number, item: MissingRule) {
+    handleRulesChange(rules.map((existing, i) => (i === index ? item : existing)));
+  }
+  function removeRule(index: number) {
+    handleRulesChange(rules.filter((_, i) => i !== index));
+  }
+
+  function handleRemoveRule(index: number) {
+    removeRule(index);
+  }
+
+  const displayRules = useMemo<MissingRule[]>(() => {
+    if (rules.length === 0) return [createDefault()];
+    return rules;
+  }, [rules]);
+  const coreRuleCount = rules.length;
+
+  function updateDisplayRule(index: number, patch: Partial<MissingRule>) {
+    if (index < coreRuleCount) {
+      updateRule(index, { ...rules[index], ...patch });
+    } else if (rules.length === 0 && patch.column) {
+      handleRulesChange([createDefault({ column: patch.column })]);
+    }
+  }
+
+  function removeDisplayRule(index: number) {
+    if (index < coreRuleCount) {
+      handleRemoveRule(index);
+    }
+  }
+
+  function insertRule(index: number) {
+    const insertAt = index < coreRuleCount ? index + 1 : coreRuleCount;
+    const next = [...rules];
+    next.splice(insertAt, 0, createDefault());
+    handleRulesChange(next);
+  }
+
+  function handleDragStart(index: number) {
+    setDraggingIndex(index);
+  }
+  function handleDragOver(e: React.DragEvent<HTMLDivElement>, index: number) {
+    e.preventDefault();
+    setDropTargetIndex(index);
+  }
+  function handleDrop(index: number) {
+    if (draggingIndex === null || rules.length === 0) return;
+    if (draggingIndex === index) return;
+    const next = [...rules];
+    const [moved] = next.splice(draggingIndex, 1);
+    const insertAt = index > draggingIndex ? index - 1 : index;
+    next.splice(insertAt, 0, moved);
+    handleRulesChange(next);
+  }
+  function handleDragEnd() {
+    setDraggingIndex(null);
+    setDropTargetIndex(null);
+  }
+
+  const methodLabel = useCallback(
+    (key: string) => {
+      const entry = [...BASE_METHODS, ...ORDERED_METHODS, ...STATISTICAL_METHODS].find(
+        (m) => m.value === key
+      );
+      return entry ? t(entry.labelKey, { defaultValue: entry.label }) : key;
+    },
+    [t]
+  );
+
+  const description = useMemo(() => {
+    const cols = rowColumns;
+    const colList = cols.length > 0 ? cols.join('、') : undefined;
+    if (rowCondition === 'all_null') {
+      if (colList) {
+        return tr('missingDescAllNullWithCols', '删除 {{cols}} 均为空的数据行。').replace(
+          '{{cols}}',
+          colList
+        );
+      }
+      return tr(
+        'missingDescAllNullNoCols',
+        '删除全部字段均为空的数据行。未指定判断字段，所有字段均参与判空。'
+      );
+    }
+    if (colList) {
+      return tr('missingDescAnyNullWithCols', '删除 {{cols}} 中任意字段为空的数据行。').replace(
+        '{{cols}}',
+        colList
+      );
+    }
+    return tr('missingDescAnyNullNoCols', '删除任意字段为空的数据行。');
+  }, [rowCondition, rowColumns, tr]);
+
   return (
-    <div className="grid content-start gap-2.5">
-      {/* Tab toggle */}
-      <div className="flex h-8 rounded-md border border-border-muted bg-background/42 p-0.5">
-        {(
-          [
-            { value: 'row' as const, label: tr('rowProcess', '按行处理') },
-            { value: 'column' as const, label: tr('colProcess', '按列处理') },
-          ] as const
-        ).map((t) => (
-          <button
-            key={t.value}
-            type="button"
-            onClick={() => switchTab(t.value)}
-            className={`flex-1 rounded text-[11px] font-medium transition-all ${
-              tabMode === t.value
-                ? 'bg-background/70 text-accent shadow-soft'
-                : 'text-text-muted hover:text-text-secondary'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+    <div className="flex h-full min-h-0 flex-1 gap-0 overflow-hidden">
+      {/* Left sidebar — global config */}
+      <div className="flex w-[180px] shrink-0 flex-col gap-3.5 border-r border-border-muted bg-surface/40 p-3.5">
+        <section className="flex flex-col gap-1.5">
+          <GlassRadioSelect
+            value={tabMode}
+            options={[
+              { value: 'row', label: tr('rowProcess', '按行处理') },
+              { value: 'column', label: tr('colProcess', '按列处理') },
+            ]}
+            onChange={(v) => {
+              if (v === 'row') setRowMode('any_null');
+              else setColumnMode();
+            }}
+            label={tr('missingProcessMode', '处理模式')}
+          />
+        </section>
+
+        {tabMode === 'row' && (
+          <>
+            <div className="h-px bg-border-muted" />
+            <GlassRadioSelect
+              value={rowCondition}
+              options={[
+                { value: 'all_null', label: tr('allNull', '全部为空') },
+                { value: 'any_null', label: tr('anyNull', '任一为空') },
+              ]}
+              onChange={(v) => setRowMode(v as 'all_null' | 'any_null')}
+              label={tr('missingTriggerCondition', '触发条件')}
+            />
+          </>
+        )}
       </div>
 
-      {/* Row mode */}
-      {tabMode === 'row' && (
-        <GlassFormSection>
-          <div className="grid gap-2.5">
-            {/* Sub-mode toggle */}
-            <div className="flex h-8 rounded-md border border-border-muted bg-background/42 p-0.5">
-              {(
-                [
-                  { value: 'all' as const, label: tr('allNull', '全部为空') },
-                  { value: 'any' as const, label: tr('anyNull', '任一为空') },
-                ] as const
-              ).map((s) => (
-                <button
-                  key={s.value}
-                  type="button"
-                  onClick={() =>
-                    updateConfig((cfg) => ({
-                      ...cfg,
-                      strategy: s.value === 'all' ? 'drop_empty_rows' : 'drop_rows_by_nulls',
-                      condition: s.value === 'all' ? 'all_null' : 'any_null',
-                      columns: s.value === 'all' ? undefined : cfg.columns,
-                    }))
-                  }
-                  className={`flex-1 rounded text-[11px] font-medium transition-all ${
-                    rowSubMode === s.value
-                      ? 'bg-background/70 text-accent shadow-soft'
-                      : 'text-text-muted hover:text-text-secondary'
-                  }`}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-
-            {rowSubMode === 'all' ? (
-              <div className="rounded-lg border border-border-muted bg-background/42 px-3 py-3 text-center text-[12px] text-text-secondary">
-                {tr('dropAllHint', '所有字段均为空 (null) 的行将被删除。')}
-              </div>
-            ) : (
-              <>
-                {/* Combobox for column selection */}
-                <label className="grid gap-1">
-                  <span className="text-[11px] font-medium text-text-secondary">
-                    {tr('missingColumns', '判断字段')}
-                  </span>
-                  <div className="flex min-h-8 rounded-md border border-border-muted bg-background/42 focus-within:border-accent">
-                    <div className="flex flex-1 flex-wrap items-center gap-1 px-1.5 py-1">
-                      {rowColumns.map((col) => (
-                        <span
-                          key={col}
-                          className="inline-flex items-center gap-0.5 rounded bg-surface-active/80 px-1.5 py-0.5 text-[11px] text-text-primary"
-                        >
-                          {col}
-                          <button
-                            type="button"
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              removeRowColumn(col);
-                            }}
-                            className="ml-0.5 flex-shrink-0 rounded-full p-0.5 hover:bg-surface-hover transition-colors"
-                          >
-                            <X className="h-2.5 w-2.5 text-text-muted" />
-                          </button>
-                        </span>
-                      ))}
-                      <input
-                        type="text"
-                        readOnly
-                        placeholder={
-                          rowColumns.length === 0
-                            ? tr('missingSelectPlaceholder', '选择判断字段...')
-                            : ''
-                        }
-                        className="h-5 min-w-[60px] flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setShowFieldPicker((v) => !v);
-                      }}
-                      className="flex w-7 items-center justify-center border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
-                    >
-                      <ChevronDown
-                        className={`h-3.5 w-3.5 transition-transform ${showFieldPicker ? 'rotate-180' : ''}`}
-                      />
-                    </button>
-                  </div>
-                </label>
-
-                {/* Dropdown */}
-                {showFieldPicker && (
-                  <GlassColumnSelector
-                    columns={fieldCompletions}
-                    selected={rowColumns}
-                    onChange={handleRowsColumnsChange}
-                    maxHeight="200px"
-                  />
+      {/* Right content */}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {tabMode === 'row' && (
+          <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
+            {/* Judge fields */}
+            <div className="grid gap-1.5">
+              <div className="flex items-center rounded-md border border-border-muted bg-background/60 focus-within:border-accent transition-colors">
+                {rowColumns.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handleRowsColumnsChange([])}
+                    className="flex w-8 cursor-pointer items-center justify-center border-r border-border-muted text-text-muted hover:text-error hover:bg-error/10 transition-colors rounded-l-md"
+                    title={tr('missingClearSelectedFields', '删除所选字段')}
+                    aria-label={tr('missingClearSelectedFields', '删除所选字段')}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                 )}
-
-                <p className="text-[10px] text-text-muted">
-                  {tr('dropRowsHint', '任一勾选字段为空即删除该行。')}
-                </p>
-              </>
-            )}
-          </div>
-        </GlassFormSection>
-      )}
-
-      {/* Column mode */}
-      {tabMode === 'column' && (
-        <GlassFormSection>
-          <GlassListEditor
-            items={rules}
-            renderRow={(item, _index, onChange) => {
-              const fieldSelected = !!item.column;
-              const colType = item.column ? columnTypes[item.column] : undefined;
-              const availableMethods = methodsForType(colType);
-              const validMethodValues = availableMethods.map((m) => m.value);
-              const effectiveMethod = validMethodValues.includes(item.method)
-                ? item.method
-                : (availableMethods[0]?.value ?? 'skip');
-              const needsValue =
-                effectiveMethod === 'nullify_values' || effectiveMethod === 'literal_fill';
-
-              return (
-                <div className="flex items-center gap-1.5">
-                  {/* Column select */}
-                  <select
-                    value={item.column}
-                    onChange={(e) => {
-                      const col = e.target.value;
-                      const newType = columnTypes[col];
-                      const methods = methodsForType(newType);
-                      const methodOk = methods.some((m) => m.value === item.method);
-                      onChange({
-                        ...item,
-                        column: col,
-                        method: methodOk ? item.method : (methods[0]?.value ?? 'skip'),
-                      });
-                    }}
-                    className={SELECT_CLASS + ' flex-1 min-w-0'}
-                  >
-                    <option value="" disabled>
-                      {tr('selectField', '选择字段')}
-                    </option>
-                    {fieldCompletions.map((col) => (
-                      <option key={col} value={col}>
-                        {col}
-                      </option>
-                    ))}
-                  </select>
-
-                  {/* Method select */}
-                  <select
-                    value={effectiveMethod}
-                    disabled={!fieldSelected}
-                    onChange={(e) => {
-                      const m = e.target.value;
-                      onChange({
-                        ...item,
-                        method: m,
-                        values: m === 'nullify_values' ? (item.values ?? []) : undefined,
-                        value: m === 'literal_fill' ? (item.value ?? '') : undefined,
-                      });
-                    }}
-                    className={
-                      SELECT_CLASS +
-                      ' w-28 shrink-0 disabled:cursor-not-allowed disabled:opacity-50'
-                    }
-                  >
-                    {availableMethods.map((m) => (
-                      <option key={m.value} value={m.value}>
-                        {t(`ruleMethods.${m.value}`, { defaultValue: m.label })}
-                      </option>
-                    ))}
-                  </select>
-
-                  {/* Value input */}
-                  {needsValue && (
+                <div className="flex flex-1 flex-nowrap items-center gap-1 overflow-x-auto px-2">
+                  {rowColumns.map((col) => (
+                    <span
+                      key={col}
+                      className="inline-flex flex-shrink-0 items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent"
+                    >
+                      {col}
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          removeRowColumn(col);
+                        }}
+                        className="inline-flex h-3 w-3 cursor-pointer items-center justify-center rounded-full hover:bg-accent/20 transition-colors"
+                        aria-label={tr('removeField', '移除字段')}
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </span>
+                  ))}
+                  {rowColumns.length === 0 && (
                     <input
                       type="text"
-                      value={
-                        effectiveMethod === 'nullify_values'
-                          ? (item.values ?? []).join(', ')
-                          : String(item.value ?? '')
-                      }
-                      onChange={(e) => {
-                        const raw = e.target.value;
-                        if (effectiveMethod === 'nullify_values') {
-                          const vals = raw
-                            .split(',')
-                            .map((v) => v.trim().replace(/^"|"$/g, ''))
-                            .filter(Boolean);
-                          onChange({ ...item, values: vals.length > 0 ? vals : undefined });
-                        } else {
-                          onChange({ ...item, value: raw });
-                        }
-                      }}
-                      placeholder={
-                        effectiveMethod === 'nullify_values'
-                          ? tr('missingSpecialValuesPlaceholder', '特殊值，逗号分隔。如 "", N/A, -')
-                          : tr('missingFillPlaceholder', '填充值，如 UNKNOWN 或 0')
-                      }
-                      className="h-7 flex-1 min-w-0 rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+                      readOnly
+                      placeholder={tr('missingEmptyMeansAllFields', '留空 = 所有字段参与判断')}
+                      className="h-5 min-w-[60px] flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
                     />
                   )}
                 </div>
-              );
-            }}
-            createDefault={createDefault}
-            onChange={handleRulesChange}
-            addLabel={tr('missingAddRule', '添加规则')}
-            emptyText={tr('missingNoRules', '暂无处理规则')}
-          />
-          <p className="mt-2 text-[10px] leading-relaxed text-text-muted">
-            {tr('missingRulesHint', '规则按顺序执行。均值/中位数/众数仅适用于数值字段。')}
-          </p>
-        </GlassFormSection>
-      )}
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setShowFieldPicker((v) => !v);
+                  }}
+                  className="flex w-8 cursor-pointer items-center justify-center border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
+                  aria-label={tr('selectColumns', '选择字段')}
+                >
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 transition-transform ${showFieldPicker ? 'rotate-180' : ''}`}
+                  />
+                </button>
+              </div>
+              {showFieldPicker && (
+                <GlassColumnSelector
+                  columns={fieldCompletions}
+                  selected={rowColumns}
+                  onChange={handleRowsColumnsChange}
+                  maxHeight="200px"
+                  columnTypes={columnTypes}
+                />
+              )}
+            </div>
+
+            {/* Description */}
+            <p className="text-[11px] leading-4 text-text-muted">{description}</p>
+          </div>
+        )}
+
+        {tabMode === 'column' && (
+          <div className="flex flex-1 flex-col gap-2 overflow-hidden p-4">
+            <div className="flex flex-1 flex-col gap-2 overflow-y-auto pr-1">
+              {displayRules.map((item, i) => {
+                const isSentinel = i >= coreRuleCount;
+                const colType = item.column ? columnTypes[item.column] : undefined;
+                const availableMethods = methodsForType(colType);
+                const validMethodValues = availableMethods.map((m) => m.value);
+                const effectiveMethod = validMethodValues.includes(item.method)
+                  ? item.method
+                  : (availableMethods[0]?.value ?? 'skip');
+                const needsValue =
+                  effectiveMethod === 'nullify_values' || effectiveMethod === 'literal_fill';
+
+                return (
+                  <div
+                    key={item.id ?? i}
+                    onDragOver={(e) => handleDragOver(e, i)}
+                    onDrop={() => handleDrop(i)}
+                    onDragEnd={handleDragEnd}
+                    className={`relative flex items-center gap-1.5 ${
+                      draggingIndex === i ? 'opacity-40' : ''
+                    }`}
+                  >
+                    {dropTargetIndex === i && draggingIndex !== i && (
+                      <div className="pointer-events-none absolute -top-0.5 left-0 right-0 h-0.5 bg-accent" />
+                    )}
+
+                    {/* Drag handle */}
+                    <div
+                      draggable={!isSentinel}
+                      onDragStart={() => handleDragStart(i)}
+                      className={`inline-flex h-7 w-6 flex-shrink-0 items-center justify-center rounded text-text-muted transition-colors ${
+                        isSentinel
+                          ? 'cursor-not-allowed opacity-30'
+                          : 'cursor-grab hover:bg-surface-hover hover:text-text-secondary active:cursor-grabbing'
+                      }`}
+                      title={tr('missingDragToReorder', '拖动排序')}
+                      aria-label={tr('missingDragToReorder', '拖动排序')}
+                    >
+                      <GripVertical className="h-4 w-4" />
+                    </div>
+
+                    {/* Field */}
+                    <div className="flex-[2] min-w-0">
+                      <GlassFieldCombo
+                        value={item.column}
+                        options={fieldCompletions}
+                        columnTypes={columnTypes}
+                        onChange={(col) => {
+                          if (isSentinel) {
+                            updateDisplayRule(i, { column: col });
+                            return;
+                          }
+                          const newType = columnTypes[col];
+                          const methods = methodsForType(newType);
+                          const methodOk = methods.some((m) => m.value === item.method);
+                          updateDisplayRule(i, {
+                            ...item,
+                            column: col,
+                            method: methodOk ? item.method : (methods[0]?.value ?? 'skip'),
+                          });
+                        }}
+                        placeholder={tr('selectField', '选择字段')}
+                        className="h-8 w-full"
+                      />
+                    </div>
+
+                    {/* Method */}
+                    <div className="flex-[1.5] min-w-0">
+                      <GlassOperatorSelect
+                        value={effectiveMethod}
+                        disabled={!item.column}
+                        onChange={(m) => {
+                          updateDisplayRule(i, {
+                            ...item,
+                            method: m,
+                            values: m === 'nullify_values' ? (item.values ?? []) : undefined,
+                            value: m === 'literal_fill' ? (item.value ?? '') : undefined,
+                          });
+                        }}
+                        groups={[
+                          {
+                            key: 'methods',
+                            items: availableMethods.map((m) => ({
+                              value: m.value,
+                              label: methodLabel(m.value),
+                            })),
+                          },
+                        ]}
+                        className="h-8 w-full text-[12px]"
+                      />
+                    </div>
+
+                    {/* Value */}
+                    {needsValue && item.column && (
+                      <div className="flex-[3] min-w-0">
+                        <TextField
+                          value={
+                            effectiveMethod === 'nullify_values'
+                              ? (item.values ?? []).join(', ')
+                              : String(item.value ?? '')
+                          }
+                          onChange={(raw) => {
+                            if (effectiveMethod === 'nullify_values') {
+                              const vals = raw
+                                .split(',')
+                                .map((v) => v.trim().replace(/^"|"$/g, ''))
+                                .filter(Boolean);
+                              updateDisplayRule(i, {
+                                ...item,
+                                values: vals.length > 0 ? vals : undefined,
+                              });
+                            } else {
+                              updateDisplayRule(i, { ...item, value: raw });
+                            }
+                          }}
+                          placeholder={
+                            effectiveMethod === 'nullify_values'
+                              ? tr('missingSpecialValuesPlaceholder', '特殊值，逗号分隔')
+                              : tr('missingFillPlaceholder', '填充值')
+                          }
+                        />
+                      </div>
+                    )}
+
+                    {/* Spacer pushes action buttons to the right */}
+                    <div className="min-w-2 flex-1" />
+
+                    {/* Add row */}
+                    <button
+                      type="button"
+                      onClick={() => insertRule(i)}
+                      className="inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-accent"
+                      title={tr('missingAddRow', '添加行')}
+                      aria-label={tr('missingAddRow', '添加行')}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </button>
+
+                    {/* Delete */}
+                    <button
+                      type="button"
+                      disabled={isSentinel}
+                      onClick={() => removeDisplayRule(i)}
+                      className="inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:text-error hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-30"
+                      title={tr('missingRemoveRow', '删除行')}
+                      aria-label={tr('missingRemoveRow', '删除行')}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

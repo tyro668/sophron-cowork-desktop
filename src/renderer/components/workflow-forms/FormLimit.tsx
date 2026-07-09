@@ -1,16 +1,18 @@
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
-import { GlassFormSection } from './shared/GlassFormSection';
+import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
+import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassSortKeyEditor, type SortKeyEntry } from './shared/GlassSortKeyEditor';
 
 const INPUT_CLASS =
-  'h-7 w-full rounded-md border border-border-muted bg-background/42 px-2 text-[12px] text-text-primary outline-none focus:border-accent';
+  'h-6 w-full rounded-md border border-border-muted bg-background/60 px-2 text-center text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent';
 
 export default function FormLimit({ node, fieldCompletions, onNodeChange }: OperatorFormProps) {
   const { t } = useTranslation();
   const tr = useCallback(
-    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    (key: string, fallback: string) =>
+      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
     [t]
   );
 
@@ -31,7 +33,6 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
   const offset = Number(node.config.offset ?? 0);
   const orderBy: SortKeyEntry[] = (node.config.orderBy as SortKeyEntry[]) ?? [];
 
-  // Local state for fluent typing — synced from config on identity change
   const configRef = useRef(node.config);
   const [localLimit, setLocalLimit] = useState(String(limit));
   const [localOffset, setLocalOffset] = useState(String(offset));
@@ -45,17 +46,17 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
 
   function pushLimit(value: string) {
     setLocalLimit(value);
+    if (value === '') return;
     const n = Math.max(1, Number(value) || 1);
     const clamped = String(n);
     if (clamped !== value) setLocalLimit(clamped);
-    const newUnit = unit;
-    const newOffset = offset;
-    setErrors(runValidation(n, newOffset, newUnit));
+    setErrors(runValidation(n, offset, unit));
     updateConfig((cfg) => ({ ...cfg, limit: n }));
   }
 
   function pushOffset(value: string) {
     setLocalOffset(value);
+    if (value === '') return;
     const n = Math.max(0, Number(value) || 0);
     const clamped = String(n);
     if (clamped !== value) setLocalOffset(clamped);
@@ -70,102 +71,124 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
     return errs;
   }
 
+  const isTopMode = mode === 'top';
+
   return (
-    <div className="grid content-start gap-2.5">
-      <GlassFormSection>
-        <div className="grid gap-2">
-          <div className="flex items-center gap-3">
-            <span className="text-[11px] text-text-muted">{tr('limitMode', '模式')}</span>
-            <div className="inline-flex rounded-md bg-surface-active/70 p-0.5">
-              <button
-                type="button"
-                onClick={() => updateConfig((cfg) => ({ ...cfg, mode: 'limit' }))}
-                className={`h-6 rounded px-2.5 text-[11px] font-medium transition-colors ${
-                  mode === 'limit'
-                    ? 'bg-background/70 text-accent shadow-soft'
-                    : 'text-text-muted hover:text-text-secondary'
-                }`}
-              >
-                Limit
-              </button>
-              <button
-                type="button"
-                onClick={() => updateConfig((cfg) => ({ ...cfg, mode: 'top' }))}
-                className={`h-6 rounded px-2.5 text-[11px] font-medium transition-colors ${
-                  mode === 'top'
-                    ? 'bg-background/70 text-accent shadow-soft'
-                    : 'text-text-muted hover:text-text-secondary'
-                }`}
-              >
-                Top
-              </button>
-            </div>
+    <div className="flex h-full min-h-0 flex-1 gap-0 overflow-hidden">
+      <div className="flex w-[180px] shrink-0 flex-col gap-3.5 border-r border-border-muted bg-surface/40 p-3.5">
+        <div className="flex items-end gap-3 px-0.5">
+          <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">1</span>
+          <div className="grid">
+            <span className="text-[13px] font-semibold text-text-primary">{tr('limitModeHeader', '模式选择')}</span>
+            <span className="text-[10px] text-text-muted">{tr('limitModeHint', '选择限制方式')}</span>
           </div>
-
-          <div className="grid grid-cols-3 gap-2">
-            <label className="grid gap-1">
-              <span className="text-[11px] font-medium text-text-secondary">
-                {tr('limitCount', '数量')}
-              </span>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={localLimit}
-                onChange={(e) => pushLimit(e.target.value)}
-                className={INPUT_CLASS}
-              />
-            </label>
-            <label className="grid gap-1">
-              <span className="text-[11px] font-medium text-text-secondary">
-                {tr('limitUnit', '单位')}
-              </span>
-              <select
-                value={unit}
-                onChange={(e) => {
-                  const newUnit = e.target.value;
-                  updateConfig((cfg) => ({ ...cfg, unit: newUnit }));
-                  setErrors(runValidation(limit, offset, newUnit));
-                }}
-                className={INPUT_CLASS}
-              >
-                <option value="rows">{tr('limitUnitRows', '行数')}</option>
-                <option value="percent">{tr('limitUnitPercent', '百分比')}</option>
-              </select>
-            </label>
-            <label className="grid gap-1">
-              <span className="text-[11px] font-medium text-text-secondary">
-                {tr('limitOffset', '偏移量（行数）')}
-              </span>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={localOffset}
-                onChange={(e) => pushOffset(e.target.value)}
-                placeholder="0"
-                className={INPUT_CLASS}
-              />
-            </label>
-          </div>
-
-          {errors.map((err) => (
-            <div key={err} className="text-[11px] text-warning">
-              {err}
-            </div>
-          ))}
         </div>
-      </GlassFormSection>
-
-      {mode === 'top' && (
-        <GlassFormSection title={tr('limitTopSort', 'Top 排序')}>
-          <GlassSortKeyEditor
-            keys={orderBy}
-            fieldCompletions={fieldCompletions}
-            onChange={(keys) =>
-              updateConfig((cfg) => ({ ...cfg, orderBy: keys.length > 0 ? keys : undefined }))
-            }
+        <section className="flex flex-col gap-1.5">
+          <GlassRadioSelect
+            value={mode}
+            options={[
+              { value: 'limit', label: tr('limitSimpleMode', '简单限制') },
+              { value: 'top', label: tr('limitTopMode', 'Top 排序') },
+            ]}
+            onChange={(v) => {
+              if (v === 'limit') {
+                updateConfig((cfg) => ({ ...cfg, mode: 'limit', orderBy: undefined }));
+              } else {
+                updateConfig((cfg) => ({ ...cfg, mode: 'top' }));
+              }
+            }}
+            label={tr('limitMode', '模式')}
           />
-        </GlassFormSection>
-      )}
+        </section>
+      </div>
+
+      <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
+        <div className="flex items-end gap-3 px-0.5">
+          <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">2</span>
+          <div className="grid">
+            <span className="text-[13px] font-semibold text-text-primary">{tr('limitConfigHeader', '参数配置')}</span>
+            <span className="text-[10px] text-text-muted">{tr('limitConfigHint', '配置行数限制')}</span>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3 -mt-[5mm]">
+          <label className="grid gap-1.5">
+            <span className="text-center text-[11px] font-medium text-text-secondary">
+              {tr('limitCount', '数量')}
+            </span>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={localLimit}
+              onChange={(e) => pushLimit(e.target.value)}
+              placeholder="100"
+              className={INPUT_CLASS}
+            />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-center text-[11px] font-medium text-text-secondary">
+              {tr('limitUnit', '单位')}
+            </span>
+            <GlassOperatorSelect
+              value={unit}
+              groups={[
+                {
+                  key: 'unit',
+                  items: [
+                    { value: 'rows', label: tr('limitUnitRows', '行数') },
+                    { value: 'percent', label: tr('limitUnitPercent', '百分比') },
+                  ],
+                },
+              ]}
+              onChange={(value) => {
+                updateConfig((cfg) => ({ ...cfg, unit: value }));
+                setErrors(runValidation(limit, offset, value));
+              }}
+              className="h-6 min-w-[84px] rounded-md text-center text-[12px] text-text-muted w-full"
+            />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-center text-[11px] font-medium text-text-secondary">
+              {tr('limitOffset', '偏移量（行数）')}
+            </span>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={localOffset}
+              onChange={(e) => pushOffset(e.target.value)}
+              placeholder="0"
+              className={INPUT_CLASS}
+            />
+          </label>
+        </div>
+
+        {errors.map((err) => (
+          <div key={err} className="text-[11px] text-warning">
+            {err}
+          </div>
+        ))}
+
+        {isTopMode && (
+          <>
+            <div className="border-t border-border-muted" />
+            <div className="flex items-end gap-3 px-0.5">
+              <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">3</span>
+              <div className="grid">
+                <span className="text-[13px] font-semibold text-text-primary">{tr('limitSortHeader', '排序规则')}</span>
+                <span className="text-[10px] text-text-muted">{tr('limitSortHint', '设置排序条件，默认 AND 连接')}</span>
+              </div>
+            </div>
+            <div className="-mt-2">
+              <GlassSortKeyEditor
+                keys={orderBy}
+                fieldCompletions={fieldCompletions}
+                onChange={(keys) =>
+                  updateConfig((cfg) => ({ ...cfg, orderBy: keys.length > 0 ? keys : undefined }))
+                }
+              />
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

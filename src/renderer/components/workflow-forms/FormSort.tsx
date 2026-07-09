@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
 import type { OperatorFormProps } from './index';
-import { GlassFormSection } from './shared/GlassFormSection';
-import { dataFieldTypeLabel } from '../../../shared/data-field-types';
+import { GlassFieldCombo } from './shared/GlassFieldCombo';
+import { GlassDirectionToggle } from './shared/GlassDirectionToggle';
+import { GlassNullsSelect } from './shared/GlassNullsSelect';
+import { GlassRowList } from './shared/GlassRowList';
 
 interface SortKey {
   field: string;
@@ -11,8 +12,7 @@ interface SortKey {
   nulls?: 'first' | 'last';
 }
 
-const SELECT_CLASS =
-  'h-7 rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-secondary outline-none focus:border-accent';
+const DEFAULT_SORT_KEY: SortKey = { field: '', direction: 'asc' };
 
 export default function FormSort({
   node,
@@ -23,7 +23,8 @@ export default function FormSort({
 }: OperatorFormProps) {
   const { t } = useTranslation();
   const tr = useCallback(
-    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    (key: string, fallback: string) =>
+      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
     [t]
   );
 
@@ -38,7 +39,15 @@ export default function FormSort({
     [onNodeChange]
   );
 
-  const keys: SortKey[] = (node.config.keys as SortKey[]) ?? [];
+  const keys = useMemo<SortKey[]>(() => (node.config.keys as SortKey[]) ?? [], [node.config.keys]);
+
+  // Auto-initialize with one empty row
+  useEffect(() => {
+    if (keys.length === 0) {
+      commitKeys([{ ...DEFAULT_SORT_KEY }]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
   useEffect(() => {
@@ -60,110 +69,171 @@ export default function FormSort({
       .catch(() => setColumnTypes({}));
   }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
 
-  function updateKey(i: number, patch: Partial<SortKey>) {
-    const next = keys.map((k, idx) => (idx === i ? { ...k, ...patch } : k));
-    updateConfig((cfg) => ({ ...cfg, keys: next.length > 0 ? next : undefined }));
-  }
+  const commitKeys = useCallback(
+    (next: SortKey[]) => {
+      updateConfig((cfg) => ({ ...cfg, keys: next.length > 0 ? next : undefined }));
+    },
+    [updateConfig]
+  );
 
-  function removeKey(i: number) {
-    const next = keys.filter((_, idx) => idx !== i);
-    updateConfig((cfg) => ({ ...cfg, keys: next.length > 0 ? next : undefined }));
-  }
+  // ── Drag-to-reorder state ──
+  const dragIndexRef = useRef<number | null>(null);
+  const [dragKeys, setDragKeys] = useState<SortKey[] | null>(null);
 
-  function addKey() {
-    updateConfig((cfg) => ({
-      ...cfg,
-      keys: [...keys, { field: '', direction: 'asc' as const }],
-    }));
-  }
+  // Sync dragKeys from config when not dragging
+  useEffect(() => {
+    if (dragIndexRef.current === null) setDragKeys(null);
+  }, [keys]);
+
+  const activeKeys = dragKeys ?? keys;
+
+  const updateKey = useCallback(
+    (index: number, patch: Partial<SortKey>) => {
+      // Auto-resolve duplicate sort fields: clear the previous occurrence.
+      if ('field' in patch && patch.field) {
+        const existing = activeKeys.findIndex((k, i) => i !== index && k.field === patch.field);
+        if (existing !== -1) {
+          const next = activeKeys.map((k, i) => {
+            if (i === index) return { ...k, ...patch };
+            if (i === existing) return { ...k, field: '' };
+            return k;
+          });
+          commitKeys(next);
+          return;
+        }
+      }
+      const next = activeKeys.map((k, i) => (i === index ? { ...k, ...patch } : k));
+      commitKeys(next);
+    },
+    [activeKeys, commitKeys]
+  );
+
+  const addKeyAfter = useCallback(
+    (index: number) => {
+      const hasEmpty = activeKeys.some((k) => !k.field);
+      if (hasEmpty || activeKeys.length >= fieldCompletions.length) return;
+      const next = [...activeKeys];
+      next.splice(index + 1, 0, { ...DEFAULT_SORT_KEY });
+      commitKeys(next);
+    },
+    [activeKeys, fieldCompletions.length, commitKeys]
+  );
+
+  const removeKey = useCallback(
+    (index: number) => {
+      if (activeKeys.length <= 1) {
+        commitKeys([{ ...DEFAULT_SORT_KEY }]);
+        return;
+      }
+      commitKeys(activeKeys.filter((_, i) => i !== index));
+    },
+    [activeKeys, commitKeys]
+  );
+
+  const handleDragStart = useCallback(
+    (index: number) => {
+      dragIndexRef.current = index;
+      setDragKeys([...keys]);
+    },
+    [keys]
+  );
+
+  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (dragIndexRef.current === null || dragIndexRef.current === index) return;
+    const from = dragIndexRef.current;
+    setDragKeys((prev) => {
+      if (!prev) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(index, 0, moved);
+      return next;
+    });
+    dragIndexRef.current = index;
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    if (dragKeys && dragIndexRef.current !== null) {
+      commitKeys(dragKeys);
+    }
+    dragIndexRef.current = null;
+    setDragKeys(null);
+  }, [dragKeys, commitKeys]);
+
+  // Fields already chosen in other rows (for disabling in the dropdown)
+  const usedFields = useMemo(() => {
+    const used = new Set<string>();
+    for (const k of activeKeys) {
+      if (k.field) used.add(k.field);
+    }
+    return used;
+  }, [activeKeys]);
 
   return (
-    <div className="grid content-start gap-2.5">
-      <GlassFormSection>
-        {keys.length === 0 ? (
-          <div className="py-4 text-center text-[12px] text-text-muted">
-            {tr('sortNoKeys', '暂未设置排序键')}
-          </div>
-        ) : (
-          <div className="space-y-1.5">
-            {keys.map((key, i) => (
-              <div key={i} className="flex items-center gap-1.5">
-                {/* Field + search */}
-                <div className="relative flex-1 min-w-0">
-                  <select
-                    value={key.field}
-                    onChange={(e) => updateKey(i, { field: e.target.value })}
-                    className={SELECT_CLASS + ' w-full'}
-                  >
-                    <option value="" disabled>
-                      {tr('sortSelectField', '选择字段')}
-                    </option>
-                    {fieldCompletions.map((col) => (
-                      <option key={col} value={col}>
-                        {col}
-                        {columnTypes[col] ? ` (${dataFieldTypeLabel(columnTypes[col])})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Direction toggle */}
-                <button
-                  type="button"
-                  onClick={() =>
-                    updateKey(i, { direction: key.direction === 'asc' ? 'desc' : 'asc' })
-                  }
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
-                    key.direction === 'asc'
-                      ? 'border-accent/30 bg-accent/10 text-accent'
-                      : 'border-border-muted bg-background/42 text-text-secondary hover:border-accent/30'
-                  }`}
-                  title={key.direction === 'asc' ? tr('asc', '升序') : tr('desc', '降序')}
-                >
-                  {key.direction === 'asc' ? (
-                    <ArrowUp className="h-3.5 w-3.5" />
-                  ) : (
-                    <ArrowDown className="h-3.5 w-3.5" />
-                  )}
-                </button>
-
-                {/* Nulls */}
-                <select
-                  value={key.nulls ?? ''}
-                  onChange={(e) =>
-                    updateKey(i, {
-                      nulls: (e.target.value || undefined) as 'first' | 'last' | undefined,
-                    })
-                  }
-                  className={SELECT_CLASS + ' w-[100px] shrink-0'}
-                >
-                  <option value="">{tr('nullsDefault', 'NULL 默认')}</option>
-                  <option value="first">{tr('nullsFirst', 'NULL 在前')}</option>
-                  <option value="last">{tr('nullsLast', 'NULL 在后')}</option>
-                </select>
-
-                {/* Remove */}
-                <button
-                  type="button"
-                  onClick={() => removeKey(i)}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-surface-hover hover:text-error transition-colors"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={addKey}
-          className="mt-2 inline-flex h-7 items-center gap-1 rounded-md border border-border-muted bg-background/42 px-2 text-[11px] text-text-secondary hover:border-accent/30 hover:text-accent transition-colors"
-        >
-          <Plus className="h-3 w-3" />
-          {tr('sortAddKey', '添加排序键')}
-        </button>
-      </GlassFormSection>
+    <div className="flex h-full overflow-hidden">
+      {/* Left: sort keys */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex-1 space-y-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
+          <GlassRowList
+            items={activeKeys}
+            columns={[
+              {
+                flex: 'flex-[4]',
+                header: tr('sortFieldHeader', '待排序字段'),
+                render: (key: SortKey, i) => {
+                  const disabledOptions = new Set(usedFields);
+                  if (key.field) disabledOptions.delete(key.field);
+                  return (
+                    <GlassFieldCombo
+                      value={key.field}
+                      options={fieldCompletions}
+                      columnTypes={columnTypes}
+                      onChange={(value) => updateKey(i, { field: value })}
+                      placeholder={tr('sortSelectField', '选择字段')}
+                      searchPlaceholder={tr('searchField', '搜索字段')}
+                      emptyText={tr('noMatch', '无匹配字段')}
+                      disabledOptions={disabledOptions}
+                      className="w-full"
+                    />
+                  );
+                },
+              },
+              {
+                flex: 'flex-[2]',
+                header: tr('sortDirectionHeader', '排序方式'),
+                render: (key: SortKey, i) => (
+                  <GlassDirectionToggle
+                    value={key.direction}
+                    onChange={(v) => updateKey(i, { direction: v })}
+                    className="h-6 w-full px-1.5 text-[12px]"
+                  />
+                ),
+              },
+              {
+                flex: 'flex-[3]',
+                header: tr('sortNullsHeader', '空值处理方式'),
+                render: (key: SortKey, i) => (
+                  <GlassNullsSelect
+                    value={key.nulls}
+                    onChange={(v) => updateKey(i, { nulls: v })}
+                    className="h-6 w-full text-center rounded border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-secondary outline-none focus:border-accent"
+                  />
+                ),
+              },
+            ]}
+            onAdd={addKeyAfter}
+            onRemove={removeKey}
+            addTitle={tr('sortAddKey', '添加排序键')}
+            removeTitle={tr('sortRemoveKey', '删除排序键')}
+            draggable
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+            getRowOpacity={(i) => !!(dragKeys && dragIndexRef.current === i)}
+            dragTitle={tr('dragToReorder', '拖拽排序')}
+          />
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,24 +1,49 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Copy, Plus, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
-import { GlassFormSection } from './shared/GlassFormSection';
-import { GlassListEditor } from './shared/GlassListEditor';
-import {
-  createStableListItemId,
-  needsListItemIdNormalization,
-  normalizeListItemsWithIds,
-  type ListItemWithId,
-} from './shared/list-item-ids';
+import { GlassFieldCombo } from './shared/GlassFieldCombo';
+import { GlassFormTextInput } from './shared/GlassFormTextInput';
+import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
+import { GlassRowList, type GlassRowListColumn } from './shared/GlassRowList';
 
-interface MappingEntry extends ListItemWithId {
-  id: string;
+export interface MappingEntry {
   source: string;
-  target: string;
+  targetMode: 'prefix' | 'suffix' | 'rename';
+  targetValue: string;
 }
 
-function createDefault(): MappingEntry {
-  return { id: createStableListItemId('map'), source: '', target: '' };
+function computeTarget(m: MappingEntry): string {
+  if (!m.source) return '';
+  if (m.targetMode === 'rename') return m.targetValue || '';
+  return m.targetMode === 'prefix' ? `${m.targetValue}${m.source}` : `${m.source}${m.targetValue}`;
 }
+
+function migrateEntry(e: Record<string, unknown>): MappingEntry {
+  const source = (e.source as string) || '';
+  const target = (e.target as string) || '';
+  const targetMode = e.targetMode as string;
+  if (targetMode === 'prefix' || targetMode === 'suffix' || targetMode === 'rename') {
+    const targetValue = (e.targetValue as string) || '';
+    return { source, targetMode, targetValue };
+  }
+  if (!source || !target) return { source, targetMode: 'rename', targetValue: target };
+  if (target.startsWith(source))
+    return {
+      source,
+      targetMode: 'suffix',
+      targetValue: target.slice(source.length).replace(/^_/, ''),
+    };
+  if (target.endsWith(source))
+    return {
+      source,
+      targetMode: 'prefix',
+      targetValue: target.slice(0, -source.length).replace(/_$/, ''),
+    };
+  return { source, targetMode: 'rename', targetValue: target };
+}
+
+const DEFAULT_MAPPING: MappingEntry = { source: '', targetMode: 'rename', targetValue: '' };
 
 export default function FormFieldMapping({
   node,
@@ -27,7 +52,8 @@ export default function FormFieldMapping({
 }: OperatorFormProps) {
   const { t } = useTranslation();
   const tr = useCallback(
-    (key: string, fallback: string) => t(`formLabels.${key}`, { defaultValue: fallback }),
+    (key: string, fallback: string) =>
+      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
     [t]
   );
 
@@ -42,96 +68,273 @@ export default function FormFieldMapping({
     [onNodeChange]
   );
 
-  const rawMappings = useMemo(
-    () =>
-      (node.config.mappings as
-        | Array<{ id?: string; source: string; target: string }>
-        | undefined) ?? [],
+  const mappings = useMemo<MappingEntry[]>(
+    () => ((node.config.mappings as Record<string, unknown>[]) ?? []).map(migrateEntry),
     [node.config.mappings]
   );
-  const mappings = useMemo(
-    () =>
-      normalizeListItemsWithIds(
-        rawMappings.map((item) => ({
-          ...item,
-          source: item.source ?? '',
-          target: item.target ?? '',
-        })),
-        'map'
-      ),
-    [rawMappings]
+
+  // Auto-initialize with one empty row
+  useEffect(() => {
+    if (mappings.length === 0) {
+      commitMappings([{ ...DEFAULT_MAPPING }]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const commitMappings = useCallback(
+    (next: MappingEntry[]) => {
+      updateConfig((cfg) => ({ ...cfg, mappings: next.length > 0 ? next : undefined }));
+    },
+    [updateConfig]
   );
 
-  useEffect(() => {
-    if (!needsListItemIdNormalization(rawMappings)) return;
-    updateConfig((cfg) => ({ ...cfg, mappings }));
-  }, [mappings, rawMappings, updateConfig]);
+  // ── Drag-to-reorder state ──
+  const dragIndexRef = useRef<number | null>(null);
+  const dropTargetRef = useRef<number | null>(null);
+  const [sortedMappings, setSortedMappings] = useState<MappingEntry[] | null>(null);
 
-  // Existing field names that are NOT being renamed away by any mapping
-  const occupiedNames = useMemo(() => {
-    const renamed = new Set(mappings.map((m) => m.source));
-    return new Set(fieldCompletions.filter((c) => !renamed.has(c)));
-  }, [fieldCompletions, mappings]);
+  const activeMappings = sortedMappings ?? mappings;
 
-  function handleMappingsChange(items: MappingEntry[]) {
-    updateConfig((cfg) => ({ ...cfg, mappings: items.length > 0 ? items : undefined }));
-  }
+  const handleDragStart = useCallback(
+    (index: number) => {
+      dragIndexRef.current = index;
+      setSortedMappings([...activeMappings]);
+    },
+    [activeMappings]
+  );
 
-  function getTargetError(item: MappingEntry): string | null {
-    const t = item.target.trim();
-    if (!t) return null;
-    if (t === item.source) return tr('fieldMappingErrSameSource', '不能与原字段名相同');
-    if (occupiedNames.has(t)) return tr('fieldMappingErrConflict', '与已有字段名冲突');
-    if (mappings.some((m) => m !== item && m.target.trim() === t))
-      return tr('fieldMappingErrDuplicate', '目标字段名重复');
-    return null;
-  }
+  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    dropTargetRef.current = index;
+    if (dragIndexRef.current === null || dragIndexRef.current === index) return;
+    const from = dragIndexRef.current;
+    setSortedMappings((prev) => {
+      if (!prev) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(index, 0, moved);
+      return next;
+    });
+    dragIndexRef.current = index;
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    if (sortedMappings && dragIndexRef.current !== null) {
+      commitMappings(sortedMappings);
+    }
+    dragIndexRef.current = null;
+    dropTargetRef.current = null;
+    setSortedMappings(null);
+  }, [sortedMappings, commitMappings]);
+
+  const usedFields = useMemo(() => {
+    const used = new Set<string>();
+    for (const m of activeMappings) {
+      if (m.source) used.add(m.source);
+    }
+    return used;
+  }, [activeMappings]);
+
+  const updateMapping = useCallback(
+    (index: number, patch: Partial<MappingEntry>) => {
+      const next = activeMappings.map((m, i) => (i === index ? { ...m, ...patch } : m));
+      commitMappings(next);
+    },
+    [activeMappings, commitMappings]
+  );
+
+  const addMappingAfter = useCallback(
+    (index: number) => {
+      const hasEmpty = activeMappings.some((m) => !m.source);
+      if (hasEmpty || activeMappings.length >= fieldCompletions.length) return;
+      const next = [...activeMappings];
+      next.splice(index + 1, 0, { ...DEFAULT_MAPPING });
+      commitMappings(next);
+    },
+    [activeMappings, fieldCompletions.length, commitMappings]
+  );
+
+  const copyMapping = useCallback(
+    (index: number) => {
+      if (activeMappings.length >= fieldCompletions.length) return;
+      const source = activeMappings[index];
+      const next = [...activeMappings];
+      next.splice(index + 1, 0, {
+        source: '',
+        targetMode: source.targetMode,
+        targetValue: source.targetValue,
+      } as MappingEntry);
+      commitMappings(next);
+    },
+    [activeMappings, fieldCompletions.length, commitMappings]
+  );
+
+  const removeMapping = useCallback(
+    (index: number) => {
+      if (activeMappings.length <= 1) {
+        commitMappings([{ ...DEFAULT_MAPPING }]);
+        return;
+      }
+      commitMappings(activeMappings.filter((_, i) => i !== index));
+    },
+    [activeMappings, commitMappings]
+  );
+
+  const canAdd = useMemo(
+    () => !activeMappings.some((m) => !m.source) && activeMappings.length < fieldCompletions.length,
+    [activeMappings, fieldCompletions.length]
+  );
+
+  const targetModeOptions = useMemo(
+    () => [
+      { value: 'prefix', label: tr('fieldMappingModePrefix', '加前缀') },
+      { value: 'suffix', label: tr('fieldMappingModeSuffix', '加后缀') },
+      { value: 'rename', label: tr('fieldMappingModeRename', '改名') },
+    ],
+    [tr]
+  );
+
+  const columns = useMemo<GlassRowListColumn<MappingEntry>[]>(
+    () => [
+      {
+        flex: 'flex-[3]',
+        header: tr('fieldMappingSourceField', '源字段'),
+        render: (item, i) => {
+          const disabledFields = new Set(usedFields);
+          if (item.source) disabledFields.delete(item.source);
+          return (
+            <GlassFieldCombo
+              value={item.source}
+              options={fieldCompletions}
+              onChange={(value) => updateMapping(i, { source: value })}
+              placeholder={tr('fieldMappingSelectField', '选择字段')}
+              searchPlaceholder={tr('searchField', '搜索字段')}
+              emptyText={tr('noMatch', '无匹配字段')}
+              disabledOptions={disabledFields}
+              className="flex-1 min-w-0 h-7"
+            />
+          );
+        },
+      },
+      {
+        flex: 'flex-[1.5]',
+        header: tr('fieldMappingMode', '模式'),
+        render: (item, i) => (
+          <GlassOperatorSelect
+            value={item.targetMode}
+            onChange={(v) => updateMapping(i, { targetMode: v as MappingEntry['targetMode'] })}
+            groups={[{ key: 'mode', items: targetModeOptions }]}
+            className="h-7 w-full text-[12px]"
+          />
+        ),
+      },
+      {
+        flex: 'flex-[2.5]',
+        header: tr('fieldMappingValue', '值'),
+        render: (item, i) => (
+          <GlassFormTextInput
+            value={item.targetValue}
+            onChange={(v) => updateMapping(i, { targetValue: v })}
+            placeholder={
+              item.targetMode === 'rename'
+                ? tr('fieldMappingRenamePlaceholder', '新字段名')
+                : item.targetMode === 'prefix'
+                  ? tr('fieldMappingPrefixPlaceholder', '前缀')
+                  : tr('fieldMappingSuffixPlaceholder', '后缀')
+            }
+            className="h-7 px-1.5 text-[12px] w-full"
+          />
+        ),
+      },
+      {
+        flex: 'w-8',
+        header: '',
+        render: () => <div />,
+      },
+      {
+        flex: 'flex-[2]',
+        header: tr('fieldMappingTargetField', '新字段名'),
+        render: (item, _i) => {
+          const target = computeTarget(item);
+          return (
+            <span className="truncate text-[12px] text-text-muted" title={target}>
+              {target || '—'}
+            </span>
+          );
+        },
+      },
+      {
+        flex: 'flex-[1.5]',
+        header: '',
+        render: (_item, i) => (
+          <div className="flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => addMappingAfter(i)}
+              className="inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+              title={tr('fieldMappingAdd', '添加映射')}
+              aria-label={tr('fieldMappingAdd', '添加映射')}
+              disabled={!canAdd}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => copyMapping(i)}
+              className="inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+              title={tr('fieldMappingCopy', '复制行')}
+              aria-label={tr('fieldMappingCopy', '复制行')}
+              disabled={!canAdd}
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => removeMapping(i)}
+              className="inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:text-error hover:bg-error/10"
+              title={tr('fieldMappingRemove', '删除映射')}
+              aria-label={tr('fieldMappingRemove', '删除映射')}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ),
+      },
+    ],
+    [
+      fieldCompletions,
+      usedFields,
+      tr,
+      updateMapping,
+      canAdd,
+      addMappingAfter,
+      copyMapping,
+      removeMapping,
+      targetModeOptions,
+    ]
+  );
 
   return (
-    <div className="grid content-start gap-2.5">
-      <GlassFormSection title={tr('fieldMappingTitle', '字段映射')}>
-        <GlassListEditor
-          items={mappings}
-          renderRow={(item, _index, onChange) => {
-            const err = getTargetError(item);
-            return (
-              <div className="grid gap-1">
-                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5">
-                  <select
-                    value={item.source}
-                    onChange={(e) => onChange({ ...item, source: e.target.value })}
-                    className="h-7 rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent"
-                  >
-                    <option value="" disabled>
-                      {tr('fieldMappingSourceField', '源字段')}
-                    </option>
-                    {fieldCompletions.map((col) => (
-                      <option key={col} value={col}>
-                        {col}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-center text-[11px] text-text-muted">→</span>
-                  <input
-                    value={item.target}
-                    onChange={(e) => onChange({ ...item, target: e.target.value })}
-                    placeholder={tr('fieldMappingTargetPlaceholder', '目标字段名')}
-                    className={`h-7 w-full rounded-md border bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent placeholder:text-text-muted ${
-                      err ? 'border-warning/70 ring-1 ring-warning/10' : 'border-border-muted'
-                    }`}
-                  />
-                </div>
-                {err && <div className="text-[11px] text-warning">{err}</div>}
-              </div>
-            );
-          }}
-          createDefault={createDefault}
-          onChange={handleMappingsChange}
-          getKey={(item) => item.id}
-          addLabel={tr('fieldMappingAdd', '添加映射')}
-          emptyText={tr('fieldMappingEmpty', '暂无字段映射')}
-        />
-      </GlassFormSection>
+    <div className="flex h-full overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
+          <GlassRowList
+            items={activeMappings}
+            columns={columns}
+            onAdd={addMappingAfter}
+            onRemove={removeMapping}
+            addTitle={tr('fieldMappingAdd', '添加映射')}
+            removeTitle={tr('fieldMappingRemove', '删除映射')}
+            draggable
+            hideActions
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+            getRowOpacity={(i) => !!(sortedMappings && dragIndexRef.current === i)}
+            dragTitle={tr('dragToReorder', '拖拽排序')}
+          />
+        </div>
+      </div>
     </div>
   );
 }

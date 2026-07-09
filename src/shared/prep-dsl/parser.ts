@@ -12,6 +12,7 @@ import type {
 import { DATA_FIELD_TYPES, isDataFieldType } from '../data-field-types';
 import { createPrepDiagnostic } from './diagnostics';
 import { prepDslLexer, tokenizePrepDsl } from './tokens';
+import { tokenizeExpression } from '../expression-tokenizer';
 
 const OPERATOR_LABELS: Record<PrepOperatorType, string> = {
   input_source: 'input_source',
@@ -48,11 +49,8 @@ interface Clause {
   value: string;
 }
 
-const FIELD_REF_TOKEN_PATTERN = '(?:\\[`(?:[^`\\\\]|\\\\.)*`\\]|\\[[\\p{L}_][\\p{L}\\p{N}_]*\\])';
-const FIELD_REF_PATTERN = new RegExp(
-  `^(${FIELD_REF_TOKEN_PATTERN})(?:\\.(${FIELD_REF_TOKEN_PATTERN}))?`,
-  'u'
-);
+const FIELD_REF_REGEX = '\\[[^\\]]*\\]';
+const FIELD_REF_QUALIFIED_REGEX = `${FIELD_REF_REGEX}(?:\\.${FIELD_REF_REGEX})?`;
 
 export function parsePrepDsl(input: string): PrepParseResult {
   const diagnostics = collectInitialDiagnostics(input);
@@ -190,11 +188,6 @@ function parseOperator(
     return makeOperator('field_select', text, {
       mode: 'include',
       columns: parseFieldRefs(text.slice(7)).map(toFieldName),
-    });
-  if (text.startsWith('drop '))
-    return makeOperator('field_select', text, {
-      mode: 'exclude',
-      columns: parseFieldRefs(text.slice(5)).map(toFieldName),
     });
   if (text.startsWith('map ') || text.startsWith('rename '))
     return parseMapping(command, diagnostics);
@@ -495,10 +488,7 @@ function parseCast(command: CommandLine, diagnostics: PrepDiagnostic[]): PrepOpe
       {
         column: field ? toFieldName(field) : match[1].trim(),
         type: targetType,
-        format: pickQuotedOption(rest, 'format'),
         onError: pickWordOption(rest, 'on_error') ?? 'null',
-        locale: pickQuotedOption(rest, 'locale'),
-        timezone: pickQuotedOption(rest, 'timezone'),
       },
     ];
   });
@@ -600,11 +590,10 @@ function parseSetOp(text: string): PrepOperatorAst {
 }
 
 function parseUnnest(text: string): PrepOperatorAst {
-  const fieldPattern = `${FIELD_REF_TOKEN_PATTERN}(?:\\.${FIELD_REF_TOKEN_PATTERN})?`;
   const isJson = text.startsWith('explode json ');
   if (isJson) {
     const match = new RegExp(
-      `^explode\\s+json\\s+(${fieldPattern})\\s+path\\s+("(?:[^"\\\\]|\\\\.)*")\\s+as\\s+(${fieldPattern})(.*)$`,
+      `^explode\\s+json\\s+(${FIELD_REF_QUALIFIED_REGEX})\\s+path\\s+("(?:[^"\\\\]|\\\\.)*")\\s+as\\s+(${FIELD_REF_QUALIFIED_REGEX})(.*)$`,
       'u'
     ).exec(text);
     const column = match ? parseFieldRef(match[1].trim()) : null;
@@ -618,7 +607,7 @@ function parseUnnest(text: string): PrepOperatorAst {
     });
   }
   const match = new RegExp(
-    `^(unnest|explode)\\s+(${fieldPattern})\\s+as\\s+(${fieldPattern})(.*)$`,
+    `^(unnest|explode)\\s+(${FIELD_REF_QUALIFIED_REGEX})\\s+as\\s+(${FIELD_REF_QUALIFIED_REGEX})(.*)$`,
     'u'
   ).exec(text);
   const column = match ? parseFieldRef(match[2].trim()) : null;
@@ -654,9 +643,7 @@ function parseJoin(command: CommandLine, diagnostics: PrepDiagnostic[]): PrepOpe
     return parseAsofJoin(command, diagnostics);
   }
   const match =
-    /^join\s+(inner|left|right|full|cross|semi|anti)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?(.*)$/s.exec(
-      text
-    );
+    /^join\s+(inner|left|right|full|cross|semi|anti)\s+(\S+)(?:\s+as\s+(\S+))?(.*)$/s.exec(text);
   if (!match) {
     diagnostics.push({
       ...createPrepDiagnostic('invalidJoin', `Cannot parse join: ${text}`, { value: text }),
@@ -664,7 +651,7 @@ function parseJoin(command: CommandLine, diagnostics: PrepDiagnostic[]): PrepOpe
     });
     return null;
   }
-  const clauses = parseClauses(match[4] ?? '', ['on', 'keep', 'suffix', 'right_prefix', 'expect']);
+  const clauses = parseClauses(match[4] ?? '', ['on', 'keep', 'suffix', 'right_prefix']);
   const conditions = parseJoinConditions(findClause(clauses, 'on') ?? '');
   return makeOperator('join', text, {
     joinType: match[1],
@@ -672,8 +659,7 @@ function parseJoin(command: CommandLine, diagnostics: PrepDiagnostic[]): PrepOpe
     rightAlias: match[3] ?? match[2],
     conditions,
     keep: parseJoinKeep(findClause(clauses, 'keep') ?? ''),
-    cardinality: findClause(clauses, 'expect'),
-    conflict: parseJoinConflict(clauses, match[3] ?? match[2]),
+    conflict: parseJoinConflict(clauses),
   });
 }
 
@@ -682,8 +668,7 @@ function parseAsofJoin(
   diagnostics: PrepDiagnostic[]
 ): PrepOperatorAst | null {
   const text = command.text;
-  const match =
-    /^join\s+asof\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?(.*)$/s.exec(text);
+  const match = /^join\s+asof\s+(\S+)(?:\s+as\s+(\S+))?(.*)$/s.exec(text);
   if (!match) {
     diagnostics.push({
       ...createPrepDiagnostic('invalidAsofJoin', `Cannot parse asof join: ${text}`, {
@@ -701,7 +686,6 @@ function parseAsofJoin(
     'keep',
     'suffix',
     'right_prefix',
-    'expect',
   ]);
   const asof = parseAsofClause(
     findClause(clauses, 'on') ?? '',
@@ -715,8 +699,7 @@ function parseAsofJoin(
     rightAlias: match[2] ?? match[1],
     asof,
     keep: parseJoinKeep(findClause(clauses, 'keep') ?? ''),
-    cardinality: findClause(clauses, 'expect'),
-    conflict: parseJoinConflict(clauses, match[2] ?? match[1]),
+    conflict: parseJoinConflict(clauses),
   });
 }
 
@@ -747,11 +730,12 @@ function parseAsofClause(
 function parseJoinConditions(value: string): PrepJoinCondition[] {
   if (!value) return [];
   return value.split(/\s+and\s+/).flatMap((part) => {
-    const match = /^(.+?)\s*=\s*(.+)$/.exec(part.trim());
+    const match = /^(.+?)\s*(>=|<=|!=|<>|>|=|<)\s*(.+)$/.exec(part.trim());
     const left = match ? parseFieldRef(match[1].trim()) : null;
-    const right = match ? parseFieldRef(match[2].trim()) : null;
+    const op = match ? (match[2] === '<>' ? '!=' : match[2]) : '=';
+    const right = match ? parseFieldRef(match[3].trim()) : null;
     return left && right
-      ? [{ left: toQualifiedName(left), operator: '=', right: toQualifiedName(right) }]
+      ? [{ left: toQualifiedName(left), operator: op, right: toQualifiedName(right) }]
       : [];
   });
 }
@@ -771,7 +755,7 @@ function parseJoinKeep(value: string): unknown[] | undefined {
   });
 }
 
-function parseJoinConflict(clauses: Clause[], rightAlias: string): Record<string, string> {
+function parseJoinConflict(clauses: Clause[]): Record<string, string> {
   const rightPrefix = findClause(clauses, 'right_prefix');
   const suffix = findClause(clauses, 'suffix');
   if (rightPrefix) {
@@ -785,7 +769,7 @@ function parseJoinConflict(clauses: Clause[], rightAlias: string): Record<string
       rightSuffix: unquoteMaybe(parts[1] ?? '_right'),
     };
   }
-  return { strategy: 'right_prefix', rightPrefix: `${rightAlias}_` };
+  return { strategy: 'suffix', leftSuffix: '_left', rightSuffix: '_right' };
 }
 
 function parseMetricList(value: string, requireAlias: boolean): Array<Record<string, unknown>> {
@@ -828,14 +812,17 @@ function parseUnnestOptions(value: string): Record<string, unknown> {
 
 function collectInitialDiagnostics(input: string): PrepDiagnostic[] {
   const diagnostics = tokenizePrepDsl(input).diagnostics;
-  const invalidQualified = input.match(/\[[^\][]+\.[^\][]+\]/g) ?? [];
-  for (const match of invalidQualified) {
-    diagnostics.push({
-      severity: 'error',
-      code: 'invalidQualifiedField',
-      message: `Invalid field reference ${match}; use [table_name].[field_name]`,
-      params: { value: match },
-    });
+  const refs = input.match(/\[[^\]]+\]/g) ?? [];
+  for (const ref of refs) {
+    const inner = ref.slice(1, -1);
+    if (inner.includes('.') && !inner.startsWith('`')) {
+      diagnostics.push({
+        severity: 'error',
+        code: 'invalidQualifiedField',
+        message: `Invalid field reference ${ref}; use [table_name].[field_name]`,
+        params: { value: ref },
+      });
+    }
   }
   return diagnostics;
 }
@@ -928,16 +915,36 @@ function parseFieldRefs(value: string): PrepFieldRef[] {
   });
 }
 
-function parseFieldRef(value: string): PrepFieldRef | null {
-  const match = FIELD_REF_PATTERN.exec(value.trim());
-  if (!match) return null;
-  const sourceOrName = unwrapFieldName(match[1]);
-  const field = match[2] ? unwrapFieldName(match[2]) : undefined;
-  return {
-    raw: match[0],
-    source: field ? sourceOrName : undefined,
-    name: field ?? sourceOrName,
-  };
+export function parseFieldRef(value: string): PrepFieldRef | null {
+  try {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const tokens = tokenizeExpression(trimmed);
+    let idx = 0;
+
+    if (tokens[idx]?.type === 'FieldRef') {
+      const raw = tokens[idx].value;
+      idx++;
+
+      if (tokens[idx]?.type === 'Dot' && tokens[idx + 1]?.type === 'FieldRef') {
+        return {
+          raw: `${raw}.${tokens[idx + 1].value}`,
+          source: unwrapFieldName(raw),
+          name: unwrapFieldName(tokens[idx + 1].value),
+        };
+      }
+
+      return {
+        raw,
+        source: undefined,
+        name: unwrapFieldName(raw),
+      };
+    }
+  } catch {
+    // Tokenization error - not a valid field reference
+  }
+
+  return null;
 }
 
 function parseSortKeys(value: string): Array<Record<string, string>> {
@@ -1024,15 +1031,15 @@ function sourceAlias(source: PrepOperatorAst): string | undefined {
   return typeof alias === 'string' ? alias : undefined;
 }
 
-function toFieldName(field: PrepFieldRef): string {
+export function toFieldName(field: PrepFieldRef): string {
   return field.name;
 }
 
-function toQualifiedName(field: PrepFieldRef): string {
+export function toQualifiedName(field: PrepFieldRef): string {
   return field.source ? `${field.source}.${field.name}` : field.name;
 }
 
-function unwrapFieldName(value: string): string {
+export function unwrapFieldName(value: string): string {
   const inner = value.slice(1, -1);
   return inner.startsWith('`') && inner.endsWith('`')
     ? inner.slice(1, -1).replace(/\\`/g, '`')
@@ -1046,11 +1053,6 @@ function unquote(value: string): string {
 function unquoteMaybe(value: string): string {
   const trimmed = value.trim();
   return trimmed.startsWith('"') && trimmed.endsWith('"') ? unquote(trimmed) : trimmed;
-}
-
-function pickQuotedOption(value: string, key: string): string | undefined {
-  const match = new RegExp(`\\s${key}\\s+("(?:[^"\\\\]|\\\\.)*")`).exec(value);
-  return match ? unquote(match[1]) : undefined;
 }
 
 function pickWordOption(value: string, key: string): string | undefined {
