@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search } from 'lucide-react';
 import { dataFieldTypeLabel } from '@/shared/data-field-types';
@@ -11,7 +11,7 @@ interface GlassColumnSelectorProps {
   columnTypes?: Record<string, string>;
 }
 
-export function GlassColumnSelector({
+export const GlassColumnSelector = memo(function GlassColumnSelector({
   columns,
   selected,
   onChange,
@@ -181,4 +181,4 @@ export function GlassColumnSelector({
       </div>
     </div>
   );
-}
+});
