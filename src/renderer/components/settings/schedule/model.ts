@@ -565,6 +565,19 @@ export function normalizeDraftTrigger(
       timezone,
     };
   }
+  if (mode === 'monthly') {
+    const includeLastDay = trigger.kind === 'monthly' ? trigger.includeLastDay === true : false;
+    return {
+      kind: 'monthly',
+      daysOfMonth:
+        trigger.kind === 'monthly' && (trigger.daysOfMonth.length || includeLastDay)
+          ? trigger.daysOfMonth
+          : [1],
+      includeLastDay,
+      times: trigger.kind === 'monthly' && trigger.times.length ? trigger.times : [DEFAULT_TIME],
+      timezone,
+    };
+  }
   return {
     kind: 'once',
     runAt: trigger.kind === 'once' ? trigger.runAt : Date.now() + 5 * 60 * 1000,

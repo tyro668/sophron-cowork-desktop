@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { DayPicker } from '@daypicker/react';
+import { DayPicker, type NavProps, useDayPicker } from '@daypicker/react';
 import { enUS, zhCN } from '@daypicker/react/locale';
-import { CalendarClock, Check, ChevronDown, Clock } from 'lucide-react';
+import {
+  CalendarClock,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Clock,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { GlassDropdownMenu, glassTriggerButtonClass } from './GlassDropdownMenu';
 import { GlassTimePickerColumns } from './GlassTimePicker';
@@ -33,15 +42,95 @@ function applyTimePart(currentTimestamp: number, timeValue: string): number {
   return next.getTime();
 }
 
+function startOfLocalDay(timestamp: number): Date {
+  const date = new Date(timestamp);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function clampToMinValue(timestamp: number, minValue?: number): number {
+  return minValue !== undefined && timestamp < minValue ? minValue : timestamp;
+}
+
+function addCalendarYears(date: Date, amount: number): Date {
+  return new Date(date.getFullYear() + amount, date.getMonth(), 1);
+}
+
 const DROPDOWN_COLLISION_PADDING = 12;
 const DATE_PICKER_SIDE_OFFSET = 4;
 // Includes the calendar, footer controls, and the time columns opened below the footer.
 const EXPANDED_PICKER_HEIGHT = 620;
+const NAV_BUTTON_CLASS =
+  'inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary disabled:pointer-events-none disabled:opacity-30';
+
+function GlassDatePickerNav({
+  className,
+  previousMonth,
+  nextMonth,
+  onPreviousClick,
+  onNextClick,
+  ...props
+}: NavProps) {
+  const { months, goToMonth } = useDayPicker();
+  const currentMonth = months[0]?.date;
+
+  const goToYear = (amount: number) => {
+    if (currentMonth) {
+      goToMonth(addCalendarYears(currentMonth, amount));
+    }
+  };
+
+  return (
+    <nav {...props} className={className}>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          aria-label="Previous year"
+          disabled={!currentMonth}
+          className={NAV_BUTTON_CLASS}
+          onClick={() => goToYear(-1)}
+        >
+          <ChevronsLeft className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          aria-label="Previous month"
+          disabled={!previousMonth}
+          className={NAV_BUTTON_CLASS}
+          onClick={onPreviousClick}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          aria-label="Next month"
+          disabled={!nextMonth}
+          className={NAV_BUTTON_CLASS}
+          onClick={onNextClick}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          aria-label="Next year"
+          disabled={!currentMonth}
+          className={NAV_BUTTON_CLASS}
+          onClick={() => goToYear(1)}
+        >
+          <ChevronsRight className="h-4 w-4" />
+        </button>
+      </div>
+    </nav>
+  );
+}
 
 interface GlassDateTimePickerProps {
   value: number;
   onChange: (value: number) => void;
   disabled?: boolean;
+  minValue?: number;
   className?: string;
   triggerClassName?: string;
 }
@@ -50,6 +139,7 @@ export function GlassDateTimePicker({
   value,
   onChange,
   disabled = false,
+  minValue,
   className,
   triggerClassName,
 }: GlassDateTimePickerProps) {
@@ -79,7 +169,7 @@ export function GlassDateTimePicker({
   );
 
   const handleToday = () => {
-    onChange(Date.now());
+    onChange(clampToMinValue(Date.now(), minValue));
   };
 
   const updatePickerSide = () => {
@@ -140,13 +230,19 @@ export function GlassDateTimePicker({
           mode="single"
           selected={selectedDate}
           month={displayMonth}
+          fixedWeeks
+          showOutsideDays
           onMonthChange={setDisplayMonth}
           onSelect={(date) => {
             if (date) {
-              onChange(applyDatePart(value, date));
+              onChange(clampToMinValue(applyDatePart(value, date), minValue));
             }
           }}
+          disabled={minValue === undefined ? undefined : { before: startOfLocalDay(minValue) }}
           locale={dateLocale}
+          components={{
+            Nav: GlassDatePickerNav,
+          }}
           classNames={{
             root: 'w-full select-none text-[13px] text-text-secondary',
             months: 'flex flex-col',
@@ -158,11 +254,11 @@ export function GlassDateTimePicker({
               'inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary',
             button_next:
               'inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary',
-            month_grid: 'w-full border-separate border-spacing-y-1',
+            month_grid: 'w-full table-fixed border-separate border-spacing-y-1',
             weekdays: '',
             weekday: 'h-7 text-center text-[11px] font-medium text-text-muted',
-            week: '',
-            day: 'p-0 text-center align-middle',
+            week: 'h-9',
+            day: 'h-8 w-8 p-0 text-center align-middle',
             day_button:
               'mx-auto flex h-8 w-8 items-center justify-center rounded-lg text-[12px] font-medium text-text-secondary transition-colors hover:bg-accent/10 hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent/20',
             selected: '[&>button]:bg-success [&>button]:text-white [&>button]:shadow-soft',
@@ -191,7 +287,9 @@ export function GlassDateTimePicker({
               <div className="absolute left-0 top-full z-10 mt-1 w-32 rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] p-2 shadow-elevated backdrop-blur-xl">
                 <GlassTimePickerColumns
                   value={getTimeValue(selectedDate)}
-                  onChange={(time) => onChange(applyTimePart(value, time))}
+                  onChange={(time) =>
+                    onChange(clampToMinValue(applyTimePart(value, time), minValue))
+                  }
                 />
               </div>
             )}

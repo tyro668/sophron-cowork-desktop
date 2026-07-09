@@ -351,6 +351,25 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       setBanner({ tone: 'error', text: tr('schedule.weekdayRequired', '请至少选择一个执行星期') });
       return;
     }
+    if (
+      normalizedTrigger.kind === 'monthly' &&
+      normalizedTrigger.daysOfMonth.length === 0 &&
+      !normalizedTrigger.includeLastDay
+    ) {
+      setBanner({ tone: 'error', text: tr('schedule.monthDayRequired', '请至少选择一个执行日期') });
+      return;
+    }
+    if (
+      normalizedTrigger.kind === 'interval' &&
+      normalizedTrigger.endAt != null &&
+      normalizedTrigger.endAt <= normalizedTrigger.startAt
+    ) {
+      setBanner({
+        tone: 'error',
+        text: tr('schedule.endAtAfterStartRequired', '结束时间必须晚于开始时间'),
+      });
+      return;
+    }
     const actionValidationError = validateEnabledActionNodes(draft, tr);
     if (actionValidationError) {
       setBanner({ tone: 'error', text: actionValidationError });

@@ -11,6 +11,7 @@ import {
   AlertCircle,
   ArrowLeft,
   CalendarClock,
+  ChevronDown,
   Clock,
   Cloud,
   Database,
@@ -25,6 +26,7 @@ import {
   Trash2,
   UploadCloud,
   Wand2,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 import type {
@@ -80,6 +82,8 @@ import {
   parseCloudAutomationConfig,
   relinkLinearGraph,
 } from './model';
+
+const DEFAULT_INTERVAL_END_OFFSET_MS = 24 * 60 * 60 * 1000;
 
 export function EditorHeader({
   selectedAutomation,
@@ -412,6 +416,7 @@ const WEEKDAY_SHORT_FALLBACK: Record<number, string> = {
   5: '五',
   6: '六',
 };
+const MONTH_DAYS = Array.from({ length: 31 }, (_, index) => index + 1);
 
 function WeekdayPicker({
   value,
@@ -454,6 +459,153 @@ function WeekdayPicker({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function MonthlyDayPicker({
+  daysOfMonth,
+  includeLastDay = false,
+  onChange,
+  tr,
+}: {
+  daysOfMonth: number[];
+  includeLastDay?: boolean;
+  onChange: (next: { daysOfMonth: number[]; includeLastDay: boolean }) => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = new Set(daysOfMonth ?? []);
+  const emit = (nextDays: Set<number>, nextIncludeLastDay: boolean) => {
+    onChange({
+      daysOfMonth: MONTH_DAYS.filter((day) => nextDays.has(day)),
+      includeLastDay: nextIncludeLastDay,
+    });
+  };
+  const toggleDay = (day: number) => {
+    const next = new Set(selected);
+    if (next.has(day)) {
+      next.delete(day);
+      if (next.size === 0 && !includeLastDay) return;
+    } else {
+      next.add(day);
+    }
+    emit(next, includeLastDay);
+  };
+  const toggleLastDay = () => {
+    if (includeLastDay && selected.size === 0) return;
+    emit(selected, !includeLastDay);
+  };
+  const selectedTags = [
+    ...MONTH_DAYS.filter((day) => selected.has(day)).map((day) => ({
+      key: `day-${day}`,
+      label: tr('schedule.monthDayNumber', '{{day}}').replace('{{day}}', String(day)),
+      onRemove: () => toggleDay(day),
+    })),
+    ...(includeLastDay
+      ? [
+          {
+            key: 'last-day',
+            label: tr('schedule.monthLastDayShort', '最后一天'),
+            onRemove: toggleLastDay,
+          },
+        ]
+      : []),
+  ];
+
+  return (
+    <div className="space-y-2">
+      <GlassDropdownMenu
+        open={open}
+        onOpenChange={setOpen}
+        align="start"
+        contentClassName="w-[var(--radix-dropdown-menu-trigger-width)] !overflow-visible p-2.5"
+        trigger={
+          <button
+            type="button"
+            className="inline-flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-border-muted bg-background/42 px-2.5 text-left text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors hover:border-accent/25 hover:bg-surface-hover focus:border-accent focus:ring-2 focus:ring-accent/20"
+          >
+            <span className="flex min-w-0 flex-1 items-center gap-1.5">
+              {selectedTags.length > 0 ? (
+                selectedTags.slice(0, 4).map((tag) => (
+                  <span
+                    key={tag.key}
+                    className="inline-flex h-5 max-w-[5.25rem] items-center gap-1 rounded-md bg-success/10 px-1.5 text-[11px] font-semibold text-success"
+                  >
+                    <span className="truncate">{tag.label}</span>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      aria-label={tr('schedule.removeMonthDay', '移除执行日期')}
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                      }}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        tag.onRemove();
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        tag.onRemove();
+                      }}
+                      className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-success/70 transition-colors hover:bg-success/10 hover:text-success"
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </span>
+                  </span>
+                ))
+              ) : (
+                <span className="text-text-muted">
+                  {tr('schedule.monthDayPlaceholder', '请选择执行日期')}
+                </span>
+              )}
+              {selectedTags.length > 4 && (
+                <span className="inline-flex h-5 items-center rounded-md bg-background/62 px-1.5 text-[11px] text-text-muted">
+                  +{selectedTags.length - 4}
+                </span>
+              )}
+            </span>
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+          </button>
+        }
+      >
+        <div className="grid grid-cols-7 gap-1">
+          {MONTH_DAYS.map((day) => {
+            const active = selected.has(day);
+            return (
+              <button
+                key={day}
+                type="button"
+                aria-pressed={active}
+                onClick={() => toggleDay(day)}
+                className={`inline-flex h-8 min-w-0 items-center justify-center rounded-md border text-[12px] font-semibold transition-colors ${
+                  active
+                    ? 'border-success bg-success/12 text-success shadow-soft'
+                    : 'border-border-muted bg-background/42 text-text-secondary hover:border-accent/25 hover:bg-accent/10 hover:text-accent'
+                }`}
+              >
+                {tr('schedule.monthDayNumber', '{{day}}').replace('{{day}}', String(day))}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            aria-pressed={includeLastDay}
+            onClick={toggleLastDay}
+            className={`col-span-7 mt-1 inline-flex h-8 items-center justify-center rounded-md border px-2 text-[12px] font-semibold transition-colors ${
+              includeLastDay
+                ? 'border-success bg-success/12 text-success shadow-soft'
+                : 'border-border-muted bg-background/42 text-text-secondary hover:border-accent/25 hover:bg-accent/10 hover:text-accent'
+            }`}
+          >
+            {tr('schedule.monthLastDay', '每月最后一天')}
+          </button>
+        </div>
+      </GlassDropdownMenu>
     </div>
   );
 }
@@ -540,13 +692,14 @@ function ScheduledConfigCard({
             }
           />
         </ConfigRow>
-        {(mode === 'daily' || mode === 'weekly') && (
+        {(mode === 'daily' || mode === 'weekly' || mode === 'monthly') && (
           <ConfigRow label={tr('schedule.repeat', '重复')}>
             <GlassSelect
               value={mode}
               options={[
                 { value: 'daily', label: tr('schedule.modeDaily', '每天') },
                 { value: 'weekly', label: tr('schedule.modeWeekly', '每周') },
+                { value: 'monthly', label: tr('schedule.modeMonthly', '每月') },
               ]}
               onValueChange={(value: string) => onModeChange(value as TriggerMode)}
               triggerClassName="h-9 w-full justify-between"
@@ -598,6 +751,25 @@ function ScheduledConfigCard({
             </ConfigRow>
           </>
         )}
+        {trigger.kind === 'monthly' && (
+          <>
+            <ConfigRow label={tr('schedule.monthDay', '执行日期')}>
+              <MonthlyDayPicker
+                daysOfMonth={trigger.daysOfMonth}
+                includeLastDay={trigger.includeLastDay}
+                onChange={(next) => onChange({ ...trigger, ...next })}
+                tr={tr}
+              />
+            </ConfigRow>
+            <ConfigRow label={tr('schedule.executionTime', '执行时间')}>
+              <TimesEditor
+                times={trigger.times}
+                onChange={(times) => onChange({ ...trigger, times })}
+                tr={tr}
+              />
+            </ConfigRow>
+          </>
+        )}
         {trigger.kind === 'interval' && (
           <>
             <ConfigRow label={tr('schedule.every', '每')}>
@@ -633,35 +805,40 @@ function ScheduledConfigCard({
             <ConfigRow label={tr('schedule.startAt', '开始')}>
               <GlassDateTimePicker
                 value={trigger.startAt}
-                onChange={(startAt) => onChange({ ...trigger, startAt })}
+                onChange={(startAt) =>
+                  onChange({
+                    ...trigger,
+                    startAt,
+                    endAt:
+                      trigger.endAt != null && trigger.endAt <= startAt
+                        ? startAt + DEFAULT_INTERVAL_END_OFFSET_MS
+                        : trigger.endAt,
+                  })
+                }
               />
             </ConfigRow>
             <ConfigRow label={tr('schedule.endAtLabel', '结束')}>
               {trigger.endAt == null ? (
                 <button
                   type="button"
-                  onClick={() => onChange({ ...trigger, endAt: trigger.startAt + 86400000 })}
+                  onClick={() =>
+                    onChange({
+                      ...trigger,
+                      endAt: trigger.startAt + DEFAULT_INTERVAL_END_OFFSET_MS,
+                    })
+                  }
                   className="inline-flex h-9 items-center gap-1 self-start rounded-lg border border-dashed border-border-muted px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   {tr('schedule.setEndAt', '设置结束时间')}
                 </button>
               ) : (
-                <div className="flex items-center gap-1.5">
-                  <GlassDateTimePicker
-                    value={trigger.endAt}
-                    onChange={(endAt) => onChange({ ...trigger, endAt })}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => onChange({ ...trigger, endAt: null })}
-                    title={tr('schedule.clearEndAt', '清除结束时间')}
-                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border-muted text-text-muted transition-colors hover:border-error/30 hover:bg-error/10 hover:text-error"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    <span className="sr-only">{tr('schedule.clearEndAt', '清除结束时间')}</span>
-                  </button>
-                </div>
+                <GlassDateTimePicker
+                  value={trigger.endAt}
+                  minValue={trigger.startAt + 1}
+                  triggerClassName="w-full"
+                  onChange={(endAt) => onChange({ ...trigger, endAt })}
+                />
               )}
             </ConfigRow>
           </>

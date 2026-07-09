@@ -17,6 +17,7 @@ export type AutomationTrigger =
   | AutomationTriggerInterval
   | AutomationTriggerDaily
   | AutomationTriggerWeekly
+  | AutomationTriggerMonthly
   | AutomationTriggerCron
   | AutomationTriggerFileChange;
 
@@ -51,6 +52,16 @@ export interface AutomationTriggerDaily {
 export interface AutomationTriggerWeekly {
   kind: 'weekly';
   weekdays: Array<0 | 1 | 2 | 3 | 4 | 5 | 6>;
+  times: string[];
+  startAt?: number | null;
+  endAt?: number | null;
+  timezone: string;
+}
+
+export interface AutomationTriggerMonthly {
+  kind: 'monthly';
+  daysOfMonth: number[];
+  includeLastDay?: boolean;
   times: string[];
   startAt?: number | null;
   endAt?: number | null;

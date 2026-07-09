@@ -205,7 +205,14 @@ export interface WeeklyScheduleConfig {
   times: string[];
 }
 
-export type ScheduleConfig = DailyScheduleConfig | WeeklyScheduleConfig;
+export interface MonthlyScheduleConfig {
+  kind: 'monthly';
+  daysOfMonth: number[];
+  includeLastDay?: boolean;
+  times: string[];
+}
+
+export type ScheduleConfig = DailyScheduleConfig | WeeklyScheduleConfig | MonthlyScheduleConfig;
 
 export type ScheduleAutomationActionKind = 'conversation' | 'data_task';
 export type ScheduleAutomationArtifactPolicy = 'summary' | 'links' | 'files';

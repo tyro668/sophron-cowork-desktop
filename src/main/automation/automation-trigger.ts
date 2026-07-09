@@ -5,6 +5,7 @@ import type {
   AutomationTriggerFileChange,
   AutomationTriggerInterval,
   AutomationTriggerManual,
+  AutomationTriggerMonthly,
   AutomationTriggerOnce,
   AutomationTriggerWeekly,
 } from '../../shared/automation/types';
@@ -23,6 +24,9 @@ export function normalizeAutomationTrigger(trigger: AutomationTrigger): Automati
   }
   if (trigger.kind === 'weekly') {
     return normalizeWeeklyTrigger(trigger);
+  }
+  if (trigger.kind === 'monthly') {
+    return normalizeMonthlyTrigger(trigger);
   }
   if (trigger.kind === 'cron') {
     return normalizeCronTrigger(trigger);
@@ -58,6 +62,9 @@ export function computeNextAutomationRunAt(
       trigger.endAt
     );
   }
+  if (trigger.kind === 'monthly') {
+    return findNextMonthlySlot(now, trigger);
+  }
   if (trigger.kind === 'file_change') {
     return null;
   }
@@ -85,15 +92,20 @@ function normalizeIntervalTrigger(trigger: AutomationTriggerInterval): Automatio
     trigger.unit === 'minute' || trigger.unit === 'hour' || trigger.unit === 'day'
       ? trigger.unit
       : 'day';
+  const startAt = normalizeTimestamp(trigger.startAt, Date.now());
+  const endAt =
+    trigger.endAt === null || trigger.endAt === undefined
+      ? null
+      : normalizeTimestamp(trigger.endAt, 0);
+  if (endAt !== null && endAt <= startAt) {
+    throw new Error('Interval schedule end time must be later than start time.');
+  }
   return {
     kind: 'interval',
     every,
     unit,
-    startAt: normalizeTimestamp(trigger.startAt, Date.now()),
-    endAt:
-      trigger.endAt === null || trigger.endAt === undefined
-        ? null
-        : normalizeTimestamp(trigger.endAt, 0),
+    startAt,
+    endAt,
     timezone: normalizeTimezone(trigger.timezone),
   };
 }
@@ -112,6 +124,18 @@ function normalizeWeeklyTrigger(trigger: AutomationTriggerWeekly): AutomationTri
   return {
     kind: 'weekly',
     weekdays: normalizeWeekdays(trigger.weekdays),
+    times: normalizeTimes(trigger.times),
+    startAt: normalizeOptionalTimestamp(trigger.startAt),
+    endAt: normalizeOptionalTimestamp(trigger.endAt),
+    timezone: normalizeTimezone(trigger.timezone),
+  };
+}
+
+function normalizeMonthlyTrigger(trigger: AutomationTriggerMonthly): AutomationTriggerMonthly {
+  return {
+    kind: 'monthly',
+    daysOfMonth: normalizeDaysOfMonth(trigger.daysOfMonth),
+    includeLastDay: trigger.includeLastDay === true,
     times: normalizeTimes(trigger.times),
     startAt: normalizeOptionalTimestamp(trigger.startAt),
     endAt: normalizeOptionalTimestamp(trigger.endAt),
@@ -211,6 +235,51 @@ function findNextScheduledSlot(
   return null;
 }
 
+function findNextMonthlySlot(now: number, trigger: AutomationTriggerMonthly): number | null {
+  const normalized = normalizeMonthlyTrigger(trigger);
+  if (normalized.times.length === 0) return null;
+  if (normalized.daysOfMonth.length === 0 && !normalized.includeLastDay) return null;
+
+  const nowDate = new Date(Math.max(now, normalized.startAt ?? now));
+  const startMonth = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1, 0, 0, 0, 0);
+
+  for (let monthOffset = 0; monthOffset <= 24; monthOffset += 1) {
+    const monthDate = new Date(
+      startMonth.getFullYear(),
+      startMonth.getMonth() + monthOffset,
+      1,
+      0,
+      0,
+      0,
+      0
+    );
+    const lastDay = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+    const candidateDays = new Set(normalized.daysOfMonth.filter((day) => day <= lastDay));
+    if (normalized.includeLastDay) {
+      candidateDays.add(lastDay);
+    }
+
+    for (const day of Array.from(candidateDays).sort((left, right) => left - right)) {
+      for (const time of normalized.times) {
+        const [hour, minute] = time.split(':').map(Number);
+        const candidate = new Date(
+          monthDate.getFullYear(),
+          monthDate.getMonth(),
+          day,
+          hour,
+          minute,
+          0,
+          0
+        ).getTime();
+        if (candidate > now && candidate >= (normalized.startAt ?? 0)) {
+          return withinEnd(candidate, normalized.endAt);
+        }
+      }
+    }
+  }
+  return null;
+}
+
 function computeNextCronRunAt(trigger: AutomationTriggerCron, now: number): number | null {
   // Minimal cron support for the first implementation: five fields with minute/hour
   // lists or wildcards. More expressive cron can be swapped in without changing storage.
@@ -295,6 +364,13 @@ function normalizeWeekdays(days: number[]): Array<0 | 1 | 2 | 3 | 4 | 5 | 6> {
         (day): day is 0 | 1 | 2 | 3 | 4 | 5 | 6 => Number.isInteger(day) && day >= 0 && day <= 6
       )
     )
+  ).sort((left, right) => left - right);
+}
+
+function normalizeDaysOfMonth(days: number[]): number[] {
+  if (!Array.isArray(days)) return [];
+  return Array.from(
+    new Set(days.filter((day) => Number.isInteger(day) && day >= 1 && day <= 31))
   ).sort((left, right) => left - right);
 }
 

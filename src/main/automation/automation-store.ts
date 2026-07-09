@@ -696,6 +696,7 @@ function scheduledRowToTrigger(row: ScheduledTaskRow): AutomationTrigger {
   const scheduleConfig = parseJson(row.schedule_config, null) as
     | { kind: 'daily'; times: string[] }
     | { kind: 'weekly'; weekdays: Array<0 | 1 | 2 | 3 | 4 | 5 | 6>; times: string[] }
+    | { kind: 'monthly'; daysOfMonth: number[]; includeLastDay?: boolean; times: string[] }
     | null;
   if (scheduleConfig?.kind === 'daily') {
     return { kind: 'daily', times: scheduleConfig.times, timezone: systemTimezone() };
@@ -704,6 +705,15 @@ function scheduledRowToTrigger(row: ScheduledTaskRow): AutomationTrigger {
     return {
       kind: 'weekly',
       weekdays: scheduleConfig.weekdays,
+      times: scheduleConfig.times,
+      timezone: systemTimezone(),
+    };
+  }
+  if (scheduleConfig?.kind === 'monthly') {
+    return {
+      kind: 'monthly',
+      daysOfMonth: scheduleConfig.daysOfMonth,
+      includeLastDay: scheduleConfig.includeLastDay,
       times: scheduleConfig.times,
       timezone: systemTimezone(),
     };

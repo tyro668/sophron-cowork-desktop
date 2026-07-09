@@ -41,6 +41,12 @@ const CloudConnectionProperties = {
       description: 'Optional Bearer token. If omitted, the tool exchanges apiKey for a token.',
     })
   ),
+  connectionMode: Type.Optional(
+    Type.Union([Type.Literal('account'), Type.Literal('apiKey')], {
+      description:
+        'Explicit credential mode. account uses the signed-in desktop account token only; apiKey uses the provided or saved API key only. If omitted, legacy fallback rules apply.',
+    })
+  ),
 };
 
 const CLOUD_CONNECTION_RETRY_GUIDANCE =

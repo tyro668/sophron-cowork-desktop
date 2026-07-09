@@ -3074,6 +3074,15 @@ function scheduleInputToTrigger(input: {
       timezone,
     };
   }
+  if (input.scheduleConfig?.kind === 'monthly') {
+    return {
+      kind: 'monthly',
+      daysOfMonth: input.scheduleConfig.daysOfMonth,
+      includeLastDay: input.scheduleConfig.includeLastDay,
+      times: input.scheduleConfig.times,
+      timezone,
+    };
+  }
   if (input.repeatEvery && input.repeatUnit) {
     return {
       kind: 'interval',
@@ -3182,7 +3191,14 @@ function automationToScheduledTask(automation: Automation): ScheduledTask {
             weekdays: automation.trigger.weekdays,
             times: automation.trigger.times,
           }
-        : null;
+        : automation.trigger.kind === 'monthly'
+          ? {
+              kind: 'monthly' as const,
+              daysOfMonth: automation.trigger.daysOfMonth,
+              includeLastDay: automation.trigger.includeLastDay,
+              times: automation.trigger.times,
+            }
+          : null;
   return {
     id: automation.id,
     title: automation.name,

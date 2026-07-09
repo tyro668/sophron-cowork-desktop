@@ -45,6 +45,7 @@ interface SelectedProject {
 
 type CloudConnection = Pick<PersonalAnalysisConfig, 'apiOrigin'> & {
   apiKey?: string;
+  connectionMode?: 'account' | 'apiKey';
 };
 
 type TableSearchScope = 'global' | 'project';
@@ -270,7 +271,6 @@ export function CloudAnalysisPanel() {
   const navigateToCloudAutomationTemplate = useAppStore(
     (state) => state.navigateToCloudAutomationTemplate
   );
-  const setAppConfig = useAppStore((state) => state.setAppConfig);
   const navigateToDataElement = useAppStore((state) => state.navigateToDataElement);
   const addCloudTablesToChat = useAppStore((state) => state.addCloudTablesToChat);
   const addCloudTablesToWelcomeChat = useAppStore((state) => state.addCloudTablesToWelcomeChat);
@@ -294,10 +294,12 @@ export function CloudAnalysisPanel() {
   const [loadingMoreTables, setLoadingMoreTables] = useState(false);
   const [tablePageInfo, setTablePageInfo] = useState(EMPTY_TABLE_PAGE_INFO);
   const [loginBusy, setLoginBusy] = useState(false);
-  const [switchingToAccount, setSwitchingToAccount] = useState(false);
   const [importingTableId, setImportingTableId] = useState<string | null>(null);
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
   const [addingToChat, setAddingToChat] = useState(false);
+  const [activeConnectionMode, setActiveConnectionMode] = useState<'account' | 'apiKey' | null>(
+    null
+  );
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [previewPage, setPreviewPage] = useState(1);
@@ -322,16 +324,28 @@ export function CloudAnalysisPanel() {
   const hasDesktopAuthConnection = Boolean(
     desktopAuthStatus.authenticated && desktopAuthStatus.apiOrigin
   );
-  const usesDesktopAuthConnection = hasDesktopAuthConnection;
-  const usesStoredConnection = !usesDesktopAuthConnection && hasStoredConnection;
+  const effectiveConnectionMode =
+    activeConnectionMode &&
+    (activeConnectionMode === 'account' ? hasDesktopAuthConnection : hasStoredConnection)
+      ? activeConnectionMode
+      : hasDesktopAuthConnection
+        ? 'account'
+        : hasStoredConnection
+          ? 'apiKey'
+          : null;
+  const usesDesktopAuthConnection = effectiveConnectionMode === 'account';
+  const usesStoredConnection = effectiveConnectionMode === 'apiKey';
   const isConnected = usesStoredConnection || usesDesktopAuthConnection;
+  const canSwitchConnectionMode = hasDesktopAuthConnection && hasStoredConnection;
   const authDisplayName =
     desktopAuthStatus.user?.displayName?.trim() ||
     desktopAuthStatus.user?.username?.trim() ||
     desktopAuthStatus.user?.userId?.trim() ||
     t('cloudData.currentAccount');
   const accessModeLabel = usesStoredConnection
-    ? t('cloudData.apiKeyMode')
+    ? desktopAuthStatus.authenticated
+      ? t('cloudData.apiKeyModeWithAccount', { account: authDisplayName })
+      : t('cloudData.apiKeyMode')
     : t('cloudData.accountMode', { account: authDisplayName });
   const connectionLabel =
     (usesDesktopAuthConnection ? desktopAuthStatus.apiOrigin : storedConnection.apiOrigin) ||
@@ -342,6 +356,7 @@ export function CloudAnalysisPanel() {
       apiOrigin:
         (usesDesktopAuthConnection ? desktopAuthStatus.apiOrigin : storedConnection.apiOrigin) ||
         '',
+      ...(effectiveConnectionMode ? { connectionMode: effectiveConnectionMode } : {}),
       ...(usesStoredConnection && storedConnection.apiKey
         ? { apiKey: storedConnection.apiKey }
         : {}),
@@ -350,10 +365,21 @@ export function CloudAnalysisPanel() {
       desktopAuthStatus.apiOrigin,
       storedConnection.apiKey,
       storedConnection.apiOrigin,
+      effectiveConnectionMode,
       usesDesktopAuthConnection,
       usesStoredConnection,
     ]
   );
+
+  useEffect(() => {
+    if (activeConnectionMode === 'account' && !hasDesktopAuthConnection) {
+      setActiveConnectionMode(hasStoredConnection ? 'apiKey' : null);
+      return;
+    }
+    if (activeConnectionMode === 'apiKey' && !hasStoredConnection) {
+      setActiveConnectionMode(hasDesktopAuthConnection ? 'account' : null);
+    }
+  }, [activeConnectionMode, hasDesktopAuthConnection, hasStoredConnection]);
 
   useEffect(() => {
     if (
@@ -474,29 +500,10 @@ export function CloudAnalysisPanel() {
     }
   }, [loginBusy, setDesktopAuthStatus, t]);
 
-  const handleSwitchToAccountAccess = useCallback(async () => {
-    if (!window.electronAPI?.config || switchingToAccount) return;
-
-    setSwitchingToAccount(true);
+  const switchConnectionMode = useCallback((mode: 'account' | 'apiKey') => {
+    setActiveConnectionMode(mode);
     setNotice(null);
-    try {
-      const result = await window.electronAPI.config.save({
-        personalAnalysis: EMPTY_PERSONAL_ANALYSIS_CONFIG,
-      });
-      setAppConfig(result.config);
-      setNotice({
-        type: 'success',
-        message: t('cloudData.switchedToAccountMode'),
-      });
-    } catch (error) {
-      setNotice({
-        type: 'error',
-        message: error instanceof Error ? error.message : t('cloudData.switchToAccountFailed'),
-      });
-    } finally {
-      setSwitchingToAccount(false);
-    }
-  }, [setAppConfig, switchingToAccount, t]);
+  }, []);
 
   const clearTableResults = useCallback(() => {
     tablesRef.current = [];
@@ -1178,15 +1185,17 @@ export function CloudAnalysisPanel() {
             </span>
           </div>
           <div className="flex flex-shrink-0 items-center gap-2">
-            {usesStoredConnection && desktopAuthStatus.authenticated && (
+            {canSwitchConnectionMode && (
               <button
                 type="button"
-                onClick={() => void handleSwitchToAccountAccess()}
-                disabled={switchingToAccount}
+                onClick={() =>
+                  switchConnectionMode(usesDesktopAuthConnection ? 'apiKey' : 'account')
+                }
                 className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted bg-background/60 px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-wait disabled:opacity-60"
               >
-                {switchingToAccount && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                {t('cloudData.switchToAccountMode')}
+                {usesDesktopAuthConnection
+                  ? t('cloudData.switchToApiKeyMode')
+                  : t('cloudData.switchToAccountMode')}
               </button>
             )}
             <button

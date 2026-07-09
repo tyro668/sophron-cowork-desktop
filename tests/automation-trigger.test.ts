@@ -42,6 +42,21 @@ describe('automation trigger calculation', () => {
     ).toBe(localTimestamp(2026, 6, 6, 9, 30));
   });
 
+  it('rejects interval schedules whose end time is not later than the start time', () => {
+    const startAt = localTimestamp(2026, 6, 6, 8, 0);
+
+    expect(() =>
+      normalizeAutomationTrigger({
+        kind: 'interval',
+        every: 1,
+        unit: 'day',
+        startAt,
+        endAt: startAt,
+        timezone: 'Asia/Shanghai',
+      })
+    ).toThrow('Interval schedule end time must be later than start time.');
+  });
+
   it('finds the next daily slot', () => {
     const now = localTimestamp(2026, 6, 6, 9, 12);
     expect(
@@ -60,6 +75,52 @@ describe('automation trigger calculation', () => {
         saturday
       )
     ).toBe(localTimestamp(2026, 6, 8, 9, 0));
+  });
+
+  it('finds the next monthly slot', () => {
+    const now = localTimestamp(2026, 6, 6, 9, 12);
+    expect(
+      computeNextAutomationRunAt(
+        {
+          kind: 'monthly',
+          daysOfMonth: [6, 15],
+          times: ['09:00', '10:00'],
+          timezone: 'Asia/Shanghai',
+        },
+        now
+      )
+    ).toBe(localTimestamp(2026, 6, 6, 10, 0));
+  });
+
+  it('skips monthly dates that do not exist in a month', () => {
+    const now = localTimestamp(2026, 2, 1, 0, 0);
+    expect(
+      computeNextAutomationRunAt(
+        {
+          kind: 'monthly',
+          daysOfMonth: [31],
+          times: ['09:00'],
+          timezone: 'Asia/Shanghai',
+        },
+        now
+      )
+    ).toBe(localTimestamp(2026, 3, 31, 9, 0));
+  });
+
+  it('supports monthly last-day schedules', () => {
+    const now = localTimestamp(2026, 2, 1, 0, 0);
+    expect(
+      computeNextAutomationRunAt(
+        {
+          kind: 'monthly',
+          daysOfMonth: [],
+          includeLastDay: true,
+          times: ['09:00'],
+          timezone: 'Asia/Shanghai',
+        },
+        now
+      )
+    ).toBe(localTimestamp(2026, 2, 28, 9, 0));
   });
 
   it('supports simple five-field cron expressions', () => {
