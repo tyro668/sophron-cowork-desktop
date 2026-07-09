@@ -60,7 +60,10 @@ export function GlassRowList<T>({
           )}
           {columns.map((col, i) => {
             const el = (
-              <span key={i} className={`${col.flex} min-w-0 text-center`}>
+              <span
+                key={i}
+                className={`flex items-center justify-center ${col.flex} min-w-0 text-center`}
+              >
                 {col.header}
               </span>
             );

@@ -41,6 +41,14 @@ export default function FormSort({
 
   const keys = useMemo<SortKey[]>(() => (node.config.keys as SortKey[]) ?? [], [node.config.keys]);
 
+  // Auto-initialize with one empty row
+  useEffect(() => {
+    if (keys.length === 0) {
+      commitKeys([{ ...DEFAULT_SORT_KEY }]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
   useEffect(() => {
     if (!taskId || !sourceNode?.id) return;
@@ -68,11 +76,6 @@ export default function FormSort({
     [updateConfig]
   );
 
-  // Ensure at least one empty row for display
-  const displayKeys = useMemo<SortKey[]>(() => {
-    return keys.length > 0 ? keys : [{ ...DEFAULT_SORT_KEY }];
-  }, [keys]);
-
   // ── Drag-to-reorder state ──
   const dragIndexRef = useRef<number | null>(null);
   const [dragKeys, setDragKeys] = useState<SortKey[] | null>(null);
@@ -80,9 +83,9 @@ export default function FormSort({
   // Sync dragKeys from config when not dragging
   useEffect(() => {
     if (dragIndexRef.current === null) setDragKeys(null);
-  }, [displayKeys]);
+  }, [keys]);
 
-  const activeKeys = dragKeys ?? displayKeys;
+  const activeKeys = dragKeys ?? keys;
 
   const updateKey = useCallback(
     (index: number, patch: Partial<SortKey>) => {
@@ -107,17 +110,19 @@ export default function FormSort({
 
   const addKeyAfter = useCallback(
     (index: number) => {
+      const hasEmpty = activeKeys.some((k) => !k.field);
+      if (hasEmpty || activeKeys.length >= fieldCompletions.length) return;
       const next = [...activeKeys];
       next.splice(index + 1, 0, { ...DEFAULT_SORT_KEY });
       commitKeys(next);
     },
-    [activeKeys, commitKeys]
+    [activeKeys, fieldCompletions.length, commitKeys]
   );
 
   const removeKey = useCallback(
     (index: number) => {
       if (activeKeys.length <= 1) {
-        commitKeys([]);
+        commitKeys([{ ...DEFAULT_SORT_KEY }]);
         return;
       }
       commitKeys(activeKeys.filter((_, i) => i !== index));
@@ -128,9 +133,9 @@ export default function FormSort({
   const handleDragStart = useCallback(
     (index: number) => {
       dragIndexRef.current = index;
-      setDragKeys([...displayKeys]);
+      setDragKeys([...keys]);
     },
-    [displayKeys]
+    [keys]
   );
 
   const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
@@ -164,13 +169,11 @@ export default function FormSort({
     return used;
   }, [activeKeys]);
 
-  const realKeys = useMemo(() => activeKeys.filter((k) => k.field), [activeKeys]);
-
   return (
-    <div className="grid h-full grid-cols-[7fr_3fr] overflow-hidden">
+    <div className="flex h-full overflow-hidden">
       {/* Left: sort keys */}
-      <div className="flex min-h-0 flex-col overflow-hidden border-r border-border-muted">
-        <div className="flex-1 space-y-0.5 overflow-y-auto px-2 pr-3 pb-2 pt-1">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex-1 space-y-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
           <GlassRowList
             items={activeKeys}
             columns={[
@@ -229,52 +232,6 @@ export default function FormSort({
             getRowOpacity={(i) => !!(dragKeys && dragIndexRef.current === i)}
             dragTitle={tr('dragToReorder', '拖拽排序')}
           />
-        </div>
-      </div>
-
-      {/* Right: summary */}
-      <div className="flex min-h-0 flex-col gap-3 overflow-y-auto px-2 pb-2 pt-1 pl-3">
-        <div>
-          <h5 className="mb-2 text-[11px] font-medium text-text-muted">
-            {tr('sortCurrentDescTitle', '当前排序规则')}
-          </h5>
-          {realKeys.length === 0 ? (
-            <p className="text-[12px] leading-5 text-text-secondary">
-              {tr('sortNoKeysDesc', '未设置排序规则，请在左侧添加。')}
-            </p>
-          ) : (
-            <ol className="space-y-1.5">
-              {realKeys.map((k, i) => (
-                <li key={i} className="flex items-start gap-2 text-[12px]">
-                  <span className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded bg-surface text-[10px] font-medium tabular-nums text-text-muted">
-                    {i + 1}
-                  </span>
-                  <span className="leading-4 text-text-primary">
-                    {k.field}
-                    <span className="text-text-secondary">
-                      {' '}
-                      · {k.direction === 'asc' ? tr('asc', '升序') : tr('desc', '降序')}
-                    </span>
-                    {k.nulls && (
-                      <span className="text-text-secondary">
-                        {' '}
-                        ·{' '}
-                        {k.nulls === 'first'
-                          ? tr('sortNullsFirst', '空值在前')
-                          : tr('sortNullsLast', '空值在后')}
-                      </span>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          )}
-        </div>
-
-        <div className="rounded-md border border-border-muted bg-background/42 px-2.5 py-2">
-          <p className="text-[11px] leading-4 text-text-muted">
-            {tr('sortHint', '提示：拖拽左侧排序键可调整优先级，顺序越靠前优先级越高。')}
-          </p>
         </div>
       </div>
     </div>
