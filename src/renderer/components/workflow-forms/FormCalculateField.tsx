@@ -18,22 +18,65 @@ import {
   type CalculationConfigEntry,
   type CalculationRow,
 } from './shared/calculate-field';
+import { isTemporalDataFieldType } from '@/shared/data-field-types';
 
 const EXCLUDE_ROW_FUNCTIONS = ['calcFieldCategoryWindow', 'calcFieldCategoryAggregate'];
 
-const FRAME_PRESETS = [
+const FRAME_TYPE_OPTIONS = [
+  { value: 'rows', key: 'calcFieldFrameRows', label: '按物理行号', hint: 'calcFieldFrameRowsHint' },
   {
-    value: 'unbounded preceding|current row',
-    label: '累计到当前行',
-    key: 'calcFieldFrameCumulative',
+    value: 'range',
+    key: 'calcFieldFrameRange',
+    label: '按值范围',
+    hint: 'calcFieldFrameRangeHint',
   },
   {
-    value: 'current row|unbounded following',
-    label: '从当前行累计',
-    key: 'calcFieldFrameRemaining',
+    value: 'groups',
+    key: 'calcFieldFrameGroups',
+    label: '按值所在组',
+    hint: 'calcFieldFrameGroupsHint',
   },
-  { value: 'unbounded preceding|unbounded following', label: '整个分区', key: 'calcFieldFrameAll' },
-  { value: 'custom', label: '自定义', key: 'calcFieldFrameCustom' },
+];
+
+const FRAME_PRESETS_BY_TYPE: Record<string, { value: string; label: string; key: string }[]> = {
+  rows: [
+    {
+      value: 'unbounded preceding|unbounded following',
+      label: '整个窗口',
+      key: 'calcFieldFrameAll',
+    },
+    { value: 'custom', label: '自定义', key: 'calcFieldFrameCustom' },
+  ],
+  range: [
+    {
+      value: 'unbounded preceding|unbounded following',
+      label: '整个窗口',
+      key: 'calcFieldFrameAll',
+    },
+    { value: 'custom', label: '自定义', key: 'calcFieldFrameCustom' },
+  ],
+  groups: [
+    {
+      value: 'unbounded preceding|unbounded following',
+      label: '整个窗口',
+      key: 'calcFieldFrameAll',
+    },
+    { value: 'custom', label: '自定义', key: 'calcFieldFrameCustom' },
+  ],
+};
+
+const EXCLUDE_OPTIONS = [
+  { value: 'no others', key: 'calcFieldFrameExcludeNone', label: '不排除' },
+  { value: 'current row', key: 'calcFieldFrameExcludeCurrent', label: '排除当前行' },
+  { value: 'ties', key: 'calcFieldFrameExcludeTies', label: '仅排除同行值' },
+  { value: 'group', key: 'calcFieldFrameExcludeGroup', label: '排除当前行和同行值' },
+];
+
+const INTERVAL_UNIT_OPTIONS = [
+  { value: 'day', label: '天' },
+  { value: 'week', label: '周' },
+  { value: 'month', label: '月' },
+  { value: 'year', label: '年' },
 ];
 
 const SCENARIO_OPTIONS = [
@@ -151,17 +194,54 @@ const FUNCTION_CATEGORIES: Record<string, { key: string; header: string; items: 
   ],
 };
 
-function parseFrameN(frameStart: string | undefined): number {
-  if (!frameStart || frameStart === 'unbounded preceding') return -1;
-  const m = frameStart.match(/^(\d+) preceding$/);
-  return m ? parseInt(m[1], 10) : 0;
+function parseBound(bound: string | undefined): { type: string; value: number | null } {
+  if (!bound || bound === 'unbounded preceding')
+    return { type: 'unbounded preceding', value: null };
+  if (bound === 'unbounded following') return { type: 'unbounded following', value: null };
+  if (bound === 'current row') return { type: 'current row', value: null };
+  const m = bound.match(/^(\d+) preceding$/);
+  if (m) return { type: 'n_preceding', value: parseInt(m[1], 10) };
+  const n = bound.match(/^(\d+) following$/);
+  if (n) return { type: 'n_following', value: parseInt(n[1], 10) };
+  const iv = bound.match(/^INTERVAL (\d+) (\w+) (PRECEDING|FOLLOWING)$/);
+  if (iv)
+    return {
+      type: iv[3] === 'PRECEDING' ? 'n_preceding' : 'n_following',
+      value: parseInt(iv[1], 10),
+    };
+  return { type: 'unbounded preceding', value: null };
 }
 
-function parseFrameM(frameEnd: string | undefined): number {
-  if (!frameEnd || frameEnd === 'unbounded following') return -1;
-  if (frameEnd === 'current row') return 0;
-  const m = frameEnd.match(/^(\d+) following$/);
-  return m ? parseInt(m[1], 10) : 0;
+function formatBoundFromType(
+  type: string,
+  value: number | null,
+  frameType: string,
+  intervalUnit?: string
+): string {
+  const num = value ?? 1;
+  if (type === 'n_preceding' && frameType === 'range' && intervalUnit)
+    return `INTERVAL ${num} ${intervalUnit.toUpperCase()} PRECEDING`;
+  if (type === 'n_following' && frameType === 'range' && intervalUnit)
+    return `INTERVAL ${num} ${intervalUnit.toUpperCase()} FOLLOWING`;
+  switch (type) {
+    case 'unbounded preceding':
+      return 'unbounded preceding';
+    case 'unbounded following':
+      return 'unbounded following';
+    case 'current row':
+      return 'current row';
+    case 'n_preceding':
+      return `${num} preceding`;
+    case 'n_following':
+      return `${num} following`;
+    default:
+      return 'unbounded preceding';
+  }
+}
+
+function parseIntervalUnit(bound: string | undefined): string | null {
+  const m = bound?.match(/^INTERVAL \d+ (\w+) (PRECEDING|FOLLOWING)$/);
+  return m ? m[1].toLowerCase() : null;
 }
 
 export default function FormCalculateField({
@@ -325,6 +405,36 @@ export default function FormCalculateField({
     [storeCalculations]
   );
 
+  function boundOrderRank(type: string, value: number | null): number {
+    switch (type) {
+      case 'unbounded preceding':
+        return -999999;
+      case 'n_preceding':
+        return -(value ?? 1);
+      case 'current row':
+        return 0;
+      case 'n_following':
+        return value ?? 1;
+      case 'unbounded following':
+        return 999999;
+      default:
+        return -999999;
+    }
+  }
+
+  function validateFrameBounds(
+    frameStart: string | undefined,
+    frameEnd: string | undefined
+  ): { frameStart: string; frameEnd: string } | null {
+    if (!frameStart || !frameEnd) return null;
+    const s = parseBound(frameStart);
+    const e = parseBound(frameEnd);
+    if (boundOrderRank(s.type, s.value) > boundOrderRank(e.type, e.value)) {
+      return { frameStart: frameEnd, frameEnd: frameStart };
+    }
+    return null;
+  }
+
   function updateItem(visibleIndex: number, patch: Partial<CalculationRow>) {
     const bi = toBackingIndex(visibleIndex);
     if (bi === -1) {
@@ -334,7 +444,14 @@ export default function FormCalculateField({
         scenario: activeMode === 'cross' ? activeScenario : undefined,
         ...patch,
       };
-      if (entry.type !== 'row') entry.expression = exprFromParts(entry);
+      if (entry.type !== 'row') {
+        const validated = validateFrameBounds(entry.frameStart, entry.frameEnd);
+        if (validated) {
+          entry.frameStart = validated.frameStart;
+          entry.frameEnd = validated.frameEnd;
+        }
+        entry.expression = exprFromParts(entry);
+      }
       handleChange([...localItems, entry]);
       return;
     }
@@ -342,7 +459,14 @@ export default function FormCalculateField({
       localItems.map((item, i) => {
         if (i !== bi) return item;
         const updated = { ...item, ...patch };
-        if (updated.type !== 'row') updated.expression = exprFromParts(updated);
+        if (updated.type !== 'row') {
+          const validated = validateFrameBounds(updated.frameStart, updated.frameEnd);
+          if (validated) {
+            updated.frameStart = validated.frameStart;
+            updated.frameEnd = validated.frameEnd;
+          }
+          updated.expression = exprFromParts(updated);
+        }
         return updated;
       })
     );
@@ -834,81 +958,274 @@ export default function FormCalculateField({
         )}
 
         {/* Row 5: 窗口帧 (sorted only) */}
-        {scenario === 'sorted' && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-                {tr('calcFieldFrame', '窗口范围')}
-              </span>
-              {(() => {
-                const currentKey = `${item.frameStart ?? 'unbounded preceding'}|${item.frameEnd ?? 'unbounded following'}`;
-                const isCustom = !FRAME_PRESETS.filter((p) => p.value !== 'custom').some(
-                  (p) => p.value === currentKey
-                );
-                const presets = FRAME_PRESETS.map((p) => ({
-                  value: p.value,
-                  label: tr(p.key, p.label),
-                }));
-                const n = isCustom ? parseFrameN(item.frameStart) : 0;
-                const m = isCustom ? parseFrameM(item.frameEnd) : 0;
-                return (
-                  <div className="flex items-center gap-1 w-full">
-                    <GlassOperatorSelect
-                      value={isCustom ? 'custom' : currentKey}
-                      groups={[{ key: 'frame', items: presets }]}
-                      onChange={(v) => {
-                        if (v === 'custom') {
-                          updateItem(index, { frameStart: '1 preceding', frameEnd: 'current row' });
-                          return;
+        {scenario === 'sorted' &&
+          (() => {
+            const currentFt = item.frameType || 'rows';
+            const framePresets = FRAME_PRESETS_BY_TYPE[currentFt] || FRAME_PRESETS_BY_TYPE.rows;
+            const currentKey = `${item.frameStart ?? 'unbounded preceding'}|${item.frameEnd ?? 'unbounded following'}`;
+            const isCustom = !framePresets
+              .filter((p) => p.value !== 'custom')
+              .some((p) => p.value === currentKey);
+            const startInfo = parseBound(item.frameStart);
+            const endInfo = parseBound(item.frameEnd);
+            const unitLabel = frameTypeUnitLabel(currentFt, tr);
+            const boundOptions = getBoundOptions(currentFt, tr);
+            const orderByCol = item.orderBy?.[0]?.field;
+            const isRangeDate =
+              currentFt === 'range' &&
+              !!orderByCol &&
+              isTemporalDataFieldType(columnTypes[orderByCol]);
+            const startIntervalUnit = parseIntervalUnit(item.frameStart);
+            const endIntervalUnit = parseIntervalUnit(item.frameEnd);
+            const effectiveStartUnit = startIntervalUnit || 'day';
+            const effectiveEndUnit = endIntervalUnit || 'day';
+
+            return (
+              <div className="flex flex-col gap-2">
+                {/* Row A: 窗口类型 + 窗口范围预设 */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
+                    {tr('calcFieldFrameType', '窗口类型')}
+                  </span>
+                  <GlassOperatorSelect
+                    value={item.frameType || 'rows'}
+                    groups={[
+                      {
+                        key: 'frameTypes',
+                        items: FRAME_TYPE_OPTIONS.map((opt) => ({
+                          value: opt.value,
+                          label: tr(opt.key, opt.label),
+                        })),
+                      },
+                    ]}
+                    onChange={(v) => {
+                      const prevFt = item.frameType || 'rows';
+                      if (v === prevFt) return;
+                      const key = `${item.frameStart ?? 'unbounded preceding'}|${item.frameEnd ?? 'unbounded following'}`;
+                      const existsInNew = (FRAME_PRESETS_BY_TYPE[v] || []).some(
+                        (p) => p.value !== 'custom' && p.value === key
+                      );
+                      updateItem(index, {
+                        frameType: v as 'rows' | 'range' | 'groups',
+                        ...(existsInNew
+                          ? {}
+                          : { frameStart: 'unbounded preceding', frameEnd: 'unbounded following' }),
+                      });
+                    }}
+                    className="h-7 text-[12px] w-28"
+                  />
+                  <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
+                    {tr('calcFieldFrame', '窗口范围')}
+                  </span>
+                  <GlassOperatorSelect
+                    value={isCustom ? 'custom' : currentKey}
+                    groups={[
+                      {
+                        key: 'frame',
+                        items: framePresets.map((p) => ({
+                          value: p.value,
+                          label: tr(p.key, p.label),
+                        })),
+                      },
+                    ]}
+                    onChange={(v) => {
+                      if (v === 'custom') {
+                        updateItem(index, { frameStart: '1 preceding', frameEnd: 'current row' });
+                        return;
+                      }
+                      const [frameStart, frameEnd] = v.split('|');
+                      updateItem(index, { frameStart, frameEnd });
+                    }}
+                    className="h-7 text-[12px] text-center w-28"
+                  />
+                  {/* EXCLUDE (有帧定义时) */}
+                  {item.frameStart && item.orderBy?.length && (
+                    <>
+                      <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
+                        {tr('calcFieldFrameExclude', '排除方式')}
+                      </span>
+                      <GlassOperatorSelect
+                        value={item.frameExclude || 'no others'}
+                        groups={[
+                          {
+                            key: 'exclude',
+                            items: EXCLUDE_OPTIONS.map((o) => ({
+                              value: o.value,
+                              label: tr(o.key, o.label),
+                            })),
+                          },
+                        ]}
+                        onChange={(v) =>
+                          updateItem(index, { frameExclude: v as CalculationRow['frameExclude'] })
                         }
-                        const [frameStart, frameEnd] = v.split('|');
-                        updateItem(index, { frameStart, frameEnd });
-                      }}
-                      className="h-7 text-[12px] [&>span]:text-left w-36"
-                    />
-                    {isCustom && (
-                      <div className="flex items-center gap-1 text-[12px] text-text-muted">
-                        <span className="shrink-0">前</span>
-                        <input
-                          type="number"
-                          min={0}
-                          value={n < 0 ? '' : n}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value, 10);
-                            if (isNaN(val) || val < 0) return;
-                            updateItem(index, {
-                              frameStart: val > 0 ? `${val} preceding` : 'current row',
-                            });
-                          }}
-                          placeholder="∞"
-                          className="h-6 w-12 rounded border border-border-muted bg-background/42 px-1 text-center text-[12px] text-text-primary outline-none"
-                        />
-                        <span className="shrink-0">行 → 后</span>
-                        <input
-                          type="number"
-                          min={0}
-                          value={m < 0 ? '' : m}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value, 10);
-                            if (isNaN(val) || val < 0) return;
-                            updateItem(index, {
-                              frameEnd: val > 0 ? `${val} following` : 'current row',
-                            });
-                          }}
-                          placeholder="∞"
-                          className="h-6 w-12 rounded border border-border-muted bg-background/42 px-1 text-center text-[12px] text-text-primary outline-none"
-                        />
-                        <span className="shrink-0">行</span>
-                      </div>
-                    )}
+                        className="h-7 text-[12px] w-36"
+                      />
+                    </>
+                  )}
+                </div>
+
+                {/* Row B: 自定义边界 */}
+                {isCustom && (
+                  <div className="flex items-center gap-2 text-[12px] text-text-muted flex-wrap">
+                    <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
+                      {tr('calcFieldFrameConfig', '窗口配置')}
+                    </span>
+                    {/* 起始边界 */}
+                    <div className="flex items-center gap-1">
+                      <span className="shrink-0">{tr('calcFieldBoundStart', '起始')}</span>
+                      <GlassOperatorSelect
+                        value={startInfo.type}
+                        groups={[{ key: 'bound', items: boundOptions }]}
+                        onChange={(v) => {
+                          const unit = isRangeDate ? effectiveStartUnit : undefined;
+                          updateItem(index, {
+                            frameStart: formatBoundFromType(v, startInfo.value, currentFt, unit),
+                          });
+                        }}
+                        className="h-7 text-[12px] w-24"
+                      />
+                      {(startInfo.type === 'n_preceding' || startInfo.type === 'n_following') && (
+                        <>
+                          <input
+                            type="number"
+                            min={0}
+                            value={startInfo.value ?? 1}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value, 10);
+                              if (isNaN(val) || val < 0) return;
+                              const unit = isRangeDate ? effectiveStartUnit : undefined;
+                              updateItem(index, {
+                                frameStart: formatBoundFromType(
+                                  startInfo.type,
+                                  val,
+                                  currentFt,
+                                  unit
+                                ),
+                              });
+                            }}
+                            className="h-6 w-14 rounded border border-border-muted bg-background/42 px-1 text-center text-[12px] text-text-primary outline-none"
+                          />
+                          {isRangeDate ? (
+                            <GlassOperatorSelect
+                              value={effectiveStartUnit}
+                              groups={[{ key: 'interval', items: INTERVAL_UNIT_OPTIONS }]}
+                              onChange={(v) => {
+                                updateItem(index, {
+                                  frameStart: formatBoundFromType(
+                                    startInfo.type,
+                                    startInfo.value ?? 1,
+                                    currentFt,
+                                    v
+                                  ),
+                                });
+                              }}
+                              className="h-7 text-[12px] w-16"
+                            />
+                          ) : (
+                            <span className="shrink-0 w-6">{unitLabel}</span>
+                          )}
+                        </>
+                      )}
+                    </div>
+
+                    {/* 结束边界 */}
+                    <div className="flex items-center gap-1">
+                      <span className="shrink-0">{tr('calcFieldBoundEnd', '结束')}</span>
+                      <GlassOperatorSelect
+                        value={endInfo.type}
+                        groups={[{ key: 'bound', items: boundOptions }]}
+                        onChange={(v) => {
+                          const unit = isRangeDate ? effectiveEndUnit : undefined;
+                          updateItem(index, {
+                            frameEnd: formatBoundFromType(v, endInfo.value, currentFt, unit),
+                          });
+                        }}
+                        className="h-7 text-[12px] w-24"
+                      />
+                      {(endInfo.type === 'n_preceding' || endInfo.type === 'n_following') && (
+                        <>
+                          <input
+                            type="number"
+                            min={0}
+                            value={endInfo.value ?? 1}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value, 10);
+                              if (isNaN(val) || val < 0) return;
+                              const unit = isRangeDate ? effectiveEndUnit : undefined;
+                              updateItem(index, {
+                                frameEnd: formatBoundFromType(endInfo.type, val, currentFt, unit),
+                              });
+                            }}
+                            className="h-6 w-14 rounded border border-border-muted bg-background/42 px-1 text-center text-[12px] text-text-primary outline-none"
+                          />
+                          {isRangeDate ? (
+                            <GlassOperatorSelect
+                              value={effectiveEndUnit}
+                              groups={[{ key: 'interval', items: INTERVAL_UNIT_OPTIONS }]}
+                              onChange={(v) => {
+                                updateItem(index, {
+                                  frameEnd: formatBoundFromType(
+                                    endInfo.type,
+                                    endInfo.value ?? 1,
+                                    currentFt,
+                                    v
+                                  ),
+                                });
+                              }}
+                              className="h-7 text-[12px] w-16"
+                            />
+                          ) : (
+                            <span className="shrink-0 w-6">{unitLabel}</span>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
-                );
-              })()}
-            </div>
-          </div>
-        )}
+                )}
+              </div>
+            );
+          })()}
       </div>
     );
+  }
+
+  function frameTypeUnitLabel(frameType: string, trFn: typeof tr): string {
+    if (frameType === 'range') return trFn('calcFieldRangeUnit', '个值');
+    if (frameType === 'groups') return trFn('calcFieldGroupsUnit', '组');
+    return trFn('calcFieldRowsUnit', '行');
+  }
+
+  function getBoundOptions(
+    frameType: string,
+    trFn: typeof tr
+  ): Array<{ value: string; label: string }> {
+    const unboundedPre = trFn('calcFieldUnboundedPre', '到开头');
+    const unboundedFoll = trFn('calcFieldUnboundedFoll', '到末尾');
+    const nPreLabel =
+      frameType === 'range'
+        ? trFn('calcFieldNPreRange', '前N个值')
+        : frameType === 'groups'
+          ? trFn('calcFieldNPreGroups', '前N组')
+          : trFn('calcFieldNPreRows', '前N行');
+    const currentLabel =
+      frameType === 'range'
+        ? trFn('calcFieldCurrentRange', '当前值')
+        : frameType === 'groups'
+          ? trFn('calcFieldCurrentGroups', '当前组')
+          : trFn('calcFieldCurrentRows', '当前行');
+    const nFollLabel =
+      frameType === 'range'
+        ? trFn('calcFieldNFollRange', '后N个值')
+        : frameType === 'groups'
+          ? trFn('calcFieldNFollGroups', '后N组')
+          : trFn('calcFieldNFollRows', '后N行');
+    return [
+      { value: 'unbounded preceding', label: unboundedPre },
+      { value: 'n_preceding', label: nPreLabel },
+      { value: 'current row', label: currentLabel },
+      { value: 'n_following', label: nFollLabel },
+      { value: 'unbounded following', label: unboundedFoll },
+    ];
   }
 
   return (

@@ -10,8 +10,10 @@ export interface CalculationConfigEntry {
   scenario?: string;
   partitionBy?: string[];
   orderBy?: Array<{ field: string; direction?: 'asc' | 'desc' }>;
+  frameType?: 'rows' | 'range' | 'groups';
   frameStart?: string;
   frameEnd?: string;
+  frameExclude?: 'current row' | 'group' | 'ties' | 'no others';
 }
 
 export interface CalculationRow {
@@ -26,8 +28,10 @@ export interface CalculationRow {
   scenario?: string;
   partitionBy?: string[];
   orderBy?: Array<{ field: string; direction?: 'asc' | 'desc' }>;
+  frameType?: 'rows' | 'range' | 'groups';
   frameStart?: string;
   frameEnd?: string;
+  frameExclude?: 'current row' | 'group' | 'ties' | 'no others';
 }
 
 export interface ParamSpec {
@@ -83,6 +87,10 @@ export function createCalculationRow(): CalculationRow {
     expression: '',
     type: 'row',
     action: 'add',
+    frameType: 'rows',
+    frameStart: 'unbounded preceding',
+    frameEnd: 'unbounded following',
+    frameExclude: 'no others',
   };
 }
 
@@ -112,8 +120,18 @@ export function normalizeCalculationEntries(
       scenario: typeof entry.scenario === 'string' ? entry.scenario : undefined,
       partitionBy: Array.isArray(entry.partitionBy) ? entry.partitionBy : undefined,
       orderBy: Array.isArray(entry.orderBy) ? entry.orderBy : undefined,
+      frameType:
+        entry.frameType === 'rows' || entry.frameType === 'range' || entry.frameType === 'groups'
+          ? entry.frameType
+          : undefined,
       frameStart: typeof entry.frameStart === 'string' ? entry.frameStart : undefined,
       frameEnd: typeof entry.frameEnd === 'string' ? entry.frameEnd : undefined,
+      frameExclude:
+        entry.frameExclude === 'current row' ||
+        entry.frameExclude === 'group' ||
+        entry.frameExclude === 'ties'
+          ? entry.frameExclude
+          : undefined,
     };
   });
 }
@@ -132,8 +150,12 @@ export function exprFromParts(item: CalculationRow): string {
         `ORDER BY ${order.map((o) => `[${o.field}]${o.direction === 'desc' ? ' desc' : ''}`).join(', ')}`
       );
     if (item.frameStart && order?.length) {
+      const ft = (item.frameType || 'rows').toUpperCase();
       const end = item.frameEnd || 'current row';
-      parts.push(`ROWS BETWEEN ${item.frameStart} AND ${end}`);
+      parts.push(`${ft} BETWEEN ${item.frameStart} AND ${end}`);
+    }
+    if (item.frameExclude && item.frameExclude !== 'no others') {
+      parts.push(`EXCLUDE ${item.frameExclude.toUpperCase()}`);
     }
     return parts.length > 0 ? ` OVER (${parts.join(' ')})` : ' OVER ()';
   }
