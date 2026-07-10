@@ -189,6 +189,11 @@ function parseOperator(
       mode: 'include',
       columns: parseFieldRefs(text.slice(7)).map(toFieldName),
     });
+  if (text.startsWith('drop '))
+    return makeOperator('field_select', text, {
+      mode: 'exclude',
+      columns: parseFieldRefs(text.slice(5)).map(toFieldName),
+    });
   if (text.startsWith('map ') || text.startsWith('rename '))
     return parseMapping(command, diagnostics);
   if (text.startsWith('filter '))
@@ -488,6 +493,7 @@ function parseCast(command: CommandLine, diagnostics: PrepDiagnostic[]): PrepOpe
       {
         column: field ? toFieldName(field) : match[1].trim(),
         type: targetType,
+        format: pickStringOption(rest, 'format'),
         onError: pickWordOption(rest, 'on_error') ?? 'null',
       },
     ];
@@ -1058,6 +1064,11 @@ function unquoteMaybe(value: string): string {
 function pickWordOption(value: string, key: string): string | undefined {
   const match = new RegExp(`\\s${key}\\s+([A-Za-z_][A-Za-z0-9_]*)`).exec(value);
   return match?.[1];
+}
+
+function pickStringOption(value: string, key: string): string | undefined {
+  const match = new RegExp(`\\s${key}\\s+("(?:[^"\\\\]|\\\\.)*"|\\S+)`).exec(value);
+  return match ? unquoteMaybe(match[1]) : undefined;
 }
 
 function withoutUndefined(config: Record<string, unknown>): Record<string, unknown> {

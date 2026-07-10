@@ -1311,6 +1311,86 @@ describe('DataCommandService', () => {
     ]);
   });
 
+  it('canonicalizes select-all-except generated for column deletion into drop', async () => {
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        operations: [
+          { type: 'sort', column: 'Sales', direction: 'asc' },
+          {
+            type: 'select',
+            columns: [
+              'City',
+              'Customer ID',
+              'Customer Name',
+              'Customer Segment',
+              'Order Date',
+              'Order ID',
+              'Order Priority',
+              'Postal Code',
+              'Product Category',
+              'Product Container',
+              'Product Name',
+              'Product Sub-Category',
+              'Region',
+              'Row ID',
+              'Ship Date',
+              'Ship Mode',
+              'State or Province',
+              'Discount',
+              'Product Base Margin',
+              'Profit',
+              'Quantity ordered new',
+              'Sales',
+              'Shipping Cost',
+              'Unit Price',
+            ],
+          },
+        ],
+        requiredColumns: [],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'orders.csv');
+    fs.writeFileSync(
+      csvPath,
+      [
+        'City,Customer ID,Customer Name,Customer Segment,Order Date,Order ID,Order Priority,Postal Code,Product Category,Product Container,Product Name,Product Sub-Category,Region,Row ID,Ship Date,Ship Mode,State or Province,Discount,Product Base Margin,Profit,Quantity ordered new,Sales,Shipping Cost,Unit Price,记录数',
+        'Shanghai,C-1,Alice,Consumer,2024-01-01,O-1,High,200000,Furniture,Box,Chair,Office,East,1,2024-01-02,Air,Shanghai,0.1,0.2,12,2,100,5,50,1',
+      ].join('\n'),
+      'utf8'
+    );
+    const input = await service.createInputTable({
+      name: 'orders input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '按照sales升序排列\n删除记录数',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'orders processed',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(generated.workflowDsl).toContain('sort by [Sales] asc');
+    expect(generated.workflowDsl).toContain('drop [记录数]');
+    expect(generated.workflowDsl).not.toContain('select [City]');
+    expect(generated.requiredColumns).toEqual([
+      { name: 'Sales', type: 'integer' },
+      { name: '记录数', type: 'integer' },
+    ]);
+  });
+
   it('allows generated plans to reference columns renamed by earlier operations', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
@@ -1825,6 +1905,77 @@ describe('DataCommandService', () => {
 
     expect(mirrors.inputTables).toHaveLength(1);
     expect(mirrors.inputTables[0]?.name).toBe('Cloud Orders_自动化镜像_tbl-1234');
+  });
+
+  it('reuses an existing cloud mirror when generating from the same cloud table again', async () => {
+    const { service } = createService({
+      personalAnalysis: {
+        apiOrigin: 'http://cloud.mock',
+        apiKey: 'cloud-key',
+        updatedAt: 1,
+      },
+    });
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const href = String(url);
+      if (href.endsWith('/api/personal/api-keys/token')) {
+        return jsonResponse({ success: true, data: { accessToken: 'cloud-token' } });
+      }
+      if (href.endsWith('/api/personal/analysis/v1/tables/tbl-a0440000/exports')) {
+        expect(init?.method).toBe('POST');
+        return jsonResponse({ success: true, data: { taskId: 'export-1', status: 'RUNNING' } });
+      }
+      if (href.endsWith('/api/personal/analysis/v1/exports/export-1/download')) {
+        return jsonResponse({
+          success: true,
+          data: { status: 'DONE', downloadUrl: 'http://download.mock/tbl-a0440000.csv' },
+        });
+      }
+      if (href === 'http://download.mock/tbl-a0440000.csv') {
+        return new Response('Market,Sales\nEU,10\nUS,20\n', {
+          status: 200,
+          headers: { 'Content-Type': 'text/csv' },
+        });
+      }
+      throw new Error(`Unexpected request: ${href} ${init?.method || 'GET'}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = await service.generateTaskFromRequirement({
+      source: {
+        location: 'cloud',
+        tableId: 'tbl-a0440000',
+        tableName: '10题',
+      },
+      processRequirement: '过滤掉Market是EU的数据',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'cloud orders processed',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+    const second = await service.generateTaskFromRequirement({
+      source: {
+        location: 'cloud',
+        tableId: 'tbl-a0440000',
+        tableName: '10题',
+      },
+      processRequirement: '过滤掉Market是EU的数据',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'cloud orders processed',
+        localOutputTableId: first.outputTableId,
+      },
+      reuseTaskId: first.taskId,
+      currentVersion: first.version,
+      runtimeConfig: testRuntimeConfig,
+    });
+    const mirrors = await service.listInputTables({ query: '10题_自动化镜像_tbl-a044' });
+
+    expect(second.version).toBe(2);
+    expect(mirrors.inputTables).toHaveLength(1);
+    expect(mirrors.inputTables[0]?.name).toBe('10题_自动化镜像_tbl-a044');
   });
 
   it('rejects generated DSL that references columns not in the source schema', async () => {

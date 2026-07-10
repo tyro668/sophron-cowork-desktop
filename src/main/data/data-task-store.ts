@@ -1877,6 +1877,24 @@ export class DataTaskStore {
     }
   }
 
+  async findInputTableRecordByName(name: string): Promise<DataDataset | null> {
+    await this.ensureMetadataReady();
+    const normalizedName = name.trim().toLowerCase();
+    if (!normalizedName) return null;
+    const rows = await this.metaQueryRows<DataDatasetRow>(
+      `
+        SELECT *
+        FROM data_datasets
+        WHERE lower(name) = $name
+          AND ${storedDatasetSourceKindSql()} <> 'output'
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT 1
+      `,
+      { name: normalizedName }
+    );
+    return rows[0] ? mapDatasetRow(rows[0]) : null;
+  }
+
   async getOutputTableRecord(id: string): Promise<DataOutputTable | null> {
     await this.ensureMetadataReady();
     await this.cleanupOutputTableMetadata();

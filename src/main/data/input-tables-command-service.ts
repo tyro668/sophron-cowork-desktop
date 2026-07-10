@@ -369,20 +369,14 @@ export class InputTablesCommandService {
   }
 
   private async ensureUniqueInputTableName(name: string, excludeId?: string): Promise<void> {
-    const existing = await this.findExactInputTableByName(name, excludeId);
+    const existing = await this.store.findInputTableRecordByName(name);
     if (existing) {
+      if (existing.id === excludeId) return;
       throw new DataCommandError('RESOURCE_ALREADY_EXISTS', `Input table already exists: ${name}`, {
         id: existing.id,
         name: existing.name,
       });
     }
-  }
-
-  private async findExactInputTableByName(name: string, excludeId?: string) {
-    const result = await this.listInputTables({ query: name, limit: MAX_LIST_LIMIT });
-    return result.inputTables.find(
-      (item) => item.id !== excludeId && item.name.toLowerCase() === name.toLowerCase()
-    );
   }
 }
 

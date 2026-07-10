@@ -74,15 +74,16 @@ function tokenize(input: string): Token[] {
       continue;
     }
 
-    if (ch === '"') {
+    if (ch === '"' || ch === "'") {
+      const quote = ch;
       let value = '';
       i++;
-      while (i < input.length && input[i] !== '"') {
+      while (i < input.length && input[i] !== quote) {
         if (input[i] === '\\') {
           i++;
           if (i < input.length) {
-            if (input[i] === '"') {
-              value += '"';
+            if (input[i] === quote) {
+              value += quote;
             } else {
               value += '\\' + input[i];
             }

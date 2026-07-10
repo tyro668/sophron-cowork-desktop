@@ -946,18 +946,44 @@ export class DataCommandService {
     });
     const existing = await this.findInputTableByExactName(mirrorName);
     if (existing) {
-      return this.updateInputTable({
-        id: existing.id,
+      return this.updateAutomationCloudMirrorInputTable(
+        existing.id,
+        mirrorName,
+        downloaded.downloadedFilePath
+      );
+    }
+    try {
+      return await this.createInputTable({
         name: mirrorName,
         sourceKind: 'csv',
         filePath: downloaded.downloadedFilePath,
         previewRows: 50,
       });
+    } catch (error) {
+      if (isDataCommandErrorCode(error, 'RESOURCE_ALREADY_EXISTS')) {
+        const conflict = await this.findInputTableByExactName(mirrorName);
+        if (conflict) {
+          return this.updateAutomationCloudMirrorInputTable(
+            conflict.id,
+            mirrorName,
+            downloaded.downloadedFilePath
+          );
+        }
+      }
+      throw error;
     }
-    return this.createInputTable({
-      name: mirrorName,
+  }
+
+  private async updateAutomationCloudMirrorInputTable(
+    id: string,
+    name: string,
+    filePath: string
+  ): Promise<InputTableResult> {
+    return this.updateInputTable({
+      id,
+      name,
       sourceKind: 'csv',
-      filePath: downloaded.downloadedFilePath,
+      filePath,
       previewRows: 50,
     });
   }
@@ -1020,10 +1046,7 @@ export class DataCommandService {
   }
 
   private async findInputTableByExactName(name: string): Promise<DataDataset | null> {
-    const result = await this.listInputTables({ query: name, limit: MAX_LIST_LIMIT });
-    return (
-      result.inputTables.find((item) => item.name.toLowerCase() === name.toLowerCase()) ?? null
-    );
+    return this.store.findInputTableRecordByName(name);
   }
 
   private async findOutputTableByExactName(name: string): Promise<DataOutputTable | null> {
@@ -1293,6 +1316,7 @@ function buildWorkflowDslGenerationSystemPrompt(): string {
     "Never use SQL identifier syntax in operation.expression, including bare backticks like `Field Name`, double-quoted identifiers like \"Field Name\", or table.column references. Example: use REGEXP_EXTRACT([`Customer ID`], '\\\\d+'), not REGEXP_EXTRACT(`Customer ID`, '\\\\d+').",
     "For regex digit matching in operation.expression, prefer [0-9]+ over \\d+ to avoid JSON/DSL/SQL escaping ambiguity. Example: REGEXP_EXTRACT([`Customer ID`], '[0-9]+').",
     'For string values, preserve the semantic value only. For example Chinese text like "过滤掉Market为EU的数据" means value "EU", not "EU的数据".',
+    'If the user asks to delete, remove, drop, exclude, 去掉, 删除, 移除, 去除, 删掉, 剔除, or 不要 columns, use the drop operation for those columns. Do not express column removal as select-all-except unless the user explicitly asks to keep only a listed set of columns.',
     'For money, prices, rates, percentages, and other fixed-decimal business values, use targetType "decimal" and a scale such as 2. Avoid float unless approximate binary floating point is explicitly requested.',
     'If the requirement is ambiguous, generate the safest valid operations and include only input columns actually used by the operations in requiredColumns.',
   ].join('\n');
@@ -1392,11 +1416,21 @@ function buildWorkflowDslGenerationUserPrompt(input: {
             instruction: 'Return corrected operations. Do not return DSL.',
           }
         : undefined,
-      example: {
-        requirement: '过滤掉Market为EU的数据',
-        operations: [{ type: 'filter', column: 'Market', operator: '<>', value: 'EU' }],
-        requiredColumns: [{ name: 'Market' }],
-      },
+      examples: [
+        {
+          requirement: '过滤掉Market为EU的数据',
+          operations: [{ type: 'filter', column: 'Market', operator: '<>', value: 'EU' }],
+          requiredColumns: [{ name: 'Market' }],
+        },
+        {
+          requirement: '按照Sales升序排列，删除记录数',
+          operations: [
+            { type: 'sort', column: 'Sales', direction: 'asc' },
+            { type: 'drop', columns: ['记录数'] },
+          ],
+          requiredColumns: [{ name: 'Sales' }, { name: '记录数' }],
+        },
+      ],
     },
     null,
     2
@@ -1506,6 +1540,7 @@ interface GeneratedWorkflowOperationCompileContext {
   removeColumn: (name: string) => void;
   keepColumns: (names: string[]) => void;
   replaceColumns: (columns: GeneratedWorkflowColumnBinding[]) => void;
+  getCurrentColumns: () => GeneratedWorkflowColumnBinding[];
 }
 
 interface GeneratedWorkflowOperationDefinition {
@@ -1605,7 +1640,17 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
     select: {
       promptSpec: { type: 'select', columns: 'array of existing input columns to keep' },
       compile(operation, context) {
-        const selected = columnListFromPlan(operation).map(
+        const rawSelected = columnListFromPlan(operation);
+        const inferredDropped = inferDroppedColumnsFromSelectOperation(rawSelected, context);
+        if (inferredDropped.length > 0) {
+          const dropped = inferredDropped.map(
+            (name) => context.requireColumn(name, 'drop.columns').name
+          );
+          context.lines.push(`  | drop ${dropped.map(formatDslField).join(', ')}`);
+          dropped.forEach((name) => context.removeColumn(name));
+          return;
+        }
+        const selected = rawSelected.map(
           (name) => context.requireColumn(name, 'select.columns').name
         );
         if (selected.length > 0) {
@@ -1804,6 +1849,7 @@ function compileGeneratedWorkflowPlan({
     removeColumn,
     keepColumns,
     replaceColumns,
+    getCurrentColumns: () => [...columnsByName.values()],
   };
   for (const rawOperationInput of operations) {
     const rawOperation = normalizeGeneratedWorkflowOperation(rawOperationInput);
@@ -2123,6 +2169,44 @@ function columnNameFromPlan(operation: Record<string, unknown>): string {
     return operation.target.column.trim();
   }
   return '';
+}
+
+function inferDroppedColumnsFromSelectOperation(
+  selectedNames: string[],
+  context: GeneratedWorkflowOperationCompileContext
+): string[] {
+  if (selectedNames.length === 0 || !requirementHasColumnRemovalIntent(context.requirement)) {
+    return [];
+  }
+  const currentColumns = context.getCurrentColumns();
+  const currentByName = new Map(
+    currentColumns.map((column) => [column.name.toLowerCase(), column.name])
+  );
+  const selected = new Set<string>();
+  for (const name of selectedNames) {
+    const currentName = currentByName.get(name.trim().toLowerCase());
+    if (!currentName) return [];
+    selected.add(currentName.toLowerCase());
+  }
+  if (selected.size !== selectedNames.length || selected.size >= currentColumns.length) {
+    return [];
+  }
+  const dropped = currentColumns
+    .filter((column) => !selected.has(column.name.toLowerCase()))
+    .map((column) => column.name);
+  if (dropped.length === 0) return [];
+  const normalizedRequirement = normalizeColumnMatchText(context.requirement);
+  return dropped.every((name) =>
+    normalizedRequirementContainsColumnName(normalizedRequirement, normalizeColumnMatchText(name))
+  )
+    ? dropped
+    : [];
+}
+
+function requirementHasColumnRemovalIntent(requirement: string): boolean {
+  return /删除|去掉|移除|去除|删掉|剔除|排除|不要|\bdrop\b|\bdelete\b|\bremove\b|\bexclude\b/i.test(
+    requirement
+  );
 }
 
 function inferColumnNameFromRequirement(
@@ -2655,4 +2739,14 @@ function toCommandError(error: unknown, fallbackCode: DataCommandError['code']):
     return new DataCommandError('RESOURCE_NOT_FOUND', message);
   }
   return new DataCommandError(fallbackCode, message || 'Data command failed');
+}
+
+function isDataCommandErrorCode(
+  error: unknown,
+  code: DataCommandError['code']
+): error is DataCommandError {
+  return (
+    (error instanceof DataCommandError && error.code === code) ||
+    (isRecord(error) && error.code === code)
+  );
 }
