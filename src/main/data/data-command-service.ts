@@ -92,6 +92,7 @@ import { computeMappingTarget } from './operators/utils';
 import { CloudAnalysisCommandService } from './cloud-analysis-command-service';
 import { InputTablesCommandService } from './input-tables-command-service';
 import { OutputTablesCommandService } from './output-tables-command-service';
+import { log } from '../utils/logger';
 import type {
   PersonalAnalysisConnectionInput,
   StoredPersonalAnalysisConfig,
@@ -117,6 +118,7 @@ export class DataCommandService {
   private readonly inputTables: InputTablesCommandService;
   private readonly outputTables: OutputTablesCommandService;
   private readonly cloudAnalysis: CloudAnalysisCommandService;
+  private readonly keyedLocks = new Map<string, Promise<void>>();
 
   constructor(
     private readonly store: DataTaskStore,
@@ -570,11 +572,14 @@ export class DataCommandService {
   }
 
   async runGeneratedTask(input: RunGeneratedTaskCommand): Promise<RunGeneratedTaskResult> {
+    const startedAt = Date.now();
+    const prepareStartedAt = Date.now();
     const preparedInput = await this.prepareGeneratedTaskInput({
       source: input.source,
       processRequirement: '',
       output: input.output,
     });
+    const prepareDurationMs = Date.now() - prepareStartedAt;
     validateGeneratedTaskSchema(
       preparedInput.columnsSnapshot,
       input.requiredColumns ?? [],
@@ -584,6 +589,7 @@ export class DataCommandService {
       input.output,
       preparedInput.inputTable.name
     );
+    const runStartedAt = Date.now();
     const result = await this.runTask({
       taskId: input.taskId,
       mode: input.mode ?? 'persisted',
@@ -593,7 +599,9 @@ export class DataCommandService {
       outputTableId: outputTable.id,
       previewRows: input.previewRows,
     });
+    const runDurationMs = Date.now() - runStartedAt;
     let uploaded: RunGeneratedTaskResult['uploaded'];
+    let uploadDurationMs = 0;
     if (input.output.location === 'cloud') {
       const folderId = await this.resolveCloudOutputFolderId(input);
       if (input.output.writeMode === 'create' && !folderId) {
@@ -602,6 +610,7 @@ export class DataCommandService {
           'Cloud output folderId is required. Please reselect the input cloud table or target project before running the automation.'
         );
       }
+      const uploadStartedAt = Date.now();
       uploaded = await this.uploadDataTableToCloud({
         tableKind: 'output',
         id: outputTable.id,
@@ -614,7 +623,17 @@ export class DataCommandService {
         folderId,
         waitForDone: true,
       });
+      uploadDurationMs = Date.now() - uploadStartedAt;
     }
+    log('[DataCommandService] Generated data task finished', {
+      taskId: input.taskId,
+      sourceLocation: input.source.location,
+      outputLocation: input.output.location,
+      prepareDurationMs,
+      runDurationMs,
+      uploadDurationMs,
+      totalDurationMs: Date.now() - startedAt,
+    });
     return {
       ...result,
       inputTableId: preparedInput.inputTable.id,
@@ -640,6 +659,24 @@ export class DataCommandService {
 
     const projects = await this.cloudAnalysis.listCloudProjects({ spaceId });
     return projects.projects.find((project) => project.projectId === projectId)?.folderId;
+  }
+
+  private async withKeyedLock<T>(key: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.keyedLocks.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.keyedLocks.set(key, current);
+    await previous.catch(() => undefined);
+    try {
+      return await work();
+    } finally {
+      release();
+      if (this.keyedLocks.get(key) === current) {
+        this.keyedLocks.delete(key);
+      }
+    }
   }
 
   private async resolveGeneratedOutputTable(
@@ -940,38 +977,67 @@ export class DataCommandService {
   ): Promise<InputTableResult> {
     const tableId = normalizeRequiredName(source.tableId, 'Cloud table id is required');
     const mirrorName = buildAutomationCloudMirrorInputName(source.tableName, tableId);
+    const downloadStartedAt = Date.now();
     const downloaded = await this.cloudAnalysis.previewCloudTable({
       tableId,
       limit: 50,
     });
-    const existing = await this.findInputTableByExactName(mirrorName);
-    if (existing) {
-      return this.updateAutomationCloudMirrorInputTable(
-        existing.id,
-        mirrorName,
-        downloaded.downloadedFilePath
-      );
-    }
-    try {
-      return await this.createInputTable({
-        name: mirrorName,
-        sourceKind: 'csv',
-        filePath: downloaded.downloadedFilePath,
-        previewRows: 50,
-      });
-    } catch (error) {
-      if (isDataCommandErrorCode(error, 'RESOURCE_ALREADY_EXISTS')) {
-        const conflict = await this.findInputTableByExactName(mirrorName);
-        if (conflict) {
-          return this.updateAutomationCloudMirrorInputTable(
-            conflict.id,
-            mirrorName,
-            downloaded.downloadedFilePath
-          );
-        }
+    const downloadDurationMs = Date.now() - downloadStartedAt;
+    const mirrorStartedAt = Date.now();
+    return this.withKeyedLock(`cloud-mirror:${mirrorName}`, async () => {
+      const existing = await this.findInputTableByExactName(mirrorName);
+      if (existing) {
+        const result = await this.updateAutomationCloudMirrorInputTable(
+          existing.id,
+          mirrorName,
+          downloaded.downloadedFilePath
+        );
+        log('[DataCommandService] Refreshed cloud mirror input table', {
+          tableId,
+          mirrorName,
+          mode: 'update',
+          downloadDurationMs,
+          mirrorDurationMs: Date.now() - mirrorStartedAt,
+        });
+        return result;
       }
-      throw error;
-    }
+      try {
+        const result = await this.createInputTable({
+          name: mirrorName,
+          sourceKind: 'csv',
+          filePath: downloaded.downloadedFilePath,
+          previewRows: 50,
+        });
+        log('[DataCommandService] Refreshed cloud mirror input table', {
+          tableId,
+          mirrorName,
+          mode: 'create',
+          downloadDurationMs,
+          mirrorDurationMs: Date.now() - mirrorStartedAt,
+        });
+        return result;
+      } catch (error) {
+        if (isDataCommandErrorCode(error, 'RESOURCE_ALREADY_EXISTS')) {
+          const conflict = await this.findInputTableByExactName(mirrorName);
+          if (conflict) {
+            const result = await this.updateAutomationCloudMirrorInputTable(
+              conflict.id,
+              mirrorName,
+              downloaded.downloadedFilePath
+            );
+            log('[DataCommandService] Refreshed cloud mirror input table', {
+              tableId,
+              mirrorName,
+              mode: 'update_after_conflict',
+              downloadDurationMs,
+              mirrorDurationMs: Date.now() - mirrorStartedAt,
+            });
+            return result;
+          }
+        }
+        throw error;
+      }
+    });
   }
 
   private async updateAutomationCloudMirrorInputTable(
@@ -2729,6 +2795,13 @@ function toCommandError(error: unknown, fallbackCode: DataCommandError['code']):
     return error;
   }
   const message = error instanceof Error ? error.message : String(error);
+  if (
+    /TransactionContext|transaction is aborted|cannot start a transaction within a transaction/i.test(
+      message
+    )
+  ) {
+    return new DataCommandError('RUN_FAILED', message);
+  }
   if (
     /source|file|folder|path|unsupported|does not exist/i.test(message) &&
     fallbackCode === 'FILE_ACCESS_DENIED'

@@ -4,9 +4,11 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 
 import { v4 as uuidv4 } from 'uuid';
 import { BrowserWindow, ipcMain } from 'electron';
 import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api';
+import { AsyncLocalStorage } from 'async_hooks';
 import type Database from 'better-sqlite3';
 import * as XLSX from 'xlsx';
 import type { DatabaseInstance } from '../db/database';
+import { log } from '../utils/logger';
 import type {
   DataColumnTypeInfo,
   DataCleaningTask,
@@ -392,6 +394,8 @@ export class DataTaskStore {
   private connection: DuckDBConnection | null = null;
   private metadataInitPromise: Promise<void> | null = null;
   private duckInitPromise: Promise<void> | null = null;
+  private exclusiveQueue: Promise<void> = Promise.resolve();
+  private readonly exclusiveContext = new AsyncLocalStorage<boolean>();
 
   constructor(dbPath: string, options: DataTaskStoreOptions = {}) {
     this.dbPath = dbPath;
@@ -870,7 +874,45 @@ export class DataTaskStore {
     return this._executionDiagnostics;
   }
 
+  async runExclusive<T>(work: () => Promise<T>, label = 'duckdb'): Promise<T> {
+    if (this.exclusiveContext.getStore()) {
+      return work();
+    }
+    const queuedAt = Date.now();
+    const previous = this.exclusiveQueue;
+    let release!: () => void;
+    this.exclusiveQueue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous.catch(() => undefined);
+    const startedAt = Date.now();
+    const waitMs = startedAt - queuedAt;
+    try {
+      return await this.exclusiveContext.run(true, work);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (isDuckDbTransactionStateError(message)) {
+        await this.recoverDuckDbTransactionState();
+      }
+      throw error;
+    } finally {
+      const durationMs = Date.now() - startedAt;
+      if (waitMs > 0 || durationMs >= 1_000) {
+        log('[DataTaskStore] DuckDB exclusive section finished', {
+          label,
+          waitMs,
+          durationMs,
+        });
+      }
+      release();
+    }
+  }
+
   async runTask(id: string, input: DataRunTaskInput = {}): Promise<DataCleaningTask> {
+    return this.runExclusive(() => this.runTaskUnsafe(id, input), `runTask:${id}`);
+  }
+
+  private async runTaskUnsafe(id: string, input: DataRunTaskInput = {}): Promise<DataCleaningTask> {
     this._executionDiagnostics = [];
     await this.ensureReady();
     await this.cleanupExpiredWorkflowNodeCaches();
@@ -949,6 +991,9 @@ export class DataTaskStore {
     } catch (error) {
       const failedAt = this.now();
       const message = error instanceof Error ? error.message : String(error);
+      if (isDuckDbTransactionStateError(message)) {
+        await this.recoverDuckDbTransactionState();
+      }
       await this.metaRunSql(
         `
           UPDATE data_cleaning_tasks
@@ -965,6 +1010,10 @@ export class DataTaskStore {
   }
 
   async importDataset(input: DataImportDatasetInput): Promise<DataDataset> {
+    return this.runExclusive(() => this.importDatasetUnsafe(input), 'importDataset');
+  }
+
+  private async importDatasetUnsafe(input: DataImportDatasetInput): Promise<DataDataset> {
     await this.ensureReady();
     const sourcePath = normalizeImportSourcePath(input.filePath);
     const id = uuidv4();
@@ -1059,6 +1108,10 @@ export class DataTaskStore {
   }
 
   async updateDataset(input: DataUpdateDatasetInput): Promise<DataDataset> {
+    return this.runExclusive(() => this.updateDatasetUnsafe(input), `updateDataset:${input.id}`);
+  }
+
+  private async updateDatasetUnsafe(input: DataUpdateDatasetInput): Promise<DataDataset> {
     await this.ensureMetadataReady();
     const dataset = await this.requireDataset(input.id);
     const name = input.name?.trim();
@@ -2043,6 +2096,33 @@ export class DataTaskStore {
     fs.mkdirSync(dirname(this.dbPath), { recursive: true });
     this.instance = await DuckDBInstance.create(this.dbPath);
     this.connection = await this.instance.connect();
+  }
+
+  private async recoverDuckDbTransactionState(): Promise<void> {
+    try {
+      await this.runSql('ROLLBACK');
+    } catch {
+      await this.resetDuckDbConnection();
+    }
+  }
+
+  private async resetDuckDbConnection(): Promise<void> {
+    try {
+      this.connection?.closeSync();
+    } catch {
+      // Ignore close failures while replacing a broken connection.
+    } finally {
+      this.connection = null;
+    }
+    try {
+      this.instance?.closeSync();
+    } catch {
+      // Ignore close failures while replacing a broken connection.
+    } finally {
+      this.instance = null;
+      this.duckInitPromise = null;
+    }
+    await this.ensureDuckDbReady();
   }
 
   private async initializeMetadata(): Promise<void> {
@@ -3763,6 +3843,12 @@ function mapInputTableNormalizerArtifactRow(
     createdAt: toNumber(row.created_at),
     updatedAt: toNumber(row.updated_at),
   };
+}
+
+function isDuckDbTransactionStateError(message: string): boolean {
+  return /TransactionContext|transaction is aborted|cannot start a transaction within a transaction/i.test(
+    message
+  );
 }
 
 function mapInputTableNormalizerArtifactVersionRow(

@@ -501,6 +501,13 @@ function toCommandError(error: unknown, fallbackCode: DataCommandError['code']):
   }
   const message = error instanceof Error ? error.message : String(error);
   if (
+    /TransactionContext|transaction is aborted|cannot start a transaction within a transaction/i.test(
+      message
+    )
+  ) {
+    return new DataCommandError('RUN_FAILED', message);
+  }
+  if (
     /source|file|folder|path|unsupported|does not exist/i.test(message) &&
     fallbackCode === 'FILE_ACCESS_DENIED'
   ) {
