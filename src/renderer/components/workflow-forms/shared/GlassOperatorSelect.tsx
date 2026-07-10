@@ -41,11 +41,15 @@ export function GlassOperatorSelect({
   placeholder,
 }: GlassOperatorSelectProps) {
   const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState<{ left: number; top: number; width: number } | null>(
-    null
-  );
+  const [position, setPosition] = useState<{
+    left: number;
+    top?: number;
+    bottom?: number;
+    width: number;
+  } | null>(null);
   const [maxHeight, setMaxHeight] = useState(240);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [flipUp, setFlipUp] = useState(false);
 
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -64,13 +68,24 @@ export function GlassOperatorSelect({
   const updatePosition = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    setPosition({ left: rect.left, top: rect.bottom + 2, width: rect.width });
     const spaceBelow = window.innerHeight - rect.bottom - 4;
-    setMaxHeight(Math.min(240, Math.max(100, spaceBelow)));
+    const spaceAbove = rect.top - 4;
+    const MIN_DROP = 140;
+    const preferDown = spaceBelow >= MIN_DROP;
+    const maxAvail = Math.min(240, Math.max(100, preferDown ? spaceBelow : spaceAbove));
+    setFlipUp(!preferDown);
+    setMaxHeight(maxAvail);
+    setPosition({
+      left: rect.left,
+      top: preferDown ? rect.bottom + 2 : undefined,
+      bottom: preferDown ? undefined : window.innerHeight - rect.top + 2,
+      width: rect.width,
+    });
   }, []);
 
   const handleClose = useCallback(() => {
     setOpen(false);
+    setFlipUp(false);
   }, []);
 
   // Click outside
@@ -205,7 +220,13 @@ export function GlassOperatorSelect({
             ref={dropdownRef}
             onKeyDown={handleDropdownKeyDown}
             role="listbox"
-            style={{ left: position.left, top: position.top, width: position.width, maxHeight }}
+            style={{
+              left: position.left,
+              top: position.top ?? undefined,
+              bottom: position.bottom ?? undefined,
+              width: position.width,
+              maxHeight,
+            }}
             className="fixed z-50 overflow-y-auto rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl"
           >
             {groups.map((g, gi) => (
