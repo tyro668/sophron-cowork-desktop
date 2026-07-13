@@ -5,12 +5,9 @@ import {
   parsePrepDsl,
   parsePrepOperatorDsl,
   type PrepDiagnostic,
-  type PrepOperatorAst,
 } from '../../shared/prep-dsl';
-import { getWorkflowDslQuickReference } from './data-dsl-reference';
-import { runPiAiOneShot } from '../claude/claude-sdk-one-shot';
 import type {
-  AgentRuntimeConfig,
+  DataAutomationColumnSnapshot,
   DataCleaningTask,
   DataDataset,
   DataInputTablePreview,
@@ -88,7 +85,6 @@ import {
 } from './data-command-types';
 import type { InputTableNormalizerProjectGenerator } from './input-table-normalizer-generator';
 import { configStore } from '../config/config-store';
-import { computeMappingTarget } from './operators/utils';
 import { CloudAnalysisCommandService } from './cloud-analysis-command-service';
 import { InputTablesCommandService } from './input-tables-command-service';
 import { OutputTablesCommandService } from './output-tables-command-service';
@@ -97,6 +93,19 @@ import type {
   PersonalAnalysisConnectionInput,
   StoredPersonalAnalysisConfig,
 } from '../../shared/personal-analysis-types';
+import {
+  GENERATED_WORKFLOW_CONFIG_REPAIR_ATTEMPTS,
+  type GeneratedWorkflowGenerationResult,
+  generateWorkflowDslFromRequirement,
+  hashColumns,
+  isRecord,
+  normalizeColumnSnapshot,
+  reconcileGeneratedWorkflowWithOutputPreview,
+  repairWorkflowDslFromDiagnostics,
+  validateGeneratedOutputPreviewSchema,
+  validateGeneratedTaskSchema,
+  validateGeneratedWorkflowGenerationContract,
+} from './workflow';
 
 const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 100;
@@ -195,15 +204,20 @@ export class DataCommandService {
       columns: preparedInput.columnsSnapshot,
       runtimeConfig: input.runtimeConfig,
     });
-    let dryRun = await this.applyWorkflowDsl({
+    let validation = await this.validateGeneratedWorkflowCandidate({
       taskId: task.id,
-      dsl: generated.workflowDsl,
       inputTableId: preparedInput.inputTable.id,
       outputTableId: outputTable.id,
-      dryRun: true,
+      columns: preparedInput.columnsSnapshot,
+      generated,
     });
-    let dryRunErrors = diagnosticsWithSeverity(dryRun.diagnostics ?? [], 'error');
-    if (dryRunErrors.length > 0) {
+    generated = validation.generated ?? generated;
+    let validationErrors = diagnosticsWithSeverity(validation.diagnostics, 'error');
+    for (
+      let repairAttempt = 0;
+      validationErrors.length > 0 && repairAttempt < GENERATED_WORKFLOW_CONFIG_REPAIR_ATTEMPTS;
+      repairAttempt += 1
+    ) {
       generated = await repairWorkflowDslFromDiagnostics({
         inputTableId: preparedInput.inputTable.id,
         outputTableName: outputTable.name,
@@ -211,20 +225,21 @@ export class DataCommandService {
         columns: preparedInput.columnsSnapshot,
         runtimeConfig: input.runtimeConfig,
         failedWorkflowDsl: generated.workflowDsl,
-        diagnostics: dryRunErrors,
+        diagnostics: validationErrors,
       });
-      dryRun = await this.applyWorkflowDsl({
+      validation = await this.validateGeneratedWorkflowCandidate({
         taskId: task.id,
-        dsl: generated.workflowDsl,
         inputTableId: preparedInput.inputTable.id,
         outputTableId: outputTable.id,
-        dryRun: true,
+        columns: preparedInput.columnsSnapshot,
+        generated,
       });
-      dryRunErrors = diagnosticsWithSeverity(dryRun.diagnostics ?? [], 'error');
+      generated = validation.generated ?? generated;
+      validationErrors = diagnosticsWithSeverity(validation.diagnostics, 'error');
     }
-    if (dryRunErrors.length > 0) {
-      throw new DataCommandError('DSL_PARSE_FAILED', summarizeDiagnostics(dryRunErrors), {
-        diagnostics: dryRun.diagnostics,
+    if (validationErrors.length > 0) {
+      throw new DataCommandError('DSL_PARSE_FAILED', summarizeDiagnostics(validationErrors), {
+        diagnostics: validation.diagnostics,
       });
     }
     await this.applyWorkflowDsl({
@@ -241,6 +256,8 @@ export class DataCommandService {
       outputTableName: outputTable.name,
       workflowDsl: generated.workflowDsl,
       requiredColumns: generated.requiredColumns,
+      expectedOutputSchema: generated.expectedOutputSchema,
+      lineage: generated.lineage,
       columnsSnapshot: preparedInput.columnsSnapshot,
       sourceSummaryHash: hashColumns(preparedInput.columnsSnapshot),
       version: nextGeneratedTaskVersion(input.currentVersion),
@@ -526,6 +543,80 @@ export class DataCommandService {
     return this.saveOrPreview(input.taskId, nextWorkflow, Boolean(input.dryRun));
   }
 
+  private async validateGeneratedWorkflowCandidate(input: {
+    taskId: string;
+    inputTableId: string;
+    outputTableId: string;
+    columns: DataAutomationColumnSnapshot[];
+    generated: GeneratedWorkflowGenerationResult;
+  }): Promise<{ diagnostics: PrepDiagnostic[]; generated?: GeneratedWorkflowGenerationResult }> {
+    const contractDiagnostics = validateGeneratedWorkflowGenerationContract(
+      input.generated,
+      input.columns
+    );
+    if (diagnosticsWithSeverity(contractDiagnostics, 'error').length > 0) {
+      return { diagnostics: contractDiagnostics };
+    }
+
+    const dryRun = await this.applyWorkflowDsl({
+      taskId: input.taskId,
+      dsl: input.generated.workflowDsl,
+      inputTableId: input.inputTableId,
+      outputTableId: input.outputTableId,
+      dryRun: true,
+    });
+    const dryRunDiagnostics = dryRun.diagnostics ?? [];
+    if (diagnosticsWithSeverity(dryRunDiagnostics, 'error').length > 0) {
+      return { diagnostics: dryRunDiagnostics };
+    }
+
+    try {
+      const temporaryRun = await this.runTask({
+        taskId: input.taskId,
+        mode: 'temporary',
+        workflowDsl: input.generated.workflowDsl,
+        saveWorkflow: false,
+        inputTableId: input.inputTableId,
+        outputTableId: input.outputTableId,
+        previewRows: 20,
+      });
+      const outputSchemaDiagnostics = validateGeneratedOutputPreviewSchema(
+        temporaryRun.preview,
+        input.generated.expectedOutputSchema
+      ).map((diagnostic) => ({
+        ...diagnostic,
+        severity: 'warning' as const,
+        code: 'outputSchemaCalibrated',
+        message: `Static output schema was calibrated from temporary run: ${diagnostic.message}`,
+      }));
+      const generated = reconcileGeneratedWorkflowWithOutputPreview(
+        input.generated,
+        temporaryRun.preview,
+        input.columns
+      );
+      return {
+        generated,
+        diagnostics: [
+          ...dryRunDiagnostics,
+          ...(temporaryRun.diagnostics ?? []),
+          ...outputSchemaDiagnostics,
+        ],
+      };
+    } catch (error) {
+      const commandError = toCommandError(error, 'RUN_FAILED');
+      return {
+        diagnostics: [
+          ...dryRunDiagnostics,
+          {
+            severity: 'error',
+            code: commandError.code,
+            message: commandError.message,
+          },
+        ],
+      };
+    }
+  }
+
   async runTask(input: RunTaskCommand): Promise<RunTaskResult> {
     await this.requireTask(input.taskId);
     const outputMode = input.mode === 'persisted' ? 'persisted' : 'temporary';
@@ -599,6 +690,15 @@ export class DataCommandService {
       outputTableId: outputTable.id,
       previewRows: input.previewRows,
     });
+    const outputSchemaErrors = validateGeneratedOutputPreviewSchema(
+      result.preview,
+      input.expectedOutputSchema ?? []
+    );
+    if (outputSchemaErrors.length > 0) {
+      throw new DataCommandError('VALIDATION_FAILED', summarizeDiagnostics(outputSchemaErrors), {
+        diagnostics: outputSchemaErrors,
+      });
+    }
     const runDurationMs = Date.now() - runStartedAt;
     let uploaded: RunGeneratedTaskResult['uploaded'];
     let uploadDurationMs = 0;
@@ -890,24 +990,20 @@ export class DataCommandService {
     offset?: number
   ): Promise<DataInputTablePreview | undefined> {
     const limit = previewLimit(previewRows);
-    if (task.sourceDatasetId) {
-      try {
-        return await this.previewDataset(task.sourceDatasetId, limit, offset);
-      } catch {
-        // Fall back to output node cache below.
-      }
-    }
-
     const runtimeOutputNode = runtimeWorkflow?.nodes.find((node) => node.type === 'output');
     if (runtimeOutputNode) {
-      return this.store.previewWorkflowNode({
-        taskId,
-        nodeId: runtimeOutputNode.id,
-        nodeType: runtimeOutputNode.type,
-        nodeConfig: runtimeOutputNode.config,
-        limit,
-        offset,
-      });
+      try {
+        return await this.store.previewWorkflowNode({
+          taskId,
+          nodeId: runtimeOutputNode.id,
+          nodeType: runtimeOutputNode.type,
+          nodeConfig: runtimeOutputNode.config,
+          limit,
+          offset,
+        });
+      } catch {
+        // Fall back to the saved output node or source dataset below.
+      }
     }
 
     try {
@@ -924,7 +1020,15 @@ export class DataCommandService {
         });
       }
     } catch {
-      return undefined;
+      // Fall back to source dataset below.
+    }
+
+    if (task.sourceDatasetId) {
+      try {
+        return await this.previewDataset(task.sourceDatasetId, limit, offset);
+      } catch {
+        return undefined;
+      }
     }
     return undefined;
   }
@@ -1185,1512 +1289,6 @@ function nextGeneratedTaskVersion(currentVersion: number | null | undefined): nu
   return Number.isFinite(currentVersion) && Number(currentVersion) > 0
     ? Math.floor(Number(currentVersion)) + 1
     : 1;
-}
-
-function normalizeColumnSnapshot(
-  primary?: Array<{ name?: string; type?: string }>,
-  fallback?: Array<{ name?: string; type?: string }>
-): Array<{ name: string; type?: string }> {
-  const source = primary?.length ? primary : fallback;
-  return (source ?? [])
-    .map((column) => ({
-      name: String(column.name ?? '').trim(),
-      type: typeof column.type === 'string' ? column.type : undefined,
-    }))
-    .filter((column) => Boolean(column.name));
-}
-
-async function generateWorkflowDslFromRequirement({
-  inputTableId,
-  outputTableName,
-  requirement,
-  columns,
-  runtimeConfig,
-}: {
-  inputTableId: string;
-  outputTableName: string;
-  requirement: string;
-  columns: Array<{ name: string; type?: string }>;
-  runtimeConfig?: AgentRuntimeConfig;
-}): Promise<{ workflowDsl: string; requiredColumns: Array<{ name: string; type?: string }> }> {
-  const config = requireGenerationRuntimeConfig(runtimeConfig);
-  try {
-    const response = await runPiAiOneShot(
-      buildWorkflowDslGenerationUserPrompt({
-        inputTableId,
-        outputTableName,
-        requirement,
-        columns,
-      }),
-      buildWorkflowDslGenerationSystemPrompt(),
-      config,
-      { temperature: 0, maxTokens: 4_000 }
-    );
-    try {
-      return parseGeneratedWorkflowPlanResponse({
-        text: response.text,
-        inputTableId,
-        outputTableName,
-        requirement,
-        columns,
-      });
-    } catch (parseError) {
-      if (isUnsupportedGeneratedWorkflowOperationError(parseError)) {
-        return await generateAdvancedWorkflowDslFromPlan({
-          inputTableId,
-          outputTableName,
-          requirement,
-          columns,
-          runtimeConfig,
-          generatedPlanText: response.text,
-          diagnostics: diagnosticsFromGenerationError(parseError),
-        });
-      }
-      const failedWorkflowDsl = extractWorkflowDslFromModelResponse(response.text) ?? response.text;
-      return await repairWorkflowDslFromDiagnostics({
-        inputTableId,
-        outputTableName,
-        requirement,
-        columns,
-        runtimeConfig,
-        failedWorkflowDsl,
-        diagnostics: diagnosticsFromGenerationError(parseError),
-      });
-    }
-  } catch (error) {
-    if (error instanceof DataCommandError) throw error;
-    throw new DataCommandError(
-      'GENERATION_FAILED',
-      `Failed to generate data task workflow: ${error instanceof Error ? error.message : String(error)}`
-    );
-  }
-}
-
-async function repairWorkflowDslFromDiagnostics({
-  inputTableId,
-  outputTableName,
-  requirement,
-  columns,
-  runtimeConfig,
-  failedWorkflowDsl,
-  diagnostics,
-}: {
-  inputTableId: string;
-  outputTableName: string;
-  requirement: string;
-  columns: Array<{ name: string; type?: string }>;
-  runtimeConfig?: AgentRuntimeConfig;
-  failedWorkflowDsl: string;
-  diagnostics: PrepDiagnostic[];
-}): Promise<{ workflowDsl: string; requiredColumns: Array<{ name: string; type?: string }> }> {
-  const config = requireGenerationRuntimeConfig(runtimeConfig);
-  try {
-    const response = await runPiAiOneShot(
-      buildWorkflowDslGenerationUserPrompt({
-        inputTableId,
-        outputTableName,
-        requirement,
-        columns,
-        failedWorkflowDsl,
-        diagnostics,
-      }),
-      buildWorkflowDslGenerationSystemPrompt(),
-      config,
-      { temperature: 0, maxTokens: 4_000 }
-    );
-    return parseGeneratedWorkflowPlanResponse({
-      text: response.text,
-      inputTableId,
-      outputTableName,
-      requirement,
-      columns,
-    });
-  } catch (error) {
-    if (error instanceof DataCommandError) throw error;
-    throw new DataCommandError(
-      'GENERATION_FAILED',
-      `Failed to repair generated data task workflow: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
-  }
-}
-
-async function generateAdvancedWorkflowDslFromPlan({
-  inputTableId,
-  outputTableName,
-  requirement,
-  columns,
-  runtimeConfig,
-  generatedPlanText,
-  diagnostics,
-}: {
-  inputTableId: string;
-  outputTableName: string;
-  requirement: string;
-  columns: Array<{ name: string; type?: string }>;
-  runtimeConfig?: AgentRuntimeConfig;
-  generatedPlanText: string;
-  diagnostics: PrepDiagnostic[];
-}): Promise<{ workflowDsl: string; requiredColumns: Array<{ name: string; type?: string }> }> {
-  const config = requireGenerationRuntimeConfig(runtimeConfig);
-  try {
-    const response = await runPiAiOneShot(
-      buildAdvancedWorkflowDslGenerationUserPrompt({
-        inputTableId,
-        outputTableName,
-        requirement,
-        columns,
-        generatedPlanText,
-        diagnostics,
-      }),
-      buildAdvancedWorkflowDslGenerationSystemPrompt(),
-      config,
-      { temperature: 0, maxTokens: 6_000 }
-    );
-    return parseGeneratedWorkflowDslResponse(response.text, columns);
-  } catch (error) {
-    if (error instanceof DataCommandError) throw error;
-    throw new DataCommandError(
-      'GENERATION_FAILED',
-      `Failed to generate advanced data task workflow: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
-  }
-}
-
-function requireGenerationRuntimeConfig(runtimeConfig?: AgentRuntimeConfig): AgentRuntimeConfig {
-  if (!runtimeConfig || !normalizeOptionalName(runtimeConfig.model)) {
-    throw new DataCommandError(
-      'INVALID_ARGUMENT',
-      'Model configuration is required to generate a data task. Please select an available model and try again.'
-    );
-  }
-  return runtimeConfig;
-}
-
-function buildWorkflowDslGenerationSystemPrompt(): string {
-  return [
-    'You convert user requirements into a structured data-processing plan for Sophron.',
-    'Return only strict JSON. Do not return markdown, comments, explanations, or code fences.',
-    'Use only the provided input columns. Do not invent field names.',
-    'Do not write Sophron Prep DSL or SQL. Return operations only; the application compiles operations to DSL.',
-    'Operation column references must use the current field name at that point in the operation list. Before a rename, use the original input column name exactly; after a rename, later operations may use the renamed field.',
-    'For field-to-field filters, put the right-side field name in rightColumn. Do not put field references such as [Target Profit] in value, because value is for literal constants.',
-    'Expression syntax: in operation.expression, reference fields with Prep DSL syntax only. Use [FieldName] for simple field names and [`Field Name`] for names with spaces, punctuation, Chinese characters, or other special characters.',
-    "Never use SQL identifier syntax in operation.expression, including bare backticks like `Field Name`, double-quoted identifiers like \"Field Name\", or table.column references. Example: use REGEXP_EXTRACT([`Customer ID`], '\\\\d+'), not REGEXP_EXTRACT(`Customer ID`, '\\\\d+').",
-    "For regex digit matching in operation.expression, prefer [0-9]+ over \\d+ to avoid JSON/DSL/SQL escaping ambiguity. Example: REGEXP_EXTRACT([`Customer ID`], '[0-9]+').",
-    'For string values, preserve the semantic value only. For example Chinese text like "过滤掉Market为EU的数据" means value "EU", not "EU的数据".',
-    'If the user asks to delete, remove, drop, exclude, 去掉, 删除, 移除, 去除, 删掉, 剔除, or 不要 columns, use the drop operation for those columns. Do not express column removal as select-all-except unless the user explicitly asks to keep only a listed set of columns.',
-    'For money, prices, rates, percentages, and other fixed-decimal business values, use targetType "decimal" and a scale such as 2. Avoid float unless approximate binary floating point is explicitly requested.',
-    'If the requirement is ambiguous, generate the safest valid operations and include only input columns actually used by the operations in requiredColumns.',
-  ].join('\n');
-}
-
-function buildAdvancedWorkflowDslGenerationSystemPrompt(): string {
-  return [
-    'You generate advanced Sophron Prep DSL only when the stable operation compiler cannot express the user requirement.',
-    'Return only strict JSON. Do not return markdown, comments, explanations, or code fences.',
-    'Use only the provided input columns. Do not invent field names.',
-    'The workflowDsl must start with the provided input source dataset line and end with the provided output table line.',
-    'If a field name contains spaces or special characters, reference it as [`field name`].',
-    'In expressions, reference fields with [field] or [`field name`]. Never use bare SQL identifier syntax such as `field name` or "field name".',
-    'Prefer deterministic, readable Prep DSL. Do not use SQL syntax unless the Prep DSL reference explicitly supports it.',
-  ].join('\n');
-}
-
-function buildAdvancedWorkflowDslGenerationUserPrompt(input: {
-  inputTableId: string;
-  outputTableName: string;
-  requirement: string;
-  columns: Array<{ name: string; type?: string }>;
-  generatedPlanText: string;
-  diagnostics: PrepDiagnostic[];
-}): string {
-  return JSON.stringify(
-    {
-      task: 'Generate an advanced Sophron Prep DSL workflow from a previously generated structured plan that the stable compiler could not compile.',
-      requirement: input.requirement,
-      inputColumns: input.columns,
-      requiredDslLines: {
-        first: `input source dataset "${input.inputTableId}" as src`,
-        last: `output table "${input.outputTableName}" mode replace`,
-      },
-      previousGeneratedPlanJson: safeParseJsonForPrompt(input.generatedPlanText),
-      previousDiagnostics: input.diagnostics.map((diagnostic) => ({
-        severity: diagnostic.severity,
-        code: diagnostic.code,
-        message: diagnostic.message,
-        line: diagnostic.line,
-        column: diagnostic.column,
-      })),
-      dslReference: getWorkflowDslQuickReference(),
-      outputJsonSchema: {
-        workflowDsl: 'complete multiline Prep DSL string',
-        requiredColumns: [{ name: 'input column referenced by the DSL', type: 'optional' }],
-        explanation: 'brief explanation of why advanced DSL was needed',
-      },
-    },
-    null,
-    2
-  );
-}
-
-function safeParseJsonForPrompt(text: string): unknown {
-  try {
-    return JSON.parse(extractJsonObject(text));
-  } catch {
-    return text;
-  }
-}
-
-function buildWorkflowDslGenerationUserPrompt(input: {
-  inputTableId: string;
-  outputTableName: string;
-  requirement: string;
-  columns: Array<{ name: string; type?: string }>;
-  failedWorkflowDsl?: string;
-  diagnostics?: PrepDiagnostic[];
-}): string {
-  return JSON.stringify(
-    {
-      task: 'Convert the user requirement into a structured Sophron data transform plan.',
-      requirement: input.requirement,
-      inputColumns: input.columns,
-      compilationTarget: {
-        inputTableId: input.inputTableId,
-        outputTableName: input.outputTableName,
-      },
-      supportedOperations: getGeneratedWorkflowOperationPromptSpecs(),
-      outputJsonSchema: {
-        operations:
-          'array of supported operation objects in execution order. Put operation parameters at the top level of each object, not under a fields object.',
-        requiredColumns: [{ name: 'input column referenced by the DSL', type: 'optional' }],
-        changeSummary: 'brief user-facing summary of what the workflow changes',
-      },
-      previousFailedAttempt: input.failedWorkflowDsl
-        ? {
-            compiledWorkflowDsl: input.failedWorkflowDsl,
-            diagnostics: (input.diagnostics ?? []).map((diagnostic) => ({
-              severity: diagnostic.severity,
-              code: diagnostic.code,
-              message: diagnostic.message,
-              line: diagnostic.line,
-              column: diagnostic.column,
-            })),
-            instruction: 'Return corrected operations. Do not return DSL.',
-          }
-        : undefined,
-      examples: [
-        {
-          requirement: '过滤掉Market为EU的数据',
-          operations: [{ type: 'filter', column: 'Market', operator: '<>', value: 'EU' }],
-          requiredColumns: [{ name: 'Market' }],
-        },
-        {
-          requirement: '按照Sales升序排列，删除记录数',
-          operations: [
-            { type: 'sort', column: 'Sales', direction: 'asc' },
-            { type: 'drop', columns: ['记录数'] },
-          ],
-          requiredColumns: [{ name: 'Sales' }, { name: '记录数' }],
-        },
-      ],
-    },
-    null,
-    2
-  );
-}
-
-function extractWorkflowDslFromModelResponse(text: string): string | null {
-  try {
-    const parsed = JSON.parse(extractJsonObject(text)) as unknown;
-    if (isRecord(parsed) && typeof parsed.workflowDsl === 'string' && parsed.workflowDsl.trim()) {
-      return parsed.workflowDsl.trim();
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-function diagnosticsFromGenerationError(error: unknown): PrepDiagnostic[] {
-  if (error instanceof DataCommandError) {
-    const details = error.details;
-    if (
-      isRecord(details) &&
-      Array.isArray(details.diagnostics) &&
-      details.diagnostics.every(isPrepDiagnosticLike)
-    ) {
-      return details.diagnostics;
-    }
-    return [{ severity: 'error', code: error.code, message: error.message }];
-  }
-  return [
-    {
-      severity: 'error',
-      message: error instanceof Error ? error.message : String(error),
-    },
-  ];
-}
-
-function isPrepDiagnosticLike(value: unknown): value is PrepDiagnostic {
-  return isRecord(value) && (value.severity === 'error' || value.severity === 'warning');
-}
-
-function isUnsupportedGeneratedWorkflowOperationError(error: unknown): boolean {
-  return (
-    error instanceof DataCommandError &&
-    error.code === 'VALIDATION_FAILED' &&
-    error.message.includes('uses unsupported operation')
-  );
-}
-
-function objectArray(value: unknown): Record<string, unknown>[] {
-  return Array.isArray(value) ? value.filter(isRecord) : [];
-}
-
-function parseGeneratedWorkflowPlanResponse({
-  text,
-  inputTableId,
-  outputTableName,
-  requirement,
-  columns,
-}: {
-  text: string;
-  inputTableId: string;
-  outputTableName: string;
-  requirement: string;
-  columns: Array<{ name: string; type?: string }>;
-}): { workflowDsl: string; requiredColumns: Array<{ name: string; type?: string }> } {
-  const parsed = JSON.parse(extractJsonObject(text)) as unknown;
-  if (!isRecord(parsed) || !Array.isArray(parsed.operations)) {
-    throw new Error('Workflow plan generation response must include operations');
-  }
-  const compiled = compileGeneratedWorkflowPlan({
-    operations: parsed.operations,
-    inputTableId,
-    outputTableName,
-    requirement,
-    columns,
-  });
-  return parseGeneratedWorkflowDslResponse(
-    JSON.stringify({
-      workflowDsl: compiled.workflowDsl,
-      requiredColumns: compiled.requiredColumns,
-    }),
-    columns
-  );
-}
-
-type GeneratedWorkflowRequiredColumnResolver = (
-  name: unknown,
-  context?: string
-) => { name: string; type?: string };
-
-interface GeneratedWorkflowColumnBinding {
-  name: string;
-  type?: string;
-  sourceColumn?: { name: string; type?: string };
-}
-
-interface GeneratedWorkflowOperationCompileContext {
-  columns: Array<{ name: string; type?: string }>;
-  lines: string[];
-  requirement: string;
-  requireColumn: GeneratedWorkflowRequiredColumnResolver;
-  normalizeExpression: (expression: string) => string;
-  renameColumn: (sourceName: string, targetName: string) => void;
-  upsertColumn: (name: string, sourceColumn?: { name: string; type?: string }) => void;
-  removeColumn: (name: string) => void;
-  keepColumns: (names: string[]) => void;
-  replaceColumns: (columns: GeneratedWorkflowColumnBinding[]) => void;
-  getCurrentColumns: () => GeneratedWorkflowColumnBinding[];
-}
-
-interface GeneratedWorkflowOperationDefinition {
-  promptSpec: Record<string, unknown>;
-  compile: (
-    operation: Record<string, unknown> & { type: string },
-    context: GeneratedWorkflowOperationCompileContext
-  ) => void;
-}
-
-const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOperationDefinition> =
-  {
-    filter: {
-      promptSpec: {
-        type: 'filter',
-        column:
-          'current field name; use original input column unless an earlier rename created a new field name',
-        operator: '= | <> | > | >= | < | <= | contains | not_contains | is_null | is_not_null',
-        value: 'literal value; omit for null checks',
-        rightColumn:
-          'optional current field name for field-to-field comparisons, for example Profit < Target Profit. Use this instead of value when the right side is a field.',
-      },
-      compile(operation, context) {
-        const column = context.requireColumn(columnNameFromPlan(operation), 'filter.column');
-        const operator = normalizePlanFilterOperator(operation.operator);
-        const field = formatDslField(column.name);
-        const rightColumnName = resolvePlanFilterRightColumnName(operation);
-        const rightColumn = rightColumnName
-          ? context.requireColumn(rightColumnName, 'filter.rightColumn')
-          : null;
-        const condition =
-          operator === 'is_null' || operator === 'is_not_null'
-            ? `${field} ${operator === 'is_null' ? 'IS NULL' : 'IS NOT NULL'}`
-            : operator === 'contains' || operator === 'not_contains'
-              ? `${operator === 'not_contains' ? 'NOT ' : ''}contains(CAST(${field} AS VARCHAR), ${literalToDsl(operation.value)})`
-              : rightColumn
-                ? `${field} ${operator} ${formatDslField(rightColumn.name)}`
-                : `${field} ${operator} ${literalToDsl(operation.value)}`;
-        context.lines.push(`  | filter ${condition}`);
-      },
-    },
-    sort: {
-      promptSpec: {
-        type: 'sort',
-        column:
-          'current field name; use original input column unless an earlier rename created a new field name',
-        direction: 'asc | desc',
-      },
-      compile(operation, context) {
-        const column = context.requireColumn(
-          columnNameFromPlan(operation) ||
-            inferColumnNameFromRequirement(context.requirement, context.columns, 'sort'),
-          'sort.column'
-        );
-        const direction = normalizePlanSortDirection(operation.direction ?? operation.order);
-        context.lines.push(`  | sort by ${formatDslField(column.name)} ${direction}`);
-      },
-    },
-    convert_type: {
-      promptSpec: {
-        type: 'convert_type',
-        column:
-          'current field name to overwrite; use original input column unless an earlier rename created a new field name',
-        targetType: 'text | integer | float | decimal | date | datetime | boolean',
-        removePrefix: 'optional string prefix to remove before casting',
-        removeChars: 'optional array of literal strings to remove before casting',
-        scale: 'optional decimal scale for targetType decimal',
-        onError: 'null | fail',
-      },
-      compile(operation, context) {
-        const column = context.requireColumn(columnNameFromPlan(operation), 'convert_type.column');
-        const targetType = normalizePlanTargetType(operation.targetType);
-        const onError = operation.onError === 'fail' ? 'fail' : 'null';
-        const removeChars = Array.isArray(operation.removeChars)
-          ? operation.removeChars.filter((value): value is string => typeof value === 'string')
-          : [];
-        const removePrefix =
-          typeof operation.removePrefix === 'string' && operation.removePrefix
-            ? operation.removePrefix
-            : '';
-        if (removePrefix || removeChars.length > 0 || operation.scale !== undefined) {
-          const expression = compilePlanTypeConversionExpression({
-            columnName: column.name,
-            targetType,
-            removePrefix,
-            removeChars,
-            scale: operation.scale,
-          });
-          context.lines.push(`  | derive ${formatDslField(column.name)} = ${expression}`);
-        } else {
-          context.lines.push(
-            `  | cast ${formatDslField(column.name)} as ${targetType} on_error ${onError}`
-          );
-        }
-      },
-    },
-    select: {
-      promptSpec: { type: 'select', columns: 'array of existing input columns to keep' },
-      compile(operation, context) {
-        const rawSelected = columnListFromPlan(operation);
-        const inferredDropped = inferDroppedColumnsFromSelectOperation(rawSelected, context);
-        if (inferredDropped.length > 0) {
-          const dropped = inferredDropped.map(
-            (name) => context.requireColumn(name, 'drop.columns').name
-          );
-          context.lines.push(`  | drop ${dropped.map(formatDslField).join(', ')}`);
-          dropped.forEach((name) => context.removeColumn(name));
-          return;
-        }
-        const selected = rawSelected.map(
-          (name) => context.requireColumn(name, 'select.columns').name
-        );
-        if (selected.length > 0) {
-          context.lines.push(`  | select ${selected.map(formatDslField).join(', ')}`);
-          context.keepColumns(selected);
-        }
-      },
-    },
-    drop: {
-      promptSpec: { type: 'drop', columns: 'array of existing input columns to remove' },
-      compile(operation, context) {
-        const dropped = columnListFromPlan(operation).map(
-          (name) => context.requireColumn(name, 'drop.columns').name
-        );
-        if (dropped.length > 0) {
-          context.lines.push(`  | drop ${dropped.map(formatDslField).join(', ')}`);
-          dropped.forEach((name) => context.removeColumn(name));
-        }
-      },
-    },
-    rename: {
-      promptSpec: {
-        type: 'rename',
-        source: 'existing input column',
-        target: 'new output column name',
-      },
-      compile(operation, context) {
-        const source = context.requireColumn(
-          operation.source ?? columnNameFromPlan(operation),
-          'rename.source'
-        );
-        const target = normalizeRequiredName(
-          typeof operation.target === 'string' ? operation.target : '',
-          'Generated rename operation requires target'
-        );
-        context.lines.push(`  | map ${formatDslField(source.name)} to ${formatDslField(target)}`);
-        context.renameColumn(source.name, target);
-      },
-    },
-    derive: {
-      promptSpec: {
-        type: 'derive',
-        column: 'output column name to create or overwrite',
-        expression:
-          'Prep scalar expression only when no structured operation can express it. Reference fields with [field] or [`field name`]. Never use bare SQL identifiers/backticks such as `field name`.',
-      },
-      compile(operation, context) {
-        const column = normalizeRequiredName(
-          typeof operation.column === 'string' ? operation.column : '',
-          'Generated derive operation requires column'
-        );
-        const expression = normalizeRequiredName(
-          typeof operation.expression === 'string' ? operation.expression : '',
-          'Generated derive operation requires expression'
-        );
-        context.lines.push(
-          `  | derive ${formatDslField(column)} = ${context.normalizeExpression(expression)}`
-        );
-        context.upsertColumn(column);
-      },
-    },
-    aggregate: {
-      promptSpec: {
-        type: 'aggregate',
-        groupBy: 'array of existing input columns',
-        metrics:
-          'array of { function: sum|avg|min|max|count|count_distinct, column: existing input column or "*", alias: output column name }',
-      },
-      compile(operation, context) {
-        const groupBy = stringArrayFromPlan(operation.groupBy).map((name) =>
-          context.requireColumn(name, 'aggregate.groupBy')
-        );
-        const metrics = Array.isArray(operation.metrics)
-          ? operation.metrics
-              .filter(isRecord)
-              .map((metric) => compilePlanAggregateMetric(metric, context.requireColumn))
-          : [];
-        if (metrics.length === 0) {
-          throw new DataCommandError(
-            'VALIDATION_FAILED',
-            'Generated aggregate operation requires metrics'
-          );
-        }
-        context.lines.push(
-          `  | aggregate ${
-            groupBy.length > 0
-              ? `by ${groupBy.map((column) => formatDslField(column.name)).join(', ')}`
-              : 'all'
-          } metrics ${metrics.map((metric) => metric.dsl).join(', ')}`
-        );
-        context.replaceColumns([
-          ...groupBy.map((column) => ({
-            name: column.name,
-            type: column.type,
-            sourceColumn: column,
-          })),
-          ...metrics.map((metric) => ({ name: metric.alias })),
-        ]);
-      },
-    },
-  };
-
-function getGeneratedWorkflowOperationPromptSpecs(): Record<string, unknown>[] {
-  return Object.values(GENERATED_WORKFLOW_OPERATION_REGISTRY).map(
-    (definition) => definition.promptSpec
-  );
-}
-
-function compileGeneratedWorkflowPlan({
-  operations,
-  inputTableId,
-  outputTableName,
-  requirement,
-  columns,
-}: {
-  operations: unknown[];
-  inputTableId: string;
-  outputTableName: string;
-  requirement: string;
-  columns: Array<{ name: string; type?: string }>;
-}): { workflowDsl: string; requiredColumns: Array<{ name: string; type?: string }> } {
-  const columnsByName = new Map<string, GeneratedWorkflowColumnBinding>(
-    columns.map((column) => [
-      column.name.toLowerCase(),
-      { name: column.name, type: column.type, sourceColumn: column },
-    ])
-  );
-  const requiredColumnsByName = new Map<string, { name: string; type?: string }>();
-  const requireColumn = (name: unknown, context = 'operation'): { name: string; type?: string } => {
-    const normalized = typeof name === 'string' ? name.trim() : '';
-    if (!normalized) {
-      throw new DataCommandError(
-        'VALIDATION_FAILED',
-        `Generated workflow plan ${context} is missing an input column`
-      );
-    }
-    const column = normalized ? columnsByName.get(normalized.toLowerCase()) : undefined;
-    if (!column) {
-      throw new DataCommandError(
-        'VALIDATION_FAILED',
-        `Generated workflow plan ${context} references unknown input column: ${String(name)}`
-      );
-    }
-    if (column.sourceColumn) {
-      requiredColumnsByName.set(column.sourceColumn.name.toLowerCase(), column.sourceColumn);
-    }
-    return { name: column.name, type: column.type };
-  };
-  const renameColumn = (sourceName: string, targetName: string) => {
-    const source = columnsByName.get(sourceName.toLowerCase());
-    if (!source) return;
-    columnsByName.delete(sourceName.toLowerCase());
-    columnsByName.set(targetName.toLowerCase(), {
-      name: targetName,
-      type: source.type,
-      sourceColumn: source.sourceColumn,
-    });
-  };
-  const upsertColumn = (name: string, sourceColumn?: { name: string; type?: string }) => {
-    columnsByName.set(name.toLowerCase(), {
-      name,
-      type: sourceColumn?.type,
-      sourceColumn,
-    });
-  };
-  const removeColumn = (name: string) => {
-    columnsByName.delete(name.toLowerCase());
-  };
-  const keepColumns = (names: string[]) => {
-    const kept = new Map<string, GeneratedWorkflowColumnBinding>();
-    for (const name of names) {
-      const column = columnsByName.get(name.toLowerCase());
-      if (column) kept.set(column.name.toLowerCase(), column);
-    }
-    columnsByName.clear();
-    for (const [key, column] of kept) {
-      columnsByName.set(key, column);
-    }
-  };
-  const replaceColumns = (columns: GeneratedWorkflowColumnBinding[]) => {
-    columnsByName.clear();
-    for (const column of columns) {
-      columnsByName.set(column.name.toLowerCase(), column);
-    }
-  };
-  const lines = [`input source dataset "${escapeDslString(inputTableId)}" as src`];
-  const context: GeneratedWorkflowOperationCompileContext = {
-    columns,
-    lines,
-    requirement,
-    requireColumn,
-    normalizeExpression: (expression) =>
-      normalizeGeneratedPlanExpression(expression, columnsByName),
-    renameColumn,
-    upsertColumn,
-    removeColumn,
-    keepColumns,
-    replaceColumns,
-    getCurrentColumns: () => [...columnsByName.values()],
-  };
-  for (const rawOperationInput of operations) {
-    const rawOperation = normalizeGeneratedWorkflowOperation(rawOperationInput);
-    const compiler = GENERATED_WORKFLOW_OPERATION_REGISTRY[rawOperation.type];
-    if (!compiler) {
-      throw new DataCommandError(
-        'VALIDATION_FAILED',
-        `Generated workflow plan uses unsupported operation: ${rawOperation.type}`
-      );
-    }
-    compiler.compile(rawOperation, context);
-  }
-  lines.push(`  | output table "${escapeDslString(outputTableName)}" mode replace`);
-  return {
-    workflowDsl: lines.join('\n'),
-    requiredColumns: [...requiredColumnsByName.values()],
-  };
-}
-
-function normalizeGeneratedWorkflowOperation(operation: unknown): Record<string, unknown> & {
-  type: string;
-} {
-  if (!isRecord(operation) || typeof operation.type !== 'string' || !operation.type.trim()) {
-    throw new DataCommandError(
-      'VALIDATION_FAILED',
-      'Generated workflow plan has invalid operation'
-    );
-  }
-  const fields = isRecord(operation.fields) ? operation.fields : {};
-  return {
-    ...fields,
-    ...operation,
-    type: operation.type.trim().toLowerCase(),
-  };
-}
-
-function normalizeGeneratedPlanExpression(
-  expression: string,
-  columnsByName: Map<string, GeneratedWorkflowColumnBinding>
-): string {
-  let normalized = '';
-  let index = 0;
-  let quote: '"' | "'" | null = null;
-
-  while (index < expression.length) {
-    const char = expression[index];
-    if (quote) {
-      if (char === '\\') {
-        const next = expression[index + 1];
-        if (next !== undefined) {
-          const following = expression[index + 2];
-          if (next === '\\' && following === 'd') {
-            normalized += '[0-9]';
-            index += 3;
-            continue;
-          }
-          normalized += normalizeGeneratedRegexEscape(next);
-          index += 2;
-          continue;
-        }
-      }
-      normalized += char;
-      if (char === quote) {
-        quote = null;
-      }
-      index += 1;
-      continue;
-    }
-
-    if (char === '"' || char === "'") {
-      quote = char;
-      normalized += char;
-      index += 1;
-      continue;
-    }
-
-    if (char === '[' && expression[index + 1] === '`') {
-      const fieldEnd = findDslBacktickFieldEnd(expression, index + 2);
-      if (fieldEnd !== null) {
-        normalized += expression.slice(index, fieldEnd + 1);
-        index = fieldEnd + 1;
-        continue;
-      }
-    }
-
-    if (char === '[') {
-      const parsed = readBracketFieldToken(expression, index);
-      if (parsed) {
-        const column = columnsByName.get(parsed.value.toLowerCase());
-        normalized += column ? formatDslField(column.name) : parsed.raw;
-        index = parsed.end;
-        continue;
-      }
-    }
-
-    if (char === '`') {
-      const parsed = readBacktickToken(expression, index);
-      if (parsed) {
-        const column = columnsByName.get(parsed.value.toLowerCase());
-        normalized += column ? formatDslField(column.name) : parsed.raw;
-        index = parsed.end;
-        continue;
-      }
-    }
-
-    normalized += char;
-    index += 1;
-  }
-
-  return normalized;
-}
-
-function normalizeGeneratedRegexEscape(char: string): string {
-  return char === 'd' ? '[0-9]' : `\\${char}`;
-}
-
-function readBacktickToken(
-  expression: string,
-  start: number
-): { raw: string; value: string; end: number } | null {
-  let raw = '`';
-  let value = '';
-  for (let index = start + 1; index < expression.length; index += 1) {
-    const char = expression[index];
-    raw += char;
-    if (char === '\\') {
-      const next = expression[index + 1];
-      if (next !== undefined) {
-        raw += next;
-        value += next;
-        index += 1;
-      }
-      continue;
-    }
-    if (char === '`') {
-      return { raw, value, end: index + 1 };
-    }
-    value += char;
-  }
-  return null;
-}
-
-function readBracketFieldToken(
-  expression: string,
-  start: number
-): { raw: string; value: string; end: number } | null {
-  let raw = '[';
-  let value = '';
-  for (let index = start + 1; index < expression.length; index += 1) {
-    const char = expression[index];
-    raw += char;
-    if (char === ']') {
-      return { raw, value: value.trim(), end: index + 1 };
-    }
-    value += char;
-  }
-  return null;
-}
-
-function normalizePlanFilterOperator(operator: unknown): string {
-  switch (operator) {
-    case '=':
-    case '<>':
-    case '>':
-    case '>=':
-    case '<':
-    case '<=':
-    case 'contains':
-    case 'not_contains':
-    case 'is_null':
-    case 'is_not_null':
-      return operator;
-    default:
-      throw new DataCommandError(
-        'VALIDATION_FAILED',
-        `Generated filter operation uses unsupported operator: ${String(operator)}`
-      );
-  }
-}
-
-function resolvePlanFilterRightColumnName(operation: Record<string, unknown>): string {
-  for (const key of ['rightColumn', 'compareColumn', 'rightField', 'fieldValue']) {
-    const value = operation[key];
-    if (typeof value === 'string' && value.trim()) return value.trim();
-  }
-  return parseDslFieldRefName(operation.value);
-}
-
-function parseDslFieldRefName(value: unknown): string {
-  if (typeof value !== 'string') return '';
-  const trimmed = value.trim();
-  const backtickMatch = /^\[\s*`((?:[^`\\]|\\.)*)`\s*\]$/u.exec(trimmed);
-  if (backtickMatch?.[1]) {
-    return unescapeDslBacktickField(backtickMatch[1]);
-  }
-  const simpleMatch = /^\[\s*([\p{L}_][\p{L}\p{N}_]*)\s*\]$/u.exec(trimmed);
-  if (simpleMatch?.[1]) return simpleMatch[1];
-  const looseMatch = /^\[\s*([^\]]+?)\s*\]$/u.exec(trimmed);
-  return looseMatch?.[1]?.trim() ?? '';
-}
-
-function normalizePlanSortDirection(direction: unknown): 'asc' | 'desc' {
-  const normalized = typeof direction === 'string' ? direction.toLowerCase().trim() : '';
-  return normalized === 'desc' || normalized === 'descending' ? 'desc' : 'asc';
-}
-
-function normalizePlanTargetType(targetType: unknown): string {
-  switch (targetType) {
-    case 'text':
-    case 'integer':
-    case 'float':
-    case 'decimal':
-    case 'date':
-    case 'datetime':
-    case 'boolean':
-      return targetType;
-    default:
-      throw new DataCommandError(
-        'VALIDATION_FAILED',
-        `Generated convert_type operation uses unsupported targetType: ${String(targetType)}`
-      );
-  }
-}
-
-function compilePlanTypeConversionExpression({
-  columnName,
-  targetType,
-  removePrefix,
-  removeChars,
-  scale,
-}: {
-  columnName: string;
-  targetType: string;
-  removePrefix: string;
-  removeChars: string[];
-  scale: unknown;
-}): string {
-  let expression = `CAST(${formatDslField(columnName)} AS VARCHAR)`;
-  for (const value of [removePrefix, ...removeChars].filter(Boolean)) {
-    expression = `REPLACE(${expression}, ${literalToDsl(value)}, '')`;
-  }
-  if (targetType === 'text') return expression;
-  const storageType =
-    targetType === 'decimal'
-      ? `DECIMAL(18,${normalizeDecimalScale(scale)})`
-      : targetType.toUpperCase();
-  return `CAST(${expression} AS ${storageType})`;
-}
-
-function normalizeDecimalScale(scale: unknown): number {
-  const numericScale = Number(scale);
-  if (Number.isFinite(numericScale) && numericScale >= 0 && numericScale <= 12) {
-    return Math.floor(numericScale);
-  }
-  return 2;
-}
-
-function compilePlanAggregateMetric(
-  metric: Record<string, unknown>,
-  requireColumn: (name: unknown, context?: string) => { name: string; type?: string }
-): { dsl: string; alias: string } {
-  const fn = normalizePlanAggregateFunction(metric.function);
-  const column =
-    metric.column === '*'
-      ? '*'
-      : formatDslField(
-          requireColumn(metric.column ?? metric.expression, 'aggregate.metrics.column').name
-        );
-  const alias = normalizeRequiredName(
-    typeof metric.alias === 'string' ? metric.alias : `${fn}_${String(metric.column ?? 'all')}`,
-    'Generated aggregate metric requires alias'
-  );
-  const metricFunction = fn === 'count_distinct' ? 'count_distinct' : fn;
-  return { dsl: `${metricFunction}(${column}) as ${formatDslField(alias)}`, alias };
-}
-
-function normalizePlanAggregateFunction(fn: unknown): string {
-  switch (fn) {
-    case 'sum':
-    case 'avg':
-    case 'min':
-    case 'max':
-    case 'count':
-    case 'count_distinct':
-      return fn;
-    default:
-      throw new DataCommandError(
-        'VALIDATION_FAILED',
-        `Generated aggregate operation uses unsupported function: ${String(fn)}`
-      );
-  }
-}
-
-function stringArrayFromPlan(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))
-    : [];
-}
-
-function columnListFromPlan(operation: Record<string, unknown>): string[] {
-  const fromColumns = stringArrayFromPlan(operation.columns);
-  if (fromColumns.length > 0) return fromColumns;
-  const singleColumn = columnNameFromPlan(operation);
-  return singleColumn ? [singleColumn] : [];
-}
-
-function columnNameFromPlan(operation: Record<string, unknown>): string {
-  for (const key of ['column', 'field', 'by', 'sortBy', 'orderBy', 'name']) {
-    const value = operation[key];
-    if (typeof value === 'string' && value.trim()) return value.trim();
-  }
-  for (const key of ['columns', 'fields']) {
-    const value = stringArrayFromPlan(operation[key]);
-    if (value.length > 0) return value[0];
-  }
-  if (isRecord(operation.target) && typeof operation.target.column === 'string') {
-    return operation.target.column.trim();
-  }
-  return '';
-}
-
-function inferDroppedColumnsFromSelectOperation(
-  selectedNames: string[],
-  context: GeneratedWorkflowOperationCompileContext
-): string[] {
-  if (selectedNames.length === 0 || !requirementHasColumnRemovalIntent(context.requirement)) {
-    return [];
-  }
-  const currentColumns = context.getCurrentColumns();
-  const currentByName = new Map(
-    currentColumns.map((column) => [column.name.toLowerCase(), column.name])
-  );
-  const selected = new Set<string>();
-  for (const name of selectedNames) {
-    const currentName = currentByName.get(name.trim().toLowerCase());
-    if (!currentName) return [];
-    selected.add(currentName.toLowerCase());
-  }
-  if (selected.size !== selectedNames.length || selected.size >= currentColumns.length) {
-    return [];
-  }
-  const dropped = currentColumns
-    .filter((column) => !selected.has(column.name.toLowerCase()))
-    .map((column) => column.name);
-  if (dropped.length === 0) return [];
-  const normalizedRequirement = normalizeColumnMatchText(context.requirement);
-  return dropped.every((name) =>
-    normalizedRequirementContainsColumnName(normalizedRequirement, normalizeColumnMatchText(name))
-  )
-    ? dropped
-    : [];
-}
-
-function requirementHasColumnRemovalIntent(requirement: string): boolean {
-  return /删除|去掉|移除|去除|删掉|剔除|排除|不要|\bdrop\b|\bdelete\b|\bremove\b|\bexclude\b/i.test(
-    requirement
-  );
-}
-
-function inferColumnNameFromRequirement(
-  requirement: string,
-  columns: Array<{ name: string; type?: string }>,
-  _operationType: string
-): string {
-  const normalizedRequirement = normalizeColumnMatchText(requirement);
-  const matched = columns
-    .filter((column) => {
-      const normalizedColumnName = normalizeColumnMatchText(column.name);
-      return (
-        normalizedColumnName &&
-        normalizedRequirementContainsColumnName(normalizedRequirement, normalizedColumnName)
-      );
-    })
-    .sort((left, right) => right.name.length - left.name.length);
-  return matched[0]?.name ?? '';
-}
-
-function normalizeColumnMatchText(value: string): string {
-  return value.toLowerCase().replace(/\s+/g, '');
-}
-
-function normalizedRequirementContainsColumnName(
-  normalizedRequirement: string,
-  normalizedColumnName: string
-): boolean {
-  if (!/^[a-z0-9_]+$/i.test(normalizedColumnName)) {
-    return normalizedRequirement.includes(normalizedColumnName);
-  }
-  const escapedName = normalizedColumnName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(^|[^a-z0-9_])${escapedName}($|[^a-z0-9_])`, 'i').test(normalizedRequirement);
-}
-
-function formatDslField(name: string): string {
-  return /^[\p{L}_][\p{L}\p{N}_]*$/u.test(name)
-    ? `[${name}]`
-    : `[\`${name.replace(/\\/g, '\\\\').replace(/`/g, '\\`')}\`]`;
-}
-
-function literalToDsl(value: unknown): string {
-  if (value === null || value === undefined) return 'NULL';
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-  if (typeof value === 'boolean') return value ? 'true' : 'false';
-  return `'${String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
-}
-
-function parseGeneratedWorkflowDslResponse(
-  text: string,
-  columns: Array<{ name: string; type?: string }>
-): { workflowDsl: string; requiredColumns: Array<{ name: string; type?: string }> } {
-  const parsed = JSON.parse(extractJsonObject(text)) as unknown;
-  if (!isRecord(parsed) || typeof parsed.workflowDsl !== 'string') {
-    throw new Error('Workflow DSL generation response must include workflowDsl');
-  }
-  const workflowDsl = parsed.workflowDsl.trim();
-  validateGeneratedWorkflowDslText(workflowDsl);
-  const parsedDsl = parsePrepDsl(workflowDsl);
-  const parseErrors = diagnosticsWithSeverity(parsedDsl.diagnostics, 'error');
-  if (!parsedDsl.ast || parseErrors.length > 0) {
-    throw new DataCommandError('DSL_PARSE_FAILED', summarizeDiagnostics(parseErrors), {
-      diagnostics: parsedDsl.diagnostics,
-    });
-  }
-  if (parsedDsl.ast.sources.length === 0 || !parsedDsl.ast.output) {
-    throw new DataCommandError(
-      'VALIDATION_FAILED',
-      'Generated workflow must include an input source and an output table'
-    );
-  }
-  validateGeneratedWorkflowAst(parsedDsl.ast.operators);
-
-  const columnsByName = new Map(columns.map((column) => [column.name.toLowerCase(), column]));
-  const modelRequiredColumns = Array.isArray(parsed.requiredColumns)
-    ? parsed.requiredColumns
-        .map((column) => {
-          const name = isRecord(column) ? String(column.name ?? '').trim() : '';
-          if (!name) return null;
-          return columnsByName.get(name.toLowerCase()) ?? null;
-        })
-        .filter((column): column is { name: string; type?: string } => Boolean(column))
-    : [];
-  const extractedColumns = resolveRequiredInputColumnsFromWorkflow(
-    parsedDsl.ast.operators,
-    columns
-  );
-  const requiredColumnsByName = new Map<string, { name: string; type?: string }>();
-  for (const column of modelRequiredColumns) {
-    requiredColumnsByName.set(column.name.toLowerCase(), column);
-  }
-  for (const column of extractedColumns) {
-    requiredColumnsByName.set(column.name.toLowerCase(), column);
-  }
-  return {
-    workflowDsl,
-    requiredColumns: [...requiredColumnsByName.values()],
-  };
-}
-
-function validateGeneratedWorkflowDslText(workflowDsl: string): void {
-  const invalidQuotedFieldRef = /\[\s*['"]/.exec(workflowDsl);
-  if (invalidQuotedFieldRef) {
-    throw new DataCommandError(
-      'VALIDATION_FAILED',
-      'Generated workflow uses invalid quoted field syntax. Use [`field name`] for fields with spaces.'
-    );
-  }
-  if (hasBareBacktickOutsideString(workflowDsl)) {
-    throw new DataCommandError(
-      'VALIDATION_FAILED',
-      'Generated workflow uses invalid bare backtick field syntax. Use [`field name`] inside expressions.'
-    );
-  }
-}
-
-function hasBareBacktickOutsideString(value: string): boolean {
-  let quote: '"' | "'" | null = null;
-  for (let index = 0; index < value.length; index += 1) {
-    const char = value[index];
-    if (quote) {
-      if (char === '\\') {
-        index += 1;
-      } else if (char === quote) {
-        quote = null;
-      }
-      continue;
-    }
-    if (char === '"' || char === "'") {
-      quote = char;
-      continue;
-    }
-    if (char === '[' && value[index + 1] === '`') {
-      const fieldEnd = findDslBacktickFieldEnd(value, index + 2);
-      if (fieldEnd !== null) {
-        index = fieldEnd;
-        continue;
-      }
-    }
-    if (char === '`') {
-      return true;
-    }
-  }
-  return false;
-}
-
-function findDslBacktickFieldEnd(value: string, start: number): number | null {
-  for (let index = start; index < value.length; index += 1) {
-    const char = value[index];
-    if (char === '\\') {
-      index += 1;
-      continue;
-    }
-    if (char === '`') {
-      return value[index + 1] === ']' ? index + 1 : null;
-    }
-  }
-  return null;
-}
-
-function validateGeneratedWorkflowAst(operators: PrepOperatorAst[]): void {
-  for (const operator of operators) {
-    if (
-      operator.type === 'calculate_field' &&
-      objectArray(operator.config.calculations).length === 0
-    ) {
-      throw new DataCommandError(
-        'VALIDATION_FAILED',
-        'Generated derive operator has no valid calculations'
-      );
-    }
-  }
-}
-
-function resolveRequiredInputColumnsFromWorkflow(
-  operators: PrepOperatorAst[],
-  columns: Array<{ name: string; type?: string }>
-): Array<{ name: string; type?: string }> {
-  const availableColumns = new Map<string, GeneratedWorkflowColumnBinding>(
-    columns.map((column) => [
-      column.name.toLowerCase(),
-      { name: column.name, type: column.type, sourceColumn: column },
-    ])
-  );
-  const requiredColumnsByName = new Map<string, { name: string; type?: string }>();
-  const requireName = (value: unknown) => {
-    if (typeof value !== 'string' || !value.trim()) return null;
-    const name = stripQualifiedFieldName(value.trim());
-    const column = availableColumns.get(name.toLowerCase());
-    if (!column) {
-      throw new DataCommandError(
-        'VALIDATION_FAILED',
-        `Generated workflow references unknown input column(s): ${name}`
-      );
-    }
-    if (column.sourceColumn) {
-      requiredColumnsByName.set(column.sourceColumn.name.toLowerCase(), column.sourceColumn);
-    }
-    return column;
-  };
-  const requireNames = (value: unknown) => {
-    if (!Array.isArray(value)) return [];
-    return value
-      .map(requireName)
-      .filter((column): column is GeneratedWorkflowColumnBinding => Boolean(column));
-  };
-  const requireExpression = (value: unknown) => {
-    if (typeof value !== 'string') return;
-    extractFieldNamesFromExpression(value).forEach((name) => requireName(name));
-  };
-  const removeName = (value: unknown) => {
-    if (typeof value !== 'string' || !value.trim()) return;
-    availableColumns.delete(stripQualifiedFieldName(value.trim()).toLowerCase());
-  };
-  const upsertName = (name: unknown, source?: GeneratedWorkflowColumnBinding | null) => {
-    if (typeof name !== 'string' || !name.trim()) return;
-    const normalized = stripQualifiedFieldName(name.trim());
-    availableColumns.set(normalized.toLowerCase(), {
-      name: normalized,
-      type: source?.type,
-      sourceColumn: source?.sourceColumn,
-    });
-  };
-  const keepNames = (names: unknown) => {
-    if (!Array.isArray(names)) return;
-    const kept = new Map<string, GeneratedWorkflowColumnBinding>();
-    for (const item of names) {
-      const column = requireName(item);
-      if (column) kept.set(column.name.toLowerCase(), column);
-    }
-    availableColumns.clear();
-    for (const [key, column] of kept) {
-      availableColumns.set(key, column);
-    }
-  };
-
-  for (const operator of operators) {
-    const config = operator.config ?? {};
-    switch (operator.type) {
-      case 'field_select':
-        if (config.mode === 'exclude') {
-          requireNames(config.columns);
-          if (Array.isArray(config.columns)) config.columns.forEach(removeName);
-        } else {
-          keepNames(config.columns);
-        }
-        break;
-      case 'field_mapping':
-        objectArray(config.mappings).forEach((mapping) => {
-          const source = requireName(mapping.source);
-          removeName(mapping.source);
-          upsertName(computeMappingTarget(mapping), source);
-        });
-        break;
-      case 'filter':
-        requireExpression(config.condition);
-        break;
-      case 'deduplicate':
-        requireNames(config.columns);
-        objectArray(config.orderBy).forEach((key) => requireName(key.field));
-        break;
-      case 'missing_value':
-        requireNames(config.columns);
-        objectArray(config.rules).forEach((rule) => requireName(rule.column));
-        break;
-      case 'type_convert':
-        objectArray(config.conversions).forEach((conversion) => requireName(conversion.column));
-        break;
-      case 'sort':
-        objectArray(config.keys).forEach((key) => requireName(key.field));
-        break;
-      case 'aggregate':
-        requireNames(config.groupBy);
-        objectArray(config.metrics).forEach((metric) => {
-          if (metric.expression !== '*') requireExpression(metric.expression);
-        });
-        break;
-      case 'calculate_field':
-        objectArray(config.calculations).forEach((calculation) =>
-          requireExpression(calculation.expression)
-        );
-        objectArray(config.calculations).forEach((calculation) => upsertName(calculation.field));
-        break;
-      case 'pivot':
-        requireNames(config.on);
-        requireNames(config.groupBy);
-        objectArray(config.using).forEach((metric) => {
-          if (metric.expression !== '*') requireExpression(metric.expression);
-        });
-        break;
-      case 'unpivot':
-        requireNames(config.columns);
-        break;
-      case 'unnest':
-        requireName(config.column);
-        break;
-      case 'join':
-        objectArray(config.conditions).forEach((condition) => {
-          requireName(condition.left);
-          requireName(condition.right);
-        });
-        if (isRecord(config.asof)) {
-          requireName(config.asof.leftTime);
-          requireName(config.asof.rightTime);
-          objectArray(config.asof.by).forEach((condition) => {
-            requireName(condition.left);
-            requireName(condition.right);
-          });
-        }
-        objectArray(config.keep).forEach((item) => requireName(item.source));
-        break;
-      default:
-        break;
-    }
-  }
-  return [...requiredColumnsByName.values()];
-}
-
-const DSL_FIELD_REF_TOKEN_PATTERN = '\\[(?:`((?:[^`\\\\]|\\\\.)*)`|([\\p{L}_][\\p{L}\\p{N}_]*))\\]';
-const DSL_FIELD_REF_PATTERN = new RegExp(
-  `${DSL_FIELD_REF_TOKEN_PATTERN}(?:\\.${DSL_FIELD_REF_TOKEN_PATTERN})?`,
-  'gu'
-);
-const DSL_STRING_LITERAL_PATTERN = /'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g;
-
-function extractFieldNamesFromExpression(expression: string): string[] {
-  const withoutStrings = expression.replace(DSL_STRING_LITERAL_PATTERN, '');
-  const names: string[] = [];
-  for (const match of withoutStrings.matchAll(DSL_FIELD_REF_PATTERN)) {
-    const first = match[1] ?? match[2] ?? '';
-    const second = match[3] ?? match[4] ?? '';
-    const name = unescapeDslBacktickField(second || first);
-    if (name) names.push(name);
-  }
-  return names;
-}
-
-function stripQualifiedFieldName(name: string): string {
-  const separatorIndex = name.lastIndexOf('.');
-  return separatorIndex >= 0 ? name.slice(separatorIndex + 1) : name;
-}
-
-function unescapeDslBacktickField(name: string): string {
-  return name.replace(/\\`/g, '`').replace(/\\\\/g, '\\');
-}
-
-function hashColumns(columns: Array<{ name: string; type?: string }>): string {
-  const value = JSON.stringify(
-    columns.map((column) => ({ name: column.name, type: column.type ?? null }))
-  );
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) | 0;
-  }
-  return `columns_${Math.abs(hash).toString(16)}`;
-}
-
-function validateGeneratedTaskSchema(
-  actualColumns: Array<{ name: string; type?: string }>,
-  requiredColumns: Array<{ name: string; type?: string }>,
-  policy: 'strict' | 'required_subset'
-): void {
-  const actualByName = new Map(actualColumns.map((column) => [column.name.toLowerCase(), column]));
-  const missing = requiredColumns.filter((column) => !actualByName.has(column.name.toLowerCase()));
-  if (missing.length > 0) {
-    throw new DataCommandError(
-      'VALIDATION_FAILED',
-      `Input schema drift detected. Missing required column(s): ${missing
-        .map((column) => column.name)
-        .join(', ')}`
-    );
-  }
-  const incompatible = requiredColumns.filter((column) => {
-    if (!column.type) return false;
-    const actual = actualByName.get(column.name.toLowerCase());
-    return Boolean(
-      actual?.type && normalizeColumnType(actual.type) !== normalizeColumnType(column.type)
-    );
-  });
-  if (incompatible.length > 0) {
-    throw new DataCommandError(
-      'VALIDATION_FAILED',
-      `Input schema drift detected. Incompatible required column type(s): ${incompatible
-        .map((column) => {
-          const actual = actualByName.get(column.name.toLowerCase());
-          return `${column.name} expected ${column.type}, got ${actual?.type}`;
-        })
-        .join(', ')}`
-    );
-  }
-  if (policy === 'strict' && actualColumns.length !== requiredColumns.length) {
-    throw new DataCommandError(
-      'VALIDATION_FAILED',
-      'Input schema drift detected. Strict schema policy requires the same column set.'
-    );
-  }
-}
-
-function normalizeColumnType(type: string): string {
-  return type.trim().toLowerCase();
-}
-
-function extractJsonObject(text: string): string {
-  const trimmed = text.trim();
-  if (trimmed.startsWith('{') && trimmed.endsWith('}')) return trimmed;
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenced?.[1]) {
-    const content = fenced[1].trim();
-    if (content.startsWith('{') && content.endsWith('}')) return content;
-  }
-  const start = trimmed.indexOf('{');
-  const end = trimmed.lastIndexOf('}');
-  if (start >= 0 && end > start) return trimmed.slice(start, end + 1);
-  throw new Error('No JSON object found in LLM response');
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function findWorkflowNode(workflow: DataTaskWorkflow, nodeId: string): DataWorkflowNode {
