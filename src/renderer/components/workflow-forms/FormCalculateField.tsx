@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, Trash2, X } from 'lucide-react';
+import { ChevronDown, Trash2, X, AlertCircle } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
@@ -13,6 +13,7 @@ import {
   createCalculationRow,
   exprFromParts,
   FN_ARG_SPEC,
+  TIME_WINDOW_DEFS,
   needsCalculationIdNormalization,
   normalizeCalculationEntries,
   type CalculationConfigEntry,
@@ -79,6 +80,26 @@ const INTERVAL_UNIT_OPTIONS = [
   { value: 'year', label: '年' },
 ];
 
+const TIME_WINDOW_OPTIONS: { value: string; label: string; key: string }[] = [
+  { value: 'ytd', label: '年累计', key: 'timeWindowYtd' },
+  { value: 'qtd', label: '季累计', key: 'timeWindowQtd' },
+  { value: 'mtd', label: '月累计', key: 'timeWindowMtd' },
+  { value: 'wtd', label: '周累计', key: 'timeWindowWtd' },
+  { value: 'rolling_year', label: '近N年', key: 'timeWindowRollingYear' },
+  { value: 'rolling_month', label: '近N月', key: 'timeWindowRollingMonth' },
+  { value: 'rolling_day', label: '近N天', key: 'timeWindowRollingDay' },
+  { value: 'rolling_week', label: '近N周', key: 'timeWindowRollingWeek' },
+];
+
+const TIME_AGG_OPTIONS: { value: string; label: string; key: string }[] = [
+  { value: 'sum', label: '求和', key: 'timeAggSum' },
+  { value: 'avg', label: '平均', key: 'timeAggAvg' },
+  { value: 'count', label: '计数', key: 'timeAggCount' },
+  { value: 'min', label: '最小值', key: 'timeAggMin' },
+  { value: 'max', label: '最大值', key: 'timeAggMax' },
+  { value: 'distinct_count', label: '去重计数', key: 'timeAggDistinctCount' },
+];
+
 const SCENARIO_OPTIONS = [
   {
     value: 'group',
@@ -103,6 +124,12 @@ const SCENARIO_OPTIONS = [
     key: 'calcFieldScenarioPeriod',
     label: '周期对比',
     tip: '同比值/率、环比值/率、自定义偏移差值/率',
+  },
+  {
+    value: 'time',
+    key: 'calcFieldScenarioTime',
+    label: '时间智能',
+    tip: '年初至今、季初至今、近N年滚动累计等时间窗口计算',
   },
 ];
 
@@ -170,6 +197,11 @@ const FUNCTION_CATEGORIES: Record<string, { key: string; header: string; items: 
       header: 'calcFieldCatTextLogical',
       items: ['string_agg', 'bool_and', 'bool_or'],
     },
+    {
+      key: 'time',
+      header: 'calcFieldCatTime',
+      items: ['ytd_sum', 'ytd_avg'],
+    },
   ],
   rank: [
     {
@@ -192,6 +224,7 @@ const FUNCTION_CATEGORIES: Record<string, { key: string; header: string; items: 
       ],
     },
   ],
+  time: [],
 };
 
 function parseBound(bound: string | undefined): { type: string; value: number | null } {
@@ -497,24 +530,39 @@ export default function FormCalculateField({
     const targetFieldCol: GlassRowListColumn<CalculationRow> = {
       flex: 'flex-[1]',
       header: '',
-      render: (item: CalculationRow, index: number) =>
-        item.action === 'replace' ? (
-          <GlassFieldCombo
-            value={fieldCompletions.includes(item.field) ? item.field : ''}
-            options={fieldCompletions}
-            columnTypes={columnTypes}
-            onChange={(v) => updateItem(index, { field: v })}
-            placeholder={tr('calcFieldSelectPlaceholder', '选择字段')}
-            className="h-7 w-full text-[12px]"
-          />
-        ) : (
-          <GlassFormTextInput
-            value={item.field}
-            onChange={(v) => updateItem(index, { field: v })}
-            placeholder={tr('calcFieldTargetPlaceholder', '请输入字段名')}
-            className="!h-7 w-full rounded-md px-1.5 text-[12px] shadow-none focus:ring-0"
-          />
-        ),
+      render: (item: CalculationRow, index: number) => {
+        const fieldConflict =
+          item.action === 'add' && item.field && fieldCompletions.includes(item.field);
+        return (
+          <div className="flex items-center gap-1">
+            {item.action === 'replace' ? (
+              <GlassFieldCombo
+                value={fieldCompletions.includes(item.field) ? item.field : ''}
+                options={fieldCompletions}
+                columnTypes={columnTypes}
+                onChange={(v) => updateItem(index, { field: v })}
+                placeholder={tr('calcFieldSelectPlaceholder', '选择字段')}
+                className="h-7 w-full text-[12px]"
+              />
+            ) : (
+              <GlassFormTextInput
+                value={item.field}
+                onChange={(v) => updateItem(index, { field: v })}
+                placeholder={tr('calcFieldTargetPlaceholder', '请输入字段名')}
+                className="!h-7 w-full rounded-md px-1.5 text-[12px] shadow-none focus:ring-0"
+              />
+            )}
+            {fieldConflict && (
+              <span className="relative inline-flex group shrink-0">
+                <AlertCircle className="h-4 w-4 text-error cursor-pointer" />
+                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 z-50 whitespace-nowrap rounded-lg border border-border-subtle bg-[var(--glass-card-strong)] px-2.5 py-1.5 text-[12px] text-error shadow-elevated backdrop-blur-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-opacity pointer-events-none">
+                  {tr('calcFieldConflictWarning', '字段名已存在于上游数据')}
+                </div>
+              </span>
+            )}
+          </div>
+        );
+      },
     };
 
     return [
@@ -555,6 +603,12 @@ export default function FormCalculateField({
     const isPartition = item.partitionBy !== undefined;
     const partOpen = partitionOpen[index];
     const ordOpen = orderOpen[index];
+    const timePrefix = Object.keys(TIME_WINDOW_DEFS).find((p) => currentFn.startsWith(p + '_'));
+    const currentTimeWindow = timePrefix || 'ytd';
+    const currentTimeAgg = timePrefix ? currentFn.slice(timePrefix.length + 1) : 'sum';
+    const timeDef = TIME_WINDOW_DEFS[currentTimeWindow];
+    const timeFieldValue = item.orderBy?.[0]?.field ?? '';
+    const timeDateOptions = fieldCompletions.filter((c) => isTemporalDataFieldType(columnTypes[c]));
 
     const FN_ARG2_DEFAULTS: Record<string, string> = {
       ntile: '4',
@@ -642,96 +696,227 @@ export default function FormCalculateField({
             <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
               {tr('calcFieldTargetField', '目标字段')}
             </span>
-            <div className="w-36">
-              {item.action === 'replace' ? (
-                <GlassFieldCombo
-                  value={fieldCompletions.includes(item.field) ? item.field : ''}
-                  options={fieldCompletions}
-                  columnTypes={columnTypes}
-                  onChange={(v) => updateItem(index, { field: v })}
-                  placeholder={tr('calcFieldSelectPlaceholder', '选择字段')}
-                  className="h-7 w-full text-[12px]"
-                />
-              ) : (
-                <GlassFormTextInput
-                  value={item.field}
-                  onChange={(v) => updateItem(index, { field: v })}
-                  placeholder={tr('calcFieldTargetPlaceholder', '请输入字段名')}
-                  className="h-7 w-full rounded-md px-1.5 text-[12px] shadow-none focus:ring-0"
-                />
+            <div className="flex items-center gap-1">
+              <div className="w-36">
+                {item.action === 'replace' ? (
+                  <GlassFieldCombo
+                    value={fieldCompletions.includes(item.field) ? item.field : ''}
+                    options={fieldCompletions}
+                    columnTypes={columnTypes}
+                    onChange={(v) => updateItem(index, { field: v })}
+                    placeholder={tr('calcFieldSelectPlaceholder', '选择字段')}
+                    className="h-7 w-full text-[12px]"
+                  />
+                ) : (
+                  <GlassFormTextInput
+                    value={item.field}
+                    onChange={(v) => updateItem(index, { field: v })}
+                    placeholder={tr('calcFieldTargetPlaceholder', '请输入字段名')}
+                    className="h-7 w-full rounded-md px-1.5 text-[12px] shadow-none focus:ring-0"
+                  />
+                )}
+              </div>
+              {item.action === 'add' && item.field && fieldCompletions.includes(item.field) && (
+                <span className="relative inline-flex group shrink-0">
+                  <AlertCircle className="h-4 w-4 text-error cursor-pointer" />
+                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 z-50 whitespace-nowrap rounded-lg border border-border-subtle bg-[var(--glass-card-strong)] px-2.5 py-1.5 text-[12px] text-error shadow-elevated backdrop-blur-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-opacity pointer-events-none">
+                    {tr('calcFieldConflictWarning', '字段名已存在于上游数据')}
+                  </div>
+                </span>
               )}
             </div>
           </div>
         </div>
 
-        {/* Row 2: 计算函数 + 参数 */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-2">
-            <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-              {tr('calcFieldFunction', '计算函数')}
-            </span>
-            <GlassOperatorSelect
-              value={currentFn}
-              groups={fnGroupOptions}
-              onChange={(v) => {
-                const defaultVal = FN_ARG2_DEFAULTS[v];
-                const patch: Partial<CalculationRow> = { fn: v };
-                if (defaultVal !== undefined && !item.fnArg2) patch.fnArg2 = defaultVal;
-                updateItem(index, patch);
-              }}
-              className="h-7 text-[12px] w-28"
-            />
-          </div>
-          {specs.map((s) => (
-            <div key={s.key} className="flex items-center gap-2">
-              <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-                {s.type === 'field'
-                  ? tr('calcFieldFnArg', '参数字段')
-                  : FN_ARG2_LABELS[currentFn + '_' + s.key] ||
-                    tr('calcFieldFnArgConst', '参数常数')}
-              </span>
-              <div className={s.type === 'field' ? 'w-36' : 'w-28'}>
-                {s.type === 'field' ? (
-                  <GlassFieldCombo
-                    value={item[s.key] ?? ''}
-                    options={fieldCompletions}
-                    columnTypes={columnTypes}
-                    onChange={(v) => updateItem(index, { [s.key]: v } as Partial<CalculationRow>)}
-                    placeholder={tr('calcFieldFnArgPlaceholder', '选择字段')}
-                    className="h-7 w-full text-[12px]"
-                  />
-                ) : s.type === 'text' ? (
-                  <input
-                    type="text"
-                    value={item[s.key] ?? ''}
-                    onChange={(e) =>
-                      updateItem(index, { [s.key]: e.target.value } as Partial<CalculationRow>)
-                    }
-                    placeholder={
-                      NUM_PLACEHOLDER[currentFn + '_' + s.key] ||
-                      tr('calcFieldFnArgNumPlaceholder', '参数')
-                    }
-                    className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent placeholder:text-text-muted"
-                  />
-                ) : (
+        {/* Row 2: 计算函数 + 参数 — 时间智能场景专用 */}
+        {scenario === 'time' ? (
+          <div className="flex flex-col gap-2">
+            {/* Row 2a: 时间字段 + 时间窗口 + 参数 */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
+                  {tr('calcFieldDateColumn', '时间字段')}
+                </span>
+                <GlassFieldCombo
+                  value={timeFieldValue}
+                  options={timeDateOptions}
+                  columnTypes={columnTypes}
+                  onChange={(v) =>
+                    updateItem(index, {
+                      orderBy: v ? [{ field: v, direction: 'asc' }] : undefined,
+                    })
+                  }
+                  placeholder={tr('calcFieldDatePlaceholder', '选择日期字段')}
+                  className="h-7 w-28 text-[12px]"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
+                  {tr('calcFieldTimeWindow', '时间窗口')}
+                </span>
+                <GlassOperatorSelect
+                  value={currentTimeWindow}
+                  groups={[
+                    {
+                      key: 'timeWindow',
+                      items: TIME_WINDOW_OPTIONS.map((o) => ({
+                        value: o.value,
+                        label: tr(o.key, o.label),
+                      })),
+                    },
+                  ]}
+                  onChange={(v) => {
+                    const agg = currentTimeAgg;
+                    const fn = `${v}_${agg}`;
+                    const patch: Partial<CalculationRow> = { fn };
+                    if (TIME_WINDOW_DEFS[v]?.hasParam && !item.fnArg2) patch.fnArg2 = '1';
+                    updateItem(index, patch);
+                  }}
+                  className="h-7 text-[12px] w-28"
+                />
+                {timeDef?.hasParam && (
                   <input
                     type="number"
-                    min={0}
-                    value={item[s.key] ?? ''}
-                    onChange={(e) =>
-                      updateItem(index, { [s.key]: e.target.value } as Partial<CalculationRow>)
-                    }
-                    placeholder={
-                      NUM_PLACEHOLDER[currentFn + '_' + s.key] ||
-                      tr('calcFieldFnArgNumPlaceholder', '参数')
-                    }
-                    className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent placeholder:text-text-muted"
+                    min={1}
+                    value={item.fnArg2 || '1'}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      if (isNaN(val) || val < 1) return;
+                      updateItem(index, { fnArg2: String(val) });
+                    }}
+                    className="h-7 w-14 rounded border border-border-muted bg-background/42 px-1 text-center text-[12px] text-text-primary outline-none"
                   />
+                )}
+                {!timeDef?.hasParam && (
+                  <>
+                    <span className="text-[12px] text-text-muted shrink-0 leading-7">
+                      {tr('calcFieldFiscalStart', '年度起始月')}
+                    </span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={12}
+                      value={item.fiscalStartMonth || 1}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (isNaN(val) || val < 1 || val > 12) return;
+                        updateItem(index, { fiscalStartMonth: val });
+                      }}
+                      className="h-7 w-14 rounded border border-border-muted bg-background/42 px-1 text-center text-[12px] text-text-primary outline-none"
+                    />
+                  </>
                 )}
               </div>
             </div>
-          ))}
-        </div>
+            {/* Row 2b: 聚合函数 + 参数字段 */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
+                  {tr('calcFieldTimeAgg', '聚合函数')}
+                </span>
+                <GlassOperatorSelect
+                  value={currentTimeAgg}
+                  groups={[
+                    {
+                      key: 'timeAgg',
+                      items: TIME_AGG_OPTIONS.map((o) => ({
+                        value: o.value,
+                        label: tr(o.key, o.label),
+                      })),
+                    },
+                  ]}
+                  onChange={(v) => {
+                    updateItem(index, { fn: `${currentTimeWindow}_${v}` });
+                  }}
+                  className="h-7 text-[12px] w-28"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
+                  {tr('calcFieldFnArg', '参数字段')}
+                </span>
+                <div className="w-36">
+                  <GlassFieldCombo
+                    value={item.fnArg ?? ''}
+                    options={fieldCompletions}
+                    columnTypes={columnTypes}
+                    onChange={(v) => updateItem(index, { fnArg: v } as Partial<CalculationRow>)}
+                    placeholder={tr('calcFieldFnArgPlaceholder', '选择字段')}
+                    className="h-7 w-full text-[12px]"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
+                {tr('calcFieldFunction', '计算函数')}
+              </span>
+              <GlassOperatorSelect
+                value={currentFn}
+                groups={fnGroupOptions}
+                onChange={(v) => {
+                  const defaultVal = FN_ARG2_DEFAULTS[v];
+                  const patch: Partial<CalculationRow> = { fn: v };
+                  if (defaultVal !== undefined && !item.fnArg2) patch.fnArg2 = defaultVal;
+                  updateItem(index, patch);
+                }}
+                className="h-7 text-[12px] w-28"
+              />
+            </div>
+            {specs.map((s) => (
+              <div key={s.key} className="flex items-center gap-2">
+                <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
+                  {s.type === 'field'
+                    ? tr('calcFieldFnArg', '参数字段')
+                    : FN_ARG2_LABELS[currentFn + '_' + s.key] ||
+                      tr('calcFieldFnArgConst', '参数常数')}
+                </span>
+                <div className={s.type === 'field' ? 'w-36' : 'w-28'}>
+                  {s.type === 'field' ? (
+                    <GlassFieldCombo
+                      value={item[s.key] ?? ''}
+                      options={fieldCompletions}
+                      columnTypes={columnTypes}
+                      onChange={(v) => updateItem(index, { [s.key]: v } as Partial<CalculationRow>)}
+                      placeholder={tr('calcFieldFnArgPlaceholder', '选择字段')}
+                      className="h-7 w-full text-[12px]"
+                    />
+                  ) : s.type === 'text' ? (
+                    <input
+                      type="text"
+                      value={item[s.key] ?? ''}
+                      onChange={(e) =>
+                        updateItem(index, { [s.key]: e.target.value } as Partial<CalculationRow>)
+                      }
+                      placeholder={
+                        NUM_PLACEHOLDER[currentFn + '_' + s.key] ||
+                        tr('calcFieldFnArgNumPlaceholder', '参数')
+                      }
+                      className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent placeholder:text-text-muted"
+                    />
+                  ) : (
+                    <input
+                      type="number"
+                      min={0}
+                      value={item[s.key] ?? ''}
+                      onChange={(e) =>
+                        updateItem(index, { [s.key]: e.target.value } as Partial<CalculationRow>)
+                      }
+                      placeholder={
+                        NUM_PLACEHOLDER[currentFn + '_' + s.key] ||
+                        tr('calcFieldFnArgNumPlaceholder', '参数')
+                      }
+                      className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent placeholder:text-text-muted"
+                    />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Row 3: 分区范围 */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -845,7 +1030,7 @@ export default function FormCalculateField({
         </div>
 
         {/* Row 4: 排序字段 (sorted, rank, period) */}
-        {showOrderBy && (
+        {showOrderBy && scenario !== 'time' && (
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex items-center gap-2">
               <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">

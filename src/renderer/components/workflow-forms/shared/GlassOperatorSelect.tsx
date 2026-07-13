@@ -50,6 +50,7 @@ export function GlassOperatorSelect({
   const [maxHeight, setMaxHeight] = useState(240);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [flipUp, setFlipUp] = useState(false);
+  void flipUp;
 
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);

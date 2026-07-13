@@ -190,6 +190,29 @@ describe('FormCalculateField — id normalization', () => {
     expect(rows[1].frameStart).toBe('INTERVAL 7 DAYS PRECEDING');
     expect(rows[1].frameEnd).toBe('unbounded following');
   });
+
+  it('normalizes fiscalStartMonth — preserves valid values', () => {
+    const rows = normalizeCalculationEntries([
+      { field: 'a', expression: '[x]', fiscalStartMonth: 4 },
+      { field: 'b', expression: '[y]', fiscalStartMonth: 1 },
+    ]);
+    expect(rows[0].fiscalStartMonth).toBe(4);
+    expect(rows[1].fiscalStartMonth).toBe(1);
+  });
+
+  it('normalizes fiscalStartMonth — out of range becomes undefined', () => {
+    const rows = normalizeCalculationEntries([
+      { field: 'a', expression: '[x]', fiscalStartMonth: 0 },
+      { field: 'b', expression: '[y]', fiscalStartMonth: 13 },
+    ]);
+    expect(rows[0].fiscalStartMonth).toBeUndefined();
+    expect(rows[1].fiscalStartMonth).toBeUndefined();
+  });
+
+  it('normalizes fiscalStartMonth — missing becomes undefined', () => {
+    const rows = normalizeCalculationEntries([{ field: 'a', expression: '[x]' }]);
+    expect(rows[0].fiscalStartMonth).toBeUndefined();
+  });
 });
 
 describe('FormCalculateField — exprFromParts', () => {
@@ -970,5 +993,209 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
       orderBy: [{ field: 'date', direction: 'asc' }],
     });
     expect(result).toBe('lead([amount]) OVER (PARTITION BY [region] ORDER BY [date])');
+  });
+
+  // ── Time intelligence ──
+  it('ytd_sum generates year partition', () => {
+    const result = exprFromParts({
+      id: 'ti1',
+      field: 'ytd',
+      expression: '',
+      type: 'cross',
+      fn: 'ytd_sum',
+      fnArg: '[sales]',
+      orderBy: [{ field: 'date', direction: 'asc' }],
+    });
+    expect(result).toContain('PARTITION BY year([date])');
+    expect(result).toContain('sum([sales])');
+    expect(result).toContain('ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW');
+  });
+
+  it('qtd_avg generates year and quarter partition', () => {
+    const result = exprFromParts({
+      id: 'ti2',
+      field: 'qtd',
+      expression: '',
+      type: 'cross',
+      fn: 'qtd_avg',
+      fnArg: '[sales]',
+      orderBy: [{ field: 'date', direction: 'asc' }],
+    });
+    expect(result).toContain('PARTITION BY year([date]), quarter([date])');
+    expect(result).toContain('avg([sales])');
+  });
+
+  it('mtd_count generates year and month partition', () => {
+    const result = exprFromParts({
+      id: 'ti3',
+      field: 'mtd',
+      expression: '',
+      type: 'cross',
+      fn: 'mtd_count',
+      fnArg: '[sales]',
+      orderBy: [{ field: 'date', direction: 'asc' }],
+    });
+    expect(result).toContain('PARTITION BY year([date]), month([date])');
+    expect(result).toContain('count([sales])');
+  });
+
+  it('wtd_sum generates year and week partition', () => {
+    const result = exprFromParts({
+      id: 'ti4',
+      field: 'wtd',
+      expression: '',
+      type: 'cross',
+      fn: 'wtd_sum',
+      fnArg: '[sales]',
+      orderBy: [{ field: 'date', direction: 'asc' }],
+    });
+    expect(result).toContain('PARTITION BY year([date]), week([date])');
+  });
+
+  it('rolling_year_sum generates RANGE BETWEEN INTERVAL', () => {
+    const result = exprFromParts({
+      id: 'ti5',
+      field: 'ry',
+      expression: '',
+      type: 'cross',
+      fn: 'rolling_year_sum',
+      fnArg: '[sales]',
+      fnArg2: '3',
+      orderBy: [{ field: 'date', direction: 'asc' }],
+    });
+    expect(result).toContain('RANGE BETWEEN INTERVAL 3 YEAR PRECEDING AND CURRENT ROW');
+    expect(result).not.toContain('PARTITION BY');
+  });
+
+  it('rolling_day_sum generates RANGE BETWEEN INTERVAL N DAY', () => {
+    const result = exprFromParts({
+      id: 'ti6',
+      field: 'rd',
+      expression: '',
+      type: 'cross',
+      fn: 'rolling_day_sum',
+      fnArg: '[sales]',
+      fnArg2: '7',
+      orderBy: [{ field: 'date', direction: 'asc' }],
+    });
+    expect(result).toContain('RANGE BETWEEN INTERVAL 7 DAY PRECEDING AND CURRENT ROW');
+  });
+
+  it('rolling_week_avg generates RANGE BETWEEN INTERVAL N WEEK', () => {
+    const result = exprFromParts({
+      id: 'ti7',
+      field: 'rw',
+      expression: '',
+      type: 'cross',
+      fn: 'rolling_week_avg',
+      fnArg: '[sales]',
+      fnArg2: '4',
+      orderBy: [{ field: 'date', direction: 'asc' }],
+    });
+    expect(result).toContain('RANGE BETWEEN INTERVAL 4 WEEK PRECEDING AND CURRENT ROW');
+  });
+
+  it('ytd_min works with min aggregate', () => {
+    const result = exprFromParts({
+      id: 'ti8',
+      field: 'ymin',
+      expression: '',
+      type: 'cross',
+      fn: 'ytd_min',
+      fnArg: '[amount]',
+      orderBy: [{ field: 'date', direction: 'asc' }],
+    });
+    expect(result).toContain('min([amount])');
+    expect(result).toContain('PARTITION BY year([date])');
+  });
+
+  it('ytd_max works with max aggregate', () => {
+    const result = exprFromParts({
+      id: 'ti9',
+      field: 'ymax',
+      expression: '',
+      type: 'cross',
+      fn: 'ytd_max',
+      fnArg: '[amount]',
+      orderBy: [{ field: 'date', direction: 'asc' }],
+    });
+    expect(result).toContain('max([amount])');
+  });
+
+  it('ytd_distinct_count generates count(DISTINCT ...)', () => {
+    const result = exprFromParts({
+      id: 'ti10',
+      field: 'yuniq',
+      expression: '',
+      type: 'cross',
+      fn: 'ytd_distinct_count',
+      fnArg: '[customer_id]',
+      orderBy: [{ field: 'date', direction: 'asc' }],
+    });
+    expect(result).toContain('count(DISTINCT [customer_id])');
+    expect(result).not.toContain('distinct_count(');
+  });
+
+  it('fiscal year YTD uses CASE WHEN month >= N', () => {
+    const result = exprFromParts({
+      id: 'ti11',
+      field: 'fy',
+      expression: '',
+      type: 'cross',
+      fn: 'ytd_sum',
+      fnArg: '[sales]',
+      orderBy: [{ field: 'date', direction: 'asc' }],
+      fiscalStartMonth: 4,
+    });
+    expect(result).toContain(
+      'CASE WHEN month([date]) >= 4 THEN year([date]) ELSE year([date]) - 1 END'
+    );
+    expect(result).not.toContain('PARTITION BY year([');
+  });
+
+  it('fiscal year start month 1 behaves as regular YTD', () => {
+    const result = exprFromParts({
+      id: 'ti12',
+      field: 'fy2',
+      expression: '',
+      type: 'cross',
+      fn: 'ytd_sum',
+      fnArg: '[sales]',
+      orderBy: [{ field: 'date', direction: 'asc' }],
+      fiscalStartMonth: 1,
+    });
+    expect(result).toContain('PARTITION BY year([date])');
+    expect(result).not.toContain('CASE');
+  });
+
+  it('ytd includes extra partition fields', () => {
+    const result = exprFromParts({
+      id: 'ti13',
+      field: 'ytd_cat',
+      expression: '',
+      type: 'cross',
+      fn: 'ytd_sum',
+      fnArg: '[sales]',
+      partitionBy: ['category'],
+      orderBy: [{ field: 'date', direction: 'asc' }],
+    });
+    expect(result).toContain('PARTITION BY year([date]), [category]');
+  });
+
+  it('rolling_year ignores fiscalStartMonth', () => {
+    const result = exprFromParts({
+      id: 'ti14',
+      field: 'ryf',
+      expression: '',
+      type: 'cross',
+      fn: 'rolling_year_sum',
+      fnArg: '[sales]',
+      fnArg2: '2',
+      orderBy: [{ field: 'date', direction: 'asc' }],
+      fiscalStartMonth: 4,
+    });
+    // rolling is not affected by fiscal start month
+    expect(result).toContain('RANGE BETWEEN INTERVAL 2 YEAR PRECEDING');
+    expect(result).not.toContain('CASE');
   });
 });
