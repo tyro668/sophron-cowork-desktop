@@ -8,6 +8,22 @@ function extractFieldName(value: string): string {
   return parseFieldRef(value)?.name ?? value;
 }
 
+function calcMaxOptionWidth(options: string[], columnTypes: Record<string, string>): number {
+  const el = document.createElement('span');
+  el.style.cssText =
+    'position:fixed;visibility:hidden;white-space:nowrap;font-size:12px;line-height:1.4;padding:0 2px;font-family:inherit';
+  document.body.appendChild(el);
+  let max = 0;
+  for (const opt of options) {
+    const name = extractFieldName(opt);
+    const type = columnTypes[opt] ? `  ${dataFieldTypeLabel(columnTypes[opt])}` : '';
+    el.textContent = name + type;
+    max = Math.max(max, el.offsetWidth);
+  }
+  document.body.removeChild(el);
+  return max + 48;
+}
+
 interface GlassFieldComboProps {
   value: string;
   options: string[];
@@ -38,9 +54,12 @@ export function GlassFieldCombo({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
-  const [position, setPosition] = useState<{ left: number; top: number; width: number } | null>(
-    null
-  );
+  const [position, setPosition] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    minWidth?: number;
+  } | null>(null);
   const [maxHeight, setMaxHeight] = useState(240);
 
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -71,10 +90,16 @@ export function GlassFieldCombo({
   const updatePosition = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    setPosition({ left: rect.left, top: rect.bottom + 2, width: rect.width });
+    const contentWidth = calcMaxOptionWidth(options, columnTypes);
+    setPosition({
+      left: rect.left,
+      top: rect.bottom + 2,
+      width: rect.width,
+      minWidth: Math.max(rect.width, contentWidth),
+    });
     const spaceBelow = window.innerHeight - rect.bottom - 4;
     setMaxHeight(Math.min(240, Math.max(100, spaceBelow)));
-  }, []);
+  }, [options, columnTypes]);
 
   const handleClose = useCallback(() => {
     setOpen(false);
@@ -230,7 +255,13 @@ export function GlassFieldCombo({
             onKeyDown={handleListKeyDown}
             role="listbox"
             aria-label={placeholder}
-            style={{ left: position.left, top: position.top, width: position.width, maxHeight }}
+            style={{
+              left: position.left,
+              top: position.top,
+              width: position.width,
+              minWidth: position.minWidth,
+              maxHeight,
+            }}
             className="fixed z-50 flex flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-elevated backdrop-blur-xl"
           >
             <div className="flex items-center gap-1.5 border-b border-border-subtle px-2 py-1.5">
