@@ -119,7 +119,7 @@ export const GlassColumnSelector = memo(function GlassColumnSelector({
   }
 
   return (
-    <div className="rounded-lg border border-border-muted bg-background/42">
+    <div className="rounded-lg border border-border-subtle bg-[var(--glass-card-strong)] shadow-elevated backdrop-blur-xl">
       <div className="flex items-center gap-1.5 border-b border-border-subtle px-2 py-1">
         <Search className="h-3 w-3 flex-shrink-0 text-text-muted" />
         <input
