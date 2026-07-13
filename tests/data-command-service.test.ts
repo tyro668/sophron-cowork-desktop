@@ -939,6 +939,71 @@ describe('DataCommandService', () => {
     expect(generated.requiredColumns).toEqual([{ name: 'Market', type: 'text' }]);
   });
 
+  it('compiles restricted workflow JS API into DSL and lineage', async () => {
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        workflowJs: [
+          'workflow()',
+          '.inputDataset(INPUT_TABLE_ID, "src")',
+          '.filter(col("Market").neq(lit("EU")))',
+          '.derive("Revenue", col("Sales").mul(col("Quantity")))',
+          '.sort(col("Revenue"), "desc")',
+          '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+        ].join(''),
+        requiredColumns: [],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'market.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales,Quantity\nEU,10,2\nUS,20,3\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'market input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '过滤 Market 不是 EU，新增 Revenue = Sales * Quantity 并降序',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'market processed',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
+    expect(generated.workflowDsl).toContain('derive [Revenue] = [Sales] * [Quantity]');
+    expect(generated.workflowDsl).toContain('sort by [Revenue] desc');
+    expect(generated.requiredColumns).toEqual([
+      { name: 'Market', type: 'text' },
+      { name: 'Sales', type: 'integer' },
+      { name: 'Quantity', type: 'integer' },
+    ]);
+    expect(generated.expectedOutputSchema).toEqual([
+      { name: 'Market', type: 'text' },
+      { name: 'Sales', type: 'integer' },
+      { name: 'Quantity', type: 'integer' },
+      { name: 'Revenue', type: 'integer' },
+    ]);
+    expect(generated.lineage.find((column) => column.name === 'Revenue')).toEqual({
+      name: 'Revenue',
+      type: 'integer',
+      sourceColumns: [
+        { name: 'Sales', type: 'integer' },
+        { name: 'Quantity', type: 'integer' },
+      ],
+      expression: '[Sales] * [Quantity]',
+    });
+  });
+
   it('compiles sort plans to Prep DSL instead of accepting SQL order by text', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
@@ -1439,15 +1504,483 @@ describe('DataCommandService', () => {
 
     expect(generated.workflowDsl).toContain('drop [记录数]');
     expect(generated.workflowDsl).toContain('map [`Adj Close`] to [adj_close]');
-    expect(generated.workflowDsl).toContain('derive [adj_close] = CAST');
+    expect(generated.workflowDsl).toContain('derive [__sophron_cast_adj_close] = CAST');
     expect(generated.workflowDsl).toContain("REPLACE(CAST([adj_close] AS VARCHAR), '$', '')");
+    expect(generated.workflowDsl).toContain('drop [adj_close]');
+    expect(generated.workflowDsl).toContain('map [__sophron_cast_adj_close] to [adj_close]');
     expect(generated.requiredColumns).toEqual([
       { name: '记录数', type: 'integer' },
       { name: 'Adj Close', type: 'text' },
     ]);
+    expect(generated.expectedOutputSchema).toEqual([
+      { name: 'Company Name', type: 'text' },
+      { name: 'Date', type: 'date' },
+      { name: 'Ticker', type: 'text' },
+      { name: 'Close value in reference period', type: 'text' },
+      { name: 'adj_close', type: 'decimal' },
+    ]);
   });
 
-  it('falls back to advanced DSL generation for unsupported operations', async () => {
+  it('propagates converted column types through derived generated fields', async () => {
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        operations: [
+          { type: 'rename', source: 'Adj Close', target: 'adj_close' },
+          { type: 'convert_type', column: 'adj_close', targetType: 'decimal', removePrefix: '$' },
+          { type: 'derive', column: 'double_close', expression: '[adj_close] * 2' },
+          { type: 'sort', column: 'double_close', direction: 'desc' },
+        ],
+        requiredColumns: [],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'prices.csv');
+    fs.writeFileSync(csvPath, 'Adj Close\n$8.34\n$16.14\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'prices input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: 'Adj Close 去掉美元符号转数值，新增 double_close 为两倍并降序排序',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'prices processed',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(generated.workflowDsl).toContain('map [__sophron_cast_adj_close] to [adj_close]');
+    expect(generated.workflowDsl).toContain('derive [double_close] = [adj_close] * 2');
+    expect(generated.workflowDsl).toContain('sort by [double_close] desc');
+    expect(generated.requiredColumns).toEqual([{ name: 'Adj Close', type: 'text' }]);
+    expect(generated.expectedOutputSchema).toEqual([
+      { name: 'adj_close', type: 'decimal' },
+      { name: 'double_close', type: 'decimal' },
+    ]);
+    expect(generated.lineage).toEqual([
+      {
+        name: 'adj_close',
+        type: 'decimal',
+        sourceColumns: [{ name: 'Adj Close', type: 'text' }],
+        expression: "CAST(REPLACE(CAST([adj_close] AS VARCHAR), '$', '') AS DECIMAL(18,2))",
+      },
+      {
+        name: 'double_close',
+        type: 'decimal',
+        sourceColumns: [{ name: 'Adj Close', type: 'text' }],
+        expression: '[adj_close] * 2',
+      },
+    ]);
+  });
+
+  it('infers dollar-prefix removal when generated JS casts currency text to decimal', async () => {
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        workflowJs: [
+          'workflow()',
+          '.inputDataset(INPUT_TABLE_ID, "src")',
+          '.cast("Adj Close", "decimal", { scale: 2 })',
+          '.drop("记录数")',
+          '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+        ].join(''),
+        requiredColumns: [],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'prices.csv');
+    fs.writeFileSync(csvPath, 'Adj Close,记录数\n$8.34,1\n$16.14,1\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'prices input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '将Adj Close转换成数值，去除开头的$符号，删除记录数这一列',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'prices processed',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(generated.workflowDsl).toContain("REPLACE(CAST([`Adj Close`] AS VARCHAR), '$', '')");
+    expect(generated.workflowDsl).toContain('drop [记录数]');
+    expect(generated.expectedOutputSchema).toEqual([{ name: 'Adj Close', type: 'decimal' }]);
+  });
+
+  it('infers integer output types for generated year and month fields', async () => {
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        operations: [
+          { type: 'derive', column: 'Year', expression: 'YEAR([Date])' },
+          { type: 'derive', column: 'Month', expression: 'MONTH([Date])' },
+        ],
+        requiredColumns: [],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'prices.csv');
+    fs.writeFileSync(csvPath, 'Date\n2012-12-31\n2013-01-31\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'prices input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '从 Date 提取年份和月份',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'prices processed',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(generated.expectedOutputSchema).toEqual([
+      { name: 'Date', type: 'date' },
+      { name: 'Year', type: 'integer' },
+      { name: 'Month', type: 'integer' },
+    ]);
+  });
+
+  it('casts date fields to text before generated regexp extraction', async () => {
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        workflowJs: [
+          'workflow()',
+          '.inputDataset(INPUT_TABLE_ID, "src")',
+          '.derive("year", fn.regexpExtract(col("Date"), "^[0-9]{4}"))',
+          '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+        ].join(''),
+        requiredColumns: [],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'prices.csv');
+    fs.writeFileSync(csvPath, 'Date\n2012-12-31\n2013-01-31\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'prices input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '从 Date 提取年份',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'prices processed',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(generated.workflowDsl).toContain("REGEXP_EXTRACT(CAST([Date] AS VARCHAR), '^[0-9]{4}')");
+    expect(generated.expectedOutputSchema).toEqual([
+      { name: 'Date', type: 'date' },
+      { name: 'year', type: 'text' },
+    ]);
+  });
+
+  it('extracts regexp capture groups instead of full matches for generated month fields', async () => {
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        workflowJs: [
+          'workflow()',
+          '.inputDataset(INPUT_TABLE_ID, "src")',
+          '.derive("month", fn.regexpExtract(col("Date"), "^[0-9]{4}-([0-9]{2})"))',
+          '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+        ].join(''),
+        requiredColumns: [],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'prices.csv');
+    fs.writeFileSync(csvPath, 'Date\n2012-12-31\n2013-01-31\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'prices input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '从 Date 提取月份',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'prices processed',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(generated.workflowDsl).toContain(
+      "REGEXP_EXTRACT(CAST([Date] AS VARCHAR), '^[0-9]{4}-([0-9]{2})', 1)"
+    );
+  });
+
+  it('replaces existing columns when generated derive targets the same field name', async () => {
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        workflowJs: [
+          'workflow()',
+          '.inputDataset(INPUT_TABLE_ID, "src")',
+          '.rename("Ticker", "ticker")',
+          '.derive("ticker", fn.upper(col("ticker")))',
+          '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+        ].join(''),
+        requiredColumns: [],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'prices.csv');
+    fs.writeFileSync(csvPath, 'Ticker\nfire\nsymc\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'prices input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '统一字段名，Ticker 转大写',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'prices processed',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(generated.workflowDsl).toContain('derive [__sophron_cast_ticker] = UPPER([ticker])');
+    expect(generated.workflowDsl).toContain('drop [ticker]');
+    expect(generated.workflowDsl).toContain('map [__sophron_cast_ticker] to [ticker]');
+    expect(generated.expectedOutputSchema).toEqual([{ name: 'ticker', type: 'text' }]);
+  });
+
+  it('rejects generated plans with incompatible filter comparison types', async () => {
+    const badResponse = {
+      text: JSON.stringify({
+        operations: [{ type: 'filter', column: 'Market', operator: '>', value: 100 }],
+        requiredColumns: [],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    };
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce(badResponse).mockResolvedValueOnce(badResponse);
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'market.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'market input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    await expect(
+      service.generateTaskFromRequirement({
+        source: {
+          location: 'local',
+          tableId: input.inputTable.id,
+          tableName: input.inputTable.name,
+        },
+        processRequirement: '过滤 Market 大于 100 的数据',
+        output: {
+          location: 'local',
+          writeMode: 'create',
+          tableName: 'market processed',
+        },
+        runtimeConfig: testRuntimeConfig,
+      })
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      message: expect.stringContaining('incompatible types'),
+    });
+  });
+
+  it('accepts a repaired workflowDsl response when repair does not return workflowJs', async () => {
+    vi.mocked(runPiAiOneShot)
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          workflowJs:
+            'workflow().inputDataset(INPUT_TABLE_ID, "src").filter(col("Market").gt(lit(100))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+          requiredColumns: [],
+        }),
+        hasThinking: false,
+        durationMs: 1,
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          workflowDsl: [
+            'input source dataset "ignored" as src',
+            "  | filter [Market] <> 'EU'",
+            '  | output table "market processed" mode replace',
+          ].join('\n'),
+        }),
+        hasThinking: false,
+        durationMs: 1,
+      });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'market.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'market input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '过滤掉Market为EU的数据',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'market processed',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
+    expect(generated.requiredColumns).toEqual([{ name: 'Market', type: 'text' }]);
+  });
+
+  it('reports repair response format errors as validation failures', async () => {
+    vi.mocked(runPiAiOneShot)
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          workflowJs:
+            'workflow().inputDataset(INPUT_TABLE_ID, "src").filter(col("Market").gt(lit(100))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+          requiredColumns: [],
+        }),
+        hasThinking: false,
+        durationMs: 1,
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({ steps: ['filter Market'] }),
+        hasThinking: false,
+        durationMs: 1,
+      });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'market.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'market input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    await expect(
+      service.generateTaskFromRequirement({
+        source: {
+          location: 'local',
+          tableId: input.inputTable.id,
+          tableName: input.inputTable.name,
+        },
+        processRequirement: '过滤掉Market为EU的数据',
+        output: {
+          location: 'local',
+          writeMode: 'create',
+          tableName: 'market processed',
+        },
+        runtimeConfig: testRuntimeConfig,
+      })
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      message: expect.stringContaining('workflowJs'),
+    });
+  });
+
+  it('rejects direct DSL generation fallback for unsupported operations by default', async () => {
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'market.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'market input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        operations: [{ type: 'custom_dsl', description: 'filter EU market rows' }],
+        requiredColumns: [{ name: 'Market' }],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+
+    await expect(
+      service.generateTaskFromRequirement({
+        source: {
+          location: 'local',
+          tableId: input.inputTable.id,
+          tableName: input.inputTable.name,
+        },
+        processRequirement: '用高级逻辑过滤掉Market为EU的数据',
+        output: {
+          location: 'local',
+          writeMode: 'create',
+          tableName: 'market processed',
+        },
+        runtimeConfig: testRuntimeConfig,
+      })
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      message: expect.stringContaining('unsupported operation'),
+    });
+    expect(runPiAiOneShot).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows advanced DSL generation for unsupported operations only when gray fallback is enabled', async () => {
+    vi.stubEnv('SOPHRON_ENABLE_DIRECT_DSL_GENERATION', 'true');
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
@@ -2048,6 +2581,92 @@ describe('DataCommandService', () => {
         requiredColumns: [{ name: 'Market' }],
       })
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+  });
+
+  it('stops generated task runs when output schema drifts', async () => {
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'market.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'market input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+    const output = await service.createOutputTable({ name: 'market output' });
+    const task = await service.createTask({
+      name: 'market schema task',
+      sourceInputTableId: input.inputTable.id,
+      outputTableId: output.outputTable.id,
+    });
+
+    await expect(
+      service.runGeneratedTask({
+        taskId: task.task.id,
+        workflowDsl: `input source dataset "${input.inputTable.id}" as src\n  | select [Market]\n  | output table "${output.outputTable.name}" mode replace`,
+        source: {
+          location: 'local',
+          tableId: input.inputTable.id,
+          tableName: input.inputTable.name,
+        },
+        output: {
+          location: 'local',
+          writeMode: 'replace',
+          targetTableId: output.outputTable.id,
+        },
+        requiredColumns: [{ name: 'Market', type: 'text' }],
+        expectedOutputSchema: [{ name: 'Region', type: 'text' }],
+      })
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      message: expect.stringContaining('output column mismatch'),
+    });
+  });
+
+  it('validates generated output schema against runtime output instead of source table', async () => {
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'market.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales,记录数\nEU,10,1\nUS,20,1\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'market source schema input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+    const output = await service.createOutputTable({ name: 'market source schema output' });
+    const task = await service.createTask({
+      name: 'market source schema task',
+      sourceInputTableId: input.inputTable.id,
+      outputTableId: output.outputTable.id,
+    });
+
+    const result = await service.runGeneratedTask({
+      taskId: task.task.id,
+      workflowDsl: [
+        `input source dataset "${input.inputTable.id}" as src`,
+        '  | drop [记录数]',
+        `  | output table "${output.outputTable.name}" mode replace`,
+      ].join('\n'),
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      output: {
+        location: 'local',
+        writeMode: 'replace',
+        targetTableId: output.outputTable.id,
+      },
+      requiredColumns: [
+        { name: 'Market', type: 'text' },
+        { name: 'Sales', type: 'integer' },
+        { name: '记录数', type: 'integer' },
+      ],
+      expectedOutputSchema: [
+        { name: 'Market', type: 'text' },
+        { name: 'Sales', type: 'integer' },
+      ],
+    });
+
+    expect(result.preview?.columns).toEqual(['Market', 'Sales']);
   });
 });
 
