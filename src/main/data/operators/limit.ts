@@ -10,48 +10,121 @@ function compileFixedSql(
   const unit = config.unit as string;
   const orderBy = sortKeysToSql(config.orderBy);
   const groupBy = config?.groupBy as string[] | undefined;
+  const ties = !!config?.ties;
+  const projection = columns.map((column) => quoteIdentifier(column)).join(', ') || '*';
+  const pct = Math.min(limit, 100);
+  const rows = Math.floor(limit);
 
-  // 百分比模式
-  if (unit === 'percent') {
-    const projection = columns.map((column) => quoteIdentifier(column)).join(', ') || '*';
+  // 创建子查询别名
+  const projectionSub = `SELECT ${projection}`;
+
+  // 百分比 + 分组 + 排序 + WITH TIES
+  if (unit === 'percent' && groupBy?.length && ties && orderBy) {
+    const partitionBy = groupBy.map(quoteIdentifier).join(', ');
     return `
       CREATE TEMP TABLE ${output} AS
-      SELECT ${projection}
-      FROM (
-        SELECT *, ROW_NUMBER() OVER (${orderBy ? `ORDER BY ${orderBy}` : ''}) AS __rn,
-               COUNT(*) OVER () AS __total_rows
+      WITH numbered AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY ${partitionBy} ORDER BY ${orderBy}) AS __rn,
+               RANK() OVER (PARTITION BY ${partitionBy} ORDER BY ${orderBy}) AS __rk,
+               COUNT(*) OVER (PARTITION BY ${partitionBy}) AS __group_total
         FROM ${input}
+      ),
+      boundary AS (
+        SELECT ${partitionBy}, __rk AS __bound_rk
+        FROM numbered
+        WHERE __rn = CEIL(__group_total * ${pct} / 100.0)
       )
-      WHERE __rn <= CEIL(__total_rows * ${Math.min(limit, 100)} / 100.0)
-    `;
+      ${projectionSub}
+      FROM numbered JOIN boundary USING (${partitionBy})
+      WHERE __rk <= __bound_rk`;
   }
 
-  // 分组模式
-  if (groupBy?.length) {
-    const projection = columns.map(quoteIdentifier).join(', ') || '*';
+  // 百分比 + 分组 + 排序（无 TIES）
+  if (unit === 'percent' && groupBy?.length) {
     const partitionBy = groupBy.map(quoteIdentifier).join(', ');
     const orderClause = orderBy ? ` ORDER BY ${orderBy}` : '';
     return `
       CREATE TEMP TABLE ${output} AS
-      SELECT ${projection}
+      ${projectionSub}
+      FROM (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY ${partitionBy}${orderClause}) AS __rn,
+               COUNT(*) OVER (PARTITION BY ${partitionBy}) AS __group_total
+        FROM ${input}
+      ) sub
+      WHERE __rn <= CEIL(__group_total * ${pct} / 100.0)`;
+  }
+
+  // 百分比 + 排序 + WITH TIES
+  if (unit === 'percent' && ties && orderBy) {
+    return `
+      CREATE TEMP TABLE ${output} AS
+      WITH cnt AS (SELECT COUNT(*) AS __total FROM ${input}),
+      numbered AS (
+        SELECT *, ROW_NUMBER() OVER (ORDER BY ${orderBy}) AS __rn,
+               RANK() OVER (ORDER BY ${orderBy}) AS __rk
+        FROM ${input}
+      )
+      ${projectionSub}
+      FROM numbered
+      WHERE __rk <= (SELECT __rk FROM numbered, cnt WHERE __rn = CEIL(cnt.__total * ${pct} / 100.0))`;
+  }
+
+  // 百分比
+  if (unit === 'percent') {
+    return `
+      CREATE TEMP TABLE ${output} AS
+      ${projectionSub}
+      FROM (
+        SELECT *, ROW_NUMBER() OVER (${orderBy ? `ORDER BY ${orderBy}` : ''}) AS __rn,
+               COUNT(*) OVER () AS __total_rows
+        FROM ${input}
+      ) sub
+      WHERE __rn <= CEIL(__total_rows * ${pct} / 100.0)`;
+  }
+
+  // 分组模式（行数） + WITH TIES
+  if (groupBy?.length && ties && orderBy) {
+    const partitionBy = groupBy.map(quoteIdentifier).join(', ');
+    return `
+      CREATE TEMP TABLE ${output} AS
+      WITH numbered AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY ${partitionBy} ORDER BY ${orderBy}) AS __rn,
+               RANK() OVER (PARTITION BY ${partitionBy} ORDER BY ${orderBy}) AS __rk
+        FROM ${input}
+      ),
+      boundary AS (
+        SELECT ${partitionBy}, __rk AS __bound_rk
+        FROM numbered
+        WHERE __rn = ${rows}
+      )
+      ${projectionSub}
+      FROM numbered JOIN boundary USING (${partitionBy})
+      WHERE __rk <= __bound_rk`;
+  }
+
+  // 分组模式（行数）
+  if (groupBy?.length) {
+    const partitionBy = groupBy.map(quoteIdentifier).join(', ');
+    const orderClause = orderBy ? ` ORDER BY ${orderBy}` : '';
+    return `
+      CREATE TEMP TABLE ${output} AS
+      ${projectionSub}
       FROM (
         SELECT *, ROW_NUMBER() OVER (PARTITION BY ${partitionBy}${orderClause}) AS __rn
         FROM ${input}
-      )
-      WHERE __rn <= ${Math.floor(limit)}
-    `;
+      ) sub
+      WHERE __rn <= ${rows}`;
   }
 
   // 排序模式（含 WITH TIES）
   if (orderBy) {
-    const ties = config?.ties ? ' WITH TIES' : '';
-    return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} ORDER BY ${orderBy} LIMIT ${Math.floor(limit)}${ties}`;
+    return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} ORDER BY ${orderBy} LIMIT ${rows}${ties ? ' WITH TIES' : ''}`;
   }
 
   // 简单 LIMIT + OFFSET
   const offset =
     typeof config.offset === 'number' && config.offset > 0 ? ` OFFSET ${config.offset}` : '';
-  return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} LIMIT ${Math.floor(limit)}${offset}`;
+  return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} LIMIT ${rows}${offset}`;
 }
 
 function compileRandomSql(
@@ -81,6 +154,9 @@ export function compileLimitSql(
   columns: string[],
   config: Record<string, unknown>
 ): string {
+  if (config.limit === 0) {
+    return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} LIMIT 0`;
+  }
   const limit = positiveNumber(config.limit, 100);
 
   if (config.mode === 'random') {

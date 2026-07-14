@@ -177,6 +177,40 @@ describe('FormLimit — new features', () => {
     expect(r.dsl).toContain('sample 50 percent');
     expect(r.dsl).not.toContain('system');
   });
+
+  it('limit 0 produces limit 0 DSL', () => {
+    const r = ok({ mode: 'fixed', limit: 0, unit: 'rows' });
+    expect(r.dsl).toContain('limit 0');
+    expect(r.config.limit).toBe(0);
+  });
+
+  it('percent + orderBy + ties produces top ... with ties DSL (unit becomes rows)', () => {
+    const r = ok({
+      mode: 'fixed',
+      limit: 10,
+      unit: 'percent',
+      orderBy: [{ field: 'score', direction: 'desc' }],
+      ties: true,
+    });
+    expect(r.dsl).toContain('top 10');
+    expect(r.dsl).toContain('with ties');
+    expect(r.dsl).not.toContain('percent');
+    // DSL top format doesn't preserve percent unit
+    expect(r.config.unit).toBe('rows');
+  });
+
+  it('percent + orderBy + groupBy produces top ... partition DSL (unit becomes rows)', () => {
+    const r = ok({
+      mode: 'fixed',
+      limit: 20,
+      unit: 'percent',
+      orderBy: [{ field: 'revenue', direction: 'asc' }],
+      groupBy: ['region'],
+    });
+    expect(r.dsl).toContain('top 20');
+    expect(r.dsl).toContain('partition [region]');
+    expect(r.config.unit).toBe('rows');
+  });
 });
 
 // ── UI source structure ─────────────────────────────────────────────
@@ -257,5 +291,12 @@ describe('FormLimit — UI source structure', () => {
     const sortTag = limitSource.match(/px-1 py-0\.5 text-\[12px\] font-medium text-accent/g);
     expect(sortTag).not.toBeNull();
     expect(limitSource).not.toContain('px-1.5 py-0.5 text-[12px] font-medium text-accent');
+  });
+
+  it('WITH TIES checkbox shows for both rows and percent (no isRows guard)', () => {
+    // The checkbox condition should be just `hasSort`, not `isRows && hasSort`
+    const tiesCheckbox = limitSource.match(/\{hasSort\s*&&\s*\(/);
+    expect(tiesCheckbox).not.toBeNull();
+    expect(limitSource).not.toContain('isRows && hasSort && (');
   });
 });

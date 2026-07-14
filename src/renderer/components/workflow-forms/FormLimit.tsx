@@ -67,11 +67,11 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
   function pushLimit(value: string) {
     setLocalLimit(value);
     if (value === '') return;
-    const n = Math.max(1, Number(value) || 1);
+    const n = Math.max(0, Math.floor(Number(value) || 0));
     const clamped = String(n);
     if (clamped !== value) setLocalLimit(clamped);
     setErrors(runValidation(n, unit));
-    updateConfig((cfg) => ({ ...cfg, limit: n }));
+    updateConfig((cfg) => ({ ...cfg, limit: n > 0 ? n : 0 }));
   }
 
   function pushOffset(value: string) {
@@ -441,7 +441,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                 </div>
               )}
             </div>
-            {isRows && hasSort && (
+            {hasSort && (
               <label className="flex items-center gap-1.5 text-[12px] cursor-pointer select-none whitespace-nowrap">
                 <input
                   type="checkbox"
