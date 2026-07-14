@@ -102,7 +102,7 @@ function formatOperator(node: PrepFlowNodeLike): string | null {
 
 function formatFieldSelect(config: Record<string, unknown> | undefined): string {
   const columns = stringArray(config?.columns).map(formatFieldRef).join(', ');
-  return `select ${columns || '[field]'}`;
+  return `${config?.mode === 'exclude' ? 'drop' : 'select'} ${columns || '[field]'}`;
 }
 
 function formatTypeConvert(config: Record<string, unknown> | undefined): string {
@@ -110,9 +110,10 @@ function formatTypeConvert(config: Record<string, unknown> | undefined): string 
   if (conversions.length === 0) return 'cast [field] as text';
   return `cast ${conversions
     .map((item) => {
-      const options = [typeof item.onError === 'string' ? `on_error ${item.onError}` : ''].filter(
-        Boolean
-      );
+      const options = [
+        typeof item.format === 'string' ? `format ${quoteString(item.format)}` : '',
+        typeof item.onError === 'string' ? `on_error ${item.onError}` : '',
+      ].filter(Boolean);
       return `${formatFieldRef(String(item.column ?? 'field'))} as ${String(item.type ?? 'text')}${
         options.length > 0 ? ` ${options.join(' ')}` : ''
       }`;

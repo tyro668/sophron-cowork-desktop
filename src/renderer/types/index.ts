@@ -679,6 +679,13 @@ export interface DataAutomationColumnSnapshot {
   type?: string;
 }
 
+export interface DataAutomationLineageEntry {
+  name: string;
+  type?: string;
+  sourceColumns: DataAutomationColumnSnapshot[];
+  expression?: string;
+}
+
 export interface DataAutomationSourceBinding {
   location: DataAutomationLocation;
   tableId: string;
@@ -722,6 +729,8 @@ export interface DataGenerateTaskFromRequirementResult {
   outputTableName: string;
   workflowDsl: string;
   requiredColumns: DataAutomationColumnSnapshot[];
+  expectedOutputSchema: DataAutomationColumnSnapshot[];
+  lineage: DataAutomationLineageEntry[];
   columnsSnapshot: DataAutomationColumnSnapshot[];
   sourceSummaryHash: string;
   version: number;

@@ -399,6 +399,7 @@ export interface RunGeneratedTaskCommand {
   source: DataGenerateTaskFromRequirementInput['source'];
   output: DataGenerateTaskFromRequirementInput['output'];
   requiredColumns?: DataGenerateTaskFromRequirementResult['requiredColumns'];
+  expectedOutputSchema?: DataGenerateTaskFromRequirementResult['expectedOutputSchema'];
   schemaPolicy?: 'strict' | 'required_subset';
   mode?: 'temporary' | 'persisted';
   previewRows?: number;
