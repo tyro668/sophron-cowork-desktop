@@ -221,12 +221,12 @@ export function GlassFieldCombo({
         aria-expanded={open}
         aria-label={placeholder}
         className={[
-          'inline-flex h-6 min-w-0 items-center justify-between gap-1 rounded border px-1.5 text-[12px] outline-none transition-colors',
+          'inline-flex h-6 min-w-0 items-center gap-1 rounded border px-1.5 text-[12px] outline-none transition-colors',
           'border-border-muted bg-background/42 text-text-primary hover:bg-surface-hover focus:border-accent',
           className || '',
         ].join(' ')}
       >
-        <span className="truncate">
+        <span className="flex-1 text-center truncate">
           {value ? (
             showType && columnTypes[value] ? (
               <>

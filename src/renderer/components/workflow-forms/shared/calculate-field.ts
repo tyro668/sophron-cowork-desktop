@@ -261,7 +261,7 @@ export function exprFromParts(item: CalculationRow): string {
     let partitionStr = def.partitions(dateField);
     // Fiscal year: override partition for non-rolling windows
     const fiscalMonth = item.fiscalStartMonth;
-    if (!def.hasParam && fiscalMonth && fiscalMonth > 1) {
+    if (prefix === 'ytd' && fiscalMonth && fiscalMonth > 1) {
       partitionStr = `CASE WHEN month([${dateField}]) >= ${fiscalMonth} THEN year([${dateField}]) ELSE year([${dateField}]) - 1 END`;
     }
     const aggFn =

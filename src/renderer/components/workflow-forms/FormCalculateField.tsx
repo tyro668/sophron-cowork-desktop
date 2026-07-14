@@ -534,7 +534,7 @@ export default function FormCalculateField({
         const fieldConflict =
           item.action === 'add' && item.field && fieldCompletions.includes(item.field);
         return (
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 w-full">
             {item.action === 'replace' ? (
               <GlassFieldCombo
                 value={fieldCompletions.includes(item.field) ? item.field : ''}
@@ -545,20 +545,22 @@ export default function FormCalculateField({
                 className="h-7 w-full text-[12px]"
               />
             ) : (
-              <GlassFormTextInput
-                value={item.field}
-                onChange={(v) => updateItem(index, { field: v })}
-                placeholder={tr('calcFieldTargetPlaceholder', '请输入字段名')}
-                className="!h-7 w-full rounded-md px-1.5 text-[12px] shadow-none focus:ring-0"
-              />
-            )}
-            {fieldConflict && (
-              <span className="relative inline-flex group shrink-0">
-                <AlertCircle className="h-4 w-4 text-error cursor-pointer" />
-                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 z-50 whitespace-nowrap rounded-lg border border-border-subtle bg-[var(--glass-card-strong)] px-2.5 py-1.5 text-[12px] text-error shadow-elevated backdrop-blur-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-opacity pointer-events-none">
-                  {tr('calcFieldConflictWarning', '字段名已存在于上游数据')}
-                </div>
-              </span>
+              <div className="relative w-full">
+                <GlassFormTextInput
+                  value={item.field}
+                  onChange={(v) => updateItem(index, { field: v })}
+                  placeholder={tr('calcFieldTargetPlaceholder', '请输入字段名')}
+                  className="!h-7 w-full rounded-md pr-6 px-1.5 text-[12px] shadow-none focus:ring-0"
+                />
+                {fieldConflict && (
+                  <span className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex group">
+                    <AlertCircle className="h-4 w-4 text-error" />
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 z-50 whitespace-nowrap rounded-lg border border-border-subtle bg-[var(--glass-card-strong)] px-2.5 py-1.5 text-[12px] text-error shadow-elevated backdrop-blur-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-opacity pointer-events-none">
+                      {tr('calcFieldConflictWarning', '字段名已存在于上游数据')}
+                    </div>
+                  </span>
+                )}
+              </div>
             )}
           </div>
         );
@@ -787,7 +789,7 @@ export default function FormCalculateField({
                     className="h-7 w-14 rounded border border-border-muted bg-background/42 px-1 text-center text-[12px] text-text-primary outline-none"
                   />
                 )}
-                {!timeDef?.hasParam && (
+                {!timeDef?.hasParam && currentTimeWindow === 'ytd' && (
                   <>
                     <span className="text-[12px] text-text-muted shrink-0 leading-7">
                       {tr('calcFieldFiscalStart', '年度起始月')}

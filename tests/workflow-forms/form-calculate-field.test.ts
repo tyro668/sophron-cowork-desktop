@@ -1198,4 +1198,74 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
     expect(result).toContain('RANGE BETWEEN INTERVAL 2 YEAR PRECEDING');
     expect(result).not.toContain('CASE');
   });
+
+  it('rolling_month_sum generates RANGE BETWEEN INTERVAL N MONTH', () => {
+    const result = exprFromParts({
+      id: 'ti15',
+      field: 'rm',
+      expression: '',
+      type: 'cross',
+      fn: 'rolling_month_sum',
+      fnArg: '[sales]',
+      fnArg2: '6',
+      orderBy: [{ field: 'date', direction: 'asc' }],
+    });
+    expect(result).toContain('RANGE BETWEEN INTERVAL 6 MONTH PRECEDING AND CURRENT ROW');
+  });
+
+  it('rolling_year_sum with partitionBy adds extra partition', () => {
+    const result = exprFromParts({
+      id: 'ti16',
+      field: 'ryp',
+      expression: '',
+      type: 'cross',
+      fn: 'rolling_year_sum',
+      fnArg: '[sales]',
+      fnArg2: '2',
+      partitionBy: ['category'],
+      orderBy: [{ field: 'date', direction: 'asc' }],
+    });
+    expect(result).toContain('RANGE BETWEEN INTERVAL 2 YEAR PRECEDING');
+    expect(result).toContain('PARTITION BY [category]');
+  });
+
+  it('ytd_sum without orderBy falls back to OVER ()', () => {
+    const result = exprFromParts({
+      id: 'ti17',
+      field: 'ytd_no',
+      expression: '',
+      type: 'cross',
+      fn: 'ytd_sum',
+      fnArg: '[sales]',
+    });
+    expect(result).toBe('sum([sales]) OVER ()');
+  });
+
+  it('rolling_year_distinct_count generates count(DISTINCT ...)', () => {
+    const result = exprFromParts({
+      id: 'ti18',
+      field: 'rydc',
+      expression: '',
+      type: 'cross',
+      fn: 'rolling_year_distinct_count',
+      fnArg: '[customer_id]',
+      fnArg2: '2',
+      orderBy: [{ field: 'date', direction: 'asc' }],
+    });
+    expect(result).toContain('count(DISTINCT [customer_id])');
+    expect(result).toContain('RANGE BETWEEN INTERVAL 2 YEAR PRECEDING');
+  });
+
+  it('ytd_count with * produces count(*)', () => {
+    const result = exprFromParts({
+      id: 'ti19',
+      field: 'ytd_star',
+      expression: '',
+      type: 'cross',
+      fn: 'ytd_count',
+      orderBy: [{ field: 'date', direction: 'asc' }],
+    });
+    expect(result).toContain('count(*)');
+    expect(result).toContain('PARTITION BY year([date])');
+  });
 });
