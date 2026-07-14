@@ -200,7 +200,8 @@ function parseOperator(
   if (text.startsWith('join ')) return parseJoin(command, diagnostics);
   if (text.startsWith('aggregate ')) return parseAggregate(text);
   if (text.startsWith('derive ')) return parseDerive(text);
-  if (text.startsWith('limit ') || text.startsWith('top ')) return parseLimit(text);
+  if (text.startsWith('limit ') || text.startsWith('top ') || text.startsWith('sample '))
+    return parseLimit(text);
   if (text.startsWith('pivot ')) return parsePivot(command, diagnostics);
   if (text.startsWith('unpivot ')) return parseUnpivot(text);
   if (text.startsWith('union ') || text.startsWith('intersect ') || text.startsWith('except ')) {
@@ -521,17 +522,37 @@ function parseDerive(text: string): PrepOperatorAst {
 
 function parseLimit(text: string): PrepOperatorAst {
   if (text.startsWith('top ')) {
-    const match = /^top\s+(\d+)\s+by\s+(.+)$/s.exec(text);
+    const match = /^top\s+(\d+)\s+by\s+(.+?)(?:\s+with\s+ties)?(?:\s+partition\s+(.+))?$/is.exec(
+      text
+    );
+    if (match) {
+      return makeOperator('limit', text, {
+        mode: 'fixed',
+        limit: Number(match[1]),
+        unit: 'rows',
+        orderBy: parseSortKeys(match[2]),
+        ties: /with\s+ties/i.test(text),
+        groupBy: match[4] ? parseFieldRefs(match[4]).map((f) => f.name) : undefined,
+      });
+    }
+    return makeOperator('limit', text, { mode: 'fixed', limit: 0, unit: 'rows', orderBy: [] });
+  }
+  if (text.startsWith('sample ')) {
+    const match =
+      /^sample\s+(\d+)(?:\s+(rows|percent))?(?:\s+(bernoulli|system))?(?:\s+repeatable\s+(\d+))?$/i.exec(
+        text
+      );
     return makeOperator('limit', text, {
-      mode: 'top',
+      mode: 'random',
       limit: match ? Number(match[1]) : 0,
-      unit: 'rows',
-      orderBy: match ? parseSortKeys(match[2]) : [],
+      unit: match?.[2] ?? 'rows',
+      method: match?.[3] ?? 'system',
+      seed: match?.[4] ? Number(match[4]) : undefined,
     });
   }
   const match = /^limit\s+(\d+)(?:\s+(rows|percent))?(?:\s+offset\s+(\d+))?$/.exec(text);
   return makeOperator('limit', text, {
-    mode: 'limit',
+    mode: 'fixed',
     limit: match ? Number(match[1]) : 0,
     unit: match?.[2] ?? 'rows',
     offset: match?.[3] ? Number(match[3]) : undefined,
