@@ -240,6 +240,10 @@ function workflowFunctionNameToDsl(name: string): string {
   switch (name) {
     case 'regexpExtract':
       return 'REGEXP_EXTRACT';
+    case 'year':
+      return 'YEAR';
+    case 'month':
+      return 'MONTH';
     case 'upper':
       return 'UPPER';
     case 'lower':

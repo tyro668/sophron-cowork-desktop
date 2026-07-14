@@ -1,7 +1,16 @@
 import type { PrepDiagnostic } from '../../../shared/prep-dsl';
+import { DataCommandError } from '../data-command-types';
 
 export function normalizeColumnType(type: string): string {
   return type.trim().toLowerCase();
+}
+
+export function normalizeRequiredName(name: string, message: string): string {
+  const normalized = name.trim();
+  if (!normalized) {
+    throw new DataCommandError('INVALID_ARGUMENT', message);
+  }
+  return normalized;
 }
 
 export function extractJsonObject(text: string): string {

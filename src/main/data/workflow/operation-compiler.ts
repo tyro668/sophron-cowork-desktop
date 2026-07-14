@@ -9,16 +9,9 @@ import {
   isRecord,
   literalToDsl,
   normalizeDslTypeName,
+  normalizeRequiredName,
   unescapeDslBacktickField,
 } from './utils';
-
-function normalizeRequiredName(name: string, message: string): string {
-  const normalized = name.trim();
-  if (!normalized) {
-    throw new DataCommandError('INVALID_ARGUMENT', message);
-  }
-  return normalized;
-}
 
 import type {
   GeneratedWorkflowColumnBinding,
@@ -57,9 +50,9 @@ export class ColumnStateTracker {
   requireColumn(
     name: unknown,
     context = 'operation',
-    missingMessage = `Generated workflow plan ${context} is missing an input column`,
+    missingMessage = `Generated workflow ${context} is missing an input column`,
     unknownMessage = (columnName: string) =>
-      `Generated workflow plan ${context} references unknown input column: ${columnName}`
+      `Generated workflow ${context} references unknown input column: ${columnName}`
   ): GeneratedWorkflowColumnBinding {
     const normalized = typeof name === 'string' ? this.normalizeName(name) : '';
     if (!normalized) {
@@ -168,7 +161,6 @@ interface GeneratedWorkflowOperationCompileContext {
 }
 
 interface GeneratedWorkflowOperationDefinition {
-  promptSpec: Record<string, unknown>;
   compile: (
     operation: Record<string, unknown> & { type: string },
     context: GeneratedWorkflowOperationCompileContext
@@ -178,15 +170,6 @@ interface GeneratedWorkflowOperationDefinition {
 const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOperationDefinition> =
   {
     filter: {
-      promptSpec: {
-        type: 'filter',
-        column:
-          'current field name; use original input column unless an earlier rename created a new field name',
-        operator: '= | <> | > | >= | < | <= | contains | not_contains | is_null | is_not_null',
-        value: 'literal value; omit for null checks',
-        rightColumn:
-          'optional current field name for field-to-field comparisons, for example Profit < Target Profit. Use this instead of value when the right side is a field.',
-      },
       compile(operation, context) {
         const column = context.requireColumn(columnNameFromPlan(operation), 'filter.column');
         const operator = normalizePlanFilterOperator(operation.operator);
@@ -213,12 +196,6 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
       },
     },
     sort: {
-      promptSpec: {
-        type: 'sort',
-        column:
-          'current field name; use original input column unless an earlier rename created a new field name',
-        direction: 'asc | desc',
-      },
       compile(operation, context) {
         const column = context.requireColumn(
           columnNameFromPlan(operation) ||
@@ -230,16 +207,6 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
       },
     },
     convert_type: {
-      promptSpec: {
-        type: 'convert_type',
-        column:
-          'current field name to overwrite; use original input column unless an earlier rename created a new field name',
-        targetType: 'text | integer | float | decimal | date | datetime | boolean',
-        removePrefix: 'optional string prefix to remove before casting',
-        removeChars: 'optional array of literal strings to remove before casting',
-        scale: 'optional decimal scale for targetType decimal',
-        onError: 'null | fail',
-      },
       compile(operation, context) {
         const column = context.requireColumn(columnNameFromPlan(operation), 'convert_type.column');
         const targetType = normalizePlanTargetType(operation.targetType);
@@ -289,7 +256,6 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
       },
     },
     select: {
-      promptSpec: { type: 'select', columns: 'array of existing input columns to keep' },
       compile(operation, context) {
         const rawSelected = columnListFromPlan(operation);
         const inferredDropped = inferDroppedColumnsFromSelectOperation(rawSelected, context);
@@ -311,7 +277,6 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
       },
     },
     drop: {
-      promptSpec: { type: 'drop', columns: 'array of existing input columns to remove' },
       compile(operation, context) {
         const dropped = columnListFromPlan(operation).map(
           (name) => context.requireColumn(name, 'drop.columns').name
@@ -323,11 +288,6 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
       },
     },
     rename: {
-      promptSpec: {
-        type: 'rename',
-        source: 'existing input column',
-        target: 'new output column name',
-      },
       compile(operation, context) {
         const source = context.requireColumn(
           operation.source ?? columnNameFromPlan(operation),
@@ -342,12 +302,6 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
       },
     },
     derive: {
-      promptSpec: {
-        type: 'derive',
-        column: 'output column name to create or overwrite',
-        expression:
-          'Prep scalar expression only when no structured operation can express it. Reference fields with [field] or [`field name`]. Never use bare SQL identifiers/backticks such as `field name`.',
-      },
       compile(operation, context) {
         const column = normalizeRequiredName(
           typeof operation.column === 'string' ? operation.column : '',
@@ -391,12 +345,6 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
       },
     },
     aggregate: {
-      promptSpec: {
-        type: 'aggregate',
-        groupBy: 'array of existing input columns',
-        metrics:
-          'array of { function: sum|avg|min|max|count|count_distinct, column: existing input column or "*", alias: output column name }',
-      },
       compile(operation, context) {
         const groupBy = stringArrayFromPlan(operation.groupBy).map((name) =>
           context.requireColumn(name, 'aggregate.groupBy')
@@ -435,12 +383,6 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOpe
       },
     },
   };
-
-export function getGeneratedWorkflowOperationPromptSpecs(): Record<string, unknown>[] {
-  return Object.values(GENERATED_WORKFLOW_OPERATION_REGISTRY).map(
-    (definition) => definition.promptSpec
-  );
-}
 
 export function compileGeneratedWorkflowPlan({
   operations,
@@ -488,7 +430,7 @@ export function compileGeneratedWorkflowPlan({
     if (!compiler) {
       throw new DataCommandError(
         'VALIDATION_FAILED',
-        `Generated workflow plan uses unsupported operation: ${rawOperation.type}`
+        `Generated workflow uses unsupported operation: ${rawOperation.type}`
       );
     }
     compiler.compile(rawOperation, context);
@@ -507,10 +449,7 @@ function normalizeGeneratedWorkflowOperation(operation: unknown): Record<string,
   type: string;
 } {
   if (!isRecord(operation) || typeof operation.type !== 'string' || !operation.type.trim()) {
-    throw new DataCommandError(
-      'VALIDATION_FAILED',
-      'Generated workflow plan has invalid operation'
-    );
+    throw new DataCommandError('VALIDATION_FAILED', 'Generated workflow has invalid operation');
   }
   const fields = isRecord(operation.fields) ? operation.fields : {};
   return {
@@ -869,7 +808,7 @@ function inferGeneratedExpressionBinding(
     if (!column) {
       throw new DataCommandError(
         'VALIDATION_FAILED',
-        `Generated workflow plan ${context} references unknown input column: ${name}`
+        `Generated workflow ${context} references unknown input column: ${name}`
       );
     }
     return column;
@@ -895,7 +834,7 @@ export function assertExpressionTypeCompatible(
   if (incompatible.length > 0) {
     throw new DataCommandError(
       'VALIDATION_FAILED',
-      `Generated workflow plan ${context} uses non-numeric column(s) in arithmetic expression: ${incompatible
+      `Generated workflow ${context} uses non-numeric column(s) in arithmetic expression: ${incompatible
         .map((column) => `${column.name} (${column.type})`)
         .join(', ')}`
     );
@@ -945,7 +884,7 @@ function assertGeneratedFilterComparable(
   }
   throw new DataCommandError(
     'VALIDATION_FAILED',
-    `Generated workflow plan ${context} compares incompatible types: ${left.name} (${left.type}) ${operator} ${isGeneratedWorkflowColumnBinding(right) ? `${right.name} (${right.type})` : `${String(right)} (${rightType})`}`
+    `Generated workflow ${context} compares incompatible types: ${left.name} (${left.type}) ${operator} ${isGeneratedWorkflowColumnBinding(right) ? `${right.name} (${right.type})` : `${String(right)} (${rightType})`}`
   );
 }
 

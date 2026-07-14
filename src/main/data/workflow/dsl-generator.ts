@@ -10,15 +10,13 @@ import {
 } from './js-parser';
 import {
   compileGeneratedWorkflowPlan,
-  getGeneratedWorkflowOperationPromptSpecs,
   type GeneratedWorkflowGenerationResult,
 } from './operation-compiler';
 import {
   parseGeneratedWorkflowDslResponse,
   reconcileGeneratedWorkflowWithDslInference,
-  validateCompiledWorkflowDsl,
 } from './schema-inferencer';
-import { extractJsonObject, isRecord } from './utils';
+import { isRecord } from './utils';
 
 export const GENERATED_WORKFLOW_CONFIG_REPAIR_ATTEMPTS = 2;
 const DIRECT_DSL_GENERATION_FALLBACK_ENV = 'SOPHRON_ENABLE_DIRECT_DSL_GENERATION';
@@ -81,38 +79,24 @@ export async function generateWorkflowDslFromRequirement({
         columns,
       });
     } catch (parseError) {
-      try {
-        return parseGeneratedWorkflowPlanResponse({
-          text: response.text,
+      if (isDirectDslGenerationFallbackEnabled()) {
+        return await generateAdvancedWorkflowDslFromFailedJavascript({
           inputTableId,
           outputTableName,
           requirement,
           columns,
+          runtimeConfig,
+          failedWorkflowJs: extractWorkflowJsFromModelResponse(response.text) ?? response.text,
+          diagnostics: diagnosticsFromGenerationError(parseError),
         });
-      } catch (jsonParseError) {
-        if (isUnsupportedGeneratedWorkflowOperationError(jsonParseError)) {
-          if (!isDirectDslGenerationFallbackEnabled()) {
-            throw jsonParseError;
-          }
-          return await generateAdvancedWorkflowDslFromPlan({
-            inputTableId,
-            outputTableName,
-            requirement,
-            columns,
-            runtimeConfig,
-            generatedPlanText: response.text,
-            diagnostics: diagnosticsFromGenerationError(jsonParseError),
-          });
-        }
       }
-      const failedWorkflowDsl = extractWorkflowDslFromModelResponse(response.text) ?? response.text;
       return await repairWorkflowDslFromDiagnostics({
         inputTableId,
         outputTableName,
         requirement,
         columns,
         runtimeConfig,
-        failedWorkflowDsl,
+        failedWorkflowDsl: extractWorkflowJsFromModelResponse(response.text) ?? response.text,
         diagnostics: diagnosticsFromGenerationError(parseError),
       });
     }
@@ -175,13 +159,13 @@ export async function repairWorkflowDslFromDiagnostics({
   }
 }
 
-async function generateAdvancedWorkflowDslFromPlan({
+async function generateAdvancedWorkflowDslFromFailedJavascript({
   inputTableId,
   outputTableName,
   requirement,
   columns,
   runtimeConfig,
-  generatedPlanText,
+  failedWorkflowJs,
   diagnostics,
 }: {
   inputTableId: string;
@@ -189,7 +173,7 @@ async function generateAdvancedWorkflowDslFromPlan({
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
   runtimeConfig?: AgentRuntimeConfig;
-  generatedPlanText: string;
+  failedWorkflowJs: string;
   diagnostics: PrepDiagnostic[];
 }): Promise<GeneratedWorkflowGenerationResult> {
   const config = requireGenerationRuntimeConfig(runtimeConfig);
@@ -200,7 +184,7 @@ async function generateAdvancedWorkflowDslFromPlan({
         outputTableName,
         requirement,
         columns,
-        generatedPlanText,
+        failedWorkflowJs,
         diagnostics,
       }),
       buildAdvancedWorkflowDslGenerationSystemPrompt(),
@@ -237,7 +221,7 @@ function buildWorkflowDslGenerationSystemPrompt(): string {
     'Do not write Sophron Prep DSL, SQL, imports, loops, variables, async code, or arbitrary JavaScript.',
     'Return {"workflowJs":"..."} where workflowJs is a single chain beginning with workflow() and ending with outputTable(OUTPUT_TABLE_NAME, { mode: "replace" }).',
     'Allowed workflow methods: inputDataset(INPUT_TABLE_ID, "src"), filter(expr), sort(col("field"), "asc|desc"), drop("field" or ["field"]), select(["field"]), rename("source", "target"), derive("field", expr), cast("field", "text|integer|float|decimal|date|datetime|boolean", options), aggregate({ groupBy: [col("field")], metrics: [metric.sum(col("field")).as("alias"), metric.count().as("alias")] }), outputTable(OUTPUT_TABLE_NAME, { mode: "replace" }).',
-    'Allowed expression APIs: col("field"), lit(value), fn.regexpExtract(expr, pattern), fn.upper(expr), fn.lower(expr), fn.trim(expr), fn.replace(expr, search, replacement), fn.concat(...exprs).',
+    'Allowed expression APIs: col("field"), lit(value), fn.regexpExtract(expr, pattern), fn.year(expr), fn.month(expr), fn.upper(expr), fn.lower(expr), fn.trim(expr), fn.replace(expr, search, replacement), fn.concat(...exprs).',
     'Allowed comparison methods: eq, neq, gt, gte, lt, lte, contains, notContains, isNull, isNotNull.',
     'Allowed arithmetic methods: add, sub, mul, div.',
     'Column references must use the current field name at that point in the workflow chain. Before a rename, use the original input column name exactly; after a rename, later operations may use the renamed field.',
@@ -256,6 +240,7 @@ function buildAdvancedWorkflowDslGenerationSystemPrompt(): string {
     'You generate advanced Sophron Prep DSL only when the stable operation compiler cannot express the user requirement.',
     'Return only strict JSON. Do not return markdown, comments, explanations, or code fences.',
     'Use only the provided input columns. Do not invent field names.',
+    'This is an explicitly enabled fallback from failed workflowJs generation. Do not produce or consume JSON operation plans.',
     'The workflowDsl must start with the provided input source dataset line and end with the provided output table line.',
     'If a field name contains spaces or special characters, reference it as [`field name`].',
     'In expressions, reference fields with [field] or [`field name`]. Never use bare SQL identifier syntax such as `field name` or "field name".',
@@ -268,19 +253,19 @@ function buildAdvancedWorkflowDslGenerationUserPrompt(input: {
   outputTableName: string;
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
-  generatedPlanText: string;
+  failedWorkflowJs: string;
   diagnostics: PrepDiagnostic[];
 }): string {
   return JSON.stringify(
     {
-      task: 'Generate an advanced Sophron Prep DSL workflow from a previously generated structured plan that the stable compiler could not compile.',
+      task: 'Generate an advanced Sophron Prep DSL workflow only because the generated workflowJs could not be parsed or compiled.',
       requirement: input.requirement,
       inputColumns: input.columns,
       requiredDslLines: {
         first: `input source dataset "${input.inputTableId}" as src`,
         last: `output table "${input.outputTableName}" mode replace`,
       },
-      previousGeneratedPlanJson: safeParseJsonForPrompt(input.generatedPlanText),
+      failedWorkflowJs: input.failedWorkflowJs,
       previousDiagnostics: input.diagnostics.map((diagnostic) => ({
         severity: diagnostic.severity,
         code: diagnostic.code,
@@ -300,14 +285,6 @@ function buildAdvancedWorkflowDslGenerationUserPrompt(input: {
   );
 }
 
-function safeParseJsonForPrompt(text: string): unknown {
-  try {
-    return JSON.parse(extractJsonObject(text));
-  } catch {
-    return text;
-  }
-}
-
 function buildWorkflowDslGenerationUserPrompt(input: {
   inputTableId: string;
   outputTableName: string;
@@ -318,14 +295,13 @@ function buildWorkflowDslGenerationUserPrompt(input: {
 }): string {
   return JSON.stringify(
     {
-      task: 'Convert the user requirement into a structured Sophron data transform plan.',
+      task: 'Convert the user requirement into restricted workflowJs for a Sophron data transform.',
       requirement: input.requirement,
       inputColumns: input.columns,
       compilationTarget: {
         inputTableId: input.inputTableId,
         outputTableName: input.outputTableName,
       },
-      supportedOperations: getGeneratedWorkflowOperationPromptSpecs(),
       outputJsonSchema: {
         workflowJs:
           'single restricted JavaScript workflow API chain. Use INPUT_TABLE_ID and OUTPUT_TABLE_NAME constants exactly.',
@@ -334,7 +310,7 @@ function buildWorkflowDslGenerationUserPrompt(input: {
       },
       previousFailedAttempt: input.failedWorkflowDsl
         ? {
-            compiledWorkflowDsl: input.failedWorkflowDsl,
+            failedWorkflow: input.failedWorkflowDsl,
             diagnostics: (input.diagnostics ?? []).map((diagnostic) => ({
               severity: diagnostic.severity,
               code: diagnostic.code,
@@ -365,16 +341,12 @@ function buildWorkflowDslGenerationUserPrompt(input: {
   );
 }
 
-function extractWorkflowDslFromModelResponse(text: string): string | null {
+function extractWorkflowJsFromModelResponse(text: string): string | null {
   try {
-    const parsed = JSON.parse(extractJsonObject(text)) as unknown;
-    if (isRecord(parsed) && typeof parsed.workflowDsl === 'string' && parsed.workflowDsl.trim()) {
-      return parsed.workflowDsl.trim();
-    }
+    return extractGeneratedWorkflowJavascript(text);
   } catch {
     return null;
   }
-  return null;
 }
 
 function parseRepairWorkflowResponse({
@@ -403,20 +375,8 @@ function parseRepairWorkflowResponse({
     errors.push(error instanceof Error ? error.message : String(error));
   }
 
-  try {
-    return parseGeneratedWorkflowPlanResponse({
-      text,
-      inputTableId,
-      outputTableName,
-      requirement,
-      columns,
-    });
-  } catch (error) {
-    errors.push(error instanceof Error ? error.message : String(error));
-  }
-
   const workflowDsl = extractWorkflowDslFromModelResponse(text);
-  if (workflowDsl) {
+  if (workflowDsl && isDirectDslGenerationFallbackEnabled()) {
     return parseGeneratedWorkflowDslResponse(JSON.stringify({ workflowDsl }), columns);
   }
 
@@ -424,6 +384,18 @@ function parseRepairWorkflowResponse({
     'VALIDATION_FAILED',
     `Repair generation response must include workflowJs. Parser errors: ${errors.join('; ')}`
   );
+}
+
+function extractWorkflowDslFromModelResponse(text: string): string | null {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (isRecord(parsed) && typeof parsed.workflowDsl === 'string' && parsed.workflowDsl.trim()) {
+      return parsed.workflowDsl.trim();
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 function diagnosticsFromGenerationError(error: unknown): PrepDiagnostic[] {
@@ -450,14 +422,6 @@ function isPrepDiagnosticLike(value: unknown): value is PrepDiagnostic {
   return isRecord(value) && (value.severity === 'error' || value.severity === 'warning');
 }
 
-function isUnsupportedGeneratedWorkflowOperationError(error: unknown): boolean {
-  return (
-    error instanceof DataCommandError &&
-    error.code === 'VALIDATION_FAILED' &&
-    error.message.includes('uses unsupported operation')
-  );
-}
-
 function parseGeneratedWorkflowJsResponse({
   text,
   inputTableId,
@@ -482,31 +446,4 @@ function parseGeneratedWorkflowJsResponse({
     columns,
   });
   return reconcileGeneratedWorkflowWithDslInference(compiled, columns);
-}
-
-function parseGeneratedWorkflowPlanResponse({
-  text,
-  inputTableId,
-  outputTableName,
-  requirement,
-  columns,
-}: {
-  text: string;
-  inputTableId: string;
-  outputTableName: string;
-  requirement: string;
-  columns: Array<{ name: string; type?: string }>;
-}): GeneratedWorkflowGenerationResult {
-  const parsed = JSON.parse(extractJsonObject(text)) as unknown;
-  if (!isRecord(parsed) || !Array.isArray(parsed.operations)) {
-    throw new Error('Workflow plan generation response must include operations');
-  }
-  const compiled = compileGeneratedWorkflowPlan({
-    operations: parsed.operations,
-    inputTableId,
-    outputTableName,
-    requirement,
-    columns,
-  });
-  return validateCompiledWorkflowDsl(compiled, columns);
 }
