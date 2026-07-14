@@ -310,6 +310,13 @@ function toCommandError(error: unknown, fallbackCode: DataCommandError['code']):
   const status = getErrorStatus(error);
   const apiCode = getErrorApiCode(error);
   const message = error instanceof Error ? error.message : String(error);
+  if (
+    /TransactionContext|transaction is aborted|cannot start a transaction within a transaction/i.test(
+      message
+    )
+  ) {
+    return new DataCommandError('RUN_FAILED', message);
+  }
   if (status === 404) {
     return new DataCommandError('RESOURCE_NOT_FOUND', message, {
       status,

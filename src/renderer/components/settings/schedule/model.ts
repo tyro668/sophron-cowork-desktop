@@ -191,6 +191,13 @@ export function createGeneratedCloudTableProcessNode(
     workflowDsl: string;
     outputTableId: string;
     requiredColumns: Array<{ name: string; type?: string }>;
+    expectedOutputSchema?: Array<{ name: string; type?: string }>;
+    lineage?: Array<{
+      name: string;
+      type?: string;
+      sourceColumns: Array<{ name: string; type?: string }>;
+      expression?: string;
+    }>;
     columnsSnapshot: Array<{ name: string; type?: string }>;
     sourceSummaryHash: string;
     version: number;
@@ -230,6 +237,8 @@ export function createGeneratedCloudTableProcessNode(
         localOutputTableId: result.outputTableId,
       },
       requiredColumns: result.requiredColumns,
+      expectedOutputSchema: result.expectedOutputSchema ?? [],
+      lineage: result.lineage ?? [],
       columnsSnapshot: result.columnsSnapshot,
       sourceSummaryHash: result.sourceSummaryHash,
       generatedVersion: result.version,

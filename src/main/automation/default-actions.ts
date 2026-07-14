@@ -187,6 +187,8 @@ export function createDefaultAutomationActionRegistry(
       source: null,
       output: null,
       requiredColumns: [],
+      expectedOutputSchema: [],
+      lineage: [],
       columnsSnapshot: [],
       schemaPolicy: 'required_subset',
       outputMode: 'persisted',
@@ -198,6 +200,12 @@ export function createDefaultAutomationActionRegistry(
         source: { type: 'object', title: 'Runtime source' },
         output: { type: 'object', title: 'Runtime output' },
         requiredColumns: { type: 'array', title: 'Required columns', items: { type: 'object' } },
+        expectedOutputSchema: {
+          type: 'array',
+          title: 'Expected output schema',
+          items: { type: 'object' },
+        },
+        lineage: { type: 'array', title: 'Output lineage', items: { type: 'object' } },
         columnsSnapshot: { type: 'array', title: 'Column snapshot', items: { type: 'object' } },
         schemaPolicy: {
           type: 'string',
@@ -247,6 +255,9 @@ export function createDefaultAutomationActionRegistry(
         output: config.output as never,
         requiredColumns: Array.isArray(config.requiredColumns)
           ? (config.requiredColumns as never)
+          : [],
+        expectedOutputSchema: Array.isArray(config.expectedOutputSchema)
+          ? (config.expectedOutputSchema as never)
           : [],
         schemaPolicy: config.schemaPolicy === 'strict' ? 'strict' : 'required_subset',
         mode: config.outputMode === 'temporary' ? 'temporary' : 'persisted',

@@ -132,6 +132,72 @@ describe('DuckDB data task store', () => {
     expect(afterDelete.tasks).toHaveLength(0);
   });
 
+  it('serializes concurrent task runs on the shared DuckDB connection', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'), {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+
+    const csvPath = path.join(tempRoot, 'queued.csv');
+    fs.writeFileSync(csvPath, 'id,name\n1,Alice\n', 'utf8');
+    const firstTask = await store.createTask({ name: 'First queued task', sourcePath: csvPath });
+    const secondTask = await store.createTask({ name: 'Second queued task', sourcePath: csvPath });
+    const internals = store as unknown as {
+      cleanSourceIntoTaskOutput: (
+        task: { id: string },
+        sourcePath: string | null,
+        workflow: unknown,
+        outputMode: unknown
+      ) => Promise<{
+        outputTable: string;
+        rowCount: number;
+        columnCount: number;
+        sourceDatasetId: string | null;
+      }>;
+    };
+    const originalCleanSourceIntoTaskOutput = internals.cleanSourceIntoTaskOutput.bind(store);
+    let activeRuns = 0;
+    let maxActiveRuns = 0;
+    let callCount = 0;
+    let releaseFirstRun: (() => void) | null = null;
+    internals.cleanSourceIntoTaskOutput = async (task) => {
+      callCount += 1;
+      activeRuns += 1;
+      maxActiveRuns = Math.max(maxActiveRuns, activeRuns);
+      if (callCount === 1) {
+        await new Promise<void>((resolve) => {
+          releaseFirstRun = resolve;
+        });
+      }
+      activeRuns -= 1;
+      return {
+        outputTable: `serialized_output_${task.id.replace(/[^A-Za-z0-9]/g, '_')}`,
+        rowCount: 1,
+        columnCount: 1,
+        sourceDatasetId: null,
+      };
+    };
+
+    try {
+      const firstRun = store.runTask(firstTask.id);
+      await waitFor(() => callCount === 1);
+      const secondRun = store.runTask(secondTask.id);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(callCount).toBe(1);
+
+      releaseFirstRun?.();
+      await firstRun;
+      await secondRun;
+
+      expect(callCount).toBe(2);
+      expect(maxActiveRuns).toBe(1);
+    } finally {
+      internals.cleanSourceIntoTaskOutput = originalCleanSourceIntoTaskOutput;
+    }
+  });
+
   it('imports an Excel workbook as an input table', async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
     tempRoots.push(tempRoot);
@@ -1549,4 +1615,12 @@ function writeWorkbookSheets(filePath: string, sheets: Record<string, unknown[][
     XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
   }
   XLSX.writeFile(workbook, filePath);
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  expect(predicate()).toBe(true);
 }
