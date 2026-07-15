@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Trash2, X } from 'lucide-react';
 import type { OperatorFormProps } from './index';
@@ -52,9 +52,9 @@ export default function FormUnpivot({
     [onNodeChange]
   );
 
-  const columns: string[] = (node.config.columns as string[]) ?? [];
-  const nameColumn = String(node.config.nameColumn ?? 'name');
-  const valueColumn = String(node.config.valueColumn ?? 'value');
+  const columns = useMemo(() => (node.config.columns as string[]) ?? [], [node.config?.columns]);
+  const nameColumn = String(node.config.nameColumn ?? '');
+  const valueColumn = String(node.config.valueColumn ?? '');
   const includeNulls = Boolean(node.config.includeNulls ?? false);
 
   const handleColumnsSelect = useCallback(
@@ -71,7 +71,7 @@ export default function FormUnpivot({
 
   const clearColumns = useCallback(() => handleColumnsSelect([]), [handleColumnsSelect]);
 
-  const [columnsOpen, setColumnsOpen] = useState(false);
+  const [columnsOpen, setColumnsOpen] = useState(true);
 
   function TagBar({
     items,
@@ -99,7 +99,7 @@ export default function FormUnpivot({
             <Trash2 className="h-3 w-3" />
           </button>
           {items.length === 0 && (
-            <span className="text-[11px] text-text-muted italic">
+            <span className="text-[12px] text-text-muted italic">
               {tr('noFieldsSelected', '暂未选择字段')}
             </span>
           )}
@@ -107,7 +107,7 @@ export default function FormUnpivot({
             {items.map((col) => (
               <span
                 key={col}
-                className="inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent"
+                className="inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[12px] font-medium text-accent"
               >
                 {col}
                 <button
@@ -124,7 +124,7 @@ export default function FormUnpivot({
           <button
             type="button"
             onClick={onToggle}
-            className="inline-flex flex-shrink-0 items-center justify-center rounded px-1.5 py-0.5 text-[11px] text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
+            className="inline-flex flex-shrink-0 items-center justify-center rounded px-1.5 py-0.5 text-[12px] text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
           >
             {open ? '收起 ▲' : '展开 ▼'}
           </button>
@@ -134,9 +134,9 @@ export default function FormUnpivot({
   }
 
   return (
-    <div className="grid content-start gap-2.5">
-      {/* ═══ 步骤1: 列展开 ═══ */}
-      <div className="rounded-lg border border-border-muted bg-background/42">
+    <div className="flex gap-2.5">
+      {/* ═══ 左列: 列展开 ═══ */}
+      <div className="flex-[4] rounded-lg border border-border-muted bg-background/42 content-start">
         <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5">
           <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
             1
@@ -146,7 +146,7 @@ export default function FormUnpivot({
               {tr('unpivotMode', '列展开')}
             </span>
             <span className="text-[10px] text-text-muted">
-              {tr('unpivotConfigHint', '选择要展开的列与输出名称')}
+              {tr('unpivotConfigHint', '选择要展开的列')}
             </span>
           </div>
         </div>
@@ -170,7 +170,25 @@ export default function FormUnpivot({
               />
             )}
           </div>
+        </div>
+      </div>
 
+      {/* ═══ 右列: 输出配置 ═══ */}
+      <div className="flex-[6] rounded-lg border border-border-muted bg-background/42 content-start">
+        <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5">
+          <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
+            2
+          </span>
+          <div className="grid">
+            <span className="text-[13px] font-semibold text-text-primary">
+              {tr('unpivotOutput', '输出配置')}
+            </span>
+            <span className="text-[10px] text-text-muted">
+              {tr('unpivotOutputHint', '自定义输出列名与空值处理')}
+            </span>
+          </div>
+        </div>
+        <div className="px-3 pb-3 grid gap-2.5">
           <div className="grid grid-cols-2 gap-2">
             <div className="grid gap-1">
               <GlassFormLabel>
@@ -185,7 +203,7 @@ export default function FormUnpivot({
               <GlassFormTextInput
                 value={nameColumn}
                 onChange={(v) => updateConfig((cfg) => ({ ...cfg, nameColumn: v || undefined }))}
-                placeholder={tr('unpivotNameColPlaceholder', 'name')}
+                placeholder={tr('unpivotNameColPlaceholder', '请输入字段名')}
                 className="h-7 text-[13px] w-full"
               />
             </div>
@@ -202,7 +220,7 @@ export default function FormUnpivot({
               <GlassFormTextInput
                 value={valueColumn}
                 onChange={(v) => updateConfig((cfg) => ({ ...cfg, valueColumn: v || undefined }))}
-                placeholder={tr('unpivotValueColPlaceholder', 'value')}
+                placeholder={tr('unpivotValueColPlaceholder', '请输入字段名')}
                 className="h-7 text-[13px] w-full"
               />
             </div>
@@ -215,12 +233,13 @@ export default function FormUnpivot({
             <input
               type="checkbox"
               checked={includeNulls}
-              onChange={(e) =>
+              onChange={(e) => {
+                const v = e.target.checked;
                 updateConfig((cfg) => ({
                   ...cfg,
-                  includeNulls: e.target.checked || undefined,
-                }))
-              }
+                  includeNulls: v || undefined,
+                }));
+              }}
               className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
             />
             {tr('unpivotIncludeNulls', '包含空值行')}
