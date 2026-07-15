@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Trash2, X } from 'lucide-react';
 import type { OperatorFormProps } from './index';
+import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSelector } from './shared/GlassFieldSelector';
@@ -73,66 +73,6 @@ export default function FormUnpivot({
 
   const [columnsOpen, setColumnsOpen] = useState(true);
 
-  function TagBar({
-    items,
-    onRemove,
-    onClear,
-    open,
-    onToggle,
-  }: {
-    items: string[];
-    onRemove: (col: string) => void;
-    onClear: () => void;
-    open: boolean;
-    onToggle: () => void;
-  }) {
-    return (
-      <div className="rounded border border-border-muted bg-background/60 px-2 py-1 overflow-hidden">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={onClear}
-            className="inline-flex flex-shrink-0 items-center justify-center rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
-            title={tr('clearAll', '清空字段')}
-            aria-label={tr('clearAll', '清空字段')}
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
-          {items.length === 0 && (
-            <span className="text-[12px] text-text-muted italic">
-              {tr('noFieldsSelected', '暂未选择字段')}
-            </span>
-          )}
-          <div className="flex flex-1 flex-wrap gap-1">
-            {items.map((col) => (
-              <span
-                key={col}
-                className="inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[12px] font-medium text-accent"
-              >
-                {col}
-                <button
-                  type="button"
-                  onClick={() => onRemove(col)}
-                  className="inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20 transition-colors"
-                  aria-label={tr('removeField', '移除字段')}
-                >
-                  <X className="h-2 w-2" />
-                </button>
-              </span>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={onToggle}
-            className="inline-flex flex-shrink-0 items-center justify-center rounded px-1.5 py-0.5 text-[12px] text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
-          >
-            {open ? '收起 ▲' : '展开 ▼'}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex gap-2.5">
       {/* ═══ 左列: 列展开 ═══ */}
@@ -153,12 +93,16 @@ export default function FormUnpivot({
         <div className="px-3 pb-3 grid gap-2.5">
           <div className="grid gap-1">
             <GlassFormLabel>{tr('unpivotExpandCols', '要展开的列')}</GlassFormLabel>
-            <TagBar
+            <GlassTagBar
               items={columns}
               onRemove={removeColumn}
               onClear={clearColumns}
               open={columnsOpen}
               onToggle={() => setColumnsOpen((v) => !v)}
+              toggleStyle="chevron"
+              density="default"
+              className="min-h-7"
+              placeholder={tr('noFieldsSelected', '暂未选择字段')}
             />
             {columnsOpen && (
               <GlassFieldSelector

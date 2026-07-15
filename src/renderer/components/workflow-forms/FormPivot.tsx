@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash2, X } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
+import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
@@ -155,66 +156,6 @@ export default function FormPivot({
     [tr]
   );
 
-  function TagBar({
-    items,
-    onRemove,
-    onClear,
-    open,
-    onToggle,
-  }: {
-    items: string[];
-    onRemove: (col: string) => void;
-    onClear: () => void;
-    open: boolean;
-    onToggle: () => void;
-  }) {
-    return (
-      <div className="rounded border border-border-muted bg-background/60 px-2 py-1 overflow-hidden">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={onClear}
-            className="inline-flex flex-shrink-0 items-center justify-center rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
-            title={tr('clearAll', '清空字段')}
-            aria-label={tr('clearAll', '清空字段')}
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
-          {items.length === 0 && (
-            <span className="text-[12px] text-text-muted italic">
-              {tr('noFieldsSelected', '暂未选择字段')}
-            </span>
-          )}
-          <div className="flex flex-1 flex-wrap gap-1">
-            {items.map((col) => (
-              <span
-                key={col}
-                className="inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[12px] font-medium text-accent"
-              >
-                {col}
-                <button
-                  type="button"
-                  onClick={() => onRemove(col)}
-                  className="inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20 transition-colors"
-                  aria-label={tr('removeField', '移除字段')}
-                >
-                  <X className="h-2 w-2" />
-                </button>
-              </span>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={onToggle}
-            className="inline-flex flex-shrink-0 items-center justify-center rounded px-1.5 py-0.5 text-[12px] text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
-          >
-            {open ? '收起 ▲' : '展开 ▼'}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex gap-2.5">
       {/* ═══ 左列: 列与分组 ═══ */}
@@ -235,12 +176,16 @@ export default function FormPivot({
         <div className="px-3 pb-3 grid gap-3 content-start">
           <div className="grid gap-1.5 content-start">
             <GlassFormLabel>{tr('pivotOnLabel', '待转化的列')}</GlassFormLabel>
-            <TagBar
+            <GlassTagBar
               items={onFields}
               onRemove={removeOn}
               onClear={clearOn}
               open={onOpen}
               onToggle={() => setOnOpen((v) => !v)}
+              toggleStyle="chevron"
+              density="default"
+              className="min-h-7"
+              placeholder={tr('noFieldsSelected', '暂未选择字段')}
             />
             {onOpen && (
               <GlassFieldSelector
@@ -269,12 +214,16 @@ export default function FormPivot({
               {tr('pivotGroupByLabel', '分组字段')}
               <span className="text-[10px] text-text-muted ml-1">(可选)</span>
             </GlassFormLabel>
-            <TagBar
+            <GlassTagBar
               items={groupBy}
               onRemove={removeGroupBy}
               onClear={clearGroupBy}
               open={groupByOpen}
               onToggle={() => setGroupByOpen((v) => !v)}
+              toggleStyle="chevron"
+              density="default"
+              className="min-h-7"
+              placeholder={tr('noFieldsSelected', '暂未选择字段')}
             />
             {groupByOpen && (
               <GlassFieldSelector

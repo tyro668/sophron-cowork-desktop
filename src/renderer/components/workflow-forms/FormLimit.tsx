@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Trash2, X, ChevronDown } from 'lucide-react';
 import type { OperatorFormProps } from './index';
+import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import { GlassColumnSelector } from './shared/GlassColumnSelector';
 
@@ -296,61 +297,22 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
               <div className="flex items-center gap-2">
                 <span className={LABEL_CLASS}>{tr('limitGroupBy', '分组字段')}</span>
                 <div className="w-72 min-w-0 relative">
-                  <div className={TAG_CONTAINER}>
-                    {groupBy.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => updateConfig((cfg) => ({ ...cfg, groupBy: [] }))}
-                        className="ml-1 inline-flex flex-shrink-0 items-center justify-center self-stretch rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
-                        title={tr('clearAll', '清空')}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    )}
-                    <div className="flex flex-1 items-center gap-1 px-1.5 min-w-0 overflow-x-auto">
-                      {groupBy.map((col) => (
-                        <span
-                          key={col}
-                          className="inline-flex shrink-0 items-center gap-0.5 rounded bg-accent/10 px-1 py-0.5 text-[12px] font-medium text-accent"
-                        >
-                          {col}
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateConfig((cfg) => ({
-                                ...cfg,
-                                groupBy: groupBy.filter((c) => c !== col),
-                              }))
-                            }
-                            className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
-                          >
-                            <X className="h-2.5 w-2.5" />
-                          </button>
-                        </span>
-                      ))}
-                      <input
-                        key="group-input"
-                        type="text"
-                        readOnly
-                        placeholder={
-                          !groupBy.length ? tr('limitGroupByPlaceholder', '选择分组字段') : ''
-                        }
-                        onFocus={() => setGroupOpen(true)}
-                        onBlur={() => setTimeout(() => setGroupOpen(false), 150)}
-                        className="h-5 min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted cursor-pointer"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => setGroupOpen((o) => !o)}
-                      className="flex w-7 flex-shrink-0 items-center justify-center self-stretch border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
-                    >
-                      <ChevronDown
-                        className={`h-3.5 w-3.5 transition-transform ${groupOpen ? 'rotate-180' : ''}`}
-                      />
-                    </button>
-                  </div>
+                  <GlassTagBar
+                    items={groupBy}
+                    onRemove={(col) =>
+                      updateConfig((cfg) => ({
+                        ...cfg,
+                        groupBy: groupBy.filter((c) => c !== col),
+                      }))
+                    }
+                    onClear={() => updateConfig((cfg) => ({ ...cfg, groupBy: [] }))}
+                    open={groupOpen}
+                    onToggle={() => setGroupOpen((o) => !o)}
+                    toggleStyle="chevron"
+                    density="compact"
+                    className="min-h-7"
+                    placeholder={tr('limitGroupByPlaceholder', '选择分组字段')}
+                  />
                   {groupOpen && (
                     <div className="absolute z-10 left-0 right-0 mt-0.5">
                       <GlassColumnSelector

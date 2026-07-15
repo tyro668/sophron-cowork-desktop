@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
+import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
 import { GlassFieldSelector } from './shared/GlassFieldSelector';
 import { GlassDirectionToggle } from './shared/GlassDirectionToggle';
@@ -189,37 +189,16 @@ export default function FormDeduplicate({
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
         {/* ── 已选字段（全宽） ── */}
         {columns.length > 0 && (
-          <div
-            className="rounded-lg border border-border-muted bg-background/60 px-2.5 py-1.5 mb-2 overflow-hidden"
-            style={{ maxHeight: '2.25rem' }}
-          >
-            <div className="flex flex-nowrap gap-1 overflow-x-auto">
-              <button
-                type="button"
-                onClick={clearAll}
-                className="inline-flex flex-shrink-0 items-center justify-center rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
-                title={tr('clearAll', '清空字段')}
-                aria-label={tr('clearAll', '清空字段')}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-              {columns.map((col) => (
-                <span
-                  key={col}
-                  className="inline-flex items-center gap-1 rounded bg-accent/10 px-2 py-0.5 text-[12px] font-medium text-accent flex-shrink-0"
-                >
-                  {col}
-                  <button
-                    type="button"
-                    onClick={() => removeColumn(col)}
-                    className="inline-flex h-3 w-3 cursor-pointer items-center justify-center rounded-full hover:bg-accent/20 transition-colors"
-                    aria-label={tr('removeField', '移除字段')}
-                  >
-                    <X className="h-2.5 w-2.5" />
-                  </button>
-                </span>
-              ))}
-            </div>
+          <div className="mb-2">
+            <GlassTagBar
+              items={columns}
+              onRemove={removeColumn}
+              onClear={clearAll}
+              open={false}
+              onToggle={() => {}}
+              toggleStyle="none"
+              density="spacious"
+            />
           </div>
         )}
         {columns.length === 0 && (

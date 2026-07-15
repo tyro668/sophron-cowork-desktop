@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, Trash2, X, AlertCircle } from 'lucide-react';
 import type { OperatorFormProps } from './index';
+import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
@@ -603,7 +604,6 @@ export default function FormCalculateField({
     const currentFn = item.fn || defaultFn;
     const specs = FN_ARG_SPEC[currentFn] || FN_ARG_SPEC['*'];
     const isPartition = item.partitionBy !== undefined;
-    const partOpen = partitionOpen[index];
     const ordOpen = orderOpen[index];
     const timePrefix = Object.keys(TIME_WINDOW_DEFS).find((p) => currentFn.startsWith(p + '_'));
     const currentTimeWindow = timePrefix || 'ytd';
@@ -956,64 +956,22 @@ export default function FormCalculateField({
                 {tr('calcFieldPartitionBy', '分区字段')}
               </span>
               <div className="w-72 min-w-0 relative">
-                <div className="flex min-h-7 items-center rounded-md border border-border-muted bg-background/42 focus-within:border-accent">
-                  {item.partitionBy?.length ? (
-                    <button
-                      type="button"
-                      onClick={() => updateItem(index, { partitionBy: [] })}
-                      className="ml-1 inline-flex flex-shrink-0 items-center justify-center self-stretch rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
-                      title={tr('clearAll', '清空')}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  ) : null}
-                  <div className="flex flex-1 items-center gap-1 px-1.5 min-w-0 overflow-x-auto">
-                    {item.partitionBy?.map((col) => (
-                      <span
-                        key={col}
-                        className="inline-flex shrink-0 items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[12px] font-medium text-accent"
-                      >
-                        {col}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateItem(index, {
-                              partitionBy: item.partitionBy?.filter((c) => c !== col),
-                            })
-                          }
-                          className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
-                        >
-                          <X className="h-2.5 w-2.5" />
-                        </button>
-                      </span>
-                    ))}
-                    <input
-                      type="text"
-                      readOnly
-                      placeholder={
-                        !item.partitionBy?.length
-                          ? tr('calcFieldPartitionPlaceholder', '选择分区字段')
-                          : ''
-                      }
-                      onFocus={() => setPartitionOpen((o) => ({ ...o, [index]: true }))}
-                      onBlur={() =>
-                        setTimeout(() => setPartitionOpen((o) => ({ ...o, [index]: false })), 150)
-                      }
-                      className="h-5 min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted cursor-pointer"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => setPartitionOpen((o) => ({ ...o, [index]: !partOpen }))}
-                    className="flex w-7 flex-shrink-0 items-center justify-center self-stretch border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
-                  >
-                    <ChevronDown
-                      className={`h-3.5 w-3.5 transition-transform ${partOpen ? 'rotate-180' : ''}`}
-                    />
-                  </button>
-                </div>
-                {partOpen && (
+                <GlassTagBar
+                  items={item.partitionBy ?? []}
+                  onRemove={(col) =>
+                    updateItem(index, {
+                      partitionBy: item.partitionBy?.filter((c) => c !== col),
+                    })
+                  }
+                  onClear={() => updateItem(index, { partitionBy: [] })}
+                  open={!!partitionOpen[index]}
+                  onToggle={() => setPartitionOpen((o) => ({ ...o, [index]: !o[index] }))}
+                  toggleStyle="chevron"
+                  density="compact"
+                  className="min-h-7"
+                  placeholder={tr('calcFieldPartitionPlaceholder', '选择分区字段')}
+                />
+                {!!partitionOpen[index] && (
                   <div className="absolute z-10 left-0 right-0 mt-0.5">
                     <GlassColumnSelector
                       columns={fieldCompletions}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, GripVertical, Plus, X, Trash2 } from 'lucide-react';
+import { GripVertical, Plus } from 'lucide-react';
+import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import type { OperatorFormProps } from './index';
@@ -341,63 +342,16 @@ export default function FormMissingValue({
           <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
             {/* Judge fields */}
             <div className="grid gap-1.5">
-              <div className="flex items-center rounded-md border border-border-muted bg-background/60 focus-within:border-accent transition-colors">
-                {rowColumns.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => handleRowsColumnsChange([])}
-                    className="flex w-8 cursor-pointer items-center justify-center border-r border-border-muted text-text-muted hover:text-error hover:bg-error/10 transition-colors rounded-l-md"
-                    title={tr('missingClearSelectedFields', '删除所选字段')}
-                    aria-label={tr('missingClearSelectedFields', '删除所选字段')}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                )}
-                <div className="flex flex-1 flex-nowrap items-center gap-1 overflow-x-auto px-2">
-                  {rowColumns.map((col) => (
-                    <span
-                      key={col}
-                      className="inline-flex flex-shrink-0 items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent"
-                    >
-                      {col}
-                      <button
-                        type="button"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          removeRowColumn(col);
-                        }}
-                        className="inline-flex h-3 w-3 cursor-pointer items-center justify-center rounded-full hover:bg-accent/20 transition-colors"
-                        aria-label={tr('removeField', '移除字段')}
-                      >
-                        <X className="h-2.5 w-2.5" />
-                      </button>
-                    </span>
-                  ))}
-                  {rowColumns.length === 0 && (
-                    <input
-                      type="text"
-                      readOnly
-                      placeholder={tr('missingEmptyMeansAllFields', '留空 = 所有字段参与判断')}
-                      className="h-5 min-w-[60px] flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
-                    />
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setShowFieldPicker((v) => !v);
-                  }}
-                  className="flex w-8 cursor-pointer items-center justify-center border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
-                  aria-label={tr('selectColumns', '选择字段')}
-                >
-                  <ChevronDown
-                    className={`h-3.5 w-3.5 transition-transform ${showFieldPicker ? 'rotate-180' : ''}`}
-                  />
-                </button>
-              </div>
+              <GlassTagBar
+                items={rowColumns}
+                onRemove={removeRowColumn}
+                onClear={() => handleRowsColumnsChange([])}
+                open={showFieldPicker}
+                onToggle={() => setShowFieldPicker((v) => !v)}
+                toggleStyle="chevron"
+                density="compact"
+                placeholder={tr('missingEmptyMeansAllFields', '留空 = 所有字段参与判断')}
+              />
               {showFieldPicker && (
                 <GlassColumnSelector
                   columns={fieldCompletions}
