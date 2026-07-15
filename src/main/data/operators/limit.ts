@@ -117,8 +117,11 @@ function compileFixedSql(
   }
 
   // 排序模式（含 WITH TIES）
+  // 排序模式（含 WITH TIES + OFFSET）
   if (orderBy) {
-    return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} ORDER BY ${orderBy} LIMIT ${rows}${ties ? ' WITH TIES' : ''}`;
+    const offset =
+      typeof config.offset === 'number' && config.offset > 0 ? ` OFFSET ${config.offset}` : '';
+    return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} ORDER BY ${orderBy} LIMIT ${rows}${ties ? ' WITH TIES' : ''}${offset}`;
   }
 
   // 简单 LIMIT + OFFSET
