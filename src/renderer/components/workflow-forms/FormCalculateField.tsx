@@ -4,7 +4,7 @@ import { ChevronDown, Trash2, X, AlertCircle } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
-import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
+import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
@@ -520,7 +520,7 @@ export default function FormCalculateField({
       flex: 'flex-[1]',
       header: '',
       render: (item: CalculationRow, index: number) => (
-        <GlassOperatorSelect
+        <GlassOptionSingleSelect
           value={item.action || 'add'}
           groups={[{ key: 'action', items: actionOptions }]}
           onChange={(v) => updateItem(index, { action: v as 'add' | 'replace' })}
@@ -661,7 +661,7 @@ export default function FormCalculateField({
             <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
               {tr('calcFieldScenarioLabel', '计算类别')}
             </span>
-            <GlassOperatorSelect
+            <GlassOptionSingleSelect
               value={activeScenario}
               groups={[
                 {
@@ -687,7 +687,7 @@ export default function FormCalculateField({
             <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
               {tr('calcFieldActionHeader', '插入模式')}
             </span>
-            <GlassOperatorSelect
+            <GlassOptionSingleSelect
               value={item.action || 'add'}
               groups={[{ key: 'action', items: actionOptions }]}
               onChange={(v) => updateItem(index, { action: v as 'add' | 'replace' })}
@@ -756,7 +756,7 @@ export default function FormCalculateField({
                 <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
                   {tr('calcFieldTimeWindow', '时间窗口')}
                 </span>
-                <GlassOperatorSelect
+                <GlassOptionSingleSelect
                   value={currentTimeWindow}
                   groups={[
                     {
@@ -815,7 +815,7 @@ export default function FormCalculateField({
                 <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
                   {tr('calcFieldTimeAgg', '聚合函数')}
                 </span>
-                <GlassOperatorSelect
+                <GlassOptionSingleSelect
                   value={currentTimeAgg}
                   groups={[
                     {
@@ -855,7 +855,7 @@ export default function FormCalculateField({
               <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
                 {tr('calcFieldFunction', '计算函数')}
               </span>
-              <GlassOperatorSelect
+              <GlassOptionSingleSelect
                 value={currentFn}
                 groups={fnGroupOptions}
                 onChange={(v) => {
@@ -919,7 +919,7 @@ export default function FormCalculateField({
             <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
               {tr('calcFieldPartitionRange', '分区范围')}
             </span>
-            <GlassOperatorSelect
+            <GlassOptionSingleSelect
               value={isPartition ? 'partition' : 'all'}
               groups={[
                 {
@@ -1127,7 +1127,7 @@ export default function FormCalculateField({
                   <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
                     {tr('calcFieldFrameType', '窗口类型')}
                   </span>
-                  <GlassOperatorSelect
+                  <GlassOptionSingleSelect
                     value={item.frameType || 'rows'}
                     groups={[
                       {
@@ -1157,7 +1157,7 @@ export default function FormCalculateField({
                   <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
                     {tr('calcFieldFrame', '窗口范围')}
                   </span>
-                  <GlassOperatorSelect
+                  <GlassOptionSingleSelect
                     value={isCustom ? 'custom' : currentKey}
                     groups={[
                       {
@@ -1184,7 +1184,7 @@ export default function FormCalculateField({
                       <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
                         {tr('calcFieldFrameExclude', '排除方式')}
                       </span>
-                      <GlassOperatorSelect
+                      <GlassOptionSingleSelect
                         value={item.frameExclude || 'no others'}
                         groups={[
                           {
@@ -1213,7 +1213,7 @@ export default function FormCalculateField({
                     {/* 起始边界 */}
                     <div className="flex items-center gap-1">
                       <span className="shrink-0">{tr('calcFieldBoundStart', '起始')}</span>
-                      <GlassOperatorSelect
+                      <GlassOptionSingleSelect
                         value={startInfo.type}
                         groups={[{ key: 'bound', items: boundOptions }]}
                         onChange={(v) => {
@@ -1246,7 +1246,7 @@ export default function FormCalculateField({
                             className="h-6 w-14 rounded-md px-1 text-[12px]"
                           />
                           {isRangeDate ? (
-                            <GlassOperatorSelect
+                            <GlassOptionSingleSelect
                               value={effectiveStartUnit}
                               groups={[{ key: 'interval', items: INTERVAL_UNIT_OPTIONS }]}
                               onChange={(v) => {
@@ -1271,7 +1271,7 @@ export default function FormCalculateField({
                     {/* 结束边界 */}
                     <div className="flex items-center gap-1">
                       <span className="shrink-0">{tr('calcFieldBoundEnd', '结束')}</span>
-                      <GlassOperatorSelect
+                      <GlassOptionSingleSelect
                         value={endInfo.type}
                         groups={[{ key: 'bound', items: boundOptions }]}
                         onChange={(v) => {
@@ -1299,7 +1299,7 @@ export default function FormCalculateField({
                             className="h-6 w-14 rounded-md px-1 text-[12px]"
                           />
                           {isRangeDate ? (
-                            <GlassOperatorSelect
+                            <GlassOptionSingleSelect
                               value={effectiveEndUnit}
                               groups={[{ key: 'interval', items: INTERVAL_UNIT_OPTIONS }]}
                               onChange={(v) => {

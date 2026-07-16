@@ -5,7 +5,7 @@ import type { OperatorFormProps } from './index';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
-import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
+import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { isTemporalDataFieldType } from '@/shared/data-field-types';
 import { parseFieldRef } from '@/shared/prep-dsl/parser';
@@ -656,7 +656,7 @@ export default function FormJoin({
           placeholder={leftLabel}
           className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
         />
-        <GlassOperatorSelect
+        <GlassOptionSingleSelect
           value={cond.operator}
           groups={[{ key: 'op', items: conditionOperatorItems }]}
           onChange={(v) =>
@@ -848,7 +848,7 @@ export default function FormJoin({
                       placeholder={tr('leftTimeCol', '左表时间')}
                       className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
                     />
-                    <GlassOperatorSelect
+                    <GlassOptionSingleSelect
                       value={asofOperator}
                       groups={[
                         {
@@ -899,7 +899,7 @@ export default function FormJoin({
                       placeholder={tr('tolerance', '时间差')}
                       className="h-7 text-[13px] w-[72px] shrink-0"
                     />
-                    <GlassOperatorSelect
+                    <GlassOptionSingleSelect
                       value={(asof.direction as string) ?? ''}
                       groups={[
                         {
@@ -972,7 +972,7 @@ export default function FormJoin({
                         flex: 'flex-[0.6]',
                         header: '',
                         render: (cond: ConditionEntry, i: number) => (
-                          <GlassOperatorSelect
+                          <GlassOptionSingleSelect
                             value={cond.operator}
                             groups={[{ key: 'op', items: conditionOperatorItems }]}
                             onChange={(v) =>
@@ -1082,7 +1082,7 @@ export default function FormJoin({
                 <span className="shrink-0 text-[11px] font-medium text-text-secondary">
                   {tr('conflict', '同名字段冲突')}
                 </span>
-                <GlassOperatorSelect
+                <GlassOptionSingleSelect
                   value={conflictStrategy}
                   groups={conflictGroups}
                   onChange={(v) =>

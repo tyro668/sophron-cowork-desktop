@@ -4,7 +4,7 @@ import { Trash2, X, ChevronDown } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassTagBar } from './shared/GlassTagBar';
-import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
+import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 
 interface SortKeyEntry {
@@ -140,7 +140,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
       {/* 模式 */}
       <div className="flex items-center gap-2">
         <span className={LABEL_CLASS}>{tr('limitMode', '模式')}</span>
-        <GlassOperatorSelect
+        <GlassOptionSingleSelect
           value={mode}
           groups={[
             {
@@ -190,7 +190,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
         </div>
         <div className="flex items-center gap-2">
           <span className={LABEL_CLASS}>{tr('limitUnit', '单位')}</span>
-          <GlassOperatorSelect
+          <GlassOptionSingleSelect
             value={unit}
             groups={[
               {
@@ -239,7 +239,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
       {isRandomMode && (
         <div className="flex items-center gap-2">
           <span className={LABEL_CLASS}>{tr('limitSampleMethod', '采样方式')}</span>
-          <GlassOperatorSelect
+          <GlassOptionSingleSelect
             value={method}
             groups={[
               {
@@ -269,7 +269,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex items-center gap-2">
               <span className={LABEL_CLASS}>{tr('limitGroupRange', '分组范围')}</span>
-              <GlassOperatorSelect
+              <GlassOptionSingleSelect
                 value={isGrouped ? 'group' : 'none'}
                 groups={[
                   {

@@ -232,7 +232,7 @@ describe('FormLimit — UI source structure', () => {
   });
 
   it('mode uses GlassOperatorSelect (single-column layout)', () => {
-    expect(limitSource).toContain('<GlassOperatorSelect');
+    expect(limitSource).toContain('<GlassOptionSingleSelect');
     expect(limitSource).toContain("'limitMode'");
   });
 

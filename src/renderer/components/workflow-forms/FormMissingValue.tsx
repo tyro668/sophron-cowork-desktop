@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
-import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
+import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import type { OperatorFormProps } from './index';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
@@ -385,7 +385,7 @@ export default function FormMissingValue({
                         ? item.method
                         : (availableMethods[0]?.value ?? 'skip');
                       return (
-                        <GlassOperatorSelect
+                        <GlassOptionSingleSelect
                           value={effectiveMethod}
                           disabled={!item.column}
                           onChange={(m) => {

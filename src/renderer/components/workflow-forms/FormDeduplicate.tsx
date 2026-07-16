@@ -5,7 +5,7 @@ import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassDirectionToggle } from './shared/GlassDirectionToggle';
-import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
+import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList } from './shared/GlassRowList';
 
 interface SortKeyEntry {
@@ -297,7 +297,7 @@ export default function FormDeduplicate({
                         flex: 'flex-[3]',
                         header: tr('sortNullsHeader', '空值处理'),
                         render: (key: SortKeyEntry, i) => (
-                          <GlassOperatorSelect
+                          <GlassOptionSingleSelect
                             value={key.nulls ?? ''}
                             groups={[
                               {

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
+import { useDropdown } from '../../../hooks/useDropdown';
 
-function flattenItems(groups: GlassOperatorGroup[]): GlassOperatorOption[] {
-  const result: GlassOperatorOption[] = [];
+function flattenItems(groups: GlassOptionGroup[]): GlassOptionItem[] {
+  const result: GlassOptionItem[] = [];
   for (const g of groups) {
     for (const o of g.items) {
       result.push(o);
@@ -12,48 +13,46 @@ function flattenItems(groups: GlassOperatorGroup[]): GlassOperatorOption[] {
   return result;
 }
 
-interface GlassOperatorGroup {
+interface GlassOptionGroup {
   key: string;
   header?: string;
-  items: GlassOperatorOption[];
+  items: GlassOptionItem[];
 }
 
-interface GlassOperatorOption {
+interface GlassOptionItem {
   value: string;
   label: string;
 }
 
-interface GlassOperatorSelectProps {
+interface GlassOptionSingleSelectProps {
   value: string;
-  groups: GlassOperatorGroup[];
+  groups: GlassOptionGroup[];
   onChange: (value: string) => void;
   disabled?: boolean;
   className?: string;
   placeholder?: string;
 }
 
-export function GlassOperatorSelect({
+export function GlassOptionSingleSelect({
   value,
   groups,
   disabled,
   onChange,
   className,
   placeholder,
-}: GlassOperatorSelectProps) {
-  const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState<{
-    left: number;
-    top?: number;
-    bottom?: number;
-    width: number;
-  } | null>(null);
-  const [maxHeight, setMaxHeight] = useState(240);
+}: GlassOptionSingleSelectProps) {
+  const {
+    open,
+    setOpen,
+    position,
+    setPosition,
+    maxHeight,
+    setMaxHeight,
+    triggerRef,
+    dropdownRef,
+    close,
+  } = useDropdown();
   const [highlightedIndex, setHighlightedIndex] = useState(0);
-  const [flipUp, setFlipUp] = useState(false);
-  void flipUp;
-
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const flattenedItems = useMemo(() => flattenItems(groups), [groups]);
 
@@ -74,7 +73,6 @@ export function GlassOperatorSelect({
     const MIN_DROP = 140;
     const preferDown = spaceBelow >= MIN_DROP;
     const maxAvail = Math.min(240, Math.max(100, preferDown ? spaceBelow : spaceAbove));
-    setFlipUp(!preferDown);
     setMaxHeight(maxAvail);
     setPosition({
       left: rect.left,
@@ -82,43 +80,18 @@ export function GlassOperatorSelect({
       bottom: preferDown ? undefined : window.innerHeight - rect.top + 2,
       width: rect.width,
     });
-  }, []);
+  }, [triggerRef, setPosition, setMaxHeight]);
 
-  const handleClose = useCallback(() => {
-    setOpen(false);
-    setFlipUp(false);
-  }, []);
-
-  // Click outside
-  useEffect(() => {
-    if (!open) return;
-    const handleDocClick = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (!triggerRef.current?.contains(target) && !dropdownRef.current?.contains(target)) {
-        handleClose();
-      }
-    };
-    document.addEventListener('mousedown', handleDocClick);
-    return () => document.removeEventListener('mousedown', handleDocClick);
-  }, [open, handleClose]);
-
-  // Close on resize
-  useEffect(() => {
-    if (!open) return;
-    window.addEventListener('resize', handleClose);
-    return () => window.removeEventListener('resize', handleClose);
-  }, [open, handleClose]);
-
-  function toggleOpen() {
+  const toggleOpen = useCallback(() => {
     if (open) {
-      handleClose();
+      close();
     } else {
       updatePosition();
       setOpen(true);
       const idx = flattenedItems.findIndex((o) => o.value === value);
       setHighlightedIndex(Math.max(0, idx));
     }
-  }
+  }, [open, close, updatePosition, flattenedItems, value, setOpen]);
 
   const handleTriggerKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLButtonElement>) => {
@@ -136,17 +109,17 @@ export function GlassOperatorSelect({
           toggleOpen();
         }
       } else if (e.key === 'Escape') {
-        if (open) handleClose();
+        if (open) close();
       }
     },
-    [open, highlightedIndex]
+    [open, highlightedIndex, toggleOpen, close]
   );
 
   const handleDropdownKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        handleClose();
+        close();
         triggerRef.current?.focus();
         return;
       }
@@ -162,11 +135,11 @@ export function GlassOperatorSelect({
         const opt = flattenedItems[highlightedIndex];
         if (opt) {
           onChange(opt.value);
-          handleClose();
+          close();
         }
       }
     },
-    [flattenedItems, highlightedIndex, onChange, handleClose]
+    [flattenedItems, highlightedIndex, onChange, close]
   );
 
   // Scroll highlighted item into view
@@ -260,7 +233,7 @@ export function GlassOperatorSelect({
                         e.preventDefault();
                         e.stopPropagation();
                         onChange(o.value);
-                        handleClose();
+                        close();
                       }}
                       onMouseEnter={() => setHighlightedIndex(globalIdx)}
                     >

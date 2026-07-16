@@ -8,7 +8,7 @@ import {
   type DataFieldType,
 } from '../../../shared/data-field-types';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
-import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
+import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList } from './shared/GlassRowList';
 
 interface ConversionEntry {
@@ -214,7 +214,7 @@ export default function FormTypeConvert({
                 flex: 'flex-[2]',
                 header: tr('typeConvertTargetType', '目标类型'),
                 render: (conv: ConversionEntry, i: number) => (
-                  <GlassOperatorSelect
+                  <GlassOptionSingleSelect
                     value={normalizeDataFieldType(conv.type)}
                     onChange={(v) => updateConversion(i, { type: v as DataFieldType })}
                     groups={[
@@ -234,7 +234,7 @@ export default function FormTypeConvert({
                 flex: 'flex-[2]',
                 header: tr('typeConvertErrorHandling', '错误处理'),
                 render: (conv: ConversionEntry, i: number) => (
-                  <GlassOperatorSelect
+                  <GlassOptionSingleSelect
                     value={conv.onError ?? 'null'}
                     onChange={(v) =>
                       updateConversion(i, {

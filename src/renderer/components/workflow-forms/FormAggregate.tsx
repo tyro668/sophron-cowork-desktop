@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
-import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
+import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
 
@@ -242,7 +242,7 @@ export default function FormAggregate({
                   flex: 'flex-[2.5]',
                   header: tr('aggregateFunction', '聚合函数'),
                   render: (item: MetricEntry, i: number) => (
-                    <GlassOperatorSelect
+                    <GlassOptionSingleSelect
                       value={item.function}
                       groups={functionGroups}
                       onChange={(v) => updateMetric(i, { function: v })}

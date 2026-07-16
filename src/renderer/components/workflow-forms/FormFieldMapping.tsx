@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
-import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
+import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList, type GlassRowListColumn, type RowAction } from './shared/GlassRowList';
 
 export interface MappingEntry {
@@ -214,7 +214,7 @@ export default function FormFieldMapping({
         flex: 'flex-[1.5]',
         header: tr('fieldMappingMode', '模式'),
         render: (item, i) => (
-          <GlassOperatorSelect
+          <GlassOptionSingleSelect
             value={item.targetMode}
             onChange={(v) => updateMapping(i, { targetMode: v as MappingEntry['targetMode'] })}
             groups={[{ key: 'mode', items: targetModeOptions }]}

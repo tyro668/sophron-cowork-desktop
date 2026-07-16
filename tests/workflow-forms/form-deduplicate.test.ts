@@ -234,7 +234,7 @@ describe('FormDeduplicate — 组件结构检查', () => {
   });
 
   it('排序字段支持 NULL 位置配置', () => {
-    expect(src).toContain('GlassOperatorSelect');
+    expect(src).toContain('GlassOptionSingleSelect');
     expect(src).toContain("value: 'first'");
     expect(src).toContain("value: 'last'");
   });

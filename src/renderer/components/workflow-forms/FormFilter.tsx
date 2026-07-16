@@ -4,7 +4,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassValueInput } from './shared/GlassValueInput';
-import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
+import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import {
   isNumericDataFieldType,
   isTemporalDataFieldType,
@@ -215,7 +215,7 @@ function ConditionLeafRow({
         </div>
 
         {/* Operator */}
-        <GlassOperatorSelect
+        <GlassOptionSingleSelect
           value={effectiveOp}
           groups={opGroupsTranslated}
           disabled={!fieldSelected}

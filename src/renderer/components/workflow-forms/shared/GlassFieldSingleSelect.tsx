@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, Search } from 'lucide-react';
 import { dataFieldTypeLabel } from '@/shared/data-field-types';
 import { parseFieldRef } from '@/shared/prep-dsl/parser';
+import { useDropdown } from '../../../hooks/useDropdown';
 
 function extractFieldName(value: string): string {
   return parseFieldRef(value)?.name ?? value;
@@ -51,19 +52,19 @@ export function GlassFieldSingleSelect({
   showType = false,
   displayLabel,
 }: GlassFieldSingleSelectProps) {
-  const [open, setOpen] = useState(false);
+  const {
+    open,
+    setOpen,
+    position,
+    setPosition,
+    maxHeight,
+    setMaxHeight,
+    triggerRef,
+    dropdownRef,
+    close,
+  } = useDropdown();
   const [search, setSearch] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
-  const [position, setPosition] = useState<{
-    left: number;
-    top: number;
-    width: number;
-    minWidth?: number;
-  } | null>(null);
-  const [maxHeight, setMaxHeight] = useState(240);
-
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const filteredOptions = useMemo(() => {
@@ -99,17 +100,17 @@ export function GlassFieldSingleSelect({
     });
     const spaceBelow = window.innerHeight - rect.bottom - 4;
     setMaxHeight(Math.min(240, Math.max(100, spaceBelow)));
-  }, [options, columnTypes]);
+  }, [options, columnTypes, triggerRef, setPosition, setMaxHeight]);
 
   const handleClose = useCallback(() => {
-    setOpen(false);
+    close();
     setSearch('');
-  }, []);
+  }, [close]);
 
   const handleOpen = useCallback(() => {
     updatePosition();
     setOpen(true);
-  }, [updatePosition]);
+  }, [updatePosition, setOpen]);
 
   const handleSelect = useCallback(
     (opt: string) => {
@@ -118,21 +119,8 @@ export function GlassFieldSingleSelect({
       handleClose();
       triggerRef.current?.focus();
     },
-    [disabledOptions, onChange, handleClose]
+    [disabledOptions, onChange, handleClose, triggerRef]
   );
-
-  // Click outside to close
-  useEffect(() => {
-    if (!open) return;
-    const handleDocClick = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (!triggerRef.current?.contains(target) && !dropdownRef.current?.contains(target)) {
-        handleClose();
-      }
-    };
-    document.addEventListener('mousedown', handleDocClick);
-    return () => document.removeEventListener('mousedown', handleDocClick);
-  }, [open, handleClose]);
 
   // Close on window resize to avoid stale positioning
   useEffect(() => {

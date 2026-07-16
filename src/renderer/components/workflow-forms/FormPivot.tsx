@@ -6,7 +6,7 @@ import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
-import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
+import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassValueSelector } from './shared/GlassValueSelector';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { useWorkflowNodeColumnValues } from '../../hooks/useWorkflowNodeColumnValues';
@@ -261,7 +261,7 @@ export default function FormPivot({
                 flex: 'flex-[1.5]',
                 header: tr('aggregateFunction', '聚合函数'),
                 render: (metric: PivotMetric, i: number) => (
-                  <GlassOperatorSelect
+                  <GlassOptionSingleSelect
                     value={metric.function}
                     groups={fnGroups}
                     onChange={(v) => updateMetric(i, { function: v })}
