@@ -22,6 +22,44 @@ afterEach(() => {
 });
 
 describe('operator DSL execution cases', () => {
+  it('sorts by a backtick-quoted field containing spaces', async () => {
+    const { dbPath, store, tempRoot } = createStore();
+    const pricesPath = path.join(tempRoot, 'unit-prices.csv');
+    fs.writeFileSync(
+      pricesPath,
+      ['Product,Unit Price,记录数', 'B,10,1', 'A,5,1', 'C,20,1'].join('\n') + '\n',
+      'utf8'
+    );
+
+    const task = await store.createTask({
+      name: 'Executable quoted-field sort',
+      sourcePath: pricesPath,
+    });
+    await saveWorkflowDsl(
+      store,
+      task.id,
+      `
+        input source task as prices
+          | drop [记录数]
+          | sort by [\`Unit Price\`] asc
+          | output table "operator_quoted_sort_output" mode replace
+      `
+    );
+
+    const workflow = await store.getTaskWorkflow(task.id);
+    expect(workflow.nodes.find((node) => node.type === 'sort')?.config.keys).toEqual([
+      { field: 'Unit Price', direction: 'asc' },
+    ]);
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    const rows = await queryRows(
+      dbPath,
+      'SELECT Product, "Unit Price" FROM operator_quoted_sort_output'
+    );
+    expect(rows.map((row) => Number(row['Unit Price']))).toEqual([5, 10, 20]);
+  });
+
   it('executes a reusable cleaning workflow across current single-input operators', async () => {
     const { dbPath, store, tempRoot } = createStore();
     const ordersPath = path.join(tempRoot, 'orders.csv');

@@ -152,6 +152,22 @@ describe('prep DSL parser and workflow compiler', () => {
     }
   });
 
+  it('preserves backtick-quoted sort fields with spaces', () => {
+    const result = parsePrepOperatorDsl(
+      'sort by [`Unit Price`] asc, [`Sales 总和`] desc nulls last',
+      'sort'
+    );
+
+    expect(result.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    expect(result.operator?.config.keys).toEqual([
+      { field: 'Unit Price', direction: 'asc' },
+      { field: 'Sales 总和', direction: 'desc', nulls: 'last' },
+    ]);
+    expect(result.operator && exportPrepOperatorDsl(result.operator)).toBe(
+      'sort by [`Unit Price`] asc, [`Sales 总和`] desc nulls last'
+    );
+  });
+
   it('rejects legacy cast target aliases', () => {
     for (const targetType of ['string', 'int', 'double', 'timestamp']) {
       const result = parsePrepOperatorDsl(`cast [value] as ${targetType}`, 'type_convert');

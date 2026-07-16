@@ -976,14 +976,29 @@ export function parseFieldRef(value: string): PrepFieldRef | null {
 
 function parseSortKeys(value: string): Array<Record<string, string>> {
   return splitTopLevel(value).flatMap((part) => {
-    const pieces = part.trim().split(/\s+/);
-    const field = parseFieldRef(pieces[0] ?? '');
+    let fieldText = part.trim();
+    let nulls: string | undefined;
+    let direction = 'asc';
+
+    const nullsMatch = /\s+nulls\s+(first|last)\s*$/iu.exec(fieldText);
+    if (nullsMatch) {
+      nulls = nullsMatch[1].toLowerCase();
+      fieldText = fieldText.slice(0, nullsMatch.index).trim();
+    }
+
+    const directionMatch = /\s+(asc|desc)\s*$/iu.exec(fieldText);
+    if (directionMatch) {
+      direction = directionMatch[1].toLowerCase();
+      fieldText = fieldText.slice(0, directionMatch.index).trim();
+    }
+
+    const field = parseFieldRef(fieldText);
     if (!field) return [];
     return [
       {
         field: toFieldName(field),
-        direction: pieces[1] === 'desc' ? 'desc' : 'asc',
-        nulls: pieces[3],
+        direction,
+        ...(nulls ? { nulls } : {}),
       },
     ];
   });
