@@ -6,6 +6,7 @@ import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
+import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { isTemporalDataFieldType } from '@/shared/data-field-types';
 import { parseFieldRef } from '@/shared/prep-dsl/parser';
 
@@ -176,7 +177,7 @@ export default function FormJoin({
 
   const joinType = (node.config.joinType as string) ?? 'left';
   const conditions = useMemo(
-    () => (node.config.conditions as ConditionEntry[]) ?? [],
+    () => (node.config.conditions as ConditionEntry[]) ?? [DEFAULT_CONDITION],
     [node.config.conditions]
   );
   const conflict = useMemo(
@@ -566,7 +567,6 @@ export default function FormJoin({
   }, [keepItems, rightAlias]);
 
   // ── Inline condition handlers ──
-  const [condPending, setCondPending] = useState<ConditionEntry>({ ...DEFAULT_CONDITION });
   const [asofPending, setAsofPending] = useState<ConditionEntry>({ ...DEFAULT_CONDITION });
 
   const conditionOperatorItems = useMemo(
@@ -694,6 +694,18 @@ export default function FormJoin({
 
   function handleConditionsChange(next: ConditionEntry[]) {
     updateConfig((cfg) => ({ ...cfg, conditions: next.length > 0 ? next : undefined }));
+  }
+
+  function handleCondAdd(index: number) {
+    const next = [...conditions];
+    next.splice(index + 1, 0, { ...DEFAULT_CONDITION });
+    handleConditionsChange(next);
+  }
+
+  function handleCondRemove(index: number) {
+    let next = conditions.filter((_, j) => j !== index);
+    if (next.length === 0) next = [{ ...DEFAULT_CONDITION }];
+    handleConditionsChange(next);
   }
 
   function handleAsofByChange(next: ConditionEntry[]) {
@@ -936,24 +948,68 @@ export default function FormJoin({
                 </div>
               ) : needsConditions ? (
                 <div className="max-h-[280px] overflow-y-auto">
-                  <div className="space-y-1">
-                    {(() => {
-                      const isEmpty = conditions.length === 0;
-                      const display = isEmpty ? [condPending] : conditions;
-                      return display.map((cond, i) =>
-                        renderConditionRow(
-                          cond,
-                          i,
-                          isEmpty,
-                          condPending,
-                          setCondPending,
-                          handleConditionsChange,
-                          tr('leftField', '[左表字段]'),
-                          tr('rightField', '[右表字段]')
-                        )
-                      );
-                    })()}
-                  </div>
+                  <GlassRowList
+                    items={conditions}
+                    columns={[
+                      {
+                        flex: 'flex-[1]',
+                        header: '',
+                        render: (cond: ConditionEntry, i: number) => (
+                          <GlassFieldCombo
+                            value={cond.left}
+                            options={leftFieldCompletions}
+                            onChange={(v) =>
+                              handleConditionsChange(
+                                conditions.map((c, j) => (j === i ? { ...c, left: v } : c))
+                              )
+                            }
+                            placeholder={tr('leftField', '[左表字段]')}
+                            className="h-7 w-full text-[12px]"
+                          />
+                        ),
+                      },
+                      {
+                        flex: 'flex-[0.6]',
+                        header: '',
+                        render: (cond: ConditionEntry, i: number) => (
+                          <GlassOperatorSelect
+                            value={cond.operator}
+                            groups={[{ key: 'op', items: conditionOperatorItems }]}
+                            onChange={(v) =>
+                              handleConditionsChange(
+                                conditions.map((c, j) => (j === i ? { ...c, operator: v } : c))
+                              )
+                            }
+                            className="h-7 w-full text-[12px] [&>span]:text-center"
+                          />
+                        ),
+                      },
+                      {
+                        flex: 'flex-[1]',
+                        header: '',
+                        render: (cond: ConditionEntry, i: number) => (
+                          <GlassFieldCombo
+                            value={cond.right}
+                            options={rightFieldCompletions}
+                            onChange={(v) =>
+                              handleConditionsChange(
+                                conditions.map((c, j) => (j === i ? { ...c, right: v } : c))
+                              )
+                            }
+                            placeholder={tr('rightField', '[右表字段]')}
+                            className="h-7 w-full text-[12px]"
+                          />
+                        ),
+                      },
+                    ]}
+                    onAdd={handleCondAdd}
+                    onRemove={handleCondRemove}
+                    addTitle={tr('addCondition', '添加条件')}
+                    canAct={(action: RowAction) =>
+                      action === 'add' ? !conditions.some((c) => !c.left && !c.right) : true
+                    }
+                    hideHeader
+                  />
                 </div>
               ) : (
                 <div className="text-[12px] text-text-secondary px-0.5">

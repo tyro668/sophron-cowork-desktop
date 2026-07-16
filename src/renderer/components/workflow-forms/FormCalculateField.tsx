@@ -1438,7 +1438,7 @@ export default function FormCalculateField({
               onRemove={() => {}}
               addTitle=""
               removeTitle=""
-              hideActions
+              actions={[]}
             />
           ) : (
             renderCrossLayout(visibleItems[0], 0, activeScenario)

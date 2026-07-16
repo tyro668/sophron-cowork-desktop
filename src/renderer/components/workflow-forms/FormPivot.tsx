@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassFormLabel } from './shared/GlassFormLabel';
@@ -9,6 +8,7 @@ import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSelector } from './shared/GlassFieldSelector';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import { GlassValueSelector } from './shared/GlassValueSelector';
+import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { useWorkflowNodeColumnValues } from '../../hooks/useWorkflowNodeColumnValues';
 
 const PIVOT_FUNCTIONS = ['sum', 'avg', 'min', 'max', 'count', 'count_distinct'];
@@ -254,75 +254,55 @@ export default function FormPivot({
           </div>
         </div>
         <div className="px-3 pb-3 grid gap-3 content-start">
-          {/* 多指标列表 */}
-          <div className="flex items-center gap-1.5 px-0.5 pb-0.5 text-[12px] font-medium text-text-muted">
-            <span className="flex flex-[1.5] items-center justify-center min-w-0">
-              {tr('aggregateFunction', '聚合函数')}
-            </span>
-            <span className="flex flex-[2] items-center justify-center min-w-0">
-              {tr('expressionLabel', '表达式')}
-            </span>
-            <span className="flex flex-[1.5] items-center justify-center min-w-0">
-              {tr('aggregateAlias', '别名 (as)')}
-            </span>
-            <span className="flex w-[3.25rem] flex-shrink-0 justify-center" />
-          </div>
-          {using.map((metric, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-1.5 rounded px-0.5 py-0.5 transition-colors hover:bg-surface-hover/40"
-            >
-              {/* Function */}
-              <div className="flex-[1.5] min-w-0">
-                <GlassOperatorSelect
-                  value={metric.function}
-                  groups={fnGroups}
-                  onChange={(v) => updateMetric(i, { function: v })}
-                  className="h-7 text-[12px] [&>span]:text-left w-full"
-                />
-              </div>
-              {/* Expression */}
-              <div className="flex-[2] min-w-0">
-                <GlassExpressionInput
-                  value={metric.expression}
-                  onChange={(v) => updateMetric(i, { expression: v })}
-                  fieldCompletions={fieldCompletions}
-                  columnTypes={columnTypes}
-                  placeholder={tr('pivotExpressionPlaceholder', '请输入表达式')}
-                />
-              </div>
-              {/* Alias */}
-              <div className="flex-[1.5] min-w-0">
-                <GlassFormTextInput
-                  value={metric.alias ?? ''}
-                  onChange={(v) => updateMetric(i, { alias: v || undefined })}
-                  placeholder={tr('pivotAliasPlaceholder', '请输入后缀')}
-                  className="h-7 px-1.5 text-[12px] w-full"
-                />
-              </div>
-              {/* Actions */}
-              <div className="flex items-center gap-0.5 flex-shrink-0 w-[3.25rem] justify-center">
-                <button
-                  type="button"
-                  onClick={() => addMetricAfter(i)}
-                  className="inline-flex h-6 w-6 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-accent"
-                  title={tr('pivotAddMetric', '添加指标')}
-                  aria-label={tr('pivotAddMetric', '添加指标')}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => removeMetric(i)}
-                  className="inline-flex h-6 w-6 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:text-error hover:bg-error/10"
-                  title={tr('pivotRemoveMetric', '删除指标')}
-                  aria-label={tr('pivotRemoveMetric', '删除指标')}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-          ))}
+          <GlassRowList
+            items={using}
+            columns={[
+              {
+                flex: 'flex-[1.5]',
+                header: tr('aggregateFunction', '聚合函数'),
+                render: (metric: PivotMetric, i: number) => (
+                  <GlassOperatorSelect
+                    value={metric.function}
+                    groups={fnGroups}
+                    onChange={(v) => updateMetric(i, { function: v })}
+                    className="h-7 text-[12px] [&>span]:text-left w-full"
+                  />
+                ),
+              },
+              {
+                flex: 'flex-[2]',
+                header: tr('expressionLabel', '表达式'),
+                render: (metric: PivotMetric, i: number) => (
+                  <GlassExpressionInput
+                    value={metric.expression}
+                    onChange={(v) => updateMetric(i, { expression: v })}
+                    fieldCompletions={fieldCompletions}
+                    columnTypes={columnTypes}
+                    placeholder={tr('pivotExpressionPlaceholder', '请输入表达式')}
+                  />
+                ),
+              },
+              {
+                flex: 'flex-[1.5]',
+                header: tr('aggregateAlias', '别名 (as)'),
+                render: (metric: PivotMetric, i: number) => (
+                  <GlassFormTextInput
+                    value={metric.alias ?? ''}
+                    onChange={(v) => updateMetric(i, { alias: v || undefined })}
+                    placeholder={tr('pivotAliasPlaceholder', '请输入后缀')}
+                    className="h-7 px-1.5 text-[12px] w-full"
+                  />
+                ),
+              },
+            ]}
+            onAdd={(i) => addMetricAfter(i)}
+            onRemove={(i) => removeMetric(i)}
+            addTitle={tr('pivotAddMetric', '添加指标')}
+            removeTitle={tr('pivotRemoveMetric', '删除指标')}
+            canAct={(action: RowAction) =>
+              action === 'add' ? !using.some((m) => !m.expression) : true
+            }
+          />
         </div>
       </div>
     </div>

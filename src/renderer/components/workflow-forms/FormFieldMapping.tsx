@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Copy, Plus, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
-import { GlassRowList, type GlassRowListColumn } from './shared/GlassRowList';
+import { GlassRowList, type GlassRowListColumn, type RowAction } from './shared/GlassRowList';
 
 export interface MappingEntry {
   source: string;
@@ -180,11 +179,6 @@ export default function FormFieldMapping({
     [activeMappings, commitMappings]
   );
 
-  const canAdd = useMemo(
-    () => !activeMappings.some((m) => !m.source) && activeMappings.length < fieldCompletions.length,
-    [activeMappings, fieldCompletions.length]
-  );
-
   const targetModeOptions = useMemo(
     () => [
       { value: 'prefix', label: tr('fieldMappingModePrefix', '加前缀') },
@@ -263,55 +257,8 @@ export default function FormFieldMapping({
           );
         },
       },
-      {
-        flex: 'flex-[1.5]',
-        header: '',
-        render: (_item, i) => (
-          <div className="flex items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => addMappingAfter(i)}
-              className="inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-              title={tr('fieldMappingAdd', '添加映射')}
-              aria-label={tr('fieldMappingAdd', '添加映射')}
-              disabled={!canAdd}
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => copyMapping(i)}
-              className="inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-              title={tr('fieldMappingCopy', '复制行')}
-              aria-label={tr('fieldMappingCopy', '复制行')}
-              disabled={!canAdd}
-            >
-              <Copy className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => removeMapping(i)}
-              className="inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:text-error hover:bg-error/10"
-              title={tr('fieldMappingRemove', '删除映射')}
-              aria-label={tr('fieldMappingRemove', '删除映射')}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        ),
-      },
     ],
-    [
-      fieldCompletions,
-      usedFields,
-      tr,
-      updateMapping,
-      canAdd,
-      addMappingAfter,
-      copyMapping,
-      removeMapping,
-      targetModeOptions,
-    ]
+    [fieldCompletions, usedFields, tr, updateMapping, targetModeOptions]
   );
 
   return (
@@ -321,12 +268,21 @@ export default function FormFieldMapping({
           <GlassRowList
             items={activeMappings}
             columns={columns}
+            actions={['add', 'copy', 'remove']}
             onAdd={addMappingAfter}
             onRemove={removeMapping}
+            onCopy={copyMapping}
             addTitle={tr('fieldMappingAdd', '添加映射')}
             removeTitle={tr('fieldMappingRemove', '删除映射')}
+            canAct={(action: RowAction) =>
+              action === 'copy'
+                ? activeMappings.length < fieldCompletions.length
+                : action === 'add'
+                  ? !activeMappings.some((m) => !m.source) &&
+                    activeMappings.length < fieldCompletions.length
+                  : true
+            }
             draggable
-            hideActions
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
