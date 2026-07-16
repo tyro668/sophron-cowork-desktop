@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
-import { GlassFieldCombo } from './shared/GlassFieldCombo';
+import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import { GlassRowList, type GlassRowListColumn, type RowAction } from './shared/GlassRowList';
@@ -197,7 +197,7 @@ export default function FormFieldMapping({
           const disabledFields = new Set(usedFields);
           if (item.source) disabledFields.delete(item.source);
           return (
-            <GlassFieldCombo
+            <GlassFieldSingleSelect
               value={item.source}
               options={fieldCompletions}
               onChange={(value) => updateMapping(i, { source: value })}

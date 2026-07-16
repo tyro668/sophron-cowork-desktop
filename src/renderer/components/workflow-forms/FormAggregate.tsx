@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
-import { GlassFieldSelector } from './shared/GlassFieldSelector';
+import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
@@ -209,7 +209,7 @@ export default function FormAggregate({
             </div>
           </div>
           <div className="flex-1 min-h-0 px-3 pb-3 flex flex-col">
-            <GlassFieldSelector
+            <GlassFieldMultiSelect
               columns={fieldCompletions}
               selected={groupBy}
               onChange={handleGroupByChange}

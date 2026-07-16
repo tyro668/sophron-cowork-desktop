@@ -24,7 +24,7 @@ function calcMaxOptionWidth(options: string[], columnTypes: Record<string, strin
   return max + 48;
 }
 
-interface GlassFieldComboProps {
+interface GlassFieldSingleSelectProps {
   value: string;
   options: string[];
   columnTypes?: Record<string, string>;
@@ -38,7 +38,7 @@ interface GlassFieldComboProps {
   displayLabel?: string;
 }
 
-export function GlassFieldCombo({
+export function GlassFieldSingleSelect({
   value,
   options,
   columnTypes = {},
@@ -50,7 +50,7 @@ export function GlassFieldCombo({
   className,
   showType = false,
   displayLabel,
-}: GlassFieldComboProps) {
+}: GlassFieldSingleSelectProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);

@@ -4,7 +4,7 @@ import { Plus, Settings, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
-import { GlassFieldCombo } from './shared/GlassFieldCombo';
+import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { isTemporalDataFieldType } from '@/shared/data-field-types';
@@ -649,7 +649,7 @@ export default function FormJoin({
   ) {
     return (
       <div key={i} className="flex items-center gap-1">
-        <GlassFieldCombo
+        <GlassFieldSingleSelect
           value={cond.left}
           options={leftFieldCompletions}
           onChange={(v) => condHandleChange(isEmpty, pending, setPending, onChange, i, { left: v })}
@@ -664,7 +664,7 @@ export default function FormJoin({
           }
           className="h-7 w-[72px] shrink-0 text-[12px] [&>span]:text-center"
         />
-        <GlassFieldCombo
+        <GlassFieldSingleSelect
           value={cond.right}
           options={rightFieldCompletions}
           onChange={(v) =>
@@ -831,7 +831,7 @@ export default function FormJoin({
               {isAsof ? (
                 <div className="grid gap-1.5">
                   <div className="flex items-center gap-1.5">
-                    <GlassFieldCombo
+                    <GlassFieldSingleSelect
                       value={asofLeftTime}
                       options={asofLeftTimeOptions}
                       columnTypes={leftColumnTypesQualified}
@@ -868,7 +868,7 @@ export default function FormJoin({
                       }
                       className="h-7 w-[84px] shrink-0 text-[12px] [&>span]:text-center"
                     />
-                    <GlassFieldCombo
+                    <GlassFieldSingleSelect
                       value={asofRightTime}
                       options={asofRightTimeOptions}
                       columnTypes={rightColumnTypesQualified}
@@ -955,7 +955,7 @@ export default function FormJoin({
                         flex: 'flex-[1]',
                         header: '',
                         render: (cond: ConditionEntry, i: number) => (
-                          <GlassFieldCombo
+                          <GlassFieldSingleSelect
                             value={cond.left}
                             options={leftFieldCompletions}
                             onChange={(v) =>
@@ -988,7 +988,7 @@ export default function FormJoin({
                         flex: 'flex-[1]',
                         header: '',
                         render: (cond: ConditionEntry, i: number) => (
-                          <GlassFieldCombo
+                          <GlassFieldSingleSelect
                             value={cond.right}
                             options={rightFieldCompletions}
                             onChange={(v) =>

@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassTagBar } from './shared/GlassTagBar';
-import { GlassFieldCombo } from './shared/GlassFieldCombo';
-import { GlassFieldSelector } from './shared/GlassFieldSelector';
+import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
+import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassDirectionToggle } from './shared/GlassDirectionToggle';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import { GlassRowList } from './shared/GlassRowList';
@@ -209,7 +209,7 @@ export default function FormDeduplicate({
 
         <div className="grid grid-cols-[40fr_60fr] gap-3 flex-1 min-h-0">
           {/* ═══ LEFT: 选择字段 ═══ */}
-          <GlassFieldSelector
+          <GlassFieldMultiSelect
             columns={fieldCompletions}
             selected={columns}
             onChange={commitColumns}
@@ -268,7 +268,7 @@ export default function FormDeduplicate({
                           const disabledSortFields = new Set(usedSortFields);
                           if (key.field) disabledSortFields.delete(key.field);
                           return (
-                            <GlassFieldCombo
+                            <GlassFieldSingleSelect
                               value={key.field}
                               options={fieldCompletions}
                               columnTypes={columnTypes}

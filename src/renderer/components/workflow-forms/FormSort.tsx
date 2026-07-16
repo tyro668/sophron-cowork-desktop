@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
-import { GlassFieldCombo } from './shared/GlassFieldCombo';
+import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassDirectionToggle } from './shared/GlassDirectionToggle';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import { GlassRowList } from './shared/GlassRowList';
@@ -184,7 +184,7 @@ export default function FormSort({
                   const disabledOptions = new Set(usedFields);
                   if (key.field) disabledOptions.delete(key.field);
                   return (
-                    <GlassFieldCombo
+                    <GlassFieldSingleSelect
                       value={key.field}
                       options={fieldCompletions}
                       columnTypes={columnTypes}

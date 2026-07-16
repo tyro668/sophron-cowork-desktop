@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search } from 'lucide-react';
 import type { OperatorFormProps } from './index';
-import { GlassFieldSelector } from './shared/GlassFieldSelector';
+import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassRowList } from './shared/GlassRowList';
 import { dataFieldTypeLabel } from '@/shared/data-field-types';
 import { useConfirmDialog } from '../../components/ConfirmDialog';
@@ -207,7 +207,7 @@ export default function FormFieldSelect({
         {/* Dual-pane layout */}
         <div className="grid grid-cols-2 gap-3 flex-1 min-h-0">
           {/* Left: field library */}
-          <GlassFieldSelector
+          <GlassFieldMultiSelect
             columns={fieldCompletions}
             selected={columns}
             onChange={handleSelectionChange}

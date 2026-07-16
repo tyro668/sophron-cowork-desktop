@@ -5,7 +5,7 @@ import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
-import { GlassFieldSelector } from './shared/GlassFieldSelector';
+import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import { GlassValueSelector } from './shared/GlassValueSelector';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
@@ -188,7 +188,7 @@ export default function FormPivot({
               placeholder={tr('noFieldsSelected', '暂未选择字段')}
             />
             {onOpen && (
-              <GlassFieldSelector
+              <GlassFieldMultiSelect
                 columns={fieldCompletions}
                 selected={onFields}
                 onChange={handleOnChange}
@@ -226,7 +226,7 @@ export default function FormPivot({
               placeholder={tr('noFieldsSelected', '暂未选择字段')}
             />
             {groupByOpen && (
-              <GlassFieldSelector
+              <GlassFieldMultiSelect
                 columns={fieldCompletions}
                 selected={groupBy}
                 onChange={handleGroupByChange}

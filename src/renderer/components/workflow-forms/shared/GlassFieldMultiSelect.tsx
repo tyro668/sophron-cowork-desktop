@@ -5,7 +5,7 @@ import { dataFieldTypeLabel } from '@/shared/data-field-types';
 
 export type SelectionMode = 'single' | 'multi';
 
-export interface GlassFieldSelectorProps {
+export interface GlassFieldMultiSelectProps {
   columns: string[];
   selected: string[];
   onChange: (selected: string[]) => void;
@@ -15,7 +15,7 @@ export interface GlassFieldSelectorProps {
   variant?: 'flat' | 'glass';
 }
 
-export const GlassFieldSelector = memo(function GlassFieldSelector({
+export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
   columns,
   selected,
   onChange,
@@ -23,7 +23,7 @@ export const GlassFieldSelector = memo(function GlassFieldSelector({
   maxHeight = '160px',
   selectionMode = 'multi',
   variant = 'flat',
-}: GlassFieldSelectorProps) {
+}: GlassFieldMultiSelectProps) {
   const { t } = useTranslation();
   const tr = useCallback(
     (key: string, fallback: string) =>

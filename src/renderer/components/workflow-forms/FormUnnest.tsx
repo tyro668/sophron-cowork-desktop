@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
-import { GlassFieldCombo } from './shared/GlassFieldCombo';
+import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 
 export default function FormUnnest({ node, fieldCompletions, onNodeChange }: OperatorFormProps) {
@@ -60,7 +60,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
             <div className="p-3 grid gap-2.5">
               <label className="grid gap-1">
                 <GlassFormLabel>{tr('unnestSourceField', '源字段')}</GlassFormLabel>
-                <GlassFieldCombo
+                <GlassFieldSingleSelect
                   value={column}
                   options={fieldCompletions}
                   onChange={(v) => updateConfig((cfg) => ({ ...cfg, column: v || undefined }))}

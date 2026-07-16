@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
-import { GlassFieldCombo } from './shared/GlassFieldCombo';
+import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassValueInput } from './shared/GlassValueInput';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import {
@@ -200,7 +200,7 @@ function ConditionLeafRow({
       <div className="flex items-center gap-2 min-w-0">
         {/* Field */}
         <div className="flex-1 min-w-[100px] max-w-[180px]">
-          <GlassFieldCombo
+          <GlassFieldSingleSelect
             value={leaf.field}
             options={ctx.fieldCompletions}
             columnTypes={ctx.columnTypes}

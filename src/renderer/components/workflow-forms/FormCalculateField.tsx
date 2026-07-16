@@ -6,8 +6,8 @@ import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
-import { GlassFieldCombo } from './shared/GlassFieldCombo';
-import { GlassFieldSelector } from './shared/GlassFieldSelector';
+import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
+import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassRowList, type GlassRowListColumn } from './shared/GlassRowList';
 import {
@@ -537,7 +537,7 @@ export default function FormCalculateField({
         return (
           <div className="flex items-center gap-1 w-full">
             {item.action === 'replace' ? (
-              <GlassFieldCombo
+              <GlassFieldSingleSelect
                 value={fieldCompletions.includes(item.field) ? item.field : ''}
                 options={fieldCompletions}
                 columnTypes={columnTypes}
@@ -701,7 +701,7 @@ export default function FormCalculateField({
             <div className="flex items-center gap-1">
               <div className="w-36">
                 {item.action === 'replace' ? (
-                  <GlassFieldCombo
+                  <GlassFieldSingleSelect
                     value={fieldCompletions.includes(item.field) ? item.field : ''}
                     options={fieldCompletions}
                     columnTypes={columnTypes}
@@ -739,7 +739,7 @@ export default function FormCalculateField({
                 <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
                   {tr('calcFieldDateColumn', '时间字段')}
                 </span>
-                <GlassFieldCombo
+                <GlassFieldSingleSelect
                   value={timeFieldValue}
                   options={timeDateOptions}
                   columnTypes={columnTypes}
@@ -837,7 +837,7 @@ export default function FormCalculateField({
                   {tr('calcFieldFnArg', '参数字段')}
                 </span>
                 <div className="w-36">
-                  <GlassFieldCombo
+                  <GlassFieldSingleSelect
                     value={item.fnArg ?? ''}
                     options={fieldCompletions}
                     columnTypes={columnTypes}
@@ -877,7 +877,7 @@ export default function FormCalculateField({
                 </span>
                 <div className={s.type === 'field' ? 'w-36' : 'w-28'}>
                   {s.type === 'field' ? (
-                    <GlassFieldCombo
+                    <GlassFieldSingleSelect
                       value={item[s.key] ?? ''}
                       options={fieldCompletions}
                       columnTypes={columnTypes}
@@ -966,7 +966,7 @@ export default function FormCalculateField({
                 />
                 {!!partitionOpen[index] && (
                   <div className="absolute z-10 left-0 right-0 mt-0.5">
-                    <GlassFieldSelector
+                    <GlassFieldMultiSelect
                       columns={fieldCompletions}
                       selected={item.partitionBy ?? []}
                       onChange={(v) =>
@@ -1070,7 +1070,7 @@ export default function FormCalculateField({
                 </div>
                 {ordOpen && (
                   <div className="absolute z-10 left-0 right-0 mt-0.5">
-                    <GlassFieldSelector
+                    <GlassFieldMultiSelect
                       columns={fieldCompletions}
                       selected={item.orderBy?.map((o) => o.field) ?? []}
                       onChange={(v) =>

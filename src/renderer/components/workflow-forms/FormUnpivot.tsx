@@ -4,7 +4,7 @@ import type { OperatorFormProps } from './index';
 import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
-import { GlassFieldSelector } from './shared/GlassFieldSelector';
+import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 
 export default function FormUnpivot({
   node,
@@ -105,7 +105,7 @@ export default function FormUnpivot({
               placeholder={tr('noFieldsSelected', '暂未选择字段')}
             />
             {columnsOpen && (
-              <GlassFieldSelector
+              <GlassFieldMultiSelect
                 columns={fieldCompletions}
                 selected={columns}
                 onChange={handleColumnsSelect}

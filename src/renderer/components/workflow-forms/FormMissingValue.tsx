@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassTagBar } from './shared/GlassTagBar';
-import { GlassFieldCombo } from './shared/GlassFieldCombo';
+import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import type { OperatorFormProps } from './index';
-import { GlassFieldSelector } from './shared/GlassFieldSelector';
+import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import {
@@ -331,7 +331,7 @@ export default function FormMissingValue({
                 placeholder={tr('missingEmptyMeansAllFields', '留空 = 所有字段参与判断')}
               />
               {showFieldPicker && (
-                <GlassFieldSelector
+                <GlassFieldMultiSelect
                   columns={fieldCompletions}
                   selected={rowColumns}
                   onChange={handleRowsColumnsChange}
@@ -356,7 +356,7 @@ export default function FormMissingValue({
                     flex: 'flex-[2]',
                     header: '',
                     render: (item: MissingRule, i: number) => (
-                      <GlassFieldCombo
+                      <GlassFieldSingleSelect
                         value={item.column}
                         options={fieldCompletions}
                         columnTypes={columnTypes}

@@ -7,7 +7,7 @@ import {
   normalizeDataFieldType,
   type DataFieldType,
 } from '../../../shared/data-field-types';
-import { GlassFieldCombo } from './shared/GlassFieldCombo';
+import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import { GlassRowList } from './shared/GlassRowList';
 
@@ -175,7 +175,7 @@ export default function FormTypeConvert({
                   const disabledFields = new Set(usedFields);
                   if (conv.column) disabledFields.delete(conv.column);
                   return (
-                    <GlassFieldCombo
+                    <GlassFieldSingleSelect
                       value={conv.column}
                       options={fieldCompletions}
                       columnTypes={columnTypes}

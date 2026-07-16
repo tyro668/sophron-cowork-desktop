@@ -5,7 +5,7 @@ import type { OperatorFormProps } from './index';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
-import { GlassFieldSelector } from './shared/GlassFieldSelector';
+import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 
 interface SortKeyEntry {
   field: string;
@@ -313,7 +313,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                   />
                   {groupOpen && (
                     <div className="absolute z-10 left-0 right-0 mt-0.5">
-                      <GlassFieldSelector
+                      <GlassFieldMultiSelect
                         columns={fieldCompletions}
                         selected={groupBy}
                         onChange={(v) =>
@@ -393,7 +393,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
               </div>
               {sortOpen && (
                 <div className="absolute z-10 left-0 right-0 mt-0.5">
-                  <GlassFieldSelector
+                  <GlassFieldMultiSelect
                     columns={fieldCompletions}
                     selected={sortFields}
                     onChange={(v) => setSortFields(v)}
