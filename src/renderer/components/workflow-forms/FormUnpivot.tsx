@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassTagBar } from './shared/GlassTagBar';
-import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 
@@ -92,7 +91,9 @@ export default function FormUnpivot({
         </div>
         <div className="px-3 pb-3 grid gap-2.5">
           <div className="grid gap-1">
-            <GlassFormLabel>{tr('unpivotExpandCols', '要展开的列')}</GlassFormLabel>
+            <span className="mb-1 block text-[12px] font-medium text-text-secondary">
+              {tr('unpivotExpandCols', '要展开的列')}
+            </span>
             <GlassTagBar
               items={columns}
               onRemove={removeColumn}
@@ -135,7 +136,7 @@ export default function FormUnpivot({
         <div className="px-3 pb-3 grid gap-2.5">
           <div className="grid grid-cols-2 gap-2">
             <div className="grid gap-1">
-              <GlassFormLabel>
+              <span className="mb-1 block text-[12px] font-medium text-text-secondary">
                 {tr('unpivotNameCol', '名称列')}
                 <span
                   className="text-[10px] text-text-muted ml-1"
@@ -143,7 +144,7 @@ export default function FormUnpivot({
                 >
                   (可选)
                 </span>
-              </GlassFormLabel>
+              </span>
               <GlassFormTextInput
                 value={nameColumn}
                 onChange={(v) => updateConfig((cfg) => ({ ...cfg, nameColumn: v || undefined }))}
@@ -152,7 +153,7 @@ export default function FormUnpivot({
               />
             </div>
             <div className="grid gap-1">
-              <GlassFormLabel>
+              <span className="mb-1 block text-[12px] font-medium text-text-secondary">
                 {tr('unpivotValueCol', '值列')}
                 <span
                   className="text-[10px] text-text-muted ml-1"
@@ -160,7 +161,7 @@ export default function FormUnpivot({
                 >
                   (可选)
                 </span>
-              </GlassFormLabel>
+              </span>
               <GlassFormTextInput
                 value={valueColumn}
                 onChange={(v) => updateConfig((cfg) => ({ ...cfg, valueColumn: v || undefined }))}

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Settings, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
-import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
@@ -777,7 +776,9 @@ export default function FormJoin({
               </div>
 
               <div className="grid gap-1 text-center">
-                <GlassFormLabel>{tr('joinType', '连接类型')}</GlassFormLabel>
+                <span className="mb-1 block text-[12px] font-medium text-text-secondary">
+                  {tr('joinType', '连接类型')}
+                </span>
                 <div className="grid grid-cols-4 gap-1">
                   {joinTypes.map((jt) => (
                     <button

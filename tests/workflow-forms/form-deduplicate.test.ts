@@ -223,9 +223,9 @@ describe('FormDeduplicate — 组件结构检查', () => {
     expect(tagsIdx).toBeLessThan(beforeGrid);
   });
 
-  it('保留策略使用 radio 输入', () => {
-    expect(src).toContain('type="radio"');
-    expect(src).toContain('keepStrategy');
+  it('保留策略使用 GlassRadioSelect', () => {
+    expect(src).toContain('GlassRadioSelect');
+    expect(src).toContain('keep');
   });
 
   it('排序区域包含拖拽手柄', () => {

@@ -6,6 +6,7 @@ import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassDirectionToggle } from './shared/GlassDirectionToggle';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
+import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassRowList } from './shared/GlassRowList';
 
 interface SortKeyEntry {
@@ -221,39 +222,16 @@ export default function FormDeduplicate({
           <div className="overflow-y-auto min-h-0">
             <div className="grid content-start gap-2">
               {/* ── 保留策略 ── */}
-              <div className="flex items-center gap-2 text-[12px] text-text-secondary">
-                <span>{tr('dedupKeepStrategy', '保留策略')}</span>
-                <label
-                  className="flex items-center gap-1 cursor-pointer"
-                  onMouseDown={(e) => e.preventDefault()}
-                >
-                  <input
-                    type="radio"
-                    name="keepStrategy"
-                    checked={keep === 'first'}
-                    onChange={() => updateConfig((cfg) => ({ ...cfg, keep: 'first' }))}
-                    className="h-3.5 w-3.5 accent-accent"
-                  />
-                  <span className={keep === 'first' ? 'text-text-primary font-medium' : ''}>
-                    {tr('first', '第一条')}
-                  </span>
-                </label>
-                <label
-                  className="flex items-center gap-1 cursor-pointer"
-                  onMouseDown={(e) => e.preventDefault()}
-                >
-                  <input
-                    type="radio"
-                    name="keepStrategy"
-                    checked={keep === 'last'}
-                    onChange={() => updateConfig((cfg) => ({ ...cfg, keep: 'last' }))}
-                    className="h-3.5 w-3.5 accent-accent"
-                  />
-                  <span className={keep === 'last' ? 'text-text-primary font-medium' : ''}>
-                    {tr('last', '最后一条')}
-                  </span>
-                </label>
-              </div>
+              <GlassRadioSelect
+                value={keep}
+                options={[
+                  { value: 'first', label: tr('first', '第一条') },
+                  { value: 'last', label: tr('last', '最后一条') },
+                ]}
+                onChange={(v) => updateConfig((cfg) => ({ ...cfg, keep: v }))}
+                label={tr('dedupKeepStrategy', '保留策略')}
+                direction="horizontal"
+              />
 
               {/* ── 排序设置 ── */}
               <div className="rounded-lg border border-border-muted bg-background/60">

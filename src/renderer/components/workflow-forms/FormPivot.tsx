@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassTagBar } from './shared/GlassTagBar';
-import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
@@ -175,7 +174,9 @@ export default function FormPivot({
         </div>
         <div className="px-3 pb-3 grid gap-3 content-start">
           <div className="grid gap-1.5 content-start">
-            <GlassFormLabel>{tr('pivotOnLabel', '待转化的列')}</GlassFormLabel>
+            <span className="mb-1 block text-[12px] font-medium text-text-secondary">
+              {tr('pivotOnLabel', '待转化的列')}
+            </span>
             <GlassTagBar
               items={onFields}
               onRemove={removeOn}
@@ -198,10 +199,10 @@ export default function FormPivot({
             )}
           </div>
           <div className="grid gap-1">
-            <GlassFormLabel>
+            <span className="mb-1 block text-[12px] font-medium text-text-secondary">
               {tr('pivotInLabel', '值列表')}
               <span className="text-[10px] text-text-muted ml-1">(可选)</span>
-            </GlassFormLabel>
+            </span>
             <GlassValueSelector
               values={distinctValues}
               selected={values}
@@ -210,10 +211,10 @@ export default function FormPivot({
             />
           </div>
           <div className="grid gap-1.5 content-start">
-            <GlassFormLabel>
+            <span className="mb-1 block text-[12px] font-medium text-text-secondary">
               {tr('pivotGroupByLabel', '分组字段')}
               <span className="text-[10px] text-text-muted ml-1">(可选)</span>
-            </GlassFormLabel>
+            </span>
             <GlassTagBar
               items={groupBy}
               onRemove={removeGroupBy}

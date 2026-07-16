@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
-import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { useConfirmDialog } from '../../components/ConfirmDialog';
 import type { DataColumnTypeInfo } from '../../../shared/data-field-types';
@@ -271,13 +270,17 @@ export default function FormSetOp({
           <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
             <div className="p-3 grid gap-2.5">
               <div className="grid gap-1">
-                <GlassFormLabel>{tr('leftInput', '左表数据源')}</GlassFormLabel>
+                <span className="mb-1 block text-[12px] font-medium text-text-secondary">
+                  {tr('leftInput', '左表数据源')}
+                </span>
                 <div className="h-7 flex items-center rounded-md border border-border-muted/70 bg-background/28 px-2 text-[12px] text-text-muted">
                   {leftSourceLabel || tr('noLeftSource', '上游节点')}
                 </div>
               </div>
               <div className="grid gap-1">
-                <GlassFormLabel>{tr('setOpRightInput', '右表数据源')}</GlassFormLabel>
+                <span className="mb-1 block text-[12px] font-medium text-text-secondary">
+                  {tr('setOpRightInput', '右表数据源')}
+                </span>
                 <div className="h-7 flex items-center rounded-md border border-border-muted/70 bg-background/28 px-2 text-[12px] text-text-muted">
                   {rightSourceLabel || tr('noRightSource', '未连接右表')}
                 </div>
