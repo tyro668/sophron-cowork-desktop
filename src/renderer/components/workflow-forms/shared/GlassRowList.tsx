@@ -40,6 +40,7 @@ interface GlassRowListProps<T> {
   getRowOpacity?: (index: number) => boolean;
   dragTitle?: string;
   hideHeader?: boolean;
+  headerClassName?: string;
 }
 
 const ACTION_ICON: Record<RowAction, React.ComponentType<{ className?: string }>> = {
@@ -98,13 +99,16 @@ export function GlassRowList<T>({
   getRowOpacity,
   dragTitle = '拖拽排序',
   hideHeader,
+  headerClassName,
 }: GlassRowListProps<T>) {
   const actionsWidth = actions.length * 24 + (actions.length - 1) * 4;
 
   return (
     <div className="flex flex-col gap-2">
       {!hideHeader && (
-        <div className="flex items-center gap-1 px-0.5 pb-0.5 text-[13px] font-medium text-text-muted">
+        <div
+          className={`flex items-center gap-1 px-0.5 pb-0.5 font-medium text-text-muted ${headerClassName ?? ''}`}
+        >
           {draggable && (
             <span
               className="flex h-6 w-4 flex-shrink-0 items-center justify-center"

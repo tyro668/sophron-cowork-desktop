@@ -257,7 +257,9 @@ export default function FormFieldSelect({
                       header: '',
                       render: (col: string) => (
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="flex-1 min-w-0 truncate text-text-primary">{col}</span>
+                          <span className="flex-1 min-w-0 truncate text-[12px] text-text-primary">
+                            {col}
+                          </span>
                           {columnTypes?.[col] && (
                             <span className="shrink-0 rounded bg-background/60 px-1.5 py-0.5 text-[11px] text-text-muted">
                               {dataFieldTypeLabel(columnTypes[col])}

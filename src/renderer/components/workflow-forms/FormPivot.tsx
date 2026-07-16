@@ -6,7 +6,6 @@ import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
-import { GlassValueSelector } from './shared/GlassValueSelector';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { useWorkflowNodeColumnValues } from '../../hooks/useWorkflowNodeColumnValues';
 
@@ -103,6 +102,7 @@ export default function FormPivot({
 
   const [onOpen, setOnOpen] = useState(false);
   const [groupByOpen, setGroupByOpen] = useState(false);
+  const [valueListOpen, setValueListOpen] = useState(false);
 
   const distinctValues = useWorkflowNodeColumnValues({
     taskId,
@@ -203,12 +203,24 @@ export default function FormPivot({
               {tr('pivotInLabel', '值列表')}
               <span className="text-[10px] text-text-muted ml-1">(可选)</span>
             </span>
-            <GlassValueSelector
-              values={distinctValues}
-              selected={values}
-              onChange={handleValuesChange}
+            <GlassTagBar
+              items={values}
+              onRemove={(col) => handleValuesChange(values.filter((c) => c !== col))}
+              onClear={() => handleValuesChange([])}
+              open={valueListOpen}
+              onToggle={() => setValueListOpen((v) => !v)}
+              toggleStyle="chevron"
+              density="default"
               placeholder={tr('pivotInPlaceholder', '选择透视列的值，按Enter确认')}
             />
+            {valueListOpen && (
+              <GlassFieldMultiSelect
+                columns={distinctValues}
+                selected={values}
+                onChange={handleValuesChange}
+                maxHeight="180px"
+              />
+            )}
           </div>
           <div className="grid gap-1.5 content-start">
             <span className="mb-1 block text-[12px] font-medium text-text-secondary">
@@ -256,6 +268,7 @@ export default function FormPivot({
         </div>
         <div className="px-3 pb-3 grid gap-3 content-start">
           <GlassRowList
+            headerClassName="text-[12px]"
             items={using}
             columns={[
               {

@@ -175,6 +175,7 @@ export default function FormSort({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex-1 space-y-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
           <GlassRowList
+            headerClassName="text-[12px]"
             items={activeKeys}
             columns={[
               {

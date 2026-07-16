@@ -67,9 +67,12 @@ export default function FormDeduplicate({
     [onNodeChange]
   );
 
-  const columns: string[] = (node.config?.columns as string[]) ?? [];
+  const columns = useMemo(() => (node.config?.columns as string[]) ?? [], [node.config?.columns]);
   const keep = (node.config?.keep as string) ?? 'first';
-  const orderBy: SortKeyEntry[] = (node.config?.orderBy as SortKeyEntry[]) ?? [];
+  const orderBy = useMemo(
+    () => (node.config?.orderBy as SortKeyEntry[]) ?? [],
+    [node.config?.orderBy]
+  );
 
   const commitColumns = useCallback(
     (next: string[]) => {
@@ -105,7 +108,10 @@ export default function FormDeduplicate({
   );
 
   // Ensure at least one empty row for display
-  const displaySortKeys: SortKeyEntry[] = orderBy.length > 0 ? orderBy : [{ ...DEFAULT_SORT_KEY }];
+  const displaySortKeys = useMemo(
+    () => (orderBy.length > 0 ? orderBy : [{ ...DEFAULT_SORT_KEY }]),
+    [orderBy]
+  );
 
   // ── Drag-to-reorder state ──
   const dragIndexRef = useRef<number | null>(null);
@@ -237,6 +243,7 @@ export default function FormDeduplicate({
               <div className="rounded-lg border border-border-muted bg-background/60">
                 <div className="p-2">
                   <GlassRowList
+                    headerClassName="text-[12px]"
                     items={activeKeys}
                     columns={[
                       {

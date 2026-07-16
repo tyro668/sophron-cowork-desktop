@@ -1432,6 +1432,7 @@ export default function FormCalculateField({
         <div className="px-3 pb-3 overflow-y-auto flex-1 min-h-0">
           {activeMode === 'row' ? (
             <GlassRowList
+              headerClassName="text-[12px]"
               items={visibleItems as CalculationRow[]}
               columns={rowColumns()}
               onAdd={() => {}}

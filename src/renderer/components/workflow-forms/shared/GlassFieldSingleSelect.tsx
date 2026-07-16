@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Search } from 'lucide-react';
 import { dataFieldTypeLabel } from '@/shared/data-field-types';
@@ -52,6 +53,7 @@ export function GlassFieldSingleSelect({
   showType = false,
   displayLabel,
 }: GlassFieldSingleSelectProps) {
+  const { t } = useTranslation();
   const {
     open,
     setOpen,
@@ -267,7 +269,8 @@ export function GlassFieldSingleSelect({
             <div className="flex-1 overflow-y-auto p-1">
               {filteredOptions.length === 0 ? (
                 <div className="px-2.5 py-4 text-center text-[12px] text-text-muted">
-                  {emptyText || 'No matching fields'}
+                  {emptyText ||
+                    t('data.workflow.formLabels.noMatch', { defaultValue: '无匹配字段' })}
                 </div>
               ) : (
                 filteredOptions.map((opt, idx) => {
