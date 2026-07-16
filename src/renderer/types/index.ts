@@ -577,6 +577,11 @@ export interface DataInputTableCsvConfig {
   encoding: 'auto';
   delimiter: 'auto';
   dataProcessing?: DataInputTableProcessingConfig;
+  cloudMirror?: {
+    tableId: string;
+    sourceVersion?: string;
+    contentHash: string;
+  };
 }
 
 export interface DataInputTableFolderConfig {
@@ -698,6 +703,8 @@ export interface DataAutomationSourceBinding {
   folderId?: string;
   columnsSnapshot?: DataAutomationColumnSnapshot[];
   requiredColumns?: DataAutomationColumnSnapshot[];
+  updatedAt?: string;
+  contentHash?: string;
 }
 
 export interface DataAutomationOutputBinding {
@@ -733,6 +740,7 @@ export interface DataGenerateTaskFromRequirementResult {
   lineage: DataAutomationLineageEntry[];
   columnsSnapshot: DataAutomationColumnSnapshot[];
   sourceSummaryHash: string;
+  workflowHash: string;
   version: number;
   generatedAt: number;
 }

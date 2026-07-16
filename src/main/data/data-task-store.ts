@@ -856,12 +856,6 @@ export class DataTaskStore {
     return this.requireTask(task.id);
   }
 
-  private _executionDiagnostics: PrepDiagnostic[] = [];
-
-  getExecutionDiagnostics(): PrepDiagnostic[] {
-    return this._executionDiagnostics;
-  }
-
   async runExclusive<T>(work: () => Promise<T>, label = 'duckdb'): Promise<T> {
     if (this.exclusiveContext.getStore()) {
       return work();
@@ -897,11 +891,140 @@ export class DataTaskStore {
   }
 
   async runTask(id: string, input: DataRunTaskInput = {}): Promise<DataCleaningTask> {
-    return this.runExclusive(() => this.runTaskUnsafe(id, input), `runTask:${id}`);
+    return (await this.runTaskWithDiagnostics(id, input)).task;
   }
 
-  private async runTaskUnsafe(id: string, input: DataRunTaskInput = {}): Promise<DataCleaningTask> {
-    this._executionDiagnostics = [];
+  async runTaskWithDiagnostics(
+    id: string,
+    input: DataRunTaskInput = {}
+  ): Promise<{ task: DataCleaningTask; diagnostics: PrepDiagnostic[] }> {
+    const recordTaskState = input.outputMode !== 'temporary';
+    return this.runExclusive(() => this.runTaskUnsafe(id, input, recordTaskState), `runTask:${id}`);
+  }
+
+  async validateTaskWorkflow(
+    id: string,
+    input: DataRunTaskInput
+  ): Promise<{ task: DataCleaningTask; diagnostics: PrepDiagnostic[] }> {
+    return this.runExclusive(
+      () => this.runTaskUnsafe(id, { ...input, outputMode: 'temporary' }, false),
+      `validateTaskWorkflow:${id}`
+    );
+  }
+
+  async commitValidatedTaskOutput(
+    id: string,
+    temporaryTask: DataCleaningTask,
+    workflow: DataWorkflowSaveInput
+  ): Promise<DataCleaningTask> {
+    return this.runExclusive(async () => {
+      await this.ensureReady();
+      const task = await this.requireTask(id);
+      const temporaryTable = temporaryTask.outputTable;
+      if (!temporaryTable || !(await this.physicalTableExists(temporaryTable))) {
+        throw new Error('Validated temporary task output is no longer available');
+      }
+      const runtimeWorkflow = normalizeRuntimeWorkflowInput(id, workflow, this.now());
+      const outputNode = runtimeWorkflow.nodes.find((node) => node.type === 'output');
+      const target = await this.resolveWorkflowOutputTarget(
+        outputNode,
+        task.outputTable || tableNameFromId('clean_task', task.id)
+      );
+
+      await this.runSql('BEGIN TRANSACTION');
+      try {
+        await this.runSql(
+          `CREATE OR REPLACE TABLE ${quoteIdentifier(target.tableName)} AS SELECT * FROM ${quoteIdentifier(temporaryTable)}`
+        );
+        await this.runSql('COMMIT');
+      } catch (error) {
+        await this.runSql('ROLLBACK').catch(() => undefined);
+        throw error;
+      }
+
+      const rowCount = await this.countRows(target.tableName);
+      const columnCount = (await this.getTableColumns(target.tableName)).length;
+      const sourceDatasetId =
+        (await this.findWorkflowSourceDatasetId(runtimeWorkflow.nodes)) ?? task.sourceDatasetId;
+      await this.upsertDatasetForTaskOutput(
+        task.name,
+        temporaryTask.sourcePath,
+        target.tableName,
+        rowCount,
+        columnCount,
+        target.outputDatasetId
+      );
+      const completedAt = this.now();
+      await this.metaRunSql(
+        `
+          UPDATE data_cleaning_tasks
+          SET status = 'completed',
+              node_count = $nodeCount,
+              source_path = $sourcePath,
+              source_dataset_id = $sourceDatasetId,
+              output_table = $outputTable,
+              row_count = $rowCount,
+              column_count = $columnCount,
+              last_run_at = $lastRunAt,
+              updated_at = $updatedAt,
+              error = NULL
+          WHERE id = $id
+        `,
+        {
+          id,
+          nodeCount: runtimeWorkflow.nodes.length,
+          sourcePath: temporaryTask.sourcePath,
+          sourceDatasetId,
+          outputTable: target.tableName,
+          rowCount,
+          columnCount,
+          lastRunAt: completedAt,
+          updatedAt: completedAt,
+        }
+      );
+      await this.dropTableIfExists(temporaryTable);
+      return this.requireTask(id);
+    }, `commitValidatedTaskOutput:${id}`);
+  }
+
+  async discardTemporaryTaskOutput(task: DataCleaningTask): Promise<void> {
+    const tableName = task.outputTable;
+    if (!tableName || !tableName.startsWith('temp_task_')) return;
+    await this.runExclusive(() => this.dropTableIfExists(tableName), `discardTemporary:${task.id}`);
+  }
+
+  async cleanupTemporaryTaskResources(taskId: string): Promise<void> {
+    await this.runExclusive(async () => {
+      await this.ensureReady();
+      const rows = await this.metaQueryRows<DataWorkflowNodeCacheRow>(
+        `
+          SELECT *
+          FROM data_workflow_node_caches
+          WHERE task_id = $taskId
+            AND cache_scope = 'temporary'
+        `,
+        { taskId }
+      );
+      for (const tableName of new Set(rows.map((row) => String(row.table_name)))) {
+        await this.dropTableIfExists(tableName).catch(() => undefined);
+      }
+      await this.metaRunSql(
+        `
+          DELETE FROM data_workflow_node_caches
+          WHERE task_id = $taskId
+            AND cache_scope = 'temporary'
+        `,
+        { taskId }
+      );
+    }, `cleanupTemporaryTaskResources:${taskId}`);
+  }
+
+  private async runTaskUnsafe(
+    id: string,
+    input: DataRunTaskInput,
+    recordTaskState: boolean
+  ): Promise<{ task: DataCleaningTask; diagnostics: PrepDiagnostic[] }> {
+    const diagnostics: PrepDiagnostic[] = [];
     await this.ensureReady();
     await this.cleanupExpiredWorkflowNodeCaches();
     const task = await this.requireTask(id);
@@ -914,8 +1037,9 @@ export class DataTaskStore {
       input.outputMode === 'temporary' ? 'temporary' : 'persisted';
     if (!sourcePath && workflowRequiresTaskSource(runtimeWorkflow.nodes)) {
       const message = 'Data source file is required before running a cleaning task';
-      await this.metaRunSql(
-        `
+      if (recordTaskState) {
+        await this.metaRunSql(
+          `
           UPDATE data_cleaning_tasks
           SET status = 'failed',
               error = $error,
@@ -923,12 +1047,14 @@ export class DataTaskStore {
               last_run_at = $lastRunAt
           WHERE id = $id
         `,
-        { id, error: message, updatedAt: startedAt, lastRunAt: startedAt }
-      );
+          { id, error: message, updatedAt: startedAt, lastRunAt: startedAt }
+        );
+      }
       throw new Error(message);
     }
-    await this.metaRunSql(
-      `
+    if (recordTaskState) {
+      await this.metaRunSql(
+        `
         UPDATE data_cleaning_tasks
         SET status = 'running',
             source_path = $sourcePath,
@@ -936,16 +1062,33 @@ export class DataTaskStore {
             updated_at = $updatedAt
         WHERE id = $id
       `,
-      { id, sourcePath, updatedAt: startedAt }
-    );
+        { id, sourcePath, updatedAt: startedAt }
+      );
+    }
 
     try {
       const result = await this.cleanSourceIntoTaskOutput(
         task,
         sourcePath,
         runtimeWorkflow,
-        outputMode
+        outputMode,
+        diagnostics
       );
+      if (!recordTaskState) {
+        return {
+          task: {
+            ...task,
+            status: 'completed',
+            sourcePath,
+            sourceDatasetId: result.sourceDatasetId,
+            outputTable: result.outputTable,
+            rowCount: result.rowCount,
+            columnCount: result.columnCount,
+            error: null,
+          },
+          diagnostics,
+        };
+      }
       const completedAt = this.now();
       const nodeCount = await this.countWorkflowNodes(id);
       await this.metaRunSql(
@@ -975,15 +1118,16 @@ export class DataTaskStore {
           updatedAt: completedAt,
         }
       );
-      return this.requireTask(id);
+      return { task: await this.requireTask(id), diagnostics };
     } catch (error) {
       const failedAt = this.now();
       const message = error instanceof Error ? error.message : String(error);
       if (isDuckDbTransactionStateError(message)) {
         await this.recoverDuckDbTransactionState();
       }
-      await this.metaRunSql(
-        `
+      if (recordTaskState) {
+        await this.metaRunSql(
+          `
           UPDATE data_cleaning_tasks
           SET status = 'failed',
               error = $error,
@@ -991,8 +1135,9 @@ export class DataTaskStore {
               last_run_at = $lastRunAt
           WHERE id = $id
         `,
-        { id, error: message, updatedAt: failedAt, lastRunAt: failedAt }
-      );
+          { id, error: message, updatedAt: failedAt, lastRunAt: failedAt }
+        );
+      }
       throw error;
     }
   }
@@ -1802,6 +1947,18 @@ export class DataTaskStore {
     return true;
   }
 
+  /** Remove a failed, newly generated task without deleting its bound output. */
+  async deleteTaskMetadataOnly(id: string): Promise<boolean> {
+    await this.ensureMetadataReady();
+    const task = await this.getTask(id);
+    if (!task) return false;
+    await this.deleteWorkflowNodeCachesForTask(id);
+    await this.metaRunSql('DELETE FROM data_workflow_edges WHERE task_id = $id', { id });
+    await this.metaRunSql('DELETE FROM data_workflow_nodes WHERE task_id = $id', { id });
+    await this.metaRunSql('DELETE FROM data_cleaning_tasks WHERE id = $id', { id });
+    return true;
+  }
+
   async deleteDataset(id: string): Promise<boolean> {
     await this.ensureReady();
     const dataset = await this.getDataset(id);
@@ -2428,7 +2585,8 @@ export class DataTaskStore {
     task: DataCleaningTask,
     sourcePath: string | null,
     workflow: RuntimeWorkflow,
-    outputMode: WorkflowOutputMode
+    outputMode: WorkflowOutputMode,
+    diagnostics: PrepDiagnostic[]
   ): Promise<{
     outputTable: string;
     rowCount: number;
@@ -2441,7 +2599,8 @@ export class DataTaskStore {
         sourcePath,
         workflow.nodes,
         workflow.edges,
-        outputMode
+        outputMode,
+        diagnostics
       );
     }
 
@@ -2497,7 +2656,8 @@ export class DataTaskStore {
     sourcePath: string | null,
     nodes: DataWorkflowNode[],
     edges: DataWorkflowEdge[],
-    outputMode: WorkflowOutputMode
+    outputMode: WorkflowOutputMode,
+    diagnostics: PrepDiagnostic[]
   ): Promise<{
     outputTable: string;
     rowCount: number;
@@ -2588,7 +2748,13 @@ export class DataTaskStore {
         }
 
         await this.dropTableIfExists(outputRelation);
-        const sql = await this.compileWorkflowNodeSql(node, outputRelation, relationByNode, edges);
+        const sql = await this.compileWorkflowNodeSql(
+          node,
+          outputRelation,
+          relationByNode,
+          edges,
+          diagnostics
+        );
         await this.runSql(toPersistentCreateTableSql(sql));
         relationByNode.set(node.id, outputRelation);
         await this.registerWorkflowNodeCache(node, outputRelation, cacheScope, cacheExpiresAt);
@@ -2918,19 +3084,14 @@ export class DataTaskStore {
     node: DataWorkflowNode,
     outputRelation: string,
     relationByNode: Map<string, string>,
-    edges: DataWorkflowEdge[]
+    edges: DataWorkflowEdge[],
+    diagnostics: PrepDiagnostic[]
   ): Promise<string> {
     if (node.type === 'join') {
       return this.compileJoinSql(node, outputRelation, relationByNode, edges);
     }
     if (node.type === 'set_op') {
-      return this.compileSetOpSql(
-        node,
-        outputRelation,
-        relationByNode,
-        edges,
-        this._executionDiagnostics
-      );
+      return this.compileSetOpSql(node, outputRelation, relationByNode, edges, diagnostics);
     }
     const inputId = this.findIncomingNodeId(node.id, edges, 'input');
     const inputRelation = inputId ? relationByNode.get(inputId) : null;

@@ -412,7 +412,7 @@ describe('DataCommandService', () => {
     expect(persistedRun.task.status).toBe('completed');
     expect(persistedRun.task.sourceDatasetId).toBe(input.inputTable.id);
     expect(persistedRun.preview?.totalRows).toBe(2);
-    expect(onTaskCompleted).toHaveBeenCalledTimes(2);
+    expect(onTaskCompleted).toHaveBeenCalledTimes(1);
     expect(onTaskCompleted).toHaveBeenLastCalledWith(persistedRun.task);
 
     const exported = await service.exportWorkflowDsl({ taskId: task.task.id });
@@ -442,6 +442,119 @@ describe('DataCommandService', () => {
       code: 'invalidDslFormat',
     });
     expect(result.diagnostics?.[0]?.message).toContain('not JSON');
+  });
+
+  it('reuses an LRU-cached compiled workflow candidate', async () => {
+    const { service, store, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'candidate-cache.csv');
+    fs.writeFileSync(csvPath, 'id\n1\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'candidate cache input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+    const task = await service.createTask({ name: 'candidate cache task' });
+    const lookupSpy = vi.spyOn(store, 'getInputTableRecord');
+    const dsl = `input source dataset "${input.inputTable.id}" as src\n  | output table "cache result" mode replace`;
+
+    await service.applyWorkflowDsl({
+      taskId: task.task.id,
+      dsl,
+      inputTableId: input.inputTable.id,
+      dryRun: true,
+    });
+    await service.applyWorkflowDsl({
+      taskId: task.task.id,
+      dsl,
+      inputTableId: input.inputTable.id,
+      dryRun: true,
+    });
+
+    expect(lookupSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('saves a requested workflow only after task execution succeeds', async () => {
+    const { service, store, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'save-after-run.csv');
+    fs.writeFileSync(csvPath, 'id\n1\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'save after run input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+    const output = await service.createOutputTable({ name: 'save after run output' });
+    const task = await service.createTask({
+      name: 'save after run task',
+      sourceInputTableId: input.inputTable.id,
+      outputTableId: output.outputTable.id,
+    });
+    const runSpy = vi
+      .spyOn(store, 'runTaskWithDiagnostics')
+      .mockRejectedValueOnce(new Error('execution failed'));
+    const saveSpy = vi.spyOn(store, 'saveTaskWorkflow');
+
+    await expect(
+      service.runTask({
+        taskId: task.task.id,
+        mode: 'persisted',
+        workflowDsl: `input source dataset "${input.inputTable.id}" as src\n  | output table "${output.outputTable.name}" mode replace`,
+        outputTableId: output.outputTable.id,
+        saveWorkflow: true,
+      })
+    ).rejects.toMatchObject({ code: 'RUN_FAILED' });
+
+    expect(runSpy).toHaveBeenCalledTimes(1);
+    expect(saveSpy).not.toHaveBeenCalled();
+  });
+
+  it('serializes concurrent operations for the same task', async () => {
+    const { service, store } = createService();
+    const task = await service.createTask({ name: 'keyed lock task' });
+    let releaseFirst!: () => void;
+    const firstBlocked = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let callCount = 0;
+    vi.spyOn(store, 'runTaskWithDiagnostics').mockImplementation(async () => {
+      callCount += 1;
+      if (callCount === 1) await firstBlocked;
+      return { task: { ...task.task, status: 'completed' }, diagnostics: [] };
+    });
+
+    const first = service.runTask({ taskId: task.task.id, mode: 'persisted' });
+    await vi.waitFor(() => expect(callCount).toBe(1));
+    const second = service.runTask({ taskId: task.task.id, mode: 'persisted' });
+    await Promise.resolve();
+    expect(callCount).toBe(1);
+
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(callCount).toBe(2);
+  });
+
+  it('cleans temporary task resources after returning the preview', async () => {
+    const { service, store, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'temporary.csv');
+    fs.writeFileSync(csvPath, 'id\n1\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'temporary input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+    const task = await service.createTask({
+      name: 'temporary cleanup task',
+      sourceInputTableId: input.inputTable.id,
+    });
+    const cleanupSpy = vi.spyOn(store, 'cleanupTemporaryTaskResources');
+
+    const result = await service.runTask({
+      taskId: task.task.id,
+      mode: 'temporary',
+      workflowDsl: `input source dataset "${input.inputTable.id}" as src\n  | output table "temporary result" mode replace`,
+    });
+
+    expect(result.preview?.totalRows).toBe(1);
+    expect(cleanupSpy).toHaveBeenCalledWith(task.task.id);
   });
 
   it('reports duplicate names with stable command errors', async () => {
@@ -2139,6 +2252,42 @@ describe('DataCommandService', () => {
         runtimeConfig: testRuntimeConfig,
       })
     ).rejects.toMatchObject({ code: 'GENERATION_FAILED' });
+
+    const tasks = await service.listTasks({ query: 'market input_自动处理' });
+    const outputs = await service.listOutputTables({ query: 'market processed' });
+    expect(tasks.tasks).toHaveLength(0);
+    expect(outputs.outputTables).toHaveLength(0);
+  });
+
+  it('does not delete a reused output table when generation fails', async () => {
+    vi.mocked(runPiAiOneShot).mockRejectedValueOnce(new Error('model unavailable'));
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'market.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'market input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+    const existingOutput = await service.createOutputTable({ name: 'market processed' });
+
+    await expect(
+      service.generateTaskFromRequirement({
+        source: { location: 'local', tableId: input.inputTable.id },
+        processRequirement: '复制数据',
+        output: {
+          location: 'local',
+          writeMode: 'create',
+          tableName: existingOutput.outputTable.name,
+          localOutputTableId: existingOutput.outputTable.id,
+        },
+        runtimeConfig: testRuntimeConfig,
+      })
+    ).rejects.toMatchObject({ code: 'GENERATION_FAILED' });
+
+    const outputs = await service.listOutputTables({ query: 'market processed' });
+    expect(outputs.outputTables.map((table) => table.id)).toContain(existingOutput.outputTable.id);
+    expect((await service.listTasks({ query: 'market input_自动处理' })).tasks).toHaveLength(0);
   });
 
   it('reuses generated task and output table when regenerating', async () => {
@@ -2449,6 +2598,7 @@ describe('DataCommandService', () => {
         location: 'cloud',
         tableId: 'tbl-a0440000',
         tableName: '10题',
+        updatedAt: '2026-07-16T10:00:00Z',
       },
       processRequirement: '过滤掉Market是EU的数据',
       output: {
@@ -2463,6 +2613,7 @@ describe('DataCommandService', () => {
         location: 'cloud',
         tableId: 'tbl-a0440000',
         tableName: '10题',
+        updatedAt: '2026-07-16T10:00:00Z',
       },
       processRequirement: '过滤掉Market是EU的数据',
       output: {
@@ -2480,6 +2631,11 @@ describe('DataCommandService', () => {
     expect(second.version).toBe(2);
     expect(mirrors.inputTables).toHaveLength(1);
     expect(mirrors.inputTables[0]?.name).toBe('10题_自动化镜像_tbl-a044');
+    expect(
+      fetchMock.mock.calls.filter(([url]) =>
+        String(url).endsWith('/api/personal/analysis/v1/tables/tbl-a0440000/exports')
+      )
+    ).toHaveLength(1);
   });
 
   it('rejects generated DSL that references columns not in the source schema', async () => {
@@ -2571,6 +2727,21 @@ describe('DataCommandService', () => {
       outputTableId: output.outputTable.id,
     });
 
+    await service.runGeneratedTask({
+      taskId: task.task.id,
+      workflowDsl: `input source dataset "${input.inputTable.id}" as src\n  | output table "${output.outputTable.name}" mode replace`,
+      source: { location: 'local', tableId: input.inputTable.id },
+      output: {
+        location: 'local',
+        writeMode: 'replace',
+        targetTableId: output.outputTable.id,
+      },
+      expectedOutputSchema: [
+        { name: 'Market', type: 'text' },
+        { name: 'Sales', type: 'integer' },
+      ],
+    });
+
     await expect(
       service.runGeneratedTask({
         taskId: task.task.id,
@@ -2592,6 +2763,13 @@ describe('DataCommandService', () => {
       code: 'VALIDATION_FAILED',
       message: expect.stringContaining('output column mismatch'),
     });
+
+    const preview = await service.previewTable({
+      tableKind: 'output',
+      id: output.outputTable.id,
+    });
+    expect(preview.preview.columns).toEqual(['Market', 'Sales']);
+    expect(preview.preview.totalRows).toBe(2);
   });
 
   it('validates generated output schema against runtime output instead of source table', async () => {
@@ -2639,6 +2817,14 @@ describe('DataCommandService', () => {
     });
 
     expect(result.preview?.columns).toEqual(['Market', 'Sales']);
+    expect(result.workflowHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.stageDurationsMs).toEqual({
+      prepare: expect.any(Number),
+      compile: expect.any(Number),
+      executeAndValidate: expect.any(Number),
+      upload: 0,
+      total: expect.any(Number),
+    });
   });
 });
 

@@ -200,6 +200,7 @@ export function createGeneratedCloudTableProcessNode(
     }>;
     columnsSnapshot: Array<{ name: string; type?: string }>;
     sourceSummaryHash: string;
+    workflowHash: string;
     version: number;
     generatedAt: number;
   }
@@ -224,6 +225,8 @@ export function createGeneratedCloudTableProcessNode(
         folderId: config.source.folderId,
         columnsSnapshot: result.columnsSnapshot,
         requiredColumns: result.requiredColumns,
+        updatedAt: config.source.updatedAt,
+        contentHash: config.source.contentHash,
       },
       output: {
         location: getOutputLocation(config),
@@ -241,6 +244,7 @@ export function createGeneratedCloudTableProcessNode(
       lineage: result.lineage ?? [],
       columnsSnapshot: result.columnsSnapshot,
       sourceSummaryHash: result.sourceSummaryHash,
+      workflowHash: result.workflowHash,
       generatedVersion: result.version,
       generatedAt: result.generatedAt,
       schemaPolicy: 'required_subset',

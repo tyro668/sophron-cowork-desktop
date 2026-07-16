@@ -1,4 +1,6 @@
 import type { DataTaskStore } from './data-task-store';
+import { createHash } from 'crypto';
+import { readFile } from 'fs/promises';
 import {
   compilePrepWorkflowToFlow,
   exportPrepWorkflowDsl,
@@ -111,11 +113,22 @@ const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 100;
 const DEFAULT_PREVIEW_LIMIT = 20;
 const MAX_PREVIEW_LIMIT = 100;
+const WORKFLOW_CANDIDATE_CACHE_LIMIT = 100;
 
 interface WorkflowResourceBindings {
   inputTableId?: string;
   inputAlias?: string;
   outputTableId?: string;
+}
+
+interface CompiledWorkflowCandidate {
+  workflow: WorkflowSaveShape;
+  diagnostics: PrepDiagnostic[];
+}
+
+interface ResolvedGeneratedOutputTable {
+  outputTable: DataOutputTable;
+  created: boolean;
 }
 
 interface DataCommandServiceOptions {
@@ -128,6 +141,7 @@ export class DataCommandService {
   private readonly outputTables: OutputTablesCommandService;
   private readonly cloudAnalysis: CloudAnalysisCommandService;
   private readonly keyedLocks = new Map<string, Promise<void>>();
+  private readonly workflowCandidateCache = new Map<string, Promise<CompiledWorkflowCandidate>>();
 
   constructor(
     private readonly store: DataTaskStore,
@@ -186,83 +200,112 @@ export class DataCommandService {
       input.source,
       preparedInput.inputTable.name
     );
-    const outputTable = await this.resolveGeneratedOutputTable(input.output, displayInputTableName);
+    const resolvedOutput = await this.resolveGeneratedOutputTable(
+      input.output,
+      displayInputTableName
+    );
+    const outputTable = resolvedOutput.outputTable;
     const reusableTask = await this.resolveReusableGeneratedTask(input.reuseTaskId);
-    const task =
-      reusableTask ??
-      (
-        await this.createTask({
-          name: await this.createUniqueTaskName(`${displayInputTableName || '数据表'}_自动处理`),
-          sourceInputTableId: preparedInput.inputTable.id,
+    let createdTaskId: string | undefined;
+    let task: DataCleaningTask;
+    try {
+      task =
+        reusableTask ??
+        (
+          await this.createTask({
+            name: await this.createUniqueTaskName(`${displayInputTableName || '数据表'}_自动处理`),
+            sourceInputTableId: preparedInput.inputTable.id,
+            outputTableId: outputTable.id,
+          })
+        ).task;
+    } catch (error) {
+      if (resolvedOutput.created) {
+        await this.store.deleteDataset(outputTable.id).catch(() => undefined);
+      }
+      throw error;
+    }
+    if (!reusableTask) createdTaskId = task.id;
+    try {
+      return await this.withKeyedLock(`task:${task.id}`, async () => {
+        let generated = await generateWorkflowDslFromRequirement({
+          inputTableId: preparedInput.inputTable.id,
+          outputTableName: outputTable.name,
+          requirement: processRequirement,
+          columns: preparedInput.columnsSnapshot,
+          runtimeConfig: input.runtimeConfig,
+        });
+        let validation = await this.validateGeneratedWorkflowCandidate({
+          taskId: task.id,
+          inputTableId: preparedInput.inputTable.id,
           outputTableId: outputTable.id,
-        })
-      ).task;
-    let generated = await generateWorkflowDslFromRequirement({
-      inputTableId: preparedInput.inputTable.id,
-      outputTableName: outputTable.name,
-      requirement: processRequirement,
-      columns: preparedInput.columnsSnapshot,
-      runtimeConfig: input.runtimeConfig,
-    });
-    let validation = await this.validateGeneratedWorkflowCandidate({
-      taskId: task.id,
-      inputTableId: preparedInput.inputTable.id,
-      outputTableId: outputTable.id,
-      columns: preparedInput.columnsSnapshot,
-      generated,
-    });
-    generated = validation.generated ?? generated;
-    let validationErrors = diagnosticsWithSeverity(validation.diagnostics, 'error');
-    for (
-      let repairAttempt = 0;
-      validationErrors.length > 0 && repairAttempt < GENERATED_WORKFLOW_CONFIG_REPAIR_ATTEMPTS;
-      repairAttempt += 1
-    ) {
-      generated = await repairWorkflowDslFromDiagnostics({
-        inputTableId: preparedInput.inputTable.id,
-        outputTableName: outputTable.name,
-        requirement: processRequirement,
-        columns: preparedInput.columnsSnapshot,
-        runtimeConfig: input.runtimeConfig,
-        failedWorkflowDsl: generated.workflowDsl,
-        diagnostics: validationErrors,
+          columns: preparedInput.columnsSnapshot,
+          generated,
+        });
+        generated = validation.generated ?? generated;
+        let validationErrors = diagnosticsWithSeverity(validation.diagnostics, 'error');
+        for (
+          let repairAttempt = 0;
+          validationErrors.length > 0 &&
+          validationErrors.every(isGeneratedWorkflowDiagnosticRepairable) &&
+          repairAttempt < GENERATED_WORKFLOW_CONFIG_REPAIR_ATTEMPTS;
+          repairAttempt += 1
+        ) {
+          generated = await repairWorkflowDslFromDiagnostics({
+            inputTableId: preparedInput.inputTable.id,
+            outputTableName: outputTable.name,
+            requirement: processRequirement,
+            columns: preparedInput.columnsSnapshot,
+            runtimeConfig: input.runtimeConfig,
+            failedWorkflowDsl: generated.workflowDsl,
+            diagnostics: validationErrors,
+          });
+          validation = await this.validateGeneratedWorkflowCandidate({
+            taskId: task.id,
+            inputTableId: preparedInput.inputTable.id,
+            outputTableId: outputTable.id,
+            columns: preparedInput.columnsSnapshot,
+            generated,
+          });
+          generated = validation.generated ?? generated;
+          validationErrors = diagnosticsWithSeverity(validation.diagnostics, 'error');
+        }
+        if (validationErrors.length > 0) {
+          throw new DataCommandError('DSL_PARSE_FAILED', summarizeDiagnostics(validationErrors), {
+            diagnostics: validation.diagnostics,
+          });
+        }
+        if (!validation.candidate) {
+          throw new DataCommandError(
+            'VALIDATION_FAILED',
+            'Generated workflow validation completed without a compiled candidate'
+          );
+        }
+        await this.store.saveTaskWorkflow(task.id, validation.candidate.workflow);
+        return {
+          taskId: task.id,
+          taskName: task.name,
+          outputTableId: outputTable.id,
+          outputTableName: outputTable.name,
+          workflowDsl: generated.workflowDsl,
+          requiredColumns: generated.requiredColumns,
+          expectedOutputSchema: generated.expectedOutputSchema,
+          lineage: generated.lineage,
+          columnsSnapshot: preparedInput.columnsSnapshot,
+          sourceSummaryHash: hashColumns(preparedInput.columnsSnapshot),
+          workflowHash: hashText(generated.workflowDsl),
+          version: nextGeneratedTaskVersion(input.currentVersion),
+          generatedAt: Date.now(),
+        };
       });
-      validation = await this.validateGeneratedWorkflowCandidate({
-        taskId: task.id,
-        inputTableId: preparedInput.inputTable.id,
-        outputTableId: outputTable.id,
-        columns: preparedInput.columnsSnapshot,
-        generated,
-      });
-      generated = validation.generated ?? generated;
-      validationErrors = diagnosticsWithSeverity(validation.diagnostics, 'error');
+    } catch (error) {
+      if (createdTaskId) {
+        await this.store.deleteTaskMetadataOnly(createdTaskId).catch(() => undefined);
+      }
+      if (resolvedOutput.created) {
+        await this.store.deleteDataset(outputTable.id).catch(() => undefined);
+      }
+      throw error;
     }
-    if (validationErrors.length > 0) {
-      throw new DataCommandError('DSL_PARSE_FAILED', summarizeDiagnostics(validationErrors), {
-        diagnostics: validation.diagnostics,
-      });
-    }
-    await this.applyWorkflowDsl({
-      taskId: task.id,
-      dsl: generated.workflowDsl,
-      inputTableId: preparedInput.inputTable.id,
-      outputTableId: outputTable.id,
-      dryRun: false,
-    });
-    return {
-      taskId: task.id,
-      taskName: task.name,
-      outputTableId: outputTable.id,
-      outputTableName: outputTable.name,
-      workflowDsl: generated.workflowDsl,
-      requiredColumns: generated.requiredColumns,
-      expectedOutputSchema: generated.expectedOutputSchema,
-      lineage: generated.lineage,
-      columnsSnapshot: preparedInput.columnsSnapshot,
-      sourceSummaryHash: hashColumns(preparedInput.columnsSnapshot),
-      version: nextGeneratedTaskVersion(input.currentVersion),
-      generatedAt: Date.now(),
-    };
   }
 
   async listOutputTables(input: ListInputTablesInput = {}): Promise<ListOutputTablesResult> {
@@ -403,6 +446,10 @@ export class DataCommandService {
   }
 
   async applyWorkflowDsl(input: ApplyWorkflowDslCommand): Promise<WorkflowResult> {
+    return this.withKeyedLock(`task:${input.taskId}`, () => this.applyWorkflowDslUnlocked(input));
+  }
+
+  private async applyWorkflowDslUnlocked(input: ApplyWorkflowDslCommand): Promise<WorkflowResult> {
     await this.requireTask(input.taskId);
     const compiled = await this.compileWorkflowDsl(input.dsl, {
       inputTableId: input.inputTableId,
@@ -434,6 +481,14 @@ export class DataCommandService {
   }
 
   async configureInputOperator(input: ConfigureInputOperatorCommand): Promise<WorkflowResult> {
+    return this.withKeyedLock(`task:${input.taskId}`, () =>
+      this.configureInputOperatorUnlocked(input)
+    );
+  }
+
+  private async configureInputOperatorUnlocked(
+    input: ConfigureInputOperatorCommand
+  ): Promise<WorkflowResult> {
     const workflow = await this.store.getTaskWorkflow(input.taskId);
     const inputTable = await this.requireInputTable(input.inputTableId);
     const node = findWorkflowNode(workflow, input.nodeId);
@@ -460,6 +515,10 @@ export class DataCommandService {
   }
 
   async applyOperatorDsl(input: ApplyOperatorDslCommand): Promise<WorkflowResult> {
+    return this.withKeyedLock(`task:${input.taskId}`, () => this.applyOperatorDslUnlocked(input));
+  }
+
+  private async applyOperatorDslUnlocked(input: ApplyOperatorDslCommand): Promise<WorkflowResult> {
     const workflow = await this.store.getTaskWorkflow(input.taskId);
     const node = findWorkflowNode(workflow, input.nodeId);
     if (node.type === 'input_source' || node.type === 'output') {
@@ -498,6 +557,14 @@ export class DataCommandService {
   }
 
   async configureOutputOperator(input: ConfigureOutputOperatorCommand): Promise<WorkflowResult> {
+    return this.withKeyedLock(`task:${input.taskId}`, () =>
+      this.configureOutputOperatorUnlocked(input)
+    );
+  }
+
+  private async configureOutputOperatorUnlocked(
+    input: ConfigureOutputOperatorCommand
+  ): Promise<WorkflowResult> {
     const workflow = await this.store.getTaskWorkflow(input.taskId);
     const node = findWorkflowNode(workflow, input.nodeId);
     if (node.type !== 'output') {
@@ -549,7 +616,11 @@ export class DataCommandService {
     outputTableId: string;
     columns: DataAutomationColumnSnapshot[];
     generated: GeneratedWorkflowGenerationResult;
-  }): Promise<{ diagnostics: PrepDiagnostic[]; generated?: GeneratedWorkflowGenerationResult }> {
+  }): Promise<{
+    diagnostics: PrepDiagnostic[];
+    generated?: GeneratedWorkflowGenerationResult;
+    candidate?: CompiledWorkflowCandidate;
+  }> {
     const contractDiagnostics = validateGeneratedWorkflowGenerationContract(
       input.generated,
       input.columns
@@ -558,28 +629,31 @@ export class DataCommandService {
       return { diagnostics: contractDiagnostics };
     }
 
-    const dryRun = await this.applyWorkflowDsl({
-      taskId: input.taskId,
-      dsl: input.generated.workflowDsl,
+    const candidate = await this.compileWorkflowDsl(input.generated.workflowDsl, {
       inputTableId: input.inputTableId,
       outputTableId: input.outputTableId,
-      dryRun: true,
     });
-    const dryRunDiagnostics = dryRun.diagnostics ?? [];
+    const dryRunDiagnostics = candidate.diagnostics;
     if (diagnosticsWithSeverity(dryRunDiagnostics, 'error').length > 0) {
       return { diagnostics: dryRunDiagnostics };
     }
 
+    let temporaryTask: DataCleaningTask | undefined;
     try {
-      const temporaryRun = await this.runTask({
-        taskId: input.taskId,
-        mode: 'temporary',
-        workflowDsl: input.generated.workflowDsl,
-        saveWorkflow: false,
-        inputTableId: input.inputTableId,
-        outputTableId: input.outputTableId,
-        previewRows: 20,
+      const temporaryExecution = await this.store.validateTaskWorkflow(input.taskId, {
+        workflow: candidate.workflow,
       });
+      temporaryTask = temporaryExecution.task;
+      const temporaryRun: RunTaskResult = {
+        task: temporaryExecution.task,
+        preview: await this.previewTaskOutput(
+          input.taskId,
+          temporaryExecution.task,
+          20,
+          candidate.workflow
+        ),
+        diagnostics: temporaryExecution.diagnostics,
+      };
       const outputSchemaDiagnostics = validateGeneratedOutputPreviewSchema(
         temporaryRun.preview,
         input.generated.expectedOutputSchema
@@ -596,6 +670,7 @@ export class DataCommandService {
       );
       return {
         generated,
+        candidate,
         diagnostics: [
           ...dryRunDiagnostics,
           ...(temporaryRun.diagnostics ?? []),
@@ -614,10 +689,18 @@ export class DataCommandService {
           },
         ],
       };
+    } finally {
+      if (temporaryTask) {
+        await this.store.cleanupTemporaryTaskResources(input.taskId).catch(() => undefined);
+      }
     }
   }
 
   async runTask(input: RunTaskCommand): Promise<RunTaskResult> {
+    return this.withKeyedLock(`task:${input.taskId}`, () => this.runTaskUnlocked(input));
+  }
+
+  private async runTaskUnlocked(input: RunTaskCommand): Promise<RunTaskResult> {
     await this.requireTask(input.taskId);
     const outputMode = input.mode === 'persisted' ? 'persisted' : 'temporary';
     let compiled: { workflow: WorkflowSaveShape; diagnostics: PrepDiagnostic[] } | null = null;
@@ -633,19 +716,27 @@ export class DataCommandService {
           diagnostics: compiled.diagnostics,
         });
       }
-      if (input.saveWorkflow) {
-        await this.store.saveTaskWorkflow(input.taskId, compiled.workflow);
-      }
     }
 
     const runInput: DataRunTaskInput = { outputMode };
-    if (compiled && !input.saveWorkflow) {
+    if (compiled) {
       runInput.workflow = compiled.workflow;
     }
 
+    let temporaryTask: DataCleaningTask | undefined;
     try {
-      const task = await this.store.runTask(input.taskId, runInput);
-      this.options.onTaskCompleted?.(task);
+      const execution =
+        outputMode === 'temporary'
+          ? await this.store.validateTaskWorkflow(input.taskId, runInput)
+          : await this.store.runTaskWithDiagnostics(input.taskId, runInput);
+      const task = execution.task;
+      if (outputMode === 'temporary') temporaryTask = task;
+      if (compiled && input.saveWorkflow) {
+        await this.store.saveTaskWorkflow(input.taskId, compiled.workflow);
+      }
+      if (outputMode === 'persisted') {
+        this.options.onTaskCompleted?.(task);
+      }
       const preview = await this.previewTaskOutput(
         input.taskId,
         task,
@@ -655,14 +746,24 @@ export class DataCommandService {
       return {
         task,
         preview,
-        diagnostics: [...(compiled?.diagnostics ?? []), ...this.store.getExecutionDiagnostics()],
+        diagnostics: [...(compiled?.diagnostics ?? []), ...execution.diagnostics],
       };
     } catch (error) {
       throw toCommandError(error, 'RUN_FAILED');
+    } finally {
+      if (temporaryTask || outputMode === 'temporary') {
+        await this.store.cleanupTemporaryTaskResources(input.taskId).catch(() => undefined);
+      }
     }
   }
 
   async runGeneratedTask(input: RunGeneratedTaskCommand): Promise<RunGeneratedTaskResult> {
+    return this.withKeyedLock(`task:${input.taskId}`, () => this.runGeneratedTaskUnlocked(input));
+  }
+
+  private async runGeneratedTaskUnlocked(
+    input: RunGeneratedTaskCommand
+  ): Promise<RunGeneratedTaskResult> {
     const startedAt = Date.now();
     const prepareStartedAt = Date.now();
     const preparedInput = await this.prepareGeneratedTaskInput({
@@ -676,71 +777,112 @@ export class DataCommandService {
       input.requiredColumns ?? [],
       input.schemaPolicy ?? 'required_subset'
     );
-    const outputTable = await this.resolveGeneratedOutputTable(
+    const { outputTable } = await this.resolveGeneratedOutputTable(
       input.output,
       preparedInput.inputTable.name
     );
+    const compileStartedAt = Date.now();
+    const candidate = await this.compileWorkflowDsl(input.workflowDsl, {
+      inputTableId: preparedInput.inputTable.id,
+      outputTableId: outputTable.id,
+    });
+    const candidateErrors = diagnosticsWithSeverity(candidate.diagnostics, 'error');
+    if (candidateErrors.length > 0) {
+      throw new DataCommandError('DSL_PARSE_FAILED', summarizeDiagnostics(candidateErrors), {
+        diagnostics: candidate.diagnostics,
+      });
+    }
+    const compileDurationMs = Date.now() - compileStartedAt;
+    const workflowHash = hashText(input.workflowDsl);
     const runStartedAt = Date.now();
-    const result = await this.runTask({
-      taskId: input.taskId,
-      mode: input.mode ?? 'persisted',
-      workflowDsl: input.workflowDsl,
-      saveWorkflow: false,
-      inputTableId: preparedInput.inputTable.id,
-      outputTableId: outputTable.id,
-      previewRows: input.previewRows,
+    const temporaryExecution = await this.store.validateTaskWorkflow(input.taskId, {
+      workflow: candidate.workflow,
     });
-    const outputSchemaErrors = validateGeneratedOutputPreviewSchema(
-      result.preview,
-      input.expectedOutputSchema ?? []
-    );
-    if (outputSchemaErrors.length > 0) {
-      throw new DataCommandError('VALIDATION_FAILED', summarizeDiagnostics(outputSchemaErrors), {
-        diagnostics: outputSchemaErrors,
-      });
-    }
-    const runDurationMs = Date.now() - runStartedAt;
-    let uploaded: RunGeneratedTaskResult['uploaded'];
-    let uploadDurationMs = 0;
-    if (input.output.location === 'cloud') {
-      const folderId = await this.resolveCloudOutputFolderId(input);
-      if (input.output.writeMode === 'create' && !folderId) {
-        throw new DataCommandError(
-          'INVALID_ARGUMENT',
-          'Cloud output folderId is required. Please reselect the input cloud table or target project before running the automation.'
-        );
+    try {
+      const preview = await this.previewTaskOutput(
+        input.taskId,
+        temporaryExecution.task,
+        input.previewRows,
+        candidate.workflow
+      );
+      let result: RunTaskResult = {
+        task: temporaryExecution.task,
+        preview,
+        diagnostics: [...candidate.diagnostics, ...temporaryExecution.diagnostics],
+      };
+      const outputSchemaErrors = validateGeneratedOutputPreviewSchema(
+        result.preview,
+        input.expectedOutputSchema ?? []
+      );
+      if (outputSchemaErrors.length > 0) {
+        throw new DataCommandError('VALIDATION_FAILED', summarizeDiagnostics(outputSchemaErrors), {
+          diagnostics: outputSchemaErrors,
+        });
       }
-      const uploadStartedAt = Date.now();
-      uploaded = await this.uploadDataTableToCloud({
-        tableKind: 'output',
-        id: outputTable.id,
-        writeMode: input.output.writeMode === 'replace' ? 'REPLACE' : 'CREATE',
-        tableId: input.output.writeMode === 'replace' ? input.output.targetTableId : undefined,
-        tableName: input.output.tableName || outputTable.name,
-        spaceId: input.output.spaceId,
-        projectId: input.output.projectId,
-        datasourceId: input.output.datasourceId,
-        folderId,
-        waitForDone: true,
+      if ((input.mode ?? 'persisted') === 'persisted') {
+        const committedTask = await this.store.commitValidatedTaskOutput(
+          input.taskId,
+          temporaryExecution.task,
+          candidate.workflow
+        );
+        this.options.onTaskCompleted?.(committedTask);
+        result = { ...result, task: committedTask };
+      }
+      const runDurationMs = Date.now() - runStartedAt;
+      let uploaded: RunGeneratedTaskResult['uploaded'];
+      let uploadDurationMs = 0;
+      if (input.output.location === 'cloud') {
+        const folderId = await this.resolveCloudOutputFolderId(input);
+        if (input.output.writeMode === 'create' && !folderId) {
+          throw new DataCommandError(
+            'INVALID_ARGUMENT',
+            'Cloud output folderId is required. Please reselect the input cloud table or target project before running the automation.'
+          );
+        }
+        const uploadStartedAt = Date.now();
+        uploaded = await this.uploadDataTableToCloud({
+          tableKind: 'output',
+          id: outputTable.id,
+          writeMode: input.output.writeMode === 'replace' ? 'REPLACE' : 'CREATE',
+          tableId: input.output.writeMode === 'replace' ? input.output.targetTableId : undefined,
+          tableName: input.output.tableName || outputTable.name,
+          spaceId: input.output.spaceId,
+          projectId: input.output.projectId,
+          datasourceId: input.output.datasourceId,
+          folderId,
+          waitForDone: true,
+        });
+        uploadDurationMs = Date.now() - uploadStartedAt;
+      }
+      log('[DataCommandService] Generated data task finished', {
+        taskId: input.taskId,
+        workflowHash,
+        sourceLocation: input.source.location,
+        outputLocation: input.output.location,
+        prepareDurationMs,
+        compileDurationMs,
+        runDurationMs,
+        uploadDurationMs,
+        totalDurationMs: Date.now() - startedAt,
       });
-      uploadDurationMs = Date.now() - uploadStartedAt;
+      return {
+        ...result,
+        inputTableId: preparedInput.inputTable.id,
+        outputTableId: outputTable.id,
+        uploaded,
+        tokenUsage: 0,
+        workflowHash,
+        stageDurationsMs: {
+          prepare: prepareDurationMs,
+          compile: compileDurationMs,
+          executeAndValidate: runDurationMs,
+          upload: uploadDurationMs,
+          total: Date.now() - startedAt,
+        },
+      };
+    } finally {
+      await this.store.cleanupTemporaryTaskResources(input.taskId).catch(() => undefined);
     }
-    log('[DataCommandService] Generated data task finished', {
-      taskId: input.taskId,
-      sourceLocation: input.source.location,
-      outputLocation: input.output.location,
-      prepareDurationMs,
-      runDurationMs,
-      uploadDurationMs,
-      totalDurationMs: Date.now() - startedAt,
-    });
-    return {
-      ...result,
-      inputTableId: preparedInput.inputTable.id,
-      outputTableId: outputTable.id,
-      uploaded,
-      tokenUsage: 0,
-    };
   }
 
   private async resolveCloudOutputFolderId(
@@ -782,25 +924,31 @@ export class DataCommandService {
   private async resolveGeneratedOutputTable(
     output: GenerateTaskFromRequirementCommand['output'],
     inputTableName: string
-  ): Promise<DataOutputTable> {
+  ): Promise<ResolvedGeneratedOutputTable> {
     if (output.location === 'local' && output.writeMode === 'replace') {
-      return this.requireOutputTable(
-        normalizeRequiredName(output.targetTableId ?? '', 'Output table id is required')
-      );
+      return {
+        outputTable: await this.requireOutputTable(
+          normalizeRequiredName(output.targetTableId ?? '', 'Output table id is required')
+        ),
+        created: false,
+      };
     }
     const outputTableName =
       normalizeOptionalName(output.tableName) || `${inputTableName || 'processed_table'}_processed`;
     if (output.localOutputTableId) {
       const existingOutputTable = await this.store.getOutputTableRecord(output.localOutputTableId);
       if (existingOutputTable && existingOutputTable.name === outputTableName) {
-        return existingOutputTable;
+        return { outputTable: existingOutputTable, created: false };
       }
     }
     const existingOutputTable = await this.findOutputTableByExactName(outputTableName);
     if (existingOutputTable) {
-      return existingOutputTable;
+      return { outputTable: existingOutputTable, created: false };
     }
-    return (await this.createOutputTable({ name: outputTableName })).outputTable;
+    return {
+      outputTable: (await this.createOutputTable({ name: outputTableName })).outputTable,
+      created: true,
+    };
   }
 
   private async resolveReusableGeneratedTask(
@@ -830,6 +978,31 @@ export class DataCommandService {
     workflow: WorkflowSaveShape;
     diagnostics: PrepDiagnostic[];
   }> {
+    const cacheKey = hashText(JSON.stringify({ dsl, bindings }));
+    const cached = this.workflowCandidateCache.get(cacheKey);
+    if (cached) {
+      this.workflowCandidateCache.delete(cacheKey);
+      this.workflowCandidateCache.set(cacheKey, cached);
+      return cloneCompiledWorkflowCandidate(await cached);
+    }
+    const candidatePromise = this.compileWorkflowDslUncached(dsl, bindings);
+    this.workflowCandidateCache.set(cacheKey, candidatePromise);
+    while (this.workflowCandidateCache.size > WORKFLOW_CANDIDATE_CACHE_LIMIT) {
+      const oldestKey = this.workflowCandidateCache.keys().next().value;
+      if (oldestKey) this.workflowCandidateCache.delete(oldestKey);
+    }
+    try {
+      return cloneCompiledWorkflowCandidate(await candidatePromise);
+    } catch (error) {
+      this.workflowCandidateCache.delete(cacheKey);
+      throw error;
+    }
+  }
+
+  private async compileWorkflowDslUncached(
+    dsl: string,
+    bindings: WorkflowResourceBindings = {}
+  ): Promise<CompiledWorkflowCandidate> {
     if (looksLikeJson(dsl)) {
       return {
         workflow: { nodes: [], edges: [] },
@@ -1081,20 +1254,62 @@ export class DataCommandService {
   ): Promise<InputTableResult> {
     const tableId = normalizeRequiredName(source.tableId, 'Cloud table id is required');
     const mirrorName = buildAutomationCloudMirrorInputName(source.tableName, tableId);
-    const downloadStartedAt = Date.now();
-    const downloaded = await this.cloudAnalysis.previewCloudTable({
-      tableId,
-      limit: 50,
-    });
-    const downloadDurationMs = Date.now() - downloadStartedAt;
-    const mirrorStartedAt = Date.now();
     return this.withKeyedLock(`cloud-mirror:${mirrorName}`, async () => {
+      const mirrorStartedAt = Date.now();
       const existing = await this.findInputTableByExactName(mirrorName);
+      const sourceVersion = normalizeOptionalName(source.updatedAt);
+      const existingMirror =
+        existing?.inputConfig.sourceKind === 'csv' ? existing.inputConfig.cloudMirror : undefined;
+      if (
+        existing &&
+        sourceVersion &&
+        existingMirror?.tableId === tableId &&
+        existingMirror.sourceVersion === sourceVersion
+      ) {
+        const result = await this.reuseAutomationCloudMirrorInputTable(existing);
+        log('[DataCommandService] Reused unchanged cloud mirror input table', {
+          tableId,
+          mirrorName,
+          mode: 'version_hit',
+          sourceVersion,
+          mirrorDurationMs: Date.now() - mirrorStartedAt,
+        });
+        return result;
+      }
+      const downloadStartedAt = Date.now();
+      const downloaded = await this.cloudAnalysis.previewCloudTable({ tableId, limit: 50 });
+      const downloadDurationMs = Date.now() - downloadStartedAt;
+      const contentHash = source.contentHash || (await hashFile(downloaded.downloadedFilePath));
+      if (
+        existing &&
+        existingMirror?.tableId === tableId &&
+        existingMirror.contentHash === contentHash
+      ) {
+        const result = await this.reuseAutomationCloudMirrorInputTable(existing);
+        log('[DataCommandService] Reused unchanged cloud mirror input table', {
+          tableId,
+          mirrorName,
+          mode: 'hash_hit',
+          contentHash,
+          downloadDurationMs,
+          mirrorDurationMs: Date.now() - mirrorStartedAt,
+        });
+        return result;
+      }
+      const mirrorConfig = {
+        sourceKind: 'csv' as const,
+        header: 'auto' as const,
+        dataRegion: 'auto' as const,
+        encoding: 'auto' as const,
+        delimiter: 'auto' as const,
+        cloudMirror: { tableId, sourceVersion, contentHash },
+      };
       if (existing) {
         const result = await this.updateAutomationCloudMirrorInputTable(
           existing.id,
           mirrorName,
-          downloaded.downloadedFilePath
+          downloaded.downloadedFilePath,
+          mirrorConfig
         );
         log('[DataCommandService] Refreshed cloud mirror input table', {
           tableId,
@@ -1110,6 +1325,7 @@ export class DataCommandService {
           name: mirrorName,
           sourceKind: 'csv',
           filePath: downloaded.downloadedFilePath,
+          config: mirrorConfig,
           previewRows: 50,
         });
         log('[DataCommandService] Refreshed cloud mirror input table', {
@@ -1127,7 +1343,8 @@ export class DataCommandService {
             const result = await this.updateAutomationCloudMirrorInputTable(
               conflict.id,
               mirrorName,
-              downloaded.downloadedFilePath
+              downloaded.downloadedFilePath,
+              mirrorConfig
             );
             log('[DataCommandService] Refreshed cloud mirror input table', {
               tableId,
@@ -1147,15 +1364,26 @@ export class DataCommandService {
   private async updateAutomationCloudMirrorInputTable(
     id: string,
     name: string,
-    filePath: string
+    filePath: string,
+    config: Extract<DataDataset['inputConfig'], { sourceKind: 'csv' }>
   ): Promise<InputTableResult> {
     return this.updateInputTable({
       id,
       name,
       sourceKind: 'csv',
       filePath,
+      config,
       previewRows: 50,
     });
+  }
+
+  private async reuseAutomationCloudMirrorInputTable(
+    inputTable: DataDataset
+  ): Promise<InputTableResult> {
+    return {
+      inputTable,
+      preview: await this.previewDataset(inputTable.id, 50),
+    };
   }
 
   private async requireTask(id: string): Promise<DataCleaningTask> {
@@ -1420,4 +1648,40 @@ function isDataCommandErrorCode(
     (error instanceof DataCommandError && error.code === code) ||
     (isRecord(error) && error.code === code)
   );
+}
+
+function isGeneratedWorkflowDiagnosticRepairable(diagnostic: PrepDiagnostic): boolean {
+  const code = diagnostic.code?.toLowerCase() ?? '';
+  if (
+    code === 'run_failed' ||
+    code.includes('authentication') ||
+    code.includes('permission') ||
+    code.includes('timeout') ||
+    code.includes('resource_not_found') ||
+    code.includes('file_access')
+  ) {
+    return false;
+  }
+  return !/(timed?\s*out|econn|network|unauthori[sz]ed|permission denied|file.*not found|no such file|disk|cancelled|aborted)/i.test(
+    diagnostic.message
+  );
+}
+
+function hashText(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+async function hashFile(filePath: string): Promise<string> {
+  return createHash('sha256')
+    .update(await readFile(filePath))
+    .digest('hex');
+}
+
+function cloneCompiledWorkflowCandidate(
+  candidate: CompiledWorkflowCandidate
+): CompiledWorkflowCandidate {
+  return {
+    workflow: structuredClone(candidate.workflow),
+    diagnostics: structuredClone(candidate.diagnostics),
+  };
 }

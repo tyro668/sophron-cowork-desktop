@@ -1054,6 +1054,8 @@ function CloudTableProcessActionEditor({
           datasourceId: config.source.datasourceId,
           folderId: config.source.folderId,
           columnsSnapshot: normalizeAutomationColumns(config.source.columns),
+          updatedAt: config.source.updatedAt,
+          contentHash: config.source.contentHash,
         },
         processRequirement: config.processRequirement,
         output: {

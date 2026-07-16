@@ -410,6 +410,14 @@ export interface RunGeneratedTaskResult extends RunTaskResult {
   outputTableId: string;
   uploaded?: UploadDataTableToCloudResult;
   tokenUsage: 0;
+  workflowHash: string;
+  stageDurationsMs: {
+    prepare: number;
+    compile: number;
+    executeAndValidate: number;
+    upload: number;
+    total: number;
+  };
 }
 
 export interface GetRunResultCommand {

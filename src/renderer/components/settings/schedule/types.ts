@@ -35,6 +35,8 @@ export interface CloudAutomationSourceTable {
   folderId?: string;
   rowCount?: number | null;
   columns?: Array<string | { name?: string; type?: string }>;
+  updatedAt?: string;
+  contentHash?: string;
 }
 
 export interface PendingCloudAutomationTemplate {
