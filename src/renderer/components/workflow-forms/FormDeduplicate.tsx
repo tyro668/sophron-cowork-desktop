@@ -5,7 +5,7 @@ import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
 import { GlassFieldSelector } from './shared/GlassFieldSelector';
 import { GlassDirectionToggle } from './shared/GlassDirectionToggle';
-import { GlassNullsSelect } from './shared/GlassNullsSelect';
+import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import { GlassRowList } from './shared/GlassRowList';
 
 interface SortKeyEntry {
@@ -297,9 +297,23 @@ export default function FormDeduplicate({
                         flex: 'flex-[3]',
                         header: tr('sortNullsHeader', '空值处理'),
                         render: (key: SortKeyEntry, i) => (
-                          <GlassNullsSelect
-                            value={key.nulls}
-                            onChange={(v) => updateSortKey(i, { nulls: v })}
+                          <GlassOperatorSelect
+                            value={key.nulls ?? ''}
+                            groups={[
+                              {
+                                key: 'nulls',
+                                items: [
+                                  { value: '', label: tr('sortNullsDefault', '空值默认') },
+                                  { value: 'first', label: tr('sortNullsFirst', '空值在前') },
+                                  { value: 'last', label: tr('sortNullsLast', '空值在后') },
+                                ],
+                              },
+                            ]}
+                            onChange={(v) =>
+                              updateSortKey(i, {
+                                nulls: (v || undefined) as 'first' | 'last' | undefined,
+                              })
+                            }
                             className="h-6 w-full text-center rounded border border-border-muted bg-background/60 px-1 text-[11px] text-text-secondary outline-none"
                           />
                         ),

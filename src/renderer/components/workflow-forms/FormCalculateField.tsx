@@ -7,7 +7,7 @@ import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
-import { GlassColumnSelector } from './shared/GlassColumnSelector';
+import { GlassFieldSelector } from './shared/GlassFieldSelector';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassRowList, type GlassRowListColumn } from './shared/GlassRowList';
 import {
@@ -973,7 +973,7 @@ export default function FormCalculateField({
                 />
                 {!!partitionOpen[index] && (
                   <div className="absolute z-10 left-0 right-0 mt-0.5">
-                    <GlassColumnSelector
+                    <GlassFieldSelector
                       columns={fieldCompletions}
                       selected={item.partitionBy ?? []}
                       onChange={(v) =>
@@ -981,6 +981,7 @@ export default function FormCalculateField({
                       }
                       columnTypes={columnTypes}
                       maxHeight="160px"
+                      variant="glass"
                     />
                   </div>
                 )}
@@ -1076,7 +1077,7 @@ export default function FormCalculateField({
                 </div>
                 {ordOpen && (
                   <div className="absolute z-10 left-0 right-0 mt-0.5">
-                    <GlassColumnSelector
+                    <GlassFieldSelector
                       columns={fieldCompletions}
                       selected={item.orderBy?.map((o) => o.field) ?? []}
                       onChange={(v) =>
@@ -1094,6 +1095,7 @@ export default function FormCalculateField({
                       }
                       columnTypes={columnTypes}
                       maxHeight="160px"
+                      variant="glass"
                     />
                   </div>
                 )}

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { GripVertical, Plus } from 'lucide-react';
+import { GripVertical, Plus, Trash2 } from 'lucide-react';
 import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import type { OperatorFormProps } from './index';
-import { GlassColumnSelector } from './shared/GlassColumnSelector';
+import { GlassFieldSelector } from './shared/GlassFieldSelector';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import {
   isNumericDataFieldType,
@@ -353,12 +353,12 @@ export default function FormMissingValue({
                 placeholder={tr('missingEmptyMeansAllFields', '留空 = 所有字段参与判断')}
               />
               {showFieldPicker && (
-                <GlassColumnSelector
+                <GlassFieldSelector
                   columns={fieldCompletions}
                   selected={rowColumns}
                   onChange={handleRowsColumnsChange}
-                  maxHeight="200px"
-                  columnTypes={columnTypes}
+                  maxHeight="160px"
+                  variant="glass"
                 />
               )}
             </div>

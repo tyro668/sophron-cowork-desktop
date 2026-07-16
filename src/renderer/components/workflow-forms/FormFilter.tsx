@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
-import { GlassFormSection } from './shared/GlassFormSection';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
 import { GlassValueInput } from './shared/GlassValueInput';
 import { GlassMultiValueInput } from './shared/GlassMultiValueInput';
@@ -756,7 +755,7 @@ export default function FormFilter({
 
   return (
     <div className="grid content-start gap-2.5 min-w-0">
-      <GlassFormSection>
+      <div className="space-y-2.5">
         {/* Global add button */}
         <button
           type="button"
@@ -776,7 +775,7 @@ export default function FormFilter({
 
         {/* Condition tree */}
         <BranchGroupRenderer branch={root} root={root} depth={0} ctx={branchCtx} />
-      </GlassFormSection>
+      </div>
     </div>
   );
 }

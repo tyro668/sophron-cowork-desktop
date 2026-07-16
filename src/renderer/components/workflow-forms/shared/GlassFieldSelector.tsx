@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search } from 'lucide-react';
 import { dataFieldTypeLabel } from '@/shared/data-field-types';
@@ -12,15 +12,17 @@ export interface GlassFieldSelectorProps {
   columnTypes?: Record<string, string>;
   maxHeight?: string;
   selectionMode?: SelectionMode;
+  variant?: 'flat' | 'glass';
 }
 
-export function GlassFieldSelector({
+export const GlassFieldSelector = memo(function GlassFieldSelector({
   columns,
   selected,
   onChange,
   columnTypes,
   maxHeight = '160px',
   selectionMode = 'multi',
+  variant = 'flat',
 }: GlassFieldSelectorProps) {
   const { t } = useTranslation();
   const tr = useCallback(
@@ -89,6 +91,8 @@ export function GlassFieldSelector({
 
   const allFilteredSelected = filtered.length > 0 && filtered.every((c) => selected.includes(c));
 
+  const isGlass = variant === 'glass';
+
   function toggleAll() {
     if (filtered.length === 0) return;
 
@@ -115,20 +119,39 @@ export function GlassFieldSelector({
   }
 
   return (
-    <div className="flex min-h-0 flex-col rounded-lg border border-border-muted bg-background/60">
-      <div className="flex items-center gap-2 border-b border-border-subtle px-2.5 py-1">
-        <Search className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+    <div
+      className={`flex min-h-0 flex-col rounded-lg border ${
+        isGlass
+          ? 'border-border-subtle bg-[var(--glass-card-strong)] shadow-elevated backdrop-blur-xl'
+          : 'border-border-muted bg-background/60'
+      }`}
+    >
+      <div
+        className={`flex items-center border-b border-border-subtle px-2.5 py-1 ${
+          isGlass ? 'gap-1.5' : 'gap-2'
+        }`}
+      >
+        <Search
+          className={`flex-shrink-0 text-text-muted ${isGlass ? 'h-3 w-3' : 'h-3.5 w-3.5'}`}
+        />
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder={tr('searchField', '搜索字段')}
-          className="h-5 flex-1 min-w-0 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
+          placeholder={tr('searchField', isGlass ? '搜索字段...' : '搜索字段')}
+          className={`${isGlass ? 'h-6' : 'h-5'} min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted`}
         />
         {selectionMode === 'multi' && (
           <label
-            className="flex cursor-pointer items-center gap-1 flex-shrink-0"
-            onMouseDown={(e) => e.preventDefault()}
+            className={`flex shrink-0 cursor-pointer items-center gap-1 ${
+              isGlass
+                ? 'text-[11px] text-text-muted hover:text-text-secondary'
+                : 'text-[12px] text-text-secondary font-medium'
+            }`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              lockScrollTop();
+            }}
           >
             <input
               type="checkbox"
@@ -136,20 +159,20 @@ export function GlassFieldSelector({
               onChange={toggleAll}
               className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
             />
-            <span className="text-[12px] text-text-secondary font-medium whitespace-nowrap">
-              {allFilteredSelected ? tr('deselectAll', '取消全选') : tr('selectAll', '全选')}
-            </span>
+            {allFilteredSelected ? tr('deselectAll', '取消全选') : tr('selectAll', '全选')}
           </label>
         )}
       </div>
 
       <div
         ref={listRef}
-        className="flex-1 min-h-0 overflow-y-auto [overflow-anchor:none]"
+        className={`overflow-y-auto [overflow-anchor:none] ${isGlass ? '' : 'flex-1 min-h-0'}`}
         style={{ maxHeight }}
       >
         {filtered.length === 0 ? (
-          <div className="px-3 py-8 text-center text-[12px] text-text-muted">
+          <div
+            className={`px-3 text-center text-[12px] text-text-muted ${isGlass ? 'py-4' : 'py-8'}`}
+          >
             {search ? tr('noMatch', '无匹配字段') : tr('noFields', '暂无可用字段')}
           </div>
         ) : (
@@ -158,9 +181,9 @@ export function GlassFieldSelector({
             return (
               <label
                 key={col}
-                className={`flex cursor-pointer items-center gap-2 px-2.5 py-[4px] text-[13px] transition-colors hover:bg-surface-hover ${
-                  checked ? 'text-text-primary' : 'text-text-secondary'
-                }`}
+                className={`flex cursor-pointer items-center gap-2 px-2.5 transition-colors hover:bg-surface-hover ${
+                  isGlass ? 'py-1.5 text-[12px]' : 'py-[4px] text-[13px]'
+                } ${checked ? 'text-text-primary' : 'text-text-secondary'}`}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   lockScrollTop();
@@ -175,7 +198,11 @@ export function GlassFieldSelector({
                 />
                 <span className="flex-1 min-w-0 truncate">{col}</span>
                 {columnTypes?.[col] && (
-                  <span className="w-14 flex-shrink-0 text-right text-[11px] text-text-muted tabular-nums">
+                  <span
+                    className={`flex-shrink-0 text-[11px] text-text-muted tabular-nums ${
+                      isGlass ? '' : 'w-14 text-right'
+                    }`}
+                  >
                     {dataFieldTypeLabel(columnTypes[col])}
                   </span>
                 )}
@@ -186,4 +213,4 @@ export function GlassFieldSelector({
       </div>
     </div>
   );
-}
+});

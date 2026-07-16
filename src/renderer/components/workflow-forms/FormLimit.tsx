@@ -4,7 +4,7 @@ import { Trash2, X, ChevronDown } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
-import { GlassColumnSelector } from './shared/GlassColumnSelector';
+import { GlassFieldSelector } from './shared/GlassFieldSelector';
 
 interface SortKeyEntry {
   field: string;
@@ -315,13 +315,14 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                   />
                   {groupOpen && (
                     <div className="absolute z-10 left-0 right-0 mt-0.5">
-                      <GlassColumnSelector
+                      <GlassFieldSelector
                         columns={fieldCompletions}
                         selected={groupBy}
                         onChange={(v) =>
                           updateConfig((cfg) => ({ ...cfg, groupBy: v.length > 0 ? v : undefined }))
                         }
                         maxHeight="160px"
+                        variant="glass"
                       />
                     </div>
                   )}
@@ -394,11 +395,12 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
               </div>
               {sortOpen && (
                 <div className="absolute z-10 left-0 right-0 mt-0.5">
-                  <GlassColumnSelector
+                  <GlassFieldSelector
                     columns={fieldCompletions}
                     selected={sortFields}
                     onChange={(v) => setSortFields(v)}
                     maxHeight="160px"
+                    variant="glass"
                   />
                 </div>
               )}

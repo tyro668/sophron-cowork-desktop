@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
 import { GlassDirectionToggle } from './shared/GlassDirectionToggle';
-import { GlassNullsSelect } from './shared/GlassNullsSelect';
+import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import { GlassRowList } from './shared/GlassRowList';
 
 interface SortKey {
@@ -213,9 +213,21 @@ export default function FormSort({
                 flex: 'flex-[3]',
                 header: tr('sortNullsHeader', '空值处理方式'),
                 render: (key: SortKey, i) => (
-                  <GlassNullsSelect
-                    value={key.nulls}
-                    onChange={(v) => updateKey(i, { nulls: v })}
+                  <GlassOperatorSelect
+                    value={key.nulls ?? ''}
+                    groups={[
+                      {
+                        key: 'nulls',
+                        items: [
+                          { value: '', label: tr('sortNullsDefault', '空值默认') },
+                          { value: 'first', label: tr('sortNullsFirst', '空值在前') },
+                          { value: 'last', label: tr('sortNullsLast', '空值在后') },
+                        ],
+                      },
+                    ]}
+                    onChange={(v) =>
+                      updateKey(i, { nulls: (v || undefined) as 'first' | 'last' | undefined })
+                    }
                     className="h-6 w-full text-center rounded border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-secondary outline-none focus:border-accent"
                   />
                 ),

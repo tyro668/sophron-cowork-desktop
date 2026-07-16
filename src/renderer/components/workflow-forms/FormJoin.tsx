@@ -1,14 +1,30 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Settings } from 'lucide-react';
+import { Plus, Settings, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
-import { GlassConditionEditor, type ConditionEntry } from './shared/GlassConditionEditor';
 import { isTemporalDataFieldType } from '@/shared/data-field-types';
 import { parseFieldRef } from '@/shared/prep-dsl/parser';
+
+export interface ConditionEntry {
+  left: string;
+  operator: string;
+  right: string;
+}
+
+const DEFAULT_CONDITION: ConditionEntry = { left: '', operator: '=', right: '' };
+
+const OPERATOR_KEYS = [
+  { value: '=', key: 'operatorEq', fallback: '等于' },
+  { value: '!=', key: 'operatorNeq', fallback: '不等于' },
+  { value: '<', key: 'operatorLt', fallback: '小于' },
+  { value: '<=', key: 'operatorLte', fallback: '小于等于' },
+  { value: '>', key: 'operatorGt', fallback: '大于' },
+  { value: '>=', key: 'operatorGte', fallback: '大于等于' },
+];
 
 function isLeftField(source: string, leftAlias: string): boolean {
   const ref = parseFieldRef(source);
@@ -550,6 +566,132 @@ export default function FormJoin({
   }, [keepItems, rightAlias]);
 
   // ── Inline condition handlers ──
+  const [condPending, setCondPending] = useState<ConditionEntry>({ ...DEFAULT_CONDITION });
+  const [asofPending, setAsofPending] = useState<ConditionEntry>({ ...DEFAULT_CONDITION });
+
+  const conditionOperatorItems = useMemo(
+    () => OPERATOR_KEYS.map((op) => ({ value: op.value, label: tr(op.key, op.fallback) })),
+    [tr]
+  );
+
+  function condHandleChange(
+    isEmpty: boolean,
+    pending: ConditionEntry,
+    setPending: (v: ConditionEntry) => void,
+    onChange: (next: ConditionEntry[]) => void,
+    index: number,
+    patch: Partial<ConditionEntry>
+  ) {
+    if (isEmpty) {
+      const next = { ...pending, ...patch };
+      setPending(next);
+      if (next.left || next.right) {
+        setPending({ ...DEFAULT_CONDITION });
+        onChange([next]);
+      }
+    } else {
+      const conditions =
+        index === 0
+          ? ((node.config.conditions as ConditionEntry[]) ?? [])
+          : (((node.config.asof as Record<string, unknown>)?.by as ConditionEntry[]) ?? []);
+      onChange(conditions.map((c, i) => (i === index ? { ...c, ...patch } : c)));
+    }
+  }
+
+  function condHandleRemove(
+    isEmpty: boolean,
+    setPending: (v: ConditionEntry) => void,
+    onChange: (next: ConditionEntry[]) => void,
+    index: number
+  ) {
+    if (isEmpty) {
+      setPending({ ...DEFAULT_CONDITION });
+    } else {
+      const conditions =
+        index === 0
+          ? ((node.config.conditions as ConditionEntry[]) ?? [])
+          : (((node.config.asof as Record<string, unknown>)?.by as ConditionEntry[]) ?? []);
+      onChange(conditions.filter((_, i) => i !== index));
+    }
+  }
+
+  function condHandleAdd(
+    isEmpty: boolean,
+    pending: ConditionEntry,
+    setPending: (v: ConditionEntry) => void,
+    onChange: (next: ConditionEntry[]) => void,
+    index: number
+  ) {
+    if (isEmpty) {
+      if (!pending.left && !pending.right) return;
+      onChange([pending, { ...DEFAULT_CONDITION }]);
+      setPending({ ...DEFAULT_CONDITION });
+    } else {
+      const conditions =
+        index === 0
+          ? ((node.config.conditions as ConditionEntry[]) ?? [])
+          : (((node.config.asof as Record<string, unknown>)?.by as ConditionEntry[]) ?? []);
+      const next = [...conditions];
+      next.splice(index + 1, 0, { ...DEFAULT_CONDITION });
+      onChange(next);
+    }
+  }
+
+  function renderConditionRow(
+    cond: ConditionEntry,
+    i: number,
+    isEmpty: boolean,
+    pending: ConditionEntry,
+    setPending: (v: ConditionEntry) => void,
+    onChange: (next: ConditionEntry[]) => void,
+    leftLabel: string,
+    rightLabel: string
+  ) {
+    return (
+      <div key={i} className="flex items-center gap-1">
+        <GlassFieldCombo
+          value={cond.left}
+          options={leftFieldCompletions}
+          onChange={(v) => condHandleChange(isEmpty, pending, setPending, onChange, i, { left: v })}
+          placeholder={leftLabel}
+          className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
+        />
+        <GlassOperatorSelect
+          value={cond.operator}
+          groups={[{ key: 'op', items: conditionOperatorItems }]}
+          onChange={(v) =>
+            condHandleChange(isEmpty, pending, setPending, onChange, i, { operator: v })
+          }
+          className="h-7 w-[72px] shrink-0 text-[12px] [&>span]:text-center"
+        />
+        <GlassFieldCombo
+          value={cond.right}
+          options={rightFieldCompletions}
+          onChange={(v) =>
+            condHandleChange(isEmpty, pending, setPending, onChange, i, { right: v })
+          }
+          placeholder={rightLabel}
+          className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
+        />
+        <button
+          type="button"
+          onClick={() => condHandleAdd(isEmpty, pending, setPending, onChange, i)}
+          className="h-6 w-6 flex shrink-0 items-center justify-center rounded text-text-muted/40 hover:text-accent transition-colors"
+          title={tr('addCondition', '添加条件')}
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => condHandleRemove(isEmpty, setPending, onChange, i)}
+          className="h-6 w-6 flex shrink-0 items-center justify-center rounded text-text-muted/40 hover:text-error transition-colors"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
   function handleConditionsChange(next: ConditionEntry[]) {
     updateConfig((cfg) => ({ ...cfg, conditions: next.length > 0 ? next : undefined }));
   }
@@ -771,26 +913,47 @@ export default function FormJoin({
                     />
                   </div>
                   <div className="max-h-[180px] overflow-y-auto">
-                    <GlassConditionEditor
-                      conditions={(asof.by as ConditionEntry[]) ?? []}
-                      leftFieldCompletions={leftFieldCompletions}
-                      rightFieldCompletions={rightFieldCompletions}
-                      onChange={handleAsofByChange}
-                      leftLabel={tr('leftField', '[左表字段]')}
-                      rightLabel={tr('rightField', '[右表字段]')}
-                    />
+                    <div className="space-y-1">
+                      {(() => {
+                        const asofBy = (asof.by as ConditionEntry[]) ?? [];
+                        const isEmpty = asofBy.length === 0;
+                        const display = isEmpty ? [asofPending] : asofBy;
+                        return display.map((cond, i) =>
+                          renderConditionRow(
+                            cond,
+                            i,
+                            isEmpty,
+                            asofPending,
+                            setAsofPending,
+                            handleAsofByChange,
+                            tr('leftField', '[左表字段]'),
+                            tr('rightField', '[右表字段]')
+                          )
+                        );
+                      })()}
+                    </div>
                   </div>
                 </div>
               ) : needsConditions ? (
                 <div className="max-h-[280px] overflow-y-auto">
-                  <GlassConditionEditor
-                    conditions={conditions}
-                    leftFieldCompletions={leftFieldCompletions}
-                    rightFieldCompletions={rightFieldCompletions}
-                    onChange={handleConditionsChange}
-                    leftLabel={tr('leftField', '[左表字段]')}
-                    rightLabel={tr('rightField', '[右表字段]')}
-                  />
+                  <div className="space-y-1">
+                    {(() => {
+                      const isEmpty = conditions.length === 0;
+                      const display = isEmpty ? [condPending] : conditions;
+                      return display.map((cond, i) =>
+                        renderConditionRow(
+                          cond,
+                          i,
+                          isEmpty,
+                          condPending,
+                          setCondPending,
+                          handleConditionsChange,
+                          tr('leftField', '[左表字段]'),
+                          tr('rightField', '[右表字段]')
+                        )
+                      );
+                    })()}
+                  </div>
                 </div>
               ) : (
                 <div className="text-[12px] text-text-secondary px-0.5">

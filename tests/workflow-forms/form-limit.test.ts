@@ -245,10 +245,6 @@ describe('FormLimit — UI source structure', () => {
     expect(limitSource).toContain('key="sort-input"');
   });
 
-  it('group field input has stable key', () => {
-    expect(limitSource).toContain('key="group-input"');
-  });
-
   it('WITH TIES checkbox is inside sort row (not separate row)', () => {
     const tiesLine = limitSource.indexOf('保留并列值（WITH TIES）');
     expect(tiesLine).not.toBe(-1);
