@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Trash2, X, ChevronDown } from 'lucide-react';
 import type { OperatorFormProps } from './index';
+import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import { GlassFieldSelector } from './shared/GlassFieldSelector';
@@ -11,9 +12,6 @@ interface SortKeyEntry {
   direction: 'asc' | 'desc';
   nulls?: 'first' | 'last';
 }
-
-const INPUT_CLASS =
-  'h-7 rounded-md border border-border-muted bg-background/42 px-2 text-center text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent';
 
 const LABEL_CLASS = 'text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7';
 
@@ -181,13 +179,13 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
           <span className={LABEL_CLASS}>
             {isRandomMode ? tr('limitSampleSize', '采样量') : tr('limitCount', '数量')}
           </span>
-          <input
-            type="text"
+          <GlassFormTextInput
             inputMode="numeric"
             value={localLimit}
-            onChange={(e) => pushLimit(e.target.value)}
+            onChange={(v) => pushLimit(v)}
             placeholder={isRandomMode ? '10' : '100'}
-            className={`${INPUT_CLASS} w-28`}
+            textCenter
+            className="h-7 rounded-md px-2 text-[12px] w-28"
           />
         </div>
         <div className="flex items-center gap-2">
@@ -213,25 +211,25 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
         {isRandomMode ? (
           <div className="flex items-center gap-2">
             <span className={LABEL_CLASS}>{tr('limitSampleSeed', '随机种子')}</span>
-            <input
-              type="text"
+            <GlassFormTextInput
               inputMode="numeric"
               value={localSeed}
-              onChange={(e) => pushSeed(e.target.value)}
+              onChange={(v) => pushSeed(v)}
               placeholder={tr('limitSampleSeedPlaceholder', '可选')}
-              className={`${INPUT_CLASS} w-28`}
+              textCenter
+              className="h-7 rounded-md px-2 text-[12px] w-28"
             />
           </div>
         ) : isRows ? (
           <div className="flex items-center gap-2">
             <span className={LABEL_CLASS}>{tr('limitOffset', '偏移量')}</span>
-            <input
-              type="text"
+            <GlassFormTextInput
               inputMode="numeric"
               value={localOffset}
-              onChange={(e) => pushOffset(e.target.value)}
+              onChange={(v) => pushOffset(v)}
               placeholder="0"
-              className={`${INPUT_CLASS} w-28`}
+              textCenter
+              className="h-7 rounded-md px-2 text-[12px] w-28"
             />
           </div>
         ) : null}

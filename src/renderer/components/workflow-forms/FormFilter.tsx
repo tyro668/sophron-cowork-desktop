@@ -4,7 +4,6 @@ import { Plus, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
 import { GlassValueInput } from './shared/GlassValueInput';
-import { GlassMultiValueInput } from './shared/GlassMultiValueInput';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
 import {
   isNumericDataFieldType,
@@ -226,7 +225,8 @@ function ConditionLeafRow({
 
         {/* Value(s) */}
         {isMultiValue ? (
-          <GlassMultiValueInput
+          <GlassValueInput
+            multi
             value={leaf.val1}
             suggestions={colVals}
             isLoading={isValsLoading}

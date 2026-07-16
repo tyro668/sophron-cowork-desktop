@@ -777,16 +777,16 @@ export default function FormCalculateField({
                   className="h-7 text-[12px] w-28"
                 />
                 {timeDef?.hasParam && (
-                  <input
-                    type="number"
-                    min={1}
+                  <GlassFormTextInput
+                    inputMode="numeric"
                     value={item.fnArg2 || '1'}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
+                    onChange={(v) => {
+                      const val = parseInt(v, 10);
                       if (isNaN(val) || val < 1) return;
                       updateItem(index, { fnArg2: String(val) });
                     }}
-                    className="h-7 w-14 rounded border border-border-muted bg-background/42 px-1 text-center text-[12px] text-text-primary outline-none"
+                    textCenter
+                    className="h-7 w-14 rounded-md px-1 text-[12px]"
                   />
                 )}
                 {!timeDef?.hasParam && currentTimeWindow === 'ytd' && (
@@ -794,17 +794,16 @@ export default function FormCalculateField({
                     <span className="text-[12px] text-text-muted shrink-0 leading-7">
                       {tr('calcFieldFiscalStart', '年度起始月')}
                     </span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={12}
-                      value={item.fiscalStartMonth || 1}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10);
+                    <GlassFormTextInput
+                      inputMode="numeric"
+                      value={String(item.fiscalStartMonth ?? '1')}
+                      onChange={(v) => {
+                        const val = parseInt(v, 10);
                         if (isNaN(val) || val < 1 || val > 12) return;
                         updateItem(index, { fiscalStartMonth: val });
                       }}
-                      className="h-7 w-14 rounded border border-border-muted bg-background/42 px-1 text-center text-[12px] text-text-primary outline-none"
+                      textCenter
+                      className="h-7 w-14 rounded-md px-1 text-[12px]"
                     />
                   </>
                 )}
@@ -887,31 +886,25 @@ export default function FormCalculateField({
                       className="h-7 w-full text-[12px]"
                     />
                   ) : s.type === 'text' ? (
-                    <input
-                      type="text"
+                    <GlassFormTextInput
                       value={item[s.key] ?? ''}
-                      onChange={(e) =>
-                        updateItem(index, { [s.key]: e.target.value } as Partial<CalculationRow>)
-                      }
+                      onChange={(v) => updateItem(index, { [s.key]: v } as Partial<CalculationRow>)}
                       placeholder={
                         NUM_PLACEHOLDER[currentFn + '_' + s.key] ||
                         tr('calcFieldFnArgNumPlaceholder', '参数')
                       }
-                      className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent placeholder:text-text-muted"
+                      className="h-7 rounded-md px-1.5 text-[12px] w-full"
                     />
                   ) : (
-                    <input
-                      type="number"
-                      min={0}
+                    <GlassFormTextInput
+                      inputMode="numeric"
                       value={item[s.key] ?? ''}
-                      onChange={(e) =>
-                        updateItem(index, { [s.key]: e.target.value } as Partial<CalculationRow>)
-                      }
+                      onChange={(v) => updateItem(index, { [s.key]: v } as Partial<CalculationRow>)}
                       placeholder={
                         NUM_PLACEHOLDER[currentFn + '_' + s.key] ||
                         tr('calcFieldFnArgNumPlaceholder', '参数')
                       }
-                      className="h-7 w-full rounded-md border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-primary outline-none focus:border-accent placeholder:text-text-muted"
+                      className="h-7 rounded-md px-1.5 text-[12px] w-full"
                     />
                   )}
                 </div>
@@ -1233,12 +1226,11 @@ export default function FormCalculateField({
                       />
                       {(startInfo.type === 'n_preceding' || startInfo.type === 'n_following') && (
                         <>
-                          <input
-                            type="number"
-                            min={0}
-                            value={startInfo.value ?? 1}
-                            onChange={(e) => {
-                              const val = parseInt(e.target.value, 10);
+                          <GlassFormTextInput
+                            inputMode="numeric"
+                            value={String(startInfo.value ?? 1)}
+                            onChange={(v) => {
+                              const val = parseInt(v, 10);
                               if (isNaN(val) || val < 0) return;
                               const unit = isRangeDate ? effectiveStartUnit : undefined;
                               updateItem(index, {
@@ -1250,7 +1242,8 @@ export default function FormCalculateField({
                                 ),
                               });
                             }}
-                            className="h-6 w-14 rounded border border-border-muted bg-background/42 px-1 text-center text-[12px] text-text-primary outline-none"
+                            textCenter
+                            className="h-6 w-14 rounded-md px-1 text-[12px]"
                           />
                           {isRangeDate ? (
                             <GlassOperatorSelect
@@ -1291,19 +1284,19 @@ export default function FormCalculateField({
                       />
                       {(endInfo.type === 'n_preceding' || endInfo.type === 'n_following') && (
                         <>
-                          <input
-                            type="number"
-                            min={0}
-                            value={endInfo.value ?? 1}
-                            onChange={(e) => {
-                              const val = parseInt(e.target.value, 10);
+                          <GlassFormTextInput
+                            inputMode="numeric"
+                            value={String(endInfo.value ?? 1)}
+                            onChange={(v) => {
+                              const val = parseInt(v, 10);
                               if (isNaN(val) || val < 0) return;
                               const unit = isRangeDate ? effectiveEndUnit : undefined;
                               updateItem(index, {
                                 frameEnd: formatBoundFromType(endInfo.type, val, currentFt, unit),
                               });
                             }}
-                            className="h-6 w-14 rounded border border-border-muted bg-background/42 px-1 text-center text-[12px] text-text-primary outline-none"
+                            textCenter
+                            className="h-6 w-14 rounded-md px-1 text-[12px]"
                           />
                           {isRangeDate ? (
                             <GlassOperatorSelect

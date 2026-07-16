@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GripVertical, Plus, Trash2 } from 'lucide-react';
+import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassFieldCombo } from './shared/GlassFieldCombo';
 import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
@@ -57,29 +58,6 @@ function createDefault(overrides: Partial<MissingRule> = {}): MissingRule {
 }
 
 type TabMode = 'row' | 'column';
-
-function TextField({
-  value,
-  onChange,
-  placeholder,
-  disabled,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  disabled?: boolean;
-}) {
-  return (
-    <input
-      type="text"
-      value={value}
-      disabled={disabled}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className="h-8 w-full rounded-md border border-border-muted bg-background/60 px-2 text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent disabled:cursor-not-allowed disabled:opacity-50"
-    />
-  );
-}
 
 export default function FormMissingValue({
   node,
@@ -465,7 +443,7 @@ export default function FormMissingValue({
                     {/* Value */}
                     {needsValue && item.column && (
                       <div className="flex-[3] min-w-0">
-                        <TextField
+                        <GlassFormTextInput
                           value={
                             effectiveMethod === 'nullify_values'
                               ? (item.values ?? []).join(', ')
