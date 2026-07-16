@@ -234,8 +234,26 @@ export default function FormSetOp({
           }
         }
       })
-      .catch(() => {});
-  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config, rawRightInput, otherNodes]);
+      .catch((error: unknown) => {
+        console.warn('[FormSetOp] Failed to compare input column types', {
+          taskId,
+          leftNodeId: sourceNode.id,
+          rightNodeId,
+          error,
+        });
+      });
+  }, [
+    taskId,
+    sourceNode?.id,
+    sourceNode?.type,
+    sourceNode?.config,
+    rawRightInput,
+    otherNodes,
+    operation,
+    match,
+    confirm,
+    updateConfig,
+  ]);
 
   return (
     <div className="grid content-start gap-2.5">

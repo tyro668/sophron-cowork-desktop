@@ -1,188 +1,135 @@
-# 自动化-数据处理 AI 生成任务 RP v0.2
+# 自动化－数据处理任务 RP v1.0
 
-## 1. 背景与问题
+## 1. 文档目的
 
-自动化里的“数据处理”面向的是定时、无人值守或低干预的数据加工场景。用户期望用自然语言描述处理要求，例如：
+本文描述当前自动化数据处理任务的后端设计和运行语义。系统把用户在配置期输入的自然语言处理要求转换为可保存、可重复执行的确定性 Workflow；自动化运行期复用该 Workflow，不再调用大模型重新生成处理逻辑。
 
-```text
-过滤掉 Profit < 0 的数据，并按照过滤后的 Profit 升序排列
+当前设计重点解决四类问题：
+
+- 正确性：错误 Workflow 不污染正式输出和正式 Task 状态。
+- 一致性：同一 Task 的生成、保存和执行不会相互覆盖。
+- 性能：减少重复编译和不必要的云端镜像重建。
+- 可观测性：能够识别 Workflow 版本并定位各阶段耗时。
+
+## 2. 核心原则
+
+1. AI 只参与配置期生成，不参与每次自动化执行。
+2. 模型输出不直接落库，必须经过解析、编译和临时执行验证。
+3. 正式输出采用“临时执行、校验、提交”的流程。
+4. `saveWorkflow=true` 仅在执行成功后保存 Workflow。
+5. 同一 Task 的生成、修改和执行使用 keyed lock 串行化。
+6. 临时执行结束后主动清理临时表和临时缓存。
+7. 网络、权限、超时等基础设施错误不交给模型修复。
+
+## 3. 系统边界
+
+### 3.1 配置期
+
+用户选择输入表、输出位置并描述处理要求，系统调用大模型生成 Workflow，完成编译和临时验证后保存为数据任务。
+
+### 3.2 运行期
+
+定时任务或自动化节点根据 `taskId` 和已保存的 `workflowDsl` 执行确定性数据处理，必要时将结果上传到云分析空间。
+
+### 3.3 非目标
+
+- 不引入草稿、预览、发布和不可变版本绑定 UI。
+- 不在每次自动化运行时重新调用模型。
+- 不允许模型输出的任意 JavaScript、SQL 或 DSL 未经校验直接执行。
+- 本阶段不扩展复杂多输入 DAG、条件分支和分布式任务调度。
+
+## 4. 总体架构
+
+```mermaid
+flowchart LR
+    UI[自动化配置界面] --> IPC[data IPC]
+    IPC --> CS[DataCommandService]
+    CS --> AI[Workflow 生成器]
+    AI --> JSP[受限 workflowJs Parser]
+    JSP --> OC[Operation Compiler]
+    OC --> DSL[Prep DSL / Workflow Candidate]
+    CS --> STORE[DataTaskStore]
+    STORE --> DUCK[(DuckDB 数据表)]
+    STORE --> META[(任务与 Workflow 元数据)]
+    CS --> CLOUD[云分析服务]
 ```
 
-系统需要把这段自然语言稳定转成可复用的数据任务。早期如果直接让大模型输出 DSL，会遇到几个问题：
-
-- 大模型容易输出非 DSL 内容，例如 Markdown、解释文本、JSON 或 SQL。
-- 大模型可能引用不存在的字段，导致运行期才失败。
-- DSL 语法细节容易出错，例如字段引用、输出表声明、操作符参数。
-- 自动化运行期如果每次重新调用大模型，成本高、稳定性差，也不适合无人值守。
-- 用户看到“AI 处理”会误以为运行期持续由 AI 处理数据，而不是执行确定的数据任务。
-
-本方案解决的核心问题是：
-
-```text
-把一次性的自然语言意图，可靠地转换为可校验、可保存、可复用的数据任务。
-```
-
-## 2. 设计目标
-
-- AI 只参与配置期生成任务，不参与每次自动化运行。
-- 大模型主路径输出结构化 JSON 计划，而不是直接输出 DSL。
-- 后端负责把结构化 JSON 编译成 Prep DSL，掌控语法、字段校验和资源绑定。
-- 编译后的 DSL 必须经过 dry-run 校验，确认可保存后才沉淀为数据任务。
-- 当结构化编译器无法覆盖复杂需求时，允许大模型生成完整 DSL 作为兜底，但仍必须经过解析和校验。
-- 前端文案明确区分：
-  - `AI 生成任务`
-  - `复用数据任务`
-- 生成成功后提示用户后续会复用该任务执行。
-
-## 3. 非目标
-
-- 不让自动化运行期每次重新生成 DSL。
-- 不把任意 SQL 作为数据任务生成结果。
-- 不在本轮扩展复杂多表 DAG 或条件分支。
-- 不把大模型输出作为可信执行内容直接落库。
-
-## 4. 总体方案
-
-自动化“数据处理”只有一个动作入口，内部有两种处理方式：
-
-```text
-数据处理
-  ├─ AI 生成任务
-  └─ 复用数据任务
-```
-
-其中 `AI 生成任务` 是配置期能力。用户选择输入表、填写处理要求、选择输出方式后，前端调用：
-
-```text
-data.generateTaskFromRequirement
-```
-
-后端完成：
-
-```text
-自然语言要求
-  -> 大模型生成结构化 JSON operations
-  -> 后端编译 JSON operations 为 Prep DSL
-  -> dry-run 校验 DSL
-  -> 必要时修复或走高级 DSL 兜底
-  -> 保存为数据任务 workflow
-  -> 自动化运行期复用 taskId 执行
-```
-
-## 5. 技术链路
-
-### 5.1 前端入口
-
-前端数据处理配置位于：
+主要代码：
 
 - `src/renderer/components/settings/schedule/editorPanels.tsx`
+- `src/main/data/ipc/data-tasks-ipc.ts`
+- `src/main/data/data-command-service.ts`
+- `src/main/data/data-task-store.ts`
+- `src/main/data/workflow/dsl-generator.ts`
+- `src/main/data/workflow/js-parser.ts`
+- `src/main/data/workflow/operation-compiler.ts`
+- `src/shared/prep-dsl`
 
-关键行为：
+## 5. 配置期生成流程
 
-- `AI 生成任务` 模式保存的是尚未沉淀的数据处理配置。
-- 点击生成后调用 `window.electronAPI.data.generateTaskFromRequirement`。
-- 生成成功后，节点变成可运行的数据任务配置，包含 `taskId`、`workflowDsl` 等信息。
-- 页面短暂提示：
+### 5.1 完整流程
 
-```text
-数据任务已生成，后续将复用该任务执行。
+```mermaid
+flowchart TD
+    A[用户提交处理要求] --> B[准备输入表]
+    B --> C{输入位置}
+    C -->|本地| D[读取本地输入表和字段快照]
+    C -->|云端| E[增量刷新或复用本地镜像]
+    D --> F[解析或创建输出表]
+    E --> F
+    F --> G[复用已有 Task 或创建 Task]
+    G --> H[获取 taskId keyed lock]
+    H --> I[模型生成受限 workflowJs]
+    I --> J[解析 workflowJs 为 IR]
+    J --> K[IR 转换为 operations]
+    K --> L[Operation Registry 编译 Prep DSL]
+    L --> M[编译 Workflow Candidate]
+    M --> N[临时执行 Candidate]
+    N --> O[获取运行时输出预览]
+    O --> P[校准和校验输出 Schema]
+    P --> Q{是否存在错误}
+    Q -->|无错误| R[保存 Candidate Workflow]
+    R --> S[清理临时资源]
+    S --> T[释放 keyed lock并返回生成结果]
+    Q -->|可修复| U[模型根据 diagnostics 修复 workflowJs]
+    U --> J
+    Q -->|不可修复或重试耗尽| V[回滚本次新建资源]
+    V --> S
 ```
 
-### 5.2 IPC 与命令服务
+### 5.2 输入准备
 
-IPC 入口：
+本地输入表直接从 `DataTaskStore` 读取，同时生成字段名称和类型快照。
 
-- `src/main/data/ipc/data-tasks-ipc.ts`
+云端输入表会映射为稳定命名的本地镜像：
 
-后端主流程：
+```text
+<云端表名>_自动化镜像_<tableId 前缀>
+```
 
-- `src/main/data/data-command-service.ts`
-- `DataCommandService.generateTaskFromRequirement`
+镜像刷新规则：
 
-主流程包括：
+1. 如果请求携带云端 `updatedAt`，并且与镜像持久化的 `sourceVersion` 一致，直接复用本地镜像，不下载数据。
+2. 无版本信息或版本变化时，下载 CSV 并计算 SHA-256 内容 Hash。
+3. Hash 与已保存的 `contentHash` 一致时，跳过 DuckDB 表重建。
+4. Hash 变化时才重新导入并更新镜像元数据。
 
-1. 校验处理要求。
-2. 准备输入表：
-   - 本地输入表直接使用。
-   - 云端表先导入成本地输入表。
-3. 准备输出表：
-   - 新建输出表。
-   - 或绑定已有输出表。
-4. 复用已有生成任务，或创建新的数据任务。
-5. 调用大模型生成 workflow。
-6. dry-run 校验 DSL。
-7. 必要时修复。
-8. 保存 workflow 到数据任务。
-9. 返回自动化节点需要持久化的生成结果。
+镜像刷新通过 `cloud-mirror:<mirrorName>` keyed lock 串行，避免相同云端表被并发重复导入。
 
-## 6. 主路径：结构化 JSON 计划
+### 5.3 模型输出协议
 
-### 6.1 为什么先生成 JSON
-
-大模型不直接生成 DSL，而是先输出结构化操作计划：
+主路径要求模型返回受限的 `workflowJs`，而不是任意 JavaScript：
 
 ```json
 {
-  "operations": [
-    { "type": "filter", "column": "Profit", "operator": ">=", "value": 0 },
-    { "type": "sort", "column": "Profit", "direction": "asc" }
-  ],
-  "requiredColumns": [{ "name": "Profit" }],
-  "changeSummary": "过滤负利润并按利润升序排列"
+  "workflowJs": "workflow().inputDataset(INPUT_TABLE_ID, \"src\").filter(col(\"Profit\").gte(lit(0))).sort(col(\"Profit\"), \"asc\").outputTable(OUTPUT_TABLE_NAME, { mode: \"replace\" })",
+  "requiredColumns": [{ "name": "Profit" }]
 }
 ```
 
-这样做的原因：
+`js-parser.ts` 只接受白名单化的 `workflow()` API 链，并把它转换为内部 IR。IR 再转换为 operation 列表，由 operation compiler 生成 Prep DSL。模型代码不会作为通用 JavaScript 执行。
 
-- JSON operations 比 DSL 更容易约束。
-- 后端可以白名单化支持的操作类型。
-- 字段必须从输入表 columns 中解析，不能凭空创造。
-- DSL 语法由应用生成，减少模型语法漂移。
-- 后续可以继续扩展 operation registry，而不改自动化动作协议。
-
-### 6.2 Prompt 约束
-
-系统提示要求模型：
-
-- 只返回严格 JSON。
-- 不返回 Markdown、注释、解释或代码块。
-- 只使用输入表已有字段。
-- 不写 Prep DSL 或 SQL。
-- 对金额、价格、比例等固定精度字段优先使用 decimal。
-- 不确定时生成最安全的有效操作。
-
-### 6.3 Operation Registry
-
-后端维护结构化操作编译器：
-
-```text
-GeneratedWorkflowOperationRegistry
-  filter
-  sort
-  convert_type
-  select
-  drop
-  rename
-  derive
-  aggregate
-```
-
-每个 operation 定义两部分：
-
-- `promptSpec`：告诉模型如何输出该操作。
-- `compile`：把操作编译为 Prep DSL 片段。
-
-示例：
-
-```text
-{ type: "filter", column: "Profit", operator: ">=", value: 0 }
-  -> | filter [Profit] >= 0
-
-{ type: "sort", column: "Profit", direction: "asc" }
-  -> | sort by [Profit] asc
-```
-
-最终 DSL 由后端统一拼装：
+示例结果：
 
 ```text
 input source dataset "<inputTableId>" as src
@@ -191,118 +138,172 @@ input source dataset "<inputTableId>" as src
   | output table "<outputTableName>" mode replace
 ```
 
-## 7. 校验与编译
+### 5.4 Operation Registry
 
-结构化 JSON 计划不会直接落库。后端会执行多层校验：
+Registry 负责把标准化 operation 编译为确定的 Prep DSL，当前覆盖过滤、排序、字段选择、删除、重命名、派生、类型转换和聚合等操作。
 
-### 7.1 字段校验
+Registry 的价值：
 
-编译前构建输入字段索引：
+- 模型只表达意图，DSL 语法由后端控制。
+- 字段引用统一校验。
+- 操作参数经过白名单和类型检查。
+- 新操作可以在 Registry 中独立扩展。
 
-```text
-columnsByName: Map<lowercaseName, column>
-```
+### 5.5 Candidate 编译和 LRU 缓存
 
-每个 operation 引用字段时都必须通过 `requireColumn`：
-
-- 字段为空：报错。
-- 字段不存在：报错。
-- 字段存在：记录到 `requiredColumns`。
-
-### 7.2 DSL 解析校验
-
-编译后调用 Prep DSL parser：
+Prep DSL 依次经过：
 
 ```text
-parsePrepDsl(workflowDsl)
-compilePrepWorkflowToFlow(ast)
+parsePrepDsl
+  -> compilePrepWorkflowToFlow
+  -> applyWorkflowResourceBindings
+  -> Workflow Candidate
 ```
 
-如果解析或编译诊断包含 error，则不允许保存。
-
-### 7.3 dry-run 校验
-
-生成 DSL 后先调用：
+Candidate 缓存键由以下内容的稳定 Hash 组成：
 
 ```text
-applyWorkflowDsl({ dryRun: true })
+workflowDsl + inputTableId + inputAlias + outputTableId
 ```
 
-只有 dry-run 没有错误时，才会正式保存：
+缓存采用最大 100 项的 LRU：
+
+- 命中后提升为最近使用项。
+- 相同并发编译复用同一个 Promise。
+- 超出容量淘汰最久未使用项。
+- 编译失败立即删除缓存项。
+- 返回 Candidate 副本，避免调用方修改缓存内容。
+
+一次生成中得到的 Candidate 会继续用于临时验证和最终保存，不重复编译。
+
+### 5.6 临时验证
+
+Candidate 不会直接保存。系统先调用 `validateTaskWorkflow`，在 `temp_task_*` 表中执行，再基于真实运行结果完成：
+
+- 执行诊断收集。
+- 输出预览生成。
+- 实际字段名称和类型校验。
+- `expectedOutputSchema` 校准。
+- lineage 和 required columns 契约校验。
+
+临时验证不更新正式 Task 的 `running/completed/failed` 状态，也不发送 Task 完成通知。
+
+### 5.7 诊断修复分类
+
+只有模型可能解决的问题才进入修复循环，例如：
+
+- DSL 或 workflowJs 语法问题。
+- 字段引用问题。
+- 类型不兼容。
+- 操作参数或结构错误。
+
+以下错误直接返回，不调用模型修复：
+
+- 网络或连接错误。
+- 认证、权限错误。
+- 超时或取消。
+- 文件、表或其他资源不存在。
+- 磁盘及运行环境错误。
+
+### 5.8 生成失败回滚
+
+如果生成、编译、临时执行或校验失败：
+
+- 删除本次新建的 Task 元数据。
+- 删除本次新建的输出 Dataset 和物理表。
+- 复用的 Task 不删除。
+- 复用的输出表不删除。
+- 清理临时输出表和临时节点缓存。
+
+Task 回滚使用“仅删除 Task 元数据”的专用路径，避免误删绑定的已有输出表。
+
+## 6. 自动化运行流程
+
+```mermaid
+flowchart TD
+    A[自动化触发] --> B[获取 taskId keyed lock]
+    B --> C[prepare: 准备本地或云端输入]
+    C --> D[校验 requiredColumns 和 Schema Policy]
+    D --> E{输入 Schema 是否满足要求}
+    E -->|否| F[返回 VALIDATION_FAILED]
+    E -->|是| G[compile: 获取 Workflow Candidate]
+    G --> H{编译诊断是否有 error}
+    H -->|是| I[返回 DSL_PARSE_FAILED]
+    H -->|否| J[executeAndValidate: 执行到临时表]
+    J --> K[生成预览并校验实际输出 Schema]
+    K --> L{输出 Schema 是否通过}
+    L -->|否| M[清理临时资源并保留正式输出]
+    L -->|是| N{运行模式}
+    N -->|temporary| O[返回预览]
+    O --> P[清理临时资源]
+    N -->|persisted| Q[提交临时结果到正式输出]
+    Q --> R[更新输出元数据和 Task 状态]
+    R --> S[发送 Task 完成通知]
+    S --> P
+    P --> T{是否输出到云端}
+    T -->|否| U[记录结构化耗时并返回]
+    T -->|是| V[upload: 创建或替换云端表]
+    V --> U
+    F --> W[释放 keyed lock]
+    I --> W
+    M --> W
+    U --> W
+```
+
+### 6.1 正式输出提交
+
+运行期始终先产生临时输出：
 
 ```text
-applyWorkflowDsl({ dryRun: false })
+输入数据 -> 临时执行 -> 输出 Schema 校验 -> 正式提交
 ```
 
-这保证了自动化最终复用的是已经通过后端校验的数据任务。
+只有校验成功才调用 `commitValidatedTaskOutput`，把临时结果替换到正式输出表，并更新：
 
-## 8. 兜底策略
+- Task 状态。
+- `sourceDatasetId`。
+- 输出物理表名。
+- 行数和列数。
+- `lastRunAt` 和错误状态。
+- 输出 Dataset 元数据。
 
-生成链路分三层：
+Schema 校验失败时，正式输出表保持原样。
+
+### 6.2 `saveWorkflow=true` 语义
+
+普通数据任务执行携带新 DSL 时，顺序为：
 
 ```text
-第一层：结构化 JSON operations -> 后端编译 DSL
-第二层：带诊断信息让模型修复 operations
-第三层：高级需求由模型生成完整 DSL，再由后端校验
+编译 Candidate -> 使用 Candidate 执行 -> 执行成功 -> 保存 Workflow
 ```
 
-### 8.1 第一层：稳定编译器
+执行失败不会保存新 Workflow，因此不会出现“正式 Workflow 已更新，但输出仍来自旧 Workflow”的提前保存问题。
 
-默认路径是：
+### 6.3 临时资源清理
 
-```text
-模型输出 JSON operations
-  -> compileGeneratedWorkflowPlan
-  -> parseGeneratedWorkflowDslResponse
-```
+临时资源包括：
 
-适合过滤、排序、字段选择、重命名、类型转换、聚合等常见需求。
+- `temp_task_*` 最终输出表。
+- 临时中间节点缓存表。
+- `data_workflow_node_caches` 中 `cache_scope = temporary` 的记录。
 
-### 8.2 第二层：诊断驱动修复
+成功、预览失败、Schema 失败和提交异常都进入清理逻辑。清理按 Task 执行；同一 Task 已由 keyed lock 串行，不会删除另一次并发运行仍在使用的临时资源。
 
-如果解析模型输出、编译 operations 或 dry-run 时失败，后端会把失败内容和 diagnostics 传回模型：
+## 7. 并发与状态一致性
 
-```text
-previousFailedAttempt:
-  compiledWorkflowDsl
-  diagnostics
-  instruction: Return corrected operations. Do not return DSL.
-```
+`DataCommandService` 使用 `task:<taskId>` keyed lock 串行化同一 Task 的以下操作：
 
-模型仍然需要返回结构化 operations。后端重新编译和 dry-run。
+- 生成或重新生成 Workflow。
+- 保存完整 Workflow DSL。
+- 配置输入、处理和输出节点。
+- 普通临时或正式运行。
+- 自动化数据处理运行。
 
-### 8.3 第三层：高级 DSL 兜底
+不同 Task 使用不同 key，仍可并发执行。`DataTaskStore` 内部保留 DuckDB 级别的互斥，负责数据库连接和事务安全；Service keyed lock 负责业务层的同 Task 顺序一致性。
 
-如果模型给出的 operation 类型不在 registry 中，说明需求可能超出稳定编译器表达范围。此时进入高级 DSL 兜底：
+## 8. 生成结果和运行结果
 
-```text
-generateAdvancedWorkflowDslFromPlan
-```
-
-高级兜底要求模型返回：
-
-```json
-{
-  "workflowDsl": "完整多行 Prep DSL",
-  "requiredColumns": [{ "name": "字段名" }],
-  "explanation": "为什么需要高级 DSL"
-}
-```
-
-但兜底 DSL 仍然不是直接信任：
-
-- 必须以指定 input source 行开始。
-- 必须以指定 output table 行结束。
-- 必须通过 `parsePrepDsl`。
-- 必须包含 input source 和 output table。
-- 必须通过字段引用校验。
-- 必须通过 dry-run。
-
-如果兜底后仍有错误，向前端返回 `DSL_PARSE_FAILED` 或 `VALIDATION_FAILED`，不保存不可运行任务。
-
-## 9. 生成结果持久化
-
-生成成功后返回：
+配置期生成结果核心字段：
 
 ```ts
 interface DataGenerateTaskFromRequirementResult {
@@ -311,7 +312,10 @@ interface DataGenerateTaskFromRequirementResult {
   outputTableId: string;
   outputTableName: string;
   workflowDsl: string;
+  workflowHash: string;
   requiredColumns: DataAutomationColumnSnapshot[];
+  expectedOutputSchema: DataAutomationColumnSnapshot[];
+  lineage: DataAutomationLineageEntry[];
   columnsSnapshot: DataAutomationColumnSnapshot[];
   sourceSummaryHash: string;
   version: number;
@@ -319,97 +323,103 @@ interface DataGenerateTaskFromRequirementResult {
 }
 ```
 
-自动化节点保存这些信息后，运行期不再需要自然语言要求或模型参与，而是执行 `taskId` 对应的数据任务。
+运行结果额外包含：
 
-再次生成时，如果来源表匹配，可以传入：
-
-- `reuseTaskId`
-- `currentVersion`
-- 已有输出表 ID
-
-后端优先复用原任务并更新 workflow，避免重复创建数据任务。
-
-## 10. 运行期行为
-
-自动化运行时只有确定性动作：
-
-```text
-automation trigger
-  -> data.task.run / cloud.table.process
-  -> DataTaskStore 执行 workflow
-  -> 写入本地输出表或上传云端表
+```ts
+interface RunGeneratedTaskResult {
+  workflowHash: string;
+  stageDurationsMs: {
+    prepare: number;
+    compile: number;
+    executeAndValidate: number;
+    upload: number;
+    total: number;
+  };
+}
 ```
 
-运行期不调用大模型生成 DSL，因此：
+`workflowHash` 是 `workflowDsl` 的 SHA-256，可用于区分同一 Task 的不同 Workflow，并关联日志、运行结果和性能指标。
 
-- 可预测。
-- 可复用。
-- 成本低。
-- 更适合定时与无人值守场景。
+## 9. 可观测性
 
-## 11. UI 与 i18n 调整
+自动化完成日志包含：
 
-为匹配技术语义，前端文案需要从“AI 处理”改成“AI 生成任务”：
+- `taskId`
+- `workflowHash`
+- 输入和输出位置
+- `prepareDurationMs`
+- `compileDurationMs`
+- `runDurationMs`
+- `uploadDurationMs`
+- `totalDurationMs`
 
-```text
-处理方式：AI 生成任务 | 复用数据任务
-```
+阶段解释：
 
-生成成功提示：
+| 阶段                 | 内容                            | 耗时异常时优先排查                    |
+| -------------------- | ------------------------------- | ------------------------------------- |
+| `prepare`            | 输入解析、云镜像刷新、字段快照  | 云端下载、文件预览、镜像导入          |
+| `compile`            | DSL 解析、编译和资源绑定        | 缓存命中率、复杂 Workflow、元数据查询 |
+| `executeAndValidate` | DuckDB 执行、预览和 Schema 校验 | 聚合、Join、数据量、磁盘 IO           |
+| `upload`             | 本地结果上传云端                | 网络、云端导入任务                    |
+| `total`              | 端到端处理                      | 各阶段合计及调度等待                  |
 
-```text
-数据任务已生成，后续将复用该任务执行。
-```
+## 10. 错误语义
 
-保留的 i18n key：
+| 错误码               | 典型场景                         | 是否保存 Workflow | 是否修改正式输出           |
+| -------------------- | -------------------------------- | ----------------- | -------------------------- |
+| `INVALID_ARGUMENT`   | 缺少输入表、输出目录等参数       | 否                | 否                         |
+| `RESOURCE_NOT_FOUND` | Task、表或文件不存在             | 否                | 否                         |
+| `DSL_PARSE_FAILED`   | workflowJs/DSL 解析或编译失败    | 否                | 否                         |
+| `VALIDATION_FAILED`  | 字段漂移、输出 Schema 不符合契约 | 否                | 否                         |
+| `GENERATION_FAILED`  | 模型调用或生成协议失败           | 否                | 否                         |
+| `RUN_FAILED`         | DuckDB 或运行环境执行失败        | 否                | 否；正式运行按失败状态记录 |
 
-| key                   | zh                                     | en                                                     |
-| --------------------- | -------------------------------------- | ------------------------------------------------------ |
-| `dataProcessModeAi`   | AI 生成任务                            | AI-generated task                                      |
-| `dataProcessModeTask` | 复用数据任务                           | Reuse data task                                        |
-| `generatedTaskReady`  | 数据任务已生成，后续将复用该任务执行。 | Data task generated. Future runs will reuse this task. |
+## 11. 性能特征
 
-删除的旧 key：
+- 相同 Workflow 和资源绑定优先命中 Candidate LRU。
+- 同一云表优先按版本复用镜像，版本不可用时按内容 Hash 避免重导入。
+- 生成、临时验证和保存复用同一个 Candidate。
+- 临时表及时清理，避免依赖 TTL 长时间占用存储。
+- keyed lock 仅限制同一 Task，不限制不同 Task 的业务并发。
 
-- `generateTaskHint`
-- `zeroTokenRuntime`
+## 12. 已知约束和后续方向
 
-## 12. 风险与约束
-
-- 结构化编译器覆盖范围有限，复杂变形需要依赖高级 DSL 兜底。
-- 高级 DSL 兜底仍可能失败，因此必须保留诊断信息并阻止不可运行任务保存。
-- 字段名称严格来自输入表，用户自然语言中的近义字段不会自动映射到不存在字段。
-- 运行期复用数据任务意味着输入表结构变化可能导致任务失效，需要通过 `requiredColumns` 和 `sourceSummaryHash` 做后续风险提示或重新生成判断。
+- Candidate LRU 是进程内缓存，应用重启后重新构建。
+- 如果云端调用方不提供 `updatedAt`，仍需要下载内容后才能做 Hash 判断。
+- 正式输出提交涉及 DuckDB 数据和任务元数据两个存储层，当前通过顺序提交和失败补偿保证业务一致性，不是跨数据库的分布式事务。
+- 当前没有不可变 Workflow 版本绑定；重新生成会更新同一 Task 的 Workflow。
+- 后续可增加缓存命中率、阶段耗时分位数、失败码计数和临时资源清理数量等指标。
 
 ## 13. 验收标准
 
-- AI 生成任务主路径要求模型返回结构化 JSON operations。
-- 后端能把 supported operations 编译为 Prep DSL。
-- 生成 DSL 必须通过 parser、compiler 和 dry-run 校验后才保存。
-- operations 修复路径能携带 diagnostics 再次请求模型。
-- unsupported operation 能进入高级 DSL 兜底。
-- 高级 DSL 兜底输出仍需通过后端校验。
-- 自动化运行期复用生成后的 `taskId`，不重新调用模型生成任务。
-- 前端处理方式显示为 `AI 生成任务 | 复用数据任务`。
-- 生成成功后显示轻提示：`数据任务已生成，后续将复用该任务执行。`
-- i18n 中不保留未使用的 `generateTaskHint` 和 `zeroTokenRuntime`。
+- 模型输出受限 `workflowJs`，并由 Parser、IR 和 Operation Registry 编译成 Prep DSL。
+- 生成 Candidate 必须通过临时执行和运行时 Schema 校验后才能保存。
+- 生成失败能清理新建 Task、输出表和临时资源，且不删除复用资源。
+- 同一 Task 的生成、保存、配置和执行按 keyed lock 串行。
+- `saveWorkflow=true` 在执行成功后保存，执行失败保持旧 Workflow。
+- 临时执行不更新正式 Task 状态、不发送完成通知，并在结束后主动清理。
+- Candidate LRU 能复用相同 DSL 和资源绑定的编译结果。
+- 云端镜像支持版本命中和内容 Hash 命中，未变化时不重建本地表。
+- 生成和运行结果包含稳定的 `workflowHash`。
+- 自动化运行记录结构化阶段耗时。
+- 输入或输出 Schema 漂移不会覆盖正式输出表。
 
-## 14. 相关代码
+## 14. 测试与验证
 
-- `src/renderer/components/settings/schedule/editorPanels.tsx`
-  - 数据处理动作 UI。
-  - 生成成功提示。
-  - AI 生成任务 / 复用数据任务模式切换。
-- `src/main/data/ipc/data-tasks-ipc.ts`
-  - `data.generateTaskFromRequirement` IPC 入口。
-- `src/main/data/data-command-service.ts`
-  - `generateTaskFromRequirement`
-  - `generateWorkflowDslFromRequirement`
-  - `repairWorkflowDslFromDiagnostics`
-  - `generateAdvancedWorkflowDslFromPlan`
-  - `compileGeneratedWorkflowPlan`
-  - `parseGeneratedWorkflowDslResponse`
-- `src/shared/prep-dsl`
-  - Prep DSL 解析、编译和诊断。
-- `src/renderer/i18n/locales/zh.json`
-- `src/renderer/i18n/locales/en.json`
+当前聚焦测试覆盖：
+
+- Workflow 生成、修复和字段契约校验。
+- Candidate 编译复用。
+- 同一 Task 并发串行。
+- 执行失败不保存 Workflow。
+- 临时资源主动清理。
+- 生成失败资源回滚及复用输出保护。
+- 输出 Schema 失败不污染正式输出。
+- 云端镜像稳定复用和版本命中。
+- `workflowHash` 和结构化阶段耗时。
+
+主要测试文件：
+
+- `tests/data-command-service.test.ts`
+- `tests/data-duckdb-store.test.ts`
+- `tests/data-operator-dsl-execution.test.ts`
