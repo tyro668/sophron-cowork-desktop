@@ -7,6 +7,7 @@ import {
   lastQualifiedPart,
 } from './utils';
 import { parseFieldRef } from '../../../shared/prep-dsl/parser';
+import { SetOpConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
 export function compileSetOpSql(
   output: string,
@@ -16,9 +17,10 @@ export function compileSetOpSql(
   leftColumns?: string[],
   rightColumns?: string[]
 ): string {
-  const operation = String(config.operation ?? 'union').toUpperCase();
-  const mode = config.mode === 'all' ? ' ALL' : '';
-  const match = config.match as string | undefined;
+  const parsed = parseOperatorConfig(SetOpConfigSchema, config);
+  const operation = parsed.operation.toUpperCase();
+  const mode = parsed.mode === 'all' ? ' ALL' : '';
+  const match = parsed.match;
 
   if (operation === 'UNION' && match === 'by_name') {
     return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${left} ${operation}${mode} BY NAME SELECT * FROM ${right}`;

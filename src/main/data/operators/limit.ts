@@ -1,4 +1,5 @@
-import { quoteIdentifier, positiveNumber, sortKeysToSql } from './utils';
+import { quoteIdentifier, sortKeysToSql } from './utils';
+import { LimitConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
 function compileFixedSql(
   output: string,
@@ -7,10 +8,11 @@ function compileFixedSql(
   config: Record<string, unknown>,
   limit: number
 ): string {
-  const unit = config.unit as string;
-  const orderBy = sortKeysToSql(config.orderBy);
-  const groupBy = config?.groupBy as string[] | undefined;
-  const ties = !!config?.ties;
+  const parsed = parseOperatorConfig(LimitConfigSchema, config);
+  const unit = parsed.unit;
+  const orderBy = sortKeysToSql(parsed.orderBy);
+  const groupBy = parsed.groupBy;
+  const ties = parsed.ties;
   const projection = columns.map((column) => quoteIdentifier(column)).join(', ') || '*';
   const pct = Math.min(limit, 100);
   const rows = Math.floor(limit);
@@ -137,14 +139,15 @@ function compileRandomSql(
   config: Record<string, unknown>,
   limit: number
 ): string {
-  if (config.unit === 'percent') {
-    const method = config.method === 'system' ? 'SYSTEM' : 'BERNOULLI';
-    const seed = typeof config.seed === 'number' ? ` REPEATABLE(${config.seed})` : '';
+  const parsed = parseOperatorConfig(LimitConfigSchema, config);
+  if (parsed.unit === 'percent') {
+    const method = parsed.method === 'system' ? 'SYSTEM' : 'BERNOULLI';
+    const seed = parsed.seed != null ? ` REPEATABLE(${parsed.seed})` : '';
     return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} TABLESAMPLE ${method}(${Math.min(limit, 100)}%)${seed}`;
   }
   const rows = Math.floor(limit);
-  const method = config.method === 'system' ? ' (system)' : '';
-  const seed = typeof config.seed === 'number' ? ` REPEATABLE(${config.seed})` : '';
+  const method = parsed.method === 'system' ? ' (system)' : '';
+  const seed = parsed.seed != null ? ` REPEATABLE(${parsed.seed})` : '';
   if (seed) {
     return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} USING SAMPLE reservoir(${rows} ROWS)${seed}`;
   }
@@ -157,12 +160,13 @@ export function compileLimitSql(
   columns: string[],
   config: Record<string, unknown>
 ): string {
-  if (config.limit === 0) {
+  const parsed = parseOperatorConfig(LimitConfigSchema, config);
+  if (parsed.limit === 0) {
     return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} LIMIT 0`;
   }
-  const limit = positiveNumber(config.limit, 100);
+  const limit = parsed.limit;
 
-  if (config.mode === 'random') {
+  if (parsed.mode === 'random') {
     return compileRandomSql(output, input, columns, config, limit);
   }
   return compileFixedSql(output, input, columns, config, limit);

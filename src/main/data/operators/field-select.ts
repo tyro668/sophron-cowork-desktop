@@ -1,4 +1,5 @@
-import { quoteColumnList, stringArray } from './utils';
+import { quoteColumnList } from './utils';
+import { FieldSelectConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
 export function compileFieldSelectSql(
   output: string,
@@ -6,9 +7,9 @@ export function compileFieldSelectSql(
   columns: string[],
   config: Record<string, unknown>
 ): string {
-  const selected = stringArray(config.columns);
+  const { columns: selected, mode } = parseOperatorConfig(FieldSelectConfigSchema, config);
   const outputColumns =
-    config.mode === 'exclude'
+    mode === 'exclude'
       ? columns.filter((column) => !selected.includes(column))
       : selected.length > 0
         ? selected

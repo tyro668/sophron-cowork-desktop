@@ -1,4 +1,5 @@
-import { quoteIdentifier, literalToSql, stringArray } from './utils';
+import { quoteIdentifier, literalToSql } from './utils';
+import { UnpivotConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
 export function compileUnpivotSql(
   output: string,
@@ -6,9 +7,10 @@ export function compileUnpivotSql(
   columns: string[],
   config: Record<string, unknown>
 ): string {
-  const configured = stringArray(config.columns);
+  const parsed = parseOperatorConfig(UnpivotConfigSchema, config);
+  const configured = parsed.columns;
   const unpivotColumns =
-    config.mode === 'except'
+    parsed.mode === 'except'
       ? columns.filter((column) => !configured.includes(column))
       : configured.filter((column) => columns.includes(column));
   if (unpivotColumns.length === 0) {
@@ -17,16 +19,14 @@ export function compileUnpivotSql(
 
   const keepColumns = columns.filter((column) => !unpivotColumns.includes(column));
 
-  let nameCol =
-    typeof config.nameColumn === 'string' && config.nameColumn ? config.nameColumn : 'name';
-  let valueCol =
-    typeof config.valueColumn === 'string' && config.valueColumn ? config.valueColumn : 'value';
+  let nameCol = parsed.nameColumn || 'name';
+  let valueCol = parsed.valueColumn || 'value';
 
   if (keepColumns.includes(nameCol)) nameCol = '_' + nameCol;
   if (keepColumns.includes(valueCol)) valueCol = '_' + valueCol;
 
   // DuckDB v0.9 不支持 UNPIVOT INCLUDE NULLS，含 NULL 时回退 UNION ALL
-  if (config.includeNulls) {
+  if (parsed.includeNulls) {
     const branches = unpivotColumns.map((column) => {
       const projection = [
         ...keepColumns.map(quoteIdentifier),

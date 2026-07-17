@@ -1,5 +1,6 @@
-import { quoteIdentifier, literalToSql, stringArray, objectArray, unknownArray } from './utils';
+import { quoteIdentifier, literalToSql } from './utils';
 import { compileScalarExpression } from './compute';
+import { PivotConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
 function formatAggFn(metricFn: string): string {
   return metricFn === 'count_distinct' ? 'COUNT(DISTINCT ' : `${metricFn.toUpperCase()}(`;
@@ -14,10 +15,11 @@ export function compilePivotSql(
   input: string,
   config: Record<string, unknown>
 ): string {
-  const on = stringArray(config.on);
-  const metrics = objectArray(config.using);
-  const groupBy = stringArray(config.groupBy);
-  const values = unknownArray(config.values);
+  const parsed = parseOperatorConfig(PivotConfigSchema, config);
+  const on = parsed.on;
+  const metrics = parsed.using;
+  const groupBy = parsed.groupBy;
+  const values = parsed.values;
 
   // 有值列表时：子查询先过滤再透视
   const source =
@@ -29,12 +31,9 @@ export function compilePivotSql(
   const usingSql =
     metrics
       .map((metric) => {
-        const fn = String(metric.function ?? 'count');
-        const expression = compileAggExpr(String(metric.expression ?? '*'));
-        const alias =
-          typeof metric.alias === 'string' && metric.alias
-            ? ` AS ${quoteIdentifier(metric.alias)}`
-            : '';
+        const fn = metric.function || 'count';
+        const expression = compileAggExpr(metric.expression || '*');
+        const alias = metric.alias ? ` AS ${quoteIdentifier(metric.alias)}` : '';
         return `${formatAggFn(fn)}${expression})${alias}`;
       })
       .join(', ') || 'count(*)';

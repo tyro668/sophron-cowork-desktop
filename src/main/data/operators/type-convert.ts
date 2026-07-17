@@ -1,6 +1,7 @@
 import { requireDataFieldType } from '../../../shared/data-field-types';
-import { quoteIdentifier, objectArray } from './utils';
+import { quoteIdentifier } from './utils';
 import { duckDbTypeForDataFieldType } from '../../../shared/data-field-types';
+import { TypeConvertConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
 export function compileTypeConvertSql(
   output: string,
@@ -8,12 +9,10 @@ export function compileTypeConvertSql(
   columns: string[],
   config: Record<string, unknown>
 ): string {
-  const conversions = objectArray(config.conversions);
+  const { conversions } = parseOperatorConfig(TypeConvertConfigSchema, config);
   const byColumn = new Map(
     conversions.flatMap((conversion) =>
-      typeof conversion.column === 'string' && typeof conversion.type === 'string'
-        ? [[conversion.column, conversion] as const]
-        : []
+      conversion.column && conversion.type ? [[conversion.column, conversion] as const] : []
     )
   );
   const projections = columns.map((column) => {
@@ -27,13 +26,10 @@ export function compileTypeConvertSql(
 
 export function compileTypeConversionExpression(
   column: string,
-  conversion: Record<string, unknown>
+  conversion: { type?: string; onError?: string }
 ): string {
   const source = quoteIdentifier(column);
-  const targetType = requireDataFieldType(
-    typeof conversion.type === 'string' ? conversion.type : 'text',
-    'cast target type'
-  );
+  const targetType = requireDataFieldType(conversion.type || 'text', 'cast target type');
   if (conversion.onError === 'keep') {
     return source;
   }
