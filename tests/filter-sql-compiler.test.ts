@@ -533,16 +533,23 @@ describe('filter SQL compiler', () => {
     });
   });
 
-  describe('integration: data-task-store references', () => {
-    it('compiles regexp_matches in filter.ts, not inline in data-task-store', () => {
+  describe('integration: strategy pattern references', () => {
+    it('compiles filter via strategy.ts -> filter.ts, not inline in data-task-store', () => {
       const storeSource = fs.readFileSync(
         path.resolve(process.cwd(), 'src/main/data/data-task-store.ts'),
         'utf8'
       );
 
-      expect(storeSource).toContain('compileFilterConditionExpression');
-      expect(storeSource).toContain('WHERE ${compileFilterConditionExpression(');
+      expect(storeSource).toContain('COMPILE_STRATEGIES');
+      expect(storeSource).not.toContain('WHERE ${compileFilterConditionExpression(');
       expect(storeSource).not.toContain('WHERE ${compileScalarExpression(');
+
+      const strategySource = fs.readFileSync(
+        path.resolve(process.cwd(), 'src/main/data/operators/strategy.ts'),
+        'utf8'
+      );
+      expect(strategySource).toContain('compileFilterConditionExpression');
+      expect(strategySource).not.toContain('compileScalarExpression');
 
       const filterSource = fs.readFileSync(
         path.resolve(process.cwd(), 'src/main/data/operators/filter.ts'),

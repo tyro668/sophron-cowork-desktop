@@ -267,6 +267,9 @@ export default function FormMissingValue({
       <div className="flex flex-1 flex-col overflow-hidden">
         {tabMode === 'row' && (
           <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
+            {/* Description */}
+            <p className="text-[11px] leading-4 text-text-muted">{description}</p>
+
             {/* Judge fields */}
             <div className="grid gap-1.5">
               <GlassTagBar
@@ -289,9 +292,6 @@ export default function FormMissingValue({
                 />
               )}
             </div>
-
-            {/* Description */}
-            <p className="text-[11px] leading-4 text-text-muted">{description}</p>
           </div>
         )}
 

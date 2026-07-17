@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Trash2, X, ChevronDown } from 'lucide-react';
 import type { OperatorFormProps } from './index';
@@ -40,18 +40,17 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
   const method = (node.config.method as string) ?? 'system';
   const seed = node.config.seed as number | undefined;
 
-  const configRef = useRef(node.config);
   const [localLimit, setLocalLimit] = useState(String(limit));
   const [localOffset, setLocalOffset] = useState(String(offset));
   const [localSeed, setLocalSeed] = useState(seed != null ? String(seed) : '');
   const [groupOpen, setGroupOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
 
-  if (configRef.current !== node.config) {
-    configRef.current = node.config;
-    if (String(limit) !== localLimit) setLocalLimit(String(limit));
-    if (String(offset) !== localOffset) setLocalOffset(String(offset));
-  }
+  useEffect(() => {
+    setLocalLimit(String(limit));
+    setLocalOffset(String(offset));
+    setLocalSeed(seed != null ? String(seed) : '');
+  }, [limit, offset, seed]);
 
   const [errors, setErrors] = useState<string[]>([]);
 
