@@ -1,9 +1,10 @@
 export {
-  GENERATED_WORKFLOW_CONFIG_REPAIR_ATTEMPTS,
-  generateWorkflowDslFromRequirement,
+  GENERATED_WORKFLOW_REPAIR_ATTEMPTS,
+  generateDataTaskWorkflowFromRequirement,
   normalizeColumnSnapshot,
-  repairWorkflowDslFromDiagnostics,
-} from './dsl-generator';
+  repairGeneratedWorkflowFromDiagnostics,
+} from './workflow-generator';
+export { compileGeneratedWorkflowIr } from './operation-compiler';
 export {
   hashColumns,
   reconcileGeneratedWorkflowWithOutputPreview,
@@ -12,8 +13,11 @@ export {
   validateGeneratedWorkflowGenerationContract,
 } from './schema-inferencer';
 export type {
+  GeneratedDataTaskWorkflow,
   GeneratedWorkflowColumnBinding,
-  GeneratedWorkflowGenerationResult,
   GeneratedWorkflowRequiredColumnResolver,
-} from './types';
+  WorkflowExpressionIr,
+  WorkflowMetricIr,
+  WorkflowOperationIr,
+} from './workflow-model';
 export { isRecord } from './utils';

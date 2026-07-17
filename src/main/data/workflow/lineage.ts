@@ -2,7 +2,7 @@ import type {
   DataAutomationColumnSnapshot,
   DataAutomationLineageEntry,
 } from '../../../renderer/types';
-import type { GeneratedWorkflowColumnBinding } from './types';
+import type { GeneratedWorkflowColumnBinding } from './workflow-model';
 import { normalizeDslTypeName } from './utils';
 
 export function sourceColumnsFromBinding(

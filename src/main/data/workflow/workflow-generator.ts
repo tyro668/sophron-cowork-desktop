@@ -4,21 +4,18 @@ import { runPiAiOneShot } from '../../claude/claude-sdk-one-shot';
 import { DataCommandError } from '../data-command-types';
 import { getWorkflowDslQuickReference } from '../data-dsl-reference';
 import {
-  compileWorkflowJavascriptToIr,
-  extractGeneratedWorkflowJavascript,
-  workflowJsIrToGeneratedOperations,
-} from './js-parser';
-import {
-  compileGeneratedWorkflowPlan,
-  type GeneratedWorkflowGenerationResult,
-} from './operation-compiler';
+  applyJavascriptFunctionPatch,
+  compileJavascriptWorkflowToIr,
+} from './javascript-workflow-compiler';
+import { getWorkflowJavascriptCapabilityPrompt } from './javascript-capabilities';
+import { compileGeneratedWorkflowIr, type GeneratedDataTaskWorkflow } from './operation-compiler';
 import {
   parseGeneratedWorkflowDslResponse,
   reconcileGeneratedWorkflowWithDslInference,
 } from './schema-inferencer';
-import { isRecord } from './utils';
+import { extractJsonObject, isRecord } from './utils';
 
-export const GENERATED_WORKFLOW_CONFIG_REPAIR_ATTEMPTS = 2;
+export const GENERATED_WORKFLOW_REPAIR_ATTEMPTS = 2;
 const DIRECT_DSL_GENERATION_FALLBACK_ENV = 'SOPHRON_ENABLE_DIRECT_DSL_GENERATION';
 
 function isDirectDslGenerationFallbackEnabled(): boolean {
@@ -29,6 +26,30 @@ function isDirectDslGenerationFallbackEnabled(): boolean {
 function normalizeOptionalName(name: string | undefined): string | undefined {
   const normalized = name?.trim();
   return normalized || undefined;
+}
+
+function extractGeneratedJavascriptSource(text: string): string {
+  const trimmed = text.trim();
+  try {
+    const parsed = JSON.parse(extractJsonObject(trimmed)) as unknown;
+    if (
+      isRecord(parsed) &&
+      typeof parsed.javascriptSource === 'string' &&
+      parsed.javascriptSource.trim()
+    ) {
+      return parsed.javascriptSource.trim();
+    }
+  } catch {
+    // Fall through to code-fence/raw program extraction.
+  }
+  const fenced = trimmed.match(/```(?:javascript|js)?\s*([\s\S]*?)```/i);
+  const candidate = fenced?.[1]?.trim() ?? trimmed;
+  const mainIndex = candidate.search(/\bfunction\s+main\s*\(/);
+  if (mainIndex >= 0) return candidate.slice(mainIndex).trim();
+  throw new DataCommandError(
+    'VALIDATION_FAILED',
+    'Workflow JavaScript generation response must include javascriptSource with function main()'
+  );
 }
 
 export function normalizeColumnSnapshot(
@@ -44,7 +65,7 @@ export function normalizeColumnSnapshot(
     .filter((column) => Boolean(column.name));
 }
 
-export async function generateWorkflowDslFromRequirement({
+export async function generateDataTaskWorkflowFromRequirement({
   inputTableId,
   outputTableName,
   requirement,
@@ -56,22 +77,22 @@ export async function generateWorkflowDslFromRequirement({
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
   runtimeConfig?: AgentRuntimeConfig;
-}): Promise<GeneratedWorkflowGenerationResult> {
+}): Promise<GeneratedDataTaskWorkflow> {
   const config = requireGenerationRuntimeConfig(runtimeConfig);
   try {
     const response = await runPiAiOneShot(
-      buildWorkflowDslGenerationUserPrompt({
+      buildWorkflowGenerationUserPrompt({
         inputTableId,
         outputTableName,
         requirement,
         columns,
       }),
-      buildWorkflowDslGenerationSystemPrompt(),
+      buildWorkflowGenerationSystemPrompt(),
       config,
       { temperature: 0, maxTokens: 4_000 }
     );
     try {
-      return parseGeneratedWorkflowJsResponse({
+      return compileGeneratedJavascriptResponse({
         text: response.text,
         inputTableId,
         outputTableName,
@@ -86,17 +107,19 @@ export async function generateWorkflowDslFromRequirement({
           requirement,
           columns,
           runtimeConfig,
-          failedWorkflowJs: extractWorkflowJsFromModelResponse(response.text) ?? response.text,
+          failedJavascriptSource:
+            extractJavascriptSourceFromModelResponse(response.text) ?? response.text,
           diagnostics: diagnosticsFromGenerationError(parseError),
         });
       }
-      return await repairWorkflowDslFromDiagnostics({
+      return await repairGeneratedWorkflowFromDiagnostics({
         inputTableId,
         outputTableName,
         requirement,
         columns,
         runtimeConfig,
-        failedWorkflowDsl: extractWorkflowJsFromModelResponse(response.text) ?? response.text,
+        failedJavascriptSource:
+          extractJavascriptSourceFromModelResponse(response.text) ?? response.text,
         diagnostics: diagnosticsFromGenerationError(parseError),
       });
     }
@@ -109,13 +132,13 @@ export async function generateWorkflowDslFromRequirement({
   }
 }
 
-export async function repairWorkflowDslFromDiagnostics({
+export async function repairGeneratedWorkflowFromDiagnostics({
   inputTableId,
   outputTableName,
   requirement,
   columns,
   runtimeConfig,
-  failedWorkflowDsl,
+  failedJavascriptSource,
   diagnostics,
 }: {
   inputTableId: string;
@@ -123,26 +146,27 @@ export async function repairWorkflowDslFromDiagnostics({
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
   runtimeConfig?: AgentRuntimeConfig;
-  failedWorkflowDsl: string;
+  failedJavascriptSource: string;
   diagnostics: PrepDiagnostic[];
-}): Promise<GeneratedWorkflowGenerationResult> {
+}): Promise<GeneratedDataTaskWorkflow> {
   const config = requireGenerationRuntimeConfig(runtimeConfig);
   try {
     const response = await runPiAiOneShot(
-      buildWorkflowDslGenerationUserPrompt({
+      buildWorkflowGenerationUserPrompt({
         inputTableId,
         outputTableName,
         requirement,
         columns,
-        failedWorkflowDsl,
+        failedJavascriptSource,
         diagnostics,
       }),
-      buildWorkflowDslGenerationSystemPrompt(),
+      buildWorkflowGenerationSystemPrompt(),
       config,
       { temperature: 0, maxTokens: 4_000 }
     );
-    return parseRepairWorkflowResponse({
+    return compileRepairResponse({
       text: response.text,
+      failedJavascriptSource,
       inputTableId,
       outputTableName,
       requirement,
@@ -165,7 +189,7 @@ async function generateAdvancedWorkflowDslFromFailedJavascript({
   requirement,
   columns,
   runtimeConfig,
-  failedWorkflowJs,
+  failedJavascriptSource,
   diagnostics,
 }: {
   inputTableId: string;
@@ -173,9 +197,9 @@ async function generateAdvancedWorkflowDslFromFailedJavascript({
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
   runtimeConfig?: AgentRuntimeConfig;
-  failedWorkflowJs: string;
+  failedJavascriptSource: string;
   diagnostics: PrepDiagnostic[];
-}): Promise<GeneratedWorkflowGenerationResult> {
+}): Promise<GeneratedDataTaskWorkflow> {
   const config = requireGenerationRuntimeConfig(runtimeConfig);
   try {
     const response = await runPiAiOneShot(
@@ -184,7 +208,7 @@ async function generateAdvancedWorkflowDslFromFailedJavascript({
         outputTableName,
         requirement,
         columns,
-        failedWorkflowJs,
+        failedJavascriptSource,
         diagnostics,
       }),
       buildAdvancedWorkflowDslGenerationSystemPrompt(),
@@ -213,14 +237,21 @@ function requireGenerationRuntimeConfig(runtimeConfig?: AgentRuntimeConfig): Age
   return runtimeConfig;
 }
 
-function buildWorkflowDslGenerationSystemPrompt(): string {
+function buildWorkflowGenerationSystemPrompt(): string {
   return [
-    'You convert user requirements into restricted JavaScript workflow API code for Sophron.',
+    'You convert user requirements into a safe function-oriented JavaScript workflow program for Sophron.',
     'Return only strict JSON. Do not return markdown, comments, explanations, or code fences.',
     'Use only the provided input columns. Do not invent field names.',
-    'Do not write Sophron Prep DSL, SQL, imports, loops, variables, async code, or arbitrary JavaScript.',
-    'Return {"workflowJs":"..."} where workflowJs is a single chain beginning with workflow() and ending with outputTable(OUTPUT_TABLE_NAME, { mode: "replace" }).',
-    'Allowed workflow methods: inputDataset(INPUT_TABLE_ID, "src"), filter(expr), sort(col("field"), "asc|desc"), drop("field" or ["field"]), select(["field"]), rename("source", "target"), derive("field", expr), cast("field", "text|integer|float|decimal|date|datetime|boolean", options), aggregate({ groupBy: [col("field")], metrics: [metric.sum(col("field")).as("alias"), metric.count().as("alias")] }), outputTable(OUTPUT_TABLE_NAME, { mode: "replace" }).',
+    'Do not write Sophron Prep DSL, SQL, imports, loops, mutable variables, async code, classes, dynamic calls, or system/network/file access.',
+    'Return {"javascriptSource":"..."}. The program must contain named helper functions and function main().',
+    'Helper functions receive and return a workflow value. main() creates the input with workflow().inputDataset(INPUT_TABLE_ID, "src"), composes helpers using const variables, and returns outputTable(OUTPUT_TABLE_NAME, { mode: "replace" }).',
+    'Use one helper function per coherent data-processing step so compiler diagnostics can repair one function without rewriting the program.',
+    'For a repair request naming one failed function, return {"javascriptPatch":{"functionName":"...","replacement":"complete replacement function source"}} instead of regenerating unaffected functions.',
+    `Allowed data-processing methods: ${getWorkflowJavascriptCapabilityPrompt()}.`,
+    'Method signatures: filter(expr), sort(col("field"), "asc|desc"), drop("field" or ["field"]), select(["field"]), rename("source", "target"), derive("field", expr), cast("field", "text|integer|float|decimal|date|datetime|boolean", options), aggregate({ groupBy: [col("field")], metrics: [metric.sum(col("field")).as("alias"), metric.count().as("alias")] }).',
+    'Single-input extended methods: deduplicate({ by?: ["field"], keep?: "first|last", orderBy?: [{ field, direction, nulls? }] }), handleMissing({ strategy: "drop_empty_rows" } or { rules: [{ column, method: "skip|drop|nullify_values|literal_fill", value?, values? }] }), limit(number or { count, unit?: "rows|percent", offset? }), top(count, [{ field, direction, nulls? }]), unpivot({ columns or except, nameColumn, valueColumn, includeNulls? }), unnest({ sourceKind: "list|json", column, alias, path?, withIndex?, recursive?, maxDepth?, keepParentNames? }), pivot({ on: ["field"], values: [fixed literals], using: [{ function, expression, alias }], groupBy?: ["field"] }).',
+    'Automation has exactly one input dataset. Never call join, union, intersect, except, setOp, or reference a second input.',
+    'Pivot must use exactly one on field, a non-empty fixed values array, and exactly one metric so the saved output schema is deterministic.',
     'Allowed expression APIs: col("field"), lit(value), fn.regexpExtract(expr, pattern), fn.year(expr), fn.month(expr), fn.upper(expr), fn.lower(expr), fn.trim(expr), fn.replace(expr, search, replacement), fn.concat(...exprs).',
     'Allowed comparison methods: eq, neq, gt, gte, lt, lte, contains, notContains, isNull, isNotNull.',
     'Allowed arithmetic methods: add, sub, mul, div.',
@@ -240,7 +271,7 @@ function buildAdvancedWorkflowDslGenerationSystemPrompt(): string {
     'You generate advanced Sophron Prep DSL only when the stable operation compiler cannot express the user requirement.',
     'Return only strict JSON. Do not return markdown, comments, explanations, or code fences.',
     'Use only the provided input columns. Do not invent field names.',
-    'This is an explicitly enabled fallback from failed workflowJs generation. Do not produce or consume JSON operation plans.',
+    'This is an explicitly enabled fallback from failed javascriptSource generation. Do not produce or consume JSON operation plans.',
     'The workflowDsl must start with the provided input source dataset line and end with the provided output table line.',
     'If a field name contains spaces or special characters, reference it as [`field name`].',
     'In expressions, reference fields with [field] or [`field name`]. Never use bare SQL identifier syntax such as `field name` or "field name".',
@@ -253,19 +284,19 @@ function buildAdvancedWorkflowDslGenerationUserPrompt(input: {
   outputTableName: string;
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
-  failedWorkflowJs: string;
+  failedJavascriptSource: string;
   diagnostics: PrepDiagnostic[];
 }): string {
   return JSON.stringify(
     {
-      task: 'Generate an advanced Sophron Prep DSL workflow only because the generated workflowJs could not be parsed or compiled.',
+      task: 'Generate an advanced Sophron Prep DSL workflow only because the generated JavaScript source could not be parsed or compiled.',
       requirement: input.requirement,
       inputColumns: input.columns,
       requiredDslLines: {
         first: `input source dataset "${input.inputTableId}" as src`,
         last: `output table "${input.outputTableName}" mode replace`,
       },
-      failedWorkflowJs: input.failedWorkflowJs,
+      failedJavascriptSource: input.failedJavascriptSource,
       previousDiagnostics: input.diagnostics.map((diagnostic) => ({
         severity: diagnostic.severity,
         code: diagnostic.code,
@@ -285,17 +316,17 @@ function buildAdvancedWorkflowDslGenerationUserPrompt(input: {
   );
 }
 
-function buildWorkflowDslGenerationUserPrompt(input: {
+function buildWorkflowGenerationUserPrompt(input: {
   inputTableId: string;
   outputTableName: string;
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
-  failedWorkflowDsl?: string;
+  failedJavascriptSource?: string;
   diagnostics?: PrepDiagnostic[];
 }): string {
   return JSON.stringify(
     {
-      task: 'Convert the user requirement into restricted workflowJs for a Sophron data transform.',
+      task: 'Convert the user requirement into restricted JavaScript source for a Sophron data transform.',
       requirement: input.requirement,
       inputColumns: input.columns,
       compilationTarget: {
@@ -303,35 +334,37 @@ function buildWorkflowDslGenerationUserPrompt(input: {
         outputTableName: input.outputTableName,
       },
       outputJsonSchema: {
-        workflowJs:
-          'single restricted JavaScript workflow API chain. Use INPUT_TABLE_ID and OUTPUT_TABLE_NAME constants exactly.',
+        javascriptSource:
+          'function-oriented restricted JavaScript program with named helpers and main(). Use INPUT_TABLE_ID and OUTPUT_TABLE_NAME constants exactly.',
         requiredColumns: [{ name: 'input column referenced by the DSL', type: 'optional' }],
         changeSummary: 'brief user-facing summary of what the workflow changes',
       },
-      previousFailedAttempt: input.failedWorkflowDsl
+      previousFailedAttempt: input.failedJavascriptSource
         ? {
-            failedWorkflow: input.failedWorkflowDsl,
+            failedJavascriptSource: input.failedJavascriptSource,
             diagnostics: (input.diagnostics ?? []).map((diagnostic) => ({
               severity: diagnostic.severity,
               code: diagnostic.code,
               message: diagnostic.message,
               line: diagnostic.line,
               column: diagnostic.column,
+              functionName: isRecord(diagnostic) ? diagnostic.functionName : undefined,
             })),
-            instruction: 'Return corrected workflowJs. Do not return DSL.',
+            instruction:
+              'If a diagnostic names one helper function, return javascriptPatch with only that replacement function. Otherwise return complete corrected javascriptSource. Do not return DSL.',
           }
         : undefined,
       examples: [
         {
           requirement: '过滤掉Market为EU的数据',
-          workflowJs:
-            'workflow().inputDataset(INPUT_TABLE_ID, "src").filter(col("Market").neq(lit("EU"))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+          javascriptSource:
+            'function filterEurope(input) {\n  return input.filter(col("Market").neq(lit("EU")));\n}\n\nfunction main() {\n  const input = workflow().inputDataset(INPUT_TABLE_ID, "src");\n  const filtered = filterEurope(input);\n  return filtered.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
           requiredColumns: [{ name: 'Market' }],
         },
         {
           requirement: '按照Sales升序排列，删除记录数',
-          workflowJs:
-            'workflow().inputDataset(INPUT_TABLE_ID, "src").sort(col("Sales"), "asc").drop("记录数").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+          javascriptSource:
+            'function sortSales(input) {\n  return input.sort(col("Sales"), "asc");\n}\n\nfunction removeRecordCount(input) {\n  return input.drop("记录数");\n}\n\nfunction main() {\n  const input = workflow().inputDataset(INPUT_TABLE_ID, "src");\n  const sorted = sortSales(input);\n  const cleaned = removeRecordCount(sorted);\n  return cleaned.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
           requiredColumns: [{ name: 'Sales' }, { name: '记录数' }],
         },
       ],
@@ -341,30 +374,55 @@ function buildWorkflowDslGenerationUserPrompt(input: {
   );
 }
 
-function extractWorkflowJsFromModelResponse(text: string): string | null {
+function extractJavascriptSourceFromModelResponse(text: string): string | null {
   try {
-    return extractGeneratedWorkflowJavascript(text);
+    return extractGeneratedJavascriptSource(text);
   } catch {
     return null;
   }
 }
 
-function parseRepairWorkflowResponse({
+function compileRepairResponse({
   text,
+  failedJavascriptSource,
   inputTableId,
   outputTableName,
   requirement,
   columns,
 }: {
   text: string;
+  failedJavascriptSource: string;
   inputTableId: string;
   outputTableName: string;
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
-}): GeneratedWorkflowGenerationResult {
+}): GeneratedDataTaskWorkflow {
   const errors: string[] = [];
   try {
-    return parseGeneratedWorkflowJsResponse({
+    const parsed = JSON.parse(text) as unknown;
+    if (isRecord(parsed) && isRecord(parsed.javascriptPatch)) {
+      const functionName = parsed.javascriptPatch.functionName;
+      const replacement = parsed.javascriptPatch.replacement;
+      if (typeof functionName === 'string' && typeof replacement === 'string') {
+        const patched = applyJavascriptFunctionPatch(
+          failedJavascriptSource,
+          functionName,
+          replacement
+        );
+        return compileGeneratedJavascriptResponse({
+          text: JSON.stringify({ javascriptSource: patched }),
+          inputTableId,
+          outputTableName,
+          requirement,
+          columns,
+        });
+      }
+    }
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : String(error));
+  }
+  try {
+    return compileGeneratedJavascriptResponse({
       text,
       inputTableId,
       outputTableName,
@@ -382,7 +440,7 @@ function parseRepairWorkflowResponse({
 
   throw new DataCommandError(
     'VALIDATION_FAILED',
-    `Repair generation response must include workflowJs. Parser errors: ${errors.join('; ')}`
+    `Repair generation response must include javascriptSource. Parser errors: ${errors.join('; ')}`
   );
 }
 
@@ -422,7 +480,7 @@ function isPrepDiagnosticLike(value: unknown): value is PrepDiagnostic {
   return isRecord(value) && (value.severity === 'error' || value.severity === 'warning');
 }
 
-function parseGeneratedWorkflowJsResponse({
+function compileGeneratedJavascriptResponse({
   text,
   inputTableId,
   outputTableName,
@@ -434,16 +492,18 @@ function parseGeneratedWorkflowJsResponse({
   outputTableName: string;
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
-}): GeneratedWorkflowGenerationResult {
-  const workflowJs = extractGeneratedWorkflowJavascript(text);
-  const ir = compileWorkflowJavascriptToIr(workflowJs);
-  const operations = workflowJsIrToGeneratedOperations(ir);
-  const compiled = compileGeneratedWorkflowPlan({
-    operations,
+}): GeneratedDataTaskWorkflow {
+  const javascriptSource = extractGeneratedJavascriptSource(text);
+  const ir = compileJavascriptWorkflowToIr(javascriptSource);
+  const compiled = compileGeneratedWorkflowIr({
+    ir,
     inputTableId,
     outputTableName,
     requirement,
     columns,
   });
-  return reconcileGeneratedWorkflowWithDslInference(compiled, columns);
+  return {
+    ...reconcileGeneratedWorkflowWithDslInference(compiled, columns),
+    javascriptSource,
+  };
 }

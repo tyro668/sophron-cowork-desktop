@@ -11,11 +11,16 @@ import { runPiAiOneShot } from '../src/main/claude/claude-sdk-one-shot';
 import type { AgentRuntimeConfig } from '../src/renderer/types';
 import type { PersonalAnalysisConnectionInput } from '../src/shared/personal-analysis-types';
 
+function asFunctionWorkflow(chain: string): string {
+  return `function main() {\n  return ${chain};\n}`;
+}
+
 vi.mock('../src/main/claude/claude-sdk-one-shot', () => ({
   runPiAiOneShot: vi.fn(async () => ({
     text: JSON.stringify({
-      workflowJs:
-        'workflow().inputDataset(INPUT_TABLE_ID, "src").filter(col("Market").neq(lit("EU"))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+      javascriptSource: asFunctionWorkflow(
+        'workflow().inputDataset(INPUT_TABLE_ID, "src").filter(col("Market").neq(lit("EU"))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+      ),
       requiredColumns: [{ name: 'Market' }],
     }),
     hasThinking: false,
@@ -34,8 +39,9 @@ const testRuntimeConfig: AgentRuntimeConfig = {
 beforeEach(() => {
   vi.mocked(runPiAiOneShot).mockResolvedValue({
     text: JSON.stringify({
-      workflowJs:
-        'workflow().inputDataset(INPUT_TABLE_ID, "src").filter(col("Market").neq(lit("EU"))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+      javascriptSource: asFunctionWorkflow(
+        'workflow().inputDataset(INPUT_TABLE_ID, "src").filter(col("Market").neq(lit("EU"))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+      ),
       requiredColumns: [{ name: 'Market' }],
     }),
     hasThinking: false,
@@ -1022,8 +1028,9 @@ describe('DataCommandService', () => {
   it('derives required columns from generated DSL when the model omits them', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        workflowJs:
-          'workflow().inputDataset(INPUT_TABLE_ID, "src").filter(col("Market").neq(lit("EU"))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+        javascriptSource: asFunctionWorkflow(
+          'workflow().inputDataset(INPUT_TABLE_ID, "src").filter(col("Market").neq(lit("EU"))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -1059,14 +1066,16 @@ describe('DataCommandService', () => {
   it('compiles restricted workflow JS API into DSL and lineage', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        workflowJs: [
-          'workflow()',
-          '.inputDataset(INPUT_TABLE_ID, "src")',
-          '.filter(col("Market").neq(lit("EU")))',
-          '.derive("Revenue", col("Sales").mul(col("Quantity")))',
-          '.sort(col("Revenue"), "desc")',
-          '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
-        ].join(''),
+        javascriptSource: asFunctionWorkflow(
+          [
+            'workflow()',
+            '.inputDataset(INPUT_TABLE_ID, "src")',
+            '.filter(col("Market").neq(lit("EU")))',
+            '.derive("Revenue", col("Sales").mul(col("Quantity")))',
+            '.sort(col("Revenue"), "desc")',
+            '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+          ].join('')
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -1121,11 +1130,12 @@ describe('DataCommandService', () => {
     });
   });
 
-  it('compiles workflowJs sort calls to Prep DSL instead of accepting SQL order by text', async () => {
+  it('compiles javascriptSource sort calls to Prep DSL instead of accepting SQL order by text', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        workflowJs:
-          'workflow().inputDataset(INPUT_TABLE_ID, "src").sort(col("Unit Price"), "asc").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+        javascriptSource: asFunctionWorkflow(
+          'workflow().inputDataset(INPUT_TABLE_ID, "src").sort(col("Unit Price"), "asc").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -1163,15 +1173,17 @@ describe('DataCommandService', () => {
   it('normalizes bare backtick field refs in generated derive expressions', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        workflowJs: [
-          'workflow()',
-          '.inputDataset(INPUT_TABLE_ID, "src")',
-          '.derive("Customer ID Number", fn.regexpExtract(col("Customer ID"), "[0-9]+"))',
-          '.drop("记录数")',
-          '.filter(col("Profit").gt(lit(0)))',
-          '.sort(col("Profit"), "desc")',
-          '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
-        ].join(''),
+        javascriptSource: asFunctionWorkflow(
+          [
+            'workflow()',
+            '.inputDataset(INPUT_TABLE_ID, "src")',
+            '.derive("Customer ID Number", fn.regexpExtract(col("Customer ID"), "[0-9]+"))',
+            '.drop("记录数")',
+            '.filter(col("Profit").gt(lit(0)))',
+            '.sort(col("Profit"), "desc")',
+            '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+          ].join('')
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -1210,8 +1222,9 @@ describe('DataCommandService', () => {
   it('keeps valid DSL field refs in generated derive expressions unchanged', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        workflowJs:
-          'workflow().inputDataset(INPUT_TABLE_ID, "src").derive("Customer ID Number", fn.regexpExtract(col("Customer ID"), "[0-9]+")).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+        javascriptSource: asFunctionWorkflow(
+          'workflow().inputDataset(INPUT_TABLE_ID, "src").derive("Customer ID Number", fn.regexpExtract(col("Customer ID"), "[0-9]+")).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -1250,8 +1263,9 @@ describe('DataCommandService', () => {
   it('treats DSL field refs in generated filter values as field comparisons', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        workflowJs:
-          'workflow().inputDataset(INPUT_TABLE_ID, "src").filter(col("Profit").lt(col("Target Profit"))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+        javascriptSource: asFunctionWorkflow(
+          'workflow().inputDataset(INPUT_TABLE_ID, "src").filter(col("Profit").lt(col("Target Profit"))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -1292,14 +1306,16 @@ describe('DataCommandService', () => {
   it('normalizes bracket field refs with spaces in generated derive expressions', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        workflowJs: [
-          'workflow()',
-          '.inputDataset(INPUT_TABLE_ID, "src")',
-          '.filter(col("Profit").lt(col("Target Profit")))',
-          '.derive("Profit Shortfall", col("Target Profit").sub(col("Profit")))',
-          '.sort(col("Profit Shortfall"), "desc")',
-          '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
-        ].join(''),
+        javascriptSource: asFunctionWorkflow(
+          [
+            'workflow()',
+            '.inputDataset(INPUT_TABLE_ID, "src")',
+            '.filter(col("Profit").lt(col("Target Profit")))',
+            '.derive("Profit Shortfall", col("Target Profit").sub(col("Profit")))',
+            '.sort(col("Profit Shortfall"), "desc")',
+            '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+          ].join('')
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -1340,13 +1356,15 @@ describe('DataCommandService', () => {
   it('allows sorting by aggregate metric aliases', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        workflowJs: [
-          'workflow()',
-          '.inputDataset(INPUT_TABLE_ID, "src")',
-          '.aggregate({ groupBy: [col("Market"), col("Product Type")], metrics: [metric.sum(col("Sales")).as("Sales 总和"), metric.sum(col("Profit")).as("Profit 总和"), metric.sum(col("Marketing")).as("Marketing 总和"), metric.count().as("记录数")] })',
-          '.sort(col("Sales 总和"), "desc")',
-          '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
-        ].join(''),
+        javascriptSource: asFunctionWorkflow(
+          [
+            'workflow()',
+            '.inputDataset(INPUT_TABLE_ID, "src")',
+            '.aggregate({ groupBy: [col("Market"), col("Product Type")], metrics: [metric.sum(col("Sales")).as("Sales 总和"), metric.sum(col("Profit")).as("Profit 总和"), metric.sum(col("Marketing")).as("Marketing 总和"), metric.count().as("记录数")] })',
+            '.sort(col("Sales 总和"), "desc")',
+            '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+          ].join('')
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -1394,11 +1412,12 @@ describe('DataCommandService', () => {
     ]);
   });
 
-  it('accepts single-column workflowJs drop calls before sorting', async () => {
+  it('accepts single-column javascriptSource drop calls before sorting', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        workflowJs:
-          'workflow().inputDataset(INPUT_TABLE_ID, "src").drop("记录数").sort(col("Unit Price"), "asc").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+        javascriptSource: asFunctionWorkflow(
+          'workflow().inputDataset(INPUT_TABLE_ID, "src").drop("记录数").sort(col("Unit Price"), "asc").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -1436,11 +1455,12 @@ describe('DataCommandService', () => {
     ]);
   });
 
-  it('compiles workflowJs drop and sort chains before generating DSL', async () => {
+  it('compiles javascriptSource drop and sort chains before generating DSL', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        workflowJs:
-          'workflow().inputDataset(INPUT_TABLE_ID, "src").drop(["记录数"]).sort(col("Unit Price"), "asc").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+        javascriptSource: asFunctionWorkflow(
+          'workflow().inputDataset(INPUT_TABLE_ID, "src").drop(["记录数"]).sort(col("Unit Price"), "asc").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -1481,8 +1501,9 @@ describe('DataCommandService', () => {
   it('canonicalizes select-all-except generated for column deletion into drop', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        workflowJs:
-          'workflow().inputDataset(INPUT_TABLE_ID, "src").sort(col("Sales"), "asc").drop("记录数").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+        javascriptSource: asFunctionWorkflow(
+          'workflow().inputDataset(INPUT_TABLE_ID, "src").sort(col("Sales"), "asc").drop("记录数").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -1528,11 +1549,12 @@ describe('DataCommandService', () => {
     ]);
   });
 
-  it('allows workflowJs chains to reference columns renamed by earlier operations', async () => {
+  it('allows javascriptSource chains to reference columns renamed by earlier operations', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        workflowJs:
-          'workflow().inputDataset(INPUT_TABLE_ID, "src").drop("记录数").rename("Adj Close", "adj_close").cast("adj_close", "decimal", { removePrefix: "$", scale: 2 }).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+        javascriptSource: asFunctionWorkflow(
+          'workflow().inputDataset(INPUT_TABLE_ID, "src").drop("记录数").rename("Adj Close", "adj_close").cast("adj_close", "decimal", { removePrefix: "$", scale: 2 }).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -1593,8 +1615,9 @@ describe('DataCommandService', () => {
   it('propagates converted column types through derived generated fields', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        workflowJs:
-          'workflow().inputDataset(INPUT_TABLE_ID, "src").rename("Adj Close", "adj_close").cast("adj_close", "decimal", { removePrefix: "$", scale: 2 }).derive("double_close", col("adj_close").mul(lit(2))).sort(col("double_close"), "desc").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+        javascriptSource: asFunctionWorkflow(
+          'workflow().inputDataset(INPUT_TABLE_ID, "src").rename("Adj Close", "adj_close").cast("adj_close", "decimal", { removePrefix: "$", scale: 2 }).derive("double_close", col("adj_close").mul(lit(2))).sort(col("double_close"), "desc").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -1651,13 +1674,15 @@ describe('DataCommandService', () => {
   it('infers dollar-prefix removal when generated JS casts currency text to decimal', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        workflowJs: [
-          'workflow()',
-          '.inputDataset(INPUT_TABLE_ID, "src")',
-          '.cast("Adj Close", "decimal", { scale: 2 })',
-          '.drop("记录数")',
-          '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
-        ].join(''),
+        javascriptSource: asFunctionWorkflow(
+          [
+            'workflow()',
+            '.inputDataset(INPUT_TABLE_ID, "src")',
+            '.cast("Adj Close", "decimal", { scale: 2 })',
+            '.drop("记录数")',
+            '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+          ].join('')
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -1695,8 +1720,9 @@ describe('DataCommandService', () => {
   it('infers integer output types for generated year and month fields', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        workflowJs:
-          'workflow().inputDataset(INPUT_TABLE_ID, "src").derive("Year", fn.year(col("Date"))).derive("Month", fn.month(col("Date"))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+        javascriptSource: asFunctionWorkflow(
+          'workflow().inputDataset(INPUT_TABLE_ID, "src").derive("Year", fn.year(col("Date"))).derive("Month", fn.month(col("Date"))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -1736,12 +1762,14 @@ describe('DataCommandService', () => {
   it('casts date fields to text before generated regexp extraction', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        workflowJs: [
-          'workflow()',
-          '.inputDataset(INPUT_TABLE_ID, "src")',
-          '.derive("year", fn.regexpExtract(col("Date"), "^[0-9]{4}"))',
-          '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
-        ].join(''),
+        javascriptSource: asFunctionWorkflow(
+          [
+            'workflow()',
+            '.inputDataset(INPUT_TABLE_ID, "src")',
+            '.derive("year", fn.regexpExtract(col("Date"), "^[0-9]{4}"))',
+            '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+          ].join('')
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -1781,12 +1809,14 @@ describe('DataCommandService', () => {
   it('extracts regexp capture groups instead of full matches for generated month fields', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        workflowJs: [
-          'workflow()',
-          '.inputDataset(INPUT_TABLE_ID, "src")',
-          '.derive("month", fn.regexpExtract(col("Date"), "^[0-9]{4}-([0-9]{2})"))',
-          '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
-        ].join(''),
+        javascriptSource: asFunctionWorkflow(
+          [
+            'workflow()',
+            '.inputDataset(INPUT_TABLE_ID, "src")',
+            '.derive("month", fn.regexpExtract(col("Date"), "^[0-9]{4}-([0-9]{2})"))',
+            '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+          ].join('')
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -1824,13 +1854,15 @@ describe('DataCommandService', () => {
   it('replaces existing columns when generated derive targets the same field name', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        workflowJs: [
-          'workflow()',
-          '.inputDataset(INPUT_TABLE_ID, "src")',
-          '.rename("Ticker", "ticker")',
-          '.derive("ticker", fn.upper(col("ticker")))',
-          '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
-        ].join(''),
+        javascriptSource: asFunctionWorkflow(
+          [
+            'workflow()',
+            '.inputDataset(INPUT_TABLE_ID, "src")',
+            '.rename("Ticker", "ticker")',
+            '.derive("ticker", fn.upper(col("ticker")))',
+            '.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+          ].join('')
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -1866,11 +1898,12 @@ describe('DataCommandService', () => {
     expect(generated.expectedOutputSchema).toEqual([{ name: 'ticker', type: 'text' }]);
   });
 
-  it('rejects generated workflowJs with incompatible filter comparison types', async () => {
+  it('rejects generated JavaScript with incompatible filter comparison types', async () => {
     const badResponse = {
       text: JSON.stringify({
-        workflowJs:
-          'workflow().inputDataset(INPUT_TABLE_ID, "src").filter(col("Market").gt(lit(100))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+        javascriptSource: asFunctionWorkflow(
+          'workflow().inputDataset(INPUT_TABLE_ID, "src").filter(col("Market").gt(lit(100))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -1907,12 +1940,13 @@ describe('DataCommandService', () => {
     });
   });
 
-  it('rejects a repaired workflowDsl response by default when repair does not return workflowJs', async () => {
+  it('rejects a repaired workflowDsl response by default when repair does not return javascriptSource', async () => {
     vi.mocked(runPiAiOneShot)
       .mockResolvedValueOnce({
         text: JSON.stringify({
-          workflowJs:
-            'workflow().inputDataset(INPUT_TABLE_ID, "src").filter(col("Market").gt(lit(100))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+          javascriptSource: asFunctionWorkflow(
+            'workflow().inputDataset(INPUT_TABLE_ID, "src").filter(col("Market").gt(lit(100))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+          ),
           requiredColumns: [],
         }),
         hasThinking: false,
@@ -1955,7 +1989,7 @@ describe('DataCommandService', () => {
       })
     ).rejects.toMatchObject({
       code: 'VALIDATION_FAILED',
-      message: expect.stringContaining('workflowJs'),
+      message: expect.stringContaining('javascriptSource'),
     });
   });
 
@@ -1963,8 +1997,9 @@ describe('DataCommandService', () => {
     vi.mocked(runPiAiOneShot)
       .mockResolvedValueOnce({
         text: JSON.stringify({
-          workflowJs:
-            'workflow().inputDataset(INPUT_TABLE_ID, "src").filter(col("Market").gt(lit(100))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+          javascriptSource: asFunctionWorkflow(
+            'workflow().inputDataset(INPUT_TABLE_ID, "src").filter(col("Market").gt(lit(100))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+          ),
           requiredColumns: [],
         }),
         hasThinking: false,
@@ -2001,7 +2036,7 @@ describe('DataCommandService', () => {
       })
     ).rejects.toMatchObject({
       code: 'VALIDATION_FAILED',
-      message: expect.stringContaining('workflowJs'),
+      message: expect.stringContaining('javascriptSource'),
     });
   });
 
@@ -2017,8 +2052,9 @@ describe('DataCommandService', () => {
     vi.mocked(runPiAiOneShot)
       .mockResolvedValueOnce({
         text: JSON.stringify({
-          workflowJs:
-            'workflow().inputDataset(INPUT_TABLE_ID, "src").customDsl("filter EU market rows").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+          javascriptSource: asFunctionWorkflow(
+            'workflow().inputDataset(INPUT_TABLE_ID, "src").customDsl("filter EU market rows").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+          ),
           requiredColumns: [{ name: 'Market' }],
         }),
         hasThinking: false,
@@ -2054,7 +2090,7 @@ describe('DataCommandService', () => {
       })
     ).rejects.toMatchObject({
       code: 'VALIDATION_FAILED',
-      message: expect.stringContaining('workflowJs'),
+      message: expect.stringContaining('javascriptSource'),
     });
     expect(runPiAiOneShot).toHaveBeenCalledTimes(2);
   });
@@ -2072,8 +2108,9 @@ describe('DataCommandService', () => {
     vi.mocked(runPiAiOneShot)
       .mockResolvedValueOnce({
         text: JSON.stringify({
-          workflowJs:
-            'workflow().inputDataset(INPUT_TABLE_ID, "src").customDsl("filter EU market rows").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+          javascriptSource: asFunctionWorkflow(
+            'workflow().inputDataset(INPUT_TABLE_ID, "src").customDsl("filter EU market rows").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+          ),
           requiredColumns: [{ name: 'Market' }],
         }),
         hasThinking: false,
@@ -2112,11 +2149,12 @@ describe('DataCommandService', () => {
     expect(generated.requiredColumns).toEqual([{ name: 'Market', type: 'text' }]);
   });
 
-  it('compiles a workflowJs sort column when it matches the schema', async () => {
+  it('compiles a javascriptSource sort column when it matches the schema', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        workflowJs:
-          'workflow().inputDataset(INPUT_TABLE_ID, "src").sort(col("Unit Price"), "asc").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+        javascriptSource: asFunctionWorkflow(
+          'workflow().inputDataset(INPUT_TABLE_ID, "src").sort(col("Unit Price"), "asc").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -2150,11 +2188,12 @@ describe('DataCommandService', () => {
     expect(generated.requiredColumns).toEqual([{ name: 'Unit Price', type: 'integer' }]);
   });
 
-  it('rejects workflowJs that references a missing longer ASCII sort column', async () => {
+  it('rejects javascriptSource that references a missing longer ASCII sort column', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValue({
       text: JSON.stringify({
-        workflowJs:
-          'workflow().inputDataset(INPUT_TABLE_ID, "src").sort(col("Market Value"), "asc").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+        javascriptSource: asFunctionWorkflow(
+          'workflow().inputDataset(INPUT_TABLE_ID, "src").sort(col("Market Value"), "asc").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -2187,11 +2226,12 @@ describe('DataCommandService', () => {
     ).rejects.toThrow(/unknown input column/);
   });
 
-  it('accepts a complete longer ASCII sort column from workflowJs', async () => {
+  it('accepts a complete longer ASCII sort column from javascriptSource', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        workflowJs:
-          'workflow().inputDataset(INPUT_TABLE_ID, "src").sort(col("Market Value"), "asc").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+        javascriptSource: asFunctionWorkflow(
+          'workflow().inputDataset(INPUT_TABLE_ID, "src").sort(col("Market Value"), "asc").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -2641,8 +2681,9 @@ describe('DataCommandService', () => {
   it('rejects generated DSL that references columns not in the source schema', async () => {
     const badResponse = {
       text: JSON.stringify({
-        workflowJs:
-          'workflow().inputDataset(INPUT_TABLE_ID, "src").filter(col("NotAColumn").eq(lit(1))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })',
+        javascriptSource: asFunctionWorkflow(
+          'workflow().inputDataset(INPUT_TABLE_ID, "src").filter(col("NotAColumn").eq(lit(1))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+        ),
         requiredColumns: [],
       }),
       hasThinking: false,

@@ -1,28 +1,31 @@
 import { DataCommandError } from '../data-command-types';
 import {
-  DSL_FIELD_REF_TOKEN_PATTERN,
   DSL_STRING_LITERAL_PATTERN,
   escapeDslString,
-  extractFieldNamesFromExpression,
-  findDslBacktickFieldEnd,
   formatDslField,
+  inferUnpivotValueType,
+  isDecimalLikeDslType,
   isRecord,
+  isNumericDslType,
   literalToDsl,
   normalizeDslTypeName,
   normalizeRequiredName,
-  unescapeDslBacktickField,
 } from './utils';
 
 import type {
+  GeneratedDataTaskWorkflow,
   GeneratedWorkflowColumnBinding,
-  GeneratedWorkflowGenerationResult,
   GeneratedWorkflowRequiredColumnResolver,
-} from './types';
+  WorkflowExpressionIr,
+  WorkflowIr,
+  WorkflowMetricIr,
+  WorkflowOperationIr,
+} from './workflow-model';
 export type {
+  GeneratedDataTaskWorkflow,
   GeneratedWorkflowColumnBinding,
-  GeneratedWorkflowGenerationResult,
   GeneratedWorkflowRequiredColumnResolver,
-} from './types';
+} from './workflow-model';
 
 export class ColumnStateTracker {
   private readonly columnsByName = new Map<string, GeneratedWorkflowColumnBinding>();
@@ -144,8 +147,6 @@ interface GeneratedWorkflowOperationCompileContext {
   lines: string[];
   requirement: string;
   requireColumn: GeneratedWorkflowRequiredColumnResolver;
-  normalizeExpression: (expression: string) => string;
-  inferExpression: (expression: string, context: string) => GeneratedWorkflowColumnBinding;
   assertComparableFilter: (
     left: GeneratedWorkflowColumnBinding,
     operator: string,
@@ -160,243 +161,482 @@ interface GeneratedWorkflowOperationCompileContext {
   getCurrentColumns: () => GeneratedWorkflowColumnBinding[];
 }
 
-interface GeneratedWorkflowOperationDefinition {
-  compile: (
-    operation: Record<string, unknown> & { type: string },
-    context: GeneratedWorkflowOperationCompileContext
-  ) => void;
-}
+type WorkflowOperationByType<T extends WorkflowOperationIr['type']> = Extract<
+  WorkflowOperationIr,
+  { type: T }
+>;
 
-const GENERATED_WORKFLOW_OPERATION_REGISTRY: Record<string, GeneratedWorkflowOperationDefinition> =
-  {
-    filter: {
-      compile(operation, context) {
-        const column = context.requireColumn(columnNameFromPlan(operation), 'filter.column');
-        const operator = normalizePlanFilterOperator(operation.operator);
-        const field = formatDslField(column.name);
-        const rightColumnName = resolvePlanFilterRightColumnName(operation);
-        const rightColumn = rightColumnName
-          ? context.requireColumn(rightColumnName, 'filter.rightColumn')
-          : null;
-        context.assertComparableFilter(
-          column,
-          operator,
-          rightColumn ?? operation.value,
-          'filter.condition'
+type GeneratedWorkflowOperationRegistry = {
+  [T in WorkflowOperationIr['type']]: {
+    compile: (
+      operation: WorkflowOperationByType<T>,
+      context: GeneratedWorkflowOperationCompileContext
+    ) => void;
+  };
+};
+
+const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
+  filter: {
+    compile(operation, context) {
+      const conditionIr = operation.condition;
+      if (conditionIr.kind !== 'binary' && conditionIr.kind !== 'unary') {
+        throw new DataCommandError(
+          'VALIDATION_FAILED',
+          'filter() requires a comparison expression such as col("Sales").gt(lit(100))'
         );
-        const condition =
-          operator === 'is_null' || operator === 'is_not_null'
-            ? `${field} ${operator === 'is_null' ? 'IS NULL' : 'IS NOT NULL'}`
-            : operator === 'contains' || operator === 'not_contains'
-              ? `${operator === 'not_contains' ? 'NOT ' : ''}contains(CAST(${field} AS VARCHAR), ${literalToDsl(operation.value)})`
-              : rightColumn
-                ? `${field} ${operator} ${formatDslField(rightColumn.name)}`
-                : `${field} ${operator} ${literalToDsl(operation.value)}`;
-        context.lines.push(`  | filter ${condition}`);
-      },
+      }
+      const compiled = compileWorkflowExpression(conditionIr, context, 'filter.condition');
+      context.lines.push(`  | filter ${compiled.dsl}`);
     },
-    sort: {
-      compile(operation, context) {
-        const column = context.requireColumn(
-          columnNameFromPlan(operation) ||
-            inferColumnNameFromRequirement(context.requirement, context.columns, 'sort'),
-          'sort.column'
+  },
+  sort: {
+    compile(operation, context) {
+      const column = context.requireColumn(
+        requireWorkflowColumnName(operation.column, 'sort.column'),
+        'sort.column'
+      );
+      context.lines.push(`  | sort by ${formatDslField(column.name)} ${operation.direction}`);
+    },
+  },
+  convert_type: {
+    compile(operation, context) {
+      const column = context.requireColumn(operation.column, 'convert_type.column');
+      const targetType = normalizePlanTargetType(operation.targetType);
+      const onError = operation.options.onError === 'fail' ? 'fail' : 'null';
+      const removeChars = Array.isArray(operation.options.removeChars)
+        ? operation.options.removeChars.filter(
+            (value): value is string => typeof value === 'string'
+          )
+        : [];
+      const removePrefix =
+        typeof operation.options.removePrefix === 'string' && operation.options.removePrefix
+          ? operation.options.removePrefix
+          : inferPlanConversionRemovePrefixFromRequirement(
+              column.name,
+              targetType,
+              context.requirement
+            );
+      const convertedColumn: GeneratedWorkflowColumnBinding = {
+        name: column.name,
+        type: targetType,
+        sourceColumn: column.sourceColumn,
+        sourceColumns: sourceColumnsFromBinding(column),
+      };
+      if (removePrefix || removeChars.length > 0 || operation.options.scale !== undefined) {
+        const tempColumn = createGeneratedTemporaryColumnName(
+          column.name,
+          context.getCurrentColumns()
         );
-        const direction = normalizePlanSortDirection(operation.direction ?? operation.order);
-        context.lines.push(`  | sort by ${formatDslField(column.name)} ${direction}`);
-      },
-    },
-    convert_type: {
-      compile(operation, context) {
-        const column = context.requireColumn(columnNameFromPlan(operation), 'convert_type.column');
-        const targetType = normalizePlanTargetType(operation.targetType);
-        const onError = operation.onError === 'fail' ? 'fail' : 'null';
-        const removeChars = Array.isArray(operation.removeChars)
-          ? operation.removeChars.filter((value): value is string => typeof value === 'string')
-          : [];
-        const removePrefix =
-          typeof operation.removePrefix === 'string' && operation.removePrefix
-            ? operation.removePrefix
-            : inferPlanConversionRemovePrefixFromRequirement(
-                column.name,
-                targetType,
-                context.requirement
-              );
-        const convertedColumn: GeneratedWorkflowColumnBinding = {
-          name: column.name,
-          type: targetType,
-          sourceColumn: column.sourceColumn,
-          sourceColumns: sourceColumnsFromBinding(column),
-        };
-        if (removePrefix || removeChars.length > 0 || operation.scale !== undefined) {
-          const tempColumn = createGeneratedTemporaryColumnName(
-            column.name,
-            context.getCurrentColumns()
-          );
-          const expression = compilePlanTypeConversionExpression({
-            columnName: column.name,
-            targetType,
-            removePrefix,
-            removeChars,
-            scale: operation.scale,
-          });
-          context.lines.push(`  | derive ${formatDslField(tempColumn)} = ${expression}`);
-          context.lines.push(`  | drop ${formatDslField(column.name)}`);
-          context.lines.push(
-            `  | map ${formatDslField(tempColumn)} to ${formatDslField(column.name)}`
-          );
-          context.removeColumn(column.name);
-          context.upsertColumn(convertedColumn);
-        } else {
-          context.lines.push(
-            `  | cast ${formatDslField(column.name)} as ${targetType} on_error ${onError}`
-          );
-          context.upsertColumn(convertedColumn);
-        }
-      },
-    },
-    select: {
-      compile(operation, context) {
-        const rawSelected = columnListFromPlan(operation);
-        const inferredDropped = inferDroppedColumnsFromSelectOperation(rawSelected, context);
-        if (inferredDropped.length > 0) {
-          const dropped = inferredDropped.map(
-            (name) => context.requireColumn(name, 'drop.columns').name
-          );
-          context.lines.push(`  | drop ${dropped.map(formatDslField).join(', ')}`);
-          dropped.forEach((name) => context.removeColumn(name));
-          return;
-        }
-        const selected = rawSelected.map(
-          (name) => context.requireColumn(name, 'select.columns').name
+        const expression = compilePlanTypeConversionExpression({
+          columnName: column.name,
+          targetType,
+          removePrefix,
+          removeChars,
+          scale: operation.options.scale,
+        });
+        context.lines.push(`  | derive ${formatDslField(tempColumn)} = ${expression}`);
+        context.lines.push(`  | drop ${formatDslField(column.name)}`);
+        context.lines.push(
+          `  | map ${formatDslField(tempColumn)} to ${formatDslField(column.name)}`
         );
-        if (selected.length > 0) {
-          context.lines.push(`  | select ${selected.map(formatDslField).join(', ')}`);
-          context.keepColumns(selected);
-        }
-      },
+        context.removeColumn(column.name);
+        context.upsertColumn(convertedColumn);
+      } else {
+        context.lines.push(
+          `  | cast ${formatDslField(column.name)} as ${targetType} on_error ${onError}`
+        );
+        context.upsertColumn(convertedColumn);
+      }
     },
-    drop: {
-      compile(operation, context) {
-        const dropped = columnListFromPlan(operation).map(
+  },
+  select: {
+    compile(operation, context) {
+      const rawSelected = operation.columns;
+      const inferredDropped = inferDroppedColumnsFromSelectOperation(rawSelected, context);
+      if (inferredDropped.length > 0) {
+        const dropped = inferredDropped.map(
           (name) => context.requireColumn(name, 'drop.columns').name
         );
-        if (dropped.length > 0) {
-          context.lines.push(`  | drop ${dropped.map(formatDslField).join(', ')}`);
-          dropped.forEach((name) => context.removeColumn(name));
-        }
-      },
+        context.lines.push(`  | drop ${dropped.map(formatDslField).join(', ')}`);
+        dropped.forEach((name) => context.removeColumn(name));
+        return;
+      }
+      const selected = rawSelected.map(
+        (name) => context.requireColumn(name, 'select.columns').name
+      );
+      if (selected.length > 0) {
+        context.lines.push(`  | select ${selected.map(formatDslField).join(', ')}`);
+        context.keepColumns(selected);
+      }
     },
-    rename: {
-      compile(operation, context) {
-        const source = context.requireColumn(
-          operation.source ?? columnNameFromPlan(operation),
-          'rename.source'
-        );
-        const target = normalizeRequiredName(
-          typeof operation.target === 'string' ? operation.target : '',
-          'Generated rename operation requires target'
-        );
-        context.lines.push(`  | map ${formatDslField(source.name)} to ${formatDslField(target)}`);
-        context.renameColumn(source.name, target);
-      },
+  },
+  drop: {
+    compile(operation, context) {
+      const dropped = operation.columns.map(
+        (name) => context.requireColumn(name, 'drop.columns').name
+      );
+      if (dropped.length > 0) {
+        context.lines.push(`  | drop ${dropped.map(formatDslField).join(', ')}`);
+        dropped.forEach((name) => context.removeColumn(name));
+      }
     },
-    derive: {
-      compile(operation, context) {
-        const column = normalizeRequiredName(
-          typeof operation.column === 'string' ? operation.column : '',
-          'Generated derive operation requires column'
-        );
-        const expression = normalizeRequiredName(
-          typeof operation.expression === 'string' ? operation.expression : '',
-          'Generated derive operation requires expression'
-        );
-        const inferredColumn = {
-          ...context.inferExpression(expression, 'derive.expression'),
-          name: column,
-          expression,
-        };
-        const existingColumn = context
-          .getCurrentColumns()
-          .find((currentColumn) => currentColumn.name.toLowerCase() === column.toLowerCase());
-        if (existingColumn) {
-          const tempColumn = createGeneratedTemporaryColumnName(
-            column,
-            context.getCurrentColumns()
-          );
-          context.lines.push(
-            `  | derive ${formatDslField(tempColumn)} = ${context.normalizeExpression(expression)}`
-          );
-          context.lines.push(`  | drop ${formatDslField(existingColumn.name)}`);
-          context.lines.push(
-            `  | map ${formatDslField(tempColumn)} to ${formatDslField(existingColumn.name)}`
-          );
-          context.removeColumn(existingColumn.name);
-          context.upsertColumn({
-            ...inferredColumn,
-            name: existingColumn.name,
-          });
-          return;
-        }
+  },
+  rename: {
+    compile(operation, context) {
+      const source = context.requireColumn(operation.source, 'rename.source');
+      const target = normalizeRequiredName(
+        operation.target,
+        'Generated rename operation requires target'
+      );
+      context.lines.push(`  | map ${formatDslField(source.name)} to ${formatDslField(target)}`);
+      context.renameColumn(source.name, target);
+    },
+  },
+  derive: {
+    compile(operation, context) {
+      const column = normalizeRequiredName(
+        operation.column,
+        'Generated derive operation requires column'
+      );
+      const compiledExpression = compileWorkflowExpression(
+        operation.expression,
+        context,
+        'derive.expression'
+      );
+      const expression = compiledExpression.dsl;
+      const inferredColumn = {
+        name: column,
+        type: compiledExpression.type,
+        sourceColumns: compiledExpression.sourceColumns,
+        expression,
+      };
+      const existingColumn = context
+        .getCurrentColumns()
+        .find((currentColumn) => currentColumn.name.toLowerCase() === column.toLowerCase());
+      if (existingColumn) {
+        const tempColumn = createGeneratedTemporaryColumnName(column, context.getCurrentColumns());
+        context.lines.push(`  | derive ${formatDslField(tempColumn)} = ${expression}`);
+        context.lines.push(`  | drop ${formatDslField(existingColumn.name)}`);
         context.lines.push(
-          `  | derive ${formatDslField(column)} = ${context.normalizeExpression(expression)}`
+          `  | map ${formatDslField(tempColumn)} to ${formatDslField(existingColumn.name)}`
         );
-        context.upsertColumn(inferredColumn);
-      },
+        context.removeColumn(existingColumn.name);
+        context.upsertColumn({
+          ...inferredColumn,
+          name: existingColumn.name,
+        });
+        return;
+      }
+      context.lines.push(`  | derive ${formatDslField(column)} = ${expression}`);
+      context.upsertColumn(inferredColumn);
     },
-    aggregate: {
-      compile(operation, context) {
-        const groupBy = stringArrayFromPlan(operation.groupBy).map((name) =>
-          context.requireColumn(name, 'aggregate.groupBy')
+  },
+  aggregate: {
+    compile(operation, context) {
+      const groupBy = operation.groupBy.map((expression) => {
+        const name = requireWorkflowColumnName(expression, 'aggregate.groupBy');
+        const compiled = compileWorkflowExpression(expression, context, 'aggregate.groupBy');
+        return {
+          ...context.requireColumn(name, 'aggregate.groupBy'),
+          expressionDsl: compiled.dsl,
+        };
+      });
+      const metrics = operation.metrics.map((metric) =>
+        compileWorkflowAggregateMetric(metric, context)
+      );
+      if (metrics.length === 0) {
+        throw new DataCommandError(
+          'VALIDATION_FAILED',
+          'Generated aggregate operation requires metrics'
         );
-        const metrics = Array.isArray(operation.metrics)
-          ? operation.metrics
-              .filter(isRecord)
-              .map((metric) => compilePlanAggregateMetric(metric, context.requireColumn))
-          : [];
-        if (metrics.length === 0) {
+      }
+      context.lines.push(
+        `  | aggregate ${
+          groupBy.length > 0
+            ? `by ${groupBy.map((column) => column.expressionDsl).join(', ')}`
+            : 'all'
+        } metrics ${metrics.map((metric) => metric.dsl).join(', ')}`
+      );
+      context.replaceColumns([
+        ...groupBy.map((column) => ({
+          name: column.name,
+          type: column.type,
+          sourceColumn: column,
+          sourceColumns: sourceColumnsFromBinding(column),
+        })),
+        ...metrics.map((metric) => ({
+          name: metric.alias,
+          type: metric.type,
+          sourceColumns: metric.sourceColumns,
+          expression: metric.expression,
+        })),
+      ]);
+    },
+  },
+  deduplicate: {
+    compile(operation, context) {
+      const columns = operation.config.columns.map(
+        (name) => context.requireColumn(name, 'deduplicate.columns').name
+      );
+      const orderBy = operation.config.orderBy.map((key) => ({
+        ...key,
+        field: context.requireColumn(key.field, 'deduplicate.orderBy').name,
+      }));
+      const by = columns.length > 0 ? ` by ${columns.map(formatDslField).join(', ')}` : '';
+      const keep = operation.config.keep === 'last' ? ' keep last' : '';
+      const order = orderBy.length > 0 ? ` order by ${formatWorkflowSortKeys(orderBy)}` : '';
+      context.lines.push(`  | deduplicate${by}${keep}${order}`);
+    },
+  },
+  missing_value: {
+    compile(operation, context) {
+      if (operation.config.strategy === 'drop_empty_rows') {
+        context.lines.push('  | missing value row drop when all_null');
+        return;
+      }
+      const rules = operation.config.rules.map((rule) => {
+        const column = context.requireColumn(rule.column, 'missing_value.rules');
+        switch (rule.method) {
+          case 'skip':
+            return `${formatDslField(column.name)} skip`;
+          case 'drop':
+            return `${formatDslField(column.name)} drop rows`;
+          case 'nullify_values':
+            if (!rule.values?.length) {
+              throw new DataCommandError(
+                'VALIDATION_FAILED',
+                `Missing-value nullify rule for ${column.name} requires values`
+              );
+            }
+            return `${formatDslField(column.name)} nullify values (${rule.values.map(literalToDsl).join(', ')})`;
+          case 'literal_fill':
+            if (rule.value === undefined) {
+              throw new DataCommandError(
+                'VALIDATION_FAILED',
+                `Missing-value fill rule for ${column.name} requires value`
+              );
+            }
+            assertGeneratedFilterComparable(column, '=', rule.value, 'missing_value.literal_fill');
+            return `${formatDslField(column.name)} fill ${literalToDsl(rule.value)}`;
+        }
+      });
+      context.lines.push(`  | missing value ${rules.join(', ')}`);
+    },
+  },
+  limit: {
+    compile(operation, context) {
+      const config = operation.config;
+      if (!Number.isFinite(config.limit) || config.limit <= 0) {
+        throw new DataCommandError(
+          'VALIDATION_FAILED',
+          'Generated limit must be greater than zero'
+        );
+      }
+      if (config.unit === 'percent' && config.limit > 100) {
+        throw new DataCommandError(
+          'VALIDATION_FAILED',
+          'Generated limit percent cannot exceed 100'
+        );
+      }
+      if (!Number.isInteger(config.offset) || config.offset < 0) {
+        throw new DataCommandError(
+          'VALIDATION_FAILED',
+          'Generated limit offset must be a non-negative integer'
+        );
+      }
+      const orderBy = config.orderBy.map((key) => ({
+        ...key,
+        field: context.requireColumn(key.field, 'limit.orderBy').name,
+      }));
+      if (config.mode === 'top') {
+        if (orderBy.length === 0) {
           throw new DataCommandError(
             'VALIDATION_FAILED',
-            'Generated aggregate operation requires metrics'
+            'Generated top operation requires orderBy'
           );
         }
         context.lines.push(
-          `  | aggregate ${
-            groupBy.length > 0
-              ? `by ${groupBy.map((column) => formatDslField(column.name)).join(', ')}`
-              : 'all'
-          } metrics ${metrics.map((metric) => metric.dsl).join(', ')}`
+          `  | top ${Math.floor(config.limit)} by ${formatWorkflowSortKeys(orderBy)}`
         );
-        context.replaceColumns([
-          ...groupBy.map((column) => ({
-            name: column.name,
-            type: column.type,
-            sourceColumn: column,
-            sourceColumns: sourceColumnsFromBinding(column),
-          })),
-          ...metrics.map((metric) => ({
-            name: metric.alias,
-            type: metric.type,
-            sourceColumns: metric.sourceColumns,
-          })),
-        ]);
-      },
+        return;
+      }
+      const unit = config.unit === 'percent' ? ' percent' : '';
+      const offset = config.offset > 0 ? ` offset ${config.offset}` : '';
+      context.lines.push(`  | limit ${Math.floor(config.limit)}${unit}${offset}`);
     },
-  };
+  },
+  unpivot: {
+    compile(operation, context) {
+      const config = operation.config;
+      const current = context.getCurrentColumns();
+      const configured = config.columns.map(
+        (name) => context.requireColumn(name, 'unpivot.columns').name
+      );
+      const unpivoted =
+        config.mode === 'except'
+          ? current.filter((column) => !configured.includes(column.name))
+          : configured.map((name) => context.requireColumn(name, 'unpivot.columns'));
+      if (unpivoted.length === 0) {
+        throw new DataCommandError('VALIDATION_FAILED', 'Generated unpivot requires columns');
+      }
+      const kept = current.filter(
+        (column) => !unpivoted.some((unpivotColumn) => unpivotColumn.name === column.name)
+      );
+      if (
+        kept.some(
+          (column) =>
+            column.name.toLowerCase() === config.nameColumn.toLowerCase() ||
+            column.name.toLowerCase() === config.valueColumn.toLowerCase()
+        )
+      ) {
+        throw new DataCommandError(
+          'VALIDATION_FAILED',
+          'Generated unpivot output columns conflict with retained input columns'
+        );
+      }
+      const includeNulls = config.includeNulls ? ' include nulls' : '';
+      const mode = config.mode === 'except' ? ' columns except' : '';
+      context.lines.push(
+        `  | unpivot${includeNulls}${mode} ${configured.map(formatDslField).join(', ')} into name ${formatDslField(config.nameColumn)} value ${formatDslField(config.valueColumn)}`
+      );
+      context.replaceColumns([
+        ...kept,
+        {
+          name: config.nameColumn,
+          type: 'text',
+          sourceColumns: uniqueSourceColumns(unpivoted.flatMap(sourceColumnsFromBinding)),
+          expression: 'unpivot field name',
+        },
+        {
+          name: config.valueColumn,
+          type: inferUnpivotValueType(unpivoted),
+          sourceColumns: uniqueSourceColumns(unpivoted.flatMap(sourceColumnsFromBinding)),
+          expression: 'unpivot field value',
+        },
+      ]);
+    },
+  },
+  unnest: {
+    compile(operation, context) {
+      const config = operation.config;
+      const source = context.requireColumn(config.column, 'unnest.column');
+      if (!config.alias) {
+        throw new DataCommandError('VALIDATION_FAILED', 'Generated unnest requires alias');
+      }
+      if (
+        context
+          .getCurrentColumns()
+          .some((column) => column.name.toLowerCase() === config.alias.toLowerCase())
+      ) {
+        throw new DataCommandError(
+          'VALIDATION_FAILED',
+          `Generated unnest alias already exists: ${config.alias}`
+        );
+      }
+      if (
+        config.withIndex &&
+        context
+          .getCurrentColumns()
+          .some((column) => column.name.toLowerCase() === config.withIndex?.toLowerCase())
+      ) {
+        throw new DataCommandError(
+          'VALIDATION_FAILED',
+          `Generated unnest index column already exists: ${config.withIndex}`
+        );
+      }
+      if (config.sourceKind === 'json' && !config.path) {
+        throw new DataCommandError('VALIDATION_FAILED', 'Generated JSON unnest requires path');
+      }
+      if (config.maxDepth !== undefined && (!config.recursive || config.maxDepth <= 0)) {
+        throw new DataCommandError(
+          'VALIDATION_FAILED',
+          'Generated unnest maxDepth requires recursive mode and a positive value'
+        );
+      }
+      const alias =
+        config.keepParentNames && config.sourceKind === 'json'
+          ? `${source.name}_${config.alias}`
+          : config.alias;
+      const base =
+        config.sourceKind === 'json'
+          ? `explode json ${formatDslField(source.name)} path ${JSON.stringify(config.path)} as ${formatDslField(config.alias)}`
+          : `unnest ${formatDslField(source.name)} as ${formatDslField(config.alias)}`;
+      const withIndex = config.withIndex ? ` with index ${formatDslField(config.withIndex)}` : '';
+      const recursive = config.recursive ? ' recursive true' : '';
+      const maxDepth = config.maxDepth !== undefined ? ` max_depth ${config.maxDepth}` : '';
+      const keepNames = config.keepParentNames ? ' keep parent names true' : '';
+      context.lines.push(`  | ${base}${withIndex}${recursive}${maxDepth}${keepNames}`);
+      context.upsertColumn({
+        name: alias,
+        type: config.sourceKind === 'json' ? 'json' : undefined,
+        sourceColumns: sourceColumnsFromBinding(source),
+        expression: `${config.sourceKind} unnest ${source.name}`,
+      });
+      if (config.withIndex) {
+        context.upsertColumn({
+          name: config.withIndex,
+          type: 'integer',
+          sourceColumns: sourceColumnsFromBinding(source),
+          expression: `unnest index ${source.name}`,
+        });
+      }
+    },
+  },
+  pivot: {
+    compile(operation, context) {
+      const config = operation.config;
+      if (config.on.length !== 1 || config.values.length === 0 || config.using.length !== 1) {
+        throw new DataCommandError(
+          'VALIDATION_FAILED',
+          'Generated automation pivot requires exactly one on field, fixed non-empty values, and exactly one metric'
+        );
+      }
+      const on = context.requireColumn(config.on[0], 'pivot.on');
+      const groupBy = config.groupBy.map((name) => context.requireColumn(name, 'pivot.groupBy'));
+      const metric = config.using[0];
+      const compiled =
+        metric.expression === '*'
+          ? null
+          : compileWorkflowExpression(metric.expression, context, 'pivot.metric');
+      const fn = normalizePlanAggregateFunction(metric.function);
+      const binding = compiled
+        ? { name: compiled.dsl, type: compiled.type, sourceColumns: compiled.sourceColumns }
+        : null;
+      assertAggregateMetricType(fn, binding);
+      const alias = normalizeRequiredName(metric.alias, 'Generated pivot metric requires alias');
+      const values = config.values.map(literalToDsl).join(', ');
+      context.lines.push(
+        `  | pivot on ${formatDslField(on.name)} in (${values}) using ${fn}(${compiled?.dsl ?? '*'}) as ${formatDslField(alias)}${groupBy.length ? ` group by ${groupBy.map((column) => formatDslField(column.name)).join(', ')}` : ''}`
+      );
+      context.replaceColumns([
+        ...groupBy,
+        ...config.values.map((value) => ({
+          name: `${String(value)}_${alias}`,
+          type: inferAggregateMetricType(fn, binding),
+          sourceColumns: uniqueSourceColumns([
+            ...sourceColumnsFromBinding(on),
+            ...(compiled?.sourceColumns ?? []),
+          ]),
+          expression: `pivot ${on.name} = ${String(value)}`,
+        })),
+      ]);
+    },
+  },
+} satisfies GeneratedWorkflowOperationRegistry;
 
-export function compileGeneratedWorkflowPlan({
-  operations,
+export function compileGeneratedWorkflowIr({
+  ir,
   inputTableId,
   outputTableName,
   requirement,
   columns,
 }: {
-  operations: unknown[];
+  ir: WorkflowIr;
   inputTableId: string;
   outputTableName: string;
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
-}): GeneratedWorkflowGenerationResult {
+}): GeneratedDataTaskWorkflow {
   const columnTracker = new ColumnStateTracker(columns);
   const requiredColumnsByName = new Map<string, { name: string; type?: string }>();
   const requireColumn = (name: unknown, context = 'operation'): GeneratedWorkflowColumnBinding => {
@@ -412,10 +652,6 @@ export function compileGeneratedWorkflowPlan({
     lines,
     requirement,
     requireColumn,
-    normalizeExpression: (expression) =>
-      normalizeGeneratedPlanExpression(expression, columnTracker.asMap()),
-    inferExpression: (expression, context) =>
-      inferGeneratedExpressionBinding(expression, columnTracker.asMap(), context),
     assertComparableFilter: assertGeneratedFilterComparable,
     renameColumn: (sourceName, targetName) => columnTracker.renameColumn(sourceName, targetName),
     upsertColumn: (column) => columnTracker.upsertColumn(column),
@@ -424,16 +660,27 @@ export function compileGeneratedWorkflowPlan({
     replaceColumns: (columns) => columnTracker.replaceColumns(columns),
     getCurrentColumns: () => columnTracker.getCurrentColumns(),
   };
-  for (const rawOperationInput of operations) {
-    const rawOperation = normalizeGeneratedWorkflowOperation(rawOperationInput);
-    const compiler = GENERATED_WORKFLOW_OPERATION_REGISTRY[rawOperation.type];
-    if (!compiler) {
-      throw new DataCommandError(
-        'VALIDATION_FAILED',
-        `Generated workflow uses unsupported operation: ${rawOperation.type}`
-      );
+  for (const operation of ir.operations) {
+    try {
+      compileWorkflowOperation(operation, context);
+    } catch (error) {
+      if (!(error instanceof DataCommandError) || !operation.location) throw error;
+      const existingDiagnostics =
+        isRecord(error.details) && Array.isArray(error.details.diagnostics)
+          ? error.details.diagnostics
+          : [];
+      throw new DataCommandError(error.code, error.message.replace(/^\[[A-Z_]+\]\s*/, ''), {
+        diagnostics: [
+          ...existingDiagnostics,
+          {
+            severity: 'error',
+            code: error.code,
+            message: error.message.replace(/^\[[A-Z_]+\]\s*/, ''),
+            ...operation.location,
+          },
+        ],
+      });
     }
-    compiler.compile(rawOperation, context);
   }
   lines.push(`  | output table "${escapeDslString(outputTableName)}" mode replace`);
   const outputColumns = columnTracker.getCurrentColumns();
@@ -445,168 +692,343 @@ export function compileGeneratedWorkflowPlan({
   };
 }
 
-function normalizeGeneratedWorkflowOperation(operation: unknown): Record<string, unknown> & {
-  type: string;
-} {
-  if (!isRecord(operation) || typeof operation.type !== 'string' || !operation.type.trim()) {
-    throw new DataCommandError('VALIDATION_FAILED', 'Generated workflow has invalid operation');
+function compileWorkflowOperation(
+  operation: WorkflowOperationIr,
+  context: GeneratedWorkflowOperationCompileContext
+): void {
+  switch (operation.type) {
+    case 'filter':
+      return GENERATED_WORKFLOW_OPERATION_REGISTRY.filter.compile(operation, context);
+    case 'sort':
+      return GENERATED_WORKFLOW_OPERATION_REGISTRY.sort.compile(operation, context);
+    case 'convert_type':
+      return GENERATED_WORKFLOW_OPERATION_REGISTRY.convert_type.compile(operation, context);
+    case 'select':
+      return GENERATED_WORKFLOW_OPERATION_REGISTRY.select.compile(operation, context);
+    case 'drop':
+      return GENERATED_WORKFLOW_OPERATION_REGISTRY.drop.compile(operation, context);
+    case 'rename':
+      return GENERATED_WORKFLOW_OPERATION_REGISTRY.rename.compile(operation, context);
+    case 'derive':
+      return GENERATED_WORKFLOW_OPERATION_REGISTRY.derive.compile(operation, context);
+    case 'aggregate':
+      return GENERATED_WORKFLOW_OPERATION_REGISTRY.aggregate.compile(operation, context);
+    case 'deduplicate':
+      return GENERATED_WORKFLOW_OPERATION_REGISTRY.deduplicate.compile(operation, context);
+    case 'missing_value':
+      return GENERATED_WORKFLOW_OPERATION_REGISTRY.missing_value.compile(operation, context);
+    case 'limit':
+      return GENERATED_WORKFLOW_OPERATION_REGISTRY.limit.compile(operation, context);
+    case 'pivot':
+      return GENERATED_WORKFLOW_OPERATION_REGISTRY.pivot.compile(operation, context);
+    case 'unpivot':
+      return GENERATED_WORKFLOW_OPERATION_REGISTRY.unpivot.compile(operation, context);
+    case 'unnest':
+      return GENERATED_WORKFLOW_OPERATION_REGISTRY.unnest.compile(operation, context);
   }
-  const fields = isRecord(operation.fields) ? operation.fields : {};
+}
+
+function formatWorkflowSortKeys(
+  keys: Array<{ field: string; direction: 'asc' | 'desc'; nulls?: 'first' | 'last' }>
+): string {
+  return keys
+    .map(
+      (key) =>
+        `${formatDslField(key.field)} ${key.direction}${key.nulls ? ` nulls ${key.nulls}` : ''}`
+    )
+    .join(', ');
+}
+
+function requireWorkflowColumnName(expression: WorkflowExpressionIr, context: string): string {
+  if (expression.kind === 'column') return expression.name;
+  throw new DataCommandError(
+    'VALIDATION_FAILED',
+    `Generated workflow JS ${context} must be a column reference`
+  );
+}
+
+interface CompiledWorkflowExpression {
+  dsl: string;
+  type?: string;
+  sourceColumns: Array<{ name: string; type?: string }>;
+  columnBinding?: GeneratedWorkflowColumnBinding;
+  literalValue?: string | number | boolean | null;
+  precedence: number;
+}
+
+function compileWorkflowExpression(
+  expression: WorkflowExpressionIr,
+  context: GeneratedWorkflowOperationCompileContext,
+  expressionContext: string
+): CompiledWorkflowExpression {
+  switch (expression.kind) {
+    case 'column': {
+      const column = context.requireColumn(expression.name, expressionContext);
+      return {
+        dsl: formatDslField(column.name),
+        type: column.type,
+        sourceColumns: sourceColumnsFromBinding(column),
+        columnBinding: column,
+        precedence: 4,
+      };
+    }
+    case 'literal':
+      return {
+        dsl: literalToDsl(expression.value),
+        type: inferLiteralValueType(expression.value),
+        sourceColumns: [],
+        literalValue: expression.value,
+        precedence: 4,
+      };
+    case 'binary': {
+      const left = compileWorkflowExpression(expression.left, context, expressionContext);
+      const right = compileWorkflowExpression(expression.right, context, expressionContext);
+      const sourceColumns = uniqueSourceColumns([...left.sourceColumns, ...right.sourceColumns]);
+      if (['+', '-', '*', '/'].includes(expression.op)) {
+        assertCompiledArithmeticTypes(left, right, expressionContext);
+        const precedence = expression.op === '*' || expression.op === '/' ? 2 : 1;
+        return {
+          dsl: `${formatCompiledOperand(left, precedence)} ${expression.op} ${formatCompiledOperand(
+            right,
+            precedence,
+            expression.op === '-' || expression.op === '/'
+          )}`,
+          type:
+            (left.type && isDecimalLikeDslType(left.type)) ||
+            (right.type && isDecimalLikeDslType(right.type))
+              ? 'decimal'
+              : 'integer',
+          sourceColumns,
+          precedence,
+        };
+      }
+      const operator = normalizePlanFilterOperator(expression.op);
+      if (
+        operator === '=' ||
+        operator === '<>' ||
+        operator === '>' ||
+        operator === '>=' ||
+        operator === '<' ||
+        operator === '<='
+      ) {
+        assertCompiledFilterComparable(left, operator, right, context, expressionContext);
+        return {
+          dsl: `${left.dsl} ${operator} ${right.dsl}`,
+          type: 'boolean',
+          sourceColumns,
+          precedence: 0,
+        };
+      }
+      if (operator === 'contains' || operator === 'not_contains') {
+        return {
+          dsl: `${operator === 'not_contains' ? 'NOT ' : ''}contains(CAST(${left.dsl} AS VARCHAR), ${right.dsl})`,
+          type: 'boolean',
+          sourceColumns,
+          precedence: 0,
+        };
+      }
+      throw new DataCommandError(
+        'VALIDATION_FAILED',
+        `Unsupported workflow expression operator: ${expression.op}`
+      );
+    }
+    case 'unary': {
+      const value = compileWorkflowExpression(expression.value, context, expressionContext);
+      return {
+        dsl: `${value.dsl} ${expression.op === 'is_null' ? 'IS NULL' : 'IS NOT NULL'}`,
+        type: 'boolean',
+        sourceColumns: value.sourceColumns,
+        precedence: 0,
+      };
+    }
+    case 'function': {
+      const args = normalizeWorkflowFunctionArgs(expression).map((argument) =>
+        compileWorkflowExpression(argument, context, expressionContext)
+      );
+      const functionName = workflowFunctionNameToDsl(expression.name);
+      const stringFunction = ['regexpExtract', 'upper', 'lower', 'trim', 'replace'].includes(
+        expression.name
+      );
+      const dslArgs = args.map((argument, index) =>
+        stringFunction &&
+        index === 0 &&
+        argument.type &&
+        normalizeDslTypeName(argument.type) !== 'text'
+          ? `CAST(${argument.dsl} AS VARCHAR)`
+          : argument.dsl
+      );
+      return {
+        dsl: `${functionName}(${dslArgs.join(', ')})`,
+        type: inferWorkflowFunctionType(expression.name),
+        sourceColumns: uniqueSourceColumns(args.flatMap((argument) => argument.sourceColumns)),
+        precedence: 4,
+      };
+    }
+    default:
+      throw new DataCommandError(
+        'VALIDATION_FAILED',
+        `Unsupported workflow expression in ${expressionContext}`
+      );
+  }
+}
+
+function formatCompiledOperand(
+  operand: CompiledWorkflowExpression,
+  parentPrecedence: number,
+  wrapAtEqualPrecedence = false
+): string {
+  return operand.precedence < parentPrecedence ||
+    (wrapAtEqualPrecedence && operand.precedence === parentPrecedence)
+    ? `(${operand.dsl})`
+    : operand.dsl;
+}
+
+function assertCompiledArithmeticTypes(
+  left: CompiledWorkflowExpression,
+  right: CompiledWorkflowExpression,
+  context: string
+): void {
+  const incompatible = [left, right].filter(
+    (operand) => operand.type && !isNumericDslType(operand.type)
+  );
+  if (incompatible.length === 0) return;
+  throw new DataCommandError(
+    'VALIDATION_FAILED',
+    `Generated workflow ${context} uses non-numeric value(s) in arithmetic expression: ${incompatible
+      .map((operand) => `${operand.dsl} (${operand.type})`)
+      .join(', ')}`
+  );
+}
+
+function assertCompiledFilterComparable(
+  left: CompiledWorkflowExpression,
+  operator: string,
+  right: CompiledWorkflowExpression,
+  context: GeneratedWorkflowOperationCompileContext,
+  expressionContext: string
+): void {
+  if (left.columnBinding) {
+    context.assertComparableFilter(
+      left.columnBinding,
+      operator,
+      right.columnBinding ?? right.literalValue,
+      expressionContext
+    );
+    return;
+  }
+  if (!left.type || !right.type) return;
+  const comparable =
+    operator === '=' || operator === '<>'
+      ? areComparableColumnTypes(left.type, right.type)
+      : areOrderedComparableColumnTypes(left.type, right.type);
+  if (comparable) return;
+  throw new DataCommandError(
+    'VALIDATION_FAILED',
+    `Generated workflow ${expressionContext} compares incompatible expression types: ${left.dsl} (${left.type}) ${operator} ${right.dsl} (${right.type})`
+  );
+}
+
+function inferWorkflowFunctionType(name: string): string | undefined {
+  switch (name) {
+    case 'regexpExtract':
+    case 'upper':
+    case 'lower':
+    case 'trim':
+    case 'replace':
+    case 'concat':
+      return 'text';
+    case 'year':
+    case 'month':
+      return 'integer';
+    default:
+      return undefined;
+  }
+}
+
+function compileWorkflowAggregateMetric(
+  metric: WorkflowMetricIr,
+  context: GeneratedWorkflowOperationCompileContext
+): {
+  dsl: string;
+  alias: string;
+  type?: string;
+  sourceColumns: Array<{ name: string; type?: string }>;
+  expression?: string;
+} {
+  const fn = normalizePlanAggregateFunction(metric.fn);
+  const compiled =
+    metric.expression === '*'
+      ? null
+      : compileWorkflowExpression(metric.expression, context, 'aggregate.metrics.expression');
+  const sourceBinding = compiled
+    ? {
+        name: compiled.dsl,
+        type: compiled.type,
+        sourceColumns: compiled.sourceColumns,
+        expression: compiled.dsl,
+      }
+    : null;
+  assertAggregateMetricType(fn, sourceBinding);
+  const alias = normalizeRequiredName(metric.alias, 'Generated aggregate metric requires alias');
   return {
-    ...fields,
-    ...operation,
-    type: operation.type.trim().toLowerCase(),
+    dsl: `${fn}(${compiled?.dsl ?? '*'}) as ${formatDslField(alias)}`,
+    alias,
+    type: inferAggregateMetricType(fn, sourceBinding),
+    sourceColumns: compiled?.sourceColumns ?? [],
+    expression: compiled?.dsl,
   };
 }
 
-function normalizeGeneratedPlanExpression(
-  expression: string,
-  columnsByName: Map<string, GeneratedWorkflowColumnBinding>
-): string {
-  let normalized = '';
-  let index = 0;
-  let quote: '"' | "'" | null = null;
-
-  while (index < expression.length) {
-    const char = expression[index];
-    if (quote) {
-      if (char === '\\') {
-        const next = expression[index + 1];
-        if (next !== undefined) {
-          const following = expression[index + 2];
-          if (next === '\\' && following === 'd') {
-            normalized += '[0-9]';
-            index += 3;
-            continue;
-          }
-          normalized += normalizeGeneratedRegexEscape(next);
-          index += 2;
-          continue;
-        }
-      }
-      normalized += char;
-      if (char === quote) {
-        quote = null;
-      }
-      index += 1;
-      continue;
-    }
-
-    if (char === '"' || char === "'") {
-      quote = char;
-      normalized += char;
-      index += 1;
-      continue;
-    }
-
-    if (char === '[' && expression[index + 1] === '`') {
-      const fieldEnd = findDslBacktickFieldEnd(expression, index + 2);
-      if (fieldEnd !== null) {
-        normalized += expression.slice(index, fieldEnd + 1);
-        index = fieldEnd + 1;
-        continue;
-      }
-    }
-
-    if (char === '[') {
-      const parsed = readBracketFieldToken(expression, index);
-      if (parsed) {
-        const column = columnsByName.get(parsed.value.toLowerCase());
-        normalized += column ? formatDslField(column.name) : parsed.raw;
-        index = parsed.end;
-        continue;
-      }
-    }
-
-    if (char === '`') {
-      const parsed = readBacktickToken(expression, index);
-      if (parsed) {
-        const column = columnsByName.get(parsed.value.toLowerCase());
-        normalized += column ? formatDslField(column.name) : parsed.raw;
-        index = parsed.end;
-        continue;
-      }
-    }
-
-    normalized += char;
-    index += 1;
+function normalizeWorkflowFunctionArgs(
+  expression: Extract<WorkflowExpressionIr, { kind: 'function' }>
+): WorkflowExpressionIr[] {
+  if (expression.name !== 'regexpExtract' || expression.args.length !== 2) {
+    return expression.args;
   }
-
-  return castStringFunctionFieldArguments(normalized, columnsByName);
-}
-
-function normalizeGeneratedRegexEscape(char: string): string {
-  return char === 'd' ? '[0-9]' : `\\${char}`;
-}
-
-function castStringFunctionFieldArguments(
-  expression: string,
-  columnsByName: Map<string, GeneratedWorkflowColumnBinding>
-): string {
-  const stringFunctions = ['REGEXP_EXTRACT', 'UPPER', 'LOWER', 'TRIM', 'REPLACE'];
-  let normalized = expression;
-  for (const functionName of stringFunctions) {
-    const pattern = new RegExp(
-      `\\b${functionName}\\s*\\(\\s*(${DSL_FIELD_REF_TOKEN_PATTERN})`,
-      'giu'
-    );
-    normalized = normalized.replace(pattern, (match, fieldToken: string) => {
-      const fieldName = extractSingleFieldNameFromExpression(fieldToken);
-      if (!fieldName) return match;
-      const column = columnsByName.get(fieldName.toLowerCase());
-      if (!column?.type || normalizeDslTypeName(column.type) === 'text') return match;
-      return match.replace(fieldToken, `CAST(${fieldToken} AS VARCHAR)`);
-    });
+  const pattern = expression.args[1];
+  if (
+    pattern?.kind === 'literal' &&
+    typeof pattern.value === 'string' &&
+    regexHasCaptureGroup(pattern.value)
+  ) {
+    return [...expression.args, { kind: 'literal', value: 1 }];
   }
-  return normalized;
+  return expression.args;
 }
 
-function extractSingleFieldNameFromExpression(expression: string): string | null {
-  const names = extractFieldNamesFromExpression(expression);
-  return names.length === 1 ? (names[0] ?? null) : null;
-}
-
-function readBacktickToken(
-  expression: string,
-  start: number
-): { raw: string; value: string; end: number } | null {
-  let raw = '`';
-  let value = '';
-  for (let index = start + 1; index < expression.length; index += 1) {
-    const char = expression[index];
-    raw += char;
+function regexHasCaptureGroup(pattern: string): boolean {
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index];
     if (char === '\\') {
-      const next = expression[index + 1];
-      if (next !== undefined) {
-        raw += next;
-        value += next;
-        index += 1;
-      }
+      index += 1;
       continue;
     }
-    if (char === '`') {
-      return { raw, value, end: index + 1 };
-    }
-    value += char;
+    if (char === '(' && pattern[index + 1] !== '?') return true;
   }
-  return null;
+  return false;
 }
 
-function readBracketFieldToken(
-  expression: string,
-  start: number
-): { raw: string; value: string; end: number } | null {
-  let raw = '[';
-  let value = '';
-  for (let index = start + 1; index < expression.length; index += 1) {
-    const char = expression[index];
-    raw += char;
-    if (char === ']') {
-      return { raw, value: value.trim(), end: index + 1 };
-    }
-    value += char;
+function workflowFunctionNameToDsl(name: string): string {
+  switch (name) {
+    case 'regexpExtract':
+      return 'REGEXP_EXTRACT';
+    case 'year':
+      return 'YEAR';
+    case 'month':
+      return 'MONTH';
+    case 'upper':
+      return 'UPPER';
+    case 'lower':
+      return 'LOWER';
+    case 'trim':
+      return 'TRIM';
+    case 'replace':
+      return 'REPLACE';
+    case 'concat':
+      return 'CONCAT';
+    default:
+      throw new DataCommandError('VALIDATION_FAILED', `Unsupported workflow function: fn.${name}`);
   }
-  return null;
 }
 
 function normalizePlanFilterOperator(operator: unknown): string {
@@ -628,32 +1050,6 @@ function normalizePlanFilterOperator(operator: unknown): string {
         `Generated filter operation uses unsupported operator: ${String(operator)}`
       );
   }
-}
-
-function resolvePlanFilterRightColumnName(operation: Record<string, unknown>): string {
-  for (const key of ['rightColumn', 'compareColumn', 'rightField', 'fieldValue']) {
-    const value = operation[key];
-    if (typeof value === 'string' && value.trim()) return value.trim();
-  }
-  return parseDslFieldRefName(operation.value);
-}
-
-function parseDslFieldRefName(value: unknown): string {
-  if (typeof value !== 'string') return '';
-  const trimmed = value.trim();
-  const backtickMatch = /^\[\s*`((?:[^`\\]|\\.)*)`\s*\]$/u.exec(trimmed);
-  if (backtickMatch?.[1]) {
-    return unescapeDslBacktickField(backtickMatch[1]);
-  }
-  const simpleMatch = /^\[\s*([\p{L}_][\p{L}\p{N}_]*)\s*\]$/u.exec(trimmed);
-  if (simpleMatch?.[1]) return simpleMatch[1];
-  const looseMatch = /^\[\s*([^\]]+?)\s*\]$/u.exec(trimmed);
-  return looseMatch?.[1]?.trim() ?? '';
-}
-
-function normalizePlanSortDirection(direction: unknown): 'asc' | 'desc' {
-  const normalized = typeof direction === 'string' ? direction.toLowerCase().trim() : '';
-  return normalized === 'desc' || normalized === 'descending' ? 'desc' : 'asc';
 }
 
 function normalizePlanTargetType(targetType: unknown): string {
@@ -740,35 +1136,6 @@ function normalizeDecimalScale(scale: unknown): number {
   return 2;
 }
 
-function compilePlanAggregateMetric(
-  metric: Record<string, unknown>,
-  requireColumn: (name: unknown, context?: string) => GeneratedWorkflowColumnBinding
-): {
-  dsl: string;
-  alias: string;
-  type?: string;
-  sourceColumns: Array<{ name: string; type?: string }>;
-} {
-  const fn = normalizePlanAggregateFunction(metric.function);
-  const sourceColumn =
-    metric.column === '*'
-      ? null
-      : requireColumn(metric.column ?? metric.expression, 'aggregate.metrics.column');
-  assertAggregateMetricType(fn, sourceColumn);
-  const column = sourceColumn ? formatDslField(sourceColumn.name) : '*';
-  const alias = normalizeRequiredName(
-    typeof metric.alias === 'string' ? metric.alias : `${fn}_${String(metric.column ?? 'all')}`,
-    'Generated aggregate metric requires alias'
-  );
-  const metricFunction = fn === 'count_distinct' ? 'count_distinct' : fn;
-  return {
-    dsl: `${metricFunction}(${column}) as ${formatDslField(alias)}`,
-    alias,
-    type: inferAggregateMetricType(fn, sourceColumn),
-    sourceColumns: sourceColumn ? sourceColumnsFromBinding(sourceColumn) : [],
-  };
-}
-
 function normalizePlanAggregateFunction(fn: unknown): string {
   switch (fn) {
     case 'sum':
@@ -797,31 +1164,6 @@ export {
   toAutomationLineageEntry,
 } from './lineage';
 
-function inferGeneratedExpressionBinding(
-  expression: string,
-  columnsByName: Map<string, GeneratedWorkflowColumnBinding>,
-  context: string
-): GeneratedWorkflowColumnBinding {
-  const normalizedExpression = normalizeGeneratedPlanExpression(expression, columnsByName);
-  const referencedColumns = extractFieldNamesFromExpression(normalizedExpression).map((name) => {
-    const column = columnsByName.get(name.toLowerCase());
-    if (!column) {
-      throw new DataCommandError(
-        'VALIDATION_FAILED',
-        `Generated workflow ${context} references unknown input column: ${name}`
-      );
-    }
-    return column;
-  });
-  assertExpressionTypeCompatible(normalizedExpression, referencedColumns, context);
-  return {
-    name: '',
-    type: inferExpressionResultType(normalizedExpression, referencedColumns),
-    sourceColumns: uniqueSourceColumns(referencedColumns.flatMap(sourceColumnsFromBinding)),
-    expression: normalizedExpression,
-  };
-}
-
 export function assertExpressionTypeCompatible(
   expression: string,
   referencedColumns: GeneratedWorkflowColumnBinding[],
@@ -829,7 +1171,7 @@ export function assertExpressionTypeCompatible(
 ): void {
   if (!expressionUsesArithmetic(expression)) return;
   const incompatible = referencedColumns.filter(
-    (column) => column.type && !isNumericColumnType(column.type)
+    (column) => column.type && !isNumericDslType(column.type)
   );
   if (incompatible.length > 0) {
     throw new DataCommandError(
@@ -857,7 +1199,7 @@ export function inferExpressionResultType(
   if (/\b(COUNT)\s*\(/i.test(expression)) return 'integer';
   if (/\b(SUM|AVG|ROUND)\s*\(/i.test(expression)) return 'decimal';
   if (expressionUsesArithmetic(expression)) {
-    return referencedColumns.some((column) => column.type && isDecimalLikeColumnType(column.type))
+    return referencedColumns.some((column) => column.type && isDecimalLikeDslType(column.type))
       ? 'decimal'
       : 'integer';
   }
@@ -912,7 +1254,7 @@ function assertAggregateMetricType(
   if (!sourceColumn || fn === 'count' || fn === 'count_distinct' || fn === 'min' || fn === 'max') {
     return;
   }
-  if (sourceColumn.type && !isNumericColumnType(sourceColumn.type)) {
+  if (sourceColumn.type && !isNumericDslType(sourceColumn.type)) {
     throw new DataCommandError(
       'VALIDATION_FAILED',
       `Generated aggregate metric ${fn} requires a numeric column, got ${sourceColumn.name} (${sourceColumn.type})`
@@ -927,7 +1269,7 @@ export function inferAggregateMetricType(
   if (fn === 'count' || fn === 'count_distinct') return 'integer';
   if (fn === 'avg') return 'decimal';
   if (fn === 'sum')
-    return sourceColumn?.type && isDecimalLikeColumnType(sourceColumn.type) ? 'decimal' : 'integer';
+    return sourceColumn?.type && isDecimalLikeDslType(sourceColumn.type) ? 'decimal' : 'integer';
   return sourceColumn?.type;
 }
 
@@ -946,36 +1288,19 @@ function expressionUsesArithmetic(expression: string): boolean {
   return /(?:^|[^<>!=])[-+*/](?:[^=]|$)/.test(withoutStrings);
 }
 
-function isNumericColumnType(type: string): boolean {
-  return [
-    'integer',
-    'float',
-    'double',
-    'real',
-    'decimal',
-    'numeric',
-    'bigint',
-    'smallint',
-  ].includes(normalizeDslTypeName(type));
-}
-
-function isDecimalLikeColumnType(type: string): boolean {
-  return ['float', 'double', 'real', 'decimal', 'numeric'].includes(normalizeDslTypeName(type));
-}
-
 export function areComparableColumnTypes(left: string, right: string): boolean {
   const normalizedLeft = normalizeDslTypeName(left);
   const normalizedRight = normalizeDslTypeName(right);
   return (
     normalizedLeft === normalizedRight ||
-    (isNumericColumnType(normalizedLeft) && isNumericColumnType(normalizedRight))
+    (isNumericDslType(normalizedLeft) && isNumericDslType(normalizedRight))
   );
 }
 
 export function areOrderedComparableColumnTypes(left: string, right: string): boolean {
   const normalizedLeft = normalizeDslTypeName(left);
   const normalizedRight = normalizeDslTypeName(right);
-  if (isNumericColumnType(normalizedLeft) && isNumericColumnType(normalizedRight)) return true;
+  if (isNumericDslType(normalizedLeft) && isNumericDslType(normalizedRight)) return true;
   if (
     ['date', 'datetime'].includes(normalizedLeft) &&
     ['date', 'datetime'].includes(normalizedRight)
@@ -983,34 +1308,6 @@ export function areOrderedComparableColumnTypes(left: string, right: string): bo
     return true;
   }
   return normalizedLeft === 'text' && normalizedRight === 'text';
-}
-
-function stringArrayFromPlan(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))
-    : [];
-}
-
-function columnListFromPlan(operation: Record<string, unknown>): string[] {
-  const fromColumns = stringArrayFromPlan(operation.columns);
-  if (fromColumns.length > 0) return fromColumns;
-  const singleColumn = columnNameFromPlan(operation);
-  return singleColumn ? [singleColumn] : [];
-}
-
-function columnNameFromPlan(operation: Record<string, unknown>): string {
-  for (const key of ['column', 'field', 'by', 'sortBy', 'orderBy', 'name']) {
-    const value = operation[key];
-    if (typeof value === 'string' && value.trim()) return value.trim();
-  }
-  for (const key of ['columns', 'fields']) {
-    const value = stringArrayFromPlan(operation[key]);
-    if (value.length > 0) return value[0];
-  }
-  if (isRecord(operation.target) && typeof operation.target.column === 'string') {
-    return operation.target.column.trim();
-  }
-  return '';
 }
 
 function inferDroppedColumnsFromSelectOperation(
@@ -1049,24 +1346,6 @@ function requirementHasColumnRemovalIntent(requirement: string): boolean {
   return /删除|去掉|移除|去除|删掉|剔除|排除|不要|\bdrop\b|\bdelete\b|\bremove\b|\bexclude\b/i.test(
     requirement
   );
-}
-
-function inferColumnNameFromRequirement(
-  requirement: string,
-  columns: Array<{ name: string; type?: string }>,
-  _operationType: string
-): string {
-  const normalizedRequirement = normalizeColumnMatchText(requirement);
-  const matched = columns
-    .filter((column) => {
-      const normalizedColumnName = normalizeColumnMatchText(column.name);
-      return (
-        normalizedColumnName &&
-        normalizedRequirementContainsColumnName(normalizedRequirement, normalizedColumnName)
-      );
-    })
-    .sort((left, right) => right.name.length - left.name.length);
-  return matched[0]?.name ?? '';
 }
 
 function normalizeColumnMatchText(value: string): string {

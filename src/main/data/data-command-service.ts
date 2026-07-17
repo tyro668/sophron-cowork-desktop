@@ -96,14 +96,14 @@ import type {
   StoredPersonalAnalysisConfig,
 } from '../../shared/personal-analysis-types';
 import {
-  GENERATED_WORKFLOW_CONFIG_REPAIR_ATTEMPTS,
-  type GeneratedWorkflowGenerationResult,
-  generateWorkflowDslFromRequirement,
+  GENERATED_WORKFLOW_REPAIR_ATTEMPTS,
+  type GeneratedDataTaskWorkflow,
+  generateDataTaskWorkflowFromRequirement,
   hashColumns,
   isRecord,
   normalizeColumnSnapshot,
   reconcileGeneratedWorkflowWithOutputPreview,
-  repairWorkflowDslFromDiagnostics,
+  repairGeneratedWorkflowFromDiagnostics,
   validateGeneratedOutputPreviewSchema,
   validateGeneratedTaskSchema,
   validateGeneratedWorkflowGenerationContract,
@@ -227,7 +227,7 @@ export class DataCommandService {
     if (!reusableTask) createdTaskId = task.id;
     try {
       return await this.withKeyedLock(`task:${task.id}`, async () => {
-        let generated = await generateWorkflowDslFromRequirement({
+        let generated = await generateDataTaskWorkflowFromRequirement({
           inputTableId: preparedInput.inputTable.id,
           outputTableName: outputTable.name,
           requirement: processRequirement,
@@ -247,16 +247,16 @@ export class DataCommandService {
           let repairAttempt = 0;
           validationErrors.length > 0 &&
           validationErrors.every(isGeneratedWorkflowDiagnosticRepairable) &&
-          repairAttempt < GENERATED_WORKFLOW_CONFIG_REPAIR_ATTEMPTS;
+          repairAttempt < GENERATED_WORKFLOW_REPAIR_ATTEMPTS;
           repairAttempt += 1
         ) {
-          generated = await repairWorkflowDslFromDiagnostics({
+          generated = await repairGeneratedWorkflowFromDiagnostics({
             inputTableId: preparedInput.inputTable.id,
             outputTableName: outputTable.name,
             requirement: processRequirement,
             columns: preparedInput.columnsSnapshot,
             runtimeConfig: input.runtimeConfig,
-            failedWorkflowDsl: generated.workflowDsl,
+            failedJavascriptSource: generated.javascriptSource ?? generated.workflowDsl,
             diagnostics: validationErrors,
           });
           validation = await this.validateGeneratedWorkflowCandidate({
@@ -615,10 +615,10 @@ export class DataCommandService {
     inputTableId: string;
     outputTableId: string;
     columns: DataAutomationColumnSnapshot[];
-    generated: GeneratedWorkflowGenerationResult;
+    generated: GeneratedDataTaskWorkflow;
   }): Promise<{
     diagnostics: PrepDiagnostic[];
-    generated?: GeneratedWorkflowGenerationResult;
+    generated?: GeneratedDataTaskWorkflow;
     candidate?: CompiledWorkflowCandidate;
   }> {
     const contractDiagnostics = validateGeneratedWorkflowGenerationContract(

@@ -14,7 +14,7 @@ import { computeMappingTarget } from '../operators/utils';
 import {
   ColumnStateTracker,
   type GeneratedWorkflowColumnBinding,
-  type GeneratedWorkflowGenerationResult,
+  type GeneratedDataTaskWorkflow,
   areComparableColumnTypes,
   assertExpressionTypeCompatible,
   inferAggregateMetricType,
@@ -32,6 +32,7 @@ import {
   extractFieldNamesFromExpression,
   extractJsonObject,
   findDslBacktickFieldEnd,
+  inferUnpivotValueType,
   isRecord,
   normalizeColumnType,
   normalizeDslTypeName,
@@ -41,16 +42,16 @@ import {
 } from './utils';
 
 export function reconcileGeneratedWorkflowWithDslInference(
-  compiled: GeneratedWorkflowGenerationResult,
+  compiled: GeneratedDataTaskWorkflow,
   columns: Array<{ name: string; type?: string }>
-): GeneratedWorkflowGenerationResult {
+): GeneratedDataTaskWorkflow {
   return validateCompiledWorkflowDsl(compiled, columns);
 }
 
 export function validateCompiledWorkflowDsl(
-  compiled: GeneratedWorkflowGenerationResult,
+  compiled: GeneratedDataTaskWorkflow,
   columns: Array<{ name: string; type?: string }>
-): GeneratedWorkflowGenerationResult {
+): GeneratedDataTaskWorkflow {
   const validated = parseGeneratedWorkflowDslResponse(
     JSON.stringify({
       workflowDsl: compiled.workflowDsl,
@@ -69,7 +70,7 @@ export function validateCompiledWorkflowDsl(
 export function parseGeneratedWorkflowDslResponse(
   text: string,
   columns: Array<{ name: string; type?: string }>
-): GeneratedWorkflowGenerationResult {
+): GeneratedDataTaskWorkflow {
   const parsed = JSON.parse(extractJsonObject(text)) as unknown;
   if (!isRecord(parsed) || typeof parsed.workflowDsl !== 'string') {
     throw new Error('Workflow DSL generation response must include workflowDsl');
@@ -331,17 +332,93 @@ function inferGeneratedWorkflowSchema(
         });
         break;
       case 'pivot':
-        requireNames(config.on);
-        requireNames(config.groupBy);
-        objectArray(config.using).forEach((metric) => {
-          if (metric.expression !== '*') requireExpression(metric.expression, 'pivot.metric');
-        });
+        {
+          const on = requireNames(config.on);
+          const groupBy = requireNames(config.groupBy);
+          const metrics = objectArray(config.using).map((metric) => {
+            const source =
+              metric.expression === '*'
+                ? null
+                : requireExpression(metric.expression, 'pivot.metric');
+            return {
+              alias: typeof metric.alias === 'string' ? metric.alias : '',
+              type:
+                typeof metric.function === 'string'
+                  ? inferAggregateMetricType(metric.function, source)
+                  : source?.type,
+              sourceColumns: source ? sourceColumnsFromBinding(source) : [],
+            };
+          });
+          const values = Array.isArray(config.values) ? config.values : [];
+          if (on.length === 1 && values.length > 0 && metrics.length === 1) {
+            const metric = metrics[0];
+            columnTracker.replaceColumns([
+              ...groupBy,
+              ...values.map((value) => ({
+                name: `${String(value)}_${metric.alias}`,
+                type: metric.type,
+                sourceColumns: uniqueSourceColumns([
+                  ...sourceColumnsFromBinding(on[0]),
+                  ...metric.sourceColumns,
+                ]),
+                expression: `pivot ${on[0].name} = ${String(value)}`,
+              })),
+            ]);
+          }
+        }
         break;
       case 'unpivot':
-        requireNames(config.columns);
+        {
+          const configured = requireNames(config.columns);
+          const configuredNames = new Set(configured.map((column) => column.name.toLowerCase()));
+          const current = columnTracker.getCurrentColumns();
+          const unpivoted =
+            config.mode === 'except'
+              ? current.filter((column) => !configuredNames.has(column.name.toLowerCase()))
+              : configured;
+          const unpivotedNames = new Set(unpivoted.map((column) => column.name.toLowerCase()));
+          const kept = current.filter((column) => !unpivotedNames.has(column.name.toLowerCase()));
+          const sourceColumns = uniqueSourceColumns(unpivoted.flatMap(sourceColumnsFromBinding));
+          columnTracker.replaceColumns([
+            ...kept,
+            {
+              name: typeof config.nameColumn === 'string' ? config.nameColumn : 'name',
+              type: 'text',
+              sourceColumns,
+              expression: 'unpivot field name',
+            },
+            {
+              name: typeof config.valueColumn === 'string' ? config.valueColumn : 'value',
+              type: inferUnpivotValueType(unpivoted),
+              sourceColumns,
+              expression: 'unpivot field value',
+            },
+          ]);
+        }
         break;
       case 'unnest':
-        requireName(config.column);
+        {
+          const source = requireName(config.column);
+          if (!source || typeof config.alias !== 'string' || !config.alias.trim()) break;
+          const alias =
+            config.sourceKind === 'json' && config.keepParentNames
+              ? `${source.name}_${config.alias}`
+              : config.alias;
+          upsertName(alias, {
+            name: alias,
+            type: config.sourceKind === 'json' ? 'json' : undefined,
+            sourceColumns: sourceColumnsFromBinding(source),
+            expression: `${String(config.sourceKind)} unnest ${source.name}`,
+          });
+          if (typeof config.withIndex === 'string' && config.withIndex.trim()) {
+            upsertName(config.withIndex, {
+              name: config.withIndex,
+              type: 'integer',
+              sourceColumns: sourceColumnsFromBinding(source),
+              expression: `unnest index ${source.name}`,
+            });
+          }
+        }
         break;
       case 'join':
         objectArray(config.conditions).forEach((condition) => {
@@ -423,7 +500,7 @@ export function validateGeneratedTaskSchema(
 }
 
 export function validateGeneratedWorkflowGenerationContract(
-  generated: GeneratedWorkflowGenerationResult,
+  generated: GeneratedDataTaskWorkflow,
   sourceColumns: DataAutomationColumnSnapshot[]
 ): PrepDiagnostic[] {
   const diagnostics: PrepDiagnostic[] = [];
@@ -548,10 +625,10 @@ export function validateGeneratedWorkflowGenerationContract(
 }
 
 export function reconcileGeneratedWorkflowWithOutputPreview(
-  generated: GeneratedWorkflowGenerationResult,
+  generated: GeneratedDataTaskWorkflow,
   preview: DataInputTablePreview | undefined,
   sourceColumns: DataAutomationColumnSnapshot[]
-): GeneratedWorkflowGenerationResult {
+): GeneratedDataTaskWorkflow {
   const actualOutputSchema = outputSchemaFromPreview(preview);
   if (actualOutputSchema.length === 0) return generated;
 

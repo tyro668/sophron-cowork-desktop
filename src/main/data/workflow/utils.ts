@@ -123,9 +123,35 @@ export function normalizeDslTypeName(type: string): string {
   if (['varchar', 'char', 'string', 'text'].includes(normalized)) return 'text';
   if (['int', 'integer', 'bigint', 'smallint', 'tinyint'].includes(normalized)) return 'integer';
   if (['double', 'float', 'real'].includes(normalized)) return 'float';
+  if (normalized === 'number') return 'decimal';
   if (normalized.startsWith('decimal') || normalized.startsWith('numeric')) return 'decimal';
   if (normalized.includes('timestamp') || normalized === 'datetime') return 'datetime';
   if (normalized === 'date') return 'date';
   if (['bool', 'boolean'].includes(normalized)) return 'boolean';
   return normalized;
+}
+
+export function isNumericDslType(type: string): boolean {
+  return ['integer', 'float', 'decimal'].includes(normalizeDslTypeName(type));
+}
+
+export function isDecimalLikeDslType(type: string): boolean {
+  return ['float', 'decimal'].includes(normalizeDslTypeName(type));
+}
+
+export function inferUnpivotValueType(columns: Array<{ type?: string }>): string | undefined {
+  const types = columns
+    .map((column) => column.type)
+    .filter((type): type is string => Boolean(type));
+  if (types.length === 0) return undefined;
+
+  const normalized = types.map(normalizeDslTypeName);
+  if (normalized.every((type) => type === normalized[0])) return normalized[0];
+  if (normalized.every(isNumericDslType)) {
+    return normalized.some(isDecimalLikeDslType) ? 'decimal' : 'integer';
+  }
+  throw new DataCommandError(
+    'VALIDATION_FAILED',
+    `Generated unpivot columns have incompatible types: ${types.join(', ')}`
+  );
 }
