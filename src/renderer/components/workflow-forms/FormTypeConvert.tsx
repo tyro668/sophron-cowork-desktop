@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import {
@@ -10,6 +10,10 @@ import {
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList } from './shared/GlassRowList';
+import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
+import { useDragReorder } from '../../hooks/useDragReorder';
+import { computeUsedFields } from './shared/used-fields';
 
 interface ConversionEntry {
   column: string;
@@ -34,37 +38,8 @@ export default function FormTypeConvert({
   );
 
   // ── Column types ──
-  const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    if (!taskId || !sourceNode?.id) return;
-    const api = window.electronAPI?.data;
-    if (!api?.getWorkflowNodeColumnTypes) return;
-    api
-      .getWorkflowNodeColumnTypes({
-        taskId,
-        nodeId: sourceNode.id,
-        nodeType: sourceNode.type as never,
-        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
-      })
-      .then((types) => {
-        const map: Record<string, string> = {};
-        for (const t of types) map[t.name] = t.type;
-        setColumnTypes(map);
-      })
-      .catch(() => setColumnTypes({}));
-  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
-
-  const updateConfig = useCallback(
-    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
-      onNodeChange((current) => ({
-        ...current,
-        config: updater(current.config),
-        updatedAt: Date.now(),
-      }));
-    },
-    [onNodeChange]
-  );
+  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const updateConfig = useUpdateConfig(onNodeChange);
 
   const conversions = useMemo<ConversionEntry[]>(
     () => (node.config.conversions as ConversionEntry[]) ?? [{ ...DEFAULT_CONVERSION }],
@@ -78,11 +53,14 @@ export default function FormTypeConvert({
     [updateConfig]
   );
 
-  // ── Drag-to-reorder state ──
-  const dragIndexRef = useRef<number | null>(null);
-  const [dragConversions, setDragConversions] = useState<ConversionEntry[] | null>(null);
-
-  const activeConversions = dragConversions ?? conversions;
+  const {
+    activeItems: activeConversions,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+    isDragging,
+    dragIndexRef,
+  } = useDragReorder(conversions, commitConversions);
 
   const updateConversion = useCallback(
     (index: number, patch: Partial<ConversionEntry>) => {
@@ -112,44 +90,10 @@ export default function FormTypeConvert({
     [activeConversions, commitConversions]
   );
 
-  const handleDragStart = useCallback(
-    (index: number) => {
-      dragIndexRef.current = index;
-      setDragConversions([...conversions]);
-    },
-    [conversions]
+  const usedFields = useMemo(
+    () => computeUsedFields(activeConversions, (c) => c.column),
+    [activeConversions]
   );
-
-  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    if (dragIndexRef.current === null || dragIndexRef.current === index) return;
-    const from = dragIndexRef.current;
-    setDragConversions((prev) => {
-      if (!prev) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(index, 0, moved);
-      return next;
-    });
-    dragIndexRef.current = index;
-  }, []);
-
-  const handleDragEnd = useCallback(() => {
-    if (dragConversions && dragIndexRef.current !== null) {
-      commitConversions(dragConversions);
-    }
-    dragIndexRef.current = null;
-    setDragConversions(null);
-  }, [dragConversions, commitConversions]);
-
-  // Used fields for deduplication
-  const usedFields = useMemo(() => {
-    const used = new Set<string>();
-    for (const c of activeConversions) {
-      if (c.column) used.add(c.column);
-    }
-    return used;
-  }, [activeConversions]);
 
   const onErrorOptions = useMemo(
     () => [
@@ -264,7 +208,7 @@ export default function FormTypeConvert({
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
-            getRowOpacity={(i) => !!(dragConversions && dragIndexRef.current === i)}
+            getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
             dragTitle={tr('dragToReorder', '拖拽排序')}
           />
         </div>

@@ -5,8 +5,8 @@ import { parseFieldRef } from '../../../shared/prep-dsl/parser';
 function extractFieldName(value: string): string {
   const ref = parseFieldRef(value);
   if (ref) return ref.name;
-  const raw = value.includes('.') ? (value.split('.').at(-1) ?? value) : value;
-  return raw.replace(/^\[|\]$/g, '');
+  const stripped = value.replace(/^\[|\]$/g, '');
+  return stripped.includes('.') ? (stripped.split('.').pop() ?? stripped) : stripped;
 }
 
 export function compileAsofJoinSql(
@@ -20,8 +20,9 @@ export function compileAsofJoinSql(
   const asof = isRecord(config.asof) ? config.asof : {};
   const leftTime = extractFieldName(String(asof.leftTime ?? ''));
   const rightTime = extractFieldName(String(asof.rightTime ?? ''));
-  const operator = asof.operator === '<=' ? '>=' : '<=';
-  const direction = asof.operator === '<=' ? 'ASC' : 'DESC';
+  const operator =
+    asof.operator === 'nearest' ? (asof.direction === 'forward' ? '>=' : '<=') : asof.operator;
+  const orderDirection = operator === '>=' ? 'ASC' : 'DESC';
   const byConditions = objectArray(asof.by)
     .flatMap((condition) =>
       typeof condition.left === 'string' && typeof condition.right === 'string'
@@ -52,7 +53,7 @@ export function compileAsofJoinSql(
       WHERE r.${quoteIdentifier(rightTime)} ${operator} l.${quoteIdentifier(leftTime)}
         ${byConditions ? `AND ${byConditions}` : ''}
         ${toleranceClause}
-      ORDER BY r.${quoteIdentifier(rightTime)} ${direction}
+      ORDER BY r.${quoteIdentifier(rightTime)} ${orderDirection}
       LIMIT 1
     ) r ON true
   `;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassTagBar } from './shared/GlassTagBar';
@@ -13,6 +13,9 @@ import {
   isTemporalDataFieldType,
   normalizeDataFieldType,
 } from '../../../shared/data-field-types';
+import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
+import { useDragReorder } from '../../hooks/useDragReorder';
 
 const BASE_METHODS = [
   { value: 'skip', labelKey: 'ruleMethods.skip', label: '不处理' },
@@ -73,16 +76,7 @@ export default function FormMissingValue({
     [t]
   );
 
-  const updateConfig = useCallback(
-    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
-      onNodeChange((current) => ({
-        ...current,
-        config: updater(current.config),
-        updatedAt: Date.now(),
-      }));
-    },
-    [onNodeChange]
-  );
+  const updateConfig = useUpdateConfig(onNodeChange);
 
   const strategy = (node.config.strategy as string) ?? 'by_column';
   const rules = useMemo<MissingRule[]>(
@@ -101,28 +95,15 @@ export default function FormMissingValue({
 
   const [showFieldPicker, setShowFieldPicker] = useState(true);
   const removingRef = useRef(false);
-  const dragIndexRef = useRef<number | null>(null);
-  const [dragRules, setDragRules] = useState<MissingRule[] | null>(null);
-
-  const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
-  useEffect(() => {
-    if (!taskId || !sourceNode?.id) return;
-    const api = window.electronAPI?.data;
-    if (!api?.getWorkflowNodeColumnTypes) return;
-    api
-      .getWorkflowNodeColumnTypes({
-        taskId,
-        nodeId: sourceNode.id,
-        nodeType: sourceNode.type as never,
-        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
-      })
-      .then((types) => {
-        const map: Record<string, string> = {};
-        for (const t of types) map[t.name] = t.type;
-        setColumnTypes(map);
-      })
-      .catch(() => setColumnTypes({}));
-  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
+  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const {
+    activeItems: activeRules,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+    isDragging,
+    dragIndexRef,
+  } = useDragReorder(rules, handleRulesChange);
 
   function setRowMode(condition: 'all_null' | 'any_null') {
     updateConfig((cfg) => {
@@ -212,38 +193,6 @@ export default function FormMissingValue({
     },
     [rules, handleRulesChange]
   );
-
-  const activeRules = dragRules ?? rules;
-
-  const handleDragStart = useCallback(
-    (index: number) => {
-      dragIndexRef.current = index;
-      setDragRules([...rules]);
-    },
-    [rules]
-  );
-
-  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    if (dragIndexRef.current === null || dragIndexRef.current === index) return;
-    const from = dragIndexRef.current;
-    setDragRules((prev) => {
-      if (!prev) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(index, 0, moved);
-      return next;
-    });
-    dragIndexRef.current = index;
-  }, []);
-
-  const handleDragEnd = useCallback(() => {
-    if (dragRules && dragIndexRef.current !== null) {
-      handleRulesChange(dragRules);
-    }
-    dragIndexRef.current = null;
-    setDragRules(null);
-  }, [dragRules, handleRulesChange]);
 
   const methodLabel = useCallback(
     (key: string) => {
@@ -463,7 +412,7 @@ export default function FormMissingValue({
                 onDragStart={handleDragStart}
                 onDragOver={handleDragOver}
                 onDragEnd={handleDragEnd}
-                getRowOpacity={(i) => !!(dragRules && dragIndexRef.current === i)}
+                getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
                 dragTitle={tr('missingDragToReorder', '拖动排序')}
                 hideHeader
               />

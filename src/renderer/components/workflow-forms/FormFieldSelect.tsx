@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search } from 'lucide-react';
 import type { OperatorFormProps } from './index';
@@ -6,6 +6,9 @@ import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassRowList } from './shared/GlassRowList';
 import { dataFieldTypeLabel } from '@/shared/data-field-types';
 import { useConfirmDialog } from '../../components/ConfirmDialog';
+import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
+import { useDragReorder } from '../../hooks/useDragReorder';
 
 export default function FormFieldSelect({
   node,
@@ -22,37 +25,8 @@ export default function FormFieldSelect({
   );
   const { confirm } = useConfirmDialog();
 
-  const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    if (!taskId || !sourceNode?.id) return;
-    const api = window.electronAPI?.data;
-    if (!api?.getWorkflowNodeColumnTypes) return;
-    api
-      .getWorkflowNodeColumnTypes({
-        taskId,
-        nodeId: sourceNode.id,
-        nodeType: sourceNode.type as never,
-        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
-      })
-      .then((types) => {
-        const map: Record<string, string> = {};
-        for (const t of types) map[t.name] = t.type;
-        setColumnTypes(map);
-      })
-      .catch(() => setColumnTypes({}));
-  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
-
-  const updateConfig = useCallback(
-    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
-      onNodeChange((current) => ({
-        ...current,
-        config: updater(current.config),
-        updatedAt: Date.now(),
-      }));
-    },
-    [onNodeChange]
-  );
+  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const updateConfig = useUpdateConfig(onNodeChange);
 
   const columns = useMemo(
     () => (node.config.columns as string[] | undefined) ?? [],
@@ -119,17 +93,21 @@ export default function FormFieldSelect({
   }, [commitColumns, confirm, tr]);
 
   const [rightSearch, setRightSearch] = useState('');
-  const dragIndexRef = useRef<number | null>(null);
-  const [dragList, setDragList] = useState<string[] | null>(null);
 
   const filteredList = useMemo(() => {
-    const source = dragList ?? columns;
-    if (!rightSearch.trim()) return source;
+    if (!rightSearch.trim()) return columns;
     const lower = rightSearch.toLowerCase().trim();
-    return source.filter((c) => c.toLowerCase().includes(lower));
-  }, [columns, dragList, rightSearch]);
+    return columns.filter((c) => c.toLowerCase().includes(lower));
+  }, [columns, rightSearch]);
 
-  const displayItems = dragList ?? filteredList;
+  const {
+    activeItems: displayItems,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+    isDragging,
+    dragIndexRef,
+  } = useDragReorder(columns, commitColumns, filteredList);
 
   const typeStats = useMemo(() => {
     const stats: Record<string, number> = {};
@@ -139,36 +117,6 @@ export default function FormFieldSelect({
     }
     return stats;
   }, [columns, columnTypes]);
-
-  const handleDragStart = useCallback(
-    (index: number) => {
-      dragIndexRef.current = index;
-      setDragList([...displayItems]);
-    },
-    [displayItems]
-  );
-
-  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    if (dragIndexRef.current === null || dragIndexRef.current === index) return;
-    const from = dragIndexRef.current;
-    setDragList((prev) => {
-      if (!prev) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(index, 0, moved);
-      return next;
-    });
-    dragIndexRef.current = index;
-  }, []);
-
-  const handleDragEnd = useCallback(() => {
-    if (dragList && dragIndexRef.current !== null) {
-      commitColumns(dragList);
-    }
-    dragIndexRef.current = null;
-    setDragList(null);
-  }, [dragList, commitColumns]);
 
   return (
     <div className="flex flex-col min-h-0 overflow-hidden" style={{ height: '100%' }}>
@@ -278,7 +226,7 @@ export default function FormFieldSelect({
                   onDragStart={handleDragStart}
                   onDragOver={handleDragOver}
                   onDragEnd={handleDragEnd}
-                  getRowOpacity={(i) => !!(dragList && dragIndexRef.current === i)}
+                  getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
                   dragTitle={tr('dragToReorder', '拖拽排序')}
                   hideHeader
                 />

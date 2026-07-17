@@ -4,6 +4,7 @@ import type { OperatorFormProps } from './index';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
+import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 
 export default function FormUnnest({ node, fieldCompletions, onNodeChange }: OperatorFormProps) {
   const { t } = useTranslation();
@@ -13,16 +14,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
     [t]
   );
 
-  const updateConfig = useCallback(
-    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
-      onNodeChange((current) => ({
-        ...current,
-        config: updater(current.config),
-        updatedAt: Date.now(),
-      }));
-    },
-    [onNodeChange]
-  );
+  const updateConfig = useUpdateConfig(onNodeChange);
 
   const sourceKind = (node.config.sourceKind as string) ?? 'list';
   const column = String(node.config.column ?? '');

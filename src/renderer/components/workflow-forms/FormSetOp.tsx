@@ -4,6 +4,7 @@ import type { OperatorFormProps } from './index';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { useConfirmDialog } from '../../components/ConfirmDialog';
 import type { DataColumnTypeInfo } from '../../../shared/data-field-types';
+import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 
 const NUMERIC_TYPES = ['integer', 'float', 'decimal'];
 const TEMPORAL_TYPES = ['date', 'datetime'];
@@ -156,16 +157,7 @@ export default function FormSetOp({
     [t]
   );
 
-  const updateConfig = useCallback(
-    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
-      onNodeChange((current) => ({
-        ...current,
-        config: updater(current.config),
-        updatedAt: Date.now(),
-      }));
-    },
-    [onNodeChange]
-  );
+  const updateConfig = useUpdateConfig(onNodeChange);
 
   const operation = (node.config.operation as string) ?? 'union';
   const rawRightInput = (node.config.rightInput as string) ?? '';

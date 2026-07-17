@@ -6,6 +6,7 @@ import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
+import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 
 interface SortKeyEntry {
   field: string;
@@ -26,16 +27,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
     [t]
   );
 
-  const updateConfig = useCallback(
-    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
-      onNodeChange((current) => ({
-        ...current,
-        config: updater(current.config),
-        updatedAt: Date.now(),
-      }));
-    },
-    [onNodeChange]
-  );
+  const updateConfig = useUpdateConfig(onNodeChange);
 
   const mode = (node.config.mode as string) ?? 'fixed';
   const limit = Number(node.config.limit ?? 100);

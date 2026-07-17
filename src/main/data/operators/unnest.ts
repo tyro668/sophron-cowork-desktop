@@ -1,7 +1,7 @@
 import { quoteIdentifier, literalToSql } from './utils';
 
 function castToJsonExpr(columnExpr: string): string {
-  return `replace(replace(${columnExpr}, '"', '\\"'), '''', '"')::JSON`;
+  return `replace(${columnExpr}, '''', '"')::JSON`;
 }
 
 export function compileUnnestSql(

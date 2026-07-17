@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList, type GlassRowListColumn, type RowAction } from './shared/GlassRowList';
+import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import { useDragReorder } from '../../hooks/useDragReorder';
+import { computeUsedFields } from './shared/used-fields';
 
 export interface MappingEntry {
   source: string;
@@ -56,16 +59,7 @@ export default function FormFieldMapping({
     [t]
   );
 
-  const updateConfig = useCallback(
-    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
-      onNodeChange((current) => ({
-        ...current,
-        config: updater(current.config),
-        updatedAt: Date.now(),
-      }));
-    },
-    [onNodeChange]
-  );
+  const updateConfig = useUpdateConfig(onNodeChange);
 
   const mappings = useMemo<MappingEntry[]>(
     () => ((node.config.mappings as Record<string, unknown>[]) ?? []).map(migrateEntry),
@@ -87,52 +81,19 @@ export default function FormFieldMapping({
     [updateConfig]
   );
 
-  // ── Drag-to-reorder state ──
-  const dragIndexRef = useRef<number | null>(null);
-  const dropTargetRef = useRef<number | null>(null);
-  const [sortedMappings, setSortedMappings] = useState<MappingEntry[] | null>(null);
+  const {
+    activeItems: activeMappings,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+    isDragging,
+    dragIndexRef,
+  } = useDragReorder(mappings, commitMappings);
 
-  const activeMappings = sortedMappings ?? mappings;
-
-  const handleDragStart = useCallback(
-    (index: number) => {
-      dragIndexRef.current = index;
-      setSortedMappings([...activeMappings]);
-    },
+  const usedFields = useMemo(
+    () => computeUsedFields(activeMappings, (m) => m.source),
     [activeMappings]
   );
-
-  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    dropTargetRef.current = index;
-    if (dragIndexRef.current === null || dragIndexRef.current === index) return;
-    const from = dragIndexRef.current;
-    setSortedMappings((prev) => {
-      if (!prev) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(index, 0, moved);
-      return next;
-    });
-    dragIndexRef.current = index;
-  }, []);
-
-  const handleDragEnd = useCallback(() => {
-    if (sortedMappings && dragIndexRef.current !== null) {
-      commitMappings(sortedMappings);
-    }
-    dragIndexRef.current = null;
-    dropTargetRef.current = null;
-    setSortedMappings(null);
-  }, [sortedMappings, commitMappings]);
-
-  const usedFields = useMemo(() => {
-    const used = new Set<string>();
-    for (const m of activeMappings) {
-      if (m.source) used.add(m.source);
-    }
-    return used;
-  }, [activeMappings]);
 
   const updateMapping = useCallback(
     (index: number, patch: Partial<MappingEntry>) => {
@@ -287,7 +248,7 @@ export default function FormFieldMapping({
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
-            getRowOpacity={(i) => !!(sortedMappings && dragIndexRef.current === i)}
+            getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
             dragTitle={tr('dragToReorder', '拖拽排序')}
           />
         </div>

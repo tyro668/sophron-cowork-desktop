@@ -10,6 +10,8 @@ import {
   isTemporalDataFieldType,
   normalizeDataFieldType,
 } from '../../../shared/data-field-types';
+import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import {
   buildFilterConditionTree,
   parseConditionTree,
@@ -513,16 +515,7 @@ export default function FormFilter({
 
   // ── Config sync ────────────────────────────────────────────────────
 
-  const updateConfig = useCallback(
-    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
-      onNodeChange((current) => ({
-        ...current,
-        config: updater(current.config),
-        updatedAt: Date.now(),
-      }));
-    },
-    [onNodeChange]
-  );
+  const updateConfig = useUpdateConfig(onNodeChange);
 
   // Parse condition from config into tree (ensure at least one empty row)
   const [root, setRoot] = useState<FilterConditionBranch>(() => {
@@ -557,29 +550,9 @@ export default function FormFilter({
 
   // ── Column metadata ────────────────────────────────────────────────
 
-  const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
+  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const [columnValues, setColumnValues] = useState<Record<string, string[]>>({});
   const [loadingValues, setLoadingValues] = useState<Record<string, boolean>>({});
-
-  // Fetch column types
-  useEffect(() => {
-    if (!taskId || !sourceNode?.id) return;
-    const api = window.electronAPI?.data;
-    if (!api?.getWorkflowNodeColumnTypes) return;
-    api
-      .getWorkflowNodeColumnTypes({
-        taskId,
-        nodeId: sourceNode.id,
-        nodeType: sourceNode.type as never,
-        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
-      })
-      .then((types) => {
-        const map: Record<string, string> = {};
-        for (const t of types) map[t.name] = t.type;
-        setColumnTypes(map);
-      })
-      .catch(() => setColumnTypes({}));
-  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
 
   const fetchColumnValues = useCallback(
     (colName: string) => {

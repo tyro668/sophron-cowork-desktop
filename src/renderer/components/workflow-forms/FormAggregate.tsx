@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
@@ -6,6 +6,9 @@ import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
+import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
+import { useDragReorder } from '../../hooks/useDragReorder';
 
 const AGG_FUNCTIONS = [
   'count',
@@ -55,37 +58,8 @@ export default function FormAggregate({
     [t]
   );
 
-  const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    if (!taskId || !sourceNode?.id) return;
-    const api = window.electronAPI?.data;
-    if (!api?.getWorkflowNodeColumnTypes) return;
-    api
-      .getWorkflowNodeColumnTypes({
-        taskId,
-        nodeId: sourceNode.id,
-        nodeType: sourceNode.type as never,
-        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
-      })
-      .then((types: Array<{ name: string; type: string }>) => {
-        const map: Record<string, string> = {};
-        for (const t of types) map[t.name] = t.type;
-        setColumnTypes(map);
-      })
-      .catch(() => console.error('Failed to fetch column types for aggregate form'));
-  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
-
-  const updateConfig = useCallback(
-    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
-      onNodeChange((current) => ({
-        ...current,
-        config: updater(current.config),
-        updatedAt: Date.now(),
-      }));
-    },
-    [onNodeChange]
-  );
+  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const updateConfig = useUpdateConfig(onNodeChange);
 
   const groupBy = useMemo(() => (node.config.groupBy as string[]) ?? [], [node.config.groupBy]);
   const rawMetrics = useMemo(
@@ -154,41 +128,14 @@ export default function FormAggregate({
     handleMetricsChange(next);
   }
 
-  // ── Drag-to-reorder state ──
-  const dragIndexRef = useRef<number | null>(null);
-  const [dragMetrics, setDragMetrics] = useState<MetricEntry[] | null>(null);
-
-  const activeMetrics = dragMetrics ?? metrics;
-
-  const handleDragStart = useCallback(
-    (index: number) => {
-      dragIndexRef.current = index;
-      setDragMetrics([...metrics]);
-    },
-    [metrics]
-  );
-
-  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    if (dragIndexRef.current === null || dragIndexRef.current === index) return;
-    const from = dragIndexRef.current;
-    setDragMetrics((prev) => {
-      if (!prev) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(index, 0, moved);
-      return next;
-    });
-    dragIndexRef.current = index;
-  }, []);
-
-  const handleDragEnd = useCallback(() => {
-    if (dragMetrics && dragIndexRef.current !== null) {
-      handleMetricsChange(dragMetrics);
-    }
-    dragIndexRef.current = null;
-    setDragMetrics(null);
-  }, [dragMetrics, handleMetricsChange]);
+  const {
+    activeItems: activeMetrics,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+    isDragging,
+    dragIndexRef,
+  } = useDragReorder(metrics, handleMetricsChange);
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden">
@@ -288,7 +235,7 @@ export default function FormAggregate({
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
               onDragEnd={handleDragEnd}
-              getRowOpacity={(i) => !!(dragMetrics && dragIndexRef.current === i)}
+              getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
               dragTitle={tr('dragToReorder', '拖拽排序')}
             />
           </div>

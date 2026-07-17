@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassTagBar } from './shared/GlassTagBar';
@@ -8,6 +8,10 @@ import { GlassDirectionToggle } from './shared/GlassDirectionToggle';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassRowList } from './shared/GlassRowList';
+import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
+import { useDragReorder } from '../../hooks/useDragReorder';
+import { computeUsedFields } from './shared/used-fields';
 
 interface SortKeyEntry {
   field: string;
@@ -31,41 +35,8 @@ export default function FormDeduplicate({
     [t]
   );
 
-  // ── Column types ──
-  const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    if (!taskId || !sourceNode?.id) return;
-    const api = window.electronAPI?.data;
-    if (!api?.getWorkflowNodeColumnTypes) return;
-    api
-      .getWorkflowNodeColumnTypes({
-        taskId,
-        nodeId: sourceNode.id,
-        nodeType: sourceNode.type as never,
-        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
-      })
-      .then((types) => {
-        const map: Record<string, string> = {};
-        for (const t of types) map[t.name] = t.type;
-        setColumnTypes(map);
-      })
-      .catch(() => {
-        setColumnTypes({});
-      });
-  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
-
-  // ── Config ──
-  const updateConfig = useCallback(
-    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
-      onNodeChange((current) => ({
-        ...current,
-        config: updater(current.config),
-        updatedAt: Date.now(),
-      }));
-    },
-    [onNodeChange]
-  );
+  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const updateConfig = useUpdateConfig(onNodeChange);
 
   const columns = useMemo(() => (node.config?.columns as string[]) ?? [], [node.config?.columns]);
   const keep = (node.config?.keep as string) ?? 'first';
@@ -113,16 +84,15 @@ export default function FormDeduplicate({
     [orderBy]
   );
 
-  // ── Drag-to-reorder state ──
-  const dragIndexRef = useRef<number | null>(null);
-  const [dragKeys, setDragKeys] = useState<SortKeyEntry[] | null>(null);
-
-  // Sync dragKeys from config when not dragging
-  useEffect(() => {
-    if (dragIndexRef.current === null) setDragKeys(null);
-  }, [displaySortKeys]);
-
-  const activeKeys = dragKeys ?? displaySortKeys;
+  const {
+    activeItems: activeKeys,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+    resetDrag,
+    isDragging,
+    dragIndexRef,
+  } = useDragReorder(displaySortKeys, commitSortKeys);
 
   const updateSortKey = useCallback(
     (index: number, patch: Partial<SortKeyEntry>) => {
@@ -152,49 +122,18 @@ export default function FormDeduplicate({
     [activeKeys, commitSortKeys]
   );
 
-  const handleDragStart = useCallback(
-    (index: number) => {
-      dragIndexRef.current = index;
-      setDragKeys([...displaySortKeys]);
-    },
-    [displaySortKeys]
-  );
-
-  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    if (dragIndexRef.current === null || dragIndexRef.current === index) return;
-    const from = dragIndexRef.current;
-    setDragKeys((prev) => {
-      if (!prev) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(index, 0, moved);
-      return next;
-    });
-    dragIndexRef.current = index;
-  }, []);
-
-  const handleDragEnd = useCallback(() => {
-    if (dragKeys && dragIndexRef.current !== null) {
-      commitSortKeys(dragKeys);
-    }
-    dragIndexRef.current = null;
-    setDragKeys(null);
-  }, [dragKeys, commitSortKeys]);
+  // Sync drag state from config when not dragging
+  useEffect(() => {
+    if (!isDragging) resetDrag();
+  }, [displaySortKeys, isDragging, resetDrag]);
 
   // Duplicate sort field check
-  const usedSortFields = useMemo(() => {
-    const used = new Set<string>();
-    for (const k of activeKeys) {
-      if (k.field) used.add(k.field);
-    }
-    return used;
-  }, [activeKeys]);
+  const usedSortFields = useMemo(() => computeUsedFields(activeKeys, (k) => k.field), [activeKeys]);
 
   return (
     <div className="flex flex-col min-h-0 overflow-hidden" style={{ height: '100%' }}>
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-        {/* ── 已选字段（全宽） ── */}
+        {/* ── 已选字段（全宽�?── */}
         {columns.length > 0 && (
           <div className="mb-2">
             <GlassTagBar
@@ -215,7 +154,7 @@ export default function FormDeduplicate({
         )}
 
         <div className="grid grid-cols-[40fr_60fr] gap-3 flex-1 min-h-0">
-          {/* ═══ LEFT: 选择字段 ═══ */}
+          {/* ══�?LEFT: 选择字段 ══�?*/}
           <GlassFieldMultiSelect
             columns={fieldCompletions}
             selected={columns}
@@ -224,15 +163,15 @@ export default function FormDeduplicate({
             maxHeight="none"
           />
 
-          {/* ═══ RIGHT: 保留策略 + 排序设置 ═══ */}
+          {/* ══�?RIGHT: 保留策略 + 排序设置 ══�?*/}
           <div className="overflow-y-auto min-h-0">
             <div className="grid content-start gap-2">
               {/* ── 保留策略 ── */}
               <GlassRadioSelect
                 value={keep}
                 options={[
-                  { value: 'first', label: tr('first', '第一条') },
-                  { value: 'last', label: tr('last', '最后一条') },
+                  { value: 'first', label: tr('first', '第一个') },
+                  { value: 'last', label: tr('last', '最后一') },
                 ]}
                 onChange={(v) => updateConfig((cfg) => ({ ...cfg, keep: v }))}
                 label={tr('dedupKeepStrategy', '保留策略')}
@@ -306,13 +245,13 @@ export default function FormDeduplicate({
                     ]}
                     onAdd={addSortKeyAfter}
                     onRemove={removeSortKey}
-                    addTitle={tr('sortAddKey', '添加排序键')}
-                    removeTitle={tr('filterDeleteCondition', '删除')}
+                    addTitle={tr('sortAddKey', '添加排序字段')}
+                    removeTitle={tr('filterDeleteCondition', '删除条件')}
                     draggable
                     onDragStart={handleDragStart}
                     onDragOver={handleDragOver}
                     onDragEnd={handleDragEnd}
-                    getRowOpacity={(i) => !!(dragKeys && dragIndexRef.current === i)}
+                    getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
                     dragTitle={tr('dragToReorder', '拖拽排序')}
                   />
                 </div>

@@ -8,6 +8,8 @@ import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { isTemporalDataFieldType } from '@/shared/data-field-types';
 import { parseFieldRef } from '@/shared/prep-dsl/parser';
+import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 
 export interface ConditionEntry {
   left: string;
@@ -163,16 +165,7 @@ export default function FormJoin({
     [t]
   );
 
-  const updateConfig = useCallback(
-    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
-      onNodeChange((current) => ({
-        ...current,
-        config: updater(current.config),
-        updatedAt: Date.now(),
-      }));
-    },
-    [onNodeChange]
-  );
+  const updateConfig = useUpdateConfig(onNodeChange);
 
   const joinType = (node.config.joinType as string) ?? 'left';
   const conditions = useMemo(
@@ -226,8 +219,8 @@ export default function FormJoin({
   const [rightRawColumns, setRightRawColumns] = useState<string[]>([]);
   const [rightColumnsError, setRightColumnsError] = useState(false);
   // Optional column type info for ASOF time field filtering
-  const [leftColumnTypes, setLeftColumnTypes] = useState<Record<string, string>>({});
-  const [rightColumnTypes, setRightColumnTypes] = useState<Record<string, string>>({});
+  const leftColumnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const rightColumnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode: rightSourceNode });
 
   useEffect(() => {
     setRightRawColumns([]);
@@ -251,45 +244,6 @@ export default function FormJoin({
         setRightColumnsError(true);
       });
   }, [rightSourceNode, taskId]);
-
-  // Optional column type info for ASOF time field filtering
-  useEffect(() => {
-    if (!taskId || !sourceNode?.id) return;
-    const api = window.electronAPI?.data;
-    if (!api?.getWorkflowNodeColumnTypes) return;
-    api
-      .getWorkflowNodeColumnTypes({
-        taskId,
-        nodeId: sourceNode.id,
-        nodeType: sourceNode.type as never,
-        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
-      })
-      .then((types: Array<{ name: string; type: string }>) => {
-        const map: Record<string, string> = {};
-        for (const t of types) map[t.name] = t.type;
-        setLeftColumnTypes(map);
-      })
-      .catch(() => setLeftColumnTypes({}));
-  }, [taskId, sourceNode?.id]);
-
-  useEffect(() => {
-    if (!rightSourceNode || typeof taskId !== 'string') return;
-    const api = window.electronAPI?.data;
-    if (!api?.getWorkflowNodeColumnTypes) return;
-    api
-      .getWorkflowNodeColumnTypes({
-        taskId,
-        nodeId: rightSourceNode.id,
-        nodeType: rightSourceNode.type as never,
-        nodeConfig: (rightSourceNode.config ?? {}) as Record<string, unknown>,
-      })
-      .then((types: Array<{ name: string; type: string }>) => {
-        const map: Record<string, string> = {};
-        for (const t of types) map[t.name] = t.type;
-        setRightColumnTypes(map);
-      })
-      .catch(() => setRightColumnTypes({}));
-  }, [taskId, rightSourceNode?.id]);
 
   const joinTypes = useMemo(
     () => [

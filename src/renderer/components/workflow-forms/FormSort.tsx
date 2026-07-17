@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassDirectionToggle } from './shared/GlassDirectionToggle';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList } from './shared/GlassRowList';
+import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
+import { useDragReorder } from '../../hooks/useDragReorder';
+import { computeUsedFields } from './shared/used-fields';
 
 interface SortKey {
   field: string;
@@ -28,16 +32,7 @@ export default function FormSort({
     [t]
   );
 
-  const updateConfig = useCallback(
-    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
-      onNodeChange((current) => ({
-        ...current,
-        config: updater(current.config),
-        updatedAt: Date.now(),
-      }));
-    },
-    [onNodeChange]
-  );
+  const updateConfig = useUpdateConfig(onNodeChange);
 
   const keys = useMemo<SortKey[]>(() => (node.config.keys as SortKey[]) ?? [], [node.config.keys]);
 
@@ -49,25 +44,7 @@ export default function FormSort({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
-  useEffect(() => {
-    if (!taskId || !sourceNode?.id) return;
-    const api = window.electronAPI?.data;
-    if (!api?.getWorkflowNodeColumnTypes) return;
-    api
-      .getWorkflowNodeColumnTypes({
-        taskId,
-        nodeId: sourceNode.id,
-        nodeType: sourceNode.type as never,
-        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
-      })
-      .then((types) => {
-        const map: Record<string, string> = {};
-        for (const t of types) map[t.name] = t.type;
-        setColumnTypes(map);
-      })
-      .catch(() => setColumnTypes({}));
-  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
+  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
 
   const commitKeys = useCallback(
     (next: SortKey[]) => {
@@ -76,16 +53,15 @@ export default function FormSort({
     [updateConfig]
   );
 
-  // ── Drag-to-reorder state ──
-  const dragIndexRef = useRef<number | null>(null);
-  const [dragKeys, setDragKeys] = useState<SortKey[] | null>(null);
-
-  // Sync dragKeys from config when not dragging
-  useEffect(() => {
-    if (dragIndexRef.current === null) setDragKeys(null);
-  }, [keys]);
-
-  const activeKeys = dragKeys ?? keys;
+  const {
+    activeItems: activeKeys,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+    resetDrag,
+    isDragging,
+    dragIndexRef,
+  } = useDragReorder(keys, commitKeys);
 
   const updateKey = useCallback(
     (index: number, patch: Partial<SortKey>) => {
@@ -130,44 +106,13 @@ export default function FormSort({
     [activeKeys, commitKeys]
   );
 
-  const handleDragStart = useCallback(
-    (index: number) => {
-      dragIndexRef.current = index;
-      setDragKeys([...keys]);
-    },
-    [keys]
-  );
-
-  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    if (dragIndexRef.current === null || dragIndexRef.current === index) return;
-    const from = dragIndexRef.current;
-    setDragKeys((prev) => {
-      if (!prev) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(index, 0, moved);
-      return next;
-    });
-    dragIndexRef.current = index;
-  }, []);
-
-  const handleDragEnd = useCallback(() => {
-    if (dragKeys && dragIndexRef.current !== null) {
-      commitKeys(dragKeys);
-    }
-    dragIndexRef.current = null;
-    setDragKeys(null);
-  }, [dragKeys, commitKeys]);
+  // Sync drag state from config when not dragging
+  useEffect(() => {
+    if (!isDragging) resetDrag();
+  }, [keys, isDragging, resetDrag]);
 
   // Fields already chosen in other rows (for disabling in the dropdown)
-  const usedFields = useMemo(() => {
-    const used = new Set<string>();
-    for (const k of activeKeys) {
-      if (k.field) used.add(k.field);
-    }
-    return used;
-  }, [activeKeys]);
+  const usedFields = useMemo(() => computeUsedFields(activeKeys, (k) => k.field), [activeKeys]);
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -242,7 +187,7 @@ export default function FormSort({
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
-            getRowOpacity={(i) => !!(dragKeys && dragIndexRef.current === i)}
+            getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
             dragTitle={tr('dragToReorder', '拖拽排序')}
           />
         </div>
