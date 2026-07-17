@@ -45,7 +45,7 @@ flowchart LR
     UI[自动化配置界面] --> IPC[data IPC]
     IPC --> CS[DataCommandService]
     CS --> AI[Workflow 生成器]
-    AI --> JSP[受限 workflowJs Parser]
+    AI --> JSP[JavaScript AST Compiler]
     JSP --> OC[Operation Compiler]
     OC --> DSL[Prep DSL / Workflow Candidate]
     CS --> STORE[DataTaskStore]
@@ -60,8 +60,10 @@ flowchart LR
 - `src/main/data/ipc/data-tasks-ipc.ts`
 - `src/main/data/data-command-service.ts`
 - `src/main/data/data-task-store.ts`
-- `src/main/data/workflow/dsl-generator.ts`
-- `src/main/data/workflow/js-parser.ts`
+- `src/main/data/workflow/workflow-generator.ts`
+- `src/main/data/workflow/javascript-workflow-compiler.ts`
+- `src/main/data/workflow/javascript-capabilities.ts`
+- `src/main/data/workflow/workflow-model.ts`
 - `src/main/data/workflow/operation-compiler.ts`
 - `src/shared/prep-dsl`
 
@@ -79,10 +81,10 @@ flowchart TD
     E --> F
     F --> G[复用已有 Task 或创建 Task]
     G --> H[获取 taskId keyed lock]
-    H --> I[模型生成受限 workflowJs]
-    I --> J[解析 workflowJs 为 IR]
-    J --> K[IR 转换为 operations]
-    K --> L[Operation Registry 编译 Prep DSL]
+    H --> I[模型生成受限 JavaScript 源码]
+    I --> J[AST 编译为 Workflow IR]
+    J --> K[逐个编译 IR operations]
+    K --> L[Operation Registry 生成 Prep DSL]
     L --> M[编译 Workflow Candidate]
     M --> N[临时执行 Candidate]
     N --> O[获取运行时输出预览]
@@ -91,7 +93,7 @@ flowchart TD
     Q -->|无错误| R[保存 Candidate Workflow]
     R --> S[清理临时资源]
     S --> T[释放 keyed lock并返回生成结果]
-    Q -->|可修复| U[模型根据 diagnostics 修复 workflowJs]
+    Q -->|可修复| U[模型根据 diagnostics 修复 JavaScript 源码]
     U --> J
     Q -->|不可修复或重试耗尽| V[回滚本次新建资源]
     V --> S
@@ -118,16 +120,32 @@ flowchart TD
 
 ### 5.3 模型输出协议
 
-主路径要求模型返回受限的 `workflowJs`，而不是任意 JavaScript：
+主路径要求模型在 `javascriptSource` 字段中返回函数化但不可执行的受限 JavaScript 源码。函数用于形成稳定的诊断和局部修复边界，真正的数据处理仍必须通过 capability registry 中已经接入 IR、Schema 和 lineage 的方法表达：
 
 ```json
 {
-  "workflowJs": "workflow().inputDataset(INPUT_TABLE_ID, \"src\").filter(col(\"Profit\").gte(lit(0))).sort(col(\"Profit\"), \"asc\").outputTable(OUTPUT_TABLE_NAME, { mode: \"replace\" })",
+  "javascriptSource": "function filterPositiveProfit(input) {\n  return input.filter(col(\"Profit\").gte(lit(0)));\n}\n\nfunction sortProfit(input) {\n  return input.sort(col(\"Profit\"), \"asc\");\n}\n\nfunction main() {\n  const input = workflow().inputDataset(INPUT_TABLE_ID, \"src\");\n  const filtered = filterPositiveProfit(input);\n  const sorted = sortProfit(filtered);\n  return sorted.outputTable(OUTPUT_TABLE_NAME, { mode: \"replace\" });\n}",
   "requiredColumns": [{ "name": "Profit" }]
 }
 ```
 
-`js-parser.ts` 只接受白名单化的 `workflow()` API 链，并把它转换为内部 IR。IR 再转换为 operation 列表，由 operation compiler 生成 Prep DSL。模型代码不会作为通用 JavaScript 执行。
+函数化 JavaScript 由标准 JavaScript AST 前端解析，顶层只允许命名函数，函数体只允许 `const`、静态 helper 调用和 `return`。禁止 import、动态调用、循环、可变变量以及系统、网络和文件访问。编译器静态展开函数和变量流，直接构建内部 IR，并为每个 operation 记录函数名、offset 和行列。模型代码不会作为通用 JavaScript 执行，也不会再降级成单条 API 链交给旧手写 Parser 二次解析。
+
+JavaScript capability registry 是自动生成入口的唯一能力清单。只有同时完成以下实现的操作才能加入清单：
+
+- JavaScript API 和 AST 参数校验。
+- Workflow IR 映射。
+- 字段状态与类型校验。
+- 输出 Schema 和 lineage 推断。
+- Prep DSL 编译及 dry-run 执行。
+
+当前单输入自动化入口已接入以下能力：筛选、字段选择、删除字段、字段映射/重命名、计算字段、类型转换、排序、聚合、去重、缺失值处理、限制行数/Top N、透视、反透视和嵌套展开。`inputDataset` 与 `outputTable` 是工作流边界，不作为中间变换算子。
+
+复杂能力仍采用高层结构化 API，而不是开放任意 JavaScript。为保证 Schema 可静态确定，自动化透视当前要求单个透视字段、显式固定值和单个指标；反透视要求显式 `columns` 或 `except` 以及输出字段名；嵌套展开要求显式数据源类型、源字段和别名。后续可以在 IR、Schema/lineage 和执行器同时支持后再放宽约束。
+
+由于当前自动化面板只能选择一个输入表，表连接与集合操作不加入 JavaScript capability registry，提示词和 AST 编译器也禁止模型引用第二输入。未来支持多输入时，应先扩展输入绑定、字段限定名、冲突策略、双侧 lineage 和 dry-run 资源校验，再开放这些方法。
+
+当 diagnostics 带有 `functionName` 时，修复请求优先返回 `javascriptPatch`，只替换目标函数；应用 patch 后仍重新解析、编译并 dry-run 完整 Workflow。
 
 示例结果：
 
@@ -192,7 +210,7 @@ Candidate 不会直接保存。系统先调用 `validateTaskWorkflow`，在 `tem
 
 只有模型可能解决的问题才进入修复循环，例如：
 
-- DSL 或 workflowJs 语法问题。
+- Prep DSL 或 JavaScript 源码语法问题。
 - 字段引用问题。
 - 类型不兼容。
 - 操作参数或结构错误。
@@ -369,7 +387,7 @@ interface RunGeneratedTaskResult {
 | -------------------- | -------------------------------- | ----------------- | -------------------------- |
 | `INVALID_ARGUMENT`   | 缺少输入表、输出目录等参数       | 否                | 否                         |
 | `RESOURCE_NOT_FOUND` | Task、表或文件不存在             | 否                | 否                         |
-| `DSL_PARSE_FAILED`   | workflowJs/DSL 解析或编译失败    | 否                | 否                         |
+| `DSL_PARSE_FAILED`   | JavaScript/DSL 解析或编译失败    | 否                | 否                         |
 | `VALIDATION_FAILED`  | 字段漂移、输出 Schema 不符合契约 | 否                | 否                         |
 | `GENERATION_FAILED`  | 模型调用或生成协议失败           | 否                | 否                         |
 | `RUN_FAILED`         | DuckDB 或运行环境执行失败        | 否                | 否；正式运行按失败状态记录 |
@@ -392,7 +410,7 @@ interface RunGeneratedTaskResult {
 
 ## 13. 验收标准
 
-- 模型输出受限 `workflowJs`，并由 Parser、IR 和 Operation Registry 编译成 Prep DSL。
+- 模型输出受限 JavaScript 源码，并由 AST Compiler、Workflow IR 和 Operation Registry 编译成 Prep DSL。
 - 生成 Candidate 必须通过临时执行和运行时 Schema 校验后才能保存。
 - 生成失败能清理新建 Task、输出表和临时资源，且不删除复用资源。
 - 同一 Task 的生成、保存、配置和执行按 keyed lock 串行。
