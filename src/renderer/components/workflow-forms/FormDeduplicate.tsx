@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
+
 import type { OperatorFormProps } from './index';
 import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
@@ -11,6 +11,7 @@ import { GlassRowList } from './shared/GlassRowList';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
+import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { computeUsedFields } from './shared/used-fields';
 
 interface SortKeyEntry {
@@ -28,13 +29,7 @@ export default function FormDeduplicate({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
-
+  const tr = useFormTranslation();
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 

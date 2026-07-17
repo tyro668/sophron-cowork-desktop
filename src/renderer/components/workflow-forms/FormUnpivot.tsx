@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
+import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 
@@ -14,13 +14,7 @@ export default function FormUnpivot({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
-
+  const tr = useFormTranslation();
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 

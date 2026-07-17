@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 import { Plus, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
@@ -11,6 +10,7 @@ import {
   normalizeDataFieldType,
 } from '../../../shared/data-field-types';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import {
   buildFilterConditionTree,
@@ -506,12 +506,7 @@ export default function FormFilter({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
+  const tr = useFormTranslation();
 
   // ── Config sync ────────────────────────────────────────────────────
 

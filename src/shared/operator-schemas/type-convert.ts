@@ -2,8 +2,11 @@ import { z } from 'zod';
 
 const ConversionEntrySchema = z.object({
   column: z.string().optional().default(''),
-  type: z.string().optional().default('text'),
-  onError: z.string().optional(),
+  type: z
+    .enum(['text', 'integer', 'float', 'decimal', 'date', 'datetime', 'boolean'])
+    .optional()
+    .default('text'),
+  onError: z.enum(['keep', 'fail', 'null']).optional(),
 });
 
 export const TypeConvertConfigSchema = z.object({

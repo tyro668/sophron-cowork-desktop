@@ -1,14 +1,16 @@
+import { z } from 'zod';
 import { quoteIdentifier, sortKeysToSql } from './utils';
 import { LimitConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
+
+type LimitParsed = z.infer<typeof LimitConfigSchema>;
 
 function compileFixedSql(
   output: string,
   input: string,
   columns: string[],
-  config: Record<string, unknown>,
+  parsed: LimitParsed,
   limit: number
 ): string {
-  const parsed = parseOperatorConfig(LimitConfigSchema, config);
   const unit = parsed.unit;
   const orderBy = sortKeysToSql(parsed.orderBy);
   const groupBy = parsed.groupBy;
@@ -118,28 +120,22 @@ function compileFixedSql(
       WHERE __rn <= ${rows}`;
   }
 
-  // 排序模式（含 WITH TIES）
-  // 排序模式（含 WITH TIES + OFFSET）
   if (orderBy) {
-    const offset =
-      typeof config.offset === 'number' && config.offset > 0 ? ` OFFSET ${config.offset}` : '';
-    return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} ORDER BY ${orderBy} LIMIT ${rows}${ties ? ' WITH TIES' : ''}${offset}`;
+    const offsetStr = parsed.offset > 0 ? ` OFFSET ${parsed.offset}` : '';
+    return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} ORDER BY ${orderBy} LIMIT ${rows}${ties ? ' WITH TIES' : ''}${offsetStr}`;
   }
 
-  // 简单 LIMIT + OFFSET
-  const offset =
-    typeof config.offset === 'number' && config.offset > 0 ? ` OFFSET ${config.offset}` : '';
-  return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} LIMIT ${rows}${offset}`;
+  const offsetStr = parsed.offset > 0 ? ` OFFSET ${parsed.offset}` : '';
+  return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} LIMIT ${rows}${offsetStr}`;
 }
 
 function compileRandomSql(
   output: string,
   input: string,
   _columns: string[],
-  config: Record<string, unknown>,
+  parsed: LimitParsed,
   limit: number
 ): string {
-  const parsed = parseOperatorConfig(LimitConfigSchema, config);
   if (parsed.unit === 'percent') {
     const method = parsed.method === 'system' ? 'SYSTEM' : 'BERNOULLI';
     const seed = parsed.seed != null ? ` REPEATABLE(${parsed.seed})` : '';
@@ -167,7 +163,7 @@ export function compileLimitSql(
   const limit = parsed.limit;
 
   if (parsed.mode === 'random') {
-    return compileRandomSql(output, input, columns, config, limit);
+    return compileRandomSql(output, input, columns, parsed, limit);
   }
-  return compileFixedSql(output, input, columns, config, limit);
+  return compileFixedSql(output, input, columns, parsed, limit);
 }

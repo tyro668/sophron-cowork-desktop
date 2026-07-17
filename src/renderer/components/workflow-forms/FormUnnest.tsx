@@ -1,19 +1,12 @@
-import { useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
+import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 
 export default function FormUnnest({ node, fieldCompletions, onNodeChange }: OperatorFormProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
-
+  const tr = useFormTranslation();
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const sourceKind = (node.config.sourceKind as string) ?? 'list';

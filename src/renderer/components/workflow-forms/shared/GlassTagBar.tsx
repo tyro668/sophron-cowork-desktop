@@ -1,5 +1,4 @@
-import { useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useFormTranslation } from '../../../hooks/useFormTranslation';
 import { Trash2, X, ChevronDown } from 'lucide-react';
 
 export interface GlassTagBarProps {
@@ -27,12 +26,7 @@ export function GlassTagBar({
   wrap = false,
   className = '',
 }: GlassTagBarProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
+  const tr = useFormTranslation();
 
   const containerPad =
     density === 'compact' ? '' : density === 'spacious' ? 'px-2.5 py-1.5' : 'px-2 py-1';

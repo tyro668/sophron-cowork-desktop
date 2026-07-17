@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
@@ -7,6 +6,7 @@ import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList, type GlassRowListColumn, type RowAction } from './shared/GlassRowList';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useDragReorder } from '../../hooks/useDragReorder';
+import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { computeUsedFields } from './shared/used-fields';
 
 export interface MappingEntry {
@@ -52,13 +52,7 @@ export default function FormFieldMapping({
   fieldCompletions,
   onNodeChange,
 }: OperatorFormProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
-
+  const tr = useFormTranslation();
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const mappings = useMemo<MappingEntry[]>(
@@ -87,8 +81,13 @@ export default function FormFieldMapping({
     handleDragOver,
     handleDragEnd,
     isDragging,
+    resetDrag,
     dragIndexRef,
   } = useDragReorder(mappings, commitMappings);
+
+  useEffect(() => {
+    if (!isDragging) resetDrag();
+  }, [mappings, isDragging, resetDrag]);
 
   const usedFields = useMemo(
     () => computeUsedFields(activeMappings, (m) => m.source),

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useFormTranslation } from '../../../hooks/useFormTranslation';
 import { Search, Trash2, X } from 'lucide-react';
 
 interface GlassValueSelectorProps {
@@ -17,12 +17,7 @@ export function GlassValueSelector({
   placeholder,
   maxHeight = '180px',
 }: GlassValueSelectorProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
+  const tr = useFormTranslation();
 
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');

@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useEffect, useState } from 'react';
 import { Trash2, X, ChevronDown } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
+import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 
 interface SortKeyEntry {
@@ -20,13 +20,7 @@ const TAG_CONTAINER =
   'flex min-h-7 items-center rounded-md border border-border-muted bg-background/42 focus-within:border-accent';
 
 export default function FormLimit({ node, fieldCompletions, onNodeChange }: OperatorFormProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
-
+  const tr = useFormTranslation();
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const mode = (node.config.mode as string) ?? 'fixed';

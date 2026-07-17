@@ -1,5 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
@@ -9,6 +8,7 @@ import { useConfirmDialog } from '../../components/ConfirmDialog';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
+import { useFormTranslation } from '../../hooks/useFormTranslation';
 
 export default function FormFieldSelect({
   node,
@@ -17,12 +17,7 @@ export default function FormFieldSelect({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
+  const tr = useFormTranslation();
   const { confirm } = useConfirmDialog();
 
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
@@ -106,8 +101,13 @@ export default function FormFieldSelect({
     handleDragOver,
     handleDragEnd,
     isDragging,
+    resetDrag,
     dragIndexRef,
   } = useDragReorder(columns, commitColumns, filteredList);
+
+  useEffect(() => {
+    if (!isDragging) resetDrag();
+  }, [columns, isDragging, resetDrag]);
 
   const typeStats = useMemo(() => {
     const stats: Record<string, number> = {};

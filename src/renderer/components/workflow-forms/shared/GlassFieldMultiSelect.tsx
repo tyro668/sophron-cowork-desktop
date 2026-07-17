@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useFormTranslation } from '../../../hooks/useFormTranslation';
+
 import { Search } from 'lucide-react';
 import { dataFieldTypeLabel } from '@/shared/data-field-types';
 
@@ -24,12 +25,7 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
   selectionMode = 'multi',
   variant = 'flat',
 }: GlassFieldMultiSelectProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
+  const tr = useFormTranslation();
 
   const [search, setSearch] = useState('');
   const listRef = useRef<HTMLDivElement | null>(null);

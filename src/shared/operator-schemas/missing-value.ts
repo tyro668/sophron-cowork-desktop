@@ -9,7 +9,7 @@ const MissingRuleSchema = z.object({
 });
 
 export const MissingValueConfigSchema = z.object({
-  strategy: z.string().default('by_column'),
+  strategy: z.enum(['by_column', 'drop_empty_rows', 'drop_rows_by_nulls']).default('by_column'),
   rules: z.array(MissingRuleSchema).default([]),
   columns: z.array(z.string()).optional(),
   condition: z.string().optional(),

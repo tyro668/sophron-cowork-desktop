@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { ChevronDown, Trash2, X, AlertCircle } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassTagBar } from './shared/GlassTagBar';
@@ -11,6 +10,7 @@ import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassRowList, type GlassRowListColumn } from './shared/GlassRowList';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import {
   createCalculationRow,
@@ -287,13 +287,7 @@ export default function FormCalculateField({
   taskId,
   onNodeChange,
 }: OperatorFormProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
-
+  const tr = useFormTranslation();
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 

@@ -1,5 +1,4 @@
-import { useCallback, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useCallback, useEffect, useMemo } from 'react';
 import type { OperatorFormProps } from './index';
 import {
   DATA_FIELD_TYPES,
@@ -13,6 +12,7 @@ import { GlassRowList } from './shared/GlassRowList';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
+import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { computeUsedFields } from './shared/used-fields';
 
 interface ConversionEntry {
@@ -30,14 +30,7 @@ export default function FormTypeConvert({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
-
-  // ── Column types ──
+  const tr = useFormTranslation();
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 
@@ -59,8 +52,13 @@ export default function FormTypeConvert({
     handleDragOver,
     handleDragEnd,
     isDragging,
+    resetDrag,
     dragIndexRef,
   } = useDragReorder(conversions, commitConversions);
+
+  useEffect(() => {
+    if (!isDragging) resetDrag();
+  }, [conversions, isDragging, resetDrag]);
 
   const updateConversion = useCallback(
     (index: number, patch: Partial<ConversionEntry>) => {

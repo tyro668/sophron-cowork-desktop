@@ -4,8 +4,8 @@ import { ConditionSchema, ConflictSchema, KeepItemSchema } from './common';
 export const AsofConfigSchema = z.object({
   leftTime: z.string().optional().default(''),
   rightTime: z.string().optional().default(''),
-  operator: z.string().optional(),
-  direction: z.string().optional(),
+  operator: z.enum(['>=', '<=', 'nearest']).optional(),
+  direction: z.enum(['forward', 'backward']).optional(),
   tolerance: z.string().optional(),
   by: z
     .array(
@@ -18,7 +18,9 @@ export const AsofConfigSchema = z.object({
 });
 
 export const JoinConfigSchema = z.object({
-  joinType: z.string().default('left'),
+  joinType: z
+    .enum(['inner', 'left', 'right', 'full', 'cross', 'semi', 'anti', 'asof'])
+    .default('left'),
   conditions: z.array(ConditionSchema).optional(),
   conflict: ConflictSchema.optional(),
   keep: z.array(KeepItemSchema).default([]),

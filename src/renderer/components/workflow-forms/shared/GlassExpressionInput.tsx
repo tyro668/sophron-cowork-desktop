@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useFormTranslation } from '../../../hooks/useFormTranslation';
 import { Pencil, X, ChevronDown, Search } from 'lucide-react';
 import { StreamLanguage } from '@codemirror/language';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
@@ -600,12 +600,7 @@ function GlassFunctionHelper({
   excludeCategories?: string[];
   onTokenHover?: (token: HelperToken | null) => void;
 }) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
+  const tr = useFormTranslation();
   const [query, setQuery] = useState('');
   const [hoveredLabel, setHoveredLabel] = useState<string | null>(null);
 
@@ -682,12 +677,7 @@ export function GlassExpressionInput({
   placeholder: placeholderProp,
   excludeFunctionCategories,
 }: GlassExpressionInputProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
+  const tr = useFormTranslation();
   const [open, setOpen] = useState(false);
 
   if (!open) {

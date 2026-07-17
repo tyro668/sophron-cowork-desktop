@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useId } from 'react';
-import { useTranslation } from 'react-i18next';
+
 import type { OperatorFormProps } from './index';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { useConfirmDialog } from '../../components/ConfirmDialog';
 import type { DataColumnTypeInfo } from '../../../shared/data-field-types';
+import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 
 const NUMERIC_TYPES = ['integer', 'float', 'decimal'];
@@ -150,12 +151,7 @@ export default function FormSetOp({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
+  const tr = useFormTranslation();
 
   const updateConfig = useUpdateConfig(onNodeChange);
 

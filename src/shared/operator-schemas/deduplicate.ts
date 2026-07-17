@@ -3,7 +3,7 @@ import { SortKeySchema } from './common';
 
 export const DeduplicateConfigSchema = z.object({
   columns: z.array(z.string()).default([]),
-  keep: z.string().default('first'),
+  keep: z.enum(['first', 'last']).default('first'),
   orderBy: z.array(SortKeySchema).default([]),
-  strategy: z.string().optional(),
+  strategy: z.enum(['by_columns', 'all_columns']).optional(),
 });

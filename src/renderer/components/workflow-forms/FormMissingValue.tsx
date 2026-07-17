@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassTagBar } from './shared/GlassTagBar';
@@ -16,6 +16,7 @@ import {
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
+import { useFormTranslation } from '../../hooks/useFormTranslation';
 
 const BASE_METHODS = [
   { value: 'skip', labelKey: 'ruleMethods.skip', label: '不处理' },
@@ -70,12 +71,7 @@ export default function FormMissingValue({
   onNodeChange,
 }: OperatorFormProps) {
   const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
-
+  const tr = useFormTranslation();
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const strategy = (node.config.strategy as string) ?? 'by_column';
@@ -102,8 +98,13 @@ export default function FormMissingValue({
     handleDragOver,
     handleDragEnd,
     isDragging,
+    resetDrag,
     dragIndexRef,
   } = useDragReorder(rules, handleRulesChange);
+
+  useEffect(() => {
+    if (!isDragging) resetDrag();
+  }, [rules, isDragging, resetDrag]);
 
   function setRowMode(condition: 'all_null' | 'any_null') {
     updateConfig((cfg) => {

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassDirectionToggle } from './shared/GlassDirectionToggle';
@@ -8,6 +7,7 @@ import { GlassRowList } from './shared/GlassRowList';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
+import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { computeUsedFields } from './shared/used-fields';
 
 interface SortKey {
@@ -25,13 +25,7 @@ export default function FormSort({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
-
+  const tr = useFormTranslation();
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const keys = useMemo<SortKey[]>(() => (node.config.keys as SortKey[]) ?? [], [node.config.keys]);

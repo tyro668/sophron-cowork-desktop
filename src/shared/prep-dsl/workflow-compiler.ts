@@ -7,6 +7,7 @@ import type {
   PrepWorkflowNodeInput,
 } from './ast';
 import { validatePrepWorkflow } from './validator';
+import { validateOperatorConfig } from '../../shared/operator-schemas';
 
 export function compilePrepWorkflowToFlow(ast: PrepWorkflowAst): PrepWorkflowCompileResult {
   const diagnostics: PrepDiagnostic[] = validatePrepWorkflow(ast);
@@ -24,6 +25,7 @@ export function compilePrepWorkflowToFlow(ast: PrepWorkflowAst): PrepWorkflowCom
   let currentId = sourceIds.get(ast.mainSource) ?? nodes[0]?.id ?? '';
   ast.operators.forEach((operator, index) => {
     const id = makeNodeId(operator.type, String(index + 1));
+    diagnostics.push(...validateOperatorConfig(operator.type, operator.config));
     nodes.push(toNode(operator, id, nodes.length));
     if (operator.type === 'join' || operator.type === 'set_op') {
       edges.push({

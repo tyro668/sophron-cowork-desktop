@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { Plus, Settings, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
@@ -9,6 +8,7 @@ import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { isTemporalDataFieldType } from '@/shared/data-field-types';
 import { parseFieldRef } from '@/shared/prep-dsl/parser';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 
 export interface ConditionEntry {
@@ -158,13 +158,7 @@ export default function FormJoin({
   rightSourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
-
+  const tr = useFormTranslation();
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const joinType = (node.config.joinType as string) ?? 'left';
