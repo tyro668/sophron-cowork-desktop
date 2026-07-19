@@ -1,7 +1,8 @@
 import { quoteIdentifier, literalToSql } from './utils';
+import { UnnestConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
 function castToJsonExpr(columnExpr: string): string {
-  return `replace(replace(${columnExpr}, '"', '\\"'), '''', '"')::JSON`;
+  return `replace(${columnExpr}, '''', '"')::JSON`;
 }
 
 export function compileUnnestSql(
@@ -9,18 +10,19 @@ export function compileUnnestSql(
   input: string,
   config: Record<string, unknown>
 ): string {
-  const rawColumn = String(config.column ?? 'items');
-  const rawAlias = String(config.alias ?? 'item');
+  const parsed = parseOperatorConfig(UnnestConfigSchema, config);
+  const rawColumn = parsed.column;
+  const rawAlias = parsed.alias;
   const column = quoteIdentifier(rawColumn);
   const alias = quoteIdentifier(rawAlias);
-  const withIndex = typeof config.withIndex === 'string' ? String(config.withIndex) : undefined;
-  const recursive = Boolean(config.recursive);
-  const maxDepth = typeof config.maxDepth === 'number' ? (config.maxDepth as number) : undefined;
-  const keepParentNames = Boolean(config.keepParentNames);
+  const withIndex = parsed.withIndex;
+  const recursive = parsed.recursive;
+  const maxDepth = parsed.maxDepth;
+  const keepParentNames = parsed.keepParentNames;
 
-  const isJson = config.sourceKind === 'json';
+  const isJson = parsed.sourceKind === 'json';
 
-  const path = isJson ? literalToSql(config.path ?? '$') : "'$'";
+  const path = isJson ? literalToSql(parsed.path) : "'$'";
   const aliasCol = keepParentNames && isJson ? quoteIdentifier(`${rawColumn}_${rawAlias}`) : alias;
   const jsonCol = castToJsonExpr(`base.${column}`);
 

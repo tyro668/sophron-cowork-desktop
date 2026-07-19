@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Copy, Plus, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo } from 'react';
 import type { OperatorFormProps } from './index';
-import { GlassFieldCombo } from './shared/GlassFieldCombo';
+import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
-import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
-import { GlassRowList, type GlassRowListColumn } from './shared/GlassRowList';
+import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
+import { GlassRowList, type GlassRowListColumn, type RowAction } from './shared/GlassRowList';
+import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import { useDragReorder } from '../../hooks/useDragReorder';
+import { useFormTranslation } from '../../hooks/useFormTranslation';
+import { computeUsedFields } from './shared/used-fields';
 
 export interface MappingEntry {
   source: string;
@@ -50,23 +52,8 @@ export default function FormFieldMapping({
   fieldCompletions,
   onNodeChange,
 }: OperatorFormProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
-
-  const updateConfig = useCallback(
-    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
-      onNodeChange((current) => ({
-        ...current,
-        config: updater(current.config),
-        updatedAt: Date.now(),
-      }));
-    },
-    [onNodeChange]
-  );
+  const tr = useFormTranslation();
+  const updateConfig = useUpdateConfig(onNodeChange);
 
   const mappings = useMemo<MappingEntry[]>(
     () => ((node.config.mappings as Record<string, unknown>[]) ?? []).map(migrateEntry),
@@ -88,52 +75,24 @@ export default function FormFieldMapping({
     [updateConfig]
   );
 
-  // ── Drag-to-reorder state ──
-  const dragIndexRef = useRef<number | null>(null);
-  const dropTargetRef = useRef<number | null>(null);
-  const [sortedMappings, setSortedMappings] = useState<MappingEntry[] | null>(null);
+  const {
+    activeItems: activeMappings,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+    isDragging,
+    resetDrag,
+    dragIndexRef,
+  } = useDragReorder(mappings, commitMappings);
 
-  const activeMappings = sortedMappings ?? mappings;
+  useEffect(() => {
+    if (!isDragging) resetDrag();
+  }, [mappings, isDragging, resetDrag]);
 
-  const handleDragStart = useCallback(
-    (index: number) => {
-      dragIndexRef.current = index;
-      setSortedMappings([...activeMappings]);
-    },
+  const usedFields = useMemo(
+    () => computeUsedFields(activeMappings, (m) => m.source),
     [activeMappings]
   );
-
-  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    dropTargetRef.current = index;
-    if (dragIndexRef.current === null || dragIndexRef.current === index) return;
-    const from = dragIndexRef.current;
-    setSortedMappings((prev) => {
-      if (!prev) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(index, 0, moved);
-      return next;
-    });
-    dragIndexRef.current = index;
-  }, []);
-
-  const handleDragEnd = useCallback(() => {
-    if (sortedMappings && dragIndexRef.current !== null) {
-      commitMappings(sortedMappings);
-    }
-    dragIndexRef.current = null;
-    dropTargetRef.current = null;
-    setSortedMappings(null);
-  }, [sortedMappings, commitMappings]);
-
-  const usedFields = useMemo(() => {
-    const used = new Set<string>();
-    for (const m of activeMappings) {
-      if (m.source) used.add(m.source);
-    }
-    return used;
-  }, [activeMappings]);
 
   const updateMapping = useCallback(
     (index: number, patch: Partial<MappingEntry>) => {
@@ -180,11 +139,6 @@ export default function FormFieldMapping({
     [activeMappings, commitMappings]
   );
 
-  const canAdd = useMemo(
-    () => !activeMappings.some((m) => !m.source) && activeMappings.length < fieldCompletions.length,
-    [activeMappings, fieldCompletions.length]
-  );
-
   const targetModeOptions = useMemo(
     () => [
       { value: 'prefix', label: tr('fieldMappingModePrefix', '加前缀') },
@@ -203,7 +157,7 @@ export default function FormFieldMapping({
           const disabledFields = new Set(usedFields);
           if (item.source) disabledFields.delete(item.source);
           return (
-            <GlassFieldCombo
+            <GlassFieldSingleSelect
               value={item.source}
               options={fieldCompletions}
               onChange={(value) => updateMapping(i, { source: value })}
@@ -220,7 +174,7 @@ export default function FormFieldMapping({
         flex: 'flex-[1.5]',
         header: tr('fieldMappingMode', '模式'),
         render: (item, i) => (
-          <GlassOperatorSelect
+          <GlassOptionSingleSelect
             value={item.targetMode}
             onChange={(v) => updateMapping(i, { targetMode: v as MappingEntry['targetMode'] })}
             groups={[{ key: 'mode', items: targetModeOptions }]}
@@ -263,55 +217,8 @@ export default function FormFieldMapping({
           );
         },
       },
-      {
-        flex: 'flex-[1.5]',
-        header: '',
-        render: (_item, i) => (
-          <div className="flex items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => addMappingAfter(i)}
-              className="inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-              title={tr('fieldMappingAdd', '添加映射')}
-              aria-label={tr('fieldMappingAdd', '添加映射')}
-              disabled={!canAdd}
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => copyMapping(i)}
-              className="inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-              title={tr('fieldMappingCopy', '复制行')}
-              aria-label={tr('fieldMappingCopy', '复制行')}
-              disabled={!canAdd}
-            >
-              <Copy className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => removeMapping(i)}
-              className="inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:text-error hover:bg-error/10"
-              title={tr('fieldMappingRemove', '删除映射')}
-              aria-label={tr('fieldMappingRemove', '删除映射')}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        ),
-      },
     ],
-    [
-      fieldCompletions,
-      usedFields,
-      tr,
-      updateMapping,
-      canAdd,
-      addMappingAfter,
-      copyMapping,
-      removeMapping,
-      targetModeOptions,
-    ]
+    [fieldCompletions, usedFields, tr, updateMapping, targetModeOptions]
   );
 
   return (
@@ -319,18 +226,28 @@ export default function FormFieldMapping({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
           <GlassRowList
+            headerClassName="text-[12px]"
             items={activeMappings}
             columns={columns}
+            actions={['add', 'copy', 'remove']}
             onAdd={addMappingAfter}
             onRemove={removeMapping}
+            onCopy={copyMapping}
             addTitle={tr('fieldMappingAdd', '添加映射')}
             removeTitle={tr('fieldMappingRemove', '删除映射')}
+            canAct={(action: RowAction) =>
+              action === 'copy'
+                ? activeMappings.length < fieldCompletions.length
+                : action === 'add'
+                  ? !activeMappings.some((m) => !m.source) &&
+                    activeMappings.length < fieldCompletions.length
+                  : true
+            }
             draggable
-            hideActions
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
-            getRowOpacity={(i) => !!(sortedMappings && dragIndexRef.current === i)}
+            getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
             dragTitle={tr('dragToReorder', '拖拽排序')}
           />
         </div>

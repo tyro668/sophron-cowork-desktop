@@ -61,20 +61,8 @@ import {
   type DataFieldType,
 } from '../../shared/data-field-types';
 import { runInputTableNormalizerProject } from './input-table-normalizer-runner';
+import { COMPILE_STRATEGIES } from './operators/strategy';
 import {
-  compileFieldSelectSql,
-  compileFieldMappingSql,
-  compileMissingValueSql,
-  compileTypeConvertSql,
-  compileDeduplicateSql,
-  compileSortSql,
-  compileCalculateFieldSql,
-  compileAggregateSql,
-  compileLimitSql,
-  compilePivotSql,
-  compileUnpivotSql,
-  compileUnnestSql,
-  compileFilterConditionExpression,
   compileSetOpSql,
   compileJoinConditionList,
   compileJoinProjection,
@@ -2949,41 +2937,14 @@ export class DataTaskStore {
     if (!inputRelation) {
       throw new Error(`Workflow node has no input: ${node.id}`);
     }
-    const columns = await this.getTableColumns(inputRelation);
+    const strategy = COMPILE_STRATEGIES[node.type as string];
     const input = quoteIdentifier(inputRelation);
     const output = quoteIdentifier(outputRelation);
-    switch (node.type) {
-      case 'field_select':
-        return compileFieldSelectSql(output, input, columns, node.config);
-      case 'field_mapping':
-        return compileFieldMappingSql(output, input, columns, node.config);
-      case 'missing_value':
-        return compileMissingValueSql(output, input, columns, node.config);
-      case 'type_convert':
-        return compileTypeConvertSql(output, input, columns, node.config);
-      case 'filter':
-        return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} WHERE ${compileFilterConditionExpression(
-          String(node.config.condition ?? 'true')
-        )}`;
-      case 'deduplicate':
-        return compileDeduplicateSql(output, input, columns, node.config);
-      case 'sort':
-        return compileSortSql(output, input, node.config);
-      case 'calculate_field':
-        return compileCalculateFieldSql(output, input, node.config);
-      case 'aggregate':
-        return compileAggregateSql(output, input, node.config);
-      case 'limit':
-        return compileLimitSql(output, input, columns, node.config);
-      case 'pivot':
-        return compilePivotSql(output, input, node.config);
-      case 'unpivot':
-        return compileUnpivotSql(output, input, columns, node.config);
-      case 'unnest':
-        return compileUnnestSql(output, input, node.config);
-      default:
-        return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input}`;
+    const columns = strategy?.needsColumns ? await this.getTableColumns(inputRelation) : [];
+    if (!strategy) {
+      return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input}`;
     }
+    return strategy.compile(output, input, columns, node.config);
   }
 
   private async compileSetOpSql(

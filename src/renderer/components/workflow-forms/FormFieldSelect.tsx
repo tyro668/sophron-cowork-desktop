@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { ChevronsDown, ChevronsUp, GripVertical, Search, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Search } from 'lucide-react';
 import type { OperatorFormProps } from './index';
-import { GlassFieldSelector } from './shared/GlassFieldSelector';
+import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
+import { GlassRowList } from './shared/GlassRowList';
 import { dataFieldTypeLabel } from '@/shared/data-field-types';
 import { useConfirmDialog } from '../../components/ConfirmDialog';
+import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
+import { useDragReorder } from '../../hooks/useDragReorder';
+import { useFormTranslation } from '../../hooks/useFormTranslation';
 
 export default function FormFieldSelect({
   node,
@@ -13,45 +17,11 @@ export default function FormFieldSelect({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
+  const tr = useFormTranslation();
   const { confirm } = useConfirmDialog();
 
-  const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    if (!taskId || !sourceNode?.id) return;
-    const api = window.electronAPI?.data;
-    if (!api?.getWorkflowNodeColumnTypes) return;
-    api
-      .getWorkflowNodeColumnTypes({
-        taskId,
-        nodeId: sourceNode.id,
-        nodeType: sourceNode.type as never,
-        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
-      })
-      .then((types) => {
-        const map: Record<string, string> = {};
-        for (const t of types) map[t.name] = t.type;
-        setColumnTypes(map);
-      })
-      .catch(() => setColumnTypes({}));
-  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
-
-  const updateConfig = useCallback(
-    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
-      onNodeChange((current) => ({
-        ...current,
-        config: updater(current.config),
-        updatedAt: Date.now(),
-      }));
-    },
-    [onNodeChange]
-  );
+  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const updateConfig = useUpdateConfig(onNodeChange);
 
   const columns = useMemo(
     () => (node.config.columns as string[] | undefined) ?? [],
@@ -118,17 +88,26 @@ export default function FormFieldSelect({
   }, [commitColumns, confirm, tr]);
 
   const [rightSearch, setRightSearch] = useState('');
-  const dragIndexRef = useRef<number | null>(null);
-  const dropTargetRef = useRef<string | null>(null);
-  const [dragList, setDragList] = useState<string[] | null>(null);
-
-  const displayList = dragList ?? columns;
 
   const filteredList = useMemo(() => {
-    if (!rightSearch.trim()) return displayList;
+    if (!rightSearch.trim()) return columns;
     const lower = rightSearch.toLowerCase().trim();
-    return displayList.filter((c) => c.toLowerCase().includes(lower));
-  }, [displayList, rightSearch]);
+    return columns.filter((c) => c.toLowerCase().includes(lower));
+  }, [columns, rightSearch]);
+
+  const {
+    activeItems: displayItems,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+    isDragging,
+    resetDrag,
+    dragIndexRef,
+  } = useDragReorder(columns, commitColumns, filteredList);
+
+  useEffect(() => {
+    if (!isDragging) resetDrag();
+  }, [columns, isDragging, resetDrag]);
 
   const typeStats = useMemo(() => {
     const stats: Record<string, number> = {};
@@ -138,45 +117,6 @@ export default function FormFieldSelect({
     }
     return stats;
   }, [columns, columnTypes]);
-
-  const handleDragStart = useCallback(
-    (col: string) => {
-      const index = columns.indexOf(col);
-      if (index === -1) return;
-      dragIndexRef.current = index;
-      setDragList([...columns]);
-    },
-    [columns]
-  );
-
-  const handleDragOver = useCallback(
-    (e: React.DragEvent, targetCol: string) => {
-      e.preventDefault();
-      dropTargetRef.current = targetCol;
-      const from = dragIndexRef.current;
-      if (from === null) return;
-      const to = columns.indexOf(targetCol);
-      if (to === -1 || from === to) return;
-      setDragList((prev) => {
-        if (!prev) return prev;
-        const next = [...prev];
-        const [moved] = next.splice(from, 1);
-        next.splice(to, 0, moved);
-        return next;
-      });
-      dragIndexRef.current = to;
-    },
-    [columns]
-  );
-
-  const handleDragEnd = useCallback(() => {
-    if (dragList && dragIndexRef.current !== null) {
-      commitColumns(dragList);
-    }
-    dragIndexRef.current = null;
-    dropTargetRef.current = null;
-    setDragList(null);
-  }, [dragList, commitColumns]);
 
   return (
     <div className="flex flex-col min-h-0 overflow-hidden" style={{ height: '100%' }}>
@@ -215,7 +155,7 @@ export default function FormFieldSelect({
         {/* Dual-pane layout */}
         <div className="grid grid-cols-2 gap-3 flex-1 min-h-0">
           {/* Left: field library */}
-          <GlassFieldSelector
+          <GlassFieldMultiSelect
             columns={fieldCompletions}
             selected={columns}
             onChange={handleSelectionChange}
@@ -250,80 +190,46 @@ export default function FormFieldSelect({
             )}
 
             <div className="flex-1 overflow-y-auto px-1.5 py-1">
-              {filteredList.length === 0 ? (
+              {displayItems.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-[12px] text-text-muted">
                   {rightSearch
                     ? tr('noMatch', '无匹配字段')
                     : tr('noFieldsSelected', '暂未选择字段')}
                 </div>
               ) : (
-                <div className="flex flex-col gap-0.5">
-                  {filteredList.map((col) => {
-                    const isDragging =
-                      dragIndexRef.current !== null &&
-                      columns.indexOf(col) === dragIndexRef.current;
-                    const isDropTarget =
-                      dropTargetRef.current === col &&
-                      dragIndexRef.current !== null &&
-                      columns.indexOf(col) !== dragIndexRef.current;
-                    return (
-                      <div
-                        key={col}
-                        className={`flex items-center gap-1.5 rounded px-1.5 py-1 text-[13px] transition-colors hover:bg-surface-hover/40 ${
-                          isDragging ? 'opacity-50' : ''
-                        } ${isDropTarget ? 'bg-accent/5 ring-1 ring-inset ring-accent/30' : ''}`}
-                        onDragOver={(e) => handleDragOver(e, col)}
-                      >
-                        <div
-                          draggable
-                          onDragStart={() => handleDragStart(col)}
-                          onDragEnd={handleDragEnd}
-                          className="flex h-5 w-4 flex-shrink-0 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
-                          title={tr('dragToReorder', '拖拽排序')}
-                          aria-label={tr('dragToReorder', '拖拽排序')}
-                        >
-                          <GripVertical className="h-3.5 w-3.5" />
-                        </div>
-
-                        <span className="flex-1 min-w-0 truncate text-text-primary">{col}</span>
-
-                        {columnTypes?.[col] && (
-                          <span className="flex-shrink-0 rounded bg-background/60 px-1.5 py-0.5 text-[11px] text-text-muted">
-                            {dataFieldTypeLabel(columnTypes[col])}
+                <GlassRowList
+                  items={displayItems}
+                  columns={[
+                    {
+                      flex: 'flex-1',
+                      header: '',
+                      render: (col: string) => (
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="flex-1 min-w-0 truncate text-[12px] text-text-primary">
+                            {col}
                           </span>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() => moveToTop(col)}
-                          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-text-muted transition-colors hover:text-accent hover:bg-accent/10"
-                          title={tr('moveToTop', '置顶')}
-                          aria-label={tr('moveToTop', '置顶')}
-                        >
-                          <ChevronsUp className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => moveToBottom(col)}
-                          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-text-muted transition-colors hover:text-accent hover:bg-accent/10"
-                          title={tr('moveToBottom', '置底')}
-                          aria-label={tr('moveToBottom', '置底')}
-                        >
-                          <ChevronsDown className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeColumn(col)}
-                          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-text-muted transition-colors hover:text-error hover:bg-error/10"
-                          title={tr('removeField', '移除字段')}
-                          aria-label={tr('removeField', '移除字段')}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                          {columnTypes?.[col] && (
+                            <span className="shrink-0 rounded bg-background/60 px-1.5 py-0.5 text-[11px] text-text-muted">
+                              {dataFieldTypeLabel(columnTypes[col])}
+                            </span>
+                          )}
+                        </div>
+                      ),
+                    },
+                  ]}
+                  actions={['toTop', 'toBottom', 'remove']}
+                  onToTop={(i) => moveToTop(displayItems[i])}
+                  onToBottom={(i) => moveToBottom(displayItems[i])}
+                  onRemove={(i) => removeColumn(displayItems[i])}
+                  removeTitle={tr('removeField', '移除字段')}
+                  draggable
+                  onDragStart={handleDragStart}
+                  onDragOver={handleDragOver}
+                  onDragEnd={handleDragEnd}
+                  getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
+                  dragTitle={tr('dragToReorder', '拖拽排序')}
+                  hideHeader
+                />
               )}
             </div>
           </div>

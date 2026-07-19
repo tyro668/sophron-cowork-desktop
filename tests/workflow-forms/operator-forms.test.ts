@@ -255,21 +255,21 @@ describe('operator forms — config ↔ DSL round-trip', () => {
   });
 
   it('limit — simple limit', () => {
-    const result = ok({ mode: 'limit', limit: 100 }, 'limit');
-    expect(result.config.mode).toBe('limit');
+    const result = ok({ mode: 'fixed', limit: 100 }, 'limit');
+    expect(result.config.mode).toBe('fixed');
     expect(result.config.limit).toBe(100);
   });
 
   it('limit — top with sort', () => {
     const result = ok(
       {
-        mode: 'top',
+        mode: 'fixed',
         limit: 10,
         orderBy: [{ field: 'revenue', direction: 'desc' }],
       },
       'limit'
     );
-    expect(result.config.mode).toBe('top');
+    expect(result.config.mode).toBe('fixed');
   });
 
   it('pivot', () => {

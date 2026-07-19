@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { GripVertical, Plus, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo } from 'react';
+
 import type { OperatorFormProps } from './index';
-import { GlassFieldSelector } from './shared/GlassFieldSelector';
+import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
-import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
+import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
+import { GlassRowList, type RowAction } from './shared/GlassRowList';
+import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
+import { useDragReorder } from '../../hooks/useDragReorder';
+import { useFormTranslation } from '../../hooks/useFormTranslation';
 
 const AGG_FUNCTIONS = [
   'count',
@@ -48,44 +52,9 @@ export default function FormAggregate({
   taskId,
   onNodeChange,
 }: OperatorFormProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
-
-  const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    if (!taskId || !sourceNode?.id) return;
-    const api = window.electronAPI?.data;
-    if (!api?.getWorkflowNodeColumnTypes) return;
-    api
-      .getWorkflowNodeColumnTypes({
-        taskId,
-        nodeId: sourceNode.id,
-        nodeType: sourceNode.type as never,
-        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
-      })
-      .then((types: Array<{ name: string; type: string }>) => {
-        const map: Record<string, string> = {};
-        for (const t of types) map[t.name] = t.type;
-        setColumnTypes(map);
-      })
-      .catch(() => console.error('Failed to fetch column types for aggregate form'));
-  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
-
-  const updateConfig = useCallback(
-    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
-      onNodeChange((current) => ({
-        ...current,
-        config: updater(current.config),
-        updatedAt: Date.now(),
-      }));
-    },
-    [onNodeChange]
-  );
+  const tr = useFormTranslation();
+  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const updateConfig = useUpdateConfig(onNodeChange);
 
   const groupBy = useMemo(() => (node.config.groupBy as string[]) ?? [], [node.config.groupBy]);
   const rawMetrics = useMemo(
@@ -154,45 +123,19 @@ export default function FormAggregate({
     handleMetricsChange(next);
   }
 
-  // ── Drag-to-reorder state ──
-  const dragIndexRef = useRef<number | null>(null);
-  const dropTargetRef = useRef<number | null>(null);
-  const [dragMetrics, setDragMetrics] = useState<MetricEntry[] | null>(null);
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const {
+    activeItems: activeMetrics,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+    isDragging,
+    resetDrag,
+    dragIndexRef,
+  } = useDragReorder(metrics, handleMetricsChange);
 
-  const activeMetrics = dragMetrics ?? metrics;
-
-  const handleDragStart = useCallback(
-    (index: number) => {
-      dragIndexRef.current = index;
-      setDragMetrics([...metrics]);
-    },
-    [metrics]
-  );
-
-  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    dropTargetRef.current = index;
-    if (dragIndexRef.current === null || dragIndexRef.current === index) return;
-    const from = dragIndexRef.current;
-    setDragMetrics((prev) => {
-      if (!prev) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(index, 0, moved);
-      return next;
-    });
-    dragIndexRef.current = index;
-  }, []);
-
-  const handleDragEnd = useCallback(() => {
-    if (dragMetrics && dragIndexRef.current !== null) {
-      handleMetricsChange(dragMetrics);
-    }
-    dragIndexRef.current = null;
-    dropTargetRef.current = null;
-    setDragMetrics(null);
-  }, [dragMetrics, handleMetricsChange]);
+  useEffect(() => {
+    if (!isDragging) resetDrag();
+  }, [metrics, isDragging, resetDrag]);
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden">
@@ -213,7 +156,7 @@ export default function FormAggregate({
             </div>
           </div>
           <div className="flex-1 min-h-0 px-3 pb-3 flex flex-col">
-            <GlassFieldSelector
+            <GlassFieldMultiSelect
               columns={fieldCompletions}
               selected={groupBy}
               onChange={handleGroupByChange}
@@ -239,58 +182,26 @@ export default function FormAggregate({
             </div>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-3">
-            <div className="flex items-center gap-1.5 px-1.5 pb-1 text-[12px] font-medium text-text-muted flex-shrink-0">
-              <span className="flex h-7 w-4 flex-shrink-0" aria-hidden="true" />
-              <span className="flex flex-[2.5] items-center justify-center min-w-0">
-                {tr('aggregateFunction', '聚合函数')}
-              </span>
-              <span className="flex flex-[3.5] items-center justify-center min-w-0">
-                {tr('expressionLabel', '表达式')}
-              </span>
-              <span className="flex flex-[2] items-center justify-center min-w-0">
-                {tr('aggregateAlias', '别名 (as)')}
-              </span>
-              <span className="flex w-[4.5rem] flex-shrink-0 justify-center" aria-hidden="true" />
-            </div>
-            {activeMetrics.map((item, i) => (
-              <div
-                key={i}
-                onDragOver={(e) => handleDragOver(e, i)}
-                className={`${dragMetrics && dropTargetRef.current === i && dragIndexRef.current !== i ? 'relative' : ''}`}
-              >
-                {dragMetrics && dropTargetRef.current === i && dragIndexRef.current !== i && (
-                  <div className="pointer-events-none absolute -top-0.5 left-0 right-0 h-0.5 bg-accent" />
-                )}
-                <div
-                  className={`flex items-center gap-1.5 rounded px-1.5 py-1 transition-colors hover:bg-surface-hover/40 group ${
-                    dragMetrics && dragIndexRef.current === i ? 'opacity-50' : ''
-                  } ${selectedIndex === i ? 'bg-accent/5 ring-1 ring-inset ring-accent/20' : ''}`}
-                  onClick={() => setSelectedIndex(i)}
-                >
-                  {/* Drag handle */}
-                  <div
-                    draggable
-                    onDragStart={() => handleDragStart(i)}
-                    onDragEnd={handleDragEnd}
-                    className="flex h-7 w-4 flex-shrink-0 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
-                    title={tr('dragToReorder', '拖拽排序')}
-                    aria-label={tr('dragToReorder', '拖拽排序')}
-                  >
-                    <GripVertical className="h-4 w-4" />
-                  </div>
-
-                  {/* Function */}
-                  <div className="flex-[2.5] min-w-0">
-                    <GlassOperatorSelect
+            <GlassRowList
+              headerClassName="text-[12px]"
+              items={activeMetrics}
+              columns={[
+                {
+                  flex: 'flex-[2.5]',
+                  header: tr('aggregateFunction', '聚合函数'),
+                  render: (item: MetricEntry, i: number) => (
+                    <GlassOptionSingleSelect
                       value={item.function}
                       groups={functionGroups}
                       onChange={(v) => updateMetric(i, { function: v })}
-                      className="h-8 rounded-md text-[12px] w-full"
+                      className="h-7 rounded-md text-[12px] w-full"
                     />
-                  </div>
-
-                  {/* Expression */}
-                  <div className="flex-[3.5] min-w-0">
+                  ),
+                },
+                {
+                  flex: 'flex-[3.5]',
+                  header: tr('expressionLabel', '表达式'),
+                  render: (item: MetricEntry, i: number) => (
                     <GlassExpressionInput
                       value={item.expression}
                       onChange={(v) => updateMetric(i, { expression: v })}
@@ -298,42 +209,35 @@ export default function FormAggregate({
                       columnTypes={columnTypes}
                       placeholder={tr('aggregateExpressionPlaceholder', '输入表达式')}
                     />
-                  </div>
-
-                  {/* Alias */}
-                  <div className="flex-[2] min-w-0">
+                  ),
+                },
+                {
+                  flex: 'flex-[2]',
+                  header: tr('aggregateAlias', '别名 (as)'),
+                  render: (item: MetricEntry, i: number) => (
                     <GlassFormTextInput
                       value={item.alias ?? ''}
                       onChange={(v) => updateMetric(i, { alias: v })}
                       placeholder={tr('aggregateAliasPlaceholder', '如 total_revenue')}
                       className="h-7 px-1.5 text-[12px] w-full"
                     />
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => addMetricAfter(i)}
-                      className="inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-accent"
-                      title={tr('aggregateAddMetric', '添加配置')}
-                      aria-label={tr('aggregateAddMetric', '添加配置')}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeMetric(i)}
-                      className="inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:text-error hover:bg-error/10"
-                      title={tr('aggregateRemoveMetric', '删除配置')}
-                      aria-label={tr('aggregateRemoveMetric', '删除配置')}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+                  ),
+                },
+              ]}
+              onAdd={(i) => addMetricAfter(i)}
+              onRemove={(i) => removeMetric(i)}
+              addTitle={tr('aggregateAddMetric', '添加配置')}
+              removeTitle={tr('aggregateRemoveMetric', '删除配置')}
+              canAct={(action: RowAction, _i) =>
+                action === 'add' ? !activeMetrics.some((m) => !m.expression) : true
+              }
+              draggable
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+              getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
+              dragTitle={tr('dragToReorder', '拖拽排序')}
+            />
           </div>
         </div>
       </div>

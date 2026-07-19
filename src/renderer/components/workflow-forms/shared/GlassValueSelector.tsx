@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useFormTranslation } from '../../../hooks/useFormTranslation';
 import { Search, Trash2, X } from 'lucide-react';
 
 interface GlassValueSelectorProps {
@@ -17,12 +17,7 @@ export function GlassValueSelector({
   placeholder,
   maxHeight = '180px',
 }: GlassValueSelectorProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
+  const tr = useFormTranslation();
 
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -84,7 +79,7 @@ export function GlassValueSelector({
           <Trash2 className="h-3 w-3" />
         </button>
         {selected.length === 0 && (
-          <span className="text-[11px] text-text-muted italic">
+          <span className="text-[12px] text-text-muted italic">
             {placeholder || tr('pivotInPlaceholder', '2024, 2025, 2026')}
           </span>
         )}
@@ -92,7 +87,7 @@ export function GlassValueSelector({
           {selected.map((v) => (
             <span
               key={v}
-              className="inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-accent"
+              className="inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[12px] font-medium text-accent"
             >
               {v}
               <button
@@ -112,14 +107,14 @@ export function GlassValueSelector({
             setOpen((v) => !v);
             setSearch('');
           }}
-          className="inline-flex flex-shrink-0 items-center justify-center rounded px-1.5 py-0.5 text-[11px] text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
+          className="inline-flex flex-shrink-0 items-center justify-center rounded px-1.5 py-0.5 text-[12px] text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
         >
           {open ? '收起 ▲' : '展开 ▼'}
         </button>
       </div>
 
       {open && (
-        <div className="absolute left-0 right-0 z-10 mt-1 rounded-lg border border-border-muted bg-background/60">
+        <div className="absolute left-0 right-0 z-10 mt-1 rounded-lg border border-border-muted bg-background">
           <div className="flex items-center gap-2 border-b border-border-subtle px-2.5 py-1">
             <Search className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
             <input
@@ -139,7 +134,7 @@ export function GlassValueSelector({
                 onChange={toggleAll}
                 className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
               />
-              <span className="text-[11px] text-text-secondary font-medium whitespace-nowrap">
+              <span className="text-[12px] text-text-secondary font-medium whitespace-nowrap">
                 {allFilteredSelected ? tr('deselectAll', '取消全选') : tr('selectAll', '全选')}
               </span>
             </label>

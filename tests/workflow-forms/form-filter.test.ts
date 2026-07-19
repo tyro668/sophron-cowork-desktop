@@ -811,12 +811,12 @@ describe('FormFilter — UI source inspection', () => {
 
   it('AND button has square A icon', () => {
     expect(formFilterSource).toContain('rounded-sm');
-    expect(formFilterSource).toContain('A</span>');
+    expect(formFilterSource).toMatch(/>\s*A\s*<\/span>/);
   });
 
   it('OR button has circle + icon', () => {
     expect(formFilterSource).toContain('rounded-full');
-    expect(formFilterSource).toContain('+</span>');
+    expect(formFilterSource).toMatch(/>\s*\+\s*<\/span>/);
   });
 
   it('AND button guards mismatched connective + max depth', () => {

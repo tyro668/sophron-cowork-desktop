@@ -184,11 +184,12 @@ export function toFiniteNumber(
 
 export function normalizeListWindow(
   offset: number | null | undefined,
-  limit: number | null | undefined
+  limit: number | null | undefined,
+  maxLimit: number = 200
 ): { offset: number; limit: number } {
   const normalizedOffset = Math.max(0, Math.floor(toFiniteNumber(offset, 0)));
   const normalizedLimit =
-    limit === 0 ? 0 : Math.min(200, Math.max(1, Math.floor(toFiniteNumber(limit, 200))));
+    limit === 0 ? 0 : Math.min(maxLimit, Math.max(1, Math.floor(toFiniteNumber(limit, maxLimit))));
   return { offset: normalizedOffset, limit: normalizedLimit };
 }
 

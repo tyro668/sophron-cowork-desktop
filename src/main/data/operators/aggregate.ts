@@ -1,18 +1,15 @@
-import { quoteIdentifier, stringArray, objectArray } from './utils';
+import { quoteIdentifier } from './utils';
 import { compileScalarExpression } from './compute';
+import { AggregateConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
 export function compileAggregateSql(
   output: string,
   input: string,
   config: Record<string, unknown>
 ): string {
-  const groupBy = stringArray(config.groupBy);
-  const metrics = objectArray(config.metrics).flatMap((metric) => {
-    if (
-      typeof metric.function !== 'string' ||
-      typeof metric.expression !== 'string' ||
-      typeof metric.alias !== 'string'
-    ) {
+  const { groupBy, metrics } = parseOperatorConfig(AggregateConfigSchema, config);
+  const metricSqls = metrics.flatMap((metric) => {
+    if (!metric.function || !metric.expression || !metric.alias) {
       return [];
     }
     const expression = metric.expression === '*' ? '*' : compileScalarExpression(metric.expression);
@@ -23,7 +20,7 @@ export function compileAggregateSql(
     ];
   });
   const groupProjection = groupBy.map(quoteIdentifier);
-  const projection = [...groupProjection, ...metrics].join(', ') || 'COUNT(*) AS "row_count"';
+  const projection = [...groupProjection, ...metricSqls].join(', ') || 'COUNT(*) AS "row_count"';
   return `CREATE TEMP TABLE ${output} AS SELECT ${projection} FROM ${input}${
     groupBy.length > 0 ? ` GROUP BY ${groupProjection.join(', ')}` : ''
   }`;

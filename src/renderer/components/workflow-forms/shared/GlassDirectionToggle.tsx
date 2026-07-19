@@ -1,5 +1,4 @@
-import { useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useFormTranslation } from '../../../hooks/useFormTranslation';
 
 export type SortDirection = 'asc' | 'desc';
 
@@ -10,12 +9,7 @@ interface GlassDirectionToggleProps {
 }
 
 export function GlassDirectionToggle({ value, onChange, className }: GlassDirectionToggleProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
+  const tr = useFormTranslation();
 
   return (
     <button

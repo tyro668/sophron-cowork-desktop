@@ -10,8 +10,11 @@ export interface CalculationConfigEntry {
   scenario?: string;
   partitionBy?: string[];
   orderBy?: Array<{ field: string; direction?: 'asc' | 'desc' }>;
+  frameType?: 'rows' | 'range' | 'groups';
   frameStart?: string;
   frameEnd?: string;
+  frameExclude?: 'current row' | 'group' | 'ties' | 'no others';
+  fiscalStartMonth?: number;
 }
 
 export interface CalculationRow {
@@ -26,8 +29,11 @@ export interface CalculationRow {
   scenario?: string;
   partitionBy?: string[];
   orderBy?: Array<{ field: string; direction?: 'asc' | 'desc' }>;
+  frameType?: 'rows' | 'range' | 'groups';
   frameStart?: string;
   frameEnd?: string;
+  frameExclude?: 'current row' | 'group' | 'ties' | 'no others';
+  fiscalStartMonth?: number;
 }
 
 export interface ParamSpec {
@@ -68,6 +74,56 @@ export const FN_ARG_SPEC: Record<string, ParamSpec[]> = {
   ],
 };
 
+export const TIME_WINDOW_DEFS: Record<
+  string,
+  {
+    partitions: (f: string) => string;
+    frame: (n: string) => string;
+    hasParam: boolean;
+  }
+> = {
+  ytd: {
+    partitions: (f) => `year([${f}])`,
+    frame: () => 'ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW',
+    hasParam: false,
+  },
+  qtd: {
+    partitions: (f) => `year([${f}]), quarter([${f}])`,
+    frame: () => 'ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW',
+    hasParam: false,
+  },
+  mtd: {
+    partitions: (f) => `year([${f}]), month([${f}])`,
+    frame: () => 'ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW',
+    hasParam: false,
+  },
+  wtd: {
+    partitions: (f) => `year([${f}]), week([${f}])`,
+    frame: () => 'ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW',
+    hasParam: false,
+  },
+  rolling_year: {
+    partitions: () => '',
+    frame: (n) => `RANGE BETWEEN INTERVAL ${n} YEAR PRECEDING AND CURRENT ROW`,
+    hasParam: true,
+  },
+  rolling_month: {
+    partitions: () => '',
+    frame: (n) => `RANGE BETWEEN INTERVAL ${n} MONTH PRECEDING AND CURRENT ROW`,
+    hasParam: true,
+  },
+  rolling_day: {
+    partitions: () => '',
+    frame: (n) => `RANGE BETWEEN INTERVAL ${n} DAY PRECEDING AND CURRENT ROW`,
+    hasParam: true,
+  },
+  rolling_week: {
+    partitions: () => '',
+    frame: (n) => `RANGE BETWEEN INTERVAL ${n} WEEK PRECEDING AND CURRENT ROW`,
+    hasParam: true,
+  },
+};
+
 export function createCalculationId(): string {
   const globalCrypto = globalThis.crypto;
   if (globalCrypto && typeof globalCrypto.randomUUID === 'function') {
@@ -83,6 +139,10 @@ export function createCalculationRow(): CalculationRow {
     expression: '',
     type: 'row',
     action: 'add',
+    frameType: 'rows',
+    frameStart: 'unbounded preceding',
+    frameEnd: 'unbounded following',
+    frameExclude: 'no others',
   };
 }
 
@@ -112,8 +172,24 @@ export function normalizeCalculationEntries(
       scenario: typeof entry.scenario === 'string' ? entry.scenario : undefined,
       partitionBy: Array.isArray(entry.partitionBy) ? entry.partitionBy : undefined,
       orderBy: Array.isArray(entry.orderBy) ? entry.orderBy : undefined,
+      frameType:
+        entry.frameType === 'rows' || entry.frameType === 'range' || entry.frameType === 'groups'
+          ? entry.frameType
+          : undefined,
       frameStart: typeof entry.frameStart === 'string' ? entry.frameStart : undefined,
       frameEnd: typeof entry.frameEnd === 'string' ? entry.frameEnd : undefined,
+      frameExclude:
+        entry.frameExclude === 'current row' ||
+        entry.frameExclude === 'group' ||
+        entry.frameExclude === 'ties'
+          ? entry.frameExclude
+          : undefined,
+      fiscalStartMonth:
+        typeof entry.fiscalStartMonth === 'number' &&
+        entry.fiscalStartMonth >= 1 &&
+        entry.fiscalStartMonth <= 12
+          ? entry.fiscalStartMonth
+          : undefined,
     };
   });
 }
@@ -132,8 +208,12 @@ export function exprFromParts(item: CalculationRow): string {
         `ORDER BY ${order.map((o) => `[${o.field}]${o.direction === 'desc' ? ' desc' : ''}`).join(', ')}`
       );
     if (item.frameStart && order?.length) {
+      const ft = (item.frameType || 'rows').toUpperCase();
       const end = item.frameEnd || 'current row';
-      parts.push(`ROWS BETWEEN ${item.frameStart} AND ${end}`);
+      parts.push(`${ft} BETWEEN ${item.frameStart} AND ${end}`);
+    }
+    if (item.frameExclude && item.frameExclude !== 'no others') {
+      parts.push(`EXCLUDE ${item.frameExclude.toUpperCase()}`);
     }
     return parts.length > 0 ? ` OVER (${parts.join(' ')})` : ' OVER ()';
   }
@@ -169,6 +249,30 @@ export function exprFromParts(item: CalculationRow): string {
     const lag = `lag(${wrappedFieldArg}, ${offset})${overStr(true)}`;
     if (isRate) return `(${wrappedFieldArg} - ${lag}) / ${lag}`;
     return `${wrappedFieldArg} - ${lag}`;
+  }
+  // Time intelligence: ytd_sum, qtd_avg, rolling_year_count, etc.
+  const prefix = Object.keys(TIME_WINDOW_DEFS).find((p) => fn.startsWith(p + '_'));
+  if (prefix) {
+    const def = TIME_WINDOW_DEFS[prefix];
+    const agg = fn.slice(prefix.length + 1);
+    const dateField = order?.[0]?.field;
+    if (!dateField) return `${agg}(${wrappedFieldArg}) OVER ()`;
+    const n = def.hasParam ? item.fnArg2 || '1' : '';
+    let partitionStr = def.partitions(dateField);
+    // Fiscal year: override partition for non-rolling windows
+    const fiscalMonth = item.fiscalStartMonth;
+    if (prefix === 'ytd' && fiscalMonth && fiscalMonth > 1) {
+      partitionStr = `CASE WHEN month([${dateField}]) >= ${fiscalMonth} THEN year([${dateField}]) ELSE year([${dateField}]) - 1 END`;
+    }
+    const aggFn =
+      agg === 'distinct_count'
+        ? `count(DISTINCT ${wrappedFieldArg})`
+        : `${agg}(${wrappedFieldArg})`;
+    const fullPartition = [partitionStr, ...(partition?.map((p) => `[${p}]`) ?? [])]
+      .filter(Boolean)
+      .join(', ');
+    const partitionClause = fullPartition ? `PARTITION BY ${fullPartition} ` : '';
+    return `${aggFn} OVER (${partitionClause}ORDER BY [${dateField}] ${def.frame(n)})`;
   }
   // Generic: fn(args) OVER (PARTITION BY ... ORDER BY ...)
   const fnSqlMap: Record<string, string> = {

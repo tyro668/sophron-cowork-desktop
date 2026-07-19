@@ -1,22 +1,17 @@
-import { quoteIdentifier, objectArray } from './utils';
+import { quoteIdentifier } from './utils';
 import { compileScalarExpression } from './compute';
+import { CalculateFieldConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
 export function compileCalculateFieldSql(
   output: string,
   input: string,
   config: Record<string, unknown>
 ): string {
-  const calculations = objectArray(config.calculations);
+  const { calculations } = parseOperatorConfig(CalculateFieldConfigSchema, config);
   const replaces: string[] = [];
   const additions: string[] = [];
   for (const calculation of calculations) {
-    if (
-      typeof calculation.field !== 'string' ||
-      !calculation.field.trim() ||
-      typeof calculation.expression !== 'string' ||
-      !calculation.expression.trim()
-    )
-      continue;
+    if (!calculation.field?.trim() || !calculation.expression?.trim()) continue;
     const compiled = `${compileScalarExpression(calculation.expression)} AS ${quoteIdentifier(calculation.field)}`;
     if (calculation.action === 'replace') {
       replaces.push(compiled);

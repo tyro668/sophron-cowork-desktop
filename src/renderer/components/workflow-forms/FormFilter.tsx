@@ -1,17 +1,17 @@
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 import { Plus, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
-import { GlassFormSection } from './shared/GlassFormSection';
-import { GlassFieldCombo } from './shared/GlassFieldCombo';
+import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassValueInput } from './shared/GlassValueInput';
-import { GlassMultiValueInput } from './shared/GlassMultiValueInput';
-import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
+import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import {
   isNumericDataFieldType,
   isTemporalDataFieldType,
   normalizeDataFieldType,
 } from '../../../shared/data-field-types';
+import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import { useFormTranslation } from '../../hooks/useFormTranslation';
+import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import {
   buildFilterConditionTree,
   parseConditionTree,
@@ -202,7 +202,7 @@ function ConditionLeafRow({
       <div className="flex items-center gap-2 min-w-0">
         {/* Field */}
         <div className="flex-1 min-w-[100px] max-w-[180px]">
-          <GlassFieldCombo
+          <GlassFieldSingleSelect
             value={leaf.field}
             options={ctx.fieldCompletions}
             columnTypes={ctx.columnTypes}
@@ -217,7 +217,7 @@ function ConditionLeafRow({
         </div>
 
         {/* Operator */}
-        <GlassOperatorSelect
+        <GlassOptionSingleSelect
           value={effectiveOp}
           groups={opGroupsTranslated}
           disabled={!fieldSelected}
@@ -227,7 +227,8 @@ function ConditionLeafRow({
 
         {/* Value(s) */}
         {isMultiValue ? (
-          <GlassMultiValueInput
+          <GlassValueInput
+            multi
             value={leaf.val1}
             suggestions={colVals}
             isLoading={isValsLoading}
@@ -505,25 +506,11 @@ export default function FormFilter({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
+  const tr = useFormTranslation();
 
   // ── Config sync ────────────────────────────────────────────────────
 
-  const updateConfig = useCallback(
-    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
-      onNodeChange((current) => ({
-        ...current,
-        config: updater(current.config),
-        updatedAt: Date.now(),
-      }));
-    },
-    [onNodeChange]
-  );
+  const updateConfig = useUpdateConfig(onNodeChange);
 
   // Parse condition from config into tree (ensure at least one empty row)
   const [root, setRoot] = useState<FilterConditionBranch>(() => {
@@ -558,29 +545,9 @@ export default function FormFilter({
 
   // ── Column metadata ────────────────────────────────────────────────
 
-  const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
+  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const [columnValues, setColumnValues] = useState<Record<string, string[]>>({});
   const [loadingValues, setLoadingValues] = useState<Record<string, boolean>>({});
-
-  // Fetch column types
-  useEffect(() => {
-    if (!taskId || !sourceNode?.id) return;
-    const api = window.electronAPI?.data;
-    if (!api?.getWorkflowNodeColumnTypes) return;
-    api
-      .getWorkflowNodeColumnTypes({
-        taskId,
-        nodeId: sourceNode.id,
-        nodeType: sourceNode.type as never,
-        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
-      })
-      .then((types) => {
-        const map: Record<string, string> = {};
-        for (const t of types) map[t.name] = t.type;
-        setColumnTypes(map);
-      })
-      .catch(() => setColumnTypes({}));
-  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
 
   const fetchColumnValues = useCallback(
     (colName: string) => {
@@ -756,7 +723,7 @@ export default function FormFilter({
 
   return (
     <div className="grid content-start gap-2.5 min-w-0">
-      <GlassFormSection>
+      <div className="space-y-2.5">
         {/* Global add button */}
         <button
           type="button"
@@ -776,7 +743,7 @@ export default function FormFilter({
 
         {/* Condition tree */}
         <BranchGroupRenderer branch={root} root={root} depth={0} ctx={branchCtx} />
-      </GlassFormSection>
+      </div>
     </div>
   );
 }

@@ -1,14 +1,32 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Search } from 'lucide-react';
 import { dataFieldTypeLabel } from '@/shared/data-field-types';
 import { parseFieldRef } from '@/shared/prep-dsl/parser';
+import { useDropdown } from '../../../hooks/useDropdown';
 
 function extractFieldName(value: string): string {
   return parseFieldRef(value)?.name ?? value;
 }
 
-interface GlassFieldComboProps {
+function calcMaxOptionWidth(options: string[], columnTypes: Record<string, string>): number {
+  const el = document.createElement('span');
+  el.style.cssText =
+    'position:fixed;visibility:hidden;white-space:nowrap;font-size:12px;line-height:1.4;padding:0 2px;font-family:inherit';
+  document.body.appendChild(el);
+  let max = 0;
+  for (const opt of options) {
+    const name = extractFieldName(opt);
+    const type = columnTypes[opt] ? `  ${dataFieldTypeLabel(columnTypes[opt])}` : '';
+    el.textContent = name + type;
+    max = Math.max(max, el.offsetWidth);
+  }
+  document.body.removeChild(el);
+  return max + 48;
+}
+
+interface GlassFieldSingleSelectProps {
   value: string;
   options: string[];
   columnTypes?: Record<string, string>;
@@ -22,7 +40,7 @@ interface GlassFieldComboProps {
   displayLabel?: string;
 }
 
-export function GlassFieldCombo({
+export function GlassFieldSingleSelect({
   value,
   options,
   columnTypes = {},
@@ -34,17 +52,21 @@ export function GlassFieldCombo({
   className,
   showType = false,
   displayLabel,
-}: GlassFieldComboProps) {
-  const [open, setOpen] = useState(false);
+}: GlassFieldSingleSelectProps) {
+  const { t } = useTranslation();
+  const {
+    open,
+    setOpen,
+    position,
+    setPosition,
+    maxHeight,
+    setMaxHeight,
+    triggerRef,
+    dropdownRef,
+    close,
+  } = useDropdown();
   const [search, setSearch] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
-  const [position, setPosition] = useState<{ left: number; top: number; width: number } | null>(
-    null
-  );
-  const [maxHeight, setMaxHeight] = useState(240);
-
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const filteredOptions = useMemo(() => {
@@ -71,20 +93,26 @@ export function GlassFieldCombo({
   const updatePosition = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    setPosition({ left: rect.left, top: rect.bottom + 2, width: rect.width });
+    const contentWidth = calcMaxOptionWidth(options, columnTypes);
+    setPosition({
+      left: rect.left,
+      top: rect.bottom + 2,
+      width: rect.width,
+      minWidth: Math.max(rect.width, contentWidth),
+    });
     const spaceBelow = window.innerHeight - rect.bottom - 4;
     setMaxHeight(Math.min(240, Math.max(100, spaceBelow)));
-  }, []);
+  }, [options, columnTypes, triggerRef, setPosition, setMaxHeight]);
 
   const handleClose = useCallback(() => {
-    setOpen(false);
+    close();
     setSearch('');
-  }, []);
+  }, [close]);
 
   const handleOpen = useCallback(() => {
     updatePosition();
     setOpen(true);
-  }, [updatePosition]);
+  }, [updatePosition, setOpen]);
 
   const handleSelect = useCallback(
     (opt: string) => {
@@ -93,21 +121,8 @@ export function GlassFieldCombo({
       handleClose();
       triggerRef.current?.focus();
     },
-    [disabledOptions, onChange, handleClose]
+    [disabledOptions, onChange, handleClose, triggerRef]
   );
-
-  // Click outside to close
-  useEffect(() => {
-    if (!open) return;
-    const handleDocClick = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (!triggerRef.current?.contains(target) && !dropdownRef.current?.contains(target)) {
-        handleClose();
-      }
-    };
-    document.addEventListener('mousedown', handleDocClick);
-    return () => document.removeEventListener('mousedown', handleDocClick);
-  }, [open, handleClose]);
 
   // Close on window resize to avoid stale positioning
   useEffect(() => {
@@ -196,12 +211,12 @@ export function GlassFieldCombo({
         aria-expanded={open}
         aria-label={placeholder}
         className={[
-          'inline-flex h-6 min-w-0 items-center justify-between gap-1 rounded border px-1.5 text-[12px] outline-none transition-colors',
+          'inline-flex h-6 min-w-0 items-center gap-1 rounded border px-1.5 text-[12px] outline-none transition-colors',
           'border-border-muted bg-background/42 text-text-primary hover:bg-surface-hover focus:border-accent',
           className || '',
         ].join(' ')}
       >
-        <span className="truncate">
+        <span className="flex-1 text-center truncate">
           {value ? (
             showType && columnTypes[value] ? (
               <>
@@ -230,7 +245,13 @@ export function GlassFieldCombo({
             onKeyDown={handleListKeyDown}
             role="listbox"
             aria-label={placeholder}
-            style={{ left: position.left, top: position.top, width: position.width, maxHeight }}
+            style={{
+              left: position.left,
+              top: position.top,
+              width: position.width,
+              minWidth: position.minWidth,
+              maxHeight,
+            }}
             className="fixed z-50 flex flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-elevated backdrop-blur-xl"
           >
             <div className="flex items-center gap-1.5 border-b border-border-subtle px-2 py-1.5">
@@ -248,7 +269,8 @@ export function GlassFieldCombo({
             <div className="flex-1 overflow-y-auto p-1">
               {filteredOptions.length === 0 ? (
                 <div className="px-2.5 py-4 text-center text-[12px] text-text-muted">
-                  {emptyText || 'No matching fields'}
+                  {emptyText ||
+                    t('data.workflow.formLabels.noMatch', { defaultValue: '无匹配字段' })}
                 </div>
               ) : (
                 filteredOptions.map((opt, idx) => {

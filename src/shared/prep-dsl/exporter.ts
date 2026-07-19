@@ -259,8 +259,19 @@ function formatJoinConflict(value: unknown): string | null {
 
 function formatLimit(config: Record<string, unknown> | undefined): string {
   const limit = Number(config?.limit ?? 100);
-  if (config?.mode === 'top') {
-    return `top ${limit} by ${formatSortKeys(config?.orderBy) || '[field] desc'}`;
+  if (config?.mode === 'random') {
+    const unit = config?.unit === 'percent' ? ' percent' : ' rows';
+    const method = config?.method === 'bernoulli' ? ' bernoulli' : '';
+    const seed = typeof config?.seed === 'number' ? ` repeatable ${config.seed}` : '';
+    return `sample ${limit}${unit}${method}${seed}`;
+  }
+  const orderBy = config?.orderBy;
+  if (config?.mode === 'fixed' && Array.isArray(orderBy) && orderBy.length > 0) {
+    const ties = config?.ties ? ' with ties' : '';
+    const partition = config?.groupBy
+      ? ` partition ${stringArray(config.groupBy).map(formatFieldRef).join(', ')}`
+      : '';
+    return `top ${limit} by ${formatSortKeys(orderBy) || '[field] desc'}${ties}${partition}`;
   }
   const unit = config?.unit === 'percent' ? ' percent' : '';
   const offset = typeof config?.offset === 'number' ? ` offset ${config.offset}` : '';

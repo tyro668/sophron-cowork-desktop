@@ -223,9 +223,9 @@ describe('FormDeduplicate — 组件结构检查', () => {
     expect(tagsIdx).toBeLessThan(beforeGrid);
   });
 
-  it('保留策略使用 radio 输入', () => {
-    expect(src).toContain('type="radio"');
-    expect(src).toContain('keepStrategy');
+  it('保留策略使用 GlassRadioSelect', () => {
+    expect(src).toContain('GlassRadioSelect');
+    expect(src).toContain('keep');
   });
 
   it('排序区域包含拖拽手柄', () => {
@@ -234,7 +234,9 @@ describe('FormDeduplicate — 组件结构检查', () => {
   });
 
   it('排序字段支持 NULL 位置配置', () => {
-    expect(src).toContain('GlassNullsSelect');
+    expect(src).toContain('GlassOptionSingleSelect');
+    expect(src).toContain("value: 'first'");
+    expect(src).toContain("value: 'last'");
   });
 
   it('每行排序可添加和删除', () => {
@@ -243,17 +245,17 @@ describe('FormDeduplicate — 组件结构检查', () => {
   });
 
   it('字段列表支持搜索和类型显示', () => {
-    expect(src).toContain('GlassFieldSelector');
+    expect(src).toContain('GlassFieldMultiSelect');
     expect(src).toContain('columnTypes');
   });
 
   it('字段选择支持全选/取消全选', () => {
-    expect(src).toContain('GlassFieldSelector');
-    // 全选/取消全选由 GlassFieldSelector 内部处理
+    expect(src).toContain('GlassFieldMultiSelect');
+    // 全选/取消全选由 GlassFieldMultiSelect 内部处理
     const selectorSrc = readFileSync(
       resolve(
         __dirname,
-        '../../src/renderer/components/workflow-forms/shared/GlassFieldSelector.tsx'
+        '../../src/renderer/components/workflow-forms/shared/GlassFieldMultiSelect.tsx'
       ),
       'utf-8'
     );

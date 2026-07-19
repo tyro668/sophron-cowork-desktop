@@ -1,0 +1,41 @@
+import { useEffect, useState } from 'react';
+
+interface UseColumnTypesInput {
+  taskId?: string;
+  sourceNode?: { id: string; type: string; config?: Record<string, unknown> } | null;
+}
+
+export function useWorkflowNodeColumnTypes({
+  taskId,
+  sourceNode,
+}: UseColumnTypesInput): Record<string, string> {
+  const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!taskId || !sourceNode?.id) return;
+    const api = window.electronAPI?.data;
+    if (!api?.getWorkflowNodeColumnTypes) return;
+    let cancelled = false;
+    api
+      .getWorkflowNodeColumnTypes({
+        taskId,
+        nodeId: sourceNode.id,
+        nodeType: sourceNode.type as never,
+        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
+      })
+      .then((types: Array<{ name: string; type: string }>) => {
+        if (cancelled) return;
+        const map: Record<string, string> = {};
+        for (const t of types) map[t.name] = t.type;
+        setColumnTypes(map);
+      })
+      .catch(() => {
+        if (!cancelled) setColumnTypes({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
+
+  return columnTypes;
+}

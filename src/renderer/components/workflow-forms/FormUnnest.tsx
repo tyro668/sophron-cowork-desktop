@@ -1,29 +1,13 @@
-import { useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
 import type { OperatorFormProps } from './index';
-import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
-import { GlassFieldCombo } from './shared/GlassFieldCombo';
+import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
+import { useFormTranslation } from '../../hooks/useFormTranslation';
+import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 
 export default function FormUnnest({ node, fieldCompletions, onNodeChange }: OperatorFormProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
-
-  const updateConfig = useCallback(
-    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
-      onNodeChange((current) => ({
-        ...current,
-        config: updater(current.config),
-        updatedAt: Date.now(),
-      }));
-    },
-    [onNodeChange]
-  );
+  const tr = useFormTranslation();
+  const updateConfig = useUpdateConfig(onNodeChange);
 
   const sourceKind = (node.config.sourceKind as string) ?? 'list';
   const column = String(node.config.column ?? '');
@@ -59,8 +43,10 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
           <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
             <div className="p-3 grid gap-2.5">
               <label className="grid gap-1">
-                <GlassFormLabel>{tr('unnestSourceField', '源字段')}</GlassFormLabel>
-                <GlassFieldCombo
+                <span className="mb-1 block text-[12px] font-medium text-text-secondary">
+                  {tr('unnestSourceField', '源字段')}
+                </span>
+                <GlassFieldSingleSelect
                   value={column}
                   options={fieldCompletions}
                   onChange={(v) => updateConfig((cfg) => ({ ...cfg, column: v || undefined }))}
@@ -119,7 +105,9 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
           <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
             <div className="p-3 grid gap-2.5">
               <label className="grid gap-1">
-                <GlassFormLabel>{tr('unnestAlias', '展开后的别名')}</GlassFormLabel>
+                <span className="mb-1 block text-[12px] font-medium text-text-secondary">
+                  {tr('unnestAlias', '展开后的别名')}
+                </span>
                 <GlassFormTextInput
                   value={alias}
                   onChange={(v) => updateConfig((cfg) => ({ ...cfg, alias: v || undefined }))}
@@ -130,7 +118,9 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
 
               {sourceKind === 'json' && (
                 <label className="grid gap-1">
-                  <GlassFormLabel>{tr('unnestJsonPath', 'JSON 路径')}</GlassFormLabel>
+                  <span className="mb-1 block text-[12px] font-medium text-text-secondary">
+                    {tr('unnestJsonPath', 'JSON 路径')}
+                  </span>
                   <GlassFormTextInput
                     value={path}
                     onChange={(v) => updateConfig((cfg) => ({ ...cfg, path: v || undefined }))}

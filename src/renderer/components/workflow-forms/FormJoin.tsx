@@ -1,14 +1,32 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Settings } from 'lucide-react';
+import { Plus, Settings, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
-import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
-import { GlassFieldCombo } from './shared/GlassFieldCombo';
-import { GlassOperatorSelect } from './shared/GlassOperatorSelect';
-import { GlassConditionEditor, type ConditionEntry } from './shared/GlassConditionEditor';
+import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
+import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
+import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { isTemporalDataFieldType } from '@/shared/data-field-types';
 import { parseFieldRef } from '@/shared/prep-dsl/parser';
+import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import { useFormTranslation } from '../../hooks/useFormTranslation';
+import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
+
+export interface ConditionEntry {
+  left: string;
+  operator: string;
+  right: string;
+}
+
+const DEFAULT_CONDITION: ConditionEntry = { left: '', operator: '=', right: '' };
+
+const OPERATOR_KEYS = [
+  { value: '=', key: 'operatorEq', fallback: '等于' },
+  { value: '!=', key: 'operatorNeq', fallback: '不等于' },
+  { value: '<', key: 'operatorLt', fallback: '小于' },
+  { value: '<=', key: 'operatorLte', fallback: '小于等于' },
+  { value: '>', key: 'operatorGt', fallback: '大于' },
+  { value: '>=', key: 'operatorGte', fallback: '大于等于' },
+];
 
 function isLeftField(source: string, leftAlias: string): boolean {
   const ref = parseFieldRef(source);
@@ -140,27 +158,12 @@ export default function FormJoin({
   rightSourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const { t } = useTranslation();
-  const tr = useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
-    [t]
-  );
-
-  const updateConfig = useCallback(
-    (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
-      onNodeChange((current) => ({
-        ...current,
-        config: updater(current.config),
-        updatedAt: Date.now(),
-      }));
-    },
-    [onNodeChange]
-  );
+  const tr = useFormTranslation();
+  const updateConfig = useUpdateConfig(onNodeChange);
 
   const joinType = (node.config.joinType as string) ?? 'left';
   const conditions = useMemo(
-    () => (node.config.conditions as ConditionEntry[]) ?? [],
+    () => (node.config.conditions as ConditionEntry[]) ?? [DEFAULT_CONDITION],
     [node.config.conditions]
   );
   const conflict = useMemo(
@@ -210,8 +213,8 @@ export default function FormJoin({
   const [rightRawColumns, setRightRawColumns] = useState<string[]>([]);
   const [rightColumnsError, setRightColumnsError] = useState(false);
   // Optional column type info for ASOF time field filtering
-  const [leftColumnTypes, setLeftColumnTypes] = useState<Record<string, string>>({});
-  const [rightColumnTypes, setRightColumnTypes] = useState<Record<string, string>>({});
+  const leftColumnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const rightColumnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode: rightSourceNode });
 
   useEffect(() => {
     setRightRawColumns([]);
@@ -235,45 +238,6 @@ export default function FormJoin({
         setRightColumnsError(true);
       });
   }, [rightSourceNode, taskId]);
-
-  // Optional column type info for ASOF time field filtering
-  useEffect(() => {
-    if (!taskId || !sourceNode?.id) return;
-    const api = window.electronAPI?.data;
-    if (!api?.getWorkflowNodeColumnTypes) return;
-    api
-      .getWorkflowNodeColumnTypes({
-        taskId,
-        nodeId: sourceNode.id,
-        nodeType: sourceNode.type as never,
-        nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
-      })
-      .then((types: Array<{ name: string; type: string }>) => {
-        const map: Record<string, string> = {};
-        for (const t of types) map[t.name] = t.type;
-        setLeftColumnTypes(map);
-      })
-      .catch(() => setLeftColumnTypes({}));
-  }, [taskId, sourceNode?.id]);
-
-  useEffect(() => {
-    if (!rightSourceNode || typeof taskId !== 'string') return;
-    const api = window.electronAPI?.data;
-    if (!api?.getWorkflowNodeColumnTypes) return;
-    api
-      .getWorkflowNodeColumnTypes({
-        taskId,
-        nodeId: rightSourceNode.id,
-        nodeType: rightSourceNode.type as never,
-        nodeConfig: (rightSourceNode.config ?? {}) as Record<string, unknown>,
-      })
-      .then((types: Array<{ name: string; type: string }>) => {
-        const map: Record<string, string> = {};
-        for (const t of types) map[t.name] = t.type;
-        setRightColumnTypes(map);
-      })
-      .catch(() => setRightColumnTypes({}));
-  }, [taskId, rightSourceNode?.id]);
 
   const joinTypes = useMemo(
     () => [
@@ -550,8 +514,145 @@ export default function FormJoin({
   }, [keepItems, rightAlias]);
 
   // ── Inline condition handlers ──
+  const [asofPending, setAsofPending] = useState<ConditionEntry>({ ...DEFAULT_CONDITION });
+
+  const conditionOperatorItems = useMemo(
+    () => OPERATOR_KEYS.map((op) => ({ value: op.value, label: tr(op.key, op.fallback) })),
+    [tr]
+  );
+
+  function condHandleChange(
+    isEmpty: boolean,
+    pending: ConditionEntry,
+    setPending: (v: ConditionEntry) => void,
+    onChange: (next: ConditionEntry[]) => void,
+    index: number,
+    patch: Partial<ConditionEntry>
+  ) {
+    if (isEmpty) {
+      const next = { ...pending, ...patch };
+      setPending(next);
+      if (next.left || next.right) {
+        setPending({ ...DEFAULT_CONDITION });
+        onChange([next]);
+      }
+    } else {
+      const conditions =
+        index === 0
+          ? ((node.config.conditions as ConditionEntry[]) ?? [])
+          : (((node.config.asof as Record<string, unknown>)?.by as ConditionEntry[]) ?? []);
+      onChange(conditions.map((c, i) => (i === index ? { ...c, ...patch } : c)));
+    }
+  }
+
+  function condHandleRemove(
+    isEmpty: boolean,
+    setPending: (v: ConditionEntry) => void,
+    onChange: (next: ConditionEntry[]) => void,
+    index: number
+  ) {
+    if (isEmpty) {
+      setPending({ ...DEFAULT_CONDITION });
+    } else {
+      const conditions =
+        index === 0
+          ? ((node.config.conditions as ConditionEntry[]) ?? [])
+          : (((node.config.asof as Record<string, unknown>)?.by as ConditionEntry[]) ?? []);
+      onChange(conditions.filter((_, i) => i !== index));
+    }
+  }
+
+  function condHandleAdd(
+    isEmpty: boolean,
+    pending: ConditionEntry,
+    setPending: (v: ConditionEntry) => void,
+    onChange: (next: ConditionEntry[]) => void,
+    index: number
+  ) {
+    if (isEmpty) {
+      if (!pending.left && !pending.right) return;
+      onChange([pending, { ...DEFAULT_CONDITION }]);
+      setPending({ ...DEFAULT_CONDITION });
+    } else {
+      const conditions =
+        index === 0
+          ? ((node.config.conditions as ConditionEntry[]) ?? [])
+          : (((node.config.asof as Record<string, unknown>)?.by as ConditionEntry[]) ?? []);
+      const next = [...conditions];
+      next.splice(index + 1, 0, { ...DEFAULT_CONDITION });
+      onChange(next);
+    }
+  }
+
+  function renderConditionRow(
+    cond: ConditionEntry,
+    i: number,
+    isEmpty: boolean,
+    pending: ConditionEntry,
+    setPending: (v: ConditionEntry) => void,
+    onChange: (next: ConditionEntry[]) => void,
+    leftLabel: string,
+    rightLabel: string
+  ) {
+    return (
+      <div key={i} className="flex items-center gap-1">
+        <GlassFieldSingleSelect
+          value={cond.left}
+          options={leftFieldCompletions}
+          onChange={(v) => condHandleChange(isEmpty, pending, setPending, onChange, i, { left: v })}
+          placeholder={leftLabel}
+          className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
+        />
+        <GlassOptionSingleSelect
+          value={cond.operator}
+          groups={[{ key: 'op', items: conditionOperatorItems }]}
+          onChange={(v) =>
+            condHandleChange(isEmpty, pending, setPending, onChange, i, { operator: v })
+          }
+          className="h-7 w-[72px] shrink-0 text-[12px] [&>span]:text-center"
+        />
+        <GlassFieldSingleSelect
+          value={cond.right}
+          options={rightFieldCompletions}
+          onChange={(v) =>
+            condHandleChange(isEmpty, pending, setPending, onChange, i, { right: v })
+          }
+          placeholder={rightLabel}
+          className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
+        />
+        <button
+          type="button"
+          onClick={() => condHandleAdd(isEmpty, pending, setPending, onChange, i)}
+          className="h-6 w-6 flex shrink-0 items-center justify-center rounded text-text-muted/40 hover:text-accent transition-colors"
+          title={tr('addCondition', '添加条件')}
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => condHandleRemove(isEmpty, setPending, onChange, i)}
+          className="h-6 w-6 flex shrink-0 items-center justify-center rounded text-text-muted/40 hover:text-error transition-colors"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
   function handleConditionsChange(next: ConditionEntry[]) {
     updateConfig((cfg) => ({ ...cfg, conditions: next.length > 0 ? next : undefined }));
+  }
+
+  function handleCondAdd(index: number) {
+    const next = [...conditions];
+    next.splice(index + 1, 0, { ...DEFAULT_CONDITION });
+    handleConditionsChange(next);
+  }
+
+  function handleCondRemove(index: number) {
+    let next = conditions.filter((_, j) => j !== index);
+    if (next.length === 0) next = [{ ...DEFAULT_CONDITION }];
+    handleConditionsChange(next);
   }
 
   function handleAsofByChange(next: ConditionEntry[]) {
@@ -623,7 +724,9 @@ export default function FormJoin({
               </div>
 
               <div className="grid gap-1 text-center">
-                <GlassFormLabel>{tr('joinType', '连接类型')}</GlassFormLabel>
+                <span className="mb-1 block text-[12px] font-medium text-text-secondary">
+                  {tr('joinType', '连接类型')}
+                </span>
                 <div className="grid grid-cols-4 gap-1">
                   {joinTypes.map((jt) => (
                     <button
@@ -677,7 +780,7 @@ export default function FormJoin({
               {isAsof ? (
                 <div className="grid gap-1.5">
                   <div className="flex items-center gap-1.5">
-                    <GlassFieldCombo
+                    <GlassFieldSingleSelect
                       value={asofLeftTime}
                       options={asofLeftTimeOptions}
                       columnTypes={leftColumnTypesQualified}
@@ -694,7 +797,7 @@ export default function FormJoin({
                       placeholder={tr('leftTimeCol', '左表时间')}
                       className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
                     />
-                    <GlassOperatorSelect
+                    <GlassOptionSingleSelect
                       value={asofOperator}
                       groups={[
                         {
@@ -714,7 +817,7 @@ export default function FormJoin({
                       }
                       className="h-7 w-[84px] shrink-0 text-[12px] [&>span]:text-center"
                     />
-                    <GlassFieldCombo
+                    <GlassFieldSingleSelect
                       value={asofRightTime}
                       options={asofRightTimeOptions}
                       columnTypes={rightColumnTypesQualified}
@@ -745,7 +848,7 @@ export default function FormJoin({
                       placeholder={tr('tolerance', '时间差')}
                       className="h-7 text-[13px] w-[72px] shrink-0"
                     />
-                    <GlassOperatorSelect
+                    <GlassOptionSingleSelect
                       value={(asof.direction as string) ?? ''}
                       groups={[
                         {
@@ -771,25 +874,90 @@ export default function FormJoin({
                     />
                   </div>
                   <div className="max-h-[180px] overflow-y-auto">
-                    <GlassConditionEditor
-                      conditions={(asof.by as ConditionEntry[]) ?? []}
-                      leftFieldCompletions={leftFieldCompletions}
-                      rightFieldCompletions={rightFieldCompletions}
-                      onChange={handleAsofByChange}
-                      leftLabel={tr('leftField', '[左表字段]')}
-                      rightLabel={tr('rightField', '[右表字段]')}
-                    />
+                    <div className="space-y-1">
+                      {(() => {
+                        const asofBy = (asof.by as ConditionEntry[]) ?? [];
+                        const isEmpty = asofBy.length === 0;
+                        const display = isEmpty ? [asofPending] : asofBy;
+                        return display.map((cond, i) =>
+                          renderConditionRow(
+                            cond,
+                            i,
+                            isEmpty,
+                            asofPending,
+                            setAsofPending,
+                            handleAsofByChange,
+                            tr('leftField', '[左表字段]'),
+                            tr('rightField', '[右表字段]')
+                          )
+                        );
+                      })()}
+                    </div>
                   </div>
                 </div>
               ) : needsConditions ? (
                 <div className="max-h-[280px] overflow-y-auto">
-                  <GlassConditionEditor
-                    conditions={conditions}
-                    leftFieldCompletions={leftFieldCompletions}
-                    rightFieldCompletions={rightFieldCompletions}
-                    onChange={handleConditionsChange}
-                    leftLabel={tr('leftField', '[左表字段]')}
-                    rightLabel={tr('rightField', '[右表字段]')}
+                  <GlassRowList
+                    items={conditions}
+                    columns={[
+                      {
+                        flex: 'flex-[1]',
+                        header: '',
+                        render: (cond: ConditionEntry, i: number) => (
+                          <GlassFieldSingleSelect
+                            value={cond.left}
+                            options={leftFieldCompletions}
+                            onChange={(v) =>
+                              handleConditionsChange(
+                                conditions.map((c, j) => (j === i ? { ...c, left: v } : c))
+                              )
+                            }
+                            placeholder={tr('leftField', '[左表字段]')}
+                            className="h-7 w-full text-[12px]"
+                          />
+                        ),
+                      },
+                      {
+                        flex: 'flex-[0.6]',
+                        header: '',
+                        render: (cond: ConditionEntry, i: number) => (
+                          <GlassOptionSingleSelect
+                            value={cond.operator}
+                            groups={[{ key: 'op', items: conditionOperatorItems }]}
+                            onChange={(v) =>
+                              handleConditionsChange(
+                                conditions.map((c, j) => (j === i ? { ...c, operator: v } : c))
+                              )
+                            }
+                            className="h-7 w-full text-[12px] [&>span]:text-center"
+                          />
+                        ),
+                      },
+                      {
+                        flex: 'flex-[1]',
+                        header: '',
+                        render: (cond: ConditionEntry, i: number) => (
+                          <GlassFieldSingleSelect
+                            value={cond.right}
+                            options={rightFieldCompletions}
+                            onChange={(v) =>
+                              handleConditionsChange(
+                                conditions.map((c, j) => (j === i ? { ...c, right: v } : c))
+                              )
+                            }
+                            placeholder={tr('rightField', '[右表字段]')}
+                            className="h-7 w-full text-[12px]"
+                          />
+                        ),
+                      },
+                    ]}
+                    onAdd={handleCondAdd}
+                    onRemove={handleCondRemove}
+                    addTitle={tr('addCondition', '添加条件')}
+                    canAct={(action: RowAction) =>
+                      action === 'add' ? !conditions.some((c) => !c.left && !c.right) : true
+                    }
+                    hideHeader
                   />
                 </div>
               ) : (
@@ -863,7 +1031,7 @@ export default function FormJoin({
                 <span className="shrink-0 text-[11px] font-medium text-text-secondary">
                   {tr('conflict', '同名字段冲突')}
                 </span>
-                <GlassOperatorSelect
+                <GlassOptionSingleSelect
                   value={conflictStrategy}
                   groups={conflictGroups}
                   onChange={(v) =>
