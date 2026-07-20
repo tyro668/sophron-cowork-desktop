@@ -281,6 +281,7 @@ export default function FormMissingValue({
                 onToggle={() => setShowFieldPicker((v) => !v)}
                 toggleStyle="chevron"
                 density="compact"
+                className="min-h-8"
                 placeholder={tr('missingEmptyMeansAllFields', '留空 = 所有字段参与判断')}
               />
               {showFieldPicker && (

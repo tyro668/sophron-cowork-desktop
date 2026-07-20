@@ -7,7 +7,7 @@ export interface GlassTagBarProps {
   onClear: () => void;
   open: boolean;
   onToggle: () => void;
-  toggleStyle?: 'chevron' | 'text' | 'none';
+  toggleStyle?: 'chevron' | 'none';
   density?: 'compact' | 'default' | 'spacious';
   placeholder?: string;
   wrap?: boolean;
@@ -41,7 +41,7 @@ export function GlassTagBar({
     <div
       className={`w-full min-w-0 flex items-center rounded-md border border-border-muted bg-background/42 ${containerPad} ${className}`}
     >
-      <div className="flex flex-1 items-center gap-1">
+      <div className="flex flex-1 items-center gap-1 min-w-0">
         <button
           type="button"
           onClick={onClear}
@@ -61,12 +61,12 @@ export function GlassTagBar({
         <div
           className={`flex flex-1 items-center gap-1 min-w-0 ${wrap ? 'flex-wrap' : 'overflow-x-auto'}`}
         >
-          {items.map((item) => (
+          {items.map((item, index) => (
             <span
-              key={item}
-              className={`inline-flex shrink-0 items-center gap-0.5 rounded bg-accent/10 ${tagPad} text-[12px] font-medium text-accent`}
+              key={`${item}-${index}`}
+              className={`inline-flex shrink-0 items-center gap-0.5 rounded bg-accent/10 ${tagPad} text-[12px] font-medium text-accent max-w-[180px]`}
             >
-              {item}
+              <span className="truncate">{item}</span>
               <button
                 type="button"
                 onClick={() => onRemove(item)}
@@ -79,27 +79,18 @@ export function GlassTagBar({
           ))}
         </div>
 
-        {toggleStyle !== 'none' &&
-          (toggleStyle === 'chevron' ? (
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={onToggle}
-              className="flex w-7 flex-shrink-0 items-center justify-center self-stretch border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
-            >
-              <ChevronDown
-                className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`}
-              />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onToggle}
-              className="inline-flex flex-shrink-0 items-center justify-center rounded px-1.5 py-0.5 text-[12px] text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
-            >
-              {open ? '收起 ▲' : '展开 ▼'}
-            </button>
-          ))}
+        {toggleStyle === 'chevron' && (
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={onToggle}
+            className="flex w-7 flex-shrink-0 items-center justify-center self-stretch border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
+          >
+            <ChevronDown
+              className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`}
+            />
+          </button>
+        )}
       </div>
     </div>
   );

@@ -267,10 +267,7 @@ function formatLimit(config: Record<string, unknown> | undefined): string {
   const orderBy = config?.orderBy;
   if (config?.mode === 'fixed' && Array.isArray(orderBy) && orderBy.length > 0) {
     const ties = config?.ties ? ' with ties' : '';
-    const partition = config?.groupBy
-      ? ` partition ${stringArray(config.groupBy).map(formatFieldRef).join(', ')}`
-      : '';
-    return `top ${limit} by ${formatSortKeys(orderBy) || '[field] desc'}${ties}${partition}`;
+    return `top ${limit} by ${formatSortKeys(orderBy) || '[field] desc'}${ties}`;
   }
   const unit = config?.unit === 'percent' ? ' percent' : '';
   const offset = typeof config?.offset === 'number' ? ` offset ${config.offset}` : '';

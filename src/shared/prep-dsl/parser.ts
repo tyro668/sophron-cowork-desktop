@@ -528,9 +528,7 @@ function parseDerive(text: string): PrepOperatorAst {
 
 function parseLimit(text: string): PrepOperatorAst {
   if (text.startsWith('top ')) {
-    const match = /^top\s+(\d+)\s+by\s+(.+?)(?:\s+with\s+ties)?(?:\s+partition\s+(.+))?$/is.exec(
-      text
-    );
+    const match = /^top\s+(\d+)\s+by\s+(.+?)(?:\s+with\s+ties)?$/is.exec(text);
     if (match) {
       return makeOperator('limit', text, {
         mode: 'fixed',
@@ -538,7 +536,6 @@ function parseLimit(text: string): PrepOperatorAst {
         unit: 'rows',
         orderBy: parseSortKeys(match[2]),
         ties: /with\s+ties/i.test(text),
-        groupBy: match[4] ? parseFieldRefs(match[4]).map((f) => f.name) : undefined,
       });
     }
     return makeOperator('limit', text, { mode: 'fixed', limit: 0, unit: 'rows', orderBy: [] });

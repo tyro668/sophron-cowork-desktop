@@ -13,52 +13,13 @@ function compileFixedSql(
 ): string {
   const unit = parsed.unit;
   const orderBy = sortKeysToSql(parsed.orderBy);
-  const groupBy = parsed.groupBy;
   const ties = parsed.ties;
   const projection = columns.map((column) => quoteIdentifier(column)).join(', ') || '*';
   const pct = Math.min(limit, 100);
   const rows = Math.floor(limit);
 
-  // 创建子查询别名
   const projectionSub = `SELECT ${projection}`;
 
-  // 百分比 + 分组 + 排序 + WITH TIES
-  if (unit === 'percent' && groupBy?.length && ties && orderBy) {
-    const partitionBy = groupBy.map(quoteIdentifier).join(', ');
-    return `
-      CREATE TEMP TABLE ${output} AS
-      WITH numbered AS (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY ${partitionBy} ORDER BY ${orderBy}) AS __rn,
-               RANK() OVER (PARTITION BY ${partitionBy} ORDER BY ${orderBy}) AS __rk,
-               COUNT(*) OVER (PARTITION BY ${partitionBy}) AS __group_total
-        FROM ${input}
-      ),
-      boundary AS (
-        SELECT ${partitionBy}, __rk AS __bound_rk
-        FROM numbered
-        WHERE __rn = CEIL(__group_total * ${pct} / 100.0)
-      )
-      ${projectionSub}
-      FROM numbered JOIN boundary USING (${partitionBy})
-      WHERE __rk <= __bound_rk`;
-  }
-
-  // 百分比 + 分组 + 排序（无 TIES）
-  if (unit === 'percent' && groupBy?.length) {
-    const partitionBy = groupBy.map(quoteIdentifier).join(', ');
-    const orderClause = orderBy ? ` ORDER BY ${orderBy}` : '';
-    return `
-      CREATE TEMP TABLE ${output} AS
-      ${projectionSub}
-      FROM (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY ${partitionBy}${orderClause}) AS __rn,
-               COUNT(*) OVER (PARTITION BY ${partitionBy}) AS __group_total
-        FROM ${input}
-      ) sub
-      WHERE __rn <= CEIL(__group_total * ${pct} / 100.0)`;
-  }
-
-  // 百分比 + 排序 + WITH TIES
   if (unit === 'percent' && ties && orderBy) {
     return `
       CREATE TEMP TABLE ${output} AS
@@ -73,7 +34,6 @@ function compileFixedSql(
       WHERE __rk <= (SELECT __rk FROM numbered, cnt WHERE __rn = CEIL(cnt.__total * ${pct} / 100.0))`;
   }
 
-  // 百分比
   if (unit === 'percent') {
     return `
       CREATE TEMP TABLE ${output} AS
@@ -86,43 +46,12 @@ function compileFixedSql(
       WHERE __rn <= CEIL(__total_rows * ${pct} / 100.0)`;
   }
 
-  // 分组模式（行数） + WITH TIES
-  if (groupBy?.length && ties && orderBy) {
-    const partitionBy = groupBy.map(quoteIdentifier).join(', ');
-    return `
-      CREATE TEMP TABLE ${output} AS
-      WITH numbered AS (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY ${partitionBy} ORDER BY ${orderBy}) AS __rn,
-               RANK() OVER (PARTITION BY ${partitionBy} ORDER BY ${orderBy}) AS __rk
-        FROM ${input}
-      ),
-      boundary AS (
-        SELECT ${partitionBy}, __rk AS __bound_rk
-        FROM numbered
-        WHERE __rn = ${rows}
-      )
-      ${projectionSub}
-      FROM numbered JOIN boundary USING (${partitionBy})
-      WHERE __rk <= __bound_rk`;
-  }
-
-  // 分组模式（行数）
-  if (groupBy?.length) {
-    const partitionBy = groupBy.map(quoteIdentifier).join(', ');
-    const orderClause = orderBy ? ` ORDER BY ${orderBy}` : '';
-    return `
-      CREATE TEMP TABLE ${output} AS
-      ${projectionSub}
-      FROM (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY ${partitionBy}${orderClause}) AS __rn
-        FROM ${input}
-      ) sub
-      WHERE __rn <= ${rows}`;
-  }
-
   if (orderBy) {
     const offsetStr = parsed.offset > 0 ? ` OFFSET ${parsed.offset}` : '';
-    return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} ORDER BY ${orderBy} LIMIT ${rows}${ties ? ' WITH TIES' : ''}${offsetStr}`;
+    if (ties) {
+      return `CREATE TEMP TABLE ${output} AS SELECT * FROM (SELECT *, RANK() OVER (ORDER BY ${orderBy}) AS __rn FROM ${input}) sub WHERE __rn <= ${rows}${offsetStr} ORDER BY ${orderBy}`;
+    }
+    return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} ORDER BY ${orderBy} LIMIT ${rows}${offsetStr}`;
   }
 
   const offsetStr = parsed.offset > 0 ? ` OFFSET ${parsed.offset}` : '';

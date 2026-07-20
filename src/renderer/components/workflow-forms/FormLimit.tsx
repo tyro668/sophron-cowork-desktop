@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Trash2, X, ChevronDown } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
-import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
@@ -24,15 +23,12 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
   const offset = Number(node.config.offset ?? 0);
   const orderBy: SortKey[] = (node.config.orderBy as SortKey[]) ?? [];
   const ties = !!node.config.ties;
-  const rawGroupBy = node.config.groupBy;
-  const groupBy: string[] = Array.isArray(rawGroupBy) ? rawGroupBy : [];
   const method = (node.config.method as string) ?? 'system';
   const seed = node.config.seed as number | undefined;
 
   const [localLimit, setLocalLimit] = useState(String(limit));
   const [localOffset, setLocalOffset] = useState(String(offset));
   const [localSeed, setLocalSeed] = useState(seed != null ? String(seed) : '');
-  const [groupOpen, setGroupOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
 
   useEffect(() => {
@@ -84,7 +80,6 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
   const isRandomMode = mode === 'random';
   const isRows = unit === 'rows';
   const hasSort = orderBy.length > 0;
-  const isGrouped = Array.isArray(rawGroupBy);
 
   const sortFields = orderBy.map((k) => k.field);
 
@@ -144,7 +139,6 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                 ...cfg,
                 mode: 'random',
                 ties: undefined,
-                groupBy: undefined,
                 orderBy: undefined,
               }));
             }
@@ -242,73 +236,9 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
         </div>
       ))}
 
-      {/* 限制取样：分组 + 排序 + TIES */}
+      {/* 限制取样：排序 + TIES */}
       {isFixedMode && (
         <>
-          {/* 分组范围 + 分组字段 */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className={LABEL_CLASS}>{tr('limitGroupRange', '分组范围')}</span>
-              <GlassOptionSingleSelect
-                value={isGrouped ? 'group' : 'none'}
-                groups={[
-                  {
-                    key: 'groupMode',
-                    items: [
-                      { value: 'none', label: tr('limitGroupNone', '不分组') },
-                      { value: 'group', label: tr('limitGroupEnabled', '分组') },
-                    ],
-                  },
-                ]}
-                onChange={(v) => {
-                  if (v === 'none') {
-                    updateConfig((cfg) => ({ ...cfg, groupBy: undefined }));
-                  } else {
-                    updateConfig((cfg) => ({ ...cfg, groupBy: [] }));
-                    setGroupOpen(true);
-                  }
-                }}
-                className="h-7 text-[12px] w-28"
-              />
-            </div>
-            {isGrouped && (
-              <div className="flex items-center gap-2">
-                <span className={LABEL_CLASS}>{tr('limitGroupBy', '分组字段')}</span>
-                <div className="w-72 min-w-0 relative">
-                  <GlassTagBar
-                    items={groupBy}
-                    onRemove={(col) =>
-                      updateConfig((cfg) => ({
-                        ...cfg,
-                        groupBy: groupBy.filter((c) => c !== col),
-                      }))
-                    }
-                    onClear={() => updateConfig((cfg) => ({ ...cfg, groupBy: [] }))}
-                    open={groupOpen}
-                    onToggle={() => setGroupOpen((o) => !o)}
-                    toggleStyle="chevron"
-                    density="compact"
-                    className="min-h-7"
-                    placeholder={tr('limitGroupByPlaceholder', '选择分组字段')}
-                  />
-                  {groupOpen && (
-                    <div className="absolute z-10 left-0 right-0 mt-0.5">
-                      <GlassFieldMultiSelect
-                        columns={fieldCompletions}
-                        selected={groupBy}
-                        onChange={(v) =>
-                          updateConfig((cfg) => ({ ...cfg, groupBy: v.length > 0 ? v : undefined }))
-                        }
-                        maxHeight="160px"
-                        variant="glass"
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
           {/* 排序字段 */}
           <div className="flex items-center gap-2">
             <span className={LABEL_CLASS}>{tr('limitSortHeader', '排序字段')}</span>
