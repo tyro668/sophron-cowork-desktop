@@ -4,6 +4,7 @@ import type { PrepDiagnostic } from '../prep-dsl/ast';
 // Re-export schemas for external consumers (must use export-from for CJS compatibility)
 export {
   SortKeySchema,
+  type SortKey,
   ConditionSchema,
   ConflictSchema,
   MetricEntrySchema,

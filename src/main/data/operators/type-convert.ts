@@ -24,7 +24,7 @@ export function compileTypeConvertSql(
   return `CREATE TEMP TABLE ${output} AS SELECT ${projections.join(', ')} FROM ${input}`;
 }
 
-export function compileTypeConversionExpression(
+function compileTypeConversionExpression(
   column: string,
   conversion: { type?: string; onError?: string }
 ): string {

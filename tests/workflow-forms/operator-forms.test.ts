@@ -242,7 +242,6 @@ describe('operator forms — config ↔ DSL round-trip', () => {
           leftTime: 'trades.trade_time',
           operator: '>=',
           rightTime: 'rates.rate_time',
-          direction: 'backward',
           tolerance: '1d',
           by: [{ left: 'trades.currency', operator: '=', right: 'rates.currency' }],
         },

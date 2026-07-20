@@ -746,9 +746,6 @@ function parseAsofClause(
     leftTime: toQualifiedName(left),
     operator: op,
     rightTime: toQualifiedName(right),
-    direction:
-      (direction as PrepAsofJoinConfig['direction'] | undefined) ??
-      (op === '>=' ? 'backward' : op === '<=' ? 'forward' : 'nearest'),
     tolerance,
     by: byClause ? parseJoinConditions(byClause) : undefined,
   };

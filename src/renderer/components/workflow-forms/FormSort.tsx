@@ -9,12 +9,7 @@ import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTyp
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { computeUsedFields } from './shared/used-fields';
-
-interface SortKey {
-  field: string;
-  direction: 'asc' | 'desc';
-  nulls?: 'first' | 'last';
-}
+import type { SortKey } from '../../../shared/operator-schemas';
 
 const DEFAULT_SORT_KEY: SortKey = { field: '', direction: 'asc' };
 

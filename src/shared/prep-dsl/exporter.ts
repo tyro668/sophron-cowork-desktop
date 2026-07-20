@@ -225,7 +225,6 @@ function formatJoin(config: Record<string, unknown> | undefined): string {
     ];
     const by = formatJoinConditions(asof?.by);
     if (by) parts.push(`by ${by}`);
-    if (typeof asof?.direction === 'string') parts.push(`direction ${asof.direction}`);
     if (typeof asof?.tolerance === 'string') parts.push(`tolerance ${asof.tolerance}`);
     const keep = formatJoinKeep(config?.keep);
     if (keep) parts.push(`keep ${keep}`);

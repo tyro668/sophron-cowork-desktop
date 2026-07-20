@@ -2923,7 +2923,6 @@ function getJoinConfigSummary(
       true
     ),
     summaryRow(t, 'by', formatConditions(asof?.by, t), true),
-    summaryRow(t, 'direction', stringValue(asof?.direction)),
     summaryRow(t, 'tolerance', stringValue(asof?.tolerance)),
     summaryRow(t, 'keep', formatJoinKeep(config.keep, t), true),
     summaryRow(t, 'conflict', formatConflict(config.conflict, t)),

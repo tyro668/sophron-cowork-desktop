@@ -87,7 +87,6 @@ describe('prep DSL parser and workflow compiler', () => {
       leftTime: 'events.event_time',
       operator: '>=',
       rightTime: 'status.snapshot_time',
-      direction: 'backward',
       tolerance: '6h',
     });
   });

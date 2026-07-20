@@ -7,12 +7,7 @@ import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
-
-interface SortKeyEntry {
-  field: string;
-  direction: 'asc' | 'desc';
-  nulls?: 'first' | 'last';
-}
+import type { SortKey } from '../../../shared/operator-schemas';
 
 const LABEL_CLASS = 'text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7';
 
@@ -27,7 +22,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
   const limit = Number(node.config.limit ?? 100);
   const unit = (node.config.unit as string) ?? 'rows';
   const offset = Number(node.config.offset ?? 0);
-  const orderBy: SortKeyEntry[] = (node.config.orderBy as SortKeyEntry[]) ?? [];
+  const orderBy: SortKey[] = (node.config.orderBy as SortKey[]) ?? [];
   const ties = !!node.config.ties;
   const rawGroupBy = node.config.groupBy;
   const groupBy: string[] = Array.isArray(rawGroupBy) ? rawGroupBy : [];
@@ -96,7 +91,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
   function toggleSortDirection(field: string) {
     updateConfig((cfg) => ({
       ...cfg,
-      orderBy: (cfg.orderBy as SortKeyEntry[])?.map((k) =>
+      orderBy: (cfg.orderBy as SortKey[])?.map((k) =>
         k.field === field ? { ...k, direction: k.direction === 'asc' ? 'desc' : 'asc' } : k
       ),
     }));
@@ -104,14 +99,14 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
 
   function removeSortField(field: string) {
     updateConfig((cfg) => {
-      const next = (cfg.orderBy as SortKeyEntry[])?.filter((k) => k.field !== field);
+      const next = (cfg.orderBy as SortKey[])?.filter((k) => k.field !== field);
       return { ...cfg, orderBy: next && next.length > 0 ? next : undefined };
     });
   }
 
   function setSortFields(next: string[]) {
     updateConfig((cfg) => {
-      const prev = (cfg.orderBy as SortKeyEntry[]) ?? [];
+      const prev = (cfg.orderBy as SortKey[]) ?? [];
       const mapped = next.map((f) => {
         const existing = prev.find((k) => k.field === f);
         return existing ?? { field: f, direction: 'asc' as const };

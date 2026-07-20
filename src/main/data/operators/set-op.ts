@@ -122,13 +122,17 @@ export function compileJoinProjection(
       const ref = parseFieldRef(item.source);
       const fieldName = ref?.name ?? lastQualifiedPart(item.source);
       const side =
-        ref?.source && rightAlias && ref.source === rightAlias
+        item.side === 'right'
           ? 'r'
-          : ref?.source
+          : item.side === 'left'
             ? 'l'
-            : leftColumns.includes(fieldName)
-              ? 'l'
-              : 'r';
+            : ref?.source && rightAlias && ref.source === rightAlias
+              ? 'r'
+              : ref?.source
+                ? 'l'
+                : leftColumns.includes(fieldName)
+                  ? 'l'
+                  : 'r';
       const conflictSide = side === 'r' ? 'right' : 'left';
       const alias =
         typeof item.alias === 'string'

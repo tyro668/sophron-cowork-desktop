@@ -19,30 +19,48 @@ export function compileAsofJoinSql(
   config: Record<string, unknown>
 ): string {
   const parsed = parseOperatorConfig(JoinConfigSchema, config);
-  const rawAsof = parsed.asof as Record<string, unknown> | undefined;
-  const asof = rawAsof ?? {};
-  const leftTime = extractFieldName(String(asof.leftTime ?? ''));
-  const rightTime = extractFieldName(String(asof.rightTime ?? ''));
-  const operator =
-    asof.operator === 'nearest' ? (asof.direction === 'forward' ? '>=' : '<=') : asof.operator;
-  const orderDirection = operator === '>=' ? 'ASC' : 'DESC';
-  const byConditions = Array.isArray(asof.by)
-    ? asof.by
-        .flatMap((condition: Record<string, unknown>) => {
-          const left = String(condition.left ?? '');
-          const right = String(condition.right ?? '');
-          return left && right
-            ? [
-                `r.${quoteIdentifier(extractFieldName(right))} = l.${quoteIdentifier(extractFieldName(left))}`,
-              ]
-            : [];
-        })
-        .join(' AND ')
-    : '';
-  const tolerance = typeof asof.tolerance === 'string' ? asof.tolerance : '';
-  const toleranceClause = tolerance
-    ? ` AND ABS(EPOCH_MS(r.${quoteIdentifier(rightTime)}) - EPOCH_MS(l.${quoteIdentifier(leftTime)})) <= ${durationToMilliseconds(tolerance)}`
-    : '';
+  const asof = parsed.asof ?? {
+    leftTime: '',
+    rightTime: '',
+    operator: undefined,
+    tolerance: undefined,
+    by: undefined,
+  };
+  const leftTime = extractFieldName(asof.leftTime ?? '');
+  const rightTime = extractFieldName(asof.rightTime ?? '');
+  const operator = asof.operator ?? '>=';
+  const isBidirectional = operator === 'nearest';
+  const byConditions = (asof.by ?? [])
+    .flatMap((condition) => {
+      const left = condition.left;
+      const right = condition.right;
+      return left && right
+        ? [
+            `r.${quoteIdentifier(extractFieldName(right))} = l.${quoteIdentifier(extractFieldName(left))}`,
+          ]
+        : [];
+    })
+    .join(' AND ');
+  const tolerance = asof.tolerance ?? '';
+  const toleranceMs = tolerance ? durationToMilliseconds(tolerance) : 0;
+  const absDiff = `ABS(EPOCH_MS(r.${quoteIdentifier(rightTime)}) - EPOCH_MS(l.${quoteIdentifier(leftTime)}))`;
+  const conditions: string[] = [];
+  if (isBidirectional) {
+    if (toleranceMs > 0) {
+      conditions.push(`${absDiff} <= ${toleranceMs}`);
+    } else {
+      conditions.push(`r.${quoteIdentifier(rightTime)} <= l.${quoteIdentifier(leftTime)}`);
+    }
+  } else {
+    conditions.push(`r.${quoteIdentifier(rightTime)} ${operator} l.${quoteIdentifier(leftTime)}`);
+    if (toleranceMs > 0) {
+      conditions.push(`${absDiff} <= ${toleranceMs}`);
+    }
+  }
+  if (byConditions) conditions.push(byConditions);
+  const orderClause = isBidirectional
+    ? `${absDiff} ASC`
+    : `r.${quoteIdentifier(rightTime)} ${operator === '>=' ? 'ASC' : 'DESC'}`;
   const projection = compileJoinProjection(
     parsed.keep,
     leftColumns,
@@ -50,6 +68,7 @@ export function compileAsofJoinSql(
     parsed.conflict,
     parsed.rightAlias
   );
+  const whereClause = conditions.join(' AND ');
   return `
     CREATE TEMP TABLE ${output} AS
     SELECT ${projection}
@@ -57,10 +76,8 @@ export function compileAsofJoinSql(
     LEFT JOIN LATERAL (
       SELECT *
       FROM ${right} r
-      WHERE r.${quoteIdentifier(rightTime)} ${operator} l.${quoteIdentifier(leftTime)}
-        ${byConditions ? `AND ${byConditions}` : ''}
-        ${toleranceClause}
-      ORDER BY r.${quoteIdentifier(rightTime)} ${orderDirection}
+      WHERE ${whereClause}
+      ORDER BY ${orderClause}
       LIMIT 1
     ) r ON true
   `;

@@ -127,20 +127,6 @@ export function compileTypedProjection(
   return `${expression} AS ${quoteIdentifier(column.name)}`;
 }
 
-export function normalizeDuckDbDateFormat(format: string): string {
-  return format
-    .replace(/yyyy/g, '%Y')
-    .replace(/YYYY/g, '%Y')
-    .replace(/MM/g, '%m')
-    .replace(/dd/g, '%d')
-    .replace(/DD/g, '%d')
-    .replace(/HH/g, '%H')
-    .replace(/hh/g, '%H')
-    .replace(/mm/g, '%M')
-    .replace(/ss/g, '%S')
-    .replace(/SSS/g, '%f');
-}
-
 export function normalizeStatus(
   value: string
 ): 'running' | 'completed' | 'stopped' | 'draft' | 'pending' | 'failed' {

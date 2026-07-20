@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { JoinConfigSchema } from '../../src/shared/operator-schemas';
+import { parseDuration, normalizeDuration } from '../../src/shared/operator-schemas/join';
 
 describe('JoinConfigSchema', () => {
   it('parses valid config with conditions', () => {
@@ -27,7 +28,6 @@ describe('JoinConfigSchema', () => {
         leftTime: '[ts]',
         rightTime: '[time]',
         operator: '<=',
-        direction: 'forward',
         tolerance: '5m',
         by: [{ left: '[symbol]', right: '[sym]' }],
       },
@@ -38,5 +38,72 @@ describe('JoinConfigSchema', () => {
 
   it('rejects conditions with wrong type', () => {
     expect(() => JoinConfigSchema.parse({ conditions: 'not-array' })).toThrow(z.ZodError);
+  });
+});
+
+describe('parseDuration', () => {
+  it('parses single unit format', () => {
+    expect(parseDuration('2d')).toEqual({ d: 2, h: 0, m: 0, s: 0, ms: 0 });
+    expect(parseDuration('1h')).toEqual({ d: 0, h: 1, m: 0, s: 0, ms: 0 });
+    expect(parseDuration('30m')).toEqual({ d: 0, h: 0, m: 30, s: 0, ms: 0 });
+    expect(parseDuration('90s')).toEqual({ d: 0, h: 0, m: 1, s: 30, ms: 0 });
+    expect(parseDuration('500ms')).toEqual({ d: 0, h: 0, m: 0, s: 0, ms: 500 });
+  });
+
+  it('parses compound format', () => {
+    expect(parseDuration('1h30m')).toEqual({ d: 0, h: 1, m: 30, s: 0, ms: 0 });
+    expect(parseDuration('1h30m30s')).toEqual({ d: 0, h: 1, m: 30, s: 30, ms: 0 });
+    expect(parseDuration('2d12h')).toEqual({ d: 2, h: 12, m: 0, s: 0, ms: 0 });
+  });
+
+  it('parses plain millisecond number', () => {
+    expect(parseDuration('3600000')).toEqual({ d: 0, h: 1, m: 0, s: 0, ms: 0 });
+    expect(parseDuration('5400000')).toEqual({ d: 0, h: 1, m: 30, s: 0, ms: 0 });
+    expect(parseDuration('3630000')).toEqual({ d: 0, h: 1, m: 0, s: 30, ms: 0 });
+  });
+
+  it('returns zero for empty string', () => {
+    expect(parseDuration('')).toEqual({ d: 0, h: 0, m: 0, s: 0, ms: 0 });
+  });
+
+  it('returns zero for invalid input', () => {
+    expect(parseDuration('abc')).toEqual({ d: 0, h: 0, m: 0, s: 0, ms: 0 });
+  });
+});
+
+describe('normalizeDuration', () => {
+  it('converts to lowest non-zero unit: h+m → m (minutes)', () => {
+    expect(normalizeDuration('1h30m')).toBe('90m');
+  });
+
+  it('converts to lowest non-zero unit: h+m+s0ms → m (minutes, s is zero)', () => {
+    expect(normalizeDuration('1h30m0s')).toBe('90m');
+  });
+
+  it('converts to lowest non-zero unit: d+h → h (hours)', () => {
+    expect(normalizeDuration('1d6h')).toBe('30h');
+  });
+
+  it('preserves single unit', () => {
+    expect(normalizeDuration('30m')).toBe('30m');
+    expect(normalizeDuration('2h')).toBe('2h');
+    expect(normalizeDuration('5s')).toBe('5s');
+  });
+
+  it('handles mixed units with ms', () => {
+    expect(normalizeDuration('1s500ms')).toBe('1500ms');
+  });
+
+  it('returns empty for zero', () => {
+    expect(normalizeDuration('0s')).toBe('');
+    expect(normalizeDuration('0h0m')).toBe('');
+  });
+
+  it('round-trips through parseDuration', () => {
+    const input = '7200s';
+    const parsed = parseDuration(input);
+    const normal = normalizeDuration(input);
+    expect(parsed).toEqual({ d: 0, h: 2, m: 0, s: 0, ms: 0 });
+    expect(normal).toBe('2h');
   });
 });

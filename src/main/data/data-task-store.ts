@@ -3025,16 +3025,20 @@ export class DataTaskStore {
       const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
       if (!win) throw new Error('无法找到窗口来显示确认对话框');
       const channel = `operator-confirm:${Date.now()}`;
-      win.webContents.send('data.operatorConfirm', {
-        channel,
-        title: '列类型不匹配',
-        message: '左右两表的列类型不完全匹配，执行时可能出现数据转换异常或精度丢失。',
-        detail: typeWarnings.map((d) => d.message).join('\n'),
-        confirmLabel: '忽略警告，继续执行',
-        cancelLabel: '取消执行',
-      });
       const confirmed = await new Promise<boolean>((resolve) => {
-        ipcMain.handleOnce(channel, (_event, result: boolean) => resolve(result));
+        const timeout = setTimeout(() => resolve(false), 30_000).unref();
+        ipcMain.handleOnce(channel, (_event, result: boolean) => {
+          clearTimeout(timeout);
+          resolve(result);
+        });
+        win.webContents.send('data.operatorConfirm', {
+          channel,
+          title: '列类型不匹配',
+          message: '左右两表的列类型不完全匹配，执行时可能出现数据转换异常或精度丢失。',
+          detail: typeWarnings.map((d) => d.message).join('\n'),
+          confirmLabel: '忽略警告，继续执行',
+          cancelLabel: '取消执行',
+        });
       });
       if (!confirmed) {
         throw new Error('用户取消了集合操作执行：列类型不匹配');

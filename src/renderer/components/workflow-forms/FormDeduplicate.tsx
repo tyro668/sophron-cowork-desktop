@@ -13,14 +13,9 @@ import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTyp
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { computeUsedFields } from './shared/used-fields';
+import type { SortKey } from '../../../shared/operator-schemas';
 
-interface SortKeyEntry {
-  field: string;
-  direction: 'asc' | 'desc';
-  nulls?: 'first' | 'last';
-}
-
-const DEFAULT_SORT_KEY: SortKeyEntry = { field: '', direction: 'asc' };
+const DEFAULT_SORT_KEY: SortKey = { field: '', direction: 'asc' };
 
 export default function FormDeduplicate({
   node,
@@ -35,10 +30,7 @@ export default function FormDeduplicate({
 
   const columns = useMemo(() => (node.config?.columns as string[]) ?? [], [node.config?.columns]);
   const keep = (node.config?.keep as string) ?? 'first';
-  const orderBy = useMemo(
-    () => (node.config?.orderBy as SortKeyEntry[]) ?? [],
-    [node.config?.orderBy]
-  );
+  const orderBy = useMemo(() => (node.config?.orderBy as SortKey[]) ?? [], [node.config?.orderBy]);
 
   const commitColumns = useCallback(
     (next: string[]) => {
@@ -64,7 +56,7 @@ export default function FormDeduplicate({
 
   // ── Sort key actions ──
   const commitSortKeys = useCallback(
-    (next: SortKeyEntry[]) => {
+    (next: SortKey[]) => {
       updateConfig((cfg) => ({
         ...cfg,
         orderBy: next,
@@ -90,7 +82,7 @@ export default function FormDeduplicate({
   } = useDragReorder(displaySortKeys, commitSortKeys);
 
   const updateSortKey = useCallback(
-    (index: number, patch: Partial<SortKeyEntry>) => {
+    (index: number, patch: Partial<SortKey>) => {
       const next = activeKeys.map((k, i) => (i === index ? { ...k, ...patch } : k));
       commitSortKeys(next);
     },
@@ -183,7 +175,7 @@ export default function FormDeduplicate({
                       {
                         flex: 'flex-[4]',
                         header: tr('sortFieldHeader', '排序字段'),
-                        render: (key: SortKeyEntry, i) => {
+                        render: (key: SortKey, i) => {
                           const disabledSortFields = new Set(usedSortFields);
                           if (key.field) disabledSortFields.delete(key.field);
                           return (
@@ -204,7 +196,7 @@ export default function FormDeduplicate({
                       {
                         flex: 'flex-[2]',
                         header: tr('sortDirectionHeader', '排序方式'),
-                        render: (key: SortKeyEntry, i) => (
+                        render: (key: SortKey, i) => (
                           <GlassDirectionToggle
                             value={key.direction}
                             onChange={(v) => updateSortKey(i, { direction: v })}
@@ -215,7 +207,7 @@ export default function FormDeduplicate({
                       {
                         flex: 'flex-[3]',
                         header: tr('sortNullsHeader', '空值处理'),
-                        render: (key: SortKeyEntry, i) => (
+                        render: (key: SortKey, i) => (
                           <GlassOptionSingleSelect
                             value={key.nulls ?? ''}
                             groups={[

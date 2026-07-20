@@ -7,6 +7,7 @@ import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { isTemporalDataFieldType } from '@/shared/data-field-types';
 import { parseFieldRef } from '@/shared/prep-dsl/parser';
+import { parseDuration, normalizeDuration } from '@/shared/operator-schemas/join';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
@@ -30,14 +31,12 @@ const OPERATOR_KEYS = [
 
 function isLeftField(source: string, leftAlias: string): boolean {
   const ref = parseFieldRef(source);
-  if (ref?.source) return ref.source === leftAlias;
-  return source.startsWith(`${leftAlias}.`);
+  return ref?.source ? ref.source === leftAlias : source.startsWith(`${leftAlias}.`);
 }
 
 function isRightField(source: string, rightAlias: string): boolean {
   const ref = parseFieldRef(source);
-  if (ref?.source) return ref.source === rightAlias;
-  return source.startsWith(`${rightAlias}.`);
+  return ref?.source ? ref.source === rightAlias : source.startsWith(`${rightAlias}.`);
 }
 
 // ── Venn-diagram SVG for each join type ──
@@ -185,6 +184,24 @@ export default function FormJoin({
 
   const isAsof = joinType === 'asof';
   const needsConditions = joinType !== 'cross';
+
+  const toleranceVal = (asof.tolerance as string) ?? '';
+  const durationParts = useMemo(() => parseDuration(toleranceVal), [toleranceVal]);
+  const showToleranceError = asofOperator === 'nearest' && !toleranceVal;
+
+  function handleDurationChange(part: keyof ReturnType<typeof parseDuration>, val: number) {
+    const next = { ...durationParts, [part]: val };
+    const totalMs =
+      next.d * 86_400_000 + next.h * 3_600_000 + next.m * 60_000 + next.s * 1_000 + next.ms;
+    const str = normalizeDuration(String(totalMs));
+    updateConfig((cfg) => ({
+      ...cfg,
+      asof: {
+        ...((cfg.asof as Record<string, unknown>) ?? {}),
+        tolerance: str || undefined,
+      },
+    }));
+  }
 
   const resolveNodeLabel = useCallback(
     (nodeRef: { id: string; config?: Record<string, unknown> } | undefined): string => {
@@ -358,7 +375,11 @@ export default function FormJoin({
     setDraftLeftSel(
       new Set(
         specific
-          .filter((i) => isLeftField(String(i.source), leftAlias))
+          .filter((i) =>
+            typeof i.side === 'string'
+              ? i.side === 'left'
+              : isLeftField(String(i.source), leftAlias)
+          )
           .map((i) => {
             if (typeof i.alias === 'string') {
               leftAliases.set(String(i.source), i.alias);
@@ -373,7 +394,11 @@ export default function FormJoin({
     setDraftRightSel(
       new Set(
         specific
-          .filter((i) => isRightField(String(i.source), rightAlias))
+          .filter((i) =>
+            typeof i.side === 'string'
+              ? i.side === 'right'
+              : isRightField(String(i.source), rightAlias)
+          )
           .map((i) => {
             if (typeof i.alias === 'string') {
               rightAliases.set(String(i.source), i.alias);
@@ -394,11 +419,11 @@ export default function FormJoin({
     } else {
       for (const f of draftLeftSel) {
         const alias = draftLeftAliases.get(f);
-        items.push(alias ? { source: f, alias } : { source: f });
+        items.push({ side: 'left', source: f, ...(alias ? { alias } : {}) });
       }
       for (const f of draftRightSel) {
         const alias = draftRightAliases.get(f);
-        items.push(alias ? { source: f, alias } : { source: f });
+        items.push({ side: 'right', source: f, ...(alias ? { alias } : {}) });
       }
     }
     handleKeepChange(items);
@@ -483,21 +508,33 @@ export default function FormJoin({
   const leftKeepCount = useMemo(() => {
     const wildcardItem = keepItems.find((i) => i.side === 'left' && i.wildcard);
     if (wildcardItem) return fieldCompletions.length;
-    return keepItems.filter((i) => !i.wildcard && isLeftField(String(i.source ?? ''), leftAlias))
-      .length;
+    return keepItems.filter(
+      (i) =>
+        !i.wildcard &&
+        (typeof i.side === 'string'
+          ? i.side === 'left'
+          : isLeftField(String(i.source ?? ''), leftAlias))
+    ).length;
   }, [keepItems, fieldCompletions, leftAlias]);
   const rightKeepCount = useMemo(() => {
     const wildcardItem = keepItems.find((i) => i.side === 'right' && i.wildcard);
     if (wildcardItem) return rightRawColumns.length;
-    return keepItems.filter((i) => !i.wildcard && isRightField(String(i.source ?? ''), rightAlias))
-      .length;
+    return keepItems.filter(
+      (i) =>
+        !i.wildcard &&
+        (typeof i.side === 'string'
+          ? i.side === 'right'
+          : isRightField(String(i.source ?? ''), rightAlias))
+    ).length;
   }, [keepItems, rightRawColumns, rightAlias]);
 
   const leftRenameCount = useMemo(() => {
     return keepItems.filter(
       (i) =>
         !i.wildcard &&
-        isLeftField(String(i.source ?? ''), leftAlias) &&
+        (typeof i.side === 'string'
+          ? i.side === 'left'
+          : isLeftField(String(i.source ?? ''), leftAlias)) &&
         typeof i.alias === 'string' &&
         i.alias
     ).length;
@@ -507,7 +544,9 @@ export default function FormJoin({
     return keepItems.filter(
       (i) =>
         !i.wildcard &&
-        isRightField(String(i.source ?? ''), rightAlias) &&
+        (typeof i.side === 'string'
+          ? i.side === 'right'
+          : isRightField(String(i.source ?? ''), rightAlias)) &&
         typeof i.alias === 'string' &&
         i.alias
     ).length;
@@ -527,6 +566,7 @@ export default function FormJoin({
     setPending: (v: ConditionEntry) => void,
     onChange: (next: ConditionEntry[]) => void,
     index: number,
+    sourceConditions: ConditionEntry[],
     patch: Partial<ConditionEntry>
   ) {
     if (isEmpty) {
@@ -537,11 +577,7 @@ export default function FormJoin({
         onChange([next]);
       }
     } else {
-      const conditions =
-        index === 0
-          ? ((node.config.conditions as ConditionEntry[]) ?? [])
-          : (((node.config.asof as Record<string, unknown>)?.by as ConditionEntry[]) ?? []);
-      onChange(conditions.map((c, i) => (i === index ? { ...c, ...patch } : c)));
+      onChange(sourceConditions.map((c, i) => (i === index ? { ...c, ...patch } : c)));
     }
   }
 
@@ -549,16 +585,13 @@ export default function FormJoin({
     isEmpty: boolean,
     setPending: (v: ConditionEntry) => void,
     onChange: (next: ConditionEntry[]) => void,
-    index: number
+    index: number,
+    sourceConditions: ConditionEntry[]
   ) {
     if (isEmpty) {
       setPending({ ...DEFAULT_CONDITION });
     } else {
-      const conditions =
-        index === 0
-          ? ((node.config.conditions as ConditionEntry[]) ?? [])
-          : (((node.config.asof as Record<string, unknown>)?.by as ConditionEntry[]) ?? []);
-      onChange(conditions.filter((_, i) => i !== index));
+      onChange(sourceConditions.filter((_, i) => i !== index));
     }
   }
 
@@ -567,18 +600,15 @@ export default function FormJoin({
     pending: ConditionEntry,
     setPending: (v: ConditionEntry) => void,
     onChange: (next: ConditionEntry[]) => void,
-    index: number
+    index: number,
+    sourceConditions: ConditionEntry[]
   ) {
     if (isEmpty) {
       if (!pending.left && !pending.right) return;
       onChange([pending, { ...DEFAULT_CONDITION }]);
       setPending({ ...DEFAULT_CONDITION });
     } else {
-      const conditions =
-        index === 0
-          ? ((node.config.conditions as ConditionEntry[]) ?? [])
-          : (((node.config.asof as Record<string, unknown>)?.by as ConditionEntry[]) ?? []);
-      const next = [...conditions];
+      const next = [...sourceConditions];
       next.splice(index + 1, 0, { ...DEFAULT_CONDITION });
       onChange(next);
     }
@@ -591,6 +621,7 @@ export default function FormJoin({
     pending: ConditionEntry,
     setPending: (v: ConditionEntry) => void,
     onChange: (next: ConditionEntry[]) => void,
+    sourceConditions: ConditionEntry[],
     leftLabel: string,
     rightLabel: string
   ) {
@@ -599,7 +630,11 @@ export default function FormJoin({
         <GlassFieldSingleSelect
           value={cond.left}
           options={leftFieldCompletions}
-          onChange={(v) => condHandleChange(isEmpty, pending, setPending, onChange, i, { left: v })}
+          onChange={(v) =>
+            condHandleChange(isEmpty, pending, setPending, onChange, i, sourceConditions, {
+              left: v,
+            })
+          }
           placeholder={leftLabel}
           className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
         />
@@ -607,7 +642,9 @@ export default function FormJoin({
           value={cond.operator}
           groups={[{ key: 'op', items: conditionOperatorItems }]}
           onChange={(v) =>
-            condHandleChange(isEmpty, pending, setPending, onChange, i, { operator: v })
+            condHandleChange(isEmpty, pending, setPending, onChange, i, sourceConditions, {
+              operator: v,
+            })
           }
           className="h-7 w-[72px] shrink-0 text-[12px] [&>span]:text-center"
         />
@@ -615,14 +652,16 @@ export default function FormJoin({
           value={cond.right}
           options={rightFieldCompletions}
           onChange={(v) =>
-            condHandleChange(isEmpty, pending, setPending, onChange, i, { right: v })
+            condHandleChange(isEmpty, pending, setPending, onChange, i, sourceConditions, {
+              right: v,
+            })
           }
           placeholder={rightLabel}
           className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
         />
         <button
           type="button"
-          onClick={() => condHandleAdd(isEmpty, pending, setPending, onChange, i)}
+          onClick={() => condHandleAdd(isEmpty, pending, setPending, onChange, i, sourceConditions)}
           className="h-6 w-6 flex shrink-0 items-center justify-center rounded text-text-muted/40 hover:text-accent transition-colors"
           title={tr('addCondition', '添加条件')}
         >
@@ -630,7 +669,7 @@ export default function FormJoin({
         </button>
         <button
           type="button"
-          onClick={() => condHandleRemove(isEmpty, setPending, onChange, i)}
+          onClick={() => condHandleRemove(isEmpty, setPending, onChange, i, sourceConditions)}
           className="h-6 w-6 flex shrink-0 items-center justify-center rounded text-text-muted/40 hover:text-error transition-colors"
         >
           <Trash2 className="h-3.5 w-3.5" />
@@ -834,45 +873,39 @@ export default function FormJoin({
                       placeholder={tr('rightTimeCol', '右表时间')}
                       className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
                     />
-                    <GlassFormTextInput
-                      value={(asof.tolerance as string) ?? ''}
-                      onChange={(v) =>
-                        updateConfig((cfg) => ({
-                          ...cfg,
-                          asof: {
-                            ...((cfg.asof as Record<string, unknown>) ?? {}),
-                            tolerance: v || undefined,
-                          },
-                        }))
-                      }
-                      placeholder={tr('tolerance', '时间差')}
-                      className="h-7 text-[13px] w-[72px] shrink-0"
-                    />
-                    <GlassOptionSingleSelect
-                      value={(asof.direction as string) ?? ''}
-                      groups={[
-                        {
-                          key: 'dir',
-                          items: [
-                            { value: '', label: tr('directionDefault', '默认') },
-                            { value: 'backward', label: tr('directionBackward', '向后') },
-                            { value: 'forward', label: tr('directionForward', '向前') },
-                            { value: 'nearest', label: tr('directionNearest', '最接近') },
-                          ],
-                        },
-                      ]}
-                      onChange={(v) =>
-                        updateConfig((cfg) => ({
-                          ...cfg,
-                          asof: {
-                            ...((cfg.asof as Record<string, unknown>) ?? {}),
-                            direction: v || undefined,
-                          },
-                        }))
-                      }
-                      className="h-7 w-[68px] shrink-0 text-[12px] [&>span]:text-center"
-                    />
                   </div>
+                  <div className="flex items-center gap-1">
+                    {(
+                      [
+                        { key: 'd', label: tr('toleranceDay', '天'), max: 365 },
+                        { key: 'h', label: tr('toleranceHour', '时'), max: 23 },
+                        { key: 'm', label: tr('toleranceMin', '分'), max: 59 },
+                        { key: 's', label: tr('toleranceSec', '秒'), max: 59 },
+                        { key: 'ms', label: tr('toleranceMs', '毫秒'), max: 999 },
+                      ] as const
+                    ).map(({ key, label, max }) => (
+                      <div key={key} className="flex items-center gap-0.5">
+                        <GlassFormTextInput
+                          type="number"
+                          min={0}
+                          max={max}
+                          value={String(durationParts[key])}
+                          onChange={(v) => {
+                            const n = parseInt(v, 10);
+                            handleDurationChange(key, Number.isNaN(n) ? 0 : Math.max(0, n));
+                          }}
+                          textCenter
+                          className={`h-7 w-[46px] !px-1.5 text-[12px] ${showToleranceError ? 'border-error ring-error/20 ring-2' : ''}`}
+                        />
+                        <span className="text-[10px] text-text-muted w-[28px]">{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {showToleranceError && (
+                    <div className="text-[11px] text-warning px-0.5">
+                      {tr('toleranceRequired', '操作符为「最接近」时时间差为必填')}
+                    </div>
+                  )}
                   <div className="max-h-[180px] overflow-y-auto">
                     <div className="space-y-1">
                       {(() => {
@@ -887,6 +920,7 @@ export default function FormJoin({
                             asofPending,
                             setAsofPending,
                             handleAsofByChange,
+                            asofBy,
                             tr('leftField', '[左表字段]'),
                             tr('rightField', '[右表字段]')
                           )

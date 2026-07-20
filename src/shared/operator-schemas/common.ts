@@ -25,6 +25,8 @@ export const MetricEntrySchema = z.object({
   alias: z.string().optional().default(''),
 });
 
+export type SortKey = z.infer<typeof SortKeySchema>;
+
 export const KeepItemSchema = z.object({
   side: z.string().optional(),
   wildcard: z.boolean().optional(),

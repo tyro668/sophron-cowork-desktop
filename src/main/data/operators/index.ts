@@ -1,7 +1,7 @@
 export { compileFieldSelectSql } from './field-select';
 export { compileFieldMappingSql } from './field-mapping';
 export { compileMissingValueSql } from './missing-value';
-export { compileTypeConvertSql, compileTypeConversionExpression } from './type-convert';
+export { compileTypeConvertSql } from './type-convert';
 export { compileDeduplicateSql } from './deduplicate';
 export { compileSortSql } from './sort';
 export { compileCalculateFieldSql } from './calculate-field';
@@ -26,7 +26,6 @@ export {
   positiveNumber,
   sortKeysToSql,
   compileTypedProjection,
-  normalizeDuckDbDateFormat,
   durationToMilliseconds,
   lastQualifiedPart,
   unwrapFieldToken,
