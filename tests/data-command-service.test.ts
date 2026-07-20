@@ -1595,7 +1595,7 @@ describe('DataCommandService', () => {
 
     expect(generated.workflowDsl).toContain('drop [记录数]');
     expect(generated.workflowDsl).toContain('map [`Adj Close`] to [adj_close]');
-    expect(generated.workflowDsl).toContain('derive [__sophron_cast_adj_close] = CAST');
+    expect(generated.workflowDsl).toContain('derive [__sophron_cast_adj_close] = TRY_CAST');
     expect(generated.workflowDsl).toContain("REPLACE(CAST([adj_close] AS VARCHAR), '$', '')");
     expect(generated.workflowDsl).toContain('drop [adj_close]');
     expect(generated.workflowDsl).toContain('map [__sophron_cast_adj_close] to [adj_close]');
@@ -1660,7 +1660,7 @@ describe('DataCommandService', () => {
         name: 'adj_close',
         type: 'decimal',
         sourceColumns: [{ name: 'Adj Close', type: 'text' }],
-        expression: "CAST(REPLACE(CAST([adj_close] AS VARCHAR), '$', '') AS DECIMAL(18,2))",
+        expression: "TRY_CAST(REPLACE(CAST([adj_close] AS VARCHAR), '$', '') AS DECIMAL(18,2))",
       },
       {
         name: 'double_close',

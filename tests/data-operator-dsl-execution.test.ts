@@ -119,6 +119,37 @@ describe('operator DSL execution cases', () => {
     ]);
   });
 
+  it('nullifies text markers safely after a column has already been converted', async () => {
+    const { dbPath, store, tempRoot } = createStore();
+    const pricesPath = path.join(tempRoot, 'typed-missing-markers.csv');
+    fs.writeFileSync(pricesPath, ['adj_close', '8.34', '16.14'].join('\n') + '\n', 'utf8');
+
+    const task = await store.createTask({
+      name: 'Typed missing marker comparison',
+      sourcePath: pricesPath,
+    });
+    await saveWorkflowDsl(
+      store,
+      task.id,
+      `
+        input source task as prices
+          | cast [adj_close] as decimal on_error null
+          | missing value [adj_close] nullify values ("NULL", "N/A")
+          | output table "typed_missing_marker_output" mode replace
+      `
+    );
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    expect(completed.rowCount).toBe(2);
+
+    const rows = await queryRows(
+      dbPath,
+      'SELECT adj_close FROM typed_missing_marker_output ORDER BY adj_close'
+    );
+    expect(rows.map((row) => Number(row.adj_close))).toEqual([8.34, 16.14]);
+  });
+
   it('executes derive window expressions without introducing a separate window operator', async () => {
     const { dbPath, store, tempRoot } = createStore();
     const ordersPath = path.join(tempRoot, 'ranked-orders.csv');

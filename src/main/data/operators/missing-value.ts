@@ -27,7 +27,7 @@ export function compileMissingValueSql(
       case 'nullify_values':
         expressions.set(
           rule.column,
-          `CASE WHEN ${current} IN (${(rule.values ?? []).map(literalToSql).join(', ')}) THEN NULL ELSE ${current} END`
+          `CASE WHEN ${compileNullifyValuesPredicate(current, rule.values ?? [])} THEN NULL ELSE ${current} END`
         );
         break;
       case 'literal_fill':
@@ -47,4 +47,24 @@ export function compileMissingValueSql(
   return `CREATE TEMP TABLE ${output} AS SELECT ${projections.join(', ')} FROM ${input}${
     filters.length > 0 ? ` WHERE ${filters.join(' AND ')}` : ''
   }`;
+}
+
+function compileNullifyValuesPredicate(current: string, values: unknown[]): string {
+  if (values.length === 0) return 'FALSE';
+
+  // Missing-value markers originate in text files, but an earlier workflow step may already have
+  // converted the column to DECIMAL, DATE, BOOLEAN, etc. Comparing that typed column directly with
+  // a marker such as 'NULL' makes DuckDB cast the marker to the column type and can abort the whole
+  // query. Compare canonical text representations instead so malformed markers never participate in
+  // an implicit typed conversion. SQL NULL is handled separately because CAST(NULL AS VARCHAR) is NULL.
+  const includesNull = values.some((value) => value === null || value === undefined);
+  const textValues = values
+    .filter((value) => value !== null && value !== undefined)
+    .map((value) => literalToSql(String(value)));
+  const predicates: string[] = [];
+  if (includesNull) predicates.push(`${current} IS NULL`);
+  if (textValues.length > 0) {
+    predicates.push(`CAST(${current} AS VARCHAR) IN (${textValues.join(', ')})`);
+  }
+  return predicates.length === 1 ? predicates[0] : `(${predicates.join(' OR ')})`;
 }

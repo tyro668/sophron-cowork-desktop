@@ -233,6 +233,7 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
           removePrefix,
           removeChars,
           scale: operation.options.scale,
+          failOnError: onError === 'fail',
         });
         context.lines.push(`  | derive ${formatDslField(tempColumn)} = ${expression}`);
         context.lines.push(`  | drop ${formatDslField(column.name)}`);
@@ -1076,12 +1077,14 @@ function compilePlanTypeConversionExpression({
   removePrefix,
   removeChars,
   scale,
+  failOnError,
 }: {
   columnName: string;
   targetType: string;
   removePrefix: string;
   removeChars: string[];
   scale: unknown;
+  failOnError: boolean;
 }): string {
   let expression = `CAST(${formatDslField(columnName)} AS VARCHAR)`;
   for (const value of [removePrefix, ...removeChars].filter(Boolean)) {
@@ -1092,7 +1095,7 @@ function compilePlanTypeConversionExpression({
     targetType === 'decimal'
       ? `DECIMAL(18,${normalizeDecimalScale(scale)})`
       : targetType.toUpperCase();
-  return `CAST(${expression} AS ${storageType})`;
+  return `${failOnError ? 'CAST' : 'TRY_CAST'}(${expression} AS ${storageType})`;
 }
 
 function inferPlanConversionRemovePrefixFromRequirement(
