@@ -1759,6 +1759,87 @@ describe('DataCommandService', () => {
     ]);
   });
 
+  it('retries a repair when the first helper patch is still non-atomic', async () => {
+    const nonAtomicSource = `function extractYearMonth(input) {
+  return input.derive("Year", fn.year(col("Date"))).derive("Month", fn.month(col("Date")));
+}
+
+function main() {
+  const input = workflow().inputDataset(INPUT_TABLE_ID, "src");
+  const extracted = extractYearMonth(input);
+  return extracted.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" });
+}`;
+    vi.mocked(runPiAiOneShot)
+      .mockResolvedValueOnce({
+        text: JSON.stringify({ javascriptSource: nonAtomicSource }),
+        hasThinking: false,
+        durationMs: 1,
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          javascriptPatch: {
+            functionName: 'extractYearMonth',
+            replacement: `function extractYearMonth(input) {
+  return input.derive("Year", fn.year(col("Date"))).derive("Month", fn.month(col("Date")));
+}`,
+          },
+        }),
+        hasThinking: false,
+        durationMs: 1,
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          javascriptPatch: {
+            functionName: 'extractYearMonth',
+            replacement: `function extractYear(input) {
+  return input.derive("Year", fn.year(col("Date")));
+}
+
+function extractMonth(input) {
+  return input.derive("Month", fn.month(col("Date")));
+}
+
+function extractYearMonth(input) {
+  const withYear = extractYear(input);
+  return extractMonth(withYear);
+}`,
+          },
+        }),
+        hasThinking: false,
+        durationMs: 1,
+      });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'repair-dates.csv');
+    fs.writeFileSync(csvPath, 'Date\n2012-12-31\n2013-01-31\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'repair dates input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '从 Date 提取年份和月份',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'repair dates processed',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(runPiAiOneShot).toHaveBeenCalledTimes(3);
+    expect(generated.expectedOutputSchema).toEqual([
+      { name: 'Date', type: 'date' },
+      { name: 'Year', type: 'integer' },
+      { name: 'Month', type: 'integer' },
+    ]);
+  });
+
   it('casts date fields to text before generated regexp extraction', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({

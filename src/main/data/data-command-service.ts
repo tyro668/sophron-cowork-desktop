@@ -629,10 +629,13 @@ export class DataCommandService {
       return { diagnostics: contractDiagnostics };
     }
 
-    const candidate = await this.compileWorkflowDsl(input.generated.workflowDsl, {
-      inputTableId: input.inputTableId,
-      outputTableId: input.outputTableId,
-    });
+    const candidate = attachGeneratedOperationOrigins(
+      await this.compileWorkflowDsl(input.generated.workflowDsl, {
+        inputTableId: input.inputTableId,
+        outputTableId: input.outputTableId,
+      }),
+      input.generated.operationOrigins
+    );
     const dryRunDiagnostics = candidate.diagnostics;
     if (diagnosticsWithSeverity(dryRunDiagnostics, 'error').length > 0) {
       return { diagnostics: dryRunDiagnostics };
@@ -679,15 +682,18 @@ export class DataCommandService {
       };
     } catch (error) {
       const commandError = toCommandError(error, 'RUN_FAILED');
+      const executionDiagnostics =
+        isRecord(commandError.details) && Array.isArray(commandError.details.diagnostics)
+          ? (commandError.details.diagnostics as PrepDiagnostic[])
+          : [
+              {
+                severity: 'error' as const,
+                code: commandError.code,
+                message: commandError.message,
+              },
+            ];
       return {
-        diagnostics: [
-          ...dryRunDiagnostics,
-          {
-            severity: 'error',
-            code: commandError.code,
-            message: commandError.message,
-          },
-        ],
+        diagnostics: [...dryRunDiagnostics, ...executionDiagnostics],
       };
     } finally {
       if (temporaryTask) {
@@ -1621,6 +1627,21 @@ function toCommandError(error: unknown, fallbackCode: DataCommandError['code']):
     return error;
   }
   const message = error instanceof Error ? error.message : String(error);
+  if (isRecord(error) && isRecord(error.workflowOrigin)) {
+    const origin = error.workflowOrigin;
+    return new DataCommandError(fallbackCode, message, {
+      diagnostics: [
+        {
+          severity: 'error',
+          code: fallbackCode,
+          message,
+          functionName: typeof origin.functionName === 'string' ? origin.functionName : undefined,
+          line: typeof origin.line === 'number' ? origin.line : undefined,
+          column: typeof origin.column === 'number' ? origin.column : undefined,
+        },
+      ],
+    });
+  }
   if (
     /TransactionContext|transaction is aborted|cannot start a transaction within a transaction/i.test(
       message
@@ -1638,6 +1659,34 @@ function toCommandError(error: unknown, fallbackCode: DataCommandError['code']):
     return new DataCommandError('RESOURCE_NOT_FOUND', message);
   }
   return new DataCommandError(fallbackCode, message || 'Data command failed');
+}
+
+function attachGeneratedOperationOrigins(
+  candidate: CompiledWorkflowCandidate,
+  origins: GeneratedDataTaskWorkflow['operationOrigins']
+): CompiledWorkflowCandidate {
+  if (!origins?.length) return candidate;
+  const originsByIndex = new Map(origins.map((origin) => [origin.operatorIndex, origin]));
+  let operatorIndex = 0;
+  return {
+    ...candidate,
+    workflow: {
+      ...candidate.workflow,
+      nodes: candidate.workflow.nodes.map((node) => {
+        if (node.type === 'input_source' || node.type === 'output') return node;
+        const origin = originsByIndex.get(operatorIndex);
+        operatorIndex += 1;
+        if (!origin) return node;
+        return {
+          ...node,
+          config: {
+            ...(node.config ?? {}),
+            generatedOrigin: origin,
+          },
+        };
+      }),
+    },
+  };
 }
 
 function isDataCommandErrorCode(

@@ -14,6 +14,7 @@ import {
 
 import type {
   GeneratedDataTaskWorkflow,
+  GeneratedWorkflowOperationOrigin,
   GeneratedWorkflowColumnBinding,
   GeneratedWorkflowRequiredColumnResolver,
   WorkflowExpressionIr,
@@ -648,6 +649,8 @@ export function compileGeneratedWorkflowIr({
     return column;
   };
   const lines = [`input source dataset "${escapeDslString(inputTableId)}" as src`];
+  const operationOrigins: GeneratedWorkflowOperationOrigin[] = [];
+  let operatorIndex = 0;
   const context: GeneratedWorkflowOperationCompileContext = {
     columns,
     lines,
@@ -663,7 +666,20 @@ export function compileGeneratedWorkflowIr({
   };
   for (const operation of ir.operations) {
     try {
+      const lineCountBefore = lines.length;
       compileWorkflowOperation(operation, context);
+      const emittedOperatorCount = lines.length - lineCountBefore;
+      if (operation.location) {
+        for (let emittedIndex = 0; emittedIndex < emittedOperatorCount; emittedIndex += 1) {
+          operationOrigins.push({
+            ...operation.location,
+            operationId: `${operation.location.functionName}:${operation.type}:${operatorIndex + emittedIndex}`,
+            operatorIndex: operatorIndex + emittedIndex,
+            operationType: operation.type,
+          });
+        }
+      }
+      operatorIndex += emittedOperatorCount;
     } catch (error) {
       if (!(error instanceof DataCommandError) || !operation.location) throw error;
       const existingDiagnostics =
@@ -687,6 +703,7 @@ export function compileGeneratedWorkflowIr({
   const outputColumns = columnTracker.getCurrentColumns();
   return {
     workflowDsl: lines.join('\n'),
+    operationOrigins,
     requiredColumns: [...requiredColumnsByName.values()],
     expectedOutputSchema: outputColumns.map(toAutomationColumnSnapshot),
     lineage: outputColumns.map(toAutomationLineageEntry),

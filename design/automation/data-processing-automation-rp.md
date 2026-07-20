@@ -1,4 +1,4 @@
-# 自动化－数据处理任务 RP v1.0
+# 自动化－数据处理任务 RP v1.1
 
 ## 1. 文档目的
 
@@ -20,6 +20,8 @@
 5. 同一 Task 的生成、修改和执行使用 keyed lock 串行化。
 6. 临时执行结束后主动清理临时表和临时缓存。
 7. 网络、权限、超时等基础设施错误不交给模型修复。
+8. 生成的 JavaScript helper 以单个 Workflow operation 为原子边界，`main()` 只负责数据流编排。
+9. IR、Prep DSL operator 和运行节点保留来源映射，使编译及运行错误可以定位回具体 helper。
 
 ## 3. 系统边界
 
@@ -83,8 +85,8 @@ flowchart TD
     G --> H[获取 taskId keyed lock]
     H --> I[模型生成受限 JavaScript 源码]
     I --> J[AST 编译为 Workflow IR]
-    J --> K[逐个编译 IR operations]
-    K --> L[Operation Registry 生成 Prep DSL]
+    J --> K[校验原子 helper 并逐个编译 IR operations]
+    K --> L[Operation Registry 生成 Prep DSL 与 operation origins]
     L --> M[编译 Workflow Candidate]
     M --> N[临时执行 Candidate]
     N --> O[获取运行时输出预览]
@@ -93,7 +95,7 @@ flowchart TD
     Q -->|无错误| R[保存 Candidate Workflow]
     R --> S[清理临时资源]
     S --> T[释放 keyed lock并返回生成结果]
-    Q -->|可修复| U[模型根据 diagnostics 修复 JavaScript 源码]
+    Q -->|可修复| U[模型根据 diagnostics 修复完整源码或目标 helper]
     U --> J
     Q -->|不可修复或重试耗尽| V[回滚本次新建资源]
     V --> S
@@ -131,6 +133,17 @@ flowchart TD
 
 函数化 JavaScript 由标准 JavaScript AST 前端解析，顶层只允许命名函数，函数体只允许 `const`、静态 helper 调用和 `return`。禁止 import、动态调用、循环、可变变量以及系统、网络和文件访问。编译器静态展开函数和变量流，直接构建内部 IR，并为每个 operation 记录函数名、offset 和行列。模型代码不会作为通用 JavaScript 执行，也不会再降级成单条 API 链交给旧手写 Parser 二次解析。
 
+生成协议要求原子 helper，生成入口同时启用对应的严格校验：
+
+- 新生成的一个数据处理 helper 必须只产生一个 Workflow operation，禁止在同一 helper 内连续调用多个 workflow 方法；严格校验会拒绝产生多个 operation 的非 `main` helper。
+- 新生成的 `main()` 只创建输入、通过具名 `const` 依次调用 helper，并返回 `outputTable()`；数据处理操作不直接写在 `main()` 中。
+- 一个高层 operation 可以包含自身的结构化配置。例如一次 `handleMissing` 可以携带多个字段规则，它在 IR 中仍是一个 `missing_value` operation。
+- 一个 IR operation 可以展开为多行 Prep DSL。例如覆盖原字段的类型转换或派生会编译为“生成临时字段、删除原字段、映射回原名”三行 DSL；这些 DSL operator 共享同一个 helper 来源。
+
+该约束让错误边界稳定在单个操作上。比如“从 Date 提取年份和月份”必须拆成 `extractYear` 与 `extractMonth`，不能由一个 `extractYearMonth` helper 连续执行两次 `derive`。
+
+为兼容已有保存内容和旧测试数据，AST 编译器仍能读取直接在 `main()` 中表达操作的历史程序；该兼容能力不属于新的模型生成格式，新生成和修复提示词都要求把操作移入原子 helper。
+
 JavaScript capability registry 是自动生成入口的唯一能力清单。只有同时完成以下实现的操作才能加入清单：
 
 - JavaScript API 和 AST 参数校验。
@@ -145,7 +158,28 @@ JavaScript capability registry 是自动生成入口的唯一能力清单。只�
 
 由于当前自动化面板只能选择一个输入表，表连接与集合操作不加入 JavaScript capability registry，提示词和 AST 编译器也禁止模型引用第二输入。未来支持多输入时，应先扩展输入绑定、字段限定名、冲突策略、双侧 lineage 和 dry-run 资源校验，再开放这些方法。
 
-当 diagnostics 带有 `functionName` 时，修复请求优先返回 `javascriptPatch`，只替换目标函数；应用 patch 后仍重新解析、编译并 dry-run 完整 Workflow。
+修复响应支持两种协议：
+
+```json
+{ "javascriptSource": "包含 main() 的完整修正程序" }
+```
+
+或：
+
+```json
+{
+  "javascriptPatch": {
+    "functionName": "failedHelper",
+    "replacement": "目标函数及必要的新原子 helper"
+  }
+}
+```
+
+当 diagnostics 带有 `functionName` 时，修复请求优先返回 `javascriptPatch`，避免重写无关函数。局部补丁必须保留目标函数，可以在拆分多操作函数时新增具名原子 helper，但不能包含 `main()`，也不能覆盖程序中已有的其他 helper。目标函数可以作为只编排新增 helper 的兼容包装函数，不直接产生 operation。
+
+当 diagnostics 没有可靠的 `functionName`，尤其是 `NON_ATOMIC_WORKFLOW_HELPER` 这类程序结构错误时，模型必须返回带 `main()` 的完整 `javascriptSource`。应用任何 patch 后，系统都会重新解析、原子性校验、编译并 dry-run 完整 Workflow，而不是只校验替换片段。
+
+如果第一次合法 patch 应用后仍出现 `NON_ATOMIC_WORKFLOW_HELPER`，生成器会保留补丁后的完整源码，将新的 diagnostics 再反馈给模型并进行一次针对性修复。局部补丁不会再被当作完整程序兜底解析，因此不会附带产生误导性的“缺少 `javascriptSource` 或 `main()`”错误。
 
 示例结果：
 
@@ -166,6 +200,15 @@ Registry 的价值：
 - 字段引用统一校验。
 - 操作参数经过白名单和类型检查。
 - 新操作可以在 Registry 中独立扩展。
+
+Registry 同时生成 `operationOrigins`。每个实际发出的 Prep DSL operator 记录：
+
+- `operationId` 和 `operatorIndex`。
+- IR operation 类型。
+- JavaScript helper 名称。
+- JavaScript 源码 offset、行号和列号。
+
+当一个 IR operation 展开为多行 DSL 时，每一行分别获得 operator index，但都指向同一个 helper。Workflow Candidate 节点会携带对应的 `generatedOrigin`；DuckDB 执行失败时，`DataTaskStore` 将该来源附加到错误，`DataCommandService` 再转换为可供模型修复的结构化 diagnostic。
 
 ### 5.5 Candidate 编译和 LRU 缓存
 
@@ -214,6 +257,10 @@ Candidate 不会直接保存。系统先调用 `validateTaskWorkflow`，在 `tem
 - 字段引用问题。
 - 类型不兼容。
 - 操作参数或结构错误。
+- helper 包含多个 Workflow operation。
+- 某个 DSL operator 对应的 helper 在临时 DuckDB 执行中失败。
+
+诊断优先携带 `functionName`、`line` 和 `column`。能够定位到单个 helper 时使用局部 patch；无法安全定位或需要调整程序整体结构时使用完整 `javascriptSource`。
 
 以下错误直接返回，不调用模型修复：
 
@@ -383,14 +430,14 @@ interface RunGeneratedTaskResult {
 
 ## 10. 错误语义
 
-| 错误码               | 典型场景                         | 是否保存 Workflow | 是否修改正式输出           |
-| -------------------- | -------------------------------- | ----------------- | -------------------------- |
-| `INVALID_ARGUMENT`   | 缺少输入表、输出目录等参数       | 否                | 否                         |
-| `RESOURCE_NOT_FOUND` | Task、表或文件不存在             | 否                | 否                         |
-| `DSL_PARSE_FAILED`   | JavaScript/DSL 解析或编译失败    | 否                | 否                         |
-| `VALIDATION_FAILED`  | 字段漂移、输出 Schema 不符合契约 | 否                | 否                         |
-| `GENERATION_FAILED`  | 模型调用或生成协议失败           | 否                | 否                         |
-| `RUN_FAILED`         | DuckDB 或运行环境执行失败        | 否                | 否；正式运行按失败状态记录 |
+| 错误码               | 典型场景                                                  | 是否保存 Workflow | 是否修改正式输出           |
+| -------------------- | --------------------------------------------------------- | ----------------- | -------------------------- |
+| `INVALID_ARGUMENT`   | 缺少输入表、输出目录等参数                                | 否                | 否                         |
+| `RESOURCE_NOT_FOUND` | Task、表或文件不存在                                      | 否                | 否                         |
+| `DSL_PARSE_FAILED`   | JavaScript/DSL 解析或编译失败                             | 否                | 否                         |
+| `VALIDATION_FAILED`  | 字段漂移、非原子 helper、生成协议或输出 Schema 不符合契约 | 否                | 否                         |
+| `GENERATION_FAILED`  | 模型调用或生成协议失败                                    | 否                | 否                         |
+| `RUN_FAILED`         | DuckDB 或运行环境执行失败                                 | 否                | 否；正式运行按失败状态记录 |
 
 ## 11. 性能特征
 
@@ -411,6 +458,10 @@ interface RunGeneratedTaskResult {
 ## 13. 验收标准
 
 - 模型输出受限 JavaScript 源码，并由 AST Compiler、Workflow IR 和 Operation Registry 编译成 Prep DSL。
+- 每个生成 helper 最多产生一个 Workflow operation，`main()` 只负责组合数据流。
+- IR operation、DSL operator 和运行节点保留可追溯到 helper 与源码行列的 origin。
+- 局部 patch 可以安全新增原子 helper，但不能替换 `main()` 或覆盖已有的其他 helper。
+- 第一次 patch 后仍存在非原子 helper 时，能够基于补丁后的源码进行一次追加修复。
 - 生成 Candidate 必须通过临时执行和运行时 Schema 校验后才能保存。
 - 生成失败能清理新建 Task、输出表和临时资源，且不删除复用资源。
 - 同一 Task 的生成、保存、配置和执行按 keyed lock 串行。
@@ -427,6 +478,10 @@ interface RunGeneratedTaskResult {
 当前聚焦测试覆盖：
 
 - Workflow 生成、修复和字段契约校验。
+- 原子 helper 校验，以及多操作 helper 的拒绝与追加修复。
+- 局部 patch 拆分目标函数、函数重名保护和 `main()` 保护。
+- JavaScript operation 到 Prep DSL operator 的 origin 映射。
+- DuckDB 节点错误回传到生成 helper 的诊断映射。
 - Candidate 编译复用。
 - 同一 Task 并发串行。
 - 执行失败不保存 Workflow。

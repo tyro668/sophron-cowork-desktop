@@ -2755,7 +2755,23 @@ export class DataTaskStore {
           edges,
           diagnostics
         );
-        await this.runSql(toPersistentCreateTableSql(sql));
+        try {
+          await this.runSql(toPersistentCreateTableSql(sql));
+        } catch (error) {
+          const origin = isRecord(node.config.generatedOrigin)
+            ? node.config.generatedOrigin
+            : undefined;
+          const cause = error instanceof Error ? error.message : String(error);
+          const functionLabel =
+            origin && typeof origin.functionName === 'string'
+              ? ` in generated helper ${origin.functionName}`
+              : '';
+          const wrapped = new Error(
+            `Workflow node ${node.id} (${node.type})${functionLabel} failed: ${cause}`
+          ) as Error & { workflowOrigin?: Record<string, unknown> };
+          if (origin) wrapped.workflowOrigin = origin;
+          throw wrapped;
+        }
         relationByNode.set(node.id, outputRelation);
         await this.registerWorkflowNodeCache(node, outputRelation, cacheScope, cacheExpiresAt);
         return outputRelation;

@@ -81,6 +81,75 @@ function main() {
     expect(compiled.workflowDsl).toContain('drop [记录数]');
     expect(compiled.workflowDsl).toContain('filter [Profit] > 0');
     expect(compiled.workflowDsl).toContain('sort by [Profit] desc');
+    expect(compiled.operationOrigins).toEqual([
+      expect.objectContaining({
+        operatorIndex: 0,
+        operationType: 'drop',
+        functionName: 'removeRecordCount',
+      }),
+      expect.objectContaining({
+        operatorIndex: 1,
+        operationType: 'filter',
+        functionName: 'filterPositiveProfit',
+      }),
+      expect.objectContaining({
+        operatorIndex: 2,
+        operationType: 'sort',
+        functionName: 'sortByProfit',
+      }),
+    ]);
+  });
+
+  it('rejects generated helpers that chain multiple workflow operations', () => {
+    expect(() =>
+      compileJavascriptWorkflowToIr(
+        `
+function cleanPrice(input) {
+  return input.drop("记录数").rename("Adj Close", "adj_close").cast("adj_close", "decimal");
+}
+
+function main() {
+  const input = workflow().inputDataset(INPUT_TABLE_ID, "src");
+  const cleaned = cleanPrice(input);
+  return cleaned.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" });
+}
+`,
+        { enforceAtomicHelpers: true }
+      )
+    ).toThrow('Each helper must contain exactly one operation');
+  });
+
+  it('accepts generated programs composed from atomic helpers', () => {
+    const ir = compileJavascriptWorkflowToIr(
+      `
+function dropRecordCount(input) {
+  return input.drop("记录数");
+}
+
+function renameAdjClose(input) {
+  return input.rename("Adj Close", "adj_close");
+}
+
+function castAdjClose(input) {
+  return input.cast("adj_close", "decimal");
+}
+
+function main() {
+  const input = workflow().inputDataset(INPUT_TABLE_ID, "src");
+  const withoutCount = dropRecordCount(input);
+  const renamed = renameAdjClose(withoutCount);
+  const converted = castAdjClose(renamed);
+  return converted.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" });
+}
+`,
+      { enforceAtomicHelpers: true }
+    );
+
+    expect(ir.operations.map((operation) => operation.location?.functionName)).toEqual([
+      'dropRecordCount',
+      'renameAdjClose',
+      'castAdjClose',
+    ]);
   });
 
   it('rejects unsafe top-level JavaScript with line diagnostics', () => {
@@ -153,6 +222,87 @@ function main() {
     expect(compileJavascriptWorkflowToIr(patched).operations).toEqual([
       expect.objectContaining({ type: 'sort', direction: 'desc' }),
     ]);
+  });
+
+  it('allows a repair patch to split one helper into atomic helpers', () => {
+    const original = `
+function renameFields(input) {
+  return input.rename("Company Name", "company_name").rename("Ticker", "ticker");
+}
+
+function main() {
+  const input = workflow().inputDataset(INPUT_TABLE_ID, "src");
+  const renamed = renameFields(input);
+  return renamed.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" });
+}
+`;
+    const patched = applyJavascriptFunctionPatch(
+      original,
+      'renameFields',
+      `function renameCompany(input) {
+  return input.rename("Company Name", "company_name");
+}
+
+function renameTicker(input) {
+  return input.rename("Ticker", "ticker");
+}
+
+function renameFields(input) {
+  const companyRenamed = renameCompany(input);
+  return renameTicker(companyRenamed);
+}`
+    );
+
+    expect(patched).toContain('function main()');
+    expect(
+      compileJavascriptWorkflowToIr(patched, { enforceAtomicHelpers: true }).operations
+    ).toEqual([
+      expect.objectContaining({
+        type: 'rename',
+        source: 'Company Name',
+        target: 'company_name',
+        location: expect.objectContaining({ functionName: 'renameCompany' }),
+      }),
+      expect.objectContaining({
+        type: 'rename',
+        source: 'Ticker',
+        target: 'ticker',
+        location: expect.objectContaining({ functionName: 'renameTicker' }),
+      }),
+    ]);
+  });
+
+  it('rejects helper patches that replace main or redefine an existing helper', () => {
+    const original = `
+function renameFields(input) {
+  return input.rename("Company Name", "company_name");
+}
+
+function existingHelper(input) {
+  return input.drop("记录数");
+}
+
+function main() {
+  const input = workflow().inputDataset(INPUT_TABLE_ID, "src");
+  const renamed = renameFields(input);
+  return renamed.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" });
+}
+`;
+
+    expect(() =>
+      applyJavascriptFunctionPatch(
+        original,
+        'renameFields',
+        'function renameFields(input) { return input; }\nfunction main() { return null; }'
+      )
+    ).toThrow('must not replace function main');
+    expect(() =>
+      applyJavascriptFunctionPatch(
+        original,
+        'renameFields',
+        'function renameFields(input) { return input; }\nfunction existingHelper(input) { return input; }'
+      )
+    ).toThrow('cannot redefine existing function existingHelper');
   });
 
   it('compiles typed row-level IR without an operations adapter', () => {

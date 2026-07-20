@@ -55,7 +55,10 @@ interface ProgramObject {
 }
 
 /** Parses JavaScript as an AST and directly constructs Workflow IR. Generated code is never run. */
-export function compileJavascriptWorkflowToIr(code: string): WorkflowIr {
+export function compileJavascriptWorkflowToIr(
+  code: string,
+  options: { enforceAtomicHelpers?: boolean } = {}
+): WorkflowIr {
   const sourceFile = createSourceFile(code, 'generated-workflow.js');
   assertNoSyntaxErrors(sourceFile);
   const functions = collectFunctions(sourceFile);
@@ -77,7 +80,35 @@ export function compileJavascriptWorkflowToIr(code: string): WorkflowIr {
   if (!result.ir.outputSeen) {
     throw new DataCommandError('VALIDATION_FAILED', 'Generated workflow must call outputTable');
   }
+  if (options.enforceAtomicHelpers) assertAtomicWorkflowHelpers(result.ir);
   return result.ir;
+}
+
+function assertAtomicWorkflowHelpers(ir: WorkflowIr): void {
+  const operationsByHelper = new Map<string, WorkflowOperationIr[]>();
+  for (const operation of ir.operations) {
+    const functionName = operation.location?.functionName;
+    if (!functionName || functionName === 'main') continue;
+    const operations = operationsByHelper.get(functionName) ?? [];
+    operations.push(operation);
+    operationsByHelper.set(functionName, operations);
+  }
+  for (const [functionName, operations] of operationsByHelper) {
+    if (operations.length <= 1) continue;
+    const first = operations[0].location;
+    const message = `Generated helper ${functionName} contains ${operations.length} workflow operations. Each helper must contain exactly one operation; compose helpers with named const variables in main().`;
+    throw new DataCommandError('VALIDATION_FAILED', message, {
+      diagnostics: [
+        {
+          severity: 'error',
+          code: 'NON_ATOMIC_WORKFLOW_HELPER',
+          message,
+          line: first?.line,
+          column: first?.column,
+        },
+      ],
+    });
+  }
 }
 
 export function applyJavascriptFunctionPatch(
@@ -87,7 +118,8 @@ export function applyJavascriptFunctionPatch(
 ): string {
   const sourceFile = createSourceFile(code, 'generated-workflow.js');
   assertNoSyntaxErrors(sourceFile);
-  const target = collectFunctions(sourceFile).get(functionName);
+  const originalFunctions = collectFunctions(sourceFile);
+  const target = originalFunctions.get(functionName);
   if (!target) {
     throw new DataCommandError(
       'VALIDATION_FAILED',
@@ -97,11 +129,25 @@ export function applyJavascriptFunctionPatch(
   const replacementFile = createSourceFile(replacement, 'workflow-function-patch.js');
   assertNoSyntaxErrors(replacementFile);
   const replacements = collectFunctions(replacementFile);
-  if (replacements.size !== 1 || !replacements.has(functionName)) {
+  if (!replacements.has(functionName)) {
     throw new DataCommandError(
       'VALIDATION_FAILED',
-      `Workflow function patch must contain only function ${functionName}`
+      `Workflow function patch must contain function ${functionName}`
     );
+  }
+  for (const replacementName of replacements.keys()) {
+    if (replacementName === 'main' && functionName !== 'main') {
+      throw new DataCommandError(
+        'VALIDATION_FAILED',
+        'Workflow helper patch must not replace function main'
+      );
+    }
+    if (replacementName !== functionName && originalFunctions.has(replacementName)) {
+      throw new DataCommandError(
+        'VALIDATION_FAILED',
+        `Workflow function patch cannot redefine existing function ${replacementName}`
+      );
+    }
   }
   const declaration = target.declaration;
   return `${code.slice(0, declaration.getStart(sourceFile))}${replacement.trim()}${code.slice(declaration.getEnd())}`;

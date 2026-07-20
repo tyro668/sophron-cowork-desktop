@@ -13,6 +13,12 @@ export interface WorkflowSourceLocation {
   column: number;
 }
 
+export interface GeneratedWorkflowOperationOrigin extends WorkflowSourceLocation {
+  operationId: string;
+  operatorIndex: number;
+  operationType: WorkflowOperationIr['type'];
+}
+
 export type WorkflowExpressionIr =
   | { kind: 'column'; name: string }
   | { kind: 'literal'; value: WorkflowLiteral }
@@ -133,6 +139,8 @@ export interface GeneratedWorkflowColumnBinding {
 export interface GeneratedDataTaskWorkflow {
   /** Original generated JavaScript retained for function-level diagnostics and repair. */
   javascriptSource?: string;
+  /** Maps generated DSL operator positions back to atomic JavaScript helpers. */
+  operationOrigins?: GeneratedWorkflowOperationOrigin[];
   workflowDsl: string;
   requiredColumns: DataAutomationColumnSnapshot[];
   expectedOutputSchema: DataAutomationColumnSnapshot[];

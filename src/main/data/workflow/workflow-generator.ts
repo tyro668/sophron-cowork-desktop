@@ -151,27 +151,44 @@ export async function repairGeneratedWorkflowFromDiagnostics({
 }): Promise<GeneratedDataTaskWorkflow> {
   const config = requireGenerationRuntimeConfig(runtimeConfig);
   try {
-    const response = await runPiAiOneShot(
-      buildWorkflowGenerationUserPrompt({
-        inputTableId,
-        outputTableName,
-        requirement,
-        columns,
-        failedJavascriptSource,
-        diagnostics,
-      }),
-      buildWorkflowGenerationSystemPrompt(),
-      config,
-      { temperature: 0, maxTokens: 4_000 }
-    );
-    return compileRepairResponse({
-      text: response.text,
-      failedJavascriptSource,
-      inputTableId,
-      outputTableName,
-      requirement,
-      columns,
-    });
+    let currentJavascriptSource = failedJavascriptSource;
+    let currentDiagnostics = diagnostics;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await runPiAiOneShot(
+        buildWorkflowGenerationUserPrompt({
+          inputTableId,
+          outputTableName,
+          requirement,
+          columns,
+          failedJavascriptSource: currentJavascriptSource,
+          diagnostics: currentDiagnostics,
+        }),
+        buildWorkflowGenerationSystemPrompt(),
+        config,
+        { temperature: 0, maxTokens: 4_000 }
+      );
+      try {
+        return compileRepairResponse({
+          text: response.text,
+          failedJavascriptSource: currentJavascriptSource,
+          inputTableId,
+          outputTableName,
+          requirement,
+          columns,
+        });
+      } catch (error) {
+        const nextDiagnostics = diagnosticsFromGenerationError(error);
+        const retryAtomicRepair =
+          attempt === 0 &&
+          nextDiagnostics.some((diagnostic) => diagnostic.code === 'NON_ATOMIC_WORKFLOW_HELPER');
+        if (!retryAtomicRepair) throw error;
+        currentJavascriptSource =
+          extractRepairJavascriptCandidate(response.text, currentJavascriptSource) ??
+          currentJavascriptSource;
+        currentDiagnostics = nextDiagnostics;
+      }
+    }
+    throw new DataCommandError('VALIDATION_FAILED', 'Workflow repair attempts exhausted');
   } catch (error) {
     if (error instanceof DataCommandError) throw error;
     throw new DataCommandError(
@@ -245,8 +262,9 @@ function buildWorkflowGenerationSystemPrompt(): string {
     'Do not write Sophron Prep DSL, SQL, imports, loops, mutable variables, async code, classes, dynamic calls, or system/network/file access.',
     'Return {"javascriptSource":"..."}. The program must contain named helper functions and function main().',
     'Helper functions receive and return a workflow value. main() creates the input with workflow().inputDataset(INPUT_TABLE_ID, "src"), composes helpers using const variables, and returns outputTable(OUTPUT_TABLE_NAME, { mode: "replace" }).',
-    'Use one helper function per coherent data-processing step so compiler diagnostics can repair one function without rewriting the program.',
-    'For a repair request naming one failed function, return {"javascriptPatch":{"functionName":"...","replacement":"complete replacement function source"}} instead of regenerating unaffected functions.',
+    'Each helper function must perform exactly one workflow operation and return its result. Never chain multiple workflow methods inside one helper.',
+    'main() must compose atomic helpers through named const variables. Keep data-processing operations out of main(); main() only creates the input, invokes helpers, and returns outputTable().',
+    'For a repair request naming one failed function, return {"javascriptPatch":{"functionName":"...","replacement":"replacement source"}} instead of regenerating unaffected functions. The replacement must retain the named function and may also declare new uniquely named atomic helpers when splitting it is necessary; never include main in a helper patch.',
     `Allowed data-processing methods: ${getWorkflowJavascriptCapabilityPrompt()}.`,
     'Method signatures: filter(expr), sort(col("field"), "asc|desc"), drop("field" or ["field"]), select(["field"]), rename("source", "target"), derive("field", expr), cast("field", "text|integer|float|decimal|date|datetime|boolean", options), aggregate({ groupBy: [col("field")], metrics: [metric.sum(col("field")).as("alias"), metric.count().as("alias")] }).',
     'Single-input extended methods: deduplicate({ by?: ["field"], keep?: "first|last", orderBy?: [{ field, direction, nulls? }] }), handleMissing({ strategy: "drop_empty_rows" } or { rules: [{ column, method: "skip|drop|nullify_values|literal_fill", value?, values? }] }), limit(number or { count, unit?: "rows|percent", offset? }), top(count, [{ field, direction, nulls? }]), unpivot({ columns or except, nameColumn, valueColumn, includeNulls? }), unnest({ sourceKind: "list|json", column, alias, path?, withIndex?, recursive?, maxDepth?, keepParentNames? }), pivot({ on: ["field"], values: [fixed literals], using: [{ function, expression, alias }], groupBy?: ["field"] }).',
@@ -351,7 +369,7 @@ function buildWorkflowGenerationUserPrompt(input: {
               functionName: isRecord(diagnostic) ? diagnostic.functionName : undefined,
             })),
             instruction:
-              'If a diagnostic names one helper function, return javascriptPatch with only that replacement function. Otherwise return complete corrected javascriptSource. Do not return DSL.',
+              'If a diagnostic names one helper function, return javascriptPatch whose replacement retains that function. The replacement may additionally declare new uniquely named atomic helpers when the failed function must be split; keep the named function as an orchestration wrapper and do not include main. If no helper function is named (including NON_ATOMIC_WORKFLOW_HELPER), return complete corrected javascriptSource with main(). Do not return DSL.',
           }
         : undefined,
       examples: [
@@ -397,40 +415,32 @@ function compileRepairResponse({
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
 }): GeneratedDataTaskWorkflow {
-  const errors: string[] = [];
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(text) as unknown;
-    if (isRecord(parsed) && isRecord(parsed.javascriptPatch)) {
-      const functionName = parsed.javascriptPatch.functionName;
-      const replacement = parsed.javascriptPatch.replacement;
-      if (typeof functionName === 'string' && typeof replacement === 'string') {
-        const patched = applyJavascriptFunctionPatch(
-          failedJavascriptSource,
-          functionName,
-          replacement
-        );
-        return compileGeneratedJavascriptResponse({
-          text: JSON.stringify({ javascriptSource: patched }),
-          inputTableId,
-          outputTableName,
-          requirement,
-          columns,
-        });
-      }
-    }
+    parsed = JSON.parse(text) as unknown;
   } catch (error) {
-    errors.push(error instanceof Error ? error.message : String(error));
+    throw new DataCommandError(
+      'VALIDATION_FAILED',
+      `Repair generation response must be valid JSON: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
-  try {
+  if (isRecord(parsed) && isRecord(parsed.javascriptPatch)) {
+    const functionName = parsed.javascriptPatch.functionName;
+    const replacement = parsed.javascriptPatch.replacement;
+    if (typeof functionName !== 'string' || typeof replacement !== 'string') {
+      throw new DataCommandError(
+        'VALIDATION_FAILED',
+        'Repair javascriptPatch must include string functionName and replacement'
+      );
+    }
+    const patched = applyJavascriptFunctionPatch(failedJavascriptSource, functionName, replacement);
     return compileGeneratedJavascriptResponse({
-      text,
+      text: JSON.stringify({ javascriptSource: patched }),
       inputTableId,
       outputTableName,
       requirement,
       columns,
     });
-  } catch (error) {
-    errors.push(error instanceof Error ? error.message : String(error));
   }
 
   const workflowDsl = extractWorkflowDslFromModelResponse(text);
@@ -438,10 +448,32 @@ function compileRepairResponse({
     return parseGeneratedWorkflowDslResponse(JSON.stringify({ workflowDsl }), columns);
   }
 
-  throw new DataCommandError(
-    'VALIDATION_FAILED',
-    `Repair generation response must include javascriptSource. Parser errors: ${errors.join('; ')}`
-  );
+  return compileGeneratedJavascriptResponse({
+    text,
+    inputTableId,
+    outputTableName,
+    requirement,
+    columns,
+  });
+}
+
+function extractRepairJavascriptCandidate(
+  text: string,
+  failedJavascriptSource: string
+): string | null {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (isRecord(parsed) && isRecord(parsed.javascriptPatch)) {
+      const functionName = parsed.javascriptPatch.functionName;
+      const replacement = parsed.javascriptPatch.replacement;
+      if (typeof functionName === 'string' && typeof replacement === 'string') {
+        return applyJavascriptFunctionPatch(failedJavascriptSource, functionName, replacement);
+      }
+    }
+    return extractGeneratedJavascriptSource(text);
+  } catch {
+    return null;
+  }
 }
 
 function extractWorkflowDslFromModelResponse(text: string): string | null {
@@ -494,7 +526,7 @@ function compileGeneratedJavascriptResponse({
   columns: Array<{ name: string; type?: string }>;
 }): GeneratedDataTaskWorkflow {
   const javascriptSource = extractGeneratedJavascriptSource(text);
-  const ir = compileJavascriptWorkflowToIr(javascriptSource);
+  const ir = compileJavascriptWorkflowToIr(javascriptSource, { enforceAtomicHelpers: true });
   const compiled = compileGeneratedWorkflowIr({
     ir,
     inputTableId,
