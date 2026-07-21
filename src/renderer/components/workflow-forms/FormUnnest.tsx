@@ -15,12 +15,6 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
   const path = String(node.config.path ?? '');
   const withIndex = String(node.config.withIndex ?? '');
   const keepParentNames = Boolean(node.config.keepParentNames ?? false);
-  const recursive = Boolean(node.config.recursive ?? false);
-  const depth = (() => {
-    if (!recursive) return 0;
-    if (typeof node.config.maxDepth === 'number') return Number(node.config.maxDepth);
-    return -1;
-  })();
 
   return (
     <div className="grid content-start gap-2.5">
@@ -152,7 +146,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                 {tr('unnestOutputHeader', '输出配置')}
               </span>
               <span className="text-[10px] text-text-muted">
-                {tr('unnestOutputHint', '配置索引列与递归选项')}
+                {tr('unnestOutputHint', '配置索引列')}
               </span>
             </div>
           </div>
@@ -182,40 +176,6 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                   disabled={!withIndex}
                   onChange={(v) => updateConfig((cfg) => ({ ...cfg, withIndex: v || undefined }))}
                   className="h-8 text-[13px] w-full disabled:cursor-not-allowed disabled:opacity-40"
-                />
-              </div>
-
-              <div className="grid gap-1">
-                <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
-                  <input
-                    type="checkbox"
-                    checked={recursive}
-                    onChange={(e) =>
-                      updateConfig((cfg) => ({
-                        ...cfg,
-                        recursive: e.target.checked ? true : undefined,
-                        maxDepth: e.target.checked ? cfg.maxDepth : undefined,
-                      }))
-                    }
-                    className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
-                  />
-                  {tr('unnestRecursive', '递归展开')}
-                </label>
-                <GlassFormTextInput
-                  value={depth === -1 ? '' : String(depth)}
-                  disabled={!recursive}
-                  inputMode="numeric"
-                  onChange={(v) => {
-                    const n = v === '' ? -1 : Number(v);
-                    if (Number.isNaN(n)) return;
-                    if (n <= 0) {
-                      updateConfig((cfg) => ({ ...cfg, recursive: true, maxDepth: undefined }));
-                    } else {
-                      updateConfig((cfg) => ({ ...cfg, recursive: true, maxDepth: n }));
-                    }
-                  }}
-                  placeholder={tr('unnestMaxDepthPlaceholder', '不限制深度')}
-                  className="h-8 text-[13px] w-full"
                 />
               </div>
 

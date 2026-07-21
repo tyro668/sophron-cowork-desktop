@@ -7,6 +7,4 @@ export const UnnestConfigSchema = z.object({
   path: z.string().default('$'),
   withIndex: z.string().optional(),
   keepParentNames: z.boolean().default(false),
-  recursive: z.boolean().default(false),
-  maxDepth: z.number().optional(),
 });

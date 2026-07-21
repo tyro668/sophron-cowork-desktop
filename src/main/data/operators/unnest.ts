@@ -16,18 +16,14 @@ export function compileUnnestSql(
   const column = quoteIdentifier(rawColumn);
   const alias = quoteIdentifier(rawAlias);
   const withIndex = parsed.withIndex;
-  const recursive = parsed.recursive;
-  const maxDepth = parsed.maxDepth;
-  const keepParentNames = parsed.keepParentNames;
 
   const isJson = parsed.sourceKind === 'json';
 
-  const path = isJson ? literalToSql(parsed.path) : "'$'";
-  const aliasCol = keepParentNames && isJson ? quoteIdentifier(`${rawColumn}_${rawAlias}`) : alias;
-  const jsonCol = castToJsonExpr(`base.${column}`);
-
   // JSON mode — keep json_each (native DuckDB)
   if (isJson) {
+    const path = literalToSql(parsed.path);
+    const aliasCol = parsed.keepParentNames ? quoteIdentifier(`${rawColumn}_${rawAlias}`) : alias;
+    const jsonCol = castToJsonExpr(`base.${column}`);
     const indexSql = withIndex ? `, ROW_NUMBER() OVER () - 1 AS ${quoteIdentifier(withIndex)}` : '';
     return `
       CREATE TEMP TABLE ${output} AS
@@ -36,23 +32,8 @@ export function compileUnnestSql(
     `;
   }
 
-  // List mode — native UNNEST (only for native DuckDB arrays)
-  if (recursive) {
-    const depthLimit = maxDepth != null ? ` AND "_depth" < ${maxDepth}` : '';
-    const indexSql = withIndex ? `, ROW_NUMBER() OVER () - 1 AS ${quoteIdentifier(withIndex)}` : '';
-    return `
-      CREATE TEMP TABLE ${output} AS
-      WITH RECURSIVE flatten AS (
-        SELECT base.*, u AS "_val", 1 AS "_depth"
-        FROM ${input} base, UNNEST(base.${column}) AS t(u)
-        UNION ALL
-        SELECT flatten.* EXCLUDE ("_val", "_depth"), u AS "_val", flatten."_depth" + 1 AS "_depth"
-        FROM flatten, UNNEST(flatten."_val") AS t(u)
-        WHERE typeof(flatten."_val") LIKE '%[]%'${depthLimit}
-      )
-      SELECT * EXCLUDE ("_val", "_depth")${indexSql} FROM flatten
-    `;
-  }
+  // List mode — auto-cast to JSON[] if not already an array type
+  const colExpr = `COALESCE(TRY_CAST(base.${column} AS JSON[]), base.${column}::JSON::JSON[])`;
 
   const idxCols = withIndex ? `(${alias}, "_ordinal")` : `(${alias})`;
   const idxClause = withIndex ? ' WITH ORDINALITY' : '';
@@ -60,6 +41,6 @@ export function compileUnnestSql(
   return `
     CREATE TEMP TABLE ${output} AS
     SELECT base.*, item.${alias} AS ${alias}${idxSelect}
-    FROM ${input} base, UNNEST(base.${column})${idxClause} AS item${idxCols}
+    FROM ${input} base, UNNEST(${colExpr})${idxClause} AS item${idxCols}
   `;
 }

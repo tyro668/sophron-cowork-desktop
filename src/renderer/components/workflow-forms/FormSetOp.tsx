@@ -202,6 +202,8 @@ export default function FormSetOp({
   }, [rawRightInput, otherNodes]);
   const { confirm } = useConfirmDialog();
 
+  // Intentionally only depends on source/input identity, not operation/match
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     if (!taskId || !sourceNode?.id || !rawRightInput) return;
     const api = window.electronAPI?.data;
@@ -258,6 +260,7 @@ export default function FormSetOp({
       })
       .catch(() => {});
   }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config, rawRightInput, otherNodes]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   return (
     <div className="grid content-start gap-2.5">

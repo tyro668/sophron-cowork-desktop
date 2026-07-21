@@ -71,12 +71,11 @@ function compileRandomSql(
     return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} TABLESAMPLE ${method}(${Math.min(limit, 100)}%)${seed}`;
   }
   const rows = Math.floor(limit);
-  const method = parsed.method === 'system' ? ' (system)' : '';
   const seed = parsed.seed != null ? ` REPEATABLE(${parsed.seed})` : '';
   if (seed) {
     return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} USING SAMPLE reservoir(${rows} ROWS)${seed}`;
   }
-  return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} USING SAMPLE ${rows} ROWS${method}`;
+  return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} USING SAMPLE ${rows} ROWS`;
 }
 
 export function compileLimitSql(
