@@ -1720,9 +1720,20 @@ describe('DataCommandService', () => {
   it('infers integer output types for generated year and month fields', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow(
-          'workflow().inputDataset(INPUT_TABLE_ID, "src").derive("Year", fn.year(col("Date"))).derive("Month", fn.month(col("Date"))).outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
-        ),
+        javascriptSource: `function extractYear(input) {
+  return input.derive("Year", fn.year(col("Date")));
+}
+
+function extractMonth(input) {
+  return input.derive("Month", fn.month(col("Date")));
+}
+
+function main() {
+  const input = workflow().inputDataset(INPUT_TABLE_ID, "src");
+  const withYear = extractYear(input);
+  const withMonth = extractMonth(withYear);
+  return withMonth.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" });
+}`,
         requiredColumns: [],
       }),
       hasThinking: false,
@@ -1757,11 +1768,13 @@ describe('DataCommandService', () => {
       { name: 'Year', type: 'integer' },
       { name: 'Month', type: 'integer' },
     ]);
+    expect(runPiAiOneShot).toHaveBeenCalledTimes(1);
   });
 
   it('retries a repair when the first helper patch is still non-atomic', async () => {
     const nonAtomicSource = `function extractYearMonth(input) {
-  return input.derive("Year", fn.year(col("Date"))).derive("Month", fn.month(col("Date")));
+  const withYear = input.derive("Year", fn.year(col("Date")));
+  return withYear.derive("Month", fn.month(col("Date")));
 }
 
 function main() {
@@ -1780,7 +1793,8 @@ function main() {
           javascriptPatch: {
             functionName: 'extractYearMonth',
             replacement: `function extractYearMonth(input) {
-  return input.derive("Year", fn.year(col("Date"))).derive("Month", fn.month(col("Date")));
+  const withYear = input.derive("Year", fn.year(col("Date")));
+  return withYear.derive("Month", fn.month(col("Date")));
 }`,
           },
         }),
@@ -2121,7 +2135,7 @@ function extractYearMonth(input) {
     });
   });
 
-  it('rejects direct DSL generation fallback for unsupported operations by default', async () => {
+  it('rejects DSL responses because repairs must remain on the JavaScript pipeline', async () => {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
@@ -2174,60 +2188,6 @@ function extractYearMonth(input) {
       message: expect.stringContaining('javascriptSource'),
     });
     expect(runPiAiOneShot).toHaveBeenCalledTimes(2);
-  });
-
-  it('allows advanced DSL generation for unsupported operations only when gray fallback is enabled', async () => {
-    vi.stubEnv('SOPHRON_ENABLE_DIRECT_DSL_GENERATION', 'true');
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'market.csv');
-    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
-      name: 'market input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-    vi.mocked(runPiAiOneShot)
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptSource: asFunctionWorkflow(
-            'workflow().inputDataset(INPUT_TABLE_ID, "src").customDsl("filter EU market rows").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
-          ),
-          requiredColumns: [{ name: 'Market' }],
-        }),
-        hasThinking: false,
-        durationMs: 1,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          workflowDsl: [
-            `input source dataset "${input.inputTable.id}" as src`,
-            "  | filter [Market] <> 'EU'",
-            '  | output table "market processed" mode replace',
-          ].join('\n'),
-          requiredColumns: [{ name: 'Market' }],
-        }),
-        hasThinking: false,
-        durationMs: 1,
-      });
-
-    const generated = await service.generateTaskFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
-      },
-      processRequirement: '用高级逻辑过滤掉Market为EU的数据',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'market processed',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(runPiAiOneShot).toHaveBeenCalledTimes(2);
-    expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
-    expect(generated.requiredColumns).toEqual([{ name: 'Market', type: 'text' }]);
   });
 
   it('compiles a javascriptSource sort column when it matches the schema', async () => {

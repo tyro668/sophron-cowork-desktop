@@ -21,12 +21,6 @@ export const WORKFLOW_JAVASCRIPT_CAPABILITIES = [
   { method: 'unnest', operatorType: 'unnest' },
 ] as const;
 
-export const WORKFLOW_JAVASCRIPT_METHODS = new Set<string>([
-  'inputDataset',
-  ...WORKFLOW_JAVASCRIPT_CAPABILITIES.map((capability) => capability.method),
-  'outputTable',
-]);
-
 export function getWorkflowJavascriptCapabilityPrompt(): string {
   return WORKFLOW_JAVASCRIPT_CAPABILITIES.map((capability) => capability.method).join(', ');
 }

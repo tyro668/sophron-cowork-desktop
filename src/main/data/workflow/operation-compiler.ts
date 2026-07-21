@@ -22,6 +22,7 @@ import type {
   WorkflowMetricIr,
   WorkflowOperationIr,
 } from './workflow-model';
+import { validateAndNormalizeWorkflowIr } from './workflow-ir';
 export type {
   GeneratedDataTaskWorkflow,
   GeneratedWorkflowColumnBinding,
@@ -242,7 +243,7 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
           `  | map ${formatDslField(tempColumn)} to ${formatDslField(column.name)}`
         );
         context.removeColumn(column.name);
-        context.upsertColumn(convertedColumn);
+        context.upsertColumn({ ...convertedColumn, expression });
       } else {
         context.lines.push(
           `  | cast ${formatDslField(column.name)} as ${targetType} on_error ${onError}`
@@ -639,6 +640,10 @@ export function compileGeneratedWorkflowIr({
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
 }): GeneratedDataTaskWorkflow {
+  ir = validateAndNormalizeWorkflowIr(ir);
+  const provenanceByOperationId = new Map(
+    ir.provenance.map((entry) => [entry.operationId, entry.source] as const)
+  );
   const columnTracker = new ColumnStateTracker(columns);
   const requiredColumnsByName = new Map<string, { name: string; type?: string }>();
   const requireColumn = (name: unknown, context = 'operation'): GeneratedWorkflowColumnBinding => {
@@ -665,15 +670,22 @@ export function compileGeneratedWorkflowIr({
     getCurrentColumns: () => columnTracker.getCurrentColumns(),
   };
   for (const operation of ir.operations) {
+    const source = operation.operationId
+      ? (provenanceByOperationId.get(operation.operationId) ?? operation.location)
+      : operation.location;
     try {
       const lineCountBefore = lines.length;
       compileWorkflowOperation(operation, context);
       const emittedOperatorCount = lines.length - lineCountBefore;
-      if (operation.location) {
+      if (source) {
         for (let emittedIndex = 0; emittedIndex < emittedOperatorCount; emittedIndex += 1) {
           operationOrigins.push({
-            ...operation.location,
-            operationId: `${operation.location.functionName}:${operation.type}:${operatorIndex + emittedIndex}`,
+            ...source,
+            operationId:
+              emittedIndex === 0
+                ? (operation.operationId ??
+                  `${source.functionName}:${operation.type}:${operatorIndex}`)
+                : `${operation.operationId ?? `${source.functionName}:${operation.type}`}:${emittedIndex}`,
             operatorIndex: operatorIndex + emittedIndex,
             operationType: operation.type,
           });
@@ -681,7 +693,7 @@ export function compileGeneratedWorkflowIr({
       }
       operatorIndex += emittedOperatorCount;
     } catch (error) {
-      if (!(error instanceof DataCommandError) || !operation.location) throw error;
+      if (!(error instanceof DataCommandError) || !source) throw error;
       const existingDiagnostics =
         isRecord(error.details) && Array.isArray(error.details.diagnostics)
           ? error.details.diagnostics
@@ -693,7 +705,7 @@ export function compileGeneratedWorkflowIr({
             severity: 'error',
             code: error.code,
             message: error.message.replace(/^\[[A-Z_]+\]\s*/, ''),
-            ...operation.location,
+            ...source,
           },
         ],
       });

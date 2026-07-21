@@ -4,7 +4,6 @@ export {
   normalizeColumnSnapshot,
   repairGeneratedWorkflowFromDiagnostics,
 } from './workflow-generator';
-export { compileGeneratedWorkflowIr } from './operation-compiler';
 export {
   hashColumns,
   reconcileGeneratedWorkflowWithOutputPreview,
@@ -12,12 +11,5 @@ export {
   validateGeneratedTaskSchema,
   validateGeneratedWorkflowGenerationContract,
 } from './schema-inferencer';
-export type {
-  GeneratedDataTaskWorkflow,
-  GeneratedWorkflowColumnBinding,
-  GeneratedWorkflowRequiredColumnResolver,
-  WorkflowExpressionIr,
-  WorkflowMetricIr,
-  WorkflowOperationIr,
-} from './workflow-model';
+export type { GeneratedDataTaskWorkflow } from './workflow-model';
 export { isRecord } from './utils';

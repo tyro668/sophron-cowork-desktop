@@ -13,6 +13,14 @@ export interface WorkflowSourceLocation {
   column: number;
 }
 
+export type WorkflowSourceLanguage = 'javascript';
+
+export interface WorkflowOperationProvenance {
+  operationId: string;
+  language: WorkflowSourceLanguage;
+  source: WorkflowSourceLocation;
+}
+
 export interface GeneratedWorkflowOperationOrigin extends WorkflowSourceLocation {
   operationId: string;
   operatorIndex: number;
@@ -115,12 +123,22 @@ export type WorkflowOperationIr = (
   | { type: 'pivot'; config: WorkflowPivotConfig }
   | { type: 'unpivot'; config: WorkflowUnpivotConfig }
   | { type: 'unnest'; config: WorkflowUnnestConfig }
-) & { location?: WorkflowSourceLocation };
+) & {
+  operationId?: string;
+  inputOperationId?: string;
+  location?: WorkflowSourceLocation;
+};
 
 export interface WorkflowIr {
+  irVersion: '1.0';
+  kind: 'workflow';
+  sourceLanguage: WorkflowSourceLanguage;
+  sdkVersion?: string;
   inputSeen: boolean;
   outputSeen: boolean;
+  outputOperationId?: string | null;
   operations: WorkflowOperationIr[];
+  provenance: WorkflowOperationProvenance[];
 }
 
 export type GeneratedWorkflowRequiredColumnResolver = (
@@ -139,6 +157,9 @@ export interface GeneratedWorkflowColumnBinding {
 export interface GeneratedDataTaskWorkflow {
   /** Original generated JavaScript retained for function-level diagnostics and repair. */
   javascriptSource?: string;
+  /** Versioned, canonical SDK build result retained for audit and deterministic lowering. */
+  workflowIr?: WorkflowIr;
+  workflowIrSemanticHash?: string;
   /** Maps generated DSL operator positions back to atomic JavaScript helpers. */
   operationOrigins?: GeneratedWorkflowOperationOrigin[];
   workflowDsl: string;

@@ -1,5 +1,5 @@
-import type { PrepDiagnostic } from '../../../shared/prep-dsl';
 import { DataCommandError } from '../data-command-types';
+import type { PrepDiagnostic } from '../../../shared/prep-dsl';
 
 export function normalizeColumnType(type: string): string {
   return type.trim().toLowerCase();
