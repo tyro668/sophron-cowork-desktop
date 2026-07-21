@@ -220,7 +220,11 @@ export class DataCommandService {
         ).task;
     } catch (error) {
       if (resolvedOutput.created) {
-        await this.store.deleteDataset(outputTable.id).catch(() => undefined);
+        await this.store.deleteDataset(outputTable.id).catch((cleanupError) => {
+          logDataCommandFallback('Failed to roll back generated output dataset', cleanupError, {
+            outputTableId: outputTable.id,
+          });
+        });
       }
       throw error;
     }
@@ -250,13 +254,19 @@ export class DataCommandService {
           repairAttempt < GENERATED_WORKFLOW_REPAIR_ATTEMPTS;
           repairAttempt += 1
         ) {
+          if (!generated.javascriptSource) {
+            throw new DataCommandError(
+              'VALIDATION_FAILED',
+              'Generated workflow repair requires the original JavaScript source'
+            );
+          }
           generated = await repairGeneratedWorkflowFromDiagnostics({
             inputTableId: preparedInput.inputTable.id,
             outputTableName: outputTable.name,
             requirement: processRequirement,
             columns: preparedInput.columnsSnapshot,
             runtimeConfig: input.runtimeConfig,
-            failedJavascriptSource: generated.javascriptSource ?? generated.workflowDsl,
+            failedJavascriptSource: generated.javascriptSource,
             diagnostics: validationErrors,
           });
           validation = await this.validateGeneratedWorkflowCandidate({
@@ -299,10 +309,18 @@ export class DataCommandService {
       });
     } catch (error) {
       if (createdTaskId) {
-        await this.store.deleteTaskMetadataOnly(createdTaskId).catch(() => undefined);
+        await this.store.deleteTaskMetadataOnly(createdTaskId).catch((cleanupError) => {
+          logDataCommandFallback('Failed to roll back generated task metadata', cleanupError, {
+            taskId: createdTaskId,
+          });
+        });
       }
       if (resolvedOutput.created) {
-        await this.store.deleteDataset(outputTable.id).catch(() => undefined);
+        await this.store.deleteDataset(outputTable.id).catch((cleanupError) => {
+          logDataCommandFallback('Failed to roll back generated output dataset', cleanupError, {
+            outputTableId: outputTable.id,
+          });
+        });
       }
       throw error;
     }
@@ -697,7 +715,11 @@ export class DataCommandService {
       };
     } finally {
       if (temporaryTask) {
-        await this.store.cleanupTemporaryTaskResources(input.taskId).catch(() => undefined);
+        await this.store.cleanupTemporaryTaskResources(input.taskId).catch((cleanupError) => {
+          logDataCommandFallback('Failed to clean temporary validation resources', cleanupError, {
+            taskId: input.taskId,
+          });
+        });
       }
     }
   }
@@ -758,7 +780,11 @@ export class DataCommandService {
       throw toCommandError(error, 'RUN_FAILED');
     } finally {
       if (temporaryTask || outputMode === 'temporary') {
-        await this.store.cleanupTemporaryTaskResources(input.taskId).catch(() => undefined);
+        await this.store.cleanupTemporaryTaskResources(input.taskId).catch((cleanupError) => {
+          logDataCommandFallback('Failed to clean temporary task resources', cleanupError, {
+            taskId: input.taskId,
+          });
+        });
       }
     }
   }
@@ -887,7 +913,11 @@ export class DataCommandService {
         },
       };
     } finally {
-      await this.store.cleanupTemporaryTaskResources(input.taskId).catch(() => undefined);
+      await this.store.cleanupTemporaryTaskResources(input.taskId).catch((cleanupError) => {
+        logDataCommandFallback('Failed to clean generated-task temporary resources', cleanupError, {
+          taskId: input.taskId,
+        });
+      });
     }
   }
 
@@ -1180,7 +1210,11 @@ export class DataCommandService {
           limit,
           offset,
         });
-      } catch {
+      } catch (error) {
+        logDataCommandFallback('Runtime output preview failed; trying saved output', error, {
+          taskId,
+          nodeId: runtimeOutputNode.id,
+        });
         // Fall back to the saved output node or source dataset below.
       }
     }
@@ -1198,14 +1232,21 @@ export class DataCommandService {
           offset,
         });
       }
-    } catch {
+    } catch (error) {
+      logDataCommandFallback('Saved output preview failed; trying source dataset', error, {
+        taskId,
+      });
       // Fall back to source dataset below.
     }
 
     if (task.sourceDatasetId) {
       try {
         return await this.previewDataset(task.sourceDatasetId, limit, offset);
-      } catch {
+      } catch (error) {
+        logDataCommandFallback('Source dataset preview fallback failed', error, {
+          taskId,
+          sourceDatasetId: task.sourceDatasetId,
+        });
         return undefined;
       }
     }
@@ -1248,7 +1289,10 @@ export class DataCommandService {
       try {
         const preview = await this.previewDataset(inputTable.id, 20);
         columnsSnapshot = normalizeColumnSnapshot(preview.columnTypes);
-      } catch {
+      } catch (error) {
+        logDataCommandFallback('Failed to infer generated-task columns from local preview', error, {
+          inputTableId: inputTable.id,
+        });
         columnsSnapshot = [];
       }
     }
@@ -1714,6 +1758,18 @@ function isGeneratedWorkflowDiagnosticRepairable(diagnostic: PrepDiagnostic): bo
   return !/(timed?\s*out|econn|network|unauthori[sz]ed|permission denied|file.*not found|no such file|disk|cancelled|aborted)/i.test(
     diagnostic.message
   );
+}
+
+function logDataCommandFallback(
+  message: string,
+  error: unknown,
+  context: Record<string, unknown> = {}
+): void {
+  const errorDetails =
+    error instanceof Error
+      ? { name: error.name, message: error.message, stack: error.stack }
+      : { message: String(error) };
+  log(`[DataCommandService] ${message}`, { ...context, error: errorDetails });
 }
 
 function hashText(value: string): string {
