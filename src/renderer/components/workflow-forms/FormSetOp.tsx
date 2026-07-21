@@ -16,7 +16,8 @@ function checkTypeWarnings(
   leftColumns: string[],
   rightColumns: string[],
   operation: string,
-  match: string
+  match: string,
+  tr: (key: string, fallback: string) => string
 ): string[] {
   const warnings: string[] = [];
 
@@ -24,7 +25,9 @@ function checkTypeWarnings(
 
   if (!isUnionByName && leftColumns.length !== rightColumns.length) {
     warnings.push(
-      `左右两表列数不一致（左表 ${leftColumns.length} 列，右表 ${rightColumns.length} 列），缺失列已自动填充 NULL`
+      tr('setOpColumnCountMismatch', 'Column count mismatch')
+        .replace('{{leftCount}}', String(leftColumns.length))
+        .replace('{{rightCount}}', String(rightColumns.length))
     );
   }
 
@@ -33,11 +36,21 @@ function checkTypeWarnings(
     const mismatches: string[] = [];
     for (let i = 0; i < minLen; i++) {
       if (leftColumns[i] !== rightColumns[i]) {
-        mismatches.push(`第 ${i + 1} 列：左表「${leftColumns[i]}」≠ 右表「${rightColumns[i]}」`);
+        mismatches.push(
+          tr('setOpColumnNameMismatch', 'Column mismatch')
+            .replace('{{index}}', String(i + 1))
+            .replace('{{left}}', leftColumns[i])
+            .replace('{{right}}', rightColumns[i])
+        );
       }
     }
     if (mismatches.length > 0) {
-      warnings.push(`左右两表按位置匹配，但列名不同：${mismatches.join('；')}`);
+      warnings.push(
+        tr('setOpPositionMatchWarnings', 'Name mismatch warning').replace(
+          '{{details}}',
+          mismatches.join('；')
+        )
+      );
     }
   }
 
@@ -50,11 +63,19 @@ function checkTypeWarnings(
     if (TEMPORAL_TYPES.includes(lt) && TEMPORAL_TYPES.includes(rt)) continue;
     if (lt === 'text' || rt === 'text') {
       warnings.push(
-        `第 ${i + 1} 列「${leftTypes[i].name}」类型不一致（${lt} vs ${rt}），可能导致数据转换异常`
+        tr('setOpTypeMismatchWarning', 'Type mismatch warning')
+          .replace('{{index}}', String(i + 1))
+          .replace('{{col}}', leftTypes[i].name)
+          .replace('{{leftType}}', lt)
+          .replace('{{rightType}}', rt)
       );
     } else {
       warnings.push(
-        `第 ${i + 1} 列「${leftTypes[i].name}」类型不兼容（${lt} vs ${rt}），可能导致执行错误`
+        tr('setOpTypeIncompatibleWarning', 'Type incompatible warning')
+          .replace('{{index}}', String(i + 1))
+          .replace('{{col}}', leftTypes[i].name)
+          .replace('{{leftType}}', lt)
+          .replace('{{rightType}}', rt)
       );
     }
   }
@@ -215,19 +236,20 @@ export default function FormSetOp({
           leftCols,
           rightCols,
           operation,
-          match
+          match,
+          tr
         );
         if (warnings.length > 0) {
           const confirmed = await confirm({
-            title: '列类型不匹配',
+            title: tr('setOpTypeMismatchTitle', 'Column type mismatch'),
             message: (
               <div>
-                <p>左右两表的列类型不完全匹配，执行时可能出现数据转换异常：</p>
+                <p>{tr('setOpTypeMismatchDesc', 'Column types do not fully match')}</p>
                 <pre className="mt-2 whitespace-pre-wrap text-[12px]">{warnings.join('\n')}</pre>
               </div>
             ),
-            confirmLabel: '忽略警告',
-            cancelLabel: '取消',
+            confirmLabel: tr('setOpIgnoreWarning', 'Ignore warning'),
+            cancelLabel: tr('common.cancel', 'Cancel'),
           });
           if (!confirmed) {
             updateConfig((cfg) => ({ ...cfg, rightInput: undefined }));
@@ -303,7 +325,13 @@ export default function FormSetOp({
                 <button
                   key={op}
                   type="button"
-                  onClick={() => updateConfig((cfg) => ({ ...cfg, operation: op }))}
+                  onClick={() =>
+                    updateConfig((cfg) => ({
+                      ...cfg,
+                      operation: op,
+                      ...(op !== 'union' ? { match: undefined } : {}),
+                    }))
+                  }
                   className={`rounded-lg border p-2 flex items-center gap-2.5 transition-colors ${
                     operation === op
                       ? 'border-accent bg-accent/5'

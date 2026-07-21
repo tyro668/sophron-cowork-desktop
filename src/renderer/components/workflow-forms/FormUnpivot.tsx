@@ -109,7 +109,7 @@ export default function FormUnpivot({
                   className="text-[10px] text-text-muted ml-1"
                   title={tr('unpivotNameColTip', '新列的列名，存放原字段的名称')}
                 >
-                  (可选)
+                  ({tr('optional', '可选')})
                 </span>
               </span>
               <GlassFormTextInput
@@ -126,7 +126,7 @@ export default function FormUnpivot({
                   className="text-[10px] text-text-muted ml-1"
                   title={tr('unpivotValueColTip', '新列的列名，存放原字段的值')}
                 >
-                  (可选)
+                  ({tr('optional', '可选')})
                 </span>
               </span>
               <GlassFormTextInput

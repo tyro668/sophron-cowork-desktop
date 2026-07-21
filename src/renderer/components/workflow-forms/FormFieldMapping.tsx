@@ -6,6 +6,7 @@ import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList, type GlassRowListColumn, type RowAction } from './shared/GlassRowList';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useDragReorder } from '../../hooks/useDragReorder';
+import { useEnsureOneRow } from '../../hooks/useEnsureOneRow';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { computeUsedFields } from './shared/used-fields';
 
@@ -60,20 +61,14 @@ export default function FormFieldMapping({
     [node.config.mappings]
   );
 
-  // Auto-initialize with one empty row
-  useEffect(() => {
-    if (mappings.length === 0) {
-      commitMappings([{ ...DEFAULT_MAPPING }]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const commitMappings = useCallback(
     (next: MappingEntry[]) => {
       updateConfig((cfg) => ({ ...cfg, mappings: next.length > 0 ? next : undefined }));
     },
     [updateConfig]
   );
+
+  useEnsureOneRow(mappings, commitMappings, () => ({ ...DEFAULT_MAPPING }));
 
   const {
     activeItems: activeMappings,

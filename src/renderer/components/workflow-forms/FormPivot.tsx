@@ -168,7 +168,7 @@ export default function FormPivot({
           <div className="grid gap-1">
             <span className="mb-1 block text-[12px] font-medium text-text-secondary">
               {tr('pivotInLabel', '值列表')}
-              <span className="text-[10px] text-text-muted ml-1">(可选)</span>
+              <span className="text-[10px] text-text-muted ml-1">({tr('optional', '可选')})</span>
             </span>
             <GlassTagBar
               items={values}
@@ -192,7 +192,7 @@ export default function FormPivot({
           <div className="grid gap-1.5 content-start">
             <span className="mb-1 block text-[12px] font-medium text-text-secondary">
               {tr('pivotGroupByLabel', '分组字段')}
-              <span className="text-[10px] text-text-muted ml-1">(可选)</span>
+              <span className="text-[10px] text-text-muted ml-1">({tr('optional', '可选')})</span>
             </span>
             <GlassTagBar
               items={groupBy}

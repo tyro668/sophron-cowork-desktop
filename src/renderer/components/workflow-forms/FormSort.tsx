@@ -7,6 +7,7 @@ import { GlassRowList } from './shared/GlassRowList';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
+import { useEnsureOneRow } from '../../hooks/useEnsureOneRow';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { computeUsedFields } from './shared/used-fields';
 import type { SortKey } from '../../../shared/operator-schemas';
@@ -25,14 +26,6 @@ export default function FormSort({
 
   const keys = useMemo<SortKey[]>(() => (node.config.keys as SortKey[]) ?? [], [node.config.keys]);
 
-  // Auto-initialize with one empty row
-  useEffect(() => {
-    if (keys.length === 0) {
-      commitKeys([{ ...DEFAULT_SORT_KEY }]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
 
   const commitKeys = useCallback(
@@ -41,6 +34,8 @@ export default function FormSort({
     },
     [updateConfig]
   );
+
+  useEnsureOneRow(keys, commitKeys, () => ({ ...DEFAULT_SORT_KEY }));
 
   const {
     activeItems: activeKeys,
@@ -54,19 +49,6 @@ export default function FormSort({
 
   const updateKey = useCallback(
     (index: number, patch: Partial<SortKey>) => {
-      // Auto-resolve duplicate sort fields: clear the previous occurrence.
-      if ('field' in patch && patch.field) {
-        const existing = activeKeys.findIndex((k, i) => i !== index && k.field === patch.field);
-        if (existing !== -1) {
-          const next = activeKeys.map((k, i) => {
-            if (i === index) return { ...k, ...patch };
-            if (i === existing) return { ...k, field: '' };
-            return k;
-          });
-          commitKeys(next);
-          return;
-        }
-      }
       const next = activeKeys.map((k, i) => (i === index ? { ...k, ...patch } : k));
       commitKeys(next);
     },

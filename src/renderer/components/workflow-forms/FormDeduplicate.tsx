@@ -120,7 +120,7 @@ export default function FormDeduplicate({
   return (
     <div className="flex flex-col min-h-0 overflow-hidden" style={{ height: '100%' }}>
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-        {/* ── 已选字段（全宽�?── */}
+        {/* ── 已选字段（全宽）── */}
         {columns.length > 0 && (
           <div className="mb-2">
             <GlassTagBar
@@ -141,7 +141,7 @@ export default function FormDeduplicate({
         )}
 
         <div className="grid grid-cols-[40fr_60fr] gap-3 flex-1 min-h-0">
-          {/* ══�?LEFT: 选择字段 ══�?*/}
+          {/* ═══ LEFT: 选择字段 ═══ */}
           <GlassFieldMultiSelect
             columns={fieldCompletions}
             selected={columns}
@@ -150,7 +150,7 @@ export default function FormDeduplicate({
             maxHeight="none"
           />
 
-          {/* ══�?RIGHT: 保留策略 + 排序设置 ══�?*/}
+          {/* ═══ RIGHT: 保留策略 + 排序设置 ═══ */}
           <div className="overflow-y-auto min-h-0">
             <div className="grid content-start gap-2">
               {/* ── 保留策略 ── */}

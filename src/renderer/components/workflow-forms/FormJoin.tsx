@@ -11,6 +11,7 @@ import { parseDuration, normalizeDuration } from '@/shared/operator-schemas/join
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
+import { useConfirmDialog } from '../../components/ConfirmDialog';
 
 export interface ConditionEntry {
   left: string;
@@ -159,6 +160,7 @@ export default function FormJoin({
 }: OperatorFormProps) {
   const tr = useFormTranslation();
   const updateConfig = useUpdateConfig(onNodeChange);
+  const { confirm } = useConfirmDialog();
 
   const joinType = (node.config.joinType as string) ?? 'left';
   const conditions = useMemo(
@@ -345,7 +347,18 @@ export default function FormJoin({
     [rightFieldCompletions, rightColumnTypes, hasRightTypes]
   );
 
-  function handleJoinTypeChange(value: string) {
+  async function handleJoinTypeChange(value: string) {
+    const hasConditions = conditions.length > 0 && conditions.some((c) => c.left);
+    const hasAsof = joinType === 'asof' && Object.keys(asof).length > 0;
+    if ((value === 'cross' && hasConditions) || (value !== 'asof' && hasAsof)) {
+      const ok = await confirm({
+        title: tr('joinTypeChangeTitle', 'Change join type'),
+        message: tr('joinTypeChangeWarning', 'Changing join type will clear conditions'),
+        confirmLabel: tr('joinTypeChangeConfirm', 'Change and clear'),
+        cancelLabel: tr('common.cancel', 'Cancel'),
+      });
+      if (!ok) return;
+    }
     updateConfig((cfg) => ({
       ...cfg,
       joinType: value,
@@ -1121,7 +1134,9 @@ export default function FormJoin({
                 <h4 className="mb-1 text-[12px] font-medium text-text-secondary">
                   {leftSourceLabel || tr('leftInput', '左表')}
                 </h4>
-                <p className="mb-2 text-[10px] text-text-muted">勾选字段后可输入别名</p>
+                <p className="mb-2 text-[10px] text-text-muted">
+                  {tr('joinKeepAliasPrompt', '勾选字段后可输入别名')}
+                </p>
                 <label className="flex cursor-pointer items-center gap-1.5 mb-1.5 text-[12px] text-text-secondary font-medium">
                   <input
                     type="checkbox"
@@ -1169,7 +1184,9 @@ export default function FormJoin({
                 <h4 className="mb-1 text-[12px] font-medium text-text-secondary">
                   {rightSourceLabel || tr('rightInput', '右表')}
                 </h4>
-                <p className="mb-2 text-[10px] text-text-muted">勾选字段后可输入别名</p>
+                <p className="mb-2 text-[10px] text-text-muted">
+                  {tr('joinKeepAliasPrompt', '勾选字段后可输入别名')}
+                </p>
                 <label className="flex cursor-pointer items-center gap-1.5 mb-1.5 text-[12px] text-text-secondary font-medium">
                   <input
                     type="checkbox"
