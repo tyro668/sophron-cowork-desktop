@@ -2,13 +2,73 @@ import type { AgentRuntimeConfig } from '../../../renderer/types';
 import type { PrepDiagnostic } from '../../../shared/prep-dsl';
 import { runPiAiOneShot } from '../../claude/claude-sdk-one-shot';
 import { DataCommandError } from '../data-command-types';
-import { applyWorkflowFunctionPatch } from './javascript-runtime';
-import { getWorkflowJavascriptCapabilityPrompt } from './javascript-capabilities';
-import type { GeneratedDataTaskWorkflow } from './operation-compiler';
-import { compileGeneratedJavaScriptWorkflow } from './workflow-generation-pipeline';
+import {
+  applyWorkflowFunctionPatch,
+  assertAtomicWorkflowHelpers,
+  compileWorkflowJavaScript,
+  executeWorkflowJavaScriptInSandbox,
+} from './javascript-runtime';
+import { getWorkflowJavascriptCapabilityPrompt } from './workflow-operation-registry';
+import {
+  exportWorkflowOperationsToPrepDsl,
+  lowerWorkflowIrToOperations,
+  type GeneratedDataTaskWorkflow,
+} from './operation-compiler';
+import { computeWorkflowIrSemanticHash } from './workflow-ir';
 import { extractJsonObject, isRecord } from './utils';
 
 export const GENERATED_WORKFLOW_REPAIR_ATTEMPTS = 2;
+
+export function compileGeneratedJavaScriptWorkflow({
+  javascriptSource,
+  inputTableId,
+  outputTableName,
+  requirement,
+  columns,
+}: {
+  javascriptSource: string;
+  inputTableId: string;
+  outputTableName: string;
+  requirement: string;
+  columns: Array<{ name: string; type?: string }>;
+}): GeneratedDataTaskWorkflow {
+  const compiled = compileWorkflowJavaScript(javascriptSource);
+  const ir = executeWorkflowJavaScriptInSandbox({ compiled, inputTableId, outputTableName });
+  const verificationIr = executeWorkflowJavaScriptInSandbox({
+    compiled,
+    inputTableId,
+    outputTableName,
+  });
+  const semanticHash = computeWorkflowIrSemanticHash(ir);
+  if (semanticHash !== computeWorkflowIrSemanticHash(verificationIr)) {
+    throw new DataCommandError(
+      'VALIDATION_FAILED',
+      'Generated workflow JavaScript produced non-deterministic Workflow IR',
+      {
+        diagnostics: [
+          {
+            severity: 'error',
+            code: 'NON_DETERMINISTIC_WORKFLOW_BUILD',
+            message: 'The same JavaScript source produced different Workflow IR results',
+          },
+        ],
+      }
+    );
+  }
+  assertAtomicWorkflowHelpers(ir);
+  const operations = lowerWorkflowIrToOperations({ ir, inputTableId, outputTableName });
+  return {
+    ...exportWorkflowOperationsToPrepDsl({
+      workflow: operations,
+      sourceIr: ir,
+      requirement,
+      columns,
+    }),
+    javascriptSource,
+    workflowIr: ir,
+    workflowIrSemanticHash: semanticHash,
+  };
+}
 
 function normalizeOptionalName(name: string | undefined): string | undefined {
   const normalized = name?.trim();
@@ -192,13 +252,11 @@ function buildWorkflowGenerationSystemPrompt(): string {
     'Use only the provided input columns. Do not invent field names.',
     'Do not write Sophron Prep DSL, SQL, imports, loops, mutable variables, async code, classes, dynamic calls, or system/network/file access.',
     'Return {"javascriptSource":"..."}. The program must contain named helper functions and function main().',
-    'Use ordinary function-call syntax for workflow operations. Call inputDataset(INPUT_TABLE_ID, "src"), drop(input, ...), rename(input, ...), derive(input, ...), cast(input, ...), and outputTable(input, OUTPUT_TABLE_NAME, { mode: "replace" }). Never use fluent receiver chains such as input.drop(...).rename(...).',
+    'Use only the fixed bridge API workflow.input(INPUT_TABLE_ID, { alias: "src" }), workflow.step(input, operationType, payload), and workflow.output(input, OUTPUT_TABLE_NAME, { mode: "replace" }). Never call operation-specific functions or fluent receiver chains.',
     'Helper functions receive and return a workflow value. Each helper function must perform exactly one workflow operation and return its result.',
-    'main() must compose atomic helpers through named const variables. Keep data-processing operations out of main(); main() only creates the input with inputDataset(), invokes helpers, and returns outputTable().',
+    'main() must compose atomic helpers through named const variables. Keep workflow.step() calls out of main(); main() only creates the input with workflow.input(), invokes helpers, and returns workflow.output().',
     'For a repair request naming one failed function, return {"javascriptPatch":{"functionName":"...","replacement":"replacement source"}} instead of regenerating unaffected functions. The replacement must retain the named function and may also declare new uniquely named atomic helpers when splitting it is necessary; never include main in a helper patch.',
-    `Allowed data-processing functions: ${getWorkflowJavascriptCapabilityPrompt()}. Every data-processing function takes the input workflow as its first argument.`,
-    'Function signatures: filter(input, expr), sort(input, col("field"), "asc|desc"), drop(input, "field" or ["field"]), select(input, ["field"]), rename(input, "source", "target"), derive(input, "field", expr), cast(input, "field", "text|integer|float|decimal|date|datetime|boolean", options), aggregate(input, { groupBy: [col("field")], metrics: [metric.sum(col("field")).as("alias"), metric.count().as("alias")] }).',
-    'Single-input extended functions: deduplicate(input, { by?: ["field"], keep?: "first|last", orderBy?: [{ field, direction, nulls? }] }), handleMissing(input, { strategy: "drop_empty_rows" } or { rules: [{ column, method: "skip|drop|nullify_values|literal_fill", value?, values? }] }), limit(input, number or { count, unit?: "rows|percent", offset? }), top(input, count, [{ field, direction, nulls? }]), unpivot(input, { columns or except, nameColumn, valueColumn, includeNulls? }), unnest(input, { sourceKind: "list|json", column, alias, path?, withIndex?, recursive?, maxDepth?, keepParentNames? }), pivot(input, { on: ["field"], values: [fixed literals], using: [{ function, expression, alias }], groupBy?: ["field"] }).',
+    `Allowed workflow steps and canonical payloads: ${getWorkflowJavascriptCapabilityPrompt()}.`,
     'Automation has exactly one input dataset. Never call join, union, intersect, except, setOp, or reference a second input.',
     'Pivot must use exactly one on field, a non-empty fixed values array, and exactly one metric so the saved output schema is deterministic.',
     'Allowed expression APIs: col("field"), lit(value), fn.regexpExtract(expr, pattern), fn.year(expr), fn.month(expr), fn.upper(expr), fn.lower(expr), fn.trim(expr), fn.replace(expr, search, replacement), fn.concat(...exprs).',
@@ -257,13 +315,13 @@ function buildWorkflowGenerationUserPrompt(input: {
         {
           requirement: '过滤掉Market为EU的数据',
           javascriptSource:
-            'function filterEurope(input) {\n  return filter(input, col("Market").neq(lit("EU")));\n}\n\nfunction main() {\n  const input = inputDataset(INPUT_TABLE_ID, "src");\n  const filtered = filterEurope(input);\n  return outputTable(filtered, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+            'function filterEurope(input) {\n  return workflow.step(input, "filter", { condition: col("Market").neq(lit("EU")) });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const filtered = filterEurope(input);\n  return workflow.output(filtered, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
           requiredColumns: [{ name: 'Market' }],
         },
         {
           requirement: '按照Sales升序排列，删除记录数',
           javascriptSource:
-            'function sortSales(input) {\n  return sort(input, col("Sales"), "asc");\n}\n\nfunction removeRecordCount(input) {\n  return drop(input, "记录数");\n}\n\nfunction main() {\n  const input = inputDataset(INPUT_TABLE_ID, "src");\n  const sorted = sortSales(input);\n  const cleaned = removeRecordCount(sorted);\n  return outputTable(cleaned, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+            'function sortSales(input) {\n  return workflow.step(input, "sort", { column: col("Sales"), direction: "asc" });\n}\n\nfunction removeRecordCount(input) {\n  return workflow.step(input, "drop", { columns: ["记录数"] });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const sorted = sortSales(input);\n  const cleaned = removeRecordCount(sorted);\n  return workflow.output(cleaned, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
           requiredColumns: [{ name: 'Sales' }, { name: '记录数' }],
         },
       ],

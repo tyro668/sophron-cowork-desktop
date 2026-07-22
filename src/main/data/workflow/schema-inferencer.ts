@@ -1,8 +1,11 @@
 import type { PrepDiagnostic } from '../../../shared/prep-dsl';
 import type { DataAutomationColumnSnapshot, DataInputTablePreview } from '../../../renderer/types';
 import { DataCommandError } from '../data-command-types';
-import { type GeneratedDataTaskWorkflow, areComparableColumnTypes } from './operation-compiler';
-import { toAutomationColumnSnapshot } from './lineage';
+import {
+  type GeneratedDataTaskWorkflow,
+  areComparableColumnTypes,
+  toAutomationColumnSnapshot,
+} from './operation-compiler';
 import { normalizeColumnType } from './utils';
 export function hashColumns(columns: Array<{ name: string; type?: string }>): string {
   const value = JSON.stringify(

@@ -71,27 +71,12 @@ export function literalToDsl(value: unknown): string {
   return `'${String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 }
 
-export function findDslBacktickFieldEnd(value: string, start: number): number | null {
-  for (let index = start; index < value.length; index += 1) {
-    const char = value[index];
-    if (char === '\\') {
-      index += 1;
-      continue;
-    }
-    if (char === '`') {
-      return value[index + 1] === ']' ? index + 1 : null;
-    }
-  }
-  return null;
-}
-
-export const DSL_FIELD_REF_TOKEN_PATTERN =
-  '\\[(?:`((?:[^`\\\\]|\\\\.)*)`|([\\p{L}_][\\p{L}\\p{N}_]*))\\]';
-export const DSL_FIELD_REF_PATTERN = new RegExp(
+const DSL_FIELD_REF_TOKEN_PATTERN = '\\[(?:`((?:[^`\\\\]|\\\\.)*)`|([\\p{L}_][\\p{L}\\p{N}_]*))\\]';
+const DSL_FIELD_REF_PATTERN = new RegExp(
   `${DSL_FIELD_REF_TOKEN_PATTERN}(?:\\.${DSL_FIELD_REF_TOKEN_PATTERN})?`,
   'gu'
 );
-export const DSL_STRING_LITERAL_PATTERN = /'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g;
+const DSL_STRING_LITERAL_PATTERN = /'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g;
 
 export function extractFieldNamesFromExpression(expression: string): string[] {
   const withoutStrings = expression.replace(DSL_STRING_LITERAL_PATTERN, '');
@@ -103,11 +88,6 @@ export function extractFieldNamesFromExpression(expression: string): string[] {
     if (name) names.push(name);
   }
   return names;
-}
-
-export function stripQualifiedFieldName(name: string): string {
-  const separatorIndex = name.lastIndexOf('.');
-  return separatorIndex >= 0 ? name.slice(separatorIndex + 1) : name;
 }
 
 export function unescapeDslBacktickField(name: string): string {

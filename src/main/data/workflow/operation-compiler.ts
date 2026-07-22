@@ -1,6 +1,9 @@
 import { DataCommandError } from '../data-command-types';
+import type {
+  DataAutomationColumnSnapshot,
+  DataAutomationLineageEntry,
+} from '../../../renderer/types';
 import {
-  DSL_STRING_LITERAL_PATTERN,
   escapeDslString,
   formatDslField,
   inferUnpivotValueType,
@@ -29,7 +32,75 @@ export type {
   GeneratedWorkflowRequiredColumnResolver,
 } from './workflow-model';
 
-export class ColumnStateTracker {
+interface WorkflowOperationsV1 {
+  operationsVersion: '1.0';
+  inputTableId: string;
+  outputTableName: string;
+  outputOperationId: string | null;
+  operations: WorkflowOperationIr[];
+}
+
+export function lowerWorkflowIrToOperations({
+  ir,
+  inputTableId,
+  outputTableName,
+}: {
+  ir: WorkflowIr;
+  inputTableId: string;
+  outputTableName: string;
+}): WorkflowOperationsV1 {
+  const normalized = validateAndNormalizeWorkflowIr(ir);
+  if (!inputTableId.trim() || !outputTableName.trim()) {
+    throw new DataCommandError(
+      'VALIDATION_FAILED',
+      'Workflow lowering requires input and output resource bindings'
+    );
+  }
+  return {
+    operationsVersion: '1.0',
+    inputTableId,
+    outputTableName,
+    outputOperationId:
+      normalized.outputOperationId ?? normalized.operations.at(-1)?.operationId ?? null,
+    operations: normalized.operations.map((operation) => ({ ...operation })),
+  };
+}
+
+export function exportWorkflowOperationsToPrepDsl({
+  workflow,
+  sourceIr,
+  requirement,
+  columns,
+}: {
+  workflow: WorkflowOperationsV1;
+  sourceIr: WorkflowIr;
+  requirement: string;
+  columns: DataAutomationColumnSnapshot[];
+}): GeneratedDataTaskWorkflow {
+  if (
+    workflow.operationsVersion !== '1.0' ||
+    !workflow.inputTableId.trim() ||
+    !workflow.outputTableName.trim()
+  ) {
+    throw new DataCommandError(
+      'VALIDATION_FAILED',
+      'Workflow operations require valid input and output resource bindings'
+    );
+  }
+  return compileGeneratedWorkflowIr({
+    ir: {
+      ...sourceIr,
+      outputOperationId: workflow.outputOperationId,
+      operations: workflow.operations,
+    },
+    inputTableId: workflow.inputTableId,
+    outputTableName: workflow.outputTableName,
+    requirement,
+    columns,
+  });
+}
+
+class ColumnStateTracker {
   private readonly columnsByName = new Map<string, GeneratedWorkflowColumnBinding>();
 
   constructor(
@@ -1185,58 +1256,30 @@ function normalizePlanAggregateFunction(fn: unknown): string {
   }
 }
 
-import {
-  sourceColumnsFromBinding,
-  toAutomationColumnSnapshot,
-  toAutomationLineageEntry,
-} from './lineage';
-export {
-  sourceColumnsFromBinding,
-  toAutomationColumnSnapshot,
-  toAutomationLineageEntry,
-} from './lineage';
-
-export function assertExpressionTypeCompatible(
-  expression: string,
-  referencedColumns: GeneratedWorkflowColumnBinding[],
-  context: string
-): void {
-  if (!expressionUsesArithmetic(expression)) return;
-  const incompatible = referencedColumns.filter(
-    (column) => column.type && !isNumericDslType(column.type)
-  );
-  if (incompatible.length > 0) {
-    throw new DataCommandError(
-      'VALIDATION_FAILED',
-      `Generated workflow ${context} uses non-numeric column(s) in arithmetic expression: ${incompatible
-        .map((column) => `${column.name} (${column.type})`)
-        .join(', ')}`
-    );
-  }
+function sourceColumnsFromBinding(
+  column: GeneratedWorkflowColumnBinding
+): Array<{ name: string; type?: string }> {
+  if (column.sourceColumns && column.sourceColumns.length > 0) return column.sourceColumns;
+  return column.sourceColumn ? [column.sourceColumn] : [];
 }
 
-export function inferExpressionResultType(
-  expression: string,
-  referencedColumns: GeneratedWorkflowColumnBinding[]
-): string | undefined {
-  const castMatches = [...expression.matchAll(/\bAS\s+([A-Z]+)(?:\s*\([^)]*\))?/gi)];
-  const lastCastMatch = castMatches[castMatches.length - 1];
-  if (lastCastMatch?.[1]) return normalizeDslTypeName(lastCastMatch[1]);
-  if (/\b(REGEXP_EXTRACT|CONCAT|SUBSTR|LOWER|UPPER|TRIM|REPLACE)\s*\(/i.test(expression)) {
-    return 'text';
-  }
-  if (/\b(YEAR|MONTH|DAY|DATE_PART|EXTRACT)\s*\(/i.test(expression)) {
-    return 'integer';
-  }
-  if (/\b(COUNT)\s*\(/i.test(expression)) return 'integer';
-  if (/\b(SUM|AVG|ROUND)\s*\(/i.test(expression)) return 'decimal';
-  if (expressionUsesArithmetic(expression)) {
-    return referencedColumns.some((column) => column.type && isDecimalLikeDslType(column.type))
-      ? 'decimal'
-      : 'integer';
-  }
-  if (referencedColumns.length === 1) return referencedColumns[0]?.type;
-  return undefined;
+export function toAutomationColumnSnapshot(
+  column: GeneratedWorkflowColumnBinding | DataAutomationColumnSnapshot
+): DataAutomationColumnSnapshot {
+  return {
+    name: column.name,
+    type: column.type ? normalizeDslTypeName(column.type) : undefined,
+  };
+}
+
+function toAutomationLineageEntry(
+  column: GeneratedWorkflowColumnBinding
+): DataAutomationLineageEntry {
+  return {
+    ...toAutomationColumnSnapshot(column),
+    sourceColumns: sourceColumnsFromBinding(column).map(toAutomationColumnSnapshot),
+    expression: column.expression,
+  };
 }
 
 function assertGeneratedFilterComparable(
@@ -1294,7 +1337,7 @@ function assertAggregateMetricType(
   }
 }
 
-export function inferAggregateMetricType(
+function inferAggregateMetricType(
   fn: string,
   sourceColumn: GeneratedWorkflowColumnBinding | null
 ): string | undefined {
@@ -1305,7 +1348,7 @@ export function inferAggregateMetricType(
   return sourceColumn?.type;
 }
 
-export function uniqueSourceColumns(
+function uniqueSourceColumns(
   columns: Array<{ name: string; type?: string }>
 ): Array<{ name: string; type?: string }> {
   const unique = new Map<string, { name: string; type?: string }>();
@@ -1313,11 +1356,6 @@ export function uniqueSourceColumns(
     unique.set(column.name.toLowerCase(), column);
   }
   return [...unique.values()];
-}
-
-function expressionUsesArithmetic(expression: string): boolean {
-  const withoutStrings = expression.replace(DSL_STRING_LITERAL_PATTERN, '');
-  return /(?:^|[^<>!=])[-+*/](?:[^=]|$)/.test(withoutStrings);
 }
 
 export function areComparableColumnTypes(left: string, right: string): boolean {
@@ -1329,7 +1367,7 @@ export function areComparableColumnTypes(left: string, right: string): boolean {
   );
 }
 
-export function areOrderedComparableColumnTypes(left: string, right: string): boolean {
+function areOrderedComparableColumnTypes(left: string, right: string): boolean {
   const normalizedLeft = normalizeDslTypeName(left);
   const normalizedRight = normalizeDslTypeName(right);
   if (isNumericDslType(normalizedLeft) && isNumericDslType(normalizedRight)) return true;

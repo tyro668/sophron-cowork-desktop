@@ -12,7 +12,103 @@ import type { AgentRuntimeConfig } from '../src/renderer/types';
 import type { PersonalAnalysisConnectionInput } from '../src/shared/personal-analysis-types';
 
 function asFunctionWorkflow(chain: string): string {
-  return `function main() {\n  return ${chain};\n}`;
+  const calls = splitWorkflowChain(chain);
+  const operations = calls.filter(
+    (call) =>
+      call.name !== 'workflow' && call.name !== 'inputDataset' && call.name !== 'outputTable'
+  );
+  const helpers = operations.map((call, index) => {
+    const payload = legacyCallPayload(call.name, call.args);
+    return `function step${index + 1}(input) {\n  return workflow.step(input, ${JSON.stringify(
+      payload.type
+    )}, ${payload.fields});\n}`;
+  });
+  const body = [
+    'function main() {',
+    '  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });',
+    ...operations.map(
+      (_call, index) =>
+        `  const value${index + 1} = step${index + 1}(${index === 0 ? 'input' : `value${index}`});`
+    ),
+    `  return workflow.output(${operations.length ? `value${operations.length}` : 'input'}, OUTPUT_TABLE_NAME, { mode: "replace" });`,
+    '}',
+  ];
+  return [...helpers, body.join('\n')].join('\n\n');
+}
+
+function splitWorkflowChain(source: string): Array<{ name: string; args: string[] }> {
+  const calls: Array<{ name: string; args: string[] }> = [];
+  const pattern = /(?:^|\.)\s*([A-Za-z_$][\w$]*)\s*\(/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(source))) {
+    const open = pattern.lastIndex - 1;
+    let depth = 0;
+    let quote: string | null = null;
+    let end = open;
+    for (; end < source.length; end += 1) {
+      const char = source[end];
+      if (quote) {
+        if (char === '\\') end += 1;
+        else if (char === quote) quote = null;
+      } else if (char === '"' || char === "'" || char === '`') quote = char;
+      else if (char === '(') depth += 1;
+      else if (char === ')' && --depth === 0) break;
+    }
+    calls.push({ name: match[1], args: splitTopLevelArguments(source.slice(open + 1, end)) });
+    pattern.lastIndex = end + 1;
+  }
+  return calls;
+}
+
+function splitTopLevelArguments(source: string): string[] {
+  if (!source.trim()) return [];
+  const args: string[] = [];
+  let start = 0;
+  let depth = 0;
+  let quote: string | null = null;
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (quote) {
+      if (char === '\\') index += 1;
+      else if (char === quote) quote = null;
+    } else if (char === '"' || char === "'" || char === '`') quote = char;
+    else if ('([{'.includes(char)) depth += 1;
+    else if (')]}'.includes(char)) depth -= 1;
+    else if (char === ',' && depth === 0) {
+      args.push(source.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  args.push(source.slice(start).trim());
+  return args;
+}
+
+function legacyCallPayload(name: string, args: string[]): { type: string; fields: string } {
+  switch (name) {
+    case 'filter':
+      return { type: 'filter', fields: `{ condition: ${args[0]} }` };
+    case 'sort':
+      return { type: 'sort', fields: `{ column: ${args[0]}, direction: ${args[1]} }` };
+    case 'drop':
+    case 'select':
+      return {
+        type: name,
+        fields: `{ columns: ${args[0]?.trim().startsWith('[') ? args[0] : `[${args[0]}]`} }`,
+      };
+    case 'rename':
+      return { type: 'rename', fields: `{ source: ${args[0]}, target: ${args[1]} }` };
+    case 'derive':
+      return { type: 'derive', fields: `{ column: ${args[0]}, expression: ${args[1]} }` };
+    case 'cast':
+      return {
+        type: 'convert_type',
+        fields: `{ column: ${args[0]}, targetType: ${args[1]}, options: ${args[2] ?? '{}'} }`,
+      };
+    case 'aggregate':
+      return { type: 'aggregate', fields: args[0] };
+    default:
+      return { type: name, fields: args[0] ?? '{}' };
+  }
 }
 
 vi.mock('../src/main/claude/claude-sdk-one-shot', () => ({
@@ -1721,18 +1817,18 @@ describe('DataCommandService', () => {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
         javascriptSource: `function extractYear(input) {
-  return input.derive("Year", fn.year(col("Date")));
+  return workflow.step(input, "derive", { column: "Year", expression: fn.year(col("Date")) });
 }
 
 function extractMonth(input) {
-  return input.derive("Month", fn.month(col("Date")));
+  return workflow.step(input, "derive", { column: "Month", expression: fn.month(col("Date")) });
 }
 
 function main() {
-  const input = workflow().inputDataset(INPUT_TABLE_ID, "src");
+  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
   const withYear = extractYear(input);
   const withMonth = extractMonth(withYear);
-  return withMonth.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" });
+  return workflow.output(withMonth, OUTPUT_TABLE_NAME, { mode: "replace" });
 }`,
         requiredColumns: [],
       }),
@@ -1773,14 +1869,14 @@ function main() {
 
   it('retries a repair when the first helper patch is still non-atomic', async () => {
     const nonAtomicSource = `function extractYearMonth(input) {
-  const withYear = input.derive("Year", fn.year(col("Date")));
-  return withYear.derive("Month", fn.month(col("Date")));
+  const withYear = workflow.step(input, "derive", { column: "Year", expression: fn.year(col("Date")) });
+  return workflow.step(withYear, "derive", { column: "Month", expression: fn.month(col("Date")) });
 }
 
 function main() {
-  const input = workflow().inputDataset(INPUT_TABLE_ID, "src");
+  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
   const extracted = extractYearMonth(input);
-  return extracted.outputTable(OUTPUT_TABLE_NAME, { mode: "replace" });
+  return workflow.output(extracted, OUTPUT_TABLE_NAME, { mode: "replace" });
 }`;
     vi.mocked(runPiAiOneShot)
       .mockResolvedValueOnce({
@@ -1793,8 +1889,8 @@ function main() {
           javascriptPatch: {
             functionName: 'extractYearMonth',
             replacement: `function extractYearMonth(input) {
-  const withYear = input.derive("Year", fn.year(col("Date")));
-  return withYear.derive("Month", fn.month(col("Date")));
+  const withYear = workflow.step(input, "derive", { column: "Year", expression: fn.year(col("Date")) });
+  return workflow.step(withYear, "derive", { column: "Month", expression: fn.month(col("Date")) });
 }`,
           },
         }),
@@ -1806,11 +1902,11 @@ function main() {
           javascriptPatch: {
             functionName: 'extractYearMonth',
             replacement: `function extractYear(input) {
-  return input.derive("Year", fn.year(col("Date")));
+  return workflow.step(input, "derive", { column: "Year", expression: fn.year(col("Date")) });
 }
 
 function extractMonth(input) {
-  return input.derive("Month", fn.month(col("Date")));
+  return workflow.step(input, "derive", { column: "Month", expression: fn.month(col("Date")) });
 }
 
 function extractYearMonth(input) {
