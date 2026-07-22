@@ -15,6 +15,9 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
   const path = String(node.config.path ?? '');
   const withIndex = String(node.config.withIndex ?? '');
   const keepParentNames = Boolean(node.config.keepParentNames ?? false);
+  const preserveOrder = Boolean(node.config.preserveOrder ?? false);
+
+  const isObjectMode = sourceKind === 'json';
 
   return (
     <div className="grid content-start gap-2.5">
@@ -30,7 +33,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                 {tr('unnestSourceHeader', '数据来源')}
               </span>
               <span className="text-[10px] text-text-muted">
-                {tr('unnestSourceHint', '选择包含数组或 JSON 的字段及类型')}
+                {tr('unnestSourceHint', '选择要展开的字段，并指定展开方式')}
               </span>
             </div>
           </div>
@@ -54,24 +57,30 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                 options={[
                   {
                     value: 'list',
-                    label: 'List',
+                    label: tr('unnestSourceTypeList', '展开为行'),
                     tip: tr(
-                      'unnestSourceTypeList',
-                      '用于原生 DuckDB 数组（LIST 类型），如 [1,2,3]、["a","b"]；元素可以是标量或结构体'
+                      'unnestSourceTypeListTip',
+                      '将数组展开为多行，支持原生数组和 JSON 数组字符串'
                     ),
                   },
                   {
                     value: 'json',
-                    label: 'JSON',
-                    tip: tr(
-                      'unnestSourceTypeJson',
-                      '用于 JSON 字符串或对象，如 \'[{"product":"手机"}]\'；支持路径定位子数组'
-                    ),
+                    label: tr('unnestSourceTypeObject', '展开为列'),
+                    tip: tr('unnestSourceTypeJsonTip', '将 JSON 对象展开为多列，每个 key 一列'),
                   },
                 ]}
                 onChange={(v) => updateConfig((cfg) => ({ ...cfg, sourceKind: v }))}
-                label={tr('unnestSourceType', '源类型')}
+                label={tr('unnestSourceType', '展开方式')}
               />
+              {isObjectMode ? (
+                <span className="text-[11px] text-text-muted">
+                  {tr('unnestObjectHint', '结果：JSON 对象的每个 key 展开为一列')}
+                </span>
+              ) : (
+                <span className="text-[11px] text-text-muted">
+                  {tr('unnestListHint', '结果：数组的每个元素展开为一行')}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -92,40 +101,44 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                 {tr('unnestRulesHeader', '展开规则')}
               </span>
               <span className="text-[10px] text-text-muted">
-                {tr('unnestRulesHint', '配置展开后的别名与路径')}
+                {tr('unnestRulesHint', '设置展开后的列名与定位路径')}
               </span>
             </div>
           </div>
           <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
             <div className="p-3 grid gap-2.5">
-              <label className="grid gap-1">
-                <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-                  {tr('unnestAlias', '展开后的别名')}
+              {isObjectMode ? (
+                <span className="text-[11px] text-text-muted">
+                  {tr('unnestAliasObjectHint', 'JSON 对象展开后，列名自动使用 key 名称')}
                 </span>
-                <GlassFormTextInput
-                  value={alias}
-                  onChange={(v) => updateConfig((cfg) => ({ ...cfg, alias: v || undefined }))}
-                  placeholder={tr('unnestAliasPlaceholder', '如 item')}
-                  className="h-8 text-[13px] w-full"
-                />
-              </label>
-
-              {sourceKind === 'json' && (
+              ) : (
                 <label className="grid gap-1">
                   <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-                    {tr('unnestJsonPath', 'JSON 路径')}
+                    {tr('unnestAlias', '展开后的别名')}
                   </span>
                   <GlassFormTextInput
-                    value={path}
-                    onChange={(v) => updateConfig((cfg) => ({ ...cfg, path: v || undefined }))}
-                    placeholder={tr('unnestJsonPathPlaceholder', '如 $.data.items')}
+                    value={alias}
+                    onChange={(v) => updateConfig((cfg) => ({ ...cfg, alias: v || undefined }))}
+                    placeholder={tr('unnestAliasPlaceholder', '默认 item')}
                     className="h-8 text-[13px] w-full"
                   />
-                  <span className="text-[10px] text-text-muted">
-                    {tr('unnestJsonPathHint', '$ 代表根节点，如 $.items 表示取 items 键对应的数组')}
-                  </span>
                 </label>
               )}
+
+              <label className="grid gap-1">
+                <span className="mb-1 block text-[12px] font-medium text-text-secondary">
+                  {tr('unnestPathLabel', '定位路径')}
+                </span>
+                <GlassFormTextInput
+                  value={path}
+                  onChange={(v) => updateConfig((cfg) => ({ ...cfg, path: v || undefined }))}
+                  placeholder={tr('unnestPathPlaceholder', '如 $.xxx')}
+                  className="h-8 text-[13px] w-full"
+                />
+                <span className="text-[10px] text-text-muted">
+                  {tr('unnestPathHint', '不填则直接展开，填 $.xxx 则定位到子节点')}
+                </span>
+              </label>
             </div>
           </div>
         </div>
@@ -136,50 +149,73 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
         </div>
 
         {/* ═══ 步骤3: 输出配置 ═══ */}
-        <div className="flex-1 flex flex-col gap-2">
-          <div className="flex items-end gap-3 px-0.5">
-            <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
-              3
-            </span>
-            <div className="grid">
-              <span className="text-[13px] font-semibold text-text-primary">
-                {tr('unnestOutputHeader', '输出配置')}
+        {isObjectMode ? (
+          <div className="flex-1 flex flex-col gap-2">
+            <div className="flex items-end gap-3 px-0.5">
+              <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
+                3
               </span>
-              <span className="text-[10px] text-text-muted">
-                {tr('unnestOutputHint', '配置索引列')}
-              </span>
+              <div className="grid">
+                <span className="text-[13px] font-semibold text-text-primary">
+                  {tr('unnestOutputHeader', '输出配置')}
+                </span>
+                <span className="text-[10px] text-text-muted">
+                  {tr('unnestOutputHint', '配置输出选项')}
+                </span>
+              </div>
+            </div>
+            <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
+              <div className="p-3">
+                <span className="text-[11px] text-text-muted">
+                  {tr('unnestObjectNoConfig', '展开为列时列名由 key 自动生成')}
+                </span>
+              </div>
             </div>
           </div>
-          <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
-            <div className="p-3 grid gap-2.5">
-              <div className="grid gap-1">
-                <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
-                  <input
-                    type="checkbox"
-                    checked={!!withIndex}
-                    onChange={(e) =>
-                      updateConfig((cfg) => ({
-                        ...cfg,
-                        withIndex: e.target.checked
-                          ? cfg.withIndex && typeof cfg.withIndex === 'string'
-                            ? cfg.withIndex
-                            : 'index'
-                          : undefined,
-                      }))
-                    }
-                    className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
-                  />
-                  {tr('unnestIndexCol', '索引列')}
-                </label>
-                <GlassFormTextInput
-                  value={withIndex}
-                  disabled={!withIndex}
-                  onChange={(v) => updateConfig((cfg) => ({ ...cfg, withIndex: v || undefined }))}
-                  className="h-8 text-[13px] w-full disabled:cursor-not-allowed disabled:opacity-40"
-                />
+        ) : (
+          <div className="flex-1 flex flex-col gap-2">
+            <div className="flex items-end gap-3 px-0.5">
+              <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
+                3
+              </span>
+              <div className="grid">
+                <span className="text-[13px] font-semibold text-text-primary">
+                  {tr('unnestOutputHeader', '输出配置')}
+                </span>
+                <span className="text-[10px] text-text-muted">
+                  {tr('unnestOutputHint', '配置输出选项')}
+                </span>
               </div>
+            </div>
+            <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
+              <div className="p-3 grid gap-2.5">
+                <div className="grid gap-1">
+                  <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={!!withIndex}
+                      onChange={(e) =>
+                        updateConfig((cfg) => ({
+                          ...cfg,
+                          withIndex: e.target.checked
+                            ? cfg.withIndex && typeof cfg.withIndex === 'string'
+                              ? cfg.withIndex
+                              : 'index'
+                            : undefined,
+                        }))
+                      }
+                      className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
+                    />
+                    {tr('unnestIndexCol', '索引列')}
+                  </label>
+                  <GlassFormTextInput
+                    value={withIndex}
+                    disabled={!withIndex}
+                    onChange={(v) => updateConfig((cfg) => ({ ...cfg, withIndex: v || undefined }))}
+                    className="h-8 text-[13px] w-full disabled:cursor-not-allowed disabled:opacity-40"
+                  />
+                </div>
 
-              {sourceKind === 'json' && (
                 <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
                   <input
                     type="checkbox"
@@ -192,12 +228,27 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                     }
                     className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
                   />
-                  {tr('unnestKeepParent', '保留父字段名')}
+                  {tr('unnestKeepParent', '添加源字段名前缀')}
                 </label>
-              )}
+
+                <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
+                  <input
+                    type="checkbox"
+                    checked={preserveOrder}
+                    onChange={(e) =>
+                      updateConfig((cfg) => ({
+                        ...cfg,
+                        preserveOrder: e.target.checked || undefined,
+                      }))
+                    }
+                    className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
+                  />
+                  {tr('unnestPreserveOrder', '保持原始行顺序')}
+                </label>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

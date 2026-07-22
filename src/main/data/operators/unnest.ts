@@ -2,7 +2,7 @@ import { quoteIdentifier, literalToSql } from './utils';
 import { UnnestConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
 function castToJsonExpr(columnExpr: string): string {
-  return `replace(${columnExpr}, '''', '"')::JSON`;
+  return `${columnExpr}::JSON`;
 }
 
 export function compileUnnestSql(
@@ -17,30 +17,47 @@ export function compileUnnestSql(
   const alias = quoteIdentifier(rawAlias);
   const withIndex = parsed.withIndex;
 
-  const isJson = parsed.sourceKind === 'json';
-
-  // JSON mode — keep json_each (native DuckDB)
-  if (isJson) {
-    const path = literalToSql(parsed.path);
-    const aliasCol = parsed.keepParentNames ? quoteIdentifier(`${rawColumn}_${rawAlias}`) : alias;
+  // JSON OBJECT mode: expand each key into a separate column, return 1 row
+  if (parsed.sourceKind === 'json' && config._jsonType === 'OBJECT') {
     const jsonCol = castToJsonExpr(`base.${column}`);
-    const indexSql = withIndex ? `, ROW_NUMBER() OVER () - 1 AS ${quoteIdentifier(withIndex)}` : '';
+    const keys = (config._jsonKeys as string[]) ?? [];
+    const keyCols = keys.map((k) => {
+      const fullPath = parsed.path === '$' ? `$.${k}` : `${parsed.path}.${k}`;
+      return `json_extract_string(${jsonCol}, ${literalToSql(fullPath)}) AS ${quoteIdentifier(k)}`;
+    });
     return `
       CREATE TEMP TABLE ${output} AS
-      SELECT base.*, item.value AS ${aliasCol}${indexSql}
-      FROM ${input} base, json_each(${jsonCol}, ${path}) AS item
+      SELECT base.*${keyCols.length > 0 ? `, ${keyCols.join(', ')}` : ''}
+      FROM ${input} base
     `;
   }
 
-  // List mode — auto-cast to JSON[] if not already an array type
-  const colExpr = `COALESCE(TRY_CAST(base.${column} AS JSON[]), base.${column}::JSON::JSON[])`;
+  // List mode: UNNEST array into rows (supports both native arrays and JSON strings)
+  const target =
+    parsed.path === '$'
+      ? `base.${column}`
+      : `json_extract(base.${column}::JSON, ${literalToSql(parsed.path)})`;
+  const unnestExpr = `COALESCE(TRY_CAST(${target} AS JSON[]), ${target}::JSON::JSON[])`;
 
+  const aliasCol = parsed.keepParentNames ? quoteIdentifier(`${rawColumn}_${rawAlias}`) : alias;
   const idxCols = withIndex ? `(${alias}, "_ordinal")` : `(${alias})`;
   const idxClause = withIndex ? ' WITH ORDINALITY' : '';
   const idxSelect = withIndex ? `, item."_ordinal" - 1 AS ${quoteIdentifier(withIndex)}` : '';
+
+  if (parsed.preserveOrder) {
+    return `
+      CREATE TEMP TABLE ${output} AS
+      SELECT * EXCLUDE (__rn, _ordinal, ${aliasCol}), item.${alias} AS ${aliasCol}${idxSelect}
+      FROM (SELECT *, ROW_NUMBER() OVER () AS __rn FROM ${input} base) base
+      LEFT JOIN LATERAL UNNEST(${unnestExpr}) WITH ORDINALITY AS item(${alias}, _ordinal) ON true
+      ORDER BY base.__rn, item._ordinal
+    `;
+  }
+
   return `
     CREATE TEMP TABLE ${output} AS
-    SELECT base.*, item.${alias} AS ${alias}${idxSelect}
-    FROM ${input} base, UNNEST(${colExpr})${idxClause} AS item${idxCols}
+    SELECT base.*, item.${alias} AS ${aliasCol}${idxSelect}
+    FROM ${input} base
+    LEFT JOIN LATERAL UNNEST(${unnestExpr})${idxClause} AS item${idxCols} ON true
   `;
 }

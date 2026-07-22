@@ -67,6 +67,7 @@ import {
   compileJoinConditionList,
   compileJoinProjection,
   compileAsofJoinSql,
+  literalToSql,
   quoteIdentifier,
   quoteValueIdentifier,
   stringArray,
@@ -2943,6 +2944,40 @@ export class DataTaskStore {
     const columns = strategy?.needsColumns ? await this.getTableColumns(inputRelation) : [];
     if (!strategy) {
       return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input}`;
+    }
+    if (node.type === 'unnest' && node.config.sourceKind === 'json') {
+      const colName = String(node.config.column ?? '');
+      const jsonPath = String(node.config.path ?? '$');
+      if (colName) {
+        try {
+          const colExpr =
+            jsonPath === '$'
+              ? quoteIdentifier(colName)
+              : `json_extract(${quoteIdentifier(colName)}, ${literalToSql(jsonPath)})`;
+          const validRows = await this.queryRows<{ bad: boolean }>(
+            `SELECT TRY_CAST(${colExpr} AS JSON) IS NULL AS bad FROM ${input} LIMIT 1`
+          );
+          if (validRows[0]?.bad) {
+            throw new Error(
+              `"${colName}" is not valid JSON. Use standard JSON format: {"Key":"Value"} or {"Key":1}`
+            );
+          }
+          const typeRows = await this.queryRows<{ t: string }>(
+            `SELECT json_type(${colExpr}) AS t FROM ${input} LIMIT 1`
+          );
+          const jsonType = typeRows[0]?.t ?? '';
+          node.config._jsonType = jsonType;
+          if (jsonType === 'OBJECT') {
+            const keyRows = await this.queryRows<{ keys: string[] }>(
+              `SELECT json_keys(${colExpr}) AS keys FROM ${input} LIMIT 1`
+            );
+            node.config._jsonKeys = keyRows[0]?.keys ?? [];
+          }
+        } catch (e) {
+          if (e instanceof Error && e.message.includes('not valid JSON')) throw e;
+          // Other failures (column not found, etc.) — proceed with default json_each path
+        }
+      }
     }
     return strategy.compile(output, input, columns, node.config);
   }
