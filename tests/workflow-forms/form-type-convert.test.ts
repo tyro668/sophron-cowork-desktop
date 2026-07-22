@@ -72,11 +72,33 @@ describe('FormTypeConvert — config ↔ DSL', () => {
     expect(r.dsl).toContain('on_error keep');
   });
 
-  it('boolean conversion', () => {
+  it('date conversion with format', () => {
     const r = ok({
-      conversions: [{ column: 'is_active', type: 'boolean' }],
+      conversions: [{ column: 'date_str', type: 'date', format: '%m/%d/%y' }],
     });
-    expect(r.dsl).toContain('as boolean');
+    expect(r.dsl).toContain('format "%m/%d/%y"');
+    expect(r.config.conversions[0].format).toBe('%m/%d/%y');
+  });
+
+  it('datetime conversion with format', () => {
+    const r = ok({
+      conversions: [{ column: 'ts', type: 'datetime', format: '%Y-%m-%d %H:%M:%S' }],
+    });
+    expect(r.dsl).toContain('format "%Y-%m-%d %H:%M:%S"');
+    expect(r.config.conversions[0].format).toBe('%Y-%m-%d %H:%M:%S');
+  });
+
+  it('DSL idempotent with format', () => {
+    const config = { conversions: [{ column: 'dt', type: 'date', format: '%m/%d/%y' }] };
+    const dsl1 = exportPrepOperatorDsl({ id: 't', type: 'type_convert', config });
+    const parsed = parsePrepOperatorDsl(dsl1, 'type_convert');
+    expect(parsed.operator).not.toBeNull();
+    const dsl2 = exportPrepOperatorDsl({
+      id: 't',
+      type: 'type_convert',
+      config: parsed.operator!.config,
+    });
+    expect(dsl2).toBe(dsl1);
   });
 });
 

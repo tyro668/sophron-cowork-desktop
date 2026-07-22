@@ -13,6 +13,13 @@ describe('TypeConvertConfigSchema', () => {
     expect(result.conversions[0].onError).toBe('fail');
   });
 
+  it('parses format field for date conversions', () => {
+    const result = TypeConvertConfigSchema.parse({
+      conversions: [{ column: 'dt', type: 'date', format: '%m/%d/%y' }],
+    });
+    expect(result.conversions[0].format).toBe('%m/%d/%y');
+  });
+
   it('applies defaults for omitted fields', () => {
     const result = TypeConvertConfigSchema.parse({ conversions: [{ column: 'age' }] });
     expect(result.conversions[0].type).toBe('text');

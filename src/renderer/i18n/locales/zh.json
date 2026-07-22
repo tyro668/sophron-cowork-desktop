@@ -1049,6 +1049,7 @@
         "typeConvertErrorKeep": "转换出错则保留原值",
         "typeConvertAdd": "添加转换",
         "typeConvertRemove": "删除转换",
+        "typeConvertDateFormat": "日期格式",
         "unpivotMode": "列展开",
         "unpivotConfigHint": "选择要展开的列",
         "unpivotExpandCols": "要展开的列",

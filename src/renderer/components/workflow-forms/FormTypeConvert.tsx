@@ -6,6 +6,8 @@ import {
   normalizeDataFieldType,
   type DataFieldType,
 } from '../../../shared/data-field-types';
+import { Settings } from 'lucide-react';
+import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList } from './shared/GlassRowList';
@@ -19,9 +21,19 @@ interface ConversionEntry {
   column: string;
   type: string;
   onError?: string;
+  format?: string;
 }
 
 const DEFAULT_CONVERSION: ConversionEntry = { column: '', type: 'text' };
+
+const DATE_FORMAT_PRESETS: Array<{ value: string; example: string }> = [
+  { value: '%Y-%m-%d', example: '2000-01-01' },
+  { value: '%Y/%m/%d', example: '2000/1/1' },
+  { value: '%m/%d/%Y', example: '1/1/2000' },
+  { value: '%m/%d/%y', example: '1/1/00' },
+  { value: '%d/%m/%Y', example: '1/1/2000' },
+  { value: '%Y%m%d', example: '20000101' },
+];
 
 export default function FormTypeConvert({
   node,
@@ -200,6 +212,47 @@ export default function FormTypeConvert({
             ]}
             onAdd={(i) => addConversionAfter(i)}
             onRemove={(i) => removeConversion(i)}
+            renderExtraActions={(i: number) => {
+              const conv = activeConversions[i];
+              const isDateType = conv.type === 'date' || conv.type === 'datetime';
+              const hasFormat = !!conv.format;
+              return (
+                <GlassDropdownMenu
+                  trigger={
+                    <button
+                      type="button"
+                      disabled={!isDateType}
+                      className={`inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition-colors ${
+                        isDateType
+                          ? 'cursor-pointer text-text-muted hover:bg-surface-hover hover:text-accent'
+                          : 'cursor-not-allowed opacity-30'
+                      } ${hasFormat && isDateType ? 'text-accent' : ''}`}
+                      title={tr('typeConvertDateFormat', '日期格式')}
+                      aria-label={tr('typeConvertDateFormat', '日期格式')}
+                    >
+                      <Settings className="h-3.5 w-3.5" />
+                    </button>
+                  }
+                >
+                  {DATE_FORMAT_PRESETS.map((preset) => (
+                    <GlassMenuItem
+                      key={preset.value}
+                      selected={conv.format === preset.value}
+                      onSelect={() =>
+                        updateConversion(i, {
+                          format: conv.format === preset.value ? undefined : preset.value,
+                        })
+                      }
+                    >
+                      <span className="flex items-center justify-between w-full">
+                        <span>{preset.value}</span>
+                        <span className="text-[11px] text-text-muted ml-2">{preset.example}</span>
+                      </span>
+                    </GlassMenuItem>
+                  ))}
+                </GlassDropdownMenu>
+              );
+            }}
             addTitle={tr('typeConvertAdd', '添加转换')}
             removeTitle={tr('typeConvertRemove', '删除转换')}
             draggable

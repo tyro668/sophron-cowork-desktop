@@ -33,6 +33,7 @@ interface GlassRowListProps<T> {
   onToTop?: (index: number) => void;
   onToBottom?: (index: number) => void;
   canAct?: (action: RowAction, index: number) => boolean;
+  renderExtraActions?: (index: number) => ReactNode;
   draggable?: boolean;
   onDragStart?: (index: number) => void;
   onDragOver?: (e: React.DragEvent, index: number) => void;
@@ -92,6 +93,7 @@ export function GlassRowList<T>({
   onToTop,
   onToBottom,
   canAct,
+  renderExtraActions,
   draggable = false,
   onDragStart,
   onDragOver,
@@ -101,7 +103,8 @@ export function GlassRowList<T>({
   hideHeader,
   headerClassName,
 }: GlassRowListProps<T>) {
-  const actionsWidth = actions.length * 24 + (actions.length - 1) * 4;
+  const extraActionsWidth = renderExtraActions ? 28 : 0;
+  const actionsWidth = actions.length * 24 + (actions.length - 1) * 4 + extraActionsWidth;
 
   return (
     <div className="flex flex-col gap-2">
@@ -155,6 +158,7 @@ export function GlassRowList<T>({
           ))}
 
           <div className="flex items-center gap-1 flex-shrink-0">
+            {renderExtraActions?.(index)}
             {actions.map((action) => {
               const Icon = ACTION_ICON[action];
               const disabled = canAct !== undefined && !canAct(action, index);

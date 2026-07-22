@@ -1049,6 +1049,7 @@
         "typeConvertErrorKeep": "Keep original on error",
         "typeConvertAdd": "Add conversion",
         "typeConvertRemove": "Remove conversion",
+        "typeConvertDateFormat": "Date format",
         "unpivotMode": "Unpivot",
         "unpivotConfigHint": "Select columns to expand",
         "unpivotExpandCols": "Columns to expand",

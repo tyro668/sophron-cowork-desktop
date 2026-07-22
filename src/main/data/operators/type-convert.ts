@@ -1,6 +1,6 @@
 import { requireDataFieldType } from '../../../shared/data-field-types';
-import { quoteIdentifier } from './utils';
 import { duckDbTypeForDataFieldType } from '../../../shared/data-field-types';
+import { literalToSql, quoteIdentifier } from './utils';
 import { TypeConvertConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
 export function compileTypeConvertSql(
@@ -26,7 +26,7 @@ export function compileTypeConvertSql(
 
 function compileTypeConversionExpression(
   column: string,
-  conversion: { type?: string; onError?: string }
+  conversion: { type?: string; onError?: string; format?: string }
 ): string {
   const source = quoteIdentifier(column);
   const targetType = requireDataFieldType(conversion.type || 'text', 'cast target type');
@@ -35,5 +35,10 @@ function compileTypeConversionExpression(
   }
   const failOnError = conversion.onError === 'fail';
   const storageType = duckDbTypeForDataFieldType(targetType);
+  if (conversion.format && (targetType === 'date' || targetType === 'datetime')) {
+    const cast = failOnError ? 'CAST' : 'TRY_CAST';
+    const duckType = targetType === 'date' ? 'DATE' : 'TIMESTAMP';
+    return `${cast}(strptime(${source}, ${literalToSql(conversion.format)}) AS ${duckType})`;
+  }
   return `${failOnError ? 'CAST' : 'TRY_CAST'}(${source} AS ${storageType})`;
 }

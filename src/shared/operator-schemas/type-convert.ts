@@ -7,6 +7,7 @@ const ConversionEntrySchema = z.object({
     .optional()
     .default('text'),
   onError: z.enum(['keep', 'fail', 'null']).optional(),
+  format: z.string().optional(),
 });
 
 export const TypeConvertConfigSchema = z.object({
