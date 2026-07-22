@@ -11,7 +11,7 @@
 1. 大模型只参与配置期生成和定向修复。
 2. 大模型必须返回标准 JavaScript 源码，不允许直接返回 Prep DSL、Operations JSON 或 Workflow IR。
 3. JavaScript 语法只由 Node/V8 原生编译器检查。
-4. JavaScript 只能在一次性权限沙箱中通过 Workflow SDK 构建 IR。
+4. JavaScript 只能在一次性权限沙箱中通过固定、操作无关的 Workflow IR Bridge 构建 IR。
 5. Stable Workflow IR 是生成链路的稳定协议，当前来源语言固定为 `javascript`。
 6. IR 到 Operations JSON、Prep DSL 的转换完全确定，不调用大模型。
 7. 同一份 JavaScript 构建两次 IR，并比较 Semantic Hash，拒绝非确定性结果。
@@ -29,7 +29,7 @@ flowchart TD
     B --> C[解析或创建输出表]
     C --> D[LLM 生成标准 JavaScript]
     D --> E[V8 vm.Script 原生语法编译]
-    E --> F[一次性权限沙箱执行 Workflow SDK]
+    E --> F[一次性权限沙箱执行固定 Workflow IR Bridge]
     F --> G[Stable Workflow IR 1.0]
     G --> H[IR Schema 与语义校验]
     H --> I[第二次沙箱构建]
@@ -84,34 +84,41 @@ flowchart TD
 }
 ```
 
-JavaScript 使用普通函数声明和正式 Workflow SDK：
+JavaScript 使用普通函数声明和固定 Workflow IR Bridge：
 
 ```javascript
 function removeCount(input) {
-  return drop(input, '记录数');
+  return workflow.step(input, 'drop', {
+    columns: ['记录数'],
+  });
 }
 
 function normalizeTicker(input) {
-  return derive(input, 'ticker', fn.upper(col('ticker')));
+  return workflow.step(input, 'derive', {
+    column: 'ticker',
+    expression: fn.upper(col('ticker')),
+  });
 }
 
 function main() {
-  const source = inputDataset(INPUT_TABLE_ID, 'src');
+  const source = workflow.input(INPUT_TABLE_ID, { alias: 'src' });
   const withoutCount = removeCount(source);
   const normalized = normalizeTicker(withoutCount);
-  return outputTable(normalized, OUTPUT_TABLE_NAME, { mode: 'replace' });
+  return workflow.output(normalized, OUTPUT_TABLE_NAME, { mode: 'replace' });
 }
 ```
 
 约束如下：
 
 - 必须声明具名 `main()`。
-- 数据处理只能通过注入的 Workflow SDK。
+- 数据处理只能通过注入的 `workflow.input()`、`workflow.step()`、`workflow.output()` Bridge API。
+- operation type 和 payload 必须来自统一操作注册表。
 - 辅助函数最多产生一个 operation。
 - `main()` 创建输入、调用辅助函数并输出结果。
 - 不允许 import/export、Node API、网络、文件、子进程和动态代码生成。
 - 当前自动化只有一个输入数据集，不开放 join 和集合运算。
-- JavaScript 是标准语法；上述限制属于 Workflow SDK 和沙箱执行契约，不由自定义语言编译器实现。
+- JavaScript 是标准语法；上述限制由 Prompt、函数结构检查、沙箱能力和 IR 契约共同实现，不由自定义语言编译器实现。
+- Prompt 中“禁止循环、可变变量和在 `main()` 中直接创建 operation”等属于生成规范；安全边界仍由沙箱超时、最小注入能力和最终 IR 校验保证。
 
 ## 6. V8 编译和源码定位
 
@@ -131,7 +138,7 @@ new vm.Script(source, { filename: 'generated-workflow.js' });
 
 系统保留轻量函数位置索引，只用于错误归属和函数级补丁定位。它不构建 JavaScript AST、不解释业务语义，也不生成 IR。
 
-## 7. 沙箱与 Workflow SDK
+## 7. 沙箱与固定 Workflow IR Bridge
 
 生成代码在一次性独立 Node 子进程中运行：
 
@@ -139,10 +146,18 @@ new vm.Script(source, { filename: 'generated-workflow.js' });
 - 不授予文件系统、网络、子进程或 Worker 权限。
 - 禁止动态字符串代码和 WASM。
 - 限制 old-space、执行时间和输出大小。
-- 仅注入 Workflow SDK、输入表 ID 和输出表名。
+- 仅注入固定 Bridge、表达式构造器、输入表 ID 和输出表名。
 - 子进程完成一次 IR 构建后退出。
 
-Workflow SDK 不处理真实数据。每次 SDK 调用只追加结构化 operation，并记录 provenance：
+Bridge 不处理真实数据，也不包含 `drop`、`filter`、`pivot` 等逐操作 SDK 方法。固定 API 为：
+
+```javascript
+workflow.input(inputTableId, options);
+workflow.step(input, operationType, payload);
+workflow.output(input, outputTableName, options);
+```
+
+`workflow.step()` 只校验 operation type 是否在注册表允许集合中，然后追加结构化 operation，并记录 provenance：
 
 ```json
 {
@@ -151,13 +166,15 @@ Workflow SDK 不处理真实数据。每次 SDK 调用只追加结构化 operati
   "inputOperationId": "remove-count",
   "column": "ticker",
   "expression": {
-    "kind": "call",
+    "kind": "function",
     "name": "upper"
   }
 }
 ```
 
 provenance 保存 operation 对应的 JavaScript 函数、行号和列号。
+
+具体 payload 规则不在 Bridge 中实现，由 `workflow-operation-registry.ts` 校验。例如 `drop.columns` 必须是非空字符串数组，`sort.direction` 必须为 `asc` 或 `desc`。因此新增 operation 不需要修改 Bridge，只需扩展操作注册表和确定性的 Prep DSL 编译逻辑。
 
 ## 8. Stable Workflow IR
 
@@ -199,18 +216,18 @@ NON_ATOMIC_WORKFLOW_HELPER
 - 可以新增名称不冲突的原子辅助函数。
 - 辅助函数补丁不能替换 `main()`。
 - 不允许覆盖其他已有函数。
-- 补丁先通过 V8 编译，再重新执行完整 SDK、IR、lowering 和 dry-run 流程。
+- 补丁先通过 V8 编译，再重新执行完整 Bridge、IR、lowering 和 dry-run 流程。
 - 不执行 AST 自动改写，也不回退到整段 DSL。
 
 ## 10. IR → Operations JSON → Prep DSL
 
-`lowerWorkflowIrToOperations()` 负责：
+`operation-compiler.ts` 中的 `lowerWorkflowIrToOperations()` 负责：
 
 - 再次校验并规范化 IR。
 - 绑定运行时输入表 ID 和输出表名。
 - 输出版本化 `WorkflowOperationsV1`。
 
-Operations exporter 调用固定 operation compiler 生成 Prep DSL。一个 IR operation 可以展开成多条 DSL，例如覆盖原字段的类型转换：
+同一文件中的固定 operation compiler 将 Operations 转换为 Prep DSL。一个 IR operation 可以展开成多条 DSL，例如覆盖原字段的类型转换：
 
 ```text
 | derive [__sophron_cast_price] = TRY_CAST(...)
@@ -239,10 +256,8 @@ Operations exporter 调用固定 operation compiler 生成 Prep DSL。一个 IR 
 配置期验证成功后保存 Workflow。运行期：
 
 ```text
-读取已保存 workflowDsl
-→ Prep DSL 编译或读取缓存 candidate
-→ 临时执行
-→ 输出 Schema 校验
+读取已保存的 Workflow nodes/edges
+→ 数据任务执行引擎运行节点图
 → 正式提交输出
 → 可选上传云端
 → 清理临时资源
@@ -268,14 +283,12 @@ Operations exporter 调用固定 operation compiler 生成 Prep DSL。一个 IR 
 - `src/main/data/ipc/data-tasks-ipc.ts`
 - `src/main/data/workflow/workflow-generator.ts`
 - `src/main/data/workflow/javascript-runtime.ts`
-- `src/main/data/workflow/workflow-sdk.ts`
-- `src/main/data/workflow/workflow-generation-pipeline.ts`
-- `src/main/data/workflow/javascript-capabilities.ts`
+- `src/main/data/workflow/workflow-operation-registry.ts`
 - `src/main/data/workflow/workflow-model.ts`
 - `src/main/data/workflow/workflow-ir.ts`
-- `src/main/data/workflow/workflow-lowering.ts`
-- `src/main/data/workflow/workflow-operations.ts`
 - `src/main/data/workflow/operation-compiler.ts`
+- `src/main/data/workflow/schema-inferencer.ts`
+- `src/main/data/workflow/utils.ts`
 - `src/shared/prep-dsl`
 
 ## 15. 验收标准
@@ -283,6 +296,8 @@ Operations exporter 调用固定 operation compiler 生成 Prep DSL。一个 IR 
 - LLM 生成标准 JavaScript，V8 在沙箱执行前返回精确语法诊断。
 - 生产代码中不存在 JavaScript/TypeScript AST → Workflow IR 编译器。
 - 生产代码中不存在模型直出 DSL、Operations JSON 或 IR 的回退入口。
+- Bridge 只包含固定的 `input/step/output`，不存在逐 operation SDK 方法。
+- 新增 operation 不需要修改 JavaScript Bridge。
 - IR 只接受 `sourceLanguage: "javascript"`。
 - 同一源码的 IR Semantic Hash 稳定。
 - 非原子 helper 能定位函数并通过 JavaScript Patch 修复。
