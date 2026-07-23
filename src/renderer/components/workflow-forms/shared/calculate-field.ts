@@ -41,6 +41,14 @@ export interface ParamSpec {
   type: 'field' | 'number' | 'text';
 }
 
+export const SCENARIO_MIGRATION: Record<string, string> = {
+  group: 'group_metrics',
+  sorted: 'moving_window',
+  rank: 'ranking',
+  period: 'period_compare',
+  time: 'time_intel',
+};
+
 export const FN_ARG_SPEC: Record<string, ParamSpec[]> = {
   '*': [{ key: 'fnArg', type: 'field' }],
   ntile: [{ key: 'fnArg', type: 'number' }],
@@ -169,7 +177,10 @@ export function normalizeCalculationEntries(
       fn: typeof entry.fn === 'string' ? entry.fn : undefined,
       fnArg: typeof entry.fnArg === 'string' ? entry.fnArg : undefined,
       fnArg2: typeof entry.fnArg2 === 'string' ? entry.fnArg2 : undefined,
-      scenario: typeof entry.scenario === 'string' ? entry.scenario : undefined,
+      scenario:
+        typeof entry.scenario === 'string'
+          ? SCENARIO_MIGRATION[entry.scenario] || entry.scenario
+          : undefined,
       partitionBy: Array.isArray(entry.partitionBy) ? entry.partitionBy : undefined,
       orderBy: Array.isArray(entry.orderBy) ? entry.orderBy : undefined,
       frameType:
