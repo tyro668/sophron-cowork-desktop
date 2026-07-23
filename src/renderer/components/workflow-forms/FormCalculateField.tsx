@@ -21,6 +21,7 @@ import {
   type CalculationRow,
 } from './shared/calculate-field';
 import { SCENARIO_OPTIONS, FUNCTION_CATEGORIES, parseBound } from './calculate-field/index';
+import { isTemporalDataFieldType } from '@/shared/data-field-types';
 import { GlassPartitionConfig } from './calculate-field/partition';
 import { GlassOrderByConfig } from './calculate-field/order-by';
 import { GlassWindowFrameConfig } from './calculate-field/window-frame';
@@ -369,8 +370,10 @@ export default function FormCalculateField({
       scenario === 'ranking' ||
       scenario === 'cumulative' ||
       scenario === 'offset' ||
-      scenario === 'moving_window' ||
-      scenario === 'period_compare';
+      scenario === 'moving_window';
+
+    const isPeriodCompare = scenario === 'period_compare';
+    const isTimeIntel = scenario === 'time_intel';
 
     return (
       <div className="flex flex-col gap-3">
@@ -450,7 +453,7 @@ export default function FormCalculateField({
         </div>
 
         {/* Row 2: 计算函数 */}
-        {scenario === 'time_intel' ? (
+        {isTimeIntel ? (
           <GlassTimeIntelConfig
             item={item}
             index={index}
@@ -514,6 +517,23 @@ export default function FormCalculateField({
                 </div>
               </div>
             ))}
+            {isPeriodCompare && (
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
+                  {tr('calcFieldRefField', '参照字段')}
+                </span>
+                <GlassFieldSingleSelect
+                  value={item.orderBy?.[0]?.field ?? ''}
+                  options={fieldCompletions.filter((c) => isTemporalDataFieldType(columnTypes[c]))}
+                  columnTypes={columnTypes}
+                  onChange={(v) =>
+                    updateItem(index, { orderBy: v ? [{ field: v, direction: 'asc' }] : undefined })
+                  }
+                  placeholder={tr('calcFieldDatePlaceholder', '选择日期字段')}
+                  className="h-7 w-28 text-[12px]"
+                />
+              </div>
+            )}
           </div>
         )}
 

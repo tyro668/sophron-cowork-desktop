@@ -246,10 +246,18 @@ export function exprFromParts(item: CalculationRow): string {
     fn === 'period_yoy_value' ||
     fn === 'period_yoy_rate'
   ) {
-    const offset = fn === 'period_mom_value' || fn === 'period_mom_rate' ? 1 : 12;
     const isRate = fn.endsWith('_rate');
-    const lag = `lag(${wrappedFieldArg}, ${offset})${overStr(true)}`;
-    if (isRate) return `(${wrappedFieldArg} - ${lag}) / ${lag}`;
+    const isYoy = fn.startsWith('period_yoy');
+    const dateField = order?.[0]?.field;
+    if (dateField && isYoy) {
+      const userPart = partition?.length ? `[${partition.join('], [')}], ` : '';
+      const datePart = `PARTITION BY ${userPart}extract('month' FROM [${dateField}]), extract('day' FROM [${dateField}])`;
+      const lag = `lag(${wrappedFieldArg}) OVER (${datePart} ORDER BY extract('year' FROM [${dateField}]))`;
+      if (isRate) return `(${wrappedFieldArg} - ${lag}) / nullif(${lag}, 0)`;
+      return `${wrappedFieldArg} - ${lag}`;
+    }
+    const lag = `lag(${wrappedFieldArg})${overStr(true)}`;
+    if (isRate) return `(${wrappedFieldArg} - ${lag}) / nullif(${lag}, 0)`;
     return `${wrappedFieldArg} - ${lag}`;
   }
 
@@ -258,7 +266,7 @@ export function exprFromParts(item: CalculationRow): string {
     const offset = parseInt(item.fnArg2 || '1', 10);
     const isRate = fn === 'offset_rate';
     const lag = `lag(${wrappedFieldArg}, ${offset})${overStr(true)}`;
-    if (isRate) return `(${wrappedFieldArg} - ${lag}) / ${lag}`;
+    if (isRate) return `(${wrappedFieldArg} - ${lag}) / nullif(${lag}, 0)`;
     return `${wrappedFieldArg} - ${lag}`;
   }
   // Time intelligence: ytd_sum, qtd_avg, rolling_year_count, etc.

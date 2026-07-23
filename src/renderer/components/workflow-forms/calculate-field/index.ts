@@ -162,14 +162,7 @@ export const FUNCTION_CATEGORIES: Record<
     {
       key: 'period',
       header: 'calcFieldCatPeriod',
-      items: [
-        'period_yoy_value',
-        'period_yoy_rate',
-        'period_mom_value',
-        'period_mom_rate',
-        'offset_diff',
-        'offset_rate',
-      ],
+      items: ['period_yoy_value', 'period_yoy_rate', 'period_mom_value', 'period_mom_rate'],
     },
   ],
   time_intel: [],
