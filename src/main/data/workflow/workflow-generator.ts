@@ -278,6 +278,9 @@ function buildWorkflowGenerationSystemPrompt(): string {
     'If the user asks to delete, remove, drop, exclude, 去掉, 删除, 移除, 去除, 删掉, 剔除, or 不要 columns, use the drop operation for those columns. Do not express column removal as select-all-except unless the user explicitly asks to keep only a listed set of columns.',
     'For money, prices, rates, percentages, and other fixed-decimal business values, use cast(field, "decimal", { scale: 2 }). Avoid float unless approximate binary floating point is explicitly requested.',
     'When converting text currency such as "$8.34" to a number and the requirement says to remove the leading "$" symbol, call cast(input, field, "decimal", { removePrefix: "$", scale: 2 }).',
+    'For missing_value, config.strategy is only "drop_empty_rows" or "by_column". Never put a rule method such as "nullify_values" in config.strategy.',
+    'When text markers such as "NULL", "N/A", or an empty string should become actual null values, use config.strategy="by_column" and add one rule per applicable field with method="nullify_values" and values containing those exact markers.',
+    'When actual null values should be replaced with a literal, use config.strategy="by_column" and method="literal_fill" with value set to the replacement.',
     'If the requirement is ambiguous, generate the safest valid operations and include only input columns actually used by the operations in requiredColumns.',
   ].join('\n');
 }

@@ -42,6 +42,59 @@ describe('JavaScript Workflow SDK pipeline', () => {
     }
     expect(WORKFLOW_SDK_RUNTIME_SOURCE).toContain('step: (input, type, fields)');
     expect(WORKFLOW_SDK_RUNTIME_SOURCE).not.toContain('sdk.drop =');
+    expect(prompt).toContain('strategy: "drop_empty_rows"');
+    expect(prompt).toContain('strategy: "by_column"');
+    expect(prompt).toContain('method: "skip|drop|nullify_values|literal_fill"');
+  });
+
+  it('accepts the canonical by-column NULL marker configuration', () => {
+    const source = `function nullifyMarkers(input) {
+  return workflow.step(input, "missing_value", {
+    config: {
+      strategy: "by_column",
+      rules: [{
+        column: "Close value",
+        method: "nullify_values",
+        values: ["NULL"]
+      }]
+    }
+  });
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const cleaned = nullifyMarkers(input);
+  return workflow.output(cleaned, OUTPUT_TABLE_NAME, { mode: "replace" });
+}`;
+    const ir = buildIr(source);
+    expect(ir.operations[0]).toMatchObject({
+      type: 'missing_value',
+      config: {
+        strategy: 'by_column',
+        rules: [
+          {
+            column: 'Close value',
+            method: 'nullify_values',
+            values: ['NULL'],
+          },
+        ],
+      },
+    });
+  });
+
+  it('reports the invalid missing-value strategy produced by a model', () => {
+    const source = `function nullifyMarkers(input) {
+  return workflow.step(input, "missing_value", {
+    config: { strategy: "nullify_values", rules: [] }
+  });
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const cleaned = nullifyMarkers(input);
+  return workflow.output(cleaned, OUTPUT_TABLE_NAME, { mode: "replace" });
+}`;
+    expect(() => buildIr(source)).toThrow(
+      'config.strategy must be one of drop_empty_rows, by_column; received "nullify_values"'
+    );
   });
 
   it('uses V8 to compile standard JavaScript and the sandbox SDK to build stable IR', () => {

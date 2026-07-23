@@ -73,7 +73,12 @@ export const WORKFLOW_OPERATION_REGISTRY = [
   ),
   operation(
     'missing_value',
-    'workflow.step(input, "missing_value", { config: { strategy, rules? } })',
+    'workflow.step(input, "missing_value", { config: { strategy: "drop_empty_rows" } })',
+    validateMissingValue
+  ),
+  operation(
+    'missing_value',
+    'workflow.step(input, "missing_value", { config: { strategy: "by_column", rules: [{ column: "field", method: "skip|drop|nullify_values|literal_fill", values?: [literal], value?: literal }] } })',
     validateMissingValue
   ),
   operation(
@@ -283,7 +288,7 @@ function assertBoolean(value: unknown, at: string): void {
 }
 function assertEnum(value: unknown, allowed: readonly string[], at: string): void {
   if (typeof value !== 'string' || !allowed.includes(value))
-    fail(`${at} must be one of ${allowed.join(', ')}`);
+    fail(`${at} must be one of ${allowed.join(', ')}; received ${JSON.stringify(value)}`);
 }
 function fail(message: string): never {
   throw new DataCommandError('VALIDATION_FAILED', `Invalid Workflow IR: ${message}`);
