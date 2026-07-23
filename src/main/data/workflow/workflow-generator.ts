@@ -189,6 +189,10 @@ export async function repairGeneratedWorkflowFromDiagnostics({
     let currentJavascriptSource = failedJavascriptSource;
     let currentDiagnostics = diagnostics;
     for (let attempt = 0; attempt < 2; attempt += 1) {
+      const repairFunctionName = resolveRepairFunctionName(
+        currentJavascriptSource,
+        currentDiagnostics
+      );
       const response = await runPiAiOneShot(
         buildWorkflowGenerationUserPrompt({
           inputTableId,
@@ -197,6 +201,7 @@ export async function repairGeneratedWorkflowFromDiagnostics({
           columns,
           failedJavascriptSource: currentJavascriptSource,
           diagnostics: currentDiagnostics,
+          repairFunctionName,
         }),
         buildWorkflowGenerationSystemPrompt(),
         config,
@@ -206,6 +211,7 @@ export async function repairGeneratedWorkflowFromDiagnostics({
         return compileRepairResponse({
           text: response.text,
           failedJavascriptSource: currentJavascriptSource,
+          repairFunctionName,
           inputTableId,
           outputTableName,
           requirement,
@@ -218,8 +224,11 @@ export async function repairGeneratedWorkflowFromDiagnostics({
           nextDiagnostics.some((diagnostic) => diagnostic.code === 'NON_ATOMIC_WORKFLOW_HELPER');
         if (!retryAtomicRepair) throw error;
         currentJavascriptSource =
-          extractRepairJavascriptCandidate(response.text, currentJavascriptSource) ??
-          currentJavascriptSource;
+          extractRepairJavascriptCandidate({
+            text: response.text,
+            failedJavascriptSource: currentJavascriptSource,
+            repairFunctionName,
+          }) ?? currentJavascriptSource;
         currentDiagnostics = nextDiagnostics;
       }
     }
@@ -255,7 +264,7 @@ function buildWorkflowGenerationSystemPrompt(): string {
     'Use only the fixed bridge API workflow.input(INPUT_TABLE_ID, { alias: "src" }), workflow.step(input, operationType, payload), and workflow.output(input, OUTPUT_TABLE_NAME, { mode: "replace" }). Never call operation-specific functions or fluent receiver chains.',
     'Helper functions receive and return a workflow value. Each helper function must perform exactly one workflow operation and return its result.',
     'main() must compose atomic helpers through named const variables. Keep workflow.step() calls out of main(); main() only creates the input with workflow.input(), invokes helpers, and returns workflow.output().',
-    'For a repair request naming one failed function, return {"javascriptPatch":{"functionName":"...","replacement":"replacement source"}} instead of regenerating unaffected functions. The replacement must retain the named function and may also declare new uniquely named atomic helpers when splitting it is necessary; never include main in a helper patch.',
+    'For repair requests, follow the response schema in the user message exactly. When a function patch is requested, return only that patch; otherwise return the complete corrected javascriptSource.',
     `Allowed workflow steps and canonical payloads: ${getWorkflowJavascriptCapabilityPrompt()}.`,
     'Automation has exactly one input dataset. Never call join, union, intersect, except, setOp, or reference a second input.',
     'Pivot must use exactly one on field, a non-empty fixed values array, and exactly one metric so the saved output schema is deterministic.',
@@ -280,6 +289,7 @@ function buildWorkflowGenerationUserPrompt(input: {
   columns: Array<{ name: string; type?: string }>;
   failedJavascriptSource?: string;
   diagnostics?: PrepDiagnostic[];
+  repairFunctionName?: string;
 }): string {
   return JSON.stringify(
     {
@@ -290,12 +300,21 @@ function buildWorkflowGenerationUserPrompt(input: {
         inputTableId: input.inputTableId,
         outputTableName: input.outputTableName,
       },
-      outputJsonSchema: {
-        javascriptSource:
-          'standard function-oriented JavaScript with named helpers and main(). Express data operations only through the provided Workflow SDK and use INPUT_TABLE_ID and OUTPUT_TABLE_NAME constants exactly.',
-        requiredColumns: [{ name: 'input column referenced by the DSL', type: 'optional' }],
-        changeSummary: 'brief user-facing summary of what the workflow changes',
-      },
+      outputJsonSchema:
+        input.failedJavascriptSource && input.repairFunctionName
+          ? {
+              javascriptPatch: {
+                functionName: input.repairFunctionName,
+                replacementSource:
+                  'one or more complete named function declarations; retain the requested function, optionally add uniquely named atomic helpers, and do not include main unless main is the requested function',
+              },
+            }
+          : {
+              javascriptSource:
+                'complete standard function-oriented JavaScript with named helpers and main(). Express data operations only through the provided Workflow SDK and use INPUT_TABLE_ID and OUTPUT_TABLE_NAME constants exactly.',
+              requiredColumns: [{ name: 'input column referenced by the DSL', type: 'optional' }],
+              changeSummary: 'brief user-facing summary of what the workflow changes',
+            },
       previousFailedAttempt: input.failedJavascriptSource
         ? {
             failedJavascriptSource: input.failedJavascriptSource,
@@ -307,8 +326,9 @@ function buildWorkflowGenerationUserPrompt(input: {
               column: diagnostic.column,
               functionName: isRecord(diagnostic) ? diagnostic.functionName : undefined,
             })),
-            instruction:
-              'If a diagnostic names one helper function, return javascriptPatch whose replacement retains that function. The replacement may additionally declare new uniquely named atomic helpers when the failed function must be split; keep the named function as an orchestration wrapper and do not include main. If no helper function is named (including NON_ATOMIC_WORKFLOW_HELPER), return complete corrected javascriptSource with main(). Do not return DSL.',
+            instruction: input.repairFunctionName
+              ? `Repair only ${input.repairFunctionName}. Return javascriptPatch with functionName exactly "${input.repairFunctionName}" and replacementSource containing the corrected function plus only any new atomic helpers it requires. Do not return the complete program or DSL.`
+              : 'Return the complete corrected javascriptSource, including every helper and main(). Do not return a partial function or DSL.',
           }
         : undefined,
       examples: [
@@ -342,6 +362,7 @@ function extractJavascriptSourceFromModelResponse(text: string): string | null {
 function compileRepairResponse({
   text,
   failedJavascriptSource,
+  repairFunctionName,
   inputTableId,
   outputTableName,
   requirement,
@@ -349,6 +370,7 @@ function compileRepairResponse({
 }: {
   text: string;
   failedJavascriptSource: string;
+  repairFunctionName?: string;
   inputTableId: string;
   outputTableName: string;
   requirement: string;
@@ -364,24 +386,39 @@ function compileRepairResponse({
     );
   }
   if (isRecord(parsed) && isRecord(parsed.javascriptPatch)) {
-    const functionName = parsed.javascriptPatch.functionName;
-    const replacement = parsed.javascriptPatch.replacement;
-    if (typeof functionName !== 'string' || typeof replacement !== 'string') {
+    if (!repairFunctionName) {
       throw new DataCommandError(
         'VALIDATION_FAILED',
-        'Repair javascriptPatch must include string functionName and replacement'
+        'Workflow repair returned a function patch when full JavaScript was required'
       );
     }
-    const patched = applyWorkflowFunctionPatch(failedJavascriptSource, functionName, replacement);
-    return compileGeneratedJavascriptResponse({
-      text: JSON.stringify({ javascriptSource: patched }),
+    const functionName = parsed.javascriptPatch.functionName;
+    const replacementSource = parsed.javascriptPatch.replacementSource;
+    if (functionName !== repairFunctionName || typeof replacementSource !== 'string') {
+      throw new DataCommandError(
+        'VALIDATION_FAILED',
+        `Workflow repair patch must target function ${repairFunctionName} with string replacementSource`
+      );
+    }
+    const patchedSource = applyWorkflowFunctionPatch(
+      failedJavascriptSource,
+      repairFunctionName,
+      replacementSource
+    );
+    return compileGeneratedJavaScriptWorkflow({
+      javascriptSource: patchedSource,
       inputTableId,
       outputTableName,
       requirement,
       columns,
     });
   }
-
+  if (repairFunctionName) {
+    throw new DataCommandError(
+      'VALIDATION_FAILED',
+      `Workflow repair for ${repairFunctionName} must return javascriptPatch, not complete JavaScript`
+    );
+  }
   return compileGeneratedJavascriptResponse({
     text,
     inputTableId,
@@ -391,20 +428,53 @@ function compileRepairResponse({
   });
 }
 
-function extractRepairJavascriptCandidate(
-  text: string,
-  failedJavascriptSource: string
-): string | null {
+function resolveRepairFunctionName(
+  javascriptSource: string,
+  diagnostics: PrepDiagnostic[]
+): string | undefined {
+  let functions: Set<string>;
+  try {
+    functions = new Set(
+      compileWorkflowJavaScript(javascriptSource).functions.map((item) => item.name)
+    );
+  } catch {
+    return undefined;
+  }
+  for (const diagnostic of diagnostics) {
+    const functionName = isRecord(diagnostic) ? diagnostic.functionName : undefined;
+    if (typeof functionName === 'string' && functions.has(functionName)) return functionName;
+  }
+  return undefined;
+}
+
+function extractRepairJavascriptCandidate({
+  text,
+  failedJavascriptSource,
+  repairFunctionName,
+}: {
+  text: string;
+  failedJavascriptSource: string;
+  repairFunctionName?: string;
+}): string | null {
   try {
     const parsed = JSON.parse(text) as unknown;
     if (isRecord(parsed) && isRecord(parsed.javascriptPatch)) {
       const functionName = parsed.javascriptPatch.functionName;
-      const replacement = parsed.javascriptPatch.replacement;
-      if (typeof functionName === 'string' && typeof replacement === 'string') {
-        return applyWorkflowFunctionPatch(failedJavascriptSource, functionName, replacement);
+      const replacementSource = parsed.javascriptPatch.replacementSource;
+      if (
+        repairFunctionName &&
+        functionName === repairFunctionName &&
+        typeof replacementSource === 'string'
+      ) {
+        return applyWorkflowFunctionPatch(
+          failedJavascriptSource,
+          repairFunctionName,
+          replacementSource
+        );
       }
+      return null;
     }
-    return extractGeneratedJavascriptSource(text);
+    return repairFunctionName ? null : extractGeneratedJavascriptSource(text);
   } catch {
     return null;
   }

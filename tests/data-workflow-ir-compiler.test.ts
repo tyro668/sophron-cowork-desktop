@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyWorkflowFunctionPatch,
   compileWorkflowJavaScript,
   executeWorkflowJavaScriptInSandbox,
   WORKFLOW_SDK_RUNTIME_SOURCE,
@@ -10,7 +11,6 @@ import {
   canonicalizeWorkflowIr,
   computeWorkflowIrSemanticHash,
 } from '../src/main/data/workflow/workflow-ir';
-import { applyWorkflowFunctionPatch } from '../src/main/data/workflow/javascript-runtime';
 import {
   getWorkflowJavascriptCapabilityPrompt,
   WORKFLOW_OPERATION_REGISTRY,
@@ -123,13 +123,29 @@ describe('JavaScript Workflow SDK pipeline', () => {
     });
   });
 
-  it('applies a function-scoped repair patch without rewriting main', () => {
-    const patched = applyWorkflowFunctionPatch(
-      SOURCE,
-      'removeCount',
-      'function removeCount(input) { return workflow.step(input, "drop", { columns: ["旧字段"] }); }'
-    );
+  it('uses Acorn ranges to patch only the diagnosed function', () => {
+    const replacement = `function removeCount(input) {
+  return workflow.step(input, "drop", { columns: ["旧字段"] });
+}`;
+    const patched = applyWorkflowFunctionPatch(SOURCE, 'removeCount', replacement);
     expect(patched).toContain('columns: ["旧字段"]');
+    expect(patched.slice(patched.indexOf('function main()'))).toBe(
+      SOURCE.slice(SOURCE.indexOf('function main()'))
+    );
+  });
+
+  it('lets Acorn locate functions safely when regex literals contain braces', () => {
+    const source = `function inspect(input) {
+  const pattern = /function fake\\(\\) \\{\\}/;
+  return input;
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  return workflow.output(inspect(input), OUTPUT_TABLE_NAME);
+}`;
+    const replacement = 'function inspect(input) { return input; }';
+    const patched = applyWorkflowFunctionPatch(source, 'inspect', replacement);
+    expect(patched).toContain(replacement);
     expect(patched).toContain('function main()');
   });
 

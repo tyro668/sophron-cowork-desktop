@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import vm from 'node:vm';
+import { parse, type FunctionDeclaration } from 'acorn';
 import { DataCommandError } from '../data-command-types';
 import type { WorkflowIr, WorkflowOperationIr } from './workflow-model';
 import { validateAndNormalizeWorkflowIr } from './workflow-ir';
@@ -263,50 +264,43 @@ export function executeWorkflowJavaScriptInSandbox({
 export function applyWorkflowFunctionPatch(
   source: string,
   functionName: string,
-  replacement: string
+  replacementSource: string
 ): string {
-  compileWorkflowJavaScript(source);
-  const original = new Map(indexJavaScriptFunctions(source).map((item) => [item.name, item]));
-  const target = original.get(functionName);
+  const compiled = compileWorkflowJavaScript(source);
+  const originalFunctions = new Map(compiled.functions.map((item) => [item.name, item]));
+  const target = originalFunctions.get(functionName);
   if (!target) {
     throw new DataCommandError(
       'VALIDATION_FAILED',
       `Cannot patch unknown workflow function: ${functionName}`
     );
   }
-  try {
-    new vm.Script(replacement, { filename: GENERATED_FILE });
-  } catch (error) {
-    throw normalizeJavaScriptError(
-      error,
-      'JAVASCRIPT_SYNTAX_ERROR',
-      indexFunctionStartsBestEffort(replacement)
-    );
-  }
-  const replacements = new Map(
-    indexJavaScriptFunctions(replacement).map((item) => [item.name, item])
-  );
-  if (!replacements.has(functionName)) {
+
+  const replacementFunctions = indexJavaScriptFunctions(replacementSource);
+  if (!replacementFunctions.some((item) => item.name === functionName)) {
     throw new DataCommandError(
       'VALIDATION_FAILED',
-      `Workflow function patch must contain function ${functionName}`
+      `Workflow function patch must retain function ${functionName}`
     );
   }
-  for (const name of replacements.keys()) {
-    if (name === 'main' && functionName !== 'main') {
+  for (const replacement of replacementFunctions) {
+    if (replacement.name === 'main' && functionName !== 'main') {
       throw new DataCommandError(
         'VALIDATION_FAILED',
-        'Workflow helper patch must not replace function main'
+        'Workflow helper patch must not include function main'
       );
     }
-    if (name !== functionName && original.has(name)) {
+    if (replacement.name !== functionName && originalFunctions.has(replacement.name)) {
       throw new DataCommandError(
         'VALIDATION_FAILED',
-        `Workflow function patch cannot redefine existing function ${name}`
+        `Workflow function patch cannot redefine existing function ${replacement.name}`
       );
     }
   }
-  return `${source.slice(0, target.start)}${replacement.trim()}${source.slice(target.end)}`;
+
+  const patched = `${source.slice(0, target.start)}${replacementSource.trim()}${source.slice(target.end)}`;
+  compileWorkflowJavaScript(patched);
+  return patched;
 }
 
 export function assertAtomicWorkflowHelpers(ir: WorkflowIr): void {
@@ -341,123 +335,45 @@ export function assertAtomicWorkflowHelpers(ir: WorkflowIr): void {
 }
 
 export function indexJavaScriptFunctions(source: string): JavaScriptFunctionIndexEntry[] {
-  const masked = maskJavaScriptNonCode(source);
-  const functions: JavaScriptFunctionIndexEntry[] = [];
+  let program;
+  try {
+    program = parse(source, {
+      ecmaVersion: 'latest',
+      sourceType: 'script',
+      locations: true,
+    });
+  } catch (error) {
+    throw new DataCommandError(
+      'VALIDATION_FAILED',
+      `Cannot parse workflow JavaScript structure with Acorn: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+
   const names = new Set<string>();
-  const pattern = /\bfunction\s+([A-Za-z_$][\w$]*)\s*\(/g;
-  let match: RegExpExecArray | null;
-  let consumedUntil = 0;
-  while ((match = pattern.exec(masked))) {
-    if (masked.slice(consumedUntil, match.index).trim()) {
+  return program.body.map((node) => {
+    if (node.type !== 'FunctionDeclaration' || !node.id) {
       throw new DataCommandError(
         'VALIDATION_FAILED',
         'Generated workflow JavaScript may only contain named function declarations'
       );
     }
-    const name = match[1];
+    const declaration = node as FunctionDeclaration;
+    const name = declaration.id!.name;
     if (names.has(name)) {
       throw new DataCommandError('VALIDATION_FAILED', `Duplicate workflow function: ${name}`);
     }
     names.add(name);
-    const openParen = pattern.lastIndex - 1;
-    const closeParen = findMatchingDelimiter(masked, openParen, '(', ')');
-    const bodyStart = masked.indexOf('{', closeParen + 1);
-    if (bodyStart < 0 || masked.slice(closeParen + 1, bodyStart).trim()) {
-      throw new DataCommandError(
-        'VALIDATION_FAILED',
-        `Cannot locate body of workflow function ${name}`
-      );
-    }
-    const bodyEnd = findMatchingDelimiter(masked, bodyStart, '{', '}');
-    const startPosition = sourcePositionAt(source, match.index);
-    const endPosition = sourcePositionAt(source, bodyEnd + 1);
-    functions.push({
+    return {
       name,
-      start: match.index,
-      end: bodyEnd + 1,
-      line: startPosition.line,
-      column: startPosition.column,
-      endLine: endPosition.line,
-    });
-    consumedUntil = bodyEnd + 1;
-    pattern.lastIndex = consumedUntil;
-  }
-  if (masked.slice(consumedUntil).trim() || functions.length === 0) {
-    throw new DataCommandError(
-      'VALIDATION_FAILED',
-      'Generated workflow JavaScript may only contain named function declarations'
-    );
-  }
-  return functions;
-}
-
-/** Masks literals and comments while preserving offsets for diagnostics and patching. */
-function maskJavaScriptNonCode(source: string): string {
-  const chars = [...source];
-  let quote: "'" | '"' | '`' | null = null;
-  let lineComment = false;
-  let blockComment = false;
-  for (let index = 0; index < chars.length; index += 1) {
-    const char = chars[index];
-    const next = chars[index + 1];
-    if (lineComment) {
-      if (char === '\n') lineComment = false;
-      else chars[index] = ' ';
-      continue;
-    }
-    if (blockComment) {
-      if (char === '*' && next === '/') {
-        chars[index] = chars[index + 1] = ' ';
-        index += 1;
-        blockComment = false;
-      } else if (char !== '\n') chars[index] = ' ';
-      continue;
-    }
-    if (quote) {
-      if (char === '\\') {
-        chars[index] = ' ';
-        if (index + 1 < chars.length && chars[index + 1] !== '\n') chars[index + 1] = ' ';
-        index += 1;
-      } else if (char === quote) {
-        chars[index] = ' ';
-        quote = null;
-      } else if (char !== '\n') chars[index] = ' ';
-      continue;
-    }
-    if (char === '/' && next === '/') {
-      chars[index] = chars[index + 1] = ' ';
-      index += 1;
-      lineComment = true;
-    } else if (char === '/' && next === '*') {
-      chars[index] = chars[index + 1] = ' ';
-      index += 1;
-      blockComment = true;
-    } else if (char === "'" || char === '"' || char === '`') {
-      chars[index] = ' ';
-      quote = char;
-    }
-  }
-  return chars.join('');
-}
-
-function findMatchingDelimiter(
-  source: string,
-  start: number,
-  open: '(' | '{',
-  close: ')' | '}'
-): number {
-  let depth = 0;
-  for (let index = start; index < source.length; index += 1) {
-    if (source[index] === open) depth += 1;
-    if (source[index] === close) depth -= 1;
-    if (depth === 0) return index;
-  }
-  throw new DataCommandError('VALIDATION_FAILED', 'Unbalanced generated workflow function');
-}
-
-function sourcePositionAt(source: string, offset: number): { line: number; column: number } {
-  const lines = source.slice(0, offset).split(/\r?\n/);
-  return { line: lines.length, column: (lines.at(-1)?.length ?? 0) + 1 };
+      start: declaration.start,
+      end: declaration.end,
+      line: declaration.loc?.start.line ?? 1,
+      column: (declaration.loc?.start.column ?? 0) + 1,
+      endLine: declaration.loc?.end.line ?? 1,
+    };
+  });
 }
 
 function normalizeJavaScriptError(

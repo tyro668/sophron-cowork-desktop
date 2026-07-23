@@ -1867,7 +1867,7 @@ function main() {
     expect(runPiAiOneShot).toHaveBeenCalledTimes(1);
   });
 
-  it('retries a repair when the first helper patch is still non-atomic', async () => {
+  it('retries an Acorn-scoped function repair when the first patch is still non-atomic', async () => {
     const nonAtomicSource = `function extractYearMonth(input) {
   const withYear = workflow.step(input, "derive", { column: "Year", expression: fn.year(col("Date")) });
   return workflow.step(withYear, "derive", { column: "Month", expression: fn.month(col("Date")) });
@@ -1888,7 +1888,7 @@ function main() {
         text: JSON.stringify({
           javascriptPatch: {
             functionName: 'extractYearMonth',
-            replacement: `function extractYearMonth(input) {
+            replacementSource: `function extractYearMonth(input) {
   const withYear = workflow.step(input, "derive", { column: "Year", expression: fn.year(col("Date")) });
   return workflow.step(withYear, "derive", { column: "Month", expression: fn.month(col("Date")) });
 }`,
@@ -1901,7 +1901,7 @@ function main() {
         text: JSON.stringify({
           javascriptPatch: {
             functionName: 'extractYearMonth',
-            replacement: `function extractYear(input) {
+            replacementSource: `function extractYear(input) {
   return workflow.step(input, "derive", { column: "Year", expression: fn.year(col("Date")) });
 }
 
@@ -2100,7 +2100,19 @@ function extractYearMonth(input) {
       hasThinking: false,
       durationMs: 1,
     };
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce(badResponse).mockResolvedValueOnce(badResponse);
+    vi.mocked(runPiAiOneShot)
+      .mockResolvedValueOnce(badResponse)
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          javascriptPatch: {
+            functionName: 'step1',
+            replacementSource:
+              'function step1(input) { return workflow.step(input, "filter", { condition: col("Market").gt(lit(100)) }); }',
+          },
+        }),
+        hasThinking: false,
+        durationMs: 1,
+      });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
@@ -2131,7 +2143,7 @@ function extractYearMonth(input) {
     });
   });
 
-  it('rejects a repaired workflowDsl response by default when repair does not return javascriptSource', async () => {
+  it('rejects a repaired workflowDsl response when a function patch is required', async () => {
     vi.mocked(runPiAiOneShot)
       .mockResolvedValueOnce({
         text: JSON.stringify({
@@ -2180,7 +2192,7 @@ function extractYearMonth(input) {
       })
     ).rejects.toMatchObject({
       code: 'VALIDATION_FAILED',
-      message: expect.stringContaining('javascriptSource'),
+      message: expect.stringContaining('javascriptPatch'),
     });
   });
 
@@ -2227,7 +2239,7 @@ function extractYearMonth(input) {
       })
     ).rejects.toMatchObject({
       code: 'VALIDATION_FAILED',
-      message: expect.stringContaining('javascriptSource'),
+      message: expect.stringContaining('javascriptPatch'),
     });
   });
 
@@ -2281,7 +2293,7 @@ function extractYearMonth(input) {
       })
     ).rejects.toMatchObject({
       code: 'VALIDATION_FAILED',
-      message: expect.stringContaining('javascriptSource'),
+      message: expect.stringContaining('javascriptPatch'),
     });
     expect(runPiAiOneShot).toHaveBeenCalledTimes(2);
   });
@@ -2326,16 +2338,28 @@ function extractYearMonth(input) {
   });
 
   it('rejects javascriptSource that references a missing longer ASCII sort column', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValue({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow(
-          'workflow().inputDataset(INPUT_TABLE_ID, "src").sort(col("Market Value"), "asc").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
-        ),
-        requiredColumns: [],
-      }),
-      hasThinking: false,
-      durationMs: 1,
-    });
+    vi.mocked(runPiAiOneShot)
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          javascriptSource: asFunctionWorkflow(
+            'workflow().inputDataset(INPUT_TABLE_ID, "src").sort(col("Market Value"), "asc").outputTable(OUTPUT_TABLE_NAME, { mode: "replace" })'
+          ),
+          requiredColumns: [],
+        }),
+        hasThinking: false,
+        durationMs: 1,
+      })
+      .mockResolvedValue({
+        text: JSON.stringify({
+          javascriptPatch: {
+            functionName: 'step1',
+            replacementSource:
+              'function step1(input) { return workflow.step(input, "sort", { column: col("Market Value"), direction: "asc" }); }',
+          },
+        }),
+        hasThinking: false,
+        durationMs: 1,
+      });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'items.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nUS,20\nEU,10\n', 'utf8');

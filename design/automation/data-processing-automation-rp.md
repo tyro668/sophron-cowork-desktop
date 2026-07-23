@@ -16,7 +16,7 @@
 6. IR 到 Operations JSON、Prep DSL 的转换完全确定，不调用大模型。
 7. 同一份 JavaScript 构建两次 IR，并比较 Semantic Hash，拒绝非确定性结果。
 8. 每个辅助函数最多产生一个 Workflow operation；`main()` 负责数据流编排。
-9. 编译或运行错误必须携带函数名、行号和列号，优先执行函数级局部修复。
+9. 编译或运行错误必须携带函数名、行号和列号；源码结构有效且诊断明确指向函数时，模型只返回该函数的受控 Patch，其他源码保持不变。
 10. 生成结果必须经过 Prep DSL 编译、临时执行和输出 Schema 校验后才能保存。
 11. 自动化运行期只执行已保存 Workflow，不重新生成处理逻辑。
 12. 预览降级、回滚和临时资源清理失败必须记录日志。
@@ -37,7 +37,7 @@ flowchart TD
     J -->|否| R[生成诊断]
     J -->|是| K[原子辅助函数检查]
     K -->|失败| R
-    R --> P[LLM 函数级 JavaScript Patch]
+    R --> P[LLM 返回函数 Patch 或完整修正 JavaScript]
     P --> E
     K -->|通过| L[固定 Lowering]
     L --> M[Operations JSON 1.0]
@@ -136,7 +136,7 @@ new vm.Script(source, { filename: 'generated-workflow.js' });
 - `column`
 - `functionName`
 
-系统保留轻量函数位置索引，只用于错误归属和函数级补丁定位。它不构建 JavaScript AST、不解释业务语义，也不生成 IR。
+系统使用 Acorn 解析标准 JavaScript，仅获取顶层具名函数的名称和 `start/end` 范围，用于错误归属、结构约束和受控 Patch。Acorn AST 不解释 Workflow 业务语义，也不生成 IR；最终源码仍必须由 V8 编译。
 
 ## 7. 沙箱与固定 Workflow IR Bridge
 
@@ -191,7 +191,7 @@ provenance 保存 operation 对应的 JavaScript 函数、行号和列号。
 
 IR 的 Semantic Hash 排除源码行列等非语义信息。相同源码连续执行两次产生不同 Hash 时，返回 `NON_DETERMINISTIC_WORKFLOW_BUILD`，不进入 lowering。
 
-## 9. 原子辅助函数和局部修复
+## 9. 原子辅助函数和受控源码修复
 
 IR 构建后按 provenance 聚合 operation。非 `main` 辅助函数产生多个 operation 时返回：
 
@@ -199,25 +199,26 @@ IR 构建后按 provenance 聚合 operation。非 `main` 辅助函数产生多�
 NON_ATOMIC_WORKFLOW_HELPER
 ```
 
-诊断包含具体函数名和源码位置。修复响应优先使用：
+诊断包含具体函数名和源码位置。原源码能被 Acorn 定位且诊断明确指向函数时，修复响应返回：
 
 ```json
 {
   "javascriptPatch": {
     "functionName": "extractYearMonth",
-    "replacement": "function extractYear(...) {...}\nfunction extractMonth(...) {...}\nfunction extractYearMonth(...) {...}"
+    "replacementSource": "function extractYear(...) {...}\nfunction extractMonth(...) {...}\nfunction extractYearMonth(...) {...}"
   }
 }
 ```
 
-补丁规则：
+修复规则：
 
-- 必须保留目标函数。
-- 可以新增名称不冲突的原子辅助函数。
-- 辅助函数补丁不能替换 `main()`。
-- 不允许覆盖其他已有函数。
-- 补丁先通过 V8 编译，再重新执行完整 Bridge、IR、lowering 和 dry-run 流程。
-- 不执行 AST 自动改写，也不回退到整段 DSL。
+- `functionName` 必须与系统指定的目标函数完全一致。
+- `replacementSource` 必须保留目标函数，可以增加名称不冲突的原子辅助函数。
+- 非 `main` Patch 不允许包含 `main()`，也不允许覆盖其他已有函数。
+- 系统通过 Acorn AST 范围只替换目标函数区间，区间外源码保持字节级不变。
+- Patch 后的完整源码必须先通过 V8 编译，再重新执行完整 Bridge、IR、lowering 和 dry-run 流程。
+- 原源码存在语法错误、诊断没有明确函数名或无法安全定位时，模型返回包含全部辅助函数和 `main()` 的完整 `javascriptSource`。
+- Acorn 不参与 JavaScript → IR 转换，也不回退到整段 DSL。
 
 ## 10. IR → Operations JSON → Prep DSL
 
@@ -249,7 +250,7 @@ NON_ATOMIC_WORKFLOW_HELPER
 6. 输出 Schema 校验和校准。
 7. diagnostic 汇总。
 
-只有无 error diagnostic 的 candidate 才能保存。网络、权限、超时、文件不存在等基础设施错误不交给模型修复；明确关联到 JavaScript helper 的语法、SDK、IR 或字段语义错误可以进入局部修复。
+只有无 error diagnostic 的 candidate 才能保存。网络、权限、超时、文件不存在等基础设施错误不交给模型修复；明确关联到 JavaScript helper 的语法、SDK、IR 或字段语义错误可以进入受控源码修复。
 
 ## 12. 保存与运行
 
@@ -300,7 +301,7 @@ NON_ATOMIC_WORKFLOW_HELPER
 - 新增 operation 不需要修改 JavaScript Bridge。
 - IR 只接受 `sourceLanguage: "javascript"`。
 - 同一源码的 IR Semantic Hash 稳定。
-- 非原子 helper 能定位函数并通过 JavaScript Patch 修复。
+- 非原子 helper 能定位函数并通过 Acorn 范围 Patch 修复，其他源码保持不变。
 - Operations JSON 与 Prep DSL 完全由固定转换器产生。
 - 保存前必须完成 DSL 编译、临时执行和输出 Schema 校验。
 - 运行期不调用大模型。
