@@ -193,10 +193,56 @@ function formatDeduplicate(config: Record<string, unknown> | undefined): string 
 }
 
 function formatCalculateField(config: Record<string, unknown> | undefined): string {
-  const calculations = objectArray(config?.calculations).map(
-    (item) =>
-      `${formatFieldRef(String(item.field ?? 'new_field'))} = ${String(item.expression ?? 'null')}`
-  );
+  const calculations = objectArray(config?.calculations).map((item) => {
+    const fn = String(item.fn ?? '');
+    const fnArg = String(item.fnArg ?? '');
+    const fnArg2 = String(item.fnArg2 ?? '');
+    const orderBy = objectArray(item.orderBy);
+    const dateField = orderBy.length > 0 ? String(orderBy[0].field ?? '') : '';
+    const fiscalStartMonth = Number(item.fiscalStartMonth ?? 0);
+
+    if (fn.startsWith('period_yoy') || fn.startsWith('period_mom')) {
+      const modeMap: Record<string, string> = {
+        period_yoy_value: 'yoy_diff',
+        period_yoy_rate: 'yoy_rate',
+        period_yoy_prev: 'yoy_prev',
+        period_mom_value: 'mom_diff',
+        period_mom_rate: 'mom_rate',
+        period_mom_prev: 'mom_prev',
+      };
+      const mode = modeMap[fn] || fn;
+      const args = [mode, formatFieldRef(fnArg), formatFieldRef(dateField)]
+        .filter(Boolean)
+        .join(', ');
+      return `${formatFieldRef(String(item.field ?? 'new_field'))} = period_compare(${args})`;
+    }
+
+    const timePrefix = [
+      'ytd_',
+      'qtd_',
+      'mtd_',
+      'wtd_',
+      'rolling_year_',
+      'rolling_month_',
+      'rolling_day_',
+      'rolling_week_',
+    ].find((p) => fn.startsWith(p));
+    if (timePrefix) {
+      const agg = fn.slice(timePrefix.length);
+      const rawPrefix = timePrefix.replace(/_$/, '');
+      const isRolling = rawPrefix.startsWith('rolling_');
+      const gran = isRolling ? rawPrefix.slice(8) : '';
+      const args = [rawPrefix, agg, formatFieldRef(fnArg), formatFieldRef(dateField)];
+      if (isRolling && fnArg2) {
+        args.push(fnArg2, gran);
+      } else if (!isRolling && fiscalStartMonth > 1) {
+        args.push(`fiscal_start=${fiscalStartMonth}`);
+      }
+      return `${formatFieldRef(String(item.field ?? 'new_field'))} = accumulate(${args.filter(Boolean).join(', ')})`;
+    }
+
+    return `${formatFieldRef(String(item.field ?? 'new_field'))} = ${String(item.expression ?? 'null')}`;
+  });
   return `derive ${calculations.join(', ') || '[new_field] = null'}`;
 }
 

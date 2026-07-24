@@ -5,7 +5,6 @@ import {
   exprFromParts,
   needsCalculationIdNormalization,
   normalizeCalculationEntries,
-  type CalculationRow,
 } from '../../src/renderer/components/workflow-forms/shared/calculate-field';
 
 function ok(config: Record<string, unknown>) {
@@ -615,7 +614,7 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
     );
   });
 
-  it('period_yoy_value produces value - lag(value) with date alignment', () => {
+  it('period_yoy_value produces value - lag(value) with CASE WHEN guard', () => {
     const result = exprFromParts({
       id: 'py1',
       field: 'yoy',
@@ -626,11 +625,11 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
       orderBy: [{ field: 'ym', direction: 'asc' }],
     });
     expect(result).toBe(
-      "[sales] - lag([sales]) OVER (PARTITION BY extract('month' FROM [ym]), extract('day' FROM [ym]) ORDER BY extract('year' FROM [ym]))"
+      "CASE WHEN (extract('year' FROM [ym]) - lag(extract('year' FROM [ym])) OVER (PARTITION BY extract('month' FROM [ym]), extract('day' FROM [ym]) ORDER BY extract('year' FROM [ym]))) = 1 THEN [sales] - lag([sales]) OVER (PARTITION BY extract('month' FROM [ym]), extract('day' FROM [ym]) ORDER BY extract('year' FROM [ym])) ELSE NULL END"
     );
   });
 
-  it('period_yoy_rate produces (value - lag(value)) / nullif(lag(value), 0) with date alignment', () => {
+  it('period_yoy_rate produces (value - lag(value)) / nullif(lag(value), 0) with CASE WHEN guard', () => {
     const result = exprFromParts({
       id: 'py2',
       field: 'yoy_rate',
@@ -641,11 +640,11 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
       orderBy: [{ field: 'ym', direction: 'asc' }],
     });
     expect(result).toBe(
-      "([sales] - lag([sales]) OVER (PARTITION BY extract('month' FROM [ym]), extract('day' FROM [ym]) ORDER BY extract('year' FROM [ym]))) / nullif(lag([sales]) OVER (PARTITION BY extract('month' FROM [ym]), extract('day' FROM [ym]) ORDER BY extract('year' FROM [ym])), 0)"
+      "CASE WHEN (extract('year' FROM [ym]) - lag(extract('year' FROM [ym])) OVER (PARTITION BY extract('month' FROM [ym]), extract('day' FROM [ym]) ORDER BY extract('year' FROM [ym]))) = 1 THEN ([sales] - lag([sales]) OVER (PARTITION BY extract('month' FROM [ym]), extract('day' FROM [ym]) ORDER BY extract('year' FROM [ym]))) / nullif(lag([sales]) OVER (PARTITION BY extract('month' FROM [ym]), extract('day' FROM [ym]) ORDER BY extract('year' FROM [ym])), 0) ELSE NULL END"
     );
   });
 
-  it('period_yoy_prev returns prior year raw value', () => {
+  it('period_yoy_prev returns prior year raw value with CASE WHEN guard', () => {
     const result = exprFromParts({
       id: 'py3',
       field: 'yoy_prev',
@@ -656,7 +655,7 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
       orderBy: [{ field: 'ym', direction: 'asc' }],
     });
     expect(result).toBe(
-      "lag([sales]) OVER (PARTITION BY extract('month' FROM [ym]), extract('day' FROM [ym]) ORDER BY extract('year' FROM [ym]))"
+      "CASE WHEN (extract('year' FROM [ym]) - lag(extract('year' FROM [ym])) OVER (PARTITION BY extract('month' FROM [ym]), extract('day' FROM [ym]) ORDER BY extract('year' FROM [ym]))) = 1 THEN lag([sales]) OVER (PARTITION BY extract('month' FROM [ym]), extract('day' FROM [ym]) ORDER BY extract('year' FROM [ym])) ELSE NULL END"
     );
   });
 

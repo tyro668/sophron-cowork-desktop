@@ -521,7 +521,82 @@ function parseDerive(text: string): PrepOperatorAst {
     const index = part.indexOf('=');
     if (index < 0) return [];
     const field = parseFieldRef(part.slice(0, index).trim());
-    return field ? [{ field: toFieldName(field), expression: part.slice(index + 1).trim() }] : [];
+    if (!field) return [];
+    const expr = part.slice(index + 1).trim();
+    const nameEnd = expr.indexOf('(');
+    if (nameEnd > 0) {
+      const funcName = expr.slice(0, nameEnd);
+      const argsStr = expr.slice(nameEnd + 1, expr.lastIndexOf(')'));
+      const args = splitTopLevel(argsStr).map((a) => a.trim());
+
+      if (funcName === 'period_compare' && args.length >= 3) {
+        const modeMap: Record<string, string> = {
+          yoy_diff: 'period_yoy_value',
+          yoy_rate: 'period_yoy_rate',
+          yoy_prev: 'period_yoy_prev',
+          mom_diff: 'period_mom_value',
+          mom_rate: 'period_mom_rate',
+          mom_prev: 'period_mom_prev',
+        };
+        const fn = modeMap[args[0]] || `period_${args[0]}`;
+        const fnArgField = parseFieldRef(args[1]);
+        const dateField = parseFieldRef(args[2]);
+        const fnArgName = fnArgField ? toFieldName(fnArgField) : args[1];
+        const dateFieldName = dateField ? toFieldName(dateField) : '';
+        return [
+          {
+            field: toFieldName(field),
+            expression: '',
+            fn,
+            fnArg: fnArgName,
+            orderBy: dateField ? [{ field: dateFieldName, direction: 'asc' as const }] : undefined,
+          },
+        ];
+      }
+
+      if (funcName === 'accumulate' && args.length >= 4) {
+        const windowType = args[0].toLowerCase();
+        const rawAgg = args[1].toLowerCase();
+        const agg = rawAgg === 'distinct' ? 'distinct_count' : rawAgg;
+        const fnArgField = parseFieldRef(args[2]);
+        const dateField = parseFieldRef(args[3]);
+        const extra = args[4];
+        const fnArgName = fnArgField ? toFieldName(fnArgField) : '';
+        const dateFieldName = dateField ? toFieldName(dateField) : '';
+        let fn = '';
+        let fnArg2 = '';
+        let fiscalStartMonth = 0;
+        if (
+          windowType === 'ytd' ||
+          windowType === 'qtd' ||
+          windowType === 'mtd' ||
+          windowType === 'wtd'
+        ) {
+          fn = `${windowType}_${agg}`;
+          if (extra && extra.startsWith('fiscal_start=')) {
+            fiscalStartMonth = parseInt(extra.split('=')[1], 10);
+          }
+        } else if (windowType === 'rolling') {
+          const parts = extra?.split(/\s*,\s*/) ?? [];
+          const n = parts[0] || '1';
+          const gran = parts[1] || 'year';
+          fn = `rolling_${gran}_${agg}`;
+          fnArg2 = n;
+        }
+        return [
+          {
+            field: toFieldName(field),
+            expression: '',
+            fn,
+            fnArg: fnArgName,
+            fnArg2: fnArg2 || undefined,
+            orderBy: dateField ? [{ field: dateFieldName, direction: 'asc' as const }] : undefined,
+            fiscalStartMonth: fiscalStartMonth > 0 ? fiscalStartMonth : undefined,
+          },
+        ];
+      }
+    }
+    return [{ field: toFieldName(field), expression: expr }];
   });
   return makeOperator('calculate_field', text, { calculations });
 }
