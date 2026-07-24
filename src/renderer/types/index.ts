@@ -729,6 +729,21 @@ export interface DataGenerateTaskFromRequirementInput {
   currentVersion?: number | null;
 }
 
+export type DataTaskRequirementItemStatus = 'supported' | 'ambiguous' | 'unsupported';
+
+export interface DataTaskRequirementAnalysisItem {
+  requirement: string;
+  status: DataTaskRequirementItemStatus;
+  reason?: string;
+  suggestedRequirement?: string;
+  operations: string[];
+}
+
+export interface DataAnalyzeTaskRequirementResult {
+  status: 'supported' | 'needs_confirmation' | 'unsupported';
+  items: DataTaskRequirementAnalysisItem[];
+}
+
 export interface DataGenerateTaskFromRequirementResult {
   taskId: string;
   taskName: string;

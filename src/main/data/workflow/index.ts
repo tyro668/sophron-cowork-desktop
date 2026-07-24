@@ -4,6 +4,7 @@ export {
   normalizeColumnSnapshot,
   repairGeneratedWorkflowFromDiagnostics,
 } from './workflow-generator';
+export { analyzeDataTaskRequirement } from './requirement-analyzer';
 export {
   hashColumns,
   reconcileGeneratedWorkflowWithOutputPreview,

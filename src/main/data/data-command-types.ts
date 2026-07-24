@@ -1,5 +1,6 @@
 import type {
   AgentRuntimeConfig,
+  DataAnalyzeTaskRequirementResult,
   DataCleaningTask,
   DataDataset,
   DataDeleteInputTableNormalizerVersionInput,
@@ -155,6 +156,9 @@ export type GenerateInputTableNormalizerDraftResult = DataGenerateInputTableNorm
 export type GenerateTaskFromRequirementCommand = DataGenerateTaskFromRequirementInput & {
   runtimeConfig?: AgentRuntimeConfig;
 };
+
+export type AnalyzeTaskRequirementCommand = GenerateTaskFromRequirementCommand;
+export type AnalyzeTaskRequirementResult = DataAnalyzeTaskRequirementResult;
 
 export type GenerateTaskFromRequirementResult = DataGenerateTaskFromRequirementResult;
 

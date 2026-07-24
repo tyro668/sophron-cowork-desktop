@@ -45,6 +45,26 @@ export function registerDataTasksIpc({
   });
 
   ipcMain.handle(
+    'data.analyzeTaskRequirement',
+    async (_event, payload: DataGenerateTaskFromRequirementInput) => {
+      try {
+        const modelConfigSetId =
+          typeof payload.modelConfigSetId === 'string' ? payload.modelConfigSetId.trim() : '';
+        const runtimeConfig = modelConfigSetId
+          ? (resolveModelRuntimeConfig(modelConfigSetId) ?? undefined)
+          : undefined;
+        return await requireDataCommandService().analyzeTaskRequirement({
+          ...payload,
+          runtimeConfig,
+        });
+      } catch (error) {
+        logError('[Data] Error analyzing task requirement:', error);
+        throw error;
+      }
+    }
+  );
+
+  ipcMain.handle(
     'data.generateTaskFromRequirement',
     async (_event, payload: DataGenerateTaskFromRequirementInput) => {
       try {

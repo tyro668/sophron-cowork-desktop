@@ -33,6 +33,8 @@ import {
   type CreateInputTableWithProcessingStrategyResult,
   type CreateOutputTableCommand,
   type CreateTaskCommand,
+  type AnalyzeTaskRequirementCommand,
+  type AnalyzeTaskRequirementResult,
   type DeleteInputTableNormalizerVersionCommand,
   type DeleteInputTableNormalizerVersionResult,
   type ExportWorkflowDslCommand,
@@ -97,6 +99,7 @@ import type {
 } from '../../shared/personal-analysis-types';
 import {
   GENERATED_WORKFLOW_REPAIR_ATTEMPTS,
+  analyzeDataTaskRequirement,
   type GeneratedDataTaskWorkflow,
   generateDataTaskWorkflowFromRequirement,
   hashColumns,
@@ -324,6 +327,21 @@ export class DataCommandService {
       }
       throw error;
     }
+  }
+
+  async analyzeTaskRequirement(
+    input: AnalyzeTaskRequirementCommand
+  ): Promise<AnalyzeTaskRequirementResult> {
+    const processRequirement = normalizeRequiredName(
+      input.processRequirement,
+      'Processing requirement is required'
+    );
+    const preparedInput = await this.prepareGeneratedTaskInput(input);
+    return analyzeDataTaskRequirement({
+      requirement: processRequirement,
+      columns: preparedInput.columnsSnapshot,
+      runtimeConfig: input.runtimeConfig,
+    });
   }
 
   async listOutputTables(input: ListInputTablesInput = {}): Promise<ListOutputTablesResult> {
