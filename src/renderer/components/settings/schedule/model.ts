@@ -212,7 +212,6 @@ export function createGeneratedCloudTableProcessNode(
     config: {
       taskId: result.taskId,
       taskName: result.taskName,
-      workflowDsl: result.workflowDsl,
       source: {
         location: getSourceLocation(config),
         tableId: config.source.tableId,
@@ -379,10 +378,7 @@ export function validateEnabledActionNodes(
     if (node.type === 'data.task.run' && !String(node.config.taskId ?? '').trim()) {
       return tr('schedule.dataTaskRequired', '请选择要执行的数据任务');
     }
-    if (
-      node.type === CLOUD_TABLE_PROCESS_ACTION_TYPE &&
-      (!String(node.config.taskId ?? '').trim() || !String(node.config.workflowDsl ?? '').trim())
-    ) {
+    if (node.type === CLOUD_TABLE_PROCESS_ACTION_TYPE && !String(node.config.taskId ?? '').trim()) {
       return tr('schedule.generatedTaskRequired', '请先生成并确认数据任务');
     }
   }

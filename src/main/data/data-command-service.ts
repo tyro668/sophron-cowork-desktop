@@ -832,7 +832,10 @@ export class DataCommandService {
       preparedInput.inputTable.name
     );
     const compileStartedAt = Date.now();
-    const candidate = await this.compileWorkflowDsl(input.workflowDsl, {
+    const workflowDsl =
+      normalizeOptionalName(input.workflowDsl) ??
+      (await this.exportSavedTaskWorkflowDsl(input.taskId));
+    const candidate = await this.compileWorkflowDsl(workflowDsl, {
       inputTableId: preparedInput.inputTable.id,
       outputTableId: outputTable.id,
     });
@@ -843,7 +846,7 @@ export class DataCommandService {
       });
     }
     const compileDurationMs = Date.now() - compileStartedAt;
-    const workflowHash = hashText(input.workflowDsl);
+    const workflowHash = hashText(workflowDsl);
     const runStartedAt = Date.now();
     const temporaryExecution = await this.store.validateTaskWorkflow(input.taskId, {
       workflow: candidate.workflow,
@@ -937,6 +940,18 @@ export class DataCommandService {
         });
       });
     }
+  }
+
+  private async exportSavedTaskWorkflowDsl(taskId: string): Promise<string> {
+    const workflow = await this.store.getTaskWorkflow(taskId);
+    const dsl = exportPrepWorkflowDsl(workflow.nodes, workflow.edges).trim();
+    if (!dsl) {
+      throw new DataCommandError(
+        'VALIDATION_FAILED',
+        'The referenced data task has no saved workflow to run'
+      );
+    }
+    return dsl;
   }
 
   private async resolveCloudOutputFolderId(

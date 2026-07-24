@@ -46,6 +46,7 @@ import type {
   PersonalAnalysisTable,
   Project,
 } from '../../../types';
+import { exportPrepWorkflowDsl } from '../../../../shared/prep-dsl';
 import { useAppStore } from '../../../store';
 import { GlassDateTimePicker } from '../../GlassDateTimePicker';
 import { GlassDropdownMenu, GlassMenuItem } from '../../GlassDropdownMenu';
@@ -2362,7 +2363,10 @@ function GeneratedTaskReviewCard({
   node: AutomationActionNode;
   tr: (key: string, fallback: string) => string;
 }) {
-  const workflowDsl = String(node.config.workflowDsl ?? '');
+  const taskId = String(node.config.taskId ?? '').trim();
+  const [workflowDsl, setWorkflowDsl] = useState('');
+  const [isLoadingWorkflowDsl, setIsLoadingWorkflowDsl] = useState(false);
+  const [workflowDslLoadFailed, setWorkflowDslLoadFailed] = useState(false);
   const requiredColumns = Array.isArray(node.config.requiredColumns)
     ? node.config.requiredColumns
         .map((column) =>
@@ -2372,6 +2376,27 @@ function GeneratedTaskReviewCard({
         )
         .filter(Boolean)
     : [];
+  const loadCurrentWorkflowDsl = useCallback(async () => {
+    if (!taskId || !window.electronAPI?.data?.getTaskWorkflow) return;
+    setIsLoadingWorkflowDsl(true);
+    setWorkflowDslLoadFailed(false);
+    try {
+      const workflow = await window.electronAPI.data.getTaskWorkflow(taskId);
+      setWorkflowDsl(exportPrepWorkflowDsl(workflow.nodes, workflow.edges));
+    } catch {
+      setWorkflowDsl('');
+      setWorkflowDslLoadFailed(true);
+    } finally {
+      setIsLoadingWorkflowDsl(false);
+    }
+  }, [taskId]);
+
+  useEffect(() => {
+    setWorkflowDsl('');
+    setWorkflowDslLoadFailed(false);
+    void loadCurrentWorkflowDsl();
+  }, [loadCurrentWorkflowDsl]);
+
   return (
     <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-3">
       <div className="mb-2 text-[12px] font-semibold text-text-secondary">
@@ -2385,14 +2410,39 @@ function GeneratedTaskReviewCard({
           )}
         </div>
       )}
-      <details className="group">
-        <summary className="cursor-pointer text-[12px] font-medium text-success">
-          {tr('schedule.workflowDslPreview', '查看任务逻辑')}
-        </summary>
-        <pre className="mt-2 max-h-48 overflow-auto rounded-md border border-border-muted bg-background/60 p-2 text-[11px] leading-5 text-text-secondary">
-          {workflowDsl || '-'}
-        </pre>
-      </details>
+      {taskId && (
+        <details
+          className="group"
+          onToggle={(event) => {
+            if (event.currentTarget.open) void loadCurrentWorkflowDsl();
+          }}
+        >
+          <summary className="cursor-pointer text-[12px] font-medium text-success">
+            {tr('schedule.currentWorkflowDslPreview', '查看当前任务逻辑')}
+          </summary>
+          {isLoadingWorkflowDsl ? (
+            <div
+              className="mt-2 flex items-center gap-2 text-[12px] text-text-muted"
+              role="status"
+              aria-live="polite"
+            >
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              {tr('schedule.loadingWorkflowDsl', '正在读取任务逻辑…')}
+            </div>
+          ) : workflowDslLoadFailed ? (
+            <div
+              className="mt-2 rounded-md border border-warning/25 bg-warning/10 px-2.5 py-2 text-[12px] leading-5 text-warning"
+              role="alert"
+            >
+              {tr('schedule.workflowDslLoadFailed', '读取当前任务逻辑失败')}
+            </div>
+          ) : (
+            <pre className="mt-2 max-h-48 overflow-auto rounded-md border border-border-muted bg-background/60 p-2 text-[11px] leading-5 text-text-secondary">
+              {workflowDsl || tr('schedule.workflowDslEmpty', '当前数据任务没有可展示的处理逻辑')}
+            </pre>
+          )}
+        </details>
+      )}
     </div>
   );
 }

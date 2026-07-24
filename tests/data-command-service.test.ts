@@ -2913,6 +2913,51 @@ function extractYearMonth(input) {
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
   });
 
+  it('runs the latest saved task workflow when an automation omits a workflow override', async () => {
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'latest-workflow.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'latest workflow input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+    const output = await service.createOutputTable({ name: 'latest workflow output' });
+    const task = await service.createTask({
+      name: 'latest workflow task',
+      sourceInputTableId: input.inputTable.id,
+      outputTableId: output.outputTable.id,
+    });
+
+    await service.applyWorkflowDsl({
+      taskId: task.task.id,
+      inputTableId: input.inputTable.id,
+      outputTableId: output.outputTable.id,
+      dsl: [
+        `input source dataset "${input.inputTable.id}" as src`,
+        '  | select [Market]',
+        `  | output table "${output.outputTable.name}" mode replace`,
+      ].join('\n'),
+    });
+
+    const result = await service.runGeneratedTask({
+      taskId: task.task.id,
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      output: {
+        location: 'local',
+        writeMode: 'replace',
+        targetTableId: output.outputTable.id,
+      },
+    });
+
+    expect(result.preview?.columns).toEqual(['Market']);
+    expect(result.preview?.rows).toEqual([{ Market: 'EU' }, { Market: 'US' }]);
+  });
+
   it('stops generated task runs when output schema drifts', async () => {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');

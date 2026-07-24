@@ -399,7 +399,11 @@ export interface RunTaskResult {
 
 export interface RunGeneratedTaskCommand {
   taskId: string;
-  workflowDsl: string;
+  /**
+   * Optional one-off workflow override. Automations should omit this so the
+   * task's currently saved workflow remains the source of truth.
+   */
+  workflowDsl?: string;
   source: DataGenerateTaskFromRequirementInput['source'];
   output: DataGenerateTaskFromRequirementInput['output'];
   requiredColumns?: DataGenerateTaskFromRequirementResult['requiredColumns'];
