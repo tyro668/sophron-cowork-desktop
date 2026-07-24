@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useFormTranslation } from '../../../hooks/useFormTranslation';
 
 import { Search } from 'lucide-react';
@@ -14,6 +15,8 @@ export interface GlassFieldMultiSelectProps {
   maxHeight?: string;
   selectionMode?: SelectionMode;
   variant?: 'flat' | 'glass';
+  itemExtras?: (column: string) => ReactNode;
+  columnLabel?: (column: string) => string;
 }
 
 export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
@@ -24,6 +27,8 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
   maxHeight = '160px',
   selectionMode = 'multi',
   variant = 'flat',
+  itemExtras,
+  columnLabel,
 }: GlassFieldMultiSelectProps) {
   const tr = useFormTranslation();
 
@@ -192,7 +197,8 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
                   onChange={() => selectItem(col)}
                   className="h-3.5 w-3.5 flex-shrink-0 accent-accent"
                 />
-                <span className="flex-1 min-w-0 truncate">{col}</span>
+                <span className="flex-1 min-w-0 truncate">{columnLabel?.(col) ?? col}</span>
+                {itemExtras?.(col)}
                 {columnTypes?.[col] && (
                   <span
                     className={`flex-shrink-0 text-[11px] text-text-muted tabular-nums ${

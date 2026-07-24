@@ -4,4 +4,5 @@ import { MetricEntrySchema } from './common';
 export const AggregateConfigSchema = z.object({
   groupBy: z.array(z.string()).default([]),
   metrics: z.array(MetricEntrySchema).default([]),
+  dateGranularity: z.record(z.enum(['year', 'quarter', 'month', 'week', 'day'])).optional(),
 });

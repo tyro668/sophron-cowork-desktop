@@ -243,20 +243,25 @@ export function exprFromParts(item: CalculationRow): string {
   if (
     fn === 'period_mom_value' ||
     fn === 'period_mom_rate' ||
+    fn === 'period_mom_prev' ||
     fn === 'period_yoy_value' ||
-    fn === 'period_yoy_rate'
+    fn === 'period_yoy_rate' ||
+    fn === 'period_yoy_prev'
   ) {
     const isRate = fn.endsWith('_rate');
+    const isPrev = fn.endsWith('_prev');
     const isYoy = fn.startsWith('period_yoy');
     const dateField = order?.[0]?.field;
     if (dateField && isYoy) {
       const userPart = partition?.length ? `[${partition.join('], [')}], ` : '';
       const datePart = `PARTITION BY ${userPart}extract('month' FROM [${dateField}]), extract('day' FROM [${dateField}])`;
       const lag = `lag(${wrappedFieldArg}) OVER (${datePart} ORDER BY extract('year' FROM [${dateField}]))`;
+      if (isPrev) return lag;
       if (isRate) return `(${wrappedFieldArg} - ${lag}) / nullif(${lag}, 0)`;
       return `${wrappedFieldArg} - ${lag}`;
     }
     const lag = `lag(${wrappedFieldArg})${overStr(true)}`;
+    if (isPrev) return lag;
     if (isRate) return `(${wrappedFieldArg} - ${lag}) / nullif(${lag}, 0)`;
     return `${wrappedFieldArg} - ${lag}`;
   }

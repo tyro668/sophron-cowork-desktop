@@ -645,6 +645,34 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
     );
   });
 
+  it('period_yoy_prev returns prior year raw value', () => {
+    const result = exprFromParts({
+      id: 'py3',
+      field: 'yoy_prev',
+      expression: '',
+      type: 'agg',
+      fn: 'period_yoy_prev',
+      fnArg: '[sales]',
+      orderBy: [{ field: 'ym', direction: 'asc' }],
+    });
+    expect(result).toBe(
+      "lag([sales]) OVER (PARTITION BY extract('month' FROM [ym]), extract('day' FROM [ym]) ORDER BY extract('year' FROM [ym]))"
+    );
+  });
+
+  it('period_mom_prev returns prior row raw value', () => {
+    const result = exprFromParts({
+      id: 'pm3',
+      field: 'mom_prev',
+      expression: '',
+      type: 'agg',
+      fn: 'period_mom_prev',
+      fnArg: '[amount]',
+      orderBy: [{ field: 'month', direction: 'asc' }],
+    });
+    expect(result).toBe('lag([amount]) OVER (ORDER BY [month])');
+  });
+
   it('offset_diff produces value - lag(value, N) with custom N', () => {
     const result = exprFromParts({
       id: 'od1',

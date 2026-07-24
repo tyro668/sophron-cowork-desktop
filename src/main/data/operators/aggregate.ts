@@ -7,7 +7,7 @@ export function compileAggregateSql(
   input: string,
   config: Record<string, unknown>
 ): string {
-  const { groupBy, metrics } = parseOperatorConfig(AggregateConfigSchema, config);
+  const { groupBy, metrics, dateGranularity } = parseOperatorConfig(AggregateConfigSchema, config);
   const metricSqls = metrics.flatMap((metric) => {
     if (!metric.function || !metric.expression || !metric.alias) {
       return [];
@@ -19,9 +19,18 @@ export function compileAggregateSql(
         : `${metric.function.toUpperCase()}(${expression}) AS ${quoteIdentifier(metric.alias)}`,
     ];
   });
-  const groupProjection = groupBy.map(quoteIdentifier);
-  const projection = [...groupProjection, ...metricSqls].join(', ') || 'COUNT(*) AS "row_count"';
+  const granularity = dateGranularity ?? {};
+  const groupExprs = groupBy.map((col) => {
+    const gran = granularity[col];
+    return gran ? `date_trunc('${gran}', ${quoteIdentifier(col)})` : quoteIdentifier(col);
+  });
+  const groupProjections = groupBy.map((col, i) => {
+    const gran = granularity[col];
+    const expr = groupExprs[i];
+    return gran ? `${expr} AS ${quoteIdentifier(col)}` : expr;
+  });
+  const projection = [...groupProjections, ...metricSqls].join(', ') || 'COUNT(*) AS "row_count"';
   return `CREATE TEMP TABLE ${output} AS SELECT ${projection} FROM ${input}${
-    groupBy.length > 0 ? ` GROUP BY ${groupProjection.join(', ')}` : ''
+    groupBy.length > 0 ? ` GROUP BY ${groupExprs.join(', ')}` : ''
   }`;
 }

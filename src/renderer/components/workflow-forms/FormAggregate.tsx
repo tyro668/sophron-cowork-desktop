@@ -1,15 +1,26 @@
 import { useCallback, useEffect, useMemo } from 'react';
-
+import { Settings } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
+import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
+import { isTemporalDataFieldType } from '../../../shared/data-field-types';
+
+const GRANULARITY_OPTIONS = [
+  { value: '', labelKey: 'granularityNone', labelFallback: '不处理' },
+  { value: 'year', labelKey: 'granularityYear', labelFallback: '按年' },
+  { value: 'quarter', labelKey: 'granularityQuarter', labelFallback: '按季度' },
+  { value: 'month', labelKey: 'granularityMonth', labelFallback: '按月' },
+  { value: 'week', labelKey: 'granularityWeek', labelFallback: '按周' },
+  { value: 'day', labelKey: 'granularityDay', labelFallback: '按天' },
+] as const;
 
 const AGG_FUNCTIONS = [
   'count',
@@ -57,6 +68,10 @@ export default function FormAggregate({
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const groupBy = useMemo(() => (node.config.groupBy as string[]) ?? [], [node.config.groupBy]);
+  const dateGranularity = useMemo(
+    () => (node.config.dateGranularity as Record<string, string> | undefined) ?? {},
+    [node.config.dateGranularity]
+  );
   const rawMetrics = useMemo(
     () => (node.config.metrics as MetricEntry[]) ?? [],
     [node.config.metrics]
@@ -81,10 +96,34 @@ export default function FormAggregate({
 
   const handleGroupByChange = useCallback(
     (next: string[]) => {
-      updateConfig((cfg) => ({
-        ...cfg,
-        groupBy: next.length > 0 ? next : undefined,
-      }));
+      updateConfig((cfg) => {
+        const granularity = cfg.dateGranularity as Record<string, string> | undefined;
+        const filtered = granularity
+          ? Object.fromEntries(Object.entries(granularity).filter(([k]) => next.includes(k)))
+          : undefined;
+        return {
+          ...cfg,
+          groupBy: next.length > 0 ? next : undefined,
+          dateGranularity: filtered && Object.keys(filtered).length > 0 ? filtered : undefined,
+        };
+      });
+    },
+    [updateConfig]
+  );
+
+  const handleGranularityChange = useCallback(
+    (field: string, value: string) => {
+      updateConfig((cfg) => {
+        const next: Record<string, string> = {
+          ...((cfg.dateGranularity ?? {}) as Record<string, string>),
+        };
+        if (value) {
+          next[field] = value;
+        } else {
+          delete next[field];
+        }
+        return { ...cfg, dateGranularity: Object.keys(next).length > 0 ? next : undefined };
+      });
     },
     [updateConfig]
   );
@@ -162,6 +201,44 @@ export default function FormAggregate({
               onChange={handleGroupByChange}
               columnTypes={columnTypes}
               maxHeight="none"
+              columnLabel={(col) => {
+                const gran = dateGranularity[col];
+                if (gran && isTemporalDataFieldType(columnTypes[col])) {
+                  const opt = GRANULARITY_OPTIONS.find((o) => o.value === gran);
+                  const label = opt ? tr(opt.labelKey, opt.labelFallback) : gran;
+                  return `${col}（${label}）`;
+                }
+                return col;
+              }}
+              itemExtras={(col) => {
+                if (!isTemporalDataFieldType(columnTypes[col])) return null;
+                const gran = dateGranularity[col] || '';
+                return (
+                  <GlassDropdownMenu
+                    trigger={
+                      <button
+                        type="button"
+                        className="inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-text-muted/50 hover:text-accent transition-colors"
+                        title={tr('granularitySelect', '日期粒度')}
+                      >
+                        <Settings className="h-3 w-3" />
+                      </button>
+                    }
+                    align="center"
+                    side="right"
+                  >
+                    {GRANULARITY_OPTIONS.map((opt) => (
+                      <GlassMenuItem
+                        key={opt.value}
+                        selected={gran === opt.value}
+                        onSelect={() => handleGranularityChange(col, opt.value)}
+                      >
+                        {tr(opt.labelKey, opt.labelFallback)}
+                      </GlassMenuItem>
+                    ))}
+                  </GlassDropdownMenu>
+                );
+              }}
             />
           </div>
         </div>
