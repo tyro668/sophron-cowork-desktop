@@ -61,8 +61,14 @@ export default function FormCalculateField({
     [rawCalculations]
   );
 
-  const [activeMode, setActiveMode] = useState<'row' | 'cross'>('row');
-  const [activeScenario, setActiveScenario] = useState<string>('group_metrics');
+  const savedMode = node.config?._activeMode;
+  const [activeMode, setActiveMode] = useState<'row' | 'cross'>(
+    savedMode === 'row' || savedMode === 'cross' ? savedMode : 'row'
+  );
+  const savedScenario = node.config?._activeScenario;
+  const [activeScenario, setActiveScenario] = useState<string>(
+    typeof savedScenario === 'string' && savedScenario ? savedScenario : 'group_metrics'
+  );
 
   const storeCalculations = useCallback(
     (next: CalculationRow[]) => {
@@ -74,6 +80,8 @@ export default function FormCalculateField({
       updateConfig((cfg) => ({
         ...cfg,
         calculations: toPersist.length > 0 ? toPersist : undefined,
+        _activeMode: activeMode,
+        _activeScenario: activeScenario,
       }));
     },
     [updateConfig, activeMode, activeScenario]
@@ -103,6 +111,8 @@ export default function FormCalculateField({
     updateConfig((cfg) => ({
       ...cfg,
       calculations: toPersist.length > 0 ? toPersist : undefined,
+      _activeMode: activeMode,
+      _activeScenario: activeScenario,
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMode, activeScenario]);

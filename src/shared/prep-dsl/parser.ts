@@ -527,6 +527,14 @@ function parseDerive(text: string): PrepOperatorAst {
     if (nameEnd > 0) {
       const funcName = expr.slice(0, nameEnd);
       const argsStr = expr.slice(nameEnd + 1, expr.lastIndexOf(')'));
+      const rest = expr.slice(expr.lastIndexOf(')') + 1).trim();
+      let partitionBy: string[] | undefined;
+      if (rest) {
+        const overMatch = /^over\(partition\s+by\s+(.+)\)$/i.exec(rest);
+        if (overMatch) {
+          partitionBy = parseFieldRefs(overMatch[1]).map(toFieldName);
+        }
+      }
       const args = splitTopLevel(argsStr).map((a) => a.trim());
 
       if (funcName === 'period_compare' && args.length >= 3) {
@@ -550,6 +558,7 @@ function parseDerive(text: string): PrepOperatorAst {
             fn,
             fnArg: fnArgName,
             orderBy: dateField ? [{ field: dateFieldName, direction: 'asc' as const }] : undefined,
+            partitionBy,
           },
         ];
       }
@@ -592,6 +601,7 @@ function parseDerive(text: string): PrepOperatorAst {
             fnArg2: fnArg2 || undefined,
             orderBy: dateField ? [{ field: dateFieldName, direction: 'asc' as const }] : undefined,
             fiscalStartMonth: fiscalStartMonth > 0 ? fiscalStartMonth : undefined,
+            partitionBy,
           },
         ];
       }

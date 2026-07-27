@@ -200,6 +200,13 @@ function formatCalculateField(config: Record<string, unknown> | undefined): stri
     const orderBy = objectArray(item.orderBy);
     const dateField = orderBy.length > 0 ? String(orderBy[0].field ?? '') : '';
     const fiscalStartMonth = Number(item.fiscalStartMonth ?? 0);
+    const partitionBy = stringArray(item.partitionBy);
+
+    function overSuffix(): string {
+      return partitionBy.length > 0
+        ? ` over(partition by ${partitionBy.map(formatFieldRef).join(', ')})`
+        : '';
+    }
 
     if (fn.startsWith('period_yoy') || fn.startsWith('period_mom')) {
       const modeMap: Record<string, string> = {
@@ -214,7 +221,7 @@ function formatCalculateField(config: Record<string, unknown> | undefined): stri
       const args = [mode, formatFieldRef(fnArg), formatFieldRef(dateField)]
         .filter(Boolean)
         .join(', ');
-      return `${formatFieldRef(String(item.field ?? 'new_field'))} = period_compare(${args})`;
+      return `${formatFieldRef(String(item.field ?? 'new_field'))} = period_compare(${args})${overSuffix()}`;
     }
 
     const timePrefix = [
@@ -238,7 +245,7 @@ function formatCalculateField(config: Record<string, unknown> | undefined): stri
       } else if (!isRolling && fiscalStartMonth > 1) {
         args.push(`fiscal_start=${fiscalStartMonth}`);
       }
-      return `${formatFieldRef(String(item.field ?? 'new_field'))} = accumulate(${args.filter(Boolean).join(', ')})`;
+      return `${formatFieldRef(String(item.field ?? 'new_field'))} = accumulate(${args.filter(Boolean).join(', ')})${overSuffix()}`;
     }
 
     return `${formatFieldRef(String(item.field ?? 'new_field'))} = ${String(item.expression ?? 'null')}`;

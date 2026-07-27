@@ -426,16 +426,15 @@ export function PrepDslEditor({
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
-    // Skip sync if this value came from the editor itself
     if (value === lastEmittedRef.current) return;
     const currentDoc = view.state.doc.toString();
     if (currentDoc === value) return;
-    // External change: sync into editor
     const cursor = view.state.selection.main.head;
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: value },
       selection: { anchor: Math.min(cursor, value.length) },
     });
+    lastEmittedRef.current = value;
   }, [value]);
 
   return (
