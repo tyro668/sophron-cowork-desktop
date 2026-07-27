@@ -53,6 +53,9 @@ const KEYWORDS: Record<string, TokenType> = {
 
 const MULTI_CHAR_OPS = ['!=', '<>', '>=', '<='];
 const SINGLE_CHAR_OPS = ['=', '>', '<', '+', '-', '*', '/'];
+const MAX_FILTER_LENGTH = 16_384;
+const MAX_FILTER_TOKENS = 2_048;
+const MAX_FILTER_NESTING = 64;
 
 function isWordStart(ch: string): boolean {
   return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch === '_';
@@ -63,8 +66,19 @@ function isWordPart(ch: string): boolean {
 }
 
 function tokenize(input: string): Token[] {
+  if (input.length > MAX_FILTER_LENGTH) {
+    throw new Error(`Filter condition exceeds ${MAX_FILTER_LENGTH} characters`);
+  }
   const tokens: Token[] = [];
   let i = 0;
+  let nesting = 0;
+
+  const pushToken = (token: Token): void => {
+    if (tokens.length >= MAX_FILTER_TOKENS) {
+      throw new Error(`Filter condition exceeds ${MAX_FILTER_TOKENS} tokens`);
+    }
+    tokens.push(token);
+  };
 
   while (i < input.length) {
     const ch = input[i];
@@ -97,7 +111,7 @@ function tokenize(input: string): Token[] {
         throw new Error('Unterminated string literal in filter condition');
       }
       i++;
-      tokens.push({ type: 'StringLiteral', raw: value });
+      pushToken({ type: 'StringLiteral', raw: value });
       continue;
     }
 
@@ -131,24 +145,32 @@ function tokenize(input: string): Token[] {
         }
       }
       i++;
-      tokens.push({ type: 'FieldRef', raw: name });
+      pushToken({ type: 'FieldRef', raw: name });
       continue;
     }
 
     if (ch === '(') {
-      tokens.push({ type: 'ParenOpen', raw: '(' });
+      nesting++;
+      if (nesting > MAX_FILTER_NESTING) {
+        throw new Error(`Filter condition exceeds nesting depth ${MAX_FILTER_NESTING}`);
+      }
+      pushToken({ type: 'ParenOpen', raw: '(' });
       i++;
       continue;
     }
 
     if (ch === ')') {
-      tokens.push({ type: 'ParenClose', raw: ')' });
+      nesting--;
+      if (nesting < 0) {
+        throw new Error('Unexpected closing parenthesis in filter condition');
+      }
+      pushToken({ type: 'ParenClose', raw: ')' });
       i++;
       continue;
     }
 
     if (ch === ',') {
-      tokens.push({ type: 'Comma', raw: ',' });
+      pushToken({ type: 'Comma', raw: ',' });
       i++;
       continue;
     }
@@ -156,7 +178,7 @@ function tokenize(input: string): Token[] {
     let matched = false;
     for (const op of MULTI_CHAR_OPS) {
       if (input.startsWith(op, i)) {
-        tokens.push({ type: 'Operator', raw: op });
+        pushToken({ type: 'Operator', raw: op });
         i += op.length;
         matched = true;
         break;
@@ -166,7 +188,7 @@ function tokenize(input: string): Token[] {
 
     for (const op of SINGLE_CHAR_OPS) {
       if (ch === op) {
-        tokens.push({ type: 'Operator', raw: op });
+        pushToken({ type: 'Operator', raw: op });
         i++;
         matched = true;
         break;
@@ -205,7 +227,7 @@ function tokenize(input: string): Token[] {
           i++;
         }
       }
-      tokens.push({ type: 'Number', raw: num });
+      pushToken({ type: 'Number', raw: num });
       continue;
     }
 
@@ -217,13 +239,16 @@ function tokenize(input: string): Token[] {
       }
       const lower = word.toLowerCase();
       const kw = KEYWORDS[lower];
-      tokens.push({ type: kw ?? 'Ident', raw: word });
+      pushToken({ type: kw ?? 'Ident', raw: word });
       continue;
     }
 
     throw new Error(`Unexpected character '${ch}' in filter condition at position ${i}`);
   }
 
+  if (nesting !== 0) {
+    throw new Error('Missing closing parenthesis in filter condition');
+  }
   return tokens;
 }
 
@@ -299,11 +324,10 @@ class Compiler {
   }
 
   compileNot(): string {
-    if (this.match('Not')) {
-      const inner = this.compileNot();
-      return `NOT ${inner}`;
-    }
-    return this.compileComparison();
+    let notCount = 0;
+    while (this.match('Not')) notCount++;
+    const inner = this.compileComparison();
+    return `${'NOT '.repeat(notCount)}${inner}`;
   }
 
   compileComparison(): string {
@@ -399,19 +423,18 @@ class Compiler {
   }
 
   compileUnary(): string {
-    if (this.match('Not')) {
-      const inner = this.compileUnary();
-      return `NOT ${inner}`;
-    }
-    if (this.check('Operator')) {
+    const prefixes: string[] = [];
+    while (this.match('Not')) prefixes.push('NOT ');
+    while (this.check('Operator')) {
       const op = this.peek()!;
       if (op.raw === '-' || op.raw === '+') {
         this.advance();
-        const inner = this.compileUnary();
-        return `${op.raw}${inner}`;
+        prefixes.push(op.raw);
+      } else {
+        break;
       }
     }
-    return this.compilePrimary();
+    return prefixes.join('') + this.compilePrimary();
   }
 
   compileInList(): string {

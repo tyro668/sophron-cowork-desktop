@@ -1963,7 +1963,9 @@ export class DataTaskStore {
           ? configuredStrategy
           : selectedOutputDatasetId
             ? 'existing'
-            : '';
+            : stringConfigValue(config.outputTableName) || stringConfigValue(config.table)
+              ? 'auto'
+              : '';
 
       if (outputStrategy === 'auto') {
         const outputName =
@@ -2673,7 +2675,9 @@ export class DataTaskStore {
       const outputTable = await this.requireOutputTable(outputDatasetId);
       return { tableName: outputTable.tableName, outputDatasetId: outputTable.id };
     }
-    return { tableName: getOutputTableName(node, fallback) };
+    // Physical table names are internal capabilities. A display name imported
+    // from DSL must be resolved during save and must never become a DROP target.
+    return { tableName: fallback };
   }
 
   private async resolveWorkflowNodePreviewTable(
@@ -4234,12 +4238,6 @@ function normalizeOperatorType(value: string | null | undefined): DataWorkflowOp
     default:
       return 'filter';
   }
-}
-
-function getOutputTableName(node: DataWorkflowNode | undefined, fallback: string): string {
-  if (!node) return fallback;
-  const table = node.config.table;
-  return typeof table === 'string' && table.trim() ? table.trim() : fallback;
 }
 
 function stringConfigValue(value: unknown): string {

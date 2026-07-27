@@ -168,6 +168,9 @@ export function parseConditionTree(
     items: [],
   };
   if (!condition || !condition.trim()) return root;
+  if (condition.length > 16_384) {
+    throw new Error('Filter condition exceeds 16384 characters');
+  }
   return parseBranchFromDsl(condition.trim(), depth) ?? root;
 }
 
@@ -176,6 +179,9 @@ export function parseConditionTree(
  * and extracting nested parenthesized groups.
  */
 function parseBranchFromDsl(dsl: string, depth: number): FilterConditionBranch | null {
+  if (depth > 64) {
+    throw new Error('Filter condition exceeds nesting depth 64');
+  }
   // Protect between ... and ... patterns from connective splitting
   const betweenPlaceholders: string[] = [];
   const protectedDsl = dsl.replace(

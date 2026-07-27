@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { GlassFieldSingleSelect } from '../shared/GlassFieldSingleSelect';
 import { GlassOptionSingleSelect } from '../shared/GlassOptionSingleSelect';
 import { GlassFormTextInput } from '../shared/GlassFormTextInput';
@@ -36,6 +36,17 @@ export function GlassTimeIntelConfig({
     (patch: Partial<CalculationRow>) => updateItem(index, patch),
     [updateItem, index]
   );
+  const [windowSizeDraft, setWindowSizeDraft] = useState(item.fnArg2 || '1');
+  const [fiscalMonthDraft, setFiscalMonthDraft] = useState(String(item.fiscalStartMonth ?? 1));
+
+  useEffect(() => {
+    setWindowSizeDraft(item.fnArg2 || '1');
+  }, [item.fnArg2]);
+
+  useEffect(() => {
+    setFiscalMonthDraft(String(item.fiscalStartMonth ?? 1));
+  }, [item.fiscalStartMonth]);
+
   const timeDateOptions = fieldCompletions.filter((c) => isTemporalDataFieldType(columnTypes[c]));
 
   return (
@@ -82,12 +93,15 @@ export function GlassTimeIntelConfig({
           {timeDef?.hasParam && (
             <GlassFormTextInput
               inputMode="numeric"
-              value={item.fnArg2 || '1'}
+              value={windowSizeDraft}
               onChange={(v) => {
+                if (!/^\d*$/.test(v)) return;
+                setWindowSizeDraft(v);
                 const val = parseInt(v, 10);
                 if (isNaN(val) || val < 1) return;
                 updateTime({ fnArg2: String(val) });
               }}
+              onBlur={() => setWindowSizeDraft(item.fnArg2 || '1')}
               textCenter
               className="h-7 w-14 rounded-md px-1 text-[12px]"
             />
@@ -99,12 +113,15 @@ export function GlassTimeIntelConfig({
               </span>
               <GlassFormTextInput
                 inputMode="numeric"
-                value={String(item.fiscalStartMonth ?? '1')}
+                value={fiscalMonthDraft}
                 onChange={(v) => {
+                  if (!/^\d*$/.test(v)) return;
+                  setFiscalMonthDraft(v);
                   const val = parseInt(v, 10);
                   if (isNaN(val) || val < 1 || val > 12) return;
                   updateTime({ fiscalStartMonth: val });
                 }}
+                onBlur={() => setFiscalMonthDraft(String(item.fiscalStartMonth ?? 1))}
                 textCenter
                 className="h-7 w-14 rounded-md px-1 text-[12px]"
               />

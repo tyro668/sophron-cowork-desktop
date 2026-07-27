@@ -499,6 +499,25 @@ function BranchGroupRenderer({
 
 // ── Main FormFilter ───────────────────────────────────────────────────
 
+function parseFilterConfig(condition: string | undefined): {
+  tree: FilterConditionBranch;
+  error: string | null;
+} {
+  resetNodeIdCounter();
+  try {
+    const tree = parseConditionTree(condition);
+    if (tree.items.length === 0) tree.items.push(createEmptyLeaf());
+    return { tree, error: null };
+  } catch (error) {
+    const tree = parseConditionTree(undefined);
+    tree.items.push(createEmptyLeaf());
+    return {
+      tree,
+      error: error instanceof Error ? error.message : 'Invalid filter condition',
+    };
+  }
+}
+
 export default function FormFilter({
   node,
   taskId,
@@ -513,14 +532,11 @@ export default function FormFilter({
   const updateConfig = useUpdateConfig(onNodeChange);
 
   // Parse condition from config into tree (ensure at least one empty row)
-  const [root, setRoot] = useState<FilterConditionBranch>(() => {
-    resetNodeIdCounter();
-    const tree = parseConditionTree(node.config.condition as string | undefined);
-    if (tree.items.length === 0) {
-      tree.items.push(createEmptyLeaf());
-    }
-    return tree;
-  });
+  const [initialParse] = useState(() =>
+    parseFilterConfig(node.config.condition as string | undefined)
+  );
+  const [root, setRoot] = useState<FilterConditionBranch>(initialParse.tree);
+  const [parseError, setParseError] = useState<string | null>(initialParse.error);
 
   const localUpdateRef = useRef(false);
 
@@ -534,12 +550,11 @@ export default function FormFilter({
     const fromConfig = node.config.condition as string | undefined;
     if ((fromTree || undefined) === (fromConfig || undefined)) return;
     // Re-parse from config
-    resetNodeIdCounter();
-    const reparsed = parseConditionTree(node.config.condition as string | undefined);
-    if (reparsed.items.length === 0) {
-      reparsed.items.push(createEmptyLeaf());
+    const reparsed = parseFilterConfig(node.config.condition as string | undefined);
+    setParseError(reparsed.error);
+    if (!reparsed.error) {
+      setRoot(reparsed.tree);
     }
-    setRoot(reparsed);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node.config.condition]);
 
@@ -580,6 +595,7 @@ export default function FormFilter({
 
   const updateLeaf = useCallback(
     (leafId: string, patch: Partial<FilterConditionLeaf>) => {
+      setParseError(null);
       setRoot((prev) => {
         const next = updateLeafInBranch(prev, leafId, patch);
         localUpdateRef.current = true;
@@ -592,6 +608,7 @@ export default function FormFilter({
 
   const removeNode = useCallback(
     (nodeId: string) => {
+      setParseError(null);
       setRoot((prev) => {
         let next = removeNodeFromBranch(prev, nodeId);
         if (next.items.length === 0) {
@@ -607,6 +624,7 @@ export default function FormFilter({
 
   const addAfter = useCallback(
     (branchId: string, afterIndex: number) => {
+      setParseError(null);
       setRoot((prev) => {
         const next = updateBranchInTree(prev, branchId, (b) => addLeafToBranch(b, afterIndex));
         localUpdateRef.current = true;
@@ -624,6 +642,7 @@ export default function FormFilter({
       afterIndex: number,
       connective: FilterConditionConnective = 'and'
     ) => {
+      setParseError(null);
       setRoot((prev) => {
         const next = updateBranchInTree(prev, branchId, (b) => {
           const withNewLeaf = addLeafToBranch(b, afterIndex);
@@ -662,6 +681,7 @@ export default function FormFilter({
 
   const updateBranch = useCallback(
     (branchId: string, updater: (b: FilterConditionBranch) => FilterConditionBranch) => {
+      setParseError(null);
       setRoot((prev) => {
         const next = updateBranchInTree(prev, branchId, updater);
         localUpdateRef.current = true;
@@ -674,6 +694,7 @@ export default function FormFilter({
 
   const toggleBranchConnective = useCallback(
     (branchId: string) => {
+      setParseError(null);
       setRoot((prev) => {
         const next = updateBranchConnectiveInTree(prev, branchId);
         localUpdateRef.current = true;
@@ -724,10 +745,16 @@ export default function FormFilter({
   return (
     <div className="grid content-start gap-2.5 min-w-0">
       <div className="space-y-2.5">
+        {parseError && (
+          <p role="alert" className="rounded-md bg-error/10 px-2.5 py-2 text-[11px] text-error">
+            {tr('filterParseError', '筛选条件无法解析')}: {parseError}
+          </p>
+        )}
         {/* Global add button */}
         <button
           type="button"
           onClick={() => {
+            setParseError(null);
             setRoot((prev) => {
               const next = addLeafToBranch(prev, prev.items.length - 1);
               localUpdateRef.current = true;

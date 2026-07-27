@@ -824,6 +824,12 @@ function parseAsofClause(
   const right = parseFieldRef(match[3].trim());
   if (!left || !right) return undefined;
   const op = match[2] as PrepAsofJoinConfig['operator'];
+  const expectedDirection = op === '>=' ? 'backward' : op === '<=' ? 'forward' : 'nearest';
+  if (direction && direction !== expectedDirection) {
+    throw new Error(
+      `ASOF direction '${direction}' conflicts with operator '${op}'; expected '${expectedDirection}'`
+    );
+  }
   return {
     leftTime: toQualifiedName(left),
     operator: op,

@@ -39,6 +39,11 @@ export interface CalculationRow {
 export interface ParamSpec {
   key: 'fnArg' | 'fnArg2';
   type: 'field' | 'number' | 'text';
+  numberRule?: {
+    integer?: boolean;
+    min?: number;
+    max?: number;
+  };
 }
 
 export const SCENARIO_MIGRATION: Record<string, string> = {
@@ -51,36 +56,116 @@ export const SCENARIO_MIGRATION: Record<string, string> = {
 
 export const FN_ARG_SPEC: Record<string, ParamSpec[]> = {
   '*': [{ key: 'fnArg', type: 'field' }],
-  ntile: [{ key: 'fnArg', type: 'number' }],
+  ntile: [{ key: 'fnArg', type: 'number', numberRule: { integer: true, min: 1, max: 1_000_000 } }],
   nth_value: [
     { key: 'fnArg', type: 'field' },
-    { key: 'fnArg2', type: 'number' },
+    { key: 'fnArg2', type: 'number', numberRule: { integer: true, min: 1, max: 1_000_000 } },
   ],
   quantile_cont: [
     { key: 'fnArg', type: 'field' },
-    { key: 'fnArg2', type: 'number' },
+    { key: 'fnArg2', type: 'number', numberRule: { min: 0, max: 1 } },
   ],
   lag: [
     { key: 'fnArg', type: 'field' },
-    { key: 'fnArg2', type: 'number' },
+    { key: 'fnArg2', type: 'number', numberRule: { integer: true, min: 0, max: 1_000_000 } },
   ],
   lead: [
     { key: 'fnArg', type: 'field' },
-    { key: 'fnArg2', type: 'number' },
+    { key: 'fnArg2', type: 'number', numberRule: { integer: true, min: 0, max: 1_000_000 } },
   ],
   offset_diff: [
     { key: 'fnArg', type: 'field' },
-    { key: 'fnArg2', type: 'number' },
+    { key: 'fnArg2', type: 'number', numberRule: { integer: true, min: 1, max: 1_000_000 } },
   ],
   offset_rate: [
     { key: 'fnArg', type: 'field' },
-    { key: 'fnArg2', type: 'number' },
+    { key: 'fnArg2', type: 'number', numberRule: { integer: true, min: 1, max: 1_000_000 } },
   ],
   string_agg: [
     { key: 'fnArg', type: 'field' },
     { key: 'fnArg2', type: 'text' },
   ],
 };
+
+export const FN_WHITELIST = new Set([
+  'sum',
+  'avg',
+  'min',
+  'max',
+  'count',
+  'count_distinct',
+  'median',
+  'stddev',
+  'var',
+  'var_pop',
+  'mode',
+  'quantile_cont',
+  'product',
+  'string_agg',
+  'bool_and',
+  'bool_or',
+  'row_number',
+  'rank',
+  'dense_rank',
+  'ntile',
+  'percent_rank',
+  'cume_dist',
+  'first_value',
+  'last_value',
+  'nth_value',
+  'lag',
+  'lead',
+  'offset_diff',
+  'offset_rate',
+  'period_yoy_value',
+  'period_yoy_rate',
+  'period_yoy_prev',
+  'period_mom_value',
+  'period_mom_rate',
+  'period_mom_prev',
+  'percentage',
+]);
+
+const TIME_AGG_WHITELIST = new Set(['sum', 'avg', 'count', 'min', 'max', 'distinct_count']);
+
+export function isAllowedCalculationFunction(fn: string): boolean {
+  if (FN_WHITELIST.has(fn)) return true;
+  const prefix = Object.keys(TIME_WINDOW_DEFS).find((item) => fn.startsWith(`${item}_`));
+  return Boolean(prefix && TIME_AGG_WHITELIST.has(fn.slice((prefix?.length ?? 0) + 1)));
+}
+
+function fieldRef(value: string): string {
+  if (!/[\]`\\]/.test(value)) return `[${value}]`;
+  const escaped = value.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
+  return `[\`${escaped}\`]`;
+}
+
+function numericArg(
+  value: string | undefined,
+  fallback: number = 1,
+  rule: NonNullable<ParamSpec['numberRule']> = {}
+): string {
+  const raw = value?.trim() || String(fallback);
+  if (!/^\d+(?:\.\d+)?$/.test(raw)) {
+    throw new Error(`Invalid numeric calculation argument '${raw}'`);
+  }
+  const parsed = Number(raw);
+  const min = rule.min ?? 0;
+  const max = rule.max ?? 1_000_000;
+  if (
+    !Number.isFinite(parsed) ||
+    (rule.integer && !Number.isSafeInteger(parsed)) ||
+    parsed < min ||
+    parsed > max
+  ) {
+    throw new Error(`Calculation argument '${raw}' is outside the allowed range`);
+  }
+  return String(parsed);
+}
+
+function textArg(value: string | undefined): string {
+  return JSON.stringify(value ?? '');
+}
 
 export const TIME_WINDOW_DEFS: Record<
   string,
@@ -213,10 +298,10 @@ export function exprFromParts(item: CalculationRow): string {
 
   function overStr(useOrder: boolean): string {
     const parts: string[] = [];
-    if (partition?.length) parts.push(`PARTITION BY [${partition.join('], [')}]`);
+    if (partition?.length) parts.push(`PARTITION BY ${partition.map(fieldRef).join(', ')}`);
     if (useOrder && order?.length)
       parts.push(
-        `ORDER BY ${order.map((o) => `[${o.field}]${o.direction === 'desc' ? ' desc' : ''}`).join(', ')}`
+        `ORDER BY ${order.map((o) => `${fieldRef(o.field)}${o.direction === 'desc' ? ' desc' : ''}`).join(', ')}`
       );
     if (item.frameStart && order?.length) {
       const ft = (item.frameType || 'rows').toUpperCase();
@@ -230,7 +315,7 @@ export function exprFromParts(item: CalculationRow): string {
   }
 
   const fieldArg = item.fnArg || '*';
-  const wrappedFieldArg = fieldArg === '*' || fieldArg.startsWith('[') ? fieldArg : `[${fieldArg}]`;
+  const wrappedFieldArg = fieldArg === '*' ? fieldArg : fieldRef(fieldArg.replace(/^\[|\]$/g, ''));
 
   // percentage: [arg] / sum([arg]) OVER (...)  — no ORDER BY
   if (fn === 'percentage') {
@@ -251,9 +336,10 @@ export function exprFromParts(item: CalculationRow): string {
     const isYoy = fn.startsWith('period_yoy');
     const dateField = order?.[0]?.field;
     if (dateField && isYoy) {
-      const userPart = partition?.length ? `[${partition.join('], [')}], ` : '';
-      const datePart = `PARTITION BY ${userPart}extract('month' FROM [${dateField}]), extract('day' FROM [${dateField}])`;
-      const yearExpr = `extract('year' FROM [${dateField}])`;
+      const userPart = partition?.length ? `${partition.map(fieldRef).join(', ')}, ` : '';
+      const dateRef = fieldRef(dateField);
+      const datePart = `PARTITION BY ${userPart}extract('month' FROM ${dateRef}), extract('day' FROM ${dateRef})`;
+      const yearExpr = `extract('year' FROM ${dateRef})`;
       const lag = `lag(${wrappedFieldArg}) OVER (${datePart} ORDER BY ${yearExpr})`;
       const yearLag = `lag(${yearExpr}) OVER (${datePart} ORDER BY ${yearExpr})`;
       const guard = `CASE WHEN (${yearExpr} - ${yearLag}) = 1 THEN `;
@@ -269,7 +355,11 @@ export function exprFromParts(item: CalculationRow): string {
 
   // Custom offset types
   if (fn === 'offset_diff' || fn === 'offset_rate') {
-    const offset = parseInt(item.fnArg2 || '1', 10);
+    const offset = numericArg(item.fnArg2, 1, {
+      integer: true,
+      min: 1,
+      max: 1_000_000,
+    });
     const isRate = fn === 'offset_rate';
     const lag = `lag(${wrappedFieldArg}, ${offset})${overStr(true)}`;
     if (isRate) return `(${wrappedFieldArg} - ${lag}) / nullif(${lag}, 0)`;
@@ -280,23 +370,29 @@ export function exprFromParts(item: CalculationRow): string {
   if (prefix) {
     const def = TIME_WINDOW_DEFS[prefix];
     const agg = fn.slice(prefix.length + 1);
+    if (!TIME_AGG_WHITELIST.has(agg)) {
+      throw new Error(`Unsupported aggregation '${agg}' in time window calculation`);
+    }
     const dateField = order?.[0]?.field;
     if (!dateField) return `${agg}(${wrappedFieldArg}) OVER ()`;
-    const n = def.hasParam ? item.fnArg2 || '1' : '';
+    const n = def.hasParam
+      ? numericArg(item.fnArg2, 1, { integer: true, min: 1, max: 1_000_000 })
+      : '';
     let partitionStr = def.partitions(dateField);
     const fiscalMonth = item.fiscalStartMonth;
     if (prefix === 'ytd' && fiscalMonth && fiscalMonth > 1) {
-      partitionStr = `CASE WHEN month([${dateField}]) >= ${fiscalMonth} THEN year([${dateField}]) ELSE year([${dateField}]) - 1 END`;
+      const dateRef = fieldRef(dateField);
+      partitionStr = `CASE WHEN month(${dateRef}) >= ${fiscalMonth} THEN year(${dateRef}) ELSE year(${dateRef}) - 1 END`;
     }
     const aggFn =
       agg === 'distinct_count'
         ? `count(DISTINCT ${wrappedFieldArg})`
         : `${agg}(${wrappedFieldArg})`;
-    const fullPartition = [partitionStr, ...(partition?.map((p) => `[${p}]`) ?? [])]
+    const fullPartition = [partitionStr, ...(partition?.map(fieldRef) ?? [])]
       .filter(Boolean)
       .join(', ');
     const partitionClause = fullPartition ? `PARTITION BY ${fullPartition} ` : '';
-    return `${aggFn} OVER (${partitionClause}ORDER BY [${dateField}] ${def.frame(n)})`;
+    return `${aggFn} OVER (${partitionClause}ORDER BY ${fieldRef(dateField)} ${def.frame(n)})`;
   }
   // Generic: fn(args) OVER (PARTITION BY ... ORDER BY ...)
   const fnSqlMap: Record<string, string> = {
@@ -309,20 +405,50 @@ export function exprFromParts(item: CalculationRow): string {
   } else if (fn === 'count_distinct') {
     fnCall = `count(DISTINCT ${wrappedFieldArg})`;
   } else {
+    if (!isAllowedCalculationFunction(fn)) {
+      throw new Error(`Unsupported function '${fn}' in calculation expression`);
+    }
     const sqlFn = fnSqlMap[fn] || fn;
     const specs = FN_ARG_SPEC[fn] || FN_ARG_SPEC['*'];
     const args = specs
       .map((s) => {
         const raw = item[s.key];
         if (!raw) return s.type === 'field' ? '*' : '';
-        if (s.type === 'field') return raw.startsWith('[') ? raw : `[${raw}]`;
-        return raw;
+        if (s.type === 'field') return fieldRef(raw.replace(/^\[|\]$/g, ''));
+        if (s.type === 'number') return numericArg(raw, 1, s.numberRule);
+        return textArg(raw);
       })
       .filter((a) => a !== '');
     fnCall = `${sqlFn}(${args.join(', ')})`;
   }
   const over = overStr(true);
   return fnCall + over;
+}
+
+export function parseBound(bound: string | undefined): { type: string; value: number | null } {
+  const normalized = bound?.trim().toLowerCase();
+  if (!normalized || normalized === 'unbounded preceding')
+    return { type: 'unbounded preceding', value: null };
+  if (normalized === 'unbounded following') return { type: 'unbounded following', value: null };
+  if (normalized === 'current row') return { type: 'current row', value: null };
+  const m = normalized.match(/^(\d+) preceding$/);
+  if (m && isAllowedBoundOffset(m[1])) return { type: 'n_preceding', value: Number(m[1]) };
+  const n = normalized.match(/^(\d+) following$/);
+  if (n && isAllowedBoundOffset(n[1])) return { type: 'n_following', value: Number(n[1]) };
+  const interval = normalized.match(
+    /^interval (\d+) (day|week|month|quarter|year) (preceding|following)$/
+  );
+  if (interval && isAllowedBoundOffset(interval[1]))
+    return {
+      type: interval[3] === 'preceding' ? 'n_preceding' : 'n_following',
+      value: Number(interval[1]),
+    };
+  return { type: 'invalid', value: null };
+}
+
+function isAllowedBoundOffset(value: string): boolean {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 && parsed <= 1_000_000;
 }
 
 export function needsCalculationIdNormalization(

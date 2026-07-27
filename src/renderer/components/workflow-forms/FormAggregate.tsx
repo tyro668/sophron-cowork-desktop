@@ -12,6 +12,7 @@ import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTyp
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { isTemporalDataFieldType } from '../../../shared/data-field-types';
+import { AGGREGATE_FUNCTIONS } from '../../../shared/operator-schemas/common';
 
 const GRANULARITY_OPTIONS = [
   { value: '', labelKey: 'granularityNone', labelFallback: '不处理' },
@@ -21,30 +22,6 @@ const GRANULARITY_OPTIONS = [
   { value: 'week', labelKey: 'granularityWeek', labelFallback: '按周' },
   { value: 'day', labelKey: 'granularityDay', labelFallback: '按天' },
 ] as const;
-
-const AGG_FUNCTIONS = [
-  'count',
-  'count_distinct',
-  'sum',
-  'avg',
-  'min',
-  'max',
-  'median',
-  'mode',
-  'first',
-  'last',
-  'stddev_samp',
-  'stddev_pop',
-  'var_samp',
-  'var_pop',
-  'string_agg',
-  'list',
-  'quantile_cont',
-  'quantile_disc',
-  'approx_count_distinct',
-  'approx_quantile',
-  'approx_top_k',
-];
 
 interface MetricEntry {
   function: string;
@@ -85,7 +62,7 @@ export default function FormAggregate({
     () => [
       {
         key: 'default',
-        items: AGG_FUNCTIONS.map((f) => ({
+        items: AGGREGATE_FUNCTIONS.map((f) => ({
           value: f,
           label: tr('aggregateFn_' + f, f),
         })),

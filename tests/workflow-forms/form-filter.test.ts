@@ -801,6 +801,12 @@ const formFilterSource = fs.readFileSync(
 );
 
 describe('FormFilter — UI source inspection', () => {
+  it('catches parser failures and renders an inline error', () => {
+    expect(formFilterSource).toContain('function parseFilterConfig(');
+    expect(formFilterSource).toContain('catch (error)');
+    expect(formFilterSource).toContain('role="alert"');
+  });
+
   it('has addWithConnective in LeafRowContext', () => {
     expect(formFilterSource).toContain('addWithConnective');
   });

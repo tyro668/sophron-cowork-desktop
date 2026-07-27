@@ -173,23 +173,7 @@ export const FUNCTION_CATEGORIES: Record<
   time_intel: [],
 };
 
-export function parseBound(bound: string | undefined): { type: string; value: number | null } {
-  if (!bound || bound === 'unbounded preceding')
-    return { type: 'unbounded preceding', value: null };
-  if (bound === 'unbounded following') return { type: 'unbounded following', value: null };
-  if (bound === 'current row') return { type: 'current row', value: null };
-  const m = bound.match(/^(\d+) preceding$/);
-  if (m) return { type: 'n_preceding', value: parseInt(m[1], 10) };
-  const n = bound.match(/^(\d+) following$/);
-  if (n) return { type: 'n_following', value: parseInt(n[1], 10) };
-  const iv = bound.match(/^INTERVAL (\d+) (\w+) (PRECEDING|FOLLOWING)$/);
-  if (iv)
-    return {
-      type: iv[3] === 'PRECEDING' ? 'n_preceding' : 'n_following',
-      value: parseInt(iv[1], 10),
-    };
-  return { type: 'unbounded preceding', value: null };
-}
+export { parseBound } from '@/shared/calculate-field/index';
 
 export function formatBoundFromType(
   type: string,

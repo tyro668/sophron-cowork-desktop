@@ -50,7 +50,8 @@ export function lastQualifiedPart(value: string): string {
 
 export function unwrapFieldToken(token: string): string {
   const inner = token.slice(1, -1);
-  return inner.startsWith('`') && inner.endsWith('`') ? inner.slice(1, -1) : inner;
+  if (!inner.startsWith('`') || !inner.endsWith('`')) return inner;
+  return inner.slice(1, -1).replace(/\\([\\`])/g, '$1');
 }
 
 export function unquoteDslString(value: string): string {
