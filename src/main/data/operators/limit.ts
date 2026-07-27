@@ -49,7 +49,7 @@ function compileFixedSql(
   if (orderBy) {
     const offsetStr = parsed.offset > 0 ? ` OFFSET ${parsed.offset}` : '';
     if (ties) {
-      return `CREATE TEMP TABLE ${output} AS SELECT * FROM (SELECT *, RANK() OVER (ORDER BY ${orderBy}) AS __rn FROM ${input}) sub WHERE __rn <= ${rows}${offsetStr} ORDER BY ${orderBy}`;
+      return `CREATE TEMP TABLE ${output} AS ${projectionSub} FROM (SELECT *, RANK() OVER (ORDER BY ${orderBy}) AS __rn FROM ${input}) sub WHERE __rn <= ${rows}${offsetStr} ORDER BY ${orderBy}`;
     }
     return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} ORDER BY ${orderBy} LIMIT ${rows}${offsetStr}`;
   }
