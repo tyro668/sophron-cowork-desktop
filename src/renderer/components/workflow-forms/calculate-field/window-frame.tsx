@@ -158,7 +158,15 @@ export function GlassWindowFrameConfig({ item, index, updateItem, tr, columnType
                 {isRangeDate ? (
                   <GlassOptionSingleSelect
                     value={effectiveStartUnit}
-                    groups={[{ key: 'interval', items: INTERVAL_UNIT_OPTIONS }]}
+                    groups={[
+                      {
+                        key: 'interval',
+                        items: INTERVAL_UNIT_OPTIONS.map((opt) => ({
+                          value: opt.value,
+                          label: tr(opt.key, opt.label),
+                        })),
+                      },
+                    ]}
                     onChange={(v) => {
                       updateFrame({
                         frameStart: formatBoundFromType(
@@ -207,7 +215,15 @@ export function GlassWindowFrameConfig({ item, index, updateItem, tr, columnType
                 {isRangeDate ? (
                   <GlassOptionSingleSelect
                     value={effectiveEndUnit}
-                    groups={[{ key: 'interval', items: INTERVAL_UNIT_OPTIONS }]}
+                    groups={[
+                      {
+                        key: 'interval',
+                        items: INTERVAL_UNIT_OPTIONS.map((opt) => ({
+                          value: opt.value,
+                          label: tr(opt.key, opt.label),
+                        })),
+                      },
+                    ]}
                     onChange={(v) => {
                       updateFrame({
                         frameEnd: formatBoundFromType(

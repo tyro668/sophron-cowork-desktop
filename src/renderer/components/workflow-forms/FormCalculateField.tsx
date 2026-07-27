@@ -29,6 +29,15 @@ import { GlassTimeIntelConfig } from './calculate-field/time-intel';
 
 const EXCLUDE_ROW_FUNCTIONS = ['calcFieldCategoryWindow', 'calcFieldCategoryAggregate'];
 
+const SCENARIO_DEFAULT_FN: Record<string, string> = {
+  group_metrics: 'sum',
+  ranking: 'row_number',
+  cumulative: 'sum',
+  offset: 'lag',
+  moving_window: 'sum',
+  period_compare: 'period_yoy_value',
+};
+
 export default function FormCalculateField({
   node,
   fieldCompletions,
@@ -80,16 +89,7 @@ export default function FormCalculateField({
         (i) => i.type !== 'row' && (i.scenario || activeScenario) === activeScenario
       );
       if (!hasItems) {
-        const defaults: Record<string, string> = {
-          group_metrics: 'sum',
-          percentage: 'percentage',
-          ranking: 'row_number',
-          cumulative: 'sum',
-          offset: 'lag',
-          moving_window: 'sum',
-          period_compare: 'period_yoy_value',
-        };
-        updateItem(0, { fn: defaults[activeScenario] || 'sum' });
+        updateItem(0, { fn: SCENARIO_DEFAULT_FN[activeScenario] || 'sum' });
       }
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -162,7 +162,7 @@ export default function FormCalculateField({
     function boundOrderRank(type: string, value: number | null): number {
       switch (type) {
         case 'unbounded preceding':
-          return -999999;
+          return Number.MIN_SAFE_INTEGER;
         case 'n_preceding':
           return -(value ?? 1);
         case 'current row':
@@ -170,9 +170,9 @@ export default function FormCalculateField({
         case 'n_following':
           return value ?? 1;
         case 'unbounded following':
-          return 999999;
+          return Number.MAX_SAFE_INTEGER;
         default:
-          return -999999;
+          return Number.MIN_SAFE_INTEGER;
       }
     }
     if (boundOrderRank(s.type, s.value) > boundOrderRank(e.type, e.value)) {
@@ -311,16 +311,7 @@ export default function FormCalculateField({
   }
 
   function renderCrossLayout(item: CalculationRow, index: number, scenario: string) {
-    const scenarioDefaults: Record<string, string> = {
-      group_metrics: 'sum',
-      percentage: 'percentage',
-      ranking: 'row_number',
-      cumulative: 'sum',
-      offset: 'lag',
-      moving_window: 'sum',
-      period_compare: 'period_yoy_value',
-    };
-    const defaultFn = scenarioDefaults[scenario] || 'sum';
+    const defaultFn = SCENARIO_DEFAULT_FN[scenario] || 'sum';
     const currentFn = item.fn || defaultFn;
     const specs = FN_ARG_SPEC[currentFn] || FN_ARG_SPEC['*'];
     const isPartition = item.partitionBy !== undefined;

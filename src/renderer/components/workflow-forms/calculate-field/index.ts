@@ -27,10 +27,10 @@ export const EXCLUDE_OPTIONS = [
 ];
 
 export const INTERVAL_UNIT_OPTIONS = [
-  { value: 'day', label: '天' },
-  { value: 'week', label: '周' },
-  { value: 'month', label: '月' },
-  { value: 'year', label: '年' },
+  { value: 'day', key: 'intervalUnitDay', label: '天' },
+  { value: 'week', key: 'intervalUnitWeek', label: '周' },
+  { value: 'month', key: 'intervalUnitMonth', label: '月' },
+  { value: 'year', key: 'intervalUnitYear', label: '年' },
 ];
 
 export const TIME_WINDOW_OPTIONS: { value: string; label: string; key: string }[] = [
@@ -59,12 +59,6 @@ export const SCENARIO_OPTIONS = [
     key: 'calcFieldScenarioGroupMetrics',
     label: '组内指标',
     tip: '按分区聚合数据：求和/平均/最大/最小/计数/去重计数/中位数/标准差/方差/众数/分位数/字符串聚合/逻辑与/逻辑或',
-  },
-  {
-    value: 'percentage',
-    key: 'calcFieldScenarioPercentage',
-    label: '占比',
-    tip: '当前值占全表或分组的比例',
   },
   {
     value: 'ranking',
@@ -131,8 +125,12 @@ export const FUNCTION_CATEGORIES: Record<
       header: 'calcFieldCatTextLogical',
       items: ['string_agg', 'bool_and', 'bool_or'],
     },
+    {
+      key: 'special',
+      header: 'calcFieldCatSpecial',
+      items: ['percentage'],
+    },
   ],
-  percentage: [{ key: 'special', header: 'calcFieldCatSpecial', items: ['percentage'] }],
   ranking: [
     {
       key: 'rank',
