@@ -3,7 +3,7 @@ import {
   applyWorkflowFunctionPatch,
   compileWorkflowJavaScript,
   executeWorkflowJavaScriptInSandbox,
-  WORKFLOW_SDK_RUNTIME_SOURCE,
+  WORKFLOW_SANDBOX_RUNNER_SOURCE,
 } from '../src/main/data/workflow/javascript-runtime';
 import { compileGeneratedJavaScriptWorkflow } from '../src/main/data/workflow/workflow-generator';
 import { lowerWorkflowIrToOperations } from '../src/main/data/workflow/operation-compiler';
@@ -34,14 +34,14 @@ function buildIr(source = SOURCE) {
 }
 
 describe('JavaScript Workflow SDK pipeline', () => {
-  it('derives the prompt and runtime operation allowlist from one operation registry', () => {
+  it('derives the prompt from the registry and keeps the generic runtime step API', () => {
     const prompt = getWorkflowJavascriptCapabilityPrompt();
     for (const definition of WORKFLOW_OPERATION_REGISTRY) {
       expect(prompt).toContain(definition.promptSignature);
-      expect(WORKFLOW_SDK_RUNTIME_SOURCE).toContain(definition.irType);
     }
-    expect(WORKFLOW_SDK_RUNTIME_SOURCE).toContain('step: (input, type, fields)');
-    expect(WORKFLOW_SDK_RUNTIME_SOURCE).not.toContain('sdk.drop =');
+    expect(WORKFLOW_SANDBOX_RUNNER_SOURCE).toContain('allowedOperationTypes.has(type)');
+    expect(WORKFLOW_SANDBOX_RUNNER_SOURCE).toContain('step: (input, type, fields)');
+    expect(WORKFLOW_SANDBOX_RUNNER_SOURCE).not.toContain('sdk.drop =');
     expect(prompt).toContain('strategy: "drop_empty_rows"');
     expect(prompt).toContain('strategy: "by_column"');
     expect(prompt).toContain('method: "skip|drop|nullify_values|literal_fill"');
