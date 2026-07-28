@@ -17,6 +17,7 @@ import type {
 import type { PrepDiagnostic } from '../../../shared/prep-dsl/ast';
 import { isRecord, quoteIdentifier, toNumber } from '../operators';
 import {
+  DataOutputCommitRow,
   DataTaskRow,
   isDuckDbTransactionStateError,
   mapTaskRow,
@@ -50,6 +51,16 @@ import {
 } from './workflow-model';
 
 export class TaskWorkflowStore extends WorkflowCompiler {
+  private outputCommitRecoveryPromise: Promise<void> | null = null;
+
+  protected override async ensureReady(): Promise<void> {
+    await super.ensureReady();
+    if (!this.outputCommitRecoveryPromise) {
+      this.outputCommitRecoveryPromise = this.recoverPendingOutputCommits();
+    }
+    await this.outputCommitRecoveryPromise;
+  }
+
   async createTask(input: DataCreateTaskInput): Promise<DataCleaningTask> {
     await this.ensureMetadataReady();
     const name = input.name.trim();
@@ -156,33 +167,73 @@ export class TaskWorkflowStore extends WorkflowCompiler {
         outputNode,
         task.outputTable || tableNameFromId('clean_task', task.id)
       );
-
-      await this.runSql('BEGIN TRANSACTION');
-      try {
-        await this.runSql(
-          `CREATE OR REPLACE TABLE ${quoteIdentifier(target.tableName)} AS SELECT * FROM ${quoteIdentifier(temporaryTable)}`
-        );
-        await this.runSql('COMMIT');
-      } catch (error) {
-        await this.runSql('ROLLBACK').catch(() => undefined);
-        throw error;
-      }
-
-      const rowCount = await this.countRows(target.tableName);
-      const columnCount = (await this.getTableColumns(target.tableName)).length;
+      const rowCount = await this.countRows(temporaryTable);
+      const columnCount = (await this.getTableColumns(temporaryTable)).length;
       const sourceDatasetId =
         (await this.findWorkflowSourceDatasetId(runtimeWorkflow.nodes)) ?? task.sourceDatasetId;
-      await this.upsertDatasetForTaskOutput(
-        task.name,
-        temporaryTask.sourcePath,
-        target.tableName,
-        rowCount,
-        columnCount,
-        target.outputDatasetId
-      );
       const completedAt = this.now();
+      const commitId = uuidv4();
+      const backupTable = tableNameFromId('output_backup', commitId);
+      const targetExisted = await this.physicalTableExists(target.tableName);
       await this.metaRunSql(
-        `
+        `INSERT INTO data_output_commits (
+           id, task_id, temporary_table, target_table, backup_table, target_existed,
+           state, intended_metadata_json, error, created_at, updated_at
+         ) VALUES (
+           $id, $taskId, $temporaryTable, $targetTable, $backupTable, $targetExisted,
+           'prepared', $intendedMetadataJson, NULL, $createdAt, $updatedAt
+         )`,
+        {
+          id: commitId,
+          taskId: id,
+          temporaryTable,
+          targetTable: target.tableName,
+          backupTable,
+          targetExisted: targetExisted ? 1 : 0,
+          intendedMetadataJson: JSON.stringify({
+            taskName: task.name,
+            sourcePath: temporaryTask.sourcePath,
+            sourceDatasetId,
+            outputDatasetId: target.outputDatasetId ?? null,
+            rowCount,
+            columnCount,
+            nodeCount: runtimeWorkflow.nodes.length,
+            completedAt,
+          }),
+          createdAt: completedAt,
+          updatedAt: completedAt,
+        }
+      );
+
+      let physicalCommitted = false;
+      let metadataTransactionStarted = false;
+      try {
+        await this.runSql('BEGIN TRANSACTION');
+        if (targetExisted) {
+          await this.dropTableIfExists(backupTable);
+          await this.runSql(
+            `ALTER TABLE ${quoteIdentifier(target.tableName)} RENAME TO ${quoteIdentifier(backupTable)}`
+          );
+        }
+        await this.runSql(
+          `CREATE TABLE ${quoteIdentifier(target.tableName)} AS SELECT * FROM ${quoteIdentifier(temporaryTable)}`
+        );
+        await this.runSql('COMMIT');
+        physicalCommitted = true;
+        await this.updateOutputCommitState(commitId, 'data_committed');
+
+        await this.metaRunSql('BEGIN TRANSACTION');
+        metadataTransactionStarted = true;
+        await this.upsertDatasetForTaskOutput(
+          task.name,
+          temporaryTask.sourcePath,
+          target.tableName,
+          rowCount,
+          columnCount,
+          target.outputDatasetId
+        );
+        await this.metaRunSql(
+          `
             UPDATE data_cleaning_tasks
             SET status = 'completed',
                 node_count = $nodeCount,
@@ -196,21 +247,103 @@ export class TaskWorkflowStore extends WorkflowCompiler {
                 error = NULL
             WHERE id = $id
           `,
-        {
-          id,
-          nodeCount: runtimeWorkflow.nodes.length,
-          sourcePath: temporaryTask.sourcePath,
-          sourceDatasetId,
-          outputTable: target.tableName,
-          rowCount,
-          columnCount,
-          lastRunAt: completedAt,
-          updatedAt: completedAt,
+          {
+            id,
+            nodeCount: runtimeWorkflow.nodes.length,
+            sourcePath: temporaryTask.sourcePath,
+            sourceDatasetId,
+            outputTable: target.tableName,
+            rowCount,
+            columnCount,
+            lastRunAt: completedAt,
+            updatedAt: completedAt,
+          }
+        );
+        await this.updateOutputCommitState(commitId, 'metadata_committed');
+        await this.metaRunSql('COMMIT');
+        metadataTransactionStarted = false;
+      } catch (error) {
+        if (metadataTransactionStarted) {
+          await this.metaRunSql('ROLLBACK').catch(() => undefined);
         }
-      );
-      await this.dropTableIfExists(temporaryTable);
+        if (physicalCommitted) {
+          await this.restoreOutputCommit({
+            targetTable: target.tableName,
+            backupTable,
+            targetExisted,
+          }).catch(() => undefined);
+        } else {
+          await this.runSql('ROLLBACK').catch(() => undefined);
+        }
+        await this.updateOutputCommitState(
+          commitId,
+          'failed',
+          error instanceof Error ? error.message : String(error)
+        ).catch(() => undefined);
+        throw error;
+      }
+
+      await this.dropTableIfExists(backupTable).catch(() => undefined);
+      await this.dropTableIfExists(temporaryTable).catch(() => undefined);
+      await this.updateOutputCommitState(commitId, 'completed').catch(() => undefined);
       return this.requireTask(id);
     }, `commitValidatedTaskOutput:${id}`);
+  }
+
+  private async updateOutputCommitState(id: string, state: string, error: string | null = null) {
+    await this.metaRunSql(
+      `UPDATE data_output_commits
+       SET state = $state, error = $error, updated_at = $updatedAt
+       WHERE id = $id`,
+      { id, state, error, updatedAt: this.now() }
+    );
+  }
+
+  private async restoreOutputCommit(input: {
+    targetTable: string;
+    backupTable: string;
+    targetExisted: boolean;
+  }): Promise<void> {
+    await this.runSql('BEGIN TRANSACTION');
+    try {
+      if (input.targetExisted) {
+        if (await this.physicalTableExists(input.backupTable)) {
+          await this.dropTableIfExists(input.targetTable);
+          await this.runSql(
+            `ALTER TABLE ${quoteIdentifier(input.backupTable)} RENAME TO ${quoteIdentifier(input.targetTable)}`
+          );
+        }
+      } else {
+        await this.dropTableIfExists(input.targetTable);
+      }
+      await this.runSql('COMMIT');
+    } catch (error) {
+      await this.runSql('ROLLBACK').catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async recoverPendingOutputCommits(): Promise<void> {
+    const rows = await this.metaQueryRows<DataOutputCommitRow>(
+      `SELECT * FROM data_output_commits WHERE state NOT IN ('completed', 'failed')`
+    );
+    for (const row of rows) {
+      const targetTable = String(row.target_table);
+      const backupTable = String(row.backup_table);
+      const targetExisted = toNumber(row.target_existed) === 1;
+      if (row.state === 'metadata_committed') {
+        await this.dropTableIfExists(backupTable).catch(() => undefined);
+        await this.dropTableIfExists(String(row.temporary_table)).catch(() => undefined);
+        await this.updateOutputCommitState(String(row.id), 'completed');
+        continue;
+      }
+      await this.restoreOutputCommit({ targetTable, backupTable, targetExisted });
+      await this.updateOutputCommitState(
+        String(row.id),
+        'failed',
+        'Recovered an interrupted output commit by restoring the previous output table'
+      );
+    }
   }
 
   async discardTemporaryTaskOutput(task: DataCleaningTask): Promise<void> {

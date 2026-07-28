@@ -277,6 +277,21 @@ export abstract class DataStoreRuntime {
           updated_at BIGINT NOT NULL
         )
       `);
+    await this.metaRunSql(`
+        CREATE TABLE IF NOT EXISTS data_output_commits (
+          id VARCHAR PRIMARY KEY,
+          task_id VARCHAR NOT NULL,
+          temporary_table VARCHAR NOT NULL,
+          target_table VARCHAR NOT NULL,
+          backup_table VARCHAR NOT NULL,
+          target_existed INTEGER NOT NULL,
+          state VARCHAR NOT NULL,
+          intended_metadata_json VARCHAR NOT NULL,
+          error VARCHAR,
+          created_at BIGINT NOT NULL,
+          updated_at BIGINT NOT NULL
+        )
+      `);
     await this.createMetadataIndexes();
     await this.metaRunSql(`
         UPDATE data_workflow_nodes
@@ -375,6 +390,7 @@ export abstract class DataStoreRuntime {
       'CREATE INDEX IF NOT EXISTS idx_data_workflow_edges_task_id ON data_workflow_edges(task_id)',
       'CREATE INDEX IF NOT EXISTS idx_data_workflow_node_caches_task_node ON data_workflow_node_caches(task_id, node_id, updated_at)',
       'CREATE INDEX IF NOT EXISTS idx_data_workflow_node_caches_expires_at ON data_workflow_node_caches(expires_at)',
+      'CREATE INDEX IF NOT EXISTS idx_data_output_commits_state ON data_output_commits(state, updated_at)',
     ];
     for (const statement of indexStatements) {
       await this.metaRunSql(statement);

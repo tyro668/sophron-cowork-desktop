@@ -107,6 +107,20 @@ export interface DashboardSummaryRow {
   failed_count: number | string | null;
 }
 
+export interface DataOutputCommitRow {
+  id: string;
+  task_id: string;
+  temporary_table: string;
+  target_table: string;
+  backup_table: string;
+  target_existed: number | string;
+  state: string;
+  intended_metadata_json: string;
+  error: string | null;
+  created_at: number | string;
+  updated_at: number | string;
+}
+
 export const LEGACY_DEMO_TASK_NAMES = [
   '用户行为数据清洗',
   '销售数据汇总',
