@@ -7,7 +7,7 @@ interface Props {
   item: CalculationRow;
   index: number;
   updateItem: (index: number, patch: Partial<CalculationRow>) => void;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string) => string;
   fieldCompletions: string[];
   columnTypes: Record<string, string>;
   ordOpen: boolean;
@@ -33,7 +33,7 @@ export function GlassOrderByConfig({
     <div className="flex items-center gap-2 flex-wrap">
       <div className="flex items-center gap-2">
         <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-          {tr('calcFieldOrderBy', '排序字段')}
+          {tr('calcFieldOrderBy')}
         </span>
         <div className="w-72 min-w-0 relative">
           <div className="flex min-h-7 items-center rounded-md border border-border-muted bg-background/42 focus-within:border-accent">
@@ -42,7 +42,7 @@ export function GlassOrderByConfig({
                 type="button"
                 onClick={() => updateOrder({ orderBy: undefined })}
                 className="ml-1 inline-flex flex-shrink-0 items-center justify-center self-stretch rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
-                title={tr('clearAll', '清空')}
+                title={tr('clearAll')}
               >
                 <Trash2 className="h-3 w-3" />
               </button>
@@ -70,7 +70,7 @@ export function GlassOrderByConfig({
                       })
                     }
                     className="text-[11px] leading-none px-0.5 hover:text-text-primary rounded"
-                    title={o.direction === 'asc' ? tr('asc', '升序') : tr('desc', '降序')}
+                    title={o.direction === 'asc' ? tr('asc') : tr('desc')}
                   >
                     {o.direction === 'asc' ? '↑' : '↓'}
                   </button>
@@ -88,9 +88,7 @@ export function GlassOrderByConfig({
               <input
                 type="text"
                 readOnly
-                placeholder={
-                  !item.orderBy?.length ? tr('calcFieldOrderPlaceholder', '选择排序字段') : ''
-                }
+                placeholder={!item.orderBy?.length ? tr('calcFieldOrderPlaceholder') : ''}
                 onFocus={() => setOrderOpen((o) => ({ ...o, [index]: true }))}
                 onBlur={() =>
                   setTimeout(() => setOrderOpen((o) => ({ ...o, [index]: false })), 150)

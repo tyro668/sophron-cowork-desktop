@@ -17,7 +17,8 @@ export interface CompileStrategy {
     output: string,
     input: string,
     columns: string[],
-    config: Record<string, unknown>
+    config: Record<string, unknown>,
+    columnTypes?: Record<string, string>
   ) => string;
   needsColumns: boolean;
 }

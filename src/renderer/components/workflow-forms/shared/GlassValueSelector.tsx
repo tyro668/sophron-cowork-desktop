@@ -73,14 +73,14 @@ export function GlassValueSelector({
           type="button"
           onClick={handleClear}
           className="inline-flex flex-shrink-0 items-center justify-center rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
-          title={tr('clearAll', '清空字段')}
-          aria-label={tr('clearAll', '清空字段')}
+          title={tr('clearAll')}
+          aria-label={tr('clearAll')}
         >
           <Trash2 className="h-3 w-3" />
         </button>
         {selected.length === 0 && (
           <span className="text-[12px] text-text-muted italic">
-            {placeholder || tr('pivotInPlaceholder', '2024, 2025, 2026')}
+            {placeholder || tr('pivotInPlaceholder')}
           </span>
         )}
         <div className="flex flex-1 flex-wrap gap-1">
@@ -94,7 +94,7 @@ export function GlassValueSelector({
                 type="button"
                 onClick={() => toggleItem(v)}
                 className="inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20 transition-colors"
-                aria-label={tr('removeField', '移除')}
+                aria-label={tr('removeField')}
               >
                 <X className="h-2 w-2" />
               </button>
@@ -121,7 +121,7 @@ export function GlassValueSelector({
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={tr('searchField', '搜索')}
+              placeholder={tr('searchField')}
               className="h-5 flex-1 min-w-0 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
             />
             <label
@@ -135,7 +135,7 @@ export function GlassValueSelector({
                 className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
               />
               <span className="text-[12px] text-text-secondary font-medium whitespace-nowrap">
-                {allFilteredSelected ? tr('deselectAll', '取消全选') : tr('selectAll', '全选')}
+                {allFilteredSelected ? tr('deselectAll') : tr('selectAll')}
               </span>
             </label>
           </div>
@@ -143,7 +143,7 @@ export function GlassValueSelector({
           <div className="overflow-y-auto" style={{ maxHeight }}>
             {filtered.length === 0 ? (
               <div className="px-3 py-8 text-center text-[12px] text-text-muted">
-                {search ? tr('noMatch', '无匹配值') : tr('noFields', '暂无可用值')}
+                {search ? tr('noMatch') : tr('noFields')}
               </div>
             ) : (
               filtered.map((v) => {

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Search } from 'lucide-react';
 import { dataFieldTypeLabel } from '@/shared/data-field-types';
+import { useDataFieldTypeLabel } from '../../../hooks/useDataFieldTypeLabel';
 import { parseFieldRef } from '@/shared/prep-dsl/parser';
 import { useDropdown } from '../../../hooks/useDropdown';
 
@@ -54,6 +55,7 @@ export function GlassFieldSingleSelect({
   displayLabel,
 }: GlassFieldSingleSelectProps) {
   const { t } = useTranslation();
+  const dataTypeLabel = useDataFieldTypeLabel();
   const {
     open,
     setOpen,
@@ -77,7 +79,7 @@ export function GlassFieldSingleSelect({
       if (label.includes(lower)) return true;
       const type = columnTypes[opt];
       if (!type) return false;
-      return dataFieldTypeLabel(type).toLowerCase().includes(lower);
+      return dataTypeLabel(type).toLowerCase().includes(lower);
     });
   }, [options, search, columnTypes]);
 
@@ -222,7 +224,7 @@ export function GlassFieldSingleSelect({
               <>
                 {displayLabel || value}
                 <span className="ml-1 text-[11px] text-text-muted">
-                  ({dataFieldTypeLabel(columnTypes[value])})
+                  ({dataTypeLabel(columnTypes[value])})
                 </span>
               </>
             ) : (
@@ -301,7 +303,7 @@ export function GlassFieldSingleSelect({
                       <span className="min-w-0 flex-1 truncate">{optLabel}</span>
                       {columnTypes[opt] && (
                         <span className="flex-shrink-0 text-[11px] text-text-muted tabular-nums">
-                          {dataFieldTypeLabel(columnTypes[opt])}
+                          {dataTypeLabel(columnTypes[opt])}
                         </span>
                       )}
                     </button>

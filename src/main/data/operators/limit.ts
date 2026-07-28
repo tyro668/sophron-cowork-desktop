@@ -3,7 +3,7 @@ import { quoteIdentifier, sortKeysToSql } from './utils';
 import { LimitConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
 type LimitParsed = z.infer<typeof LimitConfigSchema>;
-
+const MAX_PERCENT = 100;
 function compileFixedSql(
   output: string,
   input: string,
@@ -15,10 +15,11 @@ function compileFixedSql(
   const orderBy = sortKeysToSql(parsed.orderBy);
   const ties = parsed.ties;
   const projection = columns.map((column) => quoteIdentifier(column)).join(', ') || '*';
-  const pct = Math.min(limit, 100);
+  const pct = Math.min(limit, MAX_PERCENT);
   const rows = Math.floor(limit);
 
   const projectionSub = `SELECT ${projection}`;
+  const offsetStr = parsed.offset > 0 ? ` OFFSET ${parsed.offset}` : '';
 
   if (unit === 'percent' && ties && orderBy) {
     return `
@@ -47,14 +48,12 @@ function compileFixedSql(
   }
 
   if (orderBy) {
-    const offsetStr = parsed.offset > 0 ? ` OFFSET ${parsed.offset}` : '';
     if (ties) {
-      return `CREATE TEMP TABLE ${output} AS ${projectionSub} FROM (SELECT *, RANK() OVER (ORDER BY ${orderBy}) AS __rn FROM ${input}) sub WHERE __rn <= ${rows}${offsetStr} ORDER BY ${orderBy}`;
+      return `CREATE TEMP TABLE ${output} AS WITH numbered AS (SELECT *, RANK() OVER (ORDER BY ${orderBy}) AS __rk, ROW_NUMBER() OVER (ORDER BY ${orderBy}) AS __rn FROM ${input}) ${projectionSub} FROM numbered WHERE __rn > ${parsed.offset} AND __rk <= (SELECT __rk FROM numbered WHERE __rn = ${parsed.offset + rows}) ORDER BY ${orderBy}`;
     }
     return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} ORDER BY ${orderBy} LIMIT ${rows}${offsetStr}`;
   }
 
-  const offsetStr = parsed.offset > 0 ? ` OFFSET ${parsed.offset}` : '';
   return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} LIMIT ${rows}${offsetStr}`;
 }
 
@@ -68,7 +67,7 @@ function compileRandomSql(
   if (parsed.unit === 'percent') {
     const method = parsed.method === 'system' ? 'SYSTEM' : 'BERNOULLI';
     const seed = parsed.seed != null ? ` REPEATABLE(${parsed.seed})` : '';
-    return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} TABLESAMPLE ${method}(${Math.min(limit, 100)}%)${seed}`;
+    return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} TABLESAMPLE ${method}(${Math.min(limit, MAX_PERCENT)}%)${seed}`;
   }
   const rows = Math.floor(limit);
   const seed = parsed.seed != null ? ` REPEATABLE(${parsed.seed})` : '';

@@ -159,7 +159,7 @@ interface LeafRowContext {
     parentConnective: FilterConditionConnective,
     targetConnective: FilterConditionConnective
   ) => void;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string) => string;
 }
 
 function ConditionLeafRow({
@@ -185,7 +185,7 @@ function ConditionLeafRow({
     () =>
       opGroups.map((g) => ({
         key: g.groupKey,
-        items: g.items.map((o) => ({ value: o.value, label: tr(o.labelKey, o.value) })),
+        items: g.items.map((o) => ({ value: o.value, label: tr(o.labelKey) })),
       })),
     [opGroups, tr]
   );
@@ -210,8 +210,8 @@ function ConditionLeafRow({
               ctx.fetchColumnValues(v);
               ctx.updateLeaf(leaf.id, { field: v, op: effectiveOp });
             }}
-            placeholder={ctx.tr('filterFieldPlaceholder', '选择字段')}
-            emptyText={ctx.tr('noMatch', '无匹配字段')}
+            placeholder={ctx.tr('filterFieldPlaceholder')}
+            emptyText={ctx.tr('noMatch')}
             className="h-8 w-full"
           />
         </div>
@@ -233,11 +233,11 @@ function ConditionLeafRow({
             suggestions={colVals}
             isLoading={isValsLoading}
             onChange={(v) => ctx.updateLeaf(leaf.id, { val1: v })}
-            placeholder={ctx.tr('filterValuesPlaceholder', '输入值后按 Enter 添加')}
+            placeholder={ctx.tr('filterValuesPlaceholder')}
             disabled={!fieldSelected}
-            addLabel={ctx.tr('filterAddValue', '添加')}
-            noSuggestionsLabel={ctx.tr('noSuggestions', '暂无建议值')}
-            clearLabel={ctx.tr('filterClearValues', '清空输入框')}
+            addLabel={ctx.tr('filterAddValue')}
+            noSuggestionsLabel={ctx.tr('noSuggestions')}
+            clearLabel={ctx.tr('filterClearValues')}
           />
         ) : (
           <GlassValueInput
@@ -245,22 +245,20 @@ function ConditionLeafRow({
             suggestions={colVals}
             isLoading={isValsLoading}
             onChange={(v) => ctx.updateLeaf(leaf.id, { val1: v })}
-            placeholder={ctx.tr('filterValuePlaceholder', '值')}
+            placeholder={ctx.tr('filterValuePlaceholder')}
             disabled={!fieldSelected}
           />
         )}
 
         {isBetween && (
           <>
-            <span className="text-[11px] text-text-muted flex-shrink-0">
-              {ctx.tr('filterAnd', '至')}
-            </span>
+            <span className="text-[11px] text-text-muted flex-shrink-0">{ctx.tr('filterAnd')}</span>
             <GlassValueInput
               value={leaf.val2}
               suggestions={colVals}
               isLoading={isValsLoading}
               onChange={(v) => ctx.updateLeaf(leaf.id, { val2: v })}
-              placeholder={ctx.tr('filterValue2Placeholder', '值2')}
+              placeholder={ctx.tr('filterValue2Placeholder')}
               disabled={!fieldSelected}
             />
           </>
@@ -282,8 +280,8 @@ function ConditionLeafRow({
           }`}
           title={
             parentConnective !== 'and' && depth >= MAX_NESTING_DEPTH
-              ? ctx.tr('filterMaxDepth', '已达最大嵌套深度')
-              : ctx.tr('filterAddAnd', '添加与条件')
+              ? ctx.tr('filterMaxDepth')
+              : ctx.tr('filterAddAnd')
           }
         >
           <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm border border-current text-[9px] font-bold leading-none">
@@ -305,8 +303,8 @@ function ConditionLeafRow({
           }`}
           title={
             parentConnective !== 'or' && depth >= MAX_NESTING_DEPTH
-              ? ctx.tr('filterMaxDepth', '已达最大嵌套深度')
-              : ctx.tr('filterAddOr', '添加或条件')
+              ? ctx.tr('filterMaxDepth')
+              : ctx.tr('filterAddOr')
           }
         >
           <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-current text-[9px] font-bold leading-none">
@@ -319,7 +317,7 @@ function ConditionLeafRow({
           type="button"
           onClick={() => ctx.removeNode(leaf.id)}
           className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-text-muted/50 hover:text-error hover:bg-error/10 transition-colors"
-          title={ctx.tr('filterDeleteCondition', '删除此条件')}
+          title={ctx.tr('filterDeleteCondition')}
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>
@@ -426,9 +424,7 @@ function BranchGroupRenderer({
   if (itemCount === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border-muted/70 px-4 py-6 text-center">
-        <p className="text-[12px] text-text-muted">
-          {ctx.tr('filterEmptyHint', '尚未添加筛选条件')}
-        </p>
+        <p className="text-[12px] text-text-muted">{ctx.tr('filterEmptyHint')}</p>
       </div>
     );
   }
@@ -456,12 +452,9 @@ function BranchGroupRenderer({
           type="button"
           onClick={() => ctx.toggleBranchConnective(branch.id)}
           className="rounded border border-border-muted/60 bg-background/50 px-2 py-0.5 text-[12px] text-center text-accent hover:bg-accent/10 hover:border-accent/30 transition-colors"
-          title={ctx.tr('filterToggleAndOr', '点击切换与 / 或')}
+          title={ctx.tr('filterToggleAndOr')}
         >
-          {ctx.tr(
-            branch.connective === 'and' ? 'filterConnectiveAnd' : 'filterConnectiveOr',
-            branch.connective === 'and' ? '与' : '或'
-          )}
+          {ctx.tr(branch.connective === 'and' ? 'filterConnectiveAnd' : 'filterConnectiveOr')}
         </button>
       </div>
 
@@ -747,7 +740,7 @@ export default function FormFilter({
       <div className="space-y-2.5">
         {parseError && (
           <p role="alert" className="rounded-md bg-error/10 px-2.5 py-2 text-[11px] text-error">
-            {tr('filterParseError', '筛选条件无法解析')}: {parseError}
+            {tr('filterParseError')}: {parseError}
           </p>
         )}
         {/* Global add button */}
@@ -765,7 +758,7 @@ export default function FormFilter({
           className="inline-flex h-7 items-center gap-1 rounded-md border border-border-muted bg-background/42 px-2 text-[11px] text-text-secondary hover:border-accent/30 hover:text-accent transition-colors"
         >
           <Plus className="h-3 w-3" />
-          {tr('filterAddCondition', '添加筛选条件')}
+          {tr('filterAddCondition')}
         </button>
 
         {/* Condition tree */}

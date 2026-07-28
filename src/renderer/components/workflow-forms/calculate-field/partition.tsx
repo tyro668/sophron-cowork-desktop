@@ -8,7 +8,7 @@ interface Props {
   item: CalculationRow;
   index: number;
   updateItem: (index: number, patch: Partial<CalculationRow>) => void;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string) => string;
   fieldCompletions: string[];
   columnTypes: Record<string, string>;
   scenario: string;
@@ -40,7 +40,7 @@ export function GlassPartitionConfig({
     <div className="flex items-center gap-2 flex-wrap">
       <div className="flex items-center gap-2">
         <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-          {tr('calcFieldPartitionRange', '分区范围')}
+          {tr('calcFieldPartitionRange')}
         </span>
         <GlassOptionSingleSelect
           value={isPartition ? 'partition' : 'all'}
@@ -48,8 +48,8 @@ export function GlassPartitionConfig({
             {
               key: 'partitionMode',
               items: [
-                { value: 'all', label: tr('calcFieldPartitionAll', '全表') },
-                { value: 'partition', label: tr('calcFieldPartitionSelect', '部分') },
+                { value: 'all', label: tr('calcFieldPartitionAll') },
+                { value: 'partition', label: tr('calcFieldPartitionSelect') },
               ],
             },
           ]}
@@ -69,7 +69,7 @@ export function GlassPartitionConfig({
       {isPartition && (
         <div className="flex items-center gap-2">
           <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-            {tr('calcFieldPartitionBy', '分区字段')}
+            {tr('calcFieldPartitionBy')}
           </span>
           <div className="w-72 min-w-0 relative">
             <GlassTagBar
@@ -83,7 +83,7 @@ export function GlassPartitionConfig({
               toggleStyle="chevron"
               density="compact"
               className="min-h-7"
-              placeholder={tr('calcFieldPartitionPlaceholder', '选择分区字段')}
+              placeholder={tr('calcFieldPartitionPlaceholder')}
             />
             {!!partitionOpen[index] && (
               <div className="absolute z-10 left-0 right-0 mt-0.5">

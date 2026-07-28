@@ -135,9 +135,7 @@ export default function FormDeduplicate({
           </div>
         )}
         {columns.length === 0 && (
-          <p className="text-[11px] text-error/80 mb-2">
-            {tr('dedupMustSelectField', '请至少选择一个去重字段')}
-          </p>
+          <p className="text-[11px] text-error/80 mb-2">{tr('dedupMustSelectField')}</p>
         )}
 
         <div className="grid grid-cols-[40fr_60fr] gap-3 flex-1 min-h-0">
@@ -157,11 +155,11 @@ export default function FormDeduplicate({
               <GlassRadioSelect
                 value={keep}
                 options={[
-                  { value: 'first', label: tr('first', '第一个') },
-                  { value: 'last', label: tr('last', '最后一') },
+                  { value: 'first', label: tr('first') },
+                  { value: 'last', label: tr('last') },
                 ]}
                 onChange={(v) => updateConfig((cfg) => ({ ...cfg, keep: v }))}
-                label={tr('dedupKeepStrategy', '保留策略')}
+                label={tr('dedupKeepStrategy')}
                 direction="horizontal"
               />
 
@@ -174,7 +172,7 @@ export default function FormDeduplicate({
                     columns={[
                       {
                         flex: 'flex-[4]',
-                        header: tr('sortFieldHeader', '排序字段'),
+                        header: tr('sortFieldHeader'),
                         render: (key: SortKey, i) => {
                           const disabledSortFields = new Set(usedSortFields);
                           if (key.field) disabledSortFields.delete(key.field);
@@ -184,9 +182,9 @@ export default function FormDeduplicate({
                               options={fieldCompletions}
                               columnTypes={columnTypes}
                               onChange={(value) => updateSortKey(i, { field: value })}
-                              placeholder={tr('sortSelectField', '请选择字段')}
-                              searchPlaceholder={tr('searchField', '搜索字段')}
-                              emptyText={tr('noMatch', '无匹配字段')}
+                              placeholder={tr('sortSelectField')}
+                              searchPlaceholder={tr('searchField')}
+                              emptyText={tr('noMatch')}
                               disabledOptions={disabledSortFields}
                               className="w-full"
                             />
@@ -195,7 +193,7 @@ export default function FormDeduplicate({
                       },
                       {
                         flex: 'flex-[2]',
-                        header: tr('sortDirectionHeader', '排序方式'),
+                        header: tr('sortDirectionHeader'),
                         render: (key: SortKey, i) => (
                           <GlassDirectionToggle
                             value={key.direction}
@@ -206,7 +204,7 @@ export default function FormDeduplicate({
                       },
                       {
                         flex: 'flex-[3]',
-                        header: tr('sortNullsHeader', '空值处理'),
+                        header: tr('sortNullsHeader'),
                         render: (key: SortKey, i) => (
                           <GlassOptionSingleSelect
                             value={key.nulls ?? ''}
@@ -214,9 +212,9 @@ export default function FormDeduplicate({
                               {
                                 key: 'nulls',
                                 items: [
-                                  { value: '', label: tr('sortNullsDefault', '空值默认') },
-                                  { value: 'first', label: tr('sortNullsFirst', '空值在前') },
-                                  { value: 'last', label: tr('sortNullsLast', '空值在后') },
+                                  { value: '', label: tr('sortNullsDefault') },
+                                  { value: 'first', label: tr('sortNullsFirst') },
+                                  { value: 'last', label: tr('sortNullsLast') },
                                 ],
                               },
                             ]}
@@ -232,14 +230,14 @@ export default function FormDeduplicate({
                     ]}
                     onAdd={addSortKeyAfter}
                     onRemove={removeSortKey}
-                    addTitle={tr('sortAddKey', '添加排序字段')}
-                    removeTitle={tr('filterDeleteCondition', '删除条件')}
+                    addTitle={tr('sortAddKey')}
+                    removeTitle={tr('filterDeleteCondition')}
                     draggable
                     onDragStart={handleDragStart}
                     onDragOver={handleDragOver}
                     onDragEnd={handleDragEnd}
                     getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-                    dragTitle={tr('dragToReorder', '拖拽排序')}
+                    dragTitle={tr('dragToReorder')}
                   />
                 </div>
               </div>

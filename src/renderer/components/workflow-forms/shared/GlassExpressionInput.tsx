@@ -7,7 +7,7 @@ import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView, placeholder, keymap } from '@codemirror/view';
 import { defaultKeymap } from '@codemirror/commands';
 import { Tag, tags } from '@lezer/highlight';
-import { dataFieldTypeLabel } from '@/shared/data-field-types';
+import { useDataFieldTypeLabel } from '../../../hooks/useDataFieldTypeLabel';
 
 export interface HelperToken {
   label: string;
@@ -527,12 +527,12 @@ function FunctionDetailPanel({
   tr,
 }: {
   token: HelperToken | null;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string) => string;
 }) {
   if (!token) {
     return (
       <div className="flex h-full items-center justify-center text-[11px] text-text-muted px-3 text-center leading-5">
-        {tr('calcFieldDetailHint', '将光标移至函数查看详情')}
+        {tr('calcFieldDetailHint')}
       </div>
     );
   }
@@ -541,21 +541,21 @@ function FunctionDetailPanel({
       <div className="text-[13px] font-semibold text-text-primary font-mono">{token.label}</div>
       <div className="space-y-0.5">
         <div className="flex gap-2">
-          <span className="text-text-muted shrink-0">{tr('calcFieldFunctionDesc', '用途')}:</span>
+          <span className="text-text-muted shrink-0">{tr('calcFieldFunctionDesc')}:</span>
           <span className="text-text-secondary">
-            {token.i18nDescKey ? tr(token.i18nDescKey, token.label) : '-'}
+            {token.i18nDescKey ? tr(token.i18nDescKey) : '-'}
           </span>
         </div>
         {token.returnType && (
           <div className="flex gap-2">
-            <span className="text-text-muted shrink-0">{tr('aggregateReturnType', '返回')}:</span>
+            <span className="text-text-muted shrink-0">{tr('aggregateReturnType')}:</span>
             <code className="rounded bg-accent/10 px-1 text-accent">{token.returnType}</code>
           </div>
         )}
       </div>
       {token.params && token.params.length > 0 && (
         <div>
-          <div className="mb-1 text-text-muted">{tr('calcFieldFnArg', '参数')}:</div>
+          <div className="mb-1 text-text-muted">{tr('calcFieldFnArg')}:</div>
           <div className="space-y-0.5">
             {token.params.map((p) => (
               <div
@@ -565,7 +565,7 @@ function FunctionDetailPanel({
                 <code className="text-text-primary shrink-0">{p.name}</code>
                 <code className="rounded bg-accent/10 px-1 text-[10px] text-accent">{p.type}</code>
                 {p.optional && (
-                  <span className="text-[10px] text-text-muted">{tr('optional', '可选')}</span>
+                  <span className="text-[10px] text-text-muted">{tr('optional')}</span>
                 )}
               </div>
             ))}
@@ -574,11 +574,11 @@ function FunctionDetailPanel({
       )}
       {token.examples && token.examples.length > 0 && (
         <div>
-          <div className="mb-1 text-text-muted">{tr('calcFieldExampleLabel', '示例')}:</div>
+          <div className="mb-1 text-text-muted">{tr('calcFieldExampleLabel')}:</div>
           <div className="space-y-1">
-            {token.examples.map((ex, i) => (
+            {token.examples.map((ex) => (
               <pre
-                key={i}
+                key={ex}
                 className="rounded-md border border-border-muted/60 bg-background/20 px-2 py-1 font-mono text-[11px] text-text-secondary leading-5 whitespace-pre-wrap break-all"
               >
                 {ex}
@@ -627,20 +627,18 @@ function GlassFunctionHelper({
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={tr('calcFieldFnSearchPlaceholder', '搜索函数')}
+          placeholder={tr('calcFieldFnSearchPlaceholder')}
           className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-6 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
         />
       </div>
       <div className="space-y-2 flex-1 overflow-y-auto min-h-0">
         {groups.length === 0 ? (
-          <div className="px-2 py-4 text-center text-[11px] text-text-muted">
-            {tr('noMatch', '无匹配函数')}
-          </div>
+          <div className="px-2 py-4 text-center text-[11px] text-text-muted">{tr('noMatch')}</div>
         ) : (
           groups.map((group) => (
             <div key={group.i18nKey}>
               <div className="mb-1 text-[11px] font-medium text-text-muted">
-                {tr(group.i18nKey, group.i18nKey)}
+                {tr(group.i18nKey)}
               </div>
               <div className="flex flex-wrap gap-1">
                 {group.tokens.map((token) => (
@@ -678,6 +676,7 @@ export function GlassExpressionInput({
   excludeFunctionCategories,
 }: GlassExpressionInputProps) {
   const tr = useFormTranslation();
+  const dataTypeLabel = useDataFieldTypeLabel();
   const [open, setOpen] = useState(false);
 
   if (!open) {
@@ -705,6 +704,7 @@ export function GlassExpressionInput({
       onClose={() => setOpen(false)}
       excludeFunctionCategories={excludeFunctionCategories}
       tr={tr}
+      dataTypeLabel={dataTypeLabel}
     />
   );
 }
@@ -717,9 +717,11 @@ function ExpressionEditorDialog({
   onClose,
   excludeFunctionCategories,
   tr,
+  dataTypeLabel,
 }: GlassExpressionInputProps & {
   onClose: () => void;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string) => string;
+  dataTypeLabel: (type: string | null | undefined) => string;
 }) {
   const [draft, setDraft] = useState(value);
   const initialDraftRef = useRef(value);
@@ -736,10 +738,7 @@ function ExpressionEditorDialog({
     () => sortFields(fieldCompletions, fieldQuery),
     [fieldCompletions, fieldQuery]
   );
-  const placeholderText = useMemo(
-    () => tr('calcFieldExpressionPlaceholder', '如 [revenue] - [cost] 或 if [a] > 0 then 1 else 0'),
-    [tr]
-  );
+  const placeholderText = useMemo(() => tr('calcFieldExpressionPlaceholder'), [tr]);
 
   useLayoutEffect(() => {
     if (!hostRef.current) return;
@@ -797,7 +796,7 @@ function ExpressionEditorDialog({
       <div className="flex h-[36rem] max-h-[calc(100vh-3rem)] w-[56rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl">
         <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
           <h3 className="text-[14px] font-medium text-text-primary">
-            {tr('aggregateExpressionEditor', '表达式编辑器')}
+            {tr('aggregateExpressionEditor')}
           </h3>
           <button
             type="button"
@@ -819,7 +818,7 @@ function ExpressionEditorDialog({
                 <ChevronDown
                   className={`h-3 w-3 transition-transform ${showFields ? 'rotate-180' : ''}`}
                 />
-                {tr('calcFieldTabFields', '字段选择')}
+                {tr('calcFieldTabFields')}
               </button>
               {showFields && (
                 <div className="flex-1 flex flex-col min-h-0">
@@ -829,14 +828,14 @@ function ExpressionEditorDialog({
                       type="text"
                       value={fieldQuery}
                       onChange={(e) => setFieldQuery(e.target.value)}
-                      placeholder={tr('calcFieldFieldSearchPlaceholder', '搜索字段')}
+                      placeholder={tr('calcFieldFieldSearchPlaceholder')}
                       className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
                     />
                   </div>
                   <div className="flex-1 overflow-y-auto p-2 min-h-0">
                     {sortedFields.length === 0 ? (
                       <div className="px-2 py-4 text-center text-[11px] text-text-muted">
-                        {tr('noMatch', '无匹配字段')}
+                        {tr('noMatch')}
                       </div>
                     ) : (
                       <div className="flex flex-wrap gap-1">
@@ -859,12 +858,10 @@ function ExpressionEditorDialog({
                             >
                               {colType && (
                                 <span className="rounded bg-background/60 px-0.5 text-[10px] leading-none text-text-muted">
-                                  {dataFieldTypeLabel(colType)}
+                                  {dataTypeLabel(colType)}
                                 </span>
                               )}
-                              <span>
-                                {isStar ? tr('calcFieldAllFieldsStar', '*（表示全部字段）') : col}
-                              </span>
+                              <span>{isStar ? tr('calcFieldAllFieldsStar') : col}</span>
                             </button>
                           );
                         })}
@@ -883,7 +880,7 @@ function ExpressionEditorDialog({
                 <ChevronDown
                   className={`h-3 w-3 transition-transform ${showFn ? 'rotate-180' : ''}`}
                 />
-                {tr('calcFieldFnHelperLabel', '函数助手')}
+                {tr('calcFieldFnHelperLabel')}
               </button>
               {showFn && (
                 <div className="flex-1 overflow-y-auto border-t border-border-muted/60 p-2 min-h-0">
@@ -904,7 +901,7 @@ function ExpressionEditorDialog({
                 <ChevronDown
                   className={`h-3 w-3 transition-transform ${showDetail ? 'rotate-180' : ''}`}
                 />
-                {tr('calcFieldDetailLabel', '函数详情')}
+                {tr('calcFieldDetailLabel')}
               </button>
               {showDetail && (
                 <div className="flex-1 overflow-y-auto border-t border-border-muted/60 p-2 min-h-0">
@@ -920,14 +917,14 @@ function ExpressionEditorDialog({
             onClick={onClose}
             className="flex h-7 items-center rounded-md border border-border-muted bg-background/42 px-3 text-[12px] text-text-secondary transition-colors hover:bg-surface-hover"
           >
-            {tr('cancel', '取消')}
+            {tr('cancel')}
           </button>
           <button
             type="button"
             onClick={handleConfirm}
             className="flex h-7 items-center rounded-md bg-accent px-3 text-[12px] text-white transition-colors hover:bg-accent/90"
           >
-            {tr('confirm', '确定')}
+            {tr('confirm')}
           </button>
         </div>
       </div>

@@ -3,7 +3,7 @@ import { Search } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassRowList } from './shared/GlassRowList';
-import { dataFieldTypeLabel } from '@/shared/data-field-types';
+import { useDataFieldTypeLabel } from '../../hooks/useDataFieldTypeLabel';
 import { useConfirmDialog } from '../../components/ConfirmDialog';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
@@ -18,6 +18,7 @@ export default function FormFieldSelect({
   onNodeChange,
 }: OperatorFormProps) {
   const tr = useFormTranslation();
+  const dataTypeLabel = useDataFieldTypeLabel();
   const { confirm } = useConfirmDialog();
 
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
@@ -79,10 +80,10 @@ export default function FormFieldSelect({
 
   const clearAll = useCallback(async () => {
     const ok = await confirm({
-      title: tr('clearAllConfirm', '确认清空？'),
-      message: tr('clearAllConfirmMessage', '将移除所有已选字段'),
-      confirmLabel: tr('clearAll', '清空'),
-      cancelLabel: tr('cancel', '取消'),
+      title: tr('clearAllConfirm'),
+      message: tr('clearAllConfirmMessage'),
+      confirmLabel: tr('clearAll'),
+      cancelLabel: tr('cancel'),
     });
     if (ok) commitColumns([]);
   }, [commitColumns, confirm, tr]);
@@ -125,7 +126,7 @@ export default function FormFieldSelect({
         <div className="flex items-center justify-between py-1.5">
           <div className="flex items-center gap-3 text-[12px] text-text-muted">
             <span>
-              {tr('fieldSelectCount', '已选 {{n}}/{{total}} 个字段')
+              {tr('fieldSelectCount')
                 .replace('{{n}}', String(columns.length))
                 .replace('{{total}}', String(fieldCompletions.length))}
             </span>
@@ -133,7 +134,7 @@ export default function FormFieldSelect({
               <div className="flex items-center gap-2">
                 {Object.entries(typeStats).map(([type, count]) => (
                   <span key={type} className="text-[11px] text-text-muted">
-                    {dataFieldTypeLabel(type)}: {count}
+                    {dataTypeLabel(type)}: {count}
                   </span>
                 ))}
               </div>
@@ -146,7 +147,7 @@ export default function FormFieldSelect({
                 onClick={clearAll}
                 className="text-[12px] text-text-muted hover:text-error transition-colors"
               >
-                {tr('clearAll', '清空')}
+                {tr('clearAll')}
               </button>
             )}
           </div>
@@ -167,10 +168,10 @@ export default function FormFieldSelect({
           <div className="flex min-h-0 flex-col rounded-lg border border-border-subtle bg-background/24">
             <div className="flex items-center justify-between border-b border-border-subtle px-2.5 py-1.5">
               <span className="text-[12px] font-medium text-text-secondary">
-                {tr('selectedFields', '已选字段')}
+                {tr('selectedFields')}
                 {columns.length > 0 && (
                   <span className="ml-1.5 text-[11px] font-normal text-text-muted">
-                    · {tr('reorderHint', '可拖拽调整字段顺序')}
+                    · {tr('reorderHint')}
                   </span>
                 )}
               </span>
@@ -183,7 +184,7 @@ export default function FormFieldSelect({
                   type="text"
                   value={rightSearch}
                   onChange={(e) => setRightSearch(e.target.value)}
-                  placeholder={tr('searchField', '搜索字段...')}
+                  placeholder={tr('searchField')}
                   className="h-5 flex-1 min-w-0 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
                 />
               </div>
@@ -192,9 +193,7 @@ export default function FormFieldSelect({
             <div className="flex-1 overflow-y-auto px-1.5 py-1">
               {displayItems.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-[12px] text-text-muted">
-                  {rightSearch
-                    ? tr('noMatch', '无匹配字段')
-                    : tr('noFieldsSelected', '暂未选择字段')}
+                  {rightSearch ? tr('noMatch') : tr('noFieldsSelected')}
                 </div>
               ) : (
                 <GlassRowList
@@ -210,7 +209,7 @@ export default function FormFieldSelect({
                           </span>
                           {columnTypes?.[col] && (
                             <span className="shrink-0 rounded bg-background/60 px-1.5 py-0.5 text-[11px] text-text-muted">
-                              {dataFieldTypeLabel(columnTypes[col])}
+                              {dataTypeLabel(columnTypes[col])}
                             </span>
                           )}
                         </div>
@@ -221,13 +220,13 @@ export default function FormFieldSelect({
                   onToTop={(i) => moveToTop(displayItems[i])}
                   onToBottom={(i) => moveToBottom(displayItems[i])}
                   onRemove={(i) => removeColumn(displayItems[i])}
-                  removeTitle={tr('removeField', '移除字段')}
+                  removeTitle={tr('removeField')}
                   draggable
                   onDragStart={handleDragStart}
                   onDragOver={handleDragOver}
                   onDragEnd={handleDragEnd}
                   getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-                  dragTitle={tr('dragToReorder', '拖拽排序')}
+                  dragTitle={tr('dragToReorder')}
                   hideHeader
                 />
               )}

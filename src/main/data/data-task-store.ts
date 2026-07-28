@@ -2946,6 +2946,8 @@ export class DataTaskStore {
     const input = quoteIdentifier(inputRelation);
     const output = quoteIdentifier(outputRelation);
     const columns = strategy?.needsColumns ? await this.getTableColumns(inputRelation) : [];
+    const columnTypes = strategy?.needsColumns ? await this.getTableColumnTypes(inputRelation) : [];
+    const columnTypeMap = Object.fromEntries(columnTypes.map((col) => [col.name, col.type]));
     if (!strategy) {
       return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input}`;
     }
@@ -2983,7 +2985,7 @@ export class DataTaskStore {
         }
       }
     }
-    return strategy.compile(output, input, columns, node.config);
+    return strategy.compile(output, input, columns, node.config, columnTypeMap);
   }
 
   private async compileSetOpSql(

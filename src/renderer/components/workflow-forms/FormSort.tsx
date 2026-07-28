@@ -96,7 +96,7 @@ export default function FormSort({
             columns={[
               {
                 flex: 'flex-[4]',
-                header: tr('sortFieldHeader', '待排序字段'),
+                header: tr('sortFieldHeader'),
                 render: (key: SortKey, i) => {
                   const disabledOptions = new Set(usedFields);
                   if (key.field) disabledOptions.delete(key.field);
@@ -106,9 +106,9 @@ export default function FormSort({
                       options={fieldCompletions}
                       columnTypes={columnTypes}
                       onChange={(value) => updateKey(i, { field: value })}
-                      placeholder={tr('sortSelectField', '选择字段')}
-                      searchPlaceholder={tr('searchField', '搜索字段')}
-                      emptyText={tr('noMatch', '无匹配字段')}
+                      placeholder={tr('sortSelectField')}
+                      searchPlaceholder={tr('searchField')}
+                      emptyText={tr('noMatch')}
                       disabledOptions={disabledOptions}
                       className="w-full"
                     />
@@ -117,7 +117,7 @@ export default function FormSort({
               },
               {
                 flex: 'flex-[2]',
-                header: tr('sortDirectionHeader', '排序方式'),
+                header: tr('sortDirectionHeader'),
                 render: (key: SortKey, i) => (
                   <GlassDirectionToggle
                     value={key.direction}
@@ -128,7 +128,7 @@ export default function FormSort({
               },
               {
                 flex: 'flex-[3]',
-                header: tr('sortNullsHeader', '空值处理方式'),
+                header: tr('sortNullsHeader'),
                 render: (key: SortKey, i) => (
                   <GlassOptionSingleSelect
                     value={key.nulls ?? ''}
@@ -136,9 +136,9 @@ export default function FormSort({
                       {
                         key: 'nulls',
                         items: [
-                          { value: '', label: tr('sortNullsDefault', '空值默认') },
-                          { value: 'first', label: tr('sortNullsFirst', '空值在前') },
-                          { value: 'last', label: tr('sortNullsLast', '空值在后') },
+                          { value: '', label: tr('sortNullsDefault') },
+                          { value: 'first', label: tr('sortNullsFirst') },
+                          { value: 'last', label: tr('sortNullsLast') },
                         ],
                       },
                     ]}
@@ -152,14 +152,14 @@ export default function FormSort({
             ]}
             onAdd={addKeyAfter}
             onRemove={removeKey}
-            addTitle={tr('sortAddKey', '添加排序键')}
-            removeTitle={tr('sortRemoveKey', '删除排序键')}
+            addTitle={tr('sortAddKey')}
+            removeTitle={tr('sortRemoveKey')}
             draggable
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
             getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-            dragTitle={tr('dragToReorder', '拖拽排序')}
+            dragTitle={tr('dragToReorder')}
           />
         </div>
       </div>

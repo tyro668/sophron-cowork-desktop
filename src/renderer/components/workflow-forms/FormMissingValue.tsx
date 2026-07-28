@@ -200,7 +200,7 @@ export default function FormMissingValue({
       const entry = [...BASE_METHODS, ...ORDERED_METHODS, ...STATISTICAL_METHODS].find(
         (m) => m.value === key
       );
-      return entry ? t(entry.labelKey, { defaultValue: entry.label }) : key;
+      return entry ? t('data.workflow.' + entry.labelKey) : key;
     },
     [t]
   );
@@ -210,23 +210,14 @@ export default function FormMissingValue({
     const colList = cols.length > 0 ? cols.join('、') : undefined;
     if (rowCondition === 'all_null') {
       if (colList) {
-        return tr('missingDescAllNullWithCols', '删除 {{cols}} 均为空的数据行。').replace(
-          '{{cols}}',
-          colList
-        );
+        return tr('missingDescAllNullWithCols').replace('{{cols}}', colList);
       }
-      return tr(
-        'missingDescAllNullNoCols',
-        '删除全部字段均为空的数据行。未指定判断字段，所有字段均参与判空。'
-      );
+      return tr('missingDescAllNullNoCols');
     }
     if (colList) {
-      return tr('missingDescAnyNullWithCols', '删除 {{cols}} 中任意字段为空的数据行。').replace(
-        '{{cols}}',
-        colList
-      );
+      return tr('missingDescAnyNullWithCols').replace('{{cols}}', colList);
     }
-    return tr('missingDescAnyNullNoCols', '删除任意字段为空的数据行。');
+    return tr('missingDescAnyNullNoCols');
   }, [rowCondition, rowColumns, tr]);
 
   return (
@@ -237,14 +228,14 @@ export default function FormMissingValue({
           <GlassRadioSelect
             value={tabMode}
             options={[
-              { value: 'row', label: tr('rowProcess', '按行处理') },
-              { value: 'column', label: tr('colProcess', '按列处理') },
+              { value: 'row', label: tr('rowProcess') },
+              { value: 'column', label: tr('colProcess') },
             ]}
             onChange={(v) => {
               if (v === 'row') setRowMode('any_null');
               else setColumnMode();
             }}
-            label={tr('missingProcessMode', '处理模式')}
+            label={tr('missingProcessMode')}
           />
         </section>
 
@@ -254,11 +245,11 @@ export default function FormMissingValue({
             <GlassRadioSelect
               value={rowCondition}
               options={[
-                { value: 'all_null', label: tr('allNull', '全部为空') },
-                { value: 'any_null', label: tr('anyNull', '任一为空') },
+                { value: 'all_null', label: tr('allNull') },
+                { value: 'any_null', label: tr('anyNull') },
               ]}
               onChange={(v) => setRowMode(v as 'all_null' | 'any_null')}
-              label={tr('missingTriggerCondition', '触发条件')}
+              label={tr('missingTriggerCondition')}
             />
           </>
         )}
@@ -282,7 +273,7 @@ export default function FormMissingValue({
                 toggleStyle="chevron"
                 density="compact"
                 className="min-h-8"
-                placeholder={tr('missingEmptyMeansAllFields', '留空 = 所有字段参与判断')}
+                placeholder={tr('missingEmptyMeansAllFields')}
               />
               {showFieldPicker && (
                 <GlassFieldMultiSelect
@@ -320,7 +311,7 @@ export default function FormMissingValue({
                             method: methodOk ? item.method : (methods[0]?.value ?? 'skip'),
                           });
                         }}
-                        placeholder={tr('selectField', '选择字段')}
+                        placeholder={tr('selectField')}
                         className="h-7 w-full"
                       />
                     ),
@@ -397,8 +388,8 @@ export default function FormMissingValue({
                           }}
                           placeholder={
                             effectiveMethod === 'nullify_values'
-                              ? tr('missingSpecialValuesPlaceholder', '特殊值，逗号分隔')
-                              : tr('missingFillPlaceholder', '填充值')
+                              ? tr('missingSpecialValuesPlaceholder')
+                              : tr('missingFillPlaceholder')
                           }
                         />
                       );
@@ -407,15 +398,15 @@ export default function FormMissingValue({
                 ]}
                 onAdd={(i) => insertRule(i)}
                 onRemove={(i) => removeRule(i)}
-                addTitle={tr('missingAddRow', '添加行')}
-                removeTitle={tr('missingRemoveRow', '删除行')}
-                canAct={(action: RowAction, _i) => (action === 'remove' ? rules.length > 1 : true)}
+                addTitle={tr('missingAddRow')}
+                removeTitle={tr('missingRemoveRow')}
+                canAct={(action: RowAction) => (action === 'remove' ? rules.length > 1 : true)}
                 draggable
                 onDragStart={handleDragStart}
                 onDragOver={handleDragOver}
                 onDragEnd={handleDragEnd}
                 getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-                dragTitle={tr('missingDragToReorder', '拖动排序')}
+                dragTitle={tr('missingDragToReorder')}
                 hideHeader
               />
             </div>

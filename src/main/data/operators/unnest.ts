@@ -47,7 +47,7 @@ export function compileUnnestSql(
   if (parsed.preserveOrder) {
     return `
       CREATE TEMP TABLE ${output} AS
-      SELECT * EXCLUDE (__rn, _ordinal, ${aliasCol}), item.${alias} AS ${aliasCol}${idxSelect}
+      SELECT base.* EXCLUDE (__rn), item.${alias} AS ${aliasCol}${idxSelect}
       FROM (SELECT *, ROW_NUMBER() OVER () AS __rn FROM ${input} base) base
       LEFT JOIN LATERAL UNNEST(${unnestExpr}) WITH ORDINALITY AS item(${alias}, _ordinal) ON true
       ORDER BY base.__rn, item._ordinal

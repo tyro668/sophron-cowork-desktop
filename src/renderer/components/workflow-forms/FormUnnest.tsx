@@ -30,24 +30,22 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
             </span>
             <div className="grid">
               <span className="text-[13px] font-semibold text-text-primary">
-                {tr('unnestSourceHeader', '数据来源')}
+                {tr('unnestSourceHeader')}
               </span>
-              <span className="text-[10px] text-text-muted">
-                {tr('unnestSourceHint', '选择要展开的字段，并指定展开方式')}
-              </span>
+              <span className="text-[10px] text-text-muted">{tr('unnestSourceHint')}</span>
             </div>
           </div>
           <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
             <div className="p-3 grid gap-2.5">
               <label className="grid gap-1">
                 <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-                  {tr('unnestSourceField', '源字段')}
+                  {tr('unnestSourceField')}
                 </span>
                 <GlassFieldSingleSelect
                   value={column}
                   options={fieldCompletions}
                   onChange={(v) => updateConfig((cfg) => ({ ...cfg, column: v || undefined }))}
-                  placeholder={tr('unnestSelectField', '选择字段')}
+                  placeholder={tr('unnestSelectField')}
                   className="w-full"
                 />
               </label>
@@ -57,29 +55,22 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                 options={[
                   {
                     value: 'list',
-                    label: tr('unnestSourceTypeList', '展开为行'),
-                    tip: tr(
-                      'unnestSourceTypeListTip',
-                      '将数组展开为多行，支持原生数组和 JSON 数组字符串'
-                    ),
+                    label: tr('unnestSourceTypeList'),
+                    tip: tr('unnestSourceTypeListTip'),
                   },
                   {
                     value: 'json',
-                    label: tr('unnestSourceTypeObject', '展开为列'),
-                    tip: tr('unnestSourceTypeJsonTip', '将 JSON 对象展开为多列，每个 key 一列'),
+                    label: tr('unnestSourceTypeObject'),
+                    tip: tr('unnestSourceTypeJsonTip'),
                   },
                 ]}
                 onChange={(v) => updateConfig((cfg) => ({ ...cfg, sourceKind: v }))}
-                label={tr('unnestSourceType', '展开方式')}
+                label={tr('unnestSourceType')}
               />
               {isObjectMode ? (
-                <span className="text-[11px] text-text-muted">
-                  {tr('unnestObjectHint', '结果：JSON 对象的每个 key 展开为一列')}
-                </span>
+                <span className="text-[11px] text-text-muted">{tr('unnestObjectHint')}</span>
               ) : (
-                <span className="text-[11px] text-text-muted">
-                  {tr('unnestListHint', '结果：数组的每个元素展开为一行')}
-                </span>
+                <span className="text-[11px] text-text-muted">{tr('unnestListHint')}</span>
               )}
             </div>
           </div>
@@ -98,28 +89,24 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
             </span>
             <div className="grid">
               <span className="text-[13px] font-semibold text-text-primary">
-                {tr('unnestRulesHeader', '展开规则')}
+                {tr('unnestRulesHeader')}
               </span>
-              <span className="text-[10px] text-text-muted">
-                {tr('unnestRulesHint', '设置展开后的列名与定位路径')}
-              </span>
+              <span className="text-[10px] text-text-muted">{tr('unnestRulesHint')}</span>
             </div>
           </div>
           <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
             <div className="p-3 grid gap-2.5">
               {isObjectMode ? (
-                <span className="text-[11px] text-text-muted">
-                  {tr('unnestAliasObjectHint', 'JSON 对象展开后，列名自动使用 key 名称')}
-                </span>
+                <span className="text-[11px] text-text-muted">{tr('unnestAliasObjectHint')}</span>
               ) : (
                 <label className="grid gap-1">
                   <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-                    {tr('unnestAlias', '展开后的别名')}
+                    {tr('unnestAlias')}
                   </span>
                   <GlassFormTextInput
                     value={alias}
                     onChange={(v) => updateConfig((cfg) => ({ ...cfg, alias: v || undefined }))}
-                    placeholder={tr('unnestAliasPlaceholder', '默认 item')}
+                    placeholder={tr('unnestAliasPlaceholder')}
                     className="h-8 text-[13px] w-full"
                   />
                 </label>
@@ -127,17 +114,15 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
 
               <label className="grid gap-1">
                 <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-                  {tr('unnestPathLabel', '定位路径')}
+                  {tr('unnestPathLabel')}
                 </span>
                 <GlassFormTextInput
                   value={path}
                   onChange={(v) => updateConfig((cfg) => ({ ...cfg, path: v || undefined }))}
-                  placeholder={tr('unnestPathPlaceholder', '如 $.xxx')}
+                  placeholder={tr('unnestPathPlaceholder')}
                   className="h-8 text-[13px] w-full"
                 />
-                <span className="text-[10px] text-text-muted">
-                  {tr('unnestPathHint', '不填则直接展开，填 $.xxx 则定位到子节点')}
-                </span>
+                <span className="text-[10px] text-text-muted">{tr('unnestPathHint')}</span>
               </label>
             </div>
           </div>
@@ -157,18 +142,14 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
               </span>
               <div className="grid">
                 <span className="text-[13px] font-semibold text-text-primary">
-                  {tr('unnestOutputHeader', '输出配置')}
+                  {tr('unnestOutputHeader')}
                 </span>
-                <span className="text-[10px] text-text-muted">
-                  {tr('unnestOutputHint', '配置输出选项')}
-                </span>
+                <span className="text-[10px] text-text-muted">{tr('unnestOutputHint')}</span>
               </div>
             </div>
             <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
               <div className="p-3">
-                <span className="text-[11px] text-text-muted">
-                  {tr('unnestObjectNoConfig', '展开为列时列名由 key 自动生成')}
-                </span>
+                <span className="text-[11px] text-text-muted">{tr('unnestObjectNoConfig')}</span>
               </div>
             </div>
           </div>
@@ -180,11 +161,9 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
               </span>
               <div className="grid">
                 <span className="text-[13px] font-semibold text-text-primary">
-                  {tr('unnestOutputHeader', '输出配置')}
+                  {tr('unnestOutputHeader')}
                 </span>
-                <span className="text-[10px] text-text-muted">
-                  {tr('unnestOutputHint', '配置输出选项')}
-                </span>
+                <span className="text-[10px] text-text-muted">{tr('unnestOutputHint')}</span>
               </div>
             </div>
             <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
@@ -206,7 +185,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                       }
                       className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
                     />
-                    {tr('unnestIndexCol', '索引列')}
+                    {tr('unnestIndexCol')}
                   </label>
                   <GlassFormTextInput
                     value={withIndex}
@@ -228,7 +207,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                     }
                     className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
                   />
-                  {tr('unnestKeepParent', '添加源字段名前缀')}
+                  {tr('unnestKeepParent')}
                 </label>
 
                 <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
@@ -243,7 +222,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                     }
                     className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
                   />
-                  {tr('unnestPreserveOrder', '保持原始行顺序')}
+                  {tr('unnestPreserveOrder')}
                 </label>
               </div>
             </div>

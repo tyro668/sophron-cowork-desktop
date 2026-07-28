@@ -262,43 +262,43 @@ export default function FormJoin({
     () => [
       {
         value: 'inner',
-        label: tr('joinInner', '内连接'),
-        tip: tr('joinInnerTip', '仅保留两表匹配的记录'),
+        label: tr('joinInner'),
+        tip: tr('joinInnerTip'),
       },
       {
         value: 'left',
-        label: tr('joinLeft', '左连接'),
-        tip: tr('joinLeftTip', '保留左表全部记录，右表仅保留匹配的'),
+        label: tr('joinLeft'),
+        tip: tr('joinLeftTip'),
       },
       {
         value: 'right',
-        label: tr('joinRight', '右连接'),
-        tip: tr('joinRightTip', '保留右表全部记录，左表仅保留匹配的'),
+        label: tr('joinRight'),
+        tip: tr('joinRightTip'),
       },
       {
         value: 'full',
-        label: tr('joinFull', '全连接'),
-        tip: tr('joinFullTip', '保留两表全部记录，不匹配的字段为空'),
+        label: tr('joinFull'),
+        tip: tr('joinFullTip'),
       },
       {
         value: 'cross',
-        label: tr('joinCross', '交叉'),
-        tip: tr('joinCrossTip', '返回两表的笛卡尔积'),
+        label: tr('joinCross'),
+        tip: tr('joinCrossTip'),
       },
       {
         value: 'semi',
-        label: tr('joinSemi', '半连接'),
-        tip: tr('joinSemiTip', '仅返回左表中与右表匹配的记录'),
+        label: tr('joinSemi'),
+        tip: tr('joinSemiTip'),
       },
       {
         value: 'anti',
-        label: tr('joinAnti', '反连接'),
-        tip: tr('joinAntiTip', '返回左表中与右表不匹配的记录'),
+        label: tr('joinAnti'),
+        tip: tr('joinAntiTip'),
       },
       {
         value: 'asof',
-        label: tr('joinAsof', '时间近邻'),
-        tip: tr('joinAsofTip', '基于最近时间戳匹配两表记录'),
+        label: tr('joinAsof'),
+        tip: tr('joinAsofTip'),
       },
     ],
     [tr]
@@ -352,10 +352,10 @@ export default function FormJoin({
     const hasAsof = joinType === 'asof' && Object.keys(asof).length > 0;
     if ((value === 'cross' && hasConditions) || (value !== 'asof' && hasAsof)) {
       const ok = await confirm({
-        title: tr('joinTypeChangeTitle', 'Change join type'),
-        message: tr('joinTypeChangeWarning', 'Changing join type will clear conditions'),
-        confirmLabel: tr('joinTypeChangeConfirm', 'Change and clear'),
-        cancelLabel: tr('common.cancel', 'Cancel'),
+        title: tr('joinTypeChangeTitle'),
+        message: tr('joinTypeChangeWarning'),
+        confirmLabel: tr('joinTypeChangeConfirm'),
+        cancelLabel: tr('common.cancel'),
       });
       if (!ok) return;
     }
@@ -569,7 +569,7 @@ export default function FormJoin({
   const [asofPending, setAsofPending] = useState<ConditionEntry>({ ...DEFAULT_CONDITION });
 
   const conditionOperatorItems = useMemo(
-    () => OPERATOR_KEYS.map((op) => ({ value: op.value, label: tr(op.key, op.fallback) })),
+    () => OPERATOR_KEYS.map((op) => ({ value: op.value, label: tr(op.key) })),
     [tr]
   );
 
@@ -676,7 +676,7 @@ export default function FormJoin({
           type="button"
           onClick={() => condHandleAdd(isEmpty, pending, setPending, onChange, i, sourceConditions)}
           className="h-6 w-6 flex shrink-0 items-center justify-center rounded text-text-muted/40 hover:text-accent transition-colors"
-          title={tr('addCondition', '添加条件')}
+          title={tr('addCondition')}
         >
           <Plus className="h-3.5 w-3.5" />
         </button>
@@ -719,8 +719,8 @@ export default function FormJoin({
 
   const conflictOptions = useMemo(
     () => [
-      { value: 'right_prefix', label: tr('conflictPrefix', '右表字段加前缀') },
-      { value: 'suffix', label: tr('conflictSuffix', '按表名加后缀') },
+      { value: 'right_prefix', label: tr('conflictPrefix') },
+      { value: 'suffix', label: tr('conflictSuffix') },
     ],
     [tr]
   );
@@ -744,32 +744,30 @@ export default function FormJoin({
                 </span>
                 <div className="grid">
                   <span className="text-[13px] font-semibold text-text-primary">
-                    {tr('joinSourcesHeader', '数据源')}
+                    {tr('joinSourcesHeader')}
                   </span>
-                  <span className="text-[10px] text-text-muted">
-                    {tr('joinSourcesHint', '选择连接类型与数据源')}
-                  </span>
+                  <span className="text-[10px] text-text-muted">{tr('joinSourcesHint')}</span>
                 </div>
               </div>
 
               <div className="flex gap-2">
                 <div className="flex-1 flex items-center gap-2">
                   <span className="shrink-0 text-[11px] font-medium text-text-secondary">
-                    {tr('leftInput', '左表数据源')}
+                    {tr('leftInput')}
                   </span>
                   <div className="flex-1 flex items-center rounded-md border border-border-muted/70 bg-background/28 px-2 h-7 min-w-0">
                     <span className="text-[12px] text-text-primary truncate">
-                      {leftSourceLabel || tr('noLeftSource', '上游节点')}
+                      {leftSourceLabel || tr('noLeftSource')}
                     </span>
                   </div>
                 </div>
                 <div className="flex-1 flex items-center gap-2">
                   <span className="shrink-0 text-[11px] font-medium text-text-secondary">
-                    {tr('rightInput', '右表数据源')}
+                    {tr('rightInput')}
                   </span>
                   <div className="flex-1 flex items-center rounded-md border border-border-muted/70 bg-background/28 px-2 h-7 min-w-0">
                     <span className="text-[12px] text-text-primary truncate">
-                      {rightSourceLabel || tr('noRightSource', '未连接右表')}
+                      {rightSourceLabel || tr('noRightSource')}
                     </span>
                   </div>
                 </div>
@@ -777,7 +775,7 @@ export default function FormJoin({
 
               <div className="grid gap-1 text-center">
                 <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-                  {tr('joinType', '连接类型')}
+                  {tr('joinType')}
                 </span>
                 <div className="grid grid-cols-4 gap-1">
                   {joinTypes.map((jt) => (
@@ -815,18 +813,14 @@ export default function FormJoin({
                 </span>
                 <div className="grid">
                   <span className="text-[13px] font-semibold text-text-primary">
-                    {tr('joinConditionsHeader', '连接条件')}
+                    {tr('joinConditionsHeader')}
                   </span>
-                  <span className="text-[10px] text-text-muted">
-                    {tr('joinConditionsHint', '配置字段匹配条件，多条条件之间为「且」关系')}
-                  </span>
+                  <span className="text-[10px] text-text-muted">{tr('joinConditionsHint')}</span>
                 </div>
               </div>
 
               {rightSourceLabel && rightColumnsError && !isAsof && (
-                <div className="text-[11px] text-warning px-0.5">
-                  {tr('rightColumnsFailed', '无法获取右表字段，请手动输入')}
-                </div>
+                <div className="text-[11px] text-warning px-0.5">{tr('rightColumnsFailed')}</div>
               )}
 
               {isAsof ? (
@@ -846,7 +840,7 @@ export default function FormJoin({
                           },
                         }))
                       }
-                      placeholder={tr('leftTimeCol', '左表时间')}
+                      placeholder={tr('leftTimeCol')}
                       className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
                     />
                     <GlassOptionSingleSelect
@@ -855,9 +849,9 @@ export default function FormJoin({
                         {
                           key: 'op',
                           items: [
-                            { value: '>=', label: tr('asofOpBackward', '之前最近') },
-                            { value: '<=', label: tr('asofOpForward', '之后最近') },
-                            { value: 'nearest', label: tr('asofOpNearest', '最接近') },
+                            { value: '>=', label: tr('asofOpBackward') },
+                            { value: '<=', label: tr('asofOpForward') },
+                            { value: 'nearest', label: tr('asofOpNearest') },
                           ],
                         },
                       ]}
@@ -883,18 +877,18 @@ export default function FormJoin({
                           },
                         }))
                       }
-                      placeholder={tr('rightTimeCol', '右表时间')}
+                      placeholder={tr('rightTimeCol')}
                       className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
                     />
                   </div>
                   <div className="flex items-center gap-1">
                     {(
                       [
-                        { key: 'd', label: tr('toleranceDay', '天'), max: 365 },
-                        { key: 'h', label: tr('toleranceHour', '时'), max: 23 },
-                        { key: 'm', label: tr('toleranceMin', '分'), max: 59 },
-                        { key: 's', label: tr('toleranceSec', '秒'), max: 59 },
-                        { key: 'ms', label: tr('toleranceMs', '毫秒'), max: 999 },
+                        { key: 'd', label: tr('toleranceDay'), max: 365 },
+                        { key: 'h', label: tr('toleranceHour'), max: 23 },
+                        { key: 'm', label: tr('toleranceMin'), max: 59 },
+                        { key: 's', label: tr('toleranceSec'), max: 59 },
+                        { key: 'ms', label: tr('toleranceMs'), max: 999 },
                       ] as const
                     ).map(({ key, label, max }) => (
                       <div key={key} className="flex items-center gap-0.5">
@@ -915,9 +909,7 @@ export default function FormJoin({
                     ))}
                   </div>
                   {showToleranceError && (
-                    <div className="text-[11px] text-warning px-0.5">
-                      {tr('toleranceRequired', '操作符为「最接近」时时间差为必填')}
-                    </div>
+                    <div className="text-[11px] text-warning px-0.5">{tr('toleranceRequired')}</div>
                   )}
                   <div className="max-h-[180px] overflow-y-auto">
                     <div className="space-y-1">
@@ -925,17 +917,17 @@ export default function FormJoin({
                         const asofBy = (asof.by as ConditionEntry[]) ?? [];
                         const isEmpty = asofBy.length === 0;
                         const display = isEmpty ? [asofPending] : asofBy;
-                        return display.map((cond, i) =>
+                        return display.map((cond) =>
                           renderConditionRow(
                             cond,
-                            i,
+                            0,
                             isEmpty,
                             asofPending,
                             setAsofPending,
                             handleAsofByChange,
                             asofBy,
-                            tr('leftField', '[左表字段]'),
-                            tr('rightField', '[右表字段]')
+                            tr('leftField'),
+                            tr('rightField')
                           )
                         );
                       })()}
@@ -959,7 +951,7 @@ export default function FormJoin({
                                 conditions.map((c, j) => (j === i ? { ...c, left: v } : c))
                               )
                             }
-                            placeholder={tr('leftField', '[左表字段]')}
+                            placeholder={tr('leftField')}
                             className="h-7 w-full text-[12px]"
                           />
                         ),
@@ -992,7 +984,7 @@ export default function FormJoin({
                                 conditions.map((c, j) => (j === i ? { ...c, right: v } : c))
                               )
                             }
-                            placeholder={tr('rightField', '[右表字段]')}
+                            placeholder={tr('rightField')}
                             className="h-7 w-full text-[12px]"
                           />
                         ),
@@ -1000,7 +992,7 @@ export default function FormJoin({
                     ]}
                     onAdd={handleCondAdd}
                     onRemove={handleCondRemove}
-                    addTitle={tr('addCondition', '添加条件')}
+                    addTitle={tr('addCondition')}
                     canAct={(action: RowAction) =>
                       action === 'add' ? !conditions.some((c) => !c.left && !c.right) : true
                     }
@@ -1009,7 +1001,7 @@ export default function FormJoin({
                 </div>
               ) : (
                 <div className="text-[12px] text-text-secondary px-0.5">
-                  {tr('noConditionsNeeded', '无需连接条件')}
+                  {tr('noConditionsNeeded')}
                 </div>
               )}
             </div>
@@ -1025,20 +1017,16 @@ export default function FormJoin({
                 </span>
                 <div className="grid">
                   <span className="text-[13px] font-semibold text-text-primary">
-                    {tr('joinConfigHeader', '配置')}
+                    {tr('joinConfigHeader')}
                   </span>
-                  <span className="text-[10px] text-text-muted">
-                    {tr('joinConfigHint', '配置保留字段、基数与冲突规则')}
-                  </span>
+                  <span className="text-[10px] text-text-muted">{tr('joinConfigHint')}</span>
                 </div>
               </div>
 
               {/* Keep fields */}
               <div className="flex gap-4 px-0.5">
                 <div className="flex-1 flex items-center justify-between">
-                  <span className="text-[12px] text-text-primary">
-                    {tr('keepFieldStatsLeft', '左表保留/重命名/全字段数')}
-                  </span>
+                  <span className="text-[12px] text-text-primary">{tr('keepFieldStatsLeft')}</span>
                   <div className="flex items-center gap-1">
                     <span className="text-[12px] text-text-muted tabular-nums">
                       {leftKeepCount}/{leftRenameCount}/{fieldCompletions.length}
@@ -1047,16 +1035,14 @@ export default function FormJoin({
                       type="button"
                       onClick={openKeepDialog}
                       className="flex h-6 w-6 items-center justify-center rounded text-text-muted/50 hover:text-accent transition-colors"
-                      title={tr('adjustKeepFields', '调整选择')}
+                      title={tr('adjustKeepFields')}
                     >
                       <Settings className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </div>
                 <div className="flex-1 flex items-center justify-between">
-                  <span className="text-[12px] text-text-primary">
-                    {tr('keepFieldStatsRight', '右表保留/重命名/全字段数')}
-                  </span>
+                  <span className="text-[12px] text-text-primary">{tr('keepFieldStatsRight')}</span>
                   <div className="flex items-center gap-1">
                     <span className="text-[12px] text-text-muted tabular-nums">
                       {rightKeepCount}/{rightRenameCount}/{rightRawColumns.length}
@@ -1065,7 +1051,7 @@ export default function FormJoin({
                       type="button"
                       onClick={openKeepDialog}
                       className="flex h-6 w-6 items-center justify-center rounded text-text-muted/50 hover:text-accent transition-colors"
-                      title={tr('adjustKeepFields', '调整选择')}
+                      title={tr('adjustKeepFields')}
                     >
                       <Settings className="h-3.5 w-3.5" />
                     </button>
@@ -1076,7 +1062,7 @@ export default function FormJoin({
               {/* Conflict */}
               <div className="flex items-center gap-2 px-0.5">
                 <span className="shrink-0 text-[11px] font-medium text-text-secondary">
-                  {tr('conflict', '同名字段冲突')}
+                  {tr('conflict')}
                 </span>
                 <GlassOptionSingleSelect
                   value={conflictStrategy}
@@ -1103,7 +1089,7 @@ export default function FormJoin({
                       },
                     }))
                   }
-                  placeholder={tr('prefix', '前缀，如 customers_')}
+                  placeholder={tr('prefix')}
                   className={`h-7 text-[13px] flex-1 min-w-0 ${conflictStrategy !== 'right_prefix' ? 'invisible' : ''}`}
                 />
               </div>
@@ -1125,18 +1111,16 @@ export default function FormJoin({
           <div className="flex max-h-full w-[680px] flex-col rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl">
             <div className="flex items-center justify-between border-b border-border-muted/50 px-4 py-3">
               <h3 className="text-[13px] font-semibold text-text-primary">
-                {tr('selectKeepFields', '选择保留字段')}
+                {tr('selectKeepFields')}
               </h3>
             </div>
             <div className="flex gap-4 overflow-y-auto p-4">
               {/* Left table fields */}
               <div className="flex-1 border-r border-border-muted/50 pr-4">
                 <h4 className="mb-1 text-[12px] font-medium text-text-secondary">
-                  {leftSourceLabel || tr('leftInput', '左表')}
+                  {leftSourceLabel || tr('leftInput')}
                 </h4>
-                <p className="mb-2 text-[10px] text-text-muted">
-                  {tr('joinKeepAliasPrompt', '勾选字段后可输入别名')}
-                </p>
+                <p className="mb-2 text-[10px] text-text-muted">{tr('joinKeepAliasPrompt')}</p>
                 <label className="flex cursor-pointer items-center gap-1.5 mb-1.5 text-[12px] text-text-secondary font-medium">
                   <input
                     type="checkbox"
@@ -1144,7 +1128,7 @@ export default function FormJoin({
                     onChange={toggleDraftLeftAll}
                     className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
                   />
-                  {tr('selectAllFields', '全部')}
+                  {tr('selectAllFields')}
                 </label>
                 <div className="space-y-1 max-h-48 overflow-y-auto">
                   {fieldCompletions.map((f) => {
@@ -1182,11 +1166,9 @@ export default function FormJoin({
               {/* Right table fields */}
               <div className="flex-1 pl-4">
                 <h4 className="mb-1 text-[12px] font-medium text-text-secondary">
-                  {rightSourceLabel || tr('rightInput', '右表')}
+                  {rightSourceLabel || tr('rightInput')}
                 </h4>
-                <p className="mb-2 text-[10px] text-text-muted">
-                  {tr('joinKeepAliasPrompt', '勾选字段后可输入别名')}
-                </p>
+                <p className="mb-2 text-[10px] text-text-muted">{tr('joinKeepAliasPrompt')}</p>
                 <label className="flex cursor-pointer items-center gap-1.5 mb-1.5 text-[12px] text-text-secondary font-medium">
                   <input
                     type="checkbox"
@@ -1194,7 +1176,7 @@ export default function FormJoin({
                     onChange={toggleDraftRightAll}
                     className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
                   />
-                  {tr('selectAllFields', '全部')}
+                  {tr('selectAllFields')}
                 </label>
                 <div className="space-y-1 max-h-48 overflow-y-auto">
                   {rightRawColumns.map((f) => {
@@ -1236,14 +1218,14 @@ export default function FormJoin({
                 onClick={cancelKeep}
                 className="rounded-md border border-border-muted bg-background/42 px-3 py-1 text-[12px] text-text-secondary hover:border-accent/30 hover:text-accent transition-colors"
               >
-                {tr('cancel', '取消')}
+                {tr('cancel')}
               </button>
               <button
                 type="button"
                 onClick={confirmKeep}
                 className="rounded-md bg-accent px-3 py-1 text-[12px] text-white hover:bg-accent/90 transition-colors"
               >
-                {tr('confirm', '确定')}
+                {tr('confirm')}
               </button>
             </div>
           </div>

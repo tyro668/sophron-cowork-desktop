@@ -46,8 +46,8 @@ export function GlassTagBar({
           type="button"
           onClick={onClear}
           className="inline-flex flex-shrink-0 items-center justify-center self-stretch rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
-          title={tr('clearAll', '清空')}
-          aria-label={tr('clearAll', '清空')}
+          title={tr('clearAll')}
+          aria-label={tr('clearAll')}
         >
           <Trash2 className="h-3 w-3" />
         </button>
@@ -71,7 +71,7 @@ export function GlassTagBar({
                 type="button"
                 onClick={() => onRemove(item)}
                 className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
-                aria-label={tr('removeField', '移除')}
+                aria-label={tr('removeField')}
               >
                 <X className="h-2.5 w-2.5" />
               </button>

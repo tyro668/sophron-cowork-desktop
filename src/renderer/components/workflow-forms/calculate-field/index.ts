@@ -1,101 +1,56 @@
 export const FRAME_TYPE_OPTIONS = [
-  { value: 'rows', key: 'calcFieldFrameRows', label: '按物理行号', hint: 'calcFieldFrameRowsHint' },
-  {
-    value: 'range',
-    key: 'calcFieldFrameRange',
-    label: '按值范围',
-    hint: 'calcFieldFrameRangeHint',
-  },
-  {
-    value: 'groups',
-    key: 'calcFieldFrameGroups',
-    label: '按值所在组',
-    hint: 'calcFieldFrameGroupsHint',
-  },
+  { value: 'rows', key: 'calcFieldFrameRows', hint: 'calcFieldFrameRowsHint' },
+  { value: 'range', key: 'calcFieldFrameRange', hint: 'calcFieldFrameRangeHint' },
+  { value: 'groups', key: 'calcFieldFrameGroups', hint: 'calcFieldFrameGroupsHint' },
 ];
 
 export const FRAME_PRESETS = [
-  { value: 'unbounded preceding|unbounded following', label: '整个窗口', key: 'calcFieldFrameAll' },
-  { value: 'custom', label: '自定义', key: 'calcFieldFrameCustom' },
+  { value: 'unbounded preceding|unbounded following', key: 'calcFieldFrameAll' },
+  { value: 'custom', key: 'calcFieldFrameCustom' },
 ];
 
 export const EXCLUDE_OPTIONS = [
-  { value: 'no others', key: 'calcFieldFrameExcludeNone', label: '不排除' },
-  { value: 'current row', key: 'calcFieldFrameExcludeCurrent', label: '排除当前行' },
-  { value: 'ties', key: 'calcFieldFrameExcludeTies', label: '仅排除同行值' },
-  { value: 'group', key: 'calcFieldFrameExcludeGroup', label: '排除当前行和同行值' },
+  { value: 'no others', key: 'calcFieldFrameExcludeNone' },
+  { value: 'current row', key: 'calcFieldFrameExcludeCurrent' },
+  { value: 'ties', key: 'calcFieldFrameExcludeTies' },
+  { value: 'group', key: 'calcFieldFrameExcludeGroup' },
 ];
 
 export const INTERVAL_UNIT_OPTIONS = [
-  { value: 'day', key: 'intervalUnitDay', label: '天' },
-  { value: 'week', key: 'intervalUnitWeek', label: '周' },
-  { value: 'month', key: 'intervalUnitMonth', label: '月' },
-  { value: 'year', key: 'intervalUnitYear', label: '年' },
+  { value: 'day', key: 'intervalUnitDay' },
+  { value: 'week', key: 'intervalUnitWeek' },
+  { value: 'month', key: 'intervalUnitMonth' },
+  { value: 'year', key: 'intervalUnitYear' },
 ];
 
-export const TIME_WINDOW_OPTIONS: { value: string; label: string; key: string }[] = [
-  { value: 'ytd', label: '年累计', key: 'timeWindowYtd' },
-  { value: 'qtd', label: '季累计', key: 'timeWindowQtd' },
-  { value: 'mtd', label: '月累计', key: 'timeWindowMtd' },
-  { value: 'wtd', label: '周累计', key: 'timeWindowWtd' },
-  { value: 'rolling_year', label: '近N年', key: 'timeWindowRollingYear' },
-  { value: 'rolling_month', label: '近N月', key: 'timeWindowRollingMonth' },
-  { value: 'rolling_day', label: '近N天', key: 'timeWindowRollingDay' },
-  { value: 'rolling_week', label: '近N周', key: 'timeWindowRollingWeek' },
+export const TIME_WINDOW_OPTIONS: { value: string; key: string }[] = [
+  { value: 'ytd', key: 'timeWindowYtd' },
+  { value: 'qtd', key: 'timeWindowQtd' },
+  { value: 'mtd', key: 'timeWindowMtd' },
+  { value: 'wtd', key: 'timeWindowWtd' },
+  { value: 'rolling_year', key: 'timeWindowRollingYear' },
+  { value: 'rolling_month', key: 'timeWindowRollingMonth' },
+  { value: 'rolling_day', key: 'timeWindowRollingDay' },
+  { value: 'rolling_week', key: 'timeWindowRollingWeek' },
 ];
 
-export const TIME_AGG_OPTIONS: { value: string; label: string; key: string }[] = [
-  { value: 'sum', label: '求和', key: 'timeAggSum' },
-  { value: 'avg', label: '平均', key: 'timeAggAvg' },
-  { value: 'count', label: '计数', key: 'timeAggCount' },
-  { value: 'min', label: '最小值', key: 'timeAggMin' },
-  { value: 'max', label: '最大值', key: 'timeAggMax' },
-  { value: 'distinct_count', label: '去重计数', key: 'timeAggDistinctCount' },
+export const TIME_AGG_OPTIONS: { value: string; key: string }[] = [
+  { value: 'sum', key: 'timeAggSum' },
+  { value: 'avg', key: 'timeAggAvg' },
+  { value: 'count', key: 'timeAggCount' },
+  { value: 'min', key: 'timeAggMin' },
+  { value: 'max', key: 'timeAggMax' },
+  { value: 'distinct_count', key: 'timeAggDistinctCount' },
 ];
 
 export const SCENARIO_OPTIONS = [
-  {
-    value: 'group_metrics',
-    key: 'calcFieldScenarioGroupMetrics',
-    label: '组内指标',
-    tip: '按分区聚合数据：求和/平均/最大/最小/计数/去重计数/中位数/标准差/方差/众数/分位数/字符串聚合/逻辑与/逻辑或',
-  },
-  {
-    value: 'ranking',
-    key: 'calcFieldScenarioRanking',
-    label: '排名与序号',
-    tip: '行号、排名、密集排名、百分比排名、累积分布、分桶',
-  },
-  {
-    value: 'cumulative',
-    key: 'calcFieldScenarioCumulative',
-    label: '累计',
-    tip: '累计求和、累计平均、累计计数等，从第一行累计到当前行',
-  },
-  {
-    value: 'offset',
-    key: 'calcFieldScenarioOffset',
-    label: '前后行',
-    tip: '上一行值、下一行值、首值、末值、第N个值、与前N行差值/变化率',
-  },
-  {
-    value: 'moving_window',
-    key: 'calcFieldScenarioMovingWindow',
-    label: '移动窗口',
-    tip: '最近N行求和/平均、前后N行求和/平均、自定义窗口范围',
-  },
-  {
-    value: 'period_compare',
-    key: 'calcFieldScenarioPeriodCompare',
-    label: '周期对比',
-    tip: '同比值/率、环比值/率、自定义偏移差值/率',
-  },
-  {
-    value: 'time_intel',
-    key: 'calcFieldScenarioTimeIntel',
-    label: '时间累计',
-    tip: '年初至今、季初至今、月初至今、周初至今、近N年/月/日/周滚动累计',
-  },
+  { value: 'group_metrics', key: 'calcFieldScenarioGroupMetrics' },
+  { value: 'ranking', key: 'calcFieldScenarioRanking' },
+  { value: 'cumulative', key: 'calcFieldScenarioCumulative' },
+  { value: 'offset', key: 'calcFieldScenarioOffset' },
+  { value: 'moving_window', key: 'calcFieldScenarioMovingWindow' },
+  { value: 'period_compare', key: 'calcFieldScenarioPeriodCompare' },
+  { value: 'time_intel', key: 'calcFieldScenarioTimeIntel' },
 ];
 
 export const FUNCTION_CATEGORIES: Record<
@@ -125,11 +80,7 @@ export const FUNCTION_CATEGORIES: Record<
       header: 'calcFieldCatTextLogical',
       items: ['string_agg', 'bool_and', 'bool_or'],
     },
-    {
-      key: 'special',
-      header: 'calcFieldCatSpecial',
-      items: ['percentage'],
-    },
+    { key: 'special', header: 'calcFieldCatSpecial', items: ['percentage'] },
   ],
   ranking: [
     {
@@ -207,44 +158,20 @@ export function parseIntervalUnit(bound: string | undefined): string | null {
   return m ? m[1].toLowerCase() : null;
 }
 
-export function frameTypeUnitLabel(
-  frameType: string,
-  trFn: (key: string, fallback: string) => string
-): string {
-  if (frameType === 'range') return trFn('calcFieldRangeUnit', '个值');
-  if (frameType === 'groups') return trFn('calcFieldGroupsUnit', '组');
-  return trFn('calcFieldRowsUnit', '行');
+export function frameTypeUnitLabel(frameType: string, trFn: (key: string) => string): string {
+  if (frameType === 'range') return trFn('calcFieldRangeUnit');
+  if (frameType === 'groups') return trFn('calcFieldGroupsUnit');
+  return trFn('calcFieldRowsUnit');
 }
 
 export function getBoundOptions(
-  frameType: string,
-  trFn: (key: string, fallback: string) => string
+  trFn: (key: string) => string
 ): Array<{ value: string; label: string }> {
-  const unboundedPre = trFn('calcFieldUnboundedPre', '到开头');
-  const unboundedFoll = trFn('calcFieldUnboundedFoll', '到末尾');
-  const nPreLabel =
-    frameType === 'range'
-      ? trFn('calcFieldNPreRange', '前N个值')
-      : frameType === 'groups'
-        ? trFn('calcFieldNPreGroups', '前N组')
-        : trFn('calcFieldNPreRows', '前N行');
-  const currentLabel =
-    frameType === 'range'
-      ? trFn('calcFieldCurrentRange', '当前值')
-      : frameType === 'groups'
-        ? trFn('calcFieldCurrentGroups', '当前组')
-        : trFn('calcFieldCurrentRows', '当前行');
-  const nFollLabel =
-    frameType === 'range'
-      ? trFn('calcFieldNFollRange', '后N个值')
-      : frameType === 'groups'
-        ? trFn('calcFieldNFollGroups', '后N组')
-        : trFn('calcFieldNFollRows', '后N行');
   return [
-    { value: 'unbounded preceding', label: unboundedPre },
-    { value: 'n_preceding', label: nPreLabel },
-    { value: 'current row', label: currentLabel },
-    { value: 'n_following', label: nFollLabel },
-    { value: 'unbounded following', label: unboundedFoll },
+    { value: 'unbounded preceding', label: trFn('calcFieldUnboundedPre') },
+    { value: 'n_preceding', label: trFn('calcFieldNPreRows') },
+    { value: 'current row', label: trFn('calcFieldCurrentRows') },
+    { value: 'n_following', label: trFn('calcFieldNFollRows') },
+    { value: 'unbounded following', label: trFn('calcFieldUnboundedFoll') },
   ];
 }

@@ -48,18 +48,14 @@ export default function FormUnpivot({
             1
           </span>
           <div className="grid">
-            <span className="text-[13px] font-semibold text-text-primary">
-              {tr('unpivotMode', '列展开')}
-            </span>
-            <span className="text-[10px] text-text-muted">
-              {tr('unpivotConfigHint', '选择要展开的列')}
-            </span>
+            <span className="text-[13px] font-semibold text-text-primary">{tr('unpivotMode')}</span>
+            <span className="text-[10px] text-text-muted">{tr('unpivotConfigHint')}</span>
           </div>
         </div>
         <div className="px-3 pb-3 grid gap-2.5">
           <div className="grid gap-1">
             <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-              {tr('unpivotExpandCols', '要展开的列')}
+              {tr('unpivotExpandCols')}
             </span>
             <GlassTagBar
               items={columns}
@@ -70,7 +66,7 @@ export default function FormUnpivot({
               toggleStyle="chevron"
               density="default"
               className="min-h-7"
-              placeholder={tr('noFieldsSelected', '暂未选择字段')}
+              placeholder={tr('noFieldsSelected')}
             />
             {columnsOpen && (
               <GlassFieldMultiSelect
@@ -93,46 +89,38 @@ export default function FormUnpivot({
           </span>
           <div className="grid">
             <span className="text-[13px] font-semibold text-text-primary">
-              {tr('unpivotOutput', '输出配置')}
+              {tr('unpivotOutput')}
             </span>
-            <span className="text-[10px] text-text-muted">
-              {tr('unpivotOutputHint', '自定义输出列名与空值处理')}
-            </span>
+            <span className="text-[10px] text-text-muted">{tr('unpivotOutputHint')}</span>
           </div>
         </div>
         <div className="px-3 pb-3 grid gap-2.5">
           <div className="grid grid-cols-2 gap-2">
             <div className="grid gap-1">
               <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-                {tr('unpivotNameCol', '名称列')}
-                <span
-                  className="text-[10px] text-text-muted ml-1"
-                  title={tr('unpivotNameColTip', '新列的列名，存放原字段的名称')}
-                >
-                  ({tr('optional', '可选')})
+                {tr('unpivotNameCol')}
+                <span className="text-[10px] text-text-muted ml-1" title={tr('unpivotNameColTip')}>
+                  ({tr('optional')})
                 </span>
               </span>
               <GlassFormTextInput
                 value={nameColumn}
                 onChange={(v) => updateConfig((cfg) => ({ ...cfg, nameColumn: v || undefined }))}
-                placeholder={tr('unpivotNameColPlaceholder', '请输入字段名')}
+                placeholder={tr('unpivotNameColPlaceholder')}
                 className="h-7 text-[13px] w-full"
               />
             </div>
             <div className="grid gap-1">
               <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-                {tr('unpivotValueCol', '值列')}
-                <span
-                  className="text-[10px] text-text-muted ml-1"
-                  title={tr('unpivotValueColTip', '新列的列名，存放原字段的值')}
-                >
-                  ({tr('optional', '可选')})
+                {tr('unpivotValueCol')}
+                <span className="text-[10px] text-text-muted ml-1" title={tr('unpivotValueColTip')}>
+                  ({tr('optional')})
                 </span>
               </span>
               <GlassFormTextInput
                 value={valueColumn}
                 onChange={(v) => updateConfig((cfg) => ({ ...cfg, valueColumn: v || undefined }))}
-                placeholder={tr('unpivotValueColPlaceholder', '请输入字段名')}
+                placeholder={tr('unpivotValueColPlaceholder')}
                 className="h-7 text-[13px] w-full"
               />
             </div>
@@ -140,7 +128,7 @@ export default function FormUnpivot({
 
           <label
             className="flex cursor-pointer items-center gap-2 text-[12px] text-text-secondary"
-            title={tr('unpivotIncludeNullsTip', '勾选后，空值也会生成对应行')}
+            title={tr('unpivotIncludeNullsTip')}
           >
             <input
               type="checkbox"
@@ -154,7 +142,7 @@ export default function FormUnpivot({
               }}
               className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
             />
-            {tr('unpivotIncludeNulls', '包含空值行')}
+            {tr('unpivotIncludeNulls')}
           </label>
         </div>
       </div>

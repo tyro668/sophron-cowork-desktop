@@ -19,7 +19,7 @@ interface Props {
   item: CalculationRow;
   index: number;
   updateItem: (index: number, patch: Partial<CalculationRow>) => void;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string) => string;
   columnTypes: Record<string, string>;
 }
 
@@ -32,7 +32,7 @@ export function GlassWindowFrameConfig({ item, index, updateItem, tr, columnType
   const startInfo = parseBound(item.frameStart);
   const endInfo = parseBound(item.frameEnd);
   const unitLabel = frameTypeUnitLabel(currentFt, tr);
-  const boundOptions = getBoundOptions(currentFt, tr);
+  const boundOptions = getBoundOptions(tr);
   const orderByCol = item.orderBy?.[0]?.field;
   const isRangeDate =
     currentFt === 'range' && !!orderByCol && isTemporalDataFieldType(columnTypes[orderByCol]);
@@ -50,7 +50,7 @@ export function GlassWindowFrameConfig({ item, index, updateItem, tr, columnType
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-          {tr('calcFieldFrameType', '窗口类型')}
+          {tr('calcFieldFrameType')}
         </span>
         <GlassOptionSingleSelect
           value={item.frameType || 'rows'}
@@ -59,7 +59,7 @@ export function GlassWindowFrameConfig({ item, index, updateItem, tr, columnType
               key: 'frameTypes',
               items: FRAME_TYPE_OPTIONS.map((opt) => ({
                 value: opt.value,
-                label: tr(opt.key, opt.label),
+                label: tr(opt.key),
               })),
             },
           ]}
@@ -78,14 +78,14 @@ export function GlassWindowFrameConfig({ item, index, updateItem, tr, columnType
           className="h-7 text-[12px] w-28"
         />
         <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-          {tr('calcFieldFrame', '窗口范围')}
+          {tr('calcFieldFrame')}
         </span>
         <GlassOptionSingleSelect
           value={isCustom ? 'custom' : currentKey}
           groups={[
             {
               key: 'frame',
-              items: FRAME_PRESETS.map((p) => ({ value: p.value, label: tr(p.key, p.label) })),
+              items: FRAME_PRESETS.map((p) => ({ value: p.value, label: tr(p.key) })),
             },
           ]}
           onChange={(v) => {
@@ -101,7 +101,7 @@ export function GlassWindowFrameConfig({ item, index, updateItem, tr, columnType
         {item.frameStart && item.orderBy?.length && (
           <>
             <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-              {tr('calcFieldFrameExclude', '排除方式')}
+              {tr('calcFieldFrameExclude')}
             </span>
             <GlassOptionSingleSelect
               value={item.frameExclude || 'no others'}
@@ -110,7 +110,7 @@ export function GlassWindowFrameConfig({ item, index, updateItem, tr, columnType
                   key: 'exclude',
                   items: EXCLUDE_OPTIONS.map((o) => ({
                     value: o.value,
-                    label: tr(o.key, o.label),
+                    label: tr(o.key),
                   })),
                 },
               ]}
@@ -124,10 +124,10 @@ export function GlassWindowFrameConfig({ item, index, updateItem, tr, columnType
       {isCustom && (
         <div className="flex items-center gap-2 text-[12px] text-text-muted flex-wrap">
           <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-            {tr('calcFieldFrameConfig', '窗口配置')}
+            {tr('calcFieldFrameConfig')}
           </span>
           <div className="flex items-center gap-1">
-            <span className="shrink-0">{tr('calcFieldBoundStart', '起始')}</span>
+            <span className="shrink-0">{tr('calcFieldBoundStart')}</span>
             <GlassOptionSingleSelect
               value={startInfo.type}
               groups={[{ key: 'bound', items: boundOptions }]}
@@ -163,7 +163,7 @@ export function GlassWindowFrameConfig({ item, index, updateItem, tr, columnType
                         key: 'interval',
                         items: INTERVAL_UNIT_OPTIONS.map((opt) => ({
                           value: opt.value,
-                          label: tr(opt.key, opt.label),
+                          label: tr(opt.key),
                         })),
                       },
                     ]}
@@ -186,7 +186,7 @@ export function GlassWindowFrameConfig({ item, index, updateItem, tr, columnType
             )}
           </div>
           <div className="flex items-center gap-1">
-            <span className="shrink-0">{tr('calcFieldBoundEnd', '结束')}</span>
+            <span className="shrink-0">{tr('calcFieldBoundEnd')}</span>
             <GlassOptionSingleSelect
               value={endInfo.type}
               groups={[{ key: 'bound', items: boundOptions }]}
@@ -220,7 +220,7 @@ export function GlassWindowFrameConfig({ item, index, updateItem, tr, columnType
                         key: 'interval',
                         items: INTERVAL_UNIT_OPTIONS.map((opt) => ({
                           value: opt.value,
-                          label: tr(opt.key, opt.label),
+                          label: tr(opt.key),
                         })),
                       },
                     ]}

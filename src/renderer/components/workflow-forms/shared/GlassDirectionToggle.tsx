@@ -20,10 +20,10 @@ export function GlassDirectionToggle({ value, onChange, className }: GlassDirect
           ? 'border-accent/30 bg-accent/10 text-accent'
           : 'border-border-muted bg-background/42 text-text-secondary hover:border-accent/30'
       } ${className ?? ''}`}
-      title={value === 'asc' ? tr('asc', '升序') : tr('desc', '降序')}
-      aria-label={value === 'asc' ? tr('asc', '升序') : tr('desc', '降序')}
+      title={value === 'asc' ? tr('asc') : tr('desc')}
+      aria-label={value === 'asc' ? tr('asc') : tr('desc')}
     >
-      {value === 'asc' ? tr('asc', '升序') : tr('desc', '降序')}
+      {value === 'asc' ? tr('asc') : tr('desc')}
     </button>
   );
 }

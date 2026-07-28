@@ -239,8 +239,8 @@ export default function FormCalculateField({
 
   function rowColumns() {
     const actionOptions = [
-      { value: 'add', label: tr('calcFieldActionAdd', '新增字段') },
-      { value: 'replace', label: tr('calcFieldActionReplace', '替换字段') },
+      { value: 'add', label: tr('calcFieldActionAdd') },
+      { value: 'replace', label: tr('calcFieldActionReplace') },
     ];
 
     const insertModeCol: GlassRowListColumn<CalculationRow> = {
@@ -269,7 +269,7 @@ export default function FormCalculateField({
                 options={fieldCompletions}
                 columnTypes={columnTypes}
                 onChange={(v) => updateItem(index, { field: v })}
-                placeholder={tr('calcFieldSelectPlaceholder', '选择字段')}
+                placeholder={tr('calcFieldSelectPlaceholder')}
                 className="h-7 w-full text-[12px]"
               />
             ) : (
@@ -277,14 +277,14 @@ export default function FormCalculateField({
                 <GlassFormTextInput
                   value={item.field}
                   onChange={(v) => updateItem(index, { field: v })}
-                  placeholder={tr('calcFieldTargetPlaceholder', '请输入字段名')}
+                  placeholder={tr('calcFieldTargetPlaceholder')}
                   className="!h-7 w-full rounded-md pr-6 px-1.5 text-[12px] shadow-none focus:ring-0"
                 />
                 {fieldConflict && (
                   <span className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex group">
                     <AlertCircle className="h-4 w-4 text-error" />
                     <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 z-50 whitespace-nowrap rounded-lg border border-border-subtle bg-[var(--glass-card-strong)] px-2.5 py-1.5 text-[12px] text-error shadow-elevated backdrop-blur-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-opacity pointer-events-none">
-                      {tr('calcFieldConflictWarning', '字段名已存在于上游数据')}
+                      {tr('calcFieldConflictWarning')}
                     </div>
                   </span>
                 )}
@@ -296,11 +296,11 @@ export default function FormCalculateField({
     };
 
     return [
-      { ...insertModeCol, flex: 'flex-[1]', header: tr('calcFieldActionHeader', '插入模式') },
-      { ...targetFieldCol, flex: 'flex-[2]', header: tr('calcFieldTargetField', '目标字段') },
+      { ...insertModeCol, flex: 'flex-[1]', header: tr('calcFieldActionHeader') },
+      { ...targetFieldCol, flex: 'flex-[2]', header: tr('calcFieldTargetField') },
       {
         flex: 'flex-[4]',
-        header: tr('calcFieldExpressionLabel', '表达式'),
+        header: tr('calcFieldExpressionLabel'),
         render: (item: CalculationRow, index: number) => (
           <GlassExpressionInput
             value={item.expression}
@@ -312,7 +312,7 @@ export default function FormCalculateField({
             }
             fieldCompletions={fieldCompletions}
             columnTypes={columnTypes}
-            placeholder={tr('calcFieldExpressionPlaceholder', '请输入表达式')}
+            placeholder={tr('calcFieldExpressionPlaceholder')}
             excludeFunctionCategories={EXCLUDE_ROW_FUNCTIONS}
           />
         ),
@@ -343,28 +343,28 @@ export default function FormCalculateField({
     };
 
     const FN_ARG2_LABELS: Record<string, string> = {
-      ntile_fnArg: tr('calcFieldPlaceholderBuckets', '桶数'),
-      nth_value_fnArg2: tr('calcFieldPlaceholderNth', '第N行'),
-      quantile_cont_fnArg2: tr('calcFieldPlaceholderQuantile', '分位值'),
-      lag_fnArg2: tr('calcFieldPlaceholderOffset', '偏移行数'),
-      lead_fnArg2: tr('calcFieldPlaceholderOffset', '偏移行数'),
-      offset_diff_fnArg2: tr('calcFieldPlaceholderOffset', '偏移行数'),
-      offset_rate_fnArg2: tr('calcFieldPlaceholderOffset', '偏移行数'),
-      string_agg_fnArg2: tr('calcFieldPlaceholderDelimiter', '分隔符'),
+      ntile_fnArg: tr('calcFieldPlaceholderBuckets'),
+      nth_value_fnArg2: tr('calcFieldPlaceholderNth'),
+      quantile_cont_fnArg2: tr('calcFieldPlaceholderQuantile'),
+      lag_fnArg2: tr('calcFieldPlaceholderOffset'),
+      lead_fnArg2: tr('calcFieldPlaceholderOffset'),
+      offset_diff_fnArg2: tr('calcFieldPlaceholderOffset'),
+      offset_rate_fnArg2: tr('calcFieldPlaceholderOffset'),
+      string_agg_fnArg2: tr('calcFieldPlaceholderDelimiter'),
     };
 
     const fnGroupOptions = (FUNCTION_CATEGORIES[scenario] || []).map((cat) => ({
       key: cat.key,
-      header: tr(cat.header, cat.header),
+      header: tr(cat.header),
       items: cat.items.map((f) => ({
         value: f,
-        label: tr('calcFieldFn_' + f, f),
+        label: tr('calcFieldFn_' + f),
       })),
     }));
 
     const actionOptions = [
-      { value: 'add', label: tr('calcFieldActionAdd', '新增字段') },
-      { value: 'replace', label: tr('calcFieldActionReplace', '替换字段') },
+      { value: 'add', label: tr('calcFieldActionAdd') },
+      { value: 'replace', label: tr('calcFieldActionReplace') },
     ];
 
     const showOrderBy =
@@ -382,7 +382,7 @@ export default function FormCalculateField({
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-              {tr('calcFieldScenarioLabel', '计算类别')}
+              {tr('calcFieldScenarioLabel')}
             </span>
             <GlassOptionSingleSelect
               value={activeScenario}
@@ -391,7 +391,7 @@ export default function FormCalculateField({
                   key: 'scenario',
                   items: SCENARIO_OPTIONS.map((s) => ({
                     value: s.value,
-                    label: tr(s.key, s.label),
+                    label: tr(s.key),
                   })),
                 },
               ]}
@@ -399,16 +399,14 @@ export default function FormCalculateField({
               className="h-7 text-[12px] w-28"
             />
           </div>
-          <span className="text-[10px] text-text-muted">
-            {tr(scenario + 'Hint', SCENARIO_OPTIONS.find((s) => s.value === scenario)?.tip || '')}
-          </span>
+          <span className="text-[10px] text-text-muted">{tr(scenario + 'Hint')}</span>
         </div>
 
         {/* Row 1: 插入模式 + 目标字段 */}
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-              {tr('calcFieldActionHeader', '插入模式')}
+              {tr('calcFieldActionHeader')}
             </span>
             <GlassOptionSingleSelect
               value={item.action || 'add'}
@@ -419,7 +417,7 @@ export default function FormCalculateField({
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-              {tr('calcFieldTargetField', '目标字段')}
+              {tr('calcFieldTargetField')}
             </span>
             <div className="flex items-center gap-1">
               <div className="w-36">
@@ -429,14 +427,14 @@ export default function FormCalculateField({
                     options={fieldCompletions}
                     columnTypes={columnTypes}
                     onChange={(v) => updateItem(index, { field: v })}
-                    placeholder={tr('calcFieldSelectPlaceholder', '选择字段')}
+                    placeholder={tr('calcFieldSelectPlaceholder')}
                     className="h-7 w-full text-[12px]"
                   />
                 ) : (
                   <GlassFormTextInput
                     value={item.field}
                     onChange={(v) => updateItem(index, { field: v })}
-                    placeholder={tr('calcFieldTargetPlaceholder', '请输入字段名')}
+                    placeholder={tr('calcFieldTargetPlaceholder')}
                     className="h-7 w-full rounded-md px-1.5 text-[12px] shadow-none focus:ring-0"
                   />
                 )}
@@ -445,7 +443,7 @@ export default function FormCalculateField({
                 <span className="relative inline-flex group shrink-0">
                   <AlertCircle className="h-4 w-4 text-error cursor-pointer" />
                   <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 z-50 whitespace-nowrap rounded-lg border border-border-subtle bg-[var(--glass-card-strong)] px-2.5 py-1.5 text-[12px] text-error shadow-elevated backdrop-blur-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-opacity pointer-events-none">
-                    {tr('calcFieldConflictWarning', '字段名已存在于上游数据')}
+                    {tr('calcFieldConflictWarning')}
                   </div>
                 </span>
               )}
@@ -471,7 +469,7 @@ export default function FormCalculateField({
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex items-center gap-2">
               <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-                {tr('calcFieldFunction', '计算函数')}
+                {tr('calcFieldFunction')}
               </span>
               <GlassOptionSingleSelect
                 value={currentFn}
@@ -489,9 +487,8 @@ export default function FormCalculateField({
               <div key={s.key} className="flex items-center gap-2">
                 <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
                   {s.type === 'field'
-                    ? tr('calcFieldFnArg', '参数字段')
-                    : FN_ARG2_LABELS[currentFn + '_' + s.key] ||
-                      tr('calcFieldFnArgConst', '参数常数')}
+                    ? tr('calcFieldFnArg')
+                    : FN_ARG2_LABELS[currentFn + '_' + s.key] || tr('calcFieldFnArgConst')}
                 </span>
                 <div className={s.type === 'field' ? 'w-36' : 'w-28'}>
                   {s.type === 'field' ? (
@@ -500,7 +497,7 @@ export default function FormCalculateField({
                       options={fieldCompletions}
                       columnTypes={columnTypes}
                       onChange={(v) => updateItem(index, { [s.key]: v } as Partial<CalculationRow>)}
-                      placeholder={tr('calcFieldFnArgPlaceholder', '选择字段')}
+                      placeholder={tr('calcFieldFnArgPlaceholder')}
                       className="h-7 w-full text-[12px]"
                     />
                   ) : (
@@ -510,7 +507,7 @@ export default function FormCalculateField({
                       onChange={(v) => updateItem(index, { [s.key]: v } as Partial<CalculationRow>)}
                       placeholder={
                         FN_ARG2_LABELS[currentFn + '_' + s.key] ||
-                        tr('calcFieldFnArgNumPlaceholder', '参数')
+                        tr('calcFieldFnArgNumPlaceholder')
                       }
                       className="h-7 rounded-md px-1.5 text-[12px] w-full"
                     />
@@ -521,7 +518,7 @@ export default function FormCalculateField({
             {isPeriodCompare && (
               <div className="flex items-center gap-2">
                 <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-                  {tr('calcFieldRefField', '参照字段')}
+                  {tr('calcFieldRefField')}
                 </span>
                 <GlassFieldSingleSelect
                   value={item.orderBy?.[0]?.field ?? ''}
@@ -530,7 +527,7 @@ export default function FormCalculateField({
                   onChange={(v) =>
                     updateItem(index, { orderBy: v ? [{ field: v, direction: 'asc' }] : undefined })
                   }
-                  placeholder={tr('calcFieldDatePlaceholder', '选择日期字段')}
+                  placeholder={tr('calcFieldDatePlaceholder')}
                   className="h-7 w-28 text-[12px]"
                 />
               </div>
@@ -590,11 +587,9 @@ export default function FormCalculateField({
           </span>
           <div className="grid">
             <span className="text-[13px] font-semibold text-text-primary">
-              {tr('calcFieldModeHeader', '计算模式')}
+              {tr('calcFieldModeHeader')}
             </span>
-            <span className="text-[10px] text-text-muted">
-              {tr('calcFieldModeHint', '选择计算方式')}
-            </span>
+            <span className="text-[10px] text-text-muted">{tr('calcFieldModeHint')}</span>
           </div>
         </div>
         <div className="px-3 pb-3 flex flex-col gap-1.5">
@@ -603,13 +598,13 @@ export default function FormCalculateField({
             options={[
               {
                 value: 'row',
-                label: tr('calcFieldModeRow', '逐行计算'),
-                tip: tr('calcFieldModeRowTip', '基于当前行的字段做运算，不依赖其他行'),
+                label: tr('calcFieldModeRow'),
+                tip: tr('calcFieldModeRowTip'),
               },
               {
                 value: 'cross',
-                label: tr('calcFieldModeCross', '跨行计算'),
-                tip: tr('calcFieldModeCrossTip', '按分区汇总、排名、滑动窗口、周期对比等'),
+                label: tr('calcFieldModeCross'),
+                tip: tr('calcFieldModeCrossTip'),
               },
             ]}
             onChange={(v) => setActiveMode(v as 'row' | 'cross')}
@@ -624,16 +619,14 @@ export default function FormCalculateField({
           <div className="flex items-start gap-2 min-w-0 flex-1">
             <div className="grid min-w-0 flex-1">
               <span className="text-[13px] font-semibold text-text-primary">
-                {tr('calcFieldConfigHeader', '计算配置')}
+                {tr('calcFieldConfigHeader')}
               </span>
               {activeMode === 'row' && (
-                <span className="text-[10px] text-text-muted">
-                  {tr('calcFieldConfigHintRow', '定义新字段及其计算表达式')}
-                </span>
+                <span className="text-[10px] text-text-muted">{tr('calcFieldConfigHintRow')}</span>
               )}
               {activeMode === 'cross' && (
                 <span className="text-[10px] text-text-muted">
-                  {tr('calcFieldConfigHintCross', '选择模式并进行配置')}
+                  {tr('calcFieldConfigHintCross')}
                 </span>
               )}
             </div>

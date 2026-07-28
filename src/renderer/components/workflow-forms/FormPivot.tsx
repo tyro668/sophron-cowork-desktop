@@ -115,7 +115,7 @@ export default function FormPivot({
         key: 'fn',
         items: PIVOT_FUNCTIONS.map((f) => ({
           value: f,
-          label: tr(`aggregateFn_${f}`, f),
+          label: tr(`aggregateFn_${f}`),
         })),
       },
     ],
@@ -131,18 +131,14 @@ export default function FormPivot({
             1
           </span>
           <div className="grid">
-            <span className="text-[13px] font-semibold text-text-primary">
-              {tr('pivotAxes', '列与分组')}
-            </span>
-            <span className="text-[10px] text-text-muted">
-              {tr('pivotSourcesHint', '选择待转化列、值列表与分组字段')}
-            </span>
+            <span className="text-[13px] font-semibold text-text-primary">{tr('pivotAxes')}</span>
+            <span className="text-[10px] text-text-muted">{tr('pivotSourcesHint')}</span>
           </div>
         </div>
         <div className="px-3 pb-3 grid gap-3 content-start">
           <div className="grid gap-1.5 content-start">
             <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-              {tr('pivotOnLabel', '待转化的列')}
+              {tr('pivotOnLabel')}
             </span>
             <GlassTagBar
               items={onFields}
@@ -153,7 +149,7 @@ export default function FormPivot({
               toggleStyle="chevron"
               density="default"
               className="min-h-7"
-              placeholder={tr('noFieldsSelected', '暂未选择字段')}
+              placeholder={tr('noFieldsSelected')}
             />
             {onOpen && (
               <GlassFieldMultiSelect
@@ -167,8 +163,8 @@ export default function FormPivot({
           </div>
           <div className="grid gap-1">
             <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-              {tr('pivotInLabel', '值列表')}
-              <span className="text-[10px] text-text-muted ml-1">({tr('optional', '可选')})</span>
+              {tr('pivotInLabel')}
+              <span className="text-[10px] text-text-muted ml-1">({tr('optional')})</span>
             </span>
             <GlassTagBar
               items={values}
@@ -178,7 +174,7 @@ export default function FormPivot({
               onToggle={() => setValueListOpen((v) => !v)}
               toggleStyle="chevron"
               density="default"
-              placeholder={tr('pivotInPlaceholder', '选择透视列的值，按Enter确认')}
+              placeholder={tr('pivotInPlaceholder')}
             />
             {valueListOpen && (
               <GlassFieldMultiSelect
@@ -191,8 +187,8 @@ export default function FormPivot({
           </div>
           <div className="grid gap-1.5 content-start">
             <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-              {tr('pivotGroupByLabel', '分组字段')}
-              <span className="text-[10px] text-text-muted ml-1">({tr('optional', '可选')})</span>
+              {tr('pivotGroupByLabel')}
+              <span className="text-[10px] text-text-muted ml-1">({tr('optional')})</span>
             </span>
             <GlassTagBar
               items={groupBy}
@@ -203,7 +199,7 @@ export default function FormPivot({
               toggleStyle="chevron"
               density="default"
               className="min-h-7"
-              placeholder={tr('noFieldsSelected', '暂未选择字段')}
+              placeholder={tr('noFieldsSelected')}
             />
             {groupByOpen && (
               <GlassFieldMultiSelect
@@ -225,12 +221,8 @@ export default function FormPivot({
             2
           </span>
           <div className="grid">
-            <span className="text-[13px] font-semibold text-text-primary">
-              {tr('pivotUsing', '聚合指标')}
-            </span>
-            <span className="text-[10px] text-text-muted">
-              {tr('pivotAggHint', '选择聚合函数与表达式')}
-            </span>
+            <span className="text-[13px] font-semibold text-text-primary">{tr('pivotUsing')}</span>
+            <span className="text-[10px] text-text-muted">{tr('pivotAggHint')}</span>
           </div>
         </div>
         <div className="px-3 pb-3 grid gap-3 content-start">
@@ -240,7 +232,7 @@ export default function FormPivot({
             columns={[
               {
                 flex: 'flex-[1.5]',
-                header: tr('aggregateFunction', '聚合函数'),
+                header: tr('aggregateFunction'),
                 render: (metric: PivotMetric, i: number) => (
                   <GlassOptionSingleSelect
                     value={metric.function}
@@ -252,25 +244,25 @@ export default function FormPivot({
               },
               {
                 flex: 'flex-[2]',
-                header: tr('expressionLabel', '表达式'),
+                header: tr('expressionLabel'),
                 render: (metric: PivotMetric, i: number) => (
                   <GlassExpressionInput
                     value={metric.expression}
                     onChange={(v) => updateMetric(i, { expression: v })}
                     fieldCompletions={fieldCompletions}
                     columnTypes={columnTypes}
-                    placeholder={tr('pivotExpressionPlaceholder', '请输入表达式')}
+                    placeholder={tr('pivotExpressionPlaceholder')}
                   />
                 ),
               },
               {
                 flex: 'flex-[1.5]',
-                header: tr('aggregateAlias', '别名 (as)'),
+                header: tr('aggregateAlias'),
                 render: (metric: PivotMetric, i: number) => (
                   <GlassFormTextInput
                     value={metric.alias ?? ''}
                     onChange={(v) => updateMetric(i, { alias: v || undefined })}
-                    placeholder={tr('pivotAliasPlaceholder', '请输入后缀')}
+                    placeholder={tr('pivotAliasPlaceholder')}
                     className="h-7 px-1.5 text-[12px] w-full"
                   />
                 ),
@@ -278,8 +270,8 @@ export default function FormPivot({
             ]}
             onAdd={(i) => addMetricAfter(i)}
             onRemove={(i) => removeMetric(i)}
-            addTitle={tr('pivotAddMetric', '添加指标')}
-            removeTitle={tr('pivotRemoveMetric', '删除指标')}
+            addTitle={tr('pivotAddMetric')}
+            removeTitle={tr('pivotRemoveMetric')}
             canAct={(action: RowAction) =>
               action === 'add' ? !using.some((m) => !m.expression) : true
             }

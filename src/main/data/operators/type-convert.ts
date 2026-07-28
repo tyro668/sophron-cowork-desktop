@@ -7,7 +7,8 @@ export function compileTypeConvertSql(
   output: string,
   input: string,
   columns: string[],
-  config: Record<string, unknown>
+  config: Record<string, unknown>,
+  columnTypes?: Record<string, string>
 ): string {
   const { conversions } = parseOperatorConfig(TypeConvertConfigSchema, config);
   const byColumn = new Map(
@@ -18,7 +19,7 @@ export function compileTypeConvertSql(
   const projections = columns.map((column) => {
     const conversion = byColumn.get(column);
     return conversion
-      ? `${compileTypeConversionExpression(column, conversion)} AS ${quoteIdentifier(column)}`
+      ? `${compileTypeConversionExpression(column, conversion, columnTypes)} AS ${quoteIdentifier(column)}`
       : quoteIdentifier(column);
   });
   return `CREATE TEMP TABLE ${output} AS SELECT ${projections.join(', ')} FROM ${input}`;
@@ -26,10 +27,17 @@ export function compileTypeConvertSql(
 
 function compileTypeConversionExpression(
   column: string,
-  conversion: { type?: string; onError?: string; format?: string }
+  conversion: { type?: string; onError?: string; format?: string },
+  columnTypes?: Record<string, string>
 ): string {
   const source = quoteIdentifier(column);
   const targetType = requireDataFieldType(conversion.type || 'text', 'cast target type');
+  if (conversion.format && columnTypes) {
+    const sourceType = columnTypes[column];
+    if (sourceType === 'date' || sourceType === 'datetime') {
+      return source;
+    }
+  }
   if (conversion.onError === 'keep') {
     return source;
   }

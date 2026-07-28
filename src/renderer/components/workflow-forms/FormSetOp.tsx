@@ -17,7 +17,7 @@ function checkTypeWarnings(
   rightColumns: string[],
   operation: string,
   match: string,
-  tr: (key: string, fallback: string) => string
+  tr: (key: string) => string
 ): string[] {
   const warnings: string[] = [];
 
@@ -25,7 +25,7 @@ function checkTypeWarnings(
 
   if (!isUnionByName && leftColumns.length !== rightColumns.length) {
     warnings.push(
-      tr('setOpColumnCountMismatch', 'Column count mismatch')
+      tr('setOpColumnCountMismatch')
         .replace('{{leftCount}}', String(leftColumns.length))
         .replace('{{rightCount}}', String(rightColumns.length))
     );
@@ -37,7 +37,7 @@ function checkTypeWarnings(
     for (let i = 0; i < minLen; i++) {
       if (leftColumns[i] !== rightColumns[i]) {
         mismatches.push(
-          tr('setOpColumnNameMismatch', 'Column mismatch')
+          tr('setOpColumnNameMismatch')
             .replace('{{index}}', String(i + 1))
             .replace('{{left}}', leftColumns[i])
             .replace('{{right}}', rightColumns[i])
@@ -45,12 +45,7 @@ function checkTypeWarnings(
       }
     }
     if (mismatches.length > 0) {
-      warnings.push(
-        tr('setOpPositionMatchWarnings', 'Name mismatch warning').replace(
-          '{{details}}',
-          mismatches.join('；')
-        )
-      );
+      warnings.push(tr('setOpPositionMatchWarnings').replace('{{details}}', mismatches.join('；')));
     }
   }
 
@@ -63,7 +58,7 @@ function checkTypeWarnings(
     if (TEMPORAL_TYPES.includes(lt) && TEMPORAL_TYPES.includes(rt)) continue;
     if (lt === 'text' || rt === 'text') {
       warnings.push(
-        tr('setOpTypeMismatchWarning', 'Type mismatch warning')
+        tr('setOpTypeMismatchWarning')
           .replace('{{index}}', String(i + 1))
           .replace('{{col}}', leftTypes[i].name)
           .replace('{{leftType}}', lt)
@@ -71,7 +66,7 @@ function checkTypeWarnings(
       );
     } else {
       warnings.push(
-        tr('setOpTypeIncompatibleWarning', 'Type incompatible warning')
+        tr('setOpTypeIncompatibleWarning')
           .replace('{{index}}', String(i + 1))
           .replace('{{col}}', leftTypes[i].name)
           .replace('{{leftType}}', lt)
@@ -243,15 +238,15 @@ export default function FormSetOp({
         );
         if (warnings.length > 0) {
           const confirmed = await confirm({
-            title: tr('setOpTypeMismatchTitle', 'Column type mismatch'),
+            title: tr('setOpTypeMismatchTitle'),
             message: (
               <div>
-                <p>{tr('setOpTypeMismatchDesc', 'Column types do not fully match')}</p>
+                <p>{tr('setOpTypeMismatchDesc')}</p>
                 <pre className="mt-2 whitespace-pre-wrap text-[12px]">{warnings.join('\n')}</pre>
               </div>
             ),
-            confirmLabel: tr('setOpIgnoreWarning', 'Ignore warning'),
-            cancelLabel: tr('common.cancel', 'Cancel'),
+            confirmLabel: tr('setOpIgnoreWarning'),
+            cancelLabel: tr('common.cancel'),
           });
           if (!confirmed) {
             updateConfig((cfg) => ({ ...cfg, rightInput: undefined }));
@@ -273,29 +268,27 @@ export default function FormSetOp({
             </span>
             <div className="grid">
               <span className="text-[13px] font-semibold text-text-primary">
-                {tr('setOpSources', '数据源')}
+                {tr('setOpSources')}
               </span>
-              <span className="text-[10px] text-text-muted">
-                {tr('setOpSourcesHint', '请在上方选择参与运算的两个数据集')}
-              </span>
+              <span className="text-[10px] text-text-muted">{tr('setOpSourcesHint')}</span>
             </div>
           </div>
           <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
             <div className="p-3 grid gap-2.5">
               <div className="grid gap-1">
                 <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-                  {tr('leftInput', '左表数据源')}
+                  {tr('leftInput')}
                 </span>
                 <div className="h-7 flex items-center rounded-md border border-border-muted/70 bg-background/28 px-2 text-[12px] text-text-muted">
-                  {leftSourceLabel || tr('noLeftSource', '上游节点')}
+                  {leftSourceLabel || tr('noLeftSource')}
                 </div>
               </div>
               <div className="grid gap-1">
                 <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-                  {tr('setOpRightInput', '右表数据源')}
+                  {tr('setOpRightInput')}
                 </span>
                 <div className="h-7 flex items-center rounded-md border border-border-muted/70 bg-background/28 px-2 text-[12px] text-text-muted">
-                  {rightSourceLabel || tr('noRightSource', '未连接右表')}
+                  {rightSourceLabel || tr('noRightSource')}
                 </div>
               </div>
             </div>
@@ -315,11 +308,9 @@ export default function FormSetOp({
             </span>
             <div className="grid">
               <span className="text-[13px] font-semibold text-text-primary">
-                {tr('setOpConnection', '连接方式')}
+                {tr('setOpConnection')}
               </span>
-              <span className="text-[10px] text-text-muted">
-                {tr('setOpConnectionHint', '选择行级合并方式：并集、交集或差集')}
-              </span>
+              <span className="text-[10px] text-text-muted">{tr('setOpConnectionHint')}</span>
             </div>
           </div>
           <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
@@ -342,20 +333,20 @@ export default function FormSetOp({
                   }`}
                   title={
                     op === 'union'
-                      ? tr('setOpUnionTip', '合并两个表的所有数据，重复记录自动去重')
+                      ? tr('setOpUnionTip')
                       : op === 'intersect'
-                        ? tr('setOpIntersectTip', '仅保留两个表共有的记录')
-                        : tr('setOpExceptTip', '从左表中排除右表中的记录')
+                        ? tr('setOpIntersectTip')
+                        : tr('setOpExceptTip')
                   }
                 >
                   <VennSVG type={op} />
                   <div className="grid gap-0.5">
                     <span className="text-[12px] font-medium text-text-primary leading-tight">
                       {op === 'union'
-                        ? tr('setOpUnion', '并集')
+                        ? tr('setOpUnion')
                         : op === 'intersect'
-                          ? tr('setOpIntersect', '交集')
-                          : tr('setOpExcept', '差集')}
+                          ? tr('setOpIntersect')
+                          : tr('setOpExcept')}
                     </span>
                     <span className="text-[10px] text-text-muted font-mono leading-tight">
                       {op === 'union' ? 'A ∪ B' : op === 'intersect' ? 'A ∩ B' : 'A \\ B'}
@@ -380,11 +371,9 @@ export default function FormSetOp({
             </span>
             <div className="grid">
               <span className="text-[13px] font-semibold text-text-primary">
-                {tr('setOpConfig', '配置选择')}
+                {tr('setOpConfig')}
               </span>
-              <span className="text-[10px] text-text-muted">
-                {tr('setOpConfigHint', '配置去重方式与字段匹配规则')}
-              </span>
+              <span className="text-[10px] text-text-muted">{tr('setOpConfigHint')}</span>
             </div>
           </div>
           <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
@@ -394,17 +383,17 @@ export default function FormSetOp({
                 options={[
                   {
                     value: 'all',
-                    label: tr('setOpAll', '保留重复'),
-                    tip: tr('setOpAllTip', '将两个表的数据全部合并，包括重复的行'),
+                    label: tr('setOpAll'),
+                    tip: tr('setOpAllTip'),
                   },
                   {
                     value: 'distinct',
-                    label: tr('setOpDistinct', '去重'),
-                    tip: tr('setOpDistinctTip', '合并后自动去除重复的行'),
+                    label: tr('setOpDistinct'),
+                    tip: tr('setOpDistinctTip'),
                   },
                 ]}
                 onChange={(v) => updateConfig((cfg) => ({ ...cfg, mode: v }))}
-                label={tr('setOpDedupMode', '重复行处理')}
+                label={tr('setOpDedupMode')}
               />
               {operation === 'union' && (
                 <GlassRadioSelect
@@ -412,17 +401,17 @@ export default function FormSetOp({
                   options={[
                     {
                       value: 'by_name',
-                      label: tr('setOpByName', '按名称'),
-                      tip: tr('setOpByNameTip', '根据列名自动匹配，列数或顺序不一致时自动对齐'),
+                      label: tr('setOpByName'),
+                      tip: tr('setOpByNameTip'),
                     },
                     {
                       value: 'by_position',
-                      label: tr('setOpByPosition', '按位置'),
-                      tip: tr('setOpByPositionTip', '按列的顺序位置匹配，两表列数必须一致'),
+                      label: tr('setOpByPosition'),
+                      tip: tr('setOpByPositionTip'),
                     },
                   ]}
                   onChange={(v) => updateConfig((cfg) => ({ ...cfg, match: v }))}
-                  label={tr('setOpMatchMode', '匹配方式')}
+                  label={tr('setOpMatchMode')}
                 />
               )}
             </div>

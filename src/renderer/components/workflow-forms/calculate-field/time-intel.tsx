@@ -11,7 +11,7 @@ interface Props {
   item: CalculationRow;
   index: number;
   updateItem: (index: number, patch: Partial<CalculationRow>) => void;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string) => string;
   fieldCompletions: string[];
   columnTypes: Record<string, string>;
   currentTimeWindow: string;
@@ -54,7 +54,7 @@ export function GlassTimeIntelConfig({
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-            {tr('calcFieldDateColumn', '时间字段')}
+            {tr('calcFieldDateColumn')}
           </span>
           <GlassFieldSingleSelect
             value={timeFieldValue}
@@ -63,13 +63,13 @@ export function GlassTimeIntelConfig({
             onChange={(v) =>
               updateTime({ orderBy: v ? [{ field: v, direction: 'asc' }] : undefined })
             }
-            placeholder={tr('calcFieldDatePlaceholder', '选择日期字段')}
+            placeholder={tr('calcFieldDatePlaceholder')}
             className="h-7 w-28 text-[12px]"
           />
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-            {tr('calcFieldTimeWindow', '时间窗口')}
+            {tr('calcFieldTimeWindow')}
           </span>
           <GlassOptionSingleSelect
             value={currentTimeWindow}
@@ -78,7 +78,7 @@ export function GlassTimeIntelConfig({
                 key: 'timeWindow',
                 items: TIME_WINDOW_OPTIONS.map((o) => ({
                   value: o.value,
-                  label: tr(o.key, o.label),
+                  label: tr(o.key),
                 })),
               },
             ]}
@@ -109,7 +109,7 @@ export function GlassTimeIntelConfig({
           {!timeDef?.hasParam && currentTimeWindow === 'ytd' && (
             <>
               <span className="text-[12px] text-text-muted shrink-0 leading-7">
-                {tr('calcFieldFiscalStart', '年度起始月')}
+                {tr('calcFieldFiscalStart')}
               </span>
               <GlassFormTextInput
                 inputMode="numeric"
@@ -132,14 +132,14 @@ export function GlassTimeIntelConfig({
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-            {tr('calcFieldTimeAgg', '聚合函数')}
+            {tr('calcFieldTimeAgg')}
           </span>
           <GlassOptionSingleSelect
             value={currentTimeAgg}
             groups={[
               {
                 key: 'timeAgg',
-                items: TIME_AGG_OPTIONS.map((o) => ({ value: o.value, label: tr(o.key, o.label) })),
+                items: TIME_AGG_OPTIONS.map((o) => ({ value: o.value, label: tr(o.key) })),
               },
             ]}
             onChange={(v) => updateTime({ fn: `${currentTimeWindow}_${v}` })}
@@ -148,7 +148,7 @@ export function GlassTimeIntelConfig({
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-            {tr('calcFieldFnArg', '参数字段')}
+            {tr('calcFieldFnArg')}
           </span>
           <div className="w-36">
             <GlassFieldSingleSelect
@@ -156,7 +156,7 @@ export function GlassTimeIntelConfig({
               options={fieldCompletions}
               columnTypes={columnTypes}
               onChange={(v) => updateTime({ fnArg: v } as Partial<CalculationRow>)}
-              placeholder={tr('calcFieldFnArgPlaceholder', '选择字段')}
+              placeholder={tr('calcFieldFnArgPlaceholder')}
               className="h-7 w-full text-[12px]"
             />
           </div>

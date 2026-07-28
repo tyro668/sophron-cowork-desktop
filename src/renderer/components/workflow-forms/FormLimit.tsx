@@ -71,8 +71,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
 
   function runValidation(limitVal: number, unitVal: string): string[] {
     const errs: string[] = [];
-    if (unitVal === 'percent' && limitVal > 100)
-      errs.push(tr('limitPercentError', '百分比不能超过 100'));
+    if (unitVal === 'percent' && limitVal > 100) errs.push(tr('limitPercentError'));
     return errs;
   }
 
@@ -114,15 +113,15 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
     <div className="flex flex-col gap-3 h-full min-h-0 overflow-y-auto p-4">
       {/* 模式 */}
       <div className="flex items-center gap-2">
-        <span className={LABEL_CLASS}>{tr('limitMode', '模式')}</span>
+        <span className={LABEL_CLASS}>{tr('limitMode')}</span>
         <GlassOptionSingleSelect
           value={mode}
           groups={[
             {
               key: 'mode',
               items: [
-                { value: 'fixed', label: tr('limitFixedMode', '限制取样') },
-                { value: 'random', label: tr('limitRandomMode', '随机采样') },
+                { value: 'fixed', label: tr('limitFixedMode') },
+                { value: 'random', label: tr('limitRandomMode') },
               ],
             },
           ]}
@@ -151,7 +150,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <span className={LABEL_CLASS}>
-            {isRandomMode ? tr('limitSampleSize', '采样量') : tr('limitCount', '数量')}
+            {isRandomMode ? tr('limitSampleSize') : tr('limitCount')}
           </span>
           <GlassFormTextInput
             inputMode="numeric"
@@ -163,15 +162,15 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
           />
         </div>
         <div className="flex items-center gap-2">
-          <span className={LABEL_CLASS}>{tr('limitUnit', '单位')}</span>
+          <span className={LABEL_CLASS}>{tr('limitUnit')}</span>
           <GlassOptionSingleSelect
             value={unit}
             groups={[
               {
                 key: 'unit',
                 items: [
-                  { value: 'rows', label: tr('limitUnitRows', '行数') },
-                  { value: 'percent', label: tr('limitUnitPercent', '百分比') },
+                  { value: 'rows', label: tr('limitUnitRows') },
+                  { value: 'percent', label: tr('limitUnitPercent') },
                 ],
               },
             ]}
@@ -184,19 +183,19 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
         </div>
         {isRandomMode ? (
           <div className="flex items-center gap-2">
-            <span className={LABEL_CLASS}>{tr('limitSampleSeed', '随机种子')}</span>
+            <span className={LABEL_CLASS}>{tr('limitSampleSeed')}</span>
             <GlassFormTextInput
               inputMode="numeric"
               value={localSeed}
               onChange={(v) => pushSeed(v)}
-              placeholder={tr('limitSampleSeedPlaceholder', '可选')}
+              placeholder={tr('limitSampleSeedPlaceholder')}
               textCenter
               className="h-7 rounded-md px-2 text-[12px] w-28"
             />
           </div>
         ) : isRows ? (
           <div className="flex items-center gap-2">
-            <span className={LABEL_CLASS}>{tr('limitOffset', '偏移量')}</span>
+            <span className={LABEL_CLASS}>{tr('limitOffset')}</span>
             <GlassFormTextInput
               inputMode="numeric"
               value={localOffset}
@@ -212,15 +211,15 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
       {/* 采样方式（仅随机采样） */}
       {isRandomMode && (
         <div className="flex items-center gap-2">
-          <span className={LABEL_CLASS}>{tr('limitSampleMethod', '采样方式')}</span>
+          <span className={LABEL_CLASS}>{tr('limitSampleMethod')}</span>
           <GlassOptionSingleSelect
             value={method}
             groups={[
               {
                 key: 'method',
                 items: [
-                  { value: 'system', label: tr('limitSampleSystem', '按块抽样') },
-                  { value: 'bernoulli', label: tr('limitSampleBernoulli', '逐行随机') },
+                  { value: 'system', label: tr('limitSampleSystem') },
+                  { value: 'bernoulli', label: tr('limitSampleBernoulli') },
                 ],
               },
             ]}
@@ -241,7 +240,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
         <>
           {/* 排序字段 */}
           <div className="flex items-center gap-2">
-            <span className={LABEL_CLASS}>{tr('limitSortHeader', '排序字段')}</span>
+            <span className={LABEL_CLASS}>{tr('limitSortHeader')}</span>
             <div className="w-72 min-w-0 relative">
               <div className={TAG_CONTAINER}>
                 {sortFields.length > 0 && (
@@ -249,7 +248,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                     type="button"
                     onClick={() => updateConfig((cfg) => ({ ...cfg, orderBy: undefined }))}
                     className="ml-1 inline-flex flex-shrink-0 items-center justify-center self-stretch rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
-                    title={tr('clearAll', '清空')}
+                    title={tr('clearAll')}
                   >
                     <Trash2 className="h-3 w-3" />
                   </button>
@@ -265,7 +264,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                         type="button"
                         onClick={() => toggleSortDirection(k.field)}
                         className="text-[11px] leading-none px-0.5 hover:text-text-primary rounded"
-                        title={k.direction === 'asc' ? tr('asc', '升序') : tr('desc', '降序')}
+                        title={k.direction === 'asc' ? tr('asc') : tr('desc')}
                       >
                         {k.direction === 'asc' ? '↑' : '↓'}
                       </button>
@@ -282,9 +281,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                     key="sort-input"
                     type="text"
                     readOnly
-                    placeholder={
-                      !sortFields.length ? tr('limitSortPlaceholder', '选择排序字段') : ''
-                    }
+                    placeholder={!sortFields.length ? tr('limitSortPlaceholder') : ''}
                     onFocus={() => setSortOpen(true)}
                     onBlur={() => setTimeout(() => setSortOpen(false), 150)}
                     className="h-5 min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted cursor-pointer"
@@ -323,7 +320,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                   }
                   className="h-4 w-4 rounded border-border-muted accent-accent"
                 />
-                {tr('limitTies', '保留并列值（WITH TIES）')}
+                {tr('limitTies')}
               </label>
             )}
           </div>
