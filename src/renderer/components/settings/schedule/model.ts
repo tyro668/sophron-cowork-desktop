@@ -188,7 +188,6 @@ export function createGeneratedCloudTableProcessNode(
   result: {
     taskId: string;
     taskName: string;
-    workflowDsl: string;
     outputTableId: string;
     requiredColumns: Array<{ name: string; type?: string }>;
     expectedOutputSchema?: Array<{ name: string; type?: string }>;
@@ -626,7 +625,6 @@ export function defaultConfigForAction(type: string): Record<string, unknown> {
   if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE) {
     return {
       taskId: '',
-      workflowDsl: '',
       source: null,
       output: null,
       requiredColumns: [],
