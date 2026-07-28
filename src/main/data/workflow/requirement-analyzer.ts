@@ -5,6 +5,7 @@ import type {
 } from '../../../renderer/types';
 import { runPiAiOneShot } from '../../claude/claude-sdk-one-shot';
 import { DataCommandError } from '../data-command-types';
+import requirementAnalysisSystemPrompt from './prompts/requirement-analysis-system.txt?raw';
 import { getWorkflowJavascriptCapabilityPrompt } from './workflow-operation-registry';
 import { extractJsonObject, isRecord } from './utils';
 
@@ -27,18 +28,7 @@ export async function analyzeDataTaskRequirement({
   }
   const response = await runPiAiOneShot(
     JSON.stringify({ requirement, inputColumns: columns }, null, 2),
-    [
-      'You are a strict capability checker for a data workflow DSL.',
-      'Break the user request into the smallest independently verifiable requirements.',
-      'Classify every requirement as supported, ambiguous, or unsupported.',
-      'Never omit, merge away, or silently reinterpret any user requirement.',
-      'supported means it can be expressed completely with the allowed operations and given columns.',
-      'ambiguous means a user choice or missing rule is required. Explain exactly what is missing.',
-      'unsupported means any part requires an unavailable operation, external service, second input, prediction, messaging, or unknown field.',
-      'Return strict JSON only: {"items":[{"requirement":"original requirement","status":"supported|ambiguous|unsupported","reason":"optional concise reason","suggestedRequirement":"optional executable rewrite","operations":["operation names"]}]}',
-      `Allowed operations: ${getWorkflowJavascriptCapabilityPrompt()}.`,
-      'This workflow has exactly one input table. Treat joins and any second data source as unsupported.',
-    ].join('\n'),
+    buildRequirementAnalysisSystemPrompt(),
     runtimeConfig,
     { temperature: 0, maxTokens: 2_000 }
   );
@@ -68,6 +58,12 @@ export async function analyzeDataTaskRequirement({
           : 'needs_confirmation',
     items,
   };
+}
+
+function buildRequirementAnalysisSystemPrompt(): string {
+  return requirementAnalysisSystemPrompt
+    .replace('{{WORKFLOW_CAPABILITIES}}', getWorkflowJavascriptCapabilityPrompt())
+    .trim();
 }
 
 function normalizeAnalysisItem(value: unknown): DataTaskRequirementAnalysisItem {

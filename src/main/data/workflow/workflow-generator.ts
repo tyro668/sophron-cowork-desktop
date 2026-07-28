@@ -2,6 +2,7 @@ import type { AgentRuntimeConfig } from '../../../renderer/types';
 import type { PrepDiagnostic } from '../../../shared/prep-dsl';
 import { runPiAiOneShot } from '../../claude/claude-sdk-one-shot';
 import { DataCommandError } from '../data-command-types';
+import workflowGenerationSystemPrompt from './prompts/workflow-generation-system.txt?raw';
 import {
   applyWorkflowFunctionPatch,
   assertAtomicWorkflowHelpers,
@@ -255,34 +256,9 @@ function requireGenerationRuntimeConfig(runtimeConfig?: AgentRuntimeConfig): Age
 }
 
 function buildWorkflowGenerationSystemPrompt(): string {
-  return [
-    'You convert user requirements into a safe function-oriented JavaScript workflow program for Sophron.',
-    'Return only strict JSON. Do not return markdown, comments, explanations, or code fences.',
-    'Use only the provided input columns. Do not invent field names.',
-    'Do not write Sophron Prep DSL, SQL, imports, loops, mutable variables, async code, classes, dynamic calls, or system/network/file access.',
-    'Return {"javascriptSource":"..."}. The program must contain named helper functions and function main().',
-    'Use only the fixed bridge API workflow.input(INPUT_TABLE_ID, { alias: "src" }), workflow.step(input, operationType, payload), and workflow.output(input, OUTPUT_TABLE_NAME, { mode: "replace" }). Never call operation-specific functions or fluent receiver chains.',
-    'Helper functions receive and return a workflow value. Each helper function must perform exactly one workflow operation and return its result.',
-    'main() must compose atomic helpers through named const variables. Keep workflow.step() calls out of main(); main() only creates the input with workflow.input(), invokes helpers, and returns workflow.output().',
-    'For repair requests, follow the response schema in the user message exactly. When a function patch is requested, return only that patch; otherwise return the complete corrected javascriptSource.',
-    `Allowed workflow steps and canonical payloads: ${getWorkflowJavascriptCapabilityPrompt()}.`,
-    'Automation has exactly one input dataset. Never call join, union, intersect, except, setOp, or reference a second input.',
-    'Pivot must use exactly one on field, a non-empty fixed values array, and exactly one metric so the saved output schema is deterministic.',
-    'Allowed expression APIs: col("field"), lit(value), fn.regexpExtract(expr, pattern), fn.year(expr), fn.month(expr), fn.upper(expr), fn.lower(expr), fn.trim(expr), fn.replace(expr, search, replacement), fn.concat(...exprs).',
-    'Allowed comparison methods: eq, neq, gt, gte, lt, lte, contains, notContains, isNull, isNotNull.',
-    'Allowed arithmetic methods: add, sub, mul, div.',
-    'Column references must use the current field name at that point in the workflow chain. Before a rename, use the original input column name exactly; after a rename, later operations may use the renamed field.',
-    "For regex digit matching, prefer '[0-9]+' over '\\\\d+' to avoid escaping ambiguity.",
-    'When a regexpExtract pattern contains a capture group and the desired value is that group, provide the group index. Example: fn.regexpExtract(col("date"), "^[0-9]{4}-([0-9]{2})", 1).',
-    'For string values, preserve the semantic value only. For example Chinese text like "过滤掉Market为EU的数据" means value "EU", not "EU的数据".',
-    'If the user asks to delete, remove, drop, exclude, 去掉, 删除, 移除, 去除, 删掉, 剔除, or 不要 columns, use the drop operation for those columns. Do not express column removal as select-all-except unless the user explicitly asks to keep only a listed set of columns.',
-    'For money, prices, rates, percentages, and other fixed-decimal business values, use cast(field, "decimal", { scale: 2 }). Avoid float unless approximate binary floating point is explicitly requested.',
-    'When converting text currency such as "$8.34" to a number and the requirement says to remove the leading "$" symbol, call cast(input, field, "decimal", { removePrefix: "$", scale: 2 }).',
-    'For missing_value, config.strategy is only "drop_empty_rows" or "by_column". Never put a rule method such as "nullify_values" in config.strategy.',
-    'When text markers such as "NULL", "N/A", or an empty string should become actual null values, use config.strategy="by_column" and add one rule per applicable field with method="nullify_values" and values containing those exact markers.',
-    'When actual null values should be replaced with a literal, use config.strategy="by_column" and method="literal_fill" with value set to the replacement.',
-    'If the requirement is ambiguous, generate the safest valid operations and include only input columns actually used by the operations in requiredColumns.',
-  ].join('\n');
+  return workflowGenerationSystemPrompt
+    .replace('{{WORKFLOW_CAPABILITIES}}', getWorkflowJavascriptCapabilityPrompt())
+    .trim();
 }
 
 function buildWorkflowGenerationUserPrompt(input: {
