@@ -5,11 +5,9 @@ import {
   normalizeDataFieldType,
   type DataFieldType,
 } from '../../../shared/data-field-types';
-import { Settings } from 'lucide-react';
-import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
-import { GlassRowList } from './shared/GlassRowList';
+import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
@@ -27,12 +25,20 @@ interface ConversionEntry {
 const DEFAULT_CONVERSION: ConversionEntry = { column: '', type: 'text' };
 
 const DATE_FORMAT_PRESETS: Array<{ value: string; example: string }> = [
-  { value: '%Y-%m-%d', example: '2000-01-01' },
-  { value: '%Y/%m/%d', example: '2000/1/1' },
-  { value: '%m/%d/%Y', example: '1/1/2000' },
-  { value: '%m/%d/%y', example: '1/1/00' },
-  { value: '%d/%m/%Y', example: '1/1/2000' },
-  { value: '%Y%m%d', example: '20000101' },
+  { value: '%Y-%m-%d', example: '2024-03-15' },
+  { value: '%Y/%m/%d', example: '2024/03/15' },
+  { value: '%m/%d/%Y', example: '03/15/2024' },
+  { value: '%m/%d/%y', example: '03/15/24' },
+  { value: '%d/%m/%Y', example: '15/03/2024' },
+  { value: '%Y%m%d', example: '20240315' },
+  { value: '%Y年%m月%d日', example: '2025年01月12日' },
+  { value: '%d-%m-%Y', example: '15-03-2024' },
+  { value: '%Y.%m.%d', example: '2024.03.15' },
+  { value: '%d.%m.%Y', example: '15.03.2024' },
+  { value: '%B %d, %Y', example: 'March 15, 2024' },
+  { value: '%b %d, %Y', example: 'Mar 15, 2024' },
+  { value: '%Y-%m-%d %H:%M:%S', example: '2024-03-15 10:30:00' },
+  { value: '%Y-%m-%dT%H:%M:%S', example: '2024-03-15T10:30:00' },
 ];
 
 export default function FormTypeConvert({
@@ -101,6 +107,22 @@ export default function FormTypeConvert({
     [activeConversions, commitConversions]
   );
 
+  const copyConversion = useCallback(
+    (index: number) => {
+      if (activeConversions.length >= fieldCompletions.length) return;
+      const source = activeConversions[index];
+      const next = [...activeConversions];
+      next.splice(index + 1, 0, {
+        column: '',
+        type: source.type,
+        onError: source.onError,
+        format: source.format,
+      } as ConversionEntry);
+      commitConversions(next);
+    },
+    [activeConversions, fieldCompletions.length, commitConversions]
+  );
+
   const usedFields = useMemo(
     () => computeUsedFields(activeConversions, (c) => c.column),
     [activeConversions]
@@ -125,7 +147,7 @@ export default function FormTypeConvert({
             items={activeConversions}
             columns={[
               {
-                flex: 'flex-[3]',
+                flex: 'flex-[2]',
                 header: tr('typeConvertSourceField'),
                 render: (conv: ConversionEntry, i: number) => {
                   const disabledFields = new Set(usedFields);
@@ -146,7 +168,7 @@ export default function FormTypeConvert({
                 },
               },
               {
-                flex: 'flex-[1.2]',
+                flex: 'flex-[1]',
                 header: tr('typeConvertOriginalType'),
                 render: (conv: ConversionEntry) => (
                   <span className="w-full text-center text-[11px] text-text-muted tabular-nums">
@@ -157,7 +179,7 @@ export default function FormTypeConvert({
                 ),
               },
               {
-                flex: 'flex-[0.6]',
+                flex: 'flex-[0.5]',
                 header: '',
                 render: () => (
                   <div className="flex items-center gap-0.5 justify-center text-text-muted">
@@ -167,7 +189,7 @@ export default function FormTypeConvert({
                 ),
               },
               {
-                flex: 'flex-[2]',
+                flex: 'flex-[1.5]',
                 header: tr('typeConvertTargetType'),
                 render: (conv: ConversionEntry, i: number) => (
                   <GlassOptionSingleSelect
@@ -185,6 +207,26 @@ export default function FormTypeConvert({
                     className="h-6 w-full text-[12px]"
                   />
                 ),
+              },
+              {
+                flex: 'flex-[1.5]',
+                header: tr('typeConvertDateFormat'),
+                render: (conv: ConversionEntry, i: number) => {
+                  const isDateType = conv.type === 'date' || conv.type === 'datetime';
+                  const formatOptions = [
+                    { value: '', label: tr('typeConvertAutoParse') },
+                    ...DATE_FORMAT_PRESETS.map((p) => ({ value: p.value, label: p.example })),
+                  ];
+                  return (
+                    <GlassOptionSingleSelect
+                      value={isDateType ? (conv.format ?? '') : ''}
+                      disabled={!isDateType}
+                      groups={[{ key: 'formats', items: formatOptions }]}
+                      onChange={(v) => updateConversion(i, { format: v || undefined })}
+                      className="h-6 w-full text-[12px]"
+                    />
+                  );
+                },
               },
               {
                 flex: 'flex-[2]',
@@ -213,49 +255,19 @@ export default function FormTypeConvert({
             ]}
             onAdd={(i) => addConversionAfter(i)}
             onRemove={(i) => removeConversion(i)}
-            renderExtraActions={(i: number) => {
-              const conv = activeConversions[i];
-              const isDateType = conv.type === 'date' || conv.type === 'datetime';
-              const hasFormat = !!conv.format;
-              return (
-                <GlassDropdownMenu
-                  trigger={
-                    <button
-                      type="button"
-                      disabled={!isDateType}
-                      className={`inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition-colors ${
-                        isDateType
-                          ? 'cursor-pointer text-text-muted hover:bg-surface-hover hover:text-accent'
-                          : 'cursor-not-allowed opacity-30'
-                      } ${hasFormat && isDateType ? 'text-accent' : ''}`}
-                      title={tr('typeConvertDateFormat')}
-                      aria-label={tr('typeConvertDateFormat')}
-                    >
-                      <Settings className="h-3.5 w-3.5" />
-                    </button>
-                  }
-                >
-                  {DATE_FORMAT_PRESETS.map((preset) => (
-                    <GlassMenuItem
-                      key={preset.value}
-                      selected={conv.format === preset.value}
-                      onSelect={() =>
-                        updateConversion(i, {
-                          format: conv.format === preset.value ? undefined : preset.value,
-                        })
-                      }
-                    >
-                      <span className="flex items-center justify-between w-full">
-                        <span>{preset.value}</span>
-                        <span className="text-[11px] text-text-muted ml-2">{preset.example}</span>
-                      </span>
-                    </GlassMenuItem>
-                  ))}
-                </GlassDropdownMenu>
-              );
-            }}
+            onCopy={copyConversion}
             addTitle={tr('typeConvertAdd')}
             removeTitle={tr('typeConvertRemove')}
+            copyTitle={tr('fieldMappingCopy')}
+            actions={['add', 'copy', 'remove']}
+            canAct={(action: RowAction) =>
+              action === 'copy'
+                ? activeConversions.length < fieldCompletions.length
+                : action === 'add'
+                  ? !activeConversions.some((c) => !c.column) &&
+                    activeConversions.length < fieldCompletions.length
+                  : true
+            }
             draggable
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
