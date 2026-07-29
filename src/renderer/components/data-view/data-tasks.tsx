@@ -1794,7 +1794,6 @@ function WorkflowInspector({
   useEffect(() => {
     const requestSeq = operatorFieldsRequestSeq.current + 1;
     operatorFieldsRequestSeq.current = requestSeq;
-    setOperatorFieldCompletions([]);
 
     if (!node || !usesOperatorDsl || !operatorFieldSourceNode) return;
     if (!window.electronAPI?.data?.getWorkflowNodeColumns) return;
