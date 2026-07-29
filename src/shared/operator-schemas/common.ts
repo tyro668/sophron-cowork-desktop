@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const SortKeySchema = z.object({
-  field: z.string(),
+  field: z.string().trim().min(1),
   direction: z.enum(['asc', 'desc']).default('asc'),
   nulls: z.enum(['first', 'last']).optional(),
 });

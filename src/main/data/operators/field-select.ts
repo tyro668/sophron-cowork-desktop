@@ -8,6 +8,10 @@ export function compileFieldSelectSql(
   config: Record<string, unknown>
 ): string {
   const { columns: selected, mode } = parseOperatorConfig(FieldSelectConfigSchema, config);
+  const missing = selected.filter((c) => c && !columns.includes(c));
+  if (missing.length > 0) {
+    throw new Error(`Field '${missing.join("', '")}' does not exist in input schema`);
+  }
   const outputColumns =
     mode === 'exclude'
       ? columns.filter((column) => !selected.includes(column))

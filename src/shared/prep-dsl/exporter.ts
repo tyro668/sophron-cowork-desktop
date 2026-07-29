@@ -100,9 +100,10 @@ function formatOperator(node: PrepFlowNodeLike): string | null {
   }
 }
 
-function formatFieldSelect(config: Record<string, unknown> | undefined): string {
+function formatFieldSelect(config: Record<string, unknown> | undefined): string | null {
   const columns = stringArray(config?.columns).map(formatFieldRef).join(', ');
-  return `${config?.mode === 'exclude' ? 'drop' : 'select'} ${columns || '[field]'}`;
+  if (!columns && config?.mode !== 'exclude') return null;
+  return `${config?.mode === 'exclude' ? 'drop' : 'select'} ${columns}`;
 }
 
 function formatTypeConvert(config: Record<string, unknown> | undefined): string {

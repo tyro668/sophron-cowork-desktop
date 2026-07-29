@@ -7,7 +7,7 @@ import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassDirectionToggle } from './shared/GlassDirectionToggle';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
-import { GlassRowList } from './shared/GlassRowList';
+import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
@@ -232,6 +232,9 @@ export default function FormDeduplicate({
                     onRemove={removeSortKey}
                     addTitle={tr('sortAddKey')}
                     removeTitle={tr('filterDeleteCondition')}
+                    canAct={(action: RowAction) =>
+                      action === 'add' ? activeKeys.length < fieldCompletions.length : true
+                    }
                     draggable
                     onDragStart={handleDragStart}
                     onDragOver={handleDragOver}

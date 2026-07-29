@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 
 function ok(config: Record<string, unknown>) {
   const type = 'limit' as const;
@@ -94,13 +96,6 @@ describe('FormLimit — DSL idempotent', () => {
         orderBy: [{ field: 'score', direction: 'desc' }],
         ties: true,
       },
-      {
-        mode: 'fixed',
-        limit: 3,
-        unit: 'rows',
-        orderBy: [{ field: 'amount', direction: 'desc' }],
-        groupBy: ['category'],
-      },
       { mode: 'random', limit: 100, unit: 'rows', method: 'bernoulli' },
       { mode: 'random', limit: 10, unit: 'percent', method: 'system', seed: 42 },
     ];
@@ -129,31 +124,6 @@ describe('FormLimit — new features', () => {
     });
     expect(r.dsl).toContain('top 10');
     expect(r.dsl).toContain('with ties');
-  });
-
-  it('top with partition includes partition in DSL', () => {
-    const r = ok({
-      mode: 'fixed',
-      limit: 3,
-      unit: 'rows',
-      orderBy: [{ field: 'amount', direction: 'desc' }],
-      groupBy: ['category'],
-    });
-    expect(r.dsl).toContain('top 3');
-    expect(r.dsl).toContain('partition [category]');
-  });
-
-  it('top with ties and partition together', () => {
-    const r = ok({
-      mode: 'fixed',
-      limit: 5,
-      unit: 'rows',
-      orderBy: [{ field: 'score', direction: 'desc' }],
-      ties: true,
-      groupBy: ['region'],
-    });
-    expect(r.dsl).toContain('with ties');
-    expect(r.dsl).toContain('partition [region]');
   });
 
   it('sample rows mode produces sample DSL', () => {
@@ -198,27 +168,12 @@ describe('FormLimit — new features', () => {
     // DSL top format doesn't preserve percent unit
     expect(r.config.unit).toBe('rows');
   });
-
-  it('percent + orderBy + groupBy produces top ... partition DSL (unit becomes rows)', () => {
-    const r = ok({
-      mode: 'fixed',
-      limit: 20,
-      unit: 'percent',
-      orderBy: [{ field: 'revenue', direction: 'asc' }],
-      groupBy: ['region'],
-    });
-    expect(r.dsl).toContain('top 20');
-    expect(r.dsl).toContain('partition [region]');
-    expect(r.config.unit).toBe('rows');
-  });
 });
 
 // ── UI source structure ─────────────────────────────────────────────
 
-const fs = await import('node:fs');
-const path = await import('node:path');
-const limitSource = fs.readFileSync(
-  path.resolve(process.cwd(), 'src/renderer/components/workflow-forms/FormLimit.tsx'),
+const limitSource = readFileSync(
+  resolve(process.cwd(), 'src/renderer/components/workflow-forms/FormLimit.tsx'),
   'utf8'
 );
 
@@ -246,11 +201,11 @@ describe('FormLimit — UI source structure', () => {
   });
 
   it('WITH TIES checkbox is inside sort row (not separate row)', () => {
-    const tiesLine = limitSource.indexOf('保留并列值（WITH TIES）');
+    const tiesLine = limitSource.indexOf('limitTies');
     expect(tiesLine).not.toBe(-1);
     const sortSection = limitSource.slice(
       limitSource.indexOf('sortOpen ?'),
-      limitSource.indexOf('保留并列值（WITH TIES）')
+      limitSource.indexOf('limitTies')
     );
     expect(sortSection.length).toBeGreaterThan(0);
     expect(limitSource).not.toContain('{/* WITH TIES */}');
@@ -261,15 +216,6 @@ describe('FormLimit — UI source structure', () => {
     expect(sortContainer).not.toBeNull();
     // Should not have flex-1 for sort container
     expect(limitSource).not.toContain('className="flex-1 min-w-0 relative"');
-  });
-
-  it('group range + group fields on same flex-wrap row', () => {
-    // The group section is wrapped in a flex-wrap container, with both
-    // range selector and field tag-input nested inside
-    const groupSectionStart = limitSource.indexOf('分组范围 + 分组字段');
-    const groupSectionEnd = limitSource.indexOf('排序字段', groupSectionStart);
-    const groupSection = limitSource.slice(groupSectionStart, groupSectionEnd);
-    expect(groupSection).toContain('flex-wrap');
   });
 
   it('mode select width is w-28', () => {

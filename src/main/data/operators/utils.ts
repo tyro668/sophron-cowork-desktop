@@ -105,7 +105,7 @@ export function durationToMilliseconds(value: string): number {
 export function sortKeysToSql(value: unknown): string {
   return objectArray(value)
     .flatMap((key) =>
-      typeof key.field === 'string'
+      typeof key.field === 'string' && key.field.trim()
         ? [
             `${quoteIdentifier(key.field)} ${
               key.direction === 'desc' ? 'DESC' : 'ASC'
