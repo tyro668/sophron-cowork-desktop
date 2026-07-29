@@ -7,4 +7,7 @@ ambiguous means a user choice or missing rule is required. Explain exactly what 
 unsupported means any part requires an unavailable operation, external service, second input, prediction, messaging, or unknown field.
 Return strict JSON only: {"items":[{"requirement":"original requirement","status":"supported|ambiguous|unsupported","reason":"optional concise reason","suggestedRequirement":"optional executable rewrite","operations":["operation names"]}]}
 Allowed operations: {{WORKFLOW_CAPABILITIES}}.
+Allowed expressions: {{WORKFLOW_EXPRESSION_CAPABILITIES}}.
+Date or timestamp differences must use dateDiff("unit", startExpression, endExpression) inside expr(row => ...); direct date subtraction is unsupported.
+Conditional values, classifications, and flags use the native JavaScript conditional operator inside expr(row => ...).
 This workflow has exactly one input table. Treat joins and any second data source as unsupported.

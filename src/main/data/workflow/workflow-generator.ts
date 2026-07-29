@@ -8,8 +8,10 @@ import {
   assertAtomicWorkflowHelpers,
   compileWorkflowJavaScript,
   executeWorkflowJavaScriptInSandbox,
+  indexJavaScriptFunctions,
 } from './javascript-runtime';
 import { getWorkflowJavascriptCapabilityPrompt } from './workflow-operation-registry';
+import { getWorkflowExpressionCapabilityPrompt } from './workflow-expression-registry';
 import {
   exportWorkflowOperationsToPrepDsl,
   lowerWorkflowIrToOperations,
@@ -33,7 +35,7 @@ export function compileGeneratedJavaScriptWorkflow({
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
 }): GeneratedDataTaskWorkflow {
-  const compiled = compileWorkflowJavaScript(javascriptSource);
+  const compiled = compileWorkflowJavaScript(javascriptSource, { columns });
   const ir = executeWorkflowJavaScriptInSandbox({ compiled, inputTableId, outputTableName });
   const verificationIr = executeWorkflowJavaScriptInSandbox({
     compiled,
@@ -189,7 +191,7 @@ export async function repairGeneratedWorkflowFromDiagnostics({
   try {
     let currentJavascriptSource = failedJavascriptSource;
     let currentDiagnostics = diagnostics;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (let attempt = 0; attempt < GENERATED_WORKFLOW_REPAIR_ATTEMPTS; attempt += 1) {
       const repairFunctionName = resolveRepairFunctionName(
         currentJavascriptSource,
         currentDiagnostics
@@ -220,16 +222,14 @@ export async function repairGeneratedWorkflowFromDiagnostics({
         });
       } catch (error) {
         const nextDiagnostics = diagnosticsFromGenerationError(error);
-        const retryAtomicRepair =
-          attempt === 0 &&
-          nextDiagnostics.some((diagnostic) => diagnostic.code === 'NON_ATOMIC_WORKFLOW_HELPER');
-        if (!retryAtomicRepair) throw error;
-        currentJavascriptSource =
-          extractRepairJavascriptCandidate({
-            text: response.text,
-            failedJavascriptSource: currentJavascriptSource,
-            repairFunctionName,
-          }) ?? currentJavascriptSource;
+        if (attempt >= GENERATED_WORKFLOW_REPAIR_ATTEMPTS - 1) throw error;
+        const nextJavascriptSource = extractRepairJavascriptCandidate({
+          text: response.text,
+          failedJavascriptSource: currentJavascriptSource,
+          repairFunctionName,
+        });
+        if (!nextJavascriptSource) throw error;
+        currentJavascriptSource = nextJavascriptSource;
         currentDiagnostics = nextDiagnostics;
       }
     }
@@ -258,6 +258,7 @@ function requireGenerationRuntimeConfig(runtimeConfig?: AgentRuntimeConfig): Age
 function buildWorkflowGenerationSystemPrompt(): string {
   return workflowGenerationSystemPrompt
     .replace('{{WORKFLOW_CAPABILITIES}}', getWorkflowJavascriptCapabilityPrompt())
+    .replace('{{WORKFLOW_EXPRESSION_CAPABILITIES}}', getWorkflowExpressionCapabilityPrompt())
     .trim();
 }
 
@@ -314,13 +315,13 @@ function buildWorkflowGenerationUserPrompt(input: {
         {
           requirement: '过滤掉Market为EU的数据',
           javascriptSource:
-            'function filterEurope(input) {\n  return workflow.step(input, "filter", { condition: col("Market").neq(lit("EU")) });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const filtered = filterEurope(input);\n  return workflow.output(filtered, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+            'function filterEurope(input) {\n  return workflow.step(input, "filter", { condition: expr(row => row["Market"] !== "EU") });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const filtered = filterEurope(input);\n  return workflow.output(filtered, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
           requiredColumns: [{ name: 'Market' }],
         },
         {
           requirement: '按照Sales升序排列，删除记录数',
           javascriptSource:
-            'function sortSales(input) {\n  return workflow.step(input, "sort", { column: col("Sales"), direction: "asc" });\n}\n\nfunction removeRecordCount(input) {\n  return workflow.step(input, "drop", { columns: ["记录数"] });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const sorted = sortSales(input);\n  const cleaned = removeRecordCount(sorted);\n  return workflow.output(cleaned, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+            'function sortSales(input) {\n  return workflow.step(input, "sort", { column: expr(row => row["Sales"]), direction: "asc" });\n}\n\nfunction removeRecordCount(input) {\n  return workflow.step(input, "drop", { columns: ["记录数"] });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const sorted = sortSales(input);\n  const cleaned = removeRecordCount(sorted);\n  return workflow.output(cleaned, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
           requiredColumns: [{ name: 'Sales' }, { name: '记录数' }],
         },
       ],
@@ -413,9 +414,7 @@ function resolveRepairFunctionName(
 ): string | undefined {
   let functions: Set<string>;
   try {
-    functions = new Set(
-      compileWorkflowJavaScript(javascriptSource).functions.map((item) => item.name)
-    );
+    functions = new Set(indexJavaScriptFunctions(javascriptSource).map((item) => item.name));
   } catch {
     return undefined;
   }

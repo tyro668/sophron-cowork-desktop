@@ -10,6 +10,7 @@ import {
   validateRegisteredWorkflowOperation,
   WORKFLOW_OPERATION_TYPES,
 } from './workflow-operation-registry';
+import { normalizeWorkflowExpressionCastType } from './workflow-expression-registry';
 
 export const WORKFLOW_IR_VERSION = '1.0' as const;
 
@@ -64,14 +65,21 @@ export function validateAndNormalizeWorkflowIr(value: unknown): WorkflowIr {
         `Workflow IR operation at index ${index} must be an object`
       );
     }
-    if (!WORKFLOW_OPERATION_TYPES.has(operation.type)) {
+    const normalizedOperation = normalizeWorkflowOperationValue(operation) as Record<
+      string,
+      unknown
+    >;
+    if (!WORKFLOW_OPERATION_TYPES.has(normalizedOperation.type as WorkflowOperationIr['type'])) {
       throw new DataCommandError(
         'VALIDATION_FAILED',
-        `Unsupported Workflow IR operation at index ${index}: ${String(operation.type)}`
+        `Unsupported Workflow IR operation at index ${index}: ${String(normalizedOperation.type)}`
       );
     }
-    validateRegisteredWorkflowOperation(operation, index);
-    const operationId = operation.operationId?.trim() || `op_${String(index + 1).padStart(4, '0')}`;
+    validateRegisteredWorkflowOperation(normalizedOperation, index);
+    const suppliedOperationId = normalizedOperation.operationId;
+    const operationId =
+      (typeof suppliedOperationId === 'string' ? suppliedOperationId.trim() : '') ||
+      `op_${String(index + 1).padStart(4, '0')}`;
     if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(operationId)) {
       throw new DataCommandError(
         'VALIDATION_FAILED',
@@ -86,22 +94,25 @@ export function validateAndNormalizeWorkflowIr(value: unknown): WorkflowIr {
     }
     operationIds.add(operationId);
     if (
-      operation.inputOperationId !== undefined &&
-      typeof operation.inputOperationId !== 'string'
+      normalizedOperation.inputOperationId !== undefined &&
+      typeof normalizedOperation.inputOperationId !== 'string'
     ) {
       throw new DataCommandError(
         'VALIDATION_FAILED',
         `Workflow IR operation inputOperationId at index ${index} must be a string`
       );
     }
-    if (operation.location) {
+    if (normalizedOperation.location) {
       provenanceByOperationId.set(operationId, {
         operationId,
         language: ir.sourceLanguage,
-        source: validateSourceLocation(operation.location, `operations[${index}].location`),
+        source: validateSourceLocation(
+          normalizedOperation.location,
+          `operations[${index}].location`
+        ),
       });
     }
-    return { ...operation, operationId };
+    return { ...normalizedOperation, operationId } as WorkflowOperationIr;
   });
   for (const entry of suppliedProvenance) {
     if (!operationIds.has(entry.operationId)) {
@@ -142,6 +153,19 @@ export function validateAndNormalizeWorkflowIr(value: unknown): WorkflowIr {
       operationIds.has(entry.operationId)
     ),
   };
+}
+
+function normalizeWorkflowOperationValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(normalizeWorkflowOperationValue);
+  if (!isRecord(value)) return value;
+  const normalized = Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, normalizeWorkflowOperationValue(item)])
+  );
+  if (normalized.kind === 'cast' && typeof normalized.targetType === 'string') {
+    normalized.targetType =
+      normalizeWorkflowExpressionCastType(normalized.targetType) ?? normalized.targetType;
+  }
+  return normalized;
 }
 
 function assertAcyclicOperationGraph(operations: WorkflowOperationIr[]): void {

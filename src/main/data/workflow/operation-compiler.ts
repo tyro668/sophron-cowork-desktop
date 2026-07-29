@@ -1,4 +1,18 @@
 import { DataCommandError } from '../data-command-types';
+import {
+  getWorkflowExpressionFunctionDefinition,
+  isWorkflowDecimalScale,
+  normalizeWorkflowExpressionCastType,
+  WORKFLOW_DECIMAL_SCALE_MAX,
+  WORKFLOW_DECIMAL_SCALE_MIN,
+  WORKFLOW_DEFAULT_DECIMAL_SCALE,
+  WORKFLOW_DATE_DIFF_UNITS,
+  workflowExpressionArityDescription,
+  workflowExpressionArityIsValid,
+  workflowExpressionFunctionResultType,
+  workflowExpressionFunctionToDsl,
+} from './workflow-expression-registry';
+import type { WorkflowExpressionArgumentType } from './workflow-expression-registry';
 import type {
   DataAutomationColumnSnapshot,
   DataAutomationLineageEntry,
@@ -885,6 +899,17 @@ function compileWorkflowExpression(
       const left = compileWorkflowExpression(expression.left, context, expressionContext);
       const right = compileWorkflowExpression(expression.right, context, expressionContext);
       const sourceColumns = uniqueSourceColumns([...left.sourceColumns, ...right.sourceColumns]);
+      if (expression.op === 'and' || expression.op === 'or') {
+        assertCompiledBooleanOperand(left, expressionContext);
+        assertCompiledBooleanOperand(right, expressionContext);
+        const precedence = expression.op === 'and' ? -1 : -2;
+        return {
+          dsl: `${formatCompiledOperand(left, precedence)} ${expression.op.toUpperCase()} ${formatCompiledOperand(right, precedence)}`,
+          type: 'boolean',
+          sourceColumns,
+          precedence,
+        };
+      }
       if (['+', '-', '*', '/'].includes(expression.op)) {
         assertCompiledArithmeticTypes(left, right, expressionContext);
         const precedence = expression.op === '*' || expression.op === '/' ? 2 : 1;
@@ -935,6 +960,15 @@ function compileWorkflowExpression(
     }
     case 'unary': {
       const value = compileWorkflowExpression(expression.value, context, expressionContext);
+      if (expression.op === 'not') {
+        assertCompiledBooleanOperand(value, `${expressionContext} NOT operand`);
+        return {
+          dsl: `NOT (${value.dsl})`,
+          type: 'boolean',
+          sourceColumns: value.sourceColumns,
+          precedence: 0,
+        };
+      }
       return {
         dsl: `${value.dsl} ${expression.op === 'is_null' ? 'IS NULL' : 'IS NOT NULL'}`,
         type: 'boolean',
@@ -942,16 +976,48 @@ function compileWorkflowExpression(
         precedence: 0,
       };
     }
+    case 'cast': {
+      const value = compileWorkflowExpression(expression.value, context, expressionContext);
+      const targetType = normalizePlanTargetType(expression.targetType);
+      const sqlType =
+        targetType === 'decimal'
+          ? `DECIMAL(18,${normalizeDecimalScale(expression.options.scale)})`
+          : targetType.toUpperCase();
+      return {
+        dsl: `CAST(${value.dsl} AS ${sqlType})`,
+        type: targetType,
+        sourceColumns: value.sourceColumns,
+        precedence: 4,
+      };
+    }
     case 'function': {
+      const functionDefinition = getWorkflowExpressionFunctionDefinition(expression.name);
+      assertWorkflowFunctionArity(expression.name, expression.args.length, expressionContext);
       const args = normalizeWorkflowFunctionArgs(expression).map((argument) =>
         compileWorkflowExpression(argument, context, expressionContext)
       );
-      const functionName = workflowFunctionNameToDsl(expression.name);
-      const stringFunction = ['regexpExtract', 'upper', 'lower', 'trim', 'replace'].includes(
-        expression.name
+      assertWorkflowFunctionArgumentTypes(
+        expression.name,
+        functionDefinition?.argumentTypes,
+        args,
+        expressionContext
       );
+      switch (functionDefinition?.semanticRule) {
+        case 'date_diff':
+          assertCompiledDateDiffArgs(args, expressionContext);
+          break;
+        case 'conditional':
+          return compileWorkflowIfElse(args, expressionContext);
+        case 'compatible':
+          assertCompiledCompatibleFunctionArgs(expression.name, args, expressionContext);
+          break;
+        case 'numeric':
+          assertCompiledNumericFunctionArgs(expression.name, args, expressionContext);
+          break;
+      }
+      const functionName = workflowFunctionNameToDsl(expression.name);
       const dslArgs = args.map((argument, index) =>
-        stringFunction &&
+        functionDefinition?.coerceFirstArgToText &&
         index === 0 &&
         argument.type &&
         normalizeDslTypeName(argument.type) !== 'text'
@@ -960,7 +1026,10 @@ function compileWorkflowExpression(
       );
       return {
         dsl: `${functionName}(${dslArgs.join(', ')})`,
-        type: inferWorkflowFunctionType(expression.name),
+        type:
+          expression.name === 'nullif' || expression.name === 'coalesce'
+            ? args[0]?.type
+            : inferWorkflowFunctionType(expression.name),
         sourceColumns: uniqueSourceColumns(args.flatMap((argument) => argument.sourceColumns)),
         precedence: 4,
       };
@@ -973,6 +1042,111 @@ function compileWorkflowExpression(
   }
 }
 
+function assertCompiledCompatibleFunctionArgs(
+  name: string,
+  args: CompiledWorkflowExpression[],
+  context: string
+): void {
+  const knownTypes = args
+    .map((argument) => argument.type)
+    .filter((type): type is string => Boolean(type));
+  if (knownTypes.length <= 1) return;
+  const first = knownTypes[0];
+  if (knownTypes.every((type) => areComparableColumnTypes(first, type))) return;
+  throw new DataCommandError(
+    'VALIDATION_FAILED',
+    `Generated workflow ${context} ${name} arguments have incompatible types: ${knownTypes.join(', ')}`
+  );
+}
+
+function assertWorkflowFunctionArity(name: string, count: number, context: string): void {
+  const definition = getWorkflowExpressionFunctionDefinition(name);
+  if (!definition || workflowExpressionArityIsValid(definition, count)) return;
+  throw new DataCommandError(
+    'VALIDATION_FAILED',
+    `Generated workflow ${context} ${name} requires ${workflowExpressionArityDescription(definition)} argument(s); received ${count}`
+  );
+}
+
+function assertWorkflowFunctionArgumentTypes(
+  name: string,
+  expectedTypes: readonly WorkflowExpressionArgumentType[] | undefined,
+  args: CompiledWorkflowExpression[],
+  context: string
+): void {
+  if (!expectedTypes) return;
+  expectedTypes.forEach((expectedType, index) => {
+    const argument = args[index];
+    if (!argument?.type || expectedType === 'any') return;
+    const actualType = normalizeDslTypeName(argument.type);
+    const compatible =
+      (expectedType === 'text' && actualType === 'text') ||
+      (expectedType === 'numeric' && isNumericDslType(actualType)) ||
+      (expectedType === 'integer' && actualType === 'integer') ||
+      (expectedType === 'temporal' && ['date', 'datetime'].includes(actualType)) ||
+      (expectedType === 'boolean' && actualType === 'boolean');
+    if (compatible) return;
+    throw new DataCommandError(
+      'VALIDATION_FAILED',
+      `Generated workflow ${context} ${name} argument ${index + 1} must be ${expectedType}; received ${argument.dsl} (${argument.type})`
+    );
+  });
+}
+
+function assertCompiledNumericFunctionArgs(
+  name: string,
+  args: CompiledWorkflowExpression[],
+  context: string
+): void {
+  const zero = { dsl: '0', type: 'integer', sourceColumns: [], precedence: 4 };
+  assertCompiledArithmeticTypes(args[0], zero, context);
+  if (name === 'round' && args[1]) {
+    assertCompiledArithmeticTypes(args[1], zero, `${context} round digits`);
+  }
+}
+
+function compileWorkflowIfElse(
+  args: CompiledWorkflowExpression[],
+  context: string
+): CompiledWorkflowExpression {
+  if (args.length !== 3) {
+    throw new DataCommandError(
+      'VALIDATION_FAILED',
+      `Generated workflow ${context} fn.ifElse requires exactly 3 arguments: condition, whenTrue, whenFalse`
+    );
+  }
+  const [condition, whenTrue, whenFalse] = args;
+  assertCompiledBooleanOperand(condition, `${context} fn.ifElse condition`);
+  const resultType = inferWorkflowConditionalResultType(whenTrue, whenFalse, context);
+  return {
+    dsl: `if ${condition.dsl} then ${whenTrue.dsl} else ${whenFalse.dsl} end`,
+    type: resultType,
+    sourceColumns: uniqueSourceColumns(args.flatMap((argument) => argument.sourceColumns)),
+    precedence: 4,
+  };
+}
+
+function inferWorkflowConditionalResultType(
+  whenTrue: CompiledWorkflowExpression,
+  whenFalse: CompiledWorkflowExpression,
+  context: string
+): string | undefined {
+  if (!whenTrue.type) return whenFalse.type;
+  if (!whenFalse.type) return whenTrue.type;
+  const trueType = normalizeDslTypeName(whenTrue.type);
+  const falseType = normalizeDslTypeName(whenFalse.type);
+  if (trueType === falseType) return whenTrue.type;
+  if (isNumericDslType(trueType) && isNumericDslType(falseType)) {
+    return isDecimalLikeDslType(trueType) || isDecimalLikeDslType(falseType)
+      ? 'decimal'
+      : 'integer';
+  }
+  throw new DataCommandError(
+    'VALIDATION_FAILED',
+    `Generated workflow ${context} fn.ifElse result branches have incompatible types: ${whenTrue.dsl} (${whenTrue.type}) and ${whenFalse.dsl} (${whenFalse.type})`
+  );
+}
+
 function formatCompiledOperand(
   operand: CompiledWorkflowExpression,
   parentPrecedence: number,
@@ -982,6 +1156,14 @@ function formatCompiledOperand(
     (wrapAtEqualPrecedence && operand.precedence === parentPrecedence)
     ? `(${operand.dsl})`
     : operand.dsl;
+}
+
+function assertCompiledBooleanOperand(operand: CompiledWorkflowExpression, context: string): void {
+  if (!operand.type || normalizeDslTypeName(operand.type) === 'boolean') return;
+  throw new DataCommandError(
+    'VALIDATION_FAILED',
+    `Generated workflow ${context} uses a non-boolean logical operand: ${operand.dsl} (${operand.type})`
+  );
 }
 
 function assertCompiledArithmeticTypes(
@@ -1030,19 +1212,45 @@ function assertCompiledFilterComparable(
 }
 
 function inferWorkflowFunctionType(name: string): string | undefined {
-  switch (name) {
-    case 'regexpExtract':
-    case 'upper':
-    case 'lower':
-    case 'trim':
-    case 'replace':
-    case 'concat':
-      return 'text';
-    case 'year':
-    case 'month':
-      return 'integer';
-    default:
-      return undefined;
+  const type = workflowExpressionFunctionResultType(name);
+  return type === 'text' || type === 'integer' || type === 'decimal' ? type : undefined;
+}
+
+const WORKFLOW_DATE_DIFF_UNIT_SET = new Set<string>(WORKFLOW_DATE_DIFF_UNITS);
+
+function assertCompiledDateDiffArgs(args: CompiledWorkflowExpression[], context: string): void {
+  if (args.length !== 3) {
+    throw new DataCommandError(
+      'VALIDATION_FAILED',
+      `Generated workflow ${context} fn.dateDiff requires exactly 3 arguments: unit, start, end`
+    );
+  }
+  const [unit, start, end] = args;
+  const normalizedUnit =
+    typeof unit.literalValue === 'string' ? unit.literalValue.trim().toLowerCase() : '';
+  if (!WORKFLOW_DATE_DIFF_UNIT_SET.has(normalizedUnit)) {
+    throw new DataCommandError(
+      'VALIDATION_FAILED',
+      `Generated workflow ${context} fn.dateDiff requires a supported literal unit`
+    );
+  }
+  const temporalType = (value: CompiledWorkflowExpression) => {
+    const type = value.type ? normalizeDslTypeName(value.type) : '';
+    return type === 'date' || type === 'datetime' ? type : '';
+  };
+  const startType = temporalType(start);
+  const endType = temporalType(end);
+  if (!startType || !endType) {
+    throw new DataCommandError(
+      'VALIDATION_FAILED',
+      `Generated workflow ${context} fn.dateDiff start and end must be date or timestamp expressions`
+    );
+  }
+  if (startType !== endType) {
+    throw new DataCommandError(
+      'VALIDATION_FAILED',
+      `Generated workflow ${context} fn.dateDiff start and end must have compatible temporal types; received ${startType} and ${endType}`
+    );
   }
 }
 
@@ -1110,26 +1318,9 @@ function regexHasCaptureGroup(pattern: string): boolean {
 }
 
 function workflowFunctionNameToDsl(name: string): string {
-  switch (name) {
-    case 'regexpExtract':
-      return 'REGEXP_EXTRACT';
-    case 'year':
-      return 'YEAR';
-    case 'month':
-      return 'MONTH';
-    case 'upper':
-      return 'UPPER';
-    case 'lower':
-      return 'LOWER';
-    case 'trim':
-      return 'TRIM';
-    case 'replace':
-      return 'REPLACE';
-    case 'concat':
-      return 'CONCAT';
-    default:
-      throw new DataCommandError('VALIDATION_FAILED', `Unsupported workflow function: fn.${name}`);
-  }
+  const dslName = workflowExpressionFunctionToDsl(name);
+  if (dslName) return dslName;
+  throw new DataCommandError('VALIDATION_FAILED', `Unsupported workflow function: fn.${name}`);
 }
 
 function normalizePlanFilterOperator(operator: unknown): string {
@@ -1154,21 +1345,13 @@ function normalizePlanFilterOperator(operator: unknown): string {
 }
 
 function normalizePlanTargetType(targetType: unknown): string {
-  switch (targetType) {
-    case 'text':
-    case 'integer':
-    case 'float':
-    case 'decimal':
-    case 'date':
-    case 'datetime':
-    case 'boolean':
-      return targetType;
-    default:
-      throw new DataCommandError(
-        'VALIDATION_FAILED',
-        `Generated convert_type operation uses unsupported targetType: ${String(targetType)}`
-      );
-  }
+  const normalized =
+    typeof targetType === 'string' ? normalizeWorkflowExpressionCastType(targetType) : undefined;
+  if (normalized) return normalized;
+  throw new DataCommandError(
+    'VALIDATION_FAILED',
+    `Generated convert_type operation uses unsupported targetType: ${String(targetType)}`
+  );
 }
 
 function compilePlanTypeConversionExpression({
@@ -1232,11 +1415,12 @@ function createGeneratedTemporaryColumnName(
 }
 
 function normalizeDecimalScale(scale: unknown): number {
-  const numericScale = Number(scale);
-  if (Number.isFinite(numericScale) && numericScale >= 0 && numericScale <= 12) {
-    return Math.floor(numericScale);
-  }
-  return 2;
+  if (scale === undefined || scale === null) return WORKFLOW_DEFAULT_DECIMAL_SCALE;
+  if (isWorkflowDecimalScale(scale)) return scale;
+  throw new DataCommandError(
+    'VALIDATION_FAILED',
+    `Generated decimal scale must be an integer from ${WORKFLOW_DECIMAL_SCALE_MIN} to ${WORKFLOW_DECIMAL_SCALE_MAX}; received ${String(scale)}`
+  );
 }
 
 function normalizePlanAggregateFunction(fn: unknown): string {

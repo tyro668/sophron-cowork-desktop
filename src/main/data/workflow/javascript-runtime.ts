@@ -7,18 +7,23 @@ import { DataCommandError } from '../data-command-types';
 import type { WorkflowIr, WorkflowOperationIr } from './workflow-model';
 import { validateAndNormalizeWorkflowIr } from './workflow-ir';
 import { WORKFLOW_OPERATION_TYPES } from './workflow-operation-registry';
+import { getWorkflowExpressionRuntimeCapabilities } from './workflow-expression-registry';
+import {
+  prepareWorkflowJavaScript,
+  type PreparedWorkflowExpression,
+} from './javascript-expression-compiler';
 
-export const WORKFLOW_SDK_VERSION = '2.0.0';
+export const WORKFLOW_SDK_VERSION = '2.1.0';
 
 const WORKFLOW_IR_OPERATION_TYPES = [...WORKFLOW_OPERATION_TYPES];
 const WORKFLOW_SANDBOX_RUNNER_FILE_NAME = 'workflow-sandbox-runner.js';
 
 function resolveWorkflowSandboxRunnerPath(): string {
   const candidates = [
-    resolve(process.cwd(), 'src/main/data/workflow', WORKFLOW_SANDBOX_RUNNER_FILE_NAME),
     process.resourcesPath
       ? join(process.resourcesPath, 'workflow', WORKFLOW_SANDBOX_RUNNER_FILE_NAME)
       : undefined,
+    resolve(process.cwd(), 'src/main/data/workflow', WORKFLOW_SANDBOX_RUNNER_FILE_NAME),
   ].filter((candidate): candidate is string => Boolean(candidate));
   const runtimePath = candidates.find((candidate) => existsSync(candidate));
   if (!runtimePath) {
@@ -49,11 +54,19 @@ export interface JavaScriptFunctionIndexEntry {
 }
 
 export interface CompiledWorkflowJavaScript {
-  source: string;
+  /** Exact model-authored source retained for display, diagnostics, and patching. */
+  originalSource: string;
+  /** Compiler-owned source executed in the child-process sandbox. */
+  executableSource: string;
   functions: JavaScriptFunctionIndexEntry[];
+  /** Precompiled expression IR transferred separately from executable source. */
+  expressions: readonly PreparedWorkflowExpression[];
 }
 
-export function compileWorkflowJavaScript(source: string): CompiledWorkflowJavaScript {
+export function compileWorkflowJavaScript(
+  source: string,
+  options: { columns?: Array<{ name: string; type?: string }> } = {}
+): CompiledWorkflowJavaScript {
   try {
     // Construction invokes V8's native parser/compiler without executing generated code.
     new vm.Script(source, { filename: GENERATED_FILE });
@@ -80,7 +93,18 @@ export function compileWorkflowJavaScript(source: string): CompiledWorkflowJavaS
       }
     );
   }
-  return { source, functions };
+  const prepared = prepareWorkflowJavaScript({ source, columns: options.columns });
+  try {
+    new vm.Script(prepared.executableSource, { filename: GENERATED_FILE });
+  } catch (error) {
+    throw normalizeJavaScriptError(error, 'JAVASCRIPT_LOWERING_ERROR', functions);
+  }
+  return {
+    originalSource: source,
+    executableSource: prepared.executableSource,
+    functions,
+    expressions: prepared.expressions,
+  };
 }
 
 function indexFunctionStartsBestEffort(source: string): JavaScriptFunctionIndexEntry[] {
@@ -120,12 +144,14 @@ export function executeWorkflowJavaScriptInSandbox({
     ],
     {
       input: JSON.stringify({
-        javascript: compiled.source,
+        javascript: compiled.executableSource,
+        expressions: compiled.expressions.map(({ id, ir }) => ({ id, ir })),
         inputTableId,
         outputTableName,
         timeoutMs,
         sdkVersion: WORKFLOW_SDK_VERSION,
         allowedOperationTypes: WORKFLOW_IR_OPERATION_TYPES,
+        expressionCapabilities: getWorkflowExpressionRuntimeCapabilities(),
       }),
       encoding: 'utf8',
       timeout: timeoutMs + 500,
@@ -168,8 +194,12 @@ export function applyWorkflowFunctionPatch(
   functionName: string,
   replacementSource: string
 ): string {
-  const compiled = compileWorkflowJavaScript(source);
-  const originalFunctions = new Map(compiled.functions.map((item) => [item.name, item]));
+  // A repair must be able to target source that failed expression lowering or
+  // type checking. Structural indexing therefore operates on the original
+  // parseable JavaScript and does not require the failed program to compile.
+  const originalFunctions = new Map(
+    indexJavaScriptFunctions(source).map((item) => [item.name, item])
+  );
   const target = originalFunctions.get(functionName);
   if (!target) {
     throw new DataCommandError(

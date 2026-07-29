@@ -1,5 +1,17 @@
 import { DataCommandError } from '../data-command-types';
 import type { WorkflowOperationIr } from './workflow-model';
+import {
+  getWorkflowExpressionFunctionDefinition,
+  isWorkflowDecimalScale,
+  isWorkflowExpressionCastType,
+  WORKFLOW_DECIMAL_SCALE_MAX,
+  WORKFLOW_DECIMAL_SCALE_MIN,
+  WORKFLOW_BINARY_EXPRESSION_OPERATORS,
+  WORKFLOW_EXPRESSION_FUNCTION_NAMES,
+  WORKFLOW_UNARY_EXPRESSION_OPERATORS,
+  workflowExpressionArityDescription,
+  workflowExpressionArityIsValid,
+} from './workflow-expression-registry';
 
 type WorkflowOperationType = WorkflowOperationIr['type'];
 
@@ -15,13 +27,17 @@ export interface WorkflowOperationDefinition {
  * Adding an operation here drives the LLM capability prompt, the accepted IR
  * operation types and payload validation. The sandbox
  * bridge is operation-agnostic and never changes when an operation is added.
- * Expression helpers (col/lit/fn/metric) are intentionally SDK primitives and
- * do not belong here because they do not create workflow operation nodes.
+ * Expression capabilities live in workflow-expression-registry.ts and do not
+ * belong here because they do not create workflow operation nodes.
  */
 export const WORKFLOW_OPERATION_REGISTRY = [
-  operation('filter', 'workflow.step(input, "filter", { condition: expr })', (op, at) => {
-    validateExpression(op.condition, `${at}.condition`);
-  }),
+  operation(
+    'filter',
+    'workflow.step(input, "filter", { condition: expr(row => booleanExpression) })',
+    (op, at) => {
+      validateExpression(op.condition, `${at}.condition`);
+    }
+  ),
   operation('select', 'workflow.step(input, "select", { columns: ["field"] })', (op, at) => {
     assertStringArray(op.columns, `${at}.columns`, true);
   }),
@@ -38,7 +54,7 @@ export const WORKFLOW_OPERATION_REGISTRY = [
   ),
   operation(
     'derive',
-    'workflow.step(input, "derive", { column: "field", expression: expr })',
+    'workflow.step(input, "derive", { column: "field", expression: expr(row => valueExpression) })',
     (op, at) => {
       assertString(op.column, `${at}.column`);
       validateExpression(op.expression, `${at}.expression`);
@@ -55,7 +71,7 @@ export const WORKFLOW_OPERATION_REGISTRY = [
   ),
   operation(
     'sort',
-    'workflow.step(input, "sort", { column: col("field"), direction: "asc|desc" })',
+    'workflow.step(input, "sort", { column: expr(row => row["field"]), direction: "asc|desc" })',
     (op, at) => {
       validateExpression(op.column, `${at}.column`);
       assertEnum(op.direction, ['asc', 'desc'], `${at}.direction`);
@@ -228,21 +244,64 @@ function validateUnnest(op: Record<string, unknown>, at: string): void {
 
 function validateExpression(value: unknown, at: string): void {
   const expr = assertRecord(value, at);
-  assertEnum(expr.kind, ['column', 'literal', 'binary', 'unary', 'function'], `${at}.kind`);
+  assertEnum(expr.kind, ['column', 'literal', 'binary', 'unary', 'cast', 'function'], `${at}.kind`);
   if (expr.kind === 'column') assertString(expr.name, `${at}.name`);
   else if (expr.kind === 'literal') assertLiteral(expr.value, `${at}.value`);
   else if (expr.kind === 'binary') {
     assertString(expr.op, `${at}.op`);
+    const operator = String(expr.op);
+    if (!WORKFLOW_BINARY_EXPRESSION_OPERATORS.has(operator)) {
+      throw new DataCommandError(
+        'VALIDATION_FAILED',
+        `Unsupported expression operator at ${at}.op: ${operator}`
+      );
+    }
     validateExpression(expr.left, `${at}.left`);
     validateExpression(expr.right, `${at}.right`);
   } else if (expr.kind === 'unary') {
-    assertEnum(expr.op, ['is_null', 'is_not_null'], `${at}.op`);
+    assertString(expr.op, `${at}.op`);
+    const operator = String(expr.op);
+    if (!WORKFLOW_UNARY_EXPRESSION_OPERATORS.has(operator)) {
+      throw new DataCommandError(
+        'VALIDATION_FAILED',
+        `Unsupported unary expression operator at ${at}.op: ${operator}`
+      );
+    }
     validateExpression(expr.value, `${at}.value`);
+  } else if (expr.kind === 'cast') {
+    validateExpression(expr.value, `${at}.value`);
+    assertString(expr.targetType, `${at}.targetType`);
+    if (!isWorkflowExpressionCastType(String(expr.targetType))) {
+      fail(`${at}.targetType is not a supported workflow cast type`);
+    }
+    const options = assertRecord(expr.options, `${at}.options`);
+    if (options.scale !== undefined) {
+      if (expr.targetType !== 'decimal') {
+        fail(`${at}.options.scale is only supported when targetType is decimal`);
+      }
+      if (!isWorkflowDecimalScale(options.scale)) {
+        fail(
+          `${at}.options.scale must be an integer from ${WORKFLOW_DECIMAL_SCALE_MIN} to ${WORKFLOW_DECIMAL_SCALE_MAX}`
+        );
+      }
+    }
   } else if (expr.kind === 'function') {
     assertString(expr.name, `${at}.name`);
-    assertArray(expr.args, `${at}.args`).forEach((arg, index) =>
-      validateExpression(arg, `${at}.args[${index}]`)
-    );
+    const functionName = String(expr.name);
+    if (!WORKFLOW_EXPRESSION_FUNCTION_NAMES.has(functionName)) {
+      throw new DataCommandError(
+        'VALIDATION_FAILED',
+        `Unsupported expression function at ${at}.name: fn.${functionName}`
+      );
+    }
+    const args = assertArray(expr.args, `${at}.args`);
+    const definition = getWorkflowExpressionFunctionDefinition(functionName);
+    if (definition && !workflowExpressionArityIsValid(definition, args.length)) {
+      fail(
+        `${at}.args for ${functionName} must contain ${workflowExpressionArityDescription(definition)} item(s); received ${args.length}`
+      );
+    }
+    args.forEach((arg, index) => validateExpression(arg, `${at}.args[${index}]`));
   }
 }
 

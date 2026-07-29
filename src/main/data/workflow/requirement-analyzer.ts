@@ -7,6 +7,7 @@ import { runPiAiOneShot } from '../../claude/claude-sdk-one-shot';
 import { DataCommandError } from '../data-command-types';
 import requirementAnalysisSystemPrompt from './prompts/requirement-analysis-system.txt?raw';
 import { getWorkflowJavascriptCapabilityPrompt } from './workflow-operation-registry';
+import { getWorkflowExpressionCapabilityPrompt } from './workflow-expression-registry';
 import { extractJsonObject, isRecord } from './utils';
 
 const VALID_STATUSES = new Set(['supported', 'ambiguous', 'unsupported']);
@@ -63,6 +64,7 @@ export async function analyzeDataTaskRequirement({
 function buildRequirementAnalysisSystemPrompt(): string {
   return requirementAnalysisSystemPrompt
     .replace('{{WORKFLOW_CAPABILITIES}}', getWorkflowJavascriptCapabilityPrompt())
+    .replace('{{WORKFLOW_EXPRESSION_CAPABILITIES}}', getWorkflowExpressionCapabilityPrompt())
     .trim();
 }
 

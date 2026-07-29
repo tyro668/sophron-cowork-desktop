@@ -2112,6 +2112,17 @@ function extractYearMonth(input) {
         }),
         hasThinking: false,
         durationMs: 1,
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          javascriptPatch: {
+            functionName: 'step1',
+            replacementSource:
+              'function step1(input) { return workflow.step(input, "filter", { condition: col("Market").gt(lit(100)) }); }',
+          },
+        }),
+        hasThinking: false,
+        durationMs: 1,
       });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
@@ -2141,6 +2152,7 @@ function extractYearMonth(input) {
       code: 'VALIDATION_FAILED',
       message: expect.stringContaining('incompatible types'),
     });
+    expect(runPiAiOneShot).toHaveBeenCalledTimes(3);
   });
 
   it('rejects a repaired workflowDsl response when a function patch is required', async () => {

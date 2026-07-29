@@ -31,7 +31,13 @@ export type WorkflowExpressionIr =
   | { kind: 'column'; name: string }
   | { kind: 'literal'; value: WorkflowLiteral }
   | { kind: 'binary'; op: string; left: WorkflowExpressionIr; right: WorkflowExpressionIr }
-  | { kind: 'unary'; op: 'is_null' | 'is_not_null'; value: WorkflowExpressionIr }
+  | { kind: 'unary'; op: 'is_null' | 'is_not_null' | 'not'; value: WorkflowExpressionIr }
+  | {
+      kind: 'cast';
+      value: WorkflowExpressionIr;
+      targetType: string;
+      options: { scale?: number };
+    }
   | { kind: 'function'; name: string; args: WorkflowExpressionIr[] };
 
 export interface WorkflowMetricIr {
