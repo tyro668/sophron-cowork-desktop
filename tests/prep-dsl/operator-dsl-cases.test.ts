@@ -235,4 +235,158 @@ describe('operator DSL executable cases', () => {
     const reparsed = parsePrepDsl(exported);
     expect(errorsOf(reparsed.diagnostics)).toHaveLength(0);
   });
+
+  it('parses sort options after a backtick field containing spaces', () => {
+    const parsed = parsePrepOperatorDsl(
+      'sort by [`Unit Price`] desc nulls last, [`Order Date`] asc',
+      'sort'
+    );
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config.keys).toEqual([
+      { field: 'Unit Price', direction: 'desc', nulls: 'last' },
+      { field: 'Order Date', direction: 'asc' },
+    ]);
+  });
+
+  it('does not split mapping and join keywords inside backtick fields', () => {
+    const mapping = parsePrepOperatorDsl('map [`from to`] to [`mapped as value`]', 'field_mapping');
+    const join = parsePrepOperatorDsl(
+      'join left products on [orders].[`brand and model`] = [products].[`brand and model`] and [orders].[sku] = [products].[sku]',
+      'join'
+    );
+
+    expect(errorsOf(mapping.diagnostics)).toHaveLength(0);
+    expect(mapping.operator?.config.mappings).toEqual([
+      { source: 'from to', target: 'mapped as value' },
+    ]);
+    expect(errorsOf(join.diagnostics)).toHaveLength(0);
+    expect(join.operator?.config.conditions).toEqual([
+      {
+        left: 'orders.brand and model',
+        operator: '=',
+        right: 'products.brand and model',
+      },
+      { left: 'orders.sku', operator: '=', right: 'products.sku' },
+    ]);
+  });
+
+  it('does not treat join clause keywords inside backtick fields as clauses', () => {
+    const parsed = parsePrepOperatorDsl(
+      'join left products on [orders].[`keep suffix`] = [products].[`keep suffix`] keep left *, [products].[`on value`] as [`right_prefix value`]',
+      'join'
+    );
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config.conditions).toEqual([
+      {
+        left: 'orders.keep suffix',
+        operator: '=',
+        right: 'products.keep suffix',
+      },
+    ]);
+    expect(parsed.operator?.config.keep).toEqual([
+      { side: 'left', wildcard: true },
+      { source: 'products.on value', alias: 'right_prefix value' },
+    ]);
+  });
+
+  it('does not report a matched invalid operator as unsupported', () => {
+    const parsed = parsePrepOperatorDsl('pivot invalid syntax', 'pivot');
+    const errorCodes = errorsOf(parsed.diagnostics).map((diagnostic) => diagnostic.code);
+
+    expect(errorCodes).toContain('invalidPivot');
+    expect(errorCodes).not.toContain('unsupportedCommand');
+  });
+
+  it('ignores empty cached DSL and exports the structured configuration', () => {
+    expect(
+      exportPrepOperatorDsl({
+        id: 'limit',
+        type: 'limit',
+        config: { dsl: '   ', mode: 'fixed', limit: 20, unit: 'rows' },
+      })
+    ).toBe('limit 20');
+
+    expect(
+      exportPrepWorkflowDsl(
+        [
+          { id: 'source', type: 'input_source', config: { dsl: '' } },
+          {
+            id: 'limit',
+            type: 'limit',
+            config: { mode: 'fixed', limit: 20, unit: 'rows' },
+          },
+        ],
+        [{ sourceNodeId: 'source', targetNodeId: 'limit', targetHandle: 'input' }]
+      )
+    ).toBe('input source task\n  | limit 20');
+  });
+
+  it('exports operators in edge order when the node array is shuffled', () => {
+    const exported = exportPrepWorkflowDsl(
+      [
+        {
+          id: 'sort',
+          type: 'sort',
+          config: { keys: [{ field: 'amount', direction: 'desc' }] },
+        },
+        { id: 'output', type: 'output', config: { table: 'result', mode: 'replace' } },
+        { id: 'source', type: 'input_source', config: { dsl: 'input source task as source' } },
+        {
+          id: 'select',
+          type: 'field_select',
+          config: { mode: 'include', columns: ['amount'] },
+        },
+      ],
+      [
+        { sourceNodeId: 'source', targetNodeId: 'select', targetHandle: 'input' },
+        { sourceNodeId: 'select', targetNodeId: 'sort', targetHandle: 'input' },
+        { sourceNodeId: 'sort', targetNodeId: 'output', targetHandle: 'input' },
+      ]
+    );
+
+    expect(exported).toBe(
+      [
+        'input source task as source',
+        '  | select [amount]',
+        '  | sort by [amount] desc',
+        '  | output table "result" mode replace',
+      ].join('\n')
+    );
+  });
+
+  it('parses cast fields containing the as keyword', () => {
+    const parsed = parsePrepOperatorDsl(
+      'cast [`value as text`] as integer on_error fail',
+      'type_convert'
+    );
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config.conversions).toEqual([
+      { column: 'value as text', type: 'integer', onError: 'fail' },
+    ]);
+  });
+
+  it('exports graphical dataset and file output configurations', () => {
+    expect(
+      exportPrepOperatorDsl({
+        id: 'dataset_output',
+        type: 'output',
+        config: { destination: 'dataset', dataset: 'clean_orders', mode: 'replace' },
+      })
+    ).toBe('output dataset "clean_orders" mode replace');
+    expect(
+      exportPrepOperatorDsl({
+        id: 'file_output',
+        type: 'output',
+        config: {
+          destination: 'file',
+          filePath: 'exports/orders.csv',
+          format: 'csv',
+          mode: 'replace',
+        },
+      })
+    ).toBe('output file "exports/orders.csv" format csv mode replace');
+  });
 });

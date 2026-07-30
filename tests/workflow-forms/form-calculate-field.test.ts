@@ -511,6 +511,38 @@ describe('FormCalculateField — exprFromParts', () => {
 });
 
 describe('FormCalculateField — agg/window DSL round-trip', () => {
+  it.each([
+    ['year', '3'],
+    ['month', '6'],
+    ['week', '4'],
+    ['day', '7'],
+  ])('rolling_%s preserves its granularity and count via DSL', (granularity, count) => {
+    const fn = `rolling_${granularity}_sum`;
+    const config = {
+      calculations: [
+        {
+          field: `${granularity}_sales`,
+          expression: '',
+          fn,
+          fnArg: 'sales',
+          fnArg2: count,
+          orderBy: [{ field: 'order_date', direction: 'asc' as const }],
+        },
+      ],
+    };
+
+    const dsl = exportPrepOperatorDsl({ id: 'rolling', type: 'calculate_field', config });
+    const parsed = parsePrepOperatorDsl(dsl, 'calculate_field');
+    const calculation = (
+      parsed.operator?.config.calculations as Array<Record<string, unknown>> | undefined
+    )?.[0];
+
+    expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toHaveLength(
+      0
+    );
+    expect(calculation).toMatchObject({ fn, fnArg2: count });
+  });
+
   it('agg config round-trips via DSL', () => {
     const config = {
       calculations: [
