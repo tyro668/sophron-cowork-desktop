@@ -362,13 +362,11 @@ function formatUnnest(config: Record<string, unknown> | undefined): string {
   const alias = formatFieldRef(String(config?.alias ?? 'item'));
   const withIndex =
     typeof config?.withIndex === 'string' ? ` with index ${formatFieldRef(config.withIndex)}` : '';
-  const recursive = config?.recursive ? ' recursive true' : '';
-  const maxDepth = typeof config?.maxDepth === 'number' ? ` max_depth ${config.maxDepth}` : '';
   const keepParentNames = config?.keepParentNames ? ' keep parent names true' : '';
   if (config?.sourceKind === 'json') {
-    return `explode json ${column} path ${quoteString(String(config.path ?? '$'))} as ${alias}${withIndex}${recursive}${maxDepth}${keepParentNames}`;
+    return `explode json ${column} path ${quoteString(String(config.path ?? '$'))} as ${alias}${withIndex}${keepParentNames}`;
   }
-  return `unnest ${column} as ${alias}${withIndex}${recursive}${maxDepth}${keepParentNames}`;
+  return `unnest ${column} as ${alias}${withIndex}${keepParentNames}`;
 }
 
 function formatMetric(item: Record<string, unknown>): string {

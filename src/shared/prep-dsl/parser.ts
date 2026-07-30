@@ -906,18 +906,11 @@ function defaultMetricAlias(fn: string, expression: string): string {
 }
 
 function parseUnnestOptions(value: string): Record<string, unknown> {
-  const withIndex =
-    /\s+with\s+index\s+(.+?)(?:\s+recursive\s+|\s+max_depth\s+|\s+keep\s+parent\s+names\s+|$)/.exec(
-      value
-    );
+  const withIndex = /\s+with\s+index\s+(.+?)(?:\s+keep\s+parent\s+names\s+|$)/.exec(value);
   const indexField = withIndex ? parseFieldRef(withIndex[1].trim()) : null;
-  const recursive = pickWordOption(value, 'recursive');
-  const maxDepth = pickWordOption(value, 'max_depth');
   const keepParentNames = /keep\s+parent\s+names\s+true/.test(value);
   return {
     withIndex: indexField ? toFieldName(indexField) : undefined,
-    recursive: recursive === 'true',
-    maxDepth: maxDepth ? Number(maxDepth) : undefined,
     keepParentNames,
   };
 }
