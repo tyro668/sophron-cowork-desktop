@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { quoteIdentifier, sortKeysToSql } from './utils';
+import { quoteIdentifier, sortKeysToSql, uniqueAlias } from './utils';
 import { LimitConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
 type LimitParsed = z.infer<typeof LimitConfigSchema>;
@@ -17,6 +17,10 @@ function compileFixedSql(
   const projection = columns.map((column) => quoteIdentifier(column)).join(', ') || '*';
   const pct = Math.min(limit, MAX_PERCENT);
   const rows = Math.floor(limit);
+  const rn = uniqueAlias('__rn', columns);
+  const rk = uniqueAlias('__rk', columns);
+  const total = uniqueAlias('__total', columns);
+  const totalRows = uniqueAlias('__total_rows', columns);
 
   const projectionSub = `SELECT ${projection}`;
   const offsetStr = parsed.offset > 0 ? ` OFFSET ${parsed.offset}` : '';
@@ -24,15 +28,15 @@ function compileFixedSql(
   if (unit === 'percent' && ties && orderBy) {
     return `
       CREATE TEMP TABLE ${output} AS
-      WITH cnt AS (SELECT COUNT(*) AS __total FROM ${input}),
+      WITH cnt AS (SELECT COUNT(*) AS ${total} FROM ${input}),
       numbered AS (
-        SELECT *, ROW_NUMBER() OVER (ORDER BY ${orderBy}) AS __rn,
-               RANK() OVER (ORDER BY ${orderBy}) AS __rk
+        SELECT *, ROW_NUMBER() OVER (ORDER BY ${orderBy}) AS ${rn},
+               RANK() OVER (ORDER BY ${orderBy}) AS ${rk}
         FROM ${input}
       )
       ${projectionSub}
       FROM numbered
-      WHERE __rk <= (SELECT __rk FROM numbered, cnt WHERE __rn = CEIL(cnt.__total * ${pct} / 100.0))`;
+      WHERE ${rk} <= (SELECT ${rk} FROM numbered, cnt WHERE ${rn} = CEIL(cnt.${total} * ${pct} / 100.0))`;
   }
 
   if (unit === 'percent') {
@@ -40,16 +44,16 @@ function compileFixedSql(
       CREATE TEMP TABLE ${output} AS
       ${projectionSub}
       FROM (
-        SELECT *, ROW_NUMBER() OVER (${orderBy ? `ORDER BY ${orderBy}` : ''}) AS __rn,
-               COUNT(*) OVER () AS __total_rows
+        SELECT *, ROW_NUMBER() OVER (${orderBy ? `ORDER BY ${orderBy}` : ''}) AS ${rn},
+               COUNT(*) OVER () AS ${totalRows}
         FROM ${input}
       ) sub
-      WHERE __rn <= CEIL(__total_rows * ${pct} / 100.0)`;
+      WHERE ${rn} <= CEIL(${totalRows} * ${pct} / 100.0)`;
   }
 
   if (orderBy) {
     if (ties) {
-      return `CREATE TEMP TABLE ${output} AS WITH numbered AS (SELECT *, RANK() OVER (ORDER BY ${orderBy}) AS __rk, ROW_NUMBER() OVER (ORDER BY ${orderBy}) AS __rn FROM ${input}) ${projectionSub} FROM numbered WHERE __rn > ${parsed.offset} AND __rk <= COALESCE((SELECT __rk FROM numbered WHERE __rn = ${parsed.offset + rows}), (SELECT __rk FROM numbered ORDER BY __rn DESC LIMIT 1)) ORDER BY ${orderBy}`;
+      return `CREATE TEMP TABLE ${output} AS WITH numbered AS (SELECT *, RANK() OVER (ORDER BY ${orderBy}) AS ${rk}, ROW_NUMBER() OVER (ORDER BY ${orderBy}) AS ${rn} FROM ${input}) ${projectionSub} FROM numbered WHERE ${rn} > ${parsed.offset} AND ${rk} <= COALESCE((SELECT ${rk} FROM numbered WHERE ${rn} = ${parsed.offset + rows}), (SELECT ${rk} FROM numbered ORDER BY ${rn} DESC LIMIT 1)) ORDER BY ${orderBy}`;
     }
     return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} ORDER BY ${orderBy} LIMIT ${rows}${offsetStr}`;
   }

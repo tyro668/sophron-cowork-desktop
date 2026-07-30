@@ -132,13 +132,13 @@ const currentOperatorCases: Array<{
     name: 'limit rows',
     type: 'limit',
     dsl: 'limit 100',
-    expectedConfig: { mode: 'limit', limit: 100, unit: 'rows' },
+    expectedConfig: { mode: 'fixed', limit: 100, unit: 'rows' },
   },
   {
     name: 'top rows',
     type: 'limit',
     dsl: 'top 10 by [revenue] desc',
-    expectedConfig: { mode: 'top', limit: 10, unit: 'rows' },
+    expectedConfig: { mode: 'fixed', limit: 10, unit: 'rows' },
   },
   {
     name: 'pivot rows',

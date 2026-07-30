@@ -7,7 +7,7 @@ export const LimitConfigSchema = z.object({
   unit: z.enum(['rows', 'percent']).default('rows'),
   orderBy: z.array(SortKeySchema).default([]),
   ties: z.boolean().default(false),
-  offset: z.number().default(0),
+  offset: z.number().int().min(0).default(0),
   method: z.enum(['system', 'bernoulli']).default('system'),
   seed: z.number().optional(),
 });

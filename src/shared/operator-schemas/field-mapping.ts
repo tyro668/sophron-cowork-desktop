@@ -10,6 +10,7 @@ const MappingEntrySchema = z
     targetValue: z.string().optional().default(''),
   })
   .superRefine((data, ctx) => {
+    if (!data.source) return;
     if (!data.targetMode && data.target) return;
     if (data.targetMode === 'rename' && !data.targetValue?.trim()) {
       ctx.addIssue({

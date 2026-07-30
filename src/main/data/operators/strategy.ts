@@ -52,5 +52,5 @@ export const COMPILE_STRATEGIES: Partial<Record<string, CompileStrategy>> = {
   limit: { compile: compileLimitSql, needsColumns: true },
   pivot: { compile: wrapNoColumns(compilePivotSql), needsColumns: false },
   unpivot: { compile: compileUnpivotSql, needsColumns: true },
-  unnest: { compile: wrapNoColumns(compileUnnestSql), needsColumns: false },
+  unnest: { compile: compileUnnestSql, needsColumns: true },
 };

@@ -38,6 +38,15 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+export function uniqueAlias(base: string, columns: string[]): string {
+  const normalizedColumns = new Set(columns.map((c) => c.toLowerCase()));
+  const normalizedBase = base.toLowerCase();
+  if (!normalizedColumns.has(normalizedBase)) return base;
+  let i = 0;
+  while (normalizedColumns.has(`${base}_${i}`.toLowerCase())) i++;
+  return `${base}_${i}`;
+}
+
 export function positiveNumber(value: unknown, fallback: number): number {
   const numberValue = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : fallback;

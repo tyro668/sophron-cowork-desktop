@@ -1,4 +1,4 @@
-import { quoteIdentifier, literalToSql } from './utils';
+import { quoteIdentifier, literalToSql, uniqueAlias } from './utils';
 import { UnnestConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
 function castToJsonExpr(columnExpr: string): string {
@@ -8,6 +8,7 @@ function castToJsonExpr(columnExpr: string): string {
 export function compileUnnestSql(
   output: string,
   input: string,
+  columns: string[],
   config: Record<string, unknown>
 ): string {
   const parsed = parseOperatorConfig(UnnestConfigSchema, config);
@@ -16,6 +17,7 @@ export function compileUnnestSql(
   const column = quoteIdentifier(rawColumn);
   const alias = quoteIdentifier(rawAlias);
   const withIndex = parsed.withIndex;
+  const rn = uniqueAlias('__rn', columns);
 
   // JSON OBJECT mode: expand each key into a separate column, return 1 row
   if (parsed.sourceKind === 'json' && config._jsonType === 'OBJECT') {
@@ -47,10 +49,10 @@ export function compileUnnestSql(
   if (parsed.preserveOrder) {
     return `
       CREATE TEMP TABLE ${output} AS
-      SELECT base.* EXCLUDE (__rn), item.${alias} AS ${aliasCol}${idxSelect}
-      FROM (SELECT *, ROW_NUMBER() OVER () AS __rn FROM ${input} base) base
+      SELECT base.* EXCLUDE (${rn}), item.${alias} AS ${aliasCol}${idxSelect}
+      FROM (SELECT *, ROW_NUMBER() OVER () AS ${rn} FROM ${input} base) base
       LEFT JOIN LATERAL UNNEST(${unnestExpr}) WITH ORDINALITY AS item(${alias}, _ordinal) ON true
-      ORDER BY base.__rn, item._ordinal
+      ORDER BY base.${rn}, item._ordinal
     `;
   }
 

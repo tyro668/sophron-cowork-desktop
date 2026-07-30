@@ -35,13 +35,13 @@ function migrateEntry(e: Record<string, unknown>): MappingEntry {
     return {
       source,
       targetMode: 'suffix',
-      targetValue: target.slice(source.length).replace(/^_/, ''),
+      targetValue: target.slice(source.length),
     };
   if (target.endsWith(source))
     return {
       source,
       targetMode: 'prefix',
-      targetValue: target.slice(0, -source.length).replace(/_$/, ''),
+      targetValue: target.slice(0, -source.length),
     };
   return { source, targetMode: 'rename', targetValue: target };
 }

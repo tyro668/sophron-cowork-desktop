@@ -1,4 +1,4 @@
-import { quoteIdentifier, quoteColumnList, sortKeysToSql } from './utils';
+import { quoteIdentifier, quoteColumnList, sortKeysToSql, uniqueAlias } from './utils';
 import { DeduplicateConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
 export function compileDeduplicateSql(
@@ -7,26 +7,37 @@ export function compileDeduplicateSql(
   columns: string[],
   config: Record<string, unknown>
 ): string {
-  const { columns: keys, keep, orderBy } = parseOperatorConfig(DeduplicateConfigSchema, config);
+  const safeConfig = {
+    ...config,
+    orderBy: Array.isArray(config.orderBy)
+      ? config.orderBy.filter(
+          (k: unknown) =>
+            k && typeof k === 'object' && (k as Record<string, unknown>)?.field?.toString().trim()
+        )
+      : [],
+  };
+  const { columns: keys, keep, orderBy } = parseOperatorConfig(DeduplicateConfigSchema, safeConfig);
   if (keys.length === 0) {
     return `CREATE TEMP TABLE ${output} AS SELECT DISTINCT * FROM ${input}`;
   }
   const validOrderBy = orderBy.filter((k) => k.field?.trim());
   const projection = quoteColumnList(columns);
   const partitionBy = keys.map(quoteIdentifier).join(', ');
+  const rn = uniqueAlias('__rn', columns);
+  const rnInner = uniqueAlias('__rn_inner', columns);
 
   if (keep === 'last' && validOrderBy.length === 0) {
     return `
       CREATE TEMP TABLE ${output} AS
       SELECT ${projection}
       FROM (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY ${partitionBy} ORDER BY __rn_inner DESC) AS __rn
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY ${partitionBy} ORDER BY ${rnInner} DESC) AS ${rn}
         FROM (
-          SELECT *, ROW_NUMBER() OVER () AS __rn_inner
+          SELECT *, ROW_NUMBER() OVER () AS ${rnInner}
           FROM ${input}
         )
       )
-      WHERE __rn = 1
+      WHERE ${rn} = 1
     `;
   }
 
@@ -43,9 +54,9 @@ export function compileDeduplicateSql(
     CREATE TEMP TABLE ${output} AS
     SELECT ${quoteColumnList(columns)}
     FROM (
-      SELECT *, ROW_NUMBER() OVER (PARTITION BY ${partitionBy}${orderBySql ? ` ORDER BY ${orderBySql}` : ''}) AS __rn
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY ${partitionBy}${orderBySql ? ` ORDER BY ${orderBySql}` : ''}) AS ${rn}
       FROM ${input}
     )
-    WHERE __rn = 1
+    WHERE ${rn} = 1
   `;
 }

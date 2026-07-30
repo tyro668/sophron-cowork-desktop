@@ -36,4 +36,23 @@ describe('SortConfigSchema', () => {
       SortConfigSchema.parse({ keys: [{ field: 'name', direction: 'invalid' }] })
     ).toThrow(z.ZodError);
   });
+
+  it('rejects duplicate sort fields', () => {
+    expect(() =>
+      SortConfigSchema.parse({
+        keys: [
+          { field: 'name', direction: 'asc' },
+          { field: 'name', direction: 'desc' },
+        ],
+      })
+    ).toThrow(z.ZodError);
+  });
+
+  it('rejects empty field name', () => {
+    expect(() =>
+      SortConfigSchema.parse({
+        keys: [{ field: '' }],
+      })
+    ).toThrow(z.ZodError);
+  });
 });

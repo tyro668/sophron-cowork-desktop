@@ -52,7 +52,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
   function pushOffset(value: string) {
     setLocalOffset(value);
     if (value === '') return;
-    const n = Math.max(0, Number(value) || 0);
+    const n = Math.max(0, Math.floor(Number(value) || 0));
     const clamped = String(n);
     if (clamped !== value) setLocalOffset(clamped);
     setErrors(runValidation(limit, unit));

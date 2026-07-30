@@ -9,7 +9,6 @@ describe('LimitConfigSchema', () => {
       mode: 'fixed',
       unit: 'rows',
       orderBy: [{ field: 'name', direction: 'asc' }],
-      groupBy: ['category'],
       ties: true,
       offset: 10,
     });
@@ -51,5 +50,13 @@ describe('LimitConfigSchema', () => {
 
   it('rejects limit with wrong type', () => {
     expect(() => LimitConfigSchema.parse({ limit: 'abc' })).toThrow(z.ZodError);
+  });
+
+  it('rejects negative offset', () => {
+    expect(() => LimitConfigSchema.parse({ offset: -1 })).toThrow(z.ZodError);
+  });
+
+  it('rejects float offset', () => {
+    expect(() => LimitConfigSchema.parse({ offset: 1.5 })).toThrow(z.ZodError);
   });
 });
