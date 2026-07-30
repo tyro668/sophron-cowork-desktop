@@ -7,16 +7,7 @@ export function compileDeduplicateSql(
   columns: string[],
   config: Record<string, unknown>
 ): string {
-  const safeConfig = {
-    ...config,
-    orderBy: Array.isArray(config.orderBy)
-      ? config.orderBy.filter(
-          (k: unknown) =>
-            k && typeof k === 'object' && (k as Record<string, unknown>)?.field?.toString().trim()
-        )
-      : [],
-  };
-  const { columns: keys, keep, orderBy } = parseOperatorConfig(DeduplicateConfigSchema, safeConfig);
+  const { columns: keys, keep, orderBy } = parseOperatorConfig(DeduplicateConfigSchema, config);
   if (keys.length === 0) {
     return `CREATE TEMP TABLE ${output} AS SELECT DISTINCT * FROM ${input}`;
   }

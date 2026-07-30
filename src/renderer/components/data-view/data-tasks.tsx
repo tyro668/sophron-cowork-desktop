@@ -128,6 +128,84 @@ function toWorkflowSaveInput(workflow: DataTaskWorkflow): DataWorkflowSaveInput 
   };
 }
 
+function hasInvalidSortConfig(node: DataWorkflowNode): boolean {
+  if (node.type !== 'sort') return false;
+  const keys = Array.isArray(node.config.keys) ? node.config.keys : [];
+  return (
+    keys.length === 0 ||
+    keys.some(
+      (key) =>
+        !key ||
+        typeof key !== 'object' ||
+        typeof (key as { field?: unknown }).field !== 'string' ||
+        !(key as { field: string }).field.trim()
+    )
+  );
+}
+
+function hasInvalidFieldMappingConfig(node: DataWorkflowNode): boolean {
+  if (node.type !== 'field_mapping') return false;
+  const mappings = Array.isArray(node.config.mappings) ? node.config.mappings : [];
+  return (
+    mappings.length === 0 ||
+    mappings.some((mapping) => {
+      if (!mapping || typeof mapping !== 'object') return true;
+      const entry = mapping as Record<string, unknown>;
+      const source = typeof entry.source === 'string' ? entry.source.trim() : '';
+      const mode = typeof entry.targetMode === 'string' ? entry.targetMode : '';
+      const target =
+        mode === 'prefix' || mode === 'suffix' || mode === 'rename'
+          ? typeof entry.targetValue === 'string'
+            ? entry.targetValue.trim()
+            : ''
+          : typeof entry.target === 'string'
+            ? entry.target.trim()
+            : '';
+      return !source || !target;
+    })
+  );
+}
+
+function hasInvalidFieldSelectConfig(node: DataWorkflowNode): boolean {
+  if (node.type !== 'field_select') return false;
+  const columns = Array.isArray(node.config.columns) ? node.config.columns : [];
+  return (
+    columns.length === 0 || columns.some((column) => typeof column !== 'string' || !column.trim())
+  );
+}
+
+function hasInvalidDeduplicateConfig(node: DataWorkflowNode): boolean {
+  if (node.type !== 'deduplicate') return false;
+  const columns = Array.isArray(node.config.columns) ? node.config.columns : [];
+  const orderBy = Array.isArray(node.config.orderBy) ? node.config.orderBy : [];
+  const usesAllColumns = node.config.strategy === 'all_columns';
+  return (
+    (!usesAllColumns && columns.length === 0) ||
+    columns.some((column) => typeof column !== 'string' || !column.trim()) ||
+    orderBy.some(
+      (key) =>
+        !key ||
+        typeof key !== 'object' ||
+        typeof (key as { field?: unknown }).field !== 'string' ||
+        !(key as { field: string }).field.trim()
+    )
+  );
+}
+
+function incompleteConfigMessageKey(node: DataWorkflowNode): string | null {
+  if (hasInvalidSortConfig(node)) return 'data.workflow.formLabels.sortIncompleteField';
+  if (hasInvalidFieldMappingConfig(node)) {
+    return 'data.workflow.formLabels.fieldMappingIncompleteField';
+  }
+  if (hasInvalidFieldSelectConfig(node)) {
+    return 'data.workflow.formLabels.fieldSelectMustSelectField';
+  }
+  if (hasInvalidDeduplicateConfig(node)) {
+    return 'data.workflow.formLabels.dedupIncompleteField';
+  }
+  return null;
+}
+
 function getWorkflowSaveInputSignature(workflow: DataTaskWorkflow): string {
   return JSON.stringify(toWorkflowSaveInput(workflow));
 }
@@ -771,11 +849,17 @@ export function TaskEditor({
 
   const handleRun = useCallback(async () => {
     if (!workflowSaveInput) return;
+    const incompleteMessageKey = nodes.map(incompleteConfigMessageKey).find(Boolean);
+    if (incompleteMessageKey) {
+      setLocalError(t(incompleteMessageKey));
+      return;
+    }
+    setLocalError(null);
     await onRun(task, {
       workflow: workflowSaveInput,
       outputMode: isWorkflowDirty ? 'temporary' : 'persisted',
     });
-  }, [isWorkflowDirty, onRun, task, workflowSaveInput]);
+  }, [isWorkflowDirty, nodes, onRun, t, task, workflowSaveInput]);
 
   const applyAndRunOperatorDsl = useCallback(
     async (nodeId: string, config: Record<string, unknown>) => {
@@ -793,6 +877,12 @@ export function TaskEditor({
             : node
         ),
       };
+      const incompleteMessageKey = nextWorkflow.nodes.map(incompleteConfigMessageKey).find(Boolean);
+      if (incompleteMessageKey) {
+        setLocalError(t(incompleteMessageKey));
+        return;
+      }
+      setLocalError(null);
       setWorkflow(nextWorkflow);
       setSelectedNodeId(nodeId);
       await onRun(task, {
@@ -801,7 +891,7 @@ export function TaskEditor({
       });
       setNodeDataRefreshVersion((current) => current + 1);
     },
-    [onRun, task, workflow]
+    [onRun, t, task, workflow]
   );
 
   const openImportDsl = useCallback(() => {
@@ -1832,6 +1922,13 @@ function WorkflowInspector({
 
   useEffect(() => {
     if (activeTab !== 'data' || !node) return;
+    const incompleteMessageKey = incompleteConfigMessageKey(node);
+    if (incompleteMessageKey) {
+      setNodePreviewData(null);
+      setNodePreviewError(t(incompleteMessageKey));
+      setNodePreviewLoading(false);
+      return;
+    }
     if (!window.electronAPI?.data?.previewWorkflowNode) {
       setNodePreviewData(null);
       setNodePreviewError(t('data.workflow.nodeDataUnavailable'));

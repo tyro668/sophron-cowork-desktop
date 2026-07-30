@@ -36,6 +36,29 @@ export const FieldMappingConfigSchema = z
     mappings: z.array(MappingEntrySchema).max(MAX_MAPPING_COUNT).default([]),
   })
   .superRefine((data, ctx) => {
+    if (data.mappings.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'At least one field mapping is required',
+        path: ['mappings'],
+      });
+    }
+    data.mappings.forEach((mapping, index) => {
+      if (!mapping.source.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Source field is required',
+          path: ['mappings', index, 'source'],
+        });
+      }
+      if (!mapping.targetMode && !mapping.target.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Target field is required',
+          path: ['mappings', index, 'target'],
+        });
+      }
+    });
     const sources = data.mappings.map((m) => m.source).filter(Boolean);
     if (new Set(sources).size !== sources.length) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: '源字段不能重复', path: ['mappings'] });

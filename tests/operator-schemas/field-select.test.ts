@@ -8,9 +8,14 @@ describe('FieldSelectConfigSchema', () => {
     expect(result.columns).toEqual(['a', 'b']);
   });
 
-  it('defaults to empty array when columns omitted', () => {
-    const result = FieldSelectConfigSchema.parse({});
-    expect(result.columns).toEqual([]);
+  it('rejects config when columns are omitted', () => {
+    expect(() => FieldSelectConfigSchema.parse({})).toThrow('At least one field must be selected');
+  });
+
+  it('rejects an empty columns array in exclude mode', () => {
+    expect(() => FieldSelectConfigSchema.parse({ mode: 'exclude', columns: [] })).toThrow(
+      'At least one field must be selected'
+    );
   });
 
   it('rejects columns with wrong type', () => {

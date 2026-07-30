@@ -62,6 +62,17 @@ const currentOperatorCases: Array<{
     expectedConfig: { strategy: 'by_columns', columns: ['order_id'], keep: 'last' },
   },
   {
+    name: 'deduplicate fields containing clause keywords',
+    type: 'deduplicate',
+    dsl: 'deduplicate by [`order by`], [`keep status`] keep last order by [`by score`] desc',
+    expectedConfig: {
+      strategy: 'by_columns',
+      columns: ['order by', 'keep status'],
+      keep: 'last',
+      orderBy: [{ field: 'by score', direction: 'desc' }],
+    },
+  },
+  {
     name: 'drop empty rows',
     type: 'missing_value',
     dsl: 'missing value row drop when all_null',
@@ -88,6 +99,18 @@ const currentOperatorCases: Array<{
     name: 'sort rows',
     type: 'sort',
     dsl: 'sort by [order_date] desc nulls last, [order_id] asc',
+  },
+  {
+    name: 'limit sorted rows with a clause keyword in the field name',
+    type: 'limit',
+    dsl: 'top 10 by [`with ties score`] desc with ties',
+    expectedConfig: {
+      mode: 'fixed',
+      limit: 10,
+      unit: 'rows',
+      orderBy: [{ field: 'with ties score', direction: 'desc' }],
+      ties: true,
+    },
   },
   {
     name: 'aggregate metrics',
@@ -178,6 +201,72 @@ const currentOperatorCases: Array<{
 ];
 
 describe('operator DSL executable cases', () => {
+  it('rejects sort DSL without a valid field', () => {
+    const parsed = parsePrepOperatorDsl('sort by []', 'sort');
+
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'sortMissingField' })])
+    );
+  });
+
+  it('does not export a placeholder field for an empty sort config', () => {
+    expect(exportPrepOperatorDsl({ id: 'sort-empty', type: 'sort', config: { keys: [] } })).toBe(
+      ''
+    );
+  });
+
+  it('rejects incomplete field mapping DSL and does not export placeholder fields', () => {
+    const parsed = parsePrepOperatorDsl('map [] to [target]', 'field_mapping');
+
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidFieldMapping' })])
+    );
+    expect(
+      exportPrepOperatorDsl({
+        id: 'mapping-empty',
+        type: 'field_mapping',
+        config: { mappings: [] },
+      })
+    ).toBe('');
+  });
+
+  it('rejects empty field selection DSL and does not export an empty drop operation', () => {
+    const parsed = parsePrepOperatorDsl('select []', 'field_select');
+
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'fieldSelectMissingField' })])
+    );
+    expect(
+      exportPrepOperatorDsl({
+        id: 'field-select-empty',
+        type: 'field_select',
+        config: { mode: 'exclude', columns: [] },
+      })
+    ).toBe('');
+  });
+
+  it('rejects empty deduplicate-by DSL but preserves explicit all-column deduplication', () => {
+    const parsed = parsePrepOperatorDsl('deduplicate by [] keep first', 'deduplicate');
+
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'deduplicateMissingField' })])
+    );
+    expect(
+      exportPrepOperatorDsl({
+        id: 'deduplicate-empty',
+        type: 'deduplicate',
+        config: { strategy: 'by_columns', columns: [] },
+      })
+    ).toBe('');
+    expect(
+      exportPrepOperatorDsl({
+        id: 'deduplicate-all',
+        type: 'deduplicate',
+        config: { strategy: 'all_columns', columns: [] },
+      })
+    ).toBe('deduplicate');
+  });
+
   it.each(currentOperatorCases)('parses and exports $name', ({ type, dsl, expectedConfig }) => {
     const parsed = parsePrepOperatorDsl(dsl, type);
 
@@ -187,6 +276,36 @@ describe('operator DSL executable cases', () => {
     expect(
       exportPrepOperatorDsl({ id: `${type}_case`, type, config: parsed.operator!.config })
     ).toBe(dsl);
+  });
+
+  it.each([
+    {
+      dsl: 'unnest [`keep parent names`] as [`with index`] with index [`keep parent names`] keep parent names true',
+      expectedConfig: {
+        sourceKind: 'list',
+        column: 'keep parent names',
+        alias: 'with index',
+        withIndex: 'keep parent names',
+        keepParentNames: true,
+      },
+    },
+    {
+      dsl: 'explode json [`with index`] path "$.keep parent names" as [`keep parent names`] with index [`with index`]',
+      expectedConfig: {
+        sourceKind: 'json',
+        column: 'with index',
+        path: '$.keep parent names',
+        alias: 'keep parent names',
+        withIndex: 'with index',
+        keepParentNames: false,
+      },
+    },
+  ])('parses unnest keywords inside field names: $dsl', ({ dsl, expectedConfig }) => {
+    const parsed = parsePrepOperatorDsl(dsl, 'unnest');
+
+    expect(errorsOf(parsed.diagnostics), dsl).toHaveLength(0);
+    expect(parsed.operator?.config).toMatchObject({ dsl, ...expectedConfig });
+    expect(exportPrepOperatorDsl(parsed.operator!)).toBe(dsl);
   });
 
   it('compiles and round-trips a workflow that uses every currently executable operator family', () => {

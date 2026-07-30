@@ -15,15 +15,16 @@ describe('FieldMappingConfigSchema', () => {
     expect(result.mappings[1].targetMode).toBe('prefix');
   });
 
-  it('defaults missing fields in mapping entries', () => {
-    const result = FieldMappingConfigSchema.parse({ mappings: [{ source: 'a' }] });
+  it('defaults optional fields in legacy mapping entries', () => {
+    const result = FieldMappingConfigSchema.parse({ mappings: [{ source: 'a', target: 'b' }] });
     expect(result.mappings[0].source).toBe('a');
     expect(result.mappings[0].targetValue).toBe('');
   });
 
-  it('defaults to empty array when mappings omitted', () => {
-    const result = FieldMappingConfigSchema.parse({});
-    expect(result.mappings).toEqual([]);
+  it('rejects config when mappings are omitted', () => {
+    expect(() => FieldMappingConfigSchema.parse({})).toThrow(
+      'At least one field mapping is required'
+    );
   });
 
   it('rejects mappings with wrong type', () => {
@@ -83,11 +84,28 @@ describe('FieldMappingConfigSchema', () => {
     expect(result.mappings[0].source).toBe('a');
   });
 
-  it('accepts empty source placeholder row', () => {
-    const result = FieldMappingConfigSchema.parse({
-      mappings: [{ source: '', targetMode: 'rename', targetValue: '' }],
+  it('rejects an empty source placeholder row', () => {
+    expect(() =>
+      FieldMappingConfigSchema.parse({
+        mappings: [{ source: '', targetMode: 'rename', targetValue: '' }],
+      })
+    ).toThrow('Source field is required');
+  });
+
+  it('rejects a blank row after a valid mapping', () => {
+    const result = FieldMappingConfigSchema.safeParse({
+      mappings: [
+        { source: 'a', targetMode: 'rename', targetValue: 'x' },
+        { source: '', targetMode: 'rename', targetValue: '' },
+      ],
     });
-    expect(result.mappings).toHaveLength(1);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toEqual(
+        expect.arrayContaining([expect.objectContaining({ path: ['mappings', 1, 'source'] })])
+      );
+    }
   });
 
   it('rejects invalid targetMode value', () => {

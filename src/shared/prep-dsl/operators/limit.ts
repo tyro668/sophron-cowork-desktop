@@ -1,4 +1,5 @@
 import { createOperator, type OperatorDslCodec } from './codec';
+import { prepDslLexer } from '../tokens';
 import { formatSortKeys, parseSortKeys } from './sort';
 
 export const limitCodec: OperatorDslCodec = {
@@ -27,34 +28,82 @@ export const limitCodec: OperatorDslCodec = {
 };
 
 function parseLimit(text: string) {
+  const tokens = prepDslLexer.tokenize(text).tokens;
+  const images = tokens.map((token) => token.image.toLowerCase());
+
   if (text.startsWith('top ')) {
-    const match = /^top\s+(\d+)\s+by\s+(.+?)(?:\s+with\s+ties)?$/is.exec(text);
+    const limit = integerTokenValue(tokens[1]);
+    const withTiesIndex = findTopLevelSequence(tokens, ['with', 'ties'], 3);
+    const byToken = tokens[2];
+    const orderByStart =
+      byToken?.image.toLowerCase() === 'by' ? (byToken.endOffset ?? byToken.startOffset) + 1 : 0;
+    const orderByEnd = withTiesIndex >= 0 ? tokens[withTiesIndex].startOffset : text.length;
+    const orderBy = orderByStart ? text.slice(orderByStart, orderByEnd).trim() : '';
     return createOperator('limit', text, {
       mode: 'fixed',
-      limit: match ? Number(match[1]) : 0,
+      limit: limit ?? 0,
       unit: 'rows',
-      orderBy: match ? parseSortKeys(match[2]) : [],
-      ties: match ? /with\s+ties/i.test(text) : undefined,
+      orderBy: orderBy ? parseSortKeys(orderBy) : [],
+      ties: withTiesIndex >= 0 || undefined,
     });
   }
+
   if (text.startsWith('sample ')) {
-    const match =
-      /^sample\s+(\d+)(?:\s+(rows|percent))?(?:\s+(bernoulli|system))?(?:\s+repeatable\s+(\d+))?$/i.exec(
-        text
-      );
+    let cursor = 2;
+    const limit = integerTokenValue(tokens[1]);
+    const unit =
+      images[cursor] === 'rows' || images[cursor] === 'percent' ? images[cursor++] : 'rows';
+    const method =
+      images[cursor] === 'bernoulli' || images[cursor] === 'system' ? images[cursor++] : 'system';
+    const hasRepeatable = images[cursor] === 'repeatable';
+    const seed = hasRepeatable ? integerTokenValue(tokens[cursor + 1]) : undefined;
     return createOperator('limit', text, {
       mode: 'random',
-      limit: match ? Number(match[1]) : 0,
-      unit: match?.[2] ?? 'rows',
-      method: match?.[3] ?? 'system',
-      seed: match?.[4] ? Number(match[4]) : undefined,
+      limit: limit ?? 0,
+      unit,
+      method,
+      seed,
     });
   }
-  const match = /^limit\s+(\d+)(?:\s+(rows|percent))?(?:\s+offset\s+(\d+))?$/.exec(text);
+
+  let cursor = 2;
+  const limit = integerTokenValue(tokens[1]);
+  const unit =
+    images[cursor] === 'rows' || images[cursor] === 'percent' ? images[cursor++] : 'rows';
+  const offset = images[cursor] === 'offset' ? integerTokenValue(tokens[cursor + 1]) : undefined;
   return createOperator('limit', text, {
     mode: 'fixed',
-    limit: match ? Number(match[1]) : 0,
-    unit: match?.[2] ?? 'rows',
-    offset: match?.[3] ? Number(match[3]) : undefined,
+    limit: limit ?? 0,
+    unit,
+    offset,
   });
+}
+
+function integerTokenValue(
+  token: ReturnType<typeof prepDslLexer.tokenize>['tokens'][number] | undefined
+) {
+  if (!token || token.tokenType.name !== 'NumberLiteral') return undefined;
+  const value = Number(token.image);
+  return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
+function findTopLevelSequence(
+  tokens: ReturnType<typeof prepDslLexer.tokenize>['tokens'],
+  sequence: readonly string[],
+  start: number
+): number {
+  let bracketDepth = 0;
+  let parenthesisDepth = 0;
+  for (let index = start; index < tokens.length; index += 1) {
+    const tokenName = tokens[index].tokenType.name;
+    if (tokenName === 'LSquare') bracketDepth += 1;
+    else if (tokenName === 'RSquare') bracketDepth -= 1;
+    else if (tokenName === 'LParen') parenthesisDepth += 1;
+    else if (tokenName === 'RParen') parenthesisDepth -= 1;
+    if (bracketDepth !== 0 || parenthesisDepth !== 0) continue;
+    if (sequence.every((part, offset) => tokens[index + offset]?.image.toLowerCase() === part)) {
+      return index;
+    }
+  }
+  return -1;
 }

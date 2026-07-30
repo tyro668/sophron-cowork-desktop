@@ -7,7 +7,6 @@ import { GlassRowList } from './shared/GlassRowList';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
-import { useEnsureOneRow } from '../../hooks/useEnsureOneRow';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { computeUsedFields } from './shared/used-fields';
 import type { SortKey } from '../../../shared/operator-schemas';
@@ -25,6 +24,7 @@ export default function FormSort({
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const keys = useMemo<SortKey[]>(() => (node.config.keys as SortKey[]) ?? [], [node.config.keys]);
+  const editableKeys = useMemo(() => (keys.length > 0 ? keys : [{ ...DEFAULT_SORT_KEY }]), [keys]);
 
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
 
@@ -35,8 +35,6 @@ export default function FormSort({
     [updateConfig]
   );
 
-  useEnsureOneRow(keys, commitKeys, () => ({ ...DEFAULT_SORT_KEY }));
-
   const {
     activeItems: activeKeys,
     handleDragStart,
@@ -45,7 +43,7 @@ export default function FormSort({
     resetDrag,
     isDragging,
     dragIndexRef,
-  } = useDragReorder(keys, commitKeys);
+  } = useDragReorder(editableKeys, commitKeys);
 
   const updateKey = useCallback(
     (index: number, patch: Partial<SortKey>) => {
@@ -69,7 +67,7 @@ export default function FormSort({
   const removeKey = useCallback(
     (index: number) => {
       if (activeKeys.length <= 1) {
-        commitKeys([{ ...DEFAULT_SORT_KEY }]);
+        commitKeys([]);
         return;
       }
       commitKeys(activeKeys.filter((_, i) => i !== index));

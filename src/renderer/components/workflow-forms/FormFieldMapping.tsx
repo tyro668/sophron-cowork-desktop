@@ -6,7 +6,6 @@ import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList, type GlassRowListColumn, type RowAction } from './shared/GlassRowList';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useDragReorder } from '../../hooks/useDragReorder';
-import { useEnsureOneRow } from '../../hooks/useEnsureOneRow';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { computeUsedFields } from './shared/used-fields';
 
@@ -60,6 +59,10 @@ export default function FormFieldMapping({
     () => ((node.config.mappings as Record<string, unknown>[]) ?? []).map(migrateEntry),
     [node.config.mappings]
   );
+  const editableMappings = useMemo(
+    () => (mappings.length > 0 ? mappings : [{ ...DEFAULT_MAPPING }]),
+    [mappings]
+  );
 
   const commitMappings = useCallback(
     (next: MappingEntry[]) => {
@@ -67,8 +70,6 @@ export default function FormFieldMapping({
     },
     [updateConfig]
   );
-
-  useEnsureOneRow(mappings, commitMappings, () => ({ ...DEFAULT_MAPPING }));
 
   const {
     activeItems: activeMappings,
@@ -78,7 +79,7 @@ export default function FormFieldMapping({
     isDragging,
     resetDrag,
     dragIndexRef,
-  } = useDragReorder(mappings, commitMappings);
+  } = useDragReorder(editableMappings, commitMappings);
 
   useEffect(() => {
     if (!isDragging) resetDrag();
@@ -126,7 +127,7 @@ export default function FormFieldMapping({
   const removeMapping = useCallback(
     (index: number) => {
       if (activeMappings.length <= 1) {
-        commitMappings([{ ...DEFAULT_MAPPING }]);
+        commitMappings([]);
         return;
       }
       commitMappings(activeMappings.filter((_, i) => i !== index));

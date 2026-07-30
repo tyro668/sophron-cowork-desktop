@@ -22,19 +22,39 @@ export const fieldMappingCodec: OperatorDslCodec = {
       }
       const source = parseFieldRef(pieces[0]);
       const target = parseFieldRef(pieces[1]);
-      return source && target ? [{ source: toFieldName(source), target: toFieldName(target) }] : [];
+      const sourceName = source ? toFieldName(source).trim() : '';
+      const targetName = target ? toFieldName(target).trim() : '';
+      if (!sourceName || !targetName) {
+        diagnostics.push({
+          ...createPrepDiagnostic('invalidFieldMapping', `Cannot parse field mapping: ${part}`, {
+            value: part,
+          }),
+          line: command.line,
+        });
+        return [];
+      }
+      return [{ source: sourceName, target: targetName }];
     });
+    if (mappings.length === 0) {
+      diagnostics.push({
+        ...createPrepDiagnostic(
+          'fieldMappingMissingEntry',
+          'Field mapping requires at least one complete mapping'
+        ),
+        line: command.line,
+      });
+    }
     return createOperator('field_mapping', text, { mappings });
   },
   format: (config) => {
     const mappings = objectArray(config?.mappings);
-    if (mappings.length === 0) return 'map [source_field] to [target_field]';
-    return `map ${mappings
-      .map((mapping) => {
-        const source = String(mapping.source ?? 'source_field');
-        return `${formatFieldRef(source)} to ${formatFieldRef(computeTarget(mapping) || 'target_field')}`;
-      })
-      .join(', ')}`;
+    if (mappings.length === 0) return null;
+    const formatted = mappings.map((mapping) => {
+      const source = typeof mapping.source === 'string' ? mapping.source.trim() : '';
+      const target = computeTarget(mapping).trim();
+      return source && target ? `${formatFieldRef(source)} to ${formatFieldRef(target)}` : '';
+    });
+    return formatted.every(Boolean) ? `map ${formatted.join(', ')}` : null;
   },
 };
 

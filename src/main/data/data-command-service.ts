@@ -1,4 +1,5 @@
 import type { DataTaskStore } from './data-task-store';
+import { ZodError } from 'zod';
 import {
   compilePrepWorkflowToFlow,
   exportPrepWorkflowDsl,
@@ -1391,6 +1392,12 @@ function looksLikeJson(value: string): boolean {
 function toCommandError(error: unknown, fallbackCode: DataCommandError['code']): DataCommandError {
   if (error instanceof DataCommandError) {
     return error;
+  }
+  if (error instanceof ZodError) {
+    const message = error.issues
+      .map((issue) => `${issue.path.join('.') || 'config'}: ${issue.message}`)
+      .join('; ');
+    return new DataCommandError('VALIDATION_FAILED', message || 'Invalid operator configuration');
   }
   const message = error instanceof Error ? error.message : String(error);
   if (

@@ -1,3 +1,4 @@
+import { ZodError } from 'zod';
 import type {
   DataCreateTaskInput,
   DataDashboardQuery,
@@ -80,6 +81,13 @@ export function registerDataTasksIpc({
       return task;
     } catch (error) {
       logError('[Data] Error running task:', error);
+      if (error instanceof ZodError) {
+        throw new Error(
+          error.issues
+            .map((issue) => `${issue.path.join('.') || 'config'}: ${issue.message}`)
+            .join('; ')
+        );
+      }
       throw error;
     }
   });

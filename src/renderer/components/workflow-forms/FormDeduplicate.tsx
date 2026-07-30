@@ -36,7 +36,7 @@ export default function FormDeduplicate({
     (next: string[]) => {
       updateConfig((cfg) => ({
         ...cfg,
-        strategy: next.length > 0 ? 'by_columns' : 'all_columns',
+        strategy: 'by_columns',
         columns: next.length > 0 ? next : undefined,
       }));
     },
@@ -101,7 +101,7 @@ export default function FormDeduplicate({
   const removeSortKey = useCallback(
     (index: number) => {
       if (activeKeys.length <= 1) {
-        commitSortKeys([{ ...DEFAULT_SORT_KEY }]);
+        commitSortKeys([]);
         return;
       }
       commitSortKeys(activeKeys.filter((_, i) => i !== index));

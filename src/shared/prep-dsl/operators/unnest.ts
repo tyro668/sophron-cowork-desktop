@@ -1,9 +1,7 @@
 import { formatFieldRef, parseFieldRef, toFieldName } from '../syntax/fields';
 import { quoteString, unquoteString } from '../syntax/literals';
+import { prepDslLexer } from '../tokens';
 import { createOperator, type OperatorDslCodec } from './codec';
-
-const FIELD_REF = '\\[[^\\]]*\\]';
-const QUALIFIED_FIELD_REF = `${FIELD_REF}(?:\\.${FIELD_REF})?`;
 
 export const unnestCodec: OperatorDslCodec = {
   type: 'unnest',
@@ -26,28 +24,23 @@ export const unnestCodec: OperatorDslCodec = {
 };
 
 function parseUnnest(text: string) {
-  if (text.startsWith('explode json ')) {
-    const match = new RegExp(
-      `^explode\\s+json\\s+(${QUALIFIED_FIELD_REF})\\s+path\\s+("(?:[^"\\\\]|\\\\.)*")\\s+as\\s+(${QUALIFIED_FIELD_REF})(.*)$`,
-      'u'
-    ).exec(text);
+  const clauses = parseUnnestClauses(text);
+  if (clauses.sourceKind === 'json') {
     return createOperator('unnest', text, {
       sourceKind: 'json',
-      column: fieldName(match?.[1]),
-      path: match ? unquoteString(match[2]) : '',
-      alias: fieldName(match?.[3]),
-      ...parseOptions(match?.[4] ?? ''),
+      column: fieldName(clauses.column),
+      path: clauses.path ? unquoteString(clauses.path) : '',
+      alias: fieldName(clauses.alias),
+      withIndex: clauses.withIndex ? fieldName(clauses.withIndex) : undefined,
+      keepParentNames: clauses.keepParentNames,
     });
   }
-  const match = new RegExp(
-    `^(unnest|explode)\\s+(${QUALIFIED_FIELD_REF})\\s+as\\s+(${QUALIFIED_FIELD_REF})(.*)$`,
-    'u'
-  ).exec(text);
   return createOperator('unnest', text, {
     sourceKind: 'list',
-    column: fieldName(match?.[2]),
-    alias: fieldName(match?.[3]),
-    ...parseOptions(match?.[4] ?? ''),
+    column: fieldName(clauses.column),
+    alias: fieldName(clauses.alias),
+    withIndex: clauses.withIndex ? fieldName(clauses.withIndex) : undefined,
+    keepParentNames: clauses.keepParentNames,
   });
 }
 
@@ -56,10 +49,105 @@ function fieldName(value: string | undefined): string {
   return field ? toFieldName(field) : '';
 }
 
-function parseOptions(value: string): Record<string, unknown> {
-  const withIndex = /\s+with\s+index\s+(.+?)(?:\s+keep\s+parent\s+names\s+|$)/.exec(value);
+interface UnnestClauses {
+  sourceKind: 'json' | 'list';
+  column?: string;
+  path?: string;
+  alias?: string;
+  withIndex?: string;
+  keepParentNames: boolean;
+}
+
+interface ClauseStart {
+  kind: 'path' | 'alias' | 'withIndex' | 'keepParentNames';
+  start: number;
+  valueStart: number;
+}
+
+function parseUnnestClauses(text: string): UnnestClauses {
+  const tokens = prepDslLexer.tokenize(text).tokens;
+  const sourceKind =
+    tokens[0]?.image.toLowerCase() === 'explode' && tokens[1]?.image.toLowerCase() === 'json'
+      ? 'json'
+      : 'list';
+  const commandEndIndex = sourceKind === 'json' ? 1 : 0;
+  const starts: ClauseStart[] = [];
+  let bracketDepth = 0;
+  let parenthesisDepth = 0;
+
+  for (let index = commandEndIndex + 1; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    const tokenName = token.tokenType.name;
+    if (tokenName === 'LSquare') {
+      bracketDepth += 1;
+      continue;
+    }
+    if (tokenName === 'RSquare') {
+      bracketDepth -= 1;
+      continue;
+    }
+    if (tokenName === 'LParen') {
+      parenthesisDepth += 1;
+      continue;
+    }
+    if (tokenName === 'RParen') {
+      parenthesisDepth -= 1;
+      continue;
+    }
+    if (bracketDepth !== 0 || parenthesisDepth !== 0) continue;
+
+    const keyword = token.image.toLowerCase();
+    if (keyword === 'path' || keyword === 'as') {
+      starts.push({
+        kind: keyword === 'as' ? 'alias' : 'path',
+        start: token.startOffset,
+        valueStart: tokenEnd(token),
+      });
+      continue;
+    }
+    if (keyword === 'with' && tokens[index + 1]?.image.toLowerCase() === 'index') {
+      const indexToken = tokens[index + 1];
+      starts.push({
+        kind: 'withIndex',
+        start: token.startOffset,
+        valueStart: tokenEnd(indexToken),
+      });
+      index += 1;
+      continue;
+    }
+    if (
+      keyword === 'keep' &&
+      tokens[index + 1]?.image.toLowerCase() === 'parent' &&
+      tokens[index + 2]?.image.toLowerCase() === 'names'
+    ) {
+      const namesToken = tokens[index + 2];
+      starts.push({
+        kind: 'keepParentNames',
+        start: token.startOffset,
+        valueStart: tokenEnd(namesToken),
+      });
+      index += 2;
+    }
+  }
+
+  const commandEnd = tokenEnd(tokens[commandEndIndex]);
+  const values = Object.fromEntries(
+    starts.map((clause, index) => [
+      clause.kind,
+      text.slice(clause.valueStart, starts[index + 1]?.start).trim(),
+    ])
+  ) as Partial<Record<ClauseStart['kind'], string>>;
+
   return {
-    withIndex: withIndex ? fieldName(withIndex[1]) : undefined,
-    keepParentNames: /keep\s+parent\s+names\s+true/.test(value),
+    sourceKind,
+    column: text.slice(commandEnd, starts[0]?.start).trim(),
+    path: values.path,
+    alias: values.alias,
+    withIndex: values.withIndex,
+    keepParentNames: values.keepParentNames?.toLowerCase() === 'true',
   };
+}
+
+function tokenEnd(token: { startOffset: number; endOffset?: number }): number {
+  return (token.endOffset ?? token.startOffset) + 1;
 }

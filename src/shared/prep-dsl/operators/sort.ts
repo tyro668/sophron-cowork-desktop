@@ -1,12 +1,26 @@
+import { createPrepDiagnostic } from '../diagnostics';
 import { formatFieldRef, parseFieldRef, toFieldName } from '../syntax/fields';
 import { findFirstTopLevelKeyword, splitTopLevel } from '../syntax/scanner';
+import { prepDslLexer } from '../tokens';
 import { createOperator, objectArray, type OperatorDslCodec } from './codec';
 
 export const sortCodec: OperatorDslCodec = {
   type: 'sort',
   matches: (text) => text.startsWith('sort by '),
-  parse: ({ text }) => createOperator('sort', text, { keys: parseSortKeys(text.slice(8)) }),
-  format: (config) => `sort by ${formatSortKeys(config?.keys) || '[field] asc'}`,
+  parse: (command, diagnostics) => {
+    const keys = parseSortKeys(command.text.slice(8));
+    if (keys.length === 0) {
+      diagnostics.push({
+        ...createPrepDiagnostic('sortMissingField', 'Sort requires at least one field'),
+        line: command.line,
+      });
+    }
+    return createOperator('sort', command.text, { keys });
+  },
+  format: (config) => {
+    const keys = formatSortKeys(config?.keys);
+    return keys ? `sort by ${keys}` : null;
+  },
 };
 
 export function parseSortKeys(value: string): Array<Record<string, string>> {
@@ -14,9 +28,11 @@ export function parseSortKeys(value: string): Array<Record<string, string>> {
     const trimmed = part.trim();
     const optionStart = findFirstTopLevelKeyword(trimmed, ['asc', 'desc', 'nulls']);
     const field = parseFieldRef(optionStart ? trimmed.slice(0, optionStart.index).trim() : trimmed);
-    if (!field) return [];
+    if (!field || !toFieldName(field).trim()) return [];
     const options = optionStart
-      ? trimmed.slice(optionStart.index).trim().toLowerCase().split(/\s+/)
+      ? prepDslLexer
+          .tokenize(trimmed.slice(optionStart.index))
+          .tokens.map((token) => token.image.toLowerCase())
       : [];
     const direction = options.find((option) => option === 'asc' || option === 'desc') ?? 'asc';
     const nullsIndex = options.indexOf('nulls');
