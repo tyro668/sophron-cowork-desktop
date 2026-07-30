@@ -1,14 +1,28 @@
-import { formatFieldRef, parseFieldRef, toFieldName } from '../syntax/fields';
+import type { PrepDiagnostic } from '../ast';
+import { createPrepDiagnostic } from '../diagnostics';
+import { formatFieldRef, parseFieldRef, parseFieldRefExact, toFieldName } from '../syntax/fields';
 import { splitTopLevel } from '../syntax/scanner';
 
 export function parseMetrics(
   value: string,
-  options: { requireAlias: boolean }
+  options: { requireAlias: boolean },
+  line?: number,
+  diagnostics?: PrepDiagnostic[]
 ): Array<Record<string, unknown>> {
   return splitTopLevel(value).flatMap((part) => {
     const metric = /^([A-Za-z_][A-Za-z0-9_]*)\((.*)\)(?:\s+as\s+(.+))?$/.exec(part.trim());
-    if (!metric || (options.requireAlias && !metric[3])) return [];
-    const alias = metric[3] ? parseFieldRef(metric[3]) : null;
+    const alias = metric?.[3] ? parseFieldRefExact(metric[3]) : null;
+    if (!metric || (options.requireAlias && !metric[3]) || (metric[3] && !alias)) {
+      if (diagnostics) {
+        diagnostics.push({
+          ...createPrepDiagnostic('invalidMetric', `Cannot parse metric: ${part}`, {
+            value: part,
+          }),
+          line,
+        });
+      }
+      return [];
+    }
     return [
       {
         function: metric[1],

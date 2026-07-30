@@ -96,7 +96,7 @@ describe('FormLimit — DSL idempotent', () => {
         orderBy: [{ field: 'score', direction: 'desc' }],
         ties: true,
       },
-      { mode: 'random', limit: 100, unit: 'rows', method: 'bernoulli' },
+      { mode: 'random', limit: 100, unit: 'rows' },
       { mode: 'random', limit: 10, unit: 'percent', method: 'system', seed: 42 },
     ];
     for (const config of configs) {
@@ -127,8 +127,10 @@ describe('FormLimit — new features', () => {
   });
 
   it('sample rows mode produces sample DSL', () => {
-    const r = ok({ mode: 'random', limit: 100, unit: 'rows', method: 'bernoulli' });
+    const r = ok({ mode: 'random', limit: 100, unit: 'rows' });
     expect(r.dsl).toContain('sample 100 rows');
+    expect(r.dsl).not.toContain('system');
+    expect(r.dsl).not.toContain('bernoulli');
   });
 
   it('sample percent mode produces sample DSL with percent', () => {
@@ -137,7 +139,7 @@ describe('FormLimit — new features', () => {
   });
 
   it('sample with seed produces repeatable DSL', () => {
-    const r = ok({ mode: 'random', limit: 100, unit: 'rows', method: 'bernoulli', seed: 42 });
+    const r = ok({ mode: 'random', limit: 100, unit: 'rows', seed: 42 });
     expect(r.dsl).toContain('sample 100 rows');
     expect(r.dsl).toContain('repeatable 42');
   });
@@ -154,7 +156,7 @@ describe('FormLimit — new features', () => {
     expect(r.config.limit).toBe(0);
   });
 
-  it('percent + orderBy + ties produces top ... with ties DSL (unit becomes rows)', () => {
+  it('percent + orderBy + ties preserves the percent unit', () => {
     const r = ok({
       mode: 'fixed',
       limit: 10,
@@ -163,10 +165,22 @@ describe('FormLimit — new features', () => {
       ties: true,
     });
     expect(r.dsl).toContain('top 10');
+    expect(r.dsl).toContain('percent');
     expect(r.dsl).toContain('with ties');
-    expect(r.dsl).not.toContain('percent');
-    // DSL top format doesn't preserve percent unit
-    expect(r.config.unit).toBe('rows');
+    expect(r.config.unit).toBe('percent');
+  });
+
+  it('ordered row limits preserve offset in top DSL', () => {
+    const r = ok({
+      mode: 'fixed',
+      limit: 10,
+      unit: 'rows',
+      offset: 5,
+      orderBy: [{ field: 'score', direction: 'desc' }],
+    });
+
+    expect(r.dsl).toContain('offset 5');
+    expect(r.config.offset).toBe(5);
   });
 });
 
@@ -227,6 +241,10 @@ describe('FormLimit — UI source structure', () => {
     const w28Controls = limitSource.match(/w-28/g);
     // Mode select + quantity + unit + offset/seed + group range select = at least 5
     expect(w28Controls!.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('only shows system and bernoulli methods for percentage sampling', () => {
+    expect(limitSource).toContain('{isRandomMode && !isRows && (');
   });
 
   it('sort tags use compact padding (px-1)', () => {

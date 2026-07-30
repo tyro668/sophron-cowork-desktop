@@ -1,17 +1,34 @@
+import { createPrepDiagnostic } from '../diagnostics';
+import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, type OperatorDslCodec } from './codec';
 
 export const setOpCodec: OperatorDslCodec = {
   type: 'set_op',
   matches: (text) =>
     text.startsWith('union ') || text.startsWith('intersect ') || text.startsWith('except '),
-  parse: ({ text }) => {
-    const parsed = /^(union|intersect|except)\s+([A-Za-z_][A-Za-z0-9_]*)(.*)$/.exec(text);
-    const rest = parsed?.[3] ?? '';
-    const mode = /\smode\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(rest)?.[1] ?? 'distinct';
-    const match = /\s+by\s+(name|position)\b/.exec(rest)?.[1];
+  parse: (command, diagnostics) => {
+    const { text } = command;
+    const cursor = new PrepTokenCursor(text, command.line, diagnostics);
+    const operation = cursor.expectOneOf(['union', 'intersect', 'except'], 'invalidSetOperation');
+    const rightInput = cursor.expectIdentifier('invalidSetOperationInput');
+    let mode = 'distinct';
+    let match = 'position';
+    if (cursor.match('mode')) {
+      mode = cursor.expectOneOf(['all', 'distinct'], 'invalidSetOperationMode') ?? mode;
+    }
+    if (cursor.match('by')) {
+      match = cursor.expectOneOf(['name', 'position'], 'invalidSetOperationMatch') ?? match;
+    }
+    cursor.expectEof('unexpectedSetOperationToken');
+    if (!operation || !rightInput) {
+      diagnostics.push({
+        ...createPrepDiagnostic('invalidSetOperation', 'Set operation is incomplete'),
+        line: command.line,
+      });
+    }
     return createOperator('set_op', text, {
-      operation: parsed?.[1] ?? 'union',
-      rightInput: parsed?.[2] ?? '',
+      operation: operation ?? 'union',
+      rightInput: rightInput ?? '',
       mode,
       match: match === 'name' ? 'by_name' : 'by_position',
     });

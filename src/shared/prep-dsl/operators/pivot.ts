@@ -1,5 +1,6 @@
 import { createPrepDiagnostic } from '../diagnostics';
-import { formatFieldRef, parseFieldRef, toFieldName } from '../syntax/fields';
+import type { PrepDiagnostic } from '../ast';
+import { formatFieldRef, parseFieldRefExact, toFieldName } from '../syntax/fields';
 import { formatLiteral, parseLiteralList } from '../syntax/literals';
 import { splitTopLevel } from '../syntax/scanner';
 import { createOperator, objectArray, stringArray, type OperatorDslCodec } from './codec';
@@ -23,10 +24,12 @@ export const pivotCodec: OperatorDslCodec = {
     }
     const onMatch = /^(.+?)(?:\s+in\s+(\(.+\)))?$/.exec(match[1].trim());
     return createOperator('pivot', command.text, {
-      on: parseFields(onMatch?.[1] ?? ''),
+      on: parseFields(onMatch?.[1] ?? '', command.line, diagnostics, 'invalidPivotField'),
       values: onMatch?.[2] ? parseLiteralList(onMatch[2]) : [],
-      using: parseMetrics(match[2], { requireAlias: false }),
-      groupBy: match[3] ? parseFields(match[3]) : [],
+      using: parseMetrics(match[2], { requireAlias: false }, command.line, diagnostics),
+      groupBy: match[3]
+        ? parseFields(match[3], command.line, diagnostics, 'invalidPivotGroupField')
+        : [],
     });
   },
   format: (config) => {
@@ -41,9 +44,21 @@ export const pivotCodec: OperatorDslCodec = {
   },
 };
 
-function parseFields(value: string): string[] {
+function parseFields(
+  value: string,
+  line: number,
+  diagnostics: PrepDiagnostic[],
+  code: string
+): string[] {
   return splitTopLevel(value).flatMap((part) => {
-    const field = parseFieldRef(part);
+    const field = parseFieldRefExact(part);
+    if (!field || !toFieldName(field).trim()) {
+      diagnostics.push({
+        ...createPrepDiagnostic(code, `Invalid field reference: ${part}`, { value: part }),
+        line,
+      });
+      return [];
+    }
     return field ? [toFieldName(field)] : [];
   });
 }

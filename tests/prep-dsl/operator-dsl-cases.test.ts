@@ -209,6 +209,46 @@ describe('operator DSL executable cases', () => {
     );
   });
 
+  it.each([
+    'sort by [order_date] desc garbage',
+    'sort by [order_date] asc desc',
+    'sort by [order_date] nulls middle',
+    'sort by [order_date] nulls last asc',
+    'sort by [order_date],',
+  ])('rejects partially parsed sort DSL: %s', (dsl) => {
+    const parsed = parsePrepOperatorDsl(dsl, 'sort');
+
+    expect(errorsOf(parsed.diagnostics), dsl).not.toHaveLength(0);
+  });
+
+  it.each([
+    ['field_select', 'select [order_id] garbage'],
+    ['field_mapping', 'map [order_id] to [id] garbage'],
+    ['limit', 'limit 10 garbage'],
+    ['limit', 'sample 10 rows system repeatable 1 garbage'],
+    ['limit', 'top 10 by [amount] desc with ties garbage'],
+    ['type_convert', 'cast [amount] as float garbage'],
+    ['set_op', 'union returns mode all by name garbage'],
+    ['output', 'output table "result" mode replace garbage'],
+    ['deduplicate', 'deduplicate by [id] keep first garbage'],
+    ['missing_value', 'missing value [amount] garbage'],
+    ['unnest', 'unnest [items] as [item] garbage'],
+    ['unpivot', 'unpivot [q1] into name [quarter] value [amount] garbage'],
+    ['pivot', 'pivot on [region] garbage using count(*)'],
+    ['aggregate', 'aggregate by [region] garbage metrics sum([amount]) as [total_amount]'],
+    ['calculate_field', 'derive [result] garbage = [amount]'],
+    ['join', 'join left returns garbage'],
+    ['join', 'join left returns on [orders].[id] = [returns].[id] garbage'],
+    ['join', 'join left returns on [orders].[id] = [returns].[id] suffix _l _r garbage'],
+    ['output', 'output table "result" mode replace mode append'],
+    ['type_convert', 'cast [amount] as float on_error null on_error keep'],
+    ['calculate_field', 'derive [result] = period_compare(yoy_diff, [amount] garbage, [date])'],
+  ] as const)('rejects trailing DSL for %s: %s', (type, dsl) => {
+    const parsed = parsePrepOperatorDsl(dsl, type);
+
+    expect(errorsOf(parsed.diagnostics), dsl).not.toHaveLength(0);
+  });
+
   it('does not export a placeholder field for an empty sort config', () => {
     expect(exportPrepOperatorDsl({ id: 'sort-empty', type: 'sort', config: { keys: [] } })).toBe(
       ''
@@ -441,6 +481,71 @@ describe('operator DSL executable cases', () => {
       )
     ).toBe('input source task\n  | limit 20');
   });
+
+  it('rejects workflow export when an incomplete operator cannot be formatted', () => {
+    expect(() =>
+      exportPrepWorkflowDsl(
+        [
+          { id: 'source', type: 'input_source', config: { dsl: 'input source task' } },
+          { id: 'sort-empty', type: 'sort', config: { keys: [] } },
+        ],
+        [{ sourceNodeId: 'source', targetNodeId: 'sort-empty', targetHandle: 'input' }]
+      )
+    ).toThrow('Cannot export incomplete sort operator (sort-empty)');
+  });
+
+  it('uses 10 rows as the default limit when config is omitted', () => {
+    expect(exportPrepOperatorDsl({ id: 'limit-default', type: 'limit', config: {} })).toBe(
+      'limit 10'
+    );
+  });
+
+  it.each(['limit 101 percent', 'sample 101 percent'])(
+    'rejects percentages above 100: %s',
+    (dsl) => {
+      const parsed = parsePrepOperatorDsl(dsl, 'limit');
+
+      expect(errorsOf(parsed.diagnostics)).toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: 'invalidLimitPercent' })])
+      );
+    }
+  );
+
+  it('preserves percent and offset units in top DSL', () => {
+    const percentDsl = 'top 10 percent by [score] desc with ties';
+    const percent = parsePrepOperatorDsl(percentDsl, 'limit');
+    expect(errorsOf(percent.diagnostics)).toHaveLength(0);
+    expect(percent.operator?.config).toMatchObject({ unit: 'percent', ties: true });
+    expect(exportPrepOperatorDsl(percent.operator!)).toBe(percentDsl);
+
+    const rowsDsl = 'top 10 by [score] desc offset 5 with ties';
+    const rows = parsePrepOperatorDsl(rowsDsl, 'limit');
+    expect(errorsOf(rows.diagnostics)).toHaveLength(0);
+    expect(rows.operator?.config).toMatchObject({ unit: 'rows', offset: 5, ties: true });
+    expect(exportPrepOperatorDsl(rows.operator!)).toBe(rowsDsl);
+  });
+
+  it.each(['sample 10 rows system', 'sample 10 rows bernoulli'])(
+    'rejects percentage-only methods for fixed-row sampling: %s',
+    (dsl) => {
+      const parsed = parsePrepOperatorDsl(dsl, 'limit');
+
+      expect(errorsOf(parsed.diagnostics)).toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: 'invalidSampleMethodForRows' })])
+      );
+    }
+  );
+
+  it.each(['limit 10 percent offset 5', 'top 10 percent by [score] offset 5'])(
+    'rejects offsets for percentage-based limits: %s',
+    (dsl) => {
+      const parsed = parsePrepOperatorDsl(dsl, 'limit');
+
+      expect(errorsOf(parsed.diagnostics)).toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: 'invalidPercentOffset' })])
+      );
+    }
+  );
 
   it('exports operators in edge order when the node array is shuffled', () => {
     const exported = exportPrepWorkflowDsl(

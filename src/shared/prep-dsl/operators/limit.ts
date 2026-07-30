@@ -1,62 +1,112 @@
+import type { PrepDiagnostic } from '../ast';
+import { createPrepDiagnostic } from '../diagnostics';
+import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, type OperatorDslCodec } from './codec';
-import { prepDslLexer } from '../tokens';
 import { formatSortKeys, parseSortKeys } from './sort';
 
 export const limitCodec: OperatorDslCodec = {
   type: 'limit',
   matches: (text) =>
     text.startsWith('limit ') || text.startsWith('top ') || text.startsWith('sample '),
-  parse: ({ text }) => parseLimit(text),
+  parse: (command, diagnostics) => parseLimit(command.text, command.line, diagnostics),
   format: (config) => {
-    const limit = Number(config?.limit ?? 100);
+    const limit = Number(config?.limit ?? 10);
     if (config?.mode === 'random') {
-      const unit = config?.unit === 'percent' ? ' percent' : ' rows';
-      const method = config?.method === 'bernoulli' ? ' bernoulli' : '';
+      const isPercent = config?.unit === 'percent';
+      const unit = isPercent ? ' percent' : ' rows';
+      const method = isPercent && config?.method === 'bernoulli' ? ' bernoulli' : '';
       const seed = typeof config?.seed === 'number' ? ` repeatable ${config.seed}` : '';
       return `sample ${limit}${unit}${method}${seed}`;
     }
     const orderBy = config?.orderBy;
     if (config?.mode === 'fixed' && Array.isArray(orderBy) && orderBy.length > 0) {
-      return `top ${limit} by ${formatSortKeys(orderBy) || '[field] desc'}${
+      const unit = config?.unit === 'percent' ? ' percent' : '';
+      const offset =
+        config?.unit !== 'percent' && typeof config?.offset === 'number' && config.offset > 0
+          ? ` offset ${config.offset}`
+          : '';
+      return `top ${limit}${unit} by ${formatSortKeys(orderBy) || '[field] desc'}${offset}${
         config?.ties ? ' with ties' : ''
       }`;
     }
     const unit = config?.unit === 'percent' ? ' percent' : '';
-    const offset = typeof config?.offset === 'number' ? ` offset ${config.offset}` : '';
+    const offset =
+      config?.unit !== 'percent' && typeof config?.offset === 'number' && config.offset > 0
+        ? ` offset ${config.offset}`
+        : '';
     return `limit ${limit}${unit}${offset}`;
   },
 };
 
-function parseLimit(text: string) {
-  const tokens = prepDslLexer.tokenize(text).tokens;
-  const images = tokens.map((token) => token.image.toLowerCase());
-
+function parseLimit(text: string, line: number, diagnostics: PrepDiagnostic[]) {
+  const cursor = new PrepTokenCursor(text, line, diagnostics);
   if (text.startsWith('top ')) {
-    const limit = integerTokenValue(tokens[1]);
-    const withTiesIndex = findTopLevelSequence(tokens, ['with', 'ties'], 3);
-    const byToken = tokens[2];
-    const orderByStart =
-      byToken?.image.toLowerCase() === 'by' ? (byToken.endOffset ?? byToken.startOffset) + 1 : 0;
-    const orderByEnd = withTiesIndex >= 0 ? tokens[withTiesIndex].startOffset : text.length;
-    const orderBy = orderByStart ? text.slice(orderByStart, orderByEnd).trim() : '';
+    cursor.expect('top', 'invalidTop');
+    const limit = cursor.expectNonNegativeInteger('invalidLimit');
+    const unit = cursor.expectOneOfIfPresent(['rows', 'percent']) ?? 'rows';
+    validatePercentLimit(limit, unit, line, diagnostics);
+    cursor.expect('by', 'invalidTop');
+    const orderByStart = cursor.index;
+    const offsetIndex = findTopLevelSequence(cursor.tokens, ['offset'], orderByStart);
+    const withTiesIndex = findTopLevelSequence(cursor.tokens, ['with', 'ties'], orderByStart);
+    const suffixIndexes = [offsetIndex, withTiesIndex].filter((index) => index >= 0);
+    const orderByEnd = suffixIndexes.length > 0 ? Math.min(...suffixIndexes) : cursor.tokens.length;
+    const orderByText = cursor.slice(orderByStart, orderByEnd);
+    const orderBy = parseSortKeys(orderByText, line, diagnostics);
+    const suffixCursor = new PrepTokenCursor(
+      cursor.slice(orderByEnd, cursor.tokens.length),
+      line,
+      diagnostics
+    );
+    let offset: number | undefined;
+    if (suffixCursor.match('offset')) {
+      offset = suffixCursor.expectNonNegativeInteger('invalidLimitOffset') ?? undefined;
+    }
+    let ties = false;
+    if (suffixCursor.match('with')) {
+      ties = Boolean(suffixCursor.expect('ties', 'invalidTop'));
+    }
+    suffixCursor.expectEof('unexpectedTopToken');
+    if (unit === 'percent' && offset !== undefined) {
+      diagnostics.push({
+        ...createPrepDiagnostic(
+          'invalidPercentOffset',
+          'Percentage-based top does not support offset'
+        ),
+        line,
+      });
+    }
     return createOperator('limit', text, {
       mode: 'fixed',
       limit: limit ?? 0,
-      unit: 'rows',
-      orderBy: orderBy ? parseSortKeys(orderBy) : [],
-      ties: withTiesIndex >= 0 || undefined,
+      unit,
+      orderBy,
+      ties: ties || undefined,
+      offset,
     });
   }
 
   if (text.startsWith('sample ')) {
-    let cursor = 2;
-    const limit = integerTokenValue(tokens[1]);
-    const unit =
-      images[cursor] === 'rows' || images[cursor] === 'percent' ? images[cursor++] : 'rows';
-    const method =
-      images[cursor] === 'bernoulli' || images[cursor] === 'system' ? images[cursor++] : 'system';
-    const hasRepeatable = images[cursor] === 'repeatable';
-    const seed = hasRepeatable ? integerTokenValue(tokens[cursor + 1]) : undefined;
+    cursor.expect('sample', 'invalidSample');
+    const limit = cursor.expectNonNegativeInteger('invalidLimit');
+    const unit = cursor.expectOneOfIfPresent(['rows', 'percent']) ?? 'rows';
+    validatePercentLimit(limit, unit, line, diagnostics);
+    const specifiedMethod = cursor.expectOneOfIfPresent(['bernoulli', 'system']);
+    if (unit === 'rows' && specifiedMethod) {
+      diagnostics.push({
+        ...createPrepDiagnostic(
+          'invalidSampleMethodForRows',
+          'Fixed-row sampling always uses reservoir sampling'
+        ),
+        line,
+      });
+    }
+    const method = unit === 'percent' ? (specifiedMethod ?? 'system') : undefined;
+    let seed: number | undefined;
+    if (cursor.match('repeatable')) {
+      seed = cursor.expectNonNegativeInteger('invalidSampleSeed') ?? undefined;
+    }
+    cursor.expectEof('unexpectedSampleToken');
     return createOperator('limit', text, {
       mode: 'random',
       limit: limit ?? 0,
@@ -66,11 +116,24 @@ function parseLimit(text: string) {
     });
   }
 
-  let cursor = 2;
-  const limit = integerTokenValue(tokens[1]);
-  const unit =
-    images[cursor] === 'rows' || images[cursor] === 'percent' ? images[cursor++] : 'rows';
-  const offset = images[cursor] === 'offset' ? integerTokenValue(tokens[cursor + 1]) : undefined;
+  cursor.expect('limit', 'invalidLimit');
+  const limit = cursor.expectNonNegativeInteger('invalidLimit');
+  const unit = cursor.expectOneOfIfPresent(['rows', 'percent']) ?? 'rows';
+  validatePercentLimit(limit, unit, line, diagnostics);
+  let offset: number | undefined;
+  if (cursor.match('offset')) {
+    offset = cursor.expectNonNegativeInteger('invalidLimitOffset') ?? undefined;
+  }
+  if (unit === 'percent' && offset !== undefined) {
+    diagnostics.push({
+      ...createPrepDiagnostic(
+        'invalidPercentOffset',
+        'Percentage-based limit does not support offset'
+      ),
+      line,
+    });
+  }
+  cursor.expectEof('unexpectedLimitToken');
   return createOperator('limit', text, {
     mode: 'fixed',
     limit: limit ?? 0,
@@ -79,16 +142,23 @@ function parseLimit(text: string) {
   });
 }
 
-function integerTokenValue(
-  token: ReturnType<typeof prepDslLexer.tokenize>['tokens'][number] | undefined
-) {
-  if (!token || token.tokenType.name !== 'NumberLiteral') return undefined;
-  const value = Number(token.image);
-  return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+function validatePercentLimit(
+  limit: number | null,
+  unit: string,
+  line: number,
+  diagnostics: PrepDiagnostic[]
+): void {
+  if (unit !== 'percent' || limit === null || limit <= 100) return;
+  diagnostics.push({
+    ...createPrepDiagnostic('invalidLimitPercent', 'Percentage cannot exceed 100', {
+      limit,
+    }),
+    line,
+  });
 }
 
 function findTopLevelSequence(
-  tokens: ReturnType<typeof prepDslLexer.tokenize>['tokens'],
+  tokens: PrepTokenCursor['tokens'],
   sequence: readonly string[],
   start: number
 ): number {

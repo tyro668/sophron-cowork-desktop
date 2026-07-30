@@ -1,14 +1,14 @@
 import { createPrepDiagnostic } from '../diagnostics';
-import { formatFieldRef, parseFieldRef, toFieldName } from '../syntax/fields';
-import { findFirstTopLevelKeyword, splitTopLevel } from '../syntax/scanner';
-import { prepDslLexer } from '../tokens';
+import { formatFieldRef, toFieldName } from '../syntax/fields';
+import { PrepTokenCursor } from '../syntax/token-cursor';
+import type { PrepDiagnostic } from '../ast';
 import { createOperator, objectArray, type OperatorDslCodec } from './codec';
 
 export const sortCodec: OperatorDslCodec = {
   type: 'sort',
   matches: (text) => text.startsWith('sort by '),
   parse: (command, diagnostics) => {
-    const keys = parseSortKeys(command.text.slice(8));
+    const keys = parseSortKeys(command.text.slice(8), command.line, diagnostics);
     if (keys.length === 0) {
       diagnostics.push({
         ...createPrepDiagnostic('sortMissingField', 'Sort requires at least one field'),
@@ -23,28 +23,43 @@ export const sortCodec: OperatorDslCodec = {
   },
 };
 
-export function parseSortKeys(value: string): Array<Record<string, string>> {
-  return splitTopLevel(value).flatMap((part) => {
-    const trimmed = part.trim();
-    const optionStart = findFirstTopLevelKeyword(trimmed, ['asc', 'desc', 'nulls']);
-    const field = parseFieldRef(optionStart ? trimmed.slice(0, optionStart.index).trim() : trimmed);
-    if (!field || !toFieldName(field).trim()) return [];
-    const options = optionStart
-      ? prepDslLexer
-          .tokenize(trimmed.slice(optionStart.index))
-          .tokens.map((token) => token.image.toLowerCase())
-      : [];
-    const direction = options.find((option) => option === 'asc' || option === 'desc') ?? 'asc';
-    const nullsIndex = options.indexOf('nulls');
-    const nulls = nullsIndex >= 0 ? options[nullsIndex + 1] : undefined;
-    return [
-      {
-        field: toFieldName(field),
-        direction,
-        ...(nulls ? { nulls } : {}),
-      },
-    ];
-  });
+export function parseSortKeys(
+  value: string,
+  line = 1,
+  diagnostics: PrepDiagnostic[] = []
+): Array<Record<string, string>> {
+  const cursor = new PrepTokenCursor(value, line, diagnostics);
+  const keys: Array<Record<string, string>> = [];
+
+  while (!cursor.eof) {
+    const field = cursor.expectFieldRef('invalidSortField');
+    if (!field || !toFieldName(field).trim()) break;
+
+    const direction = cursor.expectOneOfIfPresent(['asc', 'desc']) ?? 'asc';
+    let nulls: string | undefined;
+    if (cursor.match('nulls')) {
+      nulls = cursor.expectOneOf(['first', 'last'], 'invalidSortNulls') ?? undefined;
+      if (!nulls) break;
+    }
+    keys.push({
+      field: toFieldName(field),
+      direction,
+      ...(nulls ? { nulls } : {}),
+    });
+
+    if (cursor.eof) break;
+    if (cursor.peek()?.tokenType.name !== 'Comma') {
+      cursor.expectEof('unexpectedSortToken');
+      break;
+    }
+    cursor.consume();
+    if (cursor.eof) {
+      cursor.report('sortMissingField', 'Sort requires a field after ","');
+      break;
+    }
+  }
+
+  return keys;
 }
 
 export function formatSortKeys(value: unknown): string {

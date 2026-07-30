@@ -18,7 +18,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const mode = (node.config.mode as string) ?? 'fixed';
-  const limit = Number(node.config.limit ?? 100);
+  const limit = Number(node.config.limit ?? 10);
   const unit = (node.config.unit as string) ?? 'rows';
   const offset = Number(node.config.offset ?? 0);
   const orderBy: SortKey[] = (node.config.orderBy as SortKey[]) ?? [];
@@ -139,6 +139,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                 mode: 'random',
                 ties: undefined,
                 orderBy: undefined,
+                method: unit === 'percent' ? (cfg.method ?? 'system') : undefined,
               }));
             }
           }}
@@ -156,7 +157,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
             inputMode="numeric"
             value={localLimit}
             onChange={(v) => pushLimit(v)}
-            placeholder={isRandomMode ? '10' : '100'}
+            placeholder="10"
             textCenter
             className="h-7 rounded-md px-2 text-[12px] w-28"
           />
@@ -175,7 +176,13 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
               },
             ]}
             onChange={(value) => {
-              updateConfig((cfg) => ({ ...cfg, unit: value }));
+              updateConfig((cfg) => ({
+                ...cfg,
+                unit: value,
+                offset: value === 'percent' ? undefined : cfg.offset,
+                method:
+                  mode === 'random' && value === 'percent' ? (cfg.method ?? 'system') : undefined,
+              }));
               setErrors(runValidation(limit, value));
             }}
             className="h-7 text-[12px] w-28"
@@ -209,7 +216,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
       </div>
 
       {/* 采样方式（仅随机采样） */}
-      {isRandomMode && (
+      {isRandomMode && !isRows && (
         <div className="flex items-center gap-2">
           <span className={LABEL_CLASS}>{tr('limitSampleMethod')}</span>
           <GlassOptionSingleSelect

@@ -1,6 +1,6 @@
 import { createPrepDiagnostic } from '../diagnostics';
-import { formatFieldRef, parseFieldRef, toFieldName } from '../syntax/fields';
-import { splitTopLevel } from '../syntax/scanner';
+import { formatFieldRef, toFieldName } from '../syntax/fields';
+import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, stringArray, type OperatorDslCodec } from './codec';
 
 export const fieldSelectCodec: OperatorDslCodec = {
@@ -9,12 +9,25 @@ export const fieldSelectCodec: OperatorDslCodec = {
   parse: (command, diagnostics) => {
     const { text } = command;
     const mode = text.startsWith('select ') ? 'include' : 'exclude';
-    const body = text.slice(mode === 'include' ? 7 : 5);
-    const columns = splitTopLevel(body).flatMap((part) => {
-      const field = parseFieldRef(part);
-      const name = field ? toFieldName(field).trim() : '';
-      return name ? [name] : [];
-    });
+    const cursor = new PrepTokenCursor(
+      text.slice(mode === 'include' ? 7 : 5),
+      command.line,
+      diagnostics
+    );
+    const columns: string[] = [];
+    while (!cursor.eof) {
+      const field = cursor.expectFieldRef('invalidFieldSelectField');
+      if (!field || !toFieldName(field).trim()) break;
+      columns.push(toFieldName(field));
+      if (cursor.eof) break;
+      if (!cursor.matchType('Comma')) {
+        cursor.expectEof('unexpectedFieldSelectToken');
+        break;
+      }
+      if (cursor.eof) {
+        cursor.report('fieldSelectMissingField', 'Field selection requires a field after ","');
+      }
+    }
     if (columns.length === 0) {
       diagnostics.push({
         ...createPrepDiagnostic(

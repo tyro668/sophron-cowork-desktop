@@ -1,6 +1,6 @@
 import { createPrepDiagnostic } from '../diagnostics';
-import { formatFieldRef, parseFieldRef, toFieldName } from '../syntax/fields';
-import { splitTopLevel, splitTopLevelKeyword } from '../syntax/scanner';
+import { formatFieldRef, toFieldName } from '../syntax/fields';
+import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, objectArray, type OperatorDslCodec } from './codec';
 
 export const fieldMappingCodec: OperatorDslCodec = {
@@ -9,32 +9,26 @@ export const fieldMappingCodec: OperatorDslCodec = {
   parse: (command, diagnostics) => {
     const { text } = command;
     const isMap = text.startsWith('map ');
-    const mappings = splitTopLevel(text.slice(isMap ? 4 : 7)).flatMap((part) => {
-      const pieces = splitTopLevelKeyword(part, isMap ? 'to' : 'as');
-      if (pieces.length !== 2) {
-        diagnostics.push({
-          ...createPrepDiagnostic('invalidFieldMapping', `Cannot parse field mapping: ${part}`, {
-            value: part,
-          }),
-          line: command.line,
-        });
-        return [];
+    const cursor = new PrepTokenCursor(text.slice(isMap ? 4 : 7), command.line, diagnostics);
+    const mappings: Array<{ source: string; target: string }> = [];
+    while (!cursor.eof) {
+      const source = cursor.expectFieldRef('invalidFieldMapping');
+      if (!source || !cursor.expect(isMap ? 'to' : 'as', 'invalidFieldMapping')) break;
+      const target = cursor.expectFieldRef('invalidFieldMapping');
+      if (!target || !toFieldName(source).trim() || !toFieldName(target).trim()) {
+        cursor.report('invalidFieldMapping', 'Field mapping requires non-empty fields');
+        break;
       }
-      const source = parseFieldRef(pieces[0]);
-      const target = parseFieldRef(pieces[1]);
-      const sourceName = source ? toFieldName(source).trim() : '';
-      const targetName = target ? toFieldName(target).trim() : '';
-      if (!sourceName || !targetName) {
-        diagnostics.push({
-          ...createPrepDiagnostic('invalidFieldMapping', `Cannot parse field mapping: ${part}`, {
-            value: part,
-          }),
-          line: command.line,
-        });
-        return [];
+      mappings.push({ source: toFieldName(source), target: toFieldName(target) });
+      if (cursor.eof) break;
+      if (!cursor.matchType('Comma')) {
+        cursor.expectEof('unexpectedFieldMappingToken');
+        break;
       }
-      return [{ source: sourceName, target: targetName }];
-    });
+      if (cursor.eof) {
+        cursor.report('invalidFieldMapping', 'Field mapping requires an entry after ","');
+      }
+    }
     if (mappings.length === 0) {
       diagnostics.push({
         ...createPrepDiagnostic(

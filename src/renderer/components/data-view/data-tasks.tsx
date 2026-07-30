@@ -192,6 +192,15 @@ function hasInvalidDeduplicateConfig(node: DataWorkflowNode): boolean {
   );
 }
 
+function hasInvalidLimitPercent(node: DataWorkflowNode): boolean {
+  return (
+    node.type === 'limit' &&
+    node.config.unit === 'percent' &&
+    typeof node.config.limit === 'number' &&
+    node.config.limit > 100
+  );
+}
+
 function incompleteConfigMessageKey(node: DataWorkflowNode): string | null {
   if (hasInvalidSortConfig(node)) return 'data.workflow.formLabels.sortIncompleteField';
   if (hasInvalidFieldMappingConfig(node)) {
@@ -202,6 +211,9 @@ function incompleteConfigMessageKey(node: DataWorkflowNode): string | null {
   }
   if (hasInvalidDeduplicateConfig(node)) {
     return 'data.workflow.formLabels.dedupIncompleteField';
+  }
+  if (hasInvalidLimitPercent(node)) {
+    return 'data.workflow.formLabels.limitPercentError';
   }
   return null;
 }
@@ -903,11 +915,16 @@ export function TaskEditor({
 
   const openExportDsl = useCallback(() => {
     if (!workflow) return;
+    const incompleteMessageKey = workflow.nodes.map(incompleteConfigMessageKey).find(Boolean);
+    if (incompleteMessageKey) {
+      setLocalError(t(incompleteMessageKey));
+      return;
+    }
     setLocalError(null);
     setDslError(null);
     setDslText(exportPrepWorkflowDsl(workflow.nodes, workflow.edges));
     setDslMode('export');
-  }, [workflow]);
+  }, [t, workflow]);
 
   const closeDslDialog = useCallback(() => {
     setDslMode(null);

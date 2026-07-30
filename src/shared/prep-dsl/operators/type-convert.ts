@@ -1,21 +1,21 @@
 import { DATA_FIELD_TYPES, isDataFieldType } from '../../data-field-types';
 import { createPrepDiagnostic } from '../diagnostics';
-import { formatFieldRef, parseFieldRef, toFieldName } from '../syntax/fields';
-import { splitTopLevel, splitTopLevelKeyword } from '../syntax/scanner';
+import { formatFieldRef, toFieldName } from '../syntax/fields';
+import { unquoteString } from '../syntax/literals';
+import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, objectArray, type OperatorDslCodec } from './codec';
 
 export const typeConvertCodec: OperatorDslCodec = {
   type: 'type_convert',
   matches: (text) => text.startsWith('cast '),
   parse: (command, diagnostics) => {
-    const conversions = splitTopLevel(command.text.slice(5)).flatMap((part) => {
-      const pieces = splitTopLevelKeyword(part, 'as');
-      if (pieces.length !== 2) return [];
-      const fieldText = pieces[0].trim();
-      const typeAndOptions = pieces[1].trim();
-      const optionStart = typeAndOptions.search(/\s/);
-      const targetType = optionStart < 0 ? typeAndOptions : typeAndOptions.slice(0, optionStart);
-      const options = optionStart < 0 ? '' : typeAndOptions.slice(optionStart);
+    const cursor = new PrepTokenCursor(command.text.slice(5), command.line, diagnostics);
+    const conversions: Array<Record<string, string | undefined>> = [];
+    while (!cursor.eof) {
+      const field = cursor.expectFieldRef('invalidCastField');
+      if (!field || !cursor.expect('as', 'invalidCast')) break;
+      const targetType = cursor.expectIdentifier('invalidCastTargetType');
+      if (!targetType) break;
       if (!isDataFieldType(targetType)) {
         diagnostics.push({
           ...createPrepDiagnostic(
@@ -26,16 +26,56 @@ export const typeConvertCodec: OperatorDslCodec = {
           line: command.line,
         });
       }
-      const field = parseFieldRef(fieldText);
-      return [
-        {
-          column: field ? toFieldName(field) : fieldText,
-          type: targetType,
-          format: pickStringOption(options, 'format'),
-          onError: pickWordOption(options, 'on_error') ?? 'null',
-        },
-      ];
-    });
+      let format: string | undefined;
+      let onError = 'null';
+      let hasFormat = false;
+      let hasOnError = false;
+      let invalid = false;
+      while (!cursor.eof && cursor.tokenType() !== 'Comma') {
+        if (cursor.match('format')) {
+          if (hasFormat) {
+            cursor.report('duplicateCastOption', 'Duplicate cast format option');
+            invalid = true;
+            break;
+          }
+          hasFormat = true;
+          const literal = cursor.expectStringLiteral('invalidCastFormat');
+          if (!literal) {
+            invalid = true;
+            break;
+          }
+          format = unquoteString(literal);
+        } else if (cursor.match('on_error')) {
+          if (hasOnError) {
+            cursor.report('duplicateCastOption', 'Duplicate cast on_error option');
+            invalid = true;
+            break;
+          }
+          hasOnError = true;
+          const value = cursor.expectOneOf(['keep', 'fail', 'null'], 'invalidCastOnError');
+          if (!value) {
+            invalid = true;
+            break;
+          }
+          onError = value;
+        } else {
+          cursor.expectEof('unexpectedCastToken');
+          invalid = true;
+          break;
+        }
+      }
+      if (invalid) break;
+      conversions.push({ column: toFieldName(field), type: targetType, format, onError });
+      if (cursor.eof) break;
+      cursor.consume();
+      if (cursor.eof) cursor.report('invalidCast', 'Cast requires a conversion after ","');
+    }
+    if (conversions.length === 0) {
+      diagnostics.push({
+        ...createPrepDiagnostic('invalidCast', 'Cast requires at least one complete conversion'),
+        line: command.line,
+      });
+    }
     return createOperator('type_convert', command.text, { conversions });
   },
   format: (config) => {
@@ -55,19 +95,6 @@ export const typeConvertCodec: OperatorDslCodec = {
       .join(', ')}`;
   },
 };
-
-function pickWordOption(value: string, key: string): string | undefined {
-  return new RegExp(`\\s${key}\\s+([A-Za-z_][A-Za-z0-9_]*)`).exec(value)?.[1];
-}
-
-function pickStringOption(value: string, key: string): string | undefined {
-  const match = new RegExp(`\\s${key}\\s+("(?:[^"\\\\]|\\\\.)*"|\\S+)`).exec(value);
-  if (!match) return undefined;
-  const option = match[1].trim();
-  return option.startsWith('"') && option.endsWith('"')
-    ? option.slice(1, -1).replace(/\\"/g, '"')
-    : option;
-}
 
 function quoteString(value: string): string {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;

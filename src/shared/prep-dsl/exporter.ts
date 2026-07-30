@@ -24,7 +24,15 @@ export function exportPrepWorkflowDsl(
   );
   const sourceLines = sources.map((source) => source.config?.dsl).filter(isString);
   const mainSource = inferMainSource(sources, operators, edges);
-  const operatorLines = operators.map(formatOperator).filter(isString);
+  const operatorLines = operators.map((operator) => {
+    const line = formatOperator(operator);
+    if (!line?.trim()) {
+      throw new Error(
+        `Cannot export incomplete ${operator.type} operator${operator.id ? ` (${operator.id})` : ''}`
+      );
+    }
+    return line;
+  });
 
   if (sources.length > 1) {
     return [...sourceLines, '', `from ${mainSource}`, ...operatorLines.map(toPipelineLine)]

@@ -3,7 +3,6 @@ import { quoteIdentifier, sortKeysToSql, uniqueAlias } from './utils';
 import { LimitConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
 type LimitParsed = z.infer<typeof LimitConfigSchema>;
-const MAX_PERCENT = 100;
 function compileFixedSql(
   output: string,
   input: string,
@@ -15,7 +14,7 @@ function compileFixedSql(
   const orderBy = sortKeysToSql(parsed.orderBy);
   const ties = parsed.ties;
   const projection = columns.map((column) => quoteIdentifier(column)).join(', ') || '*';
-  const pct = Math.min(limit, MAX_PERCENT);
+  const pct = limit;
   const rows = Math.floor(limit);
   const rn = uniqueAlias('__rn', columns);
   const rk = uniqueAlias('__rk', columns);
@@ -69,9 +68,9 @@ function compileRandomSql(
   limit: number
 ): string {
   if (parsed.unit === 'percent') {
-    const method = parsed.method === 'system' ? 'SYSTEM' : 'BERNOULLI';
+    const method = parsed.method === 'bernoulli' ? 'BERNOULLI' : 'SYSTEM';
     const seed = parsed.seed != null ? ` REPEATABLE(${parsed.seed})` : '';
-    return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} TABLESAMPLE ${method}(${Math.min(limit, MAX_PERCENT)}%)${seed}`;
+    return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} TABLESAMPLE ${method}(${limit}%)${seed}`;
   }
   const rows = Math.floor(limit);
   const seed = parsed.seed != null ? ` REPEATABLE(${parsed.seed})` : '';

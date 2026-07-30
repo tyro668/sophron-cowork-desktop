@@ -1,12 +1,23 @@
-import { formatFieldRef, parseFieldRef, toFieldName } from '../syntax/fields';
+import type { PrepDiagnostic } from '../ast';
+import { createPrepDiagnostic } from '../diagnostics';
+import { formatFieldRef, parseFieldRefExact, toFieldName } from '../syntax/fields';
 import { splitTopLevel } from '../syntax/scanner';
 import { createOperator, objectArray, stringArray, type OperatorDslCodec } from './codec';
 
 export const calculateFieldCodec: OperatorDslCodec = {
   type: 'calculate_field',
   matches: (text) => text.startsWith('derive '),
-  parse: ({ text }) => {
-    const calculations = splitTopLevel(text.slice(7)).flatMap(parseCalculation);
+  parse: (command, diagnostics) => {
+    const { text } = command;
+    const calculations = splitTopLevel(text.slice(7)).flatMap((part) =>
+      parseCalculation(part, command.line, diagnostics)
+    );
+    if (calculations.length === 0) {
+      diagnostics.push({
+        ...createPrepDiagnostic('invalidCalculation', 'Derive requires a complete calculation'),
+        line: command.line,
+      });
+    }
     return createOperator('calculate_field', text, { calculations });
   },
   format: (config) => {
@@ -15,19 +26,46 @@ export const calculateFieldCodec: OperatorDslCodec = {
   },
 };
 
-function parseCalculation(part: string): Array<Record<string, unknown>> {
+function parseCalculation(
+  part: string,
+  line: number,
+  diagnostics: PrepDiagnostic[]
+): Array<Record<string, unknown>> {
   const equals = part.indexOf('=');
-  if (equals < 0) return [];
-  const field = parseFieldRef(part.slice(0, equals));
-  if (!field) return [];
+  const field = equals >= 0 ? parseFieldRefExact(part.slice(0, equals)) : null;
+  if (equals < 0 || !field || !toFieldName(field).trim()) {
+    diagnostics.push({
+      ...createPrepDiagnostic('invalidCalculation', `Cannot parse calculation: ${part}`),
+      line,
+    });
+    return [];
+  }
   const expression = part.slice(equals + 1).trim();
+  if (!expression) {
+    diagnostics.push({
+      ...createPrepDiagnostic('invalidCalculationExpression', 'Calculation expression is empty'),
+      line,
+    });
+    return [];
+  }
   const open = expression.indexOf('(');
   if (open <= 0) return [{ field: toFieldName(field), expression }];
 
   const close = expression.lastIndexOf(')');
   const functionName = expression.slice(0, open);
   const args = splitTopLevel(expression.slice(open + 1, close)).map((arg) => arg.trim());
-  const partitionBy = parsePartitionBy(expression.slice(close + 1).trim());
+  const tail = expression.slice(close + 1).trim();
+  const partitionBy = parsePartitionBy(tail, line, diagnostics);
+  if (tail && !partitionBy) {
+    diagnostics.push({
+      ...createPrepDiagnostic(
+        'unexpectedCalculationToken',
+        `Cannot parse calculation suffix: ${tail}`
+      ),
+      line,
+    });
+    return [{ field: toFieldName(field), expression }];
+  }
   if (functionName === 'period_compare' && args.length >= 3) {
     const modes: Record<string, string> = {
       yoy_diff: 'period_yoy_value',
@@ -37,13 +75,25 @@ function parseCalculation(part: string): Array<Record<string, unknown>> {
       mom_rate: 'period_mom_rate',
       mom_prev: 'period_mom_prev',
     };
+    const fnArg = exactFieldName(args[1]);
+    const order = exactOrderBy(args[2]);
+    if (!fnArg || !order || !modes[args[0]]) {
+      diagnostics.push({
+        ...createPrepDiagnostic(
+          'invalidPeriodComparison',
+          `Invalid period_compare arguments: ${args.join(', ')}`
+        ),
+        line,
+      });
+      return [{ field: toFieldName(field), expression }];
+    }
     return [
       {
         field: toFieldName(field),
         expression: '',
-        fn: modes[args[0]] || `period_${args[0]}`,
-        fnArg: fieldName(args[1]) || args[1],
-        orderBy: orderBy(args[2]),
+        fn: modes[args[0]],
+        fnArg,
+        orderBy: order,
         partitionBy,
       },
     ];
@@ -68,14 +118,26 @@ function parseCalculation(part: string): Array<Record<string, unknown>> {
       fn = `rolling_${granularity}_${aggregate}`;
       fnArg2 = count;
     }
+    const fnArg = exactFieldName(args[2]);
+    const order = exactOrderBy(args[3]);
+    if (!fn || !fnArg || !order) {
+      diagnostics.push({
+        ...createPrepDiagnostic(
+          'invalidAccumulate',
+          `Invalid accumulate arguments: ${args.join(', ')}`
+        ),
+        line,
+      });
+      return [{ field: toFieldName(field), expression }];
+    }
     return [
       {
         field: toFieldName(field),
         expression: '',
         fn,
-        fnArg: fieldName(args[2]),
+        fnArg,
         fnArg2: fnArg2 || undefined,
-        orderBy: orderBy(args[3]),
+        orderBy: order,
         fiscalStartMonth: fiscalStartMonth > 0 ? fiscalStartMonth : undefined,
         partitionBy,
       },
@@ -84,21 +146,34 @@ function parseCalculation(part: string): Array<Record<string, unknown>> {
   return [{ field: toFieldName(field), expression }];
 }
 
-function parsePartitionBy(value: string): string[] | undefined {
+function parsePartitionBy(
+  value: string,
+  line: number,
+  diagnostics: PrepDiagnostic[]
+): string[] | undefined {
+  if (!value) return undefined;
   const match = /^over\(partition\s+by\s+(.+)\)$/i.exec(value);
   if (!match) return undefined;
-  return splitTopLevel(match[1]).flatMap((part) => {
-    const field = parseFieldRef(part);
+  const fields = splitTopLevel(match[1]).flatMap((part) => {
+    const field = parseFieldRefExact(part);
     return field ? [toFieldName(field)] : [];
   });
+  if (fields.length !== splitTopLevel(match[1]).length) {
+    diagnostics.push({
+      ...createPrepDiagnostic('invalidPartitionField', `Invalid partition clause: ${value}`),
+      line,
+    });
+    return undefined;
+  }
+  return fields;
 }
 
-function fieldName(value: string): string {
-  return parseFieldRef(value)?.name ?? '';
+function exactFieldName(value: string): string {
+  return parseFieldRefExact(value)?.name ?? '';
 }
 
-function orderBy(value: string): Array<Record<string, string>> | undefined {
-  const field = parseFieldRef(value);
+function exactOrderBy(value: string): Array<Record<string, string>> | undefined {
+  const field = parseFieldRefExact(value);
   return field ? [{ field: toFieldName(field), direction: 'asc' }] : undefined;
 }
 

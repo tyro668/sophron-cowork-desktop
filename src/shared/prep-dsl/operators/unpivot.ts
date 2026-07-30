@@ -1,25 +1,52 @@
-import { formatFieldRef, parseFieldRef, toFieldName } from '../syntax/fields';
-import { splitTopLevel } from '../syntax/scanner';
+import { createPrepDiagnostic } from '../diagnostics';
+import { formatFieldRef, toFieldName } from '../syntax/fields';
+import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, stringArray, type OperatorDslCodec } from './codec';
 
 export const unpivotCodec: OperatorDslCodec = {
   type: 'unpivot',
   matches: (text) => text.startsWith('unpivot '),
-  parse: ({ text }) => {
-    const includeNulls = text.startsWith('unpivot include nulls ');
-    const body = text.slice(includeNulls ? 'unpivot include nulls '.length : 'unpivot '.length);
-    const match = /^(.+?)\s+into\s+name\s+(.+?)\s+value\s+(.+)$/.exec(body);
-    const columnSpec = match?.[1].trim() ?? '';
-    const except = columnSpec.startsWith('columns except ');
-    const columnsText = except ? columnSpec.slice('columns except '.length) : columnSpec;
-    const nameColumn = match ? parseFieldRef(match[2]) : null;
-    const valueColumn = match ? parseFieldRef(match[3]) : null;
-    const columns = splitTopLevel(columnsText).flatMap((part) => {
-      const field = parseFieldRef(part);
-      return field ? [toFieldName(field)] : [];
-    });
+  parse: (command, diagnostics) => {
+    const { text } = command;
+    const cursor = new PrepTokenCursor(text, command.line, diagnostics);
+    cursor.expect('unpivot', 'invalidUnpivot');
+    let includeNulls = false;
+    if (cursor.match('include')) {
+      cursor.expect('nulls', 'invalidUnpivot');
+      includeNulls = true;
+    }
+    let mode = 'include';
+    if (cursor.match('columns')) {
+      cursor.expect('except', 'invalidUnpivot');
+      mode = 'except';
+    }
+
+    const columns: string[] = [];
+    while (!cursor.eof) {
+      const field = cursor.expectFieldRef('invalidUnpivotField');
+      if (!field || !toFieldName(field).trim()) break;
+      columns.push(toFieldName(field));
+      if (!cursor.matchType('Comma')) break;
+      if (cursor.eof) cursor.report('invalidUnpivotField', 'Unpivot requires a field after ","');
+    }
+
+    cursor.expect('into', 'invalidUnpivot');
+    cursor.expect('name', 'invalidUnpivot');
+    const nameColumn = cursor.expectFieldRef('invalidUnpivotNameField');
+    cursor.expect('value', 'invalidUnpivot');
+    const valueColumn = cursor.expectFieldRef('invalidUnpivotValueField');
+    cursor.expectEof('unexpectedUnpivotToken');
+    if (columns.length === 0 || !nameColumn || !valueColumn) {
+      diagnostics.push({
+        ...createPrepDiagnostic(
+          'invalidUnpivot',
+          'Unpivot requires source, name, and value fields'
+        ),
+        line: command.line,
+      });
+    }
     return createOperator('unpivot', text, {
-      mode: except ? 'except' : 'include',
+      mode,
       columns,
       nameColumn: nameColumn ? toFieldName(nameColumn) : '',
       valueColumn: valueColumn ? toFieldName(valueColumn) : '',

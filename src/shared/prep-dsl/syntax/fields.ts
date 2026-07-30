@@ -2,6 +2,14 @@ import { tokenizeExpression } from '../../expression-tokenizer';
 import type { PrepFieldRef } from '../ast';
 
 export function parseFieldRef(value: string): PrepFieldRef | null {
+  return parseFieldRefInternal(value, false);
+}
+
+export function parseFieldRefExact(value: string): PrepFieldRef | null {
+  return parseFieldRefInternal(value, true);
+}
+
+function parseFieldRefInternal(value: string, requireEof: boolean): PrepFieldRef | null {
   try {
     const trimmed = value.trim();
     if (!trimmed) return null;
@@ -12,12 +20,15 @@ export function parseFieldRef(value: string): PrepFieldRef | null {
     const raw = tokens[index].value;
     index += 1;
     if (tokens[index]?.type === 'Dot' && tokens[index + 1]?.type === 'FieldRef') {
+      index += 2;
+      if (requireEof && tokens[index]?.type !== 'EOF') return null;
       return {
-        raw: `${raw}.${tokens[index + 1].value}`,
+        raw: `${raw}.${tokens[index - 1].value}`,
         source: unwrapFieldName(raw),
-        name: unwrapFieldName(tokens[index + 1].value),
+        name: unwrapFieldName(tokens[index - 1].value),
       };
     }
+    if (requireEof && tokens[index]?.type !== 'EOF') return null;
     return { raw, source: undefined, name: unwrapFieldName(raw) };
   } catch {
     return null;
