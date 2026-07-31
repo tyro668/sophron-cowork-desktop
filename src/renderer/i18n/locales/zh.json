@@ -1105,6 +1105,7 @@
         "dataTypeBoolean": "布尔",
         "typeConvertDateFormat": "日期格式",
         "typeConvertAutoParse": "自动解析",
+        "typeConvertScale": "小数位数",
         "unpivotMode": "列展开",
         "unpivotConfigHint": "选择要展开的列",
         "unpivotExpandCols": "要展开的列",

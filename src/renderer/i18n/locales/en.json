@@ -1105,6 +1105,7 @@
         "dataTypeBoolean": "Boolean",
         "typeConvertDateFormat": "Date format",
         "typeConvertAutoParse": "Auto parse",
+        "typeConvertScale": "Scale",
         "unpivotMode": "Unpivot",
         "unpivotConfigHint": "Select columns to expand",
         "unpivotExpandCols": "Columns to expand",

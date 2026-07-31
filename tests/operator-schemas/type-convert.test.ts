@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { TypeConvertConfigSchema } from '../../src/shared/operator-schemas';
+import {
+  TypeConvertConfigSchema,
+  DATE_FORMAT_VALUES,
+  DATE_FORMAT_PRESETS,
+} from '../../src/shared/operator-schemas';
 
 describe('TypeConvertConfigSchema', () => {
   it('parses valid conversions with all fields', () => {
@@ -33,5 +37,89 @@ describe('TypeConvertConfigSchema', () => {
 
   it('rejects conversions with wrong type', () => {
     expect(() => TypeConvertConfigSchema.parse({ conversions: 'not-array' })).toThrow(z.ZodError);
+  });
+
+  it('rejects invalid format string', () => {
+    expect(() =>
+      TypeConvertConfigSchema.parse({
+        conversions: [{ column: 'dt', type: 'date', format: '%Q' }],
+      })
+    ).toThrow(z.ZodError);
+  });
+
+  it('rejects empty string format', () => {
+    const result = TypeConvertConfigSchema.parse({
+      conversions: [{ column: 'dt', type: 'date', format: '' }],
+    });
+    expect(result.conversions[0].format).toBeUndefined();
+  });
+
+  it('exports DATE_FORMAT_VALUES and DATE_FORMAT_PRESETS with matching lengths', () => {
+    expect(DATE_FORMAT_VALUES.length).toBeGreaterThan(0);
+    expect(DATE_FORMAT_PRESETS.length).toBe(DATE_FORMAT_VALUES.length);
+    DATE_FORMAT_PRESETS.forEach((p, i) => {
+      expect(p.value).toBe(DATE_FORMAT_VALUES[i]);
+    });
+  });
+
+  it('parses valid scale for decimal conversions', () => {
+    const result = TypeConvertConfigSchema.parse({
+      conversions: [{ column: 'price', type: 'decimal', scale: 4 }],
+    });
+    expect(result.conversions[0].scale).toBe(4);
+  });
+
+  it('rejects scale below 0', () => {
+    expect(() =>
+      TypeConvertConfigSchema.parse({
+        conversions: [{ column: 'price', type: 'decimal', scale: -1 }],
+      })
+    ).toThrow(z.ZodError);
+  });
+
+  it('rejects scale above 18', () => {
+    expect(() =>
+      TypeConvertConfigSchema.parse({
+        conversions: [{ column: 'price', type: 'decimal', scale: 19 }],
+      })
+    ).toThrow(z.ZodError);
+  });
+
+  it('accepts scale 0 for decimal', () => {
+    const result = TypeConvertConfigSchema.parse({
+      conversions: [{ column: 'price', type: 'decimal', scale: 0 }],
+    });
+    expect(result.conversions[0].scale).toBe(0);
+  });
+
+  it('rejects non-integer scale', () => {
+    expect(() =>
+      TypeConvertConfigSchema.parse({
+        conversions: [{ column: 'price', type: 'decimal', scale: 2.5 }],
+      })
+    ).toThrow(z.ZodError);
+  });
+
+  it('rejects empty string scale as undefined', () => {
+    const result = TypeConvertConfigSchema.parse({
+      conversions: [{ column: 'price', type: 'decimal', scale: '' }],
+    });
+    expect(result.conversions[0].scale).toBeUndefined();
+  });
+
+  it('rejects format with non-date type', () => {
+    expect(() =>
+      TypeConvertConfigSchema.parse({
+        conversions: [{ column: 'x', type: 'integer', format: '%Y-%m-%d' }],
+      })
+    ).toThrow(z.ZodError);
+  });
+
+  it('rejects scale with non-decimal type', () => {
+    expect(() =>
+      TypeConvertConfigSchema.parse({
+        conversions: [{ column: 'x', type: 'integer', scale: 4 }],
+      })
+    ).toThrow(z.ZodError);
   });
 });

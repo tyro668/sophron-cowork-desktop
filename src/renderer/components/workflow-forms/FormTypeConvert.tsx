@@ -14,32 +14,22 @@ import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useDataFieldTypeLabel } from '../../hooks/useDataFieldTypeLabel';
 import { computeUsedFields } from './shared/used-fields';
+import { GlassFormTextInput } from './shared/GlassFormTextInput';
+import {
+  DATE_FORMAT_PRESETS,
+  SCALE_MIN,
+  SCALE_MAX,
+} from '../../../shared/operator-schemas/type-convert';
 
 interface ConversionEntry {
   column: string;
   type: string;
   onError?: string;
   format?: string;
+  scale?: number;
 }
 
 const DEFAULT_CONVERSION: ConversionEntry = { column: '', type: 'text' };
-
-const DATE_FORMAT_PRESETS: Array<{ value: string; example: string }> = [
-  { value: '%Y-%m-%d', example: '2024-03-15' },
-  { value: '%Y/%m/%d', example: '2024/03/15' },
-  { value: '%m/%d/%Y', example: '03/15/2024' },
-  { value: '%m/%d/%y', example: '03/15/24' },
-  { value: '%d/%m/%Y', example: '15/03/2024' },
-  { value: '%Y%m%d', example: '20240315' },
-  { value: '%Y年%m月%d日', example: '2025年01月12日' },
-  { value: '%d-%m-%Y', example: '15-03-2024' },
-  { value: '%Y.%m.%d', example: '2024.03.15' },
-  { value: '%d.%m.%Y', example: '15.03.2024' },
-  { value: '%B %d, %Y', example: 'March 15, 2024' },
-  { value: '%b %d, %Y', example: 'Mar 15, 2024' },
-  { value: '%Y-%m-%d %H:%M:%S', example: '2024-03-15 10:30:00' },
-  { value: '%Y-%m-%dT%H:%M:%S', example: '2024-03-15T10:30:00' },
-];
 
 export default function FormTypeConvert({
   node,
@@ -117,6 +107,7 @@ export default function FormTypeConvert({
         type: source.type,
         onError: source.onError,
         format: source.format,
+        scale: source.scale,
       } as ConversionEntry);
       commitConversions(next);
     },
@@ -194,7 +185,16 @@ export default function FormTypeConvert({
                 render: (conv: ConversionEntry, i: number) => (
                   <GlassOptionSingleSelect
                     value={normalizeDataFieldType(conv.type)}
-                    onChange={(v) => updateConversion(i, { type: v as DataFieldType })}
+                    onChange={(v) => {
+                      const newType = v as DataFieldType;
+                      const isDateType = newType === 'date' || newType === 'datetime';
+                      const isDecimal = newType === 'decimal';
+                      updateConversion(i, {
+                        type: newType,
+                        ...(isDateType ? {} : { format: undefined }),
+                        ...(isDecimal ? {} : { scale: undefined }),
+                      });
+                    }}
                     groups={[
                       {
                         key: 'types',
@@ -229,6 +229,28 @@ export default function FormTypeConvert({
                 },
               },
               {
+                flex: 'flex-[1]',
+                header: tr('typeConvertScale'),
+                render: (conv: ConversionEntry, i: number) => (
+                  <GlassFormTextInput
+                    value={conv.type === 'decimal' ? String(conv.scale ?? '') : ''}
+                    disabled={conv.type !== 'decimal'}
+                    textCenter
+                    className="h-6 w-full text-[12px]"
+                    placeholder={`${SCALE_MIN}`}
+                    min={SCALE_MIN}
+                    max={SCALE_MAX}
+                    type="number"
+                    onChange={(v) => {
+                      const n = v === '' ? undefined : Number(v);
+                      updateConversion(i, {
+                        scale: n !== undefined && !isNaN(n) ? n : undefined,
+                      });
+                    }}
+                  />
+                ),
+              },
+              {
                 flex: 'flex-[2]',
                 header: tr('typeConvertErrorHandling'),
                 render: (conv: ConversionEntry, i: number) => (
@@ -261,12 +283,7 @@ export default function FormTypeConvert({
             copyTitle={tr('fieldMappingCopy')}
             actions={['add', 'copy', 'remove']}
             canAct={(action: RowAction) =>
-              action === 'copy'
-                ? activeConversions.length < fieldCompletions.length
-                : action === 'add'
-                  ? !activeConversions.some((c) => !c.column) &&
-                    activeConversions.length < fieldCompletions.length
-                  : true
+              action === 'remove' ? true : activeConversions.length < fieldCompletions.length
             }
             draggable
             onDragStart={handleDragStart}

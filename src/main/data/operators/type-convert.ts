@@ -27,7 +27,7 @@ export function compileTypeConvertSql(
 
 function compileTypeConversionExpression(
   column: string,
-  conversion: { type?: string; onError?: string; format?: string },
+  conversion: { type?: string; onError?: string; format?: string; scale?: number },
   columnTypes?: Record<string, string>
 ): string {
   const source = quoteIdentifier(column);
@@ -35,18 +35,28 @@ function compileTypeConversionExpression(
   if (conversion.format && columnTypes) {
     const sourceType = columnTypes[column];
     if (sourceType === 'date' || sourceType === 'datetime') {
-      return source;
+      if (sourceType === targetType) {
+        return source;
+      }
+      const failOnError = conversion.onError === 'fail';
+      const duckType = targetType === 'date' ? 'DATE' : 'TIMESTAMPTZ';
+      return `${failOnError ? 'CAST' : 'TRY_CAST'}(${source} AS ${duckType})`;
     }
   }
   if (conversion.onError === 'keep') {
     return source;
   }
   const failOnError = conversion.onError === 'fail';
-  const storageType = duckDbTypeForDataFieldType(targetType);
+  const storageType =
+    targetType === 'decimal' && typeof conversion.scale === 'number'
+      ? `DECIMAL(18,${conversion.scale})`
+      : duckDbTypeForDataFieldType(targetType);
   if (conversion.format && (targetType === 'date' || targetType === 'datetime')) {
-    const cast = failOnError ? 'CAST' : 'TRY_CAST';
-    const duckType = targetType === 'date' ? 'DATE' : 'TIMESTAMP';
-    return `${cast}(strptime(${source}, ${literalToSql(conversion.format)}) AS ${duckType})`;
+    const duckType = targetType === 'date' ? 'DATE' : 'TIMESTAMPTZ';
+    if (failOnError) {
+      return `CAST(strptime(${source}, ${literalToSql(conversion.format)}) AS ${duckType})`;
+    }
+    return `TRY_CAST(try_strptime(${source}, ${literalToSql(conversion.format)}) AS ${duckType})`;
   }
   return `${failOnError ? 'CAST' : 'TRY_CAST'}(${source} AS ${storageType})`;
 }

@@ -85,9 +85,7 @@ describe('operator forms — config ↔ DSL round-trip', () => {
   it('type_convert — single', () => {
     const result = ok(
       {
-        conversions: [
-          { column: 'order_date', type: 'date', format: 'yyyy-MM-dd', onError: 'null' },
-        ],
+        conversions: [{ column: 'order_date', type: 'date', format: '%Y-%m-%d', onError: 'null' }],
       },
       'type_convert'
     );

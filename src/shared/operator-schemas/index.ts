@@ -14,7 +14,14 @@ export { SortConfigSchema } from './sort';
 export { FieldSelectConfigSchema } from './field-select';
 export { FieldMappingConfigSchema } from './field-mapping';
 export { DeduplicateConfigSchema } from './deduplicate';
-export { TypeConvertConfigSchema } from './type-convert';
+export {
+  TypeConvertConfigSchema,
+  DATE_FORMAT_VALUES,
+  DATE_FORMAT_PRESETS,
+  SCALE_MIN,
+  SCALE_MAX,
+} from './type-convert';
+export type { DateFormat } from './type-convert';
 export { UnpivotConfigSchema } from './unpivot';
 export { UnnestConfigSchema } from './unnest';
 export { SetOpConfigSchema } from './set-op';

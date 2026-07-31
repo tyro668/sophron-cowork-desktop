@@ -262,6 +262,195 @@ describe('operator DSL execution cases', () => {
     );
     expect(rows.map((row) => Number(row.Profit))).toEqual([0, 3.12, 29.64, 106.14]);
   });
+
+  it('converts text to date with try_strptime and partial error rows', async () => {
+    const { dbPath, store, tempRoot } = createStore();
+    const datesPath = path.join(tempRoot, 'dates.csv');
+    fs.writeFileSync(
+      datesPath,
+      ['id,val', '1,2024-03-15', '2,invalid', '3,2024-06-01'].join('\n') + '\n',
+      'utf8'
+    );
+
+    const task = await store.createTask({
+      name: 'try_strptime partial error',
+      sourcePath: datesPath,
+    });
+    await saveWorkflowDsl(
+      store,
+      task.id,
+      `
+        input source task as dates
+          | cast [val] as date format "%Y-%m-%d" on_error null
+          | output table "operator_try_strptime_output" mode replace
+      `
+    );
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    const outputTable = completed.outputTable!;
+
+    const rows = await queryRows(dbPath, `SELECT id, val FROM ${outputTable} ORDER BY id`);
+    expect(rows.map((r) => String(r.id))).toEqual(['1', '2', '3']);
+    expect(String(rows[0].val)).toBe('2024-03-15');
+    expect(rows[1].val).toBeNull();
+    expect(String(rows[2].val)).toBe('2024-06-01');
+  });
+
+  it('converts text to datetime with try_strptime and mixed timezone offsets', async () => {
+    const { dbPath, store, tempRoot } = createStore();
+    const tsPath = path.join(tempRoot, 'timestamps.csv');
+    fs.writeFileSync(
+      tsPath,
+      [
+        'id,val',
+        '1,2024-03-15T10:00:00+08:00',
+        '2,2024-03-15T02:00:00Z',
+        '3,2024-12-25T23:59:59+14:00',
+      ].join('\n') + '\n',
+      'utf8'
+    );
+
+    const task = await store.createTask({
+      name: 'try_strptime tz offsets',
+      sourcePath: tsPath,
+    });
+    await saveWorkflowDsl(
+      store,
+      task.id,
+      `
+        input source task as timestamps
+          | cast [val] as datetime on_error null
+          | output table "operator_try_strptime_tz_output" mode replace
+      `
+    );
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    const outputTable = completed.outputTable!;
+
+    const rows = await queryRows(dbPath, `SELECT id, val FROM ${outputTable} ORDER BY id`);
+    expect(rows.map((r) => String(r.id))).toEqual(['1', '2', '3']);
+    expect(String(rows[0].val)).toContain('02:00:00');
+    expect(String(rows[1].val)).toContain('02:00:00');
+    expect(String(rows[2].val)).toContain('09:59:59');
+  });
+
+  it('converts to decimal with scale 0', async () => {
+    const { dbPath, store, tempRoot } = createStore();
+    const decPath = path.join(tempRoot, 'decimal0.csv');
+    fs.writeFileSync(decPath, ['id,val', '1,12.34', '2,56.78', '3,9.99'].join('\n') + '\n', 'utf8');
+
+    const task = await store.createTask({
+      name: 'decimal scale 0',
+      sourcePath: decPath,
+    });
+    await saveWorkflowDsl(
+      store,
+      task.id,
+      `
+        input source task as dec0
+          | cast [val] as decimal scale 0 on_error null
+          | output table "operator_decimal_scale_0_output" mode replace
+      `
+    );
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    const outputTable = completed.outputTable!;
+
+    const rows = await queryRows(dbPath, `SELECT id, val FROM ${outputTable} ORDER BY id`);
+    expect(rows.map((r) => Number(r.val))).toEqual([12, 57, 10]);
+  });
+
+  it('converts to decimal with scale 18', async () => {
+    const { dbPath, store, tempRoot } = createStore();
+    const decPath = path.join(tempRoot, 'decimal18.csv');
+    fs.writeFileSync(
+      decPath,
+      ['id,val', '1,3.141592653589793238', '2,2.718281828459045235'].join('\n') + '\n',
+      'utf8'
+    );
+
+    const task = await store.createTask({
+      name: 'decimal scale 18',
+      sourcePath: decPath,
+    });
+    await saveWorkflowDsl(
+      store,
+      task.id,
+      `
+        input source task as dec18
+          | cast [val] as decimal scale 18 on_error null
+          | output table "operator_decimal_scale_18_output" mode replace
+      `
+    );
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    const outputTable = completed.outputTable!;
+
+    const rows = await queryRows(
+      dbPath,
+      `SELECT id, val::VARCHAR AS val_str FROM ${outputTable} ORDER BY id`
+    );
+    expect(rows[0].val_str).toBe('3.141592653589793238');
+    expect(rows[1].val_str).toBe('2.718281828459045235');
+  });
+
+  it('fails at execution time for scale 19 (exceeds DECIMAL(18,19))', async () => {
+    const { store, tempRoot } = createStore();
+    const decPath = path.join(tempRoot, 'decimal19.csv');
+    fs.writeFileSync(decPath, ['id,val', '1,1.23'].join('\n') + '\n', 'utf8');
+
+    const task = await store.createTask({
+      name: 'decimal scale 19',
+      sourcePath: decPath,
+    });
+    const dsl = `
+      input source task as dec19
+        | cast [val] as decimal scale 19 on_error null
+        | output table "operator_decimal_scale_19_output" mode replace
+    `;
+    const parsed = parsePrepDsl(dsl);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    await store.saveTaskWorkflow(task.id, {
+      nodes: compiled.nodes,
+      edges: compiled.edges,
+    });
+
+    await expect(store.runTask(task.id)).rejects.toThrow(/scale|Too big/i);
+  });
+
+  it('converts with on_error keep', async () => {
+    const { dbPath, store, tempRoot } = createStore();
+    const keepPath = path.join(tempRoot, 'keep.csv');
+    fs.writeFileSync(keepPath, ['id,val', '1,123', '2,abc', '3,456'].join('\n') + '\n', 'utf8');
+
+    const task = await store.createTask({
+      name: 'on_error keep',
+      sourcePath: keepPath,
+    });
+    await saveWorkflowDsl(
+      store,
+      task.id,
+      `
+        input source task as keep
+          | cast [val] as integer on_error keep
+          | output table "operator_keep_output" mode replace
+      `
+    );
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    const outputTable = completed.outputTable!;
+
+    const rows = await queryRows(dbPath, `SELECT id, val FROM ${outputTable} ORDER BY id`);
+    expect(rows.map((r) => String(r.id))).toEqual(['1', '2', '3']);
+    expect(String(rows[0].val)).toBe('123');
+    expect(String(rows[1].val)).toBe('abc');
+    expect(String(rows[2].val)).toBe('456');
+  });
 });
 
 function createStore(): { dbPath: string; store: DataTaskStore; tempRoot: string } {

@@ -4,13 +4,14 @@ import { formatFieldRef, toFieldName } from '../syntax/fields';
 import { unquoteString } from '../syntax/literals';
 import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, objectArray, type OperatorDslCodec } from './codec';
+import { DATE_FORMAT_VALUES, SCALE_MIN, SCALE_MAX } from '../../operator-schemas/type-convert';
 
 export const typeConvertCodec: OperatorDslCodec = {
   type: 'type_convert',
   matches: (text) => text.startsWith('cast '),
   parse: (command, diagnostics) => {
     const cursor = new PrepTokenCursor(command.text.slice(5), command.line, diagnostics);
-    const conversions: Array<Record<string, string | undefined>> = [];
+    const conversions: Array<Record<string, string | number | undefined>> = [];
     while (!cursor.eof) {
       const field = cursor.expectFieldRef('invalidCastField');
       if (!field || !cursor.expect('as', 'invalidCast')) break;
@@ -28,8 +29,10 @@ export const typeConvertCodec: OperatorDslCodec = {
       }
       let format: string | undefined;
       let onError = 'null';
+      let scale: number | undefined;
       let hasFormat = false;
       let hasOnError = false;
+      let hasScale = false;
       let invalid = false;
       while (!cursor.eof && cursor.tokenType() !== 'Comma') {
         if (cursor.match('format')) {
@@ -45,6 +48,19 @@ export const typeConvertCodec: OperatorDslCodec = {
             break;
           }
           format = unquoteString(literal);
+          if (
+            format &&
+            !DATE_FORMAT_VALUES.includes(format as (typeof DATE_FORMAT_VALUES)[number])
+          ) {
+            diagnostics.push({
+              ...createPrepDiagnostic(
+                'invalidCastFormat',
+                `Invalid date format "${format}". Must be one of the supported presets.`,
+                { format }
+              ),
+              line: command.line,
+            });
+          }
         } else if (cursor.match('on_error')) {
           if (hasOnError) {
             cursor.report('duplicateCastOption', 'Duplicate cast on_error option');
@@ -58,6 +74,29 @@ export const typeConvertCodec: OperatorDslCodec = {
             break;
           }
           onError = value;
+        } else if (cursor.match('scale')) {
+          if (hasScale) {
+            cursor.report('duplicateCastOption', 'Duplicate cast scale option');
+            invalid = true;
+            break;
+          }
+          hasScale = true;
+          const num = cursor.expectNonNegativeInteger('invalidCastScale');
+          if (num === null) {
+            invalid = true;
+            break;
+          }
+          scale = num;
+          if (scale !== undefined && (scale < SCALE_MIN || scale > SCALE_MAX)) {
+            diagnostics.push({
+              ...createPrepDiagnostic(
+                'invalidCastScale',
+                `Scale must be between ${SCALE_MIN} and ${SCALE_MAX}, got ${scale}`,
+                { scale }
+              ),
+              line: command.line,
+            });
+          }
         } else {
           cursor.expectEof('unexpectedCastToken');
           invalid = true;
@@ -65,7 +104,17 @@ export const typeConvertCodec: OperatorDslCodec = {
         }
       }
       if (invalid) break;
-      conversions.push({ column: toFieldName(field), type: targetType, format, onError });
+      if (format && targetType !== 'date' && targetType !== 'datetime') {
+        diagnostics.push({
+          ...createPrepDiagnostic(
+            'invalidCastFormat',
+            `Format is only valid for date/datetime conversions, not ${targetType}`,
+            { type: targetType }
+          ),
+          line: command.line,
+        });
+      }
+      conversions.push({ column: toFieldName(field), type: targetType, format, onError, scale });
       if (cursor.eof) break;
       cursor.consume();
       if (cursor.eof) cursor.report('invalidCast', 'Cast requires a conversion after ","');
@@ -85,6 +134,7 @@ export const typeConvertCodec: OperatorDslCodec = {
       .map((conversion) => {
         const options = [
           typeof conversion.format === 'string' ? `format ${quoteString(conversion.format)}` : '',
+          typeof conversion.scale === 'number' ? `scale ${conversion.scale}` : '',
           typeof conversion.onError === 'string' ? `on_error ${conversion.onError}` : '',
         ].filter(Boolean);
         const suffix = options.length > 0 ? ` ${options.join(' ')}` : '';
