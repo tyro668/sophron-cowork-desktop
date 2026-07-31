@@ -14,8 +14,21 @@ export const missingValueCodec: OperatorDslCodec = {
     if (body.startsWith('row ')) {
       return parseRowRule(command.text, body, command.line, diagnostics);
     }
+    const seenColumns = new Set<string>();
     const rules = splitTopLevel(body).flatMap((part) => {
       const rule = parseColumnRule(part, command.line, diagnostics);
+      const column = typeof rule?.column === 'string' ? rule.column.trim() : '';
+      if (column && seenColumns.has(column)) {
+        diagnostics.push({
+          ...createPrepDiagnostic(
+            'duplicateMissingValueField',
+            `Field "${column}" can only be configured once per missing-value operator`
+          ),
+          line: command.line,
+        });
+      } else if (column) {
+        seenColumns.add(column);
+      }
       return rule ? [rule] : [];
     });
     if (rules.length === 0) {
@@ -27,14 +40,24 @@ export const missingValueCodec: OperatorDslCodec = {
     return createOperator('missing_value', command.text, { strategy: 'by_column', rules });
   },
   format: (config) => {
-    if (config?.strategy === 'drop_empty_rows') return 'missing value row drop when all_null';
+    if (config?.strategy === 'drop_empty_rows') {
+      const columns = stringArray(config?.columns).map(formatFieldRef).join(', ');
+      return `missing value row drop when all_null${columns ? ` in ${columns}` : ''}`;
+    }
     if (config?.strategy === 'drop_rows_by_nulls') {
       const columns = stringArray(config?.columns).map(formatFieldRef).join(', ');
       return `missing value row drop when ${String(config.condition ?? 'any_null')}${
         columns ? ` in ${columns}` : ''
       }`;
     }
-    const rules = objectArray(config?.rules).map(formatRule);
+    const ruleConfigs = objectArray(config?.rules);
+    if (ruleConfigs.length === 0) return null;
+    const columns = ruleConfigs.map((rule) => String(rule.column ?? '').trim()).filter(Boolean);
+    if (columns.length !== ruleConfigs.length || new Set(columns).size !== columns.length) {
+      return null;
+    }
+    const rules = ruleConfigs.map(formatRule);
+    if (rules.some((rule) => rule === null)) return null;
     return `missing value ${rules.join(', ') || '[field] skip'}`;
   },
 };
@@ -47,17 +70,31 @@ function parseRowRule(text: string, body: string, line: number, diagnostics: Pre
   const condition =
     cursor.expectOneOf(['all_null', 'any_null'], 'invalidMissingValueCondition') ?? '';
   const columns: string[] = [];
+  const seenColumns = new Set<string>();
   if (cursor.match('in')) {
     while (!cursor.eof) {
       const field = cursor.expectFieldRef('invalidMissingValueField');
       if (!field || !toFieldName(field).trim()) break;
-      columns.push(toFieldName(field));
+      const column = toFieldName(field);
+      if (seenColumns.has(column)) {
+        diagnostics.push({
+          ...createPrepDiagnostic(
+            'duplicateMissingValueRowField',
+            `Row deletion field "${column}" is duplicated`
+          ),
+          line,
+        });
+      } else {
+        seenColumns.add(column);
+        columns.push(column);
+      }
       if (!cursor.matchType('Comma')) break;
     }
   }
   cursor.expectEof('unexpectedMissingValueToken');
   return createOperator('missing_value', text, {
-    strategy: condition === 'all_null' ? 'drop_empty_rows' : 'drop_rows_by_nulls',
+    strategy:
+      condition === 'all_null' && columns.length === 0 ? 'drop_empty_rows' : 'drop_rows_by_nulls',
     condition,
     columns: columns.length > 0 ? columns : undefined,
   });
@@ -100,7 +137,11 @@ function parseColumnRule(
       return null;
     }
     cursor.expectEof('unexpectedMissingValueToken');
-    return { column, method: 'literal_fill', value: parseLiteral(literal.image) };
+    const value = parseLiteral(literal.image);
+    if (value === null) {
+      cursor.report('invalidMissingValueLiteral', 'Fill requires a non-null value', literal);
+    }
+    return { column, method: 'literal_fill', value };
   }
   if (cursor.match('nullify')) {
     cursor.expect('values', 'invalidMissingValueRule');
@@ -123,9 +164,21 @@ function parseColumnRule(
   return null;
 }
 
-function formatRule(rule: Record<string, unknown>): string {
+function formatRule(rule: Record<string, unknown>): string | null {
   const column = formatFieldRef(String(rule.column ?? 'field'));
   const method = String(rule.method ?? 'skip');
+  const supportedMethods = new Set([
+    'skip',
+    'nullify_values',
+    'literal_fill',
+    'drop',
+    'forward_fill',
+    'backward_fill',
+    'mean_fill',
+    'median_fill',
+    'mode_fill',
+  ]);
+  if (!supportedMethods.has(method)) return null;
   if (method === 'skip') return `${column} skip`;
   if (method === 'drop') return `${column} drop rows`;
   if (method === 'nullify_values') {
@@ -139,6 +192,7 @@ function formatRule(rule: Record<string, unknown>): string {
     median_fill: 'median',
     mode_fill: 'mode',
   };
+  if (method === 'literal_fill' && (rule.value === null || rule.value === undefined)) return null;
   return method in fillMethods
     ? `${column} fill ${fillMethods[method]}`
     : `${column} fill ${formatLiteral(rule.value ?? null)}`;

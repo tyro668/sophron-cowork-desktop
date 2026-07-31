@@ -16,10 +16,8 @@ describe('MissingValueConfigSchema', () => {
     expect(result.rules[0].method).toBe('literal_fill');
   });
 
-  it('applies defaults for omitted fields', () => {
-    const result = MissingValueConfigSchema.parse({});
-    expect(result.strategy).toBe('by_column');
-    expect(result.rules).toEqual([]);
+  it('rejects an empty default column configuration', () => {
+    expect(() => MissingValueConfigSchema.parse({})).toThrow(/requires at least one rule/);
   });
 
   it('parses drop_empty_rows strategy', () => {
@@ -30,7 +28,112 @@ describe('MissingValueConfigSchema', () => {
     expect(result.strategy).toBe('drop_empty_rows');
   });
 
+  it('requires an explicit condition for scoped row deletion', () => {
+    expect(() =>
+      MissingValueConfigSchema.parse({
+        strategy: 'drop_rows_by_nulls',
+        columns: ['status'],
+      })
+    ).toThrow(/requires an explicit/);
+  });
+
+  it('rejects unsupported row conditions', () => {
+    expect(() =>
+      MissingValueConfigSchema.parse({
+        strategy: 'drop_rows_by_nulls',
+        condition: 'all_missing',
+      })
+    ).toThrow(z.ZodError);
+    expect(() =>
+      MissingValueConfigSchema.parse({
+        strategy: 'drop_empty_rows',
+        condition: 'any_null',
+      })
+    ).toThrow(/only supports the all_null/);
+  });
+
+  it('rejects empty and duplicate row-deletion fields', () => {
+    expect(() =>
+      MissingValueConfigSchema.parse({
+        strategy: 'drop_rows_by_nulls',
+        condition: 'any_null',
+        columns: [''],
+      })
+    ).toThrow(z.ZodError);
+    expect(() =>
+      MissingValueConfigSchema.parse({
+        strategy: 'drop_rows_by_nulls',
+        condition: 'all_null',
+        columns: ['status', 'status'],
+      })
+    ).toThrow(/is duplicated/);
+  });
+
   it('rejects rules with wrong type', () => {
     expect(() => MissingValueConfigSchema.parse({ rules: 'not-array' })).toThrow(z.ZodError);
+  });
+
+  it('rejects a rule without a field and an unknown method', () => {
+    expect(() =>
+      MissingValueConfigSchema.parse({
+        rules: [{ column: '', method: 'skip' }],
+      })
+    ).toThrow(z.ZodError);
+    expect(() =>
+      MissingValueConfigSchema.parse({
+        rules: [{ column: 'amount', method: 'mean_fll' }],
+      })
+    ).toThrow(z.ZodError);
+  });
+
+  it('accepts forward and backward fill without extra ordering config', () => {
+    const result = MissingValueConfigSchema.parse({
+      rules: [
+        { column: 'first', method: 'forward_fill' },
+        { column: 'second', method: 'backward_fill' },
+      ],
+    });
+    expect(result.rules.map((rule) => rule.method)).toEqual(['forward_fill', 'backward_fill']);
+  });
+
+  it('rejects duplicate fields inside one missing-value operator', () => {
+    expect(() =>
+      MissingValueConfigSchema.parse({
+        strategy: 'by_column',
+        rules: [
+          { column: 'status', method: 'forward_fill' },
+          { column: 'status', method: 'backward_fill' },
+        ],
+      })
+    ).toThrow(/can only be configured once/);
+  });
+
+  it('accepts typed special values', () => {
+    const result = MissingValueConfigSchema.parse({
+      rules: [
+        {
+          column: 'mixed',
+          method: 'nullify_values',
+          values: [0, true, 'N/A'],
+        },
+      ],
+    });
+    expect(result.rules[0].values).toEqual([0, true, 'N/A']);
+  });
+
+  it('rejects an empty special-value list', () => {
+    expect(() =>
+      MissingValueConfigSchema.parse({
+        rules: [{ column: 'status', method: 'nullify_values', values: [] }],
+      })
+    ).toThrow(/requires at least one value/);
+  });
+
+  it('rejects null as a literal fill value', () => {
+    expect(() =>
+      MissingValueConfigSchema.parse({
+        rules: [{ column: 'status', method: 'literal_fill', value: null }],
+      })
+    ).toThrow(/requires a non-null value/);
   });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { compileFilterConditionExpression } from '../src/main/data/operators/filter';
+import { compileFilterConditionExpression } from '../../src/main/data/operators/filter';
 
 describe('filter SQL compiler', () => {
   describe('comparison operators', () => {

@@ -346,7 +346,7 @@ describe('operator forms — config ↔ DSL round-trip', () => {
         strategy: 'by_column',
         rules: [
           { column: 'region', method: 'nullify_values', values: ['', 'N/A', '-'] },
-          { column: 'region', method: 'literal_fill', value: 'UNKNOWN' },
+          { column: 'status', method: 'literal_fill', value: 'UNKNOWN' },
           { column: 'revenue', method: 'literal_fill', value: '0' },
         ],
       },

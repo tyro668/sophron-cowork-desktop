@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compileLimitSql } from '../src/main/data/operators/limit';
+import { compileLimitSql } from '../../src/main/data/operators/limit';
 
 describe('compileLimitSql', () => {
   it('rejects percentages above 100 instead of silently clamping them', () => {

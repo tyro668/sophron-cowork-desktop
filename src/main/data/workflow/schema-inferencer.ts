@@ -271,7 +271,19 @@ function inferGeneratedWorkflowSchema(
         break;
       case 'missing_value':
         requireNames(config.columns);
-        objectArray(config.rules).forEach((rule) => requireName(rule.column));
+        objectArray(config.rules).forEach((rule) => {
+          const column = requireName(rule.column);
+          if (
+            column?.type &&
+            (rule.method === 'mean_fill' || rule.method === 'median_fill') &&
+            !['integer', 'float', 'decimal'].includes(column.type)
+          ) {
+            throw new DataCommandError(
+              'VALIDATION_FAILED',
+              `Missing-value ${String(rule.method)} requires a numeric field, but "${column.name}" is ${column.type}`
+            );
+          }
+        });
         break;
       case 'type_convert':
         objectArray(config.conversions).forEach((conversion) => {

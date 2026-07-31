@@ -357,7 +357,8 @@ describe('operator DSL executable cases', () => {
         | select [order_id], [customer_id], [dt], [region], [rev], [profit], [status], [updated_at]
         | map [dt] to [order_date], [rev] to [revenue]
         | cast [order_date] as date format "%Y-%m-%d" on_error null, [revenue] as float on_error null, [profit] as float on_error null
-        | missing value [region] nullify values ("", "N/A"), [region] fill "UNKNOWN"
+        | missing value [region] nullify values ("", "N/A")
+        | missing value [region] fill "UNKNOWN"
         | deduplicate by [order_id] keep last order by [updated_at] desc
         | derive [rn] = row_number() over(partition by [region] order by [revenue] desc)
         | filter [status] = "PAID" and [revenue] > 0
@@ -380,6 +381,7 @@ describe('operator DSL executable cases', () => {
       'field_select',
       'field_mapping',
       'type_convert',
+      'missing_value',
       'missing_value',
       'deduplicate',
       'calculate_field',

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api';
-import { compileScalarExpression } from '../src/main/data/operators/compute';
-import { compileCalculateFieldSql } from '../src/main/data/operators/calculate-field';
+import { compileScalarExpression } from '../../src/main/data/operators/compute';
+import { compileCalculateFieldSql } from '../../src/main/data/operators/calculate-field';
 
 async function connect(): Promise<DuckDBConnection> {
   const instance = await DuckDBInstance.create(':memory:');

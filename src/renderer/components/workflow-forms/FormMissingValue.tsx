@@ -17,6 +17,13 @@ import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
+import {
+  formatMissingValueListInput,
+  parseMissingValueInput,
+  parseMissingValueListInput,
+  validateMissingValueInput,
+  validateMissingValueListInput,
+} from '../../../shared/missing-value-values';
 
 const BASE_METHODS = [
   { value: 'skip', labelKey: 'ruleMethods.skip', label: '不处理' },
@@ -28,8 +35,9 @@ const BASE_METHODS = [
 const STATISTICAL_METHODS = [
   { value: 'mean_fill', labelKey: 'ruleMethods.mean_fill', label: '均值填充' },
   { value: 'median_fill', labelKey: 'ruleMethods.median_fill', label: '中位数填充' },
-  { value: 'mode_fill', labelKey: 'ruleMethods.mode_fill', label: '众数填充' },
 ];
+
+const MODE_METHODS = [{ value: 'mode_fill', labelKey: 'ruleMethods.mode_fill', label: '众数填充' }];
 
 const ORDERED_METHODS = [
   { value: 'forward_fill', labelKey: 'ruleMethods.forward_fill', label: '前向填充' },
@@ -37,19 +45,20 @@ const ORDERED_METHODS = [
 ];
 
 function methodsForType(colType: string | undefined) {
-  if (!colType) return BASE_METHODS;
+  if (!colType)
+    return [...BASE_METHODS, ...ORDERED_METHODS, ...STATISTICAL_METHODS, ...MODE_METHODS];
   const type = normalizeDataFieldType(colType);
   if (isNumericDataFieldType(type))
-    return [...BASE_METHODS, ...ORDERED_METHODS, ...STATISTICAL_METHODS];
-  if (isTemporalDataFieldType(type)) return [...BASE_METHODS, ...ORDERED_METHODS];
-  return BASE_METHODS;
+    return [...BASE_METHODS, ...ORDERED_METHODS, ...STATISTICAL_METHODS, ...MODE_METHODS];
+  if (isTemporalDataFieldType(type)) return [...BASE_METHODS, ...ORDERED_METHODS, ...MODE_METHODS];
+  return [...BASE_METHODS, ...ORDERED_METHODS, ...MODE_METHODS];
 }
 
 interface MissingRule {
   id?: string;
   column: string;
   method: string;
-  values?: string[];
+  values?: unknown[];
   value?: unknown;
 }
 
@@ -90,6 +99,7 @@ export default function FormMissingValue({
     strategy === 'drop_empty_rows' ? 'all_null' : ((node.config.condition as string) ?? 'any_null');
 
   const [showFieldPicker, setShowFieldPicker] = useState(true);
+  const [valueDrafts, setValueDrafts] = useState<Record<string, string>>({});
   const removingRef = useRef(false);
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const {
@@ -133,13 +143,26 @@ export default function FormMissingValue({
   const handleRowsColumnsChange = useCallback(
     (next: string[]) => {
       updateConfig((cfg) => {
-        const condition = cfg.condition as string | undefined;
-        const isAllNull = !condition || condition === 'all_null';
+        const condition =
+          cfg.strategy === 'drop_empty_rows'
+            ? 'all_null'
+            : ((cfg.condition as string | undefined) ?? 'any_null');
+        const isAllNull = condition === 'all_null';
         const hasColumns = next.length > 0;
         if (isAllNull && !hasColumns) {
-          return { ...cfg, strategy: 'drop_empty_rows', columns: undefined };
+          return {
+            ...cfg,
+            strategy: 'drop_empty_rows',
+            condition: 'all_null',
+            columns: undefined,
+          };
         }
-        return { ...cfg, strategy: 'drop_rows_by_nulls', columns: hasColumns ? next : undefined };
+        return {
+          ...cfg,
+          strategy: 'drop_rows_by_nulls',
+          condition,
+          columns: hasColumns ? next : undefined,
+        };
       });
     },
     [updateConfig]
@@ -151,13 +174,23 @@ export default function FormMissingValue({
       removingRef.current = true;
       updateConfig((cfg) => {
         const next = ((cfg.columns as string[]) ?? []).filter((c) => c !== col);
-        const isAllNull = (cfg.condition as string | undefined) === 'all_null';
+        const condition =
+          cfg.strategy === 'drop_empty_rows'
+            ? 'all_null'
+            : ((cfg.condition as string | undefined) ?? 'any_null');
+        const isAllNull = condition === 'all_null';
         if (isAllNull && next.length === 0) {
-          return { ...cfg, strategy: 'drop_empty_rows', columns: undefined };
+          return {
+            ...cfg,
+            strategy: 'drop_empty_rows',
+            condition: 'all_null',
+            columns: undefined,
+          };
         }
         return {
           ...cfg,
           strategy: 'drop_rows_by_nulls',
+          condition,
           columns: next.length > 0 ? next : undefined,
         };
       });
@@ -188,18 +221,39 @@ export default function FormMissingValue({
 
   const insertRule = useCallback(
     (index: number) => {
+      if (rules.length >= fieldCompletions.length) return;
       const next = [...rules];
       next.splice(index + 1, 0, createDefault());
       handleRulesChange(next);
     },
-    [rules, handleRulesChange]
+    [rules, fieldCompletions.length, handleRulesChange]
+  );
+
+  const copyRule = useCallback(
+    (index: number) => {
+      if (rules.length >= fieldCompletions.length) return;
+      const source = rules[index];
+      if (!source) return;
+      const next = [...rules];
+      next.splice(index + 1, 0, {
+        ...source,
+        id: generateId(),
+        column: '',
+        values: source.values ? [...source.values] : undefined,
+      });
+      handleRulesChange(next);
+    },
+    [rules, fieldCompletions.length, handleRulesChange]
   );
 
   const methodLabel = useCallback(
     (key: string) => {
-      const entry = [...BASE_METHODS, ...ORDERED_METHODS, ...STATISTICAL_METHODS].find(
-        (m) => m.value === key
-      );
+      const entry = [
+        ...BASE_METHODS,
+        ...ORDERED_METHODS,
+        ...STATISTICAL_METHODS,
+        ...MODE_METHODS,
+      ].find((m) => m.value === key);
       return entry ? t('data.workflow.' + entry.labelKey) : key;
     },
     [t]
@@ -301,6 +355,14 @@ export default function FormMissingValue({
                       <GlassFieldSingleSelect
                         value={item.column}
                         options={fieldCompletions}
+                        disabledOptions={
+                          new Set(
+                            rules
+                              .filter((_, ruleIndex) => ruleIndex !== i)
+                              .map((rule) => rule.column)
+                              .filter(Boolean)
+                          )
+                        }
                         columnTypes={columnTypes}
                         onChange={(col) => {
                           const newType = columnTypes[col];
@@ -329,7 +391,6 @@ export default function FormMissingValue({
                       return (
                         <GlassOptionSingleSelect
                           value={effectiveMethod}
-                          disabled={!item.column}
                           onChange={(m) => {
                             updateRule(i, {
                               method: m,
@@ -363,44 +424,74 @@ export default function FormMissingValue({
                         : (availableMethods[0]?.value ?? 'skip');
                       const needsValue =
                         effectiveMethod === 'nullify_values' || effectiveMethod === 'literal_fill';
-                      if (!needsValue || !item.column) {
+                      if (!needsValue) {
                         return <span className="w-full" />;
                       }
+                      const draftKey = `${item.id ?? i}:${effectiveMethod}`;
+                      const formattedValue =
+                        effectiveMethod === 'nullify_values'
+                          ? formatMissingValueListInput(item.values ?? [])
+                          : String(item.value ?? '');
+                      const displayedValue = valueDrafts[draftKey] ?? formattedValue;
+                      const inputError =
+                        effectiveMethod === 'nullify_values'
+                          ? validateMissingValueListInput(displayedValue, colType)
+                          : validateMissingValueInput(displayedValue, colType);
+                      const errorMessage =
+                        inputError === 'required'
+                          ? tr('missingValueRequired')
+                          : inputError === 'number'
+                            ? tr('missingInvalidNumber')
+                            : inputError === 'boolean'
+                              ? tr('missingInvalidBoolean')
+                              : undefined;
                       return (
                         <GlassFormTextInput
-                          value={
-                            effectiveMethod === 'nullify_values'
-                              ? (item.values ?? []).join(', ')
-                              : String(item.value ?? '')
-                          }
+                          value={displayedValue}
                           onChange={(raw) => {
+                            setValueDrafts((drafts) => ({ ...drafts, [draftKey]: raw }));
                             if (effectiveMethod === 'nullify_values') {
-                              const vals = raw
-                                .split(',')
-                                .map((v) => v.trim().replace(/^"|"$/g, ''))
-                                .filter(Boolean);
+                              const vals = parseMissingValueListInput(raw, colType);
                               updateRule(i, {
                                 values: vals.length > 0 ? vals : undefined,
                               });
                             } else {
-                              updateRule(i, { value: raw });
+                              updateRule(i, {
+                                value: parseMissingValueInput(raw, colType),
+                              });
                             }
                           }}
+                          onBlur={() =>
+                            setValueDrafts((drafts) => {
+                              const next = { ...drafts };
+                              delete next[draftKey];
+                              return next;
+                            })
+                          }
                           placeholder={
-                            effectiveMethod === 'nullify_values'
+                            errorMessage ??
+                            (effectiveMethod === 'nullify_values'
                               ? tr('missingSpecialValuesPlaceholder')
-                              : tr('missingFillPlaceholder')
+                              : tr('missingFillPlaceholder'))
                           }
                         />
                       );
                     },
                   },
                 ]}
+                actions={['add', 'copy', 'remove']}
                 onAdd={(i) => insertRule(i)}
+                onCopy={(i) => copyRule(i)}
                 onRemove={(i) => removeRule(i)}
                 addTitle={tr('missingAddRow')}
+                copyTitle={tr('copyRow')}
                 removeTitle={tr('missingRemoveRow')}
-                canAct={(action: RowAction) => (action === 'remove' ? rules.length > 1 : true)}
+                canAct={(action: RowAction) => {
+                  if (action === 'add' || action === 'copy') {
+                    return rules.length < fieldCompletions.length;
+                  }
+                  return action === 'remove' ? rules.length > 1 : true;
+                }}
                 draggable
                 onDragStart={handleDragStart}
                 onDragOver={handleDragOver}
