@@ -250,7 +250,7 @@ export function assertAtomicWorkflowHelpers(ir: WorkflowIr): void {
     if (operations.length <= 1) continue;
     const first = operations[0];
     const location = first.operationId ? provenance.get(first.operationId) : first.location;
-    const message = `Generated helper ${functionName} contains ${operations.length} workflow operations. Each helper must contain exactly one operation; compose helpers with named const variables in main().`;
+    const message = `Generated helper ${functionName} contains ${operations.length} workflow operations. An operation helper may contain at most one workflow operation; extract additional operations into atomic helpers and compose them through named const variables.`;
     throw new DataCommandError('VALIDATION_FAILED', message, {
       diagnostics: [
         {

@@ -5,6 +5,7 @@ import * as path from 'path';
 import { DuckDBInstance } from '@duckdb/node-api';
 import { createDataTaskStore, type DataTaskStore } from '../src/main/data/data-task-store';
 import { compilePrepWorkflowToFlow, parsePrepDsl } from '../src/shared/prep-dsl';
+import { compileGeneratedJavaScriptWorkflow } from '../src/main/data/workflow/workflow-generator';
 
 const tempRoots: string[] = [];
 const stores: DataTaskStore[] = [];
@@ -22,6 +23,69 @@ afterEach(() => {
 });
 
 describe('operator DSL execution cases', () => {
+  it('executes an AI-lowered date range filter through the existing DSL runtime', async () => {
+    const { dbPath, store, tempRoot } = createStore();
+    const ordersPath = path.join(tempRoot, 'ai-date-range-orders.csv');
+    fs.writeFileSync(
+      ordersPath,
+      [
+        'Order ID,Order Date,Product Name',
+        '1,2009-12-31,Office Chair',
+        '2,2010-01-01,Office Chair',
+        '3,2010-02-15,Desk',
+        '4,2010-03-31,Conference Chair',
+        '5,2010-04-01,Office Chair',
+      ].join('\n') + '\n',
+      'utf8'
+    );
+    const input = await store.importDataset({
+      name: 'AI date range orders',
+      sourceKind: 'csv',
+      filePath: ordersPath,
+    });
+    const task = await store.createTask({
+      name: 'AI compatible date range filter',
+      sourceInputTableId: input.id,
+    });
+    const generated = compileGeneratedJavaScriptWorkflow({
+      javascriptSource: `function keepDateRange(input) {
+  return workflow.step(input, "filter", {
+    condition: expr(row =>
+      row["Order Date"] >= cast("2010-01-01", "date") &&
+      row["Order Date"] <= cast("2010-03-31", "date") &&
+      contains(row["Product Name"], "Chair")
+    )
+  });
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  return workflow.output(keepDateRange(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+}`,
+      inputTableId: input.id,
+      outputTableName: 'ai_date_range_output',
+      requirement:
+        '筛选 Order Date 在 2010-01-01 至 2010-03-31 之间且 Product Name 包含 Chair 的记录',
+      columns: [
+        { name: 'Order ID', type: 'text' },
+        { name: 'Order Date', type: 'date' },
+        { name: 'Product Name', type: 'text' },
+      ],
+    });
+
+    expect(generated.workflowDsl).toContain('derive [__sophron_ai_filter_predicate] =');
+    expect(generated.workflowDsl).toContain('filter [__sophron_ai_filter_predicate] = true');
+    expect(generated.workflowDsl).toContain('drop [__sophron_ai_filter_predicate]');
+    await saveWorkflowDsl(store, task.id, generated.workflowDsl);
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    const rows = await queryRows(
+      dbPath,
+      'SELECT "Order ID" FROM ai_date_range_output ORDER BY "Order ID"'
+    );
+    expect(rows.map((row) => String(row['Order ID']))).toEqual(['2', '4']);
+  });
+
   it('sorts by a backtick-quoted field containing spaces', async () => {
     const { dbPath, store, tempRoot } = createStore();
     const pricesPath = path.join(tempRoot, 'unit-prices.csv');

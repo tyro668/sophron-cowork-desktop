@@ -12,6 +12,7 @@ import {
   workflowExpressionArityDescription,
   workflowExpressionArityIsValid,
 } from './workflow-expression-registry';
+import { isAiPrepDslOperationEnabled } from './prep-dsl-capability-profile';
 
 type WorkflowOperationType = WorkflowOperationIr['type'];
 
@@ -22,11 +23,11 @@ export interface WorkflowOperationDefinition {
 }
 
 /**
- * Single source of truth for the generated JavaScript operation surface.
+ * Payload definitions for the generated JavaScript operation surface.
  *
- * Adding an operation here drives the LLM capability prompt, the accepted IR
- * operation types and payload validation. The sandbox
- * bridge is operation-agnostic and never changes when an operation is added.
+ * An operation is exposed to the model only when the AI-owned Prep DSL
+ * compatibility profile also enables it. The registry then drives the accepted
+ * IR payload validation while the sandbox bridge remains operation-agnostic.
  * Expression capabilities live in workflow-expression-registry.ts and do not
  * belong here because they do not create workflow operation nodes.
  */
@@ -125,11 +126,17 @@ export const WORKFLOW_OPERATION_REGISTRY = [
 ] as const satisfies readonly WorkflowOperationDefinition[];
 
 export const WORKFLOW_OPERATION_TYPES = new Set<WorkflowOperationType>(
-  WORKFLOW_OPERATION_REGISTRY.map((definition) => definition.irType)
+  WORKFLOW_OPERATION_REGISTRY.filter((definition) =>
+    isAiPrepDslOperationEnabled(definition.irType)
+  ).map((definition) => definition.irType)
 );
 
 export function getWorkflowJavascriptCapabilityPrompt(): string {
-  return WORKFLOW_OPERATION_REGISTRY.map((definition) => definition.promptSignature).join(', ');
+  return WORKFLOW_OPERATION_REGISTRY.filter((definition) =>
+    isAiPrepDslOperationEnabled(definition.irType)
+  )
+    .map((definition) => definition.promptSignature)
+    .join(', ');
 }
 
 export function validateRegisteredWorkflowOperation(
@@ -137,7 +144,8 @@ export function validateRegisteredWorkflowOperation(
   index: number
 ): void {
   const definition = WORKFLOW_OPERATION_REGISTRY.find(
-    (candidate) => candidate.irType === operationValue.type
+    (candidate) =>
+      candidate.irType === operationValue.type && isAiPrepDslOperationEnabled(candidate.irType)
   );
   if (!definition) {
     throw new DataCommandError(

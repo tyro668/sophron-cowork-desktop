@@ -40,6 +40,10 @@ import type {
   WorkflowOperationIr,
 } from './workflow-model';
 import { validateAndNormalizeWorkflowIr } from './workflow-ir';
+import {
+  AI_PREP_DSL_RUNTIME_PROFILE_VERSION,
+  getAiPrepDslExpressionLowering,
+} from './prep-dsl-capability-profile';
 export type {
   GeneratedDataTaskWorkflow,
   GeneratedWorkflowColumnBinding,
@@ -273,6 +277,25 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
         );
       }
       const compiled = compileWorkflowExpression(conditionIr, context, 'filter.condition');
+      if (
+        getAiPrepDslExpressionLowering(conditionIr, 'filter') === 'materialize_filter_predicate'
+      ) {
+        const temporaryColumn = createGeneratedCompatibilityColumnName(
+          'filter_predicate',
+          context.getCurrentColumns()
+        );
+        context.lines.push(`  | derive ${formatDslField(temporaryColumn)} = ${compiled.dsl}`);
+        context.upsertColumn({
+          name: temporaryColumn,
+          type: 'boolean',
+          sourceColumns: compiled.sourceColumns,
+          expression: compiled.dsl,
+        });
+        context.lines.push(`  | filter ${formatDslField(temporaryColumn)} = true`);
+        context.lines.push(`  | drop ${formatDslField(temporaryColumn)}`);
+        context.removeColumn(temporaryColumn);
+        return;
+      }
       context.lines.push(`  | filter ${compiled.dsl}`);
     },
   },
@@ -799,6 +822,7 @@ export function compileGeneratedWorkflowIr({
   lines.push(`  | output table "${escapeDslString(outputTableName)}" mode replace`);
   const outputColumns = columnTracker.getCurrentColumns();
   return {
+    runtimeCompatibilityProfileVersion: AI_PREP_DSL_RUNTIME_PROFILE_VERSION,
     workflowDsl: lines.join('\n'),
     operationOrigins,
     requiredColumns: [...requiredColumnsByName.values()],
@@ -1409,6 +1433,21 @@ function createGeneratedTemporaryColumnName(
   let index = 2;
   while (existing.has(candidate.toLowerCase())) {
     candidate = `__sophron_cast_${safeBase}_${index}`;
+    index += 1;
+  }
+  return candidate;
+}
+
+function createGeneratedCompatibilityColumnName(
+  purpose: string,
+  currentColumns: GeneratedWorkflowColumnBinding[]
+): string {
+  const existing = new Set(currentColumns.map((column) => column.name.toLowerCase()));
+  const safePurpose = purpose.replace(/[^\p{L}\p{N}_]+/gu, '_').replace(/^_+|_+$/g, '') || 'value';
+  let candidate = `__sophron_ai_${safePurpose}`;
+  let index = 2;
+  while (existing.has(candidate.toLowerCase())) {
+    candidate = `__sophron_ai_${safePurpose}_${index}`;
     index += 1;
   }
   return candidate;

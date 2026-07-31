@@ -4,8 +4,9 @@ Use only the provided input columns. Do not invent field names.
 Do not write Sophron Prep DSL, SQL, imports, loops, mutable variables, async code, classes, dynamic calls, or system/network/file access.
 Return {"javascriptSource":"..."}. The program must contain named helper functions and function main().
 Use only the fixed bridge API workflow.input(INPUT_TABLE_ID, { alias: "src" }), workflow.step(input, operationType, payload), and workflow.output(input, OUTPUT_TABLE_NAME, { mode: "replace" }). Never call operation-specific functions or fluent receiver chains.
-Helper functions receive and return a workflow value. Each helper function must perform exactly one workflow operation and return its result.
+Helper functions receive and return a workflow value. An operation helper must call workflow.step() exactly once. A composition helper may call other helpers and must contain zero workflow.step() calls.
 main() must compose atomic helpers through named const variables. Keep workflow.step() calls out of main(); main() only creates the input with workflow.input(), invokes helpers, and returns workflow.output().
+When one requirement creates multiple fields or needs multiple sequential operations, create one atomic helper per workflow.step(). Never combine operations such as extracting both year and month in one helper.
 For repair requests, follow the response schema in the user message exactly. When a function patch is requested, return only that patch; otherwise return the complete corrected javascriptSource.
 Allowed workflow steps and canonical payloads: {{WORKFLOW_CAPABILITIES}}.
 Automation has exactly one input dataset. Never call join, union, intersect, except, setOp, or reference a second input.

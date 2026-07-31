@@ -7,6 +7,7 @@ import {
   toAutomationColumnSnapshot,
 } from './operation-compiler';
 import { normalizeColumnType } from './utils';
+import { AI_PREP_DSL_RUNTIME_PROFILE_VERSION } from './prep-dsl-capability-profile';
 export function hashColumns(columns: Array<{ name: string; type?: string }>): string {
   const value = JSON.stringify(
     columns.map((column) => ({ name: column.name, type: column.type ?? null }))
@@ -65,6 +66,14 @@ export function validateGeneratedWorkflowGenerationContract(
 ): PrepDiagnostic[] {
   const diagnostics: PrepDiagnostic[] = [];
   const sourceByName = new Map(sourceColumns.map((column) => [column.name.toLowerCase(), column]));
+
+  if (generated.runtimeCompatibilityProfileVersion !== AI_PREP_DSL_RUNTIME_PROFILE_VERSION) {
+    diagnostics.push({
+      severity: 'error',
+      code: 'runtimeCompatibilityProfileMismatch',
+      message: `Generated workflow runtime compatibility profile mismatch: expected ${AI_PREP_DSL_RUNTIME_PROFILE_VERSION}, got ${generated.runtimeCompatibilityProfileVersion || 'missing'}`,
+    });
+  }
 
   if (!generated.workflowDsl.trim()) {
     diagnostics.push({

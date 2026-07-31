@@ -271,6 +271,9 @@ function buildWorkflowGenerationUserPrompt(input: {
   diagnostics?: PrepDiagnostic[];
   repairFunctionName?: string;
 }): string {
+  const isNonAtomicHelperRepair = input.diagnostics?.some(
+    (diagnostic) => diagnostic.code === 'NON_ATOMIC_WORKFLOW_HELPER'
+  );
   return JSON.stringify(
     {
       task: 'Convert the user requirement into standard JavaScript that builds a Sophron data workflow through the provided Workflow SDK.',
@@ -280,13 +283,18 @@ function buildWorkflowGenerationUserPrompt(input: {
         inputTableId: input.inputTableId,
         outputTableName: input.outputTableName,
       },
+      generationRules: {
+        atomicHelpers:
+          'Every function that directly calls workflow.step() must call it exactly once. When a requirement needs multiple operations, create one helper per operation and compose those helpers through named const variables.',
+      },
       outputJsonSchema:
         input.failedJavascriptSource && input.repairFunctionName
           ? {
               javascriptPatch: {
                 functionName: input.repairFunctionName,
-                replacementSource:
-                  'one or more complete named function declarations; retain the requested function, optionally add uniquely named atomic helpers, and do not include main unless main is the requested function',
+                replacementSource: isNonAtomicHelperRepair
+                  ? 'complete declarations for the requested composition function and its new atomic helpers; each new helper contains exactly one workflow.step(), while the requested function contains zero workflow.step() calls and only composes those helpers'
+                  : 'one or more complete named function declarations; retain the requested function, optionally add uniquely named atomic helpers, and do not include main unless main is the requested function',
               },
             }
           : {
@@ -307,8 +315,18 @@ function buildWorkflowGenerationUserPrompt(input: {
               functionName: isRecord(diagnostic) ? diagnostic.functionName : undefined,
             })),
             instruction: input.repairFunctionName
-              ? `Repair only ${input.repairFunctionName}. Return javascriptPatch with functionName exactly "${input.repairFunctionName}" and replacementSource containing the corrected function plus only any new atomic helpers it requires. Do not return the complete program or DSL.`
+              ? isNonAtomicHelperRepair
+                ? `Repair only ${input.repairFunctionName}. It currently contains multiple workflow operations. Extract every workflow.step() into a uniquely named helper that contains exactly one workflow.step(). Keep ${input.repairFunctionName} as a composition wrapper with zero workflow.step() calls; it must call the new helpers through named const variables and return the final value. Return javascriptPatch with functionName exactly "${input.repairFunctionName}". replacementSource must contain the complete declarations of the new atomic helpers and ${input.repairFunctionName}. Do not return the unchanged function, the complete program, main(), or DSL.`
+                : `Repair only ${input.repairFunctionName}. Return javascriptPatch with functionName exactly "${input.repairFunctionName}" and replacementSource containing the corrected function plus only any new atomic helpers it requires. Do not return the complete program or DSL.`
               : 'Return the complete corrected javascriptSource, including every helper and main(). Do not return a partial function or DSL.',
+            repairExample: isNonAtomicHelperRepair
+              ? {
+                  invalid:
+                    'function extractYearMonth(input) { const withYear = workflow.step(input, "derive", YEAR_PAYLOAD); return workflow.step(withYear, "derive", MONTH_PAYLOAD); }',
+                  replacementSource:
+                    'function extractYear(input) { return workflow.step(input, "derive", YEAR_PAYLOAD); }\nfunction extractMonth(input) { return workflow.step(input, "derive", MONTH_PAYLOAD); }\nfunction extractYearMonth(input) { const withYear = extractYear(input); const withMonth = extractMonth(withYear); return withMonth; }',
+                }
+              : undefined,
           }
         : undefined,
       examples: [
@@ -323,6 +341,12 @@ function buildWorkflowGenerationUserPrompt(input: {
           javascriptSource:
             'function sortSales(input) {\n  return workflow.step(input, "sort", { column: expr(row => row["Sales"]), direction: "asc" });\n}\n\nfunction removeRecordCount(input) {\n  return workflow.step(input, "drop", { columns: ["记录数"] });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const sorted = sortSales(input);\n  const cleaned = removeRecordCount(sorted);\n  return workflow.output(cleaned, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
           requiredColumns: [{ name: 'Sales' }, { name: '记录数' }],
+        },
+        {
+          requirement: '从 Date 提取年份和月份',
+          javascriptSource:
+            'function extractYear(input) {\n  return workflow.step(input, "derive", { column: "Year", expression: expr(row => year(row["Date"])) });\n}\n\nfunction extractMonth(input) {\n  return workflow.step(input, "derive", { column: "Month", expression: expr(row => month(row["Date"])) });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const withYear = extractYear(input);\n  const withMonth = extractMonth(withYear);\n  return workflow.output(withMonth, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+          requiredColumns: [{ name: 'Date' }],
         },
       ],
     },

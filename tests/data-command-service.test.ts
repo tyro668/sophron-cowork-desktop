@@ -1943,6 +1943,27 @@ function extractYearMonth(input) {
     });
 
     expect(runPiAiOneShot).toHaveBeenCalledTimes(3);
+    const initialPrompt = JSON.parse(String(vi.mocked(runPiAiOneShot).mock.calls[0]?.[0])) as {
+      generationRules?: { atomicHelpers?: string };
+      examples?: Array<{ requirement?: string; javascriptSource?: string }>;
+    };
+    expect(initialPrompt.generationRules?.atomicHelpers).toContain('one helper per operation');
+    expect(
+      initialPrompt.examples?.find((example) => example.requirement === '从 Date 提取年份和月份')
+        ?.javascriptSource
+    ).toContain('function extractMonth(input)');
+    const repairPrompt = JSON.parse(String(vi.mocked(runPiAiOneShot).mock.calls[1]?.[0])) as {
+      previousFailedAttempt?: {
+        instruction?: string;
+        repairExample?: { replacementSource?: string };
+      };
+    };
+    expect(repairPrompt.previousFailedAttempt?.instruction).toContain(
+      'composition wrapper with zero workflow.step() calls'
+    );
+    expect(repairPrompt.previousFailedAttempt?.repairExample?.replacementSource).toContain(
+      'function extractYearMonth(input)'
+    );
     expect(generated.expectedOutputSchema).toEqual([
       { name: 'Date', type: 'date' },
       { name: 'Year', type: 'integer' },

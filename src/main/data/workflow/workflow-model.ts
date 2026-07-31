@@ -163,6 +163,8 @@ export interface GeneratedWorkflowColumnBinding {
 export interface GeneratedDataTaskWorkflow {
   /** Original generated JavaScript retained for function-level diagnostics and repair. */
   javascriptSource?: string;
+  /** AI-side compatibility profile used to lower IR into the existing Prep DSL runtime. */
+  runtimeCompatibilityProfileVersion: string;
   /** Versioned, canonical SDK build result retained for audit and deterministic lowering. */
   workflowIr?: WorkflowIr;
   workflowIrSemanticHash?: string;

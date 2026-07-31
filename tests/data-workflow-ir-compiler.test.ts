@@ -23,6 +23,11 @@ import {
   WORKFLOW_EXPRESSION_FUNCTIONS,
   WORKFLOW_NATIVE_EXPRESSION_INTRINSICS,
 } from '../src/main/data/workflow/workflow-expression-registry';
+import {
+  AI_PREP_DSL_OPERATION_CAPABILITIES,
+  AI_PREP_DSL_RUNTIME_PROFILE_VERSION,
+} from '../src/main/data/workflow/prep-dsl-capability-profile';
+import { validateGeneratedWorkflowGenerationContract } from '../src/main/data/workflow/schema-inferencer';
 
 const SOURCE = `function removeCount(input) {
   return workflow.step(input, "drop", { columns: ["记录数"] });
@@ -72,6 +77,11 @@ describe('JavaScript Workflow SDK pipeline', () => {
       expect(typeDeclarations).toContain(`function ${intrinsicName}`);
     }
     expect(runtimeCapabilities.binaryMethods).toMatchObject({ and: 'and', or: 'or' });
+    expect(prompt).not.toContain('Prep node:');
+    expect(prompt).not.toContain('runtime compatibility profile:');
+    expect(new Set(Object.keys(AI_PREP_DSL_OPERATION_CAPABILITIES))).toEqual(
+      new Set(WORKFLOW_OPERATION_REGISTRY.map((definition) => definition.irType))
+    );
   });
 
   it('accepts the canonical by-column NULL marker configuration', () => {
@@ -194,6 +204,7 @@ function main() {
       columns: [{ name: '记录数', type: 'integer' }],
     });
     expect(result.javascriptSource).toContain('function removeCount');
+    expect(result.runtimeCompatibilityProfileVersion).toBe(AI_PREP_DSL_RUNTIME_PROFILE_VERSION);
     expect(result.workflowDsl).toContain('input source dataset "input-1" as src');
     expect(result.workflowDsl).toContain('drop [记录数]');
     expect(result.workflowDsl).toContain('output table "output-1" mode replace');
@@ -201,6 +212,34 @@ function main() {
       operationId: 'remove-count',
       functionName: 'removeCount',
     });
+  });
+
+  it('rejects a generated artifact from a stale Prep DSL runtime profile', () => {
+    const columns = [
+      { name: '记录数', type: 'integer' },
+      { name: '名称', type: 'text' },
+    ];
+    const result = compileGeneratedJavaScriptWorkflow({
+      javascriptSource: SOURCE,
+      inputTableId: 'input-1',
+      outputTableName: 'output-1',
+      requirement: '删除记录数',
+      columns,
+    });
+    const diagnostics = validateGeneratedWorkflowGenerationContract(
+      {
+        ...result,
+        runtimeCompatibilityProfileVersion: 'prep-runtime-compat/stale',
+      },
+      columns
+    );
+
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        severity: 'error',
+        code: 'runtimeCompatibilityProfileMismatch',
+      })
+    );
   });
 
   it('compiles safe division with fn.nullif and preserves the numeric result type', () => {
@@ -946,6 +985,9 @@ function main() {
   const legacyResult = compile(legacy);
   expect(nativeResult.workflowIrSemanticHash).toBe(legacyResult.workflowIrSemanticHash);
   expect(nativeResult.workflowDsl).toBe(legacyResult.workflowDsl);
+  expect(nativeResult.workflowDsl).toContain('derive [__sophron_ai_filter_predicate] = contains(');
+  expect(nativeResult.workflowDsl).toContain('filter [__sophron_ai_filter_predicate] = true');
+  expect(nativeResult.workflowDsl).toContain('drop [__sophron_ai_filter_predicate]');
 });
 
 it('types native cast results and normalizes timestamp as datetime during DSL lowering', () => {
@@ -981,7 +1023,11 @@ function main() {
   const canonicalAlias = compile(source.replace('"timestamp"', '"datetime"'));
 
   expect(result.workflowDsl).toContain('CAST([Raw] AS DECIMAL(18,2)) * 2');
-  expect(result.workflowDsl).toContain("[`Created At`] >= CAST('2020-01-01 00:00:00' AS DATETIME)");
+  expect(result.workflowDsl).toContain(
+    "derive [__sophron_ai_filter_predicate] = [`Created At`] >= CAST('2020-01-01 00:00:00' AS DATETIME)"
+  );
+  expect(result.workflowDsl).toContain('filter [__sophron_ai_filter_predicate] = true');
+  expect(result.workflowDsl).toContain('drop [__sophron_ai_filter_predicate]');
   expect(result.workflowIrSemanticHash).toBe(canonicalAlias.workflowIrSemanticHash);
 });
 
