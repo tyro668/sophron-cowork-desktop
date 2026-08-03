@@ -330,14 +330,14 @@ describe('operator DSL executable cases', () => {
       },
     },
     {
-      dsl: 'explode json [`with index`] path "$.keep parent names" as [`keep parent names`] with index [`with index`]',
+      dsl: 'explode json [`with index`] path "$.keep parent names"',
       expectedConfig: {
         sourceKind: 'json',
         column: 'with index',
         path: '$.keep parent names',
-        alias: 'keep parent names',
-        withIndex: 'with index',
+        alias: '',
         keepParentNames: false,
+        preserveOrder: false,
       },
     },
   ])('parses unnest keywords inside field names: $dsl', ({ dsl, expectedConfig }) => {
@@ -345,7 +345,7 @@ describe('operator DSL executable cases', () => {
 
     expect(errorsOf(parsed.diagnostics), dsl).toHaveLength(0);
     expect(parsed.operator?.config).toMatchObject({ dsl, ...expectedConfig });
-    expect(exportPrepOperatorDsl(parsed.operator!)).toBe(dsl);
+    expect(exportPrepOperatorDsl({ id: 'unnest_keywords_case', ...parsed.operator! })).toBe(dsl);
   });
 
   it('compiles and round-trips a workflow that uses every currently executable operator family', () => {
@@ -518,13 +518,13 @@ describe('operator DSL executable cases', () => {
     const percent = parsePrepOperatorDsl(percentDsl, 'limit');
     expect(errorsOf(percent.diagnostics)).toHaveLength(0);
     expect(percent.operator?.config).toMatchObject({ unit: 'percent', ties: true });
-    expect(exportPrepOperatorDsl(percent.operator!)).toBe(percentDsl);
+    expect(exportPrepOperatorDsl({ id: 'percent_top', ...percent.operator! })).toBe(percentDsl);
 
     const rowsDsl = 'top 10 by [score] desc offset 5 with ties';
     const rows = parsePrepOperatorDsl(rowsDsl, 'limit');
     expect(errorsOf(rows.diagnostics)).toHaveLength(0);
     expect(rows.operator?.config).toMatchObject({ unit: 'rows', offset: 5, ties: true });
-    expect(exportPrepOperatorDsl(rows.operator!)).toBe(rowsDsl);
+    expect(exportPrepOperatorDsl({ id: 'rows_top', ...rows.operator! })).toBe(rowsDsl);
   });
 
   it.each(['sample 10 rows system', 'sample 10 rows bernoulli'])(

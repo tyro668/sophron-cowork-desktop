@@ -2960,22 +2960,22 @@ export class DataTaskStore {
             jsonPath === '$'
               ? quoteIdentifier(colName)
               : `json_extract(${quoteIdentifier(colName)}, ${literalToSql(jsonPath)})`;
-          const validRows = await this.queryRows<{ bad: boolean }>(
-            `SELECT TRY_CAST(${colExpr} AS JSON) IS NULL AS bad FROM ${input} LIMIT 1`
+          const invalidRows = await this.queryRows<{ bad: boolean }>(
+            `SELECT ${colExpr} IS NOT NULL AND TRY_CAST(${colExpr} AS JSON) IS NULL AS bad FROM ${input} WHERE ${colExpr} IS NOT NULL LIMIT 1`
           );
-          if (validRows[0]?.bad) {
+          if (invalidRows.length > 0 && invalidRows[0].bad) {
             throw new Error(
               `"${colName}" is not valid JSON. Use standard JSON format: {"Key":"Value"} or {"Key":1}`
             );
           }
           const typeRows = await this.queryRows<{ t: string }>(
-            `SELECT json_type(${colExpr}) AS t FROM ${input} LIMIT 1`
+            `SELECT json_type(${colExpr}) AS t FROM ${input} WHERE ${colExpr} IS NOT NULL AND TRY_CAST(${colExpr} AS JSON) IS NOT NULL LIMIT 1`
           );
           const jsonType = typeRows[0]?.t ?? '';
           node.config._jsonType = jsonType;
           if (jsonType === 'OBJECT') {
             const keyRows = await this.queryRows<{ keys: string[] }>(
-              `SELECT json_keys(${colExpr}) AS keys FROM ${input} LIMIT 1`
+              `SELECT json_keys(${colExpr}) AS keys FROM ${input} WHERE ${colExpr} IS NOT NULL AND TRY_CAST(${colExpr} AS JSON) IS NOT NULL LIMIT 1`
             );
             node.config._jsonKeys = keyRows[0]?.keys ?? [];
           }

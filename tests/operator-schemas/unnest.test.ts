@@ -17,13 +17,12 @@ describe('UnnestConfigSchema', () => {
     expect(result.withIndex).toBe('idx');
   });
 
-  it('applies defaults for omitted fields', () => {
-    const result = UnnestConfigSchema.parse({});
-    expect(result.sourceKind).toBe('list');
-    expect(result.column).toBe('items');
-    expect(result.alias).toBe('item');
-    expect(result.path).toBe('$');
-    expect(result.keepParentNames).toBe(false);
+  it('rejects empty config (column is required)', () => {
+    expect(() => UnnestConfigSchema.parse({})).toThrow(z.ZodError);
+  });
+
+  it('rejects empty alias for list mode', () => {
+    expect(() => UnnestConfigSchema.parse({ column: 'items', alias: '' })).toThrow(z.ZodError);
   });
 
   it('rejects invalid sourceKind value', () => {

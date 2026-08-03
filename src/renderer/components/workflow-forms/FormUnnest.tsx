@@ -18,6 +18,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
   const preserveOrder = Boolean(node.config.preserveOrder ?? false);
 
   const isObjectMode = sourceKind === 'json';
+  const withIndexEnabled = node.config.withIndex !== undefined;
 
   return (
     <div className="grid content-start gap-2.5">
@@ -64,7 +65,19 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                     tip: tr('unnestSourceTypeJsonTip'),
                   },
                 ]}
-                onChange={(v) => updateConfig((cfg) => ({ ...cfg, sourceKind: v }))}
+                onChange={(v) =>
+                  updateConfig((cfg) => ({
+                    ...cfg,
+                    sourceKind: v,
+                    ...(v === 'json'
+                      ? {
+                          withIndex: undefined,
+                          keepParentNames: undefined,
+                          preserveOrder: undefined,
+                        }
+                      : {}),
+                  }))
+                }
                 label={tr('unnestSourceType')}
               />
               {isObjectMode ? (
@@ -172,25 +185,22 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                   <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
                     <input
                       type="checkbox"
-                      checked={!!withIndex}
-                      onChange={(e) =>
+                      checked={withIndexEnabled}
+                      onChange={(e) => {
                         updateConfig((cfg) => ({
                           ...cfg,
-                          withIndex: e.target.checked
-                            ? cfg.withIndex && typeof cfg.withIndex === 'string'
-                              ? cfg.withIndex
-                              : 'index'
-                            : undefined,
-                        }))
-                      }
+                          withIndex: e.target.checked ? '' : undefined,
+                        }));
+                      }}
                       className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
                     />
                     {tr('unnestIndexCol')}
                   </label>
                   <GlassFormTextInput
                     value={withIndex}
-                    disabled={!withIndex}
-                    onChange={(v) => updateConfig((cfg) => ({ ...cfg, withIndex: v || undefined }))}
+                    disabled={!withIndexEnabled}
+                    onChange={(v) => updateConfig((cfg) => ({ ...cfg, withIndex: v }))}
+                    placeholder={tr('unnestIndexPlaceholder')}
                     className="h-8 text-[13px] w-full disabled:cursor-not-allowed disabled:opacity-40"
                   />
                 </div>

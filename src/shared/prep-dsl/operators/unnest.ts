@@ -16,28 +16,36 @@ export const unnestCodec: OperatorDslCodec = {
     const column = cursor.expectFieldRef('invalidUnnestField');
 
     let path: string | undefined;
+    let alias: string | undefined;
     if (isJson) {
       cursor.expect('path', 'invalidUnnestPath');
       const literal = cursor.expectStringLiteral('invalidUnnestPath');
       path = literal ? unquoteString(literal) : undefined;
+    } else {
+      cursor.expect('as', 'invalidUnnestAlias');
+      const field = cursor.expectFieldRef('invalidUnnestAlias');
+      alias = field ? toFieldName(field) : undefined;
     }
-    cursor.expect('as', 'invalidUnnestAlias');
-    const alias = cursor.expectFieldRef('invalidUnnestAlias');
 
     let withIndex: string | undefined;
-    if (cursor.match('with')) {
+    if (!isJson && cursor.match('with')) {
       cursor.expect('index', 'invalidUnnestIndex');
       const field = cursor.expectFieldRef('invalidUnnestIndex');
       withIndex = field ? toFieldName(field) : undefined;
     }
     let keepParentNames = false;
-    if (cursor.match('keep')) {
+    if (!isJson && cursor.match('keep')) {
       cursor.expect('parent', 'invalidUnnestKeep');
       cursor.expect('names', 'invalidUnnestKeep');
       keepParentNames = cursor.expectOneOf(['true', 'false'], 'invalidUnnestKeep') === 'true';
     }
+    let preserveOrder = false;
+    if (!isJson && cursor.match('preserve')) {
+      cursor.expect('order', 'invalidUnnestOrder');
+      preserveOrder = cursor.expectOneOf(['true', 'false'], 'invalidUnnestOrder') === 'true';
+    }
     cursor.expectEof('unexpectedUnnestToken');
-    if (!column || !alias) {
+    if (!column || (!isJson && !alias)) {
       diagnostics.push({
         ...createPrepDiagnostic('invalidUnnest', 'Unnest requires a source field and alias'),
         line: command.line,
@@ -47,23 +55,25 @@ export const unnestCodec: OperatorDslCodec = {
       sourceKind: isJson ? 'json' : 'list',
       column: column ? toFieldName(column) : '',
       path,
-      alias: alias ? toFieldName(alias) : '',
+      alias: alias ?? '',
       withIndex,
       keepParentNames,
+      preserveOrder,
     });
   },
   format: (config) => {
-    const column = formatFieldRef(String(config?.column ?? 'items'));
-    const alias = formatFieldRef(String(config?.alias ?? 'item'));
+    const column = formatFieldRef(String(config?.column ?? ''));
+    const isJson = config?.sourceKind === 'json';
+    const suffix = isJson ? '' : ` as ${formatFieldRef(String(config?.alias ?? ''))}`;
     const withIndex =
       typeof config?.withIndex === 'string'
         ? ` with index ${formatFieldRef(config.withIndex)}`
         : '';
     const keepParentNames = config?.keepParentNames ? ' keep parent names true' : '';
-    return config?.sourceKind === 'json'
-      ? `explode json ${column} path ${quoteString(
-          String(config.path ?? '$')
-        )} as ${alias}${withIndex}${keepParentNames}`
-      : `unnest ${column} as ${alias}${withIndex}${keepParentNames}`;
+    const preserveOrder = config?.preserveOrder ? ' preserve order true' : '';
+    if (isJson) {
+      return `explode json ${column} path ${quoteString(String(config.path ?? '$'))}`;
+    }
+    return `unnest ${column}${suffix}${withIndex}${keepParentNames}${preserveOrder}`;
   },
 };

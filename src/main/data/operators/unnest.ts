@@ -5,6 +5,10 @@ function castToJsonExpr(columnExpr: string): string {
   return `${columnExpr}::JSON`;
 }
 
+function escapeJsonKey(key: string): string {
+  return `"${key.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
 export function compileUnnestSql(
   output: string,
   input: string,
@@ -19,12 +23,50 @@ export function compileUnnestSql(
   const withIndex = parsed.withIndex;
   const rn = uniqueAlias('__rn', columns);
 
-  // JSON OBJECT mode: expand each key into a separate column, return 1 row
-  if (parsed.sourceKind === 'json' && config._jsonType === 'OBJECT') {
-    const jsonCol = castToJsonExpr(`base.${column}`);
+  if (!parsed.column?.trim()) {
+    throw new Error('Unnest requires a source column');
+  }
+  if (parsed.sourceKind === 'list' && !parsed.alias?.trim()) {
+    throw new Error('Unnest requires an alias for list mode');
+  }
+  if (parsed.withIndex !== undefined && !parsed.withIndex.trim()) {
+    throw new Error('Unnest index column name cannot be empty');
+  }
+
+  const aliasColName = parsed.keepParentNames ? `${rawColumn}_${rawAlias}` : rawAlias;
+
+  if (parsed.sourceKind === 'json') {
+    if (!config._jsonType || config._jsonType === 'NULL') {
+      return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input}`;
+    }
+    if (config._jsonType !== 'OBJECT') {
+      throw new Error(`Expand-to-columns requires a JSON object, but found ${config._jsonType}`);
+    }
+
+    // JSON OBJECT mode: expand each key into a separate column, return 1 row
     const keys = (config._jsonKeys as string[]) ?? [];
+    const baseSet = new Set(columns.map((c) => c.toLowerCase()));
+    const conflicts = keys.filter((k) => baseSet.has(k.toLowerCase()));
+    if (conflicts.length > 0) {
+      throw new Error(`Unnest JSON keys conflict with existing columns: ${conflicts.join(', ')}`);
+    }
+    const normalized = new Set<string>();
+    const duplicates = keys.filter((k) => {
+      const norm = k.toLowerCase();
+      if (normalized.has(norm)) return true;
+      normalized.add(norm);
+      return false;
+    });
+    if (duplicates.length > 0) {
+      throw new Error(
+        `Unnest JSON keys have duplicates after normalization: ${duplicates.join(', ')}`
+      );
+    }
+
+    const jsonCol = castToJsonExpr(`base.${column}`);
     const keyCols = keys.map((k) => {
-      const fullPath = parsed.path === '$' ? `$.${k}` : `${parsed.path}.${k}`;
+      const fullPath =
+        parsed.path === '$' ? `$.${escapeJsonKey(k)}` : `${parsed.path}.${escapeJsonKey(k)}`;
       return `json_extract_string(${jsonCol}, ${literalToSql(fullPath)}) AS ${quoteIdentifier(k)}`;
     });
     return `
@@ -32,6 +74,27 @@ export function compileUnnestSql(
       SELECT base.*${keyCols.length > 0 ? `, ${keyCols.join(', ')}` : ''}
       FROM ${input} base
     `;
+  }
+
+  const baseSet = new Set(columns.map((c) => c.toLowerCase()));
+  const conflicts: string[] = [];
+  if (baseSet.has(aliasColName.toLowerCase())) {
+    conflicts.push(aliasColName);
+  }
+  if (
+    withIndex &&
+    baseSet.has(withIndex.toLowerCase()) &&
+    withIndex.toLowerCase() !== aliasColName.toLowerCase()
+  ) {
+    conflicts.push(withIndex);
+  }
+  if (conflicts.length > 0) {
+    throw new Error(`Unnest output fields conflict with existing columns: ${conflicts.join(', ')}`);
+  }
+  if (withIndex && aliasColName.toLowerCase() === withIndex.toLowerCase()) {
+    throw new Error(
+      `Unnest alias "${aliasColName}" and index column "${withIndex}" must be different`
+    );
   }
 
   // List mode: UNNEST array into rows (supports both native arrays and JSON strings)
