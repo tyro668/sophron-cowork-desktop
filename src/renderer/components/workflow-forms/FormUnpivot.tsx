@@ -18,14 +18,24 @@ export default function FormUnpivot({
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 
-  const columns = useMemo(() => (node.config.columns as string[]) ?? [], [node.config?.columns]);
+  const columns = useMemo(() => {
+    const raw = (node.config.columns as string[]) ?? [];
+    if (node.config?.mode === 'except') {
+      return fieldCompletions.filter((c) => !raw.includes(c));
+    }
+    return raw;
+  }, [node.config?.columns, node.config?.mode, fieldCompletions]);
   const nameColumn = String(node.config.nameColumn ?? '');
   const valueColumn = String(node.config.valueColumn ?? '');
   const includeNulls = Boolean(node.config.includeNulls ?? false);
 
   const handleColumnsSelect = useCallback(
     (next: string[]) => {
-      updateConfig((cfg) => ({ ...cfg, columns: next.length > 0 ? next : undefined }));
+      updateConfig((cfg) => ({
+        ...cfg,
+        mode: 'include',
+        columns: next.length > 0 ? next : undefined,
+      }));
     },
     [updateConfig]
   );

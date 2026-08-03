@@ -22,10 +22,22 @@ export const unpivotCodec: OperatorDslCodec = {
     }
 
     const columns: string[] = [];
+    const seen = new Set<string>();
     while (!cursor.eof) {
       const field = cursor.expectFieldRef('invalidUnpivotField');
       if (!field || !toFieldName(field).trim()) break;
-      columns.push(toFieldName(field));
+      const name = toFieldName(field);
+      if (seen.has(name.toLowerCase())) {
+        diagnostics.push({
+          ...createPrepDiagnostic(
+            'duplicateUnpivotField',
+            `Duplicate field "${name}" in unpivot columns`
+          ),
+          line: command.line,
+        });
+      }
+      seen.add(name.toLowerCase());
+      columns.push(name);
       if (!cursor.matchType('Comma')) break;
       if (cursor.eof) cursor.report('invalidUnpivotField', 'Unpivot requires a field after ","');
     }
