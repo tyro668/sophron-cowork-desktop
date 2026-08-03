@@ -4,10 +4,9 @@ import { join, resolve } from 'node:path';
 import vm from 'node:vm';
 import { parse, type FunctionDeclaration } from 'acorn';
 import { DataCommandError } from '../data-command-types';
-import type { WorkflowIr, WorkflowOperationIr } from './workflow-model';
+import type { WorkflowIr } from './workflow-model';
 import { validateAndNormalizeWorkflowIr } from './workflow-ir';
-import { WORKFLOW_OPERATION_TYPES } from './workflow-operation-registry';
-import { getWorkflowExpressionRuntimeCapabilities } from './workflow-expression-registry';
+import { WORKFLOW_IR_OPERATION_TYPES } from './workflow-ir-operation-registry';
 import {
   prepareWorkflowJavaScript,
   type PreparedWorkflowExpression,
@@ -15,7 +14,7 @@ import {
 
 export const WORKFLOW_SDK_VERSION = '2.1.0';
 
-const WORKFLOW_IR_OPERATION_TYPES = [...WORKFLOW_OPERATION_TYPES];
+const ALLOWED_WORKFLOW_IR_OPERATION_TYPES = [...WORKFLOW_IR_OPERATION_TYPES];
 const WORKFLOW_SANDBOX_RUNNER_FILE_NAME = 'workflow-sandbox-runner.js';
 
 function resolveWorkflowSandboxRunnerPath(): string {
@@ -150,8 +149,7 @@ export function executeWorkflowJavaScriptInSandbox({
         outputTableName,
         timeoutMs,
         sdkVersion: WORKFLOW_SDK_VERSION,
-        allowedOperationTypes: WORKFLOW_IR_OPERATION_TYPES,
-        expressionCapabilities: getWorkflowExpressionRuntimeCapabilities(),
+        allowedOperationTypes: ALLOWED_WORKFLOW_IR_OPERATION_TYPES,
       }),
       encoding: 'utf8',
       timeout: timeoutMs + 500,
@@ -233,37 +231,6 @@ export function applyWorkflowFunctionPatch(
   const patched = `${source.slice(0, target.start)}${replacementSource.trim()}${source.slice(target.end)}`;
   compileWorkflowJavaScript(patched);
   return patched;
-}
-
-export function assertAtomicWorkflowHelpers(ir: WorkflowIr): void {
-  const provenance = new Map(ir.provenance.map((item) => [item.operationId, item.source] as const));
-  const byFunction = new Map<string, WorkflowOperationIr[]>();
-  for (const operation of ir.operations) {
-    const location = operation.operationId
-      ? provenance.get(operation.operationId)
-      : operation.location;
-    const functionName = location?.functionName;
-    if (!functionName || functionName === 'main') continue;
-    byFunction.set(functionName, [...(byFunction.get(functionName) ?? []), operation]);
-  }
-  for (const [functionName, operations] of byFunction) {
-    if (operations.length <= 1) continue;
-    const first = operations[0];
-    const location = first.operationId ? provenance.get(first.operationId) : first.location;
-    const message = `Generated helper ${functionName} contains ${operations.length} workflow operations. An operation helper may contain at most one workflow operation; extract additional operations into atomic helpers and compose them through named const variables.`;
-    throw new DataCommandError('VALIDATION_FAILED', message, {
-      diagnostics: [
-        {
-          severity: 'error',
-          code: 'NON_ATOMIC_WORKFLOW_HELPER',
-          message,
-          line: location?.line,
-          column: location?.column,
-          functionName,
-        },
-      ],
-    });
-  }
 }
 
 export function indexJavaScriptFunctions(source: string): JavaScriptFunctionIndexEntry[] {

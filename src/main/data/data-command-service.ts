@@ -100,16 +100,23 @@ import type {
 import {
   GENERATED_WORKFLOW_REPAIR_ATTEMPTS,
   analyzeDataTaskRequirement,
+  compileLoweredWorkflowToPlatformNodes,
+  createWorkflowRepairBudget,
   type GeneratedDataTaskWorkflow,
   generateDataTaskWorkflowFromRequirement,
   hashColumns,
   isRecord,
+  isWorkflowDiagnosticRepairable,
+  normalizeWorkflowFailureDiagnostics,
   normalizeColumnSnapshot,
   reconcileGeneratedWorkflowWithOutputPreview,
   repairGeneratedWorkflowFromDiagnostics,
   validateGeneratedOutputPreviewSchema,
   validateGeneratedTaskSchema,
+  validateGeneratedExecutableWorkflow,
   validateGeneratedWorkflowGenerationContract,
+  workflowCommandCodeForDiagnostics,
+  workflowDiagnosticsFromError,
 } from './workflow';
 
 const DEFAULT_LIST_LIMIT = 20;
@@ -129,6 +136,13 @@ interface CompiledWorkflowCandidate {
   diagnostics: PrepDiagnostic[];
 }
 
+interface GeneratedWorkflowCandidateValidation {
+  diagnostics: PrepDiagnostic[];
+  generated?: GeneratedDataTaskWorkflow;
+  candidate?: CompiledWorkflowCandidate;
+  compatibilityDsl?: string;
+}
+
 interface ResolvedGeneratedOutputTable {
   outputTable: DataOutputTable;
   created: boolean;
@@ -137,6 +151,8 @@ interface ResolvedGeneratedOutputTable {
 interface DataCommandServiceOptions {
   onTaskCompleted?: (task: DataCleaningTask) => void;
   getPersonalAnalysisConnection?: () => PersonalAnalysisConnectionInput | null;
+  /** Test seam and optional compatibility exporter; native nodes remain the source of truth. */
+  exportWorkflowDsl?: typeof exportPrepWorkflowDsl;
 }
 
 export class DataCommandService {
@@ -234,33 +250,52 @@ export class DataCommandService {
     if (!reusableTask) createdTaskId = task.id;
     try {
       return await this.withKeyedLock(`task:${task.id}`, async () => {
+        const repairBudget = createWorkflowRepairBudget(GENERATED_WORKFLOW_REPAIR_ATTEMPTS);
         let generated = await generateDataTaskWorkflowFromRequirement({
           inputTableId: preparedInput.inputTable.id,
           outputTableName: outputTable.name,
           requirement: processRequirement,
           columns: preparedInput.columnsSnapshot,
           runtimeConfig: input.runtimeConfig,
+          repairBudget,
         });
         let validation = await this.validateGeneratedWorkflowCandidate({
           taskId: task.id,
           inputTableId: preparedInput.inputTable.id,
+          inputTableName: preparedInput.inputTable.name,
           outputTableId: outputTable.id,
+          outputTableName: outputTable.name,
+          outputPhysicalTableName: outputTable.tableName,
           columns: preparedInput.columnsSnapshot,
           generated,
         });
         generated = validation.generated ?? generated;
+        let compatibilityDsl = validation.compatibilityDsl;
         let validationErrors = diagnosticsWithSeverity(validation.diagnostics, 'error');
-        for (
-          let repairAttempt = 0;
+        while (
           validationErrors.length > 0 &&
-          validationErrors.every(isGeneratedWorkflowDiagnosticRepairable) &&
-          repairAttempt < GENERATED_WORKFLOW_REPAIR_ATTEMPTS;
-          repairAttempt += 1
+          validationErrors.every(isWorkflowDiagnosticRepairable)
         ) {
           if (!generated.javascriptSource) {
             throw new DataCommandError(
               'VALIDATION_FAILED',
-              'Generated workflow repair requires the original JavaScript source'
+              'Generated workflow repair requires the original JavaScript source',
+              {
+                diagnostics: normalizeWorkflowFailureDiagnostics(
+                  [
+                    {
+                      severity: 'error',
+                      code: 'MISSING_GENERATED_JAVASCRIPT_SOURCE',
+                      message: 'Generated workflow repair requires the original JavaScript source',
+                    },
+                  ],
+                  {
+                    failureStage: 'internal',
+                    commandErrorCode: 'VALIDATION_FAILED',
+                    repairClass: 'none',
+                  }
+                ),
+              }
             );
           }
           generated = await repairGeneratedWorkflowFromDiagnostics({
@@ -271,21 +306,30 @@ export class DataCommandService {
             runtimeConfig: input.runtimeConfig,
             failedJavascriptSource: generated.javascriptSource,
             diagnostics: validationErrors,
+            repairBudget,
           });
           validation = await this.validateGeneratedWorkflowCandidate({
             taskId: task.id,
             inputTableId: preparedInput.inputTable.id,
+            inputTableName: preparedInput.inputTable.name,
             outputTableId: outputTable.id,
+            outputTableName: outputTable.name,
+            outputPhysicalTableName: outputTable.tableName,
             columns: preparedInput.columnsSnapshot,
             generated,
           });
           generated = validation.generated ?? generated;
+          compatibilityDsl = validation.compatibilityDsl;
           validationErrors = diagnosticsWithSeverity(validation.diagnostics, 'error');
         }
         if (validationErrors.length > 0) {
-          throw new DataCommandError('DSL_PARSE_FAILED', summarizeDiagnostics(validationErrors), {
-            diagnostics: validation.diagnostics,
-          });
+          throw new DataCommandError(
+            workflowCommandCodeForDiagnostics(validationErrors),
+            summarizeDiagnostics(validationErrors),
+            {
+              diagnostics: validation.diagnostics,
+            }
+          );
         }
         if (!validation.candidate) {
           throw new DataCommandError(
@@ -299,13 +343,14 @@ export class DataCommandService {
           taskName: task.name,
           outputTableId: outputTable.id,
           outputTableName: outputTable.name,
-          workflowDsl: generated.workflowDsl,
+          ...(compatibilityDsl ? { workflowDsl: compatibilityDsl } : {}),
+          workflowDslAvailable: Boolean(compatibilityDsl),
           requiredColumns: generated.requiredColumns,
           expectedOutputSchema: generated.expectedOutputSchema,
           lineage: generated.lineage,
           columnsSnapshot: preparedInput.columnsSnapshot,
           sourceSummaryHash: hashColumns(preparedInput.columnsSnapshot),
-          workflowHash: hashText(generated.workflowDsl),
+          workflowHash: hashWorkflowGraph(validation.candidate.workflow),
           version: nextGeneratedTaskVersion(input.currentVersion),
           generatedAt: Date.now(),
         };
@@ -649,40 +694,75 @@ export class DataCommandService {
   private async validateGeneratedWorkflowCandidate(input: {
     taskId: string;
     inputTableId: string;
+    inputTableName: string;
     outputTableId: string;
+    outputTableName: string;
+    outputPhysicalTableName: string;
     columns: DataAutomationColumnSnapshot[];
     generated: GeneratedDataTaskWorkflow;
-  }): Promise<{
-    diagnostics: PrepDiagnostic[];
-    generated?: GeneratedDataTaskWorkflow;
-    candidate?: CompiledWorkflowCandidate;
-  }> {
-    const contractDiagnostics = validateGeneratedWorkflowGenerationContract(
-      input.generated,
-      input.columns
+  }): Promise<GeneratedWorkflowCandidateValidation> {
+    const contractDiagnostics = normalizeWorkflowFailureDiagnostics(
+      validateGeneratedWorkflowGenerationContract(input.generated, input.columns),
+      {
+        failureStage: 'generation_contract',
+        commandErrorCode: 'VALIDATION_FAILED',
+        repairClass: 'none',
+      }
     );
     if (diagnosticsWithSeverity(contractDiagnostics, 'error').length > 0) {
       return { diagnostics: contractDiagnostics };
     }
 
-    const candidate = attachGeneratedOperationOrigins(
-      await this.compileWorkflowDsl(input.generated.workflowDsl, {
-        inputTableId: input.inputTableId,
-        outputTableId: input.outputTableId,
-      }),
-      input.generated.operationOrigins
-    );
-    const dryRunDiagnostics = candidate.diagnostics;
-    if (diagnosticsWithSeverity(dryRunDiagnostics, 'error').length > 0) {
-      return { diagnostics: dryRunDiagnostics };
+    let candidate: CompiledWorkflowCandidate;
+    let canonicalGenerated: GeneratedDataTaskWorkflow;
+    try {
+      const plan = compileLoweredWorkflowToPlatformNodes({
+        semantics: input.generated,
+        bindings: {
+          inputTableId: input.inputTableId,
+          inputTableName: input.inputTableName,
+          outputTableId: input.outputTableId,
+          outputTableName: input.outputTableName,
+          outputPhysicalTableName: input.outputPhysicalTableName,
+          outputMode: 'replace',
+        },
+      });
+      const workflow = { nodes: plan.nodes, edges: plan.edges };
+      canonicalGenerated = {
+        ...input.generated,
+        operationOrigins: plan.operationNodeOrigins,
+        requiredColumns: plan.requiredColumns,
+        expectedOutputSchema: plan.expectedOutputSchema,
+        lineage: plan.lineage,
+      };
+      const nodeDiagnostics = normalizeWorkflowFailureDiagnostics(
+        validateGeneratedExecutableWorkflow(workflow),
+        {
+          failureStage: 'node_validation',
+          commandErrorCode: 'VALIDATION_FAILED',
+        }
+      );
+      candidate = { workflow, diagnostics: nodeDiagnostics };
+    } catch (error) {
+      return {
+        diagnostics: workflowDiagnosticsFromError(error, {
+          failureStage: 'workflow_lowering',
+          commandErrorCode: 'VALIDATION_FAILED',
+        }),
+      };
     }
+    const nodeDiagnostics = candidate.diagnostics;
+    if (diagnosticsWithSeverity(nodeDiagnostics, 'error').length > 0) {
+      return { generated: canonicalGenerated, diagnostics: nodeDiagnostics };
+    }
+    const compatibilityDsl = this.tryExportCompatibilityWorkflowDsl(candidate.workflow, {
+      taskId: input.taskId,
+    });
 
-    let temporaryTask: DataCleaningTask | undefined;
     try {
       const temporaryExecution = await this.store.validateTaskWorkflow(input.taskId, {
         workflow: candidate.workflow,
       });
-      temporaryTask = temporaryExecution.task;
       const temporaryRun: RunTaskResult = {
         task: temporaryExecution.task,
         preview: await this.previewTaskOutput(
@@ -693,52 +773,77 @@ export class DataCommandService {
         ),
         diagnostics: temporaryExecution.diagnostics,
       };
-      const outputSchemaDiagnostics = validateGeneratedOutputPreviewSchema(
-        temporaryRun.preview,
-        input.generated.expectedOutputSchema
-      ).map((diagnostic) => ({
-        ...diagnostic,
-        severity: 'warning' as const,
-        code: 'outputSchemaCalibrated',
-        message: `Static output schema was calibrated from temporary run: ${diagnostic.message}`,
-      }));
+      const executionDiagnostics = normalizeWorkflowFailureDiagnostics(
+        temporaryRun.diagnostics ?? [],
+        {
+          failureStage: 'node_execution',
+          commandErrorCode: 'RUN_FAILED',
+        }
+      );
+      const outputSchemaDiagnostics = normalizeWorkflowFailureDiagnostics(
+        validateGeneratedOutputPreviewSchema(
+          temporaryRun.preview,
+          canonicalGenerated.expectedOutputSchema
+        ).map((diagnostic) => ({
+          ...diagnostic,
+          severity: 'warning' as const,
+          code: 'outputSchemaCalibrated',
+          message: `Static output schema was calibrated from temporary run: ${diagnostic.message}`,
+        })),
+        {
+          failureStage: 'output_validation',
+          commandErrorCode: 'VALIDATION_FAILED',
+          repairClass: 'none',
+        }
+      );
       const generated = reconcileGeneratedWorkflowWithOutputPreview(
-        input.generated,
+        canonicalGenerated,
         temporaryRun.preview,
         input.columns
       );
       return {
         generated,
         candidate,
-        diagnostics: [
-          ...dryRunDiagnostics,
-          ...(temporaryRun.diagnostics ?? []),
-          ...outputSchemaDiagnostics,
-        ],
+        compatibilityDsl,
+        diagnostics: [...nodeDiagnostics, ...executionDiagnostics, ...outputSchemaDiagnostics],
       };
     } catch (error) {
       const commandError = toCommandError(error, 'RUN_FAILED');
-      const executionDiagnostics =
-        isRecord(commandError.details) && Array.isArray(commandError.details.diagnostics)
-          ? (commandError.details.diagnostics as PrepDiagnostic[])
-          : [
-              {
-                severity: 'error' as const,
-                code: commandError.code,
-                message: commandError.message,
-              },
-            ];
+      const executionDiagnostics = workflowDiagnosticsFromError(commandError, {
+        failureStage: 'node_execution',
+        commandErrorCode: commandError.code,
+      });
       return {
-        diagnostics: [...dryRunDiagnostics, ...executionDiagnostics],
+        generated: canonicalGenerated,
+        compatibilityDsl,
+        diagnostics: [...nodeDiagnostics, ...executionDiagnostics],
       };
     } finally {
-      if (temporaryTask) {
-        await this.store.cleanupTemporaryTaskResources(input.taskId).catch((cleanupError) => {
-          logDataCommandFallback('Failed to clean temporary validation resources', cleanupError, {
-            taskId: input.taskId,
-          });
+      await this.store.cleanupTemporaryTaskResources(input.taskId).catch((cleanupError) => {
+        logDataCommandFallback('Failed to clean temporary validation resources', cleanupError, {
+          taskId: input.taskId,
         });
-      }
+      });
+    }
+  }
+
+  private tryExportCompatibilityWorkflowDsl(
+    workflow: WorkflowSaveShape,
+    context: Record<string, unknown> = {}
+  ): string | undefined {
+    try {
+      const workflowDsl = (this.options.exportWorkflowDsl ?? exportPrepWorkflowDsl)(
+        workflow.nodes,
+        workflow.edges
+      ).trim();
+      return workflowDsl || undefined;
+    } catch (error) {
+      logDataCommandFallback(
+        'Failed to export generated workflow compatibility DSL',
+        error,
+        context
+      );
+      return undefined;
     }
   }
 
@@ -832,13 +937,22 @@ export class DataCommandService {
       preparedInput.inputTable.name
     );
     const compileStartedAt = Date.now();
-    const workflowDsl =
-      normalizeOptionalName(input.workflowDsl) ??
-      (await this.exportSavedTaskWorkflowDsl(input.taskId));
-    const candidate = await this.compileWorkflowDsl(workflowDsl, {
-      inputTableId: preparedInput.inputTable.id,
-      outputTableId: outputTable.id,
-    });
+    const workflowDslOverride = normalizeOptionalName(input.workflowDsl);
+    const candidate = workflowDslOverride
+      ? await this.compileWorkflowDsl(workflowDslOverride, {
+          inputTableId: preparedInput.inputTable.id,
+          outputTableId: outputTable.id,
+        })
+      : {
+          workflow: await this.applyWorkflowResourceBindings(
+            toWorkflowSaveShape(await this.store.getTaskWorkflow(input.taskId)),
+            {
+              inputTableId: preparedInput.inputTable.id,
+              outputTableId: outputTable.id,
+            }
+          ),
+          diagnostics: [],
+        };
     const candidateErrors = diagnosticsWithSeverity(candidate.diagnostics, 'error');
     if (candidateErrors.length > 0) {
       throw new DataCommandError('DSL_PARSE_FAILED', summarizeDiagnostics(candidateErrors), {
@@ -846,7 +960,7 @@ export class DataCommandService {
       });
     }
     const compileDurationMs = Date.now() - compileStartedAt;
-    const workflowHash = hashText(workflowDsl);
+    const workflowHash = hashWorkflowGraph(candidate.workflow);
     const runStartedAt = Date.now();
     const temporaryExecution = await this.store.validateTaskWorkflow(input.taskId, {
       workflow: candidate.workflow,
@@ -863,6 +977,7 @@ export class DataCommandService {
         preview,
         diagnostics: [...candidate.diagnostics, ...temporaryExecution.diagnostics],
       };
+      let committedTask: DataCleaningTask | undefined;
       const outputSchemaErrors = validateGeneratedOutputPreviewSchema(
         result.preview,
         input.expectedOutputSchema ?? []
@@ -873,12 +988,11 @@ export class DataCommandService {
         });
       }
       if ((input.mode ?? 'persisted') === 'persisted') {
-        const committedTask = await this.store.commitValidatedTaskOutput(
+        committedTask = await this.store.commitValidatedTaskOutput(
           input.taskId,
           temporaryExecution.task,
           candidate.workflow
         );
-        this.options.onTaskCompleted?.(committedTask);
         result = { ...result, task: committedTask };
       }
       const runDurationMs = Date.now() - runStartedAt;
@@ -906,6 +1020,12 @@ export class DataCommandService {
           waitForDone: true,
         });
         uploadDurationMs = Date.now() - uploadStartedAt;
+      }
+      if (committedTask) {
+        // Cloud delivery is part of a generated automation run. Do not publish
+        // a completion event until delivery succeeds; the committed local
+        // output remains recoverable staging data if the remote call fails.
+        this.options.onTaskCompleted?.(committedTask);
       }
       log('[DataCommandService] Generated data task finished', {
         taskId: input.taskId,
@@ -940,18 +1060,6 @@ export class DataCommandService {
         });
       });
     }
-  }
-
-  private async exportSavedTaskWorkflowDsl(taskId: string): Promise<string> {
-    const workflow = await this.store.getTaskWorkflow(taskId);
-    const dsl = exportPrepWorkflowDsl(workflow.nodes, workflow.edges).trim();
-    if (!dsl) {
-      throw new DataCommandError(
-        'VALIDATION_FAILED',
-        'The referenced data task has no saved workflow to run'
-      );
-    }
-    return dsl;
   }
 
   private async resolveCloudOutputFolderId(
@@ -1713,6 +1821,11 @@ function toCommandError(error: unknown, fallbackCode: DataCommandError['code']):
           code: fallbackCode,
           message,
           functionName: typeof origin.functionName === 'string' ? origin.functionName : undefined,
+          operationId: typeof origin.operationId === 'string' ? origin.operationId : undefined,
+          operationType:
+            typeof origin.operationType === 'string' ? origin.operationType : undefined,
+          nodeId: typeof origin.nodeId === 'string' ? origin.nodeId : undefined,
+          nodeType: typeof origin.nodeType === 'string' ? origin.nodeType : undefined,
           line: typeof origin.line === 'number' ? origin.line : undefined,
           column: typeof origin.column === 'number' ? origin.column : undefined,
         },
@@ -1738,34 +1851,6 @@ function toCommandError(error: unknown, fallbackCode: DataCommandError['code']):
   return new DataCommandError(fallbackCode, message || 'Data command failed');
 }
 
-function attachGeneratedOperationOrigins(
-  candidate: CompiledWorkflowCandidate,
-  origins: GeneratedDataTaskWorkflow['operationOrigins']
-): CompiledWorkflowCandidate {
-  if (!origins?.length) return candidate;
-  const originsByIndex = new Map(origins.map((origin) => [origin.operatorIndex, origin]));
-  let operatorIndex = 0;
-  return {
-    ...candidate,
-    workflow: {
-      ...candidate.workflow,
-      nodes: candidate.workflow.nodes.map((node) => {
-        if (node.type === 'input_source' || node.type === 'output') return node;
-        const origin = originsByIndex.get(operatorIndex);
-        operatorIndex += 1;
-        if (!origin) return node;
-        return {
-          ...node,
-          config: {
-            ...(node.config ?? {}),
-            generatedOrigin: origin,
-          },
-        };
-      }),
-    },
-  };
-}
-
 function isDataCommandErrorCode(
   error: unknown,
   code: DataCommandError['code']
@@ -1773,23 +1858,6 @@ function isDataCommandErrorCode(
   return (
     (error instanceof DataCommandError && error.code === code) ||
     (isRecord(error) && error.code === code)
-  );
-}
-
-function isGeneratedWorkflowDiagnosticRepairable(diagnostic: PrepDiagnostic): boolean {
-  const code = diagnostic.code?.toLowerCase() ?? '';
-  if (
-    code === 'run_failed' ||
-    code.includes('authentication') ||
-    code.includes('permission') ||
-    code.includes('timeout') ||
-    code.includes('resource_not_found') ||
-    code.includes('file_access')
-  ) {
-    return false;
-  }
-  return !/(timed?\s*out|econn|network|unauthori[sz]ed|permission denied|file.*not found|no such file|disk|cancelled|aborted)/i.test(
-    diagnostic.message
   );
 }
 
@@ -1807,6 +1875,59 @@ function logDataCommandFallback(
 
 function hashText(value: string): string {
   return createHash('sha256').update(value).digest('hex');
+}
+
+/**
+ * Hash executable graph semantics instead of a lossy compatibility DSL rendering.
+ * Layout, labels, generated-source metadata, and cached DSL text do not affect execution.
+ */
+function hashWorkflowGraph(workflow: WorkflowSaveShape): string {
+  const nodes = workflow.nodes
+    .map((node) => ({
+      id: stripWorkflowStorageNamespace(node.id),
+      type: node.type,
+      config: stripWorkflowCompatibilityMetadata(node.config ?? {}),
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const edges = workflow.edges
+    .map((edge) => ({
+      id: stripWorkflowStorageNamespace(edge.id),
+      sourceNodeId: stripWorkflowStorageNamespace(edge.sourceNodeId),
+      targetNodeId: stripWorkflowStorageNamespace(edge.targetNodeId),
+      sourceHandle: edge.sourceHandle ?? null,
+      targetHandle: edge.targetHandle ?? null,
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  return hashText(stableWorkflowJson({ nodes, edges }));
+}
+
+function stripWorkflowStorageNamespace(id: string): string {
+  const separatorIndex = id.indexOf('__');
+  return separatorIndex >= 0 ? id.slice(separatorIndex + 2) : id;
+}
+
+function stripWorkflowCompatibilityMetadata(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripWorkflowCompatibilityMetadata);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(
+        ([key, entryValue]) =>
+          key !== 'dsl' && key !== 'generatedOrigin' && entryValue !== undefined
+      )
+      .map(([key, entryValue]) => [key, stripWorkflowCompatibilityMetadata(entryValue)])
+  );
+}
+
+function stableWorkflowJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableWorkflowJson).join(',')}]`;
+  if (isRecord(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableWorkflowJson(value[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
 }
 
 async function hashFile(filePath: string): Promise<string> {

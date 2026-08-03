@@ -18,7 +18,6 @@ import type {
   DataAutomationLineageEntry,
 } from '../../../renderer/types';
 import {
-  escapeDslString,
   formatDslField,
   inferUnpivotValueType,
   isDecimalLikeDslType,
@@ -30,9 +29,11 @@ import {
 } from './utils';
 
 import type {
-  GeneratedDataTaskWorkflow,
+  GeneratedWorkflowIrSemantics,
   GeneratedWorkflowOperationOrigin,
   GeneratedWorkflowColumnBinding,
+  GeneratedWorkflowPlatformOperatorDraft,
+  GeneratedWorkflowPlatformOperatorType,
   GeneratedWorkflowRequiredColumnResolver,
   WorkflowExpressionIr,
   WorkflowIr,
@@ -40,83 +41,15 @@ import type {
   WorkflowOperationIr,
 } from './workflow-model';
 import { validateAndNormalizeWorkflowIr } from './workflow-ir';
-import {
-  AI_PREP_DSL_RUNTIME_PROFILE_VERSION,
-  getAiPrepDslExpressionLowering,
-} from './prep-dsl-capability-profile';
+import { getAiPrepDslExpressionLowering } from './prep-dsl-capability-profile';
 export type {
   GeneratedDataTaskWorkflow,
   GeneratedWorkflowColumnBinding,
+  GeneratedWorkflowIrSemantics,
+  GeneratedWorkflowPlatformOperatorDraft,
+  GeneratedWorkflowPlatformOperatorType,
   GeneratedWorkflowRequiredColumnResolver,
 } from './workflow-model';
-
-interface WorkflowOperationsV1 {
-  operationsVersion: '1.0';
-  inputTableId: string;
-  outputTableName: string;
-  outputOperationId: string | null;
-  operations: WorkflowOperationIr[];
-}
-
-export function lowerWorkflowIrToOperations({
-  ir,
-  inputTableId,
-  outputTableName,
-}: {
-  ir: WorkflowIr;
-  inputTableId: string;
-  outputTableName: string;
-}): WorkflowOperationsV1 {
-  const normalized = validateAndNormalizeWorkflowIr(ir);
-  if (!inputTableId.trim() || !outputTableName.trim()) {
-    throw new DataCommandError(
-      'VALIDATION_FAILED',
-      'Workflow lowering requires input and output resource bindings'
-    );
-  }
-  return {
-    operationsVersion: '1.0',
-    inputTableId,
-    outputTableName,
-    outputOperationId:
-      normalized.outputOperationId ?? normalized.operations.at(-1)?.operationId ?? null,
-    operations: normalized.operations.map((operation) => ({ ...operation })),
-  };
-}
-
-export function exportWorkflowOperationsToPrepDsl({
-  workflow,
-  sourceIr,
-  requirement,
-  columns,
-}: {
-  workflow: WorkflowOperationsV1;
-  sourceIr: WorkflowIr;
-  requirement: string;
-  columns: DataAutomationColumnSnapshot[];
-}): GeneratedDataTaskWorkflow {
-  if (
-    workflow.operationsVersion !== '1.0' ||
-    !workflow.inputTableId.trim() ||
-    !workflow.outputTableName.trim()
-  ) {
-    throw new DataCommandError(
-      'VALIDATION_FAILED',
-      'Workflow operations require valid input and output resource bindings'
-    );
-  }
-  return compileGeneratedWorkflowIr({
-    ir: {
-      ...sourceIr,
-      outputOperationId: workflow.outputOperationId,
-      operations: workflow.operations,
-    },
-    inputTableId: workflow.inputTableId,
-    outputTableName: workflow.outputTableName,
-    requirement,
-    columns,
-  });
-}
 
 class ColumnStateTracker {
   private readonly columnsByName = new Map<string, GeneratedWorkflowColumnBinding>();
@@ -233,10 +166,13 @@ class ColumnStateTracker {
   }
 }
 
-interface GeneratedWorkflowOperationCompileContext {
+interface WorkflowIrLoweringContext {
   columns: Array<{ name: string; type?: string }>;
-  lines: string[];
   requirement: string;
+  emitOperator: (
+    type: GeneratedWorkflowPlatformOperatorType,
+    config: Record<string, unknown>
+  ) => void;
   requireColumn: GeneratedWorkflowRequiredColumnResolver;
   assertComparableFilter: (
     left: GeneratedWorkflowColumnBinding,
@@ -252,21 +188,18 @@ interface GeneratedWorkflowOperationCompileContext {
   getCurrentColumns: () => GeneratedWorkflowColumnBinding[];
 }
 
-type WorkflowOperationByType<T extends WorkflowOperationIr['type']> = Extract<
+type WorkflowIrOperationByType<T extends WorkflowOperationIr['type']> = Extract<
   WorkflowOperationIr,
   { type: T }
 >;
 
-type GeneratedWorkflowOperationRegistry = {
+type WorkflowIrOperationLowererRegistry = {
   [T in WorkflowOperationIr['type']]: {
-    compile: (
-      operation: WorkflowOperationByType<T>,
-      context: GeneratedWorkflowOperationCompileContext
-    ) => void;
+    compile: (operation: WorkflowIrOperationByType<T>, context: WorkflowIrLoweringContext) => void;
   };
 };
 
-const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
+const WORKFLOW_IR_OPERATION_LOWERERS = {
   filter: {
     compile(operation, context) {
       const conditionIr = operation.condition;
@@ -284,19 +217,26 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
           'filter_predicate',
           context.getCurrentColumns()
         );
-        context.lines.push(`  | derive ${formatDslField(temporaryColumn)} = ${compiled.dsl}`);
+        context.emitOperator('calculate_field', {
+          calculations: [{ field: temporaryColumn, expression: compiled.dsl }],
+        });
         context.upsertColumn({
           name: temporaryColumn,
           type: 'boolean',
           sourceColumns: compiled.sourceColumns,
           expression: compiled.dsl,
         });
-        context.lines.push(`  | filter ${formatDslField(temporaryColumn)} = true`);
-        context.lines.push(`  | drop ${formatDslField(temporaryColumn)}`);
+        context.emitOperator('filter', {
+          condition: `${formatDslField(temporaryColumn)} = true`,
+        });
+        context.emitOperator('field_select', {
+          mode: 'exclude',
+          columns: [temporaryColumn],
+        });
         context.removeColumn(temporaryColumn);
         return;
       }
-      context.lines.push(`  | filter ${compiled.dsl}`);
+      context.emitOperator('filter', { condition: compiled.dsl });
     },
   },
   sort: {
@@ -305,7 +245,9 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
         requireWorkflowColumnName(operation.column, 'sort.column'),
         'sort.column'
       );
-      context.lines.push(`  | sort by ${formatDslField(column.name)} ${operation.direction}`);
+      context.emitOperator('sort', {
+        keys: [{ field: column.name, direction: operation.direction }],
+      });
     },
   },
   convert_type: {
@@ -345,17 +287,22 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
           scale: operation.options.scale,
           failOnError: onError === 'fail',
         });
-        context.lines.push(`  | derive ${formatDslField(tempColumn)} = ${expression}`);
-        context.lines.push(`  | drop ${formatDslField(column.name)}`);
-        context.lines.push(
-          `  | map ${formatDslField(tempColumn)} to ${formatDslField(column.name)}`
-        );
+        context.emitOperator('calculate_field', {
+          calculations: [{ field: tempColumn, expression }],
+        });
+        context.emitOperator('field_select', {
+          mode: 'exclude',
+          columns: [column.name],
+        });
+        context.emitOperator('field_mapping', {
+          mappings: [{ source: tempColumn, target: column.name }],
+        });
         context.removeColumn(column.name);
         context.upsertColumn({ ...convertedColumn, expression });
       } else {
-        context.lines.push(
-          `  | cast ${formatDslField(column.name)} as ${targetType} on_error ${onError}`
-        );
+        context.emitOperator('type_convert', {
+          conversions: [{ column: column.name, type: targetType, onError }],
+        });
         context.upsertColumn(convertedColumn);
       }
     },
@@ -368,7 +315,10 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
         const dropped = inferredDropped.map(
           (name) => context.requireColumn(name, 'drop.columns').name
         );
-        context.lines.push(`  | drop ${dropped.map(formatDslField).join(', ')}`);
+        context.emitOperator('field_select', {
+          mode: 'exclude',
+          columns: dropped,
+        });
         dropped.forEach((name) => context.removeColumn(name));
         return;
       }
@@ -376,7 +326,10 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
         (name) => context.requireColumn(name, 'select.columns').name
       );
       if (selected.length > 0) {
-        context.lines.push(`  | select ${selected.map(formatDslField).join(', ')}`);
+        context.emitOperator('field_select', {
+          mode: 'include',
+          columns: selected,
+        });
         context.keepColumns(selected);
       }
     },
@@ -387,7 +340,10 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
         (name) => context.requireColumn(name, 'drop.columns').name
       );
       if (dropped.length > 0) {
-        context.lines.push(`  | drop ${dropped.map(formatDslField).join(', ')}`);
+        context.emitOperator('field_select', {
+          mode: 'exclude',
+          columns: dropped,
+        });
         dropped.forEach((name) => context.removeColumn(name));
       }
     },
@@ -399,7 +355,9 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
         operation.target,
         'Generated rename operation requires target'
       );
-      context.lines.push(`  | map ${formatDslField(source.name)} to ${formatDslField(target)}`);
+      context.emitOperator('field_mapping', {
+        mappings: [{ source: source.name, target }],
+      });
       context.renameColumn(source.name, target);
     },
   },
@@ -426,11 +384,16 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
         .find((currentColumn) => currentColumn.name.toLowerCase() === column.toLowerCase());
       if (existingColumn) {
         const tempColumn = createGeneratedTemporaryColumnName(column, context.getCurrentColumns());
-        context.lines.push(`  | derive ${formatDslField(tempColumn)} = ${expression}`);
-        context.lines.push(`  | drop ${formatDslField(existingColumn.name)}`);
-        context.lines.push(
-          `  | map ${formatDslField(tempColumn)} to ${formatDslField(existingColumn.name)}`
-        );
+        context.emitOperator('calculate_field', {
+          calculations: [{ field: tempColumn, expression }],
+        });
+        context.emitOperator('field_select', {
+          mode: 'exclude',
+          columns: [existingColumn.name],
+        });
+        context.emitOperator('field_mapping', {
+          mappings: [{ source: tempColumn, target: existingColumn.name }],
+        });
         context.removeColumn(existingColumn.name);
         context.upsertColumn({
           ...inferredColumn,
@@ -438,7 +401,9 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
         });
         return;
       }
-      context.lines.push(`  | derive ${formatDslField(column)} = ${expression}`);
+      context.emitOperator('calculate_field', {
+        calculations: [{ field: column, expression }],
+      });
       context.upsertColumn(inferredColumn);
     },
   },
@@ -446,11 +411,7 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
     compile(operation, context) {
       const groupBy = operation.groupBy.map((expression) => {
         const name = requireWorkflowColumnName(expression, 'aggregate.groupBy');
-        const compiled = compileWorkflowExpression(expression, context, 'aggregate.groupBy');
-        return {
-          ...context.requireColumn(name, 'aggregate.groupBy'),
-          expressionDsl: compiled.dsl,
-        };
+        return context.requireColumn(name, 'aggregate.groupBy');
       });
       const metrics = operation.metrics.map((metric) =>
         compileWorkflowAggregateMetric(metric, context)
@@ -461,13 +422,14 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
           'Generated aggregate operation requires metrics'
         );
       }
-      context.lines.push(
-        `  | aggregate ${
-          groupBy.length > 0
-            ? `by ${groupBy.map((column) => column.expressionDsl).join(', ')}`
-            : 'all'
-        } metrics ${metrics.map((metric) => metric.dsl).join(', ')}`
-      );
+      context.emitOperator('aggregate', {
+        groupBy: groupBy.map((column) => column.name),
+        metrics: metrics.map((metric, index) => ({
+          function: normalizePlanAggregateFunction(operation.metrics[index]?.fn),
+          expression: metric.expression ?? '*',
+          alias: metric.alias,
+        })),
+      });
       context.replaceColumns([
         ...groupBy.map((column) => ({
           name: column.name,
@@ -493,25 +455,30 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
         ...key,
         field: context.requireColumn(key.field, 'deduplicate.orderBy').name,
       }));
-      const by = columns.length > 0 ? ` by ${columns.map(formatDslField).join(', ')}` : '';
-      const keep = operation.config.keep === 'last' ? ' keep last' : '';
-      const order = orderBy.length > 0 ? ` order by ${formatWorkflowSortKeys(orderBy)}` : '';
-      context.lines.push(`  | deduplicate${by}${keep}${order}`);
+      context.emitOperator('deduplicate', {
+        strategy: columns.length > 0 ? 'by_columns' : 'all_columns',
+        columns: columns.length > 0 ? columns : undefined,
+        keep: 'first',
+        orderBy: orderBy.length > 0 ? orderBy : undefined,
+      });
     },
   },
   missing_value: {
     compile(operation, context) {
       if (operation.config.strategy === 'drop_empty_rows') {
-        context.lines.push('  | missing value row drop when all_null');
+        context.emitOperator('missing_value', {
+          strategy: 'drop_empty_rows',
+          condition: 'all_null',
+        });
         return;
       }
       const rules = operation.config.rules.map((rule) => {
         const column = context.requireColumn(rule.column, 'missing_value.rules');
         switch (rule.method) {
           case 'skip':
-            return `${formatDslField(column.name)} skip`;
+            return { column: column.name, method: 'skip' };
           case 'drop':
-            return `${formatDslField(column.name)} drop rows`;
+            return { column: column.name, method: 'drop' };
           case 'nullify_values':
             if (!rule.values?.length) {
               throw new DataCommandError(
@@ -519,7 +486,11 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
                 `Missing-value nullify rule for ${column.name} requires values`
               );
             }
-            return `${formatDslField(column.name)} nullify values (${rule.values.map(literalToDsl).join(', ')})`;
+            return {
+              column: column.name,
+              method: 'nullify_values',
+              values: rule.values,
+            };
           case 'literal_fill':
             if (rule.value === undefined) {
               throw new DataCommandError(
@@ -528,10 +499,10 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
               );
             }
             assertGeneratedFilterComparable(column, '=', rule.value, 'missing_value.literal_fill');
-            return `${formatDslField(column.name)} fill ${literalToDsl(rule.value)}`;
+            return { column: column.name, method: 'literal_fill', value: rule.value };
         }
       });
-      context.lines.push(`  | missing value ${rules.join(', ')}`);
+      context.emitOperator('missing_value', { strategy: 'by_column', rules });
     },
   },
   limit: {
@@ -566,14 +537,21 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
             'Generated top operation requires orderBy'
           );
         }
-        context.lines.push(
-          `  | top ${Math.floor(config.limit)} by ${formatWorkflowSortKeys(orderBy)}`
-        );
+        context.emitOperator('limit', {
+          mode: 'fixed',
+          limit: Math.floor(config.limit),
+          unit: 'rows',
+          orderBy,
+          ties: false,
+        });
         return;
       }
-      const unit = config.unit === 'percent' ? ' percent' : '';
-      const offset = config.offset > 0 ? ` offset ${config.offset}` : '';
-      context.lines.push(`  | limit ${Math.floor(config.limit)}${unit}${offset}`);
+      context.emitOperator('limit', {
+        mode: 'fixed',
+        limit: Math.floor(config.limit),
+        unit: config.unit === 'percent' ? 'percent' : 'rows',
+        offset: config.offset > 0 ? config.offset : undefined,
+      });
     },
   },
   unpivot: {
@@ -605,11 +583,13 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
           'Generated unpivot output columns conflict with retained input columns'
         );
       }
-      const includeNulls = config.includeNulls ? ' include nulls' : '';
-      const mode = config.mode === 'except' ? ' columns except' : '';
-      context.lines.push(
-        `  | unpivot${includeNulls}${mode} ${configured.map(formatDslField).join(', ')} into name ${formatDslField(config.nameColumn)} value ${formatDslField(config.valueColumn)}`
-      );
+      context.emitOperator('unpivot', {
+        mode: config.mode === 'except' ? 'except' : 'include',
+        columns: configured,
+        nameColumn: config.nameColumn,
+        valueColumn: config.valueColumn,
+        includeNulls: config.includeNulls,
+      });
       context.replaceColumns([
         ...kept,
         {
@@ -668,15 +648,16 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
         config.keepParentNames && config.sourceKind === 'json'
           ? `${source.name}_${config.alias}`
           : config.alias;
-      const base =
-        config.sourceKind === 'json'
-          ? `explode json ${formatDslField(source.name)} path ${JSON.stringify(config.path)} as ${formatDslField(config.alias)}`
-          : `unnest ${formatDslField(source.name)} as ${formatDslField(config.alias)}`;
-      const withIndex = config.withIndex ? ` with index ${formatDslField(config.withIndex)}` : '';
-      const recursive = config.recursive ? ' recursive true' : '';
-      const maxDepth = config.maxDepth !== undefined ? ` max_depth ${config.maxDepth}` : '';
-      const keepNames = config.keepParentNames ? ' keep parent names true' : '';
-      context.lines.push(`  | ${base}${withIndex}${recursive}${maxDepth}${keepNames}`);
+      context.emitOperator('unnest', {
+        sourceKind: config.sourceKind,
+        column: source.name,
+        path: config.sourceKind === 'json' ? config.path : undefined,
+        alias: config.alias,
+        withIndex: config.withIndex,
+        recursive: config.recursive,
+        maxDepth: config.maxDepth,
+        keepParentNames: config.keepParentNames,
+      });
       context.upsertColumn({
         name: alias,
         type: config.sourceKind === 'json' ? 'json' : undefined,
@@ -715,10 +696,12 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
         : null;
       assertAggregateMetricType(fn, binding);
       const alias = normalizeRequiredName(metric.alias, 'Generated pivot metric requires alias');
-      const values = config.values.map(literalToDsl).join(', ');
-      context.lines.push(
-        `  | pivot on ${formatDslField(on.name)} in (${values}) using ${fn}(${compiled?.dsl ?? '*'}) as ${formatDslField(alias)}${groupBy.length ? ` group by ${groupBy.map((column) => formatDslField(column.name)).join(', ')}` : ''}`
-      );
+      context.emitOperator('pivot', {
+        on: [on.name],
+        values: config.values,
+        using: [{ function: fn, expression: compiled?.dsl ?? '*', alias }],
+        groupBy: groupBy.map((column) => column.name),
+      });
       context.replaceColumns([
         ...groupBy,
         ...config.values.map((value) => ({
@@ -733,21 +716,17 @@ const GENERATED_WORKFLOW_OPERATION_REGISTRY = {
       ]);
     },
   },
-} satisfies GeneratedWorkflowOperationRegistry;
+} satisfies WorkflowIrOperationLowererRegistry;
 
-export function compileGeneratedWorkflowIr({
+export function lowerGeneratedWorkflowIrSemantics({
   ir,
-  inputTableId,
-  outputTableName,
   requirement,
   columns,
 }: {
   ir: WorkflowIr;
-  inputTableId: string;
-  outputTableName: string;
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
-}): GeneratedDataTaskWorkflow {
+}): GeneratedWorkflowIrSemantics {
   ir = validateAndNormalizeWorkflowIr(ir);
   const provenanceByOperationId = new Map(
     ir.provenance.map((entry) => [entry.operationId, entry.source] as const)
@@ -761,13 +740,18 @@ export function compileGeneratedWorkflowIr({
     }
     return column;
   };
-  const lines = [`input source dataset "${escapeDslString(inputTableId)}" as src`];
+  const platformOperators: GeneratedWorkflowPlatformOperatorDraft[] = [];
   const operationOrigins: GeneratedWorkflowOperationOrigin[] = [];
   let operatorIndex = 0;
-  const context: GeneratedWorkflowOperationCompileContext = {
+  const context: WorkflowIrLoweringContext = {
     columns,
-    lines,
     requirement,
+    emitOperator: (type, config) => {
+      platformOperators.push({
+        type,
+        config: withoutUndefinedProperties(config),
+      });
+    },
     requireColumn,
     assertComparableFilter: assertGeneratedFilterComparable,
     renameColumn: (sourceName, targetName) => columnTracker.renameColumn(sourceName, targetName),
@@ -782,9 +766,9 @@ export function compileGeneratedWorkflowIr({
       ? (provenanceByOperationId.get(operation.operationId) ?? operation.location)
       : operation.location;
     try {
-      const lineCountBefore = lines.length;
-      compileWorkflowOperation(operation, context);
-      const emittedOperatorCount = lines.length - lineCountBefore;
+      const operatorCountBefore = platformOperators.length;
+      lowerWorkflowIrOperation(operation, context);
+      const emittedOperatorCount = platformOperators.length - operatorCountBefore;
       if (source) {
         for (let emittedIndex = 0; emittedIndex < emittedOperatorCount; emittedIndex += 1) {
           operationOrigins.push({
@@ -819,11 +803,10 @@ export function compileGeneratedWorkflowIr({
       });
     }
   }
-  lines.push(`  | output table "${escapeDslString(outputTableName)}" mode replace`);
   const outputColumns = columnTracker.getCurrentColumns();
   return {
-    runtimeCompatibilityProfileVersion: AI_PREP_DSL_RUNTIME_PROFILE_VERSION,
-    workflowDsl: lines.join('\n'),
+    workflowIr: ir,
+    platformOperators,
     operationOrigins,
     requiredColumns: [...requiredColumnsByName.values()],
     expectedOutputSchema: outputColumns.map(toAutomationColumnSnapshot),
@@ -831,51 +814,40 @@ export function compileGeneratedWorkflowIr({
   };
 }
 
-function compileWorkflowOperation(
+function lowerWorkflowIrOperation(
   operation: WorkflowOperationIr,
-  context: GeneratedWorkflowOperationCompileContext
+  context: WorkflowIrLoweringContext
 ): void {
   switch (operation.type) {
     case 'filter':
-      return GENERATED_WORKFLOW_OPERATION_REGISTRY.filter.compile(operation, context);
+      return WORKFLOW_IR_OPERATION_LOWERERS.filter.compile(operation, context);
     case 'sort':
-      return GENERATED_WORKFLOW_OPERATION_REGISTRY.sort.compile(operation, context);
+      return WORKFLOW_IR_OPERATION_LOWERERS.sort.compile(operation, context);
     case 'convert_type':
-      return GENERATED_WORKFLOW_OPERATION_REGISTRY.convert_type.compile(operation, context);
+      return WORKFLOW_IR_OPERATION_LOWERERS.convert_type.compile(operation, context);
     case 'select':
-      return GENERATED_WORKFLOW_OPERATION_REGISTRY.select.compile(operation, context);
+      return WORKFLOW_IR_OPERATION_LOWERERS.select.compile(operation, context);
     case 'drop':
-      return GENERATED_WORKFLOW_OPERATION_REGISTRY.drop.compile(operation, context);
+      return WORKFLOW_IR_OPERATION_LOWERERS.drop.compile(operation, context);
     case 'rename':
-      return GENERATED_WORKFLOW_OPERATION_REGISTRY.rename.compile(operation, context);
+      return WORKFLOW_IR_OPERATION_LOWERERS.rename.compile(operation, context);
     case 'derive':
-      return GENERATED_WORKFLOW_OPERATION_REGISTRY.derive.compile(operation, context);
+      return WORKFLOW_IR_OPERATION_LOWERERS.derive.compile(operation, context);
     case 'aggregate':
-      return GENERATED_WORKFLOW_OPERATION_REGISTRY.aggregate.compile(operation, context);
+      return WORKFLOW_IR_OPERATION_LOWERERS.aggregate.compile(operation, context);
     case 'deduplicate':
-      return GENERATED_WORKFLOW_OPERATION_REGISTRY.deduplicate.compile(operation, context);
+      return WORKFLOW_IR_OPERATION_LOWERERS.deduplicate.compile(operation, context);
     case 'missing_value':
-      return GENERATED_WORKFLOW_OPERATION_REGISTRY.missing_value.compile(operation, context);
+      return WORKFLOW_IR_OPERATION_LOWERERS.missing_value.compile(operation, context);
     case 'limit':
-      return GENERATED_WORKFLOW_OPERATION_REGISTRY.limit.compile(operation, context);
+      return WORKFLOW_IR_OPERATION_LOWERERS.limit.compile(operation, context);
     case 'pivot':
-      return GENERATED_WORKFLOW_OPERATION_REGISTRY.pivot.compile(operation, context);
+      return WORKFLOW_IR_OPERATION_LOWERERS.pivot.compile(operation, context);
     case 'unpivot':
-      return GENERATED_WORKFLOW_OPERATION_REGISTRY.unpivot.compile(operation, context);
+      return WORKFLOW_IR_OPERATION_LOWERERS.unpivot.compile(operation, context);
     case 'unnest':
-      return GENERATED_WORKFLOW_OPERATION_REGISTRY.unnest.compile(operation, context);
+      return WORKFLOW_IR_OPERATION_LOWERERS.unnest.compile(operation, context);
   }
-}
-
-function formatWorkflowSortKeys(
-  keys: Array<{ field: string; direction: 'asc' | 'desc'; nulls?: 'first' | 'last' }>
-): string {
-  return keys
-    .map(
-      (key) =>
-        `${formatDslField(key.field)} ${key.direction}${key.nulls ? ` nulls ${key.nulls}` : ''}`
-    )
-    .join(', ');
 }
 
 function requireWorkflowColumnName(expression: WorkflowExpressionIr, context: string): string {
@@ -897,7 +869,7 @@ interface CompiledWorkflowExpression {
 
 function compileWorkflowExpression(
   expression: WorkflowExpressionIr,
-  context: GeneratedWorkflowOperationCompileContext,
+  context: WorkflowIrLoweringContext,
   expressionContext: string
 ): CompiledWorkflowExpression {
   switch (expression.kind) {
@@ -1211,7 +1183,7 @@ function assertCompiledFilterComparable(
   left: CompiledWorkflowExpression,
   operator: string,
   right: CompiledWorkflowExpression,
-  context: GeneratedWorkflowOperationCompileContext,
+  context: WorkflowIrLoweringContext,
   expressionContext: string
 ): void {
   if (left.columnBinding) {
@@ -1280,7 +1252,7 @@ function assertCompiledDateDiffArgs(args: CompiledWorkflowExpression[], context:
 
 function compileWorkflowAggregateMetric(
   metric: WorkflowMetricIr,
-  context: GeneratedWorkflowOperationCompileContext
+  context: WorkflowIrLoweringContext
 ): {
   dsl: string;
   alias: string;
@@ -1581,6 +1553,10 @@ function uniqueSourceColumns(
   return [...unique.values()];
 }
 
+function withoutUndefinedProperties(config: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(config).filter(([, value]) => value !== undefined));
+}
+
 export function areComparableColumnTypes(left: string, right: string): boolean {
   const normalizedLeft = normalizeDslTypeName(left);
   const normalizedRight = normalizeDslTypeName(right);
@@ -1605,7 +1581,7 @@ function areOrderedComparableColumnTypes(left: string, right: string): boolean {
 
 function inferDroppedColumnsFromSelectOperation(
   selectedNames: string[],
-  context: GeneratedWorkflowOperationCompileContext
+  context: WorkflowIrLoweringContext
 ): string[] {
   if (selectedNames.length === 0 || !requirementHasColumnRemovalIntent(context.requirement)) {
     return [];

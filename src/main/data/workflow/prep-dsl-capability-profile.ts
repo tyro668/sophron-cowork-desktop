@@ -1,44 +1,38 @@
+import type { DataWorkflowOperatorType } from '../../../renderer/types';
 import type { WorkflowExpressionIr, WorkflowOperationIr } from './workflow-model';
 
-export const AI_PREP_DSL_RUNTIME_PROFILE_VERSION = 'prep-runtime-compat/v1' as const;
+export const AI_PREP_DSL_RUNTIME_PROFILE_VERSION = 'platform-node-runtime-compat/v2' as const;
 
 export type AiPrepDslExpressionContext = 'filter' | 'derive' | 'aggregate' | 'pivot';
 export type AiPrepDslExpressionLowering = 'direct' | 'materialize_filter_predicate';
 
-type WorkflowOperationType = WorkflowOperationIr['type'];
+type WorkflowIrOperationType = WorkflowOperationIr['type'];
+type AiPrepDslOperationNodeType = Exclude<
+  DataWorkflowOperatorType,
+  'input_source' | 'join' | 'set_op' | 'output'
+>;
 
 export interface AiPrepDslOperationCapability {
-  irType: WorkflowOperationType;
-  nodeType:
-    | 'filter'
-    | 'sort'
-    | 'field_select'
-    | 'field_mapping'
-    | 'calculate_field'
-    | 'type_convert'
-    | 'aggregate'
-    | 'deduplicate'
-    | 'missing_value'
-    | 'limit'
-    | 'pivot'
-    | 'unpivot'
-    | 'unnest';
+  irType: WorkflowIrOperationType;
+  nodeType: AiPrepDslOperationNodeType;
+  emittedNodeTypes: readonly AiPrepDslOperationNodeType[];
   aiEnabled: boolean;
   lowering: 'direct' | 'recipe';
   runtimeContract: string;
 }
 
 /**
- * AI-owned compatibility profile for the existing Prep DSL runtime.
+ * AI-owned compatibility profile for the existing platform node and SQL runtime.
  *
  * This is intentionally a conservative subset and does not redefine the Prep
- * DSL parser or SQL runtime. Every entry must be covered by black-box contract
- * tests through the existing DSL -> nodes -> DuckDB execution path.
+ * DSL parser, node model, or SQL runtime. Every entry must be covered by black-box contract
+ * tests through the generated IR -> native nodes -> DuckDB execution path.
  */
 export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
   filter: {
     irType: 'filter',
     nodeType: 'filter',
+    emittedNodeTypes: ['filter', 'calculate_field', 'field_select'],
     aiEnabled: true,
     lowering: 'recipe',
     runtimeContract:
@@ -47,6 +41,7 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
   sort: {
     irType: 'sort',
     nodeType: 'sort',
+    emittedNodeTypes: ['sort'],
     aiEnabled: true,
     lowering: 'direct',
     runtimeContract: 'Sort by one resolved column in ascending or descending order.',
@@ -54,6 +49,7 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
   drop: {
     irType: 'drop',
     nodeType: 'field_select',
+    emittedNodeTypes: ['field_select'],
     aiEnabled: true,
     lowering: 'direct',
     runtimeContract: 'Exclude existing columns through the field-select node.',
@@ -61,6 +57,7 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
   select: {
     irType: 'select',
     nodeType: 'field_select',
+    emittedNodeTypes: ['field_select'],
     aiEnabled: true,
     lowering: 'direct',
     runtimeContract: 'Include existing columns through the field-select node.',
@@ -68,6 +65,7 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
   rename: {
     irType: 'rename',
     nodeType: 'field_mapping',
+    emittedNodeTypes: ['field_mapping'],
     aiEnabled: true,
     lowering: 'direct',
     runtimeContract: 'Rename one existing column and use the new name in later operations.',
@@ -75,6 +73,7 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
   derive: {
     irType: 'derive',
     nodeType: 'calculate_field',
+    emittedNodeTypes: ['calculate_field', 'field_select', 'field_mapping'],
     aiEnabled: true,
     lowering: 'recipe',
     runtimeContract:
@@ -83,6 +82,7 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
   convert_type: {
     irType: 'convert_type',
     nodeType: 'type_convert',
+    emittedNodeTypes: ['type_convert', 'calculate_field', 'field_select', 'field_mapping'],
     aiEnabled: true,
     lowering: 'recipe',
     runtimeContract:
@@ -91,6 +91,7 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
   aggregate: {
     irType: 'aggregate',
     nodeType: 'aggregate',
+    emittedNodeTypes: ['aggregate'],
     aiEnabled: true,
     lowering: 'direct',
     runtimeContract: 'Group by resolved columns and emit allowlisted aggregate metrics.',
@@ -98,13 +99,16 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
   deduplicate: {
     irType: 'deduplicate',
     nodeType: 'deduplicate',
+    emittedNodeTypes: ['deduplicate'],
     aiEnabled: true,
     lowering: 'direct',
-    runtimeContract: 'Deduplicate by resolved columns with optional deterministic ordering.',
+    runtimeContract:
+      'Deduplicate by resolved columns with optional deterministic ordering; only keep-first is certified.',
   },
   missing_value: {
     irType: 'missing_value',
     nodeType: 'missing_value',
+    emittedNodeTypes: ['missing_value'],
     aiEnabled: true,
     lowering: 'direct',
     runtimeContract: 'Use only drop-empty-rows or validated by-column missing-value rules.',
@@ -112,6 +116,7 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
   limit: {
     irType: 'limit',
     nodeType: 'limit',
+    emittedNodeTypes: ['limit'],
     aiEnabled: true,
     lowering: 'direct',
     runtimeContract: 'Use validated fixed/percent limits or top-N with ordering.',
@@ -119,6 +124,7 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
   pivot: {
     irType: 'pivot',
     nodeType: 'pivot',
+    emittedNodeTypes: ['pivot'],
     aiEnabled: true,
     lowering: 'direct',
     runtimeContract:
@@ -127,6 +133,7 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
   unpivot: {
     irType: 'unpivot',
     nodeType: 'unpivot',
+    emittedNodeTypes: ['unpivot'],
     aiEnabled: true,
     lowering: 'direct',
     runtimeContract: 'Unpivot resolved compatible columns into name and value columns.',
@@ -134,21 +141,46 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
   unnest: {
     irType: 'unnest',
     nodeType: 'unnest',
+    emittedNodeTypes: ['unnest'],
     aiEnabled: true,
     lowering: 'direct',
     runtimeContract: 'Unnest a resolved list or JSON column using validated options.',
   },
 } as const satisfies {
-  [T in WorkflowOperationType]: AiPrepDslOperationCapability & { irType: T };
+  [T in WorkflowIrOperationType]: AiPrepDslOperationCapability & { irType: T };
 };
 
+const AI_GENERATED_WORKFLOW_BOUNDARY_NODE_TYPES = [
+  'input_source',
+  'output',
+] as const satisfies readonly DataWorkflowOperatorType[];
+
+/**
+ * Platform node types that may occur in an AI-generated executable graph.
+ *
+ * Keep this derived from enabled capabilities so recipes cannot emit a node
+ * that the generated-graph trust boundary has not explicitly certified.
+ */
+export const AI_GENERATED_WORKFLOW_NODE_TYPES: readonly DataWorkflowOperatorType[] = [
+  ...AI_GENERATED_WORKFLOW_BOUNDARY_NODE_TYPES,
+  ...new Set<DataWorkflowOperatorType>(
+    Object.values(AI_PREP_DSL_OPERATION_CAPABILITIES).flatMap((capability) =>
+      capability.aiEnabled ? capability.emittedNodeTypes : []
+    )
+  ),
+];
+
+export const AI_GENERATED_WORKFLOW_NODE_TYPE_SET: ReadonlySet<DataWorkflowOperatorType> = new Set(
+  AI_GENERATED_WORKFLOW_NODE_TYPES
+);
+
 export function getAiPrepDslOperationCapability(
-  type: WorkflowOperationType
+  type: WorkflowIrOperationType
 ): AiPrepDslOperationCapability {
   return AI_PREP_DSL_OPERATION_CAPABILITIES[type];
 }
 
-export function isAiPrepDslOperationEnabled(type: WorkflowOperationType): boolean {
+export function isAiPrepDslOperationEnabled(type: WorkflowIrOperationType): boolean {
   return getAiPrepDslOperationCapability(type).aiEnabled;
 }
 

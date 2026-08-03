@@ -11,6 +11,7 @@ import {
   WORKFLOW_EXPRESSION_CAST_TYPES,
   WORKFLOW_EXPRESSION_FUNCTION_REGISTRY,
   WORKFLOW_NATIVE_EXPRESSION_INTRINSICS,
+  workflowExpressionCastSupportsScale,
   workflowExpressionArityDescription,
   workflowExpressionArityIsValid,
 } from './workflow-expression-registry';
@@ -19,7 +20,10 @@ import type {
   WorkflowLiteral,
   WorkflowSourceLocation,
 } from './workflow-model';
-import { WORKFLOW_OPERATION_TYPES } from './workflow-operation-registry';
+import {
+  getWorkflowIrOperationDefinition,
+  getWorkflowIrOperationTypeScriptDeclarations,
+} from './workflow-ir-operation-registry';
 
 const GENERATED_SOURCE_NAME = '/generated-workflow.js';
 const GENERATED_DECLARATIONS_NAME = '/workflow-authoring-sdk.d.ts';
@@ -29,6 +33,7 @@ const RESERVED_WORKFLOW_IDENTIFIERS = new Set([
   '__finish',
   '__serializeWorkflowResult',
 ]);
+const LEGACY_EXPRESSION_SDK_IDENTIFIERS = new Set(['col', 'lit', 'fn', 'metric']);
 const RESERVED_NATIVE_EXPRESSION_BINDINGS = new Set([
   'expr',
   'cast',
@@ -36,6 +41,7 @@ const RESERVED_NATIVE_EXPRESSION_BINDINGS = new Set([
     .filter(([, definition]) => definition.native)
     .map(([name]) => name),
   ...Object.keys(WORKFLOW_NATIVE_EXPRESSION_INTRINSICS),
+  ...LEGACY_EXPRESSION_SDK_IDENTIFIERS,
 ]);
 
 const MINIMAL_TYPESCRIPT_STANDARD_LIBRARY = `
@@ -90,6 +96,7 @@ export function prepareWorkflowJavaScript(
     ts.ScriptKind.JS
   );
   assertInternalExpressionFactoryIsNotReferenced(sourceFile);
+  assertLegacyExpressionSdkIsNotReferenced(sourceFile);
   assertNativeExpressionIdentifierIsNotShadowed(sourceFile);
   const expressionCalls = collectNativeExpressionCalls(sourceFile);
   if (input.columns) {
@@ -251,6 +258,30 @@ function assertInternalExpressionFactoryIsNotReferenced(sourceFile: ts.SourceFil
   visit(sourceFile);
 }
 
+function assertLegacyExpressionSdkIsNotReferenced(sourceFile: ts.SourceFile): void {
+  const visit = (node: ts.Node) => {
+    const legacyReference =
+      (ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        (node.expression.text === 'col' || node.expression.text === 'lit') &&
+        node.expression) ||
+      ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) &&
+        ts.isIdentifier(node.expression) &&
+        (node.expression.text === 'fn' || node.expression.text === 'metric') &&
+        node.expression);
+    if (legacyReference) {
+      throw expressionDiagnostic(
+        sourceFile,
+        legacyReference,
+        'LEGACY_EXPRESSION_SDK_UNSUPPORTED',
+        `Legacy workflow expression API ${legacyReference.text} is not available. Use expr(row => ...) with native operators and registered domain functions.`
+      );
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+}
+
 function extractExpressionBody(
   callback: ts.ArrowFunction | ts.FunctionExpression,
   sourceFile: ts.SourceFile
@@ -267,7 +298,12 @@ function extractExpressionBody(
     sourceFile,
     callback.body,
     'NATIVE_EXPRESSION_BODY_UNSUPPORTED',
-    'An expr(...) callback must be a single expression or a block containing one return statement'
+    'An expr(...) callback must be a single expression or a block containing one return statement',
+    {
+      expectedSignature: 'expr(row => expression)',
+      repairHint:
+        'Rewrite the expr callback as exactly one expression using expr(row => expression). Remove braced callback bodies, local variables, if, switch, and multiple statements; express multi-branch logic with nested condition ? whenTrue : whenFalse operators.',
+    }
   );
 }
 
@@ -285,6 +321,17 @@ function lowerNativeExpression(
   if (ts.isBinaryExpression(node)) {
     const nullCheck = lowerNullComparison(node, rowParameter, sourceFile);
     if (nullCheck) return nullCheck;
+    if (
+      node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken ||
+      node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsToken
+    ) {
+      throw expressionDiagnostic(
+        sourceFile,
+        node.operatorToken,
+        'NATIVE_LOOSE_EQUALITY_UNSUPPORTED',
+        'Use === or !== in workflow expressions. Loose equality is only supported for the x == null or x != null idiom.'
+      );
+    }
     if (node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
       return {
         kind: 'function',
@@ -383,7 +430,7 @@ function lowerNativeCall(
     }
     const targetType = requestedTargetType;
     const options = readCastOptions(node.arguments[2], sourceFile);
-    if (options.scale !== undefined && targetType !== 'decimal') {
+    if (options.scale !== undefined && !workflowExpressionCastSupportsScale(targetType)) {
       throw expressionDiagnostic(
         sourceFile,
         node.arguments[2],
@@ -547,12 +594,30 @@ function readCastOptions(
       'cast options must be an object literal or numeric scale'
     );
   }
-  const scaleProperty = node.properties.find(
-    (property) =>
+  let scaleProperty: ts.PropertyAssignment | undefined;
+  for (const property of node.properties) {
+    const isScale =
       ts.isPropertyAssignment(property) &&
       ((ts.isIdentifier(property.name) && property.name.text === 'scale') ||
-        (ts.isStringLiteral(property.name) && property.name.text === 'scale'))
-  );
+        (ts.isStringLiteral(property.name) && property.name.text === 'scale'));
+    if (!isScale) {
+      throw expressionDiagnostic(
+        sourceFile,
+        property,
+        'NATIVE_CAST_OPTION_UNSUPPORTED',
+        'cast options may only contain a scale property'
+      );
+    }
+    if (scaleProperty) {
+      throw expressionDiagnostic(
+        sourceFile,
+        property,
+        'NATIVE_CAST_OPTION_DUPLICATE',
+        'cast options must not contain duplicate scale properties'
+      );
+    }
+    scaleProperty = property as ts.PropertyAssignment;
+  }
   if (!scaleProperty || !ts.isPropertyAssignment(scaleProperty)) return {};
   if (!ts.isNumericLiteral(scaleProperty.initializer)) {
     throw expressionDiagnostic(
@@ -648,7 +713,10 @@ function assertWorkflowJavaScriptTypes(
   const diagnostic = diagnostics.find((item) => item.file?.fileName === GENERATED_SOURCE_NAME);
   if (!diagnostic) {
     const environmentDiagnostic = diagnostics[0];
-    if (!environmentDiagnostic) return;
+    if (!environmentDiagnostic) {
+      assertNativePlusOperandsAreNumeric(program);
+      return;
+    }
     const message = ts.flattenDiagnosticMessageText(environmentDiagnostic.messageText, '\n');
     throw new DataCommandError(
       'RUN_FAILED',
@@ -666,7 +734,9 @@ function assertWorkflowJavaScriptTypes(
   }
   const start = diagnostic.start ?? 0;
   const location = sourceFile.getLineAndCharacterOfPosition(start);
-  const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
+  const rawMessage = ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
+  const stepDiagnostic = describeWorkflowStepDiagnostic(sourceFile, start, rawMessage);
+  const message = stepDiagnostic?.message ?? rawMessage;
   throw new DataCommandError('VALIDATION_FAILED', message, {
     diagnostics: [
       {
@@ -676,9 +746,112 @@ function assertWorkflowJavaScriptTypes(
         line: location.line + 1,
         column: location.character + 1,
         functionName: findContainingFunctionName(sourceFile, start),
+        operationType: stepDiagnostic?.operationType,
+        expectedSignature: stepDiagnostic?.expectedSignature,
+        repairHint: stepDiagnostic?.repairHint,
       },
     ],
   });
+}
+
+function describeWorkflowStepDiagnostic(
+  sourceFile: ts.SourceFile,
+  position: number,
+  rawMessage: string
+): {
+  message: string;
+  operationType: string;
+  expectedSignature: string;
+  repairHint: string;
+} | null {
+  const call = findContainingWorkflowStepCall(sourceFile, position);
+  const operationArgument = call?.arguments[1];
+  if (!operationArgument || !ts.isStringLiteralLike(operationArgument)) return null;
+  const definition = getWorkflowIrOperationDefinition(operationArgument.text);
+  if (!definition) return null;
+  const repairHint =
+    definition.irType === 'limit'
+      ? 'For highest/lowest/top/bottom N, first add a sort step, then use limit with config.mode="limit", unit="rows", offset=0, and orderBy=[]. Never use config.mode="top" in generated JavaScript.'
+      : `Use the registered canonical payload exactly: ${definition.promptSignature}`;
+  return {
+    message: `Invalid workflow.step payload for operation "${definition.irType}". Expected: ${definition.promptSignature}. ${rawMessage}`,
+    operationType: definition.irType,
+    expectedSignature: definition.promptSignature,
+    repairHint,
+  };
+}
+
+function findContainingWorkflowStepCall(
+  sourceFile: ts.SourceFile,
+  position: number
+): ts.CallExpression | undefined {
+  let match: ts.CallExpression | undefined;
+  const visit = (node: ts.Node): void => {
+    if (position < node.getStart(sourceFile) || position > node.getEnd()) return;
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === 'workflow' &&
+      node.expression.name.text === 'step'
+    ) {
+      match = node;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return match;
+}
+
+function assertNativePlusOperandsAreNumeric(program: ts.Program): void {
+  const sourceFile = program.getSourceFile(GENERATED_SOURCE_NAME);
+  if (!sourceFile) return;
+  const checker = program.getTypeChecker();
+  const inspectExpression = (node: ts.Node) => {
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+      const left = checker.getTypeAtLocation(node.left);
+      const right = checker.getTypeAtLocation(node.right);
+      if (!workflowPlusOperandIsNumeric(left) || !workflowPlusOperandIsNumeric(right)) {
+        const start = node.operatorToken.getStart(sourceFile);
+        const location = sourceFile.getLineAndCharacterOfPosition(start);
+        const message = `Native + is numeric-only in workflow expressions; received ${checker.typeToString(left)} + ${checker.typeToString(right)}. Use concat(...) for text.`;
+        throw new DataCommandError('VALIDATION_FAILED', message, {
+          diagnostics: [
+            {
+              severity: 'error',
+              code: 'JAVASCRIPT_NUMERIC_PLUS_REQUIRED',
+              message,
+              line: location.line + 1,
+              column: location.character + 1,
+              functionName: findContainingFunctionName(sourceFile, start),
+            },
+          ],
+        });
+      }
+    }
+    ts.forEachChild(node, inspectExpression);
+  };
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'expr'
+    ) {
+      const callback = node.arguments[0];
+      if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
+        inspectExpression(callback.body);
+      }
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+}
+
+function workflowPlusOperandIsNumeric(type: ts.Type): boolean {
+  if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) return true;
+  if (type.isUnion()) return type.types.every(workflowPlusOperandIsNumeric);
+  return Boolean(type.flags & ts.TypeFlags.NumberLike);
 }
 
 function workflowAuthoringDeclarations(
@@ -697,15 +870,6 @@ function workflowAuthoringDeclarations(
   const rowFields = [...rowTypes]
     .map(([name, type]) => `readonly ${JSON.stringify(name)}: ${type};`)
     .join('\n');
-  const operationTypes = [...WORKFLOW_OPERATION_TYPES]
-    .map((type) => JSON.stringify(type))
-    .sort()
-    .join(' | ');
-  const otherOperationTypes = [...WORKFLOW_OPERATION_TYPES]
-    .filter((type) => type !== 'filter' && type !== 'derive')
-    .map((type) => JSON.stringify(type))
-    .sort()
-    .join(' | ');
   return `${MINIMAL_TYPESCRIPT_STANDARD_LIBRARY}
 interface WorkflowInputRow {
 ${rowFields}
@@ -714,26 +878,7 @@ declare const workflowNativeExpressionBrand: unique symbol;
 interface WorkflowNativeExpression<T = unknown> { readonly [workflowNativeExpressionBrand]: T }
 declare function expr<T>(builder: (row: Readonly<WorkflowInputRow>) => T): WorkflowNativeExpression<T>;
 ${getWorkflowExpressionTypeScriptDeclarations()}
-declare function cast(value: unknown, targetType: "integer" | "float" | "decimal", options?: { scale?: number } | number): number;
-declare function cast(value: unknown, targetType: "text"): string;
-declare function cast(value: unknown, targetType: "boolean"): boolean;
-declare function cast(value: unknown, targetType: "date" | "datetime" | "timestamp"): Date;
-declare const workflowValueBrand: unique symbol;
-interface WorkflowValue { readonly [workflowValueBrand]: true }
-type WorkflowOperationType = ${operationTypes};
-type WorkflowOtherOperationType = ${otherOperationTypes};
-interface WorkflowSdk {
-  input(tableId: string, options?: { alias?: string }): WorkflowValue;
-  step(input: WorkflowValue, type: "filter", payload: { condition: WorkflowNativeExpression<boolean> }): WorkflowValue;
-  step(input: WorkflowValue, type: "derive", payload: { column: string; expression: WorkflowNativeExpression<unknown> }): WorkflowValue;
-  step(input: WorkflowValue, type: WorkflowOtherOperationType, payload: Record<string, unknown>): WorkflowValue;
-  output(input: WorkflowValue, tableName: string, options?: { mode?: "replace" }): WorkflowValue;
-}
-declare const workflow: WorkflowSdk;
-declare const fn: any;
-declare const metric: any;
-declare function col(name: string): any;
-declare function lit(value: unknown): any;
+${getWorkflowIrOperationTypeScriptDeclarations()}
 declare const INPUT_TABLE_ID: string;
 declare const OUTPUT_TABLE_NAME: string;
 `;
@@ -825,7 +970,8 @@ function expressionDiagnostic(
   sourceFile: ts.SourceFile,
   node: ts.Node | undefined,
   code: string,
-  message: string
+  message: string,
+  guidance: { expectedSignature?: string; repairHint?: string } = {}
 ): DataCommandError {
   const start = node?.getStart(sourceFile) ?? 0;
   const location = sourceFile.getLineAndCharacterOfPosition(start);
@@ -838,6 +984,8 @@ function expressionDiagnostic(
         line: location.line + 1,
         column: location.character + 1,
         functionName: findContainingFunctionName(sourceFile, start),
+        expectedSignature: guidance.expectedSignature,
+        repairHint: guidance.repairHint,
       },
     ],
   });

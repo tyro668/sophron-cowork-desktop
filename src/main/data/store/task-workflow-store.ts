@@ -1097,7 +1097,11 @@ export class TaskWorkflowStore extends WorkflowCompiler {
           const wrapped = new Error(
             `Workflow node ${node.id} (${node.type})${functionLabel} failed: ${cause}`
           ) as Error & { workflowOrigin?: Record<string, unknown> };
-          if (origin) wrapped.workflowOrigin = origin;
+          wrapped.workflowOrigin = {
+            ...(origin ?? {}),
+            nodeId: node.id,
+            nodeType: node.type,
+          };
           throw wrapped;
         }
         relationByNode.set(node.id, outputRelation);

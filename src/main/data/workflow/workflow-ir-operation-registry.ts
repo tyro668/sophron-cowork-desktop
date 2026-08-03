@@ -1,6 +1,13 @@
 import { DataCommandError } from '../data-command-types';
 import type { WorkflowOperationIr } from './workflow-model';
 import {
+  getWorkflowAggregateCapabilityPrompt,
+  getWorkflowAggregateFunctionDefinition,
+  getWorkflowAggregateFunctionTypeScriptType,
+  normalizeWorkflowAggregateFunction,
+  WORKFLOW_AGGREGATE_FUNCTION_REGISTRY,
+} from './workflow-aggregate-registry';
+import {
   getWorkflowExpressionFunctionDefinition,
   isWorkflowDecimalScale,
   isWorkflowExpressionCastType,
@@ -9,16 +16,19 @@ import {
   WORKFLOW_BINARY_EXPRESSION_OPERATORS,
   WORKFLOW_EXPRESSION_FUNCTION_NAMES,
   WORKFLOW_UNARY_EXPRESSION_OPERATORS,
+  WORKFLOW_EXPRESSION_CAST_REGISTRY,
+  WORKFLOW_EXPRESSION_CAST_TYPES,
   workflowExpressionArityDescription,
   workflowExpressionArityIsValid,
 } from './workflow-expression-registry';
 import { isAiPrepDslOperationEnabled } from './prep-dsl-capability-profile';
 
-type WorkflowOperationType = WorkflowOperationIr['type'];
+type WorkflowIrOperationType = WorkflowOperationIr['type'];
 
-export interface WorkflowOperationDefinition {
-  irType: WorkflowOperationType;
+export interface WorkflowIrOperationDefinition {
+  irType: WorkflowIrOperationType;
   promptSignature: string;
+  typescriptPayload: string;
   validatePayload(operation: Record<string, unknown>, at: string): void;
 }
 
@@ -31,119 +41,224 @@ export interface WorkflowOperationDefinition {
  * Expression capabilities live in workflow-expression-registry.ts and do not
  * belong here because they do not create workflow operation nodes.
  */
-export const WORKFLOW_OPERATION_REGISTRY = [
-  operation(
+export const WORKFLOW_IR_OPERATION_REGISTRY = [
+  irOperation(
     'filter',
     'workflow.step(input, "filter", { condition: expr(row => booleanExpression) })',
+    '{ condition: WorkflowNativeExpression<boolean> }',
     (op, at) => {
       validateExpression(op.condition, `${at}.condition`);
     }
   ),
-  operation('select', 'workflow.step(input, "select", { columns: ["field"] })', (op, at) => {
-    assertStringArray(op.columns, `${at}.columns`, true);
-  }),
-  operation('drop', 'workflow.step(input, "drop", { columns: ["field"] })', (op, at) => {
-    assertStringArray(op.columns, `${at}.columns`, true);
-  }),
-  operation(
+  irOperation(
+    'select',
+    'workflow.step(input, "select", { columns: ["field"] })',
+    '{ columns: WorkflowNonEmptyStringArray }',
+    (op, at) => {
+      assertStringArray(op.columns, `${at}.columns`, true);
+    }
+  ),
+  irOperation(
+    'drop',
+    'workflow.step(input, "drop", { columns: ["field"] })',
+    '{ columns: WorkflowNonEmptyStringArray }',
+    (op, at) => {
+      assertStringArray(op.columns, `${at}.columns`, true);
+    }
+  ),
+  irOperation(
     'rename',
     'workflow.step(input, "rename", { source: "source", target: "target" })',
+    '{ source: string; target: string }',
     (op, at) => {
       assertString(op.source, `${at}.source`);
       assertString(op.target, `${at}.target`);
     }
   ),
-  operation(
+  irOperation(
     'derive',
     'workflow.step(input, "derive", { column: "field", expression: expr(row => valueExpression) })',
+    '{ column: string; expression: WorkflowNativeExpression<unknown> }',
     (op, at) => {
       assertString(op.column, `${at}.column`);
       validateExpression(op.expression, `${at}.expression`);
     }
   ),
-  operation(
+  irOperation(
     'convert_type',
-    'workflow.step(input, "convert_type", { column: "field", targetType, options: {} })',
+    'workflow.step(input, "convert_type", { column: "field", targetType: "integer|float|decimal|text|boolean|date|datetime|timestamp", options: { onError?: "null|fail", removePrefix?: string, removeChars?: string[], scale?: decimal-only } })',
+    'WorkflowConvertTypePayload',
     (op, at) => {
       assertString(op.column, `${at}.column`);
-      assertString(op.targetType, `${at}.targetType`);
-      assertRecord(op.options, `${at}.options`);
+      const targetType = assertString(op.targetType, `${at}.targetType`);
+      if (!isWorkflowExpressionCastType(targetType)) {
+        fail(`${at}.targetType must be one of ${WORKFLOW_EXPRESSION_CAST_TYPES.join(', ')}`);
+      }
+      const options = assertRecord(op.options, `${at}.options`);
+      if (options.onError !== undefined)
+        assertEnum(options.onError, ['null', 'fail'], `${at}.options.onError`);
+      if (options.removePrefix !== undefined)
+        assertString(options.removePrefix, `${at}.options.removePrefix`);
+      if (options.removeChars !== undefined)
+        assertStringArray(options.removeChars, `${at}.options.removeChars`);
+      if (options.scale !== undefined) {
+        if (targetType !== 'decimal') {
+          fail(`${at}.options.scale is only supported when targetType is decimal`);
+        }
+        if (!isWorkflowDecimalScale(options.scale)) {
+          fail(
+            `${at}.options.scale must be an integer from ${WORKFLOW_DECIMAL_SCALE_MIN} to ${WORKFLOW_DECIMAL_SCALE_MAX}`
+          );
+        }
+      }
     }
   ),
-  operation(
+  irOperation(
     'sort',
     'workflow.step(input, "sort", { column: expr(row => row["field"]), direction: "asc|desc" })',
+    '{ column: WorkflowNativeExpression<unknown>; direction: "asc" | "desc" }',
     (op, at) => {
       validateExpression(op.column, `${at}.column`);
       assertEnum(op.direction, ['asc', 'desc'], `${at}.direction`);
     }
   ),
-  operation(
+  irOperation(
     'aggregate',
-    'workflow.step(input, "aggregate", { groupBy, metrics })',
+    'workflow.step(input, "aggregate", { groupBy: [expr(row => row["field"])], metrics: [{ fn: "sum|avg|min|max|count|count_distinct", expression: expr(row => row["field"]) | "*", alias: "metric" }] })',
+    'WorkflowAggregatePayload',
     validateAggregate
   ),
-  operation(
+  irOperation(
     'deduplicate',
-    'workflow.step(input, "deduplicate", { config: { columns, keep, orderBy } })',
+    'workflow.step(input, "deduplicate", { config: { columns, keep: "first", orderBy } })',
+    '{ config: WorkflowDeduplicateConfig }',
     validateDeduplicate
   ),
-  operation(
+  irOperation(
     'missing_value',
-    'workflow.step(input, "missing_value", { config: { strategy: "drop_empty_rows" } })',
+    'workflow.step(input, "missing_value", { config: { strategy: "drop_empty_rows" } | { strategy: "by_column", rules: [{ column: "field", method: "skip|drop|nullify_values|literal_fill", values?: ["text marker"], value?: literal }] } })',
+    '{ config: { strategy: "drop_empty_rows" } | { strategy: "by_column"; rules: WorkflowNonEmptyMissingValueRules } }',
     validateMissingValue
   ),
-  operation(
-    'missing_value',
-    'workflow.step(input, "missing_value", { config: { strategy: "by_column", rules: [{ column: "field", method: "skip|drop|nullify_values|literal_fill", values?: [literal], value?: literal }] } })',
-    validateMissingValue
-  ),
-  operation(
+  irOperation(
     'limit',
-    'workflow.step(input, "limit", { config: { mode: "limit", limit, unit, offset, orderBy } })',
+    'workflow.step(input, "limit", { config: { mode: "limit", limit: positiveCount, unit: "rows|percent", offset: 0, orderBy: [] } }). For highest/lowest/top/bottom N, use a separate sort step first and then this limit form; never use mode "top"',
+    '{ config: WorkflowLimitConfig }',
     validateLimit
   ),
-  operation(
-    'limit',
-    'workflow.step(input, "limit", { config: { mode: "top", limit, unit: "rows", offset: 0, orderBy } })',
-    validateLimit
-  ),
-  operation(
+  irOperation(
     'pivot',
     'workflow.step(input, "pivot", { config: { on, values, using, groupBy } })',
+    '{ config: WorkflowPivotConfig }',
     validatePivot
   ),
-  operation(
+  irOperation(
     'unpivot',
     'workflow.step(input, "unpivot", { config: { mode, columns, nameColumn, valueColumn, includeNulls } })',
+    '{ config: WorkflowUnpivotConfig }',
     validateUnpivot
   ),
-  operation(
+  irOperation(
     'unnest',
     'workflow.step(input, "unnest", { config: { sourceKind, column, alias, recursive, keepParentNames, ...options } })',
+    '{ config: WorkflowUnnestConfig }',
     validateUnnest
   ),
-] as const satisfies readonly WorkflowOperationDefinition[];
+] as const satisfies readonly WorkflowIrOperationDefinition[];
 
-export const WORKFLOW_OPERATION_TYPES = new Set<WorkflowOperationType>(
-  WORKFLOW_OPERATION_REGISTRY.filter((definition) =>
+export const WORKFLOW_IR_OPERATION_TYPES = new Set<WorkflowIrOperationType>(
+  WORKFLOW_IR_OPERATION_REGISTRY.filter((definition) =>
     isAiPrepDslOperationEnabled(definition.irType)
   ).map((definition) => definition.irType)
 );
 
 export function getWorkflowJavascriptCapabilityPrompt(): string {
-  return WORKFLOW_OPERATION_REGISTRY.filter((definition) =>
-    isAiPrepDslOperationEnabled(definition.irType)
-  )
-    .map((definition) => definition.promptSignature)
-    .join(', ');
+  return [
+    WORKFLOW_IR_OPERATION_REGISTRY.filter((definition) =>
+      isAiPrepDslOperationEnabled(definition.irType)
+    )
+      .map((definition) => definition.promptSignature)
+      .join(', '),
+    getWorkflowAggregateCapabilityPrompt(),
+  ].join('. ');
 }
 
-export function validateRegisteredWorkflowOperation(
+export function getWorkflowIrOperationDefinition(
+  type: string
+): WorkflowIrOperationDefinition | undefined {
+  return WORKFLOW_IR_OPERATION_REGISTRY.find(
+    (definition) => definition.irType === type && isAiPrepDslOperationEnabled(definition.irType)
+  );
+}
+
+/** TypeScript façade generated from the same operation entries validated at the IR boundary. */
+export function getWorkflowIrOperationTypeScriptDeclarations(): string {
+  const stepPayloadEntries = WORKFLOW_IR_OPERATION_REGISTRY.filter((definition) =>
+    isAiPrepDslOperationEnabled(definition.irType)
+  )
+    .map((definition) => `  ${JSON.stringify(definition.irType)}: ${definition.typescriptPayload};`)
+    .join('\n');
+  const aggregateFunction = getWorkflowAggregateFunctionTypeScriptType();
+  const numericAggregates = Object.entries(WORKFLOW_AGGREGATE_FUNCTION_REGISTRY)
+    .filter(([, definition]) => definition.argumentType === 'numeric')
+    .map(([name]) => JSON.stringify(name))
+    .join(' | ');
+  const nonNumericAggregates = Object.entries(WORKFLOW_AGGREGATE_FUNCTION_REGISTRY)
+    .filter(([, definition]) => definition.argumentType !== 'numeric' && !definition.acceptsStar)
+    .map(([name]) => JSON.stringify(name))
+    .join(' | ');
+  const castTypesWithoutScale = WORKFLOW_EXPRESSION_CAST_TYPES.filter(
+    (type) => !WORKFLOW_EXPRESSION_CAST_REGISTRY[type].supportsScale
+  )
+    .map((type) => JSON.stringify(type))
+    .join(' | ');
+  return `
+type WorkflowLiteral = string | number | boolean | null;
+type WorkflowNonEmptyStringArray = readonly [string, ...string[]];
+type WorkflowSortKey = { field: string; direction: "asc" | "desc"; nulls?: "first" | "last" };
+type WorkflowConvertTypeCommonOptions = { onError?: "null" | "fail"; removePrefix?: string; removeChars?: ReadonlyArray<string> };
+type WorkflowConvertTypePayload =
+  | { column: string; targetType: "decimal"; options: WorkflowConvertTypeCommonOptions & { scale?: number } }
+  | { column: string; targetType: ${castTypesWithoutScale}; options: WorkflowConvertTypeCommonOptions };
+type WorkflowAggregateFunction = ${aggregateFunction};
+type WorkflowAggregateMetric =
+  | { fn: "count"; expression: WorkflowNativeExpression<unknown> | "*"; alias: string }
+  | { fn: ${numericAggregates}; expression: WorkflowNativeExpression<number>; alias: string }
+  | { fn: ${nonNumericAggregates}; expression: WorkflowNativeExpression<unknown>; alias: string };
+type WorkflowAggregatePayload = { groupBy: ReadonlyArray<WorkflowNativeExpression<unknown>>; metrics: readonly [WorkflowAggregateMetric, ...WorkflowAggregateMetric[]] };
+type WorkflowDeduplicateConfig = { columns: ReadonlyArray<string>; keep: "first"; orderBy: ReadonlyArray<WorkflowSortKey> };
+type WorkflowMissingValueRule =
+  | { column: string; method: "skip" | "drop" }
+  | { column: string; method: "nullify_values"; values: readonly [string, ...string[]] }
+  | { column: string; method: "literal_fill"; value: WorkflowLiteral };
+type WorkflowNonEmptyMissingValueRules = readonly [WorkflowMissingValueRule, ...WorkflowMissingValueRule[]];
+type WorkflowLimitConfig = { mode: "limit"; limit: number; unit: "rows" | "percent"; offset: number; orderBy: ReadonlyArray<WorkflowSortKey> };
+type WorkflowPivotMetric =
+  | { function: "count"; expression: WorkflowNativeExpression<unknown> | "*"; alias: string }
+  | { function: ${numericAggregates}; expression: WorkflowNativeExpression<number>; alias: string }
+  | { function: ${nonNumericAggregates}; expression: WorkflowNativeExpression<unknown>; alias: string };
+type WorkflowPivotConfig = { on: readonly [string]; values: readonly [WorkflowLiteral, ...WorkflowLiteral[]]; using: readonly [WorkflowPivotMetric]; groupBy: ReadonlyArray<string> };
+type WorkflowUnpivotConfig = { mode: "columns" | "except"; columns: WorkflowNonEmptyStringArray; nameColumn: string; valueColumn: string; includeNulls: boolean };
+type WorkflowUnnestConfig = { sourceKind: "list" | "json"; column: string; alias: string; path?: string; withIndex?: string; recursive: boolean; maxDepth?: number; keepParentNames: boolean };
+declare const workflowValueBrand: unique symbol;
+interface WorkflowValue { readonly [workflowValueBrand]: true }
+interface WorkflowStepPayloadMap {
+${stepPayloadEntries}
+}
+interface WorkflowSdk {
+  input(tableId: string, options?: { alias?: string }): WorkflowValue;
+  step<T extends keyof WorkflowStepPayloadMap>(input: WorkflowValue, type: T, payload: WorkflowStepPayloadMap[T]): WorkflowValue;
+  output(input: WorkflowValue, tableName: string, options?: { mode?: "replace" }): WorkflowValue;
+}
+declare const workflow: WorkflowSdk;
+`;
+}
+
+export function validateRegisteredWorkflowIrOperation(
   operationValue: Record<string, unknown>,
   index: number
 ): void {
-  const definition = WORKFLOW_OPERATION_REGISTRY.find(
+  const definition = WORKFLOW_IR_OPERATION_REGISTRY.find(
     (candidate) =>
       candidate.irType === operationValue.type && isAiPrepDslOperationEnabled(candidate.irType)
   );
@@ -156,14 +271,16 @@ export function validateRegisteredWorkflowOperation(
   definition.validatePayload(operationValue, `operations[${index}]`);
 }
 
-function operation(
-  irType: WorkflowOperationType,
+function irOperation(
+  irType: WorkflowIrOperationType,
   promptSignature: string,
-  validatePayload: WorkflowOperationDefinition['validatePayload']
-): WorkflowOperationDefinition {
+  typescriptPayload: string,
+  validatePayload: WorkflowIrOperationDefinition['validatePayload']
+): WorkflowIrOperationDefinition {
   return {
     irType,
     promptSignature,
+    typescriptPayload,
     validatePayload,
   };
 }
@@ -174,17 +291,23 @@ function validateAggregate(op: Record<string, unknown>, at: string): void {
   );
   assertArray(op.metrics, `${at}.metrics`, true).forEach((value, item) => {
     const metric = assertRecord(value, `${at}.metrics[${item}]`);
-    assertString(metric.fn, `${at}.metrics[${item}].fn`);
+    const fn = normalizeAggregateFunction(metric.fn, `${at}.metrics[${item}].fn`);
+    metric.fn = fn;
     assertString(metric.alias, `${at}.metrics[${item}].alias`);
-    if (metric.expression !== '*')
+    if (metric.expression === '*') {
+      if (!getWorkflowAggregateFunctionDefinition(fn)?.acceptsStar) {
+        fail(`${at}.metrics[${item}].expression cannot be "*" for ${fn}`);
+      }
+    } else {
       validateExpression(metric.expression, `${at}.metrics[${item}].expression`);
+    }
   });
 }
 
 function validateDeduplicate(op: Record<string, unknown>, at: string): void {
   const config = assertRecord(op.config, `${at}.config`);
   assertStringArray(config.columns, `${at}.config.columns`);
-  assertEnum(config.keep, ['first', 'last'], `${at}.config.keep`);
+  assertEnum(config.keep, ['first'], `${at}.config.keep`);
   validateSortKeys(config.orderBy, `${at}.config.orderBy`);
 }
 
@@ -200,9 +323,12 @@ function validateMissingValue(op: Record<string, unknown>, at: string): void {
       ['skip', 'drop', 'nullify_values', 'literal_fill'],
       `${at}.config.rules[${item}].method`
     );
-    if (rule.values !== undefined)
-      assertLiteralArray(rule.values, `${at}.config.rules[${item}].values`);
-    if (rule.value !== undefined) assertLiteral(rule.value, `${at}.config.rules[${item}].value`);
+    if (rule.method === 'nullify_values') {
+      assertStringArray(rule.values, `${at}.config.rules[${item}].values`, true);
+    } else if (rule.method === 'literal_fill') {
+      if (rule.value === undefined) fail(`${at}.config.rules[${item}].value is required`);
+      assertLiteral(rule.value, `${at}.config.rules[${item}].value`);
+    }
   });
 }
 
@@ -213,20 +339,43 @@ function validateLimit(op: Record<string, unknown>, at: string): void {
   assertEnum(config.unit, ['rows', 'percent'], `${at}.config.unit`);
   assertFiniteNumber(config.offset, `${at}.config.offset`);
   validateSortKeys(config.orderBy, `${at}.config.orderBy`);
+  if (config.mode === 'top') {
+    if (config.unit !== 'rows') fail(`${at}.config.unit must be rows when mode is top`);
+    if (config.offset !== 0) fail(`${at}.config.offset must be 0 when mode is top`);
+    assertArray(config.orderBy, `${at}.config.orderBy`, true);
+  }
 }
 
 function validatePivot(op: Record<string, unknown>, at: string): void {
   const config = assertRecord(op.config, `${at}.config`);
   assertStringArray(config.on, `${at}.config.on`, true);
+  assertArrayLength(config.on, `${at}.config.on`, 1);
   assertLiteralArray(config.values, `${at}.config.values`, true);
   assertStringArray(config.groupBy, `${at}.config.groupBy`);
+  assertArrayLength(config.using, `${at}.config.using`, 1);
   assertArray(config.using, `${at}.config.using`, true).forEach((value, item) => {
     const metric = assertRecord(value, `${at}.config.using[${item}]`);
-    assertString(metric.function, `${at}.config.using[${item}].function`);
+    const fn = normalizeAggregateFunction(metric.function, `${at}.config.using[${item}].function`);
+    metric.function = fn;
     assertString(metric.alias, `${at}.config.using[${item}].alias`);
-    if (metric.expression !== '*')
+    if (metric.expression === '*') {
+      if (!getWorkflowAggregateFunctionDefinition(fn)?.acceptsStar) {
+        fail(`${at}.config.using[${item}].expression cannot be "*" for ${fn}`);
+      }
+    } else {
       validateExpression(metric.expression, `${at}.config.using[${item}].expression`);
+    }
   });
+}
+
+function normalizeAggregateFunction(value: unknown, at: string): string {
+  const normalized = normalizeWorkflowAggregateFunction(value);
+  if (!normalized) {
+    fail(
+      `${at} must be one of ${Object.keys(WORKFLOW_AGGREGATE_FUNCTION_REGISTRY).join(', ')}; received ${JSON.stringify(value)}`
+    );
+  }
+  return normalized;
 }
 
 function validateUnpivot(op: Record<string, unknown>, at: string): void {
@@ -330,6 +479,11 @@ function assertArray(value: unknown, at: string, nonEmpty = false): unknown[] {
   if (!Array.isArray(value) || (nonEmpty && value.length === 0))
     fail(`${at} must be ${nonEmpty ? 'a non-empty' : 'an'} array`);
   return value;
+}
+function assertArrayLength(value: unknown, at: string, length: number): void {
+  if (!Array.isArray(value) || value.length !== length) {
+    fail(`${at} must contain exactly ${length} item(s)`);
+  }
 }
 function assertString(value: unknown, at: string): string {
   if (typeof value !== 'string' || !value.trim()) fail(`${at} must be a non-empty string`);

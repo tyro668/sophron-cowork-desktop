@@ -4,8 +4,13 @@ import * as os from 'os';
 import * as path from 'path';
 import { DuckDBInstance } from '@duckdb/node-api';
 import { createDataTaskStore, type DataTaskStore } from '../src/main/data/data-task-store';
-import { compilePrepWorkflowToFlow, parsePrepDsl } from '../src/shared/prep-dsl';
+import {
+  compilePrepWorkflowToFlow,
+  exportPrepWorkflowDsl,
+  parsePrepDsl,
+} from '../src/shared/prep-dsl';
 import { compileGeneratedJavaScriptWorkflow } from '../src/main/data/workflow/workflow-generator';
+import { compileLoweredWorkflowToPlatformNodes } from '../src/main/data/workflow/workflow-node-compiler';
 
 const tempRoots: string[] = [];
 const stores: DataTaskStore[] = [];
@@ -71,11 +76,19 @@ function main() {
         { name: 'Product Name', type: 'text' },
       ],
     });
+    const nodePlan = compileLoweredWorkflowToPlatformNodes({
+      semantics: generated,
+      bindings: {
+        inputTableId: input.id,
+        outputTableName: 'ai_date_range_output',
+      },
+    });
+    const compatibilityDsl = exportPrepWorkflowDsl(nodePlan.nodes, nodePlan.edges);
 
-    expect(generated.workflowDsl).toContain('derive [__sophron_ai_filter_predicate] =');
-    expect(generated.workflowDsl).toContain('filter [__sophron_ai_filter_predicate] = true');
-    expect(generated.workflowDsl).toContain('drop [__sophron_ai_filter_predicate]');
-    await saveWorkflowDsl(store, task.id, generated.workflowDsl);
+    expect(compatibilityDsl).toContain('derive [__sophron_ai_filter_predicate] =');
+    expect(compatibilityDsl).toContain('filter [__sophron_ai_filter_predicate] = true');
+    expect(compatibilityDsl).toContain('drop [__sophron_ai_filter_predicate]');
+    await saveWorkflowDsl(store, task.id, compatibilityDsl);
 
     const completed = await store.runTask(task.id);
     expect(completed.status).toBe('completed');

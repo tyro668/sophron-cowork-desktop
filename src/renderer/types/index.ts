@@ -749,7 +749,9 @@ export interface DataGenerateTaskFromRequirementResult {
   taskName: string;
   outputTableId: string;
   outputTableName: string;
-  workflowDsl: string;
+  /** Optional compatibility representation for display/export; native nodes are the source of truth. */
+  workflowDsl?: string;
+  workflowDslAvailable: boolean;
   requiredColumns: DataAutomationColumnSnapshot[];
   expectedOutputSchema: DataAutomationColumnSnapshot[];
   lineage: DataAutomationLineageEntry[];

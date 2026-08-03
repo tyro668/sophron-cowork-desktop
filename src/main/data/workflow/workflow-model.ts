@@ -1,6 +1,7 @@
 import type {
   DataAutomationColumnSnapshot,
   DataAutomationLineageEntry,
+  DataWorkflowOperatorType,
 } from '../../../renderer/types';
 
 export type WorkflowLiteral = string | number | boolean | null;
@@ -25,6 +26,23 @@ export interface GeneratedWorkflowOperationOrigin extends WorkflowSourceLocation
   operationId: string;
   operatorIndex: number;
   operationType: WorkflowOperationIr['type'];
+}
+
+export type GeneratedWorkflowPlatformOperatorType = Exclude<
+  DataWorkflowOperatorType,
+  'input_source' | 'join' | 'set_op' | 'output'
+>;
+
+/**
+ * Structured platform-node draft produced by the AI semantic lowering stage.
+ *
+ * Prep DSL is intentionally absent: generated workflows execute from native node
+ * configs, and compatibility DSL is exported only after the complete node graph
+ * has passed platform validation.
+ */
+export interface GeneratedWorkflowPlatformOperatorDraft {
+  type: GeneratedWorkflowPlatformOperatorType;
+  config: Record<string, unknown>;
 }
 
 export type WorkflowExpressionIr =
@@ -54,7 +72,8 @@ export interface WorkflowSortKeyIr {
 
 export interface WorkflowDeduplicateConfig {
   columns: string[];
-  keep: 'first' | 'last';
+  /** The platform SQL compiler currently guarantees only the first-row policy. */
+  keep: 'first';
   orderBy: WorkflowSortKeyIr[];
 }
 
@@ -62,7 +81,8 @@ export interface WorkflowMissingValueRule {
   column: string;
   method: 'skip' | 'drop' | 'nullify_values' | 'literal_fill';
   value?: WorkflowLiteral;
-  values?: WorkflowLiteral[];
+  /** The platform node schema accepts textual missing-value markers. */
+  values?: string[];
 }
 
 export type WorkflowMissingValueConfig =
@@ -160,18 +180,19 @@ export interface GeneratedWorkflowColumnBinding {
   expression?: string;
 }
 
-export interface GeneratedDataTaskWorkflow {
-  /** Original generated JavaScript retained for function-level diagnostics and repair. */
-  javascriptSource?: string;
-  /** AI-side compatibility profile used to lower IR into the existing Prep DSL runtime. */
-  runtimeCompatibilityProfileVersion: string;
-  /** Versioned, canonical SDK build result retained for audit and deterministic lowering. */
-  workflowIr?: WorkflowIr;
-  workflowIrSemanticHash?: string;
-  /** Maps generated DSL operator positions back to atomic JavaScript helpers. */
-  operationOrigins?: GeneratedWorkflowOperationOrigin[];
-  workflowDsl: string;
-  requiredColumns: DataAutomationColumnSnapshot[];
+export interface GeneratedWorkflowIrSemantics {
+  workflowIr: WorkflowIr;
+  platformOperators: GeneratedWorkflowPlatformOperatorDraft[];
+  operationOrigins: GeneratedWorkflowOperationOrigin[];
+  requiredColumns: Array<{ name: string; type?: string }>;
   expectedOutputSchema: DataAutomationColumnSnapshot[];
   lineage: DataAutomationLineageEntry[];
+}
+
+export interface GeneratedDataTaskWorkflow extends GeneratedWorkflowIrSemantics {
+  /** Original generated JavaScript retained for function-level diagnostics and repair. */
+  javascriptSource?: string;
+  /** AI-side compatibility profile certified against the platform node/SQL runtime. */
+  runtimeCompatibilityProfileVersion: string;
+  workflowIrSemanticHash: string;
 }

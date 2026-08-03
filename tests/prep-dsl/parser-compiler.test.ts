@@ -127,6 +127,41 @@ describe('prep DSL parser and workflow compiler', () => {
     expect(exported).toContain('[orders].[customer_id]');
   });
 
+  it('exports structured input and output node configs without cached DSL text', () => {
+    const exported = exportPrepWorkflowDsl(
+      [
+        {
+          id: 'source',
+          type: 'input_source',
+          config: { source: 'dataset', datasetId: 'dataset-sales-id', alias: 'sales' },
+        },
+        {
+          id: 'output',
+          type: 'output',
+          config: {
+            destination: 'duckdb_table',
+            table: 'data_output_abc123',
+            outputTableName: 'Processed Sales',
+            mode: 'replace',
+          },
+        },
+      ],
+      [
+        {
+          sourceNodeId: 'source',
+          targetNodeId: 'output',
+          targetHandle: 'input',
+        },
+      ]
+    );
+
+    expect(exported).toContain('input source dataset "dataset-sales-id" as sales');
+    expect(exported).toContain('output table "Processed Sales" mode replace');
+    expect(parsePrepDsl(exported).diagnostics.filter((item) => item.severity === 'error')).toEqual(
+      []
+    );
+  });
+
   it('parses single-operator DSL for every editable operator', () => {
     const cases: Array<[PrepOperatorType, string]> = [
       ['field_select', 'select [order_id], [region]'],

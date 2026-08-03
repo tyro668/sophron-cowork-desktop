@@ -3,21 +3,19 @@ import {
   compileWorkflowJavaScript,
   executeWorkflowJavaScriptInSandbox,
 } from '../src/main/data/workflow/javascript-runtime';
-import {
-  exportWorkflowOperationsToPrepDsl,
-  lowerWorkflowIrToOperations,
-} from '../src/main/data/workflow/operation-compiler';
+import { exportPrepWorkflowDsl } from '../src/shared/prep-dsl';
+import { lowerGeneratedWorkflowIrSemantics } from '../src/main/data/workflow/workflow-ir-lowerer';
+import { compileLoweredWorkflowToPlatformNodes } from '../src/main/data/workflow/workflow-node-compiler';
 import { computeWorkflowIrSemanticHash } from '../src/main/data/workflow/workflow-ir';
 
 const INPUT_TABLE_ID = 'sales-input-demo';
 const OUTPUT_TABLE_NAME = 'profitable-sales-demo';
 const REQUIREMENT = '筛选 Profit > 0 的记录，只保留 OrderID、Region、Profit 字段';
 
-// 模拟 LLM 在配置期返回的标准 JavaScript。每个 helper 只创建一个 operation，
-// main() 只负责串联输入、处理步骤和输出。
+// 模拟 LLM 在配置期返回的标准 JavaScript。helper 负责线性处理，main() 负责输入和输出。
 const GENERATED_JAVASCRIPT = `function keepProfitableRows(input) {
   return workflow.step(input, "filter", {
-    condition: col("Profit").gt(0)
+    condition: expr(row => row["Profit"] > 0)
   });
 }
 
@@ -40,7 +38,7 @@ function logLayer(title: string, value: unknown): void {
 }
 
 describe('数据任务生成分层日志示例', () => {
-  it('记录 JavaScript、两次 IR、Operations JSON 和最终 Prep DSL', () => {
+  it('记录 JavaScript、两次 IR、平台节点和兼容 Prep DSL', () => {
     logLayer('0. 用户处理要求', REQUIREMENT);
     logLayer('1. 模拟 LLM 生成的 JavaScript', GENERATED_JAVASCRIPT);
 
@@ -72,16 +70,8 @@ describe('数据任务生成分层日志示例', () => {
       ir: secondIr,
     });
 
-    const operationsJson = lowerWorkflowIrToOperations({
+    const semantics = lowerGeneratedWorkflowIrSemantics({
       ir: firstIr,
-      inputTableId: INPUT_TABLE_ID,
-      outputTableName: OUTPUT_TABLE_NAME,
-    });
-    logLayer('5. Lowering 后的 Operations JSON 1.0', operationsJson);
-
-    const generated = exportWorkflowOperationsToPrepDsl({
-      workflow: operationsJson,
-      sourceIr: firstIr,
       requirement: REQUIREMENT,
       columns: [
         { name: 'OrderID', type: 'text' },
@@ -90,18 +80,34 @@ describe('数据任务生成分层日志示例', () => {
         { name: 'RecordCount', type: 'integer' },
       ],
     });
-    logLayer('6. 最终 Prep DSL', generated.workflowDsl);
-    logLayer('7. 随 DSL 一并生成的契约信息', {
-      requiredColumns: generated.requiredColumns,
-      expectedOutputSchema: generated.expectedOutputSchema,
-      lineage: generated.lineage,
-      operationOrigins: generated.operationOrigins,
+    const nodePlan = compileLoweredWorkflowToPlatformNodes({
+      semantics,
+      bindings: {
+        inputTableId: INPUT_TABLE_ID,
+        outputTableName: OUTPUT_TABLE_NAME,
+        outputPhysicalTableName: 'demo_output_physical',
+      },
+    });
+    logLayer('5. IR 直接编译的平台节点与边', {
+      nodes: nodePlan.nodes,
+      edges: nodePlan.edges,
+    });
+
+    const compatibilityDsl = exportPrepWorkflowDsl(nodePlan.nodes, nodePlan.edges);
+    logLayer('6. 由节点导出的兼容 Prep DSL', compatibilityDsl);
+    logLayer('7. 节点编译同时生成的契约信息', {
+      requiredColumns: nodePlan.requiredColumns,
+      expectedOutputSchema: nodePlan.expectedOutputSchema,
+      lineage: nodePlan.lineage,
+      operationOrigins: nodePlan.operationNodeOrigins,
     });
 
     expect(firstHash).toBe(secondHash);
-    expect(operationsJson.operations).toHaveLength(2);
-    expect(generated.workflowDsl).toContain('filter [Profit] > 0');
-    expect(generated.workflowDsl).toContain('select [OrderID], [Region], [Profit]');
-    expect(generated.workflowDsl).toContain(`output table "${OUTPUT_TABLE_NAME}" mode replace`);
+    expect(
+      nodePlan.nodes.filter((node) => !['input_source', 'output'].includes(node.type))
+    ).toHaveLength(2);
+    expect(compatibilityDsl).toContain('filter [Profit] > 0');
+    expect(compatibilityDsl).toContain('select [OrderID], [Region], [Profit]');
+    expect(compatibilityDsl).toContain(`output table "${OUTPUT_TABLE_NAME}" mode replace`);
   });
 });

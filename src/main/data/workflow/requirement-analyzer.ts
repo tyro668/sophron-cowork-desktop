@@ -6,7 +6,7 @@ import type {
 import { runPiAiOneShot } from '../../claude/claude-sdk-one-shot';
 import { DataCommandError } from '../data-command-types';
 import requirementAnalysisSystemPrompt from './prompts/requirement-analysis-system.txt?raw';
-import { getWorkflowJavascriptCapabilityPrompt } from './workflow-operation-registry';
+import { getWorkflowJavascriptCapabilityPrompt } from './workflow-ir-operation-registry';
 import { getWorkflowExpressionCapabilityPrompt } from './workflow-expression-registry';
 import { extractJsonObject, isRecord } from './utils';
 

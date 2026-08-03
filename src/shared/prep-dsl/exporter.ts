@@ -19,7 +19,7 @@ export function exportPrepWorkflowDsl(
 ): string {
   const sources = nodes.filter((node) => node.type === 'input_source');
   const operators = nodes.filter((node) => node.type !== 'input_source');
-  const sourceLines = sources.map((source) => source.config?.dsl).filter(isString);
+  const sourceLines = sources.map(formatInputSource).filter(isString);
   const mainSource = inferMainSource(sources, operators, edges);
   const operatorLines = operators.map((operator) => formatOperator(operator)).filter(isString);
 
@@ -31,6 +31,28 @@ export function exportPrepWorkflowDsl(
 
   const firstSource = sourceLines[0] ?? 'input source task';
   return [firstSource, ...operatorLines.map((line) => `  | ${line}`)].join('\n').trim();
+}
+
+function formatInputSource(node: PrepFlowNodeLike): string | null {
+  const config = node.config ?? {};
+  if (isString(config.dsl) && config.dsl.trim()) return config.dsl;
+  const alias = getAlias(node) ?? 'src';
+  const source = isString(config.source)
+    ? config.source
+    : isString(config.datasetId)
+      ? 'dataset'
+      : isString(config.filePath)
+        ? 'file'
+        : 'task';
+  if (source === 'dataset') {
+    const datasetId = stringValue(config.datasetId) ?? stringValue(config.name);
+    return datasetId ? `input source dataset ${quoteString(datasetId)} as ${alias}` : null;
+  }
+  if (source === 'file') {
+    const filePath = stringValue(config.filePath);
+    return filePath ? `input source file ${quoteString(filePath)} as ${alias}` : null;
+  }
+  return `input source task as ${alias}`;
 }
 
 export function exportPrepOperatorDsl(node: PrepFlowNodeLike): string {
@@ -92,9 +114,9 @@ function formatOperator(node: PrepFlowNodeLike): string | null {
     case 'unnest':
       return formatUnnest(node.config);
     case 'output':
-      return `output table "${String(node.config?.table ?? 'clean_result')}" mode ${String(
-        node.config?.mode ?? 'replace'
-      )}`;
+      return `output table ${quoteString(
+        String(node.config?.outputTableName ?? node.config?.table ?? 'clean_result')
+      )} mode ${String(node.config?.mode ?? 'replace')}`;
     default:
       return null;
   }
@@ -378,6 +400,10 @@ function literalToDsl(value: unknown): string {
 
 function quoteString(value: string): string {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
 function normalizeBareFilterLiterals(condition: string): string {

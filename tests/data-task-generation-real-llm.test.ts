@@ -4,7 +4,8 @@ import Store from 'electron-store';
 import { describe, expect, it } from 'vitest';
 import type { AgentRuntimeConfig } from '../src/renderer/types';
 import { generateDataTaskWorkflowFromRequirement } from '../src/main/data/workflow/workflow-generator';
-import { lowerWorkflowIrToOperations } from '../src/main/data/workflow/operation-compiler';
+import { compileLoweredWorkflowToPlatformNodes } from '../src/main/data/workflow/workflow-node-compiler';
+import { exportPrepWorkflowDsl } from '../src/shared/prep-dsl';
 
 type GenerationScenario = {
   name: string;
@@ -122,14 +123,16 @@ async function runRealLlmDataTaskGenerationDemo(scenario: GenerationScenario) {
   logLayer('4. 沙箱生成的 Stable Workflow IR', generated.workflowIr);
   logLayer('5. IR Semantic Hash', generated.workflowIrSemanticHash);
 
-  if (!generated.workflowIr) throw new Error('生成结果缺少 Workflow IR');
-  const operationsJson = lowerWorkflowIrToOperations({
-    ir: generated.workflowIr,
-    inputTableId: scenario.inputTableId,
-    outputTableName: scenario.outputTableName,
+  const nodePlan = compileLoweredWorkflowToPlatformNodes({
+    semantics: generated,
+    bindings: {
+      inputTableId: scenario.inputTableId,
+      outputTableName: scenario.outputTableName,
+    },
   });
-  logLayer('6. Lowering 后的 Operations JSON 1.0', operationsJson);
-  logLayer('7. 最终 Prep DSL', generated.workflowDsl);
+  const compatibilityDsl = exportPrepWorkflowDsl(nodePlan.nodes, nodePlan.edges);
+  logLayer('6. IR 直接编译的平台节点与边', nodePlan);
+  logLayer('7. 由平台节点导出的兼容/审计用 Prep DSL', compatibilityDsl);
   logLayer('8. 输出契约与血缘', {
     requiredColumns: generated.requiredColumns,
     expectedOutputSchema: generated.expectedOutputSchema,
@@ -142,23 +145,23 @@ async function runRealLlmDataTaskGenerationDemo(scenario: GenerationScenario) {
     provider: runtimeConfig.provider,
     model: runtimeConfig.model,
   });
-  return generated;
+  return { generated, compatibilityDsl };
 }
 
 const describeRealLlm = process.env.RUN_REAL_LLM_DEMO === '1' ? describe : describe.skip;
 
 describeRealLlm('真实 LLM 数据任务生成示例', () => {
-  it('调用应用当前模型并打印 JavaScript、IR、Operations JSON 和 Prep DSL', async () => {
-    const generated = await runRealLlmDataTaskGenerationDemo(FILTER_SCENARIO);
-    expect(generated.workflowDsl).toContain('filter [Profit] > 0');
-    expect(generated.workflowDsl).toContain('sort by [Profit] desc');
+  it('调用应用当前模型并打印 JavaScript、IR、平台节点和 Prep DSL', async () => {
+    const result = await runRealLlmDataTaskGenerationDemo(FILTER_SCENARIO);
+    expect(result.compatibilityDsl).toContain('filter [Profit] > 0');
+    expect(result.compatibilityDsl).toContain('sort by [Profit] desc');
   }, 120_000);
 
   it('调用真实模型生成包含计算字段的工作流并打印每一层结果', async () => {
-    const generated = await runRealLlmDataTaskGenerationDemo(CALCULATED_FIELD_SCENARIO);
-    expect(generated.workflowDsl).toContain('derive [SalesAmount] = [Quantity] * [UnitPrice]');
-    expect(generated.workflowDsl).toContain('sort by [SalesAmount] desc');
-    expect(generated.expectedOutputSchema).toEqual(
+    const result = await runRealLlmDataTaskGenerationDemo(CALCULATED_FIELD_SCENARIO);
+    expect(result.compatibilityDsl).toContain('derive [SalesAmount] = [Quantity] * [UnitPrice]');
+    expect(result.compatibilityDsl).toContain('sort by [SalesAmount] desc');
+    expect(result.generated.expectedOutputSchema).toEqual(
       expect.arrayContaining([expect.objectContaining({ name: 'SalesAmount', type: 'decimal' })])
     );
   }, 120_000);

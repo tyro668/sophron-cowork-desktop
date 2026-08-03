@@ -7,9 +7,9 @@ import type {
   WorkflowSourceLanguage,
 } from './workflow-model';
 import {
-  validateRegisteredWorkflowOperation,
-  WORKFLOW_OPERATION_TYPES,
-} from './workflow-operation-registry';
+  validateRegisteredWorkflowIrOperation,
+  WORKFLOW_IR_OPERATION_TYPES,
+} from './workflow-ir-operation-registry';
 import { normalizeWorkflowExpressionCastType } from './workflow-expression-registry';
 
 export const WORKFLOW_IR_VERSION = '1.0' as const;
@@ -69,13 +69,13 @@ export function validateAndNormalizeWorkflowIr(value: unknown): WorkflowIr {
       string,
       unknown
     >;
-    if (!WORKFLOW_OPERATION_TYPES.has(normalizedOperation.type as WorkflowOperationIr['type'])) {
+    if (!WORKFLOW_IR_OPERATION_TYPES.has(normalizedOperation.type as WorkflowOperationIr['type'])) {
       throw new DataCommandError(
         'VALIDATION_FAILED',
         `Unsupported Workflow IR operation at index ${index}: ${String(normalizedOperation.type)}`
       );
     }
-    validateRegisteredWorkflowOperation(normalizedOperation, index);
+    validateRegisteredWorkflowIrOperation(normalizedOperation, index);
     const suppliedOperationId = normalizedOperation.operationId;
     const operationId =
       (typeof suppliedOperationId === 'string' ? suppliedOperationId.trim() : '') ||
@@ -134,7 +134,6 @@ export function validateAndNormalizeWorkflowIr(value: unknown): WorkflowIr {
       );
     }
   }
-  assertAcyclicOperationGraph(operations);
   if (
     ir.outputOperationId &&
     ir.outputOperationId !== 'input' &&
@@ -145,6 +144,7 @@ export function validateAndNormalizeWorkflowIr(value: unknown): WorkflowIr {
       `Workflow IR output references unknown operationId: ${ir.outputOperationId}`
     );
   }
+  assertLinearOperationGraph(operations, ir.outputOperationId);
 
   return {
     ...ir,
@@ -165,34 +165,34 @@ function normalizeWorkflowOperationValue(value: unknown): unknown {
     normalized.targetType =
       normalizeWorkflowExpressionCastType(normalized.targetType) ?? normalized.targetType;
   }
+  if (normalized.type === 'convert_type' && typeof normalized.targetType === 'string') {
+    normalized.targetType =
+      normalizeWorkflowExpressionCastType(normalized.targetType) ?? normalized.targetType;
+  }
   return normalized;
 }
 
-function assertAcyclicOperationGraph(operations: WorkflowOperationIr[]): void {
-  const byId = new Map(
-    operations
-      .filter((operation): operation is WorkflowOperationIr & { operationId: string } =>
-        Boolean(operation.operationId)
-      )
-      .map((operation) => [operation.operationId, operation] as const)
-  );
-  const visiting = new Set<string>();
-  const visited = new Set<string>();
-  const visit = (id: string): void => {
-    if (visited.has(id) || id === 'input') return;
-    if (visiting.has(id)) {
+function assertLinearOperationGraph(
+  operations: WorkflowOperationIr[],
+  outputOperationId: string | null | undefined
+): void {
+  let expectedInputId = 'input';
+  for (const [index, operation] of operations.entries()) {
+    if (operation.inputOperationId !== expectedInputId) {
       throw new DataCommandError(
         'VALIDATION_FAILED',
-        `Workflow IR operation graph contains a cycle at operationId: ${id}`
+        `Generated Workflow IR must be a single linear chain. Operation ${operation.operationId ?? index + 1} must consume ${expectedInputId}, received ${operation.inputOperationId ?? 'missing inputOperationId'}`
       );
     }
-    visiting.add(id);
-    const inputId = byId.get(id)?.inputOperationId;
-    if (inputId) visit(inputId);
-    visiting.delete(id);
-    visited.add(id);
-  };
-  for (const id of byId.keys()) visit(id);
+    expectedInputId = operation.operationId ?? expectedInputId;
+  }
+  const expectedOutputId = operations.at(-1)?.operationId ?? 'input';
+  if (outputOperationId !== expectedOutputId) {
+    throw new DataCommandError(
+      'VALIDATION_FAILED',
+      `Generated Workflow IR output must reference the end of the linear chain: expected ${expectedOutputId}, received ${outputOperationId ?? 'missing outputOperationId'}`
+    );
+  }
 }
 /** Canonical semantic JSON excludes source locations and other diagnostic-only metadata. */
 export function canonicalizeWorkflowIr(ir: WorkflowIr): string {

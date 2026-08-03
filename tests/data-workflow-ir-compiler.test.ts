@@ -6,18 +6,21 @@ import {
   WORKFLOW_SANDBOX_RUNNER_SOURCE,
 } from '../src/main/data/workflow/javascript-runtime';
 import { compileGeneratedJavaScriptWorkflow } from '../src/main/data/workflow/workflow-generator';
-import { lowerWorkflowIrToOperations } from '../src/main/data/workflow/operation-compiler';
+import { lowerGeneratedWorkflowIrSemantics } from '../src/main/data/workflow/workflow-ir-lowerer';
+import { compileLoweredWorkflowToPlatformNodes } from '../src/main/data/workflow/workflow-node-compiler';
+import { exportPrepWorkflowDsl } from '../src/shared/prep-dsl';
 import {
   canonicalizeWorkflowIr,
   computeWorkflowIrSemanticHash,
+  validateAndNormalizeWorkflowIr,
 } from '../src/main/data/workflow/workflow-ir';
 import {
   getWorkflowJavascriptCapabilityPrompt,
-  WORKFLOW_OPERATION_REGISTRY,
-} from '../src/main/data/workflow/workflow-operation-registry';
+  getWorkflowIrOperationTypeScriptDeclarations,
+  WORKFLOW_IR_OPERATION_REGISTRY,
+} from '../src/main/data/workflow/workflow-ir-operation-registry';
 import {
   getWorkflowExpressionCapabilityPrompt,
-  getWorkflowExpressionRuntimeCapabilities,
   getWorkflowExpressionTypeScriptDeclarations,
   WORKFLOW_EXPRESSION_FUNCTION_REGISTRY,
   WORKFLOW_EXPRESSION_FUNCTIONS,
@@ -46,10 +49,35 @@ function buildIr(source = SOURCE) {
   });
 }
 
+function compileWorkflowIrToPlatformNodes(input: {
+  ir: ReturnType<typeof buildIr>;
+  requirement: string;
+  columns: Array<{ name: string; type?: string }>;
+  bindings: Parameters<typeof compileLoweredWorkflowToPlatformNodes>[0]['bindings'];
+}) {
+  return compileLoweredWorkflowToPlatformNodes({
+    semantics: lowerGeneratedWorkflowIrSemantics(input),
+    bindings: input.bindings,
+  });
+}
+
+function exportGeneratedWorkflowDsl(
+  generated: ReturnType<typeof compileGeneratedJavaScriptWorkflow>
+): string {
+  const plan = compileLoweredWorkflowToPlatformNodes({
+    semantics: generated,
+    bindings: {
+      inputTableId: 'input-1',
+      outputTableName: 'output-1',
+    },
+  });
+  return exportPrepWorkflowDsl(plan.nodes, plan.edges);
+}
+
 describe('JavaScript Workflow SDK pipeline', () => {
   it('derives the prompt from the registry and keeps the generic runtime step API', () => {
     const prompt = getWorkflowJavascriptCapabilityPrompt();
-    for (const definition of WORKFLOW_OPERATION_REGISTRY) {
+    for (const definition of WORKFLOW_IR_OPERATION_REGISTRY) {
       expect(prompt).toContain(definition.promptSignature);
     }
     expect(WORKFLOW_SANDBOX_RUNNER_SOURCE).toContain('allowedOperationTypes.has(type)');
@@ -59,11 +87,10 @@ describe('JavaScript Workflow SDK pipeline', () => {
     expect(prompt).toContain('strategy: "by_column"');
     expect(prompt).toContain('method: "skip|drop|nullify_values|literal_fill"');
     const expressionPrompt = getWorkflowExpressionCapabilityPrompt();
-    const runtimeCapabilities = getWorkflowExpressionRuntimeCapabilities();
     const typeDeclarations = getWorkflowExpressionTypeScriptDeclarations();
+    const operationDeclarations = getWorkflowIrOperationTypeScriptDeclarations();
     for (const functionName of Object.keys(WORKFLOW_EXPRESSION_FUNCTIONS)) {
       if (functionName !== 'ifElse') expect(expressionPrompt).toContain(functionName);
-      expect(runtimeCapabilities.functions).toContain(functionName);
     }
     for (const [functionName, definition] of Object.entries(
       WORKFLOW_EXPRESSION_FUNCTION_REGISTRY
@@ -76,12 +103,31 @@ describe('JavaScript Workflow SDK pipeline', () => {
       expect(expressionPrompt).toContain(intrinsicName);
       expect(typeDeclarations).toContain(`function ${intrinsicName}`);
     }
-    expect(runtimeCapabilities.binaryMethods).toMatchObject({ and: 'and', or: 'or' });
+    for (const definition of WORKFLOW_IR_OPERATION_REGISTRY) {
+      expect(operationDeclarations).toContain(`"${definition.irType}":`);
+      expect(operationDeclarations).toContain(definition.typescriptPayload);
+    }
+    expect(operationDeclarations).toContain('interface WorkflowStepPayloadMap');
+    expect(operationDeclarations).toContain('T extends keyof WorkflowStepPayloadMap');
+    expect(operationDeclarations).not.toContain('Record<string, unknown>');
+    expect(prompt).not.toContain('mode: "top"');
+    expect(WORKFLOW_SANDBOX_RUNNER_SOURCE).not.toContain("defineGlobal('col'");
+    expect(WORKFLOW_SANDBOX_RUNNER_SOURCE).not.toContain("defineGlobal('lit'");
+    expect(WORKFLOW_SANDBOX_RUNNER_SOURCE).not.toContain("defineGlobal('fn'");
+    expect(WORKFLOW_SANDBOX_RUNNER_SOURCE).not.toContain("defineGlobal('metric'");
+    expect(WORKFLOW_SANDBOX_RUNNER_SOURCE).not.toContain('expressionCapabilities');
+    expect(typeDeclarations).toContain(
+      'declare function nullif(value: number, other: number): number;'
+    );
+    expect(typeDeclarations).not.toContain('function nullif<T>');
     expect(prompt).not.toContain('Prep node:');
     expect(prompt).not.toContain('runtime compatibility profile:');
     expect(new Set(Object.keys(AI_PREP_DSL_OPERATION_CAPABILITIES))).toEqual(
-      new Set(WORKFLOW_OPERATION_REGISTRY.map((definition) => definition.irType))
+      new Set(WORKFLOW_IR_OPERATION_REGISTRY.map((definition) => definition.irType))
     );
+    expect(
+      new Set(WORKFLOW_IR_OPERATION_REGISTRY.map((definition) => definition.irType)).size
+    ).toBe(WORKFLOW_IR_OPERATION_REGISTRY.length);
   });
 
   it('accepts the canonical by-column NULL marker configuration', () => {
@@ -116,6 +162,158 @@ function main() {
         ],
       },
     });
+  });
+
+  it('normalizes the legacy aggregate alias at the IR boundary but advertises only canonical names', () => {
+    const source = `function summarize(input) {
+  return workflow.step(input, "aggregate", {
+    groupBy: [expr(row => row["Region"])],
+    metrics: [{ fn: "countDistinct", expression: expr(row => row["Customer ID"]), alias: "Customers" }]
+  });
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  return workflow.output(summarize(input), OUTPUT_TABLE_NAME);
+}`;
+    const ir = buildIr(source);
+    expect(ir.operations[0]).toMatchObject({
+      type: 'aggregate',
+      metrics: [{ fn: 'count_distinct', alias: 'Customers' }],
+    });
+    expect(getWorkflowJavascriptCapabilityPrompt()).toContain('count_distinct');
+    expect(getWorkflowJavascriptCapabilityPrompt()).toContain('never countDistinct');
+    expect(getWorkflowIrOperationTypeScriptDeclarations()).not.toContain('fn: "countDistinct"');
+  });
+
+  it('type-checks every workflow operation against its precise payload contract', () => {
+    const invalidSelect = `function selectFields(input) {
+  return workflow.step(input, "select", { columns: [42] });
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  return workflow.output(selectFields(input), OUTPUT_TABLE_NAME);
+}`;
+    expect(() => compileWorkflowJavaScript(invalidSelect, { columns: [] })).toThrow(
+      /No overload matches this call|not assignable to type 'string'/
+    );
+
+    const invalidScale = `function convertValue(input) {
+  return workflow.step(input, "convert_type", {
+    column: "Value",
+    targetType: "integer",
+    options: { scale: 2 }
+  });
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  return workflow.output(convertValue(input), OUTPUT_TABLE_NAME);
+}`;
+    expect(() =>
+      compileWorkflowJavaScript(invalidScale, { columns: [{ name: 'Value', type: 'text' }] })
+    ).toThrow(/No overload matches this call|scale/);
+
+    const unsupportedKeepLast = `function removeDuplicates(input) {
+  return workflow.step(input, "deduplicate", {
+    config: { columns: ["ID"], keep: "last", orderBy: [] }
+  });
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  return workflow.output(removeDuplicates(input), OUTPUT_TABLE_NAME);
+}`;
+    expect(() =>
+      compileWorkflowJavaScript(unsupportedKeepLast, {
+        columns: [{ name: 'ID', type: 'integer' }],
+      })
+    ).toThrow(/not assignable to type '"first"'|No overload matches this call/);
+
+    const nonTextNullMarker = `function nullifyMarkers(input) {
+  return workflow.step(input, "missing_value", {
+    config: {
+      strategy: "by_column",
+      rules: [{ column: "Value", method: "nullify_values", values: [0] }]
+    }
+  });
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  return workflow.output(nullifyMarkers(input), OUTPUT_TABLE_NAME);
+}`;
+    expect(() =>
+      compileWorkflowJavaScript(nonTextNullMarker, {
+        columns: [{ name: 'Value', type: 'text' }],
+      })
+    ).toThrow(/not assignable to type 'string'|No overload matches this call/);
+  });
+
+  it('reports the canonical limit payload instead of the unrelated last overload', () => {
+    const invalidTop = `function takeTopRows(input) {
+  return workflow.step(input, "limit", {
+    config: { mode: "top", limit: 10, unit: "rows", offset: 0, orderBy: [] }
+  });
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  return workflow.output(takeTopRows(input), OUTPUT_TABLE_NAME);
+}`;
+
+    try {
+      compileWorkflowJavaScript(invalidTop, { columns: [] });
+      throw new Error('expected invalid limit payload to fail');
+    } catch (error) {
+      const commandError = error as {
+        message?: string;
+        details?: { diagnostics?: Array<Record<string, unknown>> };
+      };
+      expect(commandError.message).toContain('Invalid workflow.step payload for operation "limit"');
+      expect(commandError.message).toContain('mode: "limit"');
+      expect(commandError.message).not.toContain(
+        `Argument of type '"limit"' is not assignable to parameter of type '"unnest"'`
+      );
+      expect(commandError.details?.diagnostics?.[0]).toMatchObject({
+        functionName: 'takeTopRows',
+        operationType: 'limit',
+        expectedSignature: expect.stringContaining('mode: "limit"'),
+        repairHint: expect.stringContaining('Never use config.mode="top"'),
+      });
+    }
+  });
+
+  it('rejects declaration shapes that the native expression AST cannot lower', () => {
+    const compileExpression = (expression: string) =>
+      compileWorkflowJavaScript(
+        `function addValue(input) {
+  return workflow.step(input, "derive", { column: "Result", expression: expr(row => ${expression}) });
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  return workflow.output(addValue(input), OUTPUT_TABLE_NAME);
+}`,
+        { columns: [{ name: 'Value', type: 'integer' }] }
+      );
+
+    expect(() => compileExpression('cast(row["Value"], "integer", { scale: 2 })')).toThrow(
+      /No overload matches this call|Expected 2 arguments|not assignable to parameter of type '"decimal"'/
+    );
+    expect(() => compileExpression('contains(row["Value"], 2)')).toThrow(
+      /not assignable to parameter of type 'string'/
+    );
+    expect(() => compileExpression('coalesce(undefined, row["Value"])')).toThrow(
+      /No overload matches this call/
+    );
+    expect(() => compileExpression('row["Value"] == 1')).toThrow(/Use === or !==/);
+    expect(() =>
+      compileWorkflowJavaScript(
+        `function addValue(input) {
+  return workflow.step(input, "derive", { column: "Result", expression: expr(row => row["Label"] + 1) });
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  return workflow.output(addValue(input), OUTPUT_TABLE_NAME);
+}`,
+        { columns: [{ name: 'Label', type: 'text' }] }
+      )
+    ).toThrow(/Native \+ is numeric-only/);
   });
 
   it('reports the invalid missing-value strategy produced by a model', () => {
@@ -180,22 +378,43 @@ function main() {
     expect(computeWorkflowIrSemanticHash(ir)).toBe(computeWorkflowIrSemanticHash(moved));
   });
 
-  it('lowers Stable IR to Operations JSON with runtime bindings', () => {
+  it('rejects branched or reordered IR before lowering it to a linear platform graph', () => {
     const ir = buildIr();
-    const operations = lowerWorkflowIrToOperations({
-      ir,
-      inputTableId: 'runtime-input',
-      outputTableName: 'runtime-output',
-    });
-    expect(operations).toMatchObject({
-      operationsVersion: '1.0',
-      inputTableId: 'runtime-input',
-      outputTableName: 'runtime-output',
-      outputOperationId: 'remove-count',
-    });
+    expect(() =>
+      validateAndNormalizeWorkflowIr({
+        ...ir,
+        outputOperationId: 'second-drop',
+        operations: [
+          ...ir.operations,
+          {
+            operationId: 'second-drop',
+            inputOperationId: 'input',
+            type: 'drop',
+            columns: ['另一列'],
+          },
+        ],
+      })
+    ).toThrow(/single linear chain/);
   });
 
-  it('runs the complete JavaScript -> IR -> Operations -> Prep DSL pipeline', () => {
+  it('lowers stable IR directly to platform nodes with runtime bindings', () => {
+    const ir = buildIr();
+    const plan = compileWorkflowIrToPlatformNodes({
+      ir,
+      requirement: '删除记录数',
+      columns: [{ name: '记录数', type: 'integer' }],
+      bindings: {
+        inputTableId: 'runtime-input',
+        outputTableName: 'runtime-output',
+        outputPhysicalTableName: 'runtime_output_physical',
+      },
+    });
+    expect(plan.nodes.map((node) => node.type)).toEqual(['input_source', 'field_select', 'output']);
+    expect(plan.nodes[0]?.config).toMatchObject({ datasetId: 'runtime-input' });
+    expect(plan.nodes.at(-1)?.config).toMatchObject({ table: 'runtime_output_physical' });
+  });
+
+  it('keeps generated artifacts DSL-free until native nodes export compatibility Prep DSL', () => {
     const result = compileGeneratedJavaScriptWorkflow({
       javascriptSource: SOURCE,
       inputTableId: 'input-1',
@@ -205,9 +424,18 @@ function main() {
     });
     expect(result.javascriptSource).toContain('function removeCount');
     expect(result.runtimeCompatibilityProfileVersion).toBe(AI_PREP_DSL_RUNTIME_PROFILE_VERSION);
-    expect(result.workflowDsl).toContain('input source dataset "input-1" as src');
-    expect(result.workflowDsl).toContain('drop [记录数]');
-    expect(result.workflowDsl).toContain('output table "output-1" mode replace');
+    expect(result).not.toHaveProperty('workflowDsl');
+    expect(result.platformOperators).toEqual([
+      expect.objectContaining({
+        type: 'field_select',
+        config: { mode: 'exclude', columns: ['记录数'] },
+      }),
+    ]);
+    expect(result.platformOperators[0]?.config).not.toHaveProperty('dsl');
+    const compatibilityDsl = exportGeneratedWorkflowDsl(result);
+    expect(compatibilityDsl).toContain('input source dataset "input-1" as src');
+    expect(compatibilityDsl).toContain('drop [`记录数`]');
+    expect(compatibilityDsl).toContain('output table "output-1" mode replace');
     expect(result.operationOrigins?.[0]).toMatchObject({
       operationId: 'remove-count',
       functionName: 'removeCount',
@@ -242,11 +470,34 @@ function main() {
     );
   });
 
-  it('compiles safe division with fn.nullif and preserves the numeric result type', () => {
+  it('rejects a generated artifact when its Workflow IR semantic hash was tampered with', () => {
+    const columns = [{ name: '记录数', type: 'integer' }];
+    const result = compileGeneratedJavaScriptWorkflow({
+      javascriptSource: SOURCE,
+      inputTableId: 'input-1',
+      outputTableName: 'output-1',
+      requirement: '删除记录数',
+      columns,
+    });
+
+    expect(
+      validateGeneratedWorkflowGenerationContract(
+        { ...result, workflowIrSemanticHash: 'stale-semantic-hash' },
+        columns
+      )
+    ).toContainEqual(
+      expect.objectContaining({
+        severity: 'error',
+        code: 'workflowIrSemanticHashMismatch',
+      })
+    );
+  });
+
+  it('compiles safe division with native nullif and preserves the numeric result type', () => {
     const source = `function addProfitMargin(input) {
   return workflow.step(input, "derive", {
     column: "Profit Margin",
-    expression: col("Profit").div(fn.nullif(col("Sales"), lit(0))).mul(lit(100)).cast("decimal", { scale: 2 })
+    expression: expr(row => cast(row["Profit"] / nullif(row["Sales"], 0) * 100, "decimal", { scale: 2 }))
   });
 }
 function main() {
@@ -265,7 +516,7 @@ function main() {
       ],
     });
 
-    expect(result.workflowDsl).toContain(
+    expect(exportGeneratedWorkflowDsl(result)).toContain(
       'derive [`Profit Margin`] = CAST([Profit] / NULLIF([Sales], 0) * 100 AS DECIMAL(18,2))'
     );
     expect(result.expectedOutputSchema).toContainEqual({
@@ -278,7 +529,7 @@ function main() {
     const source = `function roundValue(input) {
   return workflow.step(input, "derive", {
     column: "Rounded",
-    expression: col("Value").cast("decimal", 2)
+    expression: expr(row => cast(row["Value"], "decimal", 2))
   });
 }
 function main() {
@@ -293,14 +544,16 @@ function main() {
       columns: [{ name: 'Value', type: 'decimal' }],
     });
 
-    expect(result.workflowDsl).toContain('derive [Rounded] = CAST([Value] AS DECIMAL(18,2))');
+    expect(exportGeneratedWorkflowDsl(result)).toContain(
+      'derive [Rounded] = CAST([Value] AS DECIMAL(18,2))'
+    );
   });
 
-  it('keeps legacy text functions compatible by coercing a numeric first argument', () => {
+  it('keeps native text functions compatible by coercing a numeric first argument', () => {
     const source = `function stringifyValue(input) {
   return workflow.step(input, "derive", {
     column: "Upper Value",
-    expression: fn.upper(col("Value"))
+    expression: expr(row => upper(row["Value"]))
   });
 }
 function main() {
@@ -315,7 +568,7 @@ function main() {
       columns: [{ name: 'Value', type: 'integer' }],
     });
 
-    expect(result.workflowDsl).toContain(
+    expect(exportGeneratedWorkflowDsl(result)).toContain(
       'derive [`Upper Value`] = UPPER(CAST([Value] AS VARCHAR))'
     );
   });
@@ -340,14 +593,14 @@ function main() {
         columns: [{ name: 'Value', type: 'decimal' }],
       });
 
-    expect(() => compile(nativeSource(99))).toThrow(/scale must be an integer from 0 to 12/);
-    expect(() => compile(nativeSource(1.5))).toThrow(/scale must be an integer from 0 to 12/);
+    expect(() => compile(nativeSource(99))).toThrow(/not assignable|scale must be an integer/);
+    expect(() => compile(nativeSource(1.5))).toThrow(/not assignable|scale must be an integer/);
 
     const legacySource = nativeSource(99).replace(
       'expr(row => cast(row["Value"], "decimal", { scale: 99 }))',
       'col("Value").cast("decimal", { scale: 99 })'
     );
-    expect(() => compile(legacySource)).toThrow(/scale must be an integer from 0 to 12/);
+    expect(() => compile(legacySource)).toThrow(/Legacy workflow expression API col/);
   });
 
   it('uses Acorn ranges to patch only the diagnosed function', () => {
@@ -392,7 +645,7 @@ function main() {
 it('compiles chained and/or conditions from generated expressions', () => {
   const source = `function keepUsableSales(input) {
   return workflow.step(input, "filter", {
-    condition: col("Sales").isNotNull().and(col("Sales").neq(lit(0))).or(col("Profit").gt(lit(0)))
+    condition: expr(row => (row["Sales"] != null && row["Sales"] !== 0) || row["Profit"] > 0)
   });
 }
 function main() {
@@ -410,7 +663,7 @@ function main() {
     ],
   });
 
-  expect(result.workflowDsl).toContain(
+  expect(exportGeneratedWorkflowDsl(result)).toContain(
     'filter [Sales] IS NOT NULL AND [Sales] <> 0 OR [Profit] > 0'
   );
 });
@@ -419,12 +672,12 @@ it('compiles a date difference in days and sorts by the derived field', () => {
   const source = `function addShippingDays(input) {
   return workflow.step(input, "derive", {
     column: "Shipping Days",
-    expression: fn.dateDiff(lit("day"), col("Order Date"), col("Ship Date"))
+    expression: expr(row => dateDiff("day", row["Order Date"], row["Ship Date"]))
   });
 }
 function sortShippingDays(input) {
   return workflow.step(input, "sort", {
-    column: col("Shipping Days"),
+    column: expr(row => row["Shipping Days"]),
     direction: "desc"
   });
 }
@@ -445,25 +698,21 @@ function main() {
     ],
   });
 
-  expect(result.workflowDsl).toContain(
+  expect(exportGeneratedWorkflowDsl(result)).toContain(
     "derive [`Shipping Days`] = DATE_DIFF('day', [`Order Date`], [`Ship Date`])"
   );
-  expect(result.workflowDsl).toContain('sort by [`Shipping Days`] desc');
+  expect(exportGeneratedWorkflowDsl(result)).toContain('sort by [`Shipping Days`] desc');
   expect(result.expectedOutputSchema).toContainEqual({
     name: 'Shipping Days',
     type: 'integer',
   });
 });
 
-it('compiles a conditional text flag with fn.ifElse', () => {
+it('compiles a conditional text flag with a native conditional expression', () => {
   const source = `function addHighDiscountFlag(input) {
   return workflow.step(input, "derive", {
     column: "High Discount Flag",
-    expression: fn.ifElse(
-      col("Discount").gte(lit(0.08)),
-      lit("高折扣"),
-      lit("普通折扣")
-    )
+    expression: expr(row => row["Discount"] >= 0.08 ? "高折扣" : "普通折扣")
   });
 }
 function main() {
@@ -479,7 +728,7 @@ function main() {
     columns: [{ name: 'Discount', type: 'decimal' }],
   });
 
-  expect(result.workflowDsl).toContain(
+  expect(exportGeneratedWorkflowDsl(result)).toContain(
     "derive [`High Discount Flag`] = if [Discount] >= 0.08 then '高折扣' else '普通折扣' end"
   );
   expect(result.expectedOutputSchema).toContainEqual({
@@ -488,11 +737,11 @@ function main() {
   });
 });
 
-it('rejects fn.ifElse when the condition is not boolean', () => {
+it('rejects a native conditional when the condition is not boolean', () => {
   const source = `function addInvalidFlag(input) {
   return workflow.step(input, "derive", {
     column: "Flag",
-    expression: fn.ifElse(col("Discount"), lit("yes"), lit("no"))
+    expression: expr(row => row["Discount"] ? "yes" : "no")
   });
 }
 function main() {
@@ -508,7 +757,7 @@ function main() {
       requirement: '创建标记',
       columns: [{ name: 'Discount', type: 'decimal' }],
     })
-  ).toThrow(/ifElse argument 1 must be boolean/);
+  ).toThrow(/ifElse (?:condition|argument 1).*boolean|condition.*boolean/);
 });
 
 it('statically lowers native JavaScript row expressions to stable workflow IR', () => {
@@ -530,7 +779,7 @@ function main() {
     columns: [{ name: 'Discount', type: 'decimal' }],
   });
 
-  expect(nativeResult.workflowDsl).toContain(
+  expect(exportGeneratedWorkflowDsl(nativeResult)).toContain(
     "derive [`High Discount Flag`] = if [Discount] >= 0.08 then '高折扣' else '普通折扣' end"
   );
   expect(nativeResult.javascriptSource).toContain('expr(row =>');
@@ -540,7 +789,7 @@ function main() {
   });
 });
 
-it('produces the same semantic IR for native and legacy expressions', () => {
+it('accepts native expressions and rejects the legacy expression SDK', () => {
   const nativeSource = `function addMargin(input) {
   return workflow.step(input, "derive", {
     column: "Margin",
@@ -565,22 +814,15 @@ function main() {
   const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
   return workflow.output(addMargin(input), OUTPUT_TABLE_NAME, { mode: "replace" });
 }`;
-  const compile = (javascriptSource: string) =>
-    compileGeneratedJavaScriptWorkflow({
-      javascriptSource,
-      inputTableId: 'input-1',
-      outputTableName: 'output-1',
-      requirement: '创建利润率',
-      columns: [
-        { name: 'Sales', type: 'decimal' },
-        { name: 'Profit', type: 'decimal' },
-      ],
-    });
-
-  const nativeResult = compile(nativeSource);
-  const legacyResult = compile(legacySource);
-  expect(nativeResult.workflowIrSemanticHash).toBe(legacyResult.workflowIrSemanticHash);
-  expect(nativeResult.workflowDsl).toBe(legacyResult.workflowDsl);
+  const columns = [
+    { name: 'Sales', type: 'decimal' },
+    { name: 'Profit', type: 'decimal' },
+  ];
+  const nativeCompiled = compileWorkflowJavaScript(nativeSource, { columns });
+  expect(nativeCompiled.expressions).toHaveLength(1);
+  expect(() => compileWorkflowJavaScript(legacySource, { columns })).toThrow(
+    /Legacy workflow expression API fn/
+  );
 });
 
 it('reports native expression type errors at the original helper location', () => {
@@ -651,7 +893,7 @@ it('lowers native dateDiff, null checks, logical operators, cast, and sorting', 
   });
 }
 function sortShippingDays(input) {
-  return workflow.step(input, "sort", { column: col("Shipping Days"), direction: "desc" });
+  return workflow.step(input, "sort", { column: expr(row => row["Shipping Days"]), direction: "desc" });
 }
 function main() {
   const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
@@ -669,10 +911,10 @@ function main() {
     ],
   });
 
-  expect(result.workflowDsl).toContain(
+  expect(exportGeneratedWorkflowDsl(result)).toContain(
     "if [`Order Date`] IS NULL OR [`Ship Date`] IS NULL then NULL else CAST(DATE_DIFF('day', [`Order Date`], [`Ship Date`]) AS INTEGER) end"
   );
-  expect(result.workflowDsl).toContain('sort by [`Shipping Days`] desc');
+  expect(exportGeneratedWorkflowDsl(result)).toContain('sort by [`Shipping Days`] desc');
 });
 
 it('keeps authoring JavaScript separate from executable source and expression sidecars', () => {
@@ -721,6 +963,46 @@ function main() {
   return workflow.output(addValue(input), OUTPUT_TABLE_NAME);
 }`;
   expect(() => compileWorkflowJavaScript(forged)).toThrow(/reserved for the workflow compiler/);
+});
+
+it('provides actionable repair guidance for statement-bodied expr callbacks', () => {
+  const source = `function addProfitRate(input) {
+  return workflow.step(input, "derive", {
+    column: "利润率",
+    expression: expr(row => {
+      const sales = row["Sales"];
+      return sales === 0 ? 0 : row["Profit"] / sales;
+    })
+  });
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  return workflow.output(addProfitRate(input), OUTPUT_TABLE_NAME);
+}`;
+
+  try {
+    compileWorkflowJavaScript(source, {
+      columns: [
+        { name: 'Sales', type: 'decimal' },
+        { name: 'Profit', type: 'decimal' },
+      ],
+    });
+    expect.fail('Expected the statement-bodied expr callback to be rejected');
+  } catch (error) {
+    expect(error).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: {
+        diagnostics: [
+          expect.objectContaining({
+            code: 'NATIVE_EXPRESSION_BODY_UNSUPPORTED',
+            functionName: 'addProfitRate',
+            expectedSignature: 'expr(row => expression)',
+            repairHint: expect.stringContaining('nested condition ? whenTrue : whenFalse'),
+          }),
+        ],
+      },
+    });
+  }
 });
 
 it('rejects async callbacks and local bindings that shadow the native expression SDK', () => {
@@ -801,7 +1083,62 @@ function main() {
   return poison(input);
 }`;
 
-  expect(() => buildIr(source)).toThrow(/must declare an output/);
+  expect(() => buildIr(source)).toThrow(/workflow\.output\(\) exactly once/);
+});
+
+it.each([
+  {
+    contract: 'a missing input call',
+    source: `function main() {
+  return {};
+}`,
+    expected: /workflow\.input\(\) exactly once/,
+  },
+  {
+    contract: 'a duplicate input call',
+    source: `function main() {
+  const first = workflow.input(INPUT_TABLE_ID);
+  const second = workflow.input(INPUT_TABLE_ID);
+  return workflow.output(second, OUTPUT_TABLE_NAME);
+}`,
+    expected: /workflow\.input\(\) exactly once/,
+  },
+  {
+    contract: 'a duplicate output call',
+    source: `function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  workflow.output(input, OUTPUT_TABLE_NAME);
+  return workflow.output(input, OUTPUT_TABLE_NAME);
+}`,
+    expected: /workflow\.output\(\) exactly once/,
+  },
+  {
+    contract: 'a main result other than the output return object',
+    source: `function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  const output = workflow.output(input, OUTPUT_TABLE_NAME);
+  return input;
+}`,
+    expected: /main\(\) must return the object returned by workflow\.output\(\)/,
+  },
+  {
+    contract: 'an invented input binding',
+    source: `function main() {
+  const input = workflow.input("invented-input");
+  return workflow.output(input, OUTPUT_TABLE_NAME);
+}`,
+    expected: /bind workflow\.input\(\) to INPUT_TABLE_ID/,
+  },
+  {
+    contract: 'an invented output binding',
+    source: `function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  return workflow.output(input, "invented-output");
+}`,
+    expected: /bind workflow\.output\(\) to OUTPUT_TABLE_NAME/,
+  },
+])('rejects $contract', ({ source, expected }) => {
+  expect(() => buildIr(source)).toThrow(expected);
 });
 
 it('prevents operation payloads from overriding IR-owned fields', () => {
@@ -842,8 +1179,42 @@ function main() {
     columns: [{ name: 'Sales', type: 'decimal' }],
   });
 
-  expect(result.workflowDsl).toContain('derive [Gross] = [Sales] * 2');
-  expect(result.workflowDsl).toContain('derive [Adjusted] = [Gross] * 0.9');
+  expect(exportGeneratedWorkflowDsl(result)).toContain('derive [Gross] = [Sales] * 2');
+  expect(exportGeneratedWorkflowDsl(result)).toContain('derive [Adjusted] = [Gross] * 0.9');
+});
+
+it('allows one helper to compose multiple sequential named workflow operations', () => {
+  const source = `function prepareSales(input) {
+  const sorted = workflow.step(input, "sort", {
+    column: expr(row => row["Sales"]),
+    direction: "desc"
+  });
+  const cleaned = workflow.step(sorted, "drop", { columns: ["Row ID"] });
+  return cleaned;
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  const prepared = prepareSales(input);
+  return workflow.output(prepared, OUTPUT_TABLE_NAME);
+}`;
+  const result = compileGeneratedJavaScriptWorkflow({
+    javascriptSource: source,
+    inputTableId: 'input-1',
+    outputTableName: 'output-1',
+    requirement: '按销售额降序并删除 Row ID',
+    columns: [
+      { name: 'Sales', type: 'decimal' },
+      { name: 'Row ID', type: 'integer' },
+    ],
+  });
+
+  expect(result.workflowIr?.operations).toHaveLength(2);
+  expect(result.workflowIr?.provenance.map((item) => item.source.functionName)).toEqual([
+    'prepareSales',
+    'prepareSales',
+  ]);
+  expect(exportGeneratedWorkflowDsl(result)).toContain('sort by [Sales] desc');
+  expect(exportGeneratedWorkflowDsl(result)).toContain('drop [`Row ID`]');
 });
 
 it('enforces domain-function argument types after derived schema becomes known', () => {
@@ -922,8 +1293,8 @@ function main() {
     columns: [{ name: 'Sales', type: 'decimal' }],
   });
 
-  expect(result.workflowDsl).toContain('map [Sales] to [Revenue]');
-  expect(result.workflowDsl).toContain('derive [`Double Revenue`] = [Revenue] * 2');
+  expect(exportGeneratedWorkflowDsl(result)).toContain('map [Sales] to [Revenue]');
+  expect(exportGeneratedWorkflowDsl(result)).toContain('derive [`Double Revenue`] = [Revenue] * 2');
 });
 
 it('patches a helper even when its original native expression cannot be lowered', () => {
@@ -955,10 +1326,12 @@ function main() {
   expect(patched.slice(patched.indexOf('function main()'))).toBe(
     failed.slice(failed.indexOf('function main()'))
   );
-  expect(result.workflowDsl).toContain("if [Discount] >= 0.08 then '高折扣' else '普通折扣' end");
+  expect(exportGeneratedWorkflowDsl(result)).toContain(
+    "if [Discount] >= 0.08 then '高折扣' else '普通折扣' end"
+  );
 });
 
-it('produces the same semantic IR for native and legacy contains expressions', () => {
+it('accepts native contains and rejects the legacy contains chain', () => {
   const native = `function keepChairs(input) {
   return workflow.step(input, "filter", {
     condition: expr(row => contains(row["Product Name"], "Chair"))
@@ -972,22 +1345,15 @@ function main() {
     'expr(row => contains(row["Product Name"], "Chair"))',
     'col("Product Name").contains(lit("Chair"))'
   );
-  const compile = (javascriptSource: string) =>
-    compileGeneratedJavaScriptWorkflow({
-      javascriptSource,
-      inputTableId: 'input-1',
-      outputTableName: 'output-1',
-      requirement: '保留产品名含 Chair 的记录',
-      columns: [{ name: 'Product Name', type: 'text' }],
-    });
-
-  const nativeResult = compile(native);
-  const legacyResult = compile(legacy);
-  expect(nativeResult.workflowIrSemanticHash).toBe(legacyResult.workflowIrSemanticHash);
-  expect(nativeResult.workflowDsl).toBe(legacyResult.workflowDsl);
-  expect(nativeResult.workflowDsl).toContain('derive [__sophron_ai_filter_predicate] = contains(');
-  expect(nativeResult.workflowDsl).toContain('filter [__sophron_ai_filter_predicate] = true');
-  expect(nativeResult.workflowDsl).toContain('drop [__sophron_ai_filter_predicate]');
+  const columns = [{ name: 'Product Name', type: 'text' }];
+  const nativeCompiled = compileWorkflowJavaScript(native, { columns });
+  expect(nativeCompiled.expressions[0]?.ir).toMatchObject({
+    kind: 'binary',
+    op: 'contains',
+  });
+  expect(() => compileWorkflowJavaScript(legacy, { columns })).toThrow(
+    /Legacy workflow expression API col/
+  );
 });
 
 it('types native cast results and normalizes timestamp as datetime during DSL lowering', () => {
@@ -1022,12 +1388,20 @@ function main() {
   const result = compile(source);
   const canonicalAlias = compile(source.replace('"timestamp"', '"datetime"'));
 
-  expect(result.workflowDsl).toContain('CAST([Raw] AS DECIMAL(18,2)) * 2');
-  expect(result.workflowDsl).toContain(
+  expect(exportGeneratedWorkflowDsl(result)).toContain('CAST([Raw] AS DECIMAL(18,2)) * 2');
+  expect(exportGeneratedWorkflowDsl(result)).toContain(
     "derive [__sophron_ai_filter_predicate] = [`Created At`] >= CAST('2020-01-01 00:00:00' AS DATETIME)"
   );
-  expect(result.workflowDsl).toContain('filter [__sophron_ai_filter_predicate] = true');
-  expect(result.workflowDsl).toContain('drop [__sophron_ai_filter_predicate]');
+  expect(exportGeneratedWorkflowDsl(result)).toContain(
+    'filter [__sophron_ai_filter_predicate] = true'
+  );
+  expect(exportGeneratedWorkflowDsl(result)).toContain('drop [__sophron_ai_filter_predicate]');
+  expect(result.workflowIr?.operations[1]).toMatchObject({
+    type: 'filter',
+    condition: {
+      right: { kind: 'cast', targetType: 'datetime' },
+    },
+  });
   expect(result.workflowIrSemanticHash).toBe(canonicalAlias.workflowIrSemanticHash);
 });
 
@@ -1053,7 +1427,7 @@ function main() {
     ],
   });
 
-  expect(result.workflowDsl).toContain(
+  expect(exportGeneratedWorkflowDsl(result)).toContain(
     "derive [`Elapsed Hours`] = DATE_DIFF('hour', [`Started At`], [`Finished At`])"
   );
 });

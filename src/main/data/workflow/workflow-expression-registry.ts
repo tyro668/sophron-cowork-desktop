@@ -34,16 +34,29 @@ export const WORKFLOW_DATE_DIFF_UNITS = [
   'year',
 ] as const;
 
-export const WORKFLOW_EXPRESSION_CAST_TYPES = [
-  'integer',
-  'float',
-  'decimal',
-  'text',
-  'boolean',
-  'date',
-  'datetime',
-  'timestamp',
-] as const;
+interface WorkflowExpressionCastDefinition {
+  normalizedType: 'integer' | 'float' | 'decimal' | 'text' | 'boolean' | 'date' | 'datetime';
+  typescriptResult: 'number' | 'string' | 'boolean' | 'Date';
+  supportsScale: boolean;
+}
+
+/** Authoring spellings and options accepted by the existing Prep DSL lowering path. */
+export const WORKFLOW_EXPRESSION_CAST_REGISTRY = {
+  integer: { normalizedType: 'integer', typescriptResult: 'number', supportsScale: false },
+  float: { normalizedType: 'float', typescriptResult: 'number', supportsScale: false },
+  decimal: { normalizedType: 'decimal', typescriptResult: 'number', supportsScale: true },
+  text: { normalizedType: 'text', typescriptResult: 'string', supportsScale: false },
+  boolean: { normalizedType: 'boolean', typescriptResult: 'boolean', supportsScale: false },
+  date: { normalizedType: 'date', typescriptResult: 'Date', supportsScale: false },
+  datetime: { normalizedType: 'datetime', typescriptResult: 'Date', supportsScale: false },
+  timestamp: { normalizedType: 'datetime', typescriptResult: 'Date', supportsScale: false },
+} as const satisfies Record<string, WorkflowExpressionCastDefinition>;
+
+export const WORKFLOW_EXPRESSION_CAST_TYPES = Object.freeze(
+  Object.keys(WORKFLOW_EXPRESSION_CAST_REGISTRY) as Array<
+    keyof typeof WORKFLOW_EXPRESSION_CAST_REGISTRY
+  >
+);
 
 export const WORKFLOW_DECIMAL_SCALE_MIN = 0;
 export const WORKFLOW_DECIMAL_SCALE_MAX = 12;
@@ -107,7 +120,7 @@ export const WORKFLOW_EXPRESSION_FUNCTION_REGISTRY = {
     argumentTypes: ['any', 'text', 'integer'],
     coerceFirstArgToText: true,
     typescriptDeclaration:
-      'declare function regexpExtract(value: string, pattern: string, group?: number): string;',
+      'declare function regexpExtract(value: unknown, pattern: string, group?: number): string;',
   },
   year: {
     dslName: 'YEAR',
@@ -135,7 +148,7 @@ export const WORKFLOW_EXPRESSION_FUNCTION_REGISTRY = {
     resultType: 'text',
     argumentTypes: ['any'],
     coerceFirstArgToText: true,
-    typescriptDeclaration: 'declare function upper(value: string): string;',
+    typescriptDeclaration: 'declare function upper(value: unknown): string;',
   },
   lower: {
     dslName: 'LOWER',
@@ -145,7 +158,7 @@ export const WORKFLOW_EXPRESSION_FUNCTION_REGISTRY = {
     resultType: 'text',
     argumentTypes: ['any'],
     coerceFirstArgToText: true,
-    typescriptDeclaration: 'declare function lower(value: string): string;',
+    typescriptDeclaration: 'declare function lower(value: unknown): string;',
   },
   trim: {
     dslName: 'TRIM',
@@ -155,7 +168,7 @@ export const WORKFLOW_EXPRESSION_FUNCTION_REGISTRY = {
     resultType: 'text',
     argumentTypes: ['any'],
     coerceFirstArgToText: true,
-    typescriptDeclaration: 'declare function trim(value: string): string;',
+    typescriptDeclaration: 'declare function trim(value: unknown): string;',
   },
   replace: {
     dslName: 'REPLACE',
@@ -166,7 +179,7 @@ export const WORKFLOW_EXPRESSION_FUNCTION_REGISTRY = {
     argumentTypes: ['any', 'text', 'text'],
     coerceFirstArgToText: true,
     typescriptDeclaration:
-      'declare function replace(value: string, search: string, replacement: string): string;',
+      'declare function replace(value: unknown, search: string, replacement: string): string;',
   },
   concat: {
     dslName: 'CONCAT',
@@ -174,7 +187,7 @@ export const WORKFLOW_EXPRESSION_FUNCTION_REGISTRY = {
     minArgs: 1,
     resultType: 'text',
     typescriptDeclaration:
-      'declare function concat(...values: Array<string | number | boolean | null | undefined>): string;',
+      'declare function concat(...values: Array<string | number | boolean | Date | null>): string;',
   },
   nullif: {
     dslName: 'NULLIF',
@@ -183,7 +196,12 @@ export const WORKFLOW_EXPRESSION_FUNCTION_REGISTRY = {
     maxArgs: 2,
     resultType: 'same_as_first',
     semanticRule: 'compatible',
-    typescriptDeclaration: 'declare function nullif<T>(value: T, other: T): T | null;',
+    typescriptDeclaration: [
+      'declare function nullif(value: number, other: number): number;',
+      'declare function nullif(value: string, other: string): string;',
+      'declare function nullif(value: boolean, other: boolean): boolean;',
+      'declare function nullif(value: Date, other: Date): Date;',
+    ].join('\n'),
   },
   dateDiff: {
     dslName: 'DATE_DIFF',
@@ -210,8 +228,12 @@ export const WORKFLOW_EXPRESSION_FUNCTION_REGISTRY = {
     minArgs: 2,
     resultType: 'same_as_first',
     semanticRule: 'compatible',
-    typescriptDeclaration:
-      'declare function coalesce<T>(...values: Array<T | null | undefined>): T;',
+    typescriptDeclaration: [
+      'declare function coalesce(...values: Array<number | null>): number;',
+      'declare function coalesce(...values: Array<string | null>): string;',
+      'declare function coalesce(...values: Array<boolean | null>): boolean;',
+      'declare function coalesce(...values: Array<Date | null>): Date;',
+    ].join('\n'),
   },
   round: {
     dslName: 'ROUND',
@@ -250,14 +272,13 @@ export const WORKFLOW_NATIVE_EXPRESSION_INTRINSICS = {
     binaryOperator: 'contains',
     minArgs: 2,
     maxArgs: 2,
-    typescriptDeclaration: 'declare function contains(value: unknown, search: unknown): boolean;',
+    typescriptDeclaration: 'declare function contains(value: unknown, search: string): boolean;',
   },
   notContains: {
     binaryOperator: 'not_contains',
     minArgs: 2,
     maxArgs: 2,
-    typescriptDeclaration:
-      'declare function notContains(value: unknown, search: unknown): boolean;',
+    typescriptDeclaration: 'declare function notContains(value: unknown, search: string): boolean;',
   },
 } as const satisfies Record<string, WorkflowNativeExpressionIntrinsicDefinition>;
 
@@ -278,14 +299,6 @@ export const WORKFLOW_EXPRESSION_FUNCTION_NAMES = new Set<string>(
   Object.keys(WORKFLOW_EXPRESSION_FUNCTION_REGISTRY)
 );
 
-export function getWorkflowExpressionRuntimeCapabilities() {
-  return {
-    binaryMethods: WORKFLOW_BINARY_EXPRESSION_METHODS,
-    unaryMethods: WORKFLOW_UNARY_EXPRESSION_METHODS,
-    functions: Object.keys(WORKFLOW_EXPRESSION_FUNCTION_REGISTRY),
-  };
-}
-
 export function getWorkflowExpressionCapabilityPrompt(): string {
   const nativeFunctions = Object.entries(WORKFLOW_EXPRESSION_FUNCTION_REGISTRY)
     .filter(([, definition]) => definition.native)
@@ -298,7 +311,13 @@ export function getWorkflowExpressionCapabilityPrompt(): string {
       ...Object.keys(WORKFLOW_NATIVE_EXPRESSION_INTRINSICS),
     ].join(', ')}.`,
     'Use concat(...) for text concatenation; native + is numeric-only in workflow expressions.',
-    `Native cast function: cast(value, ${WORKFLOW_EXPRESSION_CAST_TYPES.map((type) => JSON.stringify(type)).join(' | ')}, { scale?: number }).`,
+    `Native cast functions: cast(value, ${WORKFLOW_EXPRESSION_CAST_TYPES.filter(
+      (type) => !WORKFLOW_EXPRESSION_CAST_REGISTRY[type].supportsScale
+    )
+      .map((type) => JSON.stringify(type))
+      .join(
+        ' | '
+      )}); cast(value, "decimal", { scale?: ${workflowDecimalScaleTypeScriptType()} } | ${workflowDecimalScaleTypeScriptType()}). Decimal is the only cast that accepts a scale.`,
   ].join(' ');
 }
 
@@ -310,7 +329,37 @@ export function getWorkflowExpressionTypeScriptDeclarations(): string {
     ...Object.values(WORKFLOW_NATIVE_EXPRESSION_INTRINSICS).map(
       (definition) => definition.typescriptDeclaration
     ),
+    ...getWorkflowExpressionCastTypeScriptDeclarations(),
   ].join('\n');
+}
+
+function getWorkflowExpressionCastTypeScriptDeclarations(): string[] {
+  const withoutScale = Object.entries(WORKFLOW_EXPRESSION_CAST_REGISTRY).filter(
+    ([, definition]) => !definition.supportsScale
+  );
+  const byResult = new Map<string, string[]>();
+  for (const [name, definition] of withoutScale) {
+    byResult.set(definition.typescriptResult, [
+      ...(byResult.get(definition.typescriptResult) ?? []),
+      name,
+    ]);
+  }
+  const declarations = [...byResult].map(
+    ([result, names]) =>
+      `declare function cast(value: unknown, targetType: ${names.map((name) => JSON.stringify(name)).join(' | ')}): ${result};`
+  );
+  const scale = workflowDecimalScaleTypeScriptType();
+  declarations.push(
+    `declare function cast(value: unknown, targetType: "decimal", options?: { scale?: ${scale} } | ${scale}): number;`
+  );
+  return declarations;
+}
+
+function workflowDecimalScaleTypeScriptType(): string {
+  return Array.from(
+    { length: WORKFLOW_DECIMAL_SCALE_MAX - WORKFLOW_DECIMAL_SCALE_MIN + 1 },
+    (_, index) => String(index + WORKFLOW_DECIMAL_SCALE_MIN)
+  ).join(' | ');
 }
 
 export function getWorkflowExpressionFunctionDefinition(
@@ -358,10 +407,18 @@ export function workflowExpressionFunctionResultType(
 }
 
 export function normalizeWorkflowExpressionCastType(targetType: string): string | undefined {
-  if (!isWorkflowExpressionCastType(targetType)) return undefined;
-  return targetType === 'timestamp' ? 'datetime' : targetType;
+  return WORKFLOW_EXPRESSION_CAST_REGISTRY[
+    targetType as keyof typeof WORKFLOW_EXPRESSION_CAST_REGISTRY
+  ]?.normalizedType;
 }
 
 export function isWorkflowExpressionCastType(targetType: string): boolean {
-  return (WORKFLOW_EXPRESSION_CAST_TYPES as readonly string[]).includes(targetType);
+  return Object.prototype.hasOwnProperty.call(WORKFLOW_EXPRESSION_CAST_REGISTRY, targetType);
+}
+
+export function workflowExpressionCastSupportsScale(targetType: string): boolean {
+  return Boolean(
+    WORKFLOW_EXPRESSION_CAST_REGISTRY[targetType as keyof typeof WORKFLOW_EXPRESSION_CAST_REGISTRY]
+      ?.supportsScale
+  );
 }

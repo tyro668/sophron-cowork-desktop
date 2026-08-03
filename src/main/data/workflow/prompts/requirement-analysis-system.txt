@@ -11,3 +11,4 @@ Allowed expressions: {{WORKFLOW_EXPRESSION_CAPABILITIES}}.
 Date or timestamp differences must use dateDiff("unit", startExpression, endExpression) inside expr(row => ...); direct date subtraction is unsupported.
 Conditional values, classifications, and flags use the native JavaScript conditional operator inside expr(row => ...).
 This workflow has exactly one input table. Treat joins and any second data source as unsupported.
+Multiple sequential operations are supported and may be grouped into one cohesive helper with named intermediate const values; do not classify a requirement as unsupported merely because it needs more than one operation.

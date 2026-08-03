@@ -18,7 +18,6 @@ process.stdin.on('end', () => {
       outputTableName: payload.outputTableName,
       sdkVersion: payload.sdkVersion,
       allowedOperationTypes: payload.allowedOperationTypes,
-      expressionCapabilities: payload.expressionCapabilities,
       expressions: payload.expressions,
     })});`;
     new vm.Script(bootstrapSource, { filename: 'workflow-sandbox-bootstrap.js' }).runInContext(
@@ -96,12 +95,12 @@ function installWorkflowSandbox(payload) {
 
   const operations = [];
   const provenance = [];
-  let inputSeen = false;
-  let outputSeen = false;
+  let inputCallCount = 0;
+  let outputCallCount = 0;
   let outputOperationId = null;
+  let outputResult;
   let mainResult;
   const allowedOperationTypes = new Set(payload.allowedOperationTypes);
-  const expressionCapabilities = payload.expressionCapabilities;
 
   const freeze = (value) => SafeObject.freeze(value);
   const deepFreeze = (value, seen = new SafeWeakSet()) => {
@@ -113,7 +112,6 @@ function installWorkflowSandbox(payload) {
   const expression = (value) => deepFreeze(value);
   const preparedExpressions = new Map();
   const expressionIrByWrapper = new WeakMap();
-  const metricByWrapper = new WeakMap();
   const workflowNodeByValue = new WeakMap();
   for (const item of SafeArray.isArray(payload.expressions) ? payload.expressions : []) {
     if (
@@ -131,34 +129,9 @@ function installWorkflowSandbox(payload) {
     preparedExpressions.set(item.id, expression(item.ir));
   }
 
-  const literal = (value) => expression({ kind: 'literal', value });
-  const asExpression = (value) => expressionIrByWrapper.get(value) || literal(value);
   const wrapExpression = (ir) => {
     const api = SafeObject.create(null);
     expressionIrByWrapper.set(api, ir);
-    for (const [name, op] of SafeObject.entries(expressionCapabilities.binaryMethods)) {
-      api[name] = (value) =>
-        wrapExpression(
-          expression({
-            kind: 'binary',
-            op,
-            left: ir,
-            right: asExpression(value),
-          })
-        );
-    }
-    for (const [name, op] of SafeObject.entries(expressionCapabilities.unaryMethods)) {
-      api[name] = () => wrapExpression(expression({ kind: 'unary', op, value: ir }));
-    }
-    api.cast = (targetType, options = {}) =>
-      wrapExpression(
-        expression({
-          kind: 'cast',
-          value: ir,
-          targetType,
-          options: typeof options === 'number' ? { scale: options } : options,
-        })
-      );
     return freeze(api);
   };
   const requireWorkflow = (value) => {
@@ -170,8 +143,6 @@ function installWorkflowSandbox(payload) {
   };
   const deepUnwrap = (value) => {
     if (SafeArray.isArray(value)) return value.map(deepUnwrap);
-    const metricValue = metricByWrapper.get(value);
-    if (metricValue) return metricValue;
     const expressionValue = expressionIrByWrapper.get(value);
     if (expressionValue) return expressionValue;
     if (value && typeof value === 'object') {
@@ -248,20 +219,54 @@ function installWorkflowSandbox(payload) {
   };
 
   const workflow = freeze({
-    input: () => {
-      inputSeen = true;
+    input: (tableId) => {
+      inputCallCount += 1;
+      if (inputCallCount !== 1) {
+        const error = new TypeError('Generated workflow must call workflow.input() exactly once');
+        error.code = 'WORKFLOW_INPUT_COUNT';
+        throw error;
+      }
+      if (tableId !== payload.inputTableId) {
+        const error = new TypeError(
+          'Generated workflow must bind workflow.input() to INPUT_TABLE_ID'
+        );
+        error.code = 'WORKFLOW_INPUT_BINDING';
+        throw error;
+      }
       return workflowValue('input');
     },
     step: (inputValue, type, fields) => add(type, inputValue, fields),
-    output: (inputValue) => {
+    output: (inputValue, tableName, options) => {
+      outputCallCount += 1;
+      if (outputCallCount !== 1) {
+        const error = new TypeError('Generated workflow must call workflow.output() exactly once');
+        error.code = 'WORKFLOW_OUTPUT_COUNT';
+        throw error;
+      }
       requireWorkflow(inputValue);
-      outputSeen = true;
+      if (tableName !== payload.outputTableName) {
+        const error = new TypeError(
+          'Generated workflow must bind workflow.output() to OUTPUT_TABLE_NAME'
+        );
+        error.code = 'WORKFLOW_OUTPUT_BINDING';
+        throw error;
+      }
+      if (
+        options !== undefined &&
+        (!options ||
+          typeof options !== 'object' ||
+          SafeArray.isArray(options) ||
+          (options.mode !== undefined && options.mode !== 'replace'))
+      ) {
+        const error = new TypeError('Generated workflow output mode must be replace');
+        error.code = 'WORKFLOW_OUTPUT_MODE';
+        throw error;
+      }
       outputOperationId = workflowNodeByValue.get(inputValue);
-      return inputValue;
+      outputResult = freeze(SafeObject.create(null));
+      return outputResult;
     },
   });
-  const col = (name) => wrapExpression(expression({ kind: 'column', name }));
-  const lit = (value) => wrapExpression(literal(value));
   const workflowExpression = (id) => {
     if (typeof id !== 'string' || !preparedExpressions.has(id)) {
       const error = new TypeError('Unknown precompiled workflow expression: ' + String(id));
@@ -270,42 +275,6 @@ function installWorkflowSandbox(payload) {
     }
     return wrapExpression(preparedExpressions.get(id));
   };
-  const fn = freeze(
-    SafeObject.fromEntries(
-      expressionCapabilities.functions.map((name) => [
-        name,
-        (...args) =>
-          wrapExpression(
-            expression({
-              kind: 'function',
-              name,
-              args: args.map(asExpression),
-            })
-          ),
-      ])
-    )
-  );
-  const metricFactory = (name) => (value) => {
-    const result = SafeObject.create(null);
-    result.as = (alias) => {
-      const wrapper = SafeObject.create(null);
-      metricByWrapper.set(wrapper, {
-        fn: name,
-        expression: value === undefined ? '*' : asExpression(value),
-        alias,
-      });
-      return freeze(wrapper);
-    };
-    return freeze(result);
-  };
-  const metric = freeze(
-    SafeObject.fromEntries(
-      ['sum', 'avg', 'min', 'max', 'count', 'countDistinct'].map((name) => [
-        name,
-        metricFactory(name),
-      ])
-    )
-  );
 
   const defineGlobal = (name, value) => {
     SafeObject.defineProperty(globalThis, name, {
@@ -318,16 +287,28 @@ function installWorkflowSandbox(payload) {
   defineGlobal('INPUT_TABLE_ID', payload.inputTableId);
   defineGlobal('OUTPUT_TABLE_NAME', payload.outputTableName);
   defineGlobal('workflow', workflow);
-  defineGlobal('col', col);
-  defineGlobal('lit', lit);
-  defineGlobal('fn', fn);
-  defineGlobal('metric', metric);
   defineGlobal('__workflowExpression', workflowExpression);
   defineGlobal('__finish', (value) => {
     mainResult = value;
   });
   defineGlobal('__serializeWorkflowResult', () => {
-    requireWorkflow(mainResult);
+    if (inputCallCount !== 1) {
+      const error = new TypeError('Generated workflow must call workflow.input() exactly once');
+      error.code = 'WORKFLOW_INPUT_COUNT';
+      throw error;
+    }
+    if (outputCallCount !== 1) {
+      const error = new TypeError('Generated workflow must call workflow.output() exactly once');
+      error.code = 'WORKFLOW_OUTPUT_COUNT';
+      throw error;
+    }
+    if (mainResult !== outputResult) {
+      const error = new TypeError(
+        'Generated workflow main() must return the object returned by workflow.output()'
+      );
+      error.code = 'INVALID_WORKFLOW_MAIN_RESULT';
+      throw error;
+    }
     return SafeJSON.stringify({
       ok: true,
       ir: {
@@ -335,8 +316,8 @@ function installWorkflowSandbox(payload) {
         kind: 'workflow',
         sourceLanguage: 'javascript',
         sdkVersion: payload.sdkVersion,
-        inputSeen,
-        outputSeen,
+        inputSeen: true,
+        outputSeen: true,
         outputOperationId,
         operations,
         provenance,

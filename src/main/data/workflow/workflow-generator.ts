@@ -5,18 +5,26 @@ import { DataCommandError } from '../data-command-types';
 import workflowGenerationSystemPrompt from './prompts/workflow-generation-system.txt?raw';
 import {
   applyWorkflowFunctionPatch,
-  assertAtomicWorkflowHelpers,
   compileWorkflowJavaScript,
   executeWorkflowJavaScriptInSandbox,
   indexJavaScriptFunctions,
 } from './javascript-runtime';
-import { getWorkflowJavascriptCapabilityPrompt } from './workflow-operation-registry';
+import { getWorkflowJavascriptCapabilityPrompt } from './workflow-ir-operation-registry';
 import { getWorkflowExpressionCapabilityPrompt } from './workflow-expression-registry';
 import {
-  exportWorkflowOperationsToPrepDsl,
-  lowerWorkflowIrToOperations,
+  lowerGeneratedWorkflowIrSemantics,
   type GeneratedDataTaskWorkflow,
-} from './operation-compiler';
+} from './workflow-ir-lowerer';
+import { AI_PREP_DSL_RUNTIME_PROFILE_VERSION } from './prep-dsl-capability-profile';
+import {
+  claimWorkflowRepairAttempt,
+  contextualizeWorkflowError,
+  createWorkflowRepairBudget,
+  isWorkflowDiagnosticRepairable,
+  workflowCommandCodeForDiagnostics,
+  workflowDiagnosticsFromError,
+  type WorkflowRepairBudget,
+} from './workflow-failure';
 import { computeWorkflowIrSemanticHash } from './workflow-ir';
 import { extractJsonObject, isRecord } from './utils';
 
@@ -35,42 +43,69 @@ export function compileGeneratedJavaScriptWorkflow({
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
 }): GeneratedDataTaskWorkflow {
-  const compiled = compileWorkflowJavaScript(javascriptSource, { columns });
-  const ir = executeWorkflowJavaScriptInSandbox({ compiled, inputTableId, outputTableName });
-  const verificationIr = executeWorkflowJavaScriptInSandbox({
-    compiled,
-    inputTableId,
-    outputTableName,
-  });
-  const semanticHash = computeWorkflowIrSemanticHash(ir);
-  if (semanticHash !== computeWorkflowIrSemanticHash(verificationIr)) {
-    throw new DataCommandError(
-      'VALIDATION_FAILED',
-      'Generated workflow JavaScript produced non-deterministic Workflow IR',
-      {
-        diagnostics: [
-          {
-            severity: 'error',
-            code: 'NON_DETERMINISTIC_WORKFLOW_BUILD',
-            message: 'The same JavaScript source produced different Workflow IR results',
-          },
-        ],
-      }
-    );
+  let compiled: ReturnType<typeof compileWorkflowJavaScript>;
+  try {
+    compiled = compileWorkflowJavaScript(javascriptSource, { columns });
+  } catch (error) {
+    throw contextualizeWorkflowError(error, {
+      failureStage: 'javascript_compile',
+      commandErrorCode: 'VALIDATION_FAILED',
+    });
   }
-  assertAtomicWorkflowHelpers(ir);
-  const operations = lowerWorkflowIrToOperations({ ir, inputTableId, outputTableName });
-  return {
-    ...exportWorkflowOperationsToPrepDsl({
-      workflow: operations,
-      sourceIr: ir,
-      requirement,
-      columns,
-    }),
-    javascriptSource,
-    workflowIr: ir,
-    workflowIrSemanticHash: semanticHash,
-  };
+
+  let ir: ReturnType<typeof executeWorkflowJavaScriptInSandbox>;
+  let verificationIr: ReturnType<typeof executeWorkflowJavaScriptInSandbox>;
+  try {
+    ir = executeWorkflowJavaScriptInSandbox({ compiled, inputTableId, outputTableName });
+    verificationIr = executeWorkflowJavaScriptInSandbox({
+      compiled,
+      inputTableId,
+      outputTableName,
+    });
+  } catch (error) {
+    throw contextualizeWorkflowError(error, {
+      failureStage: 'sandbox_execution',
+      commandErrorCode: 'RUN_FAILED',
+    });
+  }
+
+  try {
+    if (computeWorkflowIrSemanticHash(ir) !== computeWorkflowIrSemanticHash(verificationIr)) {
+      throw new DataCommandError(
+        'VALIDATION_FAILED',
+        'Generated workflow JavaScript produced non-deterministic Workflow IR',
+        {
+          diagnostics: [
+            {
+              severity: 'error',
+              code: 'NON_DETERMINISTIC_WORKFLOW_BUILD',
+              message: 'The same JavaScript source produced different Workflow IR results',
+            },
+          ],
+        }
+      );
+    }
+  } catch (error) {
+    throw contextualizeWorkflowError(error, {
+      failureStage: 'ir_validation',
+      commandErrorCode: 'VALIDATION_FAILED',
+    });
+  }
+
+  try {
+    const semantics = lowerGeneratedWorkflowIrSemantics({ ir, requirement, columns });
+    return {
+      ...semantics,
+      runtimeCompatibilityProfileVersion: AI_PREP_DSL_RUNTIME_PROFILE_VERSION,
+      workflowIrSemanticHash: computeWorkflowIrSemanticHash(semantics.workflowIr),
+      javascriptSource,
+    };
+  } catch (error) {
+    throw contextualizeWorkflowError(error, {
+      failureStage: 'workflow_lowering',
+      commandErrorCode: 'VALIDATION_FAILED',
+    });
+  }
 }
 
 function normalizeOptionalName(name: string | undefined): string | undefined {
@@ -95,7 +130,10 @@ function extractGeneratedJavascriptSource(text: string): string {
   const fenced = trimmed.match(/```(?:javascript|js)?\s*([\s\S]*?)```/i);
   const candidate = fenced?.[1]?.trim() ?? trimmed;
   const mainIndex = candidate.search(/\bfunction\s+main\s*\(/);
-  if (mainIndex >= 0) return candidate.slice(mainIndex).trim();
+  const firstFunctionIndex = candidate.search(/\bfunction\s+[$A-Z_a-z][$\w]*\s*\(/);
+  if (mainIndex >= 0 && firstFunctionIndex >= 0 && firstFunctionIndex <= mainIndex) {
+    return candidate.slice(firstFunctionIndex).trim();
+  }
   throw new DataCommandError(
     'VALIDATION_FAILED',
     'Workflow JavaScript generation response must include javascriptSource with function main()'
@@ -121,14 +159,18 @@ export async function generateDataTaskWorkflowFromRequirement({
   requirement,
   columns,
   runtimeConfig,
+  repairBudget,
 }: {
   inputTableId: string;
   outputTableName: string;
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
   runtimeConfig?: AgentRuntimeConfig;
+  repairBudget?: WorkflowRepairBudget;
 }): Promise<GeneratedDataTaskWorkflow> {
   const config = requireGenerationRuntimeConfig(runtimeConfig);
+  const sharedRepairBudget =
+    repairBudget ?? createWorkflowRepairBudget(GENERATED_WORKFLOW_REPAIR_ATTEMPTS);
   try {
     const response = await runPiAiOneShot(
       buildWorkflowGenerationUserPrompt({
@@ -150,6 +192,15 @@ export async function generateDataTaskWorkflowFromRequirement({
         columns,
       });
     } catch (parseError) {
+      const generationError = contextualizeWorkflowError(parseError, {
+        failureStage: 'generation_response',
+        commandErrorCode: 'VALIDATION_FAILED',
+      });
+      const diagnostics = workflowDiagnosticsFromError(generationError, {
+        failureStage: 'generation_response',
+        commandErrorCode: generationError.code,
+      });
+      if (!diagnostics.every(isWorkflowDiagnosticRepairable)) throw generationError;
       return await repairGeneratedWorkflowFromDiagnostics({
         inputTableId,
         outputTableName,
@@ -158,15 +209,17 @@ export async function generateDataTaskWorkflowFromRequirement({
         runtimeConfig,
         failedJavascriptSource:
           extractJavascriptSourceFromModelResponse(response.text) ?? response.text,
-        diagnostics: diagnosticsFromGenerationError(parseError),
+        diagnostics,
+        repairBudget: sharedRepairBudget,
       });
     }
   } catch (error) {
     if (error instanceof DataCommandError) throw error;
-    throw new DataCommandError(
-      'GENERATION_FAILED',
-      `Failed to generate data task workflow: ${error instanceof Error ? error.message : String(error)}`
-    );
+    throw contextualizeWorkflowError(error, {
+      failureStage: 'generation_response',
+      commandErrorCode: 'GENERATION_FAILED',
+      repairClass: 'none',
+    });
   }
 }
 
@@ -178,6 +231,7 @@ export async function repairGeneratedWorkflowFromDiagnostics({
   runtimeConfig,
   failedJavascriptSource,
   diagnostics,
+  repairBudget,
 }: {
   inputTableId: string;
   outputTableName: string;
@@ -186,16 +240,41 @@ export async function repairGeneratedWorkflowFromDiagnostics({
   runtimeConfig?: AgentRuntimeConfig;
   failedJavascriptSource: string;
   diagnostics: PrepDiagnostic[];
+  repairBudget?: WorkflowRepairBudget;
 }): Promise<GeneratedDataTaskWorkflow> {
   const config = requireGenerationRuntimeConfig(runtimeConfig);
+  const sharedRepairBudget =
+    repairBudget ?? createWorkflowRepairBudget(GENERATED_WORKFLOW_REPAIR_ATTEMPTS);
   try {
     let currentJavascriptSource = failedJavascriptSource;
     let currentDiagnostics = diagnostics;
-    for (let attempt = 0; attempt < GENERATED_WORKFLOW_REPAIR_ATTEMPTS; attempt += 1) {
-      const repairFunctionName = resolveRepairFunctionName(
+    let forceFullRegeneration = false;
+    while (sharedRepairBudget.attemptsUsed <= sharedRepairBudget.maxAttempts) {
+      if (!currentDiagnostics.every(isWorkflowDiagnosticRepairable)) {
+        throw workflowRepairStoppedError('not_repairable', currentDiagnostics);
+      }
+      const scopedRepairFunctionName = resolveRepairFunctionName(
         currentJavascriptSource,
         currentDiagnostics
       );
+      const repairFunctionName = forceFullRegeneration ? undefined : scopedRepairFunctionName;
+      const claim = claimWorkflowRepairAttempt({
+        budget: sharedRepairBudget,
+        javascriptSource: currentJavascriptSource,
+        diagnostics: currentDiagnostics,
+        repairFunctionName,
+      });
+      if (!claim.accepted) {
+        if (
+          claim.reason === 'duplicate' &&
+          repairFunctionName &&
+          sharedRepairBudget.attemptsUsed < sharedRepairBudget.maxAttempts
+        ) {
+          forceFullRegeneration = true;
+          continue;
+        }
+        throw workflowRepairStoppedError(claim.reason, currentDiagnostics);
+      }
       const response = await runPiAiOneShot(
         buildWorkflowGenerationUserPrompt({
           inputTableId,
@@ -221,27 +300,36 @@ export async function repairGeneratedWorkflowFromDiagnostics({
           columns,
         });
       } catch (error) {
-        const nextDiagnostics = diagnosticsFromGenerationError(error);
-        if (attempt >= GENERATED_WORKFLOW_REPAIR_ATTEMPTS - 1) throw error;
+        const repairError = contextualizeWorkflowError(error, {
+          failureStage: 'generation_response',
+          commandErrorCode: 'VALIDATION_FAILED',
+        });
+        const nextDiagnostics = workflowDiagnosticsFromError(repairError, {
+          failureStage: 'generation_response',
+          commandErrorCode: repairError.code,
+        });
+        if (!nextDiagnostics.every(isWorkflowDiagnosticRepairable)) throw repairError;
         const nextJavascriptSource = extractRepairJavascriptCandidate({
           text: response.text,
           failedJavascriptSource: currentJavascriptSource,
           repairFunctionName,
         });
-        if (!nextJavascriptSource) throw error;
+        if (!nextJavascriptSource) throw repairError;
         currentJavascriptSource = nextJavascriptSource;
         currentDiagnostics = nextDiagnostics;
+        // A scoped patch gets one chance. If it still cannot compile, regenerate the
+        // complete program so the model can repair dependent helpers and main() together.
+        if (repairFunctionName) forceFullRegeneration = true;
       }
     }
-    throw new DataCommandError('VALIDATION_FAILED', 'Workflow repair attempts exhausted');
+    throw workflowRepairStoppedError('exhausted', currentDiagnostics);
   } catch (error) {
     if (error instanceof DataCommandError) throw error;
-    throw new DataCommandError(
-      'GENERATION_FAILED',
-      `Failed to repair generated data task workflow: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
+    throw contextualizeWorkflowError(error, {
+      failureStage: 'generation_response',
+      commandErrorCode: 'GENERATION_FAILED',
+      repairClass: 'none',
+    });
   }
 }
 
@@ -271,9 +359,6 @@ function buildWorkflowGenerationUserPrompt(input: {
   diagnostics?: PrepDiagnostic[];
   repairFunctionName?: string;
 }): string {
-  const isNonAtomicHelperRepair = input.diagnostics?.some(
-    (diagnostic) => diagnostic.code === 'NON_ATOMIC_WORKFLOW_HELPER'
-  );
   return JSON.stringify(
     {
       task: 'Convert the user requirement into standard JavaScript that builds a Sophron data workflow through the provided Workflow SDK.',
@@ -284,17 +369,18 @@ function buildWorkflowGenerationUserPrompt(input: {
         outputTableName: input.outputTableName,
       },
       generationRules: {
-        atomicHelpers:
-          'Every function that directly calls workflow.step() must call it exactly once. When a requirement needs multiple operations, create one helper per operation and compose those helpers through named const variables.',
+        sequentialHelpers:
+          'A helper may call workflow.step() multiple times in sequence. Bind every intermediate workflow value to a descriptive const, pass it to the next step, and return the final value.',
+        mainContract:
+          'The complete program must call workflow.input() exactly once and workflow.output() exactly once. main() must return the exact object returned by workflow.output().',
       },
       outputJsonSchema:
         input.failedJavascriptSource && input.repairFunctionName
           ? {
               javascriptPatch: {
                 functionName: input.repairFunctionName,
-                replacementSource: isNonAtomicHelperRepair
-                  ? 'complete declarations for the requested composition function and its new atomic helpers; each new helper contains exactly one workflow.step(), while the requested function contains zero workflow.step() calls and only composes those helpers'
-                  : 'one or more complete named function declarations; retain the requested function, optionally add uniquely named atomic helpers, and do not include main unless main is the requested function',
+                replacementSource:
+                  'one or more complete named function declarations; retain the requested function, optionally add uniquely named helpers, and do not include main unless main is the requested function',
               },
             }
           : {
@@ -313,20 +399,18 @@ function buildWorkflowGenerationUserPrompt(input: {
               line: diagnostic.line,
               column: diagnostic.column,
               functionName: isRecord(diagnostic) ? diagnostic.functionName : undefined,
+              operationId: isRecord(diagnostic) ? diagnostic.operationId : undefined,
+              operationType: isRecord(diagnostic) ? diagnostic.operationType : undefined,
+              expectedSignature: isRecord(diagnostic) ? diagnostic.expectedSignature : undefined,
+              repairHint: isRecord(diagnostic) ? diagnostic.repairHint : undefined,
+              nodeId: isRecord(diagnostic) ? diagnostic.nodeId : undefined,
+              nodeType: isRecord(diagnostic) ? diagnostic.nodeType : undefined,
+              failureStage: isRecord(diagnostic) ? diagnostic.failureStage : undefined,
+              repairClass: isRecord(diagnostic) ? diagnostic.repairClass : undefined,
             })),
             instruction: input.repairFunctionName
-              ? isNonAtomicHelperRepair
-                ? `Repair only ${input.repairFunctionName}. It currently contains multiple workflow operations. Extract every workflow.step() into a uniquely named helper that contains exactly one workflow.step(). Keep ${input.repairFunctionName} as a composition wrapper with zero workflow.step() calls; it must call the new helpers through named const variables and return the final value. Return javascriptPatch with functionName exactly "${input.repairFunctionName}". replacementSource must contain the complete declarations of the new atomic helpers and ${input.repairFunctionName}. Do not return the unchanged function, the complete program, main(), or DSL.`
-                : `Repair only ${input.repairFunctionName}. Return javascriptPatch with functionName exactly "${input.repairFunctionName}" and replacementSource containing the corrected function plus only any new atomic helpers it requires. Do not return the complete program or DSL.`
-              : 'Return the complete corrected javascriptSource, including every helper and main(). Do not return a partial function or DSL.',
-            repairExample: isNonAtomicHelperRepair
-              ? {
-                  invalid:
-                    'function extractYearMonth(input) { const withYear = workflow.step(input, "derive", YEAR_PAYLOAD); return workflow.step(withYear, "derive", MONTH_PAYLOAD); }',
-                  replacementSource:
-                    'function extractYear(input) { return workflow.step(input, "derive", YEAR_PAYLOAD); }\nfunction extractMonth(input) { return workflow.step(input, "derive", MONTH_PAYLOAD); }\nfunction extractYearMonth(input) { const withYear = extractYear(input); const withMonth = extractMonth(withYear); return withMonth; }',
-                }
-              : undefined,
+              ? `Repair only ${input.repairFunctionName}. Return javascriptPatch with functionName exactly "${input.repairFunctionName}" and replacementSource containing the corrected function plus only any new helpers it requires. Do not return the complete program or DSL.`
+              : 'The scoped function repair repeated or a full repair is required. Return the complete corrected javascriptSource, including every helper and main(). Apply every diagnostic repairHint and canonical expectedSignature exactly. Do not return a partial function, javascriptPatch, or DSL.',
           }
         : undefined,
       examples: [
@@ -345,8 +429,21 @@ function buildWorkflowGenerationUserPrompt(input: {
         {
           requirement: '从 Date 提取年份和月份',
           javascriptSource:
-            'function extractYear(input) {\n  return workflow.step(input, "derive", { column: "Year", expression: expr(row => year(row["Date"])) });\n}\n\nfunction extractMonth(input) {\n  return workflow.step(input, "derive", { column: "Month", expression: expr(row => month(row["Date"])) });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const withYear = extractYear(input);\n  const withMonth = extractMonth(withYear);\n  return workflow.output(withMonth, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+            'function extractYearAndMonth(input) {\n  const withYear = workflow.step(input, "derive", { column: "Year", expression: expr(row => year(row["Date"])) });\n  const withMonth = workflow.step(withYear, "derive", { column: "Month", expression: expr(row => month(row["Date"])) });\n  return withMonth;\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const enriched = extractYearAndMonth(input);\n  return workflow.output(enriched, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
           requiredColumns: [{ name: 'Date' }],
+        },
+        {
+          requirement:
+            '根据利润率新增“经营等级”：利润率大于等于 20% 为“高收益”，0%到20%之间为“低收益”，小于0%为“亏损”。Sales 为 0 的话利润率置0。',
+          javascriptSource:
+            'function addProfitRate(input) {\n  return workflow.step(input, "derive", { column: "利润率", expression: expr(row => cast(row["Sales"] == null || row["Sales"] === 0 ? 0 : row["Profit"] / row["Sales"], "decimal", { scale: 2 })) });\n}\n\nfunction addOperatingGrade(input) {\n  return workflow.step(input, "derive", { column: "经营等级", expression: expr(row => row["利润率"] >= 0.2 ? "高收益" : row["利润率"] >= 0 ? "低收益" : "亏损") });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const withProfitRate = addProfitRate(input);\n  const withOperatingGrade = addOperatingGrade(withProfitRate);\n  return workflow.output(withOperatingGrade, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+          requiredColumns: [{ name: 'Sales' }, { name: 'Profit' }],
+        },
+        {
+          requirement: '按客户汇总销售额，找出销售额最高的前10名客户',
+          javascriptSource:
+            'function summarizeCustomers(input) {\n  return workflow.step(input, "aggregate", { groupBy: [expr(row => row["Customer ID"]), expr(row => row["Customer Name"])], metrics: [{ fn: "sum", expression: expr(row => row["Sales"]), alias: "总销售额" }] });\n}\n\nfunction rankCustomers(input) {\n  const sorted = workflow.step(input, "sort", { column: expr(row => row["总销售额"]), direction: "desc" });\n  const limited = workflow.step(sorted, "limit", { config: { mode: "limit", limit: 10, unit: "rows", offset: 0, orderBy: [] } });\n  return limited;\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const summarized = summarizeCustomers(input);\n  const ranked = rankCustomers(summarized);\n  return workflow.output(ranked, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+          requiredColumns: [{ name: 'Customer ID' }, { name: 'Customer Name' }, { name: 'Sales' }],
         },
       ],
     },
@@ -482,28 +579,24 @@ function extractRepairJavascriptCandidate({
   }
 }
 
-function diagnosticsFromGenerationError(error: unknown): PrepDiagnostic[] {
-  if (error instanceof DataCommandError) {
-    const details = error.details;
-    if (
-      isRecord(details) &&
-      Array.isArray(details.diagnostics) &&
-      details.diagnostics.every(isPrepDiagnosticLike)
-    ) {
-      return details.diagnostics;
-    }
-    return [{ severity: 'error', code: error.code, message: error.message }];
-  }
-  return [
-    {
-      severity: 'error',
-      message: error instanceof Error ? error.message : String(error),
-    },
-  ];
-}
-
-function isPrepDiagnosticLike(value: unknown): value is PrepDiagnostic {
-  return isRecord(value) && (value.severity === 'error' || value.severity === 'warning');
+function workflowRepairStoppedError(
+  reason: 'duplicate' | 'exhausted' | 'not_repairable',
+  diagnostics: PrepDiagnostic[]
+): DataCommandError {
+  const stopMessage =
+    reason === 'duplicate'
+      ? 'Workflow repair stopped because the same source and diagnostics were already attempted'
+      : reason === 'exhausted'
+        ? 'Workflow repair attempts exhausted'
+        : 'Workflow failure is not eligible for automatic repair';
+  const diagnosticMessage = diagnostics.find(
+    (diagnostic) => diagnostic.severity === 'error'
+  )?.message;
+  const message = diagnosticMessage ? `${stopMessage}: ${diagnosticMessage}` : stopMessage;
+  return new DataCommandError(workflowCommandCodeForDiagnostics(diagnostics), message, {
+    diagnostics,
+    repairStopReason: reason,
+  });
 }
 
 function compileGeneratedJavascriptResponse({

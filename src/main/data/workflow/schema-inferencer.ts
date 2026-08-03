@@ -5,9 +5,10 @@ import {
   type GeneratedDataTaskWorkflow,
   areComparableColumnTypes,
   toAutomationColumnSnapshot,
-} from './operation-compiler';
+} from './workflow-ir-lowerer';
 import { normalizeColumnType } from './utils';
 import { AI_PREP_DSL_RUNTIME_PROFILE_VERSION } from './prep-dsl-capability-profile';
+import { computeWorkflowIrSemanticHash, validateAndNormalizeWorkflowIr } from './workflow-ir';
 export function hashColumns(columns: Array<{ name: string; type?: string }>): string {
   const value = JSON.stringify(
     columns.map((column) => ({ name: column.name, type: column.type ?? null }))
@@ -75,11 +76,30 @@ export function validateGeneratedWorkflowGenerationContract(
     });
   }
 
-  if (!generated.workflowDsl.trim()) {
+  try {
+    const normalizedIr = validateAndNormalizeWorkflowIr(generated.workflowIr);
+    const semanticHash = computeWorkflowIrSemanticHash(normalizedIr);
+    if (!generated.workflowIrSemanticHash) {
+      diagnostics.push({
+        severity: 'error',
+        code: 'workflowIrSemanticHashMissing',
+        message: 'Generated workflow is missing its Workflow IR semantic hash',
+      });
+    } else if (generated.workflowIrSemanticHash !== semanticHash) {
+      diagnostics.push({
+        severity: 'error',
+        code: 'workflowIrSemanticHashMismatch',
+        message:
+          'Generated workflow JavaScript, Workflow IR, and derived artifacts no longer describe the same semantics',
+      });
+    }
+  } catch (error) {
     diagnostics.push({
       severity: 'error',
-      code: 'workflowContractInvalid',
-      message: 'Generated workflow is missing DSL text',
+      code: 'workflowIrInvalid',
+      message: `Generated workflow contains invalid Workflow IR: ${
+        error instanceof Error ? error.message.replace(/^\[[A-Z_]+\]\s*/, '') : String(error)
+      }`,
     });
   }
 
