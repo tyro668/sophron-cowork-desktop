@@ -36,6 +36,12 @@ function buildCheckList(platform, arch) {
   const checks = [
     // Common checks (all platforms, FATAL)
     {
+      label: 'Workflow sandbox runner',
+      relPath: 'src/main/data/workflow/workflow-sandbox-runner.js',
+      type: 'file',
+      severity: 'fatal',
+    },
+    {
       label: 'GUI Operate MCP server bundle',
       relPath: '.bundle-resources/mcp/gui-operate-server.js',
       type: 'file',
@@ -187,9 +193,7 @@ function main() {
 
   const { passed, warnings, failed, hasFatal } = runChecks(PROJECT_ROOT, process.platform);
 
-  console.log(
-    `\nPre-build check: ${passed} passed, ${warnings} warnings, ${failed} failed`
-  );
+  console.log(`\nPre-build check: ${passed} passed, ${warnings} warnings, ${failed} failed`);
 
   if (hasFatal) {
     console.log(

@@ -84,6 +84,8 @@ win:
   artifactName: sophron-${version}-win-${arch}.${ext}
   signAndEditExecutable: false
   extraResources:
+    - from: src/main/data/workflow/workflow-sandbox-runner.js
+      to: workflow/workflow-sandbox-runner.js
     - from: .bundle-resources/mcp
       to: mcp
     - from: resources/node/win32-x64
@@ -115,6 +117,8 @@ mac:
     NSScreenCaptureUsageDescription: 'sophron cowork needs screen recording access for GUI automation.'
     NSAccessibilityUsageDescription: 'sophron cowork needs accessibility access for GUI automation.'
   extraResources:
+    - from: src/main/data/workflow/workflow-sandbox-runner.js
+      to: workflow/workflow-sandbox-runner.js
     - from: .bundle-resources/mcp
       to: mcp
     - from: resources/node/darwin-${arch}
@@ -140,6 +144,8 @@ linux:
         - x64
   artifactName: sophron-${version}-linux-${arch}.${ext}
   extraResources:
+    - from: src/main/data/workflow/workflow-sandbox-runner.js
+      to: workflow/workflow-sandbox-runner.js
     - from: .bundle-resources/mcp
       to: mcp
     - from: resources/node/linux-x64
