@@ -174,7 +174,7 @@ workflow.output(input, outputTableName, options);
 
 provenance 保存 operation 对应的 JavaScript 函数、行号和列号。
 
-具体 payload 规则不在 Bridge 中实现，由 `workflow-operation-registry.ts` 校验。例如 `drop.columns` 必须是非空字符串数组，`sort.direction` 必须为 `asc` 或 `desc`。因此新增 operation 不需要修改 Bridge，只需扩展操作注册表和确定性的 Prep DSL 编译逻辑。
+具体 payload 规则不在 Bridge 中实现，由 `workflow-ir-operation-registry.ts` 校验。例如 `drop.columns` 必须是非空字符串数组，`sort.direction` 必须为 `asc` 或 `desc`。因此新增 IR operation 不需要修改 Bridge，只需扩展 IR 操作注册表及其确定性的 lowering 规则。
 
 ## 8. Stable Workflow IR
 
@@ -220,23 +220,22 @@ NON_ATOMIC_WORKFLOW_HELPER
 - 原源码存在语法错误、诊断没有明确函数名或无法安全定位时，模型返回包含全部辅助函数和 `main()` 的完整 `javascriptSource`。
 - Acorn 不参与 JavaScript → IR 转换，也不回退到整段 DSL。
 
-## 10. IR → Operations JSON → Prep DSL
+## 10. IR → 平台操作配置 → 原生节点
 
-`operation-compiler.ts` 中的 `lowerWorkflowIrToOperations()` 负责：
+`workflow-ir-lowerer.ts` 中的 `lowerGeneratedWorkflowIrSemantics()` 负责：
 
 - 再次校验并规范化 IR。
-- 绑定运行时输入表 ID 和输出表名。
-- 输出版本化 `WorkflowOperationsV1`。
+- 将 IR operation 转换为平台 operator 配置。
+- 推断必需输入字段、输出 Schema 和字段血缘。
+- 保留 operation 到 JavaScript 源码位置的映射。
 
-同一文件中的固定 operation compiler 将 Operations 转换为 Prep DSL。一个 IR operation 可以展开成多条 DSL，例如覆盖原字段的类型转换：
+一个 IR operation 可以确定性地展开成多个平台 operators，例如覆盖原字段的类型转换：
 
 ```text
-| derive [__sophron_cast_price] = TRY_CAST(...)
-| drop [price]
-| map [__sophron_cast_price] to [price]
+calculate_field → field_select → field_mapping
 ```
 
-这种展开是固定转换器行为，不是新的生成链路。
+这种展开由固定 lowerer 完成，不由模型生成，也不在 AI 层生成完整 Prep DSL。
 
 ## 11. DSL 编译与临时验证
 
@@ -284,10 +283,10 @@ NON_ATOMIC_WORKFLOW_HELPER
 - `src/main/data/ipc/data-tasks-ipc.ts`
 - `src/main/data/workflow/workflow-generator.ts`
 - `src/main/data/workflow/javascript-runtime.ts`
-- `src/main/data/workflow/workflow-operation-registry.ts`
+- `src/main/data/workflow/workflow-ir-operation-registry.ts`
 - `src/main/data/workflow/workflow-model.ts`
 - `src/main/data/workflow/workflow-ir.ts`
-- `src/main/data/workflow/operation-compiler.ts`
+- `src/main/data/workflow/workflow-ir-lowerer.ts`
 - `src/main/data/workflow/schema-inferencer.ts`
 - `src/main/data/workflow/utils.ts`
 - `src/shared/prep-dsl`
