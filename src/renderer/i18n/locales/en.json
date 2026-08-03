@@ -1034,7 +1034,7 @@
         "setOpSourcesHint": "Connect two data sources above to begin",
         "setOpConnectionHint": "Choose set operation: union, intersect or except",
         "setOpConfigHint": "Configure duplicate handling and field matching",
-        "setOpColumnCountMismatch": "Column count mismatch (left: {{leftCount}}, right: {{rightCount}}). Missing columns filled with NULL",
+        "setOpColumnCountMismatch": "Column count must match (left: {{leftCount}}, right: {{rightCount}}). Cannot execute",
         "setOpColumnNameMismatch": "Column {{index}}: left「{{left}}」≠ right「{{right}}」",
         "setOpPositionMatchWarnings": "Position-based match but column names differ: {{details}}",
         "setOpTypeMismatchWarning": "Column {{index}}「{{col}}」type mismatch ({{leftType}} vs {{rightType}}), may cause data conversion errors",

@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useMemo, useId } from 'react';
+import { useCallback, useEffect, useMemo, useId, useState } from 'react';
 
 import type { OperatorFormProps } from './index';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
-import { useConfirmDialog } from '../../components/ConfirmDialog';
 import type { DataColumnTypeInfo } from '../../../shared/data-field-types';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import {
+  DEFAULT_OPERATION,
+  DEFAULT_MODE,
+  DEFAULT_MATCH,
+} from '../../../shared/operator-schemas/set-op';
 
 const NUMERIC_TYPES = ['integer', 'float', 'decimal'];
 const TEMPORAL_TYPES = ['date', 'datetime'];
@@ -20,8 +24,8 @@ function checkTypeWarnings(
   tr: (key: string) => string
 ): string[] {
   const warnings: string[] = [];
-
-  const isUnionByName = operation === 'union' && match === 'by_name';
+  const effectiveMatch = operation === 'union' ? match : 'by_position';
+  const isUnionByName = operation === 'union' && effectiveMatch === 'by_name';
 
   if (!isUnionByName && leftColumns.length !== rightColumns.length) {
     warnings.push(
@@ -31,7 +35,7 @@ function checkTypeWarnings(
     );
   }
 
-  if (match !== 'by_name') {
+  if (effectiveMatch !== 'by_name') {
     const minLen = Math.min(leftColumns.length, rightColumns.length);
     const mismatches: string[] = [];
     for (let i = 0; i < minLen; i++) {
@@ -49,29 +53,58 @@ function checkTypeWarnings(
     }
   }
 
-  const minLen = Math.min(leftTypes.length, rightTypes.length);
-  for (let i = 0; i < minLen; i++) {
-    const lt = leftTypes[i].type;
-    const rt = rightTypes[i].type;
-    if (lt === rt) continue;
-    if (NUMERIC_TYPES.includes(lt) && NUMERIC_TYPES.includes(rt)) continue;
-    if (TEMPORAL_TYPES.includes(lt) && TEMPORAL_TYPES.includes(rt)) continue;
-    if (lt === 'text' || rt === 'text') {
-      warnings.push(
-        tr('setOpTypeMismatchWarning')
-          .replace('{{index}}', String(i + 1))
-          .replace('{{col}}', leftTypes[i].name)
-          .replace('{{leftType}}', lt)
-          .replace('{{rightType}}', rt)
-      );
-    } else {
-      warnings.push(
-        tr('setOpTypeIncompatibleWarning')
-          .replace('{{index}}', String(i + 1))
-          .replace('{{col}}', leftTypes[i].name)
-          .replace('{{leftType}}', lt)
-          .replace('{{rightType}}', rt)
-      );
+  if (effectiveMatch === 'by_name') {
+    const rightMap = new Map(rightTypes.map((t) => [t.name, t]));
+    for (const leftType of leftTypes) {
+      const rightType = rightMap.get(leftType.name);
+      if (!rightType) continue;
+      if (leftType.type === rightType.type) continue;
+      if (NUMERIC_TYPES.includes(leftType.type) && NUMERIC_TYPES.includes(rightType.type)) continue;
+      if (TEMPORAL_TYPES.includes(leftType.type) && TEMPORAL_TYPES.includes(rightType.type))
+        continue;
+      if (leftType.type === 'text' || rightType.type === 'text') {
+        warnings.push(
+          tr('setOpTypeMismatchWarning')
+            .replace('{{index}}', leftType.name)
+            .replace('{{col}}', leftType.name)
+            .replace('{{leftType}}', leftType.type)
+            .replace('{{rightType}}', rightType.type)
+        );
+      } else {
+        warnings.push(
+          tr('setOpTypeIncompatibleWarning')
+            .replace('{{index}}', leftType.name)
+            .replace('{{col}}', leftType.name)
+            .replace('{{leftType}}', leftType.type)
+            .replace('{{rightType}}', rightType.type)
+        );
+      }
+    }
+  } else {
+    const minLen = Math.min(leftTypes.length, rightTypes.length);
+    for (let i = 0; i < minLen; i++) {
+      const lt = leftTypes[i].type;
+      const rt = rightTypes[i].type;
+      if (lt === rt) continue;
+      if (NUMERIC_TYPES.includes(lt) && NUMERIC_TYPES.includes(rt)) continue;
+      if (TEMPORAL_TYPES.includes(lt) && TEMPORAL_TYPES.includes(rt)) continue;
+      if (lt === 'text' || rt === 'text') {
+        warnings.push(
+          tr('setOpTypeMismatchWarning')
+            .replace('{{index}}', String(i + 1))
+            .replace('{{col}}', leftTypes[i].name)
+            .replace('{{leftType}}', lt)
+            .replace('{{rightType}}', rt)
+        );
+      } else {
+        warnings.push(
+          tr('setOpTypeIncompatibleWarning')
+            .replace('{{index}}', String(i + 1))
+            .replace('{{col}}', leftTypes[i].name)
+            .replace('{{leftType}}', lt)
+            .replace('{{rightType}}', rt)
+        );
+      }
     }
   }
   return warnings;
@@ -171,10 +204,10 @@ export default function FormSetOp({
 
   const updateConfig = useUpdateConfig(onNodeChange);
 
-  const operation = (node.config.operation as string) ?? 'union';
+  const operation = (node.config.operation as string) ?? DEFAULT_OPERATION;
   const rawRightInput = (node.config.rightInput as string) ?? '';
-  const mode = (node.config.mode as string) ?? 'all';
-  const match = (node.config.match as string) ?? 'by_name';
+  const mode = (node.config.mode as string) ?? DEFAULT_MODE;
+  const match = (node.config.match as string) ?? DEFAULT_MATCH;
 
   const resolveNodeLabel = useCallback(
     (ref: { id: string; config?: Record<string, unknown> } | undefined): string => {
@@ -195,11 +228,11 @@ export default function FormSetOp({
     const node = otherNodes.find((n) => n.id === rawRightInput);
     return node ? (node.config?.alias as string) || node.label || rawRightInput : rawRightInput;
   }, [rawRightInput, otherNodes]);
-  const { confirm } = useConfirmDialog();
 
-  // Intentionally only depends on source/input identity, not operation/match
-  /* eslint-disable react-hooks/exhaustive-deps */
+  const [warnings, setWarnings] = useState<string[]>([]);
+
   useEffect(() => {
+    setWarnings([]);
     if (!taskId || !sourceNode?.id || !rawRightInput) return;
     const api = window.electronAPI?.data;
     if (!api?.getWorkflowNodeColumnTypes) return;
@@ -210,6 +243,7 @@ export default function FormSetOp({
     const rightNodeId = rightNode?.id;
     if (!rightNodeId) return;
 
+    let aborted = false;
     Promise.all([
       api.getWorkflowNodeColumnTypes({
         taskId,
@@ -224,38 +258,30 @@ export default function FormSetOp({
         nodeConfig: (rightNode.config ?? {}) as Record<string, unknown>,
       }),
     ])
-      .then(async ([leftTypes, rightTypes]) => {
+      .then(([leftTypes, rightTypes]) => {
+        if (aborted) return;
         const leftCols = leftTypes.map((t) => t.name);
         const rightCols = rightTypes.map((t) => t.name);
-        const warnings = checkTypeWarnings(
-          leftTypes,
-          rightTypes,
-          leftCols,
-          rightCols,
-          operation,
-          match,
-          tr
+        setWarnings(
+          checkTypeWarnings(leftTypes, rightTypes, leftCols, rightCols, operation, match, tr)
         );
-        if (warnings.length > 0) {
-          const confirmed = await confirm({
-            title: tr('setOpTypeMismatchTitle'),
-            message: (
-              <div>
-                <p>{tr('setOpTypeMismatchDesc')}</p>
-                <pre className="mt-2 whitespace-pre-wrap text-[12px]">{warnings.join('\n')}</pre>
-              </div>
-            ),
-            confirmLabel: tr('setOpIgnoreWarning'),
-            cancelLabel: tr('common.cancel'),
-          });
-          if (!confirmed) {
-            updateConfig((cfg) => ({ ...cfg, rightInput: undefined }));
-          }
-        }
       })
-      .catch(() => {});
-  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config, rawRightInput, otherNodes]);
-  /* eslint-enable react-hooks/exhaustive-deps */
+      .catch(() => {
+        if (!aborted) setWarnings([]);
+      });
+    return () => {
+      aborted = true;
+    };
+  }, [
+    taskId,
+    sourceNode?.id,
+    sourceNode?.type,
+    sourceNode?.config,
+    rawRightInput,
+    otherNodes,
+    operation,
+    match,
+  ]);
 
   return (
     <div className="grid content-start gap-2.5">
@@ -418,6 +444,15 @@ export default function FormSetOp({
           </div>
         </div>
       </div>
+      {warnings.length > 0 && (
+        <div className="rounded-lg border border-error/30 bg-error/5 p-2.5">
+          {warnings.map((w, i) => (
+            <p key={i} className="text-[11px] text-error leading-relaxed">
+              {w}
+            </p>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

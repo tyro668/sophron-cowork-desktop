@@ -1,6 +1,15 @@
 import { createPrepDiagnostic } from '../diagnostics';
 import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, type OperatorDslCodec } from './codec';
+import { DEFAULT_MODE, DEFAULT_MATCH } from '../../operator-schemas/set-op';
+
+function readTableName(cursor: PrepTokenCursor): string | null {
+  if (cursor.eof) return null;
+  const token = cursor.peek();
+  if (!token) return null;
+  cursor.consume();
+  return token.image;
+}
 
 export const setOpCodec: OperatorDslCodec = {
   type: 'set_op',
@@ -10,14 +19,15 @@ export const setOpCodec: OperatorDslCodec = {
     const { text } = command;
     const cursor = new PrepTokenCursor(text, command.line, diagnostics);
     const operation = cursor.expectOneOf(['union', 'intersect', 'except'], 'invalidSetOperation');
-    const rightInput = cursor.expectIdentifier('invalidSetOperationInput');
-    let mode = 'distinct';
-    let match = 'position';
+    const rightInput = readTableName(cursor) ?? '';
+    let mode = DEFAULT_MODE;
+    let match = operation === 'union' ? DEFAULT_MATCH : 'by_position';
     if (cursor.match('mode')) {
       mode = cursor.expectOneOf(['all', 'distinct'], 'invalidSetOperationMode') ?? mode;
     }
-    if (cursor.match('by')) {
-      match = cursor.expectOneOf(['name', 'position'], 'invalidSetOperationMatch') ?? match;
+    if (operation === 'union' && cursor.match('by')) {
+      const matchWord = cursor.expectOneOf(['name', 'position'], 'invalidSetOperationMatch');
+      if (matchWord) match = matchWord === 'name' ? 'by_name' : 'by_position';
     }
     cursor.expectEof('unexpectedSetOperationToken');
     if (!operation || !rightInput) {
@@ -30,15 +40,14 @@ export const setOpCodec: OperatorDslCodec = {
       operation: operation ?? 'union',
       rightInput: rightInput ?? '',
       mode,
-      match: match === 'name' ? 'by_name' : 'by_position',
+      match: match === 'by_name' ? 'by_name' : 'by_position',
     });
   },
   format: (config) => {
     const operation = String(config?.operation ?? 'union');
     const rightInput = String(config?.rightInput ?? 'right_source');
-    const mode = typeof config?.mode === 'string' ? ` mode ${config.mode}` : '';
-    const match =
-      operation === 'union' ? ` by ${config?.match === 'by_name' ? 'name' : 'position'}` : '';
-    return `${operation} ${rightInput}${mode}${match}`;
+    const mode = String(config?.mode ?? DEFAULT_MODE);
+    const match = operation === 'union' ? (config?.match ?? DEFAULT_MATCH) : 'by_position';
+    return `${operation} ${rightInput} mode ${mode}${operation === 'union' ? ` by ${match === 'by_name' ? 'name' : 'position'}` : ''}`;
   },
 };

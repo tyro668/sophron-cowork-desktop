@@ -2,7 +2,6 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { BrowserWindow, ipcMain } from 'electron';
 import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api';
 import { AsyncLocalStorage } from 'async_hooks';
 import type Database from 'better-sqlite3';
@@ -62,6 +61,7 @@ import {
 } from '../../shared/data-field-types';
 import { runInputTableNormalizerProject } from './input-table-normalizer-runner';
 import { COMPILE_STRATEGIES } from './operators/strategy';
+import { SetOpConfigSchema } from '../../shared/operator-schemas';
 import {
   compileSetOpSql,
   compileJoinConditionList,
@@ -3004,20 +3004,20 @@ export class DataTaskStore {
     }
     const leftColumns = await this.getTableColumns(leftRelation);
     const rightColumns = await this.getTableColumns(rightRelation);
-    const config = node.config;
+    const parsed = SetOpConfigSchema.parse(node.config);
+    const effectiveMatch = parsed.operation === 'union' ? parsed.match : 'by_position';
 
     // 前置检查：列数不一致（仅对非 UNION BY NAME 场景）
-    const isUnionByName =
-      String(config.operation ?? 'union') === 'union' && config.match === 'by_name';
+    const isUnionByName = parsed.operation === 'union' && effectiveMatch === 'by_name';
     if (!isUnionByName && leftColumns.length !== rightColumns.length) {
       diagnostics.push({
-        severity: 'warning',
-        message: `左右两表列数不一致（左表 ${leftColumns.length} 列，右表 ${rightColumns.length} 列），缺失列已自动填充 NULL`,
+        severity: 'error',
+        message: `左右两表列数必须一致（左表 ${leftColumns.length} 列，右表 ${rightColumns.length} 列），当前无法执行`,
       });
     }
 
     // 前置检查：按位置匹配时列名不同
-    if (config.match !== 'by_name') {
+    if (effectiveMatch !== 'by_name') {
       const minLen = Math.min(leftColumns.length, rightColumns.length);
       const mismatches: string[] = [];
       for (let i = 0; i < minLen; i++) {
@@ -3038,51 +3038,35 @@ export class DataTaskStore {
     const TEMPORAL_TYPES = ['date', 'datetime'];
     const leftTypes = await this.getTableColumnTypes(leftRelation);
     const rightTypes = await this.getTableColumnTypes(rightRelation);
-    const minTypeLen = Math.min(leftTypes.length, rightTypes.length);
-    for (let i = 0; i < minTypeLen; i++) {
-      const lt = leftTypes[i].type;
-      const rt = rightTypes[i].type;
-      if (lt === rt) continue;
-      const bothNumeric = NUMERIC_TYPES.includes(lt) && NUMERIC_TYPES.includes(rt);
-      const bothTemporal = TEMPORAL_TYPES.includes(lt) && TEMPORAL_TYPES.includes(rt);
-      if (bothNumeric || bothTemporal) continue;
-      if (lt === 'text' || rt === 'text') {
+
+    if (effectiveMatch === 'by_name') {
+      const rightMap = new Map(rightTypes.map((t) => [t.name, t]));
+      for (const leftType of leftTypes) {
+        const rightType = rightMap.get(leftType.name);
+        if (!rightType || leftType.type === rightType.type) continue;
+        const bothNumeric =
+          NUMERIC_TYPES.includes(leftType.type) && NUMERIC_TYPES.includes(rightType.type);
+        const bothTemporal =
+          TEMPORAL_TYPES.includes(leftType.type) && TEMPORAL_TYPES.includes(rightType.type);
+        if (bothNumeric || bothTemporal) continue;
         diagnostics.push({
           severity: 'warning',
-          message: `第 ${i + 1} 列类型不一致（左表「${leftColumns[i]}」: ${lt}，右表「${rightColumns[i]}」: ${rt}），可能导致数据转换异常`,
-        });
-      } else {
-        diagnostics.push({
-          severity: 'warning',
-          message: `第 ${i + 1} 列类型不兼容（左表「${leftColumns[i]}」: ${lt}，右表「${rightColumns[i]}」: ${rt}），可能导致执行错误`,
+          message: `列「${leftType.name}」类型不一致（左表: ${leftType.type}，右表: ${rightType.type}），可能导致数据转换异常`,
         });
       }
-    }
-
-    const typeWarnings = diagnostics.filter(
-      (d) => d.severity === 'warning' && d.message.includes('类型')
-    );
-    if (typeWarnings.length > 0) {
-      const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
-      if (!win) throw new Error('无法找到窗口来显示确认对话框');
-      const channel = `operator-confirm:${Date.now()}`;
-      const confirmed = await new Promise<boolean>((resolve) => {
-        const timeout = setTimeout(() => resolve(false), 30_000).unref();
-        ipcMain.handleOnce(channel, (_event, result: boolean) => {
-          clearTimeout(timeout);
-          resolve(result);
+    } else {
+      const minTypeLen = Math.min(leftTypes.length, rightTypes.length);
+      for (let i = 0; i < minTypeLen; i++) {
+        const lt = leftTypes[i].type;
+        const rt = rightTypes[i].type;
+        if (lt === rt) continue;
+        const bothNumeric = NUMERIC_TYPES.includes(lt) && NUMERIC_TYPES.includes(rt);
+        const bothTemporal = TEMPORAL_TYPES.includes(lt) && TEMPORAL_TYPES.includes(rt);
+        if (bothNumeric || bothTemporal) continue;
+        diagnostics.push({
+          severity: 'warning',
+          message: `第 ${i + 1} 列类型${lt === 'text' || rt === 'text' ? '不一致' : '不兼容'}（左表「${leftColumns[i]}」: ${lt}，右表「${rightColumns[i]}」: ${rt}）${lt === 'text' || rt === 'text' ? '，可能导致数据转换异常' : '，可能导致执行错误'}`,
         });
-        win.webContents.send('data.operatorConfirm', {
-          channel,
-          title: '列类型不匹配',
-          message: '左右两表的列类型不完全匹配，执行时可能出现数据转换异常或精度丢失。',
-          detail: typeWarnings.map((d) => d.message).join('\n'),
-          confirmLabel: '忽略警告，继续执行',
-          cancelLabel: '取消执行',
-        });
-      });
-      if (!confirmed) {
-        throw new Error('用户取消了集合操作执行：列类型不匹配');
       }
     }
 
@@ -3090,7 +3074,7 @@ export class DataTaskStore {
       quoteIdentifier(outputRelation),
       quoteIdentifier(leftRelation),
       quoteIdentifier(rightRelation),
-      config,
+      node.config,
       leftColumns,
       rightColumns
     );

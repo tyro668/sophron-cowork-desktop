@@ -91,6 +91,7 @@ import {
   type PrepDiagnostic,
 } from '../../../shared/prep-dsl';
 import { dataFieldTypeLabel } from '../../../shared/data-field-types';
+import { DEFAULT_MODE, DEFAULT_MATCH } from '../../../shared/operator-schemas/set-op';
 import { GlassDataGridPreview } from '../GlassDataGridPreview';
 import {
   DataMoreMenu,
@@ -2953,14 +2954,16 @@ function getWorkflowConfigSummary(node: DataWorkflowNode, t: TranslateFn): Workf
     case 'set_op': {
       const rawOperation = stringValue(config.operation, 'union');
       const opValue = t(`data.workflow.summaryLabels.operation_${rawOperation}`);
+      const effectiveMatch =
+        rawOperation === 'union' ? stringValue(config.match, DEFAULT_MATCH) : 'by_position';
       summary = {
         primary: [
           summaryRow(t, 'operation', opValue || rawOperation),
           summaryRow(t, 'rightInput', stringValue(config.rightInput)),
         ],
         details: [
-          summaryRow(t, 'mode', stringValue(config.mode, 'distinct')),
-          summaryRow(t, 'match', stringValue(config.match, 'by_position')),
+          summaryRow(t, 'mode', stringValue(config.mode, DEFAULT_MODE)),
+          ...(rawOperation === 'union' ? [summaryRow(t, 'match', effectiveMatch)] : []),
         ],
       };
       break;

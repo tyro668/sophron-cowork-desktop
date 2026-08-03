@@ -1034,7 +1034,7 @@
         "setOpSourcesHint": "请在上方选择参与运算的两个数据集",
         "setOpConnectionHint": "选择行级合并方式：并集、交集或差集",
         "setOpConfigHint": "配置去重方式与字段匹配规则",
-        "setOpColumnCountMismatch": "左右两表列数不一致（左表 {{leftCount}} 列，右表 {{rightCount}} 列），缺失列已自动填充 NULL",
+        "setOpColumnCountMismatch": "左右两表列数必须一致（左表 {{leftCount}} 列，右表 {{rightCount}} 列），当前无法执行",
         "setOpColumnNameMismatch": "第 {{index}} 列：左表「{{left}}」≠ 右表「{{right}}」",
         "setOpPositionMatchWarnings": "左右两表按位置匹配，但列名不同：{{details}}",
         "setOpTypeMismatchWarning": "第 {{index}} 列「{{col}}」类型不一致（{{leftType}} vs {{rightType}}），可能导致数据转换异常",

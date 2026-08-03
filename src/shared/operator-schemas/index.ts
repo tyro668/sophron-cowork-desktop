@@ -25,6 +25,7 @@ export type { DateFormat } from './type-convert';
 export { UnpivotConfigSchema } from './unpivot';
 export { UnnestConfigSchema } from './unnest';
 export { SetOpConfigSchema } from './set-op';
+export { DEFAULT_OPERATION, DEFAULT_MODE, DEFAULT_MATCH } from './set-op';
 export { AggregateConfigSchema } from './aggregate';
 export { CalculateFieldConfigSchema } from './calculate-field';
 export { MissingValueConfigSchema } from './missing-value';

@@ -20,49 +20,16 @@ export function compileSetOpSql(
   const parsed = parseOperatorConfig(SetOpConfigSchema, config);
   const operation = parsed.operation.toUpperCase();
   const mode = parsed.mode === 'all' ? ' ALL' : '';
-  const match = parsed.match;
+  const match = parsed.operation === 'union' ? parsed.match : 'by_position';
 
   if (operation === 'UNION' && match === 'by_name') {
     return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${left} ${operation}${mode} BY NAME SELECT * FROM ${right}`;
   }
 
   if (leftColumns && rightColumns && leftColumns.length !== rightColumns.length) {
-    if (operation === 'INTERSECT' || operation === 'EXCEPT') {
-      const matchLen = Math.min(leftColumns.length, rightColumns.length);
-      const leftCols = leftColumns.slice(0, matchLen);
-      const rightCols = rightColumns.slice(0, matchLen);
-      const joinClause = leftCols
-        .map(
-          (col, i) =>
-            `CAST(${left}.${quoteIdentifier(col)} AS VARCHAR) IS NOT DISTINCT FROM CAST(${right}.${quoteIdentifier(rightCols[i])} AS VARCHAR)`
-        )
-        .join(' AND ');
-      const keyword = operation === 'EXCEPT' ? 'NOT EXISTS' : 'EXISTS';
-      return `
-        CREATE TEMP TABLE ${output} AS
-        SELECT ${left}.* FROM ${left}
-        WHERE ${keyword} (
-          SELECT 1 FROM ${right}
-          WHERE ${joinClause}
-        )
-      `;
-    }
-    const allColumns = [...new Set([...leftColumns, ...rightColumns])];
-    const leftProj = allColumns
-      .map((col) =>
-        leftColumns.includes(col)
-          ? `${left}.${quoteIdentifier(col)}`
-          : `NULL AS ${quoteIdentifier(col)}`
-      )
-      .join(', ');
-    const rightProj = allColumns
-      .map((col) =>
-        rightColumns.includes(col)
-          ? `${right}.${quoteIdentifier(col)}`
-          : `NULL AS ${quoteIdentifier(col)}`
-      )
-      .join(', ');
-    return `CREATE TEMP TABLE ${output} AS SELECT ${leftProj} FROM ${left} ${operation}${mode} SELECT ${rightProj} FROM ${right}`;
+    throw new Error(
+      `${operation} by position requires the same number of columns on both sides (left: ${leftColumns.length}, right: ${rightColumns.length})`
+    );
   }
 
   return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${left} ${operation}${mode} SELECT * FROM ${right}`;
