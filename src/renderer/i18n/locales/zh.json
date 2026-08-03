@@ -2312,6 +2312,7 @@
     "confirmGenerateTask": "确认生成",
     "generateSupportedOnly": "仅生成可支持部分",
     "generatedTaskReady": "数据任务已生成，后续将复用该任务执行。",
+    "generatedTaskReadyWithoutDsl": "数据任务已生成，但任务逻辑预览暂时不可用。",
     "generatedTaskReview": "生成结果",
     "requiredColumns": "所需字段",
     "requiredColumnsValue": "所需字段：{{columns}}",

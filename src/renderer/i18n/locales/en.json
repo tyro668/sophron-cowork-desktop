@@ -2312,6 +2312,7 @@
     "confirmGenerateTask": "Confirm and generate",
     "generateSupportedOnly": "Generate supported steps only",
     "generatedTaskReady": "Data task generated. Future runs will reuse this task.",
+    "generatedTaskReadyWithoutDsl": "Data task generated, but its logic preview is temporarily unavailable.",
     "generatedTaskReview": "Generated result",
     "requiredColumns": "Required fields",
     "requiredColumnsValue": "Required fields: {{columns}}",

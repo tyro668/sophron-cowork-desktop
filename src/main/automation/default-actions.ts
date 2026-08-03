@@ -247,9 +247,12 @@ export function createDefaultAutomationActionRegistry(
         taskId: String(config.taskId),
         source: config.source as never,
         output: config.output as never,
-        // The saved task workflow is authoritative. Generation-time schema
-        // snapshots may be stale after the task is edited, so runtime operator
-        // validation and the temporary execution validate the current workflow.
+        requiredColumns: Array.isArray(config.requiredColumns)
+          ? (config.requiredColumns as never)
+          : [],
+        expectedOutputSchema: Array.isArray(config.expectedOutputSchema)
+          ? (config.expectedOutputSchema as never)
+          : [],
         schemaPolicy: config.schemaPolicy === 'strict' ? 'strict' : 'required_subset',
         mode: config.outputMode === 'temporary' ? 'temporary' : 'persisted',
       });

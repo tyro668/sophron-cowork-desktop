@@ -937,7 +937,7 @@ function CloudTableProcessActionEditor({
   outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
   onChange: (node: AutomationActionNode) => void;
-  onGeneratedTaskSuccess: () => void;
+  onGeneratedTaskSuccess: (workflowDslAvailable: boolean) => void;
   tr: (key: string, fallback: string) => string;
 }) {
   const sourceLocation = getSourceLocation(config);
@@ -1114,7 +1114,7 @@ function CloudTableProcessActionEditor({
         buildGenerationInput(processRequirement)
       );
       onChange(createGeneratedCloudTableProcessNode(node, config, result));
-      onGeneratedTaskSuccess();
+      onGeneratedTaskSuccess(result.workflowDslAvailable);
     } catch (error) {
       setGenerationError(
         error instanceof Error
@@ -2041,7 +2041,7 @@ export function ActionChainSection({
   outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
   onDraftChange: (draft: AutomationDraft) => void;
-  onGeneratedTaskSuccess: () => void;
+  onGeneratedTaskSuccess: (workflowDslAvailable: boolean) => void;
   tr: (key: string, fallback: string) => string;
 }) {
   const nodes = draft.actionGraph.nodes;
@@ -2143,7 +2143,7 @@ function ActionStepCard({
   inputTables: DataDashboard['datasets'];
   outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
-  onGeneratedTaskSuccess: () => void;
+  onGeneratedTaskSuccess: (workflowDslAvailable: boolean) => void;
   onRemove: () => void;
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
@@ -2248,7 +2248,7 @@ function DataProcessActionEditor({
   inputTables: DataDashboard['datasets'];
   outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
-  onGeneratedTaskSuccess: () => void;
+  onGeneratedTaskSuccess: (workflowDslAvailable: boolean) => void;
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
 }) {
@@ -2462,7 +2462,7 @@ function ActionConfigEditor({
   inputTables: DataDashboard['datasets'];
   outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
-  onGeneratedTaskSuccess: () => void;
+  onGeneratedTaskSuccess: (workflowDslAvailable: boolean) => void;
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
 }) {
