@@ -39,9 +39,15 @@ import type {
   WorkflowIr,
   WorkflowMetricIr,
   WorkflowOperationIr,
+  WorkflowWindowFrame,
+  WorkflowWindowFrameBound,
 } from './workflow-model';
 import { validateAndNormalizeWorkflowIr } from './workflow-ir';
 import { getAiPrepDslExpressionLowering } from './prep-dsl-capability-profile';
+import {
+  getWorkflowAggregateFunctionDefinition,
+  normalizeWorkflowAggregateFunction,
+} from './workflow-aggregate-registry';
 export type {
   GeneratedDataTaskWorkflow,
   GeneratedWorkflowColumnBinding,
@@ -241,12 +247,21 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
   },
   sort: {
     compile(operation, context) {
-      const column = context.requireColumn(
-        requireWorkflowColumnName(operation.column, 'sort.column'),
-        'sort.column'
-      );
+      const requestedKeys =
+        operation.keys && operation.keys.length > 0
+          ? operation.keys
+          : [
+              {
+                field: requireWorkflowColumnName(operation.column!, 'sort.column'),
+                direction: operation.direction ?? 'asc',
+              },
+            ];
+      const keys = requestedKeys.map((key) => ({
+        ...key,
+        field: context.requireColumn(key.field, 'sort.keys').name,
+      }));
       context.emitOperator('sort', {
-        keys: [{ field: column.name, direction: operation.direction }],
+        keys,
       });
     },
   },
@@ -407,6 +422,79 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
       context.upsertColumn(inferredColumn);
     },
   },
+  derive_window: {
+    compile(operation, context) {
+      const column = normalizeRequiredName(
+        operation.column,
+        'Generated derive_window operation requires column'
+      );
+      const windowValue = compileWorkflowWindowValue(operation, context);
+      const partitionBy = operation.partitionBy.map((name) =>
+        context.requireColumn(name, 'derive_window.partitionBy')
+      );
+      const orderBy = operation.orderBy.map((key) => ({
+        ...key,
+        column: context.requireColumn(key.field, 'derive_window.orderBy'),
+      }));
+      const windowClauses: string[] = [];
+      if (partitionBy.length > 0) {
+        windowClauses.push(
+          `PARTITION BY ${partitionBy.map((binding) => formatDslField(binding.name)).join(', ')}`
+        );
+      }
+      if (orderBy.length > 0) {
+        windowClauses.push(
+          `ORDER BY ${orderBy
+            .map(
+              (key) =>
+                `${formatDslField(key.column.name)} ${key.direction.toUpperCase()}${
+                  key.nulls ? ` NULLS ${key.nulls.toUpperCase()}` : ''
+                }`
+            )
+            .join(', ')}`
+        );
+      }
+      if (operation.frame) windowClauses.push(formatWorkflowWindowFrame(operation.frame));
+      const expression = `${windowValue.call} OVER (${windowClauses.join(' ')})`;
+      const sourceColumns = uniqueSourceColumns([
+        ...windowValue.sourceColumns,
+        ...partitionBy.flatMap(sourceColumnsFromBinding),
+        ...orderBy.flatMap((key) => sourceColumnsFromBinding(key.column)),
+      ]);
+      const inferredColumn = {
+        name: column,
+        type: windowValue.type,
+        sourceColumns,
+        expression,
+      };
+      const existingColumn = context
+        .getCurrentColumns()
+        .find((currentColumn) => currentColumn.name.toLowerCase() === column.toLowerCase());
+      if (existingColumn) {
+        const tempColumn = createGeneratedTemporaryColumnName(column, context.getCurrentColumns());
+        context.emitOperator('calculate_field', {
+          calculations: [{ field: tempColumn, expression }],
+        });
+        context.emitOperator('field_select', {
+          mode: 'exclude',
+          columns: [existingColumn.name],
+        });
+        context.emitOperator('field_mapping', {
+          mappings: [{ source: tempColumn, target: existingColumn.name }],
+        });
+        context.removeColumn(existingColumn.name);
+        context.upsertColumn({
+          ...inferredColumn,
+          name: existingColumn.name,
+        });
+        return;
+      }
+      context.emitOperator('calculate_field', {
+        calculations: [{ field: column, expression }],
+      });
+      context.upsertColumn(inferredColumn);
+    },
+  },
   aggregate: {
     compile(operation, context) {
       const groupBy = operation.groupBy.map((expression) => {
@@ -472,6 +560,17 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         });
         return;
       }
+      if (operation.config.strategy === 'drop_rows_by_nulls') {
+        const columns = operation.config.columns.map(
+          (name) => context.requireColumn(name, 'missing_value.columns').name
+        );
+        context.emitOperator('missing_value', {
+          strategy: 'drop_rows_by_nulls',
+          columns,
+          condition: operation.config.condition,
+        });
+        return;
+      }
       const rules = operation.config.rules.map((rule) => {
         const column = context.requireColumn(rule.column, 'missing_value.rules');
         switch (rule.method) {
@@ -530,6 +629,9 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         ...key,
         field: context.requireColumn(key.field, 'limit.orderBy').name,
       }));
+      const groupBy = (config.groupBy ?? []).map(
+        (name) => context.requireColumn(name, 'limit.groupBy').name
+      );
       if (config.mode === 'top') {
         if (orderBy.length === 0) {
           throw new DataCommandError(
@@ -546,10 +648,23 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         });
         return;
       }
+      if (config.mode === 'random') {
+        context.emitOperator('limit', {
+          mode: 'random',
+          limit: config.unit === 'rows' ? Math.floor(config.limit) : config.limit,
+          unit: config.unit,
+          method: config.method ?? 'system',
+          seed: config.seed,
+        });
+        return;
+      }
       context.emitOperator('limit', {
         mode: 'fixed',
-        limit: Math.floor(config.limit),
+        limit: config.unit === 'rows' ? Math.floor(config.limit) : config.limit,
         unit: config.unit === 'percent' ? 'percent' : 'rows',
+        orderBy: orderBy.length > 0 ? orderBy : undefined,
+        groupBy: groupBy.length > 0 ? groupBy : undefined,
+        ties: config.ties === true,
         offset: config.offset > 0 ? config.offset : undefined,
       });
     },
@@ -677,42 +792,48 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
   pivot: {
     compile(operation, context) {
       const config = operation.config;
-      if (config.on.length !== 1 || config.values.length === 0 || config.using.length !== 1) {
+      if (config.on.length !== 1 || config.values.length === 0 || config.using.length === 0) {
         throw new DataCommandError(
           'VALIDATION_FAILED',
-          'Generated automation pivot requires exactly one on field, fixed non-empty values, and exactly one metric'
+          'Generated automation pivot requires exactly one on field, fixed non-empty values, and at least one metric'
         );
       }
       const on = context.requireColumn(config.on[0], 'pivot.on');
       const groupBy = config.groupBy.map((name) => context.requireColumn(name, 'pivot.groupBy'));
-      const metric = config.using[0];
-      const compiled =
-        metric.expression === '*'
-          ? null
-          : compileWorkflowExpression(metric.expression, context, 'pivot.metric');
-      const fn = normalizePlanAggregateFunction(metric.function);
-      const binding = compiled
-        ? { name: compiled.dsl, type: compiled.type, sourceColumns: compiled.sourceColumns }
-        : null;
-      assertAggregateMetricType(fn, binding);
-      const alias = normalizeRequiredName(metric.alias, 'Generated pivot metric requires alias');
+      const metrics = config.using.map((metric) =>
+        compileWorkflowAggregateMetric(
+          {
+            fn: metric.function,
+            expression: metric.expression,
+            alias: metric.alias,
+            parameters: metric.parameters,
+          },
+          context
+        )
+      );
       context.emitOperator('pivot', {
         on: [on.name],
         values: config.values,
-        using: [{ function: fn, expression: compiled?.dsl ?? '*', alias }],
+        using: metrics.map((metric, index) => ({
+          function: normalizePlanAggregateFunction(config.using[index].function),
+          expression: metric.expression ?? '*',
+          alias: metric.alias,
+        })),
         groupBy: groupBy.map((column) => column.name),
       });
       context.replaceColumns([
         ...groupBy,
-        ...config.values.map((value) => ({
-          name: `${String(value)}_${alias}`,
-          type: inferAggregateMetricType(fn, binding),
-          sourceColumns: uniqueSourceColumns([
-            ...sourceColumnsFromBinding(on),
-            ...(compiled?.sourceColumns ?? []),
-          ]),
-          expression: `pivot ${on.name} = ${String(value)}`,
-        })),
+        ...config.values.flatMap((value) =>
+          metrics.map((metric) => ({
+            name: `${String(value)}_${metric.alias}`,
+            type: metric.type,
+            sourceColumns: uniqueSourceColumns([
+              ...sourceColumnsFromBinding(on),
+              ...metric.sourceColumns,
+            ]),
+            expression: `pivot ${on.name} = ${String(value)} using ${metric.alias}`,
+          }))
+        ),
       ]);
     },
   },
@@ -833,6 +954,8 @@ function lowerWorkflowIrOperation(
       return WORKFLOW_IR_OPERATION_LOWERERS.rename.compile(operation, context);
     case 'derive':
       return WORKFLOW_IR_OPERATION_LOWERERS.derive.compile(operation, context);
+    case 'derive_window':
+      return WORKFLOW_IR_OPERATION_LOWERERS.derive_window.compile(operation, context);
     case 'aggregate':
       return WORKFLOW_IR_OPERATION_LOWERERS.aggregate.compile(operation, context);
     case 'deduplicate':
@@ -1002,6 +1125,12 @@ function compileWorkflowExpression(
         case 'date_diff':
           assertCompiledDateDiffArgs(args, expressionContext);
           break;
+        case 'date_part':
+          assertCompiledDatePartArgs(args, expressionContext);
+          break;
+        case 'format_literal':
+          assertCompiledFormatLiteralArgs(expression.name, args, expressionContext);
+          break;
         case 'conditional':
           return compileWorkflowIfElse(args, expressionContext);
         case 'compatible':
@@ -1021,11 +1150,11 @@ function compileWorkflowExpression(
           : argument.dsl
       );
       return {
-        dsl: `${functionName}(${dslArgs.join(', ')})`,
-        type:
-          expression.name === 'nullif' || expression.name === 'coalesce'
-            ? args[0]?.type
-            : inferWorkflowFunctionType(expression.name),
+        dsl:
+          functionDefinition?.callSyntax === 'bare'
+            ? functionName
+            : `${functionName}(${dslArgs.join(', ')})`,
+        type: inferWorkflowFunctionType(expression.name, args),
         sourceColumns: uniqueSourceColumns(args.flatMap((argument) => argument.sourceColumns)),
         precedence: 4,
       };
@@ -1076,7 +1205,8 @@ function assertWorkflowFunctionArgumentTypes(
     if (!argument?.type || expectedType === 'any') return;
     const actualType = normalizeDslTypeName(argument.type);
     const compatible =
-      (expectedType === 'text' && actualType === 'text') ||
+      (expectedType === 'text' &&
+        (actualType === 'text' || typeof argument.literalValue === 'string')) ||
       (expectedType === 'numeric' && isNumericDslType(actualType)) ||
       (expectedType === 'integer' && actualType === 'integer') ||
       (expectedType === 'temporal' && ['date', 'datetime'].includes(actualType)) ||
@@ -1207,9 +1337,16 @@ function assertCompiledFilterComparable(
   );
 }
 
-function inferWorkflowFunctionType(name: string): string | undefined {
+function inferWorkflowFunctionType(
+  name: string,
+  args: CompiledWorkflowExpression[] = []
+): string | undefined {
   const type = workflowExpressionFunctionResultType(name);
-  return type === 'text' || type === 'integer' || type === 'decimal' ? type : undefined;
+  if (type === 'same_as_first') return args[0]?.type;
+  if (type === 'same_as_second') return args[1]?.type;
+  return ['text', 'integer', 'decimal', 'boolean', 'date', 'datetime'].includes(type ?? '')
+    ? type
+    : undefined;
 }
 
 const WORKFLOW_DATE_DIFF_UNIT_SET = new Set<string>(WORKFLOW_DATE_DIFF_UNITS);
@@ -1250,6 +1387,149 @@ function assertCompiledDateDiffArgs(args: CompiledWorkflowExpression[], context:
   }
 }
 
+function assertCompiledDatePartArgs(args: CompiledWorkflowExpression[], context: string): void {
+  const unit = args[0];
+  const normalizedUnit =
+    typeof unit?.literalValue === 'string' ? unit.literalValue.trim().toLowerCase() : '';
+  if (!WORKFLOW_DATE_DIFF_UNIT_SET.has(normalizedUnit)) {
+    throw new DataCommandError(
+      'VALIDATION_FAILED',
+      `Generated workflow ${context} date part must be a supported literal unit`
+    );
+  }
+}
+
+function assertCompiledFormatLiteralArgs(
+  name: string,
+  args: CompiledWorkflowExpression[],
+  context: string
+): void {
+  if (typeof args[1]?.literalValue === 'string' && args[1].literalValue.length > 0) return;
+  throw new DataCommandError(
+    'VALIDATION_FAILED',
+    `Generated workflow ${context} ${name} format must be a non-empty string literal`
+  );
+}
+
+function compileWorkflowWindowValue(
+  operation: Extract<WorkflowOperationIr, { type: 'derive_window' }>,
+  context: WorkflowIrLoweringContext
+): {
+  call: string;
+  type?: string;
+  sourceColumns: Array<{ name: string; type?: string }>;
+} {
+  const fn = operation.function;
+  const aggregateFunction = normalizeWorkflowAggregateFunction(fn);
+  if (aggregateFunction) {
+    const metric = compileWorkflowAggregateMetric(
+      {
+        fn: aggregateFunction,
+        expression: operation.expression ?? '*',
+        alias: operation.column,
+        parameters: operation.parameters,
+      },
+      context
+    );
+    return {
+      call: formatWorkflowAggregateCall(aggregateFunction, metric.expression ?? '*'),
+      type: metric.type,
+      sourceColumns: metric.sourceColumns,
+    };
+  }
+  if (['row_number', 'rank', 'dense_rank'].includes(fn)) {
+    return { call: `${fn}()`, type: 'integer', sourceColumns: [] };
+  }
+  if (fn === 'percent_rank' || fn === 'cume_dist') {
+    return { call: `${fn}()`, type: 'decimal', sourceColumns: [] };
+  }
+  if (fn === 'ntile') {
+    return { call: `ntile(${operation.buckets})`, type: 'integer', sourceColumns: [] };
+  }
+  const compiled =
+    operation.expression && operation.expression !== '*'
+      ? compileWorkflowExpression(operation.expression, context, 'derive_window.expression')
+      : null;
+  if (!compiled) {
+    throw new DataCommandError(
+      'VALIDATION_FAILED',
+      `Generated derive_window ${fn} requires an expression`
+    );
+  }
+  if (fn === 'first_value' || fn === 'last_value') {
+    return {
+      call: `${fn}(${compiled.dsl})`,
+      type: compiled.type,
+      sourceColumns: compiled.sourceColumns,
+    };
+  }
+  if (fn === 'nth_value') {
+    return {
+      call: `nth_value(${compiled.dsl}, ${operation.nth})`,
+      type: compiled.type,
+      sourceColumns: compiled.sourceColumns,
+    };
+  }
+  if (fn === 'lag' || fn === 'lead') {
+    const args = [compiled.dsl];
+    if (operation.offset !== undefined || operation.defaultValue !== undefined) {
+      args.push(String(operation.offset ?? 1));
+    }
+    if (operation.defaultValue !== undefined) {
+      const defaultType =
+        typeof operation.defaultValue === 'string'
+          ? 'text'
+          : inferLiteralValueType(operation.defaultValue);
+      if (compiled.type && defaultType && !areComparableColumnTypes(compiled.type, defaultType)) {
+        throw new DataCommandError(
+          'VALIDATION_FAILED',
+          `Generated derive_window ${fn} defaultValue is incompatible with ${compiled.dsl} (${compiled.type})`
+        );
+      }
+      args.push(literalToDsl(operation.defaultValue));
+    }
+    return {
+      call: `${fn}(${args.join(', ')})`,
+      type: compiled.type,
+      sourceColumns: compiled.sourceColumns,
+    };
+  }
+  throw new DataCommandError(
+    'VALIDATION_FAILED',
+    `Generated derive_window uses unsupported function: ${fn}`
+  );
+}
+
+function formatWorkflowWindowFrame(frame: WorkflowWindowFrame): string {
+  const parts = [
+    `${frame.type.toUpperCase()} BETWEEN ${formatWorkflowWindowFrameBound(frame.start)} AND ${formatWorkflowWindowFrameBound(frame.end)}`,
+  ];
+  if (frame.exclude) parts.push(`EXCLUDE ${frame.exclude.replace('_', ' ').toUpperCase()}`);
+  return parts.join(' ');
+}
+
+function formatWorkflowWindowFrameBound(bound: WorkflowWindowFrameBound): string {
+  switch (bound.type) {
+    case 'unbounded_preceding':
+      return 'UNBOUNDED PRECEDING';
+    case 'current_row':
+      return 'CURRENT ROW';
+    case 'unbounded_following':
+      return 'UNBOUNDED FOLLOWING';
+    case 'preceding':
+    case 'following': {
+      const offset = bound.unit
+        ? `INTERVAL ${bound.offset} ${bound.unit.toUpperCase()}`
+        : String(bound.offset);
+      return `${offset} ${bound.type.toUpperCase()}`;
+    }
+  }
+}
+
+function formatWorkflowAggregateCall(fn: string, expression: string): string {
+  return fn === 'count_distinct' ? `count(DISTINCT ${expression})` : `${fn}(${expression})`;
+}
+
 function compileWorkflowAggregateMetric(
   metric: WorkflowMetricIr,
   context: WorkflowIrLoweringContext
@@ -1275,12 +1555,15 @@ function compileWorkflowAggregateMetric(
     : null;
   assertAggregateMetricType(fn, sourceBinding);
   const alias = normalizeRequiredName(metric.alias, 'Generated aggregate metric requires alias');
+  const expression = [compiled?.dsl ?? '*', ...(metric.parameters ?? []).map(literalToDsl)].join(
+    ', '
+  );
   return {
-    dsl: `${fn}(${compiled?.dsl ?? '*'}) as ${formatDslField(alias)}`,
+    dsl: `${formatWorkflowAggregateCall(fn, expression)} as ${formatDslField(alias)}`,
     alias,
     type: inferAggregateMetricType(fn, sourceBinding),
     sourceColumns: compiled?.sourceColumns ?? [],
-    expression: compiled?.dsl,
+    expression,
   };
 }
 
@@ -1435,20 +1718,12 @@ function normalizeDecimalScale(scale: unknown): number {
 }
 
 function normalizePlanAggregateFunction(fn: unknown): string {
-  switch (fn) {
-    case 'sum':
-    case 'avg':
-    case 'min':
-    case 'max':
-    case 'count':
-    case 'count_distinct':
-      return fn;
-    default:
-      throw new DataCommandError(
-        'VALIDATION_FAILED',
-        `Generated aggregate operation uses unsupported function: ${String(fn)}`
-      );
-  }
+  const normalized = normalizeWorkflowAggregateFunction(fn);
+  if (normalized) return normalized;
+  throw new DataCommandError(
+    'VALIDATION_FAILED',
+    `Generated aggregate operation uses unsupported function: ${String(fn)}`
+  );
 }
 
 function sourceColumnsFromBinding(
@@ -1521,13 +1796,16 @@ function assertAggregateMetricType(
   fn: string,
   sourceColumn: GeneratedWorkflowColumnBinding | null
 ): void {
-  if (!sourceColumn || fn === 'count' || fn === 'count_distinct' || fn === 'min' || fn === 'max') {
-    return;
-  }
-  if (sourceColumn.type && !isNumericDslType(sourceColumn.type)) {
+  const definition = getWorkflowAggregateFunctionDefinition(fn);
+  if (!sourceColumn || definition?.argumentType === 'any') return;
+  const incompatible =
+    definition?.argumentType === 'numeric'
+      ? sourceColumn.type && !isNumericDslType(sourceColumn.type)
+      : sourceColumn.type && normalizeDslTypeName(sourceColumn.type) !== 'text';
+  if (incompatible) {
     throw new DataCommandError(
       'VALIDATION_FAILED',
-      `Generated aggregate metric ${fn} requires a numeric column, got ${sourceColumn.name} (${sourceColumn.type})`
+      `Generated aggregate metric ${fn} requires a ${definition?.argumentType} column, got ${sourceColumn.name} (${sourceColumn.type})`
     );
   }
 }
@@ -1536,8 +1814,10 @@ function inferAggregateMetricType(
   fn: string,
   sourceColumn: GeneratedWorkflowColumnBinding | null
 ): string | undefined {
-  if (fn === 'count' || fn === 'count_distinct') return 'integer';
-  if (fn === 'avg') return 'decimal';
+  const resultType = getWorkflowAggregateFunctionDefinition(fn)?.resultType;
+  if (resultType === 'integer' || resultType === 'decimal' || resultType === 'text') {
+    return resultType;
+  }
   if (fn === 'sum')
     return sourceColumn?.type && isDecimalLikeDslType(sourceColumn.type) ? 'decimal' : 'integer';
   return sourceColumn?.type;

@@ -75,7 +75,11 @@ export type WorkflowExpressionFunctionResultType =
   | 'text'
   | 'integer'
   | 'decimal'
+  | 'boolean'
+  | 'date'
+  | 'datetime'
   | 'same_as_first'
+  | 'same_as_second'
   | 'conditional';
 
 export type WorkflowExpressionArgumentType =
@@ -88,11 +92,18 @@ export type WorkflowExpressionArgumentType =
 
 interface WorkflowExpressionFunctionDefinitionBase {
   dslName: string;
+  callSyntax?: 'function' | 'bare';
   minArgs: number;
   maxArgs?: number;
   resultType?: WorkflowExpressionFunctionResultType;
   argumentTypes?: readonly WorkflowExpressionArgumentType[];
-  semanticRule?: 'date_diff' | 'conditional' | 'compatible' | 'numeric';
+  semanticRule?:
+    | 'date_diff'
+    | 'date_part'
+    | 'format_literal'
+    | 'conditional'
+    | 'compatible'
+    | 'numeric';
   coerceFirstArgToText?: boolean;
 }
 
@@ -139,6 +150,52 @@ export const WORKFLOW_EXPRESSION_FUNCTION_REGISTRY = {
     resultType: 'integer',
     argumentTypes: ['temporal'],
     typescriptDeclaration: 'declare function month(value: Date): number;',
+  },
+  day: {
+    dslName: 'DAY',
+    native: true,
+    minArgs: 1,
+    maxArgs: 1,
+    resultType: 'integer',
+    argumentTypes: ['temporal'],
+    typescriptDeclaration: 'declare function day(value: Date): number;',
+  },
+  dateTrunc: {
+    dslName: 'DATE_TRUNC',
+    native: true,
+    minArgs: 2,
+    maxArgs: 2,
+    resultType: 'same_as_second',
+    argumentTypes: ['text', 'temporal'],
+    semanticRule: 'date_part',
+    typescriptDeclaration: `declare function dateTrunc(unit: ${WORKFLOW_DATE_DIFF_UNITS.map((unit) => JSON.stringify(unit)).join(' | ')}, value: Date): Date;`,
+  },
+  strptime: {
+    dslName: 'STRPTIME',
+    native: true,
+    minArgs: 2,
+    maxArgs: 2,
+    resultType: 'datetime',
+    argumentTypes: ['text', 'text'],
+    semanticRule: 'format_literal',
+    typescriptDeclaration: 'declare function strptime(value: string, format: string): Date;',
+  },
+  currentDate: {
+    dslName: 'CURRENT_DATE',
+    callSyntax: 'bare',
+    native: true,
+    minArgs: 0,
+    maxArgs: 0,
+    resultType: 'date',
+    typescriptDeclaration: 'declare function currentDate(): Date;',
+  },
+  now: {
+    dslName: 'NOW',
+    native: true,
+    minArgs: 0,
+    maxArgs: 0,
+    resultType: 'datetime',
+    typescriptDeclaration: 'declare function now(): Date;',
   },
   upper: {
     dslName: 'UPPER',
@@ -255,6 +312,142 @@ export const WORKFLOW_EXPRESSION_FUNCTION_REGISTRY = {
     semanticRule: 'numeric',
     typescriptDeclaration: 'declare function abs(value: number): number;',
   },
+  ceil: {
+    dslName: 'CEIL',
+    native: true,
+    minArgs: 1,
+    maxArgs: 1,
+    resultType: 'decimal',
+    argumentTypes: ['numeric'],
+    semanticRule: 'numeric',
+    typescriptDeclaration: 'declare function ceil(value: number): number;',
+  },
+  floor: {
+    dslName: 'FLOOR',
+    native: true,
+    minArgs: 1,
+    maxArgs: 1,
+    resultType: 'decimal',
+    argumentTypes: ['numeric'],
+    semanticRule: 'numeric',
+    typescriptDeclaration: 'declare function floor(value: number): number;',
+  },
+  length: {
+    dslName: 'LENGTH',
+    native: true,
+    minArgs: 1,
+    maxArgs: 1,
+    resultType: 'integer',
+    argumentTypes: ['any'],
+    coerceFirstArgToText: true,
+    typescriptDeclaration: 'declare function length(value: unknown): number;',
+  },
+  substr: {
+    dslName: 'SUBSTR',
+    native: true,
+    minArgs: 2,
+    maxArgs: 3,
+    resultType: 'text',
+    argumentTypes: ['any', 'integer', 'integer'],
+    coerceFirstArgToText: true,
+    typescriptDeclaration:
+      'declare function substr(value: unknown, start: number, length?: number): string;',
+  },
+  splitPart: {
+    dslName: 'SPLIT_PART',
+    native: true,
+    minArgs: 3,
+    maxArgs: 3,
+    resultType: 'text',
+    argumentTypes: ['any', 'text', 'integer'],
+    coerceFirstArgToText: true,
+    typescriptDeclaration:
+      'declare function splitPart(value: unknown, delimiter: string, part: number): string;',
+  },
+  startsWith: {
+    dslName: 'STARTS_WITH',
+    native: true,
+    minArgs: 2,
+    maxArgs: 2,
+    resultType: 'boolean',
+    argumentTypes: ['any', 'text'],
+    coerceFirstArgToText: true,
+    typescriptDeclaration: 'declare function startsWith(value: unknown, prefix: string): boolean;',
+  },
+  endsWith: {
+    dslName: 'ENDS_WITH',
+    native: true,
+    minArgs: 2,
+    maxArgs: 2,
+    resultType: 'boolean',
+    argumentTypes: ['any', 'text'],
+    coerceFirstArgToText: true,
+    typescriptDeclaration: 'declare function endsWith(value: unknown, suffix: string): boolean;',
+  },
+  regexpReplace: {
+    dslName: 'REGEXP_REPLACE',
+    native: true,
+    minArgs: 3,
+    maxArgs: 4,
+    resultType: 'text',
+    argumentTypes: ['any', 'text', 'text', 'text'],
+    coerceFirstArgToText: true,
+    typescriptDeclaration:
+      'declare function regexpReplace(value: unknown, pattern: string, replacement: string, options?: string): string;',
+  },
+  regexpMatches: {
+    dslName: 'REGEXP_MATCHES',
+    native: true,
+    minArgs: 2,
+    maxArgs: 2,
+    resultType: 'boolean',
+    argumentTypes: ['any', 'text'],
+    coerceFirstArgToText: true,
+    typescriptDeclaration:
+      'declare function regexpMatches(value: unknown, pattern: string): boolean;',
+  },
+  lpad: {
+    dslName: 'LPAD',
+    native: true,
+    minArgs: 3,
+    maxArgs: 3,
+    resultType: 'text',
+    argumentTypes: ['any', 'integer', 'text'],
+    coerceFirstArgToText: true,
+    typescriptDeclaration:
+      'declare function lpad(value: unknown, length: number, padding: string): string;',
+  },
+  rpad: {
+    dslName: 'RPAD',
+    native: true,
+    minArgs: 3,
+    maxArgs: 3,
+    resultType: 'text',
+    argumentTypes: ['any', 'integer', 'text'],
+    coerceFirstArgToText: true,
+    typescriptDeclaration:
+      'declare function rpad(value: unknown, length: number, padding: string): string;',
+  },
+  reverse: {
+    dslName: 'REVERSE',
+    native: true,
+    minArgs: 1,
+    maxArgs: 1,
+    resultType: 'text',
+    argumentTypes: ['any'],
+    coerceFirstArgToText: true,
+    typescriptDeclaration: 'declare function reverse(value: unknown): string;',
+  },
+  repeat: {
+    dslName: 'REPEAT',
+    native: true,
+    minArgs: 2,
+    maxArgs: 2,
+    resultType: 'text',
+    argumentTypes: ['any', 'integer'],
+    coerceFirstArgToText: true,
+    typescriptDeclaration: 'declare function repeat(value: unknown, count: number): string;',
+  },
 } as const satisfies Record<string, WorkflowExpressionFunctionDefinition>;
 
 export type WorkflowExpressionFunctionName = keyof typeof WORKFLOW_EXPRESSION_FUNCTION_REGISTRY;
@@ -300,9 +493,26 @@ export const WORKFLOW_EXPRESSION_FUNCTION_NAMES = new Set<string>(
 );
 
 export function getWorkflowExpressionCapabilityPrompt(): string {
-  const nativeFunctions = Object.entries(WORKFLOW_EXPRESSION_FUNCTION_REGISTRY)
-    .filter(([, definition]) => definition.native)
-    .map(([name]) => name);
+  const nativeEntries = Object.entries(WORKFLOW_EXPRESSION_FUNCTION_REGISTRY).flatMap(
+    ([name, definition]) =>
+      definition.native
+        ? [
+            [
+              name,
+              definition as Extract<WorkflowExpressionFunctionDefinition, { native: true }>,
+            ] as const,
+          ]
+        : []
+  );
+  const nativeFunctions = nativeEntries.map(([name]) => name);
+  const nativeFunctionSignatures = nativeEntries.flatMap(([, definition]) =>
+    definition.typescriptDeclaration.split('\n').map((line) =>
+      line
+        .trim()
+        .replace(/^declare function\s+/, '')
+        .replace(/;$/, '')
+    )
+  );
   return [
     'Native row expressions use expr(row => expression), with columns referenced as row["field"] or row.field.',
     'Allowed native operators: numeric +, -, *, /; comparisons ===, !==, >, >=, <, <=; boolean &&, ||, !; null fallback ??; and condition ? whenTrue : whenFalse.',
@@ -310,6 +520,7 @@ export function getWorkflowExpressionCapabilityPrompt(): string {
       ...nativeFunctions,
       ...Object.keys(WORKFLOW_NATIVE_EXPRESSION_INTRINSICS),
     ].join(', ')}.`,
+    `Native domain function signatures: ${nativeFunctionSignatures.join('; ')}.`,
     'Use concat(...) for text concatenation; native + is numeric-only in workflow expressions.',
     `Native cast functions: cast(value, ${WORKFLOW_EXPRESSION_CAST_TYPES.filter(
       (type) => !WORKFLOW_EXPRESSION_CAST_REGISTRY[type].supportsScale

@@ -3,7 +3,12 @@ import type { WorkflowExpressionIr, WorkflowOperationIr } from './workflow-model
 
 export const AI_PREP_DSL_RUNTIME_PROFILE_VERSION = 'platform-node-runtime-compat/v2' as const;
 
-export type AiPrepDslExpressionContext = 'filter' | 'derive' | 'aggregate' | 'pivot';
+export type AiPrepDslExpressionContext =
+  | 'filter'
+  | 'derive'
+  | 'derive_window'
+  | 'aggregate'
+  | 'pivot';
 export type AiPrepDslExpressionLowering = 'direct' | 'materialize_filter_predicate';
 
 type WorkflowIrOperationType = WorkflowOperationIr['type'];
@@ -44,7 +49,7 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
     emittedNodeTypes: ['sort'],
     aiEnabled: true,
     lowering: 'direct',
-    runtimeContract: 'Sort by one resolved column in ascending or descending order.',
+    runtimeContract: 'Sort by one or more resolved columns with direction and null ordering.',
   },
   drop: {
     irType: 'drop',
@@ -79,6 +84,15 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
     runtimeContract:
       'Emit a calculate-field expression from the allowlisted expression IR; same-name replacement uses temporary derive/drop/map steps.',
   },
+  derive_window: {
+    irType: 'derive_window',
+    nodeType: 'calculate_field',
+    emittedNodeTypes: ['calculate_field', 'field_select', 'field_mapping'],
+    aiEnabled: true,
+    lowering: 'recipe',
+    runtimeContract:
+      'Lower certified aggregate, ranking, value and offset windows with structured frames into calculate-field OVER expressions.',
+  },
   convert_type: {
     irType: 'convert_type',
     nodeType: 'type_convert',
@@ -94,7 +108,8 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
     emittedNodeTypes: ['aggregate'],
     aiEnabled: true,
     lowering: 'direct',
-    runtimeContract: 'Group by resolved columns and emit allowlisted aggregate metrics.',
+    runtimeContract:
+      'Group by resolved columns and emit certified scalar aggregate metrics with validated literal parameters.',
   },
   deduplicate: {
     irType: 'deduplicate',
@@ -111,7 +126,8 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
     emittedNodeTypes: ['missing_value'],
     aiEnabled: true,
     lowering: 'direct',
-    runtimeContract: 'Use only drop-empty-rows or validated by-column missing-value rules.',
+    runtimeContract:
+      'Use drop-empty-rows, selected-column null-row dropping, or validated by-column rules.',
   },
   limit: {
     irType: 'limit',
@@ -119,7 +135,8 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
     emittedNodeTypes: ['limit'],
     aiEnabled: true,
     lowering: 'direct',
-    runtimeContract: 'Use validated fixed/percent limits or top-N with ordering.',
+    runtimeContract:
+      'Use fixed rows/percent, grouped top-N/percent, supported ties variants, or validated random sampling options.',
   },
   pivot: {
     irType: 'pivot',
@@ -128,7 +145,7 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
     aiEnabled: true,
     lowering: 'direct',
     runtimeContract:
-      'Use one pivot field, fixed non-empty values and one metric for deterministic output.',
+      'Use one pivot field, fixed non-empty values and one or more certified scalar metrics for deterministic output.',
   },
   unpivot: {
     irType: 'unpivot',

@@ -1,5 +1,6 @@
-export type WorkflowAggregateArgumentType = 'any' | 'numeric';
-export type WorkflowAggregateResultType = 'same_as_input' | 'integer' | 'decimal';
+export type WorkflowAggregateArgumentType = 'any' | 'numeric' | 'text';
+export type WorkflowAggregateResultType = 'same_as_input' | 'integer' | 'decimal' | 'text';
+export type WorkflowAggregateParameterType = 'number' | 'text';
 
 export interface WorkflowAggregateFunctionDefinition {
   /** Compatibility spellings accepted at the IR boundary, never advertised to new authors. */
@@ -7,6 +8,13 @@ export interface WorkflowAggregateFunctionDefinition {
   acceptsStar: boolean;
   argumentType: WorkflowAggregateArgumentType;
   resultType: WorkflowAggregateResultType;
+  parameters?: readonly WorkflowAggregateParameterDefinition[];
+}
+
+export interface WorkflowAggregateParameterDefinition {
+  type: WorkflowAggregateParameterType;
+  min?: number;
+  max?: number;
 }
 
 /**
@@ -51,6 +59,88 @@ export const WORKFLOW_AGGREGATE_FUNCTION_REGISTRY = {
     argumentType: 'any',
     resultType: 'integer',
   },
+  median: {
+    aliases: [],
+    acceptsStar: false,
+    argumentType: 'numeric',
+    resultType: 'decimal',
+  },
+  mode: {
+    aliases: [],
+    acceptsStar: false,
+    argumentType: 'any',
+    resultType: 'same_as_input',
+  },
+  first: {
+    aliases: [],
+    acceptsStar: false,
+    argumentType: 'any',
+    resultType: 'same_as_input',
+  },
+  last: {
+    aliases: [],
+    acceptsStar: false,
+    argumentType: 'any',
+    resultType: 'same_as_input',
+  },
+  stddev_samp: {
+    aliases: [],
+    acceptsStar: false,
+    argumentType: 'numeric',
+    resultType: 'decimal',
+  },
+  stddev_pop: {
+    aliases: [],
+    acceptsStar: false,
+    argumentType: 'numeric',
+    resultType: 'decimal',
+  },
+  var_samp: {
+    aliases: [],
+    acceptsStar: false,
+    argumentType: 'numeric',
+    resultType: 'decimal',
+  },
+  var_pop: {
+    aliases: [],
+    acceptsStar: false,
+    argumentType: 'numeric',
+    resultType: 'decimal',
+  },
+  string_agg: {
+    aliases: [],
+    acceptsStar: false,
+    argumentType: 'text',
+    resultType: 'text',
+    parameters: [{ type: 'text' }],
+  },
+  quantile_cont: {
+    aliases: [],
+    acceptsStar: false,
+    argumentType: 'numeric',
+    resultType: 'decimal',
+    parameters: [{ type: 'number', min: 0, max: 1 }],
+  },
+  quantile_disc: {
+    aliases: [],
+    acceptsStar: false,
+    argumentType: 'numeric',
+    resultType: 'same_as_input',
+    parameters: [{ type: 'number', min: 0, max: 1 }],
+  },
+  approx_count_distinct: {
+    aliases: [],
+    acceptsStar: false,
+    argumentType: 'any',
+    resultType: 'integer',
+  },
+  approx_quantile: {
+    aliases: [],
+    acceptsStar: false,
+    argumentType: 'numeric',
+    resultType: 'same_as_input',
+    parameters: [{ type: 'number', min: 0, max: 1 }],
+  },
 } as const satisfies Record<string, WorkflowAggregateFunctionDefinition>;
 
 export type WorkflowAggregateFunctionName = keyof typeof WORKFLOW_AGGREGATE_FUNCTION_REGISTRY;
@@ -92,5 +182,5 @@ export function getWorkflowAggregateFunctionTypeScriptType(): string {
 
 export function getWorkflowAggregateCapabilityPrompt(): string {
   const names = Object.keys(WORKFLOW_AGGREGATE_FUNCTION_REGISTRY).join(', ');
-  return `Canonical aggregate functions: ${names}. Only count may use "*"; every other aggregate requires expr(row => row["field"]). Use count_distinct, never countDistinct.`;
+  return `Canonical aggregate functions: ${names}. Only count may use "*"; every other aggregate requires expr(row => row["field"]). string_agg requires parameters: ["delimiter"]. quantile_cont, quantile_disc, and approx_quantile require parameters: [a number from 0 to 1]. Aggregates without declared parameters must omit parameters. Use count_distinct, never countDistinct.`;
 }

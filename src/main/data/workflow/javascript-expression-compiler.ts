@@ -392,7 +392,40 @@ function lowerNativeExpression(
     return lowerNativeCall(node, rowParameter, sourceFile);
   }
 
+  if (containsOpaqueWorkflowDataAccess(node, rowParameter)) {
+    throw expressionDiagnostic(
+      sourceFile,
+      node,
+      'WORKFLOW_VALUE_DATA_ACCESS_UNSUPPORTED',
+      'Workflow values are opaque graph handles and do not expose row data. Use a structured derive_window step for totals, subtotals, partition totals, and percentage denominators.',
+      {
+        expectedSignature:
+          'workflow.step(input, "derive_window", { column, function, expression: expr(row => row["field"]), partitionBy: [], orderBy: [] })',
+        repairHint:
+          'Do not read .data or index a workflow step result in JavaScript. Keep the workflow linear: aggregate to the requested grain, add the denominator with derive_window, then calculate the guarded ratio with derive.',
+      }
+    );
+  }
+
   throw unsupportedExpression(sourceFile, node, node.getText(sourceFile));
+}
+
+function containsOpaqueWorkflowDataAccess(node: ts.Node, rowParameter: string): boolean {
+  let found = false;
+  const visit = (candidate: ts.Node): void => {
+    if (found) return;
+    if (
+      ts.isPropertyAccessExpression(candidate) &&
+      candidate.name.text === 'data' &&
+      !(ts.isIdentifier(candidate.expression) && candidate.expression.text === rowParameter)
+    ) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(candidate, visit);
+  };
+  visit(node);
+  return found;
 }
 
 function lowerNativeCall(
@@ -741,7 +774,7 @@ function assertWorkflowJavaScriptTypes(
     diagnostics: [
       {
         severity: 'error',
-        code: `JAVASCRIPT_TYPE_ERROR_${diagnostic.code}`,
+        code: stepDiagnostic?.code ?? `JAVASCRIPT_TYPE_ERROR_${diagnostic.code}`,
         message,
         line: location.line + 1,
         column: location.character + 1,
@@ -759,6 +792,7 @@ function describeWorkflowStepDiagnostic(
   position: number,
   rawMessage: string
 ): {
+  code?: string;
   message: string;
   operationType: string;
   expectedSignature: string;
@@ -769,10 +803,27 @@ function describeWorkflowStepDiagnostic(
   if (!operationArgument || !ts.isStringLiteralLike(operationArgument)) return null;
   const definition = getWorkflowIrOperationDefinition(operationArgument.text);
   if (!definition) return null;
+  if (/Property ['"]data['"] does not exist on type ['"]WorkflowValue['"]/.test(rawMessage)) {
+    const windowDefinition = getWorkflowIrOperationDefinition('derive_window');
+    const expectedSignature =
+      windowDefinition?.promptSignature ??
+      'workflow.step(input, "derive_window", { column, function, expression, partitionBy, orderBy })';
+    return {
+      code: 'WORKFLOW_VALUE_DATA_ACCESS_UNSUPPORTED',
+      message:
+        'Workflow values are opaque graph handles and do not expose row data. Use a structured derive_window step for totals, subtotals, partition totals, and percentage denominators.',
+      operationType: definition.irType,
+      expectedSignature,
+      repairHint:
+        'Do not read .data or index a workflow step result in JavaScript. Keep the workflow linear: aggregate to the requested grain, add the denominator with derive_window, then calculate the guarded ratio with derive.',
+    };
+  }
   const repairHint =
     definition.irType === 'limit'
       ? 'For highest/lowest/top/bottom N, first add a sort step, then use limit with config.mode="limit", unit="rows", offset=0, and orderBy=[]. Never use config.mode="top" in generated JavaScript.'
-      : `Use the registered canonical payload exactly: ${definition.promptSignature}`;
+      : definition.irType === 'pivot'
+        ? 'For pivot, write on as exactly one raw column-name string in an array, for example on: ["Market"]. Write groupBy as raw column-name strings, for example groupBy: ["Product Type"]. Never use a scalar string or expr(...) in on or groupBy. Put fixed pivot output values in values, and use expr(...) only in using[].expression.'
+        : `Use the registered canonical payload exactly: ${definition.promptSignature}`;
   return {
     message: `Invalid workflow.step payload for operation "${definition.irType}". Expected: ${definition.promptSignature}. ${rawMessage}`,
     operationType: definition.irType,

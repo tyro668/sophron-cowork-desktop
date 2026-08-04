@@ -26,12 +26,14 @@ const CORE_OPERATION_TYPES = [
   'limit',
 ] as const;
 const AGGREGATE_OPERATION_TYPES = ['aggregate'] as const;
+const PERCENT_OF_TOTAL_OPERATION_TYPES = ['aggregate', 'derive_window', 'derive', 'sort'] as const;
 const PIVOT_OPERATION_TYPES = ['pivot'] as const;
 const UNPIVOT_OPERATION_TYPES = ['unpivot'] as const;
 const UNNEST_OPERATION_TYPES = ['unnest'] as const;
 const CERTIFIED_OPERATION_GROUPS = [
   CORE_OPERATION_TYPES,
   AGGREGATE_OPERATION_TYPES,
+  PERCENT_OF_TOTAL_OPERATION_TYPES,
   PIVOT_OPERATION_TYPES,
   UNPIVOT_OPERATION_TYPES,
   UNNEST_OPERATION_TYPES,
@@ -212,6 +214,379 @@ describe('AI workflow capability contract', () => {
     ]);
   });
 
+  it('executes certified scalar date, math, and text functions', async () => {
+    const steps: WorkflowStepSource[] = [
+      ['addDay', 'day_value', 'day(row["event_date"])'],
+      ['addMonthStart', 'month_start', 'dateTrunc("month", row["event_date"])'],
+      ['addParsedDate', 'parsed_date', 'strptime(row["raw_date"], "%d-%b-%Y")'],
+      ['addCurrentDate', 'current_date_value', 'currentDate()'],
+      ['addNow', 'current_timestamp_value', 'now()'],
+      ['addCeil', 'ceil_value', 'ceil(row["amount"])'],
+      ['addFloor', 'floor_value', 'floor(row["amount"])'],
+      ['addLength', 'name_length', 'length(row["name"])'],
+      ['addSubstring', 'name_prefix', 'substr(row["name"], 1, 3)'],
+      ['addSplit', 'first_word', 'splitPart(row["name"], " ", 1)'],
+      ['addStarts', 'starts_a', 'startsWith(row["name"], "A")'],
+      ['addEnds', 'ends_e', 'endsWith(row["name"], "e")'],
+      ['addRegexp', 'digits', 'regexpReplace(row["code"], "[^0-9]", "", "g")'],
+      ['addRegexpMatch', 'has_digits', 'regexpMatches(row["code"], "[0-9]+")'],
+      ['addLpad', 'left_padded', 'lpad(row["code"], 6, "0")'],
+      ['addRpad', 'right_padded', 'rpad(row["code"], 6, "_")'],
+      ['addReverse', 'reversed', 'reverse(row["code"])'],
+      ['addRepeat', 'repeated', 'repeat(row["code"], 2)'],
+    ].map(([name, column, expression]) => ({
+      name,
+      type: 'derive',
+      payload: `{ column: ${JSON.stringify(column)}, expression: expr(row => ${expression}) }`,
+    }));
+    const result = await runCertifiedWorkflow({
+      name: 'scalar-functions',
+      csv: [
+        'event_date,raw_date,amount,name,code',
+        '2026-03-15,02-Apr-2026,10.25,Alice Doe,A-12',
+      ].join('\n'),
+      columns: [
+        { name: 'event_date', type: 'date' },
+        { name: 'raw_date', type: 'text' },
+        { name: 'amount', type: 'decimal' },
+        { name: 'name', type: 'text' },
+        { name: 'code', type: 'text' },
+      ],
+      expectedOperationTypes: steps.map(() => 'derive'),
+      javascriptSource: workflowSource(steps),
+    });
+
+    const [row] = await queryRows(
+      result.dbPath,
+      `SELECT *, CAST(month_start AS VARCHAR) AS month_text, CAST(parsed_date AS VARCHAR) AS parsed_text FROM ${result.outputTable}`
+    );
+    expect({
+      day: Number(row.day_value),
+      month: String(row.month_text).slice(0, 10),
+      parsed: String(row.parsed_text).slice(0, 10),
+      ceil: Number(row.ceil_value),
+      floor: Number(row.floor_value),
+      length: Number(row.name_length),
+      prefix: String(row.name_prefix),
+      firstWord: String(row.first_word),
+      starts: Boolean(row.starts_a),
+      ends: Boolean(row.ends_e),
+      digits: String(row.digits),
+      hasDigits: Boolean(row.has_digits),
+      lpad: String(row.left_padded),
+      rpad: String(row.right_padded),
+      reverse: String(row.reversed),
+      repeat: String(row.repeated),
+      hasCurrentDate: row.current_date_value != null,
+      hasCurrentTimestamp: row.current_timestamp_value != null,
+    }).toEqual({
+      day: 15,
+      month: '2026-03-01',
+      parsed: '2026-04-02',
+      ceil: 11,
+      floor: 10,
+      length: 9,
+      prefix: 'Ali',
+      firstWord: 'Alice',
+      starts: true,
+      ends: true,
+      digits: '12',
+      hasDigits: true,
+      lpad: '00A-12',
+      rpad: 'A-12__',
+      reverse: '21-A',
+      repeat: 'A-12A-12',
+      hasCurrentDate: true,
+      hasCurrentTimestamp: true,
+    });
+  });
+
+  it('executes certified scalar advanced aggregates and literal parameters', async () => {
+    const result = await runCertifiedWorkflow({
+      name: 'advanced-aggregates',
+      csv: ['region,amount,name', 'East,10,A', 'East,20,B', 'East,20,C'].join('\n'),
+      columns: [
+        { name: 'region', type: 'text' },
+        { name: 'amount', type: 'integer' },
+        { name: 'name', type: 'text' },
+      ],
+      expectedOperationTypes: ['aggregate'],
+      javascriptSource: workflowSource([
+        {
+          name: 'summarizeAdvancedMetrics',
+          type: 'aggregate',
+          payload:
+            '{ groupBy: [expr(row => row["region"])], metrics: [' +
+            '{ fn: "median", expression: expr(row => row["amount"]), alias: "median_amount" },' +
+            '{ fn: "mode", expression: expr(row => row["amount"]), alias: "mode_amount" },' +
+            '{ fn: "first", expression: expr(row => row["amount"]), alias: "first_amount" },' +
+            '{ fn: "last", expression: expr(row => row["amount"]), alias: "last_amount" },' +
+            '{ fn: "stddev_samp", expression: expr(row => row["amount"]), alias: "stddev_sample_amount" },' +
+            '{ fn: "stddev_pop", expression: expr(row => row["amount"]), alias: "stddev_amount" },' +
+            '{ fn: "var_samp", expression: expr(row => row["amount"]), alias: "sample_variance_amount" },' +
+            '{ fn: "var_pop", expression: expr(row => row["amount"]), alias: "variance_amount" },' +
+            '{ fn: "quantile_cont", expression: expr(row => row["amount"]), alias: "p50_cont", parameters: [0.5] },' +
+            '{ fn: "quantile_disc", expression: expr(row => row["amount"]), alias: "p50_disc", parameters: [0.5] },' +
+            '{ fn: "approx_quantile", expression: expr(row => row["amount"]), alias: "p50_approx", parameters: [0.5] },' +
+            '{ fn: "approx_count_distinct", expression: expr(row => row["name"]), alias: "unique_names" },' +
+            '{ fn: "string_agg", expression: expr(row => row["name"]), alias: "names", parameters: [","] }' +
+            '] }',
+        },
+      ]),
+    });
+
+    const [row] = await queryRows(result.dbPath, `SELECT * FROM ${result.outputTable}`);
+    expect(Number(row.median_amount)).toBe(20);
+    expect(Number(row.mode_amount)).toBe(20);
+    expect(Number(row.first_amount)).toBe(10);
+    expect(Number(row.last_amount)).toBe(20);
+    expect(Number(row.stddev_sample_amount)).toBeCloseTo(5.773503, 5);
+    expect(Number(row.stddev_amount)).toBeCloseTo(4.714045, 5);
+    expect(Number(row.sample_variance_amount)).toBeCloseTo(33.333333, 5);
+    expect(Number(row.variance_amount)).toBeCloseTo(22.222222, 5);
+    expect(Number(row.p50_cont)).toBe(20);
+    expect(Number(row.p50_disc)).toBe(20);
+    expect(Number(row.p50_approx)).toBe(20);
+    expect(Number(row.unique_names)).toBe(3);
+    expect(String(row.names).split(',').sort()).toEqual(['A', 'B', 'C']);
+  });
+
+  it('executes aggregate percentage-of-total through a structured window derive', async () => {
+    const result = await runCertifiedWorkflow({
+      name: 'percentage-of-total',
+      csv: ['country,sales', 'China,10', 'China,30', 'France,60'].join('\n'),
+      columns: [
+        { name: 'country', type: 'text' },
+        { name: 'sales', type: 'integer' },
+      ],
+      expectedOperationTypes: PERCENT_OF_TOTAL_OPERATION_TYPES,
+      javascriptSource: workflowSource([
+        {
+          name: 'summarizeCountrySales',
+          type: 'aggregate',
+          payload:
+            '{ groupBy: [expr(row => row["country"])], metrics: [{ fn: "sum", expression: expr(row => row["sales"]), alias: "country_sales" }] }',
+        },
+        {
+          name: 'addOverallSales',
+          type: 'derive_window',
+          payload:
+            '{ column: "overall_sales", function: "sum", expression: expr(row => row["country_sales"]), partitionBy: [], orderBy: [] }',
+        },
+        {
+          name: 'addSalesShare',
+          type: 'derive',
+          payload:
+            '{ column: "sales_share", expression: expr(row => row["overall_sales"] === 0 ? 0 : row["country_sales"] / row["overall_sales"]) }',
+        },
+        {
+          name: 'sortSalesShare',
+          type: 'sort',
+          payload: '{ column: expr(row => row["sales_share"]), direction: "desc" }',
+        },
+      ]),
+    });
+
+    expect(result.plan.nodes.map((node) => node.type)).toEqual([
+      'input_source',
+      'aggregate',
+      'calculate_field',
+      'calculate_field',
+      'sort',
+      'output',
+    ]);
+    expect(result.plan.nodes[2]?.config).toMatchObject({
+      calculations: [
+        {
+          field: 'overall_sales',
+          expression: 'sum([country_sales]) OVER ()',
+        },
+      ],
+    });
+    const rows = await queryRows(
+      result.dbPath,
+      `SELECT country, country_sales, overall_sales, sales_share FROM ${result.outputTable} ORDER BY sales_share DESC`
+    );
+    expect(
+      rows.map((row) => ({
+        country: String(row.country),
+        country_sales: Number(row.country_sales),
+        overall_sales: Number(row.overall_sales),
+        sales_share: Number(row.sales_share),
+      }))
+    ).toEqual([
+      { country: 'France', country_sales: 60, overall_sales: 100, sales_share: 0.6 },
+      { country: 'China', country_sales: 40, overall_sales: 100, sales_share: 0.4 },
+    ]);
+  });
+
+  it('executes ranking, offset, and explicit framed aggregate windows', async () => {
+    const result = await runCertifiedWorkflow({
+      name: 'advanced-windows',
+      csv: ['region,id,amount', 'East,1,10', 'East,2,20', 'East,3,15', 'West,1,7'].join('\n'),
+      columns: [
+        { name: 'region', type: 'text' },
+        { name: 'id', type: 'integer' },
+        { name: 'amount', type: 'integer' },
+      ],
+      expectedOperationTypes: Array.from({ length: 9 }, () => 'derive_window'),
+      javascriptSource: workflowSource([
+        {
+          name: 'addRowNumber',
+          type: 'derive_window',
+          payload:
+            '{ column: "row_number", function: "row_number", partitionBy: ["region"], orderBy: [{ field: "id", direction: "asc" }] }',
+        },
+        {
+          name: 'addAmountRank',
+          type: 'derive_window',
+          payload:
+            '{ column: "amount_rank", function: "rank", partitionBy: ["region"], orderBy: [{ field: "amount", direction: "desc" }] }',
+        },
+        {
+          name: 'addBucket',
+          type: 'derive_window',
+          payload:
+            '{ column: "bucket", function: "ntile", buckets: 2, partitionBy: ["region"], orderBy: [{ field: "id", direction: "asc" }] }',
+        },
+        {
+          name: 'addPreviousAmount',
+          type: 'derive_window',
+          payload:
+            '{ column: "previous_amount", function: "lag", expression: expr(row => row["amount"]), offset: 1, defaultValue: 0, partitionBy: ["region"], orderBy: [{ field: "id", direction: "asc" }] }',
+        },
+        {
+          name: 'addNextAmount',
+          type: 'derive_window',
+          payload:
+            '{ column: "next_amount", function: "lead", expression: expr(row => row["amount"]), offset: 1, defaultValue: 0, partitionBy: ["region"], orderBy: [{ field: "id", direction: "asc" }] }',
+        },
+        {
+          name: 'addFirstAmount',
+          type: 'derive_window',
+          payload:
+            '{ column: "first_amount", function: "first_value", expression: expr(row => row["amount"]), partitionBy: ["region"], orderBy: [{ field: "id", direction: "asc" }] }',
+        },
+        {
+          name: 'addSecondAmount',
+          type: 'derive_window',
+          payload:
+            '{ column: "second_amount", function: "nth_value", expression: expr(row => row["amount"]), nth: 2, partitionBy: ["region"], orderBy: [{ field: "id", direction: "asc" }], frame: { type: "rows", start: { type: "unbounded_preceding" }, end: { type: "unbounded_following" } } }',
+        },
+        {
+          name: 'addRunningAmount',
+          type: 'derive_window',
+          payload:
+            '{ column: "running_amount", function: "sum", expression: expr(row => row["amount"]), partitionBy: ["region"], orderBy: [{ field: "id", direction: "asc" }], frame: { type: "rows", start: { type: "unbounded_preceding" }, end: { type: "current_row" } } }',
+        },
+        {
+          name: 'addMovingAverage',
+          type: 'derive_window',
+          payload:
+            '{ column: "moving_average", function: "avg", expression: expr(row => row["amount"]), partitionBy: ["region"], orderBy: [{ field: "id", direction: "asc" }], frame: { type: "rows", start: { type: "preceding", offset: 1 }, end: { type: "current_row" } } }',
+        },
+      ]),
+    });
+
+    const rows = await queryRows(
+      result.dbPath,
+      `SELECT region, id, row_number, amount_rank, bucket, previous_amount, next_amount, first_amount, second_amount, running_amount, moving_average FROM ${result.outputTable} ORDER BY region, id`
+    );
+    expect(
+      rows.map((row) => ({
+        region: String(row.region),
+        id: Number(row.id),
+        rowNumber: Number(row.row_number),
+        rank: Number(row.amount_rank),
+        bucket: Number(row.bucket),
+        previous: Number(row.previous_amount),
+        next: Number(row.next_amount),
+        first: Number(row.first_amount),
+        second: row.second_amount == null ? null : Number(row.second_amount),
+        running: Number(row.running_amount),
+        moving: Number(row.moving_average),
+      }))
+    ).toEqual([
+      {
+        region: 'East',
+        id: 1,
+        rowNumber: 1,
+        rank: 3,
+        bucket: 1,
+        previous: 0,
+        next: 20,
+        first: 10,
+        second: 20,
+        running: 10,
+        moving: 10,
+      },
+      {
+        region: 'East',
+        id: 2,
+        rowNumber: 2,
+        rank: 1,
+        bucket: 1,
+        previous: 10,
+        next: 15,
+        first: 10,
+        second: 20,
+        running: 30,
+        moving: 15,
+      },
+      {
+        region: 'East',
+        id: 3,
+        rowNumber: 3,
+        rank: 2,
+        bucket: 2,
+        previous: 20,
+        next: 0,
+        first: 10,
+        second: 20,
+        running: 45,
+        moving: 17.5,
+      },
+      {
+        region: 'West',
+        id: 1,
+        rowNumber: 1,
+        rank: 1,
+        bucket: 1,
+        previous: 0,
+        next: 0,
+        first: 7,
+        second: null,
+        running: 7,
+        moving: 7,
+      },
+    ]);
+  });
+
+  it('executes a temporal range frame with a structured interval bound', async () => {
+    const result = await runCertifiedWorkflow({
+      name: 'temporal-range-window',
+      csv: ['event_date,amount', '2026-01-01,10', '2026-01-02,20', '2026-01-04,40'].join('\n'),
+      columns: [
+        { name: 'event_date', type: 'date' },
+        { name: 'amount', type: 'integer' },
+      ],
+      expectedOperationTypes: ['derive_window'],
+      javascriptSource: workflowSource([
+        {
+          name: 'addPriorDayAmount',
+          type: 'derive_window',
+          payload:
+            '{ column: "prior_day_amount", function: "sum", expression: expr(row => row["amount"]), partitionBy: [], orderBy: [{ field: "event_date", direction: "asc" }], frame: { type: "range", start: { type: "preceding", offset: 1, unit: "day" }, end: { type: "current_row" } } }',
+        },
+      ]),
+    });
+    const rows = await queryRows(
+      result.dbPath,
+      `SELECT prior_day_amount FROM ${result.outputTable} ORDER BY event_date`
+    );
+    expect(rows.map((row) => Number(row.prior_day_amount))).toEqual([10, 30, 40]);
+  });
+
   it('executes pivot through native platform nodes', async () => {
     const result = await runCertifiedWorkflow({
       name: 'pivot',
@@ -248,6 +623,171 @@ describe('AI workflow capability contract', () => {
     ).toEqual([
       { region: 'East', Q1_sales: 10, Q2_sales: 20 },
       { region: 'West', Q1_sales: 5, Q2_sales: 7 },
+    ]);
+  });
+
+  it('executes pivot with multiple certified metrics', async () => {
+    const result = await runCertifiedWorkflow({
+      name: 'multi-metric-pivot',
+      csv: ['region,quarter,revenue,units', 'East,Q1,10,1', 'East,Q2,20,2', 'West,Q1,5,3'].join(
+        '\n'
+      ),
+      columns: [
+        { name: 'region', type: 'text' },
+        { name: 'quarter', type: 'text' },
+        { name: 'revenue', type: 'integer' },
+        { name: 'units', type: 'integer' },
+      ],
+      expectedOperationTypes: ['pivot'],
+      javascriptSource: workflowSource([
+        {
+          name: 'pivotQuarterMetrics',
+          type: 'pivot',
+          payload:
+            '{ config: { on: ["quarter"], values: ["Q1", "Q2"], using: [' +
+            '{ function: "sum", expression: expr(row => row["revenue"]), alias: "sales" },' +
+            '{ function: "sum", expression: expr(row => row["units"]), alias: "units" }' +
+            '], groupBy: ["region"] } }',
+        },
+      ]),
+    });
+
+    const rows = await queryRows(
+      result.dbPath,
+      `SELECT * FROM ${result.outputTable} ORDER BY region`
+    );
+    expect(
+      rows.map((row) => ({
+        region: String(row.region),
+        Q1Sales: Number(row.Q1_sales),
+        Q1Units: Number(row.Q1_units),
+        Q2Sales: row.Q2_sales == null ? null : Number(row.Q2_sales),
+        Q2Units: row.Q2_units == null ? null : Number(row.Q2_units),
+      }))
+    ).toEqual([
+      { region: 'East', Q1Sales: 10, Q1Units: 1, Q2Sales: 20, Q2Units: 2 },
+      { region: 'West', Q1Sales: 5, Q1Units: 3, Q2Sales: null, Q2Units: null },
+    ]);
+  });
+
+  it('executes selected-null-row cleanup, multi-key sort, and grouped percent limit', async () => {
+    const result = await runCertifiedWorkflow({
+      name: 'expanded-row-operators',
+      csv: [
+        'region,score,label,a,b',
+        'East,20,B,,',
+        'East,20,A,x,',
+        'East,10,C,x,y',
+        'East,5,D,x,y',
+        'West,30,C,x,y',
+        'West,30,A,x,y',
+        'West,20,B,x,y',
+        'West,10,D,x,y',
+      ].join('\n'),
+      columns: [
+        { name: 'region', type: 'text' },
+        { name: 'score', type: 'integer' },
+        { name: 'label', type: 'text' },
+        { name: 'a', type: 'text' },
+        { name: 'b', type: 'text' },
+      ],
+      expectedOperationTypes: ['missing_value', 'sort', 'limit'],
+      javascriptSource: workflowSource([
+        {
+          name: 'dropFullyEmptyMarkers',
+          type: 'missing_value',
+          payload:
+            '{ config: { strategy: "drop_rows_by_nulls", columns: ["a", "b"], condition: "all_null" } }',
+        },
+        {
+          name: 'sortByScoreAndLabel',
+          type: 'sort',
+          payload:
+            '{ keys: [{ field: "score", direction: "desc" }, { field: "label", direction: "asc" }] }',
+        },
+        {
+          name: 'takeTopHalfPerRegion',
+          type: 'limit',
+          payload:
+            '{ config: { mode: "limit", limit: 50, unit: "percent", offset: 0, orderBy: [{ field: "score", direction: "desc" }, { field: "label", direction: "asc" }], groupBy: ["region"], ties: false } }',
+        },
+      ]),
+    });
+
+    expect(result.plan.nodes[2]?.config).toMatchObject({
+      keys: [
+        { field: 'score', direction: 'desc' },
+        { field: 'label', direction: 'asc' },
+      ],
+    });
+    const rows = await queryRows(
+      result.dbPath,
+      `SELECT region, score, label FROM ${result.outputTable} ORDER BY region, score DESC, label`
+    );
+    expect(rows.map((row) => `${row.region}:${row.score}:${row.label}`)).toEqual([
+      'East:20:A',
+      'East:10:C',
+      'West:30:A',
+      'West:30:C',
+    ]);
+  });
+
+  it('executes seeded random row sampling', async () => {
+    const result = await runCertifiedWorkflow({
+      name: 'random-sampling',
+      csv: ['id', ...Array.from({ length: 20 }, (_, index) => String(index + 1))].join('\n'),
+      columns: [{ name: 'id', type: 'integer' }],
+      expectedOperationTypes: ['limit'],
+      javascriptSource: workflowSource([
+        {
+          name: 'sampleRows',
+          type: 'limit',
+          payload:
+            '{ config: { mode: "random", limit: 5, unit: "rows", offset: 0, orderBy: [], method: "system", seed: 42 } }',
+        },
+      ]),
+    });
+    const [row] = await queryRows(
+      result.dbPath,
+      `SELECT COUNT(*) AS count FROM ${result.outputTable}`
+    );
+    expect(Number(row.count)).toBe(5);
+  });
+
+  it('executes grouped row limits with ties through the implemented rank path', async () => {
+    const result = await runCertifiedWorkflow({
+      name: 'grouped-limit-ties',
+      csv: [
+        'region,score,label',
+        'East,100,A',
+        'East,100,B',
+        'East,90,C',
+        'West,80,A',
+        'West,70,B',
+      ].join('\n'),
+      columns: [
+        { name: 'region', type: 'text' },
+        { name: 'score', type: 'integer' },
+        { name: 'label', type: 'text' },
+      ],
+      expectedOperationTypes: ['limit'],
+      javascriptSource: workflowSource([
+        {
+          name: 'takeBestPerRegionWithTies',
+          type: 'limit',
+          payload:
+            '{ config: { mode: "limit", limit: 1, unit: "rows", offset: 0, orderBy: [{ field: "score", direction: "desc" }], groupBy: ["region"], ties: true } }',
+        },
+      ]),
+    });
+    const rows = await queryRows(
+      result.dbPath,
+      `SELECT region, score, label FROM ${result.outputTable} ORDER BY region, label`
+    );
+    expect(rows.map((row) => `${row.region}:${row.score}:${row.label}`)).toEqual([
+      'East:100:A',
+      'East:100:B',
+      'West:80:A',
     ]);
   });
 

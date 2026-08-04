@@ -86,6 +86,12 @@ describe('JavaScript Workflow SDK pipeline', () => {
     expect(prompt).toContain('strategy: "drop_empty_rows"');
     expect(prompt).toContain('strategy: "by_column"');
     expect(prompt).toContain('method: "skip|drop|nullify_values|literal_fill"');
+    expect(prompt).toContain('on: ["pivotField"]');
+    expect(prompt).toContain('groupBy: ["groupField"]');
+    expect(prompt).toContain('never use expr(...) in on or groupBy');
+    expect(prompt).toContain('only using[].expression uses expr(...)');
+    expect(prompt).toContain('workflow.step(input, "derive_window"');
+    expect(prompt).toContain('Use empty partitionBy and orderBy for an all-rows total');
     const expressionPrompt = getWorkflowExpressionCapabilityPrompt();
     const typeDeclarations = getWorkflowExpressionTypeScriptDeclarations();
     const operationDeclarations = getWorkflowIrOperationTypeScriptDeclarations();
@@ -244,6 +250,25 @@ function main() {
         columns: [{ name: 'Value', type: 'text' }],
       })
     ).toThrow(/not assignable to type 'string'|No overload matches this call/);
+
+    const invalidWindowStar = `function addTotal(input) {
+  return workflow.step(input, "derive_window", {
+    column: "Total",
+    function: "sum",
+    expression: "*",
+    partitionBy: [],
+    orderBy: []
+  });
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  return workflow.output(addTotal(input), OUTPUT_TABLE_NAME);
+}`;
+    expect(() =>
+      compileWorkflowJavaScript(invalidWindowStar, {
+        columns: [{ name: 'Value', type: 'integer' }],
+      })
+    ).toThrow(/No overload matches this call|not assignable/);
   });
 
   it('reports the canonical limit payload instead of the unrelated last overload', () => {
@@ -316,6 +341,42 @@ function main() {
     ).toThrow(/Native \+ is numeric-only/);
   });
 
+  it('rejects reading intermediate workflow data and directs repair to derive_window', () => {
+    const source = `function summarize(input) {
+  return workflow.step(input, "aggregate", {
+    groupBy: [],
+    metrics: [{ fn: "sum", expression: expr(row => row["Sales"]), alias: "全部销售额" }]
+  });
+}
+function addShare(input, totalAgg) {
+  return workflow.step(input, "derive", {
+    column: "占比",
+    expression: expr(row => row["Sales"] / totalAgg.data[0]["全部销售额"])
+  });
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  const totalAgg = summarize(input);
+  return workflow.output(addShare(input, totalAgg), OUTPUT_TABLE_NAME);
+}`;
+
+    try {
+      compileWorkflowJavaScript(source, { columns: [{ name: 'Sales', type: 'decimal' }] });
+      throw new Error('expected workflow data access to fail');
+    } catch (error) {
+      const commandError = error as {
+        message?: string;
+        details?: { diagnostics?: Array<Record<string, unknown>> };
+      };
+      expect(commandError.message).toContain('Workflow values are opaque graph handles');
+      expect(commandError.details?.diagnostics?.[0]).toMatchObject({
+        code: 'WORKFLOW_VALUE_DATA_ACCESS_UNSUPPORTED',
+        expectedSignature: expect.stringContaining('derive_window'),
+        repairHint: expect.stringContaining('Do not read .data'),
+      });
+    }
+  });
+
   it('reports the invalid missing-value strategy produced by a model', () => {
     const source = `function nullifyMarkers(input) {
   return workflow.step(input, "missing_value", {
@@ -328,7 +389,60 @@ function main() {
   return workflow.output(cleaned, OUTPUT_TABLE_NAME, { mode: "replace" });
 }`;
     expect(() => buildIr(source)).toThrow(
-      'config.strategy must be one of drop_empty_rows, by_column; received "nullify_values"'
+      'config.strategy must be one of drop_empty_rows, drop_rows_by_nulls, by_column; received "nullify_values"'
+    );
+  });
+
+  it('keeps schema-only or non-scalar runtime capabilities closed to generated workflows', () => {
+    const listAggregate = `function summarize(input) {
+  return workflow.step(input, "aggregate", {
+    groupBy: [],
+    metrics: [{ fn: "list", expression: expr(row => row["Value"]), alias: "values" }]
+  });
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  return workflow.output(summarize(input), OUTPUT_TABLE_NAME);
+}`;
+    expect(() =>
+      compileWorkflowJavaScript(listAggregate, {
+        columns: [{ name: 'Value', type: 'integer' }],
+      })
+    ).toThrow(/not assignable|No overload matches/);
+
+    const statisticalFill = `function fillMissing(input) {
+  return workflow.step(input, "missing_value", {
+    config: { strategy: "by_column", rules: [{ column: "Value", method: "mean_fill" }] }
+  });
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  return workflow.output(fillMissing(input), OUTPUT_TABLE_NAME);
+}`;
+    expect(() =>
+      compileWorkflowJavaScript(statisticalFill, {
+        columns: [{ name: 'Value', type: 'integer' }],
+      })
+    ).toThrow(/not assignable|No overload matches/);
+
+    const unsupportedUngroupedTies = `function takeTies(input) {
+  return workflow.step(input, "limit", {
+    config: {
+      mode: "limit",
+      limit: 1,
+      unit: "rows",
+      offset: 0,
+      orderBy: [{ field: "Value", direction: "desc" }],
+      ties: true
+    }
+  });
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  return workflow.output(takeTies(input), OUTPUT_TABLE_NAME);
+}`;
+    expect(() => buildIr(unsupportedUngroupedTies)).toThrow(
+      'ties is not supported for ungrouped row-count limits'
     );
   });
 
@@ -338,7 +452,7 @@ function main() {
       irVersion: '1.0',
       kind: 'workflow',
       sourceLanguage: 'javascript',
-      sdkVersion: '2.1.0',
+      sdkVersion: '2.2.0',
       outputOperationId: 'remove-count',
       operations: [
         expect.objectContaining({
@@ -353,16 +467,48 @@ function main() {
   });
 
   it('returns precise V8 syntax diagnostics before sandbox execution', () => {
+    const source = `function broken(input) {
+  return workflow.step(input, "drop", { columns: ["记录数"] }));
+}
+function main() {}`;
     try {
-      compileWorkflowJavaScript(`function broken(input { return input; }\nfunction main() {}`);
+      compileWorkflowJavaScript(source);
       throw new Error('expected compilation to fail');
     } catch (error) {
       const details = (error as { details?: { diagnostics?: Array<Record<string, unknown>> } })
         .details;
       expect(details?.diagnostics?.[0]).toMatchObject({
         code: 'JAVASCRIPT_SYNTAX_ERROR',
+        line: 2,
+        column: expect.any(Number),
+        functionName: 'broken',
+        sourceLine: expect.stringContaining('workflow.step'),
+        sourceExcerpt: expect.stringContaining('2 |'),
+        caret: expect.stringContaining('^'),
+        repairHint: expect.stringContaining('do not copy the failing line unchanged'),
       });
     }
+  });
+
+  it('patches a syntax-invalid helper through the best-effort function index', () => {
+    const invalidSource = `function removeCount(input) {
+  return workflow.step(input, "drop", { columns: ["记录数"] }));
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  return workflow.output(removeCount(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+}`;
+    const patched = applyWorkflowFunctionPatch(
+      invalidSource,
+      'removeCount',
+      `function removeCount(input) {
+  return workflow.step(input, "drop", { columns: ["记录数"] });
+}`
+    );
+
+    expect(buildIr(patched).operations).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: 'drop', columns: ['记录数'] })])
+    );
   });
 
   it('keeps semantic IR hash stable when provenance changes', () => {

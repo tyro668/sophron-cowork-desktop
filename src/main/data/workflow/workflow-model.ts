@@ -62,12 +62,53 @@ export interface WorkflowMetricIr {
   fn: string;
   expression: WorkflowExpressionIr | '*';
   alias: string;
+  parameters?: WorkflowLiteral[];
 }
 
 export interface WorkflowSortKeyIr {
   field: string;
   direction: 'asc' | 'desc';
   nulls?: 'first' | 'last';
+}
+
+export type WorkflowWindowFrameBound =
+  | { type: 'unbounded_preceding' }
+  | { type: 'preceding'; offset: number; unit?: WorkflowWindowIntervalUnit }
+  | { type: 'current_row' }
+  | { type: 'following'; offset: number; unit?: WorkflowWindowIntervalUnit }
+  | { type: 'unbounded_following' };
+
+export type WorkflowWindowIntervalUnit =
+  | 'microsecond'
+  | 'millisecond'
+  | 'second'
+  | 'minute'
+  | 'hour'
+  | 'day'
+  | 'week'
+  | 'month'
+  | 'quarter'
+  | 'year';
+
+export interface WorkflowWindowFrame {
+  type: 'rows' | 'range' | 'groups';
+  start: WorkflowWindowFrameBound;
+  end: WorkflowWindowFrameBound;
+  exclude?: 'current_row' | 'group' | 'ties';
+}
+
+export interface WorkflowDeriveWindowConfig {
+  column: string;
+  function: string;
+  expression?: WorkflowExpressionIr | '*';
+  parameters?: WorkflowLiteral[];
+  offset?: number;
+  defaultValue?: WorkflowLiteral;
+  buckets?: number;
+  nth?: number;
+  partitionBy: string[];
+  orderBy: WorkflowSortKeyIr[];
+  frame?: WorkflowWindowFrame;
 }
 
 export interface WorkflowDeduplicateConfig {
@@ -87,20 +128,30 @@ export interface WorkflowMissingValueRule {
 
 export type WorkflowMissingValueConfig =
   | { strategy: 'drop_empty_rows' }
+  | {
+      strategy: 'drop_rows_by_nulls';
+      columns: string[];
+      condition: 'any_null' | 'all_null';
+    }
   | { strategy: 'by_column'; rules: WorkflowMissingValueRule[] };
 
 export interface WorkflowLimitConfig {
-  mode: 'limit' | 'top';
+  mode: 'limit' | 'top' | 'random';
   limit: number;
   unit: 'rows' | 'percent';
   offset: number;
   orderBy: WorkflowSortKeyIr[];
+  groupBy?: string[];
+  ties?: boolean;
+  method?: 'system' | 'bernoulli';
+  seed?: number;
 }
 
 export interface WorkflowPivotMetricIr {
   function: string;
   expression: WorkflowExpressionIr | '*';
   alias: string;
+  parameters?: WorkflowLiteral[];
 }
 
 export interface WorkflowPivotConfig {
@@ -131,11 +182,18 @@ export interface WorkflowUnnestConfig {
 
 export type WorkflowOperationIr = (
   | { type: 'filter'; condition: WorkflowExpressionIr }
-  | { type: 'sort'; column: WorkflowExpressionIr; direction: 'asc' | 'desc' }
+  | {
+      type: 'sort';
+      keys?: WorkflowSortKeyIr[];
+      /** Compatibility shape accepted for already persisted/generated v2.1 workflows. */
+      column?: WorkflowExpressionIr;
+      direction?: 'asc' | 'desc';
+    }
   | { type: 'drop'; columns: string[] }
   | { type: 'select'; columns: string[] }
   | { type: 'rename'; source: string; target: string }
   | { type: 'derive'; column: string; expression: WorkflowExpressionIr }
+  | ({ type: 'derive_window' } & WorkflowDeriveWindowConfig)
   | {
       type: 'convert_type';
       column: string;
