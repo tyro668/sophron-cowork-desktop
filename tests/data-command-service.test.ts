@@ -2135,6 +2135,471 @@ function main() {
     expect(generated.workflowDsl).toContain('limit 10');
   });
 
+  it('repairs syntax-invalid generated JavaScript with a scoped function patch', async () => {
+    const invalidSource = `function step1(input) {
+  return workflow.step(input, "filter", { condition: expr(row => row["Market"] !== "EU") }));
+}
+
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  return workflow.output(step1(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+}`;
+    vi.mocked(runPiAiOneShot)
+      .mockResolvedValueOnce({
+        text: JSON.stringify({ javascriptSource: invalidSource }),
+        hasThinking: false,
+        durationMs: 1,
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          javascriptPatch: {
+            functionName: 'step1',
+            replacementSource: `function step1(input) {
+  return workflow.step(input, "filter", { condition: expr(row => row["Market"] !== "EU") });
+}`,
+          },
+        }),
+        hasThinking: false,
+        durationMs: 1,
+      });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'syntax-repair.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'syntax repair input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '过滤掉Market为EU的数据',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'syntax repair output',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(runPiAiOneShot).toHaveBeenCalledTimes(2);
+    const repairPrompt = JSON.parse(String(vi.mocked(runPiAiOneShot).mock.calls[1]?.[0])) as {
+      outputJsonSchema?: { javascriptPatch?: { functionName?: string } };
+      examples?: unknown;
+      previousFailedAttempt?: {
+        failedJavascriptSource?: string;
+        repairTarget?: { functionName?: string; source?: string; availableFunctions?: string[] };
+        diagnostics?: Array<Record<string, unknown>>;
+      };
+    };
+    expect(repairPrompt.outputJsonSchema?.javascriptPatch?.functionName).toBe('step1');
+    expect(repairPrompt.examples).toBeUndefined();
+    expect(repairPrompt.previousFailedAttempt?.failedJavascriptSource).toBeUndefined();
+    expect(repairPrompt.previousFailedAttempt?.repairTarget).toMatchObject({
+      functionName: 'step1',
+      source: expect.stringContaining('function step1'),
+      availableFunctions: ['step1', 'main'],
+    });
+    expect(repairPrompt.previousFailedAttempt?.repairTarget?.source).not.toContain('function main');
+    expect(repairPrompt.previousFailedAttempt?.diagnostics?.[0]).toMatchObject({
+      code: 'JAVASCRIPT_SYNTAX_ERROR',
+      line: 2,
+      column: expect.any(Number),
+      functionName: 'step1',
+      sourceLine: expect.stringContaining('workflow.step'),
+      sourceExcerpt: expect.stringContaining('2 |'),
+      caret: expect.stringContaining('^'),
+      repairHint: expect.stringContaining('do not copy the failing line unchanged'),
+    });
+    expect(vi.mocked(runPiAiOneShot).mock.calls[1]?.[3]).toMatchObject({ maxTokens: 1_200 });
+    expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
+  });
+
+  it('falls back to full regeneration when a syntax repair patch is still invalid', async () => {
+    const invalidHelper = `function step1(input) {
+  return workflow.step(input, "filter", { condition: expr(row => row["Market"] !== "EU") }));
+}`;
+    const invalidSource = `${invalidHelper}
+
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  return workflow.output(step1(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+}`;
+    const validSource = asFunctionWorkflow([
+      'filter',
+      '{ condition: expr(row => row["Market"] !== "EU") }',
+    ]);
+    vi.mocked(runPiAiOneShot)
+      .mockResolvedValueOnce({
+        text: JSON.stringify({ javascriptSource: invalidSource }),
+        hasThinking: false,
+        durationMs: 1,
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          javascriptPatch: { functionName: 'step1', replacementSource: invalidHelper },
+        }),
+        hasThinking: false,
+        durationMs: 1,
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({ javascriptSource: validSource }),
+        hasThinking: false,
+        durationMs: 1,
+      });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'syntax-patch-fallback.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'syntax patch fallback input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '过滤掉Market为EU的数据',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'syntax patch fallback output',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(runPiAiOneShot).toHaveBeenCalledTimes(3);
+    const fullRepairPrompt = JSON.parse(String(vi.mocked(runPiAiOneShot).mock.calls[2]?.[0])) as {
+      outputJsonSchema?: Record<string, unknown>;
+      previousFailedAttempt?: { repairStrategy?: string };
+    };
+    expect(fullRepairPrompt.outputJsonSchema).toHaveProperty('javascriptSource');
+    expect(fullRepairPrompt.previousFailedAttempt?.repairStrategy).toBe('full_regeneration');
+    expect(vi.mocked(runPiAiOneShot).mock.calls[2]?.[3]).toMatchObject({ maxTokens: 3_000 });
+    expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
+  });
+
+  it('preserves semantic repair capacity after source-stage repairs are consumed', async () => {
+    const invalidHelper = `function step1(input) {
+  return workflow.step(input, "filter", { condition: expr(row => row["Market"] !== "EU") }));
+}`;
+    const invalidSource = `${invalidHelper}
+
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  return workflow.output(step1(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+}`;
+    const semanticFailureSource = asFunctionWorkflow([
+      'filter',
+      '{ condition: expr(row => true) }',
+    ]);
+    const validFunction =
+      'function step1(input) { return workflow.step(input, "filter", { condition: expr(row => row["Market"] !== "EU") }); }';
+    vi.mocked(runPiAiOneShot)
+      .mockResolvedValueOnce({
+        text: JSON.stringify({ javascriptSource: invalidSource }),
+        hasThinking: false,
+        durationMs: 1,
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          javascriptPatch: { functionName: 'step1', replacementSource: invalidHelper },
+        }),
+        hasThinking: false,
+        durationMs: 1,
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({ javascriptSource: semanticFailureSource }),
+        hasThinking: false,
+        durationMs: 1,
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          javascriptPatch: { functionName: 'step1', replacementSource: validFunction },
+        }),
+        hasThinking: false,
+        durationMs: 1,
+      });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'stage-repair-budget.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'stage repair budget input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '过滤掉Market为EU的数据',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'stage repair budget output',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(runPiAiOneShot).toHaveBeenCalledTimes(4);
+    const semanticRepairPrompt = JSON.parse(
+      String(vi.mocked(runPiAiOneShot).mock.calls[3]?.[0])
+    ) as {
+      previousFailedAttempt?: { diagnostics?: Array<Record<string, unknown>> };
+    };
+    expect(semanticRepairPrompt.previousFailedAttempt?.diagnostics?.[0]).toMatchObject({
+      failureStage: 'workflow_lowering',
+      functionName: 'step1',
+    });
+    expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
+  });
+
+  it('keeps the last semantic-stage baseline when a repair regresses to invalid JavaScript', async () => {
+    const semanticFailureSource = asFunctionWorkflow([
+      'filter',
+      '{ condition: expr(row => true) }',
+    ]);
+    const invalidPatch = `function step1(input) {
+  return workflow.step(input, "filter", { condition: expr(row => true) }));
+}`;
+    const validSource = asFunctionWorkflow([
+      'filter',
+      '{ condition: expr(row => row["Market"] !== "EU") }',
+    ]);
+    vi.mocked(runPiAiOneShot)
+      .mockResolvedValueOnce({
+        text: JSON.stringify({ javascriptSource: semanticFailureSource }),
+        hasThinking: false,
+        durationMs: 1,
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          javascriptPatch: { functionName: 'step1', replacementSource: invalidPatch },
+        }),
+        hasThinking: false,
+        durationMs: 1,
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({ javascriptSource: validSource }),
+        hasThinking: false,
+        durationMs: 1,
+      });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'semantic-repair-frontier.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'semantic repair frontier input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '过滤掉Market为EU的数据',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'semantic repair frontier output',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    const fullRepairPrompt = JSON.parse(String(vi.mocked(runPiAiOneShot).mock.calls[2]?.[0])) as {
+      previousFailedAttempt?: { failedJavascriptSource?: string; repairStrategy?: string };
+    };
+    expect(fullRepairPrompt.previousFailedAttempt).toMatchObject({
+      failedJavascriptSource: semanticFailureSource,
+      repairStrategy: 'full_regeneration',
+    });
+    expect(fullRepairPrompt.previousFailedAttempt?.failedJavascriptSource).not.toContain('}));');
+    expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
+  });
+
+  it('escalates an identical full repair to a duplicate-rewrite strategy', async () => {
+    const validSource = asFunctionWorkflow([
+      'filter',
+      '{ condition: expr(row => row["Market"] !== "EU") }',
+    ]);
+    const invalidSource = `)\n${validSource}`;
+    vi.mocked(runPiAiOneShot)
+      .mockResolvedValueOnce({
+        text: JSON.stringify({ javascriptSource: invalidSource }),
+        hasThinking: false,
+        durationMs: 1,
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({ javascriptSource: invalidSource }),
+        hasThinking: false,
+        durationMs: 1,
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({ javascriptSource: validSource }),
+        hasThinking: false,
+        durationMs: 1,
+      });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'duplicate-syntax-repair.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'duplicate syntax repair input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '过滤掉Market为EU的数据',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'duplicate syntax repair output',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(runPiAiOneShot).toHaveBeenCalledTimes(3);
+    const duplicatePrompt = JSON.parse(String(vi.mocked(runPiAiOneShot).mock.calls[2]?.[0])) as {
+      previousFailedAttempt?: {
+        repairStrategy?: string;
+        previousRepairWasIdentical?: boolean;
+        instruction?: string;
+      };
+    };
+    expect(duplicatePrompt.previousFailedAttempt).toMatchObject({
+      repairStrategy: 'duplicate_rewrite',
+      previousRepairWasIdentical: true,
+      instruction: expect.stringContaining('byte-for-byte identical'),
+    });
+    expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
+  });
+
+  it('stops safely when the duplicate-rewrite strategy also returns identical syntax', async () => {
+    const invalidSource = `)\n${asFunctionWorkflow([
+      'filter',
+      '{ condition: expr(row => row["Market"] !== "EU") }',
+    ])}`;
+    const repeatedResponse = {
+      text: JSON.stringify({ javascriptSource: invalidSource }),
+      hasThinking: false,
+      durationMs: 1,
+    };
+    vi.mocked(runPiAiOneShot)
+      .mockResolvedValueOnce(repeatedResponse)
+      .mockResolvedValueOnce(repeatedResponse)
+      .mockResolvedValueOnce(repeatedResponse);
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'duplicate-rewrite-stop.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'duplicate rewrite stop input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    await expect(
+      service.generateTaskFromRequirement({
+        source: {
+          location: 'local',
+          tableId: input.inputTable.id,
+          tableName: input.inputTable.name,
+        },
+        processRequirement: '过滤掉Market为EU的数据',
+        output: {
+          location: 'local',
+          writeMode: 'create',
+          tableName: 'duplicate rewrite stop output',
+        },
+        runtimeConfig: testRuntimeConfig,
+      })
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      message: expect.stringContaining('at line 1, column 1'),
+      details: {
+        repairStopReason: 'duplicate',
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            code: 'JAVASCRIPT_SYNTAX_ERROR',
+            line: 1,
+            column: 1,
+          }),
+        ]),
+      },
+    });
+    expect(runPiAiOneShot).toHaveBeenCalledTimes(3);
+  });
+
+  it('treats token-limited model output as truncation instead of a JavaScript syntax failure', async () => {
+    const validSource = asFunctionWorkflow([
+      'filter',
+      '{ condition: expr(row => row["Market"] !== "EU") }',
+    ]);
+    vi.mocked(runPiAiOneShot)
+      .mockResolvedValueOnce({
+        text: '{"javascriptSource":"function step1(input) {',
+        hasThinking: false,
+        durationMs: 1,
+        stopReason: 'length',
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({ javascriptSource: validSource }),
+        hasThinking: false,
+        durationMs: 1,
+      });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'truncated-generation.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'truncated generation input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement: '过滤掉Market为EU的数据',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'truncated generation output',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(runPiAiOneShot).toHaveBeenCalledTimes(2);
+    const repairPrompt = JSON.parse(String(vi.mocked(runPiAiOneShot).mock.calls[1]?.[0])) as {
+      previousFailedAttempt?: { diagnostics?: Array<Record<string, unknown>> };
+    };
+    expect(repairPrompt.previousFailedAttempt?.diagnostics?.[0]).toMatchObject({
+      code: 'MODEL_OUTPUT_TRUNCATED',
+      failureStage: 'generation_response',
+      repairClass: 'full_regeneration',
+      repairHint: expect.stringContaining('shorter complete JavaScript program'),
+    });
+    expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
+  });
+
   it('repairs a statement-bodied profit-rate expression and runs the generated classification', async () => {
     const invalidSource = `function addProfitRate(input) {
   return workflow.step(input, "derive", {
@@ -2244,6 +2709,271 @@ function main() {
       '低收益',
       '亏损',
       '低收益',
+    ]);
+  });
+
+  it('repairs intermediate data access with derive_window and runs percentage-of-total', async () => {
+    const invalidSource = `function summarizeCountrySales(input) {
+  return workflow.step(input, "aggregate", {
+    groupBy: [expr(row => row["Country"])],
+    metrics: [{ fn: "sum", expression: expr(row => row["Sales"]), alias: "国家销售额" }]
+  });
+}
+
+function addOverallSalesAndShare(input) {
+  const totalAgg = workflow.step(input, "aggregate", {
+    groupBy: [],
+    metrics: [{ fn: "sum", expression: expr(row => row["国家销售额"]), alias: "全部销售额" }]
+  });
+  return workflow.step(input, "derive", {
+    column: "销售额占比",
+    expression: expr(row => row["国家销售额"] / totalAgg.data[0]["全部销售额"])
+  });
+}
+
+function sortByShare(input) {
+  return workflow.step(input, "sort", {
+    column: expr(row => row["销售额占比"]),
+    direction: "desc"
+  });
+}
+
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const summarized = summarizeCountrySales(input);
+  const withShare = addOverallSalesAndShare(summarized);
+  const sorted = sortByShare(withShare);
+  return workflow.output(sorted, OUTPUT_TABLE_NAME, { mode: "replace" });
+}`;
+    const repairedFunction = `function addOverallSalesAndShare(input) {
+  const withOverallSales = workflow.step(input, "derive_window", {
+    column: "全部销售额",
+    function: "sum",
+    expression: expr(row => row["国家销售额"]),
+    partitionBy: [],
+    orderBy: []
+  });
+  const withShare = workflow.step(withOverallSales, "derive", {
+    column: "销售额占比",
+    expression: expr(row => cast(row["全部销售额"] == null || row["全部销售额"] === 0 ? 0 : row["国家销售额"] / row["全部销售额"], "decimal", { scale: 4 }))
+  });
+  return withShare;
+}`;
+    vi.mocked(runPiAiOneShot)
+      .mockResolvedValueOnce({
+        text: JSON.stringify({ javascriptSource: invalidSource }),
+        hasThinking: false,
+        durationMs: 1,
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          javascriptPatch: {
+            functionName: 'addOverallSalesAndShare',
+            replacementSource: repairedFunction,
+          },
+        }),
+        hasThinking: false,
+        durationMs: 1,
+      });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'country-sales-share.csv');
+    fs.writeFileSync(csvPath, 'Country,Sales\nChina,10\nChina,30\nFrance,60\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'country sales share input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement:
+        '按 Country 汇总 Sales，然后计算各国家销售额占全部国家销售额的比例，结果按占比降序排列。',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: 'country sales share output',
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(runPiAiOneShot).toHaveBeenCalledTimes(2);
+    expect(String(vi.mocked(runPiAiOneShot).mock.calls[0]?.[1])).toContain(
+      'Workflow values are opaque graph handles'
+    );
+    expect(String(vi.mocked(runPiAiOneShot).mock.calls[0]?.[1])).toContain('use derive_window');
+    const repairPrompt = JSON.parse(String(vi.mocked(runPiAiOneShot).mock.calls[1]?.[0])) as {
+      previousFailedAttempt?: { diagnostics?: Array<Record<string, unknown>> };
+    };
+    expect(repairPrompt.previousFailedAttempt?.diagnostics?.[0]).toMatchObject({
+      code: 'WORKFLOW_VALUE_DATA_ACCESS_UNSUPPORTED',
+      functionName: 'addOverallSalesAndShare',
+      expectedSignature: expect.stringContaining('derive_window'),
+      repairHint: expect.stringContaining('Do not read .data'),
+    });
+    expect(generated.workflowDsl).toContain('sum([国家销售额]) OVER ()');
+
+    const run = await service.runGeneratedTask({
+      taskId: generated.taskId,
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      output: {
+        location: 'local',
+        writeMode: 'replace',
+        targetTableId: generated.outputTableId,
+      },
+      requiredColumns: generated.requiredColumns,
+      expectedOutputSchema: generated.expectedOutputSchema,
+    });
+    expect(
+      run.preview?.rows.map((row) => ({
+        country: row.Country,
+        countrySales: Number(row['国家销售额']),
+        overallSales: Number(row['全部销售额']),
+        share: Number(row['销售额占比']),
+      }))
+    ).toEqual([
+      { country: 'France', countrySales: 60, overallSales: 100, share: 0.6 },
+      { country: 'China', countrySales: 40, overallSales: 100, share: 0.4 },
+    ]);
+  });
+
+  it.each([
+    ['a scalar pivot field', '"Market"'],
+    ['an expression-wrapped pivot field', '[expr(row => row["Market"])]'],
+  ])('repairs %s and executes the generated pivot', async (_caseName, invalidOn) => {
+    const pivotSource = (on: string) => `function pivotMarketSales(input) {
+  return workflow.step(input, "pivot", {
+    config: {
+      on: ${on},
+      values: ["Central", "East", "South", "West"],
+      using: [{ function: "sum", expression: expr(row => row["Sales"]), alias: "Sales" }],
+      groupBy: ["Product Type"]
+    }
+  });
+}
+
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const pivoted = pivotMarketSales(input);
+  return workflow.output(pivoted, OUTPUT_TABLE_NAME, { mode: "replace" });
+}`;
+    const validSource = pivotSource('["Market"]');
+    vi.mocked(runPiAiOneShot)
+      .mockResolvedValueOnce({
+        text: JSON.stringify({ javascriptSource: pivotSource(invalidOn) }),
+        hasThinking: false,
+        durationMs: 1,
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          javascriptPatch: {
+            functionName: 'pivotMarketSales',
+            replacementSource: validSource.slice(0, validSource.indexOf('\n\nfunction main()')),
+          },
+        }),
+        hasThinking: false,
+        durationMs: 1,
+      });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, `pivot-${_caseName.replaceAll(' ', '-')}.csv`);
+    fs.writeFileSync(
+      csvPath,
+      [
+        'Product Type,Market,Sales',
+        'Coffee,Central,10',
+        'Coffee,East,20',
+        'Coffee,South,30',
+        'Coffee,West,40',
+        'Espresso,Central,5',
+        'Espresso,East,7',
+        'Espresso,South,11',
+        'Espresso,West,13',
+      ].join('\n'),
+      'utf8'
+    );
+    const input = await service.createInputTable({
+      name: `pivot ${_caseName} input`,
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      processRequirement:
+        '以 Product Type 为行分组，将 Market 透视为列，固定生成 Central、East、South、West 四列，单元格汇总 Sales。',
+      output: {
+        location: 'local',
+        writeMode: 'create',
+        tableName: `pivot ${_caseName} output`,
+      },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(runPiAiOneShot).toHaveBeenCalledTimes(2);
+    expect(String(vi.mocked(runPiAiOneShot).mock.calls[0]?.[1])).toContain('on: ["Market"]');
+    const repairPrompt = JSON.parse(String(vi.mocked(runPiAiOneShot).mock.calls[1]?.[0])) as {
+      previousFailedAttempt?: { diagnostics?: Array<Record<string, unknown>> };
+    };
+    expect(repairPrompt.previousFailedAttempt?.diagnostics?.[0]).toMatchObject({
+      functionName: 'pivotMarketSales',
+      operationType: 'pivot',
+      expectedSignature: expect.stringContaining('on: ["pivotField"]'),
+      repairHint: expect.stringContaining('Never use a scalar string or expr(...)'),
+    });
+    expect(generated.workflowDsl).toContain('pivot on [Market]');
+    expect(generated.workflowDsl).toContain('group by [`Product Type`]');
+
+    const run = await service.runGeneratedTask({
+      taskId: generated.taskId,
+      source: {
+        location: 'local',
+        tableId: input.inputTable.id,
+        tableName: input.inputTable.name,
+      },
+      output: {
+        location: 'local',
+        writeMode: 'replace',
+        targetTableId: generated.outputTableId,
+      },
+      requiredColumns: generated.requiredColumns,
+      expectedOutputSchema: generated.expectedOutputSchema,
+    });
+    expect(
+      run.preview?.rows
+        .map((row) => ({
+          productType: String(row['Product Type']),
+          centralSales: Number(row.Central_Sales),
+          eastSales: Number(row.East_Sales),
+          southSales: Number(row.South_Sales),
+          westSales: Number(row.West_Sales),
+        }))
+        .sort((left, right) => left.productType.localeCompare(right.productType))
+    ).toEqual([
+      {
+        productType: 'Coffee',
+        centralSales: 10,
+        eastSales: 20,
+        southSales: 30,
+        westSales: 40,
+      },
+      {
+        productType: 'Espresso',
+        centralSales: 5,
+        eastSales: 7,
+        southSales: 11,
+        westSales: 13,
+      },
     ]);
   });
 

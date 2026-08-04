@@ -6,8 +6,10 @@ import workflowGenerationSystemPrompt from './prompts/workflow-generation-system
 import {
   applyWorkflowFunctionPatch,
   compileWorkflowJavaScript,
+  createWorkflowFunctionPatchCandidate,
   executeWorkflowJavaScriptInSandbox,
   indexJavaScriptFunctions,
+  indexJavaScriptFunctionsBestEffort,
 } from './javascript-runtime';
 import { getWorkflowJavascriptCapabilityPrompt } from './workflow-ir-operation-registry';
 import { getWorkflowExpressionCapabilityPrompt } from './workflow-expression-registry';
@@ -21,14 +23,36 @@ import {
   contextualizeWorkflowError,
   createWorkflowRepairBudget,
   isWorkflowDiagnosticRepairable,
+  normalizeWorkflowFailureDiagnostics,
   workflowCommandCodeForDiagnostics,
   workflowDiagnosticsFromError,
+  workflowRepairIncidentKey,
+  workflowRepairStageForDiagnostics,
   type WorkflowRepairBudget,
+  type WorkflowRepairBudgetConfig,
+  type WorkflowRepairStrategy,
 } from './workflow-failure';
 import { computeWorkflowIrSemanticHash } from './workflow-ir';
 import { extractJsonObject, isRecord } from './utils';
 
-export const GENERATED_WORKFLOW_REPAIR_ATTEMPTS = 2;
+export const GENERATED_WORKFLOW_REPAIR_ATTEMPTS = 5;
+export const GENERATED_WORKFLOW_REPAIR_POLICY: WorkflowRepairBudgetConfig = {
+  maxAttempts: GENERATED_WORKFLOW_REPAIR_ATTEMPTS,
+  maxAttemptsPerStage: {
+    source: 2,
+    semantic: 2,
+    execution: 2,
+  },
+  maxAttemptsPerIncident: 2,
+  maxReservedOutputTokens: 15_000,
+};
+
+const FUNCTION_PATCH_MAX_TOKENS = 1_200;
+const FULL_REGENERATION_MAX_TOKENS = 3_000;
+
+export function createGeneratedWorkflowRepairBudget(): WorkflowRepairBudget {
+  return createWorkflowRepairBudget(GENERATED_WORKFLOW_REPAIR_POLICY);
+}
 
 export function compileGeneratedJavaScriptWorkflow({
   javascriptSource,
@@ -169,8 +193,7 @@ export async function generateDataTaskWorkflowFromRequirement({
   repairBudget?: WorkflowRepairBudget;
 }): Promise<GeneratedDataTaskWorkflow> {
   const config = requireGenerationRuntimeConfig(runtimeConfig);
-  const sharedRepairBudget =
-    repairBudget ?? createWorkflowRepairBudget(GENERATED_WORKFLOW_REPAIR_ATTEMPTS);
+  const sharedRepairBudget = repairBudget ?? createGeneratedWorkflowRepairBudget();
   try {
     const response = await runPiAiOneShot(
       buildWorkflowGenerationUserPrompt({
@@ -183,6 +206,19 @@ export async function generateDataTaskWorkflowFromRequirement({
       config,
       { temperature: 0, maxTokens: 4_000 }
     );
+    if (response.stopReason === 'length') {
+      return await repairGeneratedWorkflowFromDiagnostics({
+        inputTableId,
+        outputTableName,
+        requirement,
+        columns,
+        runtimeConfig,
+        failedJavascriptSource:
+          extractJavascriptSourceFromModelResponse(response.text) ?? response.text,
+        diagnostics: createModelOutputTruncatedDiagnostics(),
+        repairBudget: sharedRepairBudget,
+      });
+    }
     try {
       return compileGeneratedJavascriptResponse({
         text: response.text,
@@ -243,13 +279,13 @@ export async function repairGeneratedWorkflowFromDiagnostics({
   repairBudget?: WorkflowRepairBudget;
 }): Promise<GeneratedDataTaskWorkflow> {
   const config = requireGenerationRuntimeConfig(runtimeConfig);
-  const sharedRepairBudget =
-    repairBudget ?? createWorkflowRepairBudget(GENERATED_WORKFLOW_REPAIR_ATTEMPTS);
+  const sharedRepairBudget = repairBudget ?? createGeneratedWorkflowRepairBudget();
   try {
     let currentJavascriptSource = failedJavascriptSource;
     let currentDiagnostics = diagnostics;
     let forceFullRegeneration = false;
-    while (sharedRepairBudget.attemptsUsed <= sharedRepairBudget.maxAttempts) {
+    let duplicateRewrite = false;
+    for (;;) {
       if (!currentDiagnostics.every(isWorkflowDiagnosticRepairable)) {
         throw workflowRepairStoppedError('not_repairable', currentDiagnostics);
       }
@@ -257,21 +293,38 @@ export async function repairGeneratedWorkflowFromDiagnostics({
         currentJavascriptSource,
         currentDiagnostics
       );
-      const repairFunctionName = forceFullRegeneration ? undefined : scopedRepairFunctionName;
+      const repairFunctionName =
+        forceFullRegeneration || duplicateRewrite ? undefined : scopedRepairFunctionName;
+      const repairStrategy: WorkflowRepairStrategy = duplicateRewrite
+        ? 'duplicate_rewrite'
+        : repairFunctionName
+          ? 'function_patch'
+          : 'full_regeneration';
+      const maxOutputTokens = repairMaxOutputTokens(repairStrategy);
       const claim = claimWorkflowRepairAttempt({
         budget: sharedRepairBudget,
         javascriptSource: currentJavascriptSource,
         diagnostics: currentDiagnostics,
         repairFunctionName,
+        strategy: repairStrategy,
+        stage: workflowRepairStageForDiagnostics(currentDiagnostics),
+        maxOutputTokens,
       });
       if (!claim.accepted) {
         if (
           claim.reason === 'duplicate' &&
-          repairFunctionName &&
           sharedRepairBudget.attemptsUsed < sharedRepairBudget.maxAttempts
         ) {
-          forceFullRegeneration = true;
-          continue;
+          if (repairStrategy === 'function_patch') {
+            forceFullRegeneration = true;
+            duplicateRewrite = false;
+            continue;
+          }
+          if (repairStrategy === 'full_regeneration') {
+            forceFullRegeneration = true;
+            duplicateRewrite = true;
+            continue;
+          }
         }
         throw workflowRepairStoppedError(claim.reason, currentDiagnostics);
       }
@@ -284,11 +337,18 @@ export async function repairGeneratedWorkflowFromDiagnostics({
           failedJavascriptSource: currentJavascriptSource,
           diagnostics: currentDiagnostics,
           repairFunctionName,
+          repairStrategy,
         }),
         buildWorkflowGenerationSystemPrompt(),
         config,
-        { temperature: 0, maxTokens: 4_000 }
+        { temperature: 0, maxTokens: maxOutputTokens }
       );
+      if (response.stopReason === 'length') {
+        currentDiagnostics = createModelOutputTruncatedDiagnostics();
+        forceFullRegeneration = true;
+        duplicateRewrite = false;
+        continue;
+      }
       try {
         return compileRepairResponse({
           text: response.text,
@@ -315,14 +375,30 @@ export async function repairGeneratedWorkflowFromDiagnostics({
           repairFunctionName,
         });
         if (!nextJavascriptSource) throw repairError;
-        currentJavascriptSource = nextJavascriptSource;
-        currentDiagnostics = nextDiagnostics;
-        // A scoped patch gets one chance. If it still cannot compile, regenerate the
-        // complete program so the model can repair dependent helpers and main() together.
-        if (repairFunctionName) forceFullRegeneration = true;
+        const regressed =
+          diagnosticProgressRank(nextDiagnostics) < diagnosticProgressRank(currentDiagnostics);
+        const repeatedIncident =
+          workflowRepairIncidentKey(nextDiagnostics) ===
+          workflowRepairIncidentKey(currentDiagnostics);
+        if (!regressed && !repeatedIncident) {
+          currentJavascriptSource = nextJavascriptSource;
+          currentDiagnostics = nextDiagnostics;
+          forceFullRegeneration = false;
+          duplicateRewrite = false;
+          continue;
+        }
+        // Keep the last candidate that reached the current validation frontier. A repair
+        // that regresses to an earlier stage or repeats the same root cause must not become
+        // the baseline for the next model call.
+        if (repairFunctionName) {
+          forceFullRegeneration = true;
+          duplicateRewrite = false;
+        } else if (repairStrategy === 'full_regeneration') {
+          forceFullRegeneration = true;
+          duplicateRewrite = true;
+        }
       }
     }
-    throw workflowRepairStoppedError('exhausted', currentDiagnostics);
   } catch (error) {
     if (error instanceof DataCommandError) throw error;
     throw contextualizeWorkflowError(error, {
@@ -330,6 +406,41 @@ export async function repairGeneratedWorkflowFromDiagnostics({
       commandErrorCode: 'GENERATION_FAILED',
       repairClass: 'none',
     });
+  }
+}
+
+function repairMaxOutputTokens(strategy: WorkflowRepairStrategy): number {
+  return strategy === 'function_patch' ? FUNCTION_PATCH_MAX_TOKENS : FULL_REGENERATION_MAX_TOKENS;
+}
+
+function diagnosticProgressRank(diagnostics: PrepDiagnostic[]): number {
+  const stage = diagnostics
+    .filter((diagnostic) => diagnostic.severity === 'error')
+    .map((diagnostic) => (diagnostic as PrepDiagnostic & Record<string, unknown>).failureStage)
+    .find((value): value is string => typeof value === 'string');
+  switch (stage) {
+    case 'generation_response':
+      return 0;
+    case 'javascript_compile':
+      return 1;
+    case 'sandbox_execution':
+      return 2;
+    case 'ir_validation':
+      return 3;
+    case 'workflow_lowering':
+      return 4;
+    case 'generation_contract':
+      return 5;
+    case 'dsl_compile':
+      return 6;
+    case 'node_validation':
+      return 7;
+    case 'node_execution':
+      return 8;
+    case 'output_validation':
+      return 9;
+    default:
+      return 0;
   }
 }
 
@@ -341,6 +452,27 @@ function requireGenerationRuntimeConfig(runtimeConfig?: AgentRuntimeConfig): Age
     );
   }
   return runtimeConfig;
+}
+
+function createModelOutputTruncatedDiagnostics(): PrepDiagnostic[] {
+  return normalizeWorkflowFailureDiagnostics(
+    [
+      {
+        severity: 'error',
+        code: 'MODEL_OUTPUT_TRUNCATED',
+        message: 'The model response reached its output token limit before generation completed',
+      },
+    ],
+    {
+      failureStage: 'generation_response',
+      commandErrorCode: 'VALIDATION_FAILED',
+      repairClass: 'full_regeneration',
+    }
+  ).map((diagnostic) => ({
+    ...diagnostic,
+    repairHint:
+      'Return a shorter complete JavaScript program. Keep helpers concise, include main(), and close every JSON string, delimiter, and function body.',
+  }));
 }
 
 function buildWorkflowGenerationSystemPrompt(): string {
@@ -358,7 +490,12 @@ function buildWorkflowGenerationUserPrompt(input: {
   failedJavascriptSource?: string;
   diagnostics?: PrepDiagnostic[];
   repairFunctionName?: string;
+  repairStrategy?: WorkflowRepairStrategy;
 }): string {
+  const scopedRepairContext =
+    input.failedJavascriptSource && input.repairFunctionName
+      ? buildScopedRepairSourceContext(input.failedJavascriptSource, input.repairFunctionName)
+      : undefined;
   return JSON.stringify(
     {
       task: 'Convert the user requirement into standard JavaScript that builds a Sophron data workflow through the provided Workflow SDK.',
@@ -391,7 +528,8 @@ function buildWorkflowGenerationUserPrompt(input: {
             },
       previousFailedAttempt: input.failedJavascriptSource
         ? {
-            failedJavascriptSource: input.failedJavascriptSource,
+            failedJavascriptSource: scopedRepairContext ? undefined : input.failedJavascriptSource,
+            repairTarget: scopedRepairContext,
             diagnostics: (input.diagnostics ?? []).map((diagnostic) => ({
               severity: diagnostic.severity,
               code: diagnostic.code,
@@ -403,53 +541,100 @@ function buildWorkflowGenerationUserPrompt(input: {
               operationType: isRecord(diagnostic) ? diagnostic.operationType : undefined,
               expectedSignature: isRecord(diagnostic) ? diagnostic.expectedSignature : undefined,
               repairHint: isRecord(diagnostic) ? diagnostic.repairHint : undefined,
+              sourceLine: isRecord(diagnostic) ? diagnostic.sourceLine : undefined,
+              sourceExcerpt: isRecord(diagnostic) ? diagnostic.sourceExcerpt : undefined,
+              caret: isRecord(diagnostic) ? diagnostic.caret : undefined,
               nodeId: isRecord(diagnostic) ? diagnostic.nodeId : undefined,
               nodeType: isRecord(diagnostic) ? diagnostic.nodeType : undefined,
               failureStage: isRecord(diagnostic) ? diagnostic.failureStage : undefined,
               repairClass: isRecord(diagnostic) ? diagnostic.repairClass : undefined,
             })),
-            instruction: input.repairFunctionName
-              ? `Repair only ${input.repairFunctionName}. Return javascriptPatch with functionName exactly "${input.repairFunctionName}" and replacementSource containing the corrected function plus only any new helpers it requires. Do not return the complete program or DSL.`
-              : 'The scoped function repair repeated or a full repair is required. Return the complete corrected javascriptSource, including every helper and main(). Apply every diagnostic repairHint and canonical expectedSignature exactly. Do not return a partial function, javascriptPatch, or DSL.',
+            repairStrategy: input.repairStrategy,
+            previousRepairWasIdentical: input.repairStrategy === 'duplicate_rewrite',
+            instruction:
+              input.repairStrategy === 'duplicate_rewrite'
+                ? 'The previous repair returned byte-for-byte identical JavaScript and repeated the same diagnostics. Do not copy the failed source unchanged. Rewrite the failing function or, when its boundary is uncertain, reconstruct the complete program from scratch. Return complete corrected javascriptSource with every helper and main(). Apply the reported source excerpt, caret, repairHint, and canonical expectedSignature exactly. Do not return javascriptPatch or DSL.'
+                : input.repairFunctionName
+                  ? `Repair only ${input.repairFunctionName}. Return javascriptPatch with functionName exactly "${input.repairFunctionName}" and replacementSource containing the corrected function plus only any new helpers it requires. Do not return the complete program or DSL.`
+                  : 'A full repair is required. Return the complete corrected javascriptSource, including every helper and main(). Apply every diagnostic source excerpt, caret, repairHint, and canonical expectedSignature exactly. Do not return a partial function, javascriptPatch, or DSL.',
           }
         : undefined,
-      examples: [
-        {
-          requirement: '过滤掉Market为EU的数据',
-          javascriptSource:
-            'function filterEurope(input) {\n  return workflow.step(input, "filter", { condition: expr(row => row["Market"] !== "EU") });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const filtered = filterEurope(input);\n  return workflow.output(filtered, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
-          requiredColumns: [{ name: 'Market' }],
-        },
-        {
-          requirement: '按照Sales升序排列，删除记录数',
-          javascriptSource:
-            'function sortSales(input) {\n  return workflow.step(input, "sort", { column: expr(row => row["Sales"]), direction: "asc" });\n}\n\nfunction removeRecordCount(input) {\n  return workflow.step(input, "drop", { columns: ["记录数"] });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const sorted = sortSales(input);\n  const cleaned = removeRecordCount(sorted);\n  return workflow.output(cleaned, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
-          requiredColumns: [{ name: 'Sales' }, { name: '记录数' }],
-        },
-        {
-          requirement: '从 Date 提取年份和月份',
-          javascriptSource:
-            'function extractYearAndMonth(input) {\n  const withYear = workflow.step(input, "derive", { column: "Year", expression: expr(row => year(row["Date"])) });\n  const withMonth = workflow.step(withYear, "derive", { column: "Month", expression: expr(row => month(row["Date"])) });\n  return withMonth;\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const enriched = extractYearAndMonth(input);\n  return workflow.output(enriched, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
-          requiredColumns: [{ name: 'Date' }],
-        },
-        {
-          requirement:
-            '根据利润率新增“经营等级”：利润率大于等于 20% 为“高收益”，0%到20%之间为“低收益”，小于0%为“亏损”。Sales 为 0 的话利润率置0。',
-          javascriptSource:
-            'function addProfitRate(input) {\n  return workflow.step(input, "derive", { column: "利润率", expression: expr(row => cast(row["Sales"] == null || row["Sales"] === 0 ? 0 : row["Profit"] / row["Sales"], "decimal", { scale: 2 })) });\n}\n\nfunction addOperatingGrade(input) {\n  return workflow.step(input, "derive", { column: "经营等级", expression: expr(row => row["利润率"] >= 0.2 ? "高收益" : row["利润率"] >= 0 ? "低收益" : "亏损") });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const withProfitRate = addProfitRate(input);\n  const withOperatingGrade = addOperatingGrade(withProfitRate);\n  return workflow.output(withOperatingGrade, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
-          requiredColumns: [{ name: 'Sales' }, { name: 'Profit' }],
-        },
-        {
-          requirement: '按客户汇总销售额，找出销售额最高的前10名客户',
-          javascriptSource:
-            'function summarizeCustomers(input) {\n  return workflow.step(input, "aggregate", { groupBy: [expr(row => row["Customer ID"]), expr(row => row["Customer Name"])], metrics: [{ fn: "sum", expression: expr(row => row["Sales"]), alias: "总销售额" }] });\n}\n\nfunction rankCustomers(input) {\n  const sorted = workflow.step(input, "sort", { column: expr(row => row["总销售额"]), direction: "desc" });\n  const limited = workflow.step(sorted, "limit", { config: { mode: "limit", limit: 10, unit: "rows", offset: 0, orderBy: [] } });\n  return limited;\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const summarized = summarizeCustomers(input);\n  const ranked = rankCustomers(summarized);\n  return workflow.output(ranked, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
-          requiredColumns: [{ name: 'Customer ID' }, { name: 'Customer Name' }, { name: 'Sales' }],
-        },
-      ],
+      examples: input.failedJavascriptSource
+        ? undefined
+        : [
+            {
+              requirement: '过滤掉Market为EU的数据',
+              javascriptSource:
+                'function filterEurope(input) {\n  return workflow.step(input, "filter", { condition: expr(row => row["Market"] !== "EU") });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const filtered = filterEurope(input);\n  return workflow.output(filtered, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+              requiredColumns: [{ name: 'Market' }],
+            },
+            {
+              requirement: '按照Sales升序排列，删除记录数',
+              javascriptSource:
+                'function sortSales(input) {\n  return workflow.step(input, "sort", { column: expr(row => row["Sales"]), direction: "asc" });\n}\n\nfunction removeRecordCount(input) {\n  return workflow.step(input, "drop", { columns: ["记录数"] });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const sorted = sortSales(input);\n  const cleaned = removeRecordCount(sorted);\n  return workflow.output(cleaned, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+              requiredColumns: [{ name: 'Sales' }, { name: '记录数' }],
+            },
+            {
+              requirement: '从 Date 提取年份和月份',
+              javascriptSource:
+                'function extractYearAndMonth(input) {\n  const withYear = workflow.step(input, "derive", { column: "Year", expression: expr(row => year(row["Date"])) });\n  const withMonth = workflow.step(withYear, "derive", { column: "Month", expression: expr(row => month(row["Date"])) });\n  return withMonth;\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const enriched = extractYearAndMonth(input);\n  return workflow.output(enriched, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+              requiredColumns: [{ name: 'Date' }],
+            },
+            {
+              requirement:
+                '根据利润率新增“经营等级”：利润率大于等于 20% 为“高收益”，0%到20%之间为“低收益”，小于0%为“亏损”。Sales 为 0 的话利润率置0。',
+              javascriptSource:
+                'function addProfitRate(input) {\n  return workflow.step(input, "derive", { column: "利润率", expression: expr(row => cast(row["Sales"] == null || row["Sales"] === 0 ? 0 : row["Profit"] / row["Sales"], "decimal", { scale: 2 })) });\n}\n\nfunction addOperatingGrade(input) {\n  return workflow.step(input, "derive", { column: "经营等级", expression: expr(row => row["利润率"] >= 0.2 ? "高收益" : row["利润率"] >= 0 ? "低收益" : "亏损") });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const withProfitRate = addProfitRate(input);\n  const withOperatingGrade = addOperatingGrade(withProfitRate);\n  return workflow.output(withOperatingGrade, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+              requiredColumns: [{ name: 'Sales' }, { name: 'Profit' }],
+            },
+            {
+              requirement:
+                '以 Product Type 为行分组，将 Market 透视为列，固定生成 Central、East、South、West 四列，单元格汇总 Sales。',
+              javascriptSource:
+                'function pivotMarketSales(input) {\n  return workflow.step(input, "pivot", { config: { on: ["Market"], values: ["Central", "East", "South", "West"], using: [{ function: "sum", expression: expr(row => row["Sales"]), alias: "Sales" }], groupBy: ["Product Type"] } });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const pivoted = pivotMarketSales(input);\n  return workflow.output(pivoted, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+              requiredColumns: [{ name: 'Product Type' }, { name: 'Market' }, { name: 'Sales' }],
+            },
+            {
+              requirement: '按客户汇总销售额，找出销售额最高的前10名客户',
+              javascriptSource:
+                'function summarizeCustomers(input) {\n  return workflow.step(input, "aggregate", { groupBy: [expr(row => row["Customer ID"]), expr(row => row["Customer Name"])], metrics: [{ fn: "sum", expression: expr(row => row["Sales"]), alias: "总销售额" }] });\n}\n\nfunction rankCustomers(input) {\n  const sorted = workflow.step(input, "sort", { column: expr(row => row["总销售额"]), direction: "desc" });\n  const limited = workflow.step(sorted, "limit", { config: { mode: "limit", limit: 10, unit: "rows", offset: 0, orderBy: [] } });\n  return limited;\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const summarized = summarizeCustomers(input);\n  const ranked = rankCustomers(summarized);\n  return workflow.output(ranked, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+              requiredColumns: [
+                { name: 'Customer ID' },
+                { name: 'Customer Name' },
+                { name: 'Sales' },
+              ],
+            },
+            {
+              requirement:
+                '按 Country 汇总 Sales，然后计算各国家销售额占全部国家销售额的比例，结果按占比降序排列。',
+              javascriptSource:
+                'function summarizeCountrySales(input) {\n  return workflow.step(input, "aggregate", { groupBy: [expr(row => row["Country"])], metrics: [{ fn: "sum", expression: expr(row => row["Sales"]), alias: "国家销售额" }] });\n}\n\nfunction addOverallSales(input) {\n  return workflow.step(input, "derive_window", { column: "全部销售额", function: "sum", expression: expr(row => row["国家销售额"]), partitionBy: [], orderBy: [] });\n}\n\nfunction addSalesShare(input) {\n  return workflow.step(input, "derive", { column: "销售额占比", expression: expr(row => cast(row["全部销售额"] == null || row["全部销售额"] === 0 ? 0 : row["国家销售额"] / row["全部销售额"], "decimal", { scale: 4 })) });\n}\n\nfunction sortBySalesShare(input) {\n  return workflow.step(input, "sort", { column: expr(row => row["销售额占比"]), direction: "desc" });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const summarized = summarizeCountrySales(input);\n  const withOverallSales = addOverallSales(summarized);\n  const withSalesShare = addSalesShare(withOverallSales);\n  const sorted = sortBySalesShare(withSalesShare);\n  return workflow.output(sorted, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+              requiredColumns: [{ name: 'Country' }, { name: 'Sales' }],
+            },
+          ],
     },
     null,
     2
   );
+}
+
+function buildScopedRepairSourceContext(
+  javascriptSource: string,
+  functionName: string
+): { functionName: string; source: string; availableFunctions: string[] } | undefined {
+  let functions: ReturnType<typeof indexJavaScriptFunctionsBestEffort>;
+  try {
+    functions = indexJavaScriptFunctions(javascriptSource);
+  } catch {
+    functions = indexJavaScriptFunctionsBestEffort(javascriptSource);
+  }
+  const target = functions.find((item) => item.name === functionName);
+  if (!target) return undefined;
+  return {
+    functionName,
+    source: javascriptSource.slice(target.start, target.end).trim(),
+    availableFunctions: functions.map((item) => item.name),
+  };
 }
 
 function extractJavascriptSourceFromModelResponse(text: string): string | null {
@@ -533,15 +718,20 @@ function resolveRepairFunctionName(
   javascriptSource: string,
   diagnostics: PrepDiagnostic[]
 ): string | undefined {
-  let functions: Set<string>;
+  let functionNames: string[];
   try {
-    functions = new Set(indexJavaScriptFunctions(javascriptSource).map((item) => item.name));
+    functionNames = indexJavaScriptFunctions(javascriptSource).map((item) => item.name);
   } catch {
-    return undefined;
+    functionNames = indexJavaScriptFunctionsBestEffort(javascriptSource).map((item) => item.name);
   }
   for (const diagnostic of diagnostics) {
     const functionName = isRecord(diagnostic) ? diagnostic.functionName : undefined;
-    if (typeof functionName === 'string' && functions.has(functionName)) return functionName;
+    if (
+      typeof functionName === 'string' &&
+      functionNames.filter((name) => name === functionName).length === 1
+    ) {
+      return functionName;
+    }
   }
   return undefined;
 }
@@ -565,7 +755,7 @@ function extractRepairJavascriptCandidate({
         functionName === repairFunctionName &&
         typeof replacementSource === 'string'
       ) {
-        return applyWorkflowFunctionPatch(
+        return createWorkflowFunctionPatchCandidate(
           failedJavascriptSource,
           repairFunctionName,
           replacementSource
@@ -580,22 +770,39 @@ function extractRepairJavascriptCandidate({
 }
 
 function workflowRepairStoppedError(
-  reason: 'duplicate' | 'exhausted' | 'not_repairable',
+  reason:
+    | 'duplicate'
+    | 'exhausted'
+    | 'stage_exhausted'
+    | 'incident_exhausted'
+    | 'token_exhausted'
+    | 'not_repairable',
   diagnostics: PrepDiagnostic[]
 ): DataCommandError {
-  const stopMessage =
-    reason === 'duplicate'
-      ? 'Workflow repair stopped because the same source and diagnostics were already attempted'
-      : reason === 'exhausted'
-        ? 'Workflow repair attempts exhausted'
-        : 'Workflow failure is not eligible for automatic repair';
-  const diagnosticMessage = diagnostics.find(
-    (diagnostic) => diagnostic.severity === 'error'
-  )?.message;
+  const stopMessages: Record<typeof reason, string> = {
+    duplicate:
+      'Workflow repair stopped because the same source and diagnostics were already attempted',
+    exhausted: 'Workflow repair attempts exhausted',
+    stage_exhausted: 'Workflow repair attempts for this failure stage were exhausted',
+    incident_exhausted: 'Workflow repair attempts for this root cause were exhausted',
+    token_exhausted: 'Workflow repair output token budget was exhausted',
+    not_repairable: 'Workflow failure is not eligible for automatic repair',
+  };
+  const stopMessage = stopMessages[reason];
+  const diagnostic = diagnostics.find((item) => item.severity === 'error');
+  const diagnosticLocation = diagnostic?.line
+    ? ` at line ${diagnostic.line}${diagnostic.column ? `, column ${diagnostic.column}` : ''}`
+    : '';
+  const diagnosticMessage = diagnostic ? `${diagnostic.message}${diagnosticLocation}` : undefined;
   const message = diagnosticMessage ? `${stopMessage}: ${diagnosticMessage}` : stopMessage;
+  const publicStopReason =
+    reason === 'stage_exhausted' || reason === 'incident_exhausted' || reason === 'token_exhausted'
+      ? 'exhausted'
+      : reason;
   return new DataCommandError(workflowCommandCodeForDiagnostics(diagnostics), message, {
     diagnostics,
-    repairStopReason: reason,
+    repairStopReason: publicStopReason,
+    repairBudgetStopReason: reason,
   });
 }
 

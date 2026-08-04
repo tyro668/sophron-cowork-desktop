@@ -98,10 +98,9 @@ import type {
   StoredPersonalAnalysisConfig,
 } from '../../shared/personal-analysis-types';
 import {
-  GENERATED_WORKFLOW_REPAIR_ATTEMPTS,
   analyzeDataTaskRequirement,
   compileLoweredWorkflowToPlatformNodes,
-  createWorkflowRepairBudget,
+  createGeneratedWorkflowRepairBudget,
   type GeneratedDataTaskWorkflow,
   generateDataTaskWorkflowFromRequirement,
   hashColumns,
@@ -250,7 +249,7 @@ export class DataCommandService {
     if (!reusableTask) createdTaskId = task.id;
     try {
       return await this.withKeyedLock(`task:${task.id}`, async () => {
-        const repairBudget = createWorkflowRepairBudget(GENERATED_WORKFLOW_REPAIR_ATTEMPTS);
+        const repairBudget = createGeneratedWorkflowRepairBudget();
         let generated = await generateDataTaskWorkflowFromRequirement({
           inputTableId: preparedInput.inputTable.id,
           outputTableName: outputTable.name,

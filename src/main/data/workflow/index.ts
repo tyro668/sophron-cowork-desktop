@@ -1,5 +1,7 @@
 export {
   GENERATED_WORKFLOW_REPAIR_ATTEMPTS,
+  GENERATED_WORKFLOW_REPAIR_POLICY,
+  createGeneratedWorkflowRepairBudget,
   generateDataTaskWorkflowFromRequirement,
   normalizeColumnSnapshot,
   repairGeneratedWorkflowFromDiagnostics,
@@ -19,12 +21,16 @@ export {
   normalizeWorkflowFailureDiagnostics,
   workflowCommandCodeForDiagnostics,
   workflowDiagnosticsFromError,
+  workflowRepairIncidentKey,
+  workflowRepairStageForDiagnostics,
 } from './workflow-failure';
 export type {
   WorkflowFailureDiagnostic,
   WorkflowFailureStage,
   WorkflowRepairBudget,
+  WorkflowRepairBudgetConfig,
   WorkflowRepairClass,
+  WorkflowRepairStage,
 } from './workflow-failure';
 export { compileLoweredWorkflowToPlatformNodes } from './workflow-node-compiler';
 export type {

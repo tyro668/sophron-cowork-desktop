@@ -1,6 +1,7 @@
 import {
   completeSimple,
   streamSimple,
+  type StopReason,
   type UserMessage as PiUserMessage,
 } from '@mariozechner/pi-ai';
 import type { AgentRuntimeConfig, ApiTestInput, ApiTestResult } from '../../renderer/types';
@@ -173,7 +174,7 @@ export async function runPiAiOneShot(
     onTextDelta?: (delta: string) => void;
     onThinkingDelta?: (delta: string) => void;
   }
-): Promise<{ text: string; hasThinking: boolean; durationMs: number }> {
+): Promise<{ text: string; hasThinking: boolean; durationMs: number; stopReason?: StopReason }> {
   const modelString = resolvePiModelString(config);
   const keyProvider = config.customProtocol || config.provider || 'anthropic';
   const parts = modelString.split('/');
@@ -293,9 +294,11 @@ export async function runPiAiOneShot(
     'textBlocks:',
     textBlocks.length,
     'thinkingBlocks:',
-    thinkingBlocks.length
+    thinkingBlocks.length,
+    'stopReason:',
+    response.stopReason
   );
-  return { text, hasThinking, durationMs: Date.now() - start };
+  return { text, hasThinking, durationMs: Date.now() - start, stopReason: response.stopReason };
 }
 
 async function streamPiAiOneShotResponse(

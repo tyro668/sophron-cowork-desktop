@@ -12,7 +12,7 @@ import {
   type PreparedWorkflowExpression,
 } from './javascript-expression-compiler';
 
-export const WORKFLOW_SDK_VERSION = '2.1.0';
+export const WORKFLOW_SDK_VERSION = '2.2.0';
 
 const ALLOWED_WORKFLOW_IR_OPERATION_TYPES = [...WORKFLOW_IR_OPERATION_TYPES];
 const WORKFLOW_SANDBOX_RUNNER_FILE_NAME = 'workflow-sandbox-runner.js';
@@ -73,7 +73,8 @@ export function compileWorkflowJavaScript(
     throw normalizeJavaScriptError(
       error,
       'JAVASCRIPT_SYNTAX_ERROR',
-      indexFunctionStartsBestEffort(source)
+      indexJavaScriptFunctionsBestEffort(source),
+      source
     );
   }
   const functions = indexJavaScriptFunctions(source);
@@ -96,7 +97,12 @@ export function compileWorkflowJavaScript(
   try {
     new vm.Script(prepared.executableSource, { filename: GENERATED_FILE });
   } catch (error) {
-    throw normalizeJavaScriptError(error, 'JAVASCRIPT_LOWERING_ERROR', functions);
+    throw normalizeJavaScriptError(
+      error,
+      'JAVASCRIPT_LOWERING_ERROR',
+      functions,
+      prepared.executableSource
+    );
   }
   return {
     originalSource: source,
@@ -106,18 +112,38 @@ export function compileWorkflowJavaScript(
   };
 }
 
-function indexFunctionStartsBestEffort(source: string): JavaScriptFunctionIndexEntry[] {
+export function indexJavaScriptFunctionsBestEffort(source: string): JavaScriptFunctionIndexEntry[] {
   const lines = source.split(/\r?\n/);
-  const starts = lines
-    .map((line, index) => ({ match: /\bfunction\s+([A-Za-z_$][\w$]*)\s*\(/.exec(line), index }))
-    .filter((item): item is { match: RegExpExecArray; index: number } => Boolean(item.match));
+  let offset = 0;
+  const starts: Array<{
+    name: string;
+    start: number;
+    line: number;
+    column: number;
+  }> = [];
+  lines.forEach((line, index) => {
+    const match = /^\s*function\s+([A-Za-z_$][\w$]*)\s*\(/.exec(line);
+    if (match) {
+      const functionOffset = line.indexOf('function', match.index);
+      starts.push({
+        name: match[1],
+        start: offset + functionOffset,
+        line: index + 1,
+        column: functionOffset + 1,
+      });
+    }
+    const lineEnd = offset + line.length;
+    const newlineLength =
+      source.slice(lineEnd, lineEnd + 2) === '\r\n' ? 2 : lineEnd < source.length ? 1 : 0;
+    offset = lineEnd + newlineLength;
+  });
   return starts.map((item, index) => ({
-    name: item.match[1],
-    start: 0,
-    end: source.length,
-    line: item.index + 1,
-    column: item.match.index + 1,
-    endLine: (starts[index + 1]?.index ?? lines.length) + (index + 1 < starts.length ? 0 : 0),
+    name: item.name,
+    start: item.start,
+    end: starts[index + 1]?.start ?? source.length,
+    line: item.line,
+    column: item.column,
+    endLine: (starts[index + 1]?.line ?? lines.length + 1) - 1,
   }));
 }
 
@@ -192,12 +218,35 @@ export function applyWorkflowFunctionPatch(
   functionName: string,
   replacementSource: string
 ): string {
+  const patched = createWorkflowFunctionPatchCandidate(source, functionName, replacementSource);
+  compileWorkflowJavaScript(patched);
+  return patched;
+}
+
+/**
+ * Builds a structurally scoped repair candidate without requiring the combined
+ * source to compile. The repair loop needs this candidate after a failed patch
+ * so it can feed the new source and diagnostics into its fallback strategy.
+ */
+export function createWorkflowFunctionPatchCandidate(
+  source: string,
+  functionName: string,
+  replacementSource: string
+): string {
   // A repair must be able to target source that failed expression lowering or
-  // type checking. Structural indexing therefore operates on the original
-  // parseable JavaScript and does not require the failed program to compile.
-  const originalFunctions = new Map(
-    indexJavaScriptFunctions(source).map((item) => [item.name, item])
-  );
+  // type checking, and now also source with a syntax error. Prefer the strict
+  // AST index, then fall back to top-level generated function declarations.
+  const originalFunctionEntries = indexPatchableWorkflowFunctions(source);
+  const originalFunctions = new Map<string, JavaScriptFunctionIndexEntry>();
+  for (const entry of originalFunctionEntries) {
+    if (originalFunctions.has(entry.name)) {
+      throw new DataCommandError(
+        'VALIDATION_FAILED',
+        `Cannot patch ambiguous duplicate workflow function: ${entry.name}`
+      );
+    }
+    originalFunctions.set(entry.name, entry);
+  }
   const target = originalFunctions.get(functionName);
   if (!target) {
     throw new DataCommandError(
@@ -206,7 +255,7 @@ export function applyWorkflowFunctionPatch(
     );
   }
 
-  const replacementFunctions = indexJavaScriptFunctions(replacementSource);
+  const replacementFunctions = indexPatchableWorkflowFunctions(replacementSource);
   if (!replacementFunctions.some((item) => item.name === functionName)) {
     throw new DataCommandError(
       'VALIDATION_FAILED',
@@ -228,9 +277,19 @@ export function applyWorkflowFunctionPatch(
     }
   }
 
-  const patched = `${source.slice(0, target.start)}${replacementSource.trim()}${source.slice(target.end)}`;
-  compileWorkflowJavaScript(patched);
-  return patched;
+  const prefix = source.slice(0, target.start);
+  const suffix = source.slice(target.end);
+  const before = prefix.length > 0 && !/\s$/.test(prefix) ? '\n\n' : '';
+  const after = suffix.length > 0 && !/^\s/.test(suffix) ? '\n\n' : '';
+  return `${prefix}${before}${replacementSource.trim()}${after}${suffix}`;
+}
+
+function indexPatchableWorkflowFunctions(source: string): JavaScriptFunctionIndexEntry[] {
+  try {
+    return indexJavaScriptFunctions(source);
+  } catch {
+    return indexJavaScriptFunctionsBestEffort(source);
+  }
 }
 
 export function indexJavaScriptFunctions(source: string): JavaScriptFunctionIndexEntry[] {
@@ -278,7 +337,8 @@ export function indexJavaScriptFunctions(source: string): JavaScriptFunctionInde
 function normalizeJavaScriptError(
   error: unknown,
   code: string,
-  functions: JavaScriptFunctionIndexEntry[]
+  functions: JavaScriptFunctionIndexEntry[],
+  source: string
 ): DataCommandError {
   const value = error as {
     message?: string;
@@ -286,14 +346,26 @@ function normalizeJavaScriptError(
     lineNumber?: number;
     columnNumber?: number;
   };
-  const match = String(value.stack ?? '').match(/generated-workflow\.js:(\d+)(?::(\d+))?/);
-  const line = value.lineNumber ?? (match ? Number(match[1]) : undefined);
-  const column = value.columnNumber ?? (match?.[2] ? Number(match[2]) : undefined);
+  const stack = String(value.stack ?? '');
+  const match = stack.match(/generated-workflow\.js:(\d+)(?::(\d+))?/);
+  const acornLocation = locateJavaScriptSyntaxError(source);
+  const caretLocation = locateJavaScriptStackCaret(stack);
+  const line =
+    value.lineNumber ??
+    (match ? Number(match[1]) : undefined) ??
+    acornLocation?.line ??
+    caretLocation?.line;
+  const column =
+    value.columnNumber ??
+    (match?.[2] ? Number(match[2]) : undefined) ??
+    acornLocation?.column ??
+    caretLocation?.column;
   const fn =
     line === undefined
       ? undefined
       : functions.find((item) => item.line <= line && item.endLine >= line);
   const message = value.message ?? String(error);
+  const sourceContext = createJavaScriptSourceDiagnosticContext(source, line, column);
   return new DataCommandError('VALIDATION_FAILED', message, {
     diagnostics: [
       {
@@ -303,9 +375,96 @@ function normalizeJavaScriptError(
         line,
         column,
         functionName: fn?.name,
+        ...sourceContext,
+        repairHint:
+          code === 'JAVASCRIPT_SYNTAX_ERROR'
+            ? 'Correct the JavaScript syntax at the reported location. Return syntactically complete JavaScript, do not copy the failing line unchanged, and preserve the Workflow SDK contract.'
+            : undefined,
       },
     ],
   });
+}
+
+function locateJavaScriptSyntaxError(source: string): { line: number; column: number } | undefined {
+  try {
+    parse(source, {
+      ecmaVersion: 'latest',
+      sourceType: 'script',
+      locations: true,
+    });
+    return undefined;
+  } catch (error) {
+    const location = (error as { loc?: { line?: number; column?: number } }).loc;
+    return typeof location?.line === 'number' && typeof location.column === 'number'
+      ? { line: location.line, column: location.column + 1 }
+      : undefined;
+  }
+}
+
+function locateJavaScriptStackCaret(stack: string): { line: number; column: number } | undefined {
+  const lines = stack.split(/\r?\n/);
+  const locationIndex = lines.findIndex((line) => /generated-workflow\.js:\d+/.test(line));
+  if (locationIndex < 0) return undefined;
+  const lineMatch = /generated-workflow\.js:(\d+)/.exec(lines[locationIndex]);
+  const caretIndex = lines[locationIndex + 2]?.indexOf('^') ?? -1;
+  return lineMatch && caretIndex >= 0
+    ? { line: Number(lineMatch[1]), column: caretIndex + 1 }
+    : undefined;
+}
+
+function createJavaScriptSourceDiagnosticContext(
+  source: string,
+  line: number | undefined,
+  column: number | undefined
+): { sourceLine?: string; sourceExcerpt?: string; caret?: string } {
+  if (line === undefined) return {};
+  const lines = source.split(/\r?\n/);
+  const rawSourceLine = lines[line - 1];
+  if (rawSourceLine === undefined) return {};
+  const focusedLine = focusJavaScriptDiagnosticLine(rawSourceLine, column);
+  const excerptStart = Math.max(0, line - 2);
+  const excerptEnd = Math.min(lines.length, line + 1);
+  const sourceExcerpt = lines
+    .slice(excerptStart, excerptEnd)
+    .map((value, index) => {
+      const currentLine = excerptStart + index + 1;
+      const displayValue =
+        currentLine === line
+          ? focusedLine.text
+          : value.length > 300
+            ? `${value.slice(0, 300)}…`
+            : value;
+      return `${currentLine} | ${displayValue}`;
+    })
+    .join('\n');
+  return {
+    sourceLine: focusedLine.text,
+    sourceExcerpt,
+    caret:
+      focusedLine.caretColumn === undefined
+        ? undefined
+        : `${' '.repeat(Math.max(0, focusedLine.caretColumn - 1))}^`,
+  };
+}
+
+function focusJavaScriptDiagnosticLine(
+  sourceLine: string,
+  column: number | undefined
+): { text: string; caretColumn?: number } {
+  const maxLength = 600;
+  if (sourceLine.length <= maxLength) return { text: sourceLine, caretColumn: column };
+  const zeroBasedColumn = Math.max(0, (column ?? 1) - 1);
+  const start = Math.min(
+    Math.max(0, zeroBasedColumn - Math.floor(maxLength / 2)),
+    sourceLine.length - maxLength
+  );
+  const end = start + maxLength;
+  const leading = start > 0 ? '…' : '';
+  const trailing = end < sourceLine.length ? '…' : '';
+  return {
+    text: `${leading}${sourceLine.slice(start, end)}${trailing}`,
+    caretColumn: column === undefined ? undefined : zeroBasedColumn - start + leading.length + 1,
+  };
 }
 
 function normalizeSandboxError(
