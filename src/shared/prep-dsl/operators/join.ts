@@ -1,4 +1,4 @@
-import type { PrepAsofJoinConfig, PrepJoinCondition } from '../ast';
+import type { PrepAsofJoinConfig, PrepFieldRef, PrepJoinCondition } from '../ast';
 import { createPrepDiagnostic } from '../diagnostics';
 import { formatFieldRef, parseFieldRefExact, toFieldName, toQualifiedName } from '../syntax/fields';
 import { quoteString, unquoteString } from '../syntax/literals';
@@ -9,6 +9,59 @@ import { createOperator, objectArray, type OperatorCommand, type OperatorDslCode
 interface Clause {
   name: string;
   value: string;
+}
+
+function validateJoinFieldRef(
+  ref: PrepFieldRef | null,
+  command: OperatorCommand,
+  diagnostics: Parameters<OperatorDslCodec['parse']>[1],
+  context: string
+): boolean {
+  if (!ref) return false;
+  if (ref.source === undefined && ref.name.includes('.')) {
+    diagnostics.push({
+      ...createPrepDiagnostic(
+        'invalidJoinFieldRef',
+        `${context} field "${ref.name}" must use the [table].[field] form in a join`
+      ),
+      line: command.line,
+    });
+    return false;
+  }
+  return true;
+}
+
+function validateConditionSides(
+  left: PrepFieldRef | null,
+  right: PrepFieldRef | null,
+  rightAlias: string | undefined,
+  command: OperatorCommand,
+  diagnostics: Parameters<OperatorDslCodec['parse']>[1],
+  context: string
+): void {
+  if (!rightAlias) return;
+  const rightLower = rightAlias.toLowerCase();
+  const isRightAlias = (source?: string) => Boolean(source) && source!.toLowerCase() === rightLower;
+  const leftSource = left?.source;
+  const rightSource = right?.source;
+  if (rightSource && !isRightAlias(rightSource)) {
+    diagnostics.push({
+      ...createPrepDiagnostic(
+        'joinConditionSideMismatch',
+        `${context} right side references "${rightSource}" but the right input is "${rightAlias}"; right side must reference the right input`
+      ),
+      line: command.line,
+    });
+  }
+  if (isRightAlias(leftSource) && rightSource && !isRightAlias(rightSource)) {
+    diagnostics.push({
+      ...createPrepDiagnostic(
+        'joinConditionSideMismatch',
+        `${context} left side references the right input "${rightAlias}"; left side must reference the left table`
+      ),
+      line: command.line,
+    });
+  }
 }
 
 export const joinCodec: OperatorDslCodec = {
@@ -40,25 +93,50 @@ function parseRegularJoin(
   }
   const clauses = parseClauses(
     match[4] ?? '',
-    ['on', 'keep', 'suffix', 'right_prefix', 'expect'],
+    ['on', 'keep', 'suffix', 'right_prefix'],
     command,
     diagnostics
   );
-  const conditions = parseConditions(findClause(clauses, 'on') ?? '', command, diagnostics);
+  const joinType = match[1];
+  if (joinType === 'semi' || joinType === 'anti') {
+    const invalidClauses = clauses.filter((c) =>
+      ['keep', 'suffix', 'right_prefix'].includes(c.name)
+    );
+    if (invalidClauses.length > 0) {
+      diagnostics.push({
+        ...createPrepDiagnostic(
+          'invalidSemiAntiClause',
+          `${joinType} join only supports an "on" condition and outputs all left columns. Remove: ${invalidClauses
+            .map((c) => c.name)
+            .join(', ')}`
+        ),
+        line: command.line,
+      });
+    }
+  }
+  const rightAlias = match[3] ?? match[2];
+  const conditions = parseConditions(
+    findClause(clauses, 'on') ?? '',
+    rightAlias,
+    command,
+    diagnostics
+  );
   if (match[1] !== 'cross' && conditions.length === 0) {
     diagnostics.push({
       ...createPrepDiagnostic('joinMissingCondition', 'Non-cross join requires an on condition'),
       line: command.line,
     });
   }
+  const isSemiAnti = joinType === 'semi' || joinType === 'anti';
   return createOperator('join', command.text, {
     joinType: match[1],
     rightInput: match[2],
-    rightAlias: match[3] ?? match[2],
+    rightAlias,
     conditions,
-    keep: parseKeep(findClause(clauses, 'keep') ?? '', command, diagnostics),
-    conflict: parseConflict(clauses, command, diagnostics),
-    expect: parseExpectation(findClause(clauses, 'expect'), command, diagnostics),
+    keep: isSemiAnti
+      ? undefined
+      : parseKeep(findClause(clauses, 'keep') ?? '', command, diagnostics),
+    conflict: isSemiAnti ? undefined : parseConflict(clauses, command, diagnostics),
   });
 }
 
@@ -78,25 +156,26 @@ function parseAsofJoin(
   }
   const clauses = parseClauses(
     match[3] ?? '',
-    ['on', 'by', 'direction', 'tolerance', 'keep', 'suffix', 'right_prefix', 'expect'],
+    ['on', 'by', 'direction', 'tolerance', 'keep', 'suffix', 'right_prefix'],
     command,
     diagnostics
   );
+  const rightAlias = match[2] ?? match[1];
   return createOperator('join', command.text, {
     joinType: 'asof',
     rightInput: match[1],
-    rightAlias: match[2] ?? match[1],
+    rightAlias,
     asof: parseAsofClause(
       findClause(clauses, 'on') ?? '',
       findClause(clauses, 'by') ?? '',
       findClause(clauses, 'direction'),
       findClause(clauses, 'tolerance'),
+      rightAlias,
       command,
       diagnostics
     ),
     keep: parseKeep(findClause(clauses, 'keep') ?? '', command, diagnostics),
     conflict: parseConflict(clauses, command, diagnostics),
-    expect: parseExpectation(findClause(clauses, 'expect'), command, diagnostics),
   });
 }
 
@@ -105,13 +184,26 @@ function parseAsofClause(
   byClause: string,
   direction?: string,
   tolerance?: string,
+  rightAlias?: string,
   command?: OperatorCommand,
   diagnostics?: Parameters<OperatorDslCodec['parse']>[1]
 ): PrepAsofJoinConfig | undefined {
   const match = /^(.+?)\s*(>=|<=|nearest)\s*(.+)$/.exec(onClause.trim());
   const left = match ? parseFieldRefExact(match[1]) : null;
   const right = match ? parseFieldRefExact(match[3]) : null;
-  if (!match || !left || !right) {
+  const leftOk = validateJoinFieldRef(
+    left,
+    command as OperatorCommand,
+    diagnostics ?? [],
+    'ASOF on'
+  );
+  const rightOk = validateJoinFieldRef(
+    right,
+    command as OperatorCommand,
+    diagnostics ?? [],
+    'ASOF on'
+  );
+  if (!match || !left || !right || !leftOk || !rightOk) {
     if (diagnostics) {
       diagnostics.push({
         ...createPrepDiagnostic('invalidAsofCondition', 'ASOF join requires a valid on condition'),
@@ -119,6 +211,9 @@ function parseAsofClause(
       });
     }
     return undefined;
+  }
+  if (command && diagnostics) {
+    validateConditionSides(left, right, rightAlias, command, diagnostics, 'ASOF on');
   }
   const operator = match[2] as PrepAsofJoinConfig['operator'];
   const expected = operator === '>=' ? 'backward' : operator === '<=' ? 'forward' : 'nearest';
@@ -144,36 +239,87 @@ function parseAsofClause(
     tolerance,
     by:
       byClause && command && diagnostics
-        ? parseConditions(byClause, command, diagnostics)
+        ? parseEquiConditions(byClause, rightAlias, command, diagnostics)
         : undefined,
   };
 }
 
-function parseConditions(
+function parseEquiConditions(
   value: string,
+  rightAlias: string | undefined,
   command: OperatorCommand,
   diagnostics: Parameters<OperatorDslCodec['parse']>[1]
 ): PrepJoinCondition[] {
   if (!value) return [];
   return splitTopLevelKeyword(value, 'and').flatMap((part) => {
     const match = /^(.+?)\s*(>=|<=|!=|<>|>|=|<)\s*(.+)$/.exec(part.trim());
+    const operator = match?.[2] === '<>' ? '!=' : (match?.[2] ?? '=');
+    if (operator !== '=') {
+      diagnostics.push({
+        ...createPrepDiagnostic(
+          'invalidAsofByOperator',
+          `ASOF by conditions must be equi-joins using "=", got "${operator}"`
+        ),
+        line: command.line,
+      });
+      return [];
+    }
     const left = match ? parseFieldRefExact(match[1]) : null;
     const right = match ? parseFieldRefExact(match[3]) : null;
+    const leftOk = validateJoinFieldRef(left, command, diagnostics, 'ASOF by');
+    const rightOk = validateJoinFieldRef(right, command, diagnostics, 'ASOF by');
+    if (!left || !right) {
+      diagnostics.push({
+        ...createPrepDiagnostic('invalidJoinCondition', `Cannot parse join condition: ${part}`),
+        line: command.line,
+      });
+      return [];
+    }
+    if (!leftOk || !rightOk) return [];
+    validateConditionSides(left, right, rightAlias, command, diagnostics, 'ASOF by');
+    return [{ left: toQualifiedName(left), operator: '=', right: toQualifiedName(right) }];
+  });
+}
+
+function parseConditions(
+  value: string,
+  rightAlias: string | undefined,
+  command: OperatorCommand,
+  diagnostics: Parameters<OperatorDslCodec['parse']>[1]
+): PrepJoinCondition[] {
+  if (!value) return [];
+  return splitTopLevelKeyword(value, 'and').flatMap((part) => {
+    const match = /^(.+?)\s*(>=|<=|!=|<>|>|=|<)\s*(.+)$/.exec(part.trim());
+    const operator = match?.[2] === '<>' ? '!=' : (match?.[2] ?? '=');
+    if (operator === '!=') {
+      diagnostics.push({
+        ...createPrepDiagnostic(
+          'invalidJoinOperator',
+          `Join condition operator "!=" is not supported. Use "=" for equi-joins or other operators (<, >, <=, >=) for range joins.`
+        ),
+        line: command.line,
+      });
+      return [];
+    }
+    const left = match ? parseFieldRefExact(match[1]) : null;
+    const right = match ? parseFieldRefExact(match[3]) : null;
+    const leftOk = validateJoinFieldRef(left, command, diagnostics, 'Join on');
+    const rightOk = validateJoinFieldRef(right, command, diagnostics, 'Join on');
     if (!left || !right) {
       diagnostics.push({
         ...createPrepDiagnostic('invalidJoinCondition', `Cannot parse join condition: ${part}`),
         line: command.line,
       });
     }
-    return left && right
-      ? [
-          {
-            left: toQualifiedName(left),
-            operator: match?.[2] === '<>' ? '!=' : (match?.[2] ?? '='),
-            right: toQualifiedName(right),
-          },
-        ]
-      : [];
+    if (!left || !right || !leftOk || !rightOk) return [];
+    validateConditionSides(left, right, rightAlias, command, diagnostics, 'Join on');
+    return [
+      {
+        left: toQualifiedName(left),
+        operator,
+        right: toQualifiedName(right),
+      },
+    ];
   });
 }
 
@@ -190,13 +336,14 @@ function parseKeep(
     const match = /^(.+?)(?:\s+as\s+(.+))?$/.exec(trimmed);
     const source = match ? parseFieldRefExact(match[1]) : null;
     const alias = match?.[2] ? parseFieldRefExact(match[2]) : null;
+    const sourceOk = validateJoinFieldRef(source, command, diagnostics, 'Join keep');
     if (!source || (match?.[2] && !alias)) {
       diagnostics.push({
         ...createPrepDiagnostic('invalidJoinKeep', `Cannot parse join keep item: ${item}`),
         line: command.line,
       });
     }
-    return source
+    return source && sourceOk
       ? [{ source: toQualifiedName(source), alias: alias ? toFieldName(alias) : undefined }]
       : [];
   });
@@ -285,29 +432,22 @@ function findClause(clauses: Clause[], name: string): string | undefined {
   return clauses.find((clause) => clause.name === name)?.value;
 }
 
-function parseExpectation(
-  value: string | undefined,
-  command: OperatorCommand,
-  diagnostics: Parameters<OperatorDslCodec['parse']>[1]
-): string | undefined {
-  if (!value) return undefined;
-  if (['one_to_one', 'one_to_many', 'many_to_one', 'many_to_many'].includes(value)) return value;
-  diagnostics.push({
-    ...createPrepDiagnostic('invalidJoinExpectation', `Invalid join expectation: ${value}`),
-    line: command.line,
-  });
-  return undefined;
-}
-
 function formatJoin(config: Record<string, unknown> | undefined): string {
   const joinType = String(config?.joinType ?? 'left');
   const rightInput = String(config?.rightInput ?? 'right_source');
+  const rightAlias =
+    typeof config?.rightAlias === 'string' && config.rightAlias.trim()
+      ? config.rightAlias
+      : rightInput;
+  const asClause = rightAlias !== rightInput ? ` as ${rightAlias}` : '';
   if (joinType === 'asof') {
     const asof = objectValue(config?.asof);
     const parts = [
-      `join asof ${rightInput} on ${formatFieldRef(String(asof?.leftTime ?? 'left.time'))} ${String(
-        asof?.operator ?? '>='
-      )} ${formatFieldRef(String(asof?.rightTime ?? `${rightInput}.time`))}`,
+      `join asof ${rightInput}${asClause} on ${formatFieldRef(
+        String(asof?.leftTime ?? 'left.time')
+      )} ${String(asof?.operator ?? '>=')} ${formatFieldRef(
+        String(asof?.rightTime ?? `${rightAlias}.time`)
+      )}`,
     ];
     const by = formatConditions(asof?.by);
     if (by) parts.push(`by ${by}`);
@@ -315,9 +455,13 @@ function formatJoin(config: Record<string, unknown> | undefined): string {
     appendCommonParts(parts, config);
     return parts.join(' ');
   }
-  const parts = [`join ${joinType} ${rightInput}`];
+  const parts = [`join ${joinType} ${rightInput}${asClause}`];
   const conditions = formatConditions(config?.conditions);
-  if (joinType !== 'cross') parts.push(`on ${conditions || '[left].[id] = [right_source].[id]'}`);
+  if (joinType !== 'cross') {
+    parts.push(
+      `on ${conditions || `${formatFieldRef('left.id')} = ${formatFieldRef(`${rightAlias}.id`)}`}`
+    );
+  }
   appendCommonParts(parts, config);
   return parts.join(' ');
 }
@@ -327,7 +471,6 @@ function appendCommonParts(parts: string[], config: Record<string, unknown> | un
   if (keep) parts.push(`keep ${keep}`);
   const conflict = formatConflict(config?.conflict);
   if (conflict) parts.push(conflict);
-  if (typeof config?.expect === 'string') parts.push(`expect ${config.expect}`);
 }
 
 function formatConflict(value: unknown): string | null {

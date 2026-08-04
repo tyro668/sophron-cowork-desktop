@@ -15,10 +15,14 @@ describe('JoinConfigSchema', () => {
     expect(result.rightAlias).toBe('orders');
   });
 
-  it('applies defaults for omitted fields', () => {
-    const result = JoinConfigSchema.parse({});
-    expect(result.joinType).toBe('left');
+  it('applies defaults for cross join (no conditions required)', () => {
+    const result = JoinConfigSchema.parse({ joinType: 'cross' });
+    expect(result.joinType).toBe('cross');
     expect(result.keep).toEqual([]);
+  });
+
+  it('rejects non-cross join without conditions', () => {
+    expect(() => JoinConfigSchema.parse({})).toThrow(z.ZodError);
   });
 
   it('parses asof join config', () => {
@@ -38,6 +42,52 @@ describe('JoinConfigSchema', () => {
 
   it('rejects conditions with wrong type', () => {
     expect(() => JoinConfigSchema.parse({ conditions: 'not-array' })).toThrow(z.ZodError);
+  });
+
+  it('rejects semi join with keep config', () => {
+    expect(() =>
+      JoinConfigSchema.parse({
+        joinType: 'semi',
+        conditions: [{ left: '[id]', operator: '=', right: '[id]' }],
+        keep: [{ side: 'left', wildcard: true }],
+      })
+    ).toThrow(/does not support keep/);
+  });
+
+  it('rejects anti join with conflict config', () => {
+    expect(() =>
+      JoinConfigSchema.parse({
+        joinType: 'anti',
+        conditions: [{ left: '[id]', operator: '=', right: '[id]' }],
+        conflict: { strategy: 'suffix' },
+      })
+    ).toThrow(/does not support conflict/);
+  });
+
+  it('rejects unsupported join condition operators', () => {
+    expect(() =>
+      JoinConfigSchema.parse({
+        joinType: 'inner',
+        conditions: [{ left: '[order_id]', operator: '!=', right: '[id]' }],
+      })
+    ).toThrow(z.ZodError);
+  });
+
+  it('rejects right_prefix strategy with an empty prefix', () => {
+    expect(() =>
+      JoinConfigSchema.parse({
+        joinType: 'inner',
+        conditions: [{ left: '[order_id]', operator: '=', right: '[id]' }],
+        conflict: { strategy: 'right_prefix', rightPrefix: '' },
+      })
+    ).toThrow(/non-empty prefix/);
+    expect(() =>
+      JoinConfigSchema.parse({
+        joinType: 'inner',
+        conditions: [{ left: '[order_id]', operator: '=', right: '[id]' }],
+        conflict: { strategy: 'right_prefix' },
+      })
+    ).toThrow(/non-empty prefix/);
   });
 });
 

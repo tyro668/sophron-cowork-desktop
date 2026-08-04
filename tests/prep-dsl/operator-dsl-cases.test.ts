@@ -240,6 +240,7 @@ describe('operator DSL executable cases', () => {
     ['join', 'join left returns garbage'],
     ['join', 'join left returns on [orders].[id] = [returns].[id] garbage'],
     ['join', 'join left returns on [orders].[id] = [returns].[id] suffix _l _r garbage'],
+    ['join', 'join left returns on [l.id] != [r.id] garbage'],
     ['output', 'output table "result" mode replace mode append'],
     ['type_convert', 'cast [amount] as float on_error null on_error keep'],
     ['calculate_field', 'derive [result] = period_compare(yoy_diff, [amount] garbage, [date])'],
@@ -247,6 +248,144 @@ describe('operator DSL executable cases', () => {
     const parsed = parsePrepOperatorDsl(dsl, type);
 
     expect(errorsOf(parsed.diagnostics), dsl).not.toHaveLength(0);
+  });
+
+  it.each([
+    'join semi customers on [orders].[customer_id] = [customers].[id] keep [orders].[order_id]',
+    'join anti blacklist on [orders].[customer_id] = [blacklist].[customer_id] suffix _left _right',
+    'join semi customers on [orders].[customer_id] = [customers].[id] right_prefix r_',
+  ])('rejects semi/anti join with keep/suffix/right_prefix: %s', (dsl) => {
+    const parsed = parsePrepOperatorDsl(dsl, 'join');
+
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidSemiAntiClause' })])
+    );
+  });
+
+  it('accepts semi join without keep/conflict', () => {
+    const parsed = parsePrepOperatorDsl(
+      'join semi customers on [orders].[customer_id] = [customers].[id]',
+      'join'
+    );
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config.joinType).toBe('semi');
+    expect(parsed.operator?.config.keep).toBeUndefined();
+    expect(parsed.operator?.config.conflict).toBeUndefined();
+  });
+
+  it.each(['semi', 'anti'])(
+    '%s join round-trips without injecting a default conflict or keep config',
+    (joinType) => {
+      const dsl = `join ${joinType} customers on [orders].[customer_id] = [customers].[id]`;
+      const parsed = parsePrepOperatorDsl(dsl, 'join');
+
+      expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+      expect(parsed.operator?.config.keep).toBeUndefined();
+      expect(parsed.operator?.config.conflict).toBeUndefined();
+
+      const exported = exportPrepOperatorDsl({
+        id: `${joinType}_join`,
+        type: 'join',
+        config: parsed.operator!.config,
+      });
+      expect(exported).toBe(dsl);
+    }
+  );
+
+  it.each([
+    'join inner customers on [`L1.Order_ID`] = [`R1.Order_ID`] keep [`L1.Order_ID`]',
+    'join left products on [orders.brand and model] = [products.brand and model]',
+  ])('rejects single-bracket dotted field refs in join DSL: %s', (dsl) => {
+    const parsed = parsePrepOperatorDsl(dsl, 'join');
+
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidJoinFieldRef' })])
+    );
+  });
+
+  it.each([
+    'join left customers on [customers].[amount] > [orders].[amount]',
+    'join left products on [orders].[id] = [customers].[id]',
+    'join semi customers on [customers].[id] = [orders].[id]',
+    'join asof status on [status].[event_time] >= [events].[snapshot_time]',
+    'join asof status on [events].[event_time] >= [status].[snapshot_time] by [status].[device_id] = [events].[device_id]',
+  ])('rejects join conditions where sides reference the wrong table: %s', (dsl) => {
+    const parsed = parsePrepOperatorDsl(dsl, 'join');
+
+    expect(errorsOf(parsed.diagnostics), dsl).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'joinConditionSideMismatch' })])
+    );
+  });
+
+  it('accepts a self-join where both sides reference the right input', () => {
+    const parsed = parsePrepOperatorDsl(
+      'join left customers on [customers].[a] = [customers].[b]',
+      'join'
+    );
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config.conditions).toEqual([
+      { left: '[customers].[a]', operator: '=', right: '[customers].[b]' },
+    ]);
+  });
+
+  it('accepts a right-side reference that differs only in case', () => {
+    const parsed = parsePrepOperatorDsl(
+      'join left customers on [orders].[id] = [Customers].[id]',
+      'join'
+    );
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+  });
+
+  it('accepts ASOF on and by referencing the right input', () => {
+    const parsed = parsePrepOperatorDsl(
+      'join asof status on [events].[event_time] >= [status].[snapshot_time] by [events].[device_id] = [status].[device_id]',
+      'join'
+    );
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+  });
+
+  it('round-trips a join whose right input is renamed with an as clause', () => {
+    const dsl =
+      'join left customers as c on [orders].[customer_id] = [c].[id] keep [c].[name] as [customer_name]';
+    const parsed = parsePrepOperatorDsl(dsl, 'join');
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config.rightAlias).toBe('c');
+
+    const exported = exportPrepOperatorDsl({
+      id: 'join-rename',
+      type: 'join',
+      config: parsed.operator!.config,
+    });
+    expect(exported).toBe(dsl);
+
+    const reparsed = parsePrepOperatorDsl(exported, 'join');
+    expect(errorsOf(reparsed.diagnostics)).toHaveLength(0);
+    expect(reparsed.operator?.config.rightAlias).toBe('c');
+  });
+
+  it('round-trips an asof join whose right input is renamed with an as clause', () => {
+    const dsl =
+      'join asof status as st on [events].[event_time] >= [st].[snapshot_time] by [events].[device_id] = [st].[device_id]';
+    const parsed = parsePrepOperatorDsl(dsl, 'join');
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config.rightAlias).toBe('st');
+
+    const exported = exportPrepOperatorDsl({
+      id: 'asof-rename',
+      type: 'join',
+      config: parsed.operator!.config,
+    });
+    expect(exported).toBe(dsl);
+
+    const reparsed = parsePrepOperatorDsl(exported, 'join');
+    expect(errorsOf(reparsed.diagnostics)).toHaveLength(0);
+    expect(reparsed.operator?.config.rightAlias).toBe('st');
   });
 
   it('does not export a placeholder field for an empty sort config', () => {
@@ -424,11 +563,11 @@ describe('operator DSL executable cases', () => {
     expect(errorsOf(join.diagnostics)).toHaveLength(0);
     expect(join.operator?.config.conditions).toEqual([
       {
-        left: 'orders.brand and model',
+        left: '[orders].[`brand and model`]',
         operator: '=',
-        right: 'products.brand and model',
+        right: '[products].[`brand and model`]',
       },
-      { left: 'orders.sku', operator: '=', right: 'products.sku' },
+      { left: '[orders].[sku]', operator: '=', right: '[products].[sku]' },
     ]);
   });
 
@@ -441,14 +580,14 @@ describe('operator DSL executable cases', () => {
     expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
     expect(parsed.operator?.config.conditions).toEqual([
       {
-        left: 'orders.keep suffix',
+        left: '[orders].[`keep suffix`]',
         operator: '=',
-        right: 'products.keep suffix',
+        right: '[products].[`keep suffix`]',
       },
     ]);
     expect(parsed.operator?.config.keep).toEqual([
       { side: 'left', wildcard: true },
-      { source: 'products.on value', alias: 'right_prefix value' },
+      { source: '[products].[`on value`]', alias: 'right_prefix value' },
     ]);
   });
 

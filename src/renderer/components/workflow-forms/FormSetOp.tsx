@@ -54,9 +54,9 @@ function checkTypeWarnings(
   }
 
   if (effectiveMatch === 'by_name') {
-    const rightMap = new Map(rightTypes.map((t) => [t.name, t]));
+    const rightMap = new Map(rightTypes.map((t) => [t.name.toLowerCase(), t]));
     for (const leftType of leftTypes) {
-      const rightType = rightMap.get(leftType.name);
+      const rightType = rightMap.get(leftType.name.toLowerCase());
       if (!rightType) continue;
       if (leftType.type === rightType.type) continue;
       if (NUMERIC_TYPES.includes(leftType.type) && NUMERIC_TYPES.includes(rightType.type)) continue;

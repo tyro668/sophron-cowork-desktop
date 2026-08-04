@@ -61,7 +61,11 @@ import {
 } from '../../shared/data-field-types';
 import { runInputTableNormalizerProject } from './input-table-normalizer-runner';
 import { COMPILE_STRATEGIES } from './operators/strategy';
-import { SetOpConfigSchema } from '../../shared/operator-schemas';
+import {
+  JoinConfigSchema,
+  SetOpConfigSchema,
+  parseOperatorConfig,
+} from '../../shared/operator-schemas';
 import {
   compileSetOpSql,
   compileJoinConditionList,
@@ -3040,9 +3044,9 @@ export class DataTaskStore {
     const rightTypes = await this.getTableColumnTypes(rightRelation);
 
     if (effectiveMatch === 'by_name') {
-      const rightMap = new Map(rightTypes.map((t) => [t.name, t]));
+      const rightMap = new Map(rightTypes.map((t) => [t.name.toLowerCase(), t]));
       for (const leftType of leftTypes) {
-        const rightType = rightMap.get(leftType.name);
+        const rightType = rightMap.get(leftType.name.toLowerCase());
         if (!rightType || leftType.type === rightType.type) continue;
         const bothNumeric =
           NUMERIC_TYPES.includes(leftType.type) && NUMERIC_TYPES.includes(rightType.type);
@@ -3098,10 +3102,14 @@ export class DataTaskStore {
     const output = quoteIdentifier(outputRelation);
     const left = quoteIdentifier(leftRelation);
     const right = quoteIdentifier(rightRelation);
-    const joinType = String(node.config.joinType ?? 'left');
+    const parsed = parseOperatorConfig(JoinConfigSchema, node.config);
+    const joinType = parsed.joinType;
+    const condition = joinType !== 'cross' ? compileJoinConditionList(parsed.conditions) : '';
+    if (joinType !== 'cross' && joinType !== 'asof' && !condition) {
+      throw new Error('Non-cross join requires at least one valid condition');
+    }
     if (joinType === 'semi' || joinType === 'anti') {
       const existsOperator = joinType === 'semi' ? 'EXISTS' : 'NOT EXISTS';
-      const condition = compileJoinConditionList(node.config.conditions);
       return `
         CREATE TEMP TABLE ${output} AS
         SELECT l.*
@@ -3112,23 +3120,21 @@ export class DataTaskStore {
       `;
     }
     if (joinType === 'asof') {
-      return compileAsofJoinSql(output, left, right, leftColumns, rightColumns, node.config);
+      return compileAsofJoinSql(output, left, right, leftColumns, rightColumns, parsed);
     }
-    const condition =
-      joinType === 'cross' ? '' : ` ON ${compileJoinConditionList(node.config.conditions)}`;
     const sqlJoinType = joinType === 'full' ? 'FULL OUTER' : joinType.toUpperCase();
     const projection = compileJoinProjection(
-      node.config.keep,
+      parsed.keep,
       leftColumns,
       rightColumns,
-      node.config.conflict,
-      typeof node.config.rightAlias === 'string' ? node.config.rightAlias : undefined
+      parsed.conflict,
+      parsed.rightAlias
     );
     return `
       CREATE TEMP TABLE ${output} AS
       SELECT ${projection}
       FROM ${left} l
-      ${sqlJoinType} JOIN ${right} r${condition}
+      ${sqlJoinType} JOIN ${right} r${joinType === 'cross' ? '' : ` ON ${condition}`}
     `;
   }
 

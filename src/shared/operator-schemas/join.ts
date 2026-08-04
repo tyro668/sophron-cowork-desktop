@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { ConditionSchema, ConflictSchema, KeepItemSchema } from './common';
 
+const JoinConditionSchema = ConditionSchema.extend({
+  operator: z.enum(['=', '<', '<=', '>', '>=']),
+});
+
 export const AsofConfigSchema = z.object({
   leftTime: z.string().optional().default(''),
   rightTime: z.string().optional().default(''),
@@ -16,16 +20,70 @@ export const AsofConfigSchema = z.object({
     .optional(),
 });
 
-export const JoinConfigSchema = z.object({
-  joinType: z
-    .enum(['inner', 'left', 'right', 'full', 'cross', 'semi', 'anti', 'asof'])
-    .default('left'),
-  conditions: z.array(ConditionSchema).optional(),
-  conflict: ConflictSchema.optional(),
-  keep: z.array(KeepItemSchema).default([]),
-  asof: AsofConfigSchema.optional(),
-  rightAlias: z.string().optional(),
-});
+export const JoinConfigSchema = z
+  .object({
+    joinType: z
+      .enum(['inner', 'left', 'right', 'full', 'cross', 'semi', 'anti', 'asof'])
+      .default('left'),
+    conditions: z.array(JoinConditionSchema).optional(),
+    conflict: ConflictSchema.optional(),
+    keep: z.array(KeepItemSchema).default([]),
+    asof: AsofConfigSchema.optional(),
+    rightAlias: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.joinType === 'semi' || data.joinType === 'anti') {
+      if (data.keep && data.keep.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Semi/Anti join outputs all left columns and does not support keep',
+          path: ['keep'],
+        });
+      }
+      if (data.conflict) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Semi/Anti join does not support conflict resolution',
+          path: ['conflict'],
+        });
+      }
+    }
+    if (data.conflict?.strategy === 'right_prefix' && !(data.conflict.rightPrefix ?? '').trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'right_prefix strategy requires a non-empty prefix',
+        path: ['conflict', 'rightPrefix'],
+      });
+    }
+    if (
+      data.joinType !== 'cross' &&
+      data.joinType !== 'asof' &&
+      (!data.conditions || data.conditions.length === 0)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Non-cross join requires at least one condition',
+        path: ['conditions'],
+      });
+    }
+    if (data.joinType === 'asof') {
+      const asof = data.asof;
+      if (!asof || !asof.leftTime || !asof.rightTime) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'ASOF join requires leftTime and rightTime',
+          path: ['asof'],
+        });
+      }
+      if (asof?.operator === 'nearest' && !asof?.tolerance) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'ASOF nearest requires tolerance',
+          path: ['asof', 'tolerance'],
+        });
+      }
+    }
+  });
 
 function msToParts(ms: number): { d: number; h: number; m: number; s: number; ms: number } {
   let r = ms;

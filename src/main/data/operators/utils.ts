@@ -1,5 +1,6 @@
 import { duckDbTypeForDataFieldType, type DataFieldType } from '../../../shared/data-field-types';
 import type { DataColumnTypeInfo } from '../../../renderer/types';
+import { parseDuration } from '../../../shared/operator-schemas/join';
 
 export function quoteIdentifier(identifier: string): string {
   return quoteValueIdentifier(identifier);
@@ -72,7 +73,11 @@ export function unquoteDslString(value: string): string {
 }
 
 export function getRightPrefix(conflict: unknown): string {
-  if (isRecord(conflict) && typeof conflict.rightPrefix === 'string') {
+  if (
+    isRecord(conflict) &&
+    typeof conflict.rightPrefix === 'string' &&
+    conflict.rightPrefix.trim()
+  ) {
     return conflict.rightPrefix;
   }
   return 'right_';
@@ -97,18 +102,9 @@ export function getConflictAlias(
 }
 
 export function durationToMilliseconds(value: string): number {
-  const match = /^(\d+(?:\.\d+)?)(ms|s|m|h|d)$/.exec(value);
-  if (!match) return 0;
-  const amount = Number(match[1]);
-  const unit = match[2];
-  const multipliers: Record<string, number> = {
-    ms: 1,
-    s: 1_000,
-    m: 60_000,
-    h: 3_600_000,
-    d: 86_400_000,
-  };
-  return amount * (multipliers[unit] ?? 0);
+  const { d, h, m, s, ms } = parseDuration(value);
+  const totalMs = d * 86_400_000 + h * 3_600_000 + m * 60_000 + s * 1_000 + ms;
+  return totalMs;
 }
 
 export function sortKeysToSql(value: unknown): string {

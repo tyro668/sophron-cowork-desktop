@@ -12,8 +12,8 @@ export { compileUnpivotSql } from './unpivot';
 export { compileUnnestSql } from './unnest';
 export { compileScalarExpression } from './compute';
 export { compileFilterConditionExpression } from './filter';
-export { compileSetOpSql, compileJoinConditionList, compileJoinProjection } from './set-op';
-export { compileAsofJoinSql } from './join';
+export { compileSetOpSql } from './set-op';
+export { compileJoinConditionList, compileJoinProjection, compileAsofJoinSql } from './join';
 export {
   quoteIdentifier,
   quoteValueIdentifier,
