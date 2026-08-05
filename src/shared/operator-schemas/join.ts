@@ -5,11 +5,23 @@ const JoinConditionSchema = ConditionSchema.extend({
   operator: z.enum(['=', '<', '<=', '>', '>=']),
 });
 
+export const ASOF_TOLERANCE_PATTERN = /^(?:\d+(?:\.\d+)?(?:ms|[dhms]))+$/;
+
+export function isValidAsofTolerance(value: string): boolean {
+  return ASOF_TOLERANCE_PATTERN.test(value.trim());
+}
+
 export const AsofConfigSchema = z.object({
   leftTime: z.string().optional().default(''),
   rightTime: z.string().optional().default(''),
   operator: z.enum(['>=', '<=', 'nearest']).optional(),
-  tolerance: z.string().optional(),
+  tolerance: z
+    .string()
+    .refine(isValidAsofTolerance, {
+      message:
+        'Invalid ASOF tolerance: must include a unit (ms|d|h|m|s), e.g. 0s, 30s, 5m, 1h30m; bare numbers are rejected',
+    })
+    .optional(),
   by: z
     .array(
       z.object({

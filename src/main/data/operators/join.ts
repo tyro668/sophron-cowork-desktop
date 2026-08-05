@@ -174,8 +174,9 @@ export function compileAsofJoinSql(
         : [];
     })
     .join(' AND ');
-  const tolerance = asof.tolerance ?? '';
-  const toleranceMs = tolerance ? durationToMilliseconds(tolerance) : 0;
+  const tolerance = (asof.tolerance ?? '').trim();
+  const hasTolerance = Boolean(tolerance);
+  const toleranceMs = hasTolerance ? durationToMilliseconds(tolerance) : 0;
   const absDiff = `ABS(EPOCH_MS(r.${quoteIdentifier(rightTime)}) - EPOCH_MS(l.${quoteIdentifier(leftTime)}))`;
   const conditions: string[] = [];
   if (isBidirectional) {
@@ -185,7 +186,7 @@ export function compileAsofJoinSql(
     conditions.push(
       `r.${quoteIdentifier(rightTime)} ${rightTimeOperator} l.${quoteIdentifier(leftTime)}`
     );
-    if (toleranceMs > 0) {
+    if (hasTolerance) {
       conditions.push(`${absDiff} <= ${toleranceMs}`);
     }
   }

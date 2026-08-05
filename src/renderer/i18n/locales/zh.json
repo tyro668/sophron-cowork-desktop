@@ -612,6 +612,7 @@
         "joinConditionsHint": "配置字段匹配条件，多条条件之间为「且」关系",
         "joinConfigHeader": "配置",
         "joinConfigHint": "配置保留字段与冲突规则",
+        "semiAntiConfigHint": "{{model}}无需额外配置，默认输出左表字段",
         "joinSourcesHeader": "数据源",
         "joinSourcesHint": "配置连接类型与数据源",
         "noConditionsNeeded": "无需连接条件",

@@ -73,6 +73,28 @@ describe('JoinConfigSchema', () => {
     ).toThrow(z.ZodError);
   });
 
+  it('accepts valid asof tolerance formats', () => {
+    for (const tolerance of ['0s', '5m', '1h30m', '500ms', '2d12h']) {
+      expect(() =>
+        JoinConfigSchema.parse({
+          joinType: 'asof',
+          asof: { leftTime: '[ts]', rightTime: '[time]', operator: '<=', tolerance },
+        })
+      ).not.toThrow();
+    }
+  });
+
+  it('rejects invalid asof tolerance', () => {
+    for (const tolerance of ['abc', '5', '5x', '1h m', '0.']) {
+      expect(() =>
+        JoinConfigSchema.parse({
+          joinType: 'asof',
+          asof: { leftTime: '[ts]', rightTime: '[time]', operator: '<=', tolerance },
+        })
+      ).toThrow(/Invalid ASOF tolerance/);
+    }
+  });
+
   it('rejects right_prefix strategy with an empty prefix', () => {
     expect(() =>
       JoinConfigSchema.parse({

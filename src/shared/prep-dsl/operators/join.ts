@@ -1,3 +1,4 @@
+import { isValidAsofTolerance } from '../../operator-schemas/join';
 import type { PrepAsofJoinConfig, PrepFieldRef, PrepJoinCondition } from '../ast';
 import { createPrepDiagnostic } from '../diagnostics';
 import { formatFieldRef, parseFieldRefExact, toFieldName, toQualifiedName } from '../syntax/fields';
@@ -226,7 +227,7 @@ function parseAsofClause(
       line: command?.line,
     });
   }
-  if (tolerance && !/^(?:\d+(?:\.\d+)?(?:ms|[dhms]))+$/.test(tolerance)) {
+  if (tolerance && !isValidAsofTolerance(tolerance)) {
     diagnostics?.push({
       ...createPrepDiagnostic('invalidAsofTolerance', `Invalid ASOF tolerance: ${tolerance}`),
       line: command?.line,

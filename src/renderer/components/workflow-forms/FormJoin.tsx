@@ -1146,6 +1146,15 @@ export default function FormJoin({
                   />
                 </div>
               )}
+
+              {/* Semi/Anti: no extra config needed */}
+              {isSemiAnti && (
+                <div className="px-0.5 text-[12px] text-text-muted">
+                  {tr('semiAntiConfigHint', {
+                    model: joinType === 'semi' ? tr('joinSemi') : tr('joinAnti'),
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>

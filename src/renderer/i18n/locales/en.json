@@ -612,6 +612,7 @@
         "joinConditionsHint": "Configure field matching conditions; multiple conditions are AND-connected",
         "joinConfigHeader": "Configuration",
         "joinConfigHint": "Configure output fields and conflict rules",
+        "semiAntiConfigHint": "{{model}} needs no extra config; left-side fields are output by default",
         "joinSourcesHeader": "Data Sources",
         "joinSourcesHint": "Select join type and data sources",
         "noConditionsNeeded": "No conditions needed",

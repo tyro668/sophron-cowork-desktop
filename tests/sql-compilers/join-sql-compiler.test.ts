@@ -7,19 +7,24 @@ import {
 } from '../../src/main/data/operators/join';
 import { JoinConfigSchema, parseOperatorConfig } from '../../src/shared/operator-schemas';
 
-async function executeAsofJoin(operator: '>=' | '<='): Promise<Record<string, unknown>[]> {
+async function executeAsofJoin(
+  operator: '>=' | '<=',
+  opts: { tolerance?: string; includeExact?: boolean } = {}
+): Promise<Record<string, unknown>[]> {
   const instance = await DuckDBInstance.create(':memory:');
   const connection = await instance.connect();
   try {
     await connection.run(
       "CREATE TABLE left_input AS SELECT TIMESTAMP '2026-01-01 10:00:00' AS event_time"
     );
-    await connection.run(`
-      CREATE TABLE right_input AS
-      SELECT TIMESTAMP '2026-01-01 08:00:00' AS event_time, 'before' AS label
-      UNION ALL
-      SELECT TIMESTAMP '2026-01-01 12:00:00' AS event_time, 'after' AS label
-    `);
+    const rightRows = [
+      "SELECT TIMESTAMP '2026-01-01 08:00:00' AS event_time, 'before' AS label",
+      "SELECT TIMESTAMP '2026-01-01 12:00:00' AS event_time, 'after' AS label",
+    ];
+    if (opts.includeExact) {
+      rightRows.push("SELECT TIMESTAMP '2026-01-01 10:00:00' AS event_time, 'exact' AS label");
+    }
+    await connection.run(`CREATE TABLE right_input AS ${rightRows.join(' UNION ALL ')}`);
     await connection.run(
       compileAsofJoinSql(
         'asof_output',
@@ -33,6 +38,7 @@ async function executeAsofJoin(operator: '>=' | '<='): Promise<Record<string, un
             leftTime: '[event_time]',
             rightTime: '[event_time]',
             operator,
+            ...(opts.tolerance ? { tolerance: opts.tolerance } : {}),
           },
           keep: [
             { side: 'right', source: '[event_time]', alias: 'matched_time' },
@@ -133,6 +139,18 @@ describe('compileAsofJoinSql', () => {
     ]);
   });
 
+  it('matches only the exact-time row for a backward join with zero tolerance', async () => {
+    await expect(executeAsofJoin('>=', { tolerance: '0s', includeExact: true })).resolves.toEqual([
+      { matched_time: '2026-01-01 10:00:00', label: 'exact' },
+    ]);
+  });
+
+  it('matches only the exact-time row for a forward join with zero tolerance', async () => {
+    await expect(executeAsofJoin('<=', { tolerance: '0s', includeExact: true })).resolves.toEqual([
+      { matched_time: '2026-01-01 10:00:00', label: 'exact' },
+    ]);
+  });
+
   it('matches only the exact-time row for a nearest join with zero tolerance', async () => {
     const instance = await DuckDBInstance.create(':memory:');
     const connection = await instance.connect();
@@ -161,7 +179,7 @@ describe('compileAsofJoinSql', () => {
               leftTime: '[event_time]',
               rightTime: '[event_time]',
               operator: 'nearest',
-              tolerance: '0',
+              tolerance: '0s',
             },
             keep: [
               { side: 'right', source: '[event_time]', alias: 'matched_time' },
