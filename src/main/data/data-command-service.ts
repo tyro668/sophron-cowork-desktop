@@ -1,5 +1,5 @@
 import type { DataTaskStore } from './data-task-store';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { readFile } from 'fs/promises';
 import {
   compilePrepWorkflowToFlow,
@@ -110,6 +110,7 @@ import {
   normalizeColumnSnapshot,
   reconcileGeneratedWorkflowWithOutputPreview,
   repairGeneratedWorkflowFromDiagnostics,
+  type WorkflowModelUsageEvent,
   validateGeneratedOutputPreviewSchema,
   validateGeneratedTaskSchema,
   validateGeneratedExecutableWorkflow,
@@ -117,6 +118,7 @@ import {
   workflowCommandCodeForDiagnostics,
   workflowDiagnosticsFromError,
 } from './workflow';
+import type { DataTaskLlmUsageRecorder } from './data-task-llm-usage-recorder';
 
 const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 100;
@@ -150,6 +152,7 @@ interface ResolvedGeneratedOutputTable {
 interface DataCommandServiceOptions {
   onTaskCompleted?: (task: DataCleaningTask) => void;
   getPersonalAnalysisConnection?: () => PersonalAnalysisConnectionInput | null;
+  recordLlmUsage?: DataTaskLlmUsageRecorder;
   /** Test seam and optional compatibility exporter; native nodes remain the source of truth. */
   exportWorkflowDsl?: typeof exportPrepWorkflowDsl;
 }
@@ -209,6 +212,7 @@ export class DataCommandService {
   async generateTaskFromRequirement(
     input: GenerateTaskFromRequirementCommand
   ): Promise<GenerateTaskFromRequirementResult> {
+    const generationId = normalizeOptionalName(input.usageTraceId) ?? randomUUID();
     const processRequirement = normalizeRequiredName(
       input.processRequirement,
       'Processing requirement is required'
@@ -247,6 +251,9 @@ export class DataCommandService {
       throw error;
     }
     if (!reusableTask) createdTaskId = task.id;
+    const onModelUsage = (event: WorkflowModelUsageEvent): void => {
+      this.recordWorkflowModelUsage(generationId, task.id, event);
+    };
     try {
       return await this.withKeyedLock(`task:${task.id}`, async () => {
         const repairBudget = createGeneratedWorkflowRepairBudget();
@@ -257,6 +264,7 @@ export class DataCommandService {
           columns: preparedInput.columnsSnapshot,
           runtimeConfig: input.runtimeConfig,
           repairBudget,
+          onModelUsage,
         });
         let validation = await this.validateGeneratedWorkflowCandidate({
           taskId: task.id,
@@ -306,6 +314,7 @@ export class DataCommandService {
             failedJavascriptSource: generated.javascriptSource,
             diagnostics: validationErrors,
             repairBudget,
+            onModelUsage,
           });
           validation = await this.validateGeneratedWorkflowCandidate({
             taskId: task.id,
@@ -376,6 +385,7 @@ export class DataCommandService {
   async analyzeTaskRequirement(
     input: AnalyzeTaskRequirementCommand
   ): Promise<AnalyzeTaskRequirementResult> {
+    const generationId = normalizeOptionalName(input.usageTraceId) ?? randomUUID();
     const processRequirement = normalizeRequiredName(
       input.processRequirement,
       'Processing requirement is required'
@@ -385,6 +395,14 @@ export class DataCommandService {
       requirement: processRequirement,
       columns: preparedInput.columnsSnapshot,
       runtimeConfig: input.runtimeConfig,
+      onModelUsage: (result) => {
+        this.recordOneShotUsage({
+          generationId,
+          feature: 'data_task_requirement_analysis',
+          phase: 'requirement_analysis',
+          result,
+        });
+      },
     });
   }
 
@@ -1077,6 +1095,70 @@ export class DataCommandService {
 
     const projects = await this.cloudAnalysis.listCloudProjects({ spaceId });
     return projects.projects.find((project) => project.projectId === projectId)?.folderId;
+  }
+
+  private recordWorkflowModelUsage(
+    generationId: string,
+    taskId: string,
+    event: WorkflowModelUsageEvent
+  ): void {
+    const metadata =
+      event.phase === 'repair'
+        ? {
+            repairStrategy: event.repairStrategy,
+            attempt: event.attempt,
+            functionName: event.functionName,
+            failureStage: event.failureStage,
+            errorCode: event.errorCode,
+            operationType: event.operationType,
+            repairOutcome: event.repairOutcome,
+          }
+        : undefined;
+    this.recordOneShotUsage({
+      generationId,
+      feature: 'data_task_generation',
+      phase: event.phase,
+      taskId,
+      result: event.result,
+      metadata,
+    });
+  }
+
+  private recordOneShotUsage(input: {
+    generationId: string;
+    feature: 'data_task_requirement_analysis' | 'data_task_generation';
+    phase: 'requirement_analysis' | 'initial_generation' | 'repair';
+    taskId?: string;
+    result: WorkflowModelUsageEvent['result'];
+    metadata?: Record<string, unknown>;
+  }): void {
+    if (!this.options.recordLlmUsage) return;
+    const { usage } = input.result;
+    try {
+      this.options.recordLlmUsage({
+        generationId: input.generationId,
+        feature: input.feature,
+        phase: input.phase,
+        taskId: input.taskId,
+        provider: input.result.provider,
+        model: input.result.model,
+        inputTokens: usage.input,
+        outputTokens: usage.output,
+        cacheReadTokens: usage.cacheRead,
+        cacheWriteTokens: usage.cacheWrite,
+        totalTokens: usage.totalTokens,
+        costTotal: usage.cost.total,
+        durationMs: input.result.durationMs,
+        stopReason: input.result.stopReason,
+        metadata: input.metadata,
+      });
+    } catch (error) {
+      logDataCommandFallback('Failed to persist data-task LLM usage', error, {
+        generationId: input.generationId,
+        taskId: input.taskId,
+        phase: input.phase,
+      });
+    }
   }
 
   private async withKeyedLock<T>(key: string, work: () => Promise<T>): Promise<T> {

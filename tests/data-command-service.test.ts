@@ -11,6 +11,11 @@ import { runPiAiOneShot } from '../src/main/claude/claude-sdk-one-shot';
 import type { AgentRuntimeConfig, DataCleaningTask } from '../src/renderer/types';
 import type { PersonalAnalysisConnectionInput } from '../src/shared/personal-analysis-types';
 import { exportPrepWorkflowDsl } from '../src/shared/prep-dsl';
+import {
+  repairGeneratedWorkflowFromDiagnostics,
+  type WorkflowModelUsageEvent,
+} from '../src/main/data/workflow';
+import type { WorkflowFailureDiagnostic } from '../src/main/data/workflow/workflow-failure';
 
 type WorkflowStepFixture = readonly [type: string, payload: string];
 
@@ -86,6 +91,63 @@ afterEach(() => {
 });
 
 describe('DataCommandService', () => {
+  it('records a successful repair outcome after the repaired function compiles', async () => {
+    const invalidSource = `function step1(input) {
+  return workflow.step(input, "filter", { condition: expr(row => row["Market"] !== "EU") }));
+}
+
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  return workflow.output(step1(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+}`;
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        javascriptPatch: {
+          functionName: 'step1',
+          replacementSource: `function step1(input) {
+  return workflow.step(input, "filter", { condition: expr(row => row["Market"] !== "EU") });
+}`,
+        },
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+    const usageEvents: WorkflowModelUsageEvent[] = [];
+    const diagnostic: WorkflowFailureDiagnostic = {
+      severity: 'error',
+      code: 'JAVASCRIPT_TYPE_ERROR_2345',
+      message: 'Argument is not assignable',
+      failureStage: 'javascript_compile',
+      repairClass: 'function_patch',
+      commandErrorCode: 'VALIDATION_FAILED',
+      functionName: 'step1',
+      operationType: 'filter',
+    };
+
+    await repairGeneratedWorkflowFromDiagnostics({
+      inputTableId: 'input-1',
+      outputTableName: 'output-1',
+      requirement: '过滤掉Market为EU的数据',
+      columns: [{ name: 'Market', type: 'string' }],
+      runtimeConfig: testRuntimeConfig,
+      failedJavascriptSource: invalidSource,
+      diagnostics: [diagnostic],
+      onModelUsage: (event) => usageEvents.push(event),
+    });
+
+    expect(usageEvents).toHaveLength(1);
+    expect(usageEvents[0]).toMatchObject({
+      phase: 'repair',
+      repairStrategy: 'function_patch',
+      attempt: 1,
+      functionName: 'step1',
+      failureStage: 'javascript_compile',
+      errorCode: 'JAVASCRIPT_TYPE_ERROR_2345',
+      operationType: 'filter',
+      repairOutcome: 'success',
+    });
+  });
+
   it('uses configured Personal Analysis connection for cloud commands', async () => {
     const { service } = createService({
       personalAnalysis: {

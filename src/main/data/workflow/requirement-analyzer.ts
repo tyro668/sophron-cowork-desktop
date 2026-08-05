@@ -3,7 +3,7 @@ import type {
   DataAnalyzeTaskRequirementResult,
   DataTaskRequirementAnalysisItem,
 } from '../../../renderer/types';
-import { runPiAiOneShot } from '../../claude/claude-sdk-one-shot';
+import { runPiAiOneShot, type PiAiOneShotResult } from '../../claude/claude-sdk-one-shot';
 import { DataCommandError } from '../data-command-types';
 import requirementAnalysisSystemPrompt from './prompts/requirement-analysis-system.txt?raw';
 import { getWorkflowJavascriptCapabilityPrompt } from './workflow-ir-operation-registry';
@@ -16,10 +16,12 @@ export async function analyzeDataTaskRequirement({
   requirement,
   columns,
   runtimeConfig,
+  onModelUsage,
 }: {
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
   runtimeConfig?: AgentRuntimeConfig;
+  onModelUsage?: (result: PiAiOneShotResult) => void;
 }): Promise<DataAnalyzeTaskRequirementResult> {
   if (!runtimeConfig?.model?.trim()) {
     throw new DataCommandError(
@@ -33,6 +35,7 @@ export async function analyzeDataTaskRequirement({
     runtimeConfig,
     { temperature: 0, maxTokens: 2_000 }
   );
+  onModelUsage?.(response);
   let parsed: unknown;
   try {
     parsed = JSON.parse(extractJsonObject(response.text));

@@ -396,6 +396,46 @@ function initializeSchema(database: Database.Database): void {
 
     ensureColumn(database, 'messages', 'execution_time_ms', 'execution_time_ms INTEGER');
 
+    // One-shot model calls do not belong to an interactive chat session. Keep
+    // their usage in a dedicated audit table so data-task generation and repair
+    // costs can be queried without creating synthetic messages.
+    database.exec(`
+    CREATE TABLE IF NOT EXISTS llm_usage_events (
+      id TEXT PRIMARY KEY,
+      generation_id TEXT NOT NULL,
+      feature TEXT NOT NULL,
+      phase TEXT NOT NULL,
+      task_id TEXT,
+      provider TEXT NOT NULL,
+      model TEXT NOT NULL,
+      input_tokens INTEGER NOT NULL,
+      output_tokens INTEGER NOT NULL,
+      cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+      total_tokens INTEGER NOT NULL,
+      cost_total REAL NOT NULL DEFAULT 0,
+      duration_ms INTEGER NOT NULL,
+      stop_reason TEXT,
+      metadata_json TEXT,
+      created_at INTEGER NOT NULL
+    )
+  `);
+
+    database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_llm_usage_events_generation
+    ON llm_usage_events(generation_id, created_at)
+  `);
+
+    database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_llm_usage_events_task
+    ON llm_usage_events(task_id, created_at DESC)
+  `);
+
+    database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_llm_usage_events_feature
+    ON llm_usage_events(feature, created_at DESC)
+  `);
+
     // Create trace steps table
     database.exec(`
     CREATE TABLE IF NOT EXISTS trace_steps (

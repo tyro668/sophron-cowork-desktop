@@ -2,6 +2,7 @@ import {
   completeSimple,
   streamSimple,
   type StopReason,
+  type Usage,
   type UserMessage as PiUserMessage,
 } from '@mariozechner/pi-ai';
 import type { AgentRuntimeConfig, ApiTestInput, ApiTestResult } from '../../renderer/types';
@@ -163,6 +164,16 @@ function mapPiAiError(errorText: string, durationMs: number, provider?: string):
 /**
  * Run a simple one-shot prompt via pi-ai model directly (no agent session needed).
  */
+export interface PiAiOneShotResult {
+  text: string;
+  hasThinking: boolean;
+  durationMs: number;
+  stopReason?: StopReason;
+  provider: string;
+  model: string;
+  usage: Usage;
+}
+
 export async function runPiAiOneShot(
   prompt: string,
   systemPrompt: string,
@@ -174,7 +185,7 @@ export async function runPiAiOneShot(
     onTextDelta?: (delta: string) => void;
     onThinkingDelta?: (delta: string) => void;
   }
-): Promise<{ text: string; hasThinking: boolean; durationMs: number; stopReason?: StopReason }> {
+): Promise<PiAiOneShotResult> {
   const modelString = resolvePiModelString(config);
   const keyProvider = config.customProtocol || config.provider || 'anthropic';
   const parts = modelString.split('/');
@@ -298,7 +309,15 @@ export async function runPiAiOneShot(
     'stopReason:',
     response.stopReason
   );
-  return { text, hasThinking, durationMs: Date.now() - start, stopReason: response.stopReason };
+  return {
+    text,
+    hasThinking,
+    durationMs: Date.now() - start,
+    stopReason: response.stopReason,
+    provider: response.provider,
+    model: response.model,
+    usage: response.usage,
+  };
 }
 
 async function streamPiAiOneShotResponse(

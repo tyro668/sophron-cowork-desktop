@@ -89,6 +89,12 @@ import {
 
 const DEFAULT_INTERVAL_END_OFFSET_MS = 24 * 60 * 60 * 1000;
 
+function createLlmUsageTraceId(): string {
+  return typeof globalThis.crypto?.randomUUID === 'function'
+    ? globalThis.crypto.randomUUID()
+    : `llm-usage-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function EditorHeader({
   selectedAutomation,
   draft,
@@ -959,6 +965,10 @@ function CloudTableProcessActionEditor({
   const [requirementAnalysis, setRequirementAnalysis] =
     useState<DataAnalyzeTaskRequirementResult | null>(null);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const usageTraceIdRef = useRef(createLlmUsageTraceId());
+  const resetUsageTraceId = () => {
+    usageTraceIdRef.current = createLlmUsageTraceId();
+  };
 
   const updateConfig = (
     next: CloudTableAutomationConfig,
@@ -977,6 +987,7 @@ function CloudTableProcessActionEditor({
   };
   const updateSource = (source: CloudAutomationSourceTable) => {
     setRequirementAnalysis(null);
+    resetUsageTraceId();
     const previousDefaultName = `${config.source.tableName || 'cloud_table'}_processed`;
     const nextDefaultName = `${source.tableName || 'cloud_table'}_processed`;
     updateConfig({
@@ -1046,6 +1057,7 @@ function CloudTableProcessActionEditor({
       reusableTaskOutput?.tableName === config.output.tableName &&
       typeof reusableTaskOutput.localOutputTableId === 'string';
     return {
+      usageTraceId: usageTraceIdRef.current,
       source: {
         location: sourceLocation,
         tableId: config.source.tableId,
@@ -1115,6 +1127,7 @@ function CloudTableProcessActionEditor({
       );
       onChange(createGeneratedCloudTableProcessNode(node, config, result));
       onGeneratedTaskSuccess(result.workflowDslAvailable);
+      resetUsageTraceId();
     } catch (error) {
       setGenerationError(
         error instanceof Error
@@ -1179,6 +1192,7 @@ function CloudTableProcessActionEditor({
             value={config.processRequirement}
             onChange={(processRequirement) => {
               setRequirementAnalysis(null);
+              resetUsageTraceId();
               updateConfig({
                 ...config,
                 processRequirement,
@@ -1190,6 +1204,7 @@ function CloudTableProcessActionEditor({
             }
             onSkillSelectionCommit={({ value, selectedSkillNames }) => {
               setRequirementAnalysis(null);
+              resetUsageTraceId();
               updateConfig(
                 {
                   ...config,
@@ -1200,12 +1215,13 @@ function CloudTableProcessActionEditor({
             }}
             appConfig={appConfig}
             selectedModelConfigSetId={selectedModelConfigSetId}
-            onModelSelect={({ configSetId, model }) =>
+            onModelSelect={({ configSetId, model }) => {
+              resetUsageTraceId();
               updateConfig(config, {
                 modelConfigSetId: configSetId,
                 model,
-              })
-            }
+              });
+            }}
             label={tr('schedule.cloudProcessRequirement', '处理要求')}
             placeholder={
               sourceLocation === 'local'

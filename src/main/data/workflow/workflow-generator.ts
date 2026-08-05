@@ -1,6 +1,6 @@
 import type { AgentRuntimeConfig } from '../../../renderer/types';
 import type { PrepDiagnostic } from '../../../shared/prep-dsl';
-import { runPiAiOneShot } from '../../claude/claude-sdk-one-shot';
+import { runPiAiOneShot, type PiAiOneShotResult } from '../../claude/claude-sdk-one-shot';
 import { DataCommandError } from '../data-command-types';
 import workflowGenerationSystemPrompt from './prompts/workflow-generation-system.txt?raw';
 import {
@@ -49,6 +49,26 @@ export const GENERATED_WORKFLOW_REPAIR_POLICY: WorkflowRepairBudgetConfig = {
 
 const FUNCTION_PATCH_MAX_TOKENS = 1_200;
 const FULL_REGENERATION_MAX_TOKENS = 3_000;
+
+export interface WorkflowModelUsageEvent {
+  phase: 'initial_generation' | 'repair';
+  repairStrategy?: WorkflowRepairStrategy;
+  attempt?: number;
+  functionName?: string;
+  failureStage?: string;
+  errorCode?: string;
+  operationType?: string;
+  repairOutcome?: WorkflowRepairOutcome;
+  result: PiAiOneShotResult;
+}
+
+export type WorkflowModelUsageObserver = (event: WorkflowModelUsageEvent) => void;
+/**
+ * Outcome at the validation frontier reached by one model repair call.
+ * `escalated` means the candidate could not be accepted at that frontier and another
+ * repair attempt (or the caller's broader validation/recovery path) is required.
+ */
+export type WorkflowRepairOutcome = 'success' | 'same_incident' | 'regressed' | 'escalated';
 
 export function createGeneratedWorkflowRepairBudget(): WorkflowRepairBudget {
   return createWorkflowRepairBudget(GENERATED_WORKFLOW_REPAIR_POLICY);
@@ -184,6 +204,7 @@ export async function generateDataTaskWorkflowFromRequirement({
   columns,
   runtimeConfig,
   repairBudget,
+  onModelUsage,
 }: {
   inputTableId: string;
   outputTableName: string;
@@ -191,6 +212,7 @@ export async function generateDataTaskWorkflowFromRequirement({
   columns: Array<{ name: string; type?: string }>;
   runtimeConfig?: AgentRuntimeConfig;
   repairBudget?: WorkflowRepairBudget;
+  onModelUsage?: WorkflowModelUsageObserver;
 }): Promise<GeneratedDataTaskWorkflow> {
   const config = requireGenerationRuntimeConfig(runtimeConfig);
   const sharedRepairBudget = repairBudget ?? createGeneratedWorkflowRepairBudget();
@@ -206,6 +228,7 @@ export async function generateDataTaskWorkflowFromRequirement({
       config,
       { temperature: 0, maxTokens: 4_000 }
     );
+    onModelUsage?.({ phase: 'initial_generation', result: response });
     if (response.stopReason === 'length') {
       return await repairGeneratedWorkflowFromDiagnostics({
         inputTableId,
@@ -217,6 +240,7 @@ export async function generateDataTaskWorkflowFromRequirement({
           extractJavascriptSourceFromModelResponse(response.text) ?? response.text,
         diagnostics: createModelOutputTruncatedDiagnostics(),
         repairBudget: sharedRepairBudget,
+        onModelUsage,
       });
     }
     try {
@@ -247,6 +271,7 @@ export async function generateDataTaskWorkflowFromRequirement({
           extractJavascriptSourceFromModelResponse(response.text) ?? response.text,
         diagnostics,
         repairBudget: sharedRepairBudget,
+        onModelUsage,
       });
     }
   } catch (error) {
@@ -268,6 +293,7 @@ export async function repairGeneratedWorkflowFromDiagnostics({
   failedJavascriptSource,
   diagnostics,
   repairBudget,
+  onModelUsage,
 }: {
   inputTableId: string;
   outputTableName: string;
@@ -277,6 +303,7 @@ export async function repairGeneratedWorkflowFromDiagnostics({
   failedJavascriptSource: string;
   diagnostics: PrepDiagnostic[];
   repairBudget?: WorkflowRepairBudget;
+  onModelUsage?: WorkflowModelUsageObserver;
 }): Promise<GeneratedDataTaskWorkflow> {
   const config = requireGenerationRuntimeConfig(runtimeConfig);
   const sharedRepairBudget = repairBudget ?? createGeneratedWorkflowRepairBudget();
@@ -343,14 +370,29 @@ export async function repairGeneratedWorkflowFromDiagnostics({
         config,
         { temperature: 0, maxTokens: maxOutputTokens }
       );
+      const recordRepairUsage = (repairOutcome: WorkflowRepairOutcome): void => {
+        onModelUsage?.({
+          phase: 'repair',
+          repairStrategy,
+          attempt: claim.attempt,
+          functionName:
+            repairFunctionName ?? errorDiagnosticString(currentDiagnostics, 'functionName'),
+          failureStage: errorDiagnosticString(currentDiagnostics, 'failureStage'),
+          errorCode: errorDiagnosticString(currentDiagnostics, 'code'),
+          operationType: errorDiagnosticString(currentDiagnostics, 'operationType'),
+          repairOutcome,
+          result: response,
+        });
+      };
       if (response.stopReason === 'length') {
+        recordRepairUsage('escalated');
         currentDiagnostics = createModelOutputTruncatedDiagnostics();
         forceFullRegeneration = true;
         duplicateRewrite = false;
         continue;
       }
       try {
-        return compileRepairResponse({
+        const repairedWorkflow = compileRepairResponse({
           text: response.text,
           failedJavascriptSource: currentJavascriptSource,
           repairFunctionName,
@@ -359,6 +401,8 @@ export async function repairGeneratedWorkflowFromDiagnostics({
           requirement,
           columns,
         });
+        recordRepairUsage('success');
+        return repairedWorkflow;
       } catch (error) {
         const repairError = contextualizeWorkflowError(error, {
           failureStage: 'generation_response',
@@ -368,25 +412,33 @@ export async function repairGeneratedWorkflowFromDiagnostics({
           failureStage: 'generation_response',
           commandErrorCode: repairError.code,
         });
-        if (!nextDiagnostics.every(isWorkflowDiagnosticRepairable)) throw repairError;
+        if (!nextDiagnostics.every(isWorkflowDiagnosticRepairable)) {
+          recordRepairUsage('escalated');
+          throw repairError;
+        }
         const nextJavascriptSource = extractRepairJavascriptCandidate({
           text: response.text,
           failedJavascriptSource: currentJavascriptSource,
           repairFunctionName,
         });
-        if (!nextJavascriptSource) throw repairError;
+        if (!nextJavascriptSource) {
+          recordRepairUsage('escalated');
+          throw repairError;
+        }
         const regressed =
           diagnosticProgressRank(nextDiagnostics) < diagnosticProgressRank(currentDiagnostics);
         const repeatedIncident =
           workflowRepairIncidentKey(nextDiagnostics) ===
           workflowRepairIncidentKey(currentDiagnostics);
         if (!regressed && !repeatedIncident) {
+          recordRepairUsage('escalated');
           currentJavascriptSource = nextJavascriptSource;
           currentDiagnostics = nextDiagnostics;
           forceFullRegeneration = false;
           duplicateRewrite = false;
           continue;
         }
+        recordRepairUsage(regressed ? 'regressed' : 'same_incident');
         // Keep the last candidate that reached the current validation frontier. A repair
         // that regresses to an earlier stage or repeats the same root cause must not become
         // the baseline for the next model call.
@@ -407,6 +459,15 @@ export async function repairGeneratedWorkflowFromDiagnostics({
       repairClass: 'none',
     });
   }
+}
+
+function errorDiagnosticString(diagnostics: PrepDiagnostic[], field: string): string | undefined {
+  for (const diagnostic of diagnostics) {
+    if (diagnostic.severity !== 'error') continue;
+    const value = (diagnostic as PrepDiagnostic & Record<string, unknown>)[field];
+    if (typeof value === 'string' && value.trim()) return value;
+  }
+  return undefined;
 }
 
 function repairMaxOutputTokens(strategy: WorkflowRepairStrategy): number {

@@ -723,6 +723,8 @@ export interface DataGenerateTaskFromRequirementInput {
   source: DataAutomationSourceBinding;
   processRequirement: string;
   output: DataAutomationOutputBinding;
+  /** Correlates requirement analysis, generation, and repair calls from one UI flow. */
+  usageTraceId?: string;
   modelConfigSetId?: string | null;
   model?: string | null;
   reuseTaskId?: string | null;
