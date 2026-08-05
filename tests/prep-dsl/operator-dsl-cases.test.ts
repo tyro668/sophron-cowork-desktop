@@ -635,6 +635,193 @@ describe('operator DSL executable cases', () => {
     ).toThrow('Cannot export incomplete sort operator (sort-empty)');
   });
 
+  it('does not export DSL for an empty filter config', () => {
+    expect(exportPrepOperatorDsl({ id: 'filter-empty', type: 'filter', config: {} })).toBe('');
+    expect(
+      exportPrepOperatorDsl({ id: 'filter-empty', type: 'filter', config: { condition: '   ' } })
+    ).toBe('');
+  });
+
+  it('rejects workflow export when a filter operator has an empty condition', () => {
+    expect(() =>
+      exportPrepWorkflowDsl(
+        [
+          { id: 'source', type: 'input_source', config: { dsl: 'input source task' } },
+          { id: 'filter-empty', type: 'filter', config: { condition: '' } },
+        ],
+        [{ sourceNodeId: 'source', targetNodeId: 'filter-empty', targetHandle: 'input' }]
+      )
+    ).toThrow('Cannot export incomplete filter operator (filter-empty)');
+  });
+
+  it('preserves a comma inside a quoted IN value through the DSL codec', () => {
+    const dsl = 'filter [city] in ("New York, NY", "Paris")';
+    const parsed = parsePrepOperatorDsl(dsl, 'filter');
+    expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
+    expect(parsed.operator).not.toBeNull();
+    const exported = exportPrepOperatorDsl(parsed.operator!);
+    expect(exported).toBe(dsl);
+  });
+
+  it('preserves is null / is not null through the DSL codec', () => {
+    for (const dsl of ['filter [phone] is null', 'filter [phone] is not null']) {
+      const parsed = parsePrepOperatorDsl(dsl, 'filter');
+      expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
+      expect(parsed.operator).not.toBeNull();
+      expect(exportPrepOperatorDsl(parsed.operator!)).toBe(dsl);
+    }
+  });
+
+  it('accepts valid IN / NOT IN lists through the DSL codec', () => {
+    for (const dsl of [
+      'filter [code] in ("a", "b")',
+      'filter [code] not in (1, 2, 3)',
+      'filter [code] in ("New York, NY", "Paris")',
+    ]) {
+      const parsed = parsePrepOperatorDsl(dsl, 'filter');
+      expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
+      expect(parsed.operator).not.toBeNull();
+    }
+  });
+
+  it('rejects IN with trailing content after the closing parenthesis', () => {
+    const parsed = parsePrepOperatorDsl('filter [code] in ("a") trailing', 'filter');
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidFilterCondition' })])
+    );
+  });
+
+  it.each([
+    'filter [code] in ()',
+    'filter [code] in (,1)',
+    'filter [code] in (1,)',
+    'filter [code] in (1,,2)',
+    'filter [code] in (1 2)',
+  ])('rejects malformed IN list: %s', (dsl) => {
+    const parsed = parsePrepOperatorDsl(dsl, 'filter');
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidFilterCondition' })])
+    );
+  });
+
+  it('rejects unterminated literals in a filter condition', () => {
+    const parsed = parsePrepOperatorDsl('filter [code] = "abc', 'filter');
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidFilterCondition' })])
+    );
+  });
+
+  it.each([
+    'filter [name] like ("a", "b")',
+    'filter [name] not like ("a", "b")',
+    'filter [name] matches ("a", "b")',
+    'filter [name] not matches ("a", "b")',
+    'filter [name] begin ("a")',
+    'filter [name] end ("b")',
+  ])('rejects list right-hand value for string operators: %s', (dsl) => {
+    const parsed = parsePrepOperatorDsl(dsl, 'filter');
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidFilterCondition' })])
+    );
+  });
+
+  it('accepts single-value string operators through the DSL codec', () => {
+    for (const dsl of [
+      'filter [name] like "a%"',
+      'filter [name] not like "a%"',
+      'filter [name] matches "^a"',
+      'filter [name] not matches "^a"',
+      'filter [name] begin "a"',
+      'filter [name] end "b"',
+    ]) {
+      const parsed = parsePrepOperatorDsl(dsl, 'filter');
+      expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
+      expect(parsed.operator).not.toBeNull();
+    }
+  });
+
+  it('accepts each comparison operator with a literal right-hand value', () => {
+    for (const dsl of [
+      'filter [a] = 1',
+      'filter [a] != 2',
+      'filter [a] <> 3',
+      'filter [a] > -5',
+      'filter [a] < 0.5',
+      'filter [a] >= 10',
+      'filter [a] <= 100',
+      'filter [a] = "x"',
+      'filter [a] = null',
+      'filter [a] = true',
+      'filter [a] = 2024-01-01',
+    ]) {
+      const parsed = parsePrepOperatorDsl(dsl, 'filter');
+      expect(
+        parsed.diagnostics.filter((d) => d.severity === 'error'),
+        dsl
+      ).toHaveLength(0);
+      expect(parsed.operator).not.toBeNull();
+    }
+  });
+
+  it.each([
+    'filter [amount] + 1',
+    'filter [amount] - 1',
+    'filter [amount] * 2',
+    'filter [amount] / 2',
+    'filter [amount] % 2',
+    'filter [amount] || "x"',
+    'filter [amount] * 2 > 5',
+  ])('rejects a non-comparison operator as the top-level operator: %s', (dsl) => {
+    const parsed = parsePrepOperatorDsl(dsl, 'filter');
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidFilterCondition' })])
+    );
+  });
+
+  it.each([
+    'filter [a] = [b]',
+    'filter [a] > [b]',
+    'filter [a] in ([b])',
+    'filter [a] between [b] and [c]',
+  ])('accepts and round-trips a single field reference as the right-hand value: %s', (dsl) => {
+    const parsed = parsePrepOperatorDsl(dsl, 'filter');
+    expect(
+      parsed.diagnostics.filter((d) => d.severity === 'error'),
+      dsl
+    ).toHaveLength(0);
+    expect(parsed.operator).not.toBeNull();
+    expect(exportPrepOperatorDsl(parsed.operator!)).toBe(dsl);
+  });
+
+  it.each([
+    'filter [a] = Beijing',
+    'filter [a] in (Beijing, Berlin)',
+    'filter [a] like abc',
+    'filter [a] between Beijing and Berlin',
+  ])('rejects a bare identifier that is not true/false/null as the right-hand value: %s', (dsl) => {
+    const parsed = parsePrepOperatorDsl(dsl, 'filter');
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidFilterCondition' })])
+    );
+  });
+
+  it('accepts quoted strings and the bare booleans/null as the right-hand value', () => {
+    for (const dsl of [
+      'filter [a] = "Beijing"',
+      'filter [a] = true',
+      'filter [a] = false',
+      'filter [a] = null',
+      'filter [a] in ("Beijing", "Berlin")',
+    ]) {
+      const parsed = parsePrepOperatorDsl(dsl, 'filter');
+      expect(
+        parsed.diagnostics.filter((d) => d.severity === 'error'),
+        dsl
+      ).toHaveLength(0);
+      expect(parsed.operator).not.toBeNull();
+    }
+  });
+
   it('uses 10 rows as the default limit when config is omitted', () => {
     expect(exportPrepOperatorDsl({ id: 'limit-default', type: 'limit', config: {} })).toBe(
       'limit 10'

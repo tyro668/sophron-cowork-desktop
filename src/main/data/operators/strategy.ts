@@ -29,7 +29,10 @@ export function buildFilterSql(
   _columns: string[],
   config: Record<string, unknown>
 ): string {
-  const condition = String(config.condition ?? 'true');
+  const condition = String(config.condition ?? '').trim();
+  if (!condition) {
+    throw new Error('Filter requires a condition');
+  }
   return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} WHERE ${compileFilterConditionExpression(condition)}`;
 }
 

@@ -27,6 +27,9 @@ type TokenType =
   | 'Begin'
   | 'End'
   | 'In'
+  | 'Is'
+  | 'Distinct'
+  | 'From'
   | 'Operator'
   | 'Comma'
   | 'ParenOpen'
@@ -46,6 +49,9 @@ const KEYWORDS: Record<string, TokenType> = {
   begin: 'Begin',
   end: 'End',
   in: 'In',
+  is: 'Is',
+  distinct: 'Distinct',
+  from: 'From',
   true: 'BooleanTrue',
   false: 'BooleanFalse',
   null: 'Null',
@@ -350,6 +356,22 @@ class Compiler {
       return `${left} IN ${this.compileInList()}`;
     }
 
+    if (this.match('Is')) {
+      const negated = this.match('Not');
+      if (this.match('Null')) {
+        return `${left} IS ${negated ? 'NOT ' : ''}NULL`;
+      }
+      // `IS [NOT] DISTINCT FROM <expr>` — a multi-word SQL operator.
+      if (this.match('Distinct')) {
+        if (!this.match('From')) {
+          throw new Error('Expected FROM after IS DISTINCT');
+        }
+        const right = this.compileTerm();
+        return `${left} IS ${negated ? 'NOT ' : ''}DISTINCT FROM ${right}`;
+      }
+      throw new Error('Expected NULL or DISTINCT after IS');
+    }
+
     while (this.check('Operator') || this.check('Ident') || this.check('Not')) {
       const token = this.advance();
       let right: string;
@@ -374,7 +396,13 @@ class Compiler {
         }
       } else {
         right = this.compileTerm();
-        left = `${left} ${token.raw} ${right}`;
+        if (right === 'NULL' && (token.raw === '=' || token.raw === '!=' || token.raw === '<>')) {
+          // Normalize `= null` / `!= null` / `<> null` to proper IS NULL /
+          // IS NOT NULL semantics (`= NULL` is never true in SQL).
+          left = token.raw === '=' ? `${left} IS NULL` : `${left} IS NOT NULL`;
+        } else {
+          left = `${left} ${token.raw} ${right}`;
+        }
 
         if (this.match('Matches', 'Begin', 'End')) {
           const specialOp = this.tokens[this.pos - 1];

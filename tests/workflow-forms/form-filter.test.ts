@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
+import { compileFilterConditionExpression } from '../../src/main/data/operators/filter';
 import {
   buildFilterCondition,
   formatFilterConditionValue,
@@ -208,8 +209,18 @@ describe('FormFilter — type-aware value formatting', () => {
   it('field ref preserved', () => {
     expect(build([{ field: 'a', op: '=', val1: '[b]', colType: 'text' }])).toBe('[a] = [b]');
   });
-  it('null literal unquoted', () => {
-    expect(build([{ field: 'x', op: '=', val1: 'null', colType: 'text' }])).toBe('[x] = null');
+  it('quotes null content as a string value', () => {
+    expect(build([{ field: 'x', op: '=', val1: 'null', colType: 'text' }])).toBe('[x] = "null"');
+  });
+  it('uses is null for the SQL NULL filter', () => {
+    resetNodeIdCounter();
+    const tree: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'root',
+      connective: 'and',
+      items: [{ kind: 'leaf', id: 'l1', field: 'x', op: 'is null', val1: '', val2: '' }],
+    };
+    expect(buildFilterConditionTree(tree, { x: 'text' })).toBe('[x] is null');
   });
   it('between with numeric types', () => {
     expect(
@@ -318,6 +329,26 @@ describe('FilterCondition — tree parse + build round-trip', () => {
     expect(roundTripTree(dsl)).toBe(dsl);
   });
 
+  it('rejects a bare identifier that is not true/false/null as the right-hand value', () => {
+    expect(() => roundTripTree('[a] = Beijing')).toThrow();
+    expect(() => roundTripTree('[a] like abc')).toThrow();
+    expect(() => roundTripTree('[a] in (Beijing, Berlin)')).toThrow();
+  });
+
+  it('round-trips a single field reference as the right-hand value', () => {
+    expect(roundTripTree('[a] = [b]')).toBe('[a] = [b]');
+    expect(roundTripTree('[a] in ([b])')).toBe('[a] in ([b])');
+    expect(roundTripTree('[a] like [b]')).toBe('[a] like [b]');
+    expect(roundTripTree('[a] between [b] and [c]')).toBe('[a] between [b] and [c]');
+  });
+
+  it('accepts quoted strings and bare booleans/null as the right-hand value', () => {
+    expect(roundTripTree('[a] = "Beijing"')).toBe('[a] = "Beijing"');
+    expect(roundTripTree('[a] = true')).toBe('[a] = true');
+    expect(roundTripTree('[a] = null')).toBe('[a] is null');
+    expect(roundTripTree('[a] in ("Beijing", "Berlin")')).toBe('[a] in ("Beijing", "Berlin")');
+  });
+
   it('empty condition returns empty string', () => {
     resetNodeIdCounter();
     const tree = parseConditionTree('');
@@ -339,6 +370,95 @@ describe('FilterCondition — tree parse + build round-trip', () => {
 
   it('in operator with quoted values', () => {
     expect(roundTripTree('[region] in ("EU", "US", "CN")')).toBe('[region] in ("EU", "US", "CN")');
+  });
+});
+
+// ── Compact operator syntax (no whitespace between operator and value) ─
+
+describe('FilterCondition — compact operator syntax', () => {
+  function roundTripTree(dsl: string): string {
+    resetNodeIdCounter();
+    const tree = parseConditionTree(dsl);
+    return buildFilterConditionTree(tree) ?? '';
+  }
+
+  it('parses =FALSE without space (no silent drop of the first condition)', () => {
+    expect(roundTripTree('[是否续购] =FALSE')).toBe('[是否续购] = FALSE');
+  });
+
+  it('keeps the first condition of the reported compound expression', () => {
+    const dsl =
+      '([是否续购] =FALSE  or [商品ID] != "SP00010") and [商品ID] not in ("SP0001", "SP0003", "SP0005")';
+    const out = roundTripTree(dsl);
+    expect(out).toContain('[是否续购] = FALSE');
+    expect(out).toContain('[商品ID] != "SP00010"');
+    expect(out).toContain('[商品ID] not in ("SP0001", "SP0003", "SP0005")');
+  });
+
+  it('parses compact comparison operators', () => {
+    expect(roundTripTree('[a] >5')).toBe('[a] > 5');
+    expect(roundTripTree('[a] <3')).toBe('[a] < 3');
+    expect(roundTripTree('[a] >=10')).toBe('[a] >= 10');
+    expect(roundTripTree('[a] <=20')).toBe('[a] <= 20');
+    expect(roundTripTree('[a] !=7')).toBe('[a] != 7');
+  });
+
+  it('parses compact not in list', () => {
+    expect(roundTripTree('[a] not in("x","y")')).toBe('[a] not in ("x", "y")');
+  });
+
+  it('parses negative numeric values (tokenizer splits -5 into - and 5)', () => {
+    expect(roundTripTree('[a] = -5')).toBe('[a] = -5');
+    expect(roundTripTree('[a] > -10')).toBe('[a] > -10');
+    expect(roundTripTree('[a] <= -20')).toBe('[a] <= -20');
+  });
+
+  it('parses negative values in between', () => {
+    expect(roundTripTree('[a] between -10 and 10')).toBe('[a] between -10 and 10');
+    expect(roundTripTree('[a] between -100 and -1')).toBe('[a] between -100 and -1');
+  });
+
+  it('parses negative values inside in lists', () => {
+    expect(roundTripTree('[a] in (-1, 0, 1)')).toBe('[a] in (-1, 0, 1)');
+    expect(roundTripTree('[a] not in (-5)')).toBe('[a] not in (-5)');
+  });
+
+  it('round-trips IN with a comma inside a quoted value losslessly', () => {
+    const dsl = '[city] in ("New York, NY", "Paris")';
+    const tree = parseConditionTree(dsl);
+    const leaf = tree.items[0] as FilterConditionLeaf;
+
+    // UI array: authoritative structured values, unquoted.
+    const uiValues = leaf.values ?? splitInValues(leaf.val1);
+    expect(uiValues).toEqual(['New York, NY', 'Paris']);
+
+    // UI → DSL (graphical round-trip).
+    const rebuilt = buildFilterConditionTree(tree) ?? '';
+    expect(rebuilt).toBe('[city] in ("New York, NY", "Paris")');
+
+    // DSL → SQL (execution layer) keeps the element intact.
+    expect(compileFilterConditionExpression(rebuilt)).toBe(
+      "`\"city\" IN ('New York, NY', 'Paris')`".replace(/`/g, '')
+    );
+  });
+
+  it('parses is null / is not null unary operators', () => {
+    expect(roundTripTree('[phone] is null')).toBe('[phone] is null');
+    expect(roundTripTree('[phone] is not null')).toBe('[phone] is not null');
+  });
+
+  it('normalizes = null to the is null unary operator', () => {
+    expect(roundTripTree('[phone] = null')).toBe('[phone] is null');
+    expect(roundTripTree('[phone] != null')).toBe('[phone] is not null');
+  });
+
+  it('keeps a quoted "null" string as a value, not SQL NULL', () => {
+    expect(roundTripTree('[code] = "null"')).toBe('[code] = "null"');
+    expect(roundTripTree('[code] != "null"')).toBe('[code] != "null"');
+  });
+
+  it('keeps a quoted "null" inside an IN list as a string', () => {
+    expect(roundTripTree('[code] in ("null", "normal")')).toBe('[code] in ("null", "normal")');
   });
 });
 
@@ -384,6 +504,37 @@ describe('FilterCondition — tree parse edge cases', () => {
     const tree = parseConditionTree('[a] = 1 and [b] = 2');
     expect(tree.connective).toBe('and');
   });
+
+  it('parseConditionTree rejects a leaf with trailing content after IN close', () => {
+    resetNodeIdCounter();
+    expect(() => parseConditionTree('[a] in ("x") trailing')).toThrow(
+      /Invalid filter condition segment/
+    );
+  });
+
+  it.each(['[a] in ()', '[a] in (,1)', '[a] in (1,)', '[a] in (1,,2)', '[a] in (1 2)'])(
+    'parseConditionTree rejects malformed IN list: %s',
+    (dsl) => {
+      resetNodeIdCounter();
+      expect(() => parseConditionTree(dsl)).toThrow(/Invalid filter condition segment/);
+    }
+  );
+
+  it.each(['[a] = 1 and ()', '[a] = 1 and ( )', '()'])(
+    'parseConditionTree rejects an empty parenthesized group: %s',
+    (dsl) => {
+      resetNodeIdCounter();
+      expect(() => parseConditionTree(dsl)).toThrow(/Invalid filter condition segment/);
+    }
+  );
+
+  it.each(['[a] = 1 and (garbage)', '([b] = )', '(garbage)'])(
+    'parseConditionTree rejects a parenthesized group that cannot parse: %s',
+    (dsl) => {
+      resetNodeIdCounter();
+      expect(() => parseConditionTree(dsl)).toThrow(/Invalid filter condition segment/);
+    }
+  );
 });
 
 // ── Tree mutation helpers ─────────────────────────────────────────────
@@ -537,8 +688,46 @@ describe('FilterCondition — splitInValues / joinInValues', () => {
     expect(splitInValues('')).toEqual([]);
   });
 
+  it('preserves commas inside quoted values', () => {
+    expect(splitInValues('"New York, NY", Paris')).toEqual(['New York, NY', 'Paris']);
+  });
+
+  it('preserves quotes and backslashes inside values', () => {
+    expect(splitInValues('"a\\"b", "c\'d"')).toEqual(['a"b', "c'd"]);
+    expect(splitInValues('"a\\\\b", c')).toEqual(['a\\b', 'c']);
+  });
+
+  it('preserves empty-string values', () => {
+    expect(splitInValues('"", normal')).toEqual(['', 'normal']);
+  });
+
+  it('preserves null/boolean/numeric-looking values', () => {
+    expect(splitInValues('null, true, 00123')).toEqual(['null', 'true', '00123']);
+  });
+
   it('joins values with comma+space', () => {
     expect(joinInValues(['a', 'b', 'c'])).toBe('a, b, c');
+  });
+
+  it('quotes values containing commas or quotes when joining', () => {
+    expect(joinInValues(['New York, NY', 'Paris'])).toBe('"New York, NY", Paris');
+    expect(joinInValues(['a"b', "c'd"])).toBe('"a\\"b", "c\'d"');
+  });
+
+  it('quotes empty-string values when joining', () => {
+    expect(joinInValues(['', 'normal'])).toBe('"", normal');
+  });
+
+  it('round-trips value lists losslessly through split→join', () => {
+    for (const values of [
+      ['New York, NY', 'Paris'],
+      ['a"b', "c'd"],
+      ['a\\b', 'c'],
+      ['', 'normal'],
+      ['null', 'true', '00123'],
+    ]) {
+      expect(splitInValues(joinInValues(values))).toEqual(values);
+    }
   });
 
   it('round-trip split→join', () => {
@@ -614,6 +803,35 @@ describe('FilterCondition — tree build edge cases', () => {
       items: [{ kind: 'leaf', id: 'l1', field: 'x', op: 'in', val1: '1, 2, 3', val2: '' }],
     };
     expect(buildFilterConditionTree(tree, { x: 'integer' })).toBe('[x] in (1, 2, 3)');
+  });
+
+  it('quotes a leading-zero text value that looks numeric', () => {
+    resetNodeIdCounter();
+    const tree: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'root',
+      connective: 'and',
+      items: [{ kind: 'leaf', id: 'l1', field: 'code', op: '=', val1: '00123', val2: '' }],
+    };
+    expect(buildFilterConditionTree(tree, { code: 'text' })).toBe('[code] = "00123"');
+  });
+
+  it('quotes a numeric-looking value on a text column but not on a numeric column', () => {
+    resetNodeIdCounter();
+    const textTree: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'root',
+      connective: 'and',
+      items: [{ kind: 'leaf', id: 'l1', field: 'a', op: '=', val1: '123', val2: '' }],
+    };
+    expect(buildFilterConditionTree(textTree, { a: 'text' })).toBe('[a] = "123"');
+    const numTree: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'root',
+      connective: 'and',
+      items: [{ kind: 'leaf', id: 'l1', field: 'a', op: '=', val1: '123', val2: '' }],
+    };
+    expect(buildFilterConditionTree(numTree, { a: 'integer' })).toBe('[a] = 123');
   });
 
   it('builds empty branch as undefined', () => {
@@ -807,6 +1025,11 @@ describe('FormFilter — UI source inspection', () => {
     expect(formFilterSource).toContain('role="alert"');
   });
 
+  it('does not block graphical edits when a parse error is active', () => {
+    expect(formFilterSource).not.toContain('if (parseError) return;');
+    expect(formFilterSource).not.toMatch(/disabled=\{Boolean\(parseError\)\}/);
+  });
+
   it('has addWithConnective in LeafRowContext', () => {
     expect(formFilterSource).toContain('addWithConnective');
   });
@@ -857,5 +1080,133 @@ describe('FormFilter — UI source inspection', () => {
 
   it('no longer imports Layers icon', () => {
     expect(formFilterSource).not.toContain('Layers');
+  });
+
+  it('passes column types into the condition tree builder', () => {
+    expect(formFilterSource).toContain('const columnTypesRef = useRef(columnTypes);');
+    expect(formFilterSource).toContain('columnTypesRef.current = columnTypes;');
+    expect(formFilterSource).toMatch(/buildFilterConditionTree\(root, columnTypesRef\.current\)/);
+    expect(formFilterSource).toMatch(/buildFilterConditionTree\(next, columnTypesRef\.current\)/);
+  });
+
+  it('does not auto-fetch value suggestions on mount', () => {
+    expect(formFilterSource).not.toContain('const walk = (branch: FilterConditionBranch) => {');
+    expect(formFilterSource).not.toContain('walk(root);');
+  });
+
+  it('lazily fetches value suggestions when a value input opens', () => {
+    const matches = formFilterSource.match(
+      /onOpen=\{\(\) => ctx\.fetchColumnValues\(leaf\.field\)\}/g
+    );
+    expect(matches?.length).toBe(3);
+  });
+
+  it('resets the operator to a value valid for the new field type on field switch', () => {
+    expect(formFilterSource).toMatch(
+      /newValidOps = flattenOps\(operatorsForType\(ctx\.columnTypes\[v\]\)\)\.map\(/
+    );
+    expect(formFilterSource).toMatch(/newValidOps\.includes\(leaf\.op\) \? leaf\.op : '='/);
+    expect(formFilterSource).not.toMatch(/updateLeaf\(leaf\.id, \{ field: v, op: effectiveOp \}\)/);
+  });
+
+  it('renders empty values without falling back to stale val1 after clear', () => {
+    expect(formFilterSource).toMatch(
+      /joinInValues\(leaf\.values \?\? splitInValues\(leaf\.val1\)\)/
+    );
+    expect(formFilterSource).toMatch(
+      /onChange=\{\(v\) => ctx\.updateLeaf\(leaf\.id, \{ values: splitInValues\(v\), val1: v \}\)\}/
+    );
+  });
+
+  it('offers is null / is not null operators and hides the value input for them', () => {
+    expect(formFilterSource).toContain("value: 'is null'");
+    expect(formFilterSource).toContain("value: 'is not null'");
+    expect(formFilterSource).toMatch(
+      /isNullOp = effectiveOp === 'is null' \|\| effectiveOp === 'is not null'/
+    );
+    expect(formFilterSource).toMatch(/!isNullOp &&\s*\(isMultiValue \?/);
+  });
+});
+
+// ── GlassValueInput single-value sync ─────────────────────────────────
+
+const glassValueInputSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/renderer/components/workflow-forms/shared/GlassValueInput.tsx'),
+  'utf8'
+);
+
+describe('GlassValueInput — single-value input survives remount', () => {
+  it('initializes single-value input from the value prop', () => {
+    expect(glassValueInputSource).toContain("useState(multi ? '' : value)");
+  });
+
+  it('syncs inputText from the value prop when it changes externally', () => {
+    expect(glassValueInputSource).toContain('if (!multi) setInputText(value);');
+  });
+
+  it('drives multi-value tags from the value prop', () => {
+    expect(glassValueInputSource).toContain('splitInValues(value)');
+  });
+
+  it('exposes an onOpen callback triggered once when the dropdown opens', () => {
+    expect(glassValueInputSource).toContain('onOpen?: () => void;');
+    expect(glassValueInputSource).toMatch(/if \(!prev\) onOpen\?\.\(\);/);
+  });
+
+  it('toggles the dropdown closed when the toggle button is clicked while open', () => {
+    expect(glassValueInputSource).toMatch(/return !prev;/);
+  });
+
+  it('uses i18n keys for dropdown empty/loading/clear labels instead of hardcoded Chinese', () => {
+    expect(glassValueInputSource).toContain("tr('noMatchValue')");
+    expect(glassValueInputSource).toContain("tr('loadingValues')");
+    expect(glassValueInputSource).toContain("tr('noSuggestions')");
+    expect(glassValueInputSource).toContain("tr('filterClearValues')");
+    expect(glassValueInputSource).not.toContain("'无匹配值'");
+    expect(glassValueInputSource).not.toContain("'加载中…'");
+  });
+});
+
+// ── Empty-config gating (aligned with sort) ─────────────────────────────
+
+const dataTasksSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/renderer/components/data-view/data-tasks.tsx'),
+  'utf8'
+);
+
+describe('FormFilter — empty-config run is blocked', () => {
+  it('defines hasInvalidFilterConfig and blocks empty conditions', () => {
+    expect(dataTasksSource).toContain('function hasInvalidFilterConfig(');
+    expect(dataTasksSource).toContain("node.type !== 'filter'");
+    expect(dataTasksSource).toContain("typeof node.config.condition === 'string'");
+    expect(dataTasksSource).toContain('condition.length === 0');
+    expect(dataTasksSource).toContain('filterIncompleteField');
+  });
+});
+
+// ── i18n keys for null operators ───────────────────────────────────────
+
+describe('Filter — null operator i18n keys', () => {
+  it('defines 为空 / 不为空 in zh', () => {
+    const zh = JSON.parse(
+      fs.readFileSync(path.resolve(process.cwd(), 'src/renderer/i18n/locales/zh.json'), 'utf8')
+    );
+    const keys = Object.keys(zh).length ? zh : {};
+    const flat = JSON.stringify(keys);
+    expect(flat).toContain('filterOpIsNull');
+    expect(flat).toContain('filterOpIsNotNull');
+    expect(flat).toContain('noMatchValue');
+    expect(flat).toContain('loadingValues');
+  });
+
+  it('defines 为空 / 不为空 in en', () => {
+    const en = JSON.parse(
+      fs.readFileSync(path.resolve(process.cwd(), 'src/renderer/i18n/locales/en.json'), 'utf8')
+    );
+    const flat = JSON.stringify(en);
+    expect(flat).toContain('filterOpIsNull');
+    expect(flat).toContain('filterOpIsNotNull');
+    expect(flat).toContain('noMatchValue');
+    expect(flat).toContain('loadingValues');
   });
 });

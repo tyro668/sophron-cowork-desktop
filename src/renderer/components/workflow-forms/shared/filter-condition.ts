@@ -2,7 +2,7 @@ import {
   isNumericDataFieldType,
   normalizeDataFieldType,
 } from '../../../../shared/data-field-types';
-import { tokenizeExpression } from '../../../../shared/expression-tokenizer';
+import { tokenizeExpression, type ExprToken } from '../../../../shared/expression-tokenizer';
 
 export type FilterConditionConnective = 'and' | 'or';
 
@@ -25,6 +25,10 @@ export interface FilterConditionLeaf {
   op: string;
   val1: string;
   val2: string;
+  /** Structured value list for `in` / `not in`. Authoritative source for
+   *  building DSL and rendering the multi-value UI; falls back to
+   *  `splitInValues(val1)` for pre-existing leaves. */
+  values?: string[];
 }
 
 export interface FilterConditionBranch {
@@ -143,12 +147,14 @@ function buildLeafDsl(leaf: FilterConditionLeaf, columnTypes: Record<string, str
   }
 
   if (op === 'in' || op === 'not in') {
-    if (!val1) return '';
-    const values = splitInValues(val1);
+    const values = leaf.values ?? (val1 !== '' ? splitInValues(val1) : []);
     if (values.length === 0) return '';
     const formatted = values.map((v) => formatFilterConditionValue(v, colType)).join(', ');
     return `[${field}] ${op} (${formatted})`;
   }
+
+  if (op === 'is null') return `[${field}] is null`;
+  if (op === 'is not null') return `[${field}] is not null`;
 
   if (!val1) return '';
   const v1 = formatFilterConditionValue(leaf.val1, colType);
@@ -204,7 +210,7 @@ function parseBranchFromDsl(dsl: string, depth: number): FilterConditionBranch |
     connective = 'or';
     segments = orSegments;
   } else {
-    const andSegments = splitByTopLevelConnective(dsl, 'and');
+    const andSegments = splitByTopLevelConnective(protectedDsl, 'and');
     connective = 'and';
     segments = andSegments;
   }
@@ -228,10 +234,14 @@ function parseBranchFromDsl(dsl: string, depth: number): FilterConditionBranch |
     // Check if this segment is a parenthesized group
     if (trimmed.startsWith('(') && trimmed.endsWith(')')) {
       const inner = trimmed.slice(1, -1).trim();
-      const nested = parseBranchFromDsl(inner, depth + 1);
-      if (nested && nested.items.length > 0) {
-        branch.items.push(nested);
+      if (!inner) {
+        throw new Error(`Invalid filter condition segment: ${trimmed}`);
       }
+      const nested = parseBranchFromDsl(inner, depth + 1);
+      if (!nested || nested.items.length === 0) {
+        throw new Error(`Invalid filter condition segment: ${trimmed}`);
+      }
+      branch.items.push(nested);
       continue;
     }
 
@@ -243,9 +253,10 @@ function parseBranchFromDsl(dsl: string, depth: number): FilterConditionBranch |
     );
     if (/\s+(?:and|or)\s+/i.test(withoutBetween)) {
       const nested = parseBranchFromDsl(trimmed, depth + 1);
-      if (nested && nested.items.length > 0) {
-        branch.items.push(nested);
+      if (!nested || nested.items.length === 0) {
+        throw new Error(`Invalid filter condition segment: ${trimmed}`);
       }
+      branch.items.push(nested);
       continue;
     }
 
@@ -253,6 +264,8 @@ function parseBranchFromDsl(dsl: string, depth: number): FilterConditionBranch |
     const leaf = parseLeafCondition(trimmed);
     if (leaf) {
       branch.items.push(leaf);
+    } else {
+      throw new Error(`Invalid filter condition segment: ${trimmed}`);
     }
   }
 
@@ -330,98 +343,226 @@ function splitByTopLevelConnective(dsl: string, connective: 'and' | 'or'): strin
   return parts;
 }
 
+function leaf(
+  field: string,
+  op: string,
+  val1: string,
+  val2 = '',
+  values?: string[]
+): FilterConditionLeaf {
+  return { kind: 'leaf', id: nextNodeId(), field, op, val1, val2, values };
+}
+
 function parseLeafCondition(expr: string): FilterConditionLeaf | null {
   const trimmed = expr.trim();
   if (!trimmed) return null;
 
-  // Try between: [field] between val1 and val2
-  const betweenMatch = trimmed.match(/^\s*\[([^\]]+)\]\s+between\s+(.+?)\s+and\s+(.+?)\s*$/i);
-  if (betweenMatch) {
-    return {
-      kind: 'leaf',
-      id: nextNodeId(),
-      field: betweenMatch[1],
-      op: 'between',
-      val1: unquoteValue(betweenMatch[2].trim()),
-      val2: unquoteValue(betweenMatch[3].trim()),
-    };
+  let tokens: ExprToken[];
+  try {
+    tokens = tokenizeExpression(trimmed);
+  } catch {
+    return null;
+  }
+  // Drop the trailing EOF sentinel.
+  if (tokens[tokens.length - 1]?.type === 'EOF') tokens = tokens.slice(0, -1);
+
+  const cursor = new ExprCursor(tokens);
+
+  const fieldToken = cursor.next();
+  if (!fieldToken || fieldToken.type !== 'FieldRef') return null;
+  const field = fieldToken.value.slice(1, -1);
+
+  const opToken = cursor.next();
+  if (!opToken) return null;
+
+  // Compound operator: not like / not matches / not in.
+  if (opToken.type === 'Ident' && opToken.value.toLowerCase() === 'not') {
+    const kw = cursor.next();
+    if (!kw || kw.type !== 'Ident') return null;
+    const op = `not ${kw.value.toLowerCase()}`;
+    if (op === 'not in') {
+      const values = parseInTokens(cursor);
+      if (!values) return null;
+      return leaf(field, op, values.join(', '), '', values);
+    }
+    if (op === 'not like' || op === 'not matches') {
+      const value = parseSignedValue(cursor);
+      if (value === undefined || !cursor.eof) return null;
+      return leaf(field, op, value);
+    }
+    return null;
   }
 
-  // Try in / not in: [field] in (val1, val2, ...) or [field] not in (val1, ...)
-  const inMatch = trimmed.match(/^\s*\[([^\]]+)\]\s+(not\s+in|in)\s*\((.+)\)\s*$/i);
-  if (inMatch) {
-    const op = inMatch[2].toLowerCase() === 'not in' ? 'not in' : 'in';
-    const values = parseInValueList(inMatch[3]);
-    return {
-      kind: 'leaf',
-      id: nextNodeId(),
-      field: inMatch[1],
-      op,
-      val1: values.join(', '),
-      val2: '',
-    };
+  if (opToken.type === 'Ident') {
+    const op = opToken.value.toLowerCase();
+    if (op === 'between') {
+      const v1 = parseSignedValue(cursor);
+      const andToken = cursor.next();
+      if (
+        v1 === undefined ||
+        !andToken ||
+        andToken.type !== 'Ident' ||
+        andToken.value.toLowerCase() !== 'and'
+      ) {
+        return null;
+      }
+      const v2 = parseSignedValue(cursor);
+      if (v2 === undefined || !cursor.eof) return null;
+      return leaf(field, 'between', v1, v2);
+    }
+    if (op === 'in') {
+      const values = parseInTokens(cursor);
+      if (!values) return null;
+      return leaf(field, 'in', values.join(', '), '', values);
+    }
+    if (op === 'like' || op === 'matches' || op === 'begin' || op === 'end') {
+      const value = parseSignedValue(cursor);
+      if (value === undefined || !cursor.eof) return null;
+      return leaf(field, op, value);
+    }
+    if (op === 'is') {
+      const next = cursor.next();
+      if (!next) return null;
+      if (next.type === 'Ident' && next.value.toLowerCase() === 'null' && cursor.eof) {
+        return leaf(field, 'is null', '');
+      }
+      if (next.type === 'Ident' && next.value.toLowerCase() === 'not') {
+        const after = cursor.next();
+        if (after?.type === 'Ident' && after.value.toLowerCase() === 'null' && cursor.eof) {
+          return leaf(field, 'is not null', '');
+        }
+      }
+      return null;
+    }
+    return null;
   }
 
-  // Try comparison / text operators: [field] op value
-  // Multi-word ops (not like, not matches) must come first in alternation.
-  const cmpMatch = trimmed.match(
-    /^\s*\[([^\]]+)\]\s+(not\s+like|not\s+matches|>=|<=|!=|like|matches|begin|end|[<>=])\s+(.+?)\s*$/i
-  );
-  if (cmpMatch) {
-    return {
-      kind: 'leaf',
-      id: nextNodeId(),
-      field: cmpMatch[1],
-      op: cmpMatch[2],
-      val1: unquoteValue(cmpMatch[3].trim()),
-      val2: '',
-    };
+  if (opToken.type === 'Operator') {
+    const op = opToken.value === '<>' ? '!=' : opToken.value;
+    const valueToken = cursor.peek();
+    const value = parseSignedValue(cursor);
+    if (value === undefined || !cursor.eof) return null;
+    // Normalize `= null` / `!= null` to the unary `is null` / `is not null`
+    // operators so the graphical UI shows the dedicated null filter. Only
+    // bare (unquoted) `null` is treated as SQL NULL — a quoted string
+    // `"null"` stays a string value.
+    if (!isQuotedToken(valueToken) && value.toLowerCase() === 'null') {
+      if (op === '=') return leaf(field, 'is null', '');
+      if (op === '!=' || op === '<>') return leaf(field, 'is not null', '');
+    }
+    return leaf(field, op, value);
   }
 
   return null;
 }
 
-/**
- * Parse a comma-separated list of values inside in(...) / not in(...).
- * Respects quoted strings and nested parentheses.
- */
-function parseInValueList(raw: string): string[] {
-  const values: string[] = [];
-  let current = '';
-  let inString = false;
-  let stringChar = '';
-  let parenDepth = 0;
+class ExprCursor {
+  private pos = 0;
 
-  for (let i = 0; i < raw.length; i++) {
-    const ch = raw[i];
-    if (!inString) {
-      if (ch === '"' || ch === "'") {
-        inString = true;
-        stringChar = ch;
-        current += ch;
-      } else if (ch === '(') {
-        parenDepth++;
-        current += ch;
-      } else if (ch === ')') {
-        parenDepth--;
-        current += ch;
-      } else if (ch === ',' && parenDepth === 0) {
-        values.push(unquoteValue(current.trim()));
-        current = '';
-      } else {
-        current += ch;
-      }
-    } else {
-      current += ch;
-      if (ch === stringChar && raw[i - 1] !== '\\') {
-        inString = false;
-      }
-    }
+  constructor(private readonly tokens: ExprToken[]) {}
+
+  next(): ExprToken | undefined {
+    const token = this.tokens[this.pos];
+    if (token) this.pos += 1;
+    return token;
   }
 
-  const last = current.trim();
-  if (last) values.push(unquoteValue(last));
-  return values;
+  peek(): ExprToken | undefined {
+    return this.tokens[this.pos];
+  }
+
+  get eof(): boolean {
+    return this.pos >= this.tokens.length;
+  }
+}
+
+function parseValueToken(token: ExprToken | undefined): string | undefined {
+  if (!token) return undefined;
+  switch (token.type) {
+    case 'StringLiteral':
+      return unwrapQuotedValue(token.value);
+    case 'Number':
+      return token.value;
+    case 'FieldRef':
+      return token.value;
+    case 'Ident': {
+      const lower = token.value.toLowerCase();
+      if (lower !== 'true' && lower !== 'false' && lower !== 'null') return undefined;
+      return token.value;
+    }
+    default:
+      return undefined;
+  }
+}
+
+/** True when the token is a quoted string literal (not a bare keyword). */
+function isQuotedToken(token: ExprToken | undefined): boolean {
+  return token?.type === 'StringLiteral';
+}
+
+// Reads one value token, merging a leading +/- sign onto a following Number
+// so that negative literals survive (the tokenizer emits -5 as
+// Operator('-') + Number('5')).
+function parseSignedValue(cursor: ExprCursor): string | undefined {
+  const token = cursor.next();
+  if (!token) return undefined;
+  if (token.type === 'Operator' && (token.value === '-' || token.value === '+')) {
+    const next = cursor.next();
+    if (next?.type === 'Number') return token.value + next.value;
+    return undefined;
+  }
+  if (token.type !== 'Number') return parseValueToken(token);
+  // Accept date-like literals such as `2024-01-01` or `2024/01/01`,
+  // which tokenize into Number {-,/} Number {-,/} Number.
+  let raw = token.value;
+  while (cursor.peek()?.type === 'Operator') {
+    const op = cursor.peek()!;
+    if (op.value !== '-' && op.value !== '/') break;
+    cursor.next();
+    const next = cursor.next();
+    if (!next || next.type !== 'Number') return undefined;
+    raw += op.value + next.value;
+  }
+  return raw;
+}
+
+function parseInTokens(cursor: ExprCursor): string[] | null {
+  const open = cursor.next();
+  if (!open || open.type !== 'ParenOpen') return null;
+  if (cursor.peek()?.type === 'ParenClose') return null; // empty list
+  const values: string[] = [];
+  let expectValue = true;
+  while (!cursor.eof) {
+    const token = cursor.next();
+    if (!token) return null;
+    if (token.type === 'ParenClose') {
+      if (expectValue) return null; // trailing comma before close
+      if (!cursor.eof) return null; // trailing tokens after close
+      return values;
+    }
+    if (token.type === 'Comma') {
+      if (expectValue) return null; // leading or consecutive comma
+      expectValue = true;
+      continue;
+    }
+    if (!expectValue) {
+      return null; // missing comma between values
+    }
+    if (token.type === 'Operator' && (token.value === '-' || token.value === '+')) {
+      const next = cursor.next();
+      if (next?.type === 'Number') {
+        values.push(token.value + next.value);
+        expectValue = false;
+        continue;
+      }
+      return null;
+    }
+    const value = parseValueToken(token);
+    if (value === undefined) return null;
+    values.push(value);
+    expectValue = false;
+  }
+  return null;
 }
 
 function unquoteValue(value: string): string {
@@ -438,28 +579,61 @@ function unquoteValue(value: string): string {
 
 // ── Value splitting for in/not in ─────────────────────────────────────
 
+// Splits a comma-separated value list, respecting quoted strings so that a
+// comma inside "..." or '...' is preserved. Each element is unquoted;
+// empty values (including a quoted "" ) are preserved.
 export function splitInValues(val1: string): string[] {
-  return val1
-    .split(',')
-    .map((v) => v.trim())
-    .filter(Boolean);
+  if (val1.trim() === '') return [];
+  const values: string[] = [];
+  let current = '';
+  let inString = false;
+  let stringChar = '';
+  for (let i = 0; i < val1.length; i++) {
+    const ch = val1[i];
+    if (inString) {
+      current += ch;
+      if (ch === stringChar && val1[i - 1] !== '\\') inString = false;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inString = true;
+      stringChar = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === ',') {
+      values.push(unwrapQuotedValue(current.trim()));
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  values.push(unwrapQuotedValue(current.trim()));
+  return values;
 }
 
+// Joins values into a comma-separated list, quoting any value that contains
+// a comma, a quote, or is empty so that the result round-trips losslessly
+// through splitInValues.
 export function joinInValues(values: string[]): string {
-  return values.join(', ');
+  return values
+    .map((v) => {
+      const t = v.trim();
+      if (t === '') return '""';
+      if (/[,"']/.test(t)) return quoteDslString(unquoteValue(t));
+      return t;
+    })
+    .join(', ');
 }
 
 // ── Value formatting ──────────────────────────────────────────────────
 
 export function formatFilterConditionValue(value: string, colType: string | undefined): string {
   const trimmed = value.trim();
-  if (!trimmed) return trimmed;
+  if (!trimmed) return '""';
   if (isDslFieldReference(trimmed)) return trimmed;
 
   const unquoted = unwrapQuotedValue(trimmed);
-  // Only output bare `null` when the original input was the literal keyword
-  // (unquoted). Quoted `"null"` or `'null'` stays as a string value.
-  if (trimmed.toLowerCase() === 'null') return 'null';
   const normalizedType = colType ? normalizeDataFieldType(colType) : undefined;
   const lower = unquoted.toLowerCase();
 

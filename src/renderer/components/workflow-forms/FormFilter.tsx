@@ -23,6 +23,8 @@ import {
   removeNodeFromBranch,
   updateLeafInBranch,
   wrapItemsInGroup,
+  splitInValues,
+  joinInValues,
   MAX_NESTING_DEPTH,
   type FilterConditionLeaf,
   type FilterConditionBranch,
@@ -60,6 +62,13 @@ const ALL_OP_GROUPS: OpGroup[] = [
       { labelKey: 'filterOpNotIn', value: 'not in' },
     ],
   },
+  {
+    groupKey: 'filterGroupNull',
+    items: [
+      { labelKey: 'filterOpIsNull', value: 'is null' },
+      { labelKey: 'filterOpIsNotNull', value: 'is not null' },
+    ],
+  },
 ];
 
 const STRING_OP_GROUPS: OpGroup[] = [
@@ -93,10 +102,27 @@ const STRING_OP_GROUPS: OpGroup[] = [
       { labelKey: 'filterOpNotIn', value: 'not in' },
     ],
   },
+  {
+    groupKey: 'filterGroupNull',
+    items: [
+      { labelKey: 'filterOpIsNull', value: 'is null' },
+      { labelKey: 'filterOpIsNotNull', value: 'is not null' },
+    ],
+  },
 ];
 
 const BOOLEAN_OP_GROUPS: OpGroup[] = [
-  { groupKey: 'filterGroupCompare', items: [{ labelKey: 'filterOpEq', value: '=' }] },
+  {
+    groupKey: 'filterGroupCompare',
+    items: [{ labelKey: 'filterOpEq', value: '=' }],
+  },
+  {
+    groupKey: 'filterGroupNull',
+    items: [
+      { labelKey: 'filterOpIsNull', value: 'is null' },
+      { labelKey: 'filterOpIsNotNull', value: 'is not null' },
+    ],
+  },
 ];
 
 const TEMPORAL_OP_GROUPS: OpGroup[] = [
@@ -122,6 +148,13 @@ const TEMPORAL_OP_GROUPS: OpGroup[] = [
     items: [
       { labelKey: 'filterOpIn', value: 'in' },
       { labelKey: 'filterOpNotIn', value: 'not in' },
+    ],
+  },
+  {
+    groupKey: 'filterGroupNull',
+    items: [
+      { labelKey: 'filterOpIsNull', value: 'is null' },
+      { labelKey: 'filterOpIsNotNull', value: 'is not null' },
     ],
   },
 ];
@@ -194,6 +227,7 @@ function ConditionLeafRow({
   const effectiveOp = validOps.includes(leaf.op) ? leaf.op : (allOps[0]?.value ?? '=');
   const isBetween = effectiveOp === 'between';
   const isMultiValue = effectiveOp === 'in' || effectiveOp === 'not in';
+  const isNullOp = effectiveOp === 'is null' || effectiveOp === 'is not null';
   const colVals = ctx.columnValues[leaf.field] ?? [];
   const isValsLoading = ctx.loadingValues[leaf.field] ?? false;
 
@@ -208,7 +242,11 @@ function ConditionLeafRow({
             columnTypes={ctx.columnTypes}
             onChange={(v) => {
               ctx.fetchColumnValues(v);
-              ctx.updateLeaf(leaf.id, { field: v, op: effectiveOp });
+              const newValidOps = flattenOps(operatorsForType(ctx.columnTypes[v])).map(
+                (o) => o.value
+              );
+              const nextOp = newValidOps.includes(leaf.op) ? leaf.op : '=';
+              ctx.updateLeaf(leaf.id, { field: v, op: nextOp });
             }}
             placeholder={ctx.tr('filterFieldPlaceholder')}
             emptyText={ctx.tr('noMatch')}
@@ -226,29 +264,32 @@ function ConditionLeafRow({
         />
 
         {/* Value(s) */}
-        {isMultiValue ? (
-          <GlassValueInput
-            multi
-            value={leaf.val1}
-            suggestions={colVals}
-            isLoading={isValsLoading}
-            onChange={(v) => ctx.updateLeaf(leaf.id, { val1: v })}
-            placeholder={ctx.tr('filterValuesPlaceholder')}
-            disabled={!fieldSelected}
-            addLabel={ctx.tr('filterAddValue')}
-            noSuggestionsLabel={ctx.tr('noSuggestions')}
-            clearLabel={ctx.tr('filterClearValues')}
-          />
-        ) : (
-          <GlassValueInput
-            value={leaf.val1}
-            suggestions={colVals}
-            isLoading={isValsLoading}
-            onChange={(v) => ctx.updateLeaf(leaf.id, { val1: v })}
-            placeholder={ctx.tr('filterValuePlaceholder')}
-            disabled={!fieldSelected}
-          />
-        )}
+        {!isNullOp &&
+          (isMultiValue ? (
+            <GlassValueInput
+              multi
+              value={joinInValues(leaf.values ?? splitInValues(leaf.val1))}
+              suggestions={colVals}
+              isLoading={isValsLoading}
+              onChange={(v) => ctx.updateLeaf(leaf.id, { values: splitInValues(v), val1: v })}
+              placeholder={ctx.tr('filterValuesPlaceholder')}
+              disabled={!fieldSelected}
+              addLabel={ctx.tr('filterAddValue')}
+              noSuggestionsLabel={ctx.tr('noSuggestions')}
+              clearLabel={ctx.tr('filterClearValues')}
+              onOpen={() => ctx.fetchColumnValues(leaf.field)}
+            />
+          ) : (
+            <GlassValueInput
+              value={leaf.val1}
+              suggestions={colVals}
+              isLoading={isValsLoading}
+              onChange={(v) => ctx.updateLeaf(leaf.id, { val1: v })}
+              placeholder={ctx.tr('filterValuePlaceholder')}
+              disabled={!fieldSelected}
+              onOpen={() => ctx.fetchColumnValues(leaf.field)}
+            />
+          ))}
 
         {isBetween && (
           <>
@@ -260,6 +301,7 @@ function ConditionLeafRow({
               onChange={(v) => ctx.updateLeaf(leaf.id, { val2: v })}
               placeholder={ctx.tr('filterValue2Placeholder')}
               disabled={!fieldSelected}
+              onOpen={() => ctx.fetchColumnValues(leaf.field)}
             />
           </>
         )}
@@ -539,7 +581,7 @@ export default function FormFilter({
       localUpdateRef.current = false;
       return;
     }
-    const fromTree = buildFilterConditionTree(root);
+    const fromTree = buildFilterConditionTree(root, columnTypesRef.current);
     const fromConfig = node.config.condition as string | undefined;
     if ((fromTree || undefined) === (fromConfig || undefined)) return;
     // Re-parse from config
@@ -554,6 +596,10 @@ export default function FormFilter({
   // ── Column metadata ────────────────────────────────────────────────
 
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const columnTypesRef = useRef(columnTypes);
+  useEffect(() => {
+    columnTypesRef.current = columnTypes;
+  }, [columnTypes]);
   const [columnValues, setColumnValues] = useState<Record<string, string[]>>({});
   const [loadingValues, setLoadingValues] = useState<Record<string, boolean>>({});
 
@@ -592,7 +638,10 @@ export default function FormFilter({
       setRoot((prev) => {
         const next = updateLeafInBranch(prev, leafId, patch);
         localUpdateRef.current = true;
-        updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+        updateConfig((cfg) => ({
+          ...cfg,
+          condition: buildFilterConditionTree(next, columnTypesRef.current),
+        }));
         return next;
       });
     },
@@ -608,7 +657,10 @@ export default function FormFilter({
           next = { ...next, items: [createEmptyLeaf()] };
         }
         localUpdateRef.current = true;
-        updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+        updateConfig((cfg) => ({
+          ...cfg,
+          condition: buildFilterConditionTree(next, columnTypesRef.current),
+        }));
         return next;
       });
     },
@@ -621,7 +673,10 @@ export default function FormFilter({
       setRoot((prev) => {
         const next = updateBranchInTree(prev, branchId, (b) => addLeafToBranch(b, afterIndex));
         localUpdateRef.current = true;
-        updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+        updateConfig((cfg) => ({
+          ...cfg,
+          condition: buildFilterConditionTree(next, columnTypesRef.current),
+        }));
         return next;
       });
     },
@@ -646,7 +701,10 @@ export default function FormFilter({
           return withNewLeaf;
         });
         localUpdateRef.current = true;
-        updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+        updateConfig((cfg) => ({
+          ...cfg,
+          condition: buildFilterConditionTree(next, columnTypesRef.current),
+        }));
         return next;
       });
     },
@@ -678,7 +736,10 @@ export default function FormFilter({
       setRoot((prev) => {
         const next = updateBranchInTree(prev, branchId, updater);
         localUpdateRef.current = true;
-        updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+        updateConfig((cfg) => ({
+          ...cfg,
+          condition: buildFilterConditionTree(next, columnTypesRef.current),
+        }));
         return next;
       });
     },
@@ -691,7 +752,10 @@ export default function FormFilter({
       setRoot((prev) => {
         const next = updateBranchConnectiveInTree(prev, branchId);
         localUpdateRef.current = true;
-        updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+        updateConfig((cfg) => ({
+          ...cfg,
+          condition: buildFilterConditionTree(next, columnTypesRef.current),
+        }));
         return next;
       });
     },
@@ -751,7 +815,10 @@ export default function FormFilter({
             setRoot((prev) => {
               const next = addLeafToBranch(prev, prev.items.length - 1);
               localUpdateRef.current = true;
-              updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+              updateConfig((cfg) => ({
+                ...cfg,
+                condition: buildFilterConditionTree(next, columnTypesRef.current),
+              }));
               return next;
             });
           }}

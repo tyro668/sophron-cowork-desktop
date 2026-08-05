@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Loader2, Trash2, X } from 'lucide-react';
 import { useClickOutside } from '../../../hooks/useClickOutside';
+import { useFormTranslation } from '../../../hooks/useFormTranslation';
 import { splitInValues, joinInValues } from './filter-condition';
 
 interface GlassValueInputProps {
@@ -15,6 +16,7 @@ interface GlassValueInputProps {
   addLabel?: string;
   noSuggestionsLabel?: string;
   clearLabel?: string;
+  onOpen?: () => void;
 }
 
 export function GlassValueInput({
@@ -28,14 +30,30 @@ export function GlassValueInput({
   multi = false,
   addLabel,
   noSuggestionsLabel,
-  clearLabel = '清空输入框',
+  clearLabel,
+  onOpen,
 }: GlassValueInputProps) {
+  const tr = useFormTranslation();
   const [open, setOpen] = useState(false);
-  const [inputText, setInputText] = useState('');
+  const [inputText, setInputText] = useState(multi ? '' : value);
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useClickOutside(ref, () => setOpen(false));
+
+  // Keep the single-value input in sync with the external value so that
+  // remounts (e.g. switching config/data tabs) do not show an empty box
+  // that later overwrites the config on blur.
+  useEffect(() => {
+    if (!multi) setInputText(value);
+  }, [value, multi]);
+
+  const openDropdown = useCallback(() => {
+    setOpen((prev) => {
+      if (!prev) onOpen?.();
+      return !prev;
+    });
+  }, [onOpen]);
 
   // ── 多值模式 ──
   const tags = useMemo(() => splitInValues(value), [value]);
@@ -121,7 +139,7 @@ export function GlassValueInput({
               inputRef.current?.focus();
             }}
             className="inline-flex flex-shrink-0 items-center justify-center rounded px-0.5 text-text-muted hover:text-error hover:bg-error/10 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-            title={clearLabel}
+            title={clearLabel ?? tr('filterClearValues')}
           >
             <Trash2 className="h-3 w-3" />
           </button>
@@ -156,7 +174,7 @@ export function GlassValueInput({
             disabled={disabled}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
-            onFocus={() => setOpen(true)}
+            onFocus={() => openDropdown()}
             onBlur={multi ? undefined : () => setTimeout(() => onChange(inputText), 100)}
             placeholder={multi ? (tags.length === 0 ? placeholder : '') : placeholder}
             className={`bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed ${multi ? 'h-6 min-w-[60px] pl-0.5' : 'h-8 min-w-[60px] flex-1 pl-2'}`}
@@ -172,7 +190,7 @@ export function GlassValueInput({
           onMouseDown={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            setOpen(!open);
+            openDropdown();
           }}
           className={`flex flex-shrink-0 items-center justify-center text-text-muted hover:text-text-secondary transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${multi ? 'h-6 w-5' : 'w-7 border-l border-border-muted rounded-r-md'}`}
         >
@@ -211,7 +229,11 @@ export function GlassValueInput({
           )}
           {filtered.length === 0 && (!multi || !inputText) && (
             <div className="px-2.5 py-4 text-center text-[12px] text-text-muted">
-              {multi ? noSuggestionsLabel : isLoading ? '加载中…' : '无匹配值'}
+              {multi
+                ? (noSuggestionsLabel ?? tr('noSuggestions'))
+                : isLoading
+                  ? tr('loadingValues')
+                  : tr('noMatchValue')}
             </div>
           )}
         </div>

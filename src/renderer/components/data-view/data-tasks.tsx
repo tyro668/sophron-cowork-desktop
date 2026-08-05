@@ -144,6 +144,12 @@ function hasInvalidSortConfig(node: DataWorkflowNode): boolean {
   );
 }
 
+function hasInvalidFilterConfig(node: DataWorkflowNode): boolean {
+  if (node.type !== 'filter') return false;
+  const condition = typeof node.config.condition === 'string' ? node.config.condition.trim() : '';
+  return condition.length === 0;
+}
+
 function hasInvalidFieldMappingConfig(node: DataWorkflowNode): boolean {
   if (node.type !== 'field_mapping') return false;
   const mappings = Array.isArray(node.config.mappings) ? node.config.mappings : [];
@@ -204,6 +210,7 @@ function hasInvalidLimitPercent(node: DataWorkflowNode): boolean {
 
 function incompleteConfigMessageKey(node: DataWorkflowNode): string | null {
   if (hasInvalidSortConfig(node)) return 'data.workflow.formLabels.sortIncompleteField';
+  if (hasInvalidFilterConfig(node)) return 'data.workflow.formLabels.filterIncompleteField';
   if (hasInvalidFieldMappingConfig(node)) {
     return 'data.workflow.formLabels.fieldMappingIncompleteField';
   }

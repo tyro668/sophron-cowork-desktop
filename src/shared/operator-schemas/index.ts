@@ -32,6 +32,7 @@ export { MissingValueConfigSchema } from './missing-value';
 export { LimitConfigSchema } from './limit';
 export { PivotConfigSchema } from './pivot';
 export { JoinConfigSchema } from './join';
+export { FilterConfigSchema } from './filter';
 
 // Import schemas for local use (separate from exports for CJS bundler compatibility)
 import * as SortModule from './sort';
@@ -48,6 +49,7 @@ import * as MissingValueModule from './missing-value';
 import * as LimitModule from './limit';
 import * as PivotModule from './pivot';
 import * as JoinModule from './join';
+import * as FilterModule from './filter';
 
 export function parseOperatorConfig<T>(schema: ZodType<T>, config: Record<string, unknown>): T {
   return schema.parse(config);
@@ -68,6 +70,7 @@ export const SCHEMA_MAP: Record<string, ZodType> = {
   limit: LimitModule.LimitConfigSchema,
   pivot: PivotModule.PivotConfigSchema,
   join: JoinModule.JoinConfigSchema,
+  filter: FilterModule.FilterConfigSchema,
 };
 
 export function validateOperatorConfig(
