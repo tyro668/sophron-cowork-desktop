@@ -45,10 +45,13 @@ export const AGGREGATE_FUNCTIONS = [
 
 export const AggregateFunctionSchema = z.enum(AGGREGATE_FUNCTIONS);
 
+const MAX_METRIC_EXPRESSION_LENGTH = 10_000;
+const MAX_METRIC_ALIAS_LENGTH = 256;
+
 export const MetricEntrySchema = z.object({
-  function: AggregateFunctionSchema.or(z.literal('')).optional().default(''),
-  expression: z.string().max(10_000).optional().default(''),
-  alias: z.string().max(256).optional().default(''),
+  function: AggregateFunctionSchema,
+  expression: z.string().trim().min(1).max(MAX_METRIC_EXPRESSION_LENGTH),
+  alias: z.string().trim().min(1).max(MAX_METRIC_ALIAS_LENGTH),
 });
 
 export type SortKey = z.infer<typeof SortKeySchema>;

@@ -61,14 +61,27 @@ export function tokenizeExpression(input: string): ExprToken[] {
       const start = i;
       const quote = ch;
       i++;
-      while (i < input.length && input[i] !== quote) {
-        if (input[i] === '\\') i++;
-        i++;
+      let closed = false;
+      while (i < input.length) {
+        if (input[i] === quote) {
+          if (quote === "'" && input[i + 1] === "'") {
+            // SQL '' escape: keep the string open.
+            i += 2;
+            continue;
+          }
+          closed = true;
+          i++;
+          break;
+        }
+        if (input[i] === '\\') {
+          i += 2;
+        } else {
+          i++;
+        }
       }
-      if (i >= input.length) {
+      if (!closed) {
         throw new ExpressionTokenizeError('Unterminated string literal', start);
       }
-      i++;
       pushToken({ type: 'StringLiteral', value: input.slice(start, i), start, end: i });
       continue;
     }

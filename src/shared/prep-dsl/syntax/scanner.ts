@@ -3,36 +3,73 @@ export interface KeywordMatch {
   keyword: string;
 }
 
+type QuoteType = "'" | '"';
 interface ScanState {
   bracketDepth: number;
   parenthesisDepth: number;
-  inString: boolean;
+  inString: QuoteType | undefined;
 }
 
-function updateScanState(state: ScanState, char: string, previous: string | undefined): ScanState {
-  if (char === '"' && previous !== '\\') {
-    return { ...state, inString: !state.inString };
+interface ScanStep {
+  state: ScanState;
+  nextIndex: number;
+}
+
+function isComplete(state: ScanState): boolean {
+  return state.inString === undefined && state.bracketDepth === 0 && state.parenthesisDepth === 0;
+}
+
+function advanceScanState(value: string, index: number, state: ScanState): ScanStep {
+  const char = value[index];
+
+  if (state.inString) {
+    // Backslash escapes the next character, including \', \", and \\.
+    if (char === '\\') {
+      return { state, nextIndex: Math.min(index + 2, value.length) };
+    }
+    // SQL standard single-quote escape: ''.
+    if (state.inString === "'" && char === "'" && value[index + 1] === "'") {
+      return { state, nextIndex: index + 2 };
+    }
+    // End the string on the matching quote.
+    if (char === state.inString) {
+      return { state: { ...state, inString: undefined }, nextIndex: index + 1 };
+    }
+    return { state, nextIndex: index + 1 };
   }
-  if (state.inString) return state;
-  if (char === '[') return { ...state, bracketDepth: state.bracketDepth + 1 };
-  if (char === ']') return { ...state, bracketDepth: state.bracketDepth - 1 };
-  if (char === '(') return { ...state, parenthesisDepth: state.parenthesisDepth + 1 };
-  if (char === ')') return { ...state, parenthesisDepth: state.parenthesisDepth - 1 };
-  return state;
-}
 
-function isTopLevel(state: ScanState): boolean {
-  return !state.inString && state.bracketDepth === 0 && state.parenthesisDepth === 0;
+  if (char === "'" || char === '"') {
+    return { state: { ...state, inString: char }, nextIndex: index + 1 };
+  }
+  if (char === '[')
+    return { state: { ...state, bracketDepth: state.bracketDepth + 1 }, nextIndex: index + 1 };
+  if (char === ']')
+    return { state: { ...state, bracketDepth: state.bracketDepth - 1 }, nextIndex: index + 1 };
+  if (char === '(')
+    return {
+      state: { ...state, parenthesisDepth: state.parenthesisDepth + 1 },
+      nextIndex: index + 1,
+    };
+  if (char === ')')
+    return {
+      state: { ...state, parenthesisDepth: state.parenthesisDepth - 1 },
+      nextIndex: index + 1,
+    };
+  return { state, nextIndex: index + 1 };
 }
 
 export function findFirstTopLevelKeyword(
   value: string,
   keywords: readonly string[]
 ): KeywordMatch | null {
-  let state: ScanState = { bracketDepth: 0, parenthesisDepth: 0, inString: false };
-  for (let index = 0; index < value.length; index += 1) {
-    state = updateScanState(state, value[index], value[index - 1]);
-    if (!isTopLevel(state)) continue;
+  let state: ScanState = { bracketDepth: 0, parenthesisDepth: 0, inString: undefined };
+  for (let index = 0; index < value.length; ) {
+    const step = advanceScanState(value, index, state);
+    state = step.state;
+    if (!isComplete(state)) {
+      index = step.nextIndex;
+      continue;
+    }
 
     for (const keyword of keywords) {
       const before = value[index - 1];
@@ -45,6 +82,7 @@ export function findFirstTopLevelKeyword(
         return { index, keyword };
       }
     }
+    index = step.nextIndex;
   }
   return null;
 }
@@ -65,14 +103,20 @@ export function splitTopLevelKeyword(value: string, keyword: string): string[] {
 export function splitTopLevel(value: string): string[] {
   const parts: string[] = [];
   let start = 0;
-  let state: ScanState = { bracketDepth: 0, parenthesisDepth: 0, inString: false };
-  for (let index = 0; index < value.length; index += 1) {
+  let state: ScanState = { bracketDepth: 0, parenthesisDepth: 0, inString: undefined };
+  for (let index = 0; index < value.length; ) {
     const char = value[index];
-    state = updateScanState(state, char, value[index - 1]);
-    if (char === ',' && isTopLevel(state)) {
+    const step = advanceScanState(value, index, state);
+    state = step.state;
+    if (char === ',' && isComplete(state)) {
       parts.push(value.slice(start, index).trim());
       start = index + 1;
     }
+    index = step.nextIndex;
+  }
+  if (!isComplete(state)) {
+    // Structure is incomplete; do not partially split.
+    return [value.trim()];
   }
   const tail = value.slice(start).trim();
   if (tail) parts.push(tail);
@@ -80,11 +124,13 @@ export function splitTopLevel(value: string): string[] {
 }
 
 export function stripComment(line: string): string {
-  let inString = false;
-  for (let index = 0; index < line.length; index += 1) {
+  let state: ScanState = { bracketDepth: 0, parenthesisDepth: 0, inString: undefined };
+  for (let index = 0; index < line.length; ) {
     const char = line[index];
-    if (char === '"' && line[index - 1] !== '\\') inString = !inString;
-    if (char === '#' && !inString) return line.slice(0, index);
+    if (char === '#' && isComplete(state)) return line.slice(0, index);
+    const step = advanceScanState(line, index, state);
+    state = step.state;
+    index = step.nextIndex;
   }
   return line;
 }

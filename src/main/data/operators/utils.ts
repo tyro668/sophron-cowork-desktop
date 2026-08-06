@@ -65,6 +65,10 @@ export function unwrapFieldToken(token: string): string {
 }
 
 export function unquoteDslString(value: string): string {
+  const quote = value[0];
+  if (quote === "'") {
+    return value.slice(1, -1).replace(/''/g, "'").replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+  }
   try {
     return JSON.parse(value) as string;
   } catch {
