@@ -44,7 +44,7 @@ export interface DatabaseInstance {
 
   traceSteps: {
     create: (step: TraceStepRow) => void;
-    update: (id: string, updates: Partial<TraceStepRow>) => void;
+    update: (id: string, updates: Partial<TraceStepRow>) => boolean;
     getBySessionId: (sessionId: string) => TraceStepRow[];
     deleteBySessionId: (sessionId: string) => void;
   };
@@ -103,6 +103,8 @@ export interface MessageRow {
 export interface TraceStepRow {
   id: string;
   session_id: string;
+  turn_id: string | null;
+  parent_id: string | null;
   type: string;
   status: string;
   title: string;
@@ -110,8 +112,16 @@ export interface TraceStepRow {
   tool_name: string | null;
   tool_input: string | null; // JSON string
   tool_output: string | null;
+  tool_output_truncated: number | null;
+  tool_output_length: number | null;
+  result_message_id: string | null;
   is_error: number | null;
+  error_json: string | null;
+  permission_json: string | null;
+  outcome: string | null;
+  metrics_json: string | null;
   timestamp: number;
+  ended_at: number | null;
   duration: number | null;
 }
 
@@ -441,6 +451,8 @@ function initializeSchema(database: Database.Database): void {
     CREATE TABLE IF NOT EXISTS trace_steps (
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
+      turn_id TEXT,
+      parent_id TEXT,
       type TEXT NOT NULL,
       status TEXT NOT NULL,
       title TEXT NOT NULL,
@@ -448,12 +460,31 @@ function initializeSchema(database: Database.Database): void {
       tool_name TEXT,
       tool_input TEXT,
       tool_output TEXT,
+      tool_output_truncated INTEGER,
+      tool_output_length INTEGER,
+      result_message_id TEXT,
       is_error INTEGER,
+      error_json TEXT,
+      permission_json TEXT,
+      outcome TEXT,
+      metrics_json TEXT,
       timestamp INTEGER NOT NULL,
+      ended_at INTEGER,
       duration INTEGER,
       FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
     )
   `);
+
+    ensureColumn(database, 'trace_steps', 'turn_id', 'turn_id TEXT');
+    ensureColumn(database, 'trace_steps', 'parent_id', 'parent_id TEXT');
+    ensureColumn(database, 'trace_steps', 'tool_output_truncated', 'tool_output_truncated INTEGER');
+    ensureColumn(database, 'trace_steps', 'tool_output_length', 'tool_output_length INTEGER');
+    ensureColumn(database, 'trace_steps', 'result_message_id', 'result_message_id TEXT');
+    ensureColumn(database, 'trace_steps', 'error_json', 'error_json TEXT');
+    ensureColumn(database, 'trace_steps', 'permission_json', 'permission_json TEXT');
+    ensureColumn(database, 'trace_steps', 'outcome', 'outcome TEXT');
+    ensureColumn(database, 'trace_steps', 'metrics_json', 'metrics_json TEXT');
+    ensureColumn(database, 'trace_steps', 'ended_at', 'ended_at INTEGER');
 
     // Create index for faster message queries
     database.exec(`
@@ -474,6 +505,11 @@ function initializeSchema(database: Database.Database): void {
     database.exec(`
     CREATE INDEX IF NOT EXISTS idx_trace_steps_timestamp
     ON trace_steps(session_id, timestamp)
+  `);
+
+    database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_trace_steps_session_turn
+    ON trace_steps(session_id, turn_id, timestamp)
   `);
 
     // Create memory_entries table (for future use)
@@ -789,9 +825,12 @@ export function initDatabase(): DatabaseInstance {
 
   const insertTraceStep = rawDb.prepare(`
     INSERT OR REPLACE INTO trace_steps (
-      id, session_id, type, status, title, content, tool_name, tool_input, tool_output, is_error, timestamp, duration
+      id, session_id, turn_id, parent_id, type, status, title, content,
+      tool_name, tool_input, tool_output, tool_output_truncated, tool_output_length,
+      result_message_id, is_error, error_json, permission_json, outcome, metrics_json,
+      timestamp, ended_at, duration
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const getTraceStepsBySessionStmt = rawDb.prepare(`
@@ -985,6 +1024,8 @@ export function initDatabase(): DatabaseInstance {
         insertTraceStep.run(
           step.id,
           step.session_id,
+          step.turn_id,
+          step.parent_id,
           step.type,
           step.status,
           step.title,
@@ -992,8 +1033,16 @@ export function initDatabase(): DatabaseInstance {
           step.tool_name,
           step.tool_input,
           step.tool_output,
+          step.tool_output_truncated,
+          step.tool_output_length,
+          step.result_message_id,
           step.is_error,
+          step.error_json,
+          step.permission_json,
+          step.outcome,
+          step.metrics_json,
           step.timestamp,
+          step.ended_at,
           step.duration
         );
       },
@@ -1010,11 +1059,11 @@ export function initDatabase(): DatabaseInstance {
           }
         }
 
-        if (setClauses.length === 0) return;
+        if (setClauses.length === 0) return false;
 
         values.push(id);
         const sql = `UPDATE trace_steps SET ${setClauses.join(', ')} WHERE id = ?`;
-        rawDb.prepare(sql).run(...values);
+        return rawDb.prepare(sql).run(...values).changes > 0;
       },
 
       getBySessionId: (sessionId: string): TraceStepRow[] => {

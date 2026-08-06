@@ -179,16 +179,88 @@ export interface TraceStep {
   type: TraceStepType;
   status: TraceStepStatus;
   title: string;
+  /** Correlates every trace step emitted by one AgentRunner.run() turn. */
+  turnId?: string;
+  /** Optional parent span, for example a permission step belonging to a tool call. */
+  parentId?: string;
   content?: string;
   toolName?: string;
   toolInput?: Record<string, unknown>;
   toolOutput?: string;
+  toolOutputTruncated?: boolean;
+  toolOutputLength?: number;
+  resultMessageId?: string;
   isError?: boolean;
+  error?: TraceError;
+  permission?: TracePermission;
+  outcome?: TraceOutcome;
+  /** Aggregated evaluation metrics for the root span of one agent turn. */
+  metrics?: TraceEvaluationMetrics;
   timestamp: number;
+  endedAt?: number;
   duration?: number;
 }
 
-export type TraceStepType = 'thinking' | 'text' | 'tool_call' | 'tool_result';
+export interface TraceError {
+  stage:
+    | 'validation'
+    | 'permission'
+    | 'execution'
+    | 'provider'
+    | 'timeout'
+    | 'loop_guard'
+    | 'sandbox_sync'
+    | 'unknown';
+  code?: string;
+  message: string;
+  retriable?: boolean;
+  details?: unknown;
+}
+
+export interface TracePermission {
+  decision:
+    | 'rule_allow'
+    | 'rule_deny'
+    | 'user_allow'
+    | 'user_deny'
+    | 'allow_always'
+    | 'request_failed';
+  source: 'rule' | 'user' | 'system';
+  remembered?: boolean;
+}
+
+export interface TraceEvaluationMetrics {
+  provider?: string;
+  model?: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  totalTokens: number;
+  costTotal: number;
+  modelCallCount: number;
+  toolCallCount: number;
+  toolErrorCount: number;
+  permissionPromptCount: number;
+  totalDurationMs: number;
+  firstResponseLatencyMs?: number;
+  firstTokenLatencyMs?: number;
+  modelDurationMs: number;
+  toolDurationMs: number;
+  permissionWaitMs: number;
+}
+
+export type TraceOutcome =
+  | 'responded_without_tool'
+  | 'tool_completed'
+  | 'tool_failed'
+  | 'permission_denied'
+  | 'cancelled'
+  | 'timed_out'
+  | 'provider_failed'
+  | 'loop_guard_stopped';
+
+export type TraceStepType = 'thinking' | 'text' | 'tool_call' | 'tool_result' | 'permission';
 export type TraceStepStatus = 'pending' | 'running' | 'completed' | 'error';
 
 export type ScheduleRepeatUnit = 'minute' | 'hour' | 'day';
