@@ -20,7 +20,7 @@ interface PivotMetric {
 }
 
 function createDefaultMetric(): PivotMetric {
-  return { function: 'sum', expression: '' };
+  return { function: 'count', expression: '*', alias: undefined };
 }
 
 export default function FormPivot({
@@ -35,7 +35,16 @@ export default function FormPivot({
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const onFields = useMemo(() => (node.config.on as string[]) ?? [], [node.config?.on]);
-  const values = useMemo(() => (node.config.values as string[]) ?? [], [node.config?.values]);
+  const values = useMemo(() => {
+    const raw = node.config.values;
+    if (Array.isArray(raw)) return raw as string[];
+    if (raw && typeof raw === 'object') {
+      const record = raw as Record<string, unknown>;
+      const first = onFields[0];
+      if (first && Array.isArray(record[first])) return record[first] as string[];
+    }
+    return [];
+  }, [node?.config?.values, onFields]);
   const rawUsing = useMemo(() => (node.config.using as PivotMetric[]) ?? [], [node.config?.using]);
   const using = useMemo(
     () => (rawUsing.length > 0 ? rawUsing : [createDefaultMetric()]),
@@ -49,9 +58,38 @@ export default function FormPivot({
     [updateConfig]
   );
 
-  const handleOnChange = useMemo(() => makeArrayHandler('on'), [makeArrayHandler]);
+  const handleOnChange = useCallback(
+    (next: string[]) => {
+      updateConfig((cfg) => {
+        const previous = (cfg.on as string[] | undefined) ?? [];
+        const firstFieldChanged = previous[0] !== next[0];
+        return {
+          ...cfg,
+          on: next.length > 0 ? next : undefined,
+          values: firstFieldChanged ? undefined : cfg.values,
+        };
+      });
+    },
+    [updateConfig]
+  );
   const handleGroupByChange = useMemo(() => makeArrayHandler('groupBy'), [makeArrayHandler]);
-  const handleValuesChange = useMemo(() => makeArrayHandler('values'), [makeArrayHandler]);
+  const handleValuesChange = useCallback(
+    (next: string[]) => {
+      updateConfig((cfg) => {
+        const first = (cfg.on as string[] | undefined)?.[0];
+        if (!first) return cfg;
+        const current =
+          cfg.values && typeof cfg.values === 'object' && !Array.isArray(cfg.values)
+            ? (cfg.values as Record<string, unknown>)
+            : {};
+        return {
+          ...cfg,
+          values: next.length > 0 ? { ...current, [first]: next } : current,
+        };
+      });
+    },
+    [updateConfig]
+  );
 
   const removeOn = useCallback(
     (col: string) => handleOnChange(onFields.filter((c) => c !== col)),
@@ -101,6 +139,7 @@ export default function FormPivot({
   }
 
   function removeMetric(index: number) {
+    if (using.length <= 1) return;
     let next = using.filter((_, i) => i !== index);
     const firstEmpty = next.findIndex((m) => !m.expression);
     if (firstEmpty >= 0) {
@@ -182,6 +221,8 @@ export default function FormPivot({
                 selected={values}
                 onChange={handleValuesChange}
                 maxHeight="180px"
+                allowCustomValue
+                inputPlaceholder={tr('pivotInPlaceholder')}
               />
             )}
           </div>

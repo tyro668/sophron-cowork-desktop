@@ -21,22 +21,22 @@ export function compilePivotSql(
   const groupBy = parsed.groupBy;
   const values = parsed.values;
 
-  // 有值列表时：子查询先过滤再透视
-  const source =
-    on.length === 1 && values.length > 0
-      ? `(SELECT * FROM ${input} WHERE ${quoteIdentifier(on[0])} IN (${values.map(literalToSql).join(', ')}))`
-      : input;
-
-  const onSql = on.map(quoteIdentifier).join(', ') || '1';
-  const usingSql =
-    metrics
-      .map((metric) => {
-        const fn = metric.function || 'count';
-        const expression = compileAggExpr(metric.expression || '*');
-        const alias = metric.alias ? ` AS ${quoteIdentifier(metric.alias)}` : '';
-        return `${formatAggFn(fn)}${expression})${alias}`;
-      })
-      .join(', ') || 'count(*)';
+  const onSql = on
+    .map((field) => {
+      const fieldValues = Array.isArray(values[field]) ? (values[field] as unknown[]) : [];
+      const inClause =
+        fieldValues.length > 0 ? ` IN (${fieldValues.map(literalToSql).join(', ')})` : '';
+      return `${quoteIdentifier(field)}${inClause}`;
+    })
+    .join(', ');
+  const usingSql = metrics
+    .map((metric) => {
+      const fn = metric.function;
+      const expression = compileAggExpr(metric.expression);
+      const alias = metric.alias ? ` AS ${quoteIdentifier(metric.alias)}` : '';
+      return `${formatAggFn(fn)}${expression})${alias}`;
+    })
+    .join(', ');
   const groupSql = groupBy.length > 0 ? ` GROUP BY ${groupBy.map(quoteIdentifier).join(', ')}` : '';
-  return `CREATE TEMP TABLE ${output} AS PIVOT ${source} ON ${onSql} USING ${usingSql}${groupSql}`;
+  return `CREATE TEMP TABLE ${output} AS PIVOT ${input} ON ${onSql} USING ${usingSql}${groupSql}`;
 }

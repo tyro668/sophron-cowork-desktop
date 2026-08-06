@@ -2,7 +2,7 @@ import { createPrepDiagnostic } from '../diagnostics';
 import type { PrepDiagnostic } from '../ast';
 import { formatFieldRef, parseFieldRefExact, toFieldName } from '../syntax/fields';
 import { formatLiteral, parseLiteralList } from '../syntax/literals';
-import { splitTopLevel } from '../syntax/scanner';
+import { findFirstTopLevelKeyword, splitTopLevel } from '../syntax/scanner';
 import { createOperator, objectArray, stringArray, type OperatorDslCodec } from './codec';
 import { formatMetric, parseMetrics } from './metrics';
 
@@ -22,10 +22,27 @@ export const pivotCodec: OperatorDslCodec = {
       });
       return null;
     }
-    const onMatch = /^(.+?)(?:\s+in\s+(\(.+\)))?$/.exec(match[1].trim());
+    const onFields: string[] = [];
+    const valueMap: Record<string, unknown[]> = {};
+    for (const segment of splitTopLevel(match[1].trim())) {
+      const trimmed = segment.trim();
+      const inMatch = findFirstTopLevelKeyword(trimmed, ['in']);
+      if (inMatch) {
+        const fieldPart = trimmed.slice(0, inMatch.index).trim();
+        const valuePart = trimmed.slice(inMatch.index + 'in'.length).trim();
+        const field = parseSingleField(fieldPart, command.line, diagnostics);
+        if (field) {
+          onFields.push(field);
+          valueMap[field] = parseLiteralList(valuePart);
+        }
+      } else {
+        const field = parseSingleField(trimmed, command.line, diagnostics);
+        if (field) onFields.push(field);
+      }
+    }
     return createOperator('pivot', command.text, {
-      on: parseFields(onMatch?.[1] ?? '', command.line, diagnostics, 'invalidPivotField'),
-      values: onMatch?.[2] ? parseLiteralList(onMatch[2]) : [],
+      on: onFields,
+      values: valueMap,
       using: parseMetrics(match[2], { requireAlias: false }, command.line, diagnostics),
       groupBy: match[3]
         ? parseFields(match[3], command.line, diagnostics, 'invalidPivotGroupField')
@@ -33,14 +50,30 @@ export const pivotCodec: OperatorDslCodec = {
     });
   },
   format: (config) => {
-    const on = stringArray(config?.on).map(formatFieldRef).join(', ') || '[field]';
-    const values =
-      Array.isArray(config?.values) && config.values.length > 0
-        ? ` in (${config.values.map(formatLiteral).join(', ')})`
-        : '';
-    const using = objectArray(config?.using).map(formatMetric).join(', ') || 'count(*)';
+    const on = stringArray(config?.on);
+    if (on.length === 0) return null;
+    const valueMap =
+      config?.values && typeof config.values === 'object' && !Array.isArray(config.values)
+        ? (config.values as Record<string, unknown>)
+        : {};
+    const onDsl = on
+      .map((field) => {
+        const values =
+          Array.isArray(valueMap[field]) && (valueMap[field] as unknown[]).length > 0
+            ? ` in (${(valueMap[field] as unknown[]).map(formatLiteral).join(', ')})`
+            : '';
+        return `${formatFieldRef(field)}${values}`;
+      })
+      .join(', ');
+    const using = objectArray(config?.using);
+    if (using.length === 0) return null;
+    const hasIncomplete = using.some(
+      (metric) => !String(metric.function ?? '').trim() || !String(metric.expression ?? '').trim()
+    );
+    if (hasIncomplete) return null;
+    const usingDsl = using.map(formatMetric).join(', ');
     const groupBy = stringArray(config?.groupBy).map(formatFieldRef).join(', ');
-    return `pivot on ${on}${values} using ${using}${groupBy ? ` group by ${groupBy}` : ''}`;
+    return `pivot on ${onDsl} using ${usingDsl}${groupBy ? ` group by ${groupBy}` : ''}`;
   },
 };
 
@@ -51,14 +84,24 @@ function parseFields(
   code: string
 ): string[] {
   return splitTopLevel(value).flatMap((part) => {
-    const field = parseFieldRefExact(part);
-    if (!field || !toFieldName(field).trim()) {
-      diagnostics.push({
-        ...createPrepDiagnostic(code, `Invalid field reference: ${part}`, { value: part }),
-        line,
-      });
-      return [];
-    }
-    return field ? [toFieldName(field)] : [];
+    const field = parseSingleField(part, line, diagnostics, code);
+    return field ? [field] : [];
   });
+}
+
+function parseSingleField(
+  value: string,
+  line: number,
+  diagnostics: PrepDiagnostic[],
+  code = 'invalidPivotField'
+): string | null {
+  const field = parseFieldRefExact(value.trim());
+  if (!field || !toFieldName(field).trim()) {
+    diagnostics.push({
+      ...createPrepDiagnostic(code, `Invalid field reference: ${value}`, { value }),
+      line,
+    });
+    return null;
+  }
+  return toFieldName(field);
 }

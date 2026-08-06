@@ -147,6 +147,22 @@ describe('compileScalarExpression', () => {
     expect(compileScalarExpression("[a] = 'he''s'")).toBe(`"a" = 'he''s'`);
   });
 
+  it('compileScalarExpression single-quote literal preserves SQL escape', () => {
+    expect(compileScalarExpression("'it''s'")).toBe(`'it''s'`);
+  });
+
+  it('compileScalarExpression preserves SQL-escaped single quote in comparison', () => {
+    expect(compileScalarExpression("[name] = 'it''s'")).toBe(`"name" = 'it''s'`);
+  });
+
+  it('compileScalarExpression turns a backslash-escaped single quote into SQL escape', () => {
+    expect(compileScalarExpression("[name] = 'it\\'s'")).toBe(`"name" = 'it''s'`);
+  });
+
+  it('compileScalarExpression lone backslash-escaped single quote literal', () => {
+    expect(compileScalarExpression("'it\\'s'")).toBe(`'it''s'`);
+  });
+
   it('parenthesized expression', () => {
     expect(compileScalarExpression('([a] + [b]) * [c]')).toBe('("a" + "b") * "c"');
   });

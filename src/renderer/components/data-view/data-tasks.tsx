@@ -208,6 +208,23 @@ function hasInvalidLimitPercent(node: DataWorkflowNode): boolean {
   );
 }
 
+function hasInvalidPivotConfig(node: DataWorkflowNode): boolean {
+  if (node.type !== 'pivot') return false;
+  const on = Array.isArray(node.config.on) ? node.config.on : [];
+  const using = Array.isArray(node.config.using) ? node.config.using : [];
+  const hasEmptyOn = on.some((field) => typeof field !== 'string' || !field.trim());
+  const hasEmptyUsing = using.some(
+    (metric) =>
+      !metric ||
+      typeof metric !== 'object' ||
+      typeof (metric as { function?: unknown }).function !== 'string' ||
+      !(metric as { function: string }).function.trim() ||
+      typeof (metric as { expression?: unknown }).expression !== 'string' ||
+      !(metric as { expression: string }).expression.trim()
+  );
+  return on.length === 0 || using.length === 0 || hasEmptyOn || hasEmptyUsing;
+}
+
 function incompleteConfigMessageKey(node: DataWorkflowNode): string | null {
   if (hasInvalidSortConfig(node)) return 'data.workflow.formLabels.sortIncompleteField';
   if (hasInvalidFilterConfig(node)) return 'data.workflow.formLabels.filterIncompleteField';
@@ -222,6 +239,9 @@ function incompleteConfigMessageKey(node: DataWorkflowNode): string | null {
   }
   if (hasInvalidLimitPercent(node)) {
     return 'data.workflow.formLabels.limitPercentError';
+  }
+  if (hasInvalidPivotConfig(node)) {
+    return 'data.workflow.formLabels.pivotIncompleteField';
   }
   return null;
 }

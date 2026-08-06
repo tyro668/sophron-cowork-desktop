@@ -8,20 +8,48 @@ describe('PivotConfigSchema', () => {
       on: ['category'],
       using: [{ function: 'sum', expression: 'amount', alias: 'total' }],
       groupBy: ['region'],
-      values: ['A', 'B'],
+      values: { category: ['A', 'B'] },
     });
     expect(result.on).toEqual(['category']);
     expect(result.using).toHaveLength(1);
     expect(result.groupBy).toEqual(['region']);
-    expect(result.values).toEqual(['A', 'B']);
+    expect(result.values).toEqual({ category: ['A', 'B'] });
   });
 
-  it('applies defaults for omitted fields', () => {
-    const result = PivotConfigSchema.parse({});
-    expect(result.on).toEqual([]);
-    expect(result.using).toEqual([]);
-    expect(result.groupBy).toEqual([]);
-    expect(result.values).toEqual([]);
+  it('parses a metric without an alias', () => {
+    const result = PivotConfigSchema.parse({
+      on: ['category'],
+      using: [{ function: 'count', expression: '*' }],
+    });
+    expect(result.using[0].alias).toBeUndefined();
+  });
+
+  it('rejects a missing on array', () => {
+    expect(() =>
+      PivotConfigSchema.parse({ using: [{ function: 'sum', expression: '*' }] })
+    ).toThrow(z.ZodError);
+  });
+
+  it('rejects an empty on', () => {
+    expect(() =>
+      PivotConfigSchema.parse({ on: [], using: [{ function: 'sum', expression: '*' }] })
+    ).toThrow(z.ZodError);
+  });
+
+  it('rejects an empty using', () => {
+    expect(() => PivotConfigSchema.parse({ on: ['category'], using: [] })).toThrow(z.ZodError);
+  });
+
+  it('rejects a metric missing an expression', () => {
+    expect(() =>
+      PivotConfigSchema.parse({ on: ['category'], using: [{ function: 'sum', expression: '' }] })
+    ).toThrow(z.ZodError);
+  });
+
+  it('rejects a metric missing a function', () => {
+    expect(() =>
+      PivotConfigSchema.parse({ on: ['category'], using: [{ expression: 'amount' }] })
+    ).toThrow(z.ZodError);
   });
 
   it('rejects on with wrong type', () => {

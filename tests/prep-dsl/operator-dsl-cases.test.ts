@@ -119,6 +119,93 @@ const currentOperatorCases: Array<{
     expectedConfig: { groupBy: ['region'] },
   },
   {
+    name: 'aggregate with date granularity',
+    type: 'aggregate',
+    dsl: 'aggregate by year([Date]) metrics sum([Price]) as [total]',
+    expectedConfig: { groupBy: ['Date'], dateGranularity: { Date: 'year' } },
+  },
+  {
+    name: 'aggregate with mixed granularity and bare fields',
+    type: 'aggregate',
+    dsl: 'aggregate by year([Date]), [UUID] metrics sum([Price]) as [`合价`]',
+    expectedConfig: {
+      groupBy: ['Date', 'UUID'],
+      dateGranularity: { Date: 'year' },
+    },
+  },
+  {
+    name: 'aggregate with granularity field first',
+    type: 'aggregate',
+    dsl: 'aggregate by month([Date]), [region] metrics count(*) as [n]',
+    expectedConfig: {
+      groupBy: ['Date', 'region'],
+      dateGranularity: { Date: 'month' },
+    },
+  },
+  {
+    name: 'aggregate metric with single-quoted string containing paren',
+    type: 'aggregate',
+    dsl: "aggregate all metrics string_agg([name], ')') as [names], count(*) as [rows]",
+    expectedConfig: {
+      metrics: [
+        { function: 'string_agg', expression: "[name], ')'", alias: 'names' },
+        { function: 'count', expression: '*', alias: 'rows' },
+      ],
+    },
+  },
+  {
+    name: 'aggregate metric with SQL escaped single quote',
+    type: 'aggregate',
+    dsl: "aggregate all metrics concat([name], 'it''s') as [names]",
+    expectedConfig: {
+      metrics: [{ function: 'concat', expression: "[name], 'it''s'", alias: 'names' }],
+    },
+  },
+  {
+    name: 'aggregate with multiple metrics using backslash-escaped single quote',
+    type: 'aggregate',
+    dsl: "aggregate all metrics string_agg([name], 'it\\'s') as [names], count(*) as [rows]",
+    expectedConfig: {
+      metrics: [
+        { function: 'string_agg', expression: "[name], 'it\\'s'", alias: 'names' },
+        { function: 'count', expression: '*', alias: 'rows' },
+      ],
+    },
+  },
+  {
+    name: 'aggregate by field with a hash in its name',
+    type: 'aggregate',
+    dsl: 'aggregate by [`商品#编号`] metrics sum([amount]) as [total]',
+    expectedConfig: {
+      groupBy: ['商品#编号'],
+      metrics: [{ function: 'sum', expression: '[amount]', alias: 'total' }],
+    },
+  },
+  {
+    name: 'pivot metric with single-quoted string containing comma',
+    type: 'pivot',
+    dsl: "pivot on [region] using string_agg([name], ', ') as [names], count(*) as [n]",
+    expectedConfig: {
+      on: ['region'],
+      using: [
+        { function: 'string_agg', expression: "[name], ', '", alias: 'names' },
+        { function: 'count', expression: '*', alias: 'n' },
+      ],
+    },
+  },
+  {
+    name: 'pivot with multiple metrics using backslash-escaped single quote',
+    type: 'pivot',
+    dsl: "pivot on [region] using string_agg([name], 'it\\'s') as [names], count(*) as [n]",
+    expectedConfig: {
+      on: ['region'],
+      using: [
+        { function: 'string_agg', expression: "[name], 'it\\'s'", alias: 'names' },
+        { function: 'count', expression: '*', alias: 'n' },
+      ],
+    },
+  },
+  {
     name: 'derive scalar field',
     type: 'calculate_field',
     dsl: 'derive [margin] = [profit] / nullif([revenue], 0)',
@@ -167,7 +254,7 @@ const currentOperatorCases: Array<{
     name: 'pivot rows',
     type: 'pivot',
     dsl: 'pivot on [month] in ("Jan", "Feb") using sum([revenue]) as [revenue_sum] group by [region]',
-    expectedConfig: { on: ['month'], values: ['Jan', 'Feb'], groupBy: ['region'] },
+    expectedConfig: { on: ['month'], values: { month: ['Jan', 'Feb'] }, groupBy: ['region'] },
   },
   {
     name: 'unpivot rows',
@@ -236,6 +323,10 @@ describe('operator DSL executable cases', () => {
     ['unpivot', 'unpivot [q1] into name [quarter] value [amount] garbage'],
     ['pivot', 'pivot on [region] garbage using count(*)'],
     ['aggregate', 'aggregate by [region] garbage metrics sum([amount]) as [total_amount]'],
+    ['aggregate', 'aggregate by monthly([Date]) metrics sum([amount]) as [total_amount]'],
+    ['aggregate', 'aggregate by year([Date]) extra metrics sum([amount]) as [total_amount]'],
+    ['aggregate', 'aggregate by year([Date]), month([Date]) metrics count(*) as [rows]'],
+    ['aggregate', 'aggregate by year([Date]), [Date] metrics count(*) as [rows]'],
     ['calculate_field', 'derive [result] garbage = [amount]'],
     ['join', 'join left returns garbage'],
     ['join', 'join left returns on [orders].[id] = [returns].[id] garbage'],
@@ -248,6 +339,17 @@ describe('operator DSL executable cases', () => {
     const parsed = parsePrepOperatorDsl(dsl, type);
 
     expect(errorsOf(parsed.diagnostics), dsl).not.toHaveLength(0);
+  });
+
+  it.each([
+    'aggregate by year([Date]), month([Date]) metrics count(*) as [rows]',
+    'aggregate by year([Date]), [Date] metrics count(*) as [rows]',
+  ])('rejects duplicate aggregate group fields: %s', (dsl) => {
+    const parsed = parsePrepOperatorDsl(dsl, 'aggregate');
+
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'duplicateAggregateGroupField' })])
+    );
   });
 
   it.each([
@@ -659,7 +761,11 @@ describe('operator DSL executable cases', () => {
     const parsed = parsePrepOperatorDsl(dsl, 'filter');
     expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
     expect(parsed.operator).not.toBeNull();
-    const exported = exportPrepOperatorDsl(parsed.operator!);
+    const exported = exportPrepOperatorDsl({
+      id: 'test',
+      type: parsed.operator!.type,
+      config: parsed.operator!.config,
+    });
     expect(exported).toBe(dsl);
   });
 
@@ -668,7 +774,13 @@ describe('operator DSL executable cases', () => {
       const parsed = parsePrepOperatorDsl(dsl, 'filter');
       expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
       expect(parsed.operator).not.toBeNull();
-      expect(exportPrepOperatorDsl(parsed.operator!)).toBe(dsl);
+      expect(
+        exportPrepOperatorDsl({
+          id: 'test',
+          type: parsed.operator!.type,
+          config: parsed.operator!.config,
+        })
+      ).toBe(dsl);
     }
   });
 
@@ -709,6 +821,18 @@ describe('operator DSL executable cases', () => {
     expect(errorsOf(parsed.diagnostics)).toEqual(
       expect.arrayContaining([expect.objectContaining({ code: 'invalidFilterCondition' })])
     );
+  });
+
+  it('treats a hash inside a single-quoted string as content, not a comment', () => {
+    const parsed = parsePrepOperatorDsl("filter [text] = 'a#b' # real comment", 'filter');
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config).toMatchObject({ condition: "[text] = 'a#b'" });
+  });
+
+  it('keeps a hash inside a backtick field reference and strips a trailing comment', () => {
+    const parsed = parsePrepOperatorDsl('filter [`Order#`] is not null # 排除空订单号', 'filter');
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config).toMatchObject({ condition: '[`Order#`] is not null' });
   });
 
   it.each([
@@ -790,7 +914,13 @@ describe('operator DSL executable cases', () => {
       dsl
     ).toHaveLength(0);
     expect(parsed.operator).not.toBeNull();
-    expect(exportPrepOperatorDsl(parsed.operator!)).toBe(dsl);
+    expect(
+      exportPrepOperatorDsl({
+        id: 'test',
+        type: parsed.operator!.type,
+        config: parsed.operator!.config,
+      })
+    ).toBe(dsl);
   });
 
   it.each([

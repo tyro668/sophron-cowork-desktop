@@ -1014,6 +1014,7 @@
         "pivotInPlaceholder": "Enter pivot column values, press Enter",
         "pivotAddMetric": "Add metric",
         "pivotRemoveMetric": "Delete metric",
+        "pivotIncompleteField": "Pivot fields and aggregate metrics each need at least one entry with a non-empty expression",
         "setOpRightInput": "Right table source",
         "setOpRightInputPlaceholder": "Please select input source",
         "setOpDedupMode": "Duplicate handling",

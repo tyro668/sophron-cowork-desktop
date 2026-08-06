@@ -1014,6 +1014,7 @@
         "pivotInPlaceholder": "选择透视列的值，按Enter确认",
         "pivotAddMetric": "添加指标",
         "pivotRemoveMetric": "删除指标",
+        "pivotIncompleteField": "透视字段和聚合指标需至少各配置一项，且表达式不能为空",
         "setOpRightInput": "右表数据源",
         "setOpRightInputPlaceholder": "请选择输入源",
         "setOpDedupMode": "重复行处理",

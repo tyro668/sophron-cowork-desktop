@@ -17,6 +17,8 @@ export interface GlassFieldMultiSelectProps {
   variant?: 'flat' | 'glass';
   itemExtras?: (column: string) => ReactNode;
   columnLabel?: (column: string) => string;
+  allowCustomValue?: boolean;
+  inputPlaceholder?: string;
 }
 
 export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
@@ -29,6 +31,8 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
   variant = 'flat',
   itemExtras,
   columnLabel,
+  allowCustomValue = false,
+  inputPlaceholder,
 }: GlassFieldMultiSelectProps) {
   const tr = useFormTranslation();
   const dataTypeLabel = useDataFieldTypeLabel();
@@ -120,6 +124,13 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
     }
   }
 
+  function addCustomValue() {
+    const value = search.trim();
+    if (!allowCustomValue || !value || selected.includes(value)) return;
+    onChange(selectionMode === 'single' ? [value] : [...selected, value]);
+    setSearch('');
+  }
+
   return (
     <div
       className={`flex min-h-0 flex-col rounded-lg border ${
@@ -140,7 +151,12 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder={tr('searchField')}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            addCustomValue();
+          }}
+          placeholder={inputPlaceholder ?? tr('searchField')}
           className={`${isGlass ? 'h-6' : 'h-5'} min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted`}
         />
         {selectionMode === 'multi' && (
@@ -175,7 +191,7 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
           <div
             className={`px-3 text-center text-[12px] text-text-muted ${isGlass ? 'py-4' : 'py-8'}`}
           >
-            {search ? tr('noMatch') : tr('noFields')}
+            {search && allowCustomValue ? search : search ? tr('noMatch') : tr('noFields')}
           </div>
         ) : (
           filtered.map((col) => {

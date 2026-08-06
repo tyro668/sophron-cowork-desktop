@@ -8,16 +8,20 @@ export function compileAggregateSql(
   config: Record<string, unknown>
 ): string {
   const { groupBy, metrics, dateGranularity } = parseOperatorConfig(AggregateConfigSchema, config);
-  const metricSqls = metrics.flatMap((metric) => {
-    if (!metric.function || !metric.expression || !metric.alias) {
-      return [];
+  if (metrics.length === 0) {
+    throw new Error('Aggregate requires at least one metric');
+  }
+  const metricSqls = metrics.map((metric, index) => {
+    const fn = metric.function?.trim();
+    const expression = metric.expression?.trim();
+    const alias = metric.alias?.trim();
+    if (!fn || !expression || !alias) {
+      throw new Error(`Aggregate metric ${index + 1} is incomplete`);
     }
-    const expression = metric.expression === '*' ? '*' : compileScalarExpression(metric.expression);
-    return [
-      metric.function === 'count_distinct'
-        ? `COUNT(DISTINCT ${expression}) AS ${quoteIdentifier(metric.alias)}`
-        : `${metric.function.toUpperCase()}(${expression}) AS ${quoteIdentifier(metric.alias)}`,
-    ];
+    const compiledExpression = expression === '*' ? '*' : compileScalarExpression(expression);
+    return fn === 'count_distinct'
+      ? `COUNT(DISTINCT ${compiledExpression}) AS ${quoteIdentifier(alias)}`
+      : `${fn.toUpperCase()}(${compiledExpression}) AS ${quoteIdentifier(alias)}`;
   });
   const granularity = dateGranularity ?? {};
   const groupExprs = groupBy.map((col) => {
@@ -29,7 +33,7 @@ export function compileAggregateSql(
     const expr = groupExprs[i];
     return gran ? `${expr} AS ${quoteIdentifier(col)}` : expr;
   });
-  const projection = [...groupProjections, ...metricSqls].join(', ') || 'COUNT(*) AS "row_count"';
+  const projection = [...groupProjections, ...metricSqls].join(', ');
   return `CREATE TEMP TABLE ${output} AS SELECT ${projection} FROM ${input}${
     groupBy.length > 0 ? ` GROUP BY ${groupExprs.join(', ')}` : ''
   }`;
