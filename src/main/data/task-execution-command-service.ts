@@ -134,8 +134,6 @@ export class TaskExecutionCommandService {
     const prepareStartedAt = Date.now();
     const preparedInput = await this.inputResolver.prepareGeneratedTaskInput({
       source: input.source,
-      processRequirement: '',
-      output: input.output,
     });
     const prepareDurationMs = Date.now() - prepareStartedAt;
     validateGeneratedTaskSchema(

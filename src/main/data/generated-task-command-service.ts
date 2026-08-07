@@ -47,6 +47,7 @@ import {
   workflowCommandCodeForDiagnostics,
   workflowDiagnosticsFromError,
 } from './workflow';
+import { AI_PREP_DSL_RUNTIME_PROFILE_VERSION } from './workflow/prep-dsl-capability-profile';
 
 interface GeneratedWorkflowCandidateValidation {
   diagnostics: PrepDiagnostic[];
@@ -85,7 +86,8 @@ export class GeneratedTaskCommandService {
       normalizeOptionalName(input.source.tableName) || preparedInput.inputTable.name;
     const resolvedOutput = await this.outputResolver.resolveGeneratedOutputTable(
       input.output,
-      displayInputTableName
+      displayInputTableName,
+      input.outputConflictPolicy
     );
     const outputTable = resolvedOutput.outputTable;
     const reusableTask = await this.resolveReusableGeneratedTask(input.reuseTaskId);
@@ -97,7 +99,8 @@ export class GeneratedTaskCommandService {
         (
           await this.tasks.createTask({
             name: await this.resources.createUniqueTaskName(
-              `${displayInputTableName || '数据表'}_自动处理`
+              normalizeOptionalName(input.taskName) ??
+                `${displayInputTableName || '数据表'}_自动处理`
             ),
             sourceInputTableId: preparedInput.inputTable.id,
             outputTableId: outputTable.id,
@@ -122,6 +125,7 @@ export class GeneratedTaskCommandService {
           runtimeConfig: input.runtimeConfig,
           repairBudget,
           onModelUsage,
+          signal: input.signal,
         });
         let validation = await this.validateGeneratedWorkflowCandidate({
           taskId: task.id,
@@ -172,6 +176,7 @@ export class GeneratedTaskCommandService {
             diagnostics: validationErrors,
             repairBudget,
             onModelUsage,
+            signal: input.signal,
           });
           validation = await this.validateGeneratedWorkflowCandidate({
             taskId: task.id,
@@ -240,10 +245,11 @@ export class GeneratedTaskCommandService {
       'Processing requirement is required'
     );
     const preparedInput = await this.inputResolver.prepareGeneratedTaskInput(input);
-    return analyzeDataTaskRequirement({
+    const analysis = await analyzeDataTaskRequirement({
       requirement: processRequirement,
       columns: preparedInput.columnsSnapshot,
       runtimeConfig: input.runtimeConfig,
+      signal: input.signal,
       onModelUsage: (result) => {
         this.recordOneShotUsage({
           generationId,
@@ -253,6 +259,14 @@ export class GeneratedTaskCommandService {
         });
       },
     });
+    return {
+      ...analysis,
+      inputTableId: preparedInput.inputTable.id,
+      inputTableName: preparedInput.inputTable.name,
+      columnsSnapshot: preparedInput.columnsSnapshot,
+      sourceSummaryHash: hashColumns(preparedInput.columnsSnapshot),
+      capabilityProfileVersion: AI_PREP_DSL_RUNTIME_PROFILE_VERSION,
+    };
   }
 
   private async validateGeneratedWorkflowCandidate(input: {

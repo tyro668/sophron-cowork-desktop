@@ -40,7 +40,7 @@ export class AutomationInputResolver {
   ) {}
 
   async prepareGeneratedTaskInput(
-    input: Pick<GenerateTaskFromRequirementCommand, 'source' | 'output' | 'processRequirement'>
+    input: Pick<GenerateTaskFromRequirementCommand, 'source'>
   ): Promise<PreparedGeneratedTaskInput> {
     if (input.source.location === 'cloud') {
       const imported = await this.refreshAutomationCloudMirrorInputTable(input.source);

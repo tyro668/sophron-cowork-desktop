@@ -8,6 +8,7 @@ import { DataCommandError } from '../data-command-types';
 import requirementAnalysisSystemPrompt from './prompts/requirement-analysis-system.txt?raw';
 import { getWorkflowJavascriptCapabilityPrompt } from './workflow-ir-operation-registry';
 import { getWorkflowExpressionCapabilityPrompt } from './workflow-expression-registry';
+import { getWorkflowIrOperationDefinition } from './workflow-ir-operation-registry';
 import { extractJsonObject, isRecord } from './utils';
 
 const VALID_STATUSES = new Set(['supported', 'ambiguous', 'unsupported']);
@@ -17,11 +18,13 @@ export async function analyzeDataTaskRequirement({
   columns,
   runtimeConfig,
   onModelUsage,
+  signal,
 }: {
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
   runtimeConfig?: AgentRuntimeConfig;
   onModelUsage?: (result: PiAiOneShotResult) => void;
+  signal?: AbortSignal;
 }): Promise<DataAnalyzeTaskRequirementResult> {
   if (!runtimeConfig?.model?.trim()) {
     throw new DataCommandError(
@@ -33,7 +36,7 @@ export async function analyzeDataTaskRequirement({
     JSON.stringify({ requirement, inputColumns: columns }, null, 2),
     buildRequirementAnalysisSystemPrompt(),
     runtimeConfig,
-    { temperature: 0, maxTokens: 2_000 }
+    { temperature: 0, maxTokens: 2_000, signal }
   );
   onModelUsage?.(response);
   let parsed: unknown;
@@ -84,16 +87,32 @@ function normalizeAnalysisItem(value: unknown): DataTaskRequirementAnalysisItem 
       'Requirement analysis returned an invalid item'
     );
   }
+  const operations = Array.isArray(value.operations)
+    ? value.operations.filter(
+        (item): item is string => typeof item === 'string' && Boolean(item.trim())
+      )
+    : [];
+  const unknownOperations = operations.filter(
+    (operation) => !getWorkflowIrOperationDefinition(operation)
+  );
+  const declaredStatus = value.status as DataTaskRequirementAnalysisItem['status'];
+  const status =
+    declaredStatus === 'supported' && unknownOperations.length > 0
+      ? ('unsupported' as const)
+      : declaredStatus;
+  const modelReason =
+    typeof value.reason === 'string' ? value.reason.trim() || undefined : undefined;
+  const registryReason = unknownOperations.length
+    ? `Unavailable operation${unknownOperations.length > 1 ? 's' : ''}: ${unknownOperations.join(', ')}`
+    : undefined;
   return {
     requirement: value.requirement.trim(),
-    status: value.status as DataTaskRequirementAnalysisItem['status'],
-    reason: typeof value.reason === 'string' ? value.reason.trim() || undefined : undefined,
+    status,
+    reason: registryReason ?? modelReason,
     suggestedRequirement:
       typeof value.suggestedRequirement === 'string'
         ? value.suggestedRequirement.trim() || undefined
         : undefined,
-    operations: Array.isArray(value.operations)
-      ? value.operations.filter((item): item is string => typeof item === 'string' && Boolean(item))
-      : [],
+    operations: operations.filter((operation) => getWorkflowIrOperationDefinition(operation)),
   };
 }
