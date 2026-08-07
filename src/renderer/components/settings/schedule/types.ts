@@ -35,6 +35,8 @@ export interface CloudAutomationSourceTable {
   folderId?: string;
   rowCount?: number | null;
   columns?: Array<string | { name?: string; type?: string }>;
+  updatedAt?: string;
+  contentHash?: string;
 }
 
 export interface PendingCloudAutomationTemplate {
@@ -99,7 +101,7 @@ export type ScheduledAutomationTrigger = Exclude<
 >;
 export type TriggerMode = EditableAutomationTrigger['kind'];
 export type ListTab = 'automations' | 'runs';
-export type Banner = { tone: 'error' | 'success'; text: string };
+export type Banner = { tone: 'error' | 'warning' | 'success'; text: string };
 export interface AutomationRunLogEntry {
   automation: Pick<Automation, 'id' | 'name'>;
   run: AutomationRun;

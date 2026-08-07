@@ -500,10 +500,21 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       className={`flex items-center gap-2 rounded-md border px-3 py-2 text-xs ${
         banner.tone === 'error'
           ? 'border-error/30 bg-error/10 text-text-primary'
-          : 'border-success/30 bg-success/10 text-success'
+          : banner.tone === 'warning'
+            ? 'border-warning/30 bg-warning/10 text-warning'
+            : 'border-success/30 bg-success/10 text-success'
       }`}
     >
-      <AlertCircle size={14} className={banner.tone === 'error' ? 'text-error' : 'text-success'} />
+      <AlertCircle
+        size={14}
+        className={
+          banner.tone === 'error'
+            ? 'text-error'
+            : banner.tone === 'warning'
+              ? 'text-warning'
+              : 'text-success'
+        }
+      />
       <span className="min-w-0 flex-1">{banner.text}</span>
       <button
         type="button"
@@ -560,10 +571,15 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
               outputTables={outputTables}
               appConfig={appConfig}
               onDraftChange={setDraft}
-              onGeneratedTaskSuccess={() =>
+              onGeneratedTaskSuccess={(workflowDslAvailable) =>
                 showTransientBanner({
-                  tone: 'success',
-                  text: tr('schedule.generatedTaskReady', '数据任务已生成，后续将复用该任务执行。'),
+                  tone: workflowDslAvailable ? 'success' : 'warning',
+                  text: workflowDslAvailable
+                    ? tr('schedule.generatedTaskReady', '数据任务已生成，后续将复用该任务执行。')
+                    : tr(
+                        'schedule.generatedTaskReadyWithoutDsl',
+                        '数据任务已生成，但任务逻辑预览暂时不可用。'
+                      ),
                 })
               }
               tr={tr}

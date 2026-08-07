@@ -5,15 +5,20 @@ import { CalculateFieldConfigSchema, parseOperatorConfig } from '../../../shared
 export function compileCalculateFieldSql(
   output: string,
   input: string,
-  config: Record<string, unknown>
+  config: Record<string, unknown>,
+  inputColumns: string[] = []
 ): string {
   const { calculations } = parseOperatorConfig(CalculateFieldConfigSchema, config);
   const replaces: string[] = [];
   const additions: string[] = [];
+  const existingColumns = new Set(inputColumns.map((column) => column.toLowerCase()));
   for (const calculation of calculations) {
     if (!calculation.field?.trim() || !calculation.expression?.trim()) continue;
     const compiled = `${compileScalarExpression(calculation.expression)} AS ${quoteIdentifier(calculation.field)}`;
-    if (calculation.action === 'replace') {
+    if (
+      calculation.action === 'replace' ||
+      existingColumns.has(calculation.field.trim().toLowerCase())
+    ) {
       replaces.push(compiled);
     } else {
       additions.push(compiled);

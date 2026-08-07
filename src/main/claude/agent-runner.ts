@@ -32,6 +32,7 @@ import type {
   ServerEvent,
   ContentBlock,
   AgentRuntimeConfig,
+  TraceEvaluationMetrics,
 } from '../../renderer/types';
 import { v4 as uuidv4 } from 'uuid';
 import { decidePermission, rememberAlwaysAllow } from '../config/permission-rules-store';
@@ -88,6 +89,12 @@ import {
 import { fetchOllamaModelInfo } from '../config/ollama-api';
 import { createWindowsBashOperations } from './windows-bash-operations';
 import { createSandboxCodingTools } from './sandbox-tool-operations';
+import {
+  buildTraceError,
+  buildTraceOutputPreview,
+  normalizeTraceUsage,
+  sanitizeTraceInput,
+} from './trace-utils';
 
 // Virtual workspace path shown to the model (hides real sandbox path)
 const VIRTUAL_WORKSPACE_PATH = '/workspace';
@@ -520,27 +527,10 @@ function toErrorText(error: unknown): string {
 }
 
 function normalizeTokenUsage(usage: unknown): Message['tokenUsage'] | undefined {
-  if (!usage || typeof usage !== 'object') {
-    return undefined;
-  }
-
-  const raw = usage as {
-    input?: unknown;
-    output?: unknown;
-    input_tokens?: unknown;
-    output_tokens?: unknown;
-    inputTokens?: unknown;
-    outputTokens?: unknown;
-  };
-
-  const input = raw.input ?? raw.input_tokens ?? raw.inputTokens;
-  const output = raw.output ?? raw.output_tokens ?? raw.outputTokens;
-
-  if (typeof input !== 'number' || typeof output !== 'number') {
-    return undefined;
-  }
-
-  return { input, output };
+  const normalized = normalizeTraceUsage(usage);
+  return normalized
+    ? { input: normalized.inputTokens, output: normalized.outputTokens }
+    : undefined;
 }
 
 interface AgentRunnerOptions {
@@ -600,6 +590,9 @@ export class ClaudeAgentRunner {
   private _skillsAdapter?: SkillsAdapter;
   private extensionManager?: AgentRuntimeExtensionManager;
   private activeControllers: Map<string, AbortController> = new Map();
+  private activeTurnIds: Map<string, string> = new Map();
+  private activeEvaluationMetrics: Map<string, TraceEvaluationMetrics> = new Map();
+  private toolStartedAt: Map<string, number> = new Map();
   private piSessions: Map<string, CachedPiSession> = new Map();
   private toolDisplayNameCache: Map<string, string> = new Map();
   private static readonly MAX_CACHED_SESSIONS = 50;
@@ -992,9 +985,33 @@ ${hints.join('\n')}
         // Rule matching and rememberAlwaysAllow still use the canonical
         // `toolName` so allow-once decisions stay stable across calls.
         const displayName = getDisplayName(toolName);
+        const parentId: string = ctx.toolCall?.id ?? uuidv4();
+        const turnId = this.activeTurnIds.get(sessionId);
+        const sanitizedInput = sanitizeTraceInput(input);
 
         if (decision === 'deny') {
           log(`[ClaudeAgentRunner] Tool '${toolName}' denied by rule`);
+          const now = Date.now();
+          this.sendTraceStep(sessionId, {
+            id: `${parentId}-permission-${uuidv4().slice(0, 8)}`,
+            turnId,
+            parentId,
+            type: 'permission',
+            status: 'error',
+            title: `Permission denied: ${displayName}`,
+            toolName,
+            toolInput: sanitizedInput,
+            permission: { decision: 'rule_deny', source: 'rule' },
+            error: buildTraceError(
+              `Tool '${displayName}' is denied by your permission rules.`,
+              'permission'
+            ),
+            outcome: 'permission_denied',
+            isError: true,
+            timestamp: now,
+            endedAt: now,
+            duration: 0,
+          });
           return {
             block: true,
             reason: `Tool '${displayName}' is denied by your permission rules.`,
@@ -1003,6 +1020,21 @@ ${hints.join('\n')}
 
         if (decision === 'ask') {
           const toolUseId = `${ctx.toolCall?.id ?? 'unknown'}-perm-${uuidv4().slice(0, 8)}`;
+          const permissionStepId = `${parentId}-permission-${uuidv4().slice(0, 8)}`;
+          const permissionStartedAt = Date.now();
+          const evaluationMetrics = this.activeEvaluationMetrics.get(sessionId);
+          if (evaluationMetrics) evaluationMetrics.permissionPromptCount += 1;
+          this.sendTraceStep(sessionId, {
+            id: permissionStepId,
+            turnId,
+            parentId,
+            type: 'permission',
+            status: 'running',
+            title: `Permission requested: ${displayName}`,
+            toolName,
+            toolInput: sanitizedInput,
+            timestamp: permissionStartedAt,
+          });
           let result: 'allow' | 'deny' | 'allow_always';
           try {
             // Send the display name to the renderer so the dialog shows a
@@ -1010,6 +1042,21 @@ ${hints.join('\n')}
             // for rule matching above and "always allow" memory below.
             result = await requestPermission(sessionId, toolUseId, displayName, input);
           } catch (permErr) {
+            const endedAt = Date.now();
+            if (evaluationMetrics) {
+              evaluationMetrics.permissionWaitMs += endedAt - permissionStartedAt;
+            }
+            const errorText = toErrorText(permErr);
+            this.sendTraceUpdate(sessionId, permissionStepId, {
+              status: 'error',
+              title: `Permission request failed: ${displayName}`,
+              permission: { decision: 'request_failed', source: 'system' },
+              error: buildTraceError(errorText, 'permission'),
+              outcome: 'permission_denied',
+              isError: true,
+              endedAt,
+              duration: endedAt - permissionStartedAt,
+            });
             logError(
               `[ClaudeAgentRunner] Permission request failed for '${toolName}' — failing closed`,
               permErr
@@ -1020,7 +1067,22 @@ ${hints.join('\n')}
             };
           }
 
+          if (evaluationMetrics) {
+            evaluationMetrics.permissionWaitMs += Date.now() - permissionStartedAt;
+          }
+
           if (result === 'deny') {
+            const endedAt = Date.now();
+            this.sendTraceUpdate(sessionId, permissionStepId, {
+              status: 'error',
+              title: `Permission denied: ${displayName}`,
+              permission: { decision: 'user_deny', source: 'user' },
+              error: buildTraceError(`User denied permission for '${displayName}'.`, 'permission'),
+              outcome: 'permission_denied',
+              isError: true,
+              endedAt,
+              duration: endedAt - permissionStartedAt,
+            });
             log(`[ClaudeAgentRunner] Tool '${toolName}' denied by user`);
             return { block: true, reason: `User denied permission for '${displayName}'.` };
           }
@@ -1028,6 +1090,34 @@ ${hints.join('\n')}
           if (result === 'allow_always') {
             rememberAlwaysAllow(sessionId, toolName);
           }
+          const endedAt = Date.now();
+          this.sendTraceUpdate(sessionId, permissionStepId, {
+            status: 'completed',
+            title: `Permission granted: ${displayName}`,
+            permission: {
+              decision: result === 'allow_always' ? 'allow_always' : 'user_allow',
+              source: 'user',
+              remembered: result === 'allow_always',
+            },
+            endedAt,
+            duration: endedAt - permissionStartedAt,
+          });
+        } else {
+          const now = Date.now();
+          this.sendTraceStep(sessionId, {
+            id: `${parentId}-permission-${uuidv4().slice(0, 8)}`,
+            turnId,
+            parentId,
+            type: 'permission',
+            status: 'completed',
+            title: `Permission allowed by rule: ${displayName}`,
+            toolName,
+            toolInput: sanitizedInput,
+            permission: { decision: 'rule_allow', source: 'rule' },
+            timestamp: now,
+            endedAt: now,
+            duration: 0,
+          });
         }
 
         // Allowed — delegate to SDK's original hook for event pipeline
@@ -1225,6 +1315,33 @@ ${hints.join('\n')}
     options?: AgentRunOptions
   ): Promise<void> {
     const runStartTime = Date.now();
+    const turnId = uuidv4();
+    let modelCallStartedAt: number | undefined;
+    const evaluationMetrics: TraceEvaluationMetrics = {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      totalTokens: 0,
+      costTotal: 0,
+      modelCallCount: 0,
+      toolCallCount: 0,
+      toolErrorCount: 0,
+      permissionPromptCount: 0,
+      totalDurationMs: 0,
+      modelDurationMs: 0,
+      toolDurationMs: 0,
+      permissionWaitMs: 0,
+    };
+    const snapshotEvaluationMetrics = (): TraceEvaluationMetrics => ({
+      ...evaluationMetrics,
+      totalDurationMs: Date.now() - runStartTime,
+      modelDurationMs:
+        evaluationMetrics.modelDurationMs +
+        (modelCallStartedAt ? Date.now() - modelCallStartedAt : 0),
+    });
+    this.activeTurnIds.set(session.id, turnId);
+    this.activeEvaluationMetrics.set(session.id, evaluationMetrics);
     logCtx('[ClaudeAgentRunner] run() started');
 
     const controller = new AbortController();
@@ -1253,6 +1370,9 @@ ${hints.join('\n')}
     };
 
     const thinkingStepId = uuidv4();
+    let toolCallCount = 0;
+    let toolErrorCount = 0;
+    const seenToolCallIds = new Set<string>();
     let abortedByTimeout = false;
     // Set to true when the loop-guard unilaterally aborts (hash_abort / freq_abort).
     // The catch block consults this flag to avoid overwriting the 'error' trace
@@ -1269,6 +1389,7 @@ ${hints.join('\n')}
       // Send initial thinking trace
       this.sendTraceStep(session.id, {
         id: thinkingStepId,
+        turnId,
         type: 'thinking',
         status: 'running',
         title: 'Processing request...',
@@ -2398,11 +2519,15 @@ Tool routing:
         logTiming('agent session created', runStartTime);
       }
 
+      evaluationMetrics.provider = piModel.provider || provider;
+      evaluationMetrics.model = piModel.id;
+
       // Set up event handler to bridge agent SDK events → our ServerEvent protocol
 
       // Accumulate streamed text deltas in case message_end.content is empty (pi SDK streaming behaviour)
       let streamedText = '';
       let compactionStepId: string | undefined;
+      let compactionStartedAt: number | undefined;
       let hasEmittedError = false;
       let terminalErrorText: string | undefined;
       const thinkParser = new ThinkTagStreamParser();
@@ -2435,6 +2560,12 @@ Tool routing:
           this.sendTraceUpdate(session.id, thinkingStepId, {
             status: 'error',
             title: 'Stopped: tool-call loop detected',
+            error: buildTraceError(decision.reason, 'loop_guard'),
+            outcome: 'loop_guard_stopped',
+            isError: true,
+            metrics: snapshotEvaluationMetrics(),
+            endedAt: Date.now(),
+            duration: Date.now() - runStartTime,
           });
           try {
             // Mark BEFORE calling abort() so the AbortError handler in the
@@ -2486,11 +2617,18 @@ Tool routing:
       }
 
       const markFirstStreamEvent = (eventType: string) => {
+        if (
+          evaluationMetrics.firstTokenLatencyMs === undefined &&
+          (eventType === 'text_delta' || eventType === 'thinking_delta')
+        ) {
+          evaluationMetrics.firstTokenLatencyMs = Date.now() - promptStartedAt;
+        }
         if (receivedFirstStreamEvent) {
           return;
         }
         receivedFirstStreamEvent = true;
         firstStreamEventAt = Date.now();
+        evaluationMetrics.firstResponseLatencyMs = firstStreamEventAt - promptStartedAt;
         if (ollamaColdStartTimerId) {
           clearTimeout(ollamaColdStartTimerId);
         }
@@ -2549,11 +2687,34 @@ Tool routing:
               log(`[ClaudeAgentRunner] Event: ${event.type} → ${updateType}`);
             }
           } else if (event.type === 'message_start') {
+            if ((event.message as { role?: string }).role === 'assistant') {
+              modelCallStartedAt = Date.now();
+              evaluationMetrics.modelCallCount += 1;
+            }
             log(
               '[ClaudeAgentRunner] Event: message_start',
               safeStringify(summarizeMessageForLog(event.message), 2)
             );
           } else if (event.type === 'message_end') {
+            const modelCallEndedAt = Date.now();
+            const isAssistantMessage = (event.message as { role?: string }).role === 'assistant';
+            const usage = normalizeTraceUsage((event.message as { usage?: unknown }).usage);
+            if (isAssistantMessage) {
+              if (modelCallStartedAt) {
+                evaluationMetrics.modelDurationMs += modelCallEndedAt - modelCallStartedAt;
+              } else {
+                evaluationMetrics.modelCallCount += 1;
+              }
+              modelCallStartedAt = undefined;
+              if (usage) {
+                evaluationMetrics.inputTokens += usage.inputTokens;
+                evaluationMetrics.outputTokens += usage.outputTokens;
+                evaluationMetrics.cacheReadTokens += usage.cacheReadTokens;
+                evaluationMetrics.cacheWriteTokens += usage.cacheWriteTokens;
+                evaluationMetrics.totalTokens += usage.totalTokens;
+                evaluationMetrics.costTotal += usage.costTotal;
+              }
+            }
             log(
               '[ClaudeAgentRunner] Event: message_end',
               safeStringify(
@@ -2601,15 +2762,22 @@ Tool routing:
                 const toolName = toolContent?.type === 'toolCall' ? toolContent.name : 'unknown';
                 const toolCallId = toolContent?.type === 'toolCall' ? toolContent.id : uuidv4();
                 const toolDisplayName = this.getToolDisplayName(toolName);
+                if (!seenToolCallIds.has(toolCallId)) {
+                  seenToolCallIds.add(toolCallId);
+                  toolCallCount += 1;
+                  evaluationMetrics.toolCallCount += 1;
+                }
                 this.sendTraceStep(session.id, {
                   id: toolCallId,
+                  turnId,
+                  parentId: thinkingStepId,
                   type: 'tool_call',
                   status: 'running',
                   title: toolDisplayName,
                   toolName,
                   toolInput:
                     toolContent?.type === 'toolCall'
-                      ? (toolContent.arguments as Record<string, unknown>) || {}
+                      ? sanitizeTraceInput(toolContent.arguments || {})
                       : undefined,
                   timestamp: Date.now(),
                 });
@@ -2704,7 +2872,11 @@ Tool routing:
                     }
                     if (artifacts.length > 0) {
                       for (const step of buildArtifactTraceSteps(artifacts)) {
-                        this.sendTraceStep(session.id, step);
+                        this.sendTraceStep(session.id, {
+                          ...step,
+                          turnId,
+                          parentId: thinkingStepId,
+                        });
                       }
                     }
                   } else if (block.type === 'toolCall') {
@@ -2788,6 +2960,23 @@ Tool routing:
 
             case 'tool_execution_start': {
               logCtx(`[ClaudeAgentRunner] Tool execution start: ${event.toolName}`);
+              const toolCallId = event.toolCallId;
+              const startedAt = Date.now();
+              this.toolStartedAt.set(`${session.id}:${toolCallId}`, startedAt);
+              if (!seenToolCallIds.has(toolCallId)) {
+                seenToolCallIds.add(toolCallId);
+                toolCallCount += 1;
+                evaluationMetrics.toolCallCount += 1;
+              }
+              this.sendTraceUpdate(session.id, toolCallId, {
+                turnId,
+                parentId: thinkingStepId,
+                type: 'tool_call',
+                status: 'running',
+                title: this.getToolDisplayName(event.toolName),
+                toolName: event.toolName,
+                toolInput: sanitizeTraceInput(event.args),
+              });
               // ── Loop guard layer 2: per-tool cumulative frequency ──
               handleLoopGuardDecision(
                 loopGuard.recordToolInvocation(event.toolName),
@@ -2801,25 +2990,46 @@ Tool routing:
               const toolCallId = event.toolCallId;
               const isError = event.isError;
               const normalizedToolResult = normalizeToolExecutionResultForUi(event.result);
-              const outputText = normalizedToolResult.content;
+              const outputText = sanitizeOutputPaths(normalizedToolResult.content);
               const toolDisplayName = this.getToolDisplayName(event.toolName);
+              const endedAt = Date.now();
+              const startedAt = this.toolStartedAt.get(`${session.id}:${toolCallId}`) ?? endedAt;
+              this.toolStartedAt.delete(`${session.id}:${toolCallId}`);
+              const outputPreview = buildTraceOutputPreview(outputText);
+              const resultMessageId = uuidv4();
+              const toolDurationMs = endedAt - startedAt;
+              evaluationMetrics.toolDurationMs += toolDurationMs;
+              if (isError) {
+                toolErrorCount += 1;
+                evaluationMetrics.toolErrorCount += 1;
+              }
               this.sendTraceUpdate(session.id, toolCallId, {
+                turnId,
+                parentId: thinkingStepId,
                 status: isError ? 'error' : 'completed',
                 title: toolDisplayName,
                 toolName: event.toolName,
-                toolOutput: sanitizeOutputPaths(outputText).slice(0, 800),
+                toolOutput: outputPreview.preview,
+                toolOutputLength: outputPreview.length,
+                toolOutputTruncated: outputPreview.truncated,
+                resultMessageId,
+                isError,
+                error: isError ? buildTraceError(outputText) : undefined,
+                outcome: isError ? 'tool_failed' : 'tool_completed',
+                endedAt,
+                duration: toolDurationMs,
               });
 
               // Send tool result message
               const toolResultMsg: Message = {
-                id: uuidv4(),
+                id: resultMessageId,
                 sessionId: session.id,
                 role: 'assistant',
                 content: [
                   {
                     type: 'tool_result',
                     toolUseId: toolCallId,
-                    content: sanitizeOutputPaths(outputText),
+                    content: outputText,
                     isError,
                     ...(normalizedToolResult.images.length > 0
                       ? { images: normalizedToolResult.images }
@@ -2840,12 +3050,15 @@ Tool routing:
             case 'auto_compaction_start': {
               log('[ClaudeAgentRunner] Auto-compaction started, reason:', event.reason);
               compactionStepId = `compaction-${Date.now()}`;
+              compactionStartedAt = Date.now();
               this.sendTraceStep(session.id, {
                 id: compactionStepId,
+                turnId,
+                parentId: thinkingStepId,
                 type: 'thinking',
                 status: 'running',
                 title: `Compacting context (${event.reason})...`,
-                timestamp: Date.now(),
+                timestamp: compactionStartedAt,
               });
               break;
             }
@@ -2864,12 +3077,26 @@ Tool routing:
                 event.willRetry
               );
               if (compactionStepId) {
-                this.sendTraceUpdate(session.id, compactionStepId, { status, title });
+                const endedAt = Date.now();
+                this.sendTraceUpdate(session.id, compactionStepId, {
+                  status,
+                  title,
+                  isError: status === 'error',
+                  error:
+                    status === 'error'
+                      ? buildTraceError(event.errorMessage || title, 'provider')
+                      : undefined,
+                  endedAt,
+                  duration: compactionStartedAt ? endedAt - compactionStartedAt : undefined,
+                });
                 compactionStepId = undefined;
+                compactionStartedAt = undefined;
               } else {
                 // Fallback: no matching start event, send as new step
                 this.sendTraceStep(session.id, {
                   id: `compaction-end-${Date.now()}`,
+                  turnId,
+                  parentId: thinkingStepId,
                   type: 'thinking',
                   status,
                   title,
@@ -2925,6 +3152,10 @@ Tool routing:
           JSON.stringify(promptResult ?? 'void').substring(0, 1000)
         );
       } finally {
+        if (modelCallStartedAt) {
+          evaluationMetrics.modelDurationMs += Date.now() - modelCallStartedAt;
+          modelCallStartedAt = undefined;
+        }
         try {
           unsubscribe();
         } catch (e) {
@@ -2950,6 +3181,12 @@ Tool routing:
         this.sendTraceUpdate(session.id, thinkingStepId, {
           status: 'error',
           title: 'Request timed out',
+          error: buildTraceError('No activity was received before the request timeout.', 'timeout'),
+          outcome: 'timed_out',
+          isError: true,
+          metrics: snapshotEvaluationMetrics(),
+          endedAt: Date.now(),
+          duration: Date.now() - runStartTime,
         });
         return;
       }
@@ -2965,6 +3202,18 @@ Tool routing:
       this.sendTraceUpdate(session.id, thinkingStepId, {
         status: terminalErrorText ? 'error' : 'completed',
         title: terminalErrorText ? 'Request failed' : 'Task completed',
+        error: terminalErrorText ? buildTraceError(terminalErrorText, 'provider') : undefined,
+        isError: Boolean(terminalErrorText),
+        outcome: terminalErrorText
+          ? 'provider_failed'
+          : toolErrorCount > 0
+            ? 'tool_failed'
+            : toolCallCount > 0
+              ? 'tool_completed'
+              : 'responded_without_tool',
+        metrics: snapshotEvaluationMetrics(),
+        endedAt: Date.now(),
+        duration: Date.now() - runStartTime,
       });
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
@@ -2981,6 +3230,15 @@ Tool routing:
           this.sendTraceUpdate(session.id, thinkingStepId, {
             status: 'error',
             title: 'Request timed out',
+            error: buildTraceError(
+              'No activity was received before the request timeout.',
+              'timeout'
+            ),
+            outcome: 'timed_out',
+            isError: true,
+            metrics: snapshotEvaluationMetrics(),
+            endedAt: Date.now(),
+            duration: Date.now() - runStartTime,
           });
         } else if (abortedByLoopGuard) {
           // Loop guard already published the user-facing assistant message and
@@ -2992,6 +3250,10 @@ Tool routing:
           this.sendTraceUpdate(session.id, thinkingStepId, {
             status: 'completed',
             title: 'Cancelled',
+            outcome: 'cancelled',
+            metrics: snapshotEvaluationMetrics(),
+            endedAt: Date.now(),
+            duration: Date.now() - runStartTime,
           });
         }
       } else {
@@ -3007,12 +3269,15 @@ Tool routing:
         };
         this.sendMessage(session.id, errorMsg);
 
-        this.sendTraceStep(session.id, {
-          id: uuidv4(),
-          type: 'thinking',
+        this.sendTraceUpdate(session.id, thinkingStepId, {
           status: 'error',
-          title: 'Error occurred',
-          timestamp: Date.now(),
+          title: 'Request failed',
+          error: buildTraceError(errorText, 'provider'),
+          outcome: 'provider_failed',
+          isError: true,
+          metrics: snapshotEvaluationMetrics(),
+          endedAt: Date.now(),
+          duration: Date.now() - runStartTime,
         });
 
         // Mark so session-manager doesn't report again
@@ -3023,6 +3288,23 @@ Tool routing:
     } finally {
       this.activeControllers.delete(session.id);
       this.pathResolver.unregisterSession(session.id);
+
+      const recordSandboxSyncFailure = (message: string): void => {
+        const endedAt = Date.now();
+        this.sendTraceStep(session.id, {
+          id: uuidv4(),
+          turnId,
+          parentId: thinkingStepId,
+          type: 'thinking',
+          status: 'error',
+          title: 'Sandbox sync failed',
+          error: buildTraceError(message, 'sandbox_sync'),
+          isError: true,
+          timestamp: endedAt,
+          endedAt,
+          duration: 0,
+        });
+      };
 
       // Sync changes from sandbox back to host OS (but don't cleanup - sandbox persists)
       if (useSandboxIsolation && sandboxPath) {
@@ -3036,6 +3318,7 @@ Tool routing:
               log('[ClaudeAgentRunner] Sync completed successfully');
             } else {
               logError('[ClaudeAgentRunner] Sync failed:', syncResult.error);
+              recordSandboxSyncFailure(syncResult.error || 'Windows sandbox sync failed.');
             }
           } else if (sandbox.isLima) {
             log('[ClaudeAgentRunner] Syncing sandbox changes to macOS...');
@@ -3045,10 +3328,13 @@ Tool routing:
               log('[ClaudeAgentRunner] Sync completed successfully');
             } else {
               logError('[ClaudeAgentRunner] Sync failed:', syncResult.error);
+              recordSandboxSyncFailure(syncResult.error || 'macOS sandbox sync failed.');
             }
           }
         } catch (syncErr) {
           logError('[ClaudeAgentRunner] Sandbox sync error:', syncErr);
+          const errorText = toErrorText(syncErr);
+          recordSandboxSyncFailure(errorText);
           this.sendMessage(session.id, {
             id: uuidv4(),
             sessionId: session.id,
@@ -3062,6 +3348,27 @@ Tool routing:
             timestamp: Date.now(),
           });
         }
+      }
+
+      const finalizedAt = Date.now();
+      for (const toolCallId of seenToolCallIds) {
+        const key = `${session.id}:${toolCallId}`;
+        const startedAt = this.toolStartedAt.get(key);
+        if (startedAt) evaluationMetrics.toolDurationMs += finalizedAt - startedAt;
+        this.toolStartedAt.delete(key);
+      }
+      this.sendTraceUpdate(session.id, thinkingStepId, {
+        turnId,
+        type: 'thinking',
+        metrics: snapshotEvaluationMetrics(),
+        endedAt: finalizedAt,
+        duration: finalizedAt - runStartTime,
+      });
+      if (this.activeTurnIds.get(session.id) === turnId) {
+        this.activeTurnIds.delete(session.id);
+      }
+      if (this.activeEvaluationMetrics.get(session.id) === evaluationMetrics) {
+        this.activeEvaluationMetrics.delete(session.id);
       }
     }
   }

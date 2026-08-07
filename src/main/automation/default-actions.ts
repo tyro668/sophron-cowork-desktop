@@ -183,7 +183,6 @@ export function createDefaultAutomationActionRegistry(
     version: 1,
     defaultConfig: {
       taskId: '',
-      workflowDsl: '',
       source: null,
       output: null,
       requiredColumns: [],
@@ -196,7 +195,6 @@ export function createDefaultAutomationActionRegistry(
     configSchema: objectSchema(
       {
         taskId: { type: 'string', title: 'Data task' },
-        workflowDsl: { type: 'string', title: 'Workflow DSL' },
         source: { type: 'object', title: 'Runtime source' },
         output: { type: 'object', title: 'Runtime output' },
         requiredColumns: { type: 'array', title: 'Required columns', items: { type: 'object' } },
@@ -220,7 +218,7 @@ export function createDefaultAutomationActionRegistry(
           default: 'persisted',
         },
       },
-      ['taskId', 'workflowDsl', 'source', 'output']
+      ['taskId', 'source', 'output']
     ),
     validate: (config) => {
       if (!options.dataCommandService) {
@@ -228,9 +226,6 @@ export function createDefaultAutomationActionRegistry(
       }
       if (!String(config.taskId ?? '').trim()) {
         throw new Error('cloud.table.process requires taskId');
-      }
-      if (!String(config.workflowDsl ?? '').trim()) {
-        throw new Error('cloud.table.process requires workflowDsl');
       }
       if (!config.source || typeof config.source !== 'object') {
         throw new Error('cloud.table.process requires source');
@@ -250,7 +245,6 @@ export function createDefaultAutomationActionRegistry(
       });
       const result = await options.dataCommandService.runGeneratedTask({
         taskId: String(config.taskId),
-        workflowDsl: String(config.workflowDsl),
         source: config.source as never,
         output: config.output as never,
         requiredColumns: Array.isArray(config.requiredColumns)

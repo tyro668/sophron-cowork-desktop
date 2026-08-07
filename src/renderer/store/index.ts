@@ -612,11 +612,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateTraceStep: (sessionId, stepId, updates) =>
     set((state) => {
       const ss = getSession(state.sessionStates, sessionId);
+      const hasExistingStep = ss.traceSteps.some((step) => step.id === stepId);
       return {
         sessionStates: patchSession(state.sessionStates, sessionId, {
-          traceSteps: ss.traceSteps.map((step) =>
-            step.id === stepId ? { ...step, ...updates } : step
-          ),
+          traceSteps: hasExistingStep
+            ? ss.traceSteps.map((step) => (step.id === stepId ? { ...step, ...updates } : step))
+            : [
+                ...ss.traceSteps,
+                {
+                  id: stepId,
+                  type: updates.type ?? 'tool_call',
+                  status: updates.status ?? 'running',
+                  title: updates.title ?? updates.toolName ?? 'Trace step',
+                  timestamp: updates.timestamp ?? Date.now(),
+                  ...updates,
+                },
+              ],
         }),
       };
     }),

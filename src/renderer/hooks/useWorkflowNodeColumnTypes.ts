@@ -29,7 +29,12 @@ export function useWorkflowNodeColumnTypes({
         for (const t of types) map[t.name] = t.type;
         setColumnTypes(map);
       })
-      .catch(() => {
+      .catch((error: unknown) => {
+        console.warn('[useWorkflowNodeColumnTypes] Failed to load source column types', {
+          taskId,
+          sourceNodeId: sourceNode.id,
+          error,
+        });
         if (!cancelled) setColumnTypes({});
       });
     return () => {

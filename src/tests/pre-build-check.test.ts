@@ -30,6 +30,7 @@ function makeDir(dirPath: string): void {
  */
 function populateDarwinArtifacts(root: string, arch: string = 'arm64'): void {
   // Common FATAL resources
+  makeFile(path.join(root, 'src/main/data/workflow/workflow-sandbox-runner.js'));
   makeFile(path.join(root, '.bundle-resources/mcp/gui-operate-server.js'));
   makeFile(path.join(root, '.bundle-resources/mcp/software-dev-server-example.js'));
   makeDir(path.join(root, 'dist-electron'));
@@ -45,6 +46,7 @@ function populateDarwinArtifacts(root: string, arch: string = 'arm64'): void {
  * Creates all artifacts that are required for a successful win32/x64 check.
  */
 function populateWin32Artifacts(root: string): void {
+  makeFile(path.join(root, 'src/main/data/workflow/workflow-sandbox-runner.js'));
   makeFile(path.join(root, '.bundle-resources/mcp/gui-operate-server.js'));
   makeFile(path.join(root, '.bundle-resources/mcp/software-dev-server-example.js'));
   makeDir(path.join(root, 'dist-electron'));
@@ -80,8 +82,8 @@ describe('pre-build-check: runChecks', () => {
 
     expect(result.failed).toBe(0);
     expect(result.hasFatal).toBe(false);
-    // 5 common + 2 darwin FATAL = 7 FATAL checks should pass
-    expect(result.passed).toBeGreaterThanOrEqual(7);
+    // 6 common + 2 darwin FATAL = 8 FATAL checks should pass
+    expect(result.passed).toBeGreaterThanOrEqual(8);
   });
 
   it('passes all FATAL checks on win32 when required artifacts exist', () => {
@@ -91,7 +93,7 @@ describe('pre-build-check: runChecks', () => {
 
     expect(result.failed).toBe(0);
     expect(result.hasFatal).toBe(false);
-    expect(result.passed).toBeGreaterThanOrEqual(7);
+    expect(result.passed).toBeGreaterThanOrEqual(8);
   });
 
   it('reports warnings for optional darwin resources that are missing', () => {
@@ -126,6 +128,16 @@ describe('pre-build-check: runChecks', () => {
     populateDarwinArtifacts(tmpDir, 'arm64');
     // Remove a required common file
     fs.rmSync(path.join(tmpDir, '.bundle-resources/mcp/gui-operate-server.js'));
+
+    const result = runChecks(tmpDir, 'darwin', 'arm64');
+
+    expect(result.failed).toBeGreaterThan(0);
+    expect(result.hasFatal).toBe(true);
+  });
+
+  it('reports hasFatal when the workflow sandbox runner is missing', () => {
+    populateDarwinArtifacts(tmpDir, 'arm64');
+    fs.rmSync(path.join(tmpDir, 'src/main/data/workflow/workflow-sandbox-runner.js'));
 
     const result = runChecks(tmpDir, 'darwin', 'arm64');
 

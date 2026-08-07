@@ -1,415 +1,308 @@
-# 自动化-数据处理 AI 生成任务 RP v0.2
+# 自动化－数据处理任务设计
 
-## 1. 背景与问题
+## 1. 文档目的
 
-自动化里的“数据处理”面向的是定时、无人值守或低干预的数据加工场景。用户期望用自然语言描述处理要求，例如：
+本文描述当前自动化数据处理任务唯一有效的生成、验证、保存和运行链路。配置期由大模型生成标准 JavaScript；运行期执行已经保存的 Prep DSL，不再调用大模型。
 
-```text
-过滤掉 Profit < 0 的数据，并按照过滤后的 Profit 升序排列
+本文以当前代码为准，不保留历史 AST 编译器、TypeScript 编译前端、模型直出 DSL 或多语言 frontend 方案。
+
+## 2. 核心原则
+
+1. 大模型只参与配置期生成和定向修复。
+2. 大模型必须返回标准 JavaScript 源码，不允许直接返回 Prep DSL、Operations JSON 或 Workflow IR。
+3. JavaScript 语法只由 Node/V8 原生编译器检查。
+4. JavaScript 只能在一次性权限沙箱中通过固定、操作无关的 Workflow IR Bridge 构建 IR。
+5. Stable Workflow IR 是生成链路的稳定协议，当前来源语言固定为 `javascript`。
+6. IR 到 Operations JSON、Prep DSL 的转换完全确定，不调用大模型。
+7. 同一份 JavaScript 构建两次 IR，并比较 Semantic Hash，拒绝非确定性结果。
+8. 每个辅助函数最多产生一个 Workflow operation；`main()` 负责数据流编排。
+9. 编译或运行错误必须携带函数名、行号和列号；源码结构有效且诊断明确指向函数时，模型只返回该函数的受控 Patch，其他源码保持不变。
+10. 生成结果必须经过 Prep DSL 编译、临时执行和输出 Schema 校验后才能保存。
+11. 自动化运行期只执行已保存 Workflow，不重新生成处理逻辑。
+12. 预览降级、回滚和临时资源清理失败必须记录日志。
+
+## 3. 唯一生产链路
+
+```mermaid
+flowchart TD
+    A[用户处理要求] --> B[准备输入表和字段快照]
+    B --> C[解析或创建输出表]
+    C --> D[LLM 生成标准 JavaScript]
+    D --> E[V8 vm.Script 原生语法编译]
+    E --> F[一次性权限沙箱执行固定 Workflow IR Bridge]
+    F --> G[Stable Workflow IR 1.0]
+    G --> H[IR Schema 与语义校验]
+    H --> I[第二次沙箱构建]
+    I --> J{Semantic Hash 一致}
+    J -->|否| R[生成诊断]
+    J -->|是| K[原子辅助函数检查]
+    K -->|失败| R
+    R --> P[LLM 返回函数 Patch 或完整修正 JavaScript]
+    P --> E
+    K -->|通过| L[固定 Lowering]
+    L --> M[Operations JSON 1.0]
+    M --> N[固定 Operations Exporter]
+    N --> O[Prep DSL]
+    O --> Q[DSL 编译]
+    Q --> S[临时执行和输出 Schema 校验]
+    S -->|失败且可修复| R
+    S -->|通过| T[保存 Task Workflow]
+    T --> U[自动化运行已保存 Workflow]
 ```
 
-系统需要把这段自然语言稳定转成可复用的数据任务。早期如果直接让大模型输出 DSL，会遇到几个问题：
+不存在以下生产旁路：
 
-- 大模型容易输出非 DSL 内容，例如 Markdown、解释文本、JSON 或 SQL。
-- 大模型可能引用不存在的字段，导致运行期才失败。
-- DSL 语法细节容易出错，例如字段引用、输出表声明、操作符参数。
-- 自动化运行期如果每次重新调用大模型，成本高、稳定性差，也不适合无人值守。
-- 用户看到“AI 处理”会误以为运行期持续由 AI 处理数据，而不是执行确定的数据任务。
+- JavaScript → 自定义静态 AST 编译器 → Workflow IR。
+- JavaScript → TypeScript Compiler → Workflow IR。
+- TypeScript/Python/Java → Workflow IR。
+- LLM → Prep DSL。
+- LLM → Operations JSON。
+- LLM → Workflow IR。
+- 编译失败后回退到旧 Parser 或旧 DSL 生成器。
 
-本方案解决的核心问题是：
+## 4. 配置期输入准备
 
-```text
-把一次性的自然语言意图，可靠地转换为可校验、可保存、可复用的数据任务。
-```
+### 4.1 本地输入
 
-## 2. 设计目标
+系统读取本地输入表和字段快照。调用方未提供字段快照时，尝试从受限行数的数据预览推断；预览失败会记录日志，并继续交由后续契约校验处理。
 
-- AI 只参与配置期生成任务，不参与每次自动化运行。
-- 大模型主路径输出结构化 JSON 计划，而不是直接输出 DSL。
-- 后端负责把结构化 JSON 编译成 Prep DSL，掌控语法、字段校验和资源绑定。
-- 编译后的 DSL 必须经过 dry-run 校验，确认可保存后才沉淀为数据任务。
-- 当结构化编译器无法覆盖复杂需求时，允许大模型生成完整 DSL 作为兜底，但仍必须经过解析和校验。
-- 前端文案明确区分：
-  - `AI 生成任务`
-  - `复用数据任务`
-- 生成成功后提示用户后续会复用该任务执行。
+### 4.2 云端输入
 
-## 3. 非目标
+云端表先刷新到稳定命名的本地镜像。若云表版本未变化则复用镜像；版本变化时更新镜像。镜像操作在 keyed lock 内串行执行，避免同一云表并发覆盖。
 
-- 不让自动化运行期每次重新生成 DSL。
-- 不把任意 SQL 作为数据任务生成结果。
-- 不在本轮扩展复杂多表 DAG 或条件分支。
-- 不把大模型输出作为可信执行内容直接落库。
+### 4.3 输出和 Task
 
-## 4. 总体方案
+系统复用调用方指定的 Task/输出表，或创建新的 Task/输出表。生成失败时回滚本次新建资源；回滚失败只作为附加日志记录，原始生成异常继续返回给调用方。
 
-自动化“数据处理”只有一个动作入口，内部有两种处理方式：
+## 5. JavaScript 生成协议
 
-```text
-数据处理
-  ├─ AI 生成任务
-  └─ 复用数据任务
-```
-
-其中 `AI 生成任务` 是配置期能力。用户选择输入表、填写处理要求、选择输出方式后，前端调用：
-
-```text
-data.generateTaskFromRequirement
-```
-
-后端完成：
-
-```text
-自然语言要求
-  -> 大模型生成结构化 JSON operations
-  -> 后端编译 JSON operations 为 Prep DSL
-  -> dry-run 校验 DSL
-  -> 必要时修复或走高级 DSL 兜底
-  -> 保存为数据任务 workflow
-  -> 自动化运行期复用 taskId 执行
-```
-
-## 5. 技术链路
-
-### 5.1 前端入口
-
-前端数据处理配置位于：
-
-- `src/renderer/components/settings/schedule/editorPanels.tsx`
-
-关键行为：
-
-- `AI 生成任务` 模式保存的是尚未沉淀的数据处理配置。
-- 点击生成后调用 `window.electronAPI.data.generateTaskFromRequirement`。
-- 生成成功后，节点变成可运行的数据任务配置，包含 `taskId`、`workflowDsl` 等信息。
-- 页面短暂提示：
-
-```text
-数据任务已生成，后续将复用该任务执行。
-```
-
-### 5.2 IPC 与命令服务
-
-IPC 入口：
-
-- `src/main/data/ipc/data-tasks-ipc.ts`
-
-后端主流程：
-
-- `src/main/data/data-command-service.ts`
-- `DataCommandService.generateTaskFromRequirement`
-
-主流程包括：
-
-1. 校验处理要求。
-2. 准备输入表：
-   - 本地输入表直接使用。
-   - 云端表先导入成本地输入表。
-3. 准备输出表：
-   - 新建输出表。
-   - 或绑定已有输出表。
-4. 复用已有生成任务，或创建新的数据任务。
-5. 调用大模型生成 workflow。
-6. dry-run 校验 DSL。
-7. 必要时修复。
-8. 保存 workflow 到数据任务。
-9. 返回自动化节点需要持久化的生成结果。
-
-## 6. 主路径：结构化 JSON 计划
-
-### 6.1 为什么先生成 JSON
-
-大模型不直接生成 DSL，而是先输出结构化操作计划：
+模型返回严格 JSON：
 
 ```json
 {
-  "operations": [
-    { "type": "filter", "column": "Profit", "operator": ">=", "value": 0 },
-    { "type": "sort", "column": "Profit", "direction": "asc" }
-  ],
-  "requiredColumns": [{ "name": "Profit" }],
-  "changeSummary": "过滤负利润并按利润升序排列"
+  "javascriptSource": "function cleanAmount(input) { ... }\nfunction main() { ... }"
 }
 ```
 
-这样做的原因：
+JavaScript 使用普通函数声明和固定 Workflow IR Bridge：
 
-- JSON operations 比 DSL 更容易约束。
-- 后端可以白名单化支持的操作类型。
-- 字段必须从输入表 columns 中解析，不能凭空创造。
-- DSL 语法由应用生成，减少模型语法漂移。
-- 后续可以继续扩展 operation registry，而不改自动化动作协议。
+```javascript
+function removeCount(input) {
+  return workflow.step(input, 'drop', {
+    columns: ['记录数'],
+  });
+}
 
-### 6.2 Prompt 约束
+function normalizeTicker(input) {
+  return workflow.step(input, 'derive', {
+    column: 'ticker',
+    expression: fn.upper(col('ticker')),
+  });
+}
 
-系统提示要求模型：
-
-- 只返回严格 JSON。
-- 不返回 Markdown、注释、解释或代码块。
-- 只使用输入表已有字段。
-- 不写 Prep DSL 或 SQL。
-- 对金额、价格、比例等固定精度字段优先使用 decimal。
-- 不确定时生成最安全的有效操作。
-
-### 6.3 Operation Registry
-
-后端维护结构化操作编译器：
-
-```text
-GeneratedWorkflowOperationRegistry
-  filter
-  sort
-  convert_type
-  select
-  drop
-  rename
-  derive
-  aggregate
+function main() {
+  const source = workflow.input(INPUT_TABLE_ID, { alias: 'src' });
+  const withoutCount = removeCount(source);
+  const normalized = normalizeTicker(withoutCount);
+  return workflow.output(normalized, OUTPUT_TABLE_NAME, { mode: 'replace' });
+}
 ```
 
-每个 operation 定义两部分：
+约束如下：
 
-- `promptSpec`：告诉模型如何输出该操作。
-- `compile`：把操作编译为 Prep DSL 片段。
+- 必须声明具名 `main()`。
+- 数据处理只能通过注入的 `workflow.input()`、`workflow.step()`、`workflow.output()` Bridge API。
+- operation type 和 payload 必须来自统一操作注册表。
+- 辅助函数最多产生一个 operation。
+- `main()` 创建输入、调用辅助函数并输出结果。
+- 不允许 import/export、Node API、网络、文件、子进程和动态代码生成。
+- 当前自动化只有一个输入数据集，不开放 join 和集合运算。
+- JavaScript 是标准语法；上述限制由 Prompt、函数结构检查、沙箱能力和 IR 契约共同实现，不由自定义语言编译器实现。
+- Prompt 中“禁止循环、可变变量和在 `main()` 中直接创建 operation”等属于生成规范；安全边界仍由沙箱超时、最小注入能力和最终 IR 校验保证。
 
-示例：
+## 6. V8 编译和源码定位
 
-```text
-{ type: "filter", column: "Profit", operator: ">=", value: 0 }
-  -> | filter [Profit] >= 0
+`compileWorkflowJavaScript()` 使用：
 
-{ type: "sort", column: "Profit", direction: "asc" }
-  -> | sort by [Profit] asc
+```typescript
+new vm.Script(source, { filename: 'generated-workflow.js' });
 ```
 
-最终 DSL 由后端统一拼装：
+该调用由 V8 完成 JavaScript 解析和编译，不执行生成代码。语法错误被转换为统一 diagnostic：
 
-```text
-input source dataset "<inputTableId>" as src
-  | filter [Profit] >= 0
-  | sort by [Profit] asc
-  | output table "<outputTableName>" mode replace
+- `code`
+- `message`
+- `line`
+- `column`
+- `functionName`
+
+系统使用 Acorn 解析标准 JavaScript，仅获取顶层具名函数的名称和 `start/end` 范围，用于错误归属、结构约束和受控 Patch。Acorn AST 不解释 Workflow 业务语义，也不生成 IR；最终源码仍必须由 V8 编译。
+
+## 7. 沙箱与固定 Workflow IR Bridge
+
+生成代码在一次性独立 Node 子进程中运行：
+
+- 启用 Node Permission Model。
+- 不授予文件系统、网络、子进程或 Worker 权限。
+- 禁止动态字符串代码和 WASM。
+- 限制 old-space、执行时间和输出大小。
+- 仅注入固定 Bridge、表达式构造器、输入表 ID 和输出表名。
+- 子进程完成一次 IR 构建后退出。
+
+Bridge 不处理真实数据，也不包含 `drop`、`filter`、`pivot` 等逐操作 SDK 方法。固定 API 为：
+
+```javascript
+workflow.input(inputTableId, options);
+workflow.step(input, operationType, payload);
+workflow.output(input, outputTableName, options);
 ```
 
-## 7. 校验与编译
-
-结构化 JSON 计划不会直接落库。后端会执行多层校验：
-
-### 7.1 字段校验
-
-编译前构建输入字段索引：
-
-```text
-columnsByName: Map<lowercaseName, column>
-```
-
-每个 operation 引用字段时都必须通过 `requireColumn`：
-
-- 字段为空：报错。
-- 字段不存在：报错。
-- 字段存在：记录到 `requiredColumns`。
-
-### 7.2 DSL 解析校验
-
-编译后调用 Prep DSL parser：
-
-```text
-parsePrepDsl(workflowDsl)
-compilePrepWorkflowToFlow(ast)
-```
-
-如果解析或编译诊断包含 error，则不允许保存。
-
-### 7.3 dry-run 校验
-
-生成 DSL 后先调用：
-
-```text
-applyWorkflowDsl({ dryRun: true })
-```
-
-只有 dry-run 没有错误时，才会正式保存：
-
-```text
-applyWorkflowDsl({ dryRun: false })
-```
-
-这保证了自动化最终复用的是已经通过后端校验的数据任务。
-
-## 8. 兜底策略
-
-生成链路分三层：
-
-```text
-第一层：结构化 JSON operations -> 后端编译 DSL
-第二层：带诊断信息让模型修复 operations
-第三层：高级需求由模型生成完整 DSL，再由后端校验
-```
-
-### 8.1 第一层：稳定编译器
-
-默认路径是：
-
-```text
-模型输出 JSON operations
-  -> compileGeneratedWorkflowPlan
-  -> parseGeneratedWorkflowDslResponse
-```
-
-适合过滤、排序、字段选择、重命名、类型转换、聚合等常见需求。
-
-### 8.2 第二层：诊断驱动修复
-
-如果解析模型输出、编译 operations 或 dry-run 时失败，后端会把失败内容和 diagnostics 传回模型：
-
-```text
-previousFailedAttempt:
-  compiledWorkflowDsl
-  diagnostics
-  instruction: Return corrected operations. Do not return DSL.
-```
-
-模型仍然需要返回结构化 operations。后端重新编译和 dry-run。
-
-### 8.3 第三层：高级 DSL 兜底
-
-如果模型给出的 operation 类型不在 registry 中，说明需求可能超出稳定编译器表达范围。此时进入高级 DSL 兜底：
-
-```text
-generateAdvancedWorkflowDslFromPlan
-```
-
-高级兜底要求模型返回：
+`workflow.step()` 只校验 operation type 是否在注册表允许集合中，然后追加结构化 operation，并记录 provenance：
 
 ```json
 {
-  "workflowDsl": "完整多行 Prep DSL",
-  "requiredColumns": [{ "name": "字段名" }],
-  "explanation": "为什么需要高级 DSL"
+  "operationId": "normalize-ticker",
+  "type": "derive",
+  "inputOperationId": "remove-count",
+  "column": "ticker",
+  "expression": {
+    "kind": "function",
+    "name": "upper"
+  }
 }
 ```
 
-但兜底 DSL 仍然不是直接信任：
+provenance 保存 operation 对应的 JavaScript 函数、行号和列号。
 
-- 必须以指定 input source 行开始。
-- 必须以指定 output table 行结束。
-- 必须通过 `parsePrepDsl`。
-- 必须包含 input source 和 output table。
-- 必须通过字段引用校验。
-- 必须通过 dry-run。
+具体 payload 规则不在 Bridge 中实现，由 `workflow-ir-operation-registry.ts` 校验。例如 `drop.columns` 必须是非空字符串数组，`sort.direction` 必须为 `asc` 或 `desc`。因此新增 IR operation 不需要修改 Bridge，只需扩展 IR 操作注册表及其确定性的 lowering 规则。
 
-如果兜底后仍有错误，向前端返回 `DSL_PARSE_FAILED` 或 `VALIDATION_FAILED`，不保存不可运行任务。
+## 8. Stable Workflow IR
 
-## 9. 生成结果持久化
+当前协议版本为 `1.0`，来源语言固定为 `javascript`。Validator 检查：
 
-生成成功后返回：
+- IR 版本和 kind。
+- 输入、输出边界。
+- operation 类型、字段和嵌套 expression。
+- operationId 格式和唯一性。
+- inputOperationId 引用完整性。
+- operation 图无环。
+- provenance 与 operationId 一致。
+- sourceLanguage 和 provenance language 均为 `javascript`。
 
-```ts
-interface DataGenerateTaskFromRequirementResult {
-  taskId: string;
-  taskName: string;
-  outputTableId: string;
-  outputTableName: string;
-  workflowDsl: string;
-  requiredColumns: DataAutomationColumnSnapshot[];
-  columnsSnapshot: DataAutomationColumnSnapshot[];
-  sourceSummaryHash: string;
-  version: number;
-  generatedAt: number;
+IR 的 Semantic Hash 排除源码行列等非语义信息。相同源码连续执行两次产生不同 Hash 时，返回 `NON_DETERMINISTIC_WORKFLOW_BUILD`，不进入 lowering。
+
+## 9. 原子辅助函数和受控源码修复
+
+IR 构建后按 provenance 聚合 operation。非 `main` 辅助函数产生多个 operation 时返回：
+
+```text
+NON_ATOMIC_WORKFLOW_HELPER
+```
+
+诊断包含具体函数名和源码位置。原源码能被 Acorn 定位且诊断明确指向函数时，修复响应返回：
+
+```json
+{
+  "javascriptPatch": {
+    "functionName": "extractYearMonth",
+    "replacementSource": "function extractYear(...) {...}\nfunction extractMonth(...) {...}\nfunction extractYearMonth(...) {...}"
+  }
 }
 ```
 
-自动化节点保存这些信息后，运行期不再需要自然语言要求或模型参与，而是执行 `taskId` 对应的数据任务。
+修复规则：
 
-再次生成时，如果来源表匹配，可以传入：
+- `functionName` 必须与系统指定的目标函数完全一致。
+- `replacementSource` 必须保留目标函数，可以增加名称不冲突的原子辅助函数。
+- 非 `main` Patch 不允许包含 `main()`，也不允许覆盖其他已有函数。
+- 系统通过 Acorn AST 范围只替换目标函数区间，区间外源码保持字节级不变。
+- Patch 后的完整源码必须先通过 V8 编译，再重新执行完整 Bridge、IR、lowering 和 dry-run 流程。
+- 原源码存在语法错误、诊断没有明确函数名或无法安全定位时，模型返回包含全部辅助函数和 `main()` 的完整 `javascriptSource`。
+- Acorn 不参与 JavaScript → IR 转换，也不回退到整段 DSL。
 
-- `reuseTaskId`
-- `currentVersion`
-- 已有输出表 ID
+## 10. IR → 平台操作配置 → 原生节点
 
-后端优先复用原任务并更新 workflow，避免重复创建数据任务。
+`workflow-ir-lowerer.ts` 中的 `lowerGeneratedWorkflowIrSemantics()` 负责：
 
-## 10. 运行期行为
+- 再次校验并规范化 IR。
+- 将 IR operation 转换为平台 operator 配置。
+- 推断必需输入字段、输出 Schema 和字段血缘。
+- 保留 operation 到 JavaScript 源码位置的映射。
 
-自动化运行时只有确定性动作：
-
-```text
-automation trigger
-  -> data.task.run / cloud.table.process
-  -> DataTaskStore 执行 workflow
-  -> 写入本地输出表或上传云端表
-```
-
-运行期不调用大模型生成 DSL，因此：
-
-- 可预测。
-- 可复用。
-- 成本低。
-- 更适合定时与无人值守场景。
-
-## 11. UI 与 i18n 调整
-
-为匹配技术语义，前端文案需要从“AI 处理”改成“AI 生成任务”：
+一个 IR operation 可以确定性地展开成多个平台 operators，例如覆盖原字段的类型转换：
 
 ```text
-处理方式：AI 生成任务 | 复用数据任务
+calculate_field → field_select → field_mapping
 ```
 
-生成成功提示：
+这种展开由固定 lowerer 完成，不由模型生成，也不在 AI 层生成完整 Prep DSL。
+
+## 11. DSL 编译与临时验证
+
+生成的 Prep DSL 必须经过：
+
+1. Prep DSL parser。
+2. Workflow AST → nodes/edges 编译。
+3. 输入、输出资源绑定。
+4. 临时 Task 执行。
+5. 小样本预览。
+6. 输出 Schema 校验和校准。
+7. diagnostic 汇总。
+
+只有无 error diagnostic 的 candidate 才能保存。网络、权限、超时、文件不存在等基础设施错误不交给模型修复；明确关联到 JavaScript helper 的语法、SDK、IR 或字段语义错误可以进入受控源码修复。
+
+## 12. 保存与运行
+
+配置期验证成功后保存 Workflow。运行期：
 
 ```text
-数据任务已生成，后续将复用该任务执行。
+读取已保存的 Workflow nodes/edges
+→ 数据任务执行引擎运行节点图
+→ 正式提交输出
+→ 可选上传云端
+→ 清理临时资源
 ```
 
-保留的 i18n key：
+运行期不调用大模型，不重新生成 JavaScript，也不重新构建 IR。
 
-| key                   | zh                                     | en                                                     |
-| --------------------- | -------------------------------------- | ------------------------------------------------------ |
-| `dataProcessModeAi`   | AI 生成任务                            | AI-generated task                                      |
-| `dataProcessModeTask` | 复用数据任务                           | Reuse data task                                        |
-| `generatedTaskReady`  | 数据任务已生成，后续将复用该任务执行。 | Data task generated. Future runs will reuse this task. |
+`saveWorkflow=true` 只有在执行成功后才保存调用方提供的新 Workflow；失败时保留旧 Workflow。
 
-删除的旧 key：
+## 13. 并发、缓存和清理
 
-- `generateTaskHint`
-- `zeroTokenRuntime`
+- 相同 Task 的生成、编辑和运行使用 `task:<taskId>` keyed lock。
+- 云镜像刷新使用独立 keyed lock。
+- Prep DSL candidate 使用有界 LRU 缓存。
+- 临时执行结束后清理临时表和缓存。
+- 锁等待会忽略前一个调用已经向其调用方返回的异常，以保证后续请求继续取得锁。
+- 其他预览降级、回滚和清理失败都必须记录结构化日志。
 
-## 12. 风险与约束
+## 14. 主要代码
 
-- 结构化编译器覆盖范围有限，复杂变形需要依赖高级 DSL 兜底。
-- 高级 DSL 兜底仍可能失败，因此必须保留诊断信息并阻止不可运行任务保存。
-- 字段名称严格来自输入表，用户自然语言中的近义字段不会自动映射到不存在字段。
-- 运行期复用数据任务意味着输入表结构变化可能导致任务失效，需要通过 `requiredColumns` 和 `sourceSummaryHash` 做后续风险提示或重新生成判断。
-
-## 13. 验收标准
-
-- AI 生成任务主路径要求模型返回结构化 JSON operations。
-- 后端能把 supported operations 编译为 Prep DSL。
-- 生成 DSL 必须通过 parser、compiler 和 dry-run 校验后才保存。
-- operations 修复路径能携带 diagnostics 再次请求模型。
-- unsupported operation 能进入高级 DSL 兜底。
-- 高级 DSL 兜底输出仍需通过后端校验。
-- 自动化运行期复用生成后的 `taskId`，不重新调用模型生成任务。
-- 前端处理方式显示为 `AI 生成任务 | 复用数据任务`。
-- 生成成功后显示轻提示：`数据任务已生成，后续将复用该任务执行。`
-- i18n 中不保留未使用的 `generateTaskHint` 和 `zeroTokenRuntime`。
-
-## 14. 相关代码
-
-- `src/renderer/components/settings/schedule/editorPanels.tsx`
-  - 数据处理动作 UI。
-  - 生成成功提示。
-  - AI 生成任务 / 复用数据任务模式切换。
-- `src/main/data/ipc/data-tasks-ipc.ts`
-  - `data.generateTaskFromRequirement` IPC 入口。
 - `src/main/data/data-command-service.ts`
-  - `generateTaskFromRequirement`
-  - `generateWorkflowDslFromRequirement`
-  - `repairWorkflowDslFromDiagnostics`
-  - `generateAdvancedWorkflowDslFromPlan`
-  - `compileGeneratedWorkflowPlan`
-  - `parseGeneratedWorkflowDslResponse`
+- `src/main/data/data-task-store.ts`
+- `src/main/data/ipc/data-tasks-ipc.ts`
+- `src/main/data/workflow/workflow-generator.ts`
+- `src/main/data/workflow/javascript-runtime.ts`
+- `src/main/data/workflow/workflow-ir-operation-registry.ts`
+- `src/main/data/workflow/workflow-model.ts`
+- `src/main/data/workflow/workflow-ir.ts`
+- `src/main/data/workflow/workflow-ir-lowerer.ts`
+- `src/main/data/workflow/schema-inferencer.ts`
+- `src/main/data/workflow/utils.ts`
 - `src/shared/prep-dsl`
-  - Prep DSL 解析、编译和诊断。
-- `src/renderer/i18n/locales/zh.json`
-- `src/renderer/i18n/locales/en.json`
+
+## 15. 验收标准
+
+- LLM 生成标准 JavaScript，V8 在沙箱执行前返回精确语法诊断。
+- 生产代码中不存在 JavaScript/TypeScript AST → Workflow IR 编译器。
+- 生产代码中不存在模型直出 DSL、Operations JSON 或 IR 的回退入口。
+- Bridge 只包含固定的 `input/step/output`，不存在逐 operation SDK 方法。
+- 新增 operation 不需要修改 JavaScript Bridge。
+- IR 只接受 `sourceLanguage: "javascript"`。
+- 同一源码的 IR Semantic Hash 稳定。
+- 非原子 helper 能定位函数并通过 Acorn 范围 Patch 修复，其他源码保持不变。
+- Operations JSON 与 Prep DSL 完全由固定转换器产生。
+- 保存前必须完成 DSL 编译、临时执行和输出 Schema 校验。
+- 运行期不调用大模型。
+- 预览降级、回滚和清理失败有日志。
+- TypeScript 类型检查和数据任务相关测试通过。
