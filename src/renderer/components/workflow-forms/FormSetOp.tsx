@@ -266,8 +266,15 @@ export default function FormSetOp({
           checkTypeWarnings(leftTypes, rightTypes, leftCols, rightCols, operation, match, tr)
         );
       })
-      .catch(() => {
-        if (!aborted) setWarnings([]);
+      .catch((error: unknown) => {
+        if (aborted) return;
+        setWarnings([]);
+        console.warn('[FormSetOp] Failed to compare input column types', {
+          taskId,
+          leftNodeId: sourceNode.id,
+          rightNodeId,
+          error,
+        });
       });
     return () => {
       aborted = true;

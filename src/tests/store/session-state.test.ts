@@ -116,8 +116,20 @@ describe('SessionState unified store', () => {
     it('should set messages (bulk replace)', () => {
       useAppStore.getState().addSession(makeSession('s1'));
       const msgs = [
-        { id: 'a', sessionId: 's1', role: 'user' as const, content: [{ type: 'text' as const, text: 'hi' }], timestamp: 1 },
-        { id: 'b', sessionId: 's1', role: 'assistant' as const, content: [{ type: 'text' as const, text: 'hello' }], timestamp: 2 },
+        {
+          id: 'a',
+          sessionId: 's1',
+          role: 'user' as const,
+          content: [{ type: 'text' as const, text: 'hi' }],
+          timestamp: 1,
+        },
+        {
+          id: 'b',
+          sessionId: 's1',
+          role: 'assistant' as const,
+          content: [{ type: 'text' as const, text: 'hello' }],
+          timestamp: 2,
+        },
       ];
       useAppStore.getState().setMessages('s1', msgs);
       expect(useAppStore.getState().sessionStates['s1'].messages).toHaveLength(2);
@@ -151,6 +163,28 @@ describe('SessionState unified store', () => {
       useAppStore.getState().setPartialThinking('s1', 'data');
       useAppStore.getState().clearPartialThinking('s1');
       expect(useAppStore.getState().sessionStates['s1'].partialThinking).toBe('');
+    });
+  });
+
+  describe('trace steps', () => {
+    it('creates a fallback step when an update arrives before the start event', () => {
+      useAppStore.getState().addSession(makeSession('s1'));
+
+      useAppStore.getState().updateTraceStep('s1', 'tool-1', {
+        type: 'tool_call',
+        status: 'running',
+        title: 'data_create_task',
+        toolName: 'data_create_task',
+        toolInput: { name: 'Sales task' },
+      });
+
+      expect(useAppStore.getState().sessionStates['s1'].traceSteps).toEqual([
+        expect.objectContaining({
+          id: 'tool-1',
+          status: 'running',
+          toolInput: { name: 'Sales task' },
+        }),
+      ]);
     });
   });
 
@@ -219,8 +253,11 @@ describe('SessionState unified store', () => {
       useAppStore.getState().addSession(makeSession('s1'));
       // Setup an active turn first
       useAppStore.getState().addMessage('s1', {
-        id: 'msg1', sessionId: 's1', role: 'user',
-        content: [{ type: 'text', text: 'test' }], timestamp: Date.now(),
+        id: 'msg1',
+        sessionId: 's1',
+        role: 'user',
+        content: [{ type: 'text', text: 'test' }],
+        timestamp: Date.now(),
       });
       useAppStore.getState().activateNextTurn('s1', 'step1');
       useAppStore.getState().updateActiveTurnStep('s1', 'step2');
@@ -233,8 +270,11 @@ describe('SessionState unified store', () => {
     it('should clear active turn', () => {
       useAppStore.getState().addSession(makeSession('s1'));
       useAppStore.getState().addMessage('s1', {
-        id: 'msg1', sessionId: 's1', role: 'user',
-        content: [{ type: 'text', text: 'test' }], timestamp: Date.now(),
+        id: 'msg1',
+        sessionId: 's1',
+        role: 'user',
+        content: [{ type: 'text', text: 'test' }],
+        timestamp: Date.now(),
       });
       useAppStore.getState().activateNextTurn('s1', 'step1');
       useAppStore.getState().clearActiveTurn('s1');
@@ -244,8 +284,11 @@ describe('SessionState unified store', () => {
     it('should only clear active turn when stepId matches', () => {
       useAppStore.getState().addSession(makeSession('s1'));
       useAppStore.getState().addMessage('s1', {
-        id: 'msg1', sessionId: 's1', role: 'user',
-        content: [{ type: 'text', text: 'test' }], timestamp: Date.now(),
+        id: 'msg1',
+        sessionId: 's1',
+        role: 'user',
+        content: [{ type: 'text', text: 'test' }],
+        timestamp: Date.now(),
       });
       useAppStore.getState().activateNextTurn('s1', 'step1');
       // Try clearing with wrong stepId - should not clear
@@ -259,8 +302,11 @@ describe('SessionState unified store', () => {
     it('should clear pending turns', () => {
       useAppStore.getState().addSession(makeSession('s1'));
       useAppStore.getState().addMessage('s1', {
-        id: 'msg1', sessionId: 's1', role: 'user',
-        content: [{ type: 'text', text: 'test' }], timestamp: Date.now(),
+        id: 'msg1',
+        sessionId: 's1',
+        role: 'user',
+        content: [{ type: 'text', text: 'test' }],
+        timestamp: Date.now(),
       });
       expect(useAppStore.getState().sessionStates['s1'].pendingTurns).toHaveLength(1);
       useAppStore.getState().clearPendingTurns('s1');
@@ -273,8 +319,21 @@ describe('SessionState unified store', () => {
       useAppStore.getState().addSession(makeSession('s1'));
       // Manually set messages with queued status
       useAppStore.getState().setMessages('s1', [
-        { id: 'msg1', sessionId: 's1', role: 'user', content: [{ type: 'text', text: 'a' }], timestamp: 1, localStatus: 'queued' },
-        { id: 'msg2', sessionId: 's1', role: 'user', content: [{ type: 'text', text: 'b' }], timestamp: 2 },
+        {
+          id: 'msg1',
+          sessionId: 's1',
+          role: 'user',
+          content: [{ type: 'text', text: 'a' }],
+          timestamp: 1,
+          localStatus: 'queued',
+        },
+        {
+          id: 'msg2',
+          sessionId: 's1',
+          role: 'user',
+          content: [{ type: 'text', text: 'b' }],
+          timestamp: 2,
+        },
       ]);
       useAppStore.getState().clearQueuedMessages('s1');
       const msgs = useAppStore.getState().sessionStates['s1'].messages;
@@ -285,7 +344,14 @@ describe('SessionState unified store', () => {
     it('should cancel queued messages', () => {
       useAppStore.getState().addSession(makeSession('s1'));
       useAppStore.getState().setMessages('s1', [
-        { id: 'msg1', sessionId: 's1', role: 'user', content: [{ type: 'text', text: 'a' }], timestamp: 1, localStatus: 'queued' },
+        {
+          id: 'msg1',
+          sessionId: 's1',
+          role: 'user',
+          content: [{ type: 'text', text: 'a' }],
+          timestamp: 1,
+          localStatus: 'queued',
+        },
       ]);
       useAppStore.getState().cancelQueuedMessages('s1');
       expect(useAppStore.getState().sessionStates['s1'].messages[0].localStatus).toBe('cancelled');
@@ -295,7 +361,14 @@ describe('SessionState unified store', () => {
   describe('trace steps', () => {
     it('should add and update trace steps', () => {
       useAppStore.getState().addSession(makeSession('s1'));
-      const step = { id: 'ts1', type: 'tool_call' as const, status: 'running' as const, title: 'read', toolName: 'read', timestamp: Date.now() };
+      const step = {
+        id: 'ts1',
+        type: 'tool_call' as const,
+        status: 'running' as const,
+        title: 'read',
+        toolName: 'read',
+        timestamp: Date.now(),
+      };
       useAppStore.getState().addTraceStep('s1', step);
       expect(useAppStore.getState().sessionStates['s1'].traceSteps).toHaveLength(1);
 
@@ -306,8 +379,21 @@ describe('SessionState unified store', () => {
     it('should set trace steps (bulk replace)', () => {
       useAppStore.getState().addSession(makeSession('s1'));
       const steps = [
-        { id: 'ts1', type: 'tool_call' as const, status: 'completed' as const, title: 'read', toolName: 'read', timestamp: 1 },
-        { id: 'ts2', type: 'thinking' as const, status: 'completed' as const, title: 'thinking', timestamp: 2 },
+        {
+          id: 'ts1',
+          type: 'tool_call' as const,
+          status: 'completed' as const,
+          title: 'read',
+          toolName: 'read',
+          timestamp: 1,
+        },
+        {
+          id: 'ts2',
+          type: 'thinking' as const,
+          status: 'completed' as const,
+          title: 'thinking',
+          timestamp: 2,
+        },
       ];
       useAppStore.getState().setTraceSteps('s1', steps);
       expect(useAppStore.getState().sessionStates['s1'].traceSteps).toHaveLength(2);

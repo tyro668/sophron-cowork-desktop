@@ -313,6 +313,100 @@ describe('SessionManager.getMessages content normalization', () => {
   });
 });
 
+describe('SessionManager.getTraceSteps', () => {
+  it('restores correlation, error, permission, output and timing metadata', () => {
+    const db = makeDb({
+      traceSteps: {
+        create: vi.fn(),
+        update: vi.fn(),
+        deleteBySessionId: vi.fn(),
+        getBySessionId: vi.fn(() => [
+          {
+            id: 'tool-1',
+            session_id: 's1',
+            turn_id: 'turn-1',
+            parent_id: 'root-1',
+            type: 'tool_call',
+            status: 'error',
+            title: 'Create data task',
+            content: null,
+            tool_name: 'data_create_task',
+            tool_input: JSON.stringify({ name: 'Sales task' }),
+            tool_output: '[INVALID_INPUT] missing source',
+            tool_output_truncated: 1,
+            tool_output_length: 3000,
+            result_message_id: 'message-1',
+            is_error: 1,
+            error_json: JSON.stringify({
+              stage: 'validation',
+              code: 'INVALID_INPUT',
+              message: 'missing source',
+            }),
+            permission_json: JSON.stringify({ decision: 'user_allow', source: 'user' }),
+            outcome: 'tool_failed',
+            metrics_json: JSON.stringify({
+              inputTokens: 100,
+              outputTokens: 20,
+              cacheReadTokens: 10,
+              cacheWriteTokens: 0,
+              totalTokens: 130,
+              costTotal: 0.01,
+              modelCallCount: 2,
+              toolCallCount: 1,
+              toolErrorCount: 1,
+              permissionPromptCount: 1,
+              totalDurationMs: 60,
+              firstResponseLatencyMs: 40,
+              firstTokenLatencyMs: 45,
+              modelDurationMs: 50,
+              toolDurationMs: 10,
+              permissionWaitMs: 5,
+            }),
+            timestamp: 100,
+            ended_at: 160,
+            duration: 60,
+          },
+        ]),
+      } as any,
+    });
+
+    const [step] = new SessionManager(db, vi.fn()).getTraceSteps('s1');
+
+    expect(step).toMatchObject({
+      turnId: 'turn-1',
+      parentId: 'root-1',
+      toolInput: { name: 'Sales task' },
+      toolOutputTruncated: true,
+      toolOutputLength: 3000,
+      resultMessageId: 'message-1',
+      isError: true,
+      error: { stage: 'validation', code: 'INVALID_INPUT' },
+      permission: { decision: 'user_allow', source: 'user' },
+      outcome: 'tool_failed',
+      metrics: {
+        inputTokens: 100,
+        outputTokens: 20,
+        cacheReadTokens: 10,
+        cacheWriteTokens: 0,
+        totalTokens: 130,
+        costTotal: 0.01,
+        modelCallCount: 2,
+        toolCallCount: 1,
+        toolErrorCount: 1,
+        permissionPromptCount: 1,
+        totalDurationMs: 60,
+        firstResponseLatencyMs: 40,
+        firstTokenLatencyMs: 45,
+        modelDurationMs: 50,
+        toolDurationMs: 10,
+        permissionWaitMs: 5,
+      },
+      endedAt: 160,
+      duration: 60,
+    });
+  });
+});
+
 // ------------------------------------------------------------------
 // handlePermissionResponse
 // ------------------------------------------------------------------

@@ -39,9 +39,7 @@ export function compileMissingValueSql(
     let stageQuery: string | null = null;
     switch (rule.method) {
       case 'nullify_values':
-        stageQuery = `SELECT * REPLACE (CASE WHEN ${column} IN (${(rule.values ?? [])
-          .map(literalToSql)
-          .join(', ')}) THEN NULL ELSE ${column} END AS ${column}) FROM ${currentInput}`;
+        stageQuery = `SELECT * REPLACE (CASE WHEN ${compileNullifyValuesPredicate(column, rule.values ?? [])} THEN NULL ELSE ${column} END AS ${column}) FROM ${currentInput}`;
         break;
       case 'literal_fill':
         stageQuery = `SELECT * REPLACE (COALESCE(${column}, cast_to_type(${literalToSql(rule.value)}, ${column})) AS ${column}) FROM ${currentInput}`;
@@ -85,6 +83,21 @@ export function compileMissingValueSql(
   }
 
   return `CREATE TEMP TABLE ${output} AS WITH ${stages.join(', ')} SELECT * FROM ${currentInput}`;
+}
+
+function compileNullifyValuesPredicate(column: string, values: unknown[]): string {
+  if (values.length === 0) return 'FALSE';
+
+  const includesNull = values.some((value) => value === null || value === undefined);
+  const textValues = values
+    .filter((value) => value !== null && value !== undefined)
+    .map((value) => literalToSql(String(value)));
+  const predicates: string[] = [];
+  if (includesNull) predicates.push(`${column} IS NULL`);
+  if (textValues.length > 0) {
+    predicates.push(`CAST(${column} AS VARCHAR) IN (${textValues.join(', ')})`);
+  }
+  return predicates.length === 1 ? predicates[0] : `(${predicates.join(' OR ')})`;
 }
 
 function compileStatisticalFillStage(

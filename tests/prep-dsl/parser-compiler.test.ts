@@ -123,6 +123,41 @@ keep left *, [customers].[name] as [customer_name]
     expect(exported).toContain('[orders].[customer_id]');
   });
 
+  it('exports structured input and output node configs without cached DSL text', () => {
+    const exported = exportPrepWorkflowDsl(
+      [
+        {
+          id: 'source',
+          type: 'input_source',
+          config: { source: 'dataset', datasetId: 'dataset-sales-id', alias: 'sales' },
+        },
+        {
+          id: 'output',
+          type: 'output',
+          config: {
+            destination: 'duckdb_table',
+            table: 'data_output_abc123',
+            outputTableName: 'Processed Sales',
+            mode: 'replace',
+          },
+        },
+      ],
+      [
+        {
+          sourceNodeId: 'source',
+          targetNodeId: 'output',
+          targetHandle: 'input',
+        },
+      ]
+    );
+
+    expect(exported).toContain('input source dataset "dataset-sales-id" as sales');
+    expect(exported).toContain('output table "Processed Sales" mode replace');
+    expect(parsePrepDsl(exported).diagnostics.filter((item) => item.severity === 'error')).toEqual(
+      []
+    );
+  });
+
   it('parses single-operator DSL for every editable operator', () => {
     const cases: Array<[PrepOperatorType, string]> = [
       ['field_select', 'select [order_id], [region]'],
@@ -146,6 +181,22 @@ keep left *, [customers].[name] as [customer_name]
       expect(result.operator?.type).toBe(type);
       expect(result.operator?.config.dsl).toBe(dsl);
     }
+  });
+
+  it('preserves backtick-quoted sort fields with spaces', () => {
+    const result = parsePrepOperatorDsl(
+      'sort by [`Unit Price`] asc, [`Sales 总和`] desc nulls last',
+      'sort'
+    );
+
+    expect(result.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    expect(result.operator?.config.keys).toEqual([
+      { field: 'Unit Price', direction: 'asc' },
+      { field: 'Sales 总和', direction: 'desc', nulls: 'last' },
+    ]);
+    expect(result.operator && exportPrepOperatorDsl(result.operator)).toBe(
+      'sort by [`Unit Price`] asc, [`Sales 总和`] desc nulls last'
+    );
   });
 
   it('rejects legacy cast target aliases', () => {

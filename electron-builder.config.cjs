@@ -3,7 +3,8 @@ const { getBrand } = require('./scripts/sophron-brand.cjs');
 const brand = getBrand();
 
 const artifactPattern = `${brand.artifactName}-\${version}`;
-const updatePublishUrl = process.env.SOPHRON_UPDATE_PUBLISH_URL || 'https://download.sophron.ai/updates/stable';
+const updatePublishUrl =
+  process.env.SOPHRON_UPDATE_PUBLISH_URL || 'https://download.sophron.ai/updates/stable';
 
 module.exports = {
   appId: 'com.sophron.app',
@@ -92,6 +93,10 @@ module.exports = {
     artifactName: `${artifactPattern}-win-\${arch}.\${ext}`,
     signAndEditExecutable: false,
     extraResources: [
+      {
+        from: 'src/main/data/workflow/workflow-sandbox-runner.js',
+        to: 'workflow/workflow-sandbox-runner.js',
+      },
       { from: '.bundle-resources/mcp', to: 'mcp' },
       { from: 'resources/node/win32-x64', to: 'node' },
       { from: 'resources/node/win32-x64/node_modules/npm', to: 'node/node_modules/npm' },
@@ -124,9 +129,16 @@ module.exports = {
       NSAccessibilityUsageDescription: `${brand.productName} needs accessibility access for GUI automation.`,
     },
     extraResources: [
+      {
+        from: 'src/main/data/workflow/workflow-sandbox-runner.js',
+        to: 'workflow/workflow-sandbox-runner.js',
+      },
       { from: '.bundle-resources/mcp', to: 'mcp' },
       { from: 'resources/node/darwin-${arch}', to: 'node' },
-      { from: 'resources/node/darwin-${arch}/lib/node_modules/npm', to: 'node/lib/node_modules/npm' },
+      {
+        from: 'resources/node/darwin-${arch}/lib/node_modules/npm',
+        to: 'node/lib/node_modules/npm',
+      },
       { from: 'resources/python/darwin-${arch}', to: 'python' },
       { from: 'resources/tools/darwin-${arch}', to: 'tools' },
       { from: 'dist-lima-agent', to: 'lima-agent' },
@@ -144,6 +156,10 @@ module.exports = {
     ],
     artifactName: `${artifactPattern}-linux-\${arch}.\${ext}`,
     extraResources: [
+      {
+        from: 'src/main/data/workflow/workflow-sandbox-runner.js',
+        to: 'workflow/workflow-sandbox-runner.js',
+      },
       { from: '.bundle-resources/mcp', to: 'mcp' },
       { from: 'resources/node/linux-x64', to: 'node' },
       { from: 'resources/node/linux-x64/lib/node_modules/npm', to: 'node/lib/node_modules/npm' },

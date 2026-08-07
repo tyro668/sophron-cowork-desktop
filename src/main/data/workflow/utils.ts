@@ -1,5 +1,5 @@
-import type { PrepDiagnostic } from '../../../shared/prep-dsl';
 import { DataCommandError } from '../data-command-types';
+import type { PrepDiagnostic } from '../../../shared/prep-dsl';
 
 export function normalizeColumnType(type: string): string {
   return type.trim().toLowerCase();
@@ -71,27 +71,12 @@ export function literalToDsl(value: unknown): string {
   return `'${String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 }
 
-export function findDslBacktickFieldEnd(value: string, start: number): number | null {
-  for (let index = start; index < value.length; index += 1) {
-    const char = value[index];
-    if (char === '\\') {
-      index += 1;
-      continue;
-    }
-    if (char === '`') {
-      return value[index + 1] === ']' ? index + 1 : null;
-    }
-  }
-  return null;
-}
-
-export const DSL_FIELD_REF_TOKEN_PATTERN =
-  '\\[(?:`((?:[^`\\\\]|\\\\.)*)`|([\\p{L}_][\\p{L}\\p{N}_]*))\\]';
-export const DSL_FIELD_REF_PATTERN = new RegExp(
+const DSL_FIELD_REF_TOKEN_PATTERN = '\\[(?:`((?:[^`\\\\]|\\\\.)*)`|([\\p{L}_][\\p{L}\\p{N}_]*))\\]';
+const DSL_FIELD_REF_PATTERN = new RegExp(
   `${DSL_FIELD_REF_TOKEN_PATTERN}(?:\\.${DSL_FIELD_REF_TOKEN_PATTERN})?`,
   'gu'
 );
-export const DSL_STRING_LITERAL_PATTERN = /'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g;
+const DSL_STRING_LITERAL_PATTERN = /'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g;
 
 export function extractFieldNamesFromExpression(expression: string): string[] {
   const withoutStrings = expression.replace(DSL_STRING_LITERAL_PATTERN, '');
@@ -103,11 +88,6 @@ export function extractFieldNamesFromExpression(expression: string): string[] {
     if (name) names.push(name);
   }
   return names;
-}
-
-export function stripQualifiedFieldName(name: string): string {
-  const separatorIndex = name.lastIndexOf('.');
-  return separatorIndex >= 0 ? name.slice(separatorIndex + 1) : name;
 }
 
 export function unescapeDslBacktickField(name: string): string {
@@ -123,9 +103,35 @@ export function normalizeDslTypeName(type: string): string {
   if (['varchar', 'char', 'string', 'text'].includes(normalized)) return 'text';
   if (['int', 'integer', 'bigint', 'smallint', 'tinyint'].includes(normalized)) return 'integer';
   if (['double', 'float', 'real'].includes(normalized)) return 'float';
+  if (normalized === 'number') return 'decimal';
   if (normalized.startsWith('decimal') || normalized.startsWith('numeric')) return 'decimal';
   if (normalized.includes('timestamp') || normalized === 'datetime') return 'datetime';
   if (normalized === 'date') return 'date';
   if (['bool', 'boolean'].includes(normalized)) return 'boolean';
   return normalized;
+}
+
+export function isNumericDslType(type: string): boolean {
+  return ['integer', 'float', 'decimal'].includes(normalizeDslTypeName(type));
+}
+
+export function isDecimalLikeDslType(type: string): boolean {
+  return ['float', 'decimal'].includes(normalizeDslTypeName(type));
+}
+
+export function inferUnpivotValueType(columns: Array<{ type?: string }>): string | undefined {
+  const types = columns
+    .map((column) => column.type)
+    .filter((type): type is string => Boolean(type));
+  if (types.length === 0) return undefined;
+
+  const normalized = types.map(normalizeDslTypeName);
+  if (normalized.every((type) => type === normalized[0])) return normalized[0];
+  if (normalized.every(isNumericDslType)) {
+    return normalized.some(isDecimalLikeDslType) ? 'decimal' : 'integer';
+  }
+  throw new DataCommandError(
+    'VALIDATION_FAILED',
+    `Generated unpivot columns have incompatible types: ${types.join(', ')}`
+  );
 }

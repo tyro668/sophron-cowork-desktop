@@ -1,5 +1,6 @@
 import type { PrepOperatorType } from './ast';
 import { formatOperator } from './operators/formatter';
+import { quoteString } from './syntax/literals';
 
 export interface PrepFlowNodeLike {
   id: string;
@@ -22,7 +23,7 @@ export function exportPrepWorkflowDsl(
     nodes.filter((node) => node.type !== 'input_source'),
     edges
   );
-  const sourceLines = sources.map((source) => source.config?.dsl).filter(isString);
+  const sourceLines = sources.map(formatInputSource).filter(isString);
   const mainSource = inferMainSource(sources, operators, edges);
   const operatorLines = operators.map((operator) => {
     const line = formatOperator(operator);
@@ -42,6 +43,28 @@ export function exportPrepWorkflowDsl(
 
   const firstSource = sourceLines[0] ?? 'input source task';
   return [firstSource, ...operatorLines.map(toPipelineLine)].join('\n').trim();
+}
+
+function formatInputSource(node: PrepFlowNodeLike): string | null {
+  const config = node.config ?? {};
+  if (isString(config.dsl)) return config.dsl;
+  const alias = getAlias(node) ?? 'src';
+  const source = isString(config.source)
+    ? config.source
+    : isString(config.datasetId)
+      ? 'dataset'
+      : isString(config.filePath)
+        ? 'file'
+        : 'task';
+  if (source === 'dataset') {
+    const datasetId = stringValue(config.datasetId) ?? stringValue(config.name);
+    return datasetId ? `input source dataset ${quoteString(datasetId)} as ${alias}` : null;
+  }
+  if (source === 'file') {
+    const filePath = stringValue(config.filePath);
+    return filePath ? `input source file ${quoteString(filePath)} as ${alias}` : null;
+  }
+  return `input source task as ${alias}`;
 }
 
 function sortOperatorsByEdges(
@@ -119,4 +142,8 @@ function toPipelineLine(line: string): string {
 
 function isString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
 }

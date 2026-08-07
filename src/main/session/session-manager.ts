@@ -135,7 +135,7 @@ export class SessionManager {
         this.saveTraceStep(event.payload.sessionId, event.payload.step);
       }
       if (event.type === 'trace.update') {
-        this.updateTraceStep(event.payload.stepId, event.payload.updates);
+        this.updateTraceStep(event.payload.sessionId, event.payload.stepId, event.payload.updates);
       }
       sendToRenderer(event);
     };
@@ -1305,10 +1305,10 @@ export class SessionManager {
 
   getTraceSteps(sessionId: string): TraceStep[] {
     const rows = this.db.traceSteps.getBySessionId(sessionId);
-    const parseToolInput = (value: string | null): Record<string, unknown> | undefined => {
+    const parseJson = <T>(value: string | null): T | undefined => {
       if (!value) return undefined;
       try {
-        return JSON.parse(value) as Record<string, unknown>;
+        return JSON.parse(value) as T;
       } catch {
         return undefined;
       }
@@ -1318,12 +1318,23 @@ export class SessionManager {
       type: row.type as TraceStep['type'],
       status: row.status as TraceStep['status'],
       title: row.title,
+      turnId: row.turn_id || undefined,
+      parentId: row.parent_id || undefined,
       content: row.content || undefined,
       toolName: row.tool_name || undefined,
-      toolInput: parseToolInput(row.tool_input),
+      toolInput: parseJson<Record<string, unknown>>(row.tool_input),
       toolOutput: row.tool_output || undefined,
+      toolOutputTruncated:
+        row.tool_output_truncated === null ? undefined : row.tool_output_truncated === 1,
+      toolOutputLength: row.tool_output_length ?? undefined,
+      resultMessageId: row.result_message_id || undefined,
       isError: row.is_error === 1 ? true : undefined,
+      error: parseJson<TraceStep['error']>(row.error_json),
+      permission: parseJson<TraceStep['permission']>(row.permission_json),
+      outcome: (row.outcome as TraceStep['outcome']) || undefined,
+      metrics: parseJson<TraceStep['metrics']>(row.metrics_json),
       timestamp: row.timestamp,
+      endedAt: row.ended_at ?? undefined,
       duration: row.duration ?? undefined,
     }));
   }
@@ -1400,6 +1411,8 @@ export class SessionManager {
     this.db.traceSteps.create({
       id: step.id,
       session_id: sessionId,
+      turn_id: step.turnId ?? null,
+      parent_id: step.parentId ?? null,
       type: step.type,
       status: step.status,
       title: step.title,
@@ -1407,14 +1420,25 @@ export class SessionManager {
       tool_name: step.toolName ?? null,
       tool_input: step.toolInput ? JSON.stringify(step.toolInput) : null,
       tool_output: step.toolOutput ?? null,
+      tool_output_truncated:
+        step.toolOutputTruncated === undefined ? null : step.toolOutputTruncated ? 1 : 0,
+      tool_output_length: step.toolOutputLength ?? null,
+      result_message_id: step.resultMessageId ?? null,
       is_error: step.isError ? 1 : null,
+      error_json: step.error ? JSON.stringify(step.error) : null,
+      permission_json: step.permission ? JSON.stringify(step.permission) : null,
+      outcome: step.outcome ?? null,
+      metrics_json: step.metrics ? JSON.stringify(step.metrics) : null,
       timestamp: step.timestamp,
+      ended_at: step.endedAt ?? null,
       duration: step.duration ?? null,
     });
   }
 
-  private updateTraceStep(stepId: string, updates: Partial<TraceStep>): void {
+  private updateTraceStep(sessionId: string, stepId: string, updates: Partial<TraceStep>): void {
     const rowUpdates: Partial<TraceStepRow> = {};
+    if (updates.turnId !== undefined) rowUpdates.turn_id = updates.turnId;
+    if (updates.parentId !== undefined) rowUpdates.parent_id = updates.parentId;
     if (updates.type !== undefined) rowUpdates.type = updates.type;
     if (updates.status !== undefined) rowUpdates.status = updates.status;
     if (updates.title !== undefined) rowUpdates.title = updates.title;
@@ -1424,10 +1448,40 @@ export class SessionManager {
       rowUpdates.tool_input = updates.toolInput ? JSON.stringify(updates.toolInput) : null;
     }
     if (updates.toolOutput !== undefined) rowUpdates.tool_output = updates.toolOutput;
+    if (updates.toolOutputTruncated !== undefined) {
+      rowUpdates.tool_output_truncated = updates.toolOutputTruncated ? 1 : 0;
+    }
+    if (updates.toolOutputLength !== undefined) {
+      rowUpdates.tool_output_length = updates.toolOutputLength;
+    }
+    if (updates.resultMessageId !== undefined) {
+      rowUpdates.result_message_id = updates.resultMessageId;
+    }
     if (updates.isError !== undefined) rowUpdates.is_error = updates.isError ? 1 : 0;
+    if (updates.error !== undefined) {
+      rowUpdates.error_json = updates.error ? JSON.stringify(updates.error) : null;
+    }
+    if (updates.permission !== undefined) {
+      rowUpdates.permission_json = updates.permission ? JSON.stringify(updates.permission) : null;
+    }
+    if (updates.outcome !== undefined) rowUpdates.outcome = updates.outcome;
+    if (updates.metrics !== undefined) {
+      rowUpdates.metrics_json = updates.metrics ? JSON.stringify(updates.metrics) : null;
+    }
     if (updates.timestamp !== undefined) rowUpdates.timestamp = updates.timestamp;
+    if (updates.endedAt !== undefined) rowUpdates.ended_at = updates.endedAt;
     if (updates.duration !== undefined) rowUpdates.duration = updates.duration;
 
-    this.db.traceSteps.update(stepId, rowUpdates);
+    const updated = this.db.traceSteps.update(stepId, rowUpdates);
+    if (updated === false) {
+      this.saveTraceStep(sessionId, {
+        id: stepId,
+        type: updates.type ?? 'tool_call',
+        status: updates.status ?? 'running',
+        title: updates.title ?? updates.toolName ?? 'Trace step',
+        timestamp: updates.timestamp ?? Date.now(),
+        ...updates,
+      });
+    }
   }
 }

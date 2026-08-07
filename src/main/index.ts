@@ -36,6 +36,10 @@ import { createPersonalAnalysisClient } from './data/personal-analysis-client';
 import { DataToolService } from './data/data-tool-service';
 import { createDataAgentRuntimeExtension } from './data/data-agent-extension';
 import { createLlmInputTableNormalizerProjectGenerator } from './data/input-table-normalizer-generator';
+import {
+  createDataTaskLlmUsageRecorder,
+  type DataTaskLlmUsageRecorder,
+} from './data/data-task-llm-usage-recorder';
 import { registerDataIpcHandlers } from './data/ipc/register-data-ipc';
 import { SessionManager } from './session/session-manager';
 import { SkillsManager } from './skills/skills-manager';
@@ -167,6 +171,7 @@ let automationService: AutomationService | null = null;
 let automationScheduler: AutomationScheduler | null = null;
 let dataTaskStore: DataTaskStore | null = null;
 let dataCommandService: DataCommandService | null = null;
+let recordDataTaskLlmUsage: DataTaskLlmUsageRecorder | undefined;
 const desktopAuthService = new DesktopAuthService(() =>
   resolveDesktopAuthOrigin(configStore.get('personalAnalysis')?.apiOrigin)
 );
@@ -1082,6 +1087,7 @@ app
     // Initialize database
     const db = initDatabase();
     appDatabase = db;
+    recordDataTaskLlmUsage = createDataTaskLlmUsageRecorder(db);
     const initializedDataTaskStore = createDataTaskStore(
       join(app.getPath('userData'), 'data', 'workspace.duckdb'),
       {
@@ -1111,6 +1117,7 @@ app
       {
         onTaskCompleted: notifyDataTaskCompleted,
         getPersonalAnalysisConnection: () => desktopAuthService.getPersonalAnalysisConnection(),
+        recordLlmUsage: (event) => recordDataTaskLlmUsage?.(event),
       }
     );
     const dataToolService = new DataToolService(dataCommandService);
@@ -1920,6 +1927,7 @@ function requireDataCommandService(): DataCommandService {
       {
         onTaskCompleted: notifyDataTaskCompleted,
         getPersonalAnalysisConnection: () => desktopAuthService.getPersonalAnalysisConnection(),
+        recordLlmUsage: (event) => recordDataTaskLlmUsage?.(event),
       }
     );
   }

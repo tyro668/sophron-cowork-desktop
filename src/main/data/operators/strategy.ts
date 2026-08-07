@@ -50,7 +50,11 @@ export const COMPILE_STRATEGIES: Partial<Record<string, CompileStrategy>> = {
   deduplicate: { compile: compileDeduplicateSql, needsColumns: true },
   filter: { compile: buildFilterSql, needsColumns: false },
   sort: { compile: wrapNoColumns(compileSortSql), needsColumns: false },
-  calculate_field: { compile: wrapNoColumns(compileCalculateFieldSql), needsColumns: false },
+  calculate_field: {
+    compile: (output, input, columns, config) =>
+      compileCalculateFieldSql(output, input, config, columns),
+    needsColumns: true,
+  },
   aggregate: { compile: wrapNoColumns(compileAggregateSql), needsColumns: false },
   limit: { compile: compileLimitSql, needsColumns: true },
   pivot: { compile: wrapNoColumns(compilePivotSql), needsColumns: false },

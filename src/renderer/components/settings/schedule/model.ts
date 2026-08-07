@@ -188,7 +188,6 @@ export function createGeneratedCloudTableProcessNode(
   result: {
     taskId: string;
     taskName: string;
-    workflowDsl: string;
     outputTableId: string;
     requiredColumns: Array<{ name: string; type?: string }>;
     expectedOutputSchema?: Array<{ name: string; type?: string }>;
@@ -200,6 +199,7 @@ export function createGeneratedCloudTableProcessNode(
     }>;
     columnsSnapshot: Array<{ name: string; type?: string }>;
     sourceSummaryHash: string;
+    workflowHash: string;
     version: number;
     generatedAt: number;
   }
@@ -211,7 +211,6 @@ export function createGeneratedCloudTableProcessNode(
     config: {
       taskId: result.taskId,
       taskName: result.taskName,
-      workflowDsl: result.workflowDsl,
       source: {
         location: getSourceLocation(config),
         tableId: config.source.tableId,
@@ -224,6 +223,8 @@ export function createGeneratedCloudTableProcessNode(
         folderId: config.source.folderId,
         columnsSnapshot: result.columnsSnapshot,
         requiredColumns: result.requiredColumns,
+        updatedAt: config.source.updatedAt,
+        contentHash: config.source.contentHash,
       },
       output: {
         location: getOutputLocation(config),
@@ -241,6 +242,7 @@ export function createGeneratedCloudTableProcessNode(
       lineage: result.lineage ?? [],
       columnsSnapshot: result.columnsSnapshot,
       sourceSummaryHash: result.sourceSummaryHash,
+      workflowHash: result.workflowHash,
       generatedVersion: result.version,
       generatedAt: result.generatedAt,
       schemaPolicy: 'required_subset',
@@ -375,10 +377,7 @@ export function validateEnabledActionNodes(
     if (node.type === 'data.task.run' && !String(node.config.taskId ?? '').trim()) {
       return tr('schedule.dataTaskRequired', '请选择要执行的数据任务');
     }
-    if (
-      node.type === CLOUD_TABLE_PROCESS_ACTION_TYPE &&
-      (!String(node.config.taskId ?? '').trim() || !String(node.config.workflowDsl ?? '').trim())
-    ) {
+    if (node.type === CLOUD_TABLE_PROCESS_ACTION_TYPE && !String(node.config.taskId ?? '').trim()) {
       return tr('schedule.generatedTaskRequired', '请先生成并确认数据任务');
     }
   }
@@ -626,7 +625,6 @@ export function defaultConfigForAction(type: string): Record<string, unknown> {
   if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE) {
     return {
       taskId: '',
-      workflowDsl: '',
       source: null,
       output: null,
       requiredColumns: [],

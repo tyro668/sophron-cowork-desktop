@@ -68,7 +68,9 @@ export const outputCodec: OperatorDslCodec = {
         ? `dataset ${quoteString(String(config?.dataset ?? ''))}`
         : destination === 'file'
           ? `file ${quoteString(String(config?.filePath ?? ''))}`
-          : `table ${quoteString(String(config?.table ?? 'clean_result'))}`;
+          : `table ${quoteString(
+              String(config?.outputTableName ?? config?.table ?? 'clean_result')
+            )}`;
     const format =
       destination === 'file' && typeof config?.format === 'string'
         ? ` format ${config.format}`

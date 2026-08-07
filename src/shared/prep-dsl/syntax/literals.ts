@@ -7,11 +7,14 @@ export function parseLiteralList(value: string): unknown[] {
 }
 
 export function parseLiteral(value: string): unknown {
-  if (value === 'true') return true;
-  if (value === 'false') return false;
-  if (value === 'null') return null;
+  if (/^true$/i.test(value)) return true;
+  if (/^false$/i.test(value)) return false;
+  if (/^null$/i.test(value)) return null;
   if (/^-?\d+(?:\.\d+)?$/.test(value)) return Number(value);
   if (value.startsWith('"') && value.endsWith('"')) return unquoteString(value);
+  if (value.startsWith("'") && value.endsWith("'")) {
+    return value.slice(1, -1).replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+  }
   return value;
 }
 

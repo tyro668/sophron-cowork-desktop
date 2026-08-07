@@ -53,6 +53,12 @@ describe('compileScalarExpression', () => {
     );
   });
 
+  it('does not rewrite conditional keywords inside string literals', () => {
+    expect(
+      compileScalarExpression("if [status] = 'if' then 'then' else CONCAT('else', 'end') end")
+    ).toBe(`CASE WHEN "status" = 'if' THEN 'then' ELSE CONCAT('else', 'end') END`);
+  });
+
   it('nested if/then/else', () => {
     expect(
       compileScalarExpression('if [a] > 0 then if [b] > 0 then [c] else [d] end else [e] end')
@@ -253,6 +259,25 @@ describe('compileScalarExpression', () => {
 });
 
 describe('compileCalculateFieldSql', () => {
+  it('replaces an existing input column when imported DSL omitted the action flag', () => {
+    const sql = compileCalculateFieldSql(
+      'out',
+      'inp',
+      {
+        calculations: [
+          {
+            field: 'Adj Close',
+            expression: "CAST(REPLACE([`Adj Close`], '$', '') AS DECIMAL(18,2))",
+          },
+        ],
+      },
+      ['Ticker', 'Adj Close']
+    );
+
+    expect(sql).toContain('SELECT * REPLACE (');
+    expect(sql).not.toContain('SELECT *,');
+  });
+
   it('single calculation', () => {
     const sql = compileCalculateFieldSql('out', 'inp', {
       calculations: [{ field: 'margin', expression: '[revenue] - [cost]' }],

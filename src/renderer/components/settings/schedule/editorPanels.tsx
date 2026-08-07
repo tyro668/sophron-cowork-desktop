@@ -11,6 +11,7 @@ import {
   AlertCircle,
   ArrowLeft,
   CalendarClock,
+  CheckCircle2,
   ChevronDown,
   Clock,
   Cloud,
@@ -36,13 +37,16 @@ import type {
   AutomationTrigger,
   AppConfig,
   DataCleaningTask,
+  DataAnalyzeTaskRequirementResult,
   DataDashboard,
+  DataGenerateTaskFromRequirementInput,
   DesktopAuthStatus,
   PersonalAnalysisProject,
   PersonalAnalysisSpace,
   PersonalAnalysisTable,
   Project,
 } from '../../../types';
+import { exportPrepWorkflowDsl } from '../../../../shared/prep-dsl';
 import { useAppStore } from '../../../store';
 import { GlassDateTimePicker } from '../../GlassDateTimePicker';
 import { GlassDropdownMenu, GlassMenuItem } from '../../GlassDropdownMenu';
@@ -84,6 +88,12 @@ import {
 } from './model';
 
 const DEFAULT_INTERVAL_END_OFFSET_MS = 24 * 60 * 60 * 1000;
+
+function createLlmUsageTraceId(): string {
+  return typeof globalThis.crypto?.randomUUID === 'function'
+    ? globalThis.crypto.randomUUID()
+    : `llm-usage-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 export function EditorHeader({
   selectedAutomation,
@@ -933,7 +943,7 @@ function CloudTableProcessActionEditor({
   outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
   onChange: (node: AutomationActionNode) => void;
-  onGeneratedTaskSuccess: () => void;
+  onGeneratedTaskSuccess: (workflowDslAvailable: boolean) => void;
   tr: (key: string, fallback: string) => string;
 }) {
   const sourceLocation = getSourceLocation(config);
@@ -951,7 +961,14 @@ function CloudTableProcessActionEditor({
       ? node.config.modelConfigSetId
       : appConfig?.activeConfigSetId;
   const [isGeneratingTask, setIsGeneratingTask] = useState(false);
+  const [isAnalyzingTask, setIsAnalyzingTask] = useState(false);
+  const [requirementAnalysis, setRequirementAnalysis] =
+    useState<DataAnalyzeTaskRequirementResult | null>(null);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const usageTraceIdRef = useRef(createLlmUsageTraceId());
+  const resetUsageTraceId = () => {
+    usageTraceIdRef.current = createLlmUsageTraceId();
+  };
 
   const updateConfig = (
     next: CloudTableAutomationConfig,
@@ -969,6 +986,8 @@ function CloudTableProcessActionEditor({
     });
   };
   const updateSource = (source: CloudAutomationSourceTable) => {
+    setRequirementAnalysis(null);
+    resetUsageTraceId();
     const previousDefaultName = `${config.source.tableName || 'cloud_table'}_processed`;
     const nextDefaultName = `${source.tableName || 'cloud_table'}_processed`;
     updateConfig({
@@ -1011,75 +1030,104 @@ function CloudTableProcessActionEditor({
     // Target tables differ between cloud and local, so clear the target on switch.
     updateConfig({ ...config, output: { ...config.output, location, targetTableId: '' } });
   };
-  const generateTask = async () => {
+  const buildGenerationInput = (
+    processRequirement = config.processRequirement
+  ): DataGenerateTaskFromRequirementInput => {
+    const reusableTaskConfig = getStashedDataProcessConfig(
+      node.config,
+      DATA_PROCESS_TASK_CONFIG_KEY
+    );
+    const reusableTaskSource =
+      reusableTaskConfig?.source &&
+      typeof reusableTaskConfig.source === 'object' &&
+      !Array.isArray(reusableTaskConfig.source)
+        ? (reusableTaskConfig.source as Record<string, unknown>)
+        : null;
+    const canReuseGeneratedTask =
+      reusableTaskSource?.location === sourceLocation &&
+      reusableTaskSource.tableId === config.source.tableId;
+    const reusableTaskOutput =
+      reusableTaskConfig?.output &&
+      typeof reusableTaskConfig.output === 'object' &&
+      !Array.isArray(reusableTaskConfig.output)
+        ? (reusableTaskConfig.output as Record<string, unknown>)
+        : null;
+    const canReuseGeneratedOutputTable =
+      canReuseGeneratedTask &&
+      reusableTaskOutput?.tableName === config.output.tableName &&
+      typeof reusableTaskOutput.localOutputTableId === 'string';
+    return {
+      usageTraceId: usageTraceIdRef.current,
+      source: {
+        location: sourceLocation,
+        tableId: config.source.tableId,
+        tableName: config.source.tableName,
+        spaceId: config.source.spaceId,
+        spaceName: config.source.spaceName,
+        projectId: config.source.projectId,
+        projectName: config.source.projectName,
+        datasourceId: config.source.datasourceId,
+        folderId: config.source.folderId,
+        columnsSnapshot: normalizeAutomationColumns(config.source.columns),
+        updatedAt: config.source.updatedAt,
+        contentHash: config.source.contentHash,
+      },
+      processRequirement,
+      output: {
+        location: outputLocation,
+        writeMode: config.output.writeMode,
+        targetTableId: config.output.targetTableId || undefined,
+        tableName: config.output.tableName,
+        spaceId: config.output.spaceId || config.source.spaceId,
+        projectId: config.output.projectId || config.source.projectId,
+        datasourceId: config.output.datasourceId || config.source.datasourceId,
+        folderId: config.output.folderId || config.source.folderId,
+        localOutputTableId: canReuseGeneratedOutputTable
+          ? String(reusableTaskOutput.localOutputTableId)
+          : undefined,
+      },
+      modelConfigSetId: selectedModelConfigSetId,
+      model: typeof node.config.model === 'string' ? node.config.model : undefined,
+      reuseTaskId:
+        canReuseGeneratedTask && typeof reusableTaskConfig?.taskId === 'string'
+          ? reusableTaskConfig.taskId
+          : undefined,
+      currentVersion:
+        canReuseGeneratedTask && typeof reusableTaskConfig?.generatedVersion === 'number'
+          ? reusableTaskConfig.generatedVersion
+          : undefined,
+    };
+  };
+  const analyzeTask = async () => {
+    if (!window.electronAPI?.data?.analyzeTaskRequirement) return;
+    setIsAnalyzingTask(true);
+    setRequirementAnalysis(null);
+    setGenerationError(null);
+    try {
+      setRequirementAnalysis(
+        await window.electronAPI.data.analyzeTaskRequirement(buildGenerationInput())
+      );
+    } catch (error) {
+      setGenerationError(
+        error instanceof Error
+          ? error.message
+          : tr('schedule.analyzeTaskFailed', '解析处理要求失败')
+      );
+    } finally {
+      setIsAnalyzingTask(false);
+    }
+  };
+  const generateTask = async (processRequirement = config.processRequirement) => {
     if (!window.electronAPI?.data?.generateTaskFromRequirement) return;
     setIsGeneratingTask(true);
     setGenerationError(null);
     try {
-      const reusableTaskConfig = getStashedDataProcessConfig(
-        node.config,
-        DATA_PROCESS_TASK_CONFIG_KEY
+      const result = await window.electronAPI.data.generateTaskFromRequirement(
+        buildGenerationInput(processRequirement)
       );
-      const reusableTaskSource =
-        reusableTaskConfig?.source &&
-        typeof reusableTaskConfig.source === 'object' &&
-        !Array.isArray(reusableTaskConfig.source)
-          ? (reusableTaskConfig.source as Record<string, unknown>)
-          : null;
-      const canReuseGeneratedTask =
-        reusableTaskSource?.location === sourceLocation &&
-        reusableTaskSource.tableId === config.source.tableId;
-      const reusableTaskOutput =
-        reusableTaskConfig?.output &&
-        typeof reusableTaskConfig.output === 'object' &&
-        !Array.isArray(reusableTaskConfig.output)
-          ? (reusableTaskConfig.output as Record<string, unknown>)
-          : null;
-      const canReuseGeneratedOutputTable =
-        canReuseGeneratedTask &&
-        reusableTaskOutput?.tableName === config.output.tableName &&
-        typeof reusableTaskOutput.localOutputTableId === 'string';
-      const reusableLocalOutputTableId = canReuseGeneratedOutputTable
-        ? String(reusableTaskOutput.localOutputTableId)
-        : undefined;
-      const result = await window.electronAPI.data.generateTaskFromRequirement({
-        source: {
-          location: sourceLocation,
-          tableId: config.source.tableId,
-          tableName: config.source.tableName,
-          spaceId: config.source.spaceId,
-          spaceName: config.source.spaceName,
-          projectId: config.source.projectId,
-          projectName: config.source.projectName,
-          datasourceId: config.source.datasourceId,
-          folderId: config.source.folderId,
-          columnsSnapshot: normalizeAutomationColumns(config.source.columns),
-        },
-        processRequirement: config.processRequirement,
-        output: {
-          location: outputLocation,
-          writeMode: config.output.writeMode,
-          targetTableId: config.output.targetTableId || undefined,
-          tableName: config.output.tableName,
-          spaceId: config.output.spaceId || config.source.spaceId,
-          projectId: config.output.projectId || config.source.projectId,
-          datasourceId: config.output.datasourceId || config.source.datasourceId,
-          folderId: config.output.folderId || config.source.folderId,
-          localOutputTableId: reusableLocalOutputTableId,
-        },
-        modelConfigSetId: selectedModelConfigSetId,
-        model: typeof node.config.model === 'string' ? node.config.model : undefined,
-        reuseTaskId:
-          canReuseGeneratedTask && typeof reusableTaskConfig?.taskId === 'string'
-            ? reusableTaskConfig.taskId
-            : undefined,
-        currentVersion:
-          canReuseGeneratedTask && typeof reusableTaskConfig?.generatedVersion === 'number'
-            ? reusableTaskConfig.generatedVersion
-            : undefined,
-      });
       onChange(createGeneratedCloudTableProcessNode(node, config, result));
-      onGeneratedTaskSuccess();
+      onGeneratedTaskSuccess(result.workflowDslAvailable);
+      resetUsageTraceId();
     } catch (error) {
       setGenerationError(
         error instanceof Error
@@ -1142,33 +1190,38 @@ function CloudTableProcessActionEditor({
         <div className="space-y-4">
           <AutomationPromptPermissionFields
             value={config.processRequirement}
-            onChange={(processRequirement) =>
+            onChange={(processRequirement) => {
+              setRequirementAnalysis(null);
+              resetUsageTraceId();
               updateConfig({
                 ...config,
                 processRequirement,
-              })
-            }
+              });
+            }}
             selectedSkillNames={conversationSelectedSkillNames}
             onSelectedSkillNamesChange={(selectedSkillNames) =>
               updateConfig(config, { selectedSkillNames })
             }
-            onSkillSelectionCommit={({ value, selectedSkillNames }) =>
+            onSkillSelectionCommit={({ value, selectedSkillNames }) => {
+              setRequirementAnalysis(null);
+              resetUsageTraceId();
               updateConfig(
                 {
                   ...config,
                   processRequirement: value,
                 },
                 { selectedSkillNames }
-              )
-            }
+              );
+            }}
             appConfig={appConfig}
             selectedModelConfigSetId={selectedModelConfigSetId}
-            onModelSelect={({ configSetId, model }) =>
+            onModelSelect={({ configSetId, model }) => {
+              resetUsageTraceId();
               updateConfig(config, {
                 modelConfigSetId: configSetId,
                 model,
-              })
-            }
+              });
+            }}
             label={tr('schedule.cloudProcessRequirement', '处理要求')}
             placeholder={
               sourceLocation === 'local'
@@ -1184,25 +1237,124 @@ function CloudTableProcessActionEditor({
             tr={tr}
           />
           <div className="flex flex-col items-stretch gap-2 sm:items-end">
+            {requirementAnalysis && (
+              <div className="w-full rounded-lg border border-border-muted bg-background/45 p-3">
+                <div className="mb-2 text-[12px] font-semibold text-text-secondary">
+                  {tr('schedule.requirementAnalysisResult', '需求解析结果')}
+                </div>
+                <div className="space-y-2">
+                  {requirementAnalysis.items.map((item, index) => (
+                    <div
+                      key={`${item.requirement}-${index}`}
+                      className="flex items-start gap-2 rounded-md bg-bg-secondary/50 px-2.5 py-2"
+                    >
+                      {item.status === 'supported' ? (
+                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
+                      ) : (
+                        <AlertCircle
+                          className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${
+                            item.status === 'ambiguous' ? 'text-warning' : 'text-danger'
+                          }`}
+                        />
+                      )}
+                      <div className="min-w-0 text-[12px] leading-5">
+                        <div className="text-text-secondary">{item.requirement}</div>
+                        {item.reason && <div className="text-text-muted">{item.reason}</div>}
+                      </div>
+                      <span
+                        className={`ml-auto shrink-0 text-[11px] font-medium ${
+                          item.status === 'supported'
+                            ? 'text-success'
+                            : item.status === 'ambiguous'
+                              ? 'text-warning'
+                              : 'text-danger'
+                        }`}
+                      >
+                        {item.status === 'supported'
+                          ? tr('schedule.requirementSupported', '可生成')
+                          : item.status === 'ambiguous'
+                            ? tr('schedule.requirementAmbiguous', '需确认')
+                            : tr('schedule.requirementUnsupported', '暂不支持')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRequirementAnalysis(null)}
+                    className="h-8 rounded-lg border border-border-muted px-3 text-[12px] font-medium text-text-secondary hover:bg-bg-secondary"
+                  >
+                    {tr('schedule.modifyRequirement', '返回修改')}
+                  </button>
+                  {requirementAnalysis.items.some((item) => item.status === 'supported') && (
+                    <button
+                      type="button"
+                      disabled={isGeneratingTask}
+                      onClick={() =>
+                        void generateTask(
+                          requirementAnalysis.items
+                            .filter((item) => item.status === 'supported')
+                            .map((item) => item.suggestedRequirement || item.requirement)
+                            .join('\n')
+                        )
+                      }
+                      className="h-8 rounded-lg border border-success bg-success/5 px-3 text-[12px] font-semibold text-success hover:bg-success/10 disabled:opacity-50"
+                    >
+                      {requirementAnalysis.status === 'supported'
+                        ? tr('schedule.confirmGenerateTask', '确认生成')
+                        : tr('schedule.generateSupportedOnly', '仅生成可支持部分')}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            {isAnalyzingTask && (
+              <div
+                className="flex w-full items-center gap-2 rounded-md border border-success/20 bg-success/5 px-2.5 py-2 text-[12px] leading-5 text-text-secondary"
+                role="status"
+                aria-live="polite"
+              >
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-success" />
+                {tr('schedule.analyzingTaskRequirement', '正在拆解要求并匹配支持能力…')}
+              </div>
+            )}
+            {isGeneratingTask && (
+              <div
+                className="flex w-full items-center gap-2 rounded-md border border-success/20 bg-success/5 px-2.5 py-2 text-[12px] leading-5 text-text-secondary"
+                role="status"
+                aria-live="polite"
+              >
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-success" />
+                {tr(
+                  'schedule.parsingAndValidatingTask',
+                  '正在拆解处理要求，并校验字段、参数和任务逻辑…'
+                )}
+              </div>
+            )}
             <button
               type="button"
               disabled={
+                isAnalyzingTask ||
                 isGeneratingTask ||
+                Boolean(requirementAnalysis) ||
                 !config.source.tableId.trim() ||
                 !config.processRequirement.trim() ||
                 (config.output.writeMode === 'replace' && !config.output.targetTableId.trim())
               }
-              onClick={() => void generateTask()}
+              onClick={() => void analyzeTask()}
               className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-success bg-success/5 px-3 text-xs font-semibold text-success transition-colors hover:bg-success/10 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
             >
-              {isGeneratingTask ? (
+              {isAnalyzingTask || isGeneratingTask ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
                 <Wand2 className="h-3.5 w-3.5" />
               )}
-              {isGeneratingTask
-                ? tr('schedule.generatingTask', '正在生成')
-                : tr('schedule.generateDataTask', '生成数据任务')}
+              {isAnalyzingTask
+                ? tr('schedule.analyzingTask', '正在解析')
+                : isGeneratingTask
+                  ? tr('schedule.parsingAndGeneratingTask', '正在解析并生成')
+                  : tr('schedule.parseAndGenerateDataTask', '解析并生成')}
             </button>
             {generationError && (
               <div className="w-full rounded-md border border-warning/25 bg-warning/10 px-2.5 py-2 text-[12px] leading-5 text-warning">
@@ -1905,7 +2057,7 @@ export function ActionChainSection({
   outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
   onDraftChange: (draft: AutomationDraft) => void;
-  onGeneratedTaskSuccess: () => void;
+  onGeneratedTaskSuccess: (workflowDslAvailable: boolean) => void;
   tr: (key: string, fallback: string) => string;
 }) {
   const nodes = draft.actionGraph.nodes;
@@ -2007,7 +2159,7 @@ function ActionStepCard({
   inputTables: DataDashboard['datasets'];
   outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
-  onGeneratedTaskSuccess: () => void;
+  onGeneratedTaskSuccess: (workflowDslAvailable: boolean) => void;
   onRemove: () => void;
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
@@ -2112,7 +2264,7 @@ function DataProcessActionEditor({
   inputTables: DataDashboard['datasets'];
   outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
-  onGeneratedTaskSuccess: () => void;
+  onGeneratedTaskSuccess: (workflowDslAvailable: boolean) => void;
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
 }) {
@@ -2227,7 +2379,10 @@ function GeneratedTaskReviewCard({
   node: AutomationActionNode;
   tr: (key: string, fallback: string) => string;
 }) {
-  const workflowDsl = String(node.config.workflowDsl ?? '');
+  const taskId = String(node.config.taskId ?? '').trim();
+  const [workflowDsl, setWorkflowDsl] = useState('');
+  const [isLoadingWorkflowDsl, setIsLoadingWorkflowDsl] = useState(false);
+  const [workflowDslLoadFailed, setWorkflowDslLoadFailed] = useState(false);
   const requiredColumns = Array.isArray(node.config.requiredColumns)
     ? node.config.requiredColumns
         .map((column) =>
@@ -2237,6 +2392,27 @@ function GeneratedTaskReviewCard({
         )
         .filter(Boolean)
     : [];
+  const loadCurrentWorkflowDsl = useCallback(async () => {
+    if (!taskId || !window.electronAPI?.data?.getTaskWorkflow) return;
+    setIsLoadingWorkflowDsl(true);
+    setWorkflowDslLoadFailed(false);
+    try {
+      const workflow = await window.electronAPI.data.getTaskWorkflow(taskId);
+      setWorkflowDsl(exportPrepWorkflowDsl(workflow.nodes, workflow.edges));
+    } catch {
+      setWorkflowDsl('');
+      setWorkflowDslLoadFailed(true);
+    } finally {
+      setIsLoadingWorkflowDsl(false);
+    }
+  }, [taskId]);
+
+  useEffect(() => {
+    setWorkflowDsl('');
+    setWorkflowDslLoadFailed(false);
+    void loadCurrentWorkflowDsl();
+  }, [loadCurrentWorkflowDsl]);
+
   return (
     <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-3">
       <div className="mb-2 text-[12px] font-semibold text-text-secondary">
@@ -2250,14 +2426,39 @@ function GeneratedTaskReviewCard({
           )}
         </div>
       )}
-      <details className="group">
-        <summary className="cursor-pointer text-[12px] font-medium text-success">
-          {tr('schedule.workflowDslPreview', '查看任务逻辑')}
-        </summary>
-        <pre className="mt-2 max-h-48 overflow-auto rounded-md border border-border-muted bg-background/60 p-2 text-[11px] leading-5 text-text-secondary">
-          {workflowDsl || '-'}
-        </pre>
-      </details>
+      {taskId && (
+        <details
+          className="group"
+          onToggle={(event) => {
+            if (event.currentTarget.open) void loadCurrentWorkflowDsl();
+          }}
+        >
+          <summary className="cursor-pointer text-[12px] font-medium text-success">
+            {tr('schedule.currentWorkflowDslPreview', '查看当前任务逻辑')}
+          </summary>
+          {isLoadingWorkflowDsl ? (
+            <div
+              className="mt-2 flex items-center gap-2 text-[12px] text-text-muted"
+              role="status"
+              aria-live="polite"
+            >
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              {tr('schedule.loadingWorkflowDsl', '正在读取任务逻辑…')}
+            </div>
+          ) : workflowDslLoadFailed ? (
+            <div
+              className="mt-2 rounded-md border border-warning/25 bg-warning/10 px-2.5 py-2 text-[12px] leading-5 text-warning"
+              role="alert"
+            >
+              {tr('schedule.workflowDslLoadFailed', '读取当前任务逻辑失败')}
+            </div>
+          ) : (
+            <pre className="mt-2 max-h-48 overflow-auto rounded-md border border-border-muted bg-background/60 p-2 text-[11px] leading-5 text-text-secondary">
+              {workflowDsl || tr('schedule.workflowDslEmpty', '当前数据任务没有可展示的处理逻辑')}
+            </pre>
+          )}
+        </details>
+      )}
     </div>
   );
 }
@@ -2277,7 +2478,7 @@ function ActionConfigEditor({
   inputTables: DataDashboard['datasets'];
   outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
-  onGeneratedTaskSuccess: () => void;
+  onGeneratedTaskSuccess: (workflowDslAvailable: boolean) => void;
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
 }) {
