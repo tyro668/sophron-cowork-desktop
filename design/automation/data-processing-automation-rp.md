@@ -2,22 +2,22 @@
 
 ## 1. 文档目的
 
-本文描述当前自动化数据处理任务唯一有效的生成、验证、保存和运行链路。配置期由大模型生成标准 JavaScript；运行期执行已经保存的 Prep DSL，不再调用大模型。
+本文描述当前自动化数据处理任务唯一有效的生成、验证、保存和运行链路。配置期由大模型生成标准 JavaScript；运行期执行已经保存的 Workflow nodes/edges，不再调用大模型。
 
-本文以当前代码为准，不保留历史 AST 编译器、TypeScript 编译前端、模型直出 DSL 或多语言 frontend 方案。
+本文以当前代码为准，不保留历史的整段 JavaScript/TypeScript AST → Workflow IR 编译前端、模型直出 DSL 或多语言 frontend 方案。实现仍使用 TypeScript Compiler API 对 `expr(row => ...)` 内的受限表达式做静态类型检查和确定性 lowering；它不是 Workflow 源语言前端，也不负责构建 Workflow IR。
 
 ## 2. 核心原则
 
 1. 大模型只参与配置期生成和定向修复。
 2. 大模型必须返回标准 JavaScript 源码，不允许直接返回 Prep DSL、Operations JSON 或 Workflow IR。
-3. JavaScript 语法只由 Node/V8 原生编译器检查。
+3. 整段 JavaScript 程序的语法准入由 Node/V8 原生编译器完成；V8 通过后，`expr(row => ...)` 内的受限表达式另由 TypeScript Compiler API 做静态能力和类型检查。
 4. JavaScript 只能在一次性权限沙箱中通过固定、操作无关的 Workflow IR Bridge 构建 IR。
 5. Stable Workflow IR 是生成链路的稳定协议，当前来源语言固定为 `javascript`。
-6. IR 到 Operations JSON、Prep DSL 的转换完全确定，不调用大模型。
+6. IR 到平台 operator 配置和 Workflow nodes/edges 的 lowering 完全确定，不调用大模型；Prep DSL 仅作为兼容和审计导出。
 7. 同一份 JavaScript 构建两次 IR，并比较 Semantic Hash，拒绝非确定性结果。
-8. 每个辅助函数最多产生一个 Workflow operation；`main()` 负责数据流编排。
+8. 辅助函数可以按一个内聚业务意图顺序产生多个 Workflow operation；中间 Workflow value 必须使用具名 `const` 串联并保持线性数据流，`main()` 负责输入、辅助函数调用和输出编排。
 9. 编译或运行错误必须携带函数名、行号和列号；源码结构有效且诊断明确指向函数时，模型只返回该函数的受控 Patch，其他源码保持不变。
-10. 生成结果必须经过 Prep DSL 编译、临时执行和输出 Schema 校验后才能保存。
+10. 生成结果必须经过平台节点配置校验、临时执行和输出 Schema 校验后才能保存；兼容 Prep DSL 导出失败不阻断保存和运行。
 11. 自动化运行期只执行已保存 Workflow，不重新生成处理逻辑。
 12. 预览降级、回滚和临时资源清理失败必须记录日志。
 
@@ -35,16 +35,14 @@ flowchart TD
     H --> I[第二次沙箱构建]
     I --> J{Semantic Hash 一致}
     J -->|否| R[生成诊断]
-    J -->|是| K[原子辅助函数检查]
-    K -->|失败| R
+    J -->|是| K[固定 IR Lowering]
     R --> P[LLM 返回函数 Patch 或完整修正 JavaScript]
     P --> E
-    K -->|通过| L[固定 Lowering]
-    L --> M[Operations JSON 1.0]
-    M --> N[固定 Operations Exporter]
-    N --> O[Prep DSL]
-    O --> Q[DSL 编译]
-    Q --> S[临时执行和输出 Schema 校验]
+    K --> L[平台 operator 配置]
+    L --> M[Workflow nodes/edges]
+    M --> N[节点配置与图校验]
+    N --> S[临时执行、预览和输出 Schema 校验]
+    M -.可选兼容/审计导出.-> O[Prep DSL]
     S -->|失败且可修复| R
     S -->|通过| T[保存 Task Workflow]
     T --> U[自动化运行已保存 Workflow]
@@ -87,23 +85,20 @@ flowchart TD
 JavaScript 使用普通函数声明和固定 Workflow IR Bridge：
 
 ```javascript
-function removeCount(input) {
-  return workflow.step(input, 'drop', {
+function cleanTicker(input) {
+  const withoutCount = workflow.step(input, 'drop', {
     columns: ['记录数'],
   });
-}
-
-function normalizeTicker(input) {
-  return workflow.step(input, 'derive', {
+  const normalized = workflow.step(withoutCount, 'derive', {
     column: 'ticker',
-    expression: fn.upper(col('ticker')),
+    expression: expr((row) => upper(row['ticker'])),
   });
+  return normalized;
 }
 
 function main() {
   const source = workflow.input(INPUT_TABLE_ID, { alias: 'src' });
-  const withoutCount = removeCount(source);
-  const normalized = normalizeTicker(withoutCount);
+  const normalized = cleanTicker(source);
   return workflow.output(normalized, OUTPUT_TABLE_NAME, { mode: 'replace' });
 }
 ```
@@ -113,7 +108,7 @@ function main() {
 - 必须声明具名 `main()`。
 - 数据处理只能通过注入的 `workflow.input()`、`workflow.step()`、`workflow.output()` Bridge API。
 - operation type 和 payload 必须来自统一操作注册表。
-- 辅助函数最多产生一个 operation。
+- 辅助函数可以为一个内聚业务意图产生多个顺序 operation；每一步必须接收前一步返回的 Workflow value，中间值使用描述性的具名 `const`，不得分支或读取中间数据。
 - `main()` 创建输入、调用辅助函数并输出结果。
 - 不允许 import/export、Node API、网络、文件、子进程和动态代码生成。
 - 当前自动化只有一个输入数据集，不开放 join 和集合运算。
@@ -137,6 +132,8 @@ new vm.Script(source, { filename: 'generated-workflow.js' });
 - `functionName`
 
 系统使用 Acorn 解析标准 JavaScript，仅获取顶层具名函数的名称和 `start/end` 范围，用于错误归属、结构约束和受控 Patch。Acorn AST 不解释 Workflow 业务语义，也不生成 IR；最终源码仍必须由 V8 编译。
+
+`javascript-expression-compiler.ts` 使用 TypeScript Compiler API 对 `expr(row => ...)` 回调内的受限表达式进行静态检查，并将其确定性 lowering 为平台 expression。该步骤只处理 operation payload 中的表达式，不执行源码、不创建 Workflow operation，也不存在 JavaScript → TypeScript Compiler → Workflow IR 的旁路。
 
 ## 7. 沙箱与固定 Workflow IR Bridge
 
@@ -191,13 +188,9 @@ provenance 保存 operation 对应的 JavaScript 函数、行号和列号。
 
 IR 的 Semantic Hash 排除源码行列等非语义信息。相同源码连续执行两次产生不同 Hash 时，返回 `NON_DETERMINISTIC_WORKFLOW_BUILD`，不进入 lowering。
 
-## 9. 原子辅助函数和受控源码修复
+## 9. 内聚辅助函数和受控源码修复
 
-IR 构建后按 provenance 聚合 operation。非 `main` 辅助函数产生多个 operation 时返回：
-
-```text
-NON_ATOMIC_WORKFLOW_HELPER
-```
+IR provenance 为每个 operation 保存来源函数和源码位置。同一辅助函数可以对应多个线性 operation；校验重点是 Workflow 图、operation payload、表达式能力和字段语义，而不是限制每个函数只能产生一个 operation。
 
 诊断包含具体函数名和源码位置。原源码能被 Acorn 定位且诊断明确指向函数时，修复响应返回：
 
@@ -205,7 +198,7 @@ NON_ATOMIC_WORKFLOW_HELPER
 {
   "javascriptPatch": {
     "functionName": "extractYearMonth",
-    "replacementSource": "function extractYear(...) {...}\nfunction extractMonth(...) {...}\nfunction extractYearMonth(...) {...}"
+    "replacementSource": "function extractYearMonth(...) {...}"
   }
 }
 ```
@@ -213,7 +206,7 @@ NON_ATOMIC_WORKFLOW_HELPER
 修复规则：
 
 - `functionName` 必须与系统指定的目标函数完全一致。
-- `replacementSource` 必须保留目标函数，可以增加名称不冲突的原子辅助函数。
+- `replacementSource` 必须保留目标函数，可以增加名称不冲突的辅助函数。
 - 非 `main` Patch 不允许包含 `main()`，也不允许覆盖其他已有函数。
 - 系统通过 Acorn AST 范围只替换目标函数区间，区间外源码保持字节级不变。
 - Patch 后的完整源码必须先通过 V8 编译，再重新执行完整 Bridge、IR、lowering 和 dry-run 流程。
@@ -235,19 +228,21 @@ NON_ATOMIC_WORKFLOW_HELPER
 calculate_field → field_select → field_mapping
 ```
 
-这种展开由固定 lowerer 完成，不由模型生成，也不在 AI 层生成完整 Prep DSL。
+这种展开由固定 lowerer 完成，不由模型生成，也不在 AI 层生成完整 Prep DSL。生成链路以平台 nodes/edges 为执行与保存的 source of truth；由 nodes/edges 导出的 Prep DSL 仅用于兼容和审计，导出失败会记录日志但不会使已通过原生图校验的 candidate 失败。
 
-## 11. DSL 编译与临时验证
+## 11. 原生节点校验与临时验证
 
-生成的 Prep DSL 必须经过：
+生成的 Workflow candidate 必须经过：
 
-1. Prep DSL parser。
-2. Workflow AST → nodes/edges 编译。
-3. 输入、输出资源绑定。
+1. Stable Workflow IR 校验和确定性 lowering。
+2. 输入、输出资源绑定。
+3. Workflow nodes/edges 与节点配置校验。
 4. 临时 Task 执行。
 5. 小样本预览。
 6. 输出 Schema 校验和校准。
 7. diagnostic 汇总。
+
+Prep DSL parser 只用于用户显式提交 DSL、运行调试 override 等兼容入口，不是 AI 生成 Workflow 的保存门禁。兼容 DSL 会从已生成的 nodes/edges 尽力导出，`workflowDslAvailable` 表示导出是否成功。
 
 只有无 error diagnostic 的 candidate 才能保存。网络、权限、超时、文件不存在等基础设施错误不交给模型修复；明确关联到 JavaScript helper 的语法、SDK、IR 或字段语义错误可以进入受控源码修复。
 
@@ -271,18 +266,30 @@ calculate_field → field_select → field_mapping
 
 - 相同 Task 的生成、编辑和运行使用 `task:<taskId>` keyed lock。
 - 云镜像刷新使用独立 keyed lock。
-- Prep DSL candidate 使用有界 LRU 缓存。
+- 显式 DSL 编译入口的 candidate 使用有界 LRU 缓存。
 - 临时执行结束后清理临时表和缓存。
 - 锁等待会忽略前一个调用已经向其调用方返回的异常，以保证后续请求继续取得锁。
 - 其他预览降级、回滚和清理失败都必须记录结构化日志。
 
 ## 14. 主要代码
 
-- `src/main/data/data-command-service.ts`
+- `src/main/data/data-command-service.ts`：保持 IPC/Tool 公共命令契约的轻量门面。
+- `src/main/data/task-command-service.ts`：任务列表、创建和更新。
+- `src/main/data/workflow-authoring-command-service.ts`：Workflow 查询、DSL 应用/导出和节点配置。
+- `src/main/data/generated-task-command-service.ts`：需求分析、生成、诊断修复、候选校验、保存和回滚。
+- `src/main/data/task-execution-command-service.ts`：普通任务和自动生成任务的执行、提交、云端交付及完成通知。
+- `src/main/data/automation-input-resolver.ts`：本地输入解析与云表镜像刷新、复用。
+- `src/main/data/generated-output-resolver.ts`：自动生成任务的本地输出表查找或创建。
+- `src/main/data/workflow-dsl-compiler.ts`：显式 Prep DSL 编译、资源绑定和共享 LRU 缓存。
+- `src/main/data/workflow-preview-service.ts`：Workflow/数据集预览与降级策略。
+- `src/main/data/data-command-resources.ts`：任务、输入表、输出表的统一查询和存在性/唯一性校验。
+- `src/main/data/data-command-lock-coordinator.ts`：跨业务服务共享的 keyed lock。
+- `src/main/data/data-command-utils.ts`：纯转换、诊断、错误映射、日志和语义哈希工具。
 - `src/main/data/data-task-store.ts`
 - `src/main/data/ipc/data-tasks-ipc.ts`
 - `src/main/data/workflow/workflow-generator.ts`
 - `src/main/data/workflow/javascript-runtime.ts`
+- `src/main/data/workflow/javascript-expression-compiler.ts`
 - `src/main/data/workflow/workflow-ir-operation-registry.ts`
 - `src/main/data/workflow/workflow-model.ts`
 - `src/main/data/workflow/workflow-ir.ts`
@@ -294,15 +301,16 @@ calculate_field → field_select → field_mapping
 ## 15. 验收标准
 
 - LLM 生成标准 JavaScript，V8 在沙箱执行前返回精确语法诊断。
-- 生产代码中不存在 JavaScript/TypeScript AST → Workflow IR 编译器。
+- 生产代码中不存在整段 JavaScript/TypeScript AST → Workflow IR 编译器；TypeScript Compiler API 只用于 `expr(row => ...)` 的受限静态表达式检查和 lowering。
 - 生产代码中不存在模型直出 DSL、Operations JSON 或 IR 的回退入口。
 - Bridge 只包含固定的 `input/step/output`，不存在逐 operation SDK 方法。
 - 新增 operation 不需要修改 JavaScript Bridge。
 - IR 只接受 `sourceLanguage: "javascript"`。
 - 同一源码的 IR Semantic Hash 稳定。
-- 非原子 helper 能定位函数并通过 Acorn 范围 Patch 修复，其他源码保持不变。
-- Operations JSON 与 Prep DSL 完全由固定转换器产生。
-- 保存前必须完成 DSL 编译、临时执行和输出 Schema 校验。
+- 多 operation helper 的中间 Workflow value 使用具名 `const` 保持线性数据流。
+- 诊断能定位函数并通过 Acorn 范围 Patch 修复，其他源码保持不变。
+- 平台 operator 配置和 nodes/edges 完全由固定 lowerer 产生；兼容 Prep DSL 由 nodes/edges 确定性导出。
+- 保存前必须完成原生节点配置校验、临时执行和输出 Schema 校验；兼容 DSL 导出失败不阻断保存。
 - 运行期不调用大模型。
 - 预览降级、回滚和清理失败有日志。
 - TypeScript 类型检查和数据任务相关测试通过。
