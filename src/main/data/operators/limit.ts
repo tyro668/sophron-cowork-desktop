@@ -52,7 +52,21 @@ function compileFixedSql(
 
   if (orderBy) {
     if (ties) {
-      return `CREATE TEMP TABLE ${output} AS WITH numbered AS (SELECT *, RANK() OVER (ORDER BY ${orderBy}) AS ${rk}, ROW_NUMBER() OVER (ORDER BY ${orderBy}) AS ${rn} FROM ${input}) ${projectionSub} FROM numbered WHERE ${rn} > ${parsed.offset} AND ${rk} <= COALESCE((SELECT ${rk} FROM numbered WHERE ${rn} = ${parsed.offset + rows}), (SELECT ${rk} FROM numbered ORDER BY ${rn} DESC LIMIT 1)) ORDER BY ${orderBy}`;
+      return `CREATE TEMP TABLE ${output} AS
+        WITH numbered AS (
+          SELECT *,
+            ROW_NUMBER() OVER (ORDER BY ${orderBy}) AS ${rn},
+            RANK() OVER (ORDER BY ${orderBy}) AS ${rk}
+          FROM ${input}
+        )
+        ${projectionSub}
+        FROM numbered
+        WHERE ${rn} > ${parsed.offset}
+          AND ${rk} <= COALESCE(
+            (SELECT ${rk} FROM numbered WHERE ${rn} = ${parsed.offset + rows}),
+            (SELECT ${rk} FROM numbered ORDER BY ${rn} DESC LIMIT 1)
+          )
+        ORDER BY ${orderBy}`;
     }
     return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} ORDER BY ${orderBy} LIMIT ${rows}${offsetStr}`;
   }

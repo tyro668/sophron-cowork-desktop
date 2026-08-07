@@ -23,20 +23,24 @@ function extractFieldName(value: string): string {
 export function compileJoinConditionList(value: unknown): string {
   const conditions = objectArray(value);
   return conditions
-    .flatMap((condition) => {
-      if (typeof condition.left !== 'string' || typeof condition.right !== 'string') return [];
+    .map((condition) => {
+      if (typeof condition.left !== 'string' || typeof condition.right !== 'string') {
+        throw new Error('Non-cross join requires at least one valid condition');
+      }
       const left = condition.left.trim();
       const right = condition.right.trim();
-      if (!left || !right) return [];
       const leftRef = parseFieldRef(left);
       const rightRef = parseFieldRef(right);
       const leftName = leftRef?.name ?? lastQualifiedPart(left);
       const rightName = rightRef?.name ?? lastQualifiedPart(right);
+      if (!left || !right || !leftName || !rightName) {
+        throw new Error('Non-cross join requires at least one valid condition');
+      }
       const operator = typeof condition.operator === 'string' ? condition.operator : '=';
       if (!JOIN_CONDITION_OPERATORS.has(operator)) {
         throw new Error(`Unsupported join condition operator: ${operator}`);
       }
-      return [`l.${quoteIdentifier(leftName)} ${operator} r.${quoteIdentifier(rightName)}`];
+      return `l.${quoteIdentifier(leftName)} ${operator} r.${quoteIdentifier(rightName)}`;
     })
     .join(' AND ');
 }
@@ -164,14 +168,15 @@ export function compileAsofJoinSql(
   const operator = asof.operator ?? '>=';
   const isBidirectional = operator === 'nearest';
   const byConditions = (asof.by ?? [])
-    .flatMap((condition) => {
+    .map((condition) => {
       const left = condition.left;
       const right = condition.right;
-      return left && right
-        ? [
-            `r.${quoteIdentifier(extractFieldName(right))} = l.${quoteIdentifier(extractFieldName(left))}`,
-          ]
-        : [];
+      const leftName = extractFieldName(left);
+      const rightName = extractFieldName(right);
+      if (!left || !right || !leftName || !rightName) {
+        throw new Error('ASOF by condition requires both left and right fields');
+      }
+      return `r.${quoteIdentifier(rightName)} = l.${quoteIdentifier(leftName)}`;
     })
     .join(' AND ');
   const tolerance = (asof.tolerance ?? '').trim();

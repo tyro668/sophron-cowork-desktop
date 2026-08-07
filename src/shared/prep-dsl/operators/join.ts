@@ -19,6 +19,16 @@ function validateJoinFieldRef(
   context: string
 ): boolean {
   if (!ref) return false;
+  if (!ref.name) {
+    diagnostics.push({
+      ...createPrepDiagnostic(
+        'invalidJoinFieldRef',
+        `${context} field must not be empty; use [table].[field] form in a join`
+      ),
+      line: command.line,
+    });
+    return false;
+  }
   if (ref.source === undefined && ref.name.includes('.')) {
     diagnostics.push({
       ...createPrepDiagnostic(
@@ -54,7 +64,7 @@ function validateConditionSides(
       line: command.line,
     });
   }
-  if (isRightAlias(leftSource) && rightSource && !isRightAlias(rightSource)) {
+  if (isRightAlias(leftSource)) {
     diagnostics.push({
       ...createPrepDiagnostic(
         'joinConditionSideMismatch',
@@ -157,7 +167,7 @@ function parseAsofJoin(
   }
   const clauses = parseClauses(
     match[3] ?? '',
-    ['on', 'by', 'direction', 'tolerance', 'keep', 'suffix', 'right_prefix'],
+    ['on', 'by', 'tolerance', 'keep', 'suffix', 'right_prefix'],
     command,
     diagnostics
   );
@@ -169,7 +179,6 @@ function parseAsofJoin(
     asof: parseAsofClause(
       findClause(clauses, 'on') ?? '',
       findClause(clauses, 'by') ?? '',
-      findClause(clauses, 'direction'),
       findClause(clauses, 'tolerance'),
       rightAlias,
       command,
@@ -183,7 +192,6 @@ function parseAsofJoin(
 function parseAsofClause(
   onClause: string,
   byClause: string,
-  direction?: string,
   tolerance?: string,
   rightAlias?: string,
   command?: OperatorCommand,
@@ -217,16 +225,6 @@ function parseAsofClause(
     validateConditionSides(left, right, rightAlias, command, diagnostics, 'ASOF on');
   }
   const operator = match[2] as PrepAsofJoinConfig['operator'];
-  const expected = operator === '>=' ? 'backward' : operator === '<=' ? 'forward' : 'nearest';
-  if (direction && direction !== expected) {
-    diagnostics?.push({
-      ...createPrepDiagnostic(
-        'invalidAsofDirection',
-        `ASOF direction '${direction}' conflicts with operator '${operator}'; expected '${expected}'`
-      ),
-      line: command?.line,
-    });
-  }
   if (tolerance && !isValidAsofTolerance(tolerance)) {
     diagnostics?.push({
       ...createPrepDiagnostic('invalidAsofTolerance', `Invalid ASOF tolerance: ${tolerance}`),

@@ -616,6 +616,7 @@
         "joinSourcesHeader": "数据源",
         "joinSourcesHint": "配置连接类型与数据源",
         "noConditionsNeeded": "无需连接条件",
+        "joinIncompleteField": "连接条件不完整，请为连接的左右字段都选择字段",
         "selectAllFields": "全部",
         "selectKeepFields": "选择保留字段",
         "limitMode": "模式",

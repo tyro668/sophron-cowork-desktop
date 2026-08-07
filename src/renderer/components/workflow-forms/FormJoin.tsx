@@ -22,11 +22,11 @@ export interface ConditionEntry {
 const DEFAULT_CONDITION: ConditionEntry = { left: '', operator: '=', right: '' };
 
 const OPERATOR_KEYS = [
-  { value: '=', key: 'operatorEq', fallback: '等于' },
-  { value: '<', key: 'operatorLt', fallback: '小于' },
-  { value: '<=', key: 'operatorLte', fallback: '小于等于' },
-  { value: '>', key: 'operatorGt', fallback: '大于' },
-  { value: '>=', key: 'operatorGte', fallback: '大于等于' },
+  { value: '=', key: 'operatorEq' },
+  { value: '<', key: 'operatorLt' },
+  { value: '<=', key: 'operatorLte' },
+  { value: '>', key: 'operatorGt' },
+  { value: '>=', key: 'operatorGte' },
 ];
 
 function isLeftField(source: string, leftAlias: string): boolean {

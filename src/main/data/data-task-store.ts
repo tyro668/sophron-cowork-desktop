@@ -53,7 +53,6 @@ import type {
   DataWorkflowOperatorType,
   DataWorkflowSaveInput,
 } from '../../renderer/types';
-import type { PrepDiagnostic } from '../../shared/prep-dsl/ast';
 import {
   dataFieldTypeFromDuckDbType,
   duckDbTypeForDataFieldType,
@@ -61,11 +60,7 @@ import {
 } from '../../shared/data-field-types';
 import { runInputTableNormalizerProject } from './input-table-normalizer-runner';
 import { COMPILE_STRATEGIES } from './operators/strategy';
-import {
-  JoinConfigSchema,
-  SetOpConfigSchema,
-  parseOperatorConfig,
-} from '../../shared/operator-schemas';
+import { JoinConfigSchema, parseOperatorConfig } from '../../shared/operator-schemas';
 import {
   compileSetOpSql,
   compileJoinConditionList,
@@ -861,13 +856,7 @@ export class DataTaskStore {
     return this.requireTask(task.id);
   }
 
-  private _executionDiagnostics: PrepDiagnostic[] = [];
-
-  getExecutionDiagnostics(): PrepDiagnostic[] {
-    return this._executionDiagnostics;
-  }
-
-  async runExclusive<T>(work: () => Promise<T>, label = 'duckdb'): Promise<T> {
+  private async runExclusive<T>(work: () => Promise<T>, label = 'duckdb'): Promise<T> {
     if (this.exclusiveContext.getStore()) {
       return work();
     }
@@ -906,7 +895,6 @@ export class DataTaskStore {
   }
 
   private async runTaskUnsafe(id: string, input: DataRunTaskInput = {}): Promise<DataCleaningTask> {
-    this._executionDiagnostics = [];
     await this.ensureReady();
     await this.cleanupExpiredWorkflowNodeCaches();
     const task = await this.requireTask(id);
@@ -2933,13 +2921,7 @@ export class DataTaskStore {
       return this.compileJoinSql(node, outputRelation, relationByNode, edges);
     }
     if (node.type === 'set_op') {
-      return this.compileSetOpSql(
-        node,
-        outputRelation,
-        relationByNode,
-        edges,
-        this._executionDiagnostics
-      );
+      return this.compileSetOpSql(node, outputRelation, relationByNode, edges);
     }
     const inputId = this.findIncomingNodeId(node.id, edges, 'input');
     const inputRelation = inputId ? relationByNode.get(inputId) : null;
@@ -2955,49 +2937,50 @@ export class DataTaskStore {
     if (!strategy) {
       return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input}`;
     }
+    let compileConfig = node.config;
     if (node.type === 'unnest' && node.config.sourceKind === 'json') {
       const colName = String(node.config.column ?? '');
       const jsonPath = String(node.config.path ?? '$');
       if (colName) {
-        try {
-          const colExpr =
-            jsonPath === '$'
-              ? quoteIdentifier(colName)
-              : `json_extract(${quoteIdentifier(colName)}, ${literalToSql(jsonPath)})`;
-          const invalidRows = await this.queryRows<{ bad: boolean }>(
-            `SELECT ${colExpr} IS NOT NULL AND TRY_CAST(${colExpr} AS JSON) IS NULL AS bad FROM ${input} WHERE ${colExpr} IS NOT NULL LIMIT 1`
+        const colExpr =
+          jsonPath === '$'
+            ? quoteIdentifier(colName)
+            : `json_extract(${quoteIdentifier(colName)}, ${literalToSql(jsonPath)})`;
+        const invalidRows = await this.queryRows<{ bad: boolean }>(
+          `SELECT ${colExpr} IS NOT NULL AND TRY_CAST(${colExpr} AS JSON) IS NULL AS bad FROM ${input} WHERE ${colExpr} IS NOT NULL LIMIT 1`
+        );
+        if (invalidRows.length > 0 && invalidRows[0].bad) {
+          throw new Error(
+            `"${colName}" is not valid JSON. Use standard JSON format: {"Key":"Value"} or {"Key":1}`
           );
-          if (invalidRows.length > 0 && invalidRows[0].bad) {
-            throw new Error(
-              `"${colName}" is not valid JSON. Use standard JSON format: {"Key":"Value"} or {"Key":1}`
-            );
-          }
-          const typeRows = await this.queryRows<{ t: string }>(
-            `SELECT json_type(${colExpr}) AS t FROM ${input} WHERE ${colExpr} IS NOT NULL AND TRY_CAST(${colExpr} AS JSON) IS NOT NULL LIMIT 1`
-          );
-          const jsonType = typeRows[0]?.t ?? '';
-          node.config._jsonType = jsonType;
-          if (jsonType === 'OBJECT') {
-            const keyRows = await this.queryRows<{ keys: string[] }>(
-              `SELECT json_keys(${colExpr}) AS keys FROM ${input} WHERE ${colExpr} IS NOT NULL AND TRY_CAST(${colExpr} AS JSON) IS NOT NULL LIMIT 1`
-            );
-            node.config._jsonKeys = keyRows[0]?.keys ?? [];
-          }
-        } catch (e) {
-          if (e instanceof Error && e.message.includes('not valid JSON')) throw e;
-          // Other failures (column not found, etc.) — proceed with default json_each path
         }
+        const typeRows = await this.queryRows<{ t: string }>(
+          `SELECT json_type(${colExpr}) AS t FROM ${input} WHERE ${colExpr} IS NOT NULL AND TRY_CAST(${colExpr} AS JSON) IS NOT NULL LIMIT 1`
+        );
+        const jsonType = typeRows[0]?.t ?? '';
+        const jsonKeys =
+          jsonType === 'OBJECT'
+            ? ((
+                await this.queryRows<{ keys: string[] }>(
+                  `SELECT json_keys(${colExpr}) AS keys FROM ${input} WHERE ${colExpr} IS NOT NULL AND TRY_CAST(${colExpr} AS JSON) IS NOT NULL LIMIT 1`
+                )
+              )[0]?.keys ?? [])
+            : [];
+        compileConfig = {
+          ...node.config,
+          _jsonType: jsonType,
+          _jsonKeys: jsonKeys,
+        };
       }
     }
-    return strategy.compile(output, input, columns, node.config, columnTypeMap);
+    return strategy.compile(output, input, columns, compileConfig, columnTypeMap);
   }
 
   private async compileSetOpSql(
     node: DataWorkflowNode,
     outputRelation: string,
     relationByNode: Map<string, string>,
-    edges: DataWorkflowEdge[],
-    diagnostics: PrepDiagnostic[]
+    edges: DataWorkflowEdge[]
   ): Promise<string> {
     const leftNodeId = this.findIncomingNodeId(node.id, edges, 'left');
     const rightNodeId = this.findIncomingNodeId(node.id, edges, 'right');
@@ -3008,71 +2991,6 @@ export class DataTaskStore {
     }
     const leftColumns = await this.getTableColumns(leftRelation);
     const rightColumns = await this.getTableColumns(rightRelation);
-    const parsed = SetOpConfigSchema.parse(node.config);
-    const effectiveMatch = parsed.operation === 'union' ? parsed.match : 'by_position';
-
-    // 前置检查：列数不一致（仅对非 UNION BY NAME 场景）
-    const isUnionByName = parsed.operation === 'union' && effectiveMatch === 'by_name';
-    if (!isUnionByName && leftColumns.length !== rightColumns.length) {
-      diagnostics.push({
-        severity: 'error',
-        message: `左右两表列数必须一致（左表 ${leftColumns.length} 列，右表 ${rightColumns.length} 列），当前无法执行`,
-      });
-    }
-
-    // 前置检查：按位置匹配时列名不同
-    if (effectiveMatch !== 'by_name') {
-      const minLen = Math.min(leftColumns.length, rightColumns.length);
-      const mismatches: string[] = [];
-      for (let i = 0; i < minLen; i++) {
-        if (leftColumns[i] !== rightColumns[i]) {
-          mismatches.push(`第 ${i + 1} 列：左表「${leftColumns[i]}」≠ 右表「${rightColumns[i]}」`);
-        }
-      }
-      if (mismatches.length > 0) {
-        diagnostics.push({
-          severity: 'warning',
-          message: `左右两表按位置匹配，但列名不同：${mismatches.join('；')}`,
-        });
-      }
-    }
-
-    // 前置检查：类型兼容性
-    const NUMERIC_TYPES = ['integer', 'float', 'decimal'];
-    const TEMPORAL_TYPES = ['date', 'datetime'];
-    const leftTypes = await this.getTableColumnTypes(leftRelation);
-    const rightTypes = await this.getTableColumnTypes(rightRelation);
-
-    if (effectiveMatch === 'by_name') {
-      const rightMap = new Map(rightTypes.map((t) => [t.name.toLowerCase(), t]));
-      for (const leftType of leftTypes) {
-        const rightType = rightMap.get(leftType.name.toLowerCase());
-        if (!rightType || leftType.type === rightType.type) continue;
-        const bothNumeric =
-          NUMERIC_TYPES.includes(leftType.type) && NUMERIC_TYPES.includes(rightType.type);
-        const bothTemporal =
-          TEMPORAL_TYPES.includes(leftType.type) && TEMPORAL_TYPES.includes(rightType.type);
-        if (bothNumeric || bothTemporal) continue;
-        diagnostics.push({
-          severity: 'warning',
-          message: `列「${leftType.name}」类型不一致（左表: ${leftType.type}，右表: ${rightType.type}），可能导致数据转换异常`,
-        });
-      }
-    } else {
-      const minTypeLen = Math.min(leftTypes.length, rightTypes.length);
-      for (let i = 0; i < minTypeLen; i++) {
-        const lt = leftTypes[i].type;
-        const rt = rightTypes[i].type;
-        if (lt === rt) continue;
-        const bothNumeric = NUMERIC_TYPES.includes(lt) && NUMERIC_TYPES.includes(rt);
-        const bothTemporal = TEMPORAL_TYPES.includes(lt) && TEMPORAL_TYPES.includes(rt);
-        if (bothNumeric || bothTemporal) continue;
-        diagnostics.push({
-          severity: 'warning',
-          message: `第 ${i + 1} 列类型${lt === 'text' || rt === 'text' ? '不一致' : '不兼容'}（左表「${leftColumns[i]}」: ${lt}，右表「${rightColumns[i]}」: ${rt}）${lt === 'text' || rt === 'text' ? '，可能导致数据转换异常' : '，可能导致执行错误'}`,
-        });
-      }
-    }
 
     return compileSetOpSql(
       quoteIdentifier(outputRelation),

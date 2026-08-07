@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ConditionSchema, ConflictSchema, KeepItemSchema } from './common';
+import { ConditionSchema, ConflictSchema, KeepItemSchema, nonEmptyTrimmed } from './common';
 
 const JoinConditionSchema = ConditionSchema.extend({
   operator: z.enum(['=', '<', '<=', '>', '>=']),
@@ -25,8 +25,8 @@ export const AsofConfigSchema = z.object({
   by: z
     .array(
       z.object({
-        left: z.string(),
-        right: z.string(),
+        left: nonEmptyTrimmed('left field is required'),
+        right: nonEmptyTrimmed('right field is required'),
       })
     )
     .optional(),

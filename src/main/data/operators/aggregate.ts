@@ -8,16 +8,10 @@ export function compileAggregateSql(
   config: Record<string, unknown>
 ): string {
   const { groupBy, metrics, dateGranularity } = parseOperatorConfig(AggregateConfigSchema, config);
-  if (metrics.length === 0) {
-    throw new Error('Aggregate requires at least one metric');
-  }
-  const metricSqls = metrics.map((metric, index) => {
+  const metricSqls = metrics.map((metric) => {
     const fn = metric.function?.trim();
     const expression = metric.expression?.trim();
     const alias = metric.alias?.trim();
-    if (!fn || !expression || !alias) {
-      throw new Error(`Aggregate metric ${index + 1} is incomplete`);
-    }
     const compiledExpression = expression === '*' ? '*' : compileScalarExpression(expression);
     return fn === 'count_distinct'
       ? `COUNT(DISTINCT ${compiledExpression}) AS ${quoteIdentifier(alias)}`

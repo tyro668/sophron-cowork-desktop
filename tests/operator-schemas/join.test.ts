@@ -44,6 +44,55 @@ describe('JoinConfigSchema', () => {
     expect(() => JoinConfigSchema.parse({ conditions: 'not-array' })).toThrow(z.ZodError);
   });
 
+  it('rejects a condition with an empty left field', () => {
+    expect(() =>
+      JoinConfigSchema.parse({
+        joinType: 'inner',
+        conditions: [{ left: '', operator: '=', right: '[id]' }],
+      })
+    ).toThrow(z.ZodError);
+    expect(() =>
+      JoinConfigSchema.parse({
+        joinType: 'inner',
+        conditions: [{ left: '   ', operator: '=', right: '[id]' }],
+      })
+    ).toThrow(z.ZodError);
+  });
+
+  it('rejects a condition with an empty right field', () => {
+    expect(() =>
+      JoinConfigSchema.parse({
+        joinType: 'inner',
+        conditions: [{ left: '[id]', operator: '=', right: '' }],
+      })
+    ).toThrow(z.ZodError);
+  });
+
+  it('rejects an ASOF by condition with an empty side', () => {
+    expect(() =>
+      JoinConfigSchema.parse({
+        joinType: 'asof',
+        asof: {
+          leftTime: '[ts]',
+          rightTime: '[time]',
+          operator: '<=',
+          by: [{ left: '[symbol]', right: '' }],
+        },
+      })
+    ).toThrow(z.ZodError);
+    expect(() =>
+      JoinConfigSchema.parse({
+        joinType: 'asof',
+        asof: {
+          leftTime: '[ts]',
+          rightTime: '[time]',
+          operator: '<=',
+          by: [{ left: '', right: '[sym]' }],
+        },
+      })
+    ).toThrow(z.ZodError);
+  });
+
   it('rejects semi join with keep config', () => {
     expect(() =>
       JoinConfigSchema.parse({

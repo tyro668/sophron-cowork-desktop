@@ -23,16 +23,6 @@ export function compileUnnestSql(
   const withIndex = parsed.withIndex;
   const rn = uniqueAlias('__rn', columns);
 
-  if (!parsed.column?.trim()) {
-    throw new Error('Unnest requires a source column');
-  }
-  if (parsed.sourceKind === 'list' && !parsed.alias?.trim()) {
-    throw new Error('Unnest requires an alias for list mode');
-  }
-  if (parsed.withIndex !== undefined && !parsed.withIndex.trim()) {
-    throw new Error('Unnest index column name cannot be empty');
-  }
-
   const aliasColName = parsed.keepParentNames ? `${rawColumn}_${rawAlias}` : rawAlias;
 
   if (parsed.sourceKind === 'json') {

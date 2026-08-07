@@ -225,6 +225,28 @@ function hasInvalidPivotConfig(node: DataWorkflowNode): boolean {
   return on.length === 0 || using.length === 0 || hasEmptyOn || hasEmptyUsing;
 }
 
+function isIncompleteJoinCondition(condition: unknown): boolean {
+  if (!condition || typeof condition !== 'object') return true;
+  const { left, right } = condition as { left?: unknown; right?: unknown };
+  return typeof left !== 'string' || !left.trim() || typeof right !== 'string' || !right.trim();
+}
+
+function hasInvalidJoinConditionConfig(node: DataWorkflowNode): boolean {
+  if (node.type !== 'join') return false;
+  const joinType = String(node.config.joinType ?? 'left');
+  if (joinType === 'cross') return false;
+  if (joinType === 'asof') {
+    const asof =
+      node.config.asof && typeof node.config.asof === 'object'
+        ? (node.config.asof as Record<string, unknown>)
+        : {};
+    const by = Array.isArray(asof.by) ? asof.by : [];
+    return by.some(isIncompleteJoinCondition);
+  }
+  const conditions = Array.isArray(node.config.conditions) ? node.config.conditions : [];
+  return conditions.length === 0 || conditions.some(isIncompleteJoinCondition);
+}
+
 function incompleteConfigMessageKey(node: DataWorkflowNode): string | null {
   if (hasInvalidSortConfig(node)) return 'data.workflow.formLabels.sortIncompleteField';
   if (hasInvalidFilterConfig(node)) return 'data.workflow.formLabels.filterIncompleteField';
@@ -242,6 +264,9 @@ function incompleteConfigMessageKey(node: DataWorkflowNode): string | null {
   }
   if (hasInvalidPivotConfig(node)) {
     return 'data.workflow.formLabels.pivotIncompleteField';
+  }
+  if (hasInvalidJoinConditionConfig(node)) {
+    return 'data.workflow.formLabels.joinIncompleteField';
   }
   return null;
 }

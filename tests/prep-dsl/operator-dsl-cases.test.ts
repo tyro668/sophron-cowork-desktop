@@ -420,16 +420,15 @@ describe('operator DSL executable cases', () => {
     );
   });
 
-  it('accepts a self-join where both sides reference the right input', () => {
+  it('rejects a condition where both sides reference the right input', () => {
     const parsed = parsePrepOperatorDsl(
       'join left customers on [customers].[a] = [customers].[b]',
       'join'
     );
 
-    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
-    expect(parsed.operator?.config.conditions).toEqual([
-      { left: '[customers].[a]', operator: '=', right: '[customers].[b]' },
-    ]);
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'joinConditionSideMismatch' })])
+    );
   });
 
   it('accepts a right-side reference that differs only in case', () => {
@@ -448,6 +447,37 @@ describe('operator DSL executable cases', () => {
     );
 
     expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+  });
+
+  it.each([
+    'join asof status on [events].[event_time] >= [status].[snapshot_time] by [events].[device_id] = [``]',
+    'join asof status on [events].[event_time] >= [status].[snapshot_time] by [``] = [status].[device_id]',
+    'join left customers on [customers].[id] = [``]',
+  ])('rejects join conditions with an empty field reference: %s', (dsl) => {
+    const parsed = parsePrepOperatorDsl(dsl, 'join');
+
+    expect(errorsOf(parsed.diagnostics), dsl).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidJoinFieldRef' })])
+    );
+  });
+
+  it('rejects a half-filled ASOF by condition after DSL export and reparse', () => {
+    const { parsed } = (() => {
+      const config = {
+        joinType: 'asof',
+        asof: {
+          leftTime: '[Date]',
+          rightTime: '[Date]',
+          operator: '>=',
+          by: [{ left: '[Order_ID]', operator: '=', right: '' }],
+        },
+        rightInput: 'R',
+      };
+      const dsl = exportPrepOperatorDsl({ id: 'asof-half-by', type: 'join', config });
+      return { parsed: parsePrepOperatorDsl(dsl, 'join'), dsl };
+    })();
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(1);
   });
 
   it('round-trips a join whose right input is renamed with an as clause', () => {

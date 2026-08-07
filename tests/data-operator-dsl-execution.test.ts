@@ -451,6 +451,61 @@ describe('operator DSL execution cases', () => {
     expect(String(rows[1].val)).toBe('abc');
     expect(String(rows[2].val)).toBe('456');
   });
+
+  it('does not mutate runtime unnest config with compile-time JSON metadata', async () => {
+    const { store, tempRoot } = createStore();
+    const jsonPath = path.join(tempRoot, 'unnest-json.csv');
+    fs.writeFileSync(
+      jsonPath,
+      ['id,payload', '1,{"name": "alpha"}', '2,{"name": "beta"}'].join('\n') + '\n',
+      'utf8'
+    );
+
+    const task = await store.createTask({
+      name: 'unnest json no config leak',
+      sourcePath: jsonPath,
+    });
+    const parsed = parsePrepDsl(`
+      input source task as json_src
+        | explode json [payload] path "$"
+        | output table "operator_unnest_json_output" mode replace
+    `);
+    expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    expect(parsed.ast).not.toBeNull();
+    const workflow = compilePrepWorkflowToFlow(parsed.ast!);
+    expect(workflow.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    const unnestNode = workflow.nodes.find((node) => node.type === 'unnest');
+    expect(unnestNode).toBeDefined();
+
+    const completed = await store.runTask(task.id, {
+      workflow: { nodes: workflow.nodes, edges: workflow.edges },
+    });
+    expect(completed.status).toBe('completed');
+    expect(unnestNode!.config).not.toHaveProperty('_jsonType');
+    expect(unnestNode!.config).not.toHaveProperty('_jsonKeys');
+  });
+
+  it('fails explicitly when the JSON unnest column does not exist instead of silently passing through', async () => {
+    const { store, tempRoot } = createStore();
+    const jsonPath = path.join(tempRoot, 'unnest-json-missing.csv');
+    fs.writeFileSync(jsonPath, ['id,payload', '1,{"name":"alpha"}'].join('\n') + '\n', 'utf8');
+
+    const task = await store.createTask({
+      name: 'unnest json missing column',
+      sourcePath: jsonPath,
+    });
+    await saveWorkflowDsl(
+      store,
+      task.id,
+      `
+        input source task as json_src
+          | explode json [ghost_column] path "$"
+          | output table "operator_unnest_json_missing_output" mode replace
+      `
+    );
+
+    await expect(store.runTask(task.id)).rejects.toThrow(/ghost_column|Binder|not found/i);
+  });
 });
 
 function createStore(): { dbPath: string; store: DataTaskStore; tempRoot: string } {

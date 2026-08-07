@@ -616,6 +616,7 @@
         "joinSourcesHeader": "Data Sources",
         "joinSourcesHint": "Select join type and data sources",
         "noConditionsNeeded": "No conditions needed",
+        "joinIncompleteField": "Join condition is incomplete; select both the left and right fields",
         "selectAllFields": "Select all fields",
         "selectKeepFields": "Select fields to keep",
         "limitMode": "Mode",

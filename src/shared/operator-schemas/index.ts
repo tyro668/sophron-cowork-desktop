@@ -9,6 +9,7 @@ export {
   ConflictSchema,
   MetricEntrySchema,
   KeepItemSchema,
+  nonEmptyTrimmed,
 } from './common';
 export { SortConfigSchema } from './sort';
 export { FieldSelectConfigSchema } from './field-select';

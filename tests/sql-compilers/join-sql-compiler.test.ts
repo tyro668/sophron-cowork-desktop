@@ -101,20 +101,29 @@ describe('compileJoinConditionList', () => {
     expect(compileJoinConditionList([])).toBe('');
   });
 
-  it('skips conditions with an empty side instead of emitting broken SQL', () => {
-    expect(
+  it('throws for conditions with an empty side instead of emitting broken SQL', () => {
+    expect(() =>
       compileJoinConditionList([
         { left: '[order_id]', operator: '=', right: '' },
         { left: '', operator: '=', right: '[id]' },
         { left: '   ', operator: '=', right: '[id]' },
       ])
-    ).toBe('');
-    expect(
+    ).toThrow('Non-cross join requires at least one valid condition');
+    expect(() =>
       compileJoinConditionList([
         { left: '[order_id]', operator: '=', right: '[id]' },
         { left: '[date]', operator: '=', right: '' },
       ])
-    ).toBe('l."order_id" = r."id"');
+    ).toThrow('Non-cross join requires at least one valid condition');
+  });
+
+  it('throws for conditions whose field reference resolves to an empty name', () => {
+    expect(() =>
+      compileJoinConditionList([{ left: '[order_id]', operator: '=', right: '[``]' }])
+    ).toThrow('Non-cross join requires at least one valid condition');
+    expect(() =>
+      compileJoinConditionList([{ left: '[``]', operator: '=', right: '[id]' }])
+    ).toThrow('Non-cross join requires at least one valid condition');
   });
 
   it('rejects unsupported operators before SQL compilation', () => {
@@ -196,6 +205,66 @@ describe('compileAsofJoinSql', () => {
       connection.closeSync();
       instance.closeSync();
     }
+  });
+
+  it('rejects an ASOF by condition with an empty side at config parse time', () => {
+    expect(() =>
+      parseOperatorConfig(JoinConfigSchema, {
+        joinType: 'asof',
+        asof: {
+          leftTime: '[event_time]',
+          rightTime: '[event_time]',
+          operator: '>=',
+          by: [{ left: '[device_id]', operator: '=', right: '' }],
+        },
+      })
+    ).toThrow();
+    expect(() =>
+      parseOperatorConfig(JoinConfigSchema, {
+        joinType: 'asof',
+        asof: {
+          leftTime: '[event_time]',
+          rightTime: '[event_time]',
+          operator: '>=',
+          by: [{ left: '', operator: '=', right: '[device_id]' }],
+        },
+      })
+    ).toThrow();
+  });
+
+  it('throws when an ASOF by condition resolves to an empty field name', () => {
+    const config = parseOperatorConfig(JoinConfigSchema, {
+      joinType: 'asof',
+      asof: {
+        leftTime: '[event_time]',
+        rightTime: '[event_time]',
+        operator: '>=',
+        by: [{ left: '[device_id]', operator: '=', right: '[``]' }],
+      },
+    });
+    expect(() =>
+      compileAsofJoinSql('out', 'l', 'r', ['event_time'], ['event_time'], config)
+    ).toThrow('ASOF by condition requires both left and right fields');
+  });
+
+  it('allows an empty ASOF by array', () => {
+    const sql = compileAsofJoinSql(
+      'out',
+      'l',
+      'r',
+      ['event_time'],
+      ['event_time'],
+      parseOperatorConfig(JoinConfigSchema, {
+        joinType: 'asof',
+        asof: {
+          leftTime: '[event_time]',
+          rightTime: '[event_time]',
+          operator: '>=',
+          by: [],
+        },
+      })
+    );
+    expect(sql).toContain('LEFT JOIN LATERAL');
   });
 });
 

@@ -6,10 +6,13 @@ export const SortKeySchema = z.object({
   nulls: z.enum(['first', 'last']).optional(),
 });
 
+export const nonEmptyTrimmed = (message: string) =>
+  z.string().refine((value) => value.trim().length > 0, { message });
+
 export const ConditionSchema = z.object({
-  left: z.string(),
+  left: nonEmptyTrimmed('left field is required'),
   operator: z.string(),
-  right: z.string(),
+  right: nonEmptyTrimmed('right field is required'),
 });
 
 export const ConflictSchema = z.object({
