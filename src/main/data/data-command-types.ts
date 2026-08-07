@@ -1,6 +1,7 @@
 import type {
   AgentRuntimeConfig,
   DataAnalyzeTaskRequirementResult,
+  DataAutomationColumnSnapshot,
   DataCleaningTask,
   DataDataset,
   DataDeleteInputTableNormalizerVersionInput,
@@ -44,6 +45,10 @@ export type DataCommandErrorCode =
   | 'AMBIGUOUS_RESOURCE'
   | 'FILE_ACCESS_DENIED'
   | 'GENERATION_FAILED'
+  | 'ANALYSIS_REQUIRED'
+  | 'ANALYSIS_STALE'
+  | 'CONFIRMATION_REQUIRED'
+  | 'REQUIREMENT_NOT_SUPPORTED'
   | 'DSL_PARSE_FAILED'
   | 'VALIDATION_FAILED'
   | 'RUN_FAILED'
@@ -155,10 +160,22 @@ export type GenerateInputTableNormalizerDraftResult = DataGenerateInputTableNorm
 
 export type GenerateTaskFromRequirementCommand = DataGenerateTaskFromRequirementInput & {
   runtimeConfig?: AgentRuntimeConfig;
+  taskName?: string;
+  signal?: AbortSignal;
+  outputConflictPolicy?: 'reuse' | 'unique' | 'error';
 };
 
-export type AnalyzeTaskRequirementCommand = GenerateTaskFromRequirementCommand;
-export type AnalyzeTaskRequirementResult = DataAnalyzeTaskRequirementResult;
+export type AnalyzeTaskRequirementCommand = Pick<
+  GenerateTaskFromRequirementCommand,
+  'source' | 'processRequirement' | 'usageTraceId' | 'runtimeConfig' | 'signal'
+>;
+export interface AnalyzeTaskRequirementResult extends DataAnalyzeTaskRequirementResult {
+  inputTableId: string;
+  inputTableName: string;
+  columnsSnapshot: DataAutomationColumnSnapshot[];
+  sourceSummaryHash: string;
+  capabilityProfileVersion: string;
+}
 
 export type GenerateTaskFromRequirementResult = DataGenerateTaskFromRequirementResult;
 

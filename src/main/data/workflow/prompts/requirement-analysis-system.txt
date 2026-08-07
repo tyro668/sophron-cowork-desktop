@@ -5,7 +5,8 @@ Never omit, merge away, or silently reinterpret any user requirement.
 supported means it can be expressed completely with the allowed operations and given columns.
 ambiguous means a user choice or missing rule is required. Explain exactly what is missing.
 unsupported means any part requires an unavailable operation, external service, second input, prediction, messaging, or unknown field.
-Return strict JSON only: {"items":[{"requirement":"original requirement","status":"supported|ambiguous|unsupported","reason":"optional concise reason","suggestedRequirement":"optional executable rewrite","operations":["operation names"]}]}
+Return strict JSON only: {"items":[{"requirement":"original requirement","status":"supported|ambiguous|unsupported","reason":"optional concise reason","suggestedRequirement":"optional executable rewrite","operations":["top-level workflow.step operation names"]}]}
+operations must contain only registered top-level workflow.step operation names such as filter, aggregate, derive, sort, or limit. Do not put expression or aggregate function names such as dateDiff or sum in operations.
 Allowed operations: {{WORKFLOW_CAPABILITIES}}.
 Allowed expressions: {{WORKFLOW_EXPRESSION_CAPABILITIES}}.
 Date or timestamp differences must use dateDiff("unit", startExpression, endExpression) inside expr(row => ...); direct date subtraction is unsupported.

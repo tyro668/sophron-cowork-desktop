@@ -205,6 +205,7 @@ export async function generateDataTaskWorkflowFromRequirement({
   runtimeConfig,
   repairBudget,
   onModelUsage,
+  signal,
 }: {
   inputTableId: string;
   outputTableName: string;
@@ -213,6 +214,7 @@ export async function generateDataTaskWorkflowFromRequirement({
   runtimeConfig?: AgentRuntimeConfig;
   repairBudget?: WorkflowRepairBudget;
   onModelUsage?: WorkflowModelUsageObserver;
+  signal?: AbortSignal;
 }): Promise<GeneratedDataTaskWorkflow> {
   const config = requireGenerationRuntimeConfig(runtimeConfig);
   const sharedRepairBudget = repairBudget ?? createGeneratedWorkflowRepairBudget();
@@ -226,7 +228,7 @@ export async function generateDataTaskWorkflowFromRequirement({
       }),
       buildWorkflowGenerationSystemPrompt(),
       config,
-      { temperature: 0, maxTokens: 4_000 }
+      { temperature: 0, maxTokens: 4_000, signal }
     );
     onModelUsage?.({ phase: 'initial_generation', result: response });
     if (response.stopReason === 'length') {
@@ -241,6 +243,7 @@ export async function generateDataTaskWorkflowFromRequirement({
         diagnostics: createModelOutputTruncatedDiagnostics(),
         repairBudget: sharedRepairBudget,
         onModelUsage,
+        signal,
       });
     }
     try {
@@ -272,6 +275,7 @@ export async function generateDataTaskWorkflowFromRequirement({
         diagnostics,
         repairBudget: sharedRepairBudget,
         onModelUsage,
+        signal,
       });
     }
   } catch (error) {
@@ -294,6 +298,7 @@ export async function repairGeneratedWorkflowFromDiagnostics({
   diagnostics,
   repairBudget,
   onModelUsage,
+  signal,
 }: {
   inputTableId: string;
   outputTableName: string;
@@ -304,6 +309,7 @@ export async function repairGeneratedWorkflowFromDiagnostics({
   diagnostics: PrepDiagnostic[];
   repairBudget?: WorkflowRepairBudget;
   onModelUsage?: WorkflowModelUsageObserver;
+  signal?: AbortSignal;
 }): Promise<GeneratedDataTaskWorkflow> {
   const config = requireGenerationRuntimeConfig(runtimeConfig);
   const sharedRepairBudget = repairBudget ?? createGeneratedWorkflowRepairBudget();
@@ -368,7 +374,7 @@ export async function repairGeneratedWorkflowFromDiagnostics({
         }),
         buildWorkflowGenerationSystemPrompt(),
         config,
-        { temperature: 0, maxTokens: maxOutputTokens }
+        { temperature: 0, maxTokens: maxOutputTokens, signal }
       );
       const recordRepairUsage = (repairOutcome: WorkflowRepairOutcome): void => {
         onModelUsage?.({

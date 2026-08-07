@@ -5,6 +5,7 @@ import type {
   OutputTableResult,
 } from './data-command-types';
 import type { DataTaskStore } from './data-task-store';
+import { DataCommandError } from './data-command-types';
 import { DataCommandResources } from './data-command-resources';
 import { normalizeOptionalName, normalizeRequiredName } from './data-command-utils';
 
@@ -26,7 +27,8 @@ export class GeneratedOutputResolver {
 
   async resolveGeneratedOutputTable(
     output: GenerateTaskFromRequirementCommand['output'],
-    inputTableName: string
+    inputTableName: string,
+    conflictPolicy: GenerateTaskFromRequirementCommand['outputConflictPolicy'] = 'reuse'
   ): Promise<ResolvedGeneratedOutputTable> {
     if (output.location === 'local' && output.writeMode === 'replace') {
       return {
@@ -45,11 +47,33 @@ export class GeneratedOutputResolver {
       }
     }
     const existingOutputTable = await this.resources.findOutputTableByExactName(outputTableName);
-    if (existingOutputTable) return { outputTable: existingOutputTable, created: false };
+    if (existingOutputTable) {
+      if (conflictPolicy === 'reuse') {
+        return { outputTable: existingOutputTable, created: false };
+      }
+      if (conflictPolicy === 'error') {
+        throw new DataCommandError(
+          'RESOURCE_ALREADY_EXISTS',
+          `Output table already exists: ${outputTableName}`,
+          { id: existingOutputTable.id, name: existingOutputTable.name }
+        );
+      }
+    }
+    const resolvedName =
+      existingOutputTable && conflictPolicy === 'unique'
+        ? await this.createUniqueOutputTableName(outputTableName)
+        : outputTableName;
     return {
-      outputTable: (await this.outputTables.createOutputTable({ name: outputTableName }))
-        .outputTable,
+      outputTable: (await this.outputTables.createOutputTable({ name: resolvedName })).outputTable,
       created: true,
     };
+  }
+
+  private async createUniqueOutputTableName(baseName: string): Promise<string> {
+    for (let index = 2; index <= 100; index += 1) {
+      const candidate = `${baseName}_${index}`;
+      if (!(await this.resources.findOutputTableByExactName(candidate))) return candidate;
+    }
+    return `${baseName}_${Date.now()}`;
   }
 }
