@@ -3,6 +3,7 @@ import type { DataCommandService } from './data-command-service';
 import type {
   ApplyOperatorDslCommand,
   ApplyWorkflowDslCommand,
+  AnalyzeTaskRequirementResult,
   ConfigureInputOperatorCommand,
   ConfigureOutputOperatorCommand,
   CreateInputTableCommand,
@@ -11,6 +12,8 @@ import type {
   CreateTaskCommand,
   ExportWorkflowDslCommand,
   GenerateInputTableNormalizerDraftCommand,
+  GenerateTaskFromRequirementCommand,
+  GenerateTaskFromRequirementResult,
   GetRunResultCommand,
   GetTaskWorkflowCommand,
   ImportCloudTableCommand,
@@ -29,7 +32,20 @@ import type {
   UpdateTaskCommand,
   UploadDataTableToCloudCommand,
 } from './data-command-types';
-import type { DataToolPromptContext, DataToolResult } from './data-tool-types';
+import type {
+  AnalyzeDataTaskRequirementToolInput,
+  DataToolExecutionContext,
+  DataToolPromptContext,
+  DataToolResult,
+  GenerateDataTaskFromAnalysisToolInput,
+} from './data-tool-types';
+import { DataCommandError } from './data-command-types';
+import {
+  RequirementAnalysisReceiptStore,
+  type RequirementAnalysisReceipt,
+} from './requirement-analysis-receipt-store';
+import { AI_PREP_DSL_RUNTIME_PROFILE_VERSION } from './workflow/prep-dsl-capability-profile';
+import { hashColumns, normalizeColumnSnapshot } from './workflow';
 import { getWorkflowDslReference, type DataDslReferenceTopic } from './data-dsl-reference';
 import { createDataResourceHref, type DataResourceKind } from '../../shared/data-resource-link';
 import { dataFieldTypeLabel } from '../../shared/data-field-types';
@@ -47,7 +63,38 @@ import type {
 } from '../../shared/personal-analysis-types';
 
 export class DataToolService {
-  constructor(private readonly commandService: DataCommandService) {}
+  private readonly generationInFlight = new Map<string, Promise<DataToolResult>>();
+  private readonly executionContexts = new Map<
+    string,
+    Omit<DataToolExecutionContext, 'toolCallId' | 'signal'>
+  >();
+
+  constructor(
+    private readonly commandService: DataCommandService,
+    private readonly analysisReceipts = new RequirementAnalysisReceiptStore()
+  ) {}
+
+  updateExecutionContext(context: Omit<DataToolExecutionContext, 'toolCallId' | 'signal'>): void {
+    this.executionContexts.set(context.sessionId, context);
+  }
+
+  resolveExecutionContext(
+    sessionId: string,
+    toolCallId?: string,
+    signal?: AbortSignal
+  ): DataToolExecutionContext {
+    return {
+      ...(this.executionContexts.get(sessionId) ?? { sessionId }),
+      sessionId,
+      toolCallId,
+      signal,
+    };
+  }
+
+  clearConversationContext(sessionId: string): void {
+    this.executionContexts.delete(sessionId);
+    this.analysisReceipts.deleteForSession(sessionId);
+  }
 
   async resolveConversationContext(
     context: BeforeSessionRunContext
@@ -188,10 +235,17 @@ export class DataToolService {
     );
   }
 
-  async previewTable(input: PreviewTableCommand): Promise<DataToolResult> {
-    const result = await this.commandService.previewTable(input);
+  async previewTable(
+    input: PreviewTableCommand & { includeRows?: boolean }
+  ): Promise<DataToolResult> {
+    const { includeRows = false, ...requestedCommand } = input;
+    const command = includeRows ? requestedCommand : { ...requestedCommand, limit: 1 };
+    const result = await this.commandService.previewTable(command);
     return toolResult(
-      `Previewed ${input.tableKind} table ${input.id}.\n\n${formatPreview(result.preview)}`,
+      `Previewed ${input.tableKind} table ${input.id}.\n\n${formatPreview(
+        result.preview,
+        includeRows
+      )}`,
       result
     );
   }
@@ -302,6 +356,140 @@ export class DataToolService {
     );
   }
 
+  async analyzeTaskRequirement(
+    input: AnalyzeDataTaskRequirementToolInput,
+    context: DataToolExecutionContext
+  ): Promise<DataToolResult> {
+    const result = await this.commandService.analyzeTaskRequirement({
+      source: { location: 'local', tableId: input.inputTableId },
+      processRequirement: input.processRequirement,
+      runtimeConfig: context.runtimeConfig,
+      usageTraceId: context.toolCallId,
+      signal: context.signal,
+    });
+    const receipt = this.analysisReceipts.create({
+      sessionId: context.sessionId,
+      sourceUserMessageId: context.currentUserMessageId,
+      inputTableId: result.inputTableId,
+      inputTableName: result.inputTableName,
+      inputSchemaHash: result.sourceSummaryHash,
+      processRequirement: input.processRequirement.trim(),
+      analysis: result,
+      capabilityProfileVersion: result.capabilityProfileVersion,
+    });
+    return toolResult(formatRequirementAnalysis(receipt.id, result, receipt.expiresAt), {
+      analysisId: receipt.id,
+      status: result.status,
+      originalRequirement: receipt.processRequirement,
+      items: result.items,
+      inputTable: {
+        id: result.inputTableId,
+        name: result.inputTableName,
+        schemaHash: result.sourceSummaryHash,
+      },
+      capabilityProfileVersion: result.capabilityProfileVersion,
+      expiresAt: receipt.expiresAt,
+      confirmationRequired: true,
+    });
+  }
+
+  async generateTaskFromAnalysis(
+    input: GenerateDataTaskFromAnalysisToolInput,
+    context: DataToolExecutionContext
+  ): Promise<DataToolResult> {
+    const generationKey = `${context.sessionId}:${input.analysisId}`;
+    const existing = this.generationInFlight.get(generationKey);
+    if (existing) return existing;
+    const generation = this.generateTaskFromAnalysisOnce(input, context).finally(() => {
+      this.generationInFlight.delete(generationKey);
+    });
+    this.generationInFlight.set(generationKey, generation);
+    return generation;
+  }
+
+  private async generateTaskFromAnalysisOnce(
+    input: GenerateDataTaskFromAnalysisToolInput,
+    context: DataToolExecutionContext
+  ): Promise<DataToolResult> {
+    const receipt = this.analysisReceipts.get(input.analysisId);
+    if (!receipt) {
+      throw new DataCommandError(
+        'ANALYSIS_REQUIRED',
+        'Requirement analysis was not found or has expired. Analyze the requirement again.'
+      );
+    }
+    if (receipt.sessionId !== context.sessionId) {
+      throw new DataCommandError(
+        'ANALYSIS_REQUIRED',
+        'Requirement analysis belongs to another conversation.'
+      );
+    }
+    if (receipt.analysis.status !== 'supported') {
+      throw new DataCommandError(
+        'REQUIREMENT_NOT_SUPPORTED',
+        'The requirement must be clarified and analyzed as supported before generation.'
+      );
+    }
+    if (input.confirmed !== true) {
+      throw new DataCommandError(
+        'CONFIRMATION_REQUIRED',
+        'Explicit user confirmation is required before generation.'
+      );
+    }
+    if (
+      !receipt.sourceUserMessageId ||
+      !context.currentUserMessageId ||
+      receipt.sourceUserMessageId === context.currentUserMessageId
+    ) {
+      throw new DataCommandError(
+        'CONFIRMATION_REQUIRED',
+        'A verified later user message is required. Show the analysis to the user and wait for explicit confirmation before generation.'
+      );
+    }
+    if (receipt.capabilityProfileVersion !== AI_PREP_DSL_RUNTIME_PROFILE_VERSION) {
+      throw new DataCommandError(
+        'ANALYSIS_STALE',
+        'Data-task capabilities changed after analysis. Analyze the requirement again.'
+      );
+    }
+    const currentPreview = await this.commandService.previewTable({
+      tableKind: 'input',
+      id: receipt.inputTableId,
+      limit: 1,
+    });
+    const currentSchemaHash = hashColumns(
+      normalizeColumnSnapshot(currentPreview.preview.columnTypes, receipt.analysis.columnsSnapshot)
+    );
+    if (currentSchemaHash !== receipt.inputSchemaHash) {
+      throw new DataCommandError(
+        'ANALYSIS_STALE',
+        'The input table schema changed after analysis. Analyze the requirement again.'
+      );
+    }
+    if (receipt.generatedResult) {
+      return formatGeneratedTaskToolResult(receipt, receipt.generatedResult);
+    }
+    const output = resolveGeneratedTaskOutput(input);
+
+    const result = await this.commandService.generateTaskFromRequirement({
+      source: {
+        location: 'local',
+        tableId: receipt.inputTableId,
+        tableName: receipt.inputTableName,
+        columnsSnapshot: receipt.analysis.columnsSnapshot,
+      },
+      processRequirement: receipt.processRequirement,
+      output,
+      taskName: input.taskName,
+      runtimeConfig: context.runtimeConfig,
+      usageTraceId: receipt.id,
+      signal: context.signal,
+      outputConflictPolicy: 'unique',
+    });
+    this.analysisReceipts.saveGeneratedResult(receipt.id, result);
+    return formatGeneratedTaskToolResult(receipt, result);
+  }
+
   async createTask(input: CreateTaskCommand): Promise<DataToolResult> {
     const result = await this.commandService.createTask(input);
     return toolResult(`Created data task: ${formatTask(result.task)}`, result);
@@ -368,7 +556,8 @@ export class DataToolService {
   }
 
   async runTask(input: RunTaskCommand): Promise<DataToolResult> {
-    const result = await this.commandService.runTask(input);
+    const command = withAgentResultPreviewLimit(input);
+    const result = await this.commandService.runTask(command);
     return toolResult(
       [
         `Ran data task: ${formatTask(result.task)}`,
@@ -383,7 +572,7 @@ export class DataToolService {
   }
 
   async getRunResult(input: GetRunResultCommand): Promise<DataToolResult> {
-    const result = await this.commandService.getRunResult(input);
+    const result = await this.commandService.getRunResult(withAgentResultPreviewLimit(input));
     return toolResult(
       [`Run result for ${formatTask(result.task)}`, formatPreview(result.preview)]
         .filter(Boolean)
@@ -398,6 +587,111 @@ function toolResult(text: string, details: unknown): DataToolResult {
     content: [{ type: 'text', text }],
     details,
   };
+}
+
+function resolveGeneratedTaskOutput(
+  input: GenerateDataTaskFromAnalysisToolInput
+): GenerateTaskFromRequirementCommand['output'] {
+  const outputTableName = input.outputTableName?.trim();
+  const outputTableId = input.outputTableId?.trim();
+  if (input.outputMode === 'create') {
+    if (outputTableId) {
+      throw new DataCommandError(
+        'INVALID_ARGUMENT',
+        'outputTableId must be omitted when outputMode=create. Pass outputTableName for the new table.'
+      );
+    }
+    return {
+      location: 'local',
+      writeMode: 'create',
+      tableName: outputTableName || undefined,
+    };
+  }
+  if (!outputTableId) {
+    throw new DataCommandError(
+      'INVALID_ARGUMENT',
+      'outputTableId is required when outputMode=replace.'
+    );
+  }
+  if (outputTableName) {
+    throw new DataCommandError(
+      'INVALID_ARGUMENT',
+      'outputTableName must be omitted when outputMode=replace. The existing table keeps its current name.'
+    );
+  }
+  return {
+    location: 'local',
+    writeMode: 'replace',
+    targetTableId: outputTableId,
+  };
+}
+
+function formatRequirementAnalysis(
+  analysisId: string,
+  result: AnalyzeTaskRequirementResult,
+  expiresAt: number
+): string {
+  const items = result.items.map((item, index) => {
+    const reason = item.reason ? ` reason=${item.reason}` : '';
+    const suggestion = item.suggestedRequirement ? ` suggestion=${item.suggestedRequirement}` : '';
+    const operations = item.operations.length ? ` operations=${item.operations.join(',')}` : '';
+    return `${index + 1}. [${item.status}] ${item.requirement}${operations}${reason}${suggestion}`;
+  });
+  const nextStep =
+    result.status === 'supported'
+      ? 'Show this plan to the user and wait for an explicit confirmation in a new user message. Then call data_generate_task_from_requirement with this analysisId.'
+      : result.status === 'needs_confirmation'
+        ? 'Ask the user to clarify or revise the ambiguous/unsupported items, then analyze the revised requirement again. Do not generate yet.'
+        : 'Explain the unsupported capability and suggested alternatives. Do not generate this requirement.';
+  return [
+    `Requirement analysis: status=${result.status} analysisId=${analysisId}`,
+    `Input table: ${result.inputTableName} (${result.inputTableId})`,
+    ...items,
+    nextStep,
+    `Analysis expires at ${new Date(expiresAt).toISOString()}.`,
+  ].join('\n');
+}
+
+function formatGeneratedTaskToolResult(
+  receipt: RequirementAnalysisReceipt,
+  result: GenerateTaskFromRequirementResult
+): DataToolResult {
+  const taskLink = formatDataResourceLink('task', result.taskId, result.taskName);
+  const outputLink = formatDataResourceLink(
+    'output_table',
+    result.outputTableId,
+    result.outputTableName
+  );
+  return toolResult(
+    [
+      `Generated and validated data task: ${taskLink} (${result.taskId})`,
+      `Input table: ${receipt.inputTableName} (${receipt.inputTableId})`,
+      `Output table: ${outputLink} (${result.outputTableId})`,
+      `Temporary execution validation passed. Expected output columns=${result.expectedOutputSchema.length}.`,
+      'The reusable task is saved. Formal output has not been written; use data_run_task with mode=persisted only when the user requests it.',
+    ].join('\n'),
+    {
+      status: 'ready',
+      analysisId: receipt.id,
+      task: {
+        id: result.taskId,
+        name: result.taskName,
+        href: createDataResourceHref('task', result.taskId),
+      },
+      inputTable: { id: receipt.inputTableId, name: receipt.inputTableName },
+      outputTable: {
+        id: result.outputTableId,
+        name: result.outputTableName,
+        href: createDataResourceHref('output_table', result.outputTableId),
+      },
+      validation: { temporaryRun: 'passed' },
+      requiredColumns: result.requiredColumns,
+      expectedOutputSchema: result.expectedOutputSchema,
+      workflowHash: result.workflowHash,
+      version: result.version,
+      generatedAt: result.generatedAt,
+    }
+  );
 }
 
 function formatInputTable(table: DataDataset): string {
@@ -498,7 +792,7 @@ function formatWorkflowNode(node: DataTaskWorkflow['nodes'][number]): string {
   return `- ${node.id} type=${node.type}${details.length ? ` ${details.join(' ')}` : ''}`;
 }
 
-function formatPreview(preview: DataInputTablePreview | undefined): string {
+function formatPreview(preview: DataInputTablePreview | undefined, includeRows = true): string {
   if (!preview) {
     return '';
   }
@@ -506,14 +800,22 @@ function formatPreview(preview: DataInputTablePreview | undefined): string {
   const typeSummary = preview.columnTypes.length
     ? ` types=${preview.columnTypes.map((column) => `${column.name}: ${dataFieldTypeLabel(column.type)}`).join(', ')}`
     : '';
+  const summary = includeRows
+    ? `Preview rows=${rows.length}/${preview.totalRows}`
+    : `Table schema totalRows=${preview.totalRows}`;
   return [
-    `Preview rows=${rows.length}/${preview.totalRows} columns=${
-      preview.columns.join(', ') || '(none)'
-    }${typeSummary}`,
-    rows.length ? JSON.stringify(rows, null, 2) : '',
+    `${summary} columns=${preview.columns.join(', ') || '(none)'}${typeSummary}`,
+    includeRows && rows.length ? JSON.stringify(rows, null, 2) : '',
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+function withAgentResultPreviewLimit<T extends { previewRows?: number }>(input: T): T {
+  return {
+    ...input,
+    previewRows: Math.min(input.previewRows ?? 5, 5),
+  };
 }
 
 function formatDiagnostics(

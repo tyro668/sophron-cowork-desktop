@@ -102,16 +102,23 @@ export function getToolLabel(
 
 function getDataToolLabel(name: string, input: Record<string, unknown>): string {
   const id = firstString(input, ['id', 'taskId', 'inputTableId', 'outputTableId']);
-  const nameArg = firstString(input, ['name', 'outputTableName']);
+  const nameArg = firstString(input, ['name', 'taskName', 'outputTableName']);
   if (name === 'data_get_workflow_dsl_reference') return 'Get workflow DSL reference';
   if (name === 'data_list_input_tables') return 'List input tables';
-  if (name === 'data_create_input_table') return `Create input table${nameArg ? ` ${nameArg}` : ''}`;
+  if (name === 'data_create_input_table')
+    return `Create input table${nameArg ? ` ${nameArg}` : ''}`;
   if (name === 'data_update_input_table') return `Update input table${id ? ` ${id}` : ''}`;
   if (name === 'data_list_output_tables') return 'List output tables';
-  if (name === 'data_create_output_table') return `Create output table${nameArg ? ` ${nameArg}` : ''}`;
+  if (name === 'data_create_output_table')
+    return `Create output table${nameArg ? ` ${nameArg}` : ''}`;
   if (name === 'data_update_output_table') return `Update output table${id ? ` ${id}` : ''}`;
-  if (name === 'data_preview_table') return `Preview ${String(input.tableKind || 'data')} table${id ? ` ${id}` : ''}`;
+  if (name === 'data_preview_table')
+    return `Preview ${String(input.tableKind || 'data')} table${id ? ` ${id}` : ''}`;
   if (name === 'data_list_tasks') return 'List data tasks';
+  if (name === 'data_analyze_task_requirement') return 'Analyze data task requirement';
+  if (name === 'data_generate_task_from_requirement') {
+    return `Generate data task${nameArg ? ` ${nameArg}` : ''}`;
+  }
   if (name === 'data_create_task') return `Create data task${nameArg ? ` ${nameArg}` : ''}`;
   if (name === 'data_update_task') return `Update data task${id ? ` ${id}` : ''}`;
   if (name === 'data_get_task_workflow') return `Get task workflow${id ? ` ${id}` : ''}`;
@@ -119,11 +126,13 @@ function getDataToolLabel(name: string, input: Record<string, unknown>): string 
     return `${input.dryRun ? 'Validate' : 'Apply'} workflow DSL${id ? ` ${id}` : ''}`;
   }
   if (name === 'data_export_workflow_dsl') return `Export workflow DSL${id ? ` ${id}` : ''}`;
-  if (name === 'data_configure_input_operator') return `Configure input operator${id ? ` ${id}` : ''}`;
+  if (name === 'data_configure_input_operator')
+    return `Configure input operator${id ? ` ${id}` : ''}`;
   if (name === 'data_apply_operator_dsl') {
     return `${input.dryRun ? 'Validate' : 'Apply'} operator DSL${id ? ` ${id}` : ''}`;
   }
-  if (name === 'data_configure_output_operator') return `Configure output operator${id ? ` ${id}` : ''}`;
+  if (name === 'data_configure_output_operator')
+    return `Configure output operator${id ? ` ${id}` : ''}`;
   if (name === 'data_run_task') return `Run data task${id ? ` ${id}` : ''}`;
   if (name === 'data_get_run_result') return `Get run result${id ? ` ${id}` : ''}`;
   return name;
