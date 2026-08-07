@@ -1,5 +1,6 @@
 import type { ToolDefinition } from '@mariozechner/pi-coding-agent';
 import type { TSchema } from '@sinclair/typebox';
+import type { AgentRuntimeConfig } from '../../renderer/types';
 
 export type DataToolDefinition = ToolDefinition<TSchema, unknown>;
 
@@ -19,6 +20,28 @@ export interface DataToolPromptContext {
     canRunTask: boolean;
     canImportLocalFiles: boolean;
   };
+}
+
+export interface DataToolExecutionContext {
+  sessionId: string;
+  currentUserMessageId?: string;
+  runtimeConfig?: AgentRuntimeConfig;
+  toolCallId?: string;
+  signal?: AbortSignal;
+}
+
+export interface AnalyzeDataTaskRequirementToolInput {
+  inputTableId: string;
+  processRequirement: string;
+}
+
+export interface GenerateDataTaskFromAnalysisToolInput {
+  analysisId: string;
+  confirmed: true;
+  taskName?: string;
+  outputMode: 'create' | 'replace';
+  outputTableName?: string;
+  outputTableId?: string;
 }
 
 export interface DataToolResult {

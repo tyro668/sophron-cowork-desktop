@@ -2021,6 +2021,7 @@ ${hints.join('\n')}
             prompt,
             existingMessages,
             isColdStart: !cachedSession,
+            runtimeConfig,
           })
         : { promptPrefix: undefined, customTools: [] };
 

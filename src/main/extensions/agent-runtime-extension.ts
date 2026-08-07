@@ -1,6 +1,6 @@
 import type { ToolDefinition } from '@mariozechner/pi-coding-agent';
 import type { TSchema } from '@sinclair/typebox';
-import type { Message, Session } from '../../renderer/types';
+import type { AgentRuntimeConfig, Message, Session } from '../../renderer/types';
 
 export type AgentRuntimeCustomTool = ToolDefinition<TSchema, unknown>;
 
@@ -9,6 +9,8 @@ export interface BeforeSessionRunContext {
   prompt: string;
   existingMessages: Message[];
   isColdStart: boolean;
+  /** Resolved execution-only model config. Extensions must not serialize it into prompts. */
+  runtimeConfig?: AgentRuntimeConfig;
 }
 
 export interface BeforeSessionRunResult {

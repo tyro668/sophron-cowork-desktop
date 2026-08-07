@@ -24,18 +24,23 @@ describe('data tool prompt', () => {
     expect(prompt).toContain('data_create_input_table_with_processing_strategy');
     expect(prompt).toContain('processingStrategy.strategy="customize"');
     expect(prompt).toContain('Never write pseudo tool markup');
-    expect(prompt).toContain('data_create_output_table');
-    expect(prompt).toContain('data_create_task');
-    expect(prompt).toContain('sourceInputTableId and outputTableId');
-    expect(prompt).toContain('mode=temporary before persisted writes');
-    expect(prompt).toContain('not JSON');
-    expect(prompt).toContain('inputTableId and outputTableId');
+    expect(prompt).toContain('data_analyze_task_requirement');
+    expect(prompt).toContain('data_generate_task_from_requirement');
+    expect(prompt).toContain('mandatory two-turn flow');
+    expect(prompt).toContain(
+      'Never call data_generate_task_from_requirement in the same user turn'
+    );
+    expect(prompt).toContain('outputMode="create" with outputTableName');
+    expect(prompt).toContain('Never pass a nested output object or JSON string');
+    expect(prompt).toContain('Do not create or update output tables');
+    expect(prompt).toContain('Do not call data_preview_table first just to discover columns');
+    expect(prompt).toContain('includeRows=true only when the user explicitly asks');
+    expect(prompt).toContain('return at most 5 rows');
+    expect(prompt).toContain('mode=persisted');
     expect(prompt).toContain('preserve those links in your user-facing response');
-    expect(prompt).toContain('Do not invent node IDs');
-    expect(prompt).toContain('data_get_workflow_dsl_reference');
-    expect(prompt).toContain('Never search or read source-tree design docs');
-    expect(prompt).toContain('Packaged apps may not include source docs');
-    expect(prompt).toContain('Embedded workflow DSL quick reference');
+    expect(prompt).toContain('Do not author workflow DSL');
+    expect(prompt).not.toContain('data_apply_workflow_dsl');
+    expect(prompt).not.toContain('Embedded workflow DSL quick reference');
   });
 
   it('includes selected data context when available', () => {

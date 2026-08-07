@@ -1,6 +1,10 @@
 import { Type } from '@sinclair/typebox';
 import { isAbsolute, join } from 'path';
-import type { DataToolPromptContext, DataToolDefinition } from './data-tool-types';
+import type {
+  DataToolExecutionContext,
+  DataToolPromptContext,
+  DataToolDefinition,
+} from './data-tool-types';
 import type { DataToolService } from './data-tool-service';
 
 const SourceKindSchema = Type.Optional(
@@ -22,6 +26,15 @@ const ListSchema = Type.Object({
 });
 
 const PreviewRowsSchema = Type.Optional(Type.Integer({ minimum: 1, maximum: 100 }));
+const AgentResultPreviewRowsSchema = Type.Optional(
+  Type.Integer({
+    minimum: 1,
+    maximum: 5,
+    default: 5,
+    description:
+      'Number of result rows returned to the conversation. Defaults to 5 and is capped at 5; use data_preview_table only when the user explicitly requests more row values.',
+  })
+);
 
 const CloudConnectionProperties = {
   apiOrigin: Type.Optional(
@@ -77,30 +90,10 @@ const ProcessingStrategySchema = Type.Union([
 
 export function createDataCustomTools(
   dataToolService: DataToolService,
-  context?: DataToolPromptContext
+  context?: DataToolPromptContext,
+  executionContext?: DataToolExecutionContext
 ): DataToolDefinition[] {
   return [
-    {
-      name: 'data_get_workflow_dsl_reference',
-      label: 'Get workflow DSL reference',
-      description:
-        'Read the embedded workflow DSL reference. Use this instead of reading source-tree design docs, because packaged apps may not include source docs.',
-      parameters: Type.Object({
-        topic: Type.Optional(
-          Type.Union([
-            Type.Literal('overview'),
-            Type.Literal('workflow'),
-            Type.Literal('operators'),
-            Type.Literal('derive_window'),
-            Type.Literal('reshape'),
-            Type.Literal('examples'),
-            Type.Literal('all'),
-          ])
-        ),
-      }),
-      execute: async (_toolCallId, params) =>
-        dataToolService.getWorkflowDslReference(params as never),
-    },
     {
       name: 'data_list_input_tables',
       label: 'List input tables',
@@ -390,12 +383,20 @@ export function createDataCustomTools(
     {
       name: 'data_preview_table',
       label: 'Preview data table',
-      description: 'Preview a bounded number of rows from an input or output table.',
+      description:
+        'Inspect a table schema, or bounded row values when the user explicitly asks to see data. Do not call this before data_analyze_task_requirement merely to discover columns; the analyzer resolves the input schema internally. Rows are omitted unless includeRows=true.',
       parameters: Type.Object({
         tableKind: Type.Union([Type.Literal('input'), Type.Literal('output')]),
         id: Type.String({ minLength: 1 }),
         limit: PreviewRowsSchema,
         offset: Type.Optional(Type.Integer({ minimum: 0 })),
+        includeRows: Type.Optional(
+          Type.Boolean({
+            default: false,
+            description:
+              'Set true only when the user explicitly asks to inspect row values. Defaults to schema-only output.',
+          })
+        ),
       }),
       execute: async (_toolCallId, params) => dataToolService.previewTable(params as never),
     },
@@ -407,28 +408,75 @@ export function createDataCustomTools(
       execute: async (_toolCallId, params) => dataToolService.listTasks(params as never),
     },
     {
-      name: 'data_create_task',
-      label: 'Create data task',
-      description: 'Create a reusable data processing task.',
-      parameters: Type.Object({
-        name: Type.String({ minLength: 1 }),
-        sourcePath: Type.Optional(
-          Type.String({ description: 'Optional authorized local source file path.' })
+      name: 'data_analyze_task_requirement',
+      label: 'Analyze data task requirement',
+      description:
+        'Analyze a natural-language requirement against the registered single-input data-task capabilities. Always call this before generating a task. Show the result to the user and wait for a new user message with explicit confirmation. Ambiguous or unsupported requirements must be revised and analyzed again.',
+      parameters: Type.Object(
+        {
+          inputTableId: Type.String({
+            minLength: 1,
+            description: 'Existing input table id returned by data_list_input_tables.',
+          }),
+          processRequirement: Type.String({
+            minLength: 1,
+            maxLength: 10_000,
+            description: 'The user requirement exactly as agreed so far.',
+          }),
+        },
+        { additionalProperties: false }
+      ),
+      execute: async (toolCallId, params, signal) =>
+        dataToolService.analyzeTaskRequirement(
+          params as never,
+          executionContext
+            ? { ...executionContext, toolCallId, signal }
+            : dataToolService.resolveExecutionContext(context?.sessionId ?? '', toolCallId, signal)
         ),
-        sourceInputTableId: Type.Optional(
-          Type.String({
+    },
+    {
+      name: 'data_generate_task_from_requirement',
+      label: 'Generate data task from requirement',
+      description:
+        'Generate, compile, temporarily execute, validate, and save a reusable native-node data task from a supported analysis receipt. Call only after showing the analysis to the user and receiving explicit confirmation in a new user message. Pass outputMode, outputTableName, and outputTableId as flat fields; never serialize nested JSON into a string. Never provide or generate workflow DSL.',
+      parameters: Type.Object(
+        {
+          analysisId: Type.String({
+            minLength: 1,
+            description: 'Opaque id returned by data_analyze_task_requirement.',
+          }),
+          confirmed: Type.Literal(true, {
+            description: 'Pass true only after the user explicitly confirms the analysis.',
+          }),
+          taskName: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+          outputMode: Type.Union([Type.Literal('create'), Type.Literal('replace')], {
             description:
-              'Optional input table id this task will read from. Pass this when creating a task for a known input table.',
-          })
+              'Use create for a new output table or replace for an existing output table selected by the user.',
+          }),
+          outputTableName: Type.Optional(
+            Type.String({
+              minLength: 1,
+              maxLength: 200,
+              description: 'New output table name. Use only when outputMode=create.',
+            })
+          ),
+          outputTableId: Type.Optional(
+            Type.String({
+              minLength: 1,
+              description:
+                'Existing output table id explicitly selected by the user. Required when outputMode=replace.',
+            })
+          ),
+        },
+        { additionalProperties: false }
+      ),
+      execute: async (toolCallId, params, signal) =>
+        dataToolService.generateTaskFromAnalysis(
+          params as never,
+          executionContext
+            ? { ...executionContext, toolCallId, signal }
+            : dataToolService.resolveExecutionContext(context?.sessionId ?? '', toolCallId, signal)
         ),
-        outputTableId: Type.Optional(
-          Type.String({
-            description:
-              'Optional output table id this task will write to. Pass this when creating a task for a known output table.',
-          })
-        ),
-      }),
-      execute: async (_toolCallId, params) => dataToolService.createTask(params as never),
     },
     {
       name: 'data_update_task',
@@ -450,39 +498,6 @@ export function createDataCustomTools(
       execute: async (_toolCallId, params) => dataToolService.getTaskWorkflow(params as never),
     },
     {
-      name: 'data_apply_workflow_dsl',
-      label: 'Apply workflow DSL',
-      description:
-        'Validate or save a full reusable data workflow text DSL to a data task. Do not pass JSON nodes/edges. Use dryRun first. Pass inputTableId/outputTableId to bind resources without guessing node IDs.',
-      parameters: Type.Object({
-        taskId: Type.String({ minLength: 1 }),
-        dsl: Type.String({
-          minLength: 1,
-          description:
-            'Text prep DSL, for example: input source dataset "<inputTableId>" as src\\n  | derive [new_field] = expression\\n  | output table "Result" mode replace. Do not pass JSON.',
-        }),
-        inputTableId: Type.Optional(
-          Type.String({
-            description:
-              'Optional input table id to bind the first input_source node. Prefer this when a task reads a created input table.',
-          })
-        ),
-        inputAlias: Type.Optional(
-          Type.String({
-            description: 'Optional alias for inputTableId binding, for example src.',
-          })
-        ),
-        outputTableId: Type.Optional(
-          Type.String({
-            description:
-              'Optional output table id to bind the output node. Prefer this when writing to a reusable output table.',
-          })
-        ),
-        dryRun: Type.Optional(Type.Boolean()),
-      }),
-      execute: async (_toolCallId, params) => dataToolService.applyWorkflowDsl(params as never),
-    },
-    {
       name: 'data_export_workflow_dsl',
       label: 'Export workflow DSL',
       description: 'Export a data task workflow back to DSL.',
@@ -492,81 +507,14 @@ export function createDataCustomTools(
       execute: async (_toolCallId, params) => dataToolService.exportWorkflowDsl(params as never),
     },
     {
-      name: 'data_configure_input_operator',
-      label: 'Configure input operator',
-      description: 'Bind an input_source workflow node to a real input table id.',
-      parameters: Type.Object({
-        taskId: Type.String({ minLength: 1 }),
-        nodeId: Type.String({ minLength: 1 }),
-        inputTableId: Type.String({ minLength: 1 }),
-        alias: Type.Optional(Type.String()),
-        dryRun: Type.Optional(Type.Boolean()),
-      }),
-      execute: async (_toolCallId, params) =>
-        dataToolService.configureInputOperator(params as never),
-    },
-    {
-      name: 'data_apply_operator_dsl',
-      label: 'Apply operator DSL',
-      description:
-        'Validate or save a single non-input/non-output operator DSL for an existing workflow node.',
-      parameters: Type.Object({
-        taskId: Type.String({ minLength: 1 }),
-        nodeId: Type.String({ minLength: 1 }),
-        operatorType: Type.Optional(
-          Type.Union([
-            Type.Literal('filter'),
-            Type.Literal('field_select'),
-            Type.Literal('deduplicate'),
-            Type.Literal('missing_value'),
-            Type.Literal('type_convert'),
-            Type.Literal('sort'),
-            Type.Literal('join'),
-            Type.Literal('aggregate'),
-            Type.Literal('calculate_field'),
-            Type.Literal('field_mapping'),
-            Type.Literal('limit'),
-            Type.Literal('pivot'),
-            Type.Literal('unpivot'),
-            Type.Literal('set_op'),
-            Type.Literal('unnest'),
-          ])
-        ),
-        dsl: Type.String({ minLength: 1 }),
-        dryRun: Type.Optional(Type.Boolean()),
-      }),
-      execute: async (_toolCallId, params) => dataToolService.applyOperatorDsl(params as never),
-    },
-    {
-      name: 'data_configure_output_operator',
-      label: 'Configure output operator',
-      description: 'Bind an output workflow node to an output table or auto output name.',
-      parameters: Type.Object({
-        taskId: Type.String({ minLength: 1 }),
-        nodeId: Type.String({ minLength: 1 }),
-        outputTableId: Type.Optional(Type.String()),
-        outputTableName: Type.Optional(Type.String()),
-        outputStrategy: Type.Optional(Type.Union([Type.Literal('existing'), Type.Literal('auto')])),
-        mode: Type.Optional(Type.Union([Type.Literal('replace'), Type.Literal('append')])),
-        dryRun: Type.Optional(Type.Boolean()),
-      }),
-      execute: async (_toolCallId, params) =>
-        dataToolService.configureOutputOperator(params as never),
-    },
-    {
       name: 'data_run_task',
       label: 'Run data task',
       description:
-        'Run a data task. mode=temporary only validates a preview and does not update reusable output tables; mode=persisted writes formal outputs. If workflowDsl is provided without saveWorkflow=true, it is only used for this run and is not saved to task nodes.',
+        'Run a saved data task. mode=temporary only validates a preview and does not update reusable output tables; mode=persisted writes formal outputs.',
       parameters: Type.Object({
         taskId: Type.String({ minLength: 1 }),
         mode: Type.Optional(Type.Union([Type.Literal('temporary'), Type.Literal('persisted')])),
-        workflowDsl: Type.Optional(Type.String()),
-        saveWorkflow: Type.Optional(Type.Boolean()),
-        inputTableId: Type.Optional(Type.String()),
-        inputAlias: Type.Optional(Type.String()),
-        outputTableId: Type.Optional(Type.String()),
-        previewRows: PreviewRowsSchema,
+        previewRows: AgentResultPreviewRowsSchema,
       }),
       execute: async (_toolCallId, params) => dataToolService.runTask(params as never),
     },
@@ -576,7 +524,7 @@ export function createDataCustomTools(
       description: 'Read the latest bounded preview for a completed data task.',
       parameters: Type.Object({
         taskId: Type.String({ minLength: 1 }),
-        previewRows: PreviewRowsSchema,
+        previewRows: AgentResultPreviewRowsSchema,
         offset: Type.Optional(Type.Integer({ minimum: 0 })),
       }),
       execute: async (_toolCallId, params) => dataToolService.getRunResult(params as never),
