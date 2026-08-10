@@ -177,7 +177,7 @@ export function GlassValueInput({
             onFocus={() => openDropdown()}
             onBlur={multi ? undefined : () => setTimeout(() => onChange(inputText), 100)}
             placeholder={multi ? (tags.length === 0 ? placeholder : '') : placeholder}
-            className={`bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed ${multi ? 'h-6 min-w-[60px] pl-0.5' : 'h-8 min-w-[60px] flex-1 pl-2'}`}
+            className={`bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed ${multi ? 'h-6 min-w-[60px] flex-1 pl-0.5' : 'h-8 min-w-[60px] flex-1 pl-2'}`}
           />
         </div>
 

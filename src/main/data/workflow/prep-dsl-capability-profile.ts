@@ -145,7 +145,7 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
     aiEnabled: true,
     lowering: 'direct',
     runtimeContract:
-      'Use one pivot field, fixed non-empty values and one or more certified scalar metrics for deterministic output.',
+      'Use one pivot field with fixed non-empty values and one or more certified scalar metrics for deterministic output.',
   },
   unpivot: {
     irType: 'unpivot',

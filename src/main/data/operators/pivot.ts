@@ -19,20 +19,24 @@ export function compilePivotSql(
   const on = parsed.on;
   const metrics = parsed.using;
   const groupBy = parsed.groupBy;
-  const values = parsed.values;
 
   const onSql = on
-    .map((field) => {
-      const fieldValues = Array.isArray(values[field]) ? (values[field] as unknown[]) : [];
+    .map((axis) => {
+      const fieldValues = Array.isArray(axis.values) ? (axis.values as unknown[]) : [];
       const inClause =
         fieldValues.length > 0 ? ` IN (${fieldValues.map(literalToSql).join(', ')})` : '';
-      return `${quoteIdentifier(field)}${inClause}`;
+      return `${quoteIdentifier(axis.field)}${inClause}`;
     })
     .join(', ');
   const usingSql = metrics
     .map((metric) => {
       const fn = metric.function;
       const expression = compileAggExpr(metric.expression);
+      if (expression === '*' && fn !== 'count') {
+        throw new Error(
+          `Aggregate function '${fn}' cannot use '*' as its expression in a pivot; only count may count all rows`
+        );
+      }
       const alias = metric.alias ? ` AS ${quoteIdentifier(metric.alias)}` : '';
       return `${formatAggFn(fn)}${expression})${alias}`;
     })

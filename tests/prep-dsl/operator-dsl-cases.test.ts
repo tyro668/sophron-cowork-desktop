@@ -186,7 +186,7 @@ const currentOperatorCases: Array<{
     type: 'pivot',
     dsl: "pivot on [region] using string_agg([name], ', ') as [names], count(*) as [n]",
     expectedConfig: {
-      on: ['region'],
+      on: [{ field: 'region', values: [] }],
       using: [
         { function: 'string_agg', expression: "[name], ', '", alias: 'names' },
         { function: 'count', expression: '*', alias: 'n' },
@@ -198,7 +198,7 @@ const currentOperatorCases: Array<{
     type: 'pivot',
     dsl: "pivot on [region] using string_agg([name], 'it\\'s') as [names], count(*) as [n]",
     expectedConfig: {
-      on: ['region'],
+      on: [{ field: 'region', values: [] }],
       using: [
         { function: 'string_agg', expression: "[name], 'it\\'s'", alias: 'names' },
         { function: 'count', expression: '*', alias: 'n' },
@@ -254,7 +254,10 @@ const currentOperatorCases: Array<{
     name: 'pivot rows',
     type: 'pivot',
     dsl: 'pivot on [month] in ("Jan", "Feb") using sum([revenue]) as [revenue_sum] group by [region]',
-    expectedConfig: { on: ['month'], values: { month: ['Jan', 'Feb'] }, groupBy: ['region'] },
+    expectedConfig: {
+      on: [{ field: 'month', values: ['Jan', 'Feb'] }],
+      groupBy: ['region'],
+    },
   },
   {
     name: 'unpivot rows',
@@ -350,6 +353,300 @@ describe('operator DSL executable cases', () => {
     expect(errorsOf(parsed.diagnostics)).toEqual(
       expect.arrayContaining([expect.objectContaining({ code: 'duplicateAggregateGroupField' })])
     );
+  });
+
+  it.each(['pivot on [Item] in using count(*)', 'pivot on [Item] in () using count(*)'])(
+    'rejects pivot on field with an empty value list: %s',
+    (dsl) => {
+      const parsed = parsePrepOperatorDsl(dsl, 'pivot');
+
+      expect(errorsOf(parsed.diagnostics)).toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: 'invalidPivotValueList' })])
+      );
+    }
+  );
+
+  it('accepts pivot on field without values as dynamic all values', () => {
+    const parsed = parsePrepOperatorDsl('pivot on [Item] using count(*)', 'pivot');
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config.on).toEqual([{ field: 'Item', values: [] }]);
+  });
+
+  it('rejects duplicate pivot on fields', () => {
+    const parsed = parsePrepOperatorDsl('pivot on [Item], [item] using count(*)', 'pivot');
+
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidPivotField' })])
+    );
+  });
+
+  it.each([
+    'pivot on [year] in 2024 using count(*)',
+    'pivot on [year] in () using count(*)',
+    'pivot on [year] in (2024) garbage using count(*)',
+  ])('rejects malformed pivot in list: %s', (dsl) => {
+    const parsed = parsePrepOperatorDsl(dsl, 'pivot');
+
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidPivotValueList' })])
+    );
+  });
+
+  it('rejects a pivot value list with an unterminated parenthesis as a structural error', () => {
+    const parsed = parsePrepOperatorDsl('pivot on [year] in (2024 using count(*)', 'pivot');
+
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidPivot' })])
+    );
+    expect(errorsOf(parsed.diagnostics)).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidPivotValueList' })])
+    );
+  });
+
+  it('rejects a pivot in list with an unterminated string', () => {
+    const parsed = parsePrepOperatorDsl('pivot on [year] in ("abc) using count(*)', 'pivot');
+
+    expect(errorsOf(parsed.diagnostics)).not.toHaveLength(0);
+  });
+
+  it.each([
+    'pivot on [sfc] in ("null",) using count(*)',
+    'pivot on [sfc] in ("a", "b",) using count(*)',
+    'pivot on [sfc] in (, "a") using count(*)',
+    'pivot on [sfc] in ("a", 2024,) using count(*)',
+  ])('rejects a pivot value list with a stray comma: %s', (dsl) => {
+    const parsed = parsePrepOperatorDsl(dsl, 'pivot');
+
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidPivotValueList' })])
+    );
+  });
+
+  it.each([
+    'pivot on [sfc], [category] in ("食品", "电子产品"), using count(*)',
+    'pivot on [category] in ("食品"), using count(*)',
+    'pivot on [category] in ("食品"), group by [region]',
+    'pivot on [category] in ("食品"),',
+  ])('rejects a trailing comma after the pivot axis list: %s', (dsl) => {
+    const parsed = parsePrepOperatorDsl(dsl, 'pivot');
+
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidPivotValueList' })])
+    );
+  });
+
+  it('rejects a pivot value list with values missing a separating comma', () => {
+    const parsed = parsePrepOperatorDsl('pivot on [sfc] in ("a" "b") using count(*)', 'pivot');
+
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidPivotValueList' })])
+    );
+  });
+
+  it('rejects a pivot with no on fields', () => {
+    const parsed = parsePrepOperatorDsl('pivot on using count(*)', 'pivot');
+
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidPivot' })])
+    );
+    expect(parsed.operator).toBeNull();
+  });
+
+  it('rejects a pivot group by with no fields', () => {
+    const parsed = parsePrepOperatorDsl('pivot on [category] using count(*) group by', 'pivot');
+
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidPivotGroupField' })])
+    );
+    expect(parsed.operator).toBeNull();
+  });
+
+  it.each(['pivot on [a] using', 'pivot on [a] using '])(
+    'rejects a pivot with no using metrics: %s',
+    (dsl) => {
+      const parsed = parsePrepOperatorDsl(dsl, 'pivot');
+
+      expect(errorsOf(parsed.diagnostics)).toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: 'invalidPivot' })])
+      );
+      expect(parsed.operator).toBeNull();
+    }
+  );
+
+  it('treats a bracketed pivot value as a literal string', () => {
+    const parsed = parsePrepOperatorDsl('pivot on [sfc] in ([amount]) using count(*)', 'pivot');
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config.on).toEqual([{ field: 'sfc', values: ['amount'] }]);
+  });
+
+  it('parses multiple pivot axes with per-field value lists', () => {
+    const parsed = parsePrepOperatorDsl(
+      'pivot on [year] in (2024), [quarter] in ("Q1") using count(*)',
+      'pivot'
+    );
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config.on).toEqual([
+      { field: 'year', values: [2024] },
+      { field: 'quarter', values: ['Q1'] },
+    ]);
+  });
+
+  it('parses a dynamic axis (no values) followed by a fixed axis', () => {
+    const parsed = parsePrepOperatorDsl(
+      'pivot on [a] in ("x"), [b] using count(*) group by [region]',
+      'pivot'
+    );
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config.on).toEqual([
+      { field: 'a', values: ['x'] },
+      { field: 'b', values: [] },
+    ]);
+    expect(parsed.operator?.config.groupBy).toEqual(['region']);
+  });
+
+  it('parses a dynamic axis first followed by a fixed axis', () => {
+    const parsed = parsePrepOperatorDsl(
+      'pivot on [sfc], [category] in ("食品", "电子产品") using count(*)',
+      'pivot'
+    );
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config.on).toEqual([
+      { field: 'sfc', values: [] },
+      { field: 'category', values: ['食品', '电子产品'] },
+    ]);
+  });
+
+  it('parses group by fields named group and by without clashing with the clause', () => {
+    const parsed = parsePrepOperatorDsl(
+      'pivot on [a] using count(*) group by [group], [by]',
+      'pivot'
+    );
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config.groupBy).toEqual(['group', 'by']);
+  });
+
+  it('preserves number, boolean and null literal types through pivot round-trip', () => {
+    const config = {
+      on: [{ field: 'year', values: [2024, true, null] }],
+      using: [{ function: 'count', expression: '*' }],
+    };
+    const dsl = exportPrepOperatorDsl({ id: 'pivot-lit', type: 'pivot', config });
+    const parsed = parsePrepOperatorDsl(dsl, 'pivot');
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config.on).toEqual([{ field: 'year', values: [2024, true, null] }]);
+  });
+
+  it('preserves a comma inside a quoted pivot value through round-trip', () => {
+    const config = {
+      on: [{ field: 'city', values: ['New York, NY', 'Paris'] }],
+      using: [{ function: 'count', expression: '*' }],
+    };
+    const dsl = exportPrepOperatorDsl({ id: 'pivot-comma', type: 'pivot', config });
+    const parsed = parsePrepOperatorDsl(dsl, 'pivot');
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config.on).toEqual([
+      { field: 'city', values: ['New York, NY', 'Paris'] },
+    ]);
+  });
+
+  it('does not export a pivot with an incomplete axis', () => {
+    expect(
+      exportPrepOperatorDsl({
+        id: 'pivot-partial',
+        type: 'pivot',
+        config: {
+          on: [
+            { field: 'year', values: [] },
+            { field: '', values: [] },
+          ],
+          using: [{ function: 'count', expression: '*' }],
+        },
+      })
+    ).toBe('');
+  });
+
+  it('does not export a pivot with an axis whose values are not an array', () => {
+    expect(
+      exportPrepOperatorDsl({
+        id: 'pivot-bad-values',
+        type: 'pivot',
+        config: {
+          on: [{ field: 'year', values: 'not-an-array' }],
+          using: [{ function: 'count', expression: '*' }],
+        },
+      })
+    ).toBe('');
+  });
+
+  it('parses negative, decimal and scientific-notation pivot values', () => {
+    const parsed = parsePrepOperatorDsl(
+      'pivot on [y] in (-2024, 3.14, 1e3) using count(*)',
+      'pivot'
+    );
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config.on).toEqual([{ field: 'y', values: [-2024, 3.14, 1000] }]);
+  });
+
+  it('parses plus/minus prefixed pivot values', () => {
+    const parsed = parsePrepOperatorDsl('pivot on [y] in (+5, -2) using count(*)', 'pivot');
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config.on).toEqual([{ field: 'y', values: [5, -2] }]);
+  });
+
+  it('parses a single scientific-notation pivot value', () => {
+    const parsed = parsePrepOperatorDsl('pivot on [y] in (1e3) using count(*)', 'pivot');
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config.on).toEqual([{ field: 'y', values: [1000] }]);
+  });
+
+  it('parses single-quoted pivot string values', () => {
+    const parsed = parsePrepOperatorDsl("pivot on [y] in ('a', 'b') using count(*)", 'pivot');
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config.on).toEqual([{ field: 'y', values: ['a', 'b'] }]);
+  });
+
+  it('formats pivot string values with double quotes and round-trips through parse', () => {
+    // Build the config without the parse-time `dsl` field so the formatter cannot
+    // short-circuit and return the original text; the real format logic runs here.
+    const dsl = exportPrepOperatorDsl({
+      id: 'pivot-single-quote',
+      type: 'pivot',
+      config: {
+        on: [{ field: 'y', values: ['a', 'b'] }],
+        using: [{ function: 'count', expression: '*' }],
+      },
+    });
+    expect(dsl).toBe('pivot on [y] in ("a", "b") using count(*)');
+
+    const reparsed = parsePrepOperatorDsl(dsl, 'pivot');
+    expect(errorsOf(reparsed.diagnostics)).toHaveLength(0);
+    expect(reparsed.operator?.config.on).toEqual([{ field: 'y', values: ['a', 'b'] }]);
+  });
+
+  it('parses multiple all-dynamic axes with a multi-field group by', () => {
+    const parsed = parsePrepOperatorDsl(
+      'pivot on [a], [b] using count(*) group by [x], [y]',
+      'pivot'
+    );
+
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+    expect(parsed.operator?.config.on).toEqual([
+      { field: 'a', values: [] },
+      { field: 'b', values: [] },
+    ]);
+    expect(parsed.operator?.config.groupBy).toEqual(['x', 'y']);
   });
 
   it.each([

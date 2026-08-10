@@ -212,7 +212,13 @@ function hasInvalidPivotConfig(node: DataWorkflowNode): boolean {
   if (node.type !== 'pivot') return false;
   const on = Array.isArray(node.config.on) ? node.config.on : [];
   const using = Array.isArray(node.config.using) ? node.config.using : [];
-  const hasEmptyOn = on.some((field) => typeof field !== 'string' || !field.trim());
+  const hasEmptyOn = on.some(
+    (axis) =>
+      !axis ||
+      typeof axis !== 'object' ||
+      typeof (axis as { field?: unknown }).field !== 'string' ||
+      !(axis as { field: string }).field.trim()
+  );
   const hasEmptyUsing = using.some(
     (metric) =>
       !metric ||
@@ -2985,7 +2991,17 @@ function getWorkflowConfigSummary(node: DataWorkflowNode, t: TranslateFn): Workf
     case 'pivot':
       summary = {
         primary: [
-          summaryRow(t, 'columns', formatList(stringArray(config.on), t), true),
+          summaryRow(
+            t,
+            'columns',
+            formatList(
+              recordArray(config.on)
+                .map((axis) => (typeof axis.field === 'string' ? axis.field : ''))
+                .filter(Boolean),
+              t
+            ),
+            true
+          ),
           summaryRow(t, 'metrics', formatCount(recordArray(config.using).length)),
         ],
         details: [summaryRow(t, 'groupBy', formatList(stringArray(config.groupBy), t), true)],

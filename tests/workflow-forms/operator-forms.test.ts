@@ -272,13 +272,13 @@ describe('operator forms — config ↔ DSL round-trip', () => {
   it('pivot', () => {
     const result = ok(
       {
-        on: ['month'],
+        on: [{ field: 'month', values: ['Jan', 'Feb'] }],
         using: [{ function: 'sum', expression: '[revenue]', alias: 'revenue_sum' }],
         groupBy: ['region'],
       },
       'pivot'
     );
-    expect(result.config.on).toEqual(['month']);
+    expect(result.config.on).toEqual([{ field: 'month', values: ['Jan', 'Feb'] }]);
   });
 
   it('unpivot', () => {

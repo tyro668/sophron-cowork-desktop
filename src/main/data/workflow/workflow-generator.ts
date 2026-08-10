@@ -652,7 +652,7 @@ function buildWorkflowGenerationUserPrompt(input: {
               requirement:
                 '以 Product Type 为行分组，将 Market 透视为列，固定生成 Central、East、South、West 四列，单元格汇总 Sales。',
               javascriptSource:
-                'function pivotMarketSales(input) {\n  return workflow.step(input, "pivot", { config: { on: ["Market"], values: ["Central", "East", "South", "West"], using: [{ function: "sum", expression: expr(row => row["Sales"]), alias: "Sales" }], groupBy: ["Product Type"] } });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const pivoted = pivotMarketSales(input);\n  return workflow.output(pivoted, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+                'function pivotMarketSales(input) {\n  return workflow.step(input, "pivot", { config: { on: [{ field: "Market", values: ["Central", "East", "South", "West"] }], using: [{ function: "sum", expression: expr(row => row["Sales"]), alias: "Sales" }], groupBy: ["Product Type"] } });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const pivoted = pivotMarketSales(input);\n  return workflow.output(pivoted, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
               requiredColumns: [{ name: 'Product Type' }, { name: 'Market' }, { name: 'Sales' }],
             },
             {

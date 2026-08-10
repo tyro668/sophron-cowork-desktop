@@ -604,7 +604,7 @@ describe('AI workflow capability contract', () => {
           name: 'pivotQuarter',
           type: 'pivot',
           payload:
-            '{ config: { on: ["quarter"], values: ["Q1", "Q2"], using: [{ function: "sum", expression: expr(row => row["revenue"]), alias: "sales" }], groupBy: ["region"] } }',
+            '{ config: { on: [{ field: "quarter", values: ["Q1", "Q2"] }], using: [{ function: "sum", expression: expr(row => row["revenue"]), alias: "sales" }], groupBy: ["region"] } }',
         },
       ]),
     });
@@ -644,7 +644,7 @@ describe('AI workflow capability contract', () => {
           name: 'pivotQuarterMetrics',
           type: 'pivot',
           payload:
-            '{ config: { on: ["quarter"], values: ["Q1", "Q2"], using: [' +
+            '{ config: { on: [{ field: "quarter", values: ["Q1", "Q2"] }], using: [' +
             '{ function: "sum", expression: expr(row => row["revenue"]), alias: "sales" },' +
             '{ function: "sum", expression: expr(row => row["units"]), alias: "units" }' +
             '], groupBy: ["region"] } }',

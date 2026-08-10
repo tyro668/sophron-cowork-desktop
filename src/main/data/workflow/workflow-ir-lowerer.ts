@@ -792,13 +792,21 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
   pivot: {
     compile(operation, context) {
       const config = operation.config;
-      if (config.on.length !== 1 || config.values.length === 0 || config.using.length === 0) {
+      if (config.on.length !== 1 || config.using.length === 0) {
         throw new DataCommandError(
           'VALIDATION_FAILED',
-          'Generated automation pivot requires exactly one on field, fixed non-empty values, and at least one metric'
+          'Generated automation pivot requires exactly one on field and at least one metric'
         );
       }
-      const on = context.requireColumn(config.on[0], 'pivot.on');
+      const axis = config.on[0];
+      const values = axis.values ?? [];
+      if (values.length === 0) {
+        throw new DataCommandError(
+          'VALIDATION_FAILED',
+          'Generated automation pivot requires fixed non-empty values for the on field'
+        );
+      }
+      const on = context.requireColumn(axis.field, 'pivot.on');
       const groupBy = config.groupBy.map((name) => context.requireColumn(name, 'pivot.groupBy'));
       const metrics = config.using.map((metric) =>
         compileWorkflowAggregateMetric(
@@ -812,8 +820,12 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         )
       );
       context.emitOperator('pivot', {
-        on: [on.name],
-        values: config.values,
+        on: [
+          {
+            field: on.name,
+            values,
+          },
+        ],
         using: metrics.map((metric, index) => ({
           function: normalizePlanAggregateFunction(config.using[index].function),
           expression: metric.expression ?? '*',
@@ -823,7 +835,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
       });
       context.replaceColumns([
         ...groupBy,
-        ...config.values.flatMap((value) =>
+        ...values.flatMap((value) =>
           metrics.map((metric) => ({
             name: `${String(value)}_${metric.alias}`,
             type: metric.type,

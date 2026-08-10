@@ -1,26 +1,55 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { OperatorFormProps } from './index';
 import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
+import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
+import { translatePivotInput } from '../../../shared/data-field-types';
 import { useWorkflowNodeColumnValues } from '../../hooks/useWorkflowNodeColumnValues';
+import { useDragReorder } from '../../hooks/useDragReorder';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
+import { useClickOutside } from '../../hooks/useClickOutside';
+import { ChevronDown, Loader2, Trash2, X } from 'lucide-react';
 
 const PIVOT_FUNCTIONS = ['sum', 'avg', 'min', 'max', 'count', 'count_distinct'];
+
+type ValueLiteral = string | number | boolean | null;
+
+interface PivotAxis {
+  field: string;
+  values: ValueLiteral[];
+}
+
+function isPivotLiteral(value: unknown): value is ValueLiteral {
+  return (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  );
+}
 
 interface PivotMetric {
   function: string;
   expression: string;
-  alias?: string;
+  alias: string;
 }
 
 function createDefaultMetric(): PivotMetric {
-  return { function: 'count', expression: '*', alias: undefined };
+  return { function: 'count', expression: '', alias: '' };
+}
+
+function createDefaultAxis(): PivotAxis {
+  return { field: '', values: [] };
+}
+
+function isAxisId(value: unknown): value is { field: string; values: unknown } {
+  return Boolean(value) && typeof value === 'object';
 }
 
 export default function FormPivot({
@@ -34,17 +63,15 @@ export default function FormPivot({
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 
-  const onFields = useMemo(() => (node.config.on as string[]) ?? [], [node.config?.on]);
-  const values = useMemo(() => {
-    const raw = node.config.values;
-    if (Array.isArray(raw)) return raw as string[];
-    if (raw && typeof raw === 'object') {
-      const record = raw as Record<string, unknown>;
-      const first = onFields[0];
-      if (first && Array.isArray(record[first])) return record[first] as string[];
-    }
-    return [];
-  }, [node?.config?.values, onFields]);
+  const axes = useMemo(() => {
+    const raw = node.config.on;
+    if (!Array.isArray(raw) || raw.length === 0) return [createDefaultAxis()];
+    return raw.filter(isAxisId).map((axis) => ({
+      field: typeof axis.field === 'string' ? axis.field : '',
+      values: Array.isArray(axis.values) ? axis.values.filter(isPivotLiteral) : [],
+    }));
+  }, [node.config?.on]);
+
   const rawUsing = useMemo(() => (node.config.using as PivotMetric[]) ?? [], [node.config?.using]);
   const using = useMemo(
     () => (rawUsing.length > 0 ? rawUsing : [createDefaultMetric()]),
@@ -52,51 +79,55 @@ export default function FormPivot({
   );
   const groupBy = useMemo(() => (node.config.groupBy as string[]) ?? [], [node.config?.groupBy]);
 
-  const makeArrayHandler = useCallback(
-    (key: string) => (next: string[]) =>
-      updateConfig((cfg) => ({ ...cfg, [key]: next.length > 0 ? next : undefined })),
-    [updateConfig]
-  );
-
-  const handleOnChange = useCallback(
-    (next: string[]) => {
-      updateConfig((cfg) => {
-        const previous = (cfg.on as string[] | undefined) ?? [];
-        const firstFieldChanged = previous[0] !== next[0];
-        return {
-          ...cfg,
-          on: next.length > 0 ? next : undefined,
-          values: firstFieldChanged ? undefined : cfg.values,
-        };
-      });
-    },
-    [updateConfig]
-  );
-  const handleGroupByChange = useMemo(() => makeArrayHandler('groupBy'), [makeArrayHandler]);
-  const handleValuesChange = useCallback(
-    (next: string[]) => {
-      updateConfig((cfg) => {
-        const first = (cfg.on as string[] | undefined)?.[0];
-        if (!first) return cfg;
-        const current =
-          cfg.values && typeof cfg.values === 'object' && !Array.isArray(cfg.values)
-            ? (cfg.values as Record<string, unknown>)
-            : {};
-        return {
-          ...cfg,
-          values: next.length > 0 ? { ...current, [first]: next } : current,
-        };
-      });
+  const handleAxesChange = useCallback(
+    (next: PivotAxis[]) => {
+      updateConfig((cfg) => ({ ...cfg, on: next.length > 0 ? next : undefined }));
     },
     [updateConfig]
   );
 
-  const removeOn = useCallback(
-    (col: string) => handleOnChange(onFields.filter((c) => c !== col)),
-    [handleOnChange, onFields]
-  );
+  function updateAxis(index: number, patch: Partial<PivotAxis>) {
+    handleAxesChange(axes.map((axis, i) => (i === index ? { ...axis, ...patch } : axis)));
+  }
 
-  const clearOn = useCallback(() => handleOnChange([]), [handleOnChange]);
+  function handleAxisFieldChange(index: number, field: string) {
+    const current = axes[index]?.field;
+    if (current === field) return;
+    updateAxis(index, { field, values: [] });
+  }
+
+  function addAxisAfter(index: number) {
+    const hasEmpty = axes.some((axis) => !axis.field);
+    if (hasEmpty) return;
+    handleAxesChange([...axes.slice(0, index + 1), createDefaultAxis(), ...axes.slice(index + 1)]);
+  }
+
+  function removeAxis(index: number) {
+    if (axes.length <= 1) return;
+    handleAxesChange(axes.filter((_, i) => i !== index));
+  }
+
+  const usedFields = useMemo(() => new Set(axes.map((axis) => axis.field)), [axes]);
+
+  const {
+    activeItems: activeAxes,
+    handleDragStart: handleAxisDragStart,
+    handleDragOver: handleAxisDragOver,
+    handleDragEnd: handleAxisDragEnd,
+    isDragging: isAxesDragging,
+    resetDrag: resetAxesDrag,
+    dragIndexRef: axesDragIndexRef,
+  } = useDragReorder(axes, handleAxesChange);
+
+  useEffect(() => {
+    if (!isAxesDragging) resetAxesDrag();
+  }, [axes, isAxesDragging, resetAxesDrag]);
+
+  const handleGroupByChange = useCallback(
+    (next: string[]) =>
+      updateConfig((cfg) => ({ ...cfg, groupBy: next.length > 0 ? next : undefined })),
+    [updateConfig]
+  );
 
   const removeGroupBy = useCallback(
     (col: string) => handleGroupByChange(groupBy.filter((c) => c !== col)),
@@ -105,15 +136,7 @@ export default function FormPivot({
 
   const clearGroupBy = useCallback(() => handleGroupByChange([]), [handleGroupByChange]);
 
-  const [onOpen, setOnOpen] = useState(false);
   const [groupByOpen, setGroupByOpen] = useState(false);
-  const [valueListOpen, setValueListOpen] = useState(false);
-
-  const distinctValues = useWorkflowNodeColumnValues({
-    taskId,
-    sourceNode,
-    column: onFields[0],
-  });
 
   // ── 多指标管理 ──
 
@@ -134,8 +157,11 @@ export default function FormPivot({
   function addMetricAfter(index: number) {
     const hasEmpty = using.some((m) => !m.expression);
     if (hasEmpty) return;
-    const entry = createDefaultMetric();
-    handleUsingChange([...using.slice(0, index + 1), entry, ...using.slice(index + 1)]);
+    handleUsingChange([
+      ...using.slice(0, index + 1),
+      createDefaultMetric(),
+      ...using.slice(index + 1),
+    ]);
   }
 
   function removeMetric(index: number) {
@@ -162,9 +188,9 @@ export default function FormPivot({
   );
 
   return (
-    <div className="flex gap-2.5">
-      {/* ═══ 左列: 列与分组 ═══ */}
-      <div className="flex-[4] rounded-lg border border-border-muted bg-background/42 content-start">
+    <div className="flex flex-col gap-3">
+      {/* ═══ 上块: 列与分组 ═══ */}
+      <div className="w-full rounded-lg border border-border-muted bg-background/42 content-start">
         <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5">
           <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
             1
@@ -176,55 +202,57 @@ export default function FormPivot({
         </div>
         <div className="px-3 pb-3 grid gap-3 content-start">
           <div className="grid gap-1.5 content-start">
-            <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-              {tr('pivotOnLabel')}
-            </span>
-            <GlassTagBar
-              items={onFields}
-              onRemove={removeOn}
-              onClear={clearOn}
-              open={onOpen}
-              onToggle={() => setOnOpen((v) => !v)}
-              toggleStyle="chevron"
-              density="default"
-              className="min-h-7"
-              placeholder={tr('noFieldsSelected')}
+            <GlassRowList
+              headerClassName="text-[12px]"
+              hideHeader
+              items={activeAxes}
+              columns={[
+                {
+                  flex: 'flex-[1.5]',
+                  header: '',
+                  render: (axis: PivotAxis, i: number) => (
+                    <GlassFieldSingleSelect
+                      value={axis.field}
+                      options={fieldCompletions}
+                      columnTypes={columnTypes}
+                      onChange={(field) => handleAxisFieldChange(i, field)}
+                      disabledOptions={new Set([...usedFields].filter((f) => f !== axis.field))}
+                      placeholder={tr('pivotAxisFieldPlaceholder')}
+                      searchPlaceholder={tr('searchField')}
+                      className="h-7 flex-1 min-w-0"
+                    />
+                  ),
+                },
+                {
+                  flex: 'flex-[10]',
+                  header: '',
+                  render: (axis: PivotAxis, i: number) => (
+                    <AxisValueCell
+                      field={axis.field}
+                      columnType={columnTypes[axis.field]}
+                      values={axis.values}
+                      taskId={taskId}
+                      sourceNode={sourceNode}
+                      tr={tr}
+                      onChange={(values) => updateAxis(i, { values })}
+                    />
+                  ),
+                },
+              ]}
+              onAdd={(i) => addAxisAfter(i)}
+              onRemove={(i) => removeAxis(i)}
+              addTitle={tr('pivotAddAxis')}
+              removeTitle={tr('pivotRemoveAxis')}
+              canAct={(action: RowAction) =>
+                action === 'add' ? !axes.some((a) => !a.field) : true
+              }
+              draggable
+              onDragStart={handleAxisDragStart}
+              onDragOver={handleAxisDragOver}
+              onDragEnd={handleAxisDragEnd}
+              getRowOpacity={(i) => !!(isAxesDragging && axesDragIndexRef.current === i)}
+              dragTitle={tr('dragToReorder')}
             />
-            {onOpen && (
-              <GlassFieldMultiSelect
-                columns={fieldCompletions}
-                selected={onFields}
-                onChange={handleOnChange}
-                columnTypes={columnTypes}
-                maxHeight="180px"
-              />
-            )}
-          </div>
-          <div className="grid gap-1">
-            <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-              {tr('pivotInLabel')}
-              <span className="text-[10px] text-text-muted ml-1">({tr('optional')})</span>
-            </span>
-            <GlassTagBar
-              items={values}
-              onRemove={(col) => handleValuesChange(values.filter((c) => c !== col))}
-              onClear={() => handleValuesChange([])}
-              open={valueListOpen}
-              onToggle={() => setValueListOpen((v) => !v)}
-              toggleStyle="chevron"
-              density="default"
-              placeholder={tr('pivotInPlaceholder')}
-            />
-            {valueListOpen && (
-              <GlassFieldMultiSelect
-                columns={distinctValues}
-                selected={values}
-                onChange={handleValuesChange}
-                maxHeight="180px"
-                allowCustomValue
-                inputPlaceholder={tr('pivotInPlaceholder')}
-              />
-            )}
           </div>
           <div className="grid gap-1.5 content-start">
             <span className="mb-1 block text-[12px] font-medium text-text-secondary">
@@ -255,8 +283,8 @@ export default function FormPivot({
         </div>
       </div>
 
-      {/* ═══ 右列: 聚合指标 ═══ */}
-      <div className="flex-[6] rounded-lg border border-border-muted bg-background/42 content-start">
+      {/* ═══ 下块: 聚合指标 ═══ */}
+      <div className="w-full rounded-lg border border-border-muted bg-background/42 content-start">
         <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5">
           <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
             2
@@ -301,8 +329,8 @@ export default function FormPivot({
                 header: tr('aggregateAlias'),
                 render: (metric: PivotMetric, i: number) => (
                   <GlassFormTextInput
-                    value={metric.alias ?? ''}
-                    onChange={(v) => updateMetric(i, { alias: v || undefined })}
+                    value={metric.alias}
+                    onChange={(v) => updateMetric(i, { alias: v })}
                     placeholder={tr('pivotAliasPlaceholder')}
                     className="h-7 px-1.5 text-[12px] w-full"
                   />
@@ -319,6 +347,300 @@ export default function FormPivot({
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+interface AxisValueCellProps {
+  field: string;
+  columnType?: string;
+  values: ValueLiteral[];
+  taskId?: string;
+  sourceNode?: { id: string; type: string; config?: Record<string, unknown> };
+  onChange: (values: ValueLiteral[]) => void;
+  tr: (key: string, params?: Record<string, unknown>) => string;
+}
+
+// 纯展示用，不代表存储类型：null 显示为 "null"，空字符串显示为 ""，其余按 String 显示。
+function literalDisplay(value: ValueLiteral): string {
+  if (value === null) return 'null';
+  if (value === '') return '""';
+  return String(value);
+}
+
+// 只翻译新添加的那一个值，追加到既有类型化数组；既有值类型保持不变。
+// trim 决策统一收敛到 translatePivotInput（text 保留原始，其余按字段类型处理）。
+// 空串视为无操作，避免误添加空字符串值（手工输入语义）。
+export function addPivotValue(
+  values: ValueLiteral[],
+  raw: string,
+  columnType?: string
+): ValueLiteral[] {
+  if (raw === '') return values;
+  const translated = translatePivotInput(raw, columnType);
+  // 转换后为空串（如纯空白在数值/日期列）视为无操作，避免误添加。
+  if (translated === '') return values;
+  if (values.some((v) => literalDisplay(v) === literalDisplay(translated))) return values;
+  return [...values, translated];
+}
+
+// 候选点击专用：允许添加空字符串（候选值来自数据库 DISTINCT，原列真实存在空串时需可选）。
+// 手工输入的 no-op 语义不影响候选路径。
+export function addPivotCandidate(
+  values: ValueLiteral[],
+  raw: string,
+  columnType?: string
+): ValueLiteral[] {
+  const translated = translatePivotInput(raw, columnType);
+  if (values.some((v) => literalDisplay(v) === literalDisplay(translated))) return values;
+  return [...values, translated];
+}
+
+// 删除按索引过滤，保留既有值的类型，不重新解析整个数组。
+export function removePivotValue(values: ValueLiteral[], index: number): ValueLiteral[] {
+  return values.filter((_, i) => i !== index);
+}
+
+interface TypedValueMultiInputProps {
+  values: ValueLiteral[];
+  columnType?: string;
+  suggestions: string[];
+  isLoading?: boolean;
+  disabled?: boolean;
+  onChange: (values: ValueLiteral[]) => void;
+  onOpen?: () => void;
+  placeholder?: string;
+  addLabel?: string;
+  noSuggestionsLabel?: string;
+  clearLabel?: string;
+}
+
+function TypedValueMultiInput({
+  values,
+  columnType,
+  suggestions,
+  isLoading,
+  disabled,
+  onChange,
+  onOpen,
+  placeholder,
+  addLabel,
+  noSuggestionsLabel,
+  clearLabel,
+}: TypedValueMultiInputProps) {
+  const tr = useFormTranslation();
+  const [open, setOpen] = useState(false);
+  const [inputText, setInputText] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useClickOutside(ref, () => setOpen(false));
+
+  const openDropdown = () => {
+    setOpen((prev) => {
+      if (!prev) onOpen?.();
+      return !prev;
+    });
+  };
+
+  const addTag = useCallback(() => {
+    const next = addPivotValue(values, inputText, columnType);
+    if (next !== values) {
+      onChange(next);
+      setInputText('');
+    }
+  }, [values, inputText, columnType, onChange]);
+
+  const removeTag = useCallback(
+    (idx: number) => onChange(removePivotValue(values, idx)),
+    [values, onChange]
+  );
+
+  const tags = useMemo(() => values.map(literalDisplay), [values]);
+
+  const filtered = useMemo(() => {
+    const available = suggestions.filter((s) => !tags.includes(literalDisplay(s)));
+    if (!inputText) return available.slice(0, 20);
+    const lower = inputText.toLowerCase();
+    return available.filter((s) => s.toLowerCase().includes(lower)).slice(0, 20);
+  }, [inputText, suggestions, tags]);
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addTag();
+    } else if (e.key === 'Backspace' && !inputText && values.length > 0) {
+      removeTag(values.length - 1);
+    } else if (e.key === 'Escape') {
+      setOpen(false);
+    }
+  }
+
+  return (
+    <div ref={ref} className="relative" style={{ width: 280, flexShrink: 0 }}>
+      <div
+        className={`flex h-8 w-full items-center gap-1 rounded-md border bg-background/42 transition-colors pl-1.5 pr-1 py-0.5 ${
+          open ? 'border-accent' : 'border-border-muted'
+        } ${disabled ? 'cursor-not-allowed opacity-40' : ''}`}
+      >
+        {values.length > 0 && (
+          <button
+            type="button"
+            disabled={disabled}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onChange([]);
+              setInputText('');
+              inputRef.current?.focus();
+            }}
+            className="inline-flex flex-shrink-0 items-center justify-center rounded px-0.5 text-text-muted hover:text-error hover:bg-error/10 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+            title={clearLabel ?? tr('filterClearValues')}
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        )}
+
+        <div className="flex flex-1 min-w-0 items-center gap-1 overflow-x-auto">
+          {tags.map((v, i) => (
+            <span
+              key={i}
+              className="inline-flex flex-shrink-0 items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[12px] font-medium text-accent"
+            >
+              {v}
+              <button
+                type="button"
+                disabled={disabled}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  removeTag(i);
+                }}
+                className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </span>
+          ))}
+          <input
+            ref={inputRef}
+            type="text"
+            value={inputText}
+            disabled={disabled}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onFocus={() => openDropdown()}
+            placeholder={values.length === 0 ? placeholder : ''}
+            className="bg-transparent h-6 min-w-[60px] flex-1 pl-0.5 text-[12px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed"
+          />
+        </div>
+
+        {isLoading && (
+          <Loader2 className="my-auto h-3.5 w-3.5 flex-shrink-0 animate-spin text-text-muted" />
+        )}
+        <button
+          type="button"
+          disabled={disabled}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openDropdown();
+          }}
+          className="flex h-6 w-5 flex-shrink-0 items-center justify-center text-text-muted hover:text-text-secondary transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
+
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-full rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl">
+          {filtered.map((s) => (
+            <button
+              key={s}
+              type="button"
+              className="w-full px-2.5 py-1.5 text-left text-[12px] text-text-secondary transition-colors hover:bg-surface-hover"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const next = addPivotCandidate(values, s, columnType);
+                if (next !== values) {
+                  onChange(next);
+                  setInputText('');
+                }
+              }}
+            >
+              {s === '' ? '""' : s}
+            </button>
+          ))}
+          {inputText && !filtered.includes(inputText) && (
+            <button
+              type="button"
+              className="w-full px-2.5 py-1.5 text-left text-[12px] text-accent transition-colors hover:bg-surface-hover"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                addTag();
+              }}
+            >
+              {addLabel} "{inputText}"
+            </button>
+          )}
+          {filtered.length === 0 && !inputText && (
+            <div className="px-2.5 py-4 text-center text-[12px] text-text-muted">
+              {noSuggestionsLabel}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AxisValueCell({
+  field,
+  columnType,
+  values,
+  taskId,
+  sourceNode,
+  onChange,
+  tr,
+}: AxisValueCellProps) {
+  // 懒加载：每次展开下拉才发起查询，避免切 tab 重挂载自动查库，且每次展开都反映上游当前内容。
+  const {
+    values: distinctValues,
+    loading,
+    error,
+    reload,
+  } = useWorkflowNodeColumnValues({
+    taskId,
+    sourceNode,
+    column: field,
+  });
+
+  const handleOpen = () => {
+    if (field) reload();
+  };
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <TypedValueMultiInput
+        values={values}
+        columnType={columnType}
+        suggestions={error ? [] : distinctValues}
+        isLoading={loading}
+        onChange={onChange}
+        onOpen={handleOpen}
+        disabled={!field}
+        placeholder={tr('pivotAllValues')}
+        addLabel={tr('pivotAddValue')}
+        noSuggestionsLabel={tr('pivotValuesEmpty')}
+        clearLabel={tr('filterClearValues')}
+      />
+      {error && (
+        <span className="text-[11px] text-error" title={tr('pivotValuesLoadFailed')}>
+          {tr('pivotValuesLoadFailed')}
+        </span>
+      )}
     </div>
   );
 }
