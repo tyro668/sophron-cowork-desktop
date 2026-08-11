@@ -431,9 +431,10 @@ function findClause(clauses: Clause[], name: string): string | undefined {
   return clauses.find((clause) => clause.name === name)?.value;
 }
 
-function formatJoin(config: Record<string, unknown> | undefined): string {
+function formatJoin(config: Record<string, unknown> | undefined): string | null {
+  const rightInput = String(config?.rightInput ?? '').trim();
+  if (!rightInput) return null;
   const joinType = String(config?.joinType ?? 'left');
-  const rightInput = String(config?.rightInput ?? 'right_source');
   const rightAlias =
     typeof config?.rightAlias === 'string' && config.rightAlias.trim()
       ? config.rightAlias
@@ -441,6 +442,9 @@ function formatJoin(config: Record<string, unknown> | undefined): string {
   const asClause = rightAlias !== rightInput ? ` as ${rightAlias}` : '';
   if (joinType === 'asof') {
     const asof = objectValue(config?.asof);
+    if (!asof || !String(asof?.leftTime ?? '').trim() || !String(asof?.rightTime ?? '').trim()) {
+      return null;
+    }
     const parts = [
       `join asof ${rightInput}${asClause} on ${formatFieldRef(
         String(asof?.leftTime ?? 'left.time')
@@ -457,9 +461,8 @@ function formatJoin(config: Record<string, unknown> | undefined): string {
   const parts = [`join ${joinType} ${rightInput}${asClause}`];
   const conditions = formatConditions(config?.conditions);
   if (joinType !== 'cross') {
-    parts.push(
-      `on ${conditions || `${formatFieldRef('left.id')} = ${formatFieldRef(`${rightAlias}.id`)}`}`
-    );
+    if (!conditions) return null;
+    parts.push(`on ${conditions}`);
   }
   appendCommonParts(parts, config);
   return parts.join(' ');

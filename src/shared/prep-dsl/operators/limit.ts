@@ -10,7 +10,8 @@ export const limitCodec: OperatorDslCodec = {
     text.startsWith('limit ') || text.startsWith('top ') || text.startsWith('sample '),
   parse: (command, diagnostics) => parseLimit(command.text, command.line, diagnostics),
   format: (config) => {
-    const limit = Number(config?.limit ?? 10);
+    if (typeof config?.limit !== 'number') return null;
+    const limit = config.limit;
     if (config?.mode === 'random') {
       const isPercent = config?.unit === 'percent';
       const unit = isPercent ? ' percent' : ' rows';

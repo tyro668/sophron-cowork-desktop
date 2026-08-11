@@ -22,6 +22,8 @@ import {
   type FilterConditionLeaf,
   type FilterConditionBranch,
 } from '../../src/renderer/components/workflow-forms/shared/filter-condition';
+import fs from 'node:fs';
+import path from 'node:path';
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -1011,8 +1013,6 @@ describe('FilterCondition — addWithConnective logical equivalence', () => {
 
 // ── Source inspection of FormFilter.tsx UI structure ────────────────────
 
-const fs = await import('node:fs');
-const path = await import('node:path');
 const formFilterSource = fs.readFileSync(
   path.resolve(process.cwd(), 'src/renderer/components/workflow-forms/FormFilter.tsx'),
   'utf8'
@@ -1173,14 +1173,19 @@ const dataTasksSource = fs.readFileSync(
   path.resolve(process.cwd(), 'src/renderer/components/data-view/data-tasks.tsx'),
   'utf8'
 );
+const configGuardsSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/renderer/components/data-view/workflow-config-guards.ts'),
+  'utf8'
+);
 
 describe('FormFilter — empty-config run is blocked', () => {
   it('defines hasInvalidFilterConfig and blocks empty conditions', () => {
-    expect(dataTasksSource).toContain('function hasInvalidFilterConfig(');
-    expect(dataTasksSource).toContain("node.type !== 'filter'");
-    expect(dataTasksSource).toContain("typeof node.config.condition === 'string'");
-    expect(dataTasksSource).toContain('condition.length === 0');
-    expect(dataTasksSource).toContain('filterIncompleteField');
+    expect(dataTasksSource).toContain('incompleteConfigMessageKey');
+    expect(configGuardsSource).toContain('export function hasInvalidFilterConfig(');
+    expect(configGuardsSource).toContain("node.type !== 'filter'");
+    expect(configGuardsSource).toContain("typeof node.config.condition === 'string'");
+    expect(configGuardsSource).toContain('condition.length === 0');
+    expect(configGuardsSource).toContain('filterIncompleteField');
   });
 });
 

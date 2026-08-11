@@ -129,7 +129,7 @@ export const typeConvertCodec: OperatorDslCodec = {
   },
   format: (config) => {
     const conversions = objectArray(config?.conversions);
-    if (conversions.length === 0) return 'cast [field] as text';
+    if (conversions.length === 0) return null;
     return `cast ${conversions
       .map((conversion) => {
         const options = [

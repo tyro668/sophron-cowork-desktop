@@ -44,8 +44,9 @@ export const setOpCodec: OperatorDslCodec = {
     });
   },
   format: (config) => {
+    const rightInput = String(config?.rightInput ?? '').trim();
+    if (!rightInput) return null;
     const operation = String(config?.operation ?? 'union');
-    const rightInput = String(config?.rightInput ?? 'right_source');
     const mode = String(config?.mode ?? DEFAULT_MODE);
     const match = operation === 'union' ? (config?.match ?? DEFAULT_MATCH) : 'by_position';
     return `${operation} ${rightInput} mode ${mode}${operation === 'union' ? ` by ${match === 'by_name' ? 'name' : 'position'}` : ''}`;

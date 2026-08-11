@@ -62,9 +62,10 @@ export const unnestCodec: OperatorDslCodec = {
     });
   },
   format: (config) => {
-    const column = formatFieldRef(String(config?.column ?? ''));
+    const column = String(config?.column ?? '').trim();
+    if (!column) return null;
+    const formattedColumn = formatFieldRef(column);
     const isJson = config?.sourceKind === 'json';
-    const suffix = isJson ? '' : ` as ${formatFieldRef(String(config?.alias ?? ''))}`;
     const withIndex =
       typeof config?.withIndex === 'string'
         ? ` with index ${formatFieldRef(config.withIndex)}`
@@ -72,8 +73,14 @@ export const unnestCodec: OperatorDslCodec = {
     const keepParentNames = config?.keepParentNames ? ' keep parent names true' : '';
     const preserveOrder = config?.preserveOrder ? ' preserve order true' : '';
     if (isJson) {
-      return `explode json ${column} path ${quoteString(String(config.path ?? '$'))}`;
+      return `explode json ${formattedColumn} path ${quoteString(String(config.path ?? '$'))}`;
     }
-    return `unnest ${column}${suffix}${withIndex}${keepParentNames}${preserveOrder}`;
+    const alias = String(config?.alias ?? '').trim();
+    if (!alias) return null;
+    if (config?.withIndex !== undefined) {
+      const withIndexValue = typeof config.withIndex === 'string' ? config.withIndex.trim() : '';
+      if (!withIndexValue) return null;
+    }
+    return `unnest ${formattedColumn} as ${formatFieldRef(alias)}${withIndex}${keepParentNames}${preserveOrder}`;
   },
 };

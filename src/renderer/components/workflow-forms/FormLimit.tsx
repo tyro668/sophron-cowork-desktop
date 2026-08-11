@@ -18,22 +18,22 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const mode = (node.config.mode as string) ?? 'fixed';
-  const limit = Number(node.config.limit ?? 10);
+  const limit = typeof node.config.limit === 'number' ? node.config.limit : null;
   const unit = (node.config.unit as string) ?? 'rows';
-  const offset = Number(node.config.offset ?? 0);
+  const offset = typeof node.config.offset === 'number' ? node.config.offset : null;
   const orderBy: SortKey[] = (node.config.orderBy as SortKey[]) ?? [];
   const ties = !!node.config.ties;
   const method = (node.config.method as string) ?? 'system';
   const seed = node.config.seed as number | undefined;
 
-  const [localLimit, setLocalLimit] = useState(String(limit));
-  const [localOffset, setLocalOffset] = useState(String(offset));
+  const [localLimit, setLocalLimit] = useState(limit != null ? String(limit) : '');
+  const [localOffset, setLocalOffset] = useState(offset != null ? String(offset) : '');
   const [localSeed, setLocalSeed] = useState(seed != null ? String(seed) : '');
   const [sortOpen, setSortOpen] = useState(false);
 
   useEffect(() => {
-    setLocalLimit(String(limit));
-    setLocalOffset(String(offset));
+    setLocalLimit(limit != null ? String(limit) : '');
+    setLocalOffset(offset != null ? String(offset) : '');
     setLocalSeed(seed != null ? String(seed) : '');
   }, [limit, offset, seed]);
 
@@ -55,7 +55,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
     const n = Math.max(0, Math.floor(Number(value) || 0));
     const clamped = String(n);
     if (clamped !== value) setLocalOffset(clamped);
-    setErrors(runValidation(limit, unit));
+    setErrors(runValidation(limit ?? 0, unit));
     updateConfig((cfg) => ({ ...cfg, offset: n > 0 ? n : undefined }));
   }
 
@@ -183,7 +183,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                 method:
                   mode === 'random' && value === 'percent' ? (cfg.method ?? 'system') : undefined,
               }));
-              setErrors(runValidation(limit, value));
+              setErrors(runValidation(limit ?? 0, value));
             }}
             className="h-7 text-[12px] w-28"
           />

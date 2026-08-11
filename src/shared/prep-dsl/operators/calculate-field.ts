@@ -22,7 +22,8 @@ export const calculateFieldCodec: OperatorDslCodec = {
   },
   format: (config) => {
     const calculations = objectArray(config?.calculations).map(formatCalculation);
-    return `derive ${calculations.join(', ') || '[new_field] = null'}`;
+    if (calculations.length === 0) return null;
+    return `derive ${calculations.join(', ')}`;
   },
 };
 

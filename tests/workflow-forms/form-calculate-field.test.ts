@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
+import type { CalculationConfigEntry } from '../../src/renderer/components/workflow-forms/shared/calculate-field';
 import {
   createCalculationRow,
   exprFromParts,
@@ -7,13 +8,17 @@ import {
   normalizeCalculationEntries,
 } from '../../src/renderer/components/workflow-forms/shared/calculate-field';
 
-function ok(config: Record<string, unknown>) {
+interface OkResult {
+  config: Record<string, unknown> & { calculations?: CalculationConfigEntry[] };
+}
+
+function ok(config: Record<string, unknown>): OkResult {
   const dsl = exportPrepOperatorDsl({ id: 'test', type: 'calculate_field', config });
   const parsed = parsePrepOperatorDsl(dsl, 'calculate_field');
   const errors = parsed.diagnostics.filter((d) => d.severity === 'error');
   expect(errors, `DSL errors: ${dsl}`).toHaveLength(0);
   expect(parsed.operator, 'null operator').not.toBeNull();
-  return parsed.operator!;
+  return { config: parsed.operator!.config };
 }
 
 describe('FormCalculateField — config ↔ DSL', () => {
@@ -39,9 +44,10 @@ describe('FormCalculateField — config ↔ DSL', () => {
     const dsl = 'derive [rn] = row_number() over(partition by [region] order by [amount] desc)';
     const parsed = parsePrepOperatorDsl(dsl, 'calculate_field');
     expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
-    expect(parsed.operator!.config.calculations).toHaveLength(1);
-    expect(parsed.operator!.config.calculations![0].field).toBe('rn');
-    expect(parsed.operator!.config.calculations![0].expression).toContain('over(');
+    const calculations = parsed.operator!.config.calculations as Array<Record<string, unknown>>;
+    expect(calculations).toHaveLength(1);
+    expect(calculations[0].field).toBe('rn');
+    expect(calculations[0].expression).toContain('over(');
   });
 
   it('conditional expression', () => {
@@ -53,15 +59,13 @@ describe('FormCalculateField — config ↔ DSL', () => {
     expect(r.config.calculations![0].expression).toContain('then');
   });
 
-  it('empty calculations produces valid DSL', () => {
+  it('empty calculations does not produce DSL', () => {
     const dsl = exportPrepOperatorDsl({
       id: 'test',
       type: 'calculate_field',
       config: {},
     });
-    expect(dsl).toContain('derive');
-    const parsed = parsePrepOperatorDsl(dsl, 'calculate_field');
-    expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
+    expect(dsl).toBe('');
   });
 
   it('idempotent: single derivation', () => {
@@ -560,7 +564,7 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
     expect(dsl).toContain('derive');
     const parsed = parsePrepOperatorDsl(dsl, 'calculate_field');
     expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
-    const calc = parsed.operator!.config.calculations![0];
+    const calc = (parsed.operator!.config.calculations as Array<Record<string, unknown>>)[0];
     expect(calc.field).toBe('total');
     expect(calc.expression).toContain('sum(');
     expect(calc.expression).toContain('over(partition by [region])');
@@ -584,7 +588,7 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
     const dsl = exportPrepOperatorDsl({ id: 'test', type: 'calculate_field', config });
     const parsed = parsePrepOperatorDsl(dsl, 'calculate_field');
     expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
-    const calc = parsed.operator!.config.calculations![0];
+    const calc = (parsed.operator!.config.calculations as Array<Record<string, unknown>>)[0];
     expect(calc.field).toBe('rn');
     expect(calc.expression).toContain('row_number()');
     expect(calc.expression).toContain('over(partition by [region]');

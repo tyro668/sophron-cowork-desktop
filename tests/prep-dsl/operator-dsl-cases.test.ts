@@ -771,7 +771,11 @@ describe('operator DSL executable cases', () => {
         rightInput: 'R',
       };
       const dsl = exportPrepOperatorDsl({ id: 'asof-half-by', type: 'join', config });
-      return { parsed: parsePrepOperatorDsl(dsl, 'join'), dsl };
+      const result: { parsed: ReturnType<typeof parsePrepOperatorDsl>; dsl: string } = {
+        parsed: parsePrepOperatorDsl(dsl, 'join'),
+        dsl,
+      };
+      return result;
     })();
 
     expect(errorsOf(parsed.diagnostics)).toHaveLength(1);
@@ -1279,10 +1283,83 @@ describe('operator DSL executable cases', () => {
     }
   });
 
-  it('uses 10 rows as the default limit when config is omitted', () => {
-    expect(exportPrepOperatorDsl({ id: 'limit-default', type: 'limit', config: {} })).toBe(
-      'limit 10'
-    );
+  it('does not export a limit when the row count is omitted', () => {
+    expect(exportPrepOperatorDsl({ id: 'limit-empty', type: 'limit', config: {} })).toBe('');
+  });
+
+  it('does not export a type_convert without conversions', () => {
+    expect(
+      exportPrepOperatorDsl({ id: 'typeconvert-empty', type: 'type_convert', config: {} })
+    ).toBe('');
+  });
+
+  it('does not export a calculate_field without calculations', () => {
+    expect(
+      exportPrepOperatorDsl({ id: 'calculatefield-empty', type: 'calculate_field', config: {} })
+    ).toBe('');
+  });
+
+  it('does not export an unnest without a column', () => {
+    expect(exportPrepOperatorDsl({ id: 'unnest-empty', type: 'unnest', config: {} })).toBe('');
+  });
+
+  it('does not export an unnest list without an alias', () => {
+    expect(
+      exportPrepOperatorDsl({
+        id: 'unnest-no-alias',
+        type: 'unnest',
+        config: { sourceKind: 'list', column: 'items' },
+      })
+    ).toBe('');
+  });
+
+  it('does not export an unnest list with an empty index column', () => {
+    expect(
+      exportPrepOperatorDsl({
+        id: 'unnest-empty-index',
+        type: 'unnest',
+        config: { sourceKind: 'list', column: 'items', alias: 'item', withIndex: '' },
+      })
+    ).toBe('');
+  });
+
+  it('does not export an unpivot without columns', () => {
+    expect(exportPrepOperatorDsl({ id: 'unpivot-empty', type: 'unpivot', config: {} })).toBe('');
+  });
+
+  it('does not export a set_op without a right input', () => {
+    expect(exportPrepOperatorDsl({ id: 'setop-empty', type: 'set_op', config: {} })).toBe('');
+    expect(
+      exportPrepOperatorDsl({
+        id: 'setop-no-right',
+        type: 'set_op',
+        config: { operation: 'union' },
+      })
+    ).toBe('');
+  });
+
+  it('does not export a join without a right input', () => {
+    expect(exportPrepOperatorDsl({ id: 'join-empty', type: 'join', config: {} })).toBe('');
+  });
+
+  it('does not export a non-cross join without conditions', () => {
+    expect(
+      exportPrepOperatorDsl({
+        id: 'join-no-condition',
+        type: 'join',
+        config: { joinType: 'left', rightInput: 'R' },
+      })
+    ).toBe('');
+  });
+
+  it('does not export an asof join without time fields', () => {
+    expect(
+      exportPrepOperatorDsl({
+        id: 'join-asof-no-time',
+        type: 'join',
+        config: { joinType: 'asof', rightInput: 'R' },
+      })
+    ).toBe('');
   });
 
   it.each(['limit 101 percent', 'sample 101 percent'])(
