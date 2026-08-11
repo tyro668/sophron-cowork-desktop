@@ -1851,13 +1851,6 @@ function WorkflowInspector({
 
   useEffect(() => {
     if (activeTab !== 'data' || !node) return;
-    const incompleteMessageKey = incompleteConfigMessageKey(node);
-    if (incompleteMessageKey) {
-      setNodePreviewData(null);
-      setNodePreviewError(t(incompleteMessageKey));
-      setNodePreviewLoading(false);
-      return;
-    }
     if (!window.electronAPI?.data?.previewWorkflowNode) {
       setNodePreviewData(null);
       setNodePreviewError(t('data.workflow.nodeDataUnavailable'));
