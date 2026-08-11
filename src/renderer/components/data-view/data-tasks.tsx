@@ -91,6 +91,7 @@ import {
   type PrepDiagnostic,
 } from '../../../shared/prep-dsl';
 import { dataFieldTypeLabel } from '../../../shared/data-field-types';
+import { DEFAULT_MODE, DEFAULT_MATCH } from '../../../shared/operator-schemas/set-op';
 import { GlassDataGridPreview } from '../GlassDataGridPreview';
 import {
   DataMoreMenu,
@@ -126,6 +127,154 @@ function toWorkflowSaveInput(workflow: DataTaskWorkflow): DataWorkflowSaveInput 
       targetHandle: edge.targetHandle,
     })),
   };
+}
+
+function hasInvalidSortConfig(node: DataWorkflowNode): boolean {
+  if (node.type !== 'sort') return false;
+  const keys = Array.isArray(node.config.keys) ? node.config.keys : [];
+  return (
+    keys.length === 0 ||
+    keys.some(
+      (key) =>
+        !key ||
+        typeof key !== 'object' ||
+        typeof (key as { field?: unknown }).field !== 'string' ||
+        !(key as { field: string }).field.trim()
+    )
+  );
+}
+
+function hasInvalidFilterConfig(node: DataWorkflowNode): boolean {
+  if (node.type !== 'filter') return false;
+  const condition = typeof node.config.condition === 'string' ? node.config.condition.trim() : '';
+  return condition.length === 0;
+}
+
+function hasInvalidFieldMappingConfig(node: DataWorkflowNode): boolean {
+  if (node.type !== 'field_mapping') return false;
+  const mappings = Array.isArray(node.config.mappings) ? node.config.mappings : [];
+  return (
+    mappings.length === 0 ||
+    mappings.some((mapping) => {
+      if (!mapping || typeof mapping !== 'object') return true;
+      const entry = mapping as Record<string, unknown>;
+      const source = typeof entry.source === 'string' ? entry.source.trim() : '';
+      const mode = typeof entry.targetMode === 'string' ? entry.targetMode : '';
+      const target =
+        mode === 'prefix' || mode === 'suffix' || mode === 'rename'
+          ? typeof entry.targetValue === 'string'
+            ? entry.targetValue.trim()
+            : ''
+          : typeof entry.target === 'string'
+            ? entry.target.trim()
+            : '';
+      return !source || !target;
+    })
+  );
+}
+
+function hasInvalidFieldSelectConfig(node: DataWorkflowNode): boolean {
+  if (node.type !== 'field_select') return false;
+  const columns = Array.isArray(node.config.columns) ? node.config.columns : [];
+  return (
+    columns.length === 0 || columns.some((column) => typeof column !== 'string' || !column.trim())
+  );
+}
+
+function hasInvalidDeduplicateConfig(node: DataWorkflowNode): boolean {
+  if (node.type !== 'deduplicate') return false;
+  const columns = Array.isArray(node.config.columns) ? node.config.columns : [];
+  const orderBy = Array.isArray(node.config.orderBy) ? node.config.orderBy : [];
+  const usesAllColumns = node.config.strategy === 'all_columns';
+  return (
+    (!usesAllColumns && columns.length === 0) ||
+    columns.some((column) => typeof column !== 'string' || !column.trim()) ||
+    orderBy.some(
+      (key) =>
+        !key ||
+        typeof key !== 'object' ||
+        typeof (key as { field?: unknown }).field !== 'string' ||
+        !(key as { field: string }).field.trim()
+    )
+  );
+}
+
+function hasInvalidLimitPercent(node: DataWorkflowNode): boolean {
+  return (
+    node.type === 'limit' &&
+    node.config.unit === 'percent' &&
+    typeof node.config.limit === 'number' &&
+    node.config.limit > 100
+  );
+}
+
+function hasInvalidPivotConfig(node: DataWorkflowNode): boolean {
+  if (node.type !== 'pivot') return false;
+  const on = Array.isArray(node.config.on) ? node.config.on : [];
+  const using = Array.isArray(node.config.using) ? node.config.using : [];
+  const hasEmptyOn = on.some(
+    (axis) =>
+      !axis ||
+      typeof axis !== 'object' ||
+      typeof (axis as { field?: unknown }).field !== 'string' ||
+      !(axis as { field: string }).field.trim()
+  );
+  const hasEmptyUsing = using.some(
+    (metric) =>
+      !metric ||
+      typeof metric !== 'object' ||
+      typeof (metric as { function?: unknown }).function !== 'string' ||
+      !(metric as { function: string }).function.trim() ||
+      typeof (metric as { expression?: unknown }).expression !== 'string' ||
+      !(metric as { expression: string }).expression.trim()
+  );
+  return on.length === 0 || using.length === 0 || hasEmptyOn || hasEmptyUsing;
+}
+
+function isIncompleteJoinCondition(condition: unknown): boolean {
+  if (!condition || typeof condition !== 'object') return true;
+  const { left, right } = condition as { left?: unknown; right?: unknown };
+  return typeof left !== 'string' || !left.trim() || typeof right !== 'string' || !right.trim();
+}
+
+function hasInvalidJoinConditionConfig(node: DataWorkflowNode): boolean {
+  if (node.type !== 'join') return false;
+  const joinType = String(node.config.joinType ?? 'left');
+  if (joinType === 'cross') return false;
+  if (joinType === 'asof') {
+    const asof =
+      node.config.asof && typeof node.config.asof === 'object'
+        ? (node.config.asof as Record<string, unknown>)
+        : {};
+    const by = Array.isArray(asof.by) ? asof.by : [];
+    return by.some(isIncompleteJoinCondition);
+  }
+  const conditions = Array.isArray(node.config.conditions) ? node.config.conditions : [];
+  return conditions.length === 0 || conditions.some(isIncompleteJoinCondition);
+}
+
+function incompleteConfigMessageKey(node: DataWorkflowNode): string | null {
+  if (hasInvalidSortConfig(node)) return 'data.workflow.formLabels.sortIncompleteField';
+  if (hasInvalidFilterConfig(node)) return 'data.workflow.formLabels.filterIncompleteField';
+  if (hasInvalidFieldMappingConfig(node)) {
+    return 'data.workflow.formLabels.fieldMappingIncompleteField';
+  }
+  if (hasInvalidFieldSelectConfig(node)) {
+    return 'data.workflow.formLabels.fieldSelectMustSelectField';
+  }
+  if (hasInvalidDeduplicateConfig(node)) {
+    return 'data.workflow.formLabels.dedupIncompleteField';
+  }
+  if (hasInvalidLimitPercent(node)) {
+    return 'data.workflow.formLabels.limitPercentError';
+  }
+  if (hasInvalidPivotConfig(node)) {
+    return 'data.workflow.formLabels.pivotIncompleteField';
+  }
+  if (hasInvalidJoinConditionConfig(node)) {
+    return 'data.workflow.formLabels.joinIncompleteField';
+  }
+  return null;
 }
 
 function getWorkflowSaveInputSignature(workflow: DataTaskWorkflow): string {
@@ -771,11 +920,17 @@ export function TaskEditor({
 
   const handleRun = useCallback(async () => {
     if (!workflowSaveInput) return;
+    const incompleteMessageKey = nodes.map(incompleteConfigMessageKey).find(Boolean);
+    if (incompleteMessageKey) {
+      setLocalError(t(incompleteMessageKey));
+      return;
+    }
+    setLocalError(null);
     await onRun(task, {
       workflow: workflowSaveInput,
       outputMode: isWorkflowDirty ? 'temporary' : 'persisted',
     });
-  }, [isWorkflowDirty, onRun, task, workflowSaveInput]);
+  }, [isWorkflowDirty, nodes, onRun, t, task, workflowSaveInput]);
 
   const applyAndRunOperatorDsl = useCallback(
     async (nodeId: string, config: Record<string, unknown>) => {
@@ -793,6 +948,12 @@ export function TaskEditor({
             : node
         ),
       };
+      const incompleteMessageKey = nextWorkflow.nodes.map(incompleteConfigMessageKey).find(Boolean);
+      if (incompleteMessageKey) {
+        setLocalError(t(incompleteMessageKey));
+        return;
+      }
+      setLocalError(null);
       setWorkflow(nextWorkflow);
       setSelectedNodeId(nodeId);
       await onRun(task, {
@@ -801,7 +962,7 @@ export function TaskEditor({
       });
       setNodeDataRefreshVersion((current) => current + 1);
     },
-    [onRun, task, workflow]
+    [onRun, t, task, workflow]
   );
 
   const openImportDsl = useCallback(() => {
@@ -813,11 +974,16 @@ export function TaskEditor({
 
   const openExportDsl = useCallback(() => {
     if (!workflow) return;
+    const incompleteMessageKey = workflow.nodes.map(incompleteConfigMessageKey).find(Boolean);
+    if (incompleteMessageKey) {
+      setLocalError(t(incompleteMessageKey));
+      return;
+    }
     setLocalError(null);
     setDslError(null);
     setDslText(exportPrepWorkflowDsl(workflow.nodes, workflow.edges));
     setDslMode('export');
-  }, [workflow]);
+  }, [t, workflow]);
 
   const closeDslDialog = useCallback(() => {
     setDslMode(null);
@@ -1794,7 +1960,6 @@ function WorkflowInspector({
   useEffect(() => {
     const requestSeq = operatorFieldsRequestSeq.current + 1;
     operatorFieldsRequestSeq.current = requestSeq;
-    setOperatorFieldCompletions([]);
 
     if (!node || !usesOperatorDsl || !operatorFieldSourceNode) return;
     if (!window.electronAPI?.data?.getWorkflowNodeColumns) return;
@@ -1833,6 +1998,13 @@ function WorkflowInspector({
 
   useEffect(() => {
     if (activeTab !== 'data' || !node) return;
+    const incompleteMessageKey = incompleteConfigMessageKey(node);
+    if (incompleteMessageKey) {
+      setNodePreviewData(null);
+      setNodePreviewError(t(incompleteMessageKey));
+      setNodePreviewLoading(false);
+      return;
+    }
     if (!window.electronAPI?.data?.previewWorkflowNode) {
       setNodePreviewData(null);
       setNodePreviewError(t('data.workflow.nodeDataUnavailable'));
@@ -2819,7 +2991,17 @@ function getWorkflowConfigSummary(node: DataWorkflowNode, t: TranslateFn): Workf
     case 'pivot':
       summary = {
         primary: [
-          summaryRow(t, 'columns', formatList(stringArray(config.on), t), true),
+          summaryRow(
+            t,
+            'columns',
+            formatList(
+              recordArray(config.on)
+                .map((axis) => (typeof axis.field === 'string' ? axis.field : ''))
+                .filter(Boolean),
+              t
+            ),
+            true
+          ),
           summaryRow(t, 'metrics', formatCount(recordArray(config.using).length)),
         ],
         details: [summaryRow(t, 'groupBy', formatList(stringArray(config.groupBy), t), true)],
@@ -2840,14 +3022,16 @@ function getWorkflowConfigSummary(node: DataWorkflowNode, t: TranslateFn): Workf
     case 'set_op': {
       const rawOperation = stringValue(config.operation, 'union');
       const opValue = t(`data.workflow.summaryLabels.operation_${rawOperation}`);
+      const effectiveMatch =
+        rawOperation === 'union' ? stringValue(config.match, DEFAULT_MATCH) : 'by_position';
       summary = {
         primary: [
           summaryRow(t, 'operation', opValue || rawOperation),
           summaryRow(t, 'rightInput', stringValue(config.rightInput)),
         ],
         details: [
-          summaryRow(t, 'mode', stringValue(config.mode, 'distinct')),
-          summaryRow(t, 'match', stringValue(config.match, 'by_position')),
+          summaryRow(t, 'mode', stringValue(config.mode, DEFAULT_MODE)),
+          ...(rawOperation === 'union' ? [summaryRow(t, 'match', effectiveMatch)] : []),
         ],
       };
       break;
@@ -2923,7 +3107,6 @@ function getJoinConfigSummary(
       true
     ),
     summaryRow(t, 'by', formatConditions(asof?.by, t), true),
-    summaryRow(t, 'direction', stringValue(asof?.direction)),
     summaryRow(t, 'tolerance', stringValue(asof?.tolerance)),
     summaryRow(t, 'keep', formatJoinKeep(config.keep, t), true),
     summaryRow(t, 'conflict', formatConflict(config.conflict, t)),

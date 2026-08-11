@@ -63,13 +63,12 @@ describe('FormFieldSelect — DSL idempotent', () => {
 });
 
 describe('FormFieldSelect — edge cases', () => {
-  it('empty columns still produce valid DSL', () => {
+  it('empty columns produce empty DSL (no-op)', () => {
     const dsl = exportPrepOperatorDsl({
       id: 'test',
       type: 'field_select',
       config: { mode: 'include', columns: [] },
     });
-    expect(typeof dsl).toBe('string');
-    expect(dsl.length).toBeGreaterThan(0);
+    expect(dsl).toBe('');
   });
 });

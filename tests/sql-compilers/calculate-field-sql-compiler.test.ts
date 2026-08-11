@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api';
-import { compileScalarExpression } from '../src/main/data/operators/compute';
-import { compileCalculateFieldSql } from '../src/main/data/operators/calculate-field';
+import { compileScalarExpression } from '../../src/main/data/operators/compute';
+import { compileCalculateFieldSql } from '../../src/main/data/operators/calculate-field';
 
 async function connect(): Promise<DuckDBConnection> {
   const instance = await DuckDBInstance.create(':memory:');
@@ -151,6 +151,22 @@ describe('compileScalarExpression', () => {
 
   it('string literal with special chars', () => {
     expect(compileScalarExpression("[a] = 'he''s'")).toBe(`"a" = 'he''s'`);
+  });
+
+  it('compileScalarExpression single-quote literal preserves SQL escape', () => {
+    expect(compileScalarExpression("'it''s'")).toBe(`'it''s'`);
+  });
+
+  it('compileScalarExpression preserves SQL-escaped single quote in comparison', () => {
+    expect(compileScalarExpression("[name] = 'it''s'")).toBe(`"name" = 'it''s'`);
+  });
+
+  it('compileScalarExpression turns a backslash-escaped single quote into SQL escape', () => {
+    expect(compileScalarExpression("[name] = 'it\\'s'")).toBe(`"name" = 'it''s'`);
+  });
+
+  it('compileScalarExpression lone backslash-escaped single quote literal', () => {
+    expect(compileScalarExpression("'it\\'s'")).toBe(`'it''s'`);
   });
 
   it('parenthesized expression', () => {

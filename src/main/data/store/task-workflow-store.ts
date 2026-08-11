@@ -672,7 +672,7 @@ export class TaskWorkflowStore extends WorkflowCompiler {
       `SELECT DISTINCT ${quotedCol} AS val FROM ${quotedTable} WHERE ${quotedCol} IS NOT NULL ORDER BY ${quotedCol} LIMIT 100`,
       {}
     );
-    return rows.map((row) => (row.val === null ? '' : String(row.val))).filter((v) => v !== '');
+    return rows.map((row) => (row.val === null ? '' : String(row.val)));
   }
 
   async getWorkflowNodeRowCount(input: DataPreviewWorkflowNodeInput): Promise<number> {

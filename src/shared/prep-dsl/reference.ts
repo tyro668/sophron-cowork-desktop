@@ -85,7 +85,7 @@ export const PREP_DSL_OPERATOR_EXAMPLES: PrepDslOperatorExample[] = [
   {
     type: 'aggregate',
     title: 'Aggregate metrics',
-    dsl: 'aggregate by [region] metrics sum([revenue]) as [total_revenue], count(*) as [row_count]',
+    dsl: 'aggregate by year([Date]), [region] metrics sum([revenue]) as [total_revenue], count(*) as [row_count]',
   },
   {
     type: 'field_mapping',

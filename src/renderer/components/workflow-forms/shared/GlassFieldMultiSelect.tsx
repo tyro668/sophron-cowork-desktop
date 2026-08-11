@@ -1,8 +1,9 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useFormTranslation } from '../../../hooks/useFormTranslation';
 
 import { Search } from 'lucide-react';
-import { dataFieldTypeLabel } from '@/shared/data-field-types';
+import { useDataFieldTypeLabel } from '../../../hooks/useDataFieldTypeLabel';
 
 export type SelectionMode = 'single' | 'multi';
 
@@ -14,6 +15,8 @@ export interface GlassFieldMultiSelectProps {
   maxHeight?: string;
   selectionMode?: SelectionMode;
   variant?: 'flat' | 'glass';
+  itemExtras?: (column: string) => ReactNode;
+  columnLabel?: (column: string) => string;
 }
 
 export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
@@ -24,8 +27,11 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
   maxHeight = '160px',
   selectionMode = 'multi',
   variant = 'flat',
+  itemExtras,
+  columnLabel,
 }: GlassFieldMultiSelectProps) {
   const tr = useFormTranslation();
+  const dataTypeLabel = useDataFieldTypeLabel();
 
   const [search, setSearch] = useState('');
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -81,7 +87,7 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
       const type = columnTypes?.[c];
       if (!type) return false;
       if (type.toLowerCase().includes(lower)) return true;
-      return dataFieldTypeLabel(type).toLowerCase().includes(lower);
+      return dataTypeLabel(type).toLowerCase().includes(lower);
     });
   }, [columns, columnTypes, search]);
 
@@ -134,7 +140,7 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder={tr('searchField', isGlass ? '搜索字段...' : '搜索字段')}
+          placeholder={tr('searchField')}
           className={`${isGlass ? 'h-6' : 'h-5'} min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted`}
         />
         {selectionMode === 'multi' && (
@@ -155,7 +161,7 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
               onChange={toggleAll}
               className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
             />
-            {allFilteredSelected ? tr('deselectAll', '取消全选') : tr('selectAll', '全选')}
+            {allFilteredSelected ? tr('deselectAll') : tr('selectAll')}
           </label>
         )}
       </div>
@@ -169,7 +175,7 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
           <div
             className={`px-3 text-center text-[12px] text-text-muted ${isGlass ? 'py-4' : 'py-8'}`}
           >
-            {search ? tr('noMatch', '无匹配字段') : tr('noFields', '暂无可用字段')}
+            {search ? tr('noMatch') : tr('noFields')}
           </div>
         ) : (
           filtered.map((col) => {
@@ -192,14 +198,15 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
                   onChange={() => selectItem(col)}
                   className="h-3.5 w-3.5 flex-shrink-0 accent-accent"
                 />
-                <span className="flex-1 min-w-0 truncate">{col}</span>
+                <span className="flex-1 min-w-0 truncate">{columnLabel?.(col) ?? col}</span>
+                {itemExtras?.(col)}
                 {columnTypes?.[col] && (
                   <span
                     className={`flex-shrink-0 text-[11px] text-text-muted tabular-nums ${
                       isGlass ? '' : 'w-14 text-right'
                     }`}
                   >
-                    {dataFieldTypeLabel(columnTypes[col])}
+                    {dataTypeLabel(columnTypes[col])}
                   </span>
                 )}
               </label>

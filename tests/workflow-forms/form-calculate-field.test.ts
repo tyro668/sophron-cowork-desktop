@@ -5,7 +5,6 @@ import {
   exprFromParts,
   needsCalculationIdNormalization,
   normalizeCalculationEntries,
-  type CalculationRow,
 } from '../../src/renderer/components/workflow-forms/shared/calculate-field';
 
 function ok(config: Record<string, unknown>) {
@@ -512,6 +511,38 @@ describe('FormCalculateField — exprFromParts', () => {
 });
 
 describe('FormCalculateField — agg/window DSL round-trip', () => {
+  it.each([
+    ['year', '3'],
+    ['month', '6'],
+    ['week', '4'],
+    ['day', '7'],
+  ])('rolling_%s preserves its granularity and count via DSL', (granularity, count) => {
+    const fn = `rolling_${granularity}_sum`;
+    const config = {
+      calculations: [
+        {
+          field: `${granularity}_sales`,
+          expression: '',
+          fn,
+          fnArg: 'sales',
+          fnArg2: count,
+          orderBy: [{ field: 'order_date', direction: 'asc' as const }],
+        },
+      ],
+    };
+
+    const dsl = exportPrepOperatorDsl({ id: 'rolling', type: 'calculate_field', config });
+    const parsed = parsePrepOperatorDsl(dsl, 'calculate_field');
+    const calculation = (
+      parsed.operator?.config.calculations as Array<Record<string, unknown>> | undefined
+    )?.[0];
+
+    expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toHaveLength(
+      0
+    );
+    expect(calculation).toMatchObject({ fn, fnArg2: count });
+  });
+
   it('agg config round-trips via DSL', () => {
     const config = {
       calculations: [
@@ -585,7 +616,7 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
     expect(result).toBe('[amount] / sum([amount]) OVER ()');
   });
 
-  it('period_mom_value produces value - lag(value, 1)', () => {
+  it('period_mom_value produces value - lag(value) with standard OVER', () => {
     const result = exprFromParts({
       id: 'pm1',
       field: 'mom',
@@ -596,10 +627,10 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
       partitionBy: ['dept'],
       orderBy: [{ field: 'month', direction: 'asc' }],
     });
-    expect(result).toBe('[amount] - lag([amount], 1) OVER (PARTITION BY [dept] ORDER BY [month])');
+    expect(result).toBe('[amount] - lag([amount]) OVER (PARTITION BY [dept] ORDER BY [month])');
   });
 
-  it('period_mom_rate produces (value - lag(value, 1)) / lag(value, 1)', () => {
+  it('period_mom_rate produces (value - lag(value)) / nullif(lag(value), 0)', () => {
     const result = exprFromParts({
       id: 'pm2',
       field: 'mom_rate',
@@ -611,11 +642,11 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
       orderBy: [{ field: 'month', direction: 'asc' }],
     });
     expect(result).toBe(
-      '([amount] - lag([amount], 1) OVER (PARTITION BY [dept] ORDER BY [month])) / lag([amount], 1) OVER (PARTITION BY [dept] ORDER BY [month])'
+      '([amount] - lag([amount]) OVER (PARTITION BY [dept] ORDER BY [month])) / nullif(lag([amount]) OVER (PARTITION BY [dept] ORDER BY [month]), 0)'
     );
   });
 
-  it('period_yoy_value produces value - lag(value, 12)', () => {
+  it('period_yoy_value produces value - lag(value) with CASE WHEN guard', () => {
     const result = exprFromParts({
       id: 'py1',
       field: 'yoy',
@@ -625,10 +656,12 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
       fnArg: '[sales]',
       orderBy: [{ field: 'ym', direction: 'asc' }],
     });
-    expect(result).toBe('[sales] - lag([sales], 12) OVER (ORDER BY [ym])');
+    expect(result).toBe(
+      "CASE WHEN (extract('year' FROM [ym]) - lag(extract('year' FROM [ym])) OVER (PARTITION BY extract('month' FROM [ym]), extract('day' FROM [ym]) ORDER BY extract('year' FROM [ym]))) = 1 THEN [sales] - lag([sales]) OVER (PARTITION BY extract('month' FROM [ym]), extract('day' FROM [ym]) ORDER BY extract('year' FROM [ym])) ELSE NULL END"
+    );
   });
 
-  it('period_yoy_rate produces (value - lag(value, 12)) / lag(value, 12)', () => {
+  it('period_yoy_rate produces (value - lag(value)) / nullif(lag(value), 0) with CASE WHEN guard', () => {
     const result = exprFromParts({
       id: 'py2',
       field: 'yoy_rate',
@@ -639,8 +672,36 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
       orderBy: [{ field: 'ym', direction: 'asc' }],
     });
     expect(result).toBe(
-      '([sales] - lag([sales], 12) OVER (ORDER BY [ym])) / lag([sales], 12) OVER (ORDER BY [ym])'
+      "CASE WHEN (extract('year' FROM [ym]) - lag(extract('year' FROM [ym])) OVER (PARTITION BY extract('month' FROM [ym]), extract('day' FROM [ym]) ORDER BY extract('year' FROM [ym]))) = 1 THEN ([sales] - lag([sales]) OVER (PARTITION BY extract('month' FROM [ym]), extract('day' FROM [ym]) ORDER BY extract('year' FROM [ym]))) / nullif(lag([sales]) OVER (PARTITION BY extract('month' FROM [ym]), extract('day' FROM [ym]) ORDER BY extract('year' FROM [ym])), 0) ELSE NULL END"
     );
+  });
+
+  it('period_yoy_prev returns prior year raw value with CASE WHEN guard', () => {
+    const result = exprFromParts({
+      id: 'py3',
+      field: 'yoy_prev',
+      expression: '',
+      type: 'agg',
+      fn: 'period_yoy_prev',
+      fnArg: '[sales]',
+      orderBy: [{ field: 'ym', direction: 'asc' }],
+    });
+    expect(result).toBe(
+      "CASE WHEN (extract('year' FROM [ym]) - lag(extract('year' FROM [ym])) OVER (PARTITION BY extract('month' FROM [ym]), extract('day' FROM [ym]) ORDER BY extract('year' FROM [ym]))) = 1 THEN lag([sales]) OVER (PARTITION BY extract('month' FROM [ym]), extract('day' FROM [ym]) ORDER BY extract('year' FROM [ym])) ELSE NULL END"
+    );
+  });
+
+  it('period_mom_prev returns prior row raw value', () => {
+    const result = exprFromParts({
+      id: 'pm3',
+      field: 'mom_prev',
+      expression: '',
+      type: 'agg',
+      fn: 'period_mom_prev',
+      fnArg: '[amount]',
+      orderBy: [{ field: 'month', direction: 'asc' }],
+    });
+    expect(result).toBe('lag([amount]) OVER (ORDER BY [month])');
   });
 
   it('offset_diff produces value - lag(value, N) with custom N', () => {
@@ -658,7 +719,7 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
     expect(result).toBe('[amount] - lag([amount], 3) OVER (PARTITION BY [dept] ORDER BY [month])');
   });
 
-  it('offset_rate produces (value - lag(value, N)) / lag(value, N) with custom N', () => {
+  it('offset_rate produces (value - lag(value, N)) / nullif(lag(value, N), 0) with custom N', () => {
     const result = exprFromParts({
       id: 'or1',
       field: 'rate',
@@ -670,7 +731,7 @@ describe('FormCalculateField — agg/window DSL round-trip', () => {
       orderBy: [{ field: 'month', direction: 'asc' }],
     });
     expect(result).toBe(
-      '([sales] - lag([sales], 6) OVER (ORDER BY [month])) / lag([sales], 6) OVER (ORDER BY [month])'
+      '([sales] - lag([sales], 6) OVER (ORDER BY [month])) / nullif(lag([sales], 6) OVER (ORDER BY [month]), 0)'
     );
   });
 

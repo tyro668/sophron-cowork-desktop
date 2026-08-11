@@ -154,9 +154,13 @@ export interface WorkflowPivotMetricIr {
   parameters?: WorkflowLiteral[];
 }
 
-export interface WorkflowPivotConfig {
-  on: string[];
+export interface WorkflowPivotAxisIr {
+  field: string;
   values: WorkflowLiteral[];
+}
+
+export interface WorkflowPivotConfig {
+  on: WorkflowPivotAxisIr[];
   using: WorkflowPivotMetricIr[];
   groupBy: string[];
 }

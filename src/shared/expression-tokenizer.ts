@@ -27,9 +27,27 @@ export class ExpressionTokenizeError extends Error {
   }
 }
 
+const MAX_EXPRESSION_LENGTH = 10_000;
+const MAX_EXPRESSION_TOKENS = 2_048;
+const MAX_EXPRESSION_NESTING = 64;
+
 export function tokenizeExpression(input: string): ExprToken[] {
+  if (input.length > MAX_EXPRESSION_LENGTH) {
+    throw new ExpressionTokenizeError(
+      `Expression exceeds ${MAX_EXPRESSION_LENGTH} characters`,
+      MAX_EXPRESSION_LENGTH
+    );
+  }
   const tokens: ExprToken[] = [];
   let i = 0;
+  let nesting = 0;
+
+  const pushToken = (token: ExprToken): void => {
+    if (tokens.length >= MAX_EXPRESSION_TOKENS) {
+      throw new ExpressionTokenizeError(`Expression exceeds ${MAX_EXPRESSION_TOKENS} tokens`, i);
+    }
+    tokens.push(token);
+  };
 
   while (i < input.length) {
     const ch = input[i];
@@ -43,15 +61,28 @@ export function tokenizeExpression(input: string): ExprToken[] {
       const start = i;
       const quote = ch;
       i++;
-      while (i < input.length && input[i] !== quote) {
-        if (input[i] === '\\') i++;
-        i++;
+      let closed = false;
+      while (i < input.length) {
+        if (input[i] === quote) {
+          if (quote === "'" && input[i + 1] === "'") {
+            // SQL '' escape: keep the string open.
+            i += 2;
+            continue;
+          }
+          closed = true;
+          i++;
+          break;
+        }
+        if (input[i] === '\\') {
+          i += 2;
+        } else {
+          i++;
+        }
       }
-      if (i >= input.length) {
+      if (!closed) {
         throw new ExpressionTokenizeError('Unterminated string literal', start);
       }
-      i++;
-      tokens.push({ type: 'StringLiteral', value: input.slice(start, i), start, end: i });
+      pushToken({ type: 'StringLiteral', value: input.slice(start, i), start, end: i });
       continue;
     }
 
@@ -77,7 +108,7 @@ export function tokenizeExpression(input: string): ExprToken[] {
         throw new ExpressionTokenizeError('Unterminated field reference', start);
       }
       i++;
-      tokens.push({ type: 'FieldRef', value: input.slice(start, i), start, end: i });
+      pushToken({ type: 'FieldRef', value: input.slice(start, i), start, end: i });
       continue;
     }
 
@@ -98,7 +129,7 @@ export function tokenizeExpression(input: string): ExprToken[] {
           i = beforeE;
         }
       }
-      tokens.push({ type: 'Number', value: input.slice(start, i), start, end: i });
+      pushToken({ type: 'Number', value: input.slice(start, i), start, end: i });
       continue;
     }
 
@@ -111,7 +142,7 @@ export function tokenizeExpression(input: string): ExprToken[] {
         twoChar === '<=' ||
         twoChar === '||'
       ) {
-        tokens.push({ type: 'Operator', value: twoChar, start: i, end: i + 2 });
+        pushToken({ type: 'Operator', value: twoChar, start: i, end: i + 2 });
         i += 2;
         continue;
       }
@@ -129,7 +160,7 @@ export function tokenizeExpression(input: string): ExprToken[] {
       ch === '!' ||
       ch === '|'
     ) {
-      tokens.push({ type: 'Operator', value: ch, start: i, end: i + 1 });
+      pushToken({ type: 'Operator', value: ch, start: i, end: i + 1 });
       i++;
       continue;
     }
@@ -137,27 +168,38 @@ export function tokenizeExpression(input: string): ExprToken[] {
     if (isIdentStart(ch)) {
       const start = i;
       while (i < input.length && isIdentPart(input[i])) i++;
-      tokens.push({ type: 'Ident', value: input.slice(start, i), start, end: i });
+      pushToken({ type: 'Ident', value: input.slice(start, i), start, end: i });
       continue;
     }
 
     if (ch === '(') {
-      tokens.push({ type: 'ParenOpen', value: ch, start: i, end: i + 1 });
+      nesting++;
+      if (nesting > MAX_EXPRESSION_NESTING) {
+        throw new ExpressionTokenizeError(
+          `Expression exceeds nesting depth ${MAX_EXPRESSION_NESTING}`,
+          i
+        );
+      }
+      pushToken({ type: 'ParenOpen', value: ch, start: i, end: i + 1 });
       i++;
       continue;
     }
     if (ch === ')') {
-      tokens.push({ type: 'ParenClose', value: ch, start: i, end: i + 1 });
+      nesting--;
+      if (nesting < 0) {
+        throw new ExpressionTokenizeError('Unexpected closing parenthesis', i);
+      }
+      pushToken({ type: 'ParenClose', value: ch, start: i, end: i + 1 });
       i++;
       continue;
     }
     if (ch === ',') {
-      tokens.push({ type: 'Comma', value: ch, start: i, end: i + 1 });
+      pushToken({ type: 'Comma', value: ch, start: i, end: i + 1 });
       i++;
       continue;
     }
     if (ch === '.') {
-      tokens.push({ type: 'Dot', value: ch, start: i, end: i + 1 });
+      pushToken({ type: 'Dot', value: ch, start: i, end: i + 1 });
       i++;
       continue;
     }
@@ -165,7 +207,10 @@ export function tokenizeExpression(input: string): ExprToken[] {
     throw new ExpressionTokenizeError(`Unexpected character '${ch}'`, i);
   }
 
-  tokens.push({ type: 'EOF', value: '', start: i, end: i });
+  if (nesting !== 0) {
+    throw new ExpressionTokenizeError('Missing closing parenthesis', i);
+  }
+  pushToken({ type: 'EOF', value: '', start: i, end: i });
   return tokens;
 }
 

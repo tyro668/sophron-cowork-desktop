@@ -41,8 +41,7 @@ describe('prep DSL parser and workflow compiler', () => {
       from orders
         | join left customers
             on [orders].[customer_id] = [customers].[customer_id]
-            keep left *, [customers].[name] as [customer_name]
-            expect many_to_one
+keep left *, [customers].[name] as [customer_name]
         | output table "orders_with_customers" mode replace
     `);
     expect(result.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
@@ -65,7 +64,7 @@ describe('prep DSL parser and workflow compiler', () => {
     ).toBe(true);
   });
 
-  it('parses asof join configuration', () => {
+  it('parses ASOF join', () => {
     const result = parsePrepDsl(`
       input source task as events
       input source dataset "device_status_snapshot" as status
@@ -76,7 +75,6 @@ describe('prep DSL parser and workflow compiler', () => {
             by [events].[device_id] = [status].[device_id]
             tolerance 6h
             keep left *, [status].[region] as [device_region]
-            expect many_to_one
         | output table "events_with_status" mode replace
     `);
 
@@ -84,10 +82,9 @@ describe('prep DSL parser and workflow compiler', () => {
     const join = result.ast?.operators.find((operator) => operator.type === 'join');
     expect(join?.config.joinType).toBe('asof');
     expect(join?.config.asof).toMatchObject({
-      leftTime: 'events.event_time',
+      leftTime: '[events].[event_time]',
       operator: '>=',
-      rightTime: 'status.snapshot_time',
-      direction: 'backward',
+      rightTime: '[status].[snapshot_time]',
       tolerance: '6h',
     });
   });
@@ -115,7 +112,6 @@ describe('prep DSL parser and workflow compiler', () => {
         | join left customers
             on [orders].[customer_id] = [customers].[customer_id]
             keep left *, [customers].[name] as [customer_name]
-            expect many_to_one
         | output table "orders_with_customers" mode replace
     `);
     const compiled = compilePrepWorkflowToFlow(result.ast!);
@@ -251,5 +247,150 @@ describe('prep DSL parser and workflow compiler', () => {
         config: { calculations: [{ field: 'margin', expression: '[profit] / [revenue]' }] },
       })
     ).toBe('derive [margin] = [profit] / [revenue]');
+  });
+
+  it('rejects a full workflow whose join on condition swaps the sides', () => {
+    const result = parsePrepDsl(`
+      input source task as orders
+      input source dataset "customer_dim" as customers
+
+      from orders
+        | join left customers
+            on [customers].[customer_id] = [orders].[customer_id]
+        | output table "result" mode replace
+    `);
+    const compiled = compilePrepWorkflowToFlow(result.ast!);
+
+    expect(compiled.diagnostics.map((item) => item.code)).toContain('joinConditionSideMismatch');
+  });
+
+  it('rejects a full workflow whose join on left side references an undeclared source', () => {
+    const result = parsePrepDsl(`
+      input source task as orders
+      input source dataset "customer_dim" as customers
+
+      from orders
+        | join left customers
+            on [bogus].[customer_id] = [customers].[customer_id]
+        | output table "result" mode replace
+    `);
+    const compiled = compilePrepWorkflowToFlow(result.ast!);
+
+    expect(compiled.diagnostics.map((item) => item.code)).toContain('joinFieldSourceNotFound');
+  });
+
+  it('rejects a full workflow whose join keep references an undeclared source', () => {
+    const result = parsePrepDsl(`
+      input source task as orders
+      input source dataset "customer_dim" as customers
+
+      from orders
+        | join left customers
+            on [orders].[customer_id] = [customers].[customer_id]
+            keep [bogus].[name] as [customer_name]
+        | output table "result" mode replace
+    `);
+    const compiled = compilePrepWorkflowToFlow(result.ast!);
+
+    expect(compiled.diagnostics.map((item) => item.code)).toContain('joinFieldSourceNotFound');
+  });
+
+  it('accepts a full workflow self-join referencing the same alias on both sides', () => {
+    const result = parsePrepDsl(`
+      input source task as orders
+
+      from orders
+        | join left orders
+            on [orders].[a] = [orders].[b]
+        | output table "result" mode replace
+    `);
+    const compiled = compilePrepWorkflowToFlow(result.ast!);
+
+    expect(compiled.diagnostics.filter((item) => item.severity === 'error')).toEqual([]);
+  });
+
+  it('rejects a join condition whose left side references the right input alias', () => {
+    const result = parsePrepDsl(`
+      input source task as orders
+      input source dataset "customer_dim" as customers
+
+      from orders
+        | join left customers
+            on [customers].[amount] > [customers].[limit]
+        | output table "result" mode replace
+    `);
+    const compiled = compilePrepWorkflowToFlow(result.ast!);
+
+    expect(compiled.diagnostics.map((item) => item.code)).toContain('joinConditionSideMismatch');
+  });
+
+  it('rejects a join condition whose left side references a declared source not yet in the pipeline', () => {
+    const result = parsePrepDsl(`
+      input source task as orders
+      input source dataset "customer_dim" as customers
+      input source dataset "product_dim" as products
+
+      from orders
+        | join left customers
+            on [products].[id] = [customers].[id]
+        | output table "result" mode replace
+    `);
+    const compiled = compilePrepWorkflowToFlow(result.ast!);
+
+    expect(compiled.diagnostics.map((item) => item.code)).toContain('joinConditionSideMismatch');
+  });
+
+  it('rejects a chained join whose later left side references a prior right input by its original alias', () => {
+    const result = parsePrepDsl(`
+      input source task as orders
+      input source dataset "customer_dim" as customers
+      input source dataset "product_dim" as products
+
+      from orders
+        | join left customers
+            on [orders].[customer_id] = [customers].[id]
+        | join left products
+            on [customers].[id] = [products].[customer_id]
+        | output table "result" mode replace
+    `);
+    const compiled = compilePrepWorkflowToFlow(result.ast!);
+
+    expect(compiled.diagnostics.map((item) => item.code)).toContain('joinConditionSideMismatch');
+  });
+
+  it('accepts a chained join whose later left side references the prior output column name', () => {
+    const result = parsePrepDsl(`
+      input source task as orders
+      input source dataset "customer_dim" as customers
+      input source dataset "product_dim" as products
+
+      from orders
+        | join left customers
+            on [orders].[customer_id] = [customers].[id]
+            keep [orders].[order_id], [customers].[id] as [customer_id]
+        | join left products
+            on [customer_id] = [products].[customer_id]
+        | output table "result" mode replace
+    `);
+    const compiled = compilePrepWorkflowToFlow(result.ast!);
+
+    expect(compiled.diagnostics.filter((item) => item.severity === 'error')).toEqual([]);
+  });
+
+  it('rejects a join keep that references a declared source on neither side', () => {
+    const result = parsePrepDsl(`
+      input source task as orders
+      input source dataset "customer_dim" as customers
+      input source dataset "product_dim" as products
+
+      from orders
+        | join left customers
+            on [orders].[customer_id] = [customers].[id]
+            keep [products].[name] as [product_name]
+        | output table "result" mode replace
+    `);
+    const compiled = compilePrepWorkflowToFlow(result.ast!);
+
+    expect(compiled.diagnostics.map((item) => item.code)).toContain('joinFieldSourceNotFound');
   });
 });

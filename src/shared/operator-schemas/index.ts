@@ -4,25 +4,36 @@ import type { PrepDiagnostic } from '../prep-dsl/ast';
 // Re-export schemas for external consumers (must use export-from for CJS compatibility)
 export {
   SortKeySchema,
+  type SortKey,
   ConditionSchema,
   ConflictSchema,
   MetricEntrySchema,
   KeepItemSchema,
+  nonEmptyTrimmed,
 } from './common';
 export { SortConfigSchema } from './sort';
 export { FieldSelectConfigSchema } from './field-select';
 export { FieldMappingConfigSchema } from './field-mapping';
 export { DeduplicateConfigSchema } from './deduplicate';
-export { TypeConvertConfigSchema } from './type-convert';
+export {
+  TypeConvertConfigSchema,
+  DATE_FORMAT_VALUES,
+  DATE_FORMAT_PRESETS,
+  SCALE_MIN,
+  SCALE_MAX,
+} from './type-convert';
+export type { DateFormat } from './type-convert';
 export { UnpivotConfigSchema } from './unpivot';
 export { UnnestConfigSchema } from './unnest';
 export { SetOpConfigSchema } from './set-op';
+export { DEFAULT_OPERATION, DEFAULT_MODE, DEFAULT_MATCH } from './set-op';
 export { AggregateConfigSchema } from './aggregate';
 export { CalculateFieldConfigSchema } from './calculate-field';
 export { MissingValueConfigSchema } from './missing-value';
 export { LimitConfigSchema } from './limit';
 export { PivotConfigSchema } from './pivot';
 export { JoinConfigSchema } from './join';
+export { FilterConfigSchema } from './filter';
 
 // Import schemas for local use (separate from exports for CJS bundler compatibility)
 import * as SortModule from './sort';
@@ -39,6 +50,7 @@ import * as MissingValueModule from './missing-value';
 import * as LimitModule from './limit';
 import * as PivotModule from './pivot';
 import * as JoinModule from './join';
+import * as FilterModule from './filter';
 
 export function parseOperatorConfig<T>(schema: ZodType<T>, config: Record<string, unknown>): T {
   return schema.parse(config);
@@ -59,6 +71,7 @@ export const SCHEMA_MAP: Record<string, ZodType> = {
   limit: LimitModule.LimitConfigSchema,
   pivot: PivotModule.PivotConfigSchema,
   join: JoinModule.JoinConfigSchema,
+  filter: FilterModule.FilterConfigSchema,
 };
 
 export function validateOperatorConfig(

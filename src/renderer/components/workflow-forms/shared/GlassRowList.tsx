@@ -10,6 +10,7 @@ import {
   ArrowDownToLine,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { useFormTranslation } from '../../../hooks/useFormTranslation';
 
 export type RowAction = 'add' | 'copy' | 'remove' | 'moveUp' | 'moveDown' | 'toTop' | 'toBottom';
 
@@ -27,12 +28,18 @@ interface GlassRowListProps<T> {
   onRemove?: (index: number) => void;
   addTitle?: string;
   removeTitle?: string;
+  copyTitle?: string;
+  moveUpTitle?: string;
+  moveDownTitle?: string;
+  toTopTitle?: string;
+  toBottomTitle?: string;
   onCopy?: (index: number) => void;
   onMoveUp?: (index: number) => void;
   onMoveDown?: (index: number) => void;
   onToTop?: (index: number) => void;
   onToBottom?: (index: number) => void;
   canAct?: (action: RowAction, index: number) => boolean;
+  renderExtraActions?: (index: number) => ReactNode;
   draggable?: boolean;
   onDragStart?: (index: number) => void;
   onDragOver?: (e: React.DragEvent, index: number) => void;
@@ -53,29 +60,6 @@ const ACTION_ICON: Record<RowAction, React.ComponentType<{ className?: string }>
   toBottom: ArrowDownToLine,
 };
 
-function getActionLabel(
-  action: RowAction,
-  addTitle: string | undefined,
-  removeTitle: string | undefined
-): string {
-  switch (action) {
-    case 'add':
-      return addTitle ?? '';
-    case 'remove':
-      return removeTitle ?? '';
-    case 'copy':
-      return '复制行';
-    case 'moveUp':
-      return '上移';
-    case 'moveDown':
-      return '下移';
-    case 'toTop':
-      return '置顶';
-    case 'toBottom':
-      return '置底';
-  }
-}
-
 const defaultActions: RowAction[] = ['add', 'remove'];
 
 export function GlassRowList<T>({
@@ -86,22 +70,49 @@ export function GlassRowList<T>({
   onRemove,
   addTitle,
   removeTitle,
+  copyTitle,
+  moveUpTitle,
+  moveDownTitle,
+  toTopTitle,
+  toBottomTitle,
   onCopy,
   onMoveUp,
   onMoveDown,
   onToTop,
   onToBottom,
   canAct,
+  renderExtraActions,
   draggable = false,
   onDragStart,
   onDragOver,
   onDragEnd,
   getRowOpacity,
-  dragTitle = '拖拽排序',
+  dragTitle,
   hideHeader,
   headerClassName,
 }: GlassRowListProps<T>) {
-  const actionsWidth = actions.length * 24 + (actions.length - 1) * 4;
+  const tr = useFormTranslation();
+
+  function getActionLabel(action: RowAction): string {
+    switch (action) {
+      case 'add':
+        return addTitle ?? tr('addRow');
+      case 'remove':
+        return removeTitle ?? tr('removeRow');
+      case 'copy':
+        return copyTitle ?? tr('copyRow');
+      case 'moveUp':
+        return moveUpTitle ?? tr('moveUp');
+      case 'moveDown':
+        return moveDownTitle ?? tr('moveDown');
+      case 'toTop':
+        return toTopTitle ?? tr('toTop');
+      case 'toBottom':
+        return toBottomTitle ?? tr('toBottom');
+    }
+  }
+  const extraActionsWidth = renderExtraActions ? 28 : 0;
+  const actionsWidth = actions.length * 24 + (actions.length - 1) * 4 + extraActionsWidth;
 
   return (
     <div className="flex flex-col gap-2">
@@ -141,8 +152,8 @@ export function GlassRowList<T>({
               onDragStart={() => onDragStart?.(index)}
               onDragEnd={() => onDragEnd?.()}
               className="flex h-6 w-4 flex-shrink-0 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
-              title={dragTitle}
-              aria-label={dragTitle}
+              title={dragTitle ?? tr('dragToReorder')}
+              aria-label={dragTitle ?? tr('dragToReorder')}
             >
               <GripVertical className="h-4 w-4" />
             </div>
@@ -155,10 +166,11 @@ export function GlassRowList<T>({
           ))}
 
           <div className="flex items-center gap-1 flex-shrink-0">
+            {renderExtraActions?.(index)}
             {actions.map((action) => {
               const Icon = ACTION_ICON[action];
               const disabled = canAct !== undefined && !canAct(action, index);
-              const label = getActionLabel(action, addTitle, removeTitle);
+              const label = getActionLabel(action);
               const handler = () => {
                 switch (action) {
                   case 'add':

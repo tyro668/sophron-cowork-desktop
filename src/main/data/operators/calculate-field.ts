@@ -1,6 +1,7 @@
 import { quoteIdentifier } from './utils';
 import { compileScalarExpression } from './compute';
 import { CalculateFieldConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
+import { exprFromParts, type CalculationRow } from '../../../shared/calculate-field/index';
 
 export function compileCalculateFieldSql(
   output: string,
@@ -13,8 +14,15 @@ export function compileCalculateFieldSql(
   const additions: string[] = [];
   const existingColumns = new Set(inputColumns.map((column) => column.toLowerCase()));
   for (const calculation of calculations) {
-    if (!calculation.field?.trim() || !calculation.expression?.trim()) continue;
-    const compiled = `${compileScalarExpression(calculation.expression)} AS ${quoteIdentifier(calculation.field)}`;
+    if (!calculation.field?.trim()) continue;
+    let expr: string;
+    if (calculation.type !== 'row' && calculation.fn?.trim()) {
+      expr = exprFromParts(calculation as CalculationRow);
+    } else {
+      if (!calculation.expression?.trim()) continue;
+      expr = calculation.expression;
+    }
+    const compiled = `${compileScalarExpression(expr)} AS ${quoteIdentifier(calculation.field)}`;
     if (
       calculation.action === 'replace' ||
       existingColumns.has(calculation.field.trim().toLowerCase())

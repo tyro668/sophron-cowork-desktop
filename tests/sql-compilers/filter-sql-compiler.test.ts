@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { compileFilterConditionExpression } from '../src/main/data/operators/filter';
+import { compileFilterConditionExpression } from '../../src/main/data/operators/filter';
 
 describe('filter SQL compiler', () => {
   describe('comparison operators', () => {
@@ -20,7 +20,7 @@ describe('filter SQL compiler', () => {
       expect(compileFilterConditionExpression('[a] = 42')).toBe('"a" = 42');
       expect(compileFilterConditionExpression('[a] = true')).toBe('"a" = TRUE');
       expect(compileFilterConditionExpression('[a] = false')).toBe('"a" = FALSE');
-      expect(compileFilterConditionExpression('[a] = null')).toBe('"a" = NULL');
+      expect(compileFilterConditionExpression('[a] = null')).toBe('"a" IS NULL');
     });
 
     it('compares with decimal and negative numbers', () => {
@@ -253,6 +253,32 @@ describe('filter SQL compiler', () => {
 
     it('passes IS NOT NULL', () => {
       expect(compileFilterConditionExpression('[x] IS NOT NULL')).toBe('"x" IS NOT NULL');
+    });
+
+    it('compiles lowercase is null / is not null', () => {
+      expect(compileFilterConditionExpression('[phone] is null')).toBe('"phone" IS NULL');
+      expect(compileFilterConditionExpression('[phone] is not null')).toBe('"phone" IS NOT NULL');
+    });
+
+    it('normalizes = null to IS NULL', () => {
+      expect(compileFilterConditionExpression('[phone] = null')).toBe('"phone" IS NULL');
+    });
+
+    it('normalizes != null and <> null to IS NOT NULL', () => {
+      expect(compileFilterConditionExpression('[phone] != null')).toBe('"phone" IS NOT NULL');
+      expect(compileFilterConditionExpression('[phone] <> null')).toBe('"phone" IS NOT NULL');
+    });
+
+    it('normalizes NOT = null to NOT IS NULL', () => {
+      expect(compileFilterConditionExpression('NOT [phone] = null')).toBe('NOT "phone" IS NULL');
+    });
+
+    it('keeps a quoted "null" string as a string, not SQL NULL', () => {
+      expect(compileFilterConditionExpression('[code] = "null"')).toBe(`"code" = 'null'`);
+      expect(compileFilterConditionExpression('[code] != "null"')).toBe(`"code" != 'null'`);
+      expect(compileFilterConditionExpression('[code] in ("null", "normal")')).toBe(
+        `"code" IN ('null', 'normal')`
+      );
     });
   });
 

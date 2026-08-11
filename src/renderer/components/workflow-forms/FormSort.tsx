@@ -9,12 +9,7 @@ import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTyp
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { computeUsedFields } from './shared/used-fields';
-
-interface SortKey {
-  field: string;
-  direction: 'asc' | 'desc';
-  nulls?: 'first' | 'last';
-}
+import type { SortKey } from '../../../shared/operator-schemas';
 
 const DEFAULT_SORT_KEY: SortKey = { field: '', direction: 'asc' };
 
@@ -29,14 +24,7 @@ export default function FormSort({
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const keys = useMemo<SortKey[]>(() => (node.config.keys as SortKey[]) ?? [], [node.config.keys]);
-
-  // Auto-initialize with one empty row
-  useEffect(() => {
-    if (keys.length === 0) {
-      commitKeys([{ ...DEFAULT_SORT_KEY }]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const editableKeys = useMemo(() => (keys.length > 0 ? keys : [{ ...DEFAULT_SORT_KEY }]), [keys]);
 
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
 
@@ -55,23 +43,10 @@ export default function FormSort({
     resetDrag,
     isDragging,
     dragIndexRef,
-  } = useDragReorder(keys, commitKeys);
+  } = useDragReorder(editableKeys, commitKeys);
 
   const updateKey = useCallback(
     (index: number, patch: Partial<SortKey>) => {
-      // Auto-resolve duplicate sort fields: clear the previous occurrence.
-      if ('field' in patch && patch.field) {
-        const existing = activeKeys.findIndex((k, i) => i !== index && k.field === patch.field);
-        if (existing !== -1) {
-          const next = activeKeys.map((k, i) => {
-            if (i === index) return { ...k, ...patch };
-            if (i === existing) return { ...k, field: '' };
-            return k;
-          });
-          commitKeys(next);
-          return;
-        }
-      }
       const next = activeKeys.map((k, i) => (i === index ? { ...k, ...patch } : k));
       commitKeys(next);
     },
@@ -92,7 +67,7 @@ export default function FormSort({
   const removeKey = useCallback(
     (index: number) => {
       if (activeKeys.length <= 1) {
-        commitKeys([{ ...DEFAULT_SORT_KEY }]);
+        commitKeys([]);
         return;
       }
       commitKeys(activeKeys.filter((_, i) => i !== index));
@@ -119,7 +94,7 @@ export default function FormSort({
             columns={[
               {
                 flex: 'flex-[4]',
-                header: tr('sortFieldHeader', '待排序字段'),
+                header: tr('sortFieldHeader'),
                 render: (key: SortKey, i) => {
                   const disabledOptions = new Set(usedFields);
                   if (key.field) disabledOptions.delete(key.field);
@@ -129,9 +104,9 @@ export default function FormSort({
                       options={fieldCompletions}
                       columnTypes={columnTypes}
                       onChange={(value) => updateKey(i, { field: value })}
-                      placeholder={tr('sortSelectField', '选择字段')}
-                      searchPlaceholder={tr('searchField', '搜索字段')}
-                      emptyText={tr('noMatch', '无匹配字段')}
+                      placeholder={tr('sortSelectField')}
+                      searchPlaceholder={tr('searchField')}
+                      emptyText={tr('noMatch')}
                       disabledOptions={disabledOptions}
                       className="w-full"
                     />
@@ -140,7 +115,7 @@ export default function FormSort({
               },
               {
                 flex: 'flex-[2]',
-                header: tr('sortDirectionHeader', '排序方式'),
+                header: tr('sortDirectionHeader'),
                 render: (key: SortKey, i) => (
                   <GlassDirectionToggle
                     value={key.direction}
@@ -151,7 +126,7 @@ export default function FormSort({
               },
               {
                 flex: 'flex-[3]',
-                header: tr('sortNullsHeader', '空值处理方式'),
+                header: tr('sortNullsHeader'),
                 render: (key: SortKey, i) => (
                   <GlassOptionSingleSelect
                     value={key.nulls ?? ''}
@@ -159,9 +134,9 @@ export default function FormSort({
                       {
                         key: 'nulls',
                         items: [
-                          { value: '', label: tr('sortNullsDefault', '空值默认') },
-                          { value: 'first', label: tr('sortNullsFirst', '空值在前') },
-                          { value: 'last', label: tr('sortNullsLast', '空值在后') },
+                          { value: '', label: tr('sortNullsDefault') },
+                          { value: 'first', label: tr('sortNullsFirst') },
+                          { value: 'last', label: tr('sortNullsLast') },
                         ],
                       },
                     ]}
@@ -175,14 +150,14 @@ export default function FormSort({
             ]}
             onAdd={addKeyAfter}
             onRemove={removeKey}
-            addTitle={tr('sortAddKey', '添加排序键')}
-            removeTitle={tr('sortRemoveKey', '删除排序键')}
+            addTitle={tr('sortAddKey')}
+            removeTitle={tr('sortRemoveKey')}
             draggable
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
             getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-            dragTitle={tr('dragToReorder', '拖拽排序')}
+            dragTitle={tr('dragToReorder')}
           />
         </div>
       </div>

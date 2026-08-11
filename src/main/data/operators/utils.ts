@@ -1,5 +1,6 @@
 import { duckDbTypeForDataFieldType, type DataFieldType } from '../../../shared/data-field-types';
 import type { DataColumnTypeInfo } from '../../../renderer/types';
+import { parseDuration } from '../../../shared/operator-schemas/join';
 
 export function quoteIdentifier(identifier: string): string {
   return quoteValueIdentifier(identifier);
@@ -38,6 +39,15 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+export function uniqueAlias(base: string, columns: string[]): string {
+  const normalizedColumns = new Set(columns.map((c) => c.toLowerCase()));
+  const normalizedBase = base.toLowerCase();
+  if (!normalizedColumns.has(normalizedBase)) return base;
+  let i = 0;
+  while (normalizedColumns.has(`${base}_${i}`.toLowerCase())) i++;
+  return `${base}_${i}`;
+}
+
 export function positiveNumber(value: unknown, fallback: number): number {
   const numberValue = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : fallback;
@@ -50,10 +60,15 @@ export function lastQualifiedPart(value: string): string {
 
 export function unwrapFieldToken(token: string): string {
   const inner = token.slice(1, -1);
-  return inner.startsWith('`') && inner.endsWith('`') ? inner.slice(1, -1) : inner;
+  if (!inner.startsWith('`') || !inner.endsWith('`')) return inner;
+  return inner.slice(1, -1).replace(/\\([\\`])/g, '$1');
 }
 
 export function unquoteDslString(value: string): string {
+  const quote = value[0];
+  if (quote === "'") {
+    return value.slice(1, -1).replace(/''/g, "'").replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+  }
   try {
     return JSON.parse(value) as string;
   } catch {
@@ -62,7 +77,11 @@ export function unquoteDslString(value: string): string {
 }
 
 export function getRightPrefix(conflict: unknown): string {
-  if (isRecord(conflict) && typeof conflict.rightPrefix === 'string') {
+  if (
+    isRecord(conflict) &&
+    typeof conflict.rightPrefix === 'string' &&
+    conflict.rightPrefix.trim()
+  ) {
     return conflict.rightPrefix;
   }
   return 'right_';
@@ -87,24 +106,15 @@ export function getConflictAlias(
 }
 
 export function durationToMilliseconds(value: string): number {
-  const match = /^(\d+(?:\.\d+)?)(ms|s|m|h|d)$/.exec(value);
-  if (!match) return 0;
-  const amount = Number(match[1]);
-  const unit = match[2];
-  const multipliers: Record<string, number> = {
-    ms: 1,
-    s: 1_000,
-    m: 60_000,
-    h: 3_600_000,
-    d: 86_400_000,
-  };
-  return amount * (multipliers[unit] ?? 0);
+  const { d, h, m, s, ms } = parseDuration(value);
+  const totalMs = d * 86_400_000 + h * 3_600_000 + m * 60_000 + s * 1_000 + ms;
+  return totalMs;
 }
 
 export function sortKeysToSql(value: unknown): string {
   return objectArray(value)
     .flatMap((key) =>
-      typeof key.field === 'string'
+      typeof key.field === 'string' && key.field.trim()
         ? [
             `${quoteIdentifier(key.field)} ${
               key.direction === 'desc' ? 'DESC' : 'ASC'
@@ -125,20 +135,6 @@ export function compileTypedProjection(
       ? `CAST(${sourceExpression} AS VARCHAR)`
       : `TRY_CAST(${sourceExpression} AS ${targetType})`;
   return `${expression} AS ${quoteIdentifier(column.name)}`;
-}
-
-export function normalizeDuckDbDateFormat(format: string): string {
-  return format
-    .replace(/yyyy/g, '%Y')
-    .replace(/YYYY/g, '%Y')
-    .replace(/MM/g, '%m')
-    .replace(/dd/g, '%d')
-    .replace(/DD/g, '%d')
-    .replace(/HH/g, '%H')
-    .replace(/hh/g, '%H')
-    .replace(/mm/g, '%M')
-    .replace(/ss/g, '%S')
-    .replace(/SSS/g, '%f');
 }
 
 export function normalizeStatus(

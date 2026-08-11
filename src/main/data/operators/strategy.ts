@@ -17,7 +17,8 @@ export interface CompileStrategy {
     output: string,
     input: string,
     columns: string[],
-    config: Record<string, unknown>
+    config: Record<string, unknown>,
+    columnTypes?: Record<string, string>
   ) => string;
   needsColumns: boolean;
 }
@@ -28,7 +29,10 @@ export function buildFilterSql(
   _columns: string[],
   config: Record<string, unknown>
 ): string {
-  const condition = String(config.condition ?? 'true');
+  const condition = String(config.condition ?? '').trim();
+  if (!condition) {
+    throw new Error('Filter requires a condition');
+  }
   return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} WHERE ${compileFilterConditionExpression(condition)}`;
 }
 
@@ -55,5 +59,5 @@ export const COMPILE_STRATEGIES: Partial<Record<string, CompileStrategy>> = {
   limit: { compile: compileLimitSql, needsColumns: true },
   pivot: { compile: wrapNoColumns(compilePivotSql), needsColumns: false },
   unpivot: { compile: compileUnpivotSql, needsColumns: true },
-  unnest: { compile: wrapNoColumns(compileUnnestSql), needsColumns: false },
+  unnest: { compile: compileUnnestSql, needsColumns: true },
 };

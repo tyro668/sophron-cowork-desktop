@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useMemo, useId } from 'react';
+import { useCallback, useEffect, useMemo, useId, useState } from 'react';
 
 import type { OperatorFormProps } from './index';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
-import { useConfirmDialog } from '../../components/ConfirmDialog';
 import type { DataColumnTypeInfo } from '../../../shared/data-field-types';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import {
+  DEFAULT_OPERATION,
+  DEFAULT_MODE,
+  DEFAULT_MATCH,
+} from '../../../shared/operator-schemas/set-op';
 
 const NUMERIC_TYPES = ['integer', 'float', 'decimal'];
 const TEMPORAL_TYPES = ['date', 'datetime'];
@@ -16,46 +20,91 @@ function checkTypeWarnings(
   leftColumns: string[],
   rightColumns: string[],
   operation: string,
-  match: string
+  match: string,
+  tr: (key: string) => string
 ): string[] {
   const warnings: string[] = [];
-
-  const isUnionByName = operation === 'union' && match === 'by_name';
+  const effectiveMatch = operation === 'union' ? match : 'by_position';
+  const isUnionByName = operation === 'union' && effectiveMatch === 'by_name';
 
   if (!isUnionByName && leftColumns.length !== rightColumns.length) {
     warnings.push(
-      `左右两表列数不一致（左表 ${leftColumns.length} 列，右表 ${rightColumns.length} 列），缺失列已自动填充 NULL`
+      tr('setOpColumnCountMismatch')
+        .replace('{{leftCount}}', String(leftColumns.length))
+        .replace('{{rightCount}}', String(rightColumns.length))
     );
   }
 
-  if (match !== 'by_name') {
+  if (effectiveMatch !== 'by_name') {
     const minLen = Math.min(leftColumns.length, rightColumns.length);
     const mismatches: string[] = [];
     for (let i = 0; i < minLen; i++) {
       if (leftColumns[i] !== rightColumns[i]) {
-        mismatches.push(`第 ${i + 1} 列：左表「${leftColumns[i]}」≠ 右表「${rightColumns[i]}」`);
+        mismatches.push(
+          tr('setOpColumnNameMismatch')
+            .replace('{{index}}', String(i + 1))
+            .replace('{{left}}', leftColumns[i])
+            .replace('{{right}}', rightColumns[i])
+        );
       }
     }
     if (mismatches.length > 0) {
-      warnings.push(`左右两表按位置匹配，但列名不同：${mismatches.join('；')}`);
+      warnings.push(tr('setOpPositionMatchWarnings').replace('{{details}}', mismatches.join('；')));
     }
   }
 
-  const minLen = Math.min(leftTypes.length, rightTypes.length);
-  for (let i = 0; i < minLen; i++) {
-    const lt = leftTypes[i].type;
-    const rt = rightTypes[i].type;
-    if (lt === rt) continue;
-    if (NUMERIC_TYPES.includes(lt) && NUMERIC_TYPES.includes(rt)) continue;
-    if (TEMPORAL_TYPES.includes(lt) && TEMPORAL_TYPES.includes(rt)) continue;
-    if (lt === 'text' || rt === 'text') {
-      warnings.push(
-        `第 ${i + 1} 列「${leftTypes[i].name}」类型不一致（${lt} vs ${rt}），可能导致数据转换异常`
-      );
-    } else {
-      warnings.push(
-        `第 ${i + 1} 列「${leftTypes[i].name}」类型不兼容（${lt} vs ${rt}），可能导致执行错误`
-      );
+  if (effectiveMatch === 'by_name') {
+    const rightMap = new Map(rightTypes.map((t) => [t.name.toLowerCase(), t]));
+    for (const leftType of leftTypes) {
+      const rightType = rightMap.get(leftType.name.toLowerCase());
+      if (!rightType) continue;
+      if (leftType.type === rightType.type) continue;
+      if (NUMERIC_TYPES.includes(leftType.type) && NUMERIC_TYPES.includes(rightType.type)) continue;
+      if (TEMPORAL_TYPES.includes(leftType.type) && TEMPORAL_TYPES.includes(rightType.type))
+        continue;
+      if (leftType.type === 'text' || rightType.type === 'text') {
+        warnings.push(
+          tr('setOpTypeMismatchWarning')
+            .replace('{{index}}', leftType.name)
+            .replace('{{col}}', leftType.name)
+            .replace('{{leftType}}', leftType.type)
+            .replace('{{rightType}}', rightType.type)
+        );
+      } else {
+        warnings.push(
+          tr('setOpTypeIncompatibleWarning')
+            .replace('{{index}}', leftType.name)
+            .replace('{{col}}', leftType.name)
+            .replace('{{leftType}}', leftType.type)
+            .replace('{{rightType}}', rightType.type)
+        );
+      }
+    }
+  } else {
+    const minLen = Math.min(leftTypes.length, rightTypes.length);
+    for (let i = 0; i < minLen; i++) {
+      const lt = leftTypes[i].type;
+      const rt = rightTypes[i].type;
+      if (lt === rt) continue;
+      if (NUMERIC_TYPES.includes(lt) && NUMERIC_TYPES.includes(rt)) continue;
+      if (TEMPORAL_TYPES.includes(lt) && TEMPORAL_TYPES.includes(rt)) continue;
+      if (lt === 'text' || rt === 'text') {
+        warnings.push(
+          tr('setOpTypeMismatchWarning')
+            .replace('{{index}}', String(i + 1))
+            .replace('{{col}}', leftTypes[i].name)
+            .replace('{{leftType}}', lt)
+            .replace('{{rightType}}', rt)
+        );
+      } else {
+        warnings.push(
+          tr('setOpTypeIncompatibleWarning')
+            .replace('{{index}}', String(i + 1))
+            .replace('{{col}}', leftTypes[i].name)
+            .replace('{{leftType}}', lt)
+            .replace('{{rightType}}', rt)
+        );
+      }
     }
   }
   return warnings;
@@ -155,10 +204,10 @@ export default function FormSetOp({
 
   const updateConfig = useUpdateConfig(onNodeChange);
 
-  const operation = (node.config.operation as string) ?? 'union';
+  const operation = (node.config.operation as string) ?? DEFAULT_OPERATION;
   const rawRightInput = (node.config.rightInput as string) ?? '';
-  const mode = (node.config.mode as string) ?? 'all';
-  const match = (node.config.match as string) ?? 'by_name';
+  const mode = (node.config.mode as string) ?? DEFAULT_MODE;
+  const match = (node.config.match as string) ?? DEFAULT_MATCH;
 
   const resolveNodeLabel = useCallback(
     (ref: { id: string; config?: Record<string, unknown> } | undefined): string => {
@@ -179,9 +228,11 @@ export default function FormSetOp({
     const node = otherNodes.find((n) => n.id === rawRightInput);
     return node ? (node.config?.alias as string) || node.label || rawRightInput : rawRightInput;
   }, [rawRightInput, otherNodes]);
-  const { confirm } = useConfirmDialog();
+
+  const [warnings, setWarnings] = useState<string[]>([]);
 
   useEffect(() => {
+    setWarnings([]);
     if (!taskId || !sourceNode?.id || !rawRightInput) return;
     const api = window.electronAPI?.data;
     if (!api?.getWorkflowNodeColumnTypes) return;
@@ -192,6 +243,7 @@ export default function FormSetOp({
     const rightNodeId = rightNode?.id;
     if (!rightNodeId) return;
 
+    let aborted = false;
     Promise.all([
       api.getWorkflowNodeColumnTypes({
         taskId,
@@ -206,35 +258,17 @@ export default function FormSetOp({
         nodeConfig: (rightNode.config ?? {}) as Record<string, unknown>,
       }),
     ])
-      .then(async ([leftTypes, rightTypes]) => {
+      .then(([leftTypes, rightTypes]) => {
+        if (aborted) return;
         const leftCols = leftTypes.map((t) => t.name);
         const rightCols = rightTypes.map((t) => t.name);
-        const warnings = checkTypeWarnings(
-          leftTypes,
-          rightTypes,
-          leftCols,
-          rightCols,
-          operation,
-          match
+        setWarnings(
+          checkTypeWarnings(leftTypes, rightTypes, leftCols, rightCols, operation, match, tr)
         );
-        if (warnings.length > 0) {
-          const confirmed = await confirm({
-            title: '列类型不匹配',
-            message: (
-              <div>
-                <p>左右两表的列类型不完全匹配，执行时可能出现数据转换异常：</p>
-                <pre className="mt-2 whitespace-pre-wrap text-[12px]">{warnings.join('\n')}</pre>
-              </div>
-            ),
-            confirmLabel: '忽略警告',
-            cancelLabel: '取消',
-          });
-          if (!confirmed) {
-            updateConfig((cfg) => ({ ...cfg, rightInput: undefined }));
-          }
-        }
       })
       .catch((error: unknown) => {
+        if (aborted) return;
+        setWarnings([]);
         console.warn('[FormSetOp] Failed to compare input column types', {
           taskId,
           leftNodeId: sourceNode.id,
@@ -242,6 +276,9 @@ export default function FormSetOp({
           error,
         });
       });
+    return () => {
+      aborted = true;
+    };
   }, [
     taskId,
     sourceNode?.id,
@@ -251,8 +288,6 @@ export default function FormSetOp({
     otherNodes,
     operation,
     match,
-    confirm,
-    updateConfig,
   ]);
 
   return (
@@ -266,29 +301,27 @@ export default function FormSetOp({
             </span>
             <div className="grid">
               <span className="text-[13px] font-semibold text-text-primary">
-                {tr('setOpSources', '数据源')}
+                {tr('setOpSources')}
               </span>
-              <span className="text-[10px] text-text-muted">
-                {tr('setOpSourcesHint', '请在上方选择参与运算的两个数据集')}
-              </span>
+              <span className="text-[10px] text-text-muted">{tr('setOpSourcesHint')}</span>
             </div>
           </div>
           <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
             <div className="p-3 grid gap-2.5">
               <div className="grid gap-1">
                 <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-                  {tr('leftInput', '左表数据源')}
+                  {tr('leftInput')}
                 </span>
                 <div className="h-7 flex items-center rounded-md border border-border-muted/70 bg-background/28 px-2 text-[12px] text-text-muted">
-                  {leftSourceLabel || tr('noLeftSource', '上游节点')}
+                  {leftSourceLabel || tr('noLeftSource')}
                 </div>
               </div>
               <div className="grid gap-1">
                 <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-                  {tr('setOpRightInput', '右表数据源')}
+                  {tr('setOpRightInput')}
                 </span>
                 <div className="h-7 flex items-center rounded-md border border-border-muted/70 bg-background/28 px-2 text-[12px] text-text-muted">
-                  {rightSourceLabel || tr('noRightSource', '未连接右表')}
+                  {rightSourceLabel || tr('noRightSource')}
                 </div>
               </div>
             </div>
@@ -308,11 +341,9 @@ export default function FormSetOp({
             </span>
             <div className="grid">
               <span className="text-[13px] font-semibold text-text-primary">
-                {tr('setOpConnection', '连接方式')}
+                {tr('setOpConnection')}
               </span>
-              <span className="text-[10px] text-text-muted">
-                {tr('setOpConnectionHint', '选择行级合并方式：并集、交集或差集')}
-              </span>
+              <span className="text-[10px] text-text-muted">{tr('setOpConnectionHint')}</span>
             </div>
           </div>
           <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
@@ -321,7 +352,13 @@ export default function FormSetOp({
                 <button
                   key={op}
                   type="button"
-                  onClick={() => updateConfig((cfg) => ({ ...cfg, operation: op }))}
+                  onClick={() =>
+                    updateConfig((cfg) => ({
+                      ...cfg,
+                      operation: op,
+                      ...(op !== 'union' ? { match: undefined } : {}),
+                    }))
+                  }
                   className={`rounded-lg border p-2 flex items-center gap-2.5 transition-colors ${
                     operation === op
                       ? 'border-accent bg-accent/5'
@@ -329,20 +366,20 @@ export default function FormSetOp({
                   }`}
                   title={
                     op === 'union'
-                      ? tr('setOpUnionTip', '合并两个表的所有数据，重复记录自动去重')
+                      ? tr('setOpUnionTip')
                       : op === 'intersect'
-                        ? tr('setOpIntersectTip', '仅保留两个表共有的记录')
-                        : tr('setOpExceptTip', '从左表中排除右表中的记录')
+                        ? tr('setOpIntersectTip')
+                        : tr('setOpExceptTip')
                   }
                 >
                   <VennSVG type={op} />
                   <div className="grid gap-0.5">
                     <span className="text-[12px] font-medium text-text-primary leading-tight">
                       {op === 'union'
-                        ? tr('setOpUnion', '并集')
+                        ? tr('setOpUnion')
                         : op === 'intersect'
-                          ? tr('setOpIntersect', '交集')
-                          : tr('setOpExcept', '差集')}
+                          ? tr('setOpIntersect')
+                          : tr('setOpExcept')}
                     </span>
                     <span className="text-[10px] text-text-muted font-mono leading-tight">
                       {op === 'union' ? 'A ∪ B' : op === 'intersect' ? 'A ∩ B' : 'A \\ B'}
@@ -367,11 +404,9 @@ export default function FormSetOp({
             </span>
             <div className="grid">
               <span className="text-[13px] font-semibold text-text-primary">
-                {tr('setOpConfig', '配置选择')}
+                {tr('setOpConfig')}
               </span>
-              <span className="text-[10px] text-text-muted">
-                {tr('setOpConfigHint', '配置去重方式与字段匹配规则')}
-              </span>
+              <span className="text-[10px] text-text-muted">{tr('setOpConfigHint')}</span>
             </div>
           </div>
           <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
@@ -381,17 +416,17 @@ export default function FormSetOp({
                 options={[
                   {
                     value: 'all',
-                    label: tr('setOpAll', '保留重复'),
-                    tip: tr('setOpAllTip', '将两个表的数据全部合并，包括重复的行'),
+                    label: tr('setOpAll'),
+                    tip: tr('setOpAllTip'),
                   },
                   {
                     value: 'distinct',
-                    label: tr('setOpDistinct', '去重'),
-                    tip: tr('setOpDistinctTip', '合并后自动去除重复的行'),
+                    label: tr('setOpDistinct'),
+                    tip: tr('setOpDistinctTip'),
                   },
                 ]}
                 onChange={(v) => updateConfig((cfg) => ({ ...cfg, mode: v }))}
-                label={tr('setOpDedupMode', '重复行处理')}
+                label={tr('setOpDedupMode')}
               />
               {operation === 'union' && (
                 <GlassRadioSelect
@@ -399,23 +434,32 @@ export default function FormSetOp({
                   options={[
                     {
                       value: 'by_name',
-                      label: tr('setOpByName', '按名称'),
-                      tip: tr('setOpByNameTip', '根据列名自动匹配，列数或顺序不一致时自动对齐'),
+                      label: tr('setOpByName'),
+                      tip: tr('setOpByNameTip'),
                     },
                     {
                       value: 'by_position',
-                      label: tr('setOpByPosition', '按位置'),
-                      tip: tr('setOpByPositionTip', '按列的顺序位置匹配，两表列数必须一致'),
+                      label: tr('setOpByPosition'),
+                      tip: tr('setOpByPositionTip'),
                     },
                   ]}
                   onChange={(v) => updateConfig((cfg) => ({ ...cfg, match: v }))}
-                  label={tr('setOpMatchMode', '匹配方式')}
+                  label={tr('setOpMatchMode')}
                 />
               )}
             </div>
           </div>
         </div>
       </div>
+      {warnings.length > 0 && (
+        <div className="rounded-lg border border-error/30 bg-error/5 p-2.5">
+          {warnings.map((w, i) => (
+            <p key={i} className="text-[11px] text-error leading-relaxed">
+              {w}
+            </p>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

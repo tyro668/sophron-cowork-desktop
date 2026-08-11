@@ -1,39 +1,27 @@
 import { useCallback, useEffect, useMemo } from 'react';
-
+import { Settings } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
+import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
+import { isTemporalDataFieldType } from '../../../shared/data-field-types';
+import { AGGREGATE_FUNCTIONS } from '../../../shared/operator-schemas/common';
 
-const AGG_FUNCTIONS = [
-  'count',
-  'count_distinct',
-  'sum',
-  'avg',
-  'min',
-  'max',
-  'median',
-  'mode',
-  'first',
-  'last',
-  'stddev_samp',
-  'stddev_pop',
-  'var_samp',
-  'var_pop',
-  'string_agg',
-  'list',
-  'quantile_cont',
-  'quantile_disc',
-  'approx_count_distinct',
-  'approx_quantile',
-  'approx_top_k',
-];
+const GRANULARITY_OPTIONS = [
+  { value: '', labelKey: 'granularityNone', labelFallback: '不处理' },
+  { value: 'year', labelKey: 'granularityYear', labelFallback: '按年' },
+  { value: 'quarter', labelKey: 'granularityQuarter', labelFallback: '按季度' },
+  { value: 'month', labelKey: 'granularityMonth', labelFallback: '按月' },
+  { value: 'week', labelKey: 'granularityWeek', labelFallback: '按周' },
+  { value: 'day', labelKey: 'granularityDay', labelFallback: '按天' },
+] as const;
 
 interface MetricEntry {
   function: string;
@@ -57,6 +45,10 @@ export default function FormAggregate({
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const groupBy = useMemo(() => (node.config.groupBy as string[]) ?? [], [node.config.groupBy]);
+  const dateGranularity = useMemo(
+    () => (node.config.dateGranularity as Record<string, string> | undefined) ?? {},
+    [node.config.dateGranularity]
+  );
   const rawMetrics = useMemo(
     () => (node.config.metrics as MetricEntry[]) ?? [],
     [node.config.metrics]
@@ -70,9 +62,9 @@ export default function FormAggregate({
     () => [
       {
         key: 'default',
-        items: AGG_FUNCTIONS.map((f) => ({
+        items: AGGREGATE_FUNCTIONS.map((f) => ({
           value: f,
-          label: tr('aggregateFn_' + f, f),
+          label: tr('aggregateFn_' + f),
         })),
       },
     ],
@@ -81,10 +73,34 @@ export default function FormAggregate({
 
   const handleGroupByChange = useCallback(
     (next: string[]) => {
-      updateConfig((cfg) => ({
-        ...cfg,
-        groupBy: next.length > 0 ? next : undefined,
-      }));
+      updateConfig((cfg) => {
+        const granularity = cfg.dateGranularity as Record<string, string> | undefined;
+        const filtered = granularity
+          ? Object.fromEntries(Object.entries(granularity).filter(([k]) => next.includes(k)))
+          : undefined;
+        return {
+          ...cfg,
+          groupBy: next.length > 0 ? next : undefined,
+          dateGranularity: filtered && Object.keys(filtered).length > 0 ? filtered : undefined,
+        };
+      });
+    },
+    [updateConfig]
+  );
+
+  const handleGranularityChange = useCallback(
+    (field: string, value: string) => {
+      updateConfig((cfg) => {
+        const next: Record<string, string> = {
+          ...((cfg.dateGranularity ?? {}) as Record<string, string>),
+        };
+        if (value) {
+          next[field] = value;
+        } else {
+          delete next[field];
+        }
+        return { ...cfg, dateGranularity: Object.keys(next).length > 0 ? next : undefined };
+      });
     },
     [updateConfig]
   );
@@ -148,11 +164,9 @@ export default function FormAggregate({
             </span>
             <div className="grid">
               <span className="text-[13px] font-semibold text-text-primary">
-                {tr('aggregateGroupBy', '分组字段')}
+                {tr('aggregateGroupBy')}
               </span>
-              <span className="text-[10px] text-text-muted">
-                {tr('aggregateGroupByHint', '选择分组的字段')}
-              </span>
+              <span className="text-[10px] text-text-muted">{tr('aggregateGroupByHint')}</span>
             </div>
           </div>
           <div className="flex-1 min-h-0 px-3 pb-3 flex flex-col">
@@ -162,6 +176,44 @@ export default function FormAggregate({
               onChange={handleGroupByChange}
               columnTypes={columnTypes}
               maxHeight="none"
+              columnLabel={(col) => {
+                const gran = dateGranularity[col];
+                if (gran && isTemporalDataFieldType(columnTypes[col])) {
+                  const opt = GRANULARITY_OPTIONS.find((o) => o.value === gran);
+                  const label = opt ? tr(opt.labelKey) : gran;
+                  return `${col}（${label}）`;
+                }
+                return col;
+              }}
+              itemExtras={(col) => {
+                if (!isTemporalDataFieldType(columnTypes[col])) return null;
+                const gran = dateGranularity[col] || '';
+                return (
+                  <GlassDropdownMenu
+                    trigger={
+                      <button
+                        type="button"
+                        className="inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-text-muted/50 hover:text-accent transition-colors"
+                        title={tr('granularitySelect')}
+                      >
+                        <Settings className="h-3 w-3" />
+                      </button>
+                    }
+                    align="center"
+                    side="right"
+                  >
+                    {GRANULARITY_OPTIONS.map((opt) => (
+                      <GlassMenuItem
+                        key={opt.value}
+                        selected={gran === opt.value}
+                        onSelect={() => handleGranularityChange(col, opt.value)}
+                      >
+                        {tr(opt.labelKey)}
+                      </GlassMenuItem>
+                    ))}
+                  </GlassDropdownMenu>
+                );
+              }}
             />
           </div>
         </div>
@@ -174,11 +226,9 @@ export default function FormAggregate({
             </span>
             <div className="grid">
               <span className="text-[13px] font-semibold text-text-primary">
-                {tr('aggregateMetric', '聚合指标')}
+                {tr('aggregateMetric')}
               </span>
-              <span className="text-[10px] text-text-muted">
-                {tr('aggregateMetricHint', '配置聚合函数和别名')}
-              </span>
+              <span className="text-[10px] text-text-muted">{tr('aggregateMetricHint')}</span>
             </div>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-3">
@@ -188,7 +238,7 @@ export default function FormAggregate({
               columns={[
                 {
                   flex: 'flex-[2.5]',
-                  header: tr('aggregateFunction', '聚合函数'),
+                  header: tr('aggregateFunction'),
                   render: (item: MetricEntry, i: number) => (
                     <GlassOptionSingleSelect
                       value={item.function}
@@ -200,25 +250,25 @@ export default function FormAggregate({
                 },
                 {
                   flex: 'flex-[3.5]',
-                  header: tr('expressionLabel', '表达式'),
+                  header: tr('expressionLabel'),
                   render: (item: MetricEntry, i: number) => (
                     <GlassExpressionInput
                       value={item.expression}
                       onChange={(v) => updateMetric(i, { expression: v })}
                       fieldCompletions={fieldCompletions}
                       columnTypes={columnTypes}
-                      placeholder={tr('aggregateExpressionPlaceholder', '输入表达式')}
+                      placeholder={tr('aggregateExpressionPlaceholder')}
                     />
                   ),
                 },
                 {
                   flex: 'flex-[2]',
-                  header: tr('aggregateAlias', '别名 (as)'),
+                  header: tr('aggregateAlias'),
                   render: (item: MetricEntry, i: number) => (
                     <GlassFormTextInput
                       value={item.alias ?? ''}
                       onChange={(v) => updateMetric(i, { alias: v })}
-                      placeholder={tr('aggregateAliasPlaceholder', '如 total_revenue')}
+                      placeholder={tr('aggregateAliasPlaceholder')}
                       className="h-7 px-1.5 text-[12px] w-full"
                     />
                   ),
@@ -226,9 +276,9 @@ export default function FormAggregate({
               ]}
               onAdd={(i) => addMetricAfter(i)}
               onRemove={(i) => removeMetric(i)}
-              addTitle={tr('aggregateAddMetric', '添加配置')}
-              removeTitle={tr('aggregateRemoveMetric', '删除配置')}
-              canAct={(action: RowAction, _i) =>
+              addTitle={tr('aggregateAddMetric')}
+              removeTitle={tr('aggregateRemoveMetric')}
+              canAct={(action: RowAction) =>
                 action === 'add' ? !activeMetrics.some((m) => !m.expression) : true
               }
               draggable
@@ -236,7 +286,7 @@ export default function FormAggregate({
               onDragOver={handleDragOver}
               onDragEnd={handleDragEnd}
               getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-              dragTitle={tr('dragToReorder', '拖拽排序')}
+              dragTitle={tr('dragToReorder')}
             />
           </div>
         </div>

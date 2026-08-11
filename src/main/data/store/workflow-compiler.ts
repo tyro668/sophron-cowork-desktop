@@ -1,11 +1,13 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import type { DataWorkflowEdge, DataWorkflowNode } from '../../../renderer/types';
 import type { PrepDiagnostic } from '../../../shared/prep-dsl/ast';
+import { JoinConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 import {
   compileAsofJoinSql,
   compileJoinConditionList,
   compileJoinProjection,
   compileSetOpSql,
+  literalToSql,
   quoteIdentifier,
 } from '../operators';
 import { COMPILE_STRATEGIES } from '../operators/strategy';
@@ -136,10 +138,46 @@ export abstract class WorkflowCompiler extends DatasetStore {
     const input = quoteIdentifier(inputRelation);
     const output = quoteIdentifier(outputRelation);
     const columns = strategy?.needsColumns ? await this.getTableColumns(inputRelation) : [];
+    const columnTypes = strategy?.needsColumns ? await this.getTableColumnTypes(inputRelation) : [];
+    const columnTypeMap = Object.fromEntries(
+      columnTypes.map((column) => [column.name, column.type])
+    );
     if (!strategy) {
       return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input}`;
     }
-    return strategy.compile(output, input, columns, node.config);
+    let compileConfig = node.config;
+    if (node.type === 'unnest' && node.config.sourceKind === 'json') {
+      const columnName = String(node.config.column ?? '');
+      const jsonPath = String(node.config.path ?? '$');
+      if (columnName) {
+        const columnExpression =
+          jsonPath === '$'
+            ? quoteIdentifier(columnName)
+            : `json_extract(${quoteIdentifier(columnName)}, ${literalToSql(jsonPath)})`;
+        const invalidRows = await this.queryRows<{ bad: boolean }>(
+          `SELECT ${columnExpression} IS NOT NULL AND TRY_CAST(${columnExpression} AS JSON) IS NULL AS bad FROM ${input} WHERE ${columnExpression} IS NOT NULL LIMIT 1`
+        );
+        if (invalidRows[0]?.bad) {
+          throw new Error(
+            `"${columnName}" is not valid JSON. Use standard JSON format: {"Key":"Value"} or {"Key":1}`
+          );
+        }
+        const typeRows = await this.queryRows<{ t: string }>(
+          `SELECT json_type(${columnExpression}) AS t FROM ${input} WHERE ${columnExpression} IS NOT NULL AND TRY_CAST(${columnExpression} AS JSON) IS NOT NULL LIMIT 1`
+        );
+        const jsonType = typeRows[0]?.t ?? '';
+        const jsonKeys =
+          jsonType === 'OBJECT'
+            ? ((
+                await this.queryRows<{ keys: string[] }>(
+                  `SELECT json_keys(${columnExpression}) AS keys FROM ${input} WHERE ${columnExpression} IS NOT NULL AND TRY_CAST(${columnExpression} AS JSON) IS NOT NULL LIMIT 1`
+                )
+              )[0]?.keys ?? [])
+            : [];
+        compileConfig = { ...node.config, _jsonType: jsonType, _jsonKeys: jsonKeys };
+      }
+    }
+    return strategy.compile(output, input, columns, compileConfig, columnTypeMap);
   }
 
   protected async compileSetOpSql(
@@ -264,10 +302,11 @@ export abstract class WorkflowCompiler extends DatasetStore {
     const output = quoteIdentifier(outputRelation);
     const left = quoteIdentifier(leftRelation);
     const right = quoteIdentifier(rightRelation);
-    const joinType = String(node.config.joinType ?? 'left');
+    const config = parseOperatorConfig(JoinConfigSchema, node.config);
+    const joinType = config.joinType;
     if (joinType === 'semi' || joinType === 'anti') {
       const existsOperator = joinType === 'semi' ? 'EXISTS' : 'NOT EXISTS';
-      const condition = compileJoinConditionList(node.config.conditions);
+      const condition = compileJoinConditionList(config.conditions);
       return `
           CREATE TEMP TABLE ${output} AS
           SELECT l.*
@@ -278,17 +317,17 @@ export abstract class WorkflowCompiler extends DatasetStore {
         `;
     }
     if (joinType === 'asof') {
-      return compileAsofJoinSql(output, left, right, leftColumns, rightColumns, node.config);
+      return compileAsofJoinSql(output, left, right, leftColumns, rightColumns, config);
     }
     const condition =
-      joinType === 'cross' ? '' : ` ON ${compileJoinConditionList(node.config.conditions)}`;
+      joinType === 'cross' ? '' : ` ON ${compileJoinConditionList(config.conditions)}`;
     const sqlJoinType = joinType === 'full' ? 'FULL OUTER' : joinType.toUpperCase();
     const projection = compileJoinProjection(
-      node.config.keep,
+      config.keep,
       leftColumns,
       rightColumns,
-      node.config.conflict,
-      typeof node.config.rightAlias === 'string' ? node.config.rightAlias : undefined
+      config.conflict,
+      config.rightAlias
     );
     return `
         CREATE TEMP TABLE ${output} AS

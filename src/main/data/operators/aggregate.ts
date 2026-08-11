@@ -7,21 +7,28 @@ export function compileAggregateSql(
   input: string,
   config: Record<string, unknown>
 ): string {
-  const { groupBy, metrics } = parseOperatorConfig(AggregateConfigSchema, config);
-  const metricSqls = metrics.flatMap((metric) => {
-    if (!metric.function || !metric.expression || !metric.alias) {
-      return [];
-    }
-    const expression = metric.expression === '*' ? '*' : compileScalarExpression(metric.expression);
-    return [
-      metric.function === 'count_distinct'
-        ? `COUNT(DISTINCT ${expression}) AS ${quoteIdentifier(metric.alias)}`
-        : `${metric.function.toUpperCase()}(${expression}) AS ${quoteIdentifier(metric.alias)}`,
-    ];
+  const { groupBy, metrics, dateGranularity } = parseOperatorConfig(AggregateConfigSchema, config);
+  const metricSqls = metrics.map((metric) => {
+    const fn = metric.function?.trim();
+    const expression = metric.expression?.trim();
+    const alias = metric.alias?.trim();
+    const compiledExpression = expression === '*' ? '*' : compileScalarExpression(expression);
+    return fn === 'count_distinct'
+      ? `COUNT(DISTINCT ${compiledExpression}) AS ${quoteIdentifier(alias)}`
+      : `${fn.toUpperCase()}(${compiledExpression}) AS ${quoteIdentifier(alias)}`;
   });
-  const groupProjection = groupBy.map(quoteIdentifier);
-  const projection = [...groupProjection, ...metricSqls].join(', ') || 'COUNT(*) AS "row_count"';
+  const granularity = dateGranularity ?? {};
+  const groupExprs = groupBy.map((col) => {
+    const gran = granularity[col];
+    return gran ? `date_trunc('${gran}', ${quoteIdentifier(col)})` : quoteIdentifier(col);
+  });
+  const groupProjections = groupBy.map((col, i) => {
+    const gran = granularity[col];
+    const expr = groupExprs[i];
+    return gran ? `${expr} AS ${quoteIdentifier(col)}` : expr;
+  });
+  const projection = [...groupProjections, ...metricSqls].join(', ');
   return `CREATE TEMP TABLE ${output} AS SELECT ${projection} FROM ${input}${
-    groupBy.length > 0 ? ` GROUP BY ${groupProjection.join(', ')}` : ''
+    groupBy.length > 0 ? ` GROUP BY ${groupExprs.join(', ')}` : ''
   }`;
 }

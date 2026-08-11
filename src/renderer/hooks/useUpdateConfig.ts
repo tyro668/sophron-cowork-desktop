@@ -6,11 +6,17 @@ export function useUpdateConfig(
 ) {
   return useCallback(
     (updater: (config: Record<string, unknown>) => Record<string, unknown>) => {
-      onNodeChange((current) => ({
-        ...current,
-        config: updater(current.config),
-        updatedAt: Date.now(),
-      }));
+      onNodeChange((current) => {
+        const nextConfig = updater(current.config);
+        return {
+          ...current,
+          config: {
+            ...nextConfig,
+            dsl: undefined,
+          },
+          updatedAt: Date.now(),
+        };
+      });
     },
     [onNodeChange]
   );

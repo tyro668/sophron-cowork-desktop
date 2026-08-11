@@ -2,17 +2,11 @@ import { useEffect, useState } from 'react';
 import { Trash2, X, ChevronDown } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
-import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
-
-interface SortKeyEntry {
-  field: string;
-  direction: 'asc' | 'desc';
-  nulls?: 'first' | 'last';
-}
+import type { SortKey } from '../../../shared/operator-schemas';
 
 const LABEL_CLASS = 'text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7';
 
@@ -24,20 +18,17 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const mode = (node.config.mode as string) ?? 'fixed';
-  const limit = Number(node.config.limit ?? 100);
+  const limit = Number(node.config.limit ?? 10);
   const unit = (node.config.unit as string) ?? 'rows';
   const offset = Number(node.config.offset ?? 0);
-  const orderBy: SortKeyEntry[] = (node.config.orderBy as SortKeyEntry[]) ?? [];
+  const orderBy: SortKey[] = (node.config.orderBy as SortKey[]) ?? [];
   const ties = !!node.config.ties;
-  const rawGroupBy = node.config.groupBy;
-  const groupBy: string[] = Array.isArray(rawGroupBy) ? rawGroupBy : [];
   const method = (node.config.method as string) ?? 'system';
   const seed = node.config.seed as number | undefined;
 
   const [localLimit, setLocalLimit] = useState(String(limit));
   const [localOffset, setLocalOffset] = useState(String(offset));
   const [localSeed, setLocalSeed] = useState(seed != null ? String(seed) : '');
-  const [groupOpen, setGroupOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
 
   useEffect(() => {
@@ -61,7 +52,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
   function pushOffset(value: string) {
     setLocalOffset(value);
     if (value === '') return;
-    const n = Math.max(0, Number(value) || 0);
+    const n = Math.max(0, Math.floor(Number(value) || 0));
     const clamped = String(n);
     if (clamped !== value) setLocalOffset(clamped);
     setErrors(runValidation(limit, unit));
@@ -80,8 +71,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
 
   function runValidation(limitVal: number, unitVal: string): string[] {
     const errs: string[] = [];
-    if (unitVal === 'percent' && limitVal > 100)
-      errs.push(tr('limitPercentError', '百分比不能超过 100'));
+    if (unitVal === 'percent' && limitVal > 100) errs.push(tr('limitPercentError'));
     return errs;
   }
 
@@ -89,14 +79,13 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
   const isRandomMode = mode === 'random';
   const isRows = unit === 'rows';
   const hasSort = orderBy.length > 0;
-  const isGrouped = Array.isArray(rawGroupBy);
 
   const sortFields = orderBy.map((k) => k.field);
 
   function toggleSortDirection(field: string) {
     updateConfig((cfg) => ({
       ...cfg,
-      orderBy: (cfg.orderBy as SortKeyEntry[])?.map((k) =>
+      orderBy: (cfg.orderBy as SortKey[])?.map((k) =>
         k.field === field ? { ...k, direction: k.direction === 'asc' ? 'desc' : 'asc' } : k
       ),
     }));
@@ -104,14 +93,14 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
 
   function removeSortField(field: string) {
     updateConfig((cfg) => {
-      const next = (cfg.orderBy as SortKeyEntry[])?.filter((k) => k.field !== field);
+      const next = (cfg.orderBy as SortKey[])?.filter((k) => k.field !== field);
       return { ...cfg, orderBy: next && next.length > 0 ? next : undefined };
     });
   }
 
   function setSortFields(next: string[]) {
     updateConfig((cfg) => {
-      const prev = (cfg.orderBy as SortKeyEntry[]) ?? [];
+      const prev = (cfg.orderBy as SortKey[]) ?? [];
       const mapped = next.map((f) => {
         const existing = prev.find((k) => k.field === f);
         return existing ?? { field: f, direction: 'asc' as const };
@@ -124,15 +113,15 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
     <div className="flex flex-col gap-3 h-full min-h-0 overflow-y-auto p-4">
       {/* 模式 */}
       <div className="flex items-center gap-2">
-        <span className={LABEL_CLASS}>{tr('limitMode', '模式')}</span>
+        <span className={LABEL_CLASS}>{tr('limitMode')}</span>
         <GlassOptionSingleSelect
           value={mode}
           groups={[
             {
               key: 'mode',
               items: [
-                { value: 'fixed', label: tr('limitFixedMode', '限制取样') },
-                { value: 'random', label: tr('limitRandomMode', '随机采样') },
+                { value: 'fixed', label: tr('limitFixedMode') },
+                { value: 'random', label: tr('limitRandomMode') },
               ],
             },
           ]}
@@ -149,8 +138,8 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                 ...cfg,
                 mode: 'random',
                 ties: undefined,
-                groupBy: undefined,
                 orderBy: undefined,
+                method: unit === 'percent' ? (cfg.method ?? 'system') : undefined,
               }));
             }
           }}
@@ -162,32 +151,38 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <span className={LABEL_CLASS}>
-            {isRandomMode ? tr('limitSampleSize', '采样量') : tr('limitCount', '数量')}
+            {isRandomMode ? tr('limitSampleSize') : tr('limitCount')}
           </span>
           <GlassFormTextInput
             inputMode="numeric"
             value={localLimit}
             onChange={(v) => pushLimit(v)}
-            placeholder={isRandomMode ? '10' : '100'}
+            placeholder="10"
             textCenter
             className="h-7 rounded-md px-2 text-[12px] w-28"
           />
         </div>
         <div className="flex items-center gap-2">
-          <span className={LABEL_CLASS}>{tr('limitUnit', '单位')}</span>
+          <span className={LABEL_CLASS}>{tr('limitUnit')}</span>
           <GlassOptionSingleSelect
             value={unit}
             groups={[
               {
                 key: 'unit',
                 items: [
-                  { value: 'rows', label: tr('limitUnitRows', '行数') },
-                  { value: 'percent', label: tr('limitUnitPercent', '百分比') },
+                  { value: 'rows', label: tr('limitUnitRows') },
+                  { value: 'percent', label: tr('limitUnitPercent') },
                 ],
               },
             ]}
             onChange={(value) => {
-              updateConfig((cfg) => ({ ...cfg, unit: value }));
+              updateConfig((cfg) => ({
+                ...cfg,
+                unit: value,
+                offset: value === 'percent' ? undefined : cfg.offset,
+                method:
+                  mode === 'random' && value === 'percent' ? (cfg.method ?? 'system') : undefined,
+              }));
               setErrors(runValidation(limit, value));
             }}
             className="h-7 text-[12px] w-28"
@@ -195,19 +190,19 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
         </div>
         {isRandomMode ? (
           <div className="flex items-center gap-2">
-            <span className={LABEL_CLASS}>{tr('limitSampleSeed', '随机种子')}</span>
+            <span className={LABEL_CLASS}>{tr('limitSampleSeed')}</span>
             <GlassFormTextInput
               inputMode="numeric"
               value={localSeed}
               onChange={(v) => pushSeed(v)}
-              placeholder={tr('limitSampleSeedPlaceholder', '可选')}
+              placeholder={tr('limitSampleSeedPlaceholder')}
               textCenter
               className="h-7 rounded-md px-2 text-[12px] w-28"
             />
           </div>
         ) : isRows ? (
           <div className="flex items-center gap-2">
-            <span className={LABEL_CLASS}>{tr('limitOffset', '偏移量')}</span>
+            <span className={LABEL_CLASS}>{tr('limitOffset')}</span>
             <GlassFormTextInput
               inputMode="numeric"
               value={localOffset}
@@ -221,17 +216,17 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
       </div>
 
       {/* 采样方式（仅随机采样） */}
-      {isRandomMode && (
+      {isRandomMode && !isRows && (
         <div className="flex items-center gap-2">
-          <span className={LABEL_CLASS}>{tr('limitSampleMethod', '采样方式')}</span>
+          <span className={LABEL_CLASS}>{tr('limitSampleMethod')}</span>
           <GlassOptionSingleSelect
             value={method}
             groups={[
               {
                 key: 'method',
                 items: [
-                  { value: 'system', label: tr('limitSampleSystem', '按块抽样') },
-                  { value: 'bernoulli', label: tr('limitSampleBernoulli', '逐行随机') },
+                  { value: 'system', label: tr('limitSampleSystem') },
+                  { value: 'bernoulli', label: tr('limitSampleBernoulli') },
                 ],
               },
             ]}
@@ -247,76 +242,12 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
         </div>
       ))}
 
-      {/* 限制取样：分组 + 排序 + TIES */}
+      {/* 限制取样：排序 + TIES */}
       {isFixedMode && (
         <>
-          {/* 分组范围 + 分组字段 */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className={LABEL_CLASS}>{tr('limitGroupRange', '分组范围')}</span>
-              <GlassOptionSingleSelect
-                value={isGrouped ? 'group' : 'none'}
-                groups={[
-                  {
-                    key: 'groupMode',
-                    items: [
-                      { value: 'none', label: tr('limitGroupNone', '不分组') },
-                      { value: 'group', label: tr('limitGroupEnabled', '分组') },
-                    ],
-                  },
-                ]}
-                onChange={(v) => {
-                  if (v === 'none') {
-                    updateConfig((cfg) => ({ ...cfg, groupBy: undefined }));
-                  } else {
-                    updateConfig((cfg) => ({ ...cfg, groupBy: [] }));
-                    setGroupOpen(true);
-                  }
-                }}
-                className="h-7 text-[12px] w-28"
-              />
-            </div>
-            {isGrouped && (
-              <div className="flex items-center gap-2">
-                <span className={LABEL_CLASS}>{tr('limitGroupBy', '分组字段')}</span>
-                <div className="w-72 min-w-0 relative">
-                  <GlassTagBar
-                    items={groupBy}
-                    onRemove={(col) =>
-                      updateConfig((cfg) => ({
-                        ...cfg,
-                        groupBy: groupBy.filter((c) => c !== col),
-                      }))
-                    }
-                    onClear={() => updateConfig((cfg) => ({ ...cfg, groupBy: [] }))}
-                    open={groupOpen}
-                    onToggle={() => setGroupOpen((o) => !o)}
-                    toggleStyle="chevron"
-                    density="compact"
-                    className="min-h-7"
-                    placeholder={tr('limitGroupByPlaceholder', '选择分组字段')}
-                  />
-                  {groupOpen && (
-                    <div className="absolute z-10 left-0 right-0 mt-0.5">
-                      <GlassFieldMultiSelect
-                        columns={fieldCompletions}
-                        selected={groupBy}
-                        onChange={(v) =>
-                          updateConfig((cfg) => ({ ...cfg, groupBy: v.length > 0 ? v : undefined }))
-                        }
-                        maxHeight="160px"
-                        variant="glass"
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
           {/* 排序字段 */}
           <div className="flex items-center gap-2">
-            <span className={LABEL_CLASS}>{tr('limitSortHeader', '排序字段')}</span>
+            <span className={LABEL_CLASS}>{tr('limitSortHeader')}</span>
             <div className="w-72 min-w-0 relative">
               <div className={TAG_CONTAINER}>
                 {sortFields.length > 0 && (
@@ -324,7 +255,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                     type="button"
                     onClick={() => updateConfig((cfg) => ({ ...cfg, orderBy: undefined }))}
                     className="ml-1 inline-flex flex-shrink-0 items-center justify-center self-stretch rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
-                    title={tr('clearAll', '清空')}
+                    title={tr('clearAll')}
                   >
                     <Trash2 className="h-3 w-3" />
                   </button>
@@ -340,7 +271,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                         type="button"
                         onClick={() => toggleSortDirection(k.field)}
                         className="text-[11px] leading-none px-0.5 hover:text-text-primary rounded"
-                        title={k.direction === 'asc' ? tr('asc', '升序') : tr('desc', '降序')}
+                        title={k.direction === 'asc' ? tr('asc') : tr('desc')}
                       >
                         {k.direction === 'asc' ? '↑' : '↓'}
                       </button>
@@ -357,9 +288,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                     key="sort-input"
                     type="text"
                     readOnly
-                    placeholder={
-                      !sortFields.length ? tr('limitSortPlaceholder', '选择排序字段') : ''
-                    }
+                    placeholder={!sortFields.length ? tr('limitSortPlaceholder') : ''}
                     onFocus={() => setSortOpen(true)}
                     onBlur={() => setTimeout(() => setSortOpen(false), 150)}
                     className="h-5 min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted cursor-pointer"
@@ -398,7 +327,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                   }
                   className="h-4 w-4 rounded border-border-muted accent-accent"
                 />
-                {tr('limitTies', '保留并列值（WITH TIES）')}
+                {tr('limitTies')}
               </label>
             )}
           </div>

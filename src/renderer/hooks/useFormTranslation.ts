@@ -4,8 +4,7 @@ import { useTranslation } from 'react-i18next';
 export function useFormTranslation() {
   const { t } = useTranslation();
   return useCallback(
-    (key: string, fallback: string) =>
-      t(`data.workflow.formLabels.${key}`, { defaultValue: fallback }),
+    (key: string, params?: Record<string, unknown>) => t(`data.workflow.formLabels.${key}`, params),
     [t]
   );
 }

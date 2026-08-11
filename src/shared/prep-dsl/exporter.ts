@@ -1,5 +1,6 @@
 import type { PrepOperatorType } from './ast';
-import { parseFieldRef } from './parser';
+import { formatOperator } from './operators/formatter';
+import { quoteString } from './syntax/literals';
 
 export interface PrepFlowNodeLike {
   id: string;
@@ -18,24 +19,35 @@ export function exportPrepWorkflowDsl(
   edges: PrepFlowEdgeLike[]
 ): string {
   const sources = nodes.filter((node) => node.type === 'input_source');
-  const operators = nodes.filter((node) => node.type !== 'input_source');
+  const operators = sortOperatorsByEdges(
+    nodes.filter((node) => node.type !== 'input_source'),
+    edges
+  );
   const sourceLines = sources.map(formatInputSource).filter(isString);
   const mainSource = inferMainSource(sources, operators, edges);
-  const operatorLines = operators.map((operator) => formatOperator(operator)).filter(isString);
+  const operatorLines = operators.map((operator) => {
+    const line = formatOperator(operator);
+    if (!line?.trim()) {
+      throw new Error(
+        `Cannot export incomplete ${operator.type} operator${operator.id ? ` (${operator.id})` : ''}`
+      );
+    }
+    return line;
+  });
 
   if (sources.length > 1) {
-    return [...sourceLines, '', `from ${mainSource}`, ...operatorLines.map((line) => `  | ${line}`)]
+    return [...sourceLines, '', `from ${mainSource}`, ...operatorLines.map(toPipelineLine)]
       .join('\n')
       .trim();
   }
 
   const firstSource = sourceLines[0] ?? 'input source task';
-  return [firstSource, ...operatorLines.map((line) => `  | ${line}`)].join('\n').trim();
+  return [firstSource, ...operatorLines.map(toPipelineLine)].join('\n').trim();
 }
 
 function formatInputSource(node: PrepFlowNodeLike): string | null {
   const config = node.config ?? {};
-  if (isString(config.dsl) && config.dsl.trim()) return config.dsl;
+  if (isString(config.dsl)) return config.dsl;
   const alias = getAlias(node) ?? 'src';
   const source = isString(config.source)
     ? config.source
@@ -53,6 +65,46 @@ function formatInputSource(node: PrepFlowNodeLike): string | null {
     return filePath ? `input source file ${quoteString(filePath)} as ${alias}` : null;
   }
   return `input source task as ${alias}`;
+}
+
+function sortOperatorsByEdges(
+  operators: PrepFlowNodeLike[],
+  edges: PrepFlowEdgeLike[]
+): PrepFlowNodeLike[] {
+  const operatorById = new Map(operators.map((operator) => [operator.id, operator]));
+  const originalIndex = new Map(operators.map((operator, index) => [operator.id, index]));
+  const indegree = new Map(operators.map((operator) => [operator.id, 0]));
+  const outgoing = new Map<string, string[]>();
+
+  for (const edge of edges) {
+    if (!operatorById.has(edge.sourceNodeId) || !operatorById.has(edge.targetNodeId)) continue;
+    indegree.set(edge.targetNodeId, (indegree.get(edge.targetNodeId) ?? 0) + 1);
+    outgoing.set(edge.sourceNodeId, [
+      ...(outgoing.get(edge.sourceNodeId) ?? []),
+      edge.targetNodeId,
+    ]);
+  }
+
+  const ready = operators.filter((operator) => indegree.get(operator.id) === 0);
+  const ordered: PrepFlowNodeLike[] = [];
+  while (ready.length > 0) {
+    ready.sort(
+      (left, right) => (originalIndex.get(left.id) ?? 0) - (originalIndex.get(right.id) ?? 0)
+    );
+    const current = ready.shift();
+    if (!current) break;
+    ordered.push(current);
+    for (const targetId of outgoing.get(current.id) ?? []) {
+      const nextIndegree = (indegree.get(targetId) ?? 0) - 1;
+      indegree.set(targetId, nextIndegree);
+      const target = operatorById.get(targetId);
+      if (nextIndegree === 0 && target) ready.push(target);
+    }
+  }
+
+  if (ordered.length === operators.length) return ordered;
+  const orderedIds = new Set(ordered.map((operator) => operator.id));
+  return [...ordered, ...operators.filter((operator) => !orderedIds.has(operator.id))];
 }
 
 export function exportPrepOperatorDsl(node: PrepFlowNodeLike): string {
@@ -80,375 +132,18 @@ function inferMainSource(
   return getAlias(source) ?? 'source';
 }
 
-function formatOperator(node: PrepFlowNodeLike): string | null {
-  if (typeof node.config?.dsl === 'string') return node.config.dsl;
-  switch (node.type) {
-    case 'filter':
-      return `filter ${normalizeBareFilterLiterals(String(node.config?.condition ?? 'true'))}`;
-    case 'field_select':
-      return formatFieldSelect(node.config);
-    case 'missing_value':
-      return formatMissingValue(node.config);
-    case 'type_convert':
-      return formatTypeConvert(node.config);
-    case 'field_mapping':
-      return formatFieldMapping(node.config);
-    case 'sort':
-      return formatSort(node.config);
-    case 'deduplicate':
-      return formatDeduplicate(node.config);
-    case 'aggregate':
-      return formatAggregate(node.config);
-    case 'calculate_field':
-      return formatCalculateField(node.config);
-    case 'join':
-      return formatJoin(node.config);
-    case 'limit':
-      return formatLimit(node.config);
-    case 'pivot':
-      return formatPivot(node.config);
-    case 'unpivot':
-      return formatUnpivot(node.config);
-    case 'set_op':
-      return formatSetOp(node.config);
-    case 'unnest':
-      return formatUnnest(node.config);
-    case 'output':
-      return `output table ${quoteString(
-        String(node.config?.outputTableName ?? node.config?.table ?? 'clean_result')
-      )} mode ${String(node.config?.mode ?? 'replace')}`;
-    default:
-      return null;
-  }
+function getAlias(node: PrepFlowNodeLike | undefined): string | null {
+  return typeof node?.config?.alias === 'string' ? node.config.alias : null;
 }
 
-function formatFieldSelect(config: Record<string, unknown> | undefined): string {
-  const columns = stringArray(config?.columns).map(formatFieldRef).join(', ');
-  return `${config?.mode === 'exclude' ? 'drop' : 'select'} ${columns || '[field]'}`;
+function toPipelineLine(line: string): string {
+  return `  | ${line}`;
 }
 
-function formatTypeConvert(config: Record<string, unknown> | undefined): string {
-  const conversions = objectArray(config?.conversions);
-  if (conversions.length === 0) return 'cast [field] as text';
-  return `cast ${conversions
-    .map((item) => {
-      const options = [
-        typeof item.format === 'string' ? `format ${quoteString(item.format)}` : '',
-        typeof item.onError === 'string' ? `on_error ${item.onError}` : '',
-      ].filter(Boolean);
-      return `${formatFieldRef(String(item.column ?? 'field'))} as ${String(item.type ?? 'text')}${
-        options.length > 0 ? ` ${options.join(' ')}` : ''
-      }`;
-    })
-    .join(', ')}`;
-}
-
-function formatFieldMapping(config: Record<string, unknown> | undefined): string {
-  const mappings = objectArray(config?.mappings);
-  if (mappings.length === 0) return 'map [source_field] to [target_field]';
-  return `map ${mappings
-    .map((item) => {
-      const source = String(item.source ?? 'source_field');
-      const target = computeMappingTarget(item);
-      return `${formatFieldRef(source)} to ${formatFieldRef(target || 'target_field')}`;
-    })
-    .join(', ')}`;
-}
-
-function computeMappingTarget(mapping: Record<string, unknown>): string {
-  const source = typeof mapping.source === 'string' ? mapping.source : '';
-  const target = typeof mapping.target === 'string' ? mapping.target : '';
-  const targetMode = typeof mapping.targetMode === 'string' ? mapping.targetMode : '';
-  const targetValue = typeof mapping.targetValue === 'string' ? mapping.targetValue : '';
-  if (target && !targetMode) return target;
-  if (!source || !targetMode) return target || '';
-  if (targetMode === 'rename') return targetValue || target;
-  if (targetMode === 'prefix') return `${targetValue}${source}`;
-  if (targetMode === 'suffix') return `${source}${targetValue}`;
-  return target || '';
-}
-
-function formatMissingValue(config: Record<string, unknown> | undefined): string {
-  if (config?.strategy === 'drop_empty_rows') return 'missing value row drop when all_null';
-  if (config?.strategy === 'drop_rows_by_nulls') {
-    const cols = stringArray(config?.columns).map(formatFieldRef).join(', ');
-    const inClause = cols ? ` in ${cols}` : '';
-    return `missing value row drop when ${String(config.condition ?? 'any_null')}${inClause}`;
-  }
-  const rules = objectArray(config?.rules).map((rule) => formatMissingRule(rule));
-  return `missing value ${rules.join(', ') || '[field] skip'}`;
-}
-
-function formatMissingRule(rule: Record<string, unknown>): string {
-  const column = formatFieldRef(String(rule.column ?? 'field'));
-  const method = String(rule.method ?? 'skip');
-  if (method === 'skip') return `${column} skip`;
-  if (method === 'drop') return `${column} drop rows`;
-  if (method === 'nullify_values') {
-    const values = Array.isArray(rule.values) ? rule.values : [];
-    return `${column} nullify values (${values.map(literalToDsl).join(', ')})`;
-  }
-  const fillMethods: Record<string, string> = {
-    forward_fill: 'forward',
-    backward_fill: 'backward',
-    mean_fill: 'mean',
-    median_fill: 'median',
-    mode_fill: 'mode',
-  };
-  if (method in fillMethods) return `${column} fill ${fillMethods[method]}`;
-  return `${column} fill ${literalToDsl(rule.value ?? null)}`;
-}
-
-function formatSort(config: Record<string, unknown> | undefined): string {
-  const keys = formatSortKeys(config?.keys);
-  return `sort by ${keys || '[field] asc'}`;
-}
-
-function formatDeduplicate(config: Record<string, unknown> | undefined): string {
-  const parts = ['deduplicate'];
-  const columns = stringArray(config?.columns).map(formatFieldRef).join(', ');
-  if (columns) parts.push(`by ${columns}`);
-  if (typeof config?.keep === 'string') parts.push(`keep ${config.keep}`);
-  const orderBy = formatSortKeys(config?.orderBy);
-  if (orderBy) parts.push(`order by ${orderBy}`);
-  return parts.join(' ');
-}
-
-function formatCalculateField(config: Record<string, unknown> | undefined): string {
-  const calculations = objectArray(config?.calculations).map(
-    (item) =>
-      `${formatFieldRef(String(item.field ?? 'new_field'))} = ${String(item.expression ?? 'null')}`
-  );
-  return `derive ${calculations.join(', ') || '[new_field] = null'}`;
-}
-
-function formatAggregate(config: Record<string, unknown> | undefined): string {
-  const groupBy = stringArray(config?.groupBy).map(formatFieldRef).join(', ');
-  const metrics = objectArray(config?.metrics).map(
-    (item) =>
-      `${String(item.function ?? 'count')}(${String(item.expression ?? '*')}) as ${formatFieldRef(
-        String(item.alias ?? 'row_count')
-      )}`
-  );
-  return `aggregate ${groupBy ? `by ${groupBy}` : 'all'} metrics ${
-    metrics.join(', ') || 'count(*) as [row_count]'
-  }`;
-}
-
-function formatJoin(config: Record<string, unknown> | undefined): string {
-  const joinType = String(config?.joinType ?? 'left');
-  const rightInput = String(config?.rightInput ?? 'right_source');
-  if (joinType === 'asof') {
-    const asof = objectValue(config?.asof);
-    const parts = [
-      `join asof ${rightInput} on ${formatFieldRef(String(asof?.leftTime ?? 'left.time'))} ${String(
-        asof?.operator ?? '>='
-      )} ${formatFieldRef(String(asof?.rightTime ?? `${rightInput}.time`))}`,
-    ];
-    const by = formatJoinConditions(asof?.by);
-    if (by) parts.push(`by ${by}`);
-    if (typeof asof?.direction === 'string') parts.push(`direction ${asof.direction}`);
-    if (typeof asof?.tolerance === 'string') parts.push(`tolerance ${asof.tolerance}`);
-    const keep = formatJoinKeep(config?.keep);
-    if (keep) parts.push(`keep ${keep}`);
-    const conflict = formatJoinConflict(config?.conflict);
-    if (conflict) parts.push(conflict);
-    return parts.join(' ');
-  }
-  const parts = [`join ${joinType} ${rightInput}`];
-  const conditions = formatJoinConditions(config?.conditions);
-  if (joinType !== 'cross') parts.push(`on ${conditions || '[left].[id] = [right_source].[id]'}`);
-  const keep = formatJoinKeep(config?.keep);
-  if (keep) parts.push(`keep ${keep}`);
-  const conflict = formatJoinConflict(config?.conflict);
-  if (conflict) parts.push(conflict);
-  return parts.join(' ');
-}
-
-function formatJoinConflict(value: unknown): string | null {
-  const obj = objectValue(value);
-  if (!obj) return null;
-  if (obj.strategy === 'right_prefix' && typeof obj.rightPrefix === 'string') {
-    return `right_prefix ${quoteString(obj.rightPrefix)}`;
-  }
-  if (obj.strategy === 'suffix') {
-    const left = typeof obj.leftSuffix === 'string' ? obj.leftSuffix : '_left';
-    const right = typeof obj.rightSuffix === 'string' ? obj.rightSuffix : '_right';
-    return `suffix ${left} ${right}`;
-  }
-  return null;
-}
-
-function formatLimit(config: Record<string, unknown> | undefined): string {
-  const limit = Number(config?.limit ?? 100);
-  if (config?.mode === 'random') {
-    const unit = config?.unit === 'percent' ? ' percent' : ' rows';
-    const method = config?.method === 'bernoulli' ? ' bernoulli' : '';
-    const seed = typeof config?.seed === 'number' ? ` repeatable ${config.seed}` : '';
-    return `sample ${limit}${unit}${method}${seed}`;
-  }
-  const orderBy = config?.orderBy;
-  if (config?.mode === 'fixed' && Array.isArray(orderBy) && orderBy.length > 0) {
-    const ties = config?.ties ? ' with ties' : '';
-    const partition = config?.groupBy
-      ? ` partition ${stringArray(config.groupBy).map(formatFieldRef).join(', ')}`
-      : '';
-    return `top ${limit} by ${formatSortKeys(orderBy) || '[field] desc'}${ties}${partition}`;
-  }
-  const unit = config?.unit === 'percent' ? ' percent' : '';
-  const offset = typeof config?.offset === 'number' ? ` offset ${config.offset}` : '';
-  return `limit ${limit}${unit}${offset}`;
-}
-
-function formatPivot(config: Record<string, unknown> | undefined): string {
-  const on = stringArray(config?.on).map(formatFieldRef).join(', ') || '[field]';
-  const values =
-    Array.isArray(config?.values) && config.values.length > 0
-      ? ` in (${config.values.map(literalToDsl).join(', ')})`
-      : '';
-  const using = objectArray(config?.using).map(formatMetric).join(', ') || 'count(*)';
-  const groupBy = stringArray(config?.groupBy).map(formatFieldRef).join(', ');
-  return `pivot on ${on}${values} using ${using}${groupBy ? ` group by ${groupBy}` : ''}`;
-}
-
-function formatUnpivot(config: Record<string, unknown> | undefined): string {
-  const includeNulls = config?.includeNulls ? 'include nulls ' : '';
-  const mode = config?.mode === 'except' ? 'columns except ' : '';
-  const columns = stringArray(config?.columns).map(formatFieldRef).join(', ') || '[field]';
-  const nameColumn = formatFieldRef(String(config?.nameColumn ?? 'name'));
-  const valueColumn = formatFieldRef(String(config?.valueColumn ?? 'value'));
-  return `unpivot ${includeNulls}${mode}${columns} into name ${nameColumn} value ${valueColumn}`;
-}
-
-function formatSetOp(config: Record<string, unknown> | undefined): string {
-  const operation = String(config?.operation ?? 'union');
-  const rightInput = String(config?.rightInput ?? 'right_source');
-  const mode = typeof config?.mode === 'string' ? ` mode ${config.mode}` : '';
-  const match =
-    operation === 'union' ? ` by ${config?.match === 'by_name' ? 'name' : 'position'}` : '';
-  return `${operation} ${rightInput}${mode}${match}`;
-}
-
-function formatUnnest(config: Record<string, unknown> | undefined): string {
-  const column = formatFieldRef(String(config?.column ?? 'items'));
-  const alias = formatFieldRef(String(config?.alias ?? 'item'));
-  const withIndex =
-    typeof config?.withIndex === 'string' ? ` with index ${formatFieldRef(config.withIndex)}` : '';
-  const recursive = config?.recursive ? ' recursive true' : '';
-  const maxDepth = typeof config?.maxDepth === 'number' ? ` max_depth ${config.maxDepth}` : '';
-  const keepParentNames = config?.keepParentNames ? ' keep parent names true' : '';
-  if (config?.sourceKind === 'json') {
-    return `explode json ${column} path ${quoteString(String(config.path ?? '$'))} as ${alias}${withIndex}${recursive}${maxDepth}${keepParentNames}`;
-  }
-  return `unnest ${column} as ${alias}${withIndex}${recursive}${maxDepth}${keepParentNames}`;
-}
-
-function formatMetric(item: Record<string, unknown>): string {
-  const alias = typeof item.alias === 'string' ? ` as ${formatFieldRef(item.alias)}` : '';
-  return `${String(item.function ?? 'count')}(${String(item.expression ?? '*')})${alias}`;
-}
-
-function formatSortKeys(value: unknown): string {
-  return objectArray(value)
-    .filter((key) => key.field)
-    .map((key) => {
-      const nulls = typeof key.nulls === 'string' ? ` nulls ${key.nulls}` : '';
-      return `${formatFieldRef(String(key.field))} ${String(key.direction ?? 'asc')}${nulls}`;
-    })
-    .join(', ');
-}
-
-function formatJoinConditions(value: unknown): string {
-  return objectArray(value)
-    .map((condition) => {
-      const op =
-        typeof condition.operator === 'string' && condition.operator ? condition.operator : '=';
-      return `${formatFieldRef(String(condition.left ?? 'left.id'))} ${op} ${formatFieldRef(String(condition.right ?? 'right.id'))}`;
-    })
-    .join(' and ');
-}
-
-function formatJoinKeep(value: unknown): string {
-  return objectArray(value)
-    .map((item) => {
-      if (item.wildcard) return `${String(item.side ?? 'left')} *`;
-      const alias = typeof item.alias === 'string' ? ` as ${formatFieldRef(item.alias)}` : '';
-      return `${formatFieldRef(String(item.source ?? 'right.field'))}${alias}`;
-    })
-    .join(', ');
-}
-
-function formatFieldRef(value: string): string {
-  const ref = parseFieldRef(value);
-  if (ref) {
-    const name = formatFieldName(ref.name);
-    return ref.source ? `${formatFieldName(ref.source)}.${name}` : name;
-  }
-  return formatFieldName(value);
-}
-
-function formatFieldName(value: string): string {
-  const raw = value.replace(/^\[`?|`?\]$/g, '');
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(raw) ? `[${raw}]` : `[\`${raw.replace(/`/g, '\\`')}\`]`;
-}
-
-function literalToDsl(value: unknown): string {
-  if (typeof value === 'string') return quoteString(value);
-  if (value === null) return 'null';
-  return String(value);
-}
-
-function quoteString(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+function isString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
 }
 
 function stringValue(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
-}
-
-function normalizeBareFilterLiterals(condition: string): string {
-  return condition.replace(
-    /((?:=|!=|>=|<=|>|<)\s*)([\p{L}_][\p{L}\p{N}_ -]*?)(?=\s*(?:$|\)|\band\b|\bor\b))/giu,
-    (_match, operator: string, value: string) => {
-      const trimmed = value.trim();
-      if (
-        !trimmed ||
-        /^(true|false|null)$/i.test(trimmed) ||
-        /^[+-]?(?:\d+|\d*\.\d+)(?:e[+-]?\d+)?$/i.test(trimmed)
-      ) {
-        return `${operator}${value}`;
-      }
-      return `${operator}${quoteString(trimmed)}`;
-    }
-  );
-}
-
-function objectValue(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function getAlias(node: PrepFlowNodeLike | undefined): string | null {
-  const alias = node?.config?.alias;
-  return typeof alias === 'string' ? alias : null;
-}
-
-function isString(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0;
-}
-
-function stringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === 'string')
-    : [];
-}
-
-function objectArray(value: unknown): Array<Record<string, unknown>> {
-  return Array.isArray(value)
-    ? value.filter(
-        (item): item is Record<string, unknown> =>
-          Boolean(item) && typeof item === 'object' && !Array.isArray(item)
-      )
-    : [];
 }

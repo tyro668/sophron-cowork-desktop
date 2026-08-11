@@ -822,7 +822,7 @@ function describeWorkflowStepDiagnostic(
     definition.irType === 'limit'
       ? 'For highest/lowest/top/bottom N, first add a sort step, then use limit with config.mode="limit", unit="rows", offset=0, and orderBy=[]. Never use config.mode="top" in generated JavaScript.'
       : definition.irType === 'pivot'
-        ? 'For pivot, write on as exactly one raw column-name string in an array, for example on: ["Market"]. Write groupBy as raw column-name strings, for example groupBy: ["Product Type"]. Never use a scalar string or expr(...) in on or groupBy. Put fixed pivot output values in values, and use expr(...) only in using[].expression.'
+        ? 'For pivot, write on as array of axis objects, each with a raw column-name string field and a fixed values array, for example on: [{ field: "Market", values: ["Central", "East"] }]. Write groupBy as raw column-name strings, for example groupBy: ["Product Type"]. Never use a scalar string or expr(...) in on[].field or groupBy. Put fixed pivot output values in on[].values, and use expr(...) only in using[].expression.'
         : `Use the registered canonical payload exactly: ${definition.promptSignature}`;
   return {
     message: `Invalid workflow.step payload for operation "${definition.irType}". Expected: ${definition.promptSignature}. ${rawMessage}`,

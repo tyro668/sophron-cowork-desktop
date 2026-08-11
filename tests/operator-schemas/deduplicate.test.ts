@@ -14,11 +14,17 @@ describe('DeduplicateConfigSchema', () => {
     expect(result.orderBy).toHaveLength(1);
   });
 
-  it('applies defaults for omitted fields', () => {
-    const result = DeduplicateConfigSchema.parse({});
+  it('applies defaults for explicit all-column deduplication', () => {
+    const result = DeduplicateConfigSchema.parse({ strategy: 'all_columns' });
     expect(result.columns).toEqual([]);
     expect(result.keep).toBe('first');
     expect(result.orderBy).toEqual([]);
+  });
+
+  it('rejects an unconfigured deduplication', () => {
+    expect(() => DeduplicateConfigSchema.parse({})).toThrow(
+      'At least one deduplication field is required'
+    );
   });
 
   it('rejects columns with wrong type', () => {

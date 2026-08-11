@@ -93,7 +93,6 @@ export interface PrepAsofJoinConfig {
   leftTime: string;
   operator: '>=' | '<=' | 'nearest';
   rightTime: string;
-  direction: 'backward' | 'forward' | 'nearest';
   tolerance?: string;
   by?: PrepJoinCondition[];
 }

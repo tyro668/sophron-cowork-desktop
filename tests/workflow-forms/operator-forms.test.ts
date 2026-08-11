@@ -85,9 +85,7 @@ describe('operator forms — config ↔ DSL round-trip', () => {
   it('type_convert — single', () => {
     const result = ok(
       {
-        conversions: [
-          { column: 'order_date', type: 'date', format: 'yyyy-MM-dd', onError: 'null' },
-        ],
+        conversions: [{ column: 'order_date', type: 'date', format: '%Y-%m-%d', onError: 'null' }],
       },
       'type_convert'
     );
@@ -242,7 +240,6 @@ describe('operator forms — config ↔ DSL round-trip', () => {
           leftTime: 'trades.trade_time',
           operator: '>=',
           rightTime: 'rates.rate_time',
-          direction: 'backward',
           tolerance: '1d',
           by: [{ left: 'trades.currency', operator: '=', right: 'rates.currency' }],
         },
@@ -275,13 +272,13 @@ describe('operator forms — config ↔ DSL round-trip', () => {
   it('pivot', () => {
     const result = ok(
       {
-        on: ['month'],
+        on: [{ field: 'month', values: ['Jan', 'Feb'] }],
         using: [{ function: 'sum', expression: '[revenue]', alias: 'revenue_sum' }],
         groupBy: ['region'],
       },
       'pivot'
     );
-    expect(result.config.on).toEqual(['month']);
+    expect(result.config.on).toEqual([{ field: 'month', values: ['Jan', 'Feb'] }]);
   });
 
   it('unpivot', () => {
@@ -347,7 +344,7 @@ describe('operator forms — config ↔ DSL round-trip', () => {
         strategy: 'by_column',
         rules: [
           { column: 'region', method: 'nullify_values', values: ['', 'N/A', '-'] },
-          { column: 'region', method: 'literal_fill', value: 'UNKNOWN' },
+          { column: 'status', method: 'literal_fill', value: 'UNKNOWN' },
           { column: 'revenue', method: 'literal_fill', value: '0' },
         ],
       },

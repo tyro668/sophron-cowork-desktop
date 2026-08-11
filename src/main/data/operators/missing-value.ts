@@ -1,70 +1,127 @@
-import { quoteIdentifier, literalToSql } from './utils';
+import { quoteIdentifier, literalToSql, uniqueAlias } from './utils';
 import { MissingValueConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
 export function compileMissingValueSql(
   output: string,
   input: string,
   columns: string[],
-  config: Record<string, unknown>
+  config: Record<string, unknown>,
+  columnTypes?: Record<string, string>
 ): string {
   const parsed = parseOperatorConfig(MissingValueConfigSchema, config);
   if (parsed.strategy === 'drop_empty_rows' || parsed.strategy === 'drop_rows_by_nulls') {
     const targetColumns = parsed.columns && parsed.columns.length > 0 ? parsed.columns : columns;
-    const isAllNull = parsed.condition === 'all_null';
+    if (targetColumns.length === 0) {
+      throw new Error('Missing-value row deletion requires at least one input field');
+    }
+    const isAllNull = parsed.strategy === 'drop_empty_rows' || parsed.condition === 'all_null';
     const connective = isAllNull ? ' OR ' : ' AND ';
     const nonEmptyFilter = targetColumns
       .map((column) => `${quoteIdentifier(column)} IS NOT NULL`)
       .join(connective);
     return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} WHERE ${nonEmptyFilter}`;
   }
-  const rules = parsed.rules;
-  const expressions = new Map(columns.map((column) => [column, quoteIdentifier(column)]));
-  const filters: string[] = [];
-  for (const rule of rules) {
+
+  const stages: string[] = [];
+  let currentInput = input;
+  for (const rule of parsed.rules) {
     if (!rule.column || !columns.includes(rule.column)) continue;
-    const current = expressions.get(rule.column) ?? quoteIdentifier(rule.column);
+    if (
+      (rule.method === 'mean_fill' || rule.method === 'median_fill') &&
+      columnTypes?.[rule.column] &&
+      !['integer', 'float', 'decimal'].includes(columnTypes[rule.column])
+    ) {
+      throw new Error(
+        `Missing-value ${rule.method} requires a numeric field, but "${rule.column}" is ${columnTypes[rule.column]}`
+      );
+    }
+    const column = quoteIdentifier(rule.column);
+    let stageQuery: string | null = null;
     switch (rule.method) {
       case 'nullify_values':
-        expressions.set(
-          rule.column,
-          `CASE WHEN ${compileNullifyValuesPredicate(current, rule.values ?? [])} THEN NULL ELSE ${current} END`
-        );
+        stageQuery = `SELECT * REPLACE (CASE WHEN ${compileNullifyValuesPredicate(column, rule.values ?? [])} THEN NULL ELSE ${column} END AS ${column}) FROM ${currentInput}`;
         break;
       case 'literal_fill':
-        expressions.set(rule.column, `COALESCE(${current}, ${literalToSql(rule.value)})`);
+        stageQuery = `SELECT * REPLACE (COALESCE(${column}, cast_to_type(${literalToSql(rule.value)}, ${column})) AS ${column}) FROM ${currentInput}`;
+        break;
+      case 'mean_fill':
+        stageQuery = compileStatisticalFillStage(currentInput, column, 'avg');
+        break;
+      case 'median_fill':
+        stageQuery = compileStatisticalFillStage(currentInput, column, 'median');
+        break;
+      case 'mode_fill':
+        stageQuery = compileStatisticalFillStage(currentInput, column, 'mode');
+        break;
+      case 'forward_fill':
+      case 'backward_fill':
+        stageQuery = compileOrderedFillStage(
+          currentInput,
+          column,
+          columns,
+          rule.method === 'forward_fill'
+        );
         break;
       case 'drop':
-        filters.push(`${quoteIdentifier(rule.column)} IS NOT NULL`);
+        stageQuery = `SELECT * FROM ${currentInput} WHERE ${column} IS NOT NULL`;
         break;
       default:
         break;
     }
+
+    if (!stageQuery) continue;
+    const stageName = quoteIdentifier(`__missing_step_${stages.length + 1}`);
+    stages.push(`${stageName} AS (${stageQuery})`);
+    currentInput = stageName;
   }
-  const projections = columns.map(
-    (column) =>
-      `${expressions.get(column) ?? quoteIdentifier(column)} AS ${quoteIdentifier(column)}`
-  );
-  return `CREATE TEMP TABLE ${output} AS SELECT ${projections.join(', ')} FROM ${input}${
-    filters.length > 0 ? ` WHERE ${filters.join(' AND ')}` : ''
-  }`;
+
+  if (stages.length === 0) {
+    const projections = columns.map(
+      (column) => `${quoteIdentifier(column)} AS ${quoteIdentifier(column)}`
+    );
+    return `CREATE TEMP TABLE ${output} AS SELECT ${projections.join(', ')} FROM ${input}`;
+  }
+
+  return `CREATE TEMP TABLE ${output} AS WITH ${stages.join(', ')} SELECT * FROM ${currentInput}`;
 }
 
-function compileNullifyValuesPredicate(current: string, values: unknown[]): string {
+function compileNullifyValuesPredicate(column: string, values: unknown[]): string {
   if (values.length === 0) return 'FALSE';
 
-  // Missing-value markers originate in text files, but an earlier workflow step may already have
-  // converted the column to DECIMAL, DATE, BOOLEAN, etc. Comparing that typed column directly with
-  // a marker such as 'NULL' makes DuckDB cast the marker to the column type and can abort the whole
-  // query. Compare canonical text representations instead so malformed markers never participate in
-  // an implicit typed conversion. SQL NULL is handled separately because CAST(NULL AS VARCHAR) is NULL.
   const includesNull = values.some((value) => value === null || value === undefined);
   const textValues = values
     .filter((value) => value !== null && value !== undefined)
     .map((value) => literalToSql(String(value)));
   const predicates: string[] = [];
-  if (includesNull) predicates.push(`${current} IS NULL`);
+  if (includesNull) predicates.push(`${column} IS NULL`);
   if (textValues.length > 0) {
-    predicates.push(`CAST(${current} AS VARCHAR) IN (${textValues.join(', ')})`);
+    predicates.push(`CAST(${column} AS VARCHAR) IN (${textValues.join(', ')})`);
   }
   return predicates.length === 1 ? predicates[0] : `(${predicates.join(' OR ')})`;
+}
+
+function compileStatisticalFillStage(
+  input: string,
+  column: string,
+  aggregate: 'avg' | 'median' | 'mode'
+): string {
+  const aggregateArgument = aggregate === 'mode' ? `${column} ORDER BY ${column} ASC` : column;
+  const statistic = `(SELECT ${aggregate}(${aggregateArgument}) FROM ${input})`;
+  return `SELECT * REPLACE (COALESCE(${column}, cast_to_type(${statistic}, ${column})) AS ${column}) FROM ${input}`;
+}
+
+function compileOrderedFillStage(
+  input: string,
+  column: string,
+  columns: string[],
+  forward: boolean
+): string {
+  const rowNumber = quoteIdentifier(uniqueAlias('__missing_row_number', columns));
+  const value = forward
+    ? `last_value(${column} IGNORE NULLS)`
+    : `first_value(${column} IGNORE NULLS)`;
+  const frame = forward
+    ? 'ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW'
+    : 'ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING';
+  return `SELECT * EXCLUDE (${rowNumber}) FROM (SELECT * REPLACE (${value} OVER (ORDER BY ${rowNumber} ${frame}) AS ${column}) FROM (SELECT *, row_number() OVER () AS ${rowNumber} FROM ${input})) ORDER BY ${rowNumber}`;
 }

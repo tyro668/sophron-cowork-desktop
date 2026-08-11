@@ -1,7 +1,7 @@
 export { compileFieldSelectSql } from './field-select';
 export { compileFieldMappingSql } from './field-mapping';
 export { compileMissingValueSql } from './missing-value';
-export { compileTypeConvertSql, compileTypeConversionExpression } from './type-convert';
+export { compileTypeConvertSql } from './type-convert';
 export { compileDeduplicateSql } from './deduplicate';
 export { compileSortSql } from './sort';
 export { compileCalculateFieldSql } from './calculate-field';
@@ -12,8 +12,8 @@ export { compileUnpivotSql } from './unpivot';
 export { compileUnnestSql } from './unnest';
 export { compileScalarExpression } from './compute';
 export { compileFilterConditionExpression } from './filter';
-export { compileSetOpSql, compileJoinConditionList, compileJoinProjection } from './set-op';
-export { compileAsofJoinSql } from './join';
+export { compileSetOpSql } from './set-op';
+export { compileJoinConditionList, compileJoinProjection, compileAsofJoinSql } from './join';
 export {
   quoteIdentifier,
   quoteValueIdentifier,
@@ -26,7 +26,6 @@ export {
   positiveNumber,
   sortKeysToSql,
   compileTypedProjection,
-  normalizeDuckDbDateFormat,
   durationToMilliseconds,
   lastQualifiedPart,
   unwrapFieldToken,

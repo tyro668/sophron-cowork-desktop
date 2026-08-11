@@ -110,3 +110,48 @@ export function isTemporalDataFieldType(value: string | null | undefined): boole
   const type = normalizeDataFieldType(value);
   return type === 'date' || type === 'datetime';
 }
+
+export type PivotValueLiteral = string | number | boolean | null;
+
+export function translatePivotInput(raw: string, colType?: string): PivotValueLiteral {
+  const type = normalizeDataFieldType(colType);
+
+  // text：保留原始字符串，不 trim（候选值和手工输入均保留首尾空格）
+  if (type === 'text') return raw;
+
+  // date/datetime：trim，日期两端空格视为输入噪声
+  if (type === 'date' || type === 'datetime') return raw.trim();
+
+  // 数值/布尔：先 trim 再转换
+  const trimmed = raw.trim();
+
+  if (type === 'integer') {
+    // trim 后为空串（纯空白/空输入）不转 0，保留空串
+    if (trimmed === '') return trimmed;
+    const n = Number(trimmed);
+    // 仅在安全整数范围内转 number；超出安全范围（BIGINT/HUGEINT）保留 trim 后 string，
+    // 避免 Number 舍入破坏精度。
+    if (Number.isSafeInteger(n)) return n;
+    return trimmed;
+  }
+
+  if (type === 'float') {
+    if (trimmed === '') return trimmed;
+    const n = Number(trimmed);
+    if (Number.isFinite(n)) return n;
+    return trimmed;
+  }
+
+  // decimal 始终保留 trim 后 string，保持配置形态稳定，避免高精度小数精度损失。
+  // DuckDB 会将字符串字面量隐式转换为 DECIMAL 与列比较。
+  if (type === 'decimal') return trimmed;
+
+  if (type === 'boolean') {
+    const lower = trimmed.toLowerCase();
+    if (lower === 'true') return true;
+    if (lower === 'false') return false;
+    return trimmed;
+  }
+
+  return raw;
+}

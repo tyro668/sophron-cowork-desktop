@@ -2914,7 +2914,6 @@ function main() {
   return workflow.step(input, "pivot", {
     config: {
       on: ${on},
-      values: ["Central", "East", "South", "West"],
       using: [{ function: "sum", expression: expr(row => row["Sales"]), alias: "Sales" }],
       groupBy: ["Product Type"]
     }
@@ -2926,7 +2925,9 @@ function main() {
   const pivoted = pivotMarketSales(input);
   return workflow.output(pivoted, OUTPUT_TABLE_NAME, { mode: "replace" });
 }`;
-    const validSource = pivotSource('["Market"]');
+    const validSource = pivotSource(
+      '[{ field: "Market", values: ["Central", "East", "South", "West"] }]'
+    );
     vi.mocked(runPiAiOneShot)
       .mockResolvedValueOnce({
         text: JSON.stringify({ javascriptSource: pivotSource(invalidOn) }),
@@ -2983,14 +2984,16 @@ function main() {
     });
 
     expect(runPiAiOneShot).toHaveBeenCalledTimes(2);
-    expect(String(vi.mocked(runPiAiOneShot).mock.calls[0]?.[1])).toContain('on: ["Market"]');
+    expect(String(vi.mocked(runPiAiOneShot).mock.calls[0]?.[1])).toContain(
+      'on: [{ field: "Market"'
+    );
     const repairPrompt = JSON.parse(String(vi.mocked(runPiAiOneShot).mock.calls[1]?.[0])) as {
       previousFailedAttempt?: { diagnostics?: Array<Record<string, unknown>> };
     };
     expect(repairPrompt.previousFailedAttempt?.diagnostics?.[0]).toMatchObject({
       functionName: 'pivotMarketSales',
       operationType: 'pivot',
-      expectedSignature: expect.stringContaining('on: ["pivotField"]'),
+      expectedSignature: expect.stringContaining('on: [{ field: "pivotField"'),
       repairHint: expect.stringContaining('Never use a scalar string or expr(...)'),
     });
     expect(generated.workflowDsl).toContain('pivot on [Market]');

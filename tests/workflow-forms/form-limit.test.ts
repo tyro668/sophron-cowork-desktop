@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 
 function ok(config: Record<string, unknown>) {
   const type = 'limit' as const;
@@ -94,14 +96,7 @@ describe('FormLimit — DSL idempotent', () => {
         orderBy: [{ field: 'score', direction: 'desc' }],
         ties: true,
       },
-      {
-        mode: 'fixed',
-        limit: 3,
-        unit: 'rows',
-        orderBy: [{ field: 'amount', direction: 'desc' }],
-        groupBy: ['category'],
-      },
-      { mode: 'random', limit: 100, unit: 'rows', method: 'bernoulli' },
+      { mode: 'random', limit: 100, unit: 'rows' },
       { mode: 'random', limit: 10, unit: 'percent', method: 'system', seed: 42 },
     ];
     for (const config of configs) {
@@ -131,34 +126,11 @@ describe('FormLimit — new features', () => {
     expect(r.dsl).toContain('with ties');
   });
 
-  it('top with partition includes partition in DSL', () => {
-    const r = ok({
-      mode: 'fixed',
-      limit: 3,
-      unit: 'rows',
-      orderBy: [{ field: 'amount', direction: 'desc' }],
-      groupBy: ['category'],
-    });
-    expect(r.dsl).toContain('top 3');
-    expect(r.dsl).toContain('partition [category]');
-  });
-
-  it('top with ties and partition together', () => {
-    const r = ok({
-      mode: 'fixed',
-      limit: 5,
-      unit: 'rows',
-      orderBy: [{ field: 'score', direction: 'desc' }],
-      ties: true,
-      groupBy: ['region'],
-    });
-    expect(r.dsl).toContain('with ties');
-    expect(r.dsl).toContain('partition [region]');
-  });
-
   it('sample rows mode produces sample DSL', () => {
-    const r = ok({ mode: 'random', limit: 100, unit: 'rows', method: 'bernoulli' });
+    const r = ok({ mode: 'random', limit: 100, unit: 'rows' });
     expect(r.dsl).toContain('sample 100 rows');
+    expect(r.dsl).not.toContain('system');
+    expect(r.dsl).not.toContain('bernoulli');
   });
 
   it('sample percent mode produces sample DSL with percent', () => {
@@ -167,7 +139,7 @@ describe('FormLimit — new features', () => {
   });
 
   it('sample with seed produces repeatable DSL', () => {
-    const r = ok({ mode: 'random', limit: 100, unit: 'rows', method: 'bernoulli', seed: 42 });
+    const r = ok({ mode: 'random', limit: 100, unit: 'rows', seed: 42 });
     expect(r.dsl).toContain('sample 100 rows');
     expect(r.dsl).toContain('repeatable 42');
   });
@@ -184,7 +156,7 @@ describe('FormLimit — new features', () => {
     expect(r.config.limit).toBe(0);
   });
 
-  it('percent + orderBy + ties produces top ... with ties DSL (unit becomes rows)', () => {
+  it('percent + orderBy + ties preserves the percent unit', () => {
     const r = ok({
       mode: 'fixed',
       limit: 10,
@@ -193,32 +165,29 @@ describe('FormLimit — new features', () => {
       ties: true,
     });
     expect(r.dsl).toContain('top 10');
+    expect(r.dsl).toContain('percent');
     expect(r.dsl).toContain('with ties');
-    expect(r.dsl).not.toContain('percent');
-    // DSL top format doesn't preserve percent unit
-    expect(r.config.unit).toBe('rows');
+    expect(r.config.unit).toBe('percent');
   });
 
-  it('percent + orderBy + groupBy produces top ... partition DSL (unit becomes rows)', () => {
+  it('ordered row limits preserve offset in top DSL', () => {
     const r = ok({
       mode: 'fixed',
-      limit: 20,
-      unit: 'percent',
-      orderBy: [{ field: 'revenue', direction: 'asc' }],
-      groupBy: ['region'],
+      limit: 10,
+      unit: 'rows',
+      offset: 5,
+      orderBy: [{ field: 'score', direction: 'desc' }],
     });
-    expect(r.dsl).toContain('top 20');
-    expect(r.dsl).toContain('partition [region]');
-    expect(r.config.unit).toBe('rows');
+
+    expect(r.dsl).toContain('offset 5');
+    expect(r.config.offset).toBe(5);
   });
 });
 
 // ── UI source structure ─────────────────────────────────────────────
 
-const fs = await import('node:fs');
-const path = await import('node:path');
-const limitSource = fs.readFileSync(
-  path.resolve(process.cwd(), 'src/renderer/components/workflow-forms/FormLimit.tsx'),
+const limitSource = readFileSync(
+  resolve(process.cwd(), 'src/renderer/components/workflow-forms/FormLimit.tsx'),
   'utf8'
 );
 
@@ -246,11 +215,11 @@ describe('FormLimit — UI source structure', () => {
   });
 
   it('WITH TIES checkbox is inside sort row (not separate row)', () => {
-    const tiesLine = limitSource.indexOf('保留并列值（WITH TIES）');
+    const tiesLine = limitSource.indexOf('limitTies');
     expect(tiesLine).not.toBe(-1);
     const sortSection = limitSource.slice(
       limitSource.indexOf('sortOpen ?'),
-      limitSource.indexOf('保留并列值（WITH TIES）')
+      limitSource.indexOf('limitTies')
     );
     expect(sortSection.length).toBeGreaterThan(0);
     expect(limitSource).not.toContain('{/* WITH TIES */}');
@@ -263,15 +232,6 @@ describe('FormLimit — UI source structure', () => {
     expect(limitSource).not.toContain('className="flex-1 min-w-0 relative"');
   });
 
-  it('group range + group fields on same flex-wrap row', () => {
-    // The group section is wrapped in a flex-wrap container, with both
-    // range selector and field tag-input nested inside
-    const groupSectionStart = limitSource.indexOf('分组范围 + 分组字段');
-    const groupSectionEnd = limitSource.indexOf('排序字段', groupSectionStart);
-    const groupSection = limitSource.slice(groupSectionStart, groupSectionEnd);
-    expect(groupSection).toContain('flex-wrap');
-  });
-
   it('mode select width is w-28', () => {
     const modeSelect = limitSource.match(/className="h-7 text-\[12px\] w-28"/);
     expect(modeSelect).not.toBeNull();
@@ -281,6 +241,10 @@ describe('FormLimit — UI source structure', () => {
     const w28Controls = limitSource.match(/w-28/g);
     // Mode select + quantity + unit + offset/seed + group range select = at least 5
     expect(w28Controls!.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('only shows system and bernoulli methods for percentage sampling', () => {
+    expect(limitSource).toContain('{isRandomMode && !isRows && (');
   });
 
   it('sort tags use compact padding (px-1)', () => {

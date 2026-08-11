@@ -1,13 +1,18 @@
-import { quoteIdentifier, literalToSql } from './utils';
+import { quoteIdentifier, literalToSql, uniqueAlias } from './utils';
 import { UnnestConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
 function castToJsonExpr(columnExpr: string): string {
-  return `replace(${columnExpr}, '''', '"')::JSON`;
+  return `${columnExpr}::JSON`;
+}
+
+function escapeJsonKey(key: string): string {
+  return `"${key.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
 export function compileUnnestSql(
   output: string,
   input: string,
+  columns: string[],
   config: Record<string, unknown>
 ): string {
   const parsed = parseOperatorConfig(UnnestConfigSchema, config);
@@ -16,50 +21,98 @@ export function compileUnnestSql(
   const column = quoteIdentifier(rawColumn);
   const alias = quoteIdentifier(rawAlias);
   const withIndex = parsed.withIndex;
-  const recursive = parsed.recursive;
-  const maxDepth = parsed.maxDepth;
-  const keepParentNames = parsed.keepParentNames;
+  const rn = uniqueAlias('__rn', columns);
 
-  const isJson = parsed.sourceKind === 'json';
+  const aliasColName = parsed.keepParentNames ? `${rawColumn}_${rawAlias}` : rawAlias;
 
-  const path = isJson ? literalToSql(parsed.path) : "'$'";
-  const aliasCol = keepParentNames && isJson ? quoteIdentifier(`${rawColumn}_${rawAlias}`) : alias;
-  const jsonCol = castToJsonExpr(`base.${column}`);
+  if (parsed.sourceKind === 'json') {
+    if (!config._jsonType || config._jsonType === 'NULL') {
+      return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input}`;
+    }
+    if (config._jsonType !== 'OBJECT') {
+      throw new Error(`Expand-to-columns requires a JSON object, but found ${config._jsonType}`);
+    }
 
-  // JSON mode — keep json_each (native DuckDB)
-  if (isJson) {
-    const indexSql = withIndex ? `, ROW_NUMBER() OVER () - 1 AS ${quoteIdentifier(withIndex)}` : '';
+    // JSON OBJECT mode: expand each key into a separate column, return 1 row
+    const keys = (config._jsonKeys as string[]) ?? [];
+    const baseSet = new Set(columns.map((c) => c.toLowerCase()));
+    const conflicts = keys.filter((k) => baseSet.has(k.toLowerCase()));
+    if (conflicts.length > 0) {
+      throw new Error(`Unnest JSON keys conflict with existing columns: ${conflicts.join(', ')}`);
+    }
+    const normalized = new Set<string>();
+    const duplicates = keys.filter((k) => {
+      const norm = k.toLowerCase();
+      if (normalized.has(norm)) return true;
+      normalized.add(norm);
+      return false;
+    });
+    if (duplicates.length > 0) {
+      throw new Error(
+        `Unnest JSON keys have duplicates after normalization: ${duplicates.join(', ')}`
+      );
+    }
+
+    const jsonCol = castToJsonExpr(`base.${column}`);
+    const keyCols = keys.map((k) => {
+      const fullPath =
+        parsed.path === '$' ? `$.${escapeJsonKey(k)}` : `${parsed.path}.${escapeJsonKey(k)}`;
+      return `json_extract_string(${jsonCol}, ${literalToSql(fullPath)}) AS ${quoteIdentifier(k)}`;
+    });
     return `
       CREATE TEMP TABLE ${output} AS
-      SELECT base.*, item.value AS ${aliasCol}${indexSql}
-      FROM ${input} base, json_each(${jsonCol}, ${path}) AS item
+      SELECT base.*${keyCols.length > 0 ? `, ${keyCols.join(', ')}` : ''}
+      FROM ${input} base
     `;
   }
 
-  // List mode — native UNNEST (only for native DuckDB arrays)
-  if (recursive) {
-    const depthLimit = maxDepth != null ? ` AND "_depth" < ${maxDepth}` : '';
-    const indexSql = withIndex ? `, ROW_NUMBER() OVER () - 1 AS ${quoteIdentifier(withIndex)}` : '';
-    return `
-      CREATE TEMP TABLE ${output} AS
-      WITH RECURSIVE flatten AS (
-        SELECT base.*, u AS "_val", 1 AS "_depth"
-        FROM ${input} base, UNNEST(base.${column}) AS t(u)
-        UNION ALL
-        SELECT flatten.* EXCLUDE ("_val", "_depth"), u AS "_val", flatten."_depth" + 1 AS "_depth"
-        FROM flatten, UNNEST(flatten."_val") AS t(u)
-        WHERE typeof(flatten."_val") LIKE '%[]%'${depthLimit}
-      )
-      SELECT * EXCLUDE ("_val", "_depth")${indexSql} FROM flatten
-    `;
+  const baseSet = new Set(columns.map((c) => c.toLowerCase()));
+  const conflicts: string[] = [];
+  if (baseSet.has(aliasColName.toLowerCase())) {
+    conflicts.push(aliasColName);
+  }
+  if (
+    withIndex &&
+    baseSet.has(withIndex.toLowerCase()) &&
+    withIndex.toLowerCase() !== aliasColName.toLowerCase()
+  ) {
+    conflicts.push(withIndex);
+  }
+  if (conflicts.length > 0) {
+    throw new Error(`Unnest output fields conflict with existing columns: ${conflicts.join(', ')}`);
+  }
+  if (withIndex && aliasColName.toLowerCase() === withIndex.toLowerCase()) {
+    throw new Error(
+      `Unnest alias "${aliasColName}" and index column "${withIndex}" must be different`
+    );
   }
 
+  // List mode: UNNEST array into rows (supports both native arrays and JSON strings)
+  const target =
+    parsed.path === '$'
+      ? `base.${column}`
+      : `json_extract(base.${column}::JSON, ${literalToSql(parsed.path)})`;
+  const unnestExpr = `COALESCE(TRY_CAST(${target} AS JSON[]), ${target}::JSON::JSON[])`;
+
+  const aliasCol = parsed.keepParentNames ? quoteIdentifier(`${rawColumn}_${rawAlias}`) : alias;
   const idxCols = withIndex ? `(${alias}, "_ordinal")` : `(${alias})`;
   const idxClause = withIndex ? ' WITH ORDINALITY' : '';
   const idxSelect = withIndex ? `, item."_ordinal" - 1 AS ${quoteIdentifier(withIndex)}` : '';
+
+  if (parsed.preserveOrder) {
+    return `
+      CREATE TEMP TABLE ${output} AS
+      SELECT base.* EXCLUDE (${rn}), item.${alias} AS ${aliasCol}${idxSelect}
+      FROM (SELECT *, ROW_NUMBER() OVER () AS ${rn} FROM ${input} base) base
+      LEFT JOIN LATERAL UNNEST(${unnestExpr}) WITH ORDINALITY AS item(${alias}, _ordinal) ON true
+      ORDER BY base.${rn}, item._ordinal
+    `;
+  }
+
   return `
     CREATE TEMP TABLE ${output} AS
-    SELECT base.*, item.${alias} AS ${alias}${idxSelect}
-    FROM ${input} base, UNNEST(base.${column})${idxClause} AS item${idxCols}
+    SELECT base.*, item.${alias} AS ${aliasCol}${idxSelect}
+    FROM ${input} base
+    LEFT JOIN LATERAL UNNEST(${unnestExpr})${idxClause} AS item${idxCols} ON true
   `;
 }

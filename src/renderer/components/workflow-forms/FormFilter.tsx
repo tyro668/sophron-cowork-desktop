@@ -23,6 +23,8 @@ import {
   removeNodeFromBranch,
   updateLeafInBranch,
   wrapItemsInGroup,
+  splitInValues,
+  joinInValues,
   MAX_NESTING_DEPTH,
   type FilterConditionLeaf,
   type FilterConditionBranch,
@@ -60,6 +62,13 @@ const ALL_OP_GROUPS: OpGroup[] = [
       { labelKey: 'filterOpNotIn', value: 'not in' },
     ],
   },
+  {
+    groupKey: 'filterGroupNull',
+    items: [
+      { labelKey: 'filterOpIsNull', value: 'is null' },
+      { labelKey: 'filterOpIsNotNull', value: 'is not null' },
+    ],
+  },
 ];
 
 const STRING_OP_GROUPS: OpGroup[] = [
@@ -93,10 +102,27 @@ const STRING_OP_GROUPS: OpGroup[] = [
       { labelKey: 'filterOpNotIn', value: 'not in' },
     ],
   },
+  {
+    groupKey: 'filterGroupNull',
+    items: [
+      { labelKey: 'filterOpIsNull', value: 'is null' },
+      { labelKey: 'filterOpIsNotNull', value: 'is not null' },
+    ],
+  },
 ];
 
 const BOOLEAN_OP_GROUPS: OpGroup[] = [
-  { groupKey: 'filterGroupCompare', items: [{ labelKey: 'filterOpEq', value: '=' }] },
+  {
+    groupKey: 'filterGroupCompare',
+    items: [{ labelKey: 'filterOpEq', value: '=' }],
+  },
+  {
+    groupKey: 'filterGroupNull',
+    items: [
+      { labelKey: 'filterOpIsNull', value: 'is null' },
+      { labelKey: 'filterOpIsNotNull', value: 'is not null' },
+    ],
+  },
 ];
 
 const TEMPORAL_OP_GROUPS: OpGroup[] = [
@@ -122,6 +148,13 @@ const TEMPORAL_OP_GROUPS: OpGroup[] = [
     items: [
       { labelKey: 'filterOpIn', value: 'in' },
       { labelKey: 'filterOpNotIn', value: 'not in' },
+    ],
+  },
+  {
+    groupKey: 'filterGroupNull',
+    items: [
+      { labelKey: 'filterOpIsNull', value: 'is null' },
+      { labelKey: 'filterOpIsNotNull', value: 'is not null' },
     ],
   },
 ];
@@ -159,7 +192,7 @@ interface LeafRowContext {
     parentConnective: FilterConditionConnective,
     targetConnective: FilterConditionConnective
   ) => void;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string) => string;
 }
 
 function ConditionLeafRow({
@@ -185,7 +218,7 @@ function ConditionLeafRow({
     () =>
       opGroups.map((g) => ({
         key: g.groupKey,
-        items: g.items.map((o) => ({ value: o.value, label: tr(o.labelKey, o.value) })),
+        items: g.items.map((o) => ({ value: o.value, label: tr(o.labelKey) })),
       })),
     [opGroups, tr]
   );
@@ -194,6 +227,7 @@ function ConditionLeafRow({
   const effectiveOp = validOps.includes(leaf.op) ? leaf.op : (allOps[0]?.value ?? '=');
   const isBetween = effectiveOp === 'between';
   const isMultiValue = effectiveOp === 'in' || effectiveOp === 'not in';
+  const isNullOp = effectiveOp === 'is null' || effectiveOp === 'is not null';
   const colVals = ctx.columnValues[leaf.field] ?? [];
   const isValsLoading = ctx.loadingValues[leaf.field] ?? false;
 
@@ -208,10 +242,14 @@ function ConditionLeafRow({
             columnTypes={ctx.columnTypes}
             onChange={(v) => {
               ctx.fetchColumnValues(v);
-              ctx.updateLeaf(leaf.id, { field: v, op: effectiveOp });
+              const newValidOps = flattenOps(operatorsForType(ctx.columnTypes[v])).map(
+                (o) => o.value
+              );
+              const nextOp = newValidOps.includes(leaf.op) ? leaf.op : '=';
+              ctx.updateLeaf(leaf.id, { field: v, op: nextOp });
             }}
-            placeholder={ctx.tr('filterFieldPlaceholder', '选择字段')}
-            emptyText={ctx.tr('noMatch', '无匹配字段')}
+            placeholder={ctx.tr('filterFieldPlaceholder')}
+            emptyText={ctx.tr('noMatch')}
             className="h-8 w-full"
           />
         </div>
@@ -226,42 +264,44 @@ function ConditionLeafRow({
         />
 
         {/* Value(s) */}
-        {isMultiValue ? (
-          <GlassValueInput
-            multi
-            value={leaf.val1}
-            suggestions={colVals}
-            isLoading={isValsLoading}
-            onChange={(v) => ctx.updateLeaf(leaf.id, { val1: v })}
-            placeholder={ctx.tr('filterValuesPlaceholder', '输入值后按 Enter 添加')}
-            disabled={!fieldSelected}
-            addLabel={ctx.tr('filterAddValue', '添加')}
-            noSuggestionsLabel={ctx.tr('noSuggestions', '暂无建议值')}
-            clearLabel={ctx.tr('filterClearValues', '清空输入框')}
-          />
-        ) : (
-          <GlassValueInput
-            value={leaf.val1}
-            suggestions={colVals}
-            isLoading={isValsLoading}
-            onChange={(v) => ctx.updateLeaf(leaf.id, { val1: v })}
-            placeholder={ctx.tr('filterValuePlaceholder', '值')}
-            disabled={!fieldSelected}
-          />
-        )}
+        {!isNullOp &&
+          (isMultiValue ? (
+            <GlassValueInput
+              multi
+              value={joinInValues(leaf.values ?? splitInValues(leaf.val1))}
+              suggestions={colVals}
+              isLoading={isValsLoading}
+              onChange={(v) => ctx.updateLeaf(leaf.id, { values: splitInValues(v), val1: v })}
+              placeholder={ctx.tr('filterValuesPlaceholder')}
+              disabled={!fieldSelected}
+              addLabel={ctx.tr('filterAddValue')}
+              noSuggestionsLabel={ctx.tr('noSuggestions')}
+              clearLabel={ctx.tr('filterClearValues')}
+              onOpen={() => ctx.fetchColumnValues(leaf.field)}
+            />
+          ) : (
+            <GlassValueInput
+              value={leaf.val1}
+              suggestions={colVals}
+              isLoading={isValsLoading}
+              onChange={(v) => ctx.updateLeaf(leaf.id, { val1: v })}
+              placeholder={ctx.tr('filterValuePlaceholder')}
+              disabled={!fieldSelected}
+              onOpen={() => ctx.fetchColumnValues(leaf.field)}
+            />
+          ))}
 
         {isBetween && (
           <>
-            <span className="text-[11px] text-text-muted flex-shrink-0">
-              {ctx.tr('filterAnd', '至')}
-            </span>
+            <span className="text-[11px] text-text-muted flex-shrink-0">{ctx.tr('filterAnd')}</span>
             <GlassValueInput
               value={leaf.val2}
               suggestions={colVals}
               isLoading={isValsLoading}
               onChange={(v) => ctx.updateLeaf(leaf.id, { val2: v })}
-              placeholder={ctx.tr('filterValue2Placeholder', '值2')}
+              placeholder={ctx.tr('filterValue2Placeholder')}
               disabled={!fieldSelected}
+              onOpen={() => ctx.fetchColumnValues(leaf.field)}
             />
           </>
         )}
@@ -282,8 +322,8 @@ function ConditionLeafRow({
           }`}
           title={
             parentConnective !== 'and' && depth >= MAX_NESTING_DEPTH
-              ? ctx.tr('filterMaxDepth', '已达最大嵌套深度')
-              : ctx.tr('filterAddAnd', '添加与条件')
+              ? ctx.tr('filterMaxDepth')
+              : ctx.tr('filterAddAnd')
           }
         >
           <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm border border-current text-[9px] font-bold leading-none">
@@ -305,8 +345,8 @@ function ConditionLeafRow({
           }`}
           title={
             parentConnective !== 'or' && depth >= MAX_NESTING_DEPTH
-              ? ctx.tr('filterMaxDepth', '已达最大嵌套深度')
-              : ctx.tr('filterAddOr', '添加或条件')
+              ? ctx.tr('filterMaxDepth')
+              : ctx.tr('filterAddOr')
           }
         >
           <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-current text-[9px] font-bold leading-none">
@@ -319,7 +359,7 @@ function ConditionLeafRow({
           type="button"
           onClick={() => ctx.removeNode(leaf.id)}
           className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-text-muted/50 hover:text-error hover:bg-error/10 transition-colors"
-          title={ctx.tr('filterDeleteCondition', '删除此条件')}
+          title={ctx.tr('filterDeleteCondition')}
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>
@@ -426,9 +466,7 @@ function BranchGroupRenderer({
   if (itemCount === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border-muted/70 px-4 py-6 text-center">
-        <p className="text-[12px] text-text-muted">
-          {ctx.tr('filterEmptyHint', '尚未添加筛选条件')}
-        </p>
+        <p className="text-[12px] text-text-muted">{ctx.tr('filterEmptyHint')}</p>
       </div>
     );
   }
@@ -456,12 +494,9 @@ function BranchGroupRenderer({
           type="button"
           onClick={() => ctx.toggleBranchConnective(branch.id)}
           className="rounded border border-border-muted/60 bg-background/50 px-2 py-0.5 text-[12px] text-center text-accent hover:bg-accent/10 hover:border-accent/30 transition-colors"
-          title={ctx.tr('filterToggleAndOr', '点击切换与 / 或')}
+          title={ctx.tr('filterToggleAndOr')}
         >
-          {ctx.tr(
-            branch.connective === 'and' ? 'filterConnectiveAnd' : 'filterConnectiveOr',
-            branch.connective === 'and' ? '与' : '或'
-          )}
+          {ctx.tr(branch.connective === 'and' ? 'filterConnectiveAnd' : 'filterConnectiveOr')}
         </button>
       </div>
 
@@ -499,6 +534,25 @@ function BranchGroupRenderer({
 
 // ── Main FormFilter ───────────────────────────────────────────────────
 
+function parseFilterConfig(condition: string | undefined): {
+  tree: FilterConditionBranch;
+  error: string | null;
+} {
+  resetNodeIdCounter();
+  try {
+    const tree = parseConditionTree(condition);
+    if (tree.items.length === 0) tree.items.push(createEmptyLeaf());
+    return { tree, error: null };
+  } catch (error) {
+    const tree = parseConditionTree(undefined);
+    tree.items.push(createEmptyLeaf());
+    return {
+      tree,
+      error: error instanceof Error ? error.message : 'Invalid filter condition',
+    };
+  }
+}
+
 export default function FormFilter({
   node,
   taskId,
@@ -513,14 +567,11 @@ export default function FormFilter({
   const updateConfig = useUpdateConfig(onNodeChange);
 
   // Parse condition from config into tree (ensure at least one empty row)
-  const [root, setRoot] = useState<FilterConditionBranch>(() => {
-    resetNodeIdCounter();
-    const tree = parseConditionTree(node.config.condition as string | undefined);
-    if (tree.items.length === 0) {
-      tree.items.push(createEmptyLeaf());
-    }
-    return tree;
-  });
+  const [initialParse] = useState(() =>
+    parseFilterConfig(node.config.condition as string | undefined)
+  );
+  const [root, setRoot] = useState<FilterConditionBranch>(initialParse.tree);
+  const [parseError, setParseError] = useState<string | null>(initialParse.error);
 
   const localUpdateRef = useRef(false);
 
@@ -530,22 +581,25 @@ export default function FormFilter({
       localUpdateRef.current = false;
       return;
     }
-    const fromTree = buildFilterConditionTree(root);
+    const fromTree = buildFilterConditionTree(root, columnTypesRef.current);
     const fromConfig = node.config.condition as string | undefined;
     if ((fromTree || undefined) === (fromConfig || undefined)) return;
     // Re-parse from config
-    resetNodeIdCounter();
-    const reparsed = parseConditionTree(node.config.condition as string | undefined);
-    if (reparsed.items.length === 0) {
-      reparsed.items.push(createEmptyLeaf());
+    const reparsed = parseFilterConfig(node.config.condition as string | undefined);
+    setParseError(reparsed.error);
+    if (!reparsed.error) {
+      setRoot(reparsed.tree);
     }
-    setRoot(reparsed);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node.config.condition]);
 
   // ── Column metadata ────────────────────────────────────────────────
 
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const columnTypesRef = useRef(columnTypes);
+  useEffect(() => {
+    columnTypesRef.current = columnTypes;
+  }, [columnTypes]);
   const [columnValues, setColumnValues] = useState<Record<string, string[]>>({});
   const [loadingValues, setLoadingValues] = useState<Record<string, boolean>>({});
 
@@ -580,10 +634,14 @@ export default function FormFilter({
 
   const updateLeaf = useCallback(
     (leafId: string, patch: Partial<FilterConditionLeaf>) => {
+      setParseError(null);
       setRoot((prev) => {
         const next = updateLeafInBranch(prev, leafId, patch);
         localUpdateRef.current = true;
-        updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+        updateConfig((cfg) => ({
+          ...cfg,
+          condition: buildFilterConditionTree(next, columnTypesRef.current),
+        }));
         return next;
       });
     },
@@ -592,13 +650,17 @@ export default function FormFilter({
 
   const removeNode = useCallback(
     (nodeId: string) => {
+      setParseError(null);
       setRoot((prev) => {
         let next = removeNodeFromBranch(prev, nodeId);
         if (next.items.length === 0) {
           next = { ...next, items: [createEmptyLeaf()] };
         }
         localUpdateRef.current = true;
-        updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+        updateConfig((cfg) => ({
+          ...cfg,
+          condition: buildFilterConditionTree(next, columnTypesRef.current),
+        }));
         return next;
       });
     },
@@ -607,10 +669,14 @@ export default function FormFilter({
 
   const addAfter = useCallback(
     (branchId: string, afterIndex: number) => {
+      setParseError(null);
       setRoot((prev) => {
         const next = updateBranchInTree(prev, branchId, (b) => addLeafToBranch(b, afterIndex));
         localUpdateRef.current = true;
-        updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+        updateConfig((cfg) => ({
+          ...cfg,
+          condition: buildFilterConditionTree(next, columnTypesRef.current),
+        }));
         return next;
       });
     },
@@ -624,6 +690,7 @@ export default function FormFilter({
       afterIndex: number,
       connective: FilterConditionConnective = 'and'
     ) => {
+      setParseError(null);
       setRoot((prev) => {
         const next = updateBranchInTree(prev, branchId, (b) => {
           const withNewLeaf = addLeafToBranch(b, afterIndex);
@@ -634,7 +701,10 @@ export default function FormFilter({
           return withNewLeaf;
         });
         localUpdateRef.current = true;
-        updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+        updateConfig((cfg) => ({
+          ...cfg,
+          condition: buildFilterConditionTree(next, columnTypesRef.current),
+        }));
         return next;
       });
     },
@@ -662,10 +732,14 @@ export default function FormFilter({
 
   const updateBranch = useCallback(
     (branchId: string, updater: (b: FilterConditionBranch) => FilterConditionBranch) => {
+      setParseError(null);
       setRoot((prev) => {
         const next = updateBranchInTree(prev, branchId, updater);
         localUpdateRef.current = true;
-        updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+        updateConfig((cfg) => ({
+          ...cfg,
+          condition: buildFilterConditionTree(next, columnTypesRef.current),
+        }));
         return next;
       });
     },
@@ -674,10 +748,14 @@ export default function FormFilter({
 
   const toggleBranchConnective = useCallback(
     (branchId: string) => {
+      setParseError(null);
       setRoot((prev) => {
         const next = updateBranchConnectiveInTree(prev, branchId);
         localUpdateRef.current = true;
-        updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+        updateConfig((cfg) => ({
+          ...cfg,
+          condition: buildFilterConditionTree(next, columnTypesRef.current),
+        }));
         return next;
       });
     },
@@ -724,21 +802,30 @@ export default function FormFilter({
   return (
     <div className="grid content-start gap-2.5 min-w-0">
       <div className="space-y-2.5">
+        {parseError && (
+          <p role="alert" className="rounded-md bg-error/10 px-2.5 py-2 text-[11px] text-error">
+            {tr('filterParseError')}: {parseError}
+          </p>
+        )}
         {/* Global add button */}
         <button
           type="button"
           onClick={() => {
+            setParseError(null);
             setRoot((prev) => {
               const next = addLeafToBranch(prev, prev.items.length - 1);
               localUpdateRef.current = true;
-              updateConfig((cfg) => ({ ...cfg, condition: buildFilterConditionTree(next) }));
+              updateConfig((cfg) => ({
+                ...cfg,
+                condition: buildFilterConditionTree(next, columnTypesRef.current),
+              }));
               return next;
             });
           }}
           className="inline-flex h-7 items-center gap-1 rounded-md border border-border-muted bg-background/42 px-2 text-[11px] text-text-secondary hover:border-accent/30 hover:text-accent transition-colors"
         >
           <Plus className="h-3 w-3" />
-          {tr('filterAddCondition', '添加筛选条件')}
+          {tr('filterAddCondition')}
         </button>
 
         {/* Condition tree */}

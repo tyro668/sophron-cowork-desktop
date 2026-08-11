@@ -22,9 +22,14 @@ describe('SortConfigSchema', () => {
     expect(result.keys[0].nulls).toBeUndefined();
   });
 
-  it('defaults to empty array when keys omitted', () => {
-    const result = SortConfigSchema.parse({});
-    expect(result.keys).toEqual([]);
+  it('rejects config when keys are omitted', () => {
+    expect(() => SortConfigSchema.parse({})).toThrow('At least one sort field is required');
+  });
+
+  it('rejects an empty keys array', () => {
+    expect(() => SortConfigSchema.parse({ keys: [] })).toThrow(
+      'At least one sort field is required'
+    );
   });
 
   it('rejects keys with wrong type', () => {
@@ -35,5 +40,38 @@ describe('SortConfigSchema', () => {
     expect(() =>
       SortConfigSchema.parse({ keys: [{ field: 'name', direction: 'invalid' }] })
     ).toThrow(z.ZodError);
+  });
+
+  it('rejects duplicate sort fields', () => {
+    expect(() =>
+      SortConfigSchema.parse({
+        keys: [
+          { field: 'name', direction: 'asc' },
+          { field: 'name', direction: 'desc' },
+        ],
+      })
+    ).toThrow(z.ZodError);
+  });
+
+  it('rejects empty field name', () => {
+    expect(() =>
+      SortConfigSchema.parse({
+        keys: [{ field: '' }],
+      })
+    ).toThrow(z.ZodError);
+  });
+
+  it('rejects a blank row after a valid sort key', () => {
+    const result = SortConfigSchema.safeParse({
+      keys: [
+        { field: 'name', direction: 'asc' },
+        { field: '', direction: 'desc' },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.path).toEqual(['keys', 1, 'field']);
+    }
   });
 });

@@ -15,12 +15,10 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
   const path = String(node.config.path ?? '');
   const withIndex = String(node.config.withIndex ?? '');
   const keepParentNames = Boolean(node.config.keepParentNames ?? false);
-  const recursive = Boolean(node.config.recursive ?? false);
-  const depth = (() => {
-    if (!recursive) return 0;
-    if (typeof node.config.maxDepth === 'number') return Number(node.config.maxDepth);
-    return -1;
-  })();
+  const preserveOrder = Boolean(node.config.preserveOrder ?? false);
+
+  const isObjectMode = sourceKind === 'json';
+  const withIndexEnabled = node.config.withIndex !== undefined;
 
   return (
     <div className="grid content-start gap-2.5">
@@ -33,24 +31,22 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
             </span>
             <div className="grid">
               <span className="text-[13px] font-semibold text-text-primary">
-                {tr('unnestSourceHeader', '数据来源')}
+                {tr('unnestSourceHeader')}
               </span>
-              <span className="text-[10px] text-text-muted">
-                {tr('unnestSourceHint', '选择包含数组或 JSON 的字段及类型')}
-              </span>
+              <span className="text-[10px] text-text-muted">{tr('unnestSourceHint')}</span>
             </div>
           </div>
           <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
             <div className="p-3 grid gap-2.5">
               <label className="grid gap-1">
                 <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-                  {tr('unnestSourceField', '源字段')}
+                  {tr('unnestSourceField')}
                 </span>
                 <GlassFieldSingleSelect
                   value={column}
                   options={fieldCompletions}
                   onChange={(v) => updateConfig((cfg) => ({ ...cfg, column: v || undefined }))}
-                  placeholder={tr('unnestSelectField', '选择字段')}
+                  placeholder={tr('unnestSelectField')}
                   className="w-full"
                 />
               </label>
@@ -60,24 +56,35 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                 options={[
                   {
                     value: 'list',
-                    label: 'List',
-                    tip: tr(
-                      'unnestSourceTypeList',
-                      '用于原生 DuckDB 数组（LIST 类型），如 [1,2,3]、["a","b"]；元素可以是标量或结构体'
-                    ),
+                    label: tr('unnestSourceTypeList'),
+                    tip: tr('unnestSourceTypeListTip'),
                   },
                   {
                     value: 'json',
-                    label: 'JSON',
-                    tip: tr(
-                      'unnestSourceTypeJson',
-                      '用于 JSON 字符串或对象，如 \'[{"product":"手机"}]\'；支持路径定位子数组'
-                    ),
+                    label: tr('unnestSourceTypeObject'),
+                    tip: tr('unnestSourceTypeJsonTip'),
                   },
                 ]}
-                onChange={(v) => updateConfig((cfg) => ({ ...cfg, sourceKind: v }))}
-                label={tr('unnestSourceType', '源类型')}
+                onChange={(v) =>
+                  updateConfig((cfg) => ({
+                    ...cfg,
+                    sourceKind: v,
+                    ...(v === 'json'
+                      ? {
+                          withIndex: undefined,
+                          keepParentNames: undefined,
+                          preserveOrder: undefined,
+                        }
+                      : {}),
+                  }))
+                }
+                label={tr('unnestSourceType')}
               />
+              {isObjectMode ? (
+                <span className="text-[11px] text-text-muted">{tr('unnestObjectHint')}</span>
+              ) : (
+                <span className="text-[11px] text-text-muted">{tr('unnestListHint')}</span>
+              )}
             </div>
           </div>
         </div>
@@ -95,43 +102,41 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
             </span>
             <div className="grid">
               <span className="text-[13px] font-semibold text-text-primary">
-                {tr('unnestRulesHeader', '展开规则')}
+                {tr('unnestRulesHeader')}
               </span>
-              <span className="text-[10px] text-text-muted">
-                {tr('unnestRulesHint', '配置展开后的别名与路径')}
-              </span>
+              <span className="text-[10px] text-text-muted">{tr('unnestRulesHint')}</span>
             </div>
           </div>
           <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
             <div className="p-3 grid gap-2.5">
-              <label className="grid gap-1">
-                <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-                  {tr('unnestAlias', '展开后的别名')}
-                </span>
-                <GlassFormTextInput
-                  value={alias}
-                  onChange={(v) => updateConfig((cfg) => ({ ...cfg, alias: v || undefined }))}
-                  placeholder={tr('unnestAliasPlaceholder', '如 item')}
-                  className="h-8 text-[13px] w-full"
-                />
-              </label>
-
-              {sourceKind === 'json' && (
+              {isObjectMode ? (
+                <span className="text-[11px] text-text-muted">{tr('unnestAliasObjectHint')}</span>
+              ) : (
                 <label className="grid gap-1">
                   <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-                    {tr('unnestJsonPath', 'JSON 路径')}
+                    {tr('unnestAlias')}
                   </span>
                   <GlassFormTextInput
-                    value={path}
-                    onChange={(v) => updateConfig((cfg) => ({ ...cfg, path: v || undefined }))}
-                    placeholder={tr('unnestJsonPathPlaceholder', '如 $.data.items')}
+                    value={alias}
+                    onChange={(v) => updateConfig((cfg) => ({ ...cfg, alias: v || undefined }))}
+                    placeholder={tr('unnestAliasPlaceholder')}
                     className="h-8 text-[13px] w-full"
                   />
-                  <span className="text-[10px] text-text-muted">
-                    {tr('unnestJsonPathHint', '$ 代表根节点，如 $.items 表示取 items 键对应的数组')}
-                  </span>
                 </label>
               )}
+
+              <label className="grid gap-1">
+                <span className="mb-1 block text-[12px] font-medium text-text-secondary">
+                  {tr('unnestPathLabel')}
+                </span>
+                <GlassFormTextInput
+                  value={path}
+                  onChange={(v) => updateConfig((cfg) => ({ ...cfg, path: v || undefined }))}
+                  placeholder={tr('unnestPathPlaceholder')}
+                  className="h-8 text-[13px] w-full"
+                />
+                <span className="text-[10px] text-text-muted">{tr('unnestPathHint')}</span>
+              </label>
             </div>
           </div>
         </div>
@@ -142,84 +147,64 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
         </div>
 
         {/* ═══ 步骤3: 输出配置 ═══ */}
-        <div className="flex-1 flex flex-col gap-2">
-          <div className="flex items-end gap-3 px-0.5">
-            <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
-              3
-            </span>
-            <div className="grid">
-              <span className="text-[13px] font-semibold text-text-primary">
-                {tr('unnestOutputHeader', '输出配置')}
+        {isObjectMode ? (
+          <div className="flex-1 flex flex-col gap-2">
+            <div className="flex items-end gap-3 px-0.5">
+              <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
+                3
               </span>
-              <span className="text-[10px] text-text-muted">
-                {tr('unnestOutputHint', '配置索引列与递归选项')}
-              </span>
+              <div className="grid">
+                <span className="text-[13px] font-semibold text-text-primary">
+                  {tr('unnestOutputHeader')}
+                </span>
+                <span className="text-[10px] text-text-muted">{tr('unnestOutputHint')}</span>
+              </div>
+            </div>
+            <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
+              <div className="p-3">
+                <span className="text-[11px] text-text-muted">{tr('unnestObjectNoConfig')}</span>
+              </div>
             </div>
           </div>
-          <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
-            <div className="p-3 grid gap-2.5">
-              <div className="grid gap-1">
-                <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
-                  <input
-                    type="checkbox"
-                    checked={!!withIndex}
-                    onChange={(e) =>
-                      updateConfig((cfg) => ({
-                        ...cfg,
-                        withIndex: e.target.checked
-                          ? cfg.withIndex && typeof cfg.withIndex === 'string'
-                            ? cfg.withIndex
-                            : 'index'
-                          : undefined,
-                      }))
-                    }
-                    className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
-                  />
-                  {tr('unnestIndexCol', '索引列')}
-                </label>
-                <GlassFormTextInput
-                  value={withIndex}
-                  disabled={!withIndex}
-                  onChange={(v) => updateConfig((cfg) => ({ ...cfg, withIndex: v || undefined }))}
-                  className="h-8 text-[13px] w-full disabled:cursor-not-allowed disabled:opacity-40"
-                />
+        ) : (
+          <div className="flex-1 flex flex-col gap-2">
+            <div className="flex items-end gap-3 px-0.5">
+              <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
+                3
+              </span>
+              <div className="grid">
+                <span className="text-[13px] font-semibold text-text-primary">
+                  {tr('unnestOutputHeader')}
+                </span>
+                <span className="text-[10px] text-text-muted">{tr('unnestOutputHint')}</span>
               </div>
-
-              <div className="grid gap-1">
-                <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
-                  <input
-                    type="checkbox"
-                    checked={recursive}
-                    onChange={(e) =>
-                      updateConfig((cfg) => ({
-                        ...cfg,
-                        recursive: e.target.checked ? true : undefined,
-                        maxDepth: e.target.checked ? cfg.maxDepth : undefined,
-                      }))
-                    }
-                    className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
+            </div>
+            <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
+              <div className="p-3 grid gap-2.5">
+                <div className="grid gap-1">
+                  <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={withIndexEnabled}
+                      onChange={(e) => {
+                        updateConfig((cfg) => ({
+                          ...cfg,
+                          withIndex: e.target.checked ? '' : undefined,
+                        }));
+                      }}
+                      className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
+                    />
+                    {tr('unnestIndexCol')}
+                  </label>
+                  <GlassFormTextInput
+                    value={withIndex}
+                    disabled={!withIndexEnabled}
+                    onChange={(v) => updateConfig((cfg) => ({ ...cfg, withIndex: v }))}
+                    placeholder={tr('unnestIndexPlaceholder')}
+                    className="h-8 text-[13px] w-full disabled:cursor-not-allowed disabled:opacity-40"
                   />
-                  {tr('unnestRecursive', '递归展开')}
-                </label>
-                <GlassFormTextInput
-                  value={depth === -1 ? '' : String(depth)}
-                  disabled={!recursive}
-                  inputMode="numeric"
-                  onChange={(v) => {
-                    const n = v === '' ? -1 : Number(v);
-                    if (Number.isNaN(n)) return;
-                    if (n <= 0) {
-                      updateConfig((cfg) => ({ ...cfg, recursive: true, maxDepth: undefined }));
-                    } else {
-                      updateConfig((cfg) => ({ ...cfg, recursive: true, maxDepth: n }));
-                    }
-                  }}
-                  placeholder={tr('unnestMaxDepthPlaceholder', '不限制深度')}
-                  className="h-8 text-[13px] w-full"
-                />
-              </div>
+                </div>
 
-              {sourceKind === 'json' && (
                 <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
                   <input
                     type="checkbox"
@@ -232,12 +217,27 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                     }
                     className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
                   />
-                  {tr('unnestKeepParent', '保留父字段名')}
+                  {tr('unnestKeepParent')}
                 </label>
-              )}
+
+                <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
+                  <input
+                    type="checkbox"
+                    checked={preserveOrder}
+                    onChange={(e) =>
+                      updateConfig((cfg) => ({
+                        ...cfg,
+                        preserveOrder: e.target.checked || undefined,
+                      }))
+                    }
+                    className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
+                  />
+                  {tr('unnestPreserveOrder')}
+                </label>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

@@ -1,14 +1,34 @@
 import { z } from 'zod';
 import { SortKeySchema } from './common';
 
-export const LimitConfigSchema = z.object({
-  limit: z.number().default(100),
-  mode: z.enum(['fixed', 'random']).default('fixed'),
-  unit: z.enum(['rows', 'percent']).default('rows'),
-  orderBy: z.array(SortKeySchema).default([]),
-  groupBy: z.array(z.string()).optional(),
-  ties: z.boolean().default(false),
-  offset: z.number().default(0),
-  method: z.enum(['system', 'bernoulli']).default('system'),
-  seed: z.number().optional(),
-});
+export const LimitConfigSchema = z
+  .object({
+    limit: z.number().default(10),
+    mode: z.enum(['fixed', 'random']).default('fixed'),
+    unit: z.enum(['rows', 'percent']).default('rows'),
+    orderBy: z.array(SortKeySchema).default([]),
+    ties: z.boolean().default(false),
+    offset: z.number().int().min(0).default(0),
+    method: z.enum(['system', 'bernoulli']).optional(),
+    seed: z.number().optional(),
+  })
+  .superRefine((config, context) => {
+    if (config.unit === 'percent' && config.limit > 100) {
+      context.addIssue({
+        code: 'custom',
+        path: ['limit'],
+        message: 'Percentage cannot exceed 100',
+      });
+    }
+  })
+  .transform((config) =>
+    config.unit === 'rows'
+      ? {
+          ...config,
+          method: undefined,
+        }
+      : {
+          ...config,
+          offset: 0,
+        }
+  );

@@ -159,7 +159,7 @@ export const WORKFLOW_IR_OPERATION_REGISTRY = [
   ),
   irOperation(
     'pivot',
-    'workflow.step(input, "pivot", { config: { on: ["pivotField"], values: ["fixedValue1", "fixedValue2"], using: [{ function: canonicalAggregate, expression: expr(row => row["metricField"]) | "*", alias: "metric", parameters?: [literal] }, ...moreMetrics], groupBy: ["groupField"] } }). on contains exactly one raw column-name string; values are fixed literals; using is non-empty and may contain multiple metrics; groupBy contains raw column names; never use expr(...) in on or groupBy; only using[].expression uses expr(...)',
+    'workflow.step(input, "pivot", { config: { on: [{ field: "pivotField", values: ["fixedValue1", "fixedValue2"] }], using: [{ function: canonicalAggregate, expression: expr(row => row["metricField"]) | "*", alias: "metric", parameters?: [literal] }, ...moreMetrics], groupBy: ["groupField"] } }). on contains axis objects, each with a raw column-name field and fixed literal values; using is non-empty and may contain multiple metrics; groupBy contains raw column names; never use expr(...) in on[].field or groupBy; only using[].expression uses expr(...)',
     '{ config: WorkflowPivotConfig }',
     validatePivot
   ),
@@ -283,7 +283,7 @@ type WorkflowPivotMetric =
   | { function: ${nonNumericAggregates}; expression: WorkflowNativeExpression<unknown>; alias: string; parameters?: never }
   | { function: "string_agg"; expression: WorkflowNativeExpression<string>; alias: string; parameters: readonly [string] }
   | { function: "quantile_cont" | "quantile_disc" | "approx_quantile"; expression: WorkflowNativeExpression<number>; alias: string; parameters: readonly [number] };
-type WorkflowPivotConfig = { on: readonly [string]; values: readonly [WorkflowLiteral, ...WorkflowLiteral[]]; using: readonly [WorkflowPivotMetric, ...WorkflowPivotMetric[]]; groupBy: ReadonlyArray<string> };
+type WorkflowPivotConfig = { on: readonly [{ field: string; values: readonly [WorkflowLiteral, ...WorkflowLiteral[]] }]; using: readonly [WorkflowPivotMetric, ...WorkflowPivotMetric[]]; groupBy: ReadonlyArray<string> };
 type WorkflowUnpivotConfig = { mode: "columns" | "except"; columns: WorkflowNonEmptyStringArray; nameColumn: string; valueColumn: string; includeNulls: boolean };
 type WorkflowUnnestConfig = { sourceKind: "list" | "json"; column: string; alias: string; path?: string; withIndex?: string; recursive: boolean; maxDepth?: number; keepParentNames: boolean };
 declare const workflowValueBrand: unique symbol;
@@ -512,9 +512,16 @@ function validateLimit(op: Record<string, unknown>, at: string): void {
 
 function validatePivot(op: Record<string, unknown>, at: string): void {
   const config = assertRecord(op.config, `${at}.config`);
-  assertStringArray(config.on, `${at}.config.on`, true);
-  assertArrayLength(config.on, `${at}.config.on`, 1);
-  assertLiteralArray(config.values, `${at}.config.values`, true);
+  const on = assertArray(config.on, `${at}.config.on`, true);
+  const seenFields = new Set<string>();
+  on.forEach((value, item) => {
+    const axis = assertRecord(value, `${at}.config.on[${item}]`);
+    assertString(axis.field, `${at}.config.on[${item}].field`);
+    const key = String(axis.field).trim().toLowerCase();
+    if (seenFields.has(key)) fail(`${at}.config.on fields must be unique`);
+    seenFields.add(key);
+    assertLiteralArray(axis.values, `${at}.config.on[${item}].values`);
+  });
   assertStringArray(config.groupBy, `${at}.config.groupBy`);
   const aliases = new Set<string>();
   assertArray(config.using, `${at}.config.using`, true).forEach((value, item) => {
@@ -713,11 +720,6 @@ function assertArray(value: unknown, at: string, nonEmpty = false): unknown[] {
   if (!Array.isArray(value) || (nonEmpty && value.length === 0))
     fail(`${at} must be ${nonEmpty ? 'a non-empty' : 'an'} array`);
   return value;
-}
-function assertArrayLength(value: unknown, at: string, length: number): void {
-  if (!Array.isArray(value) || value.length !== length) {
-    fail(`${at} must contain exactly ${length} item(s)`);
-  }
 }
 function assertString(value: unknown, at: string): string {
   if (typeof value !== 'string' || !value.trim()) fail(`${at} must be a non-empty string`);

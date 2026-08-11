@@ -2,23 +2,31 @@ import { useCallback, useEffect, useMemo } from 'react';
 import type { OperatorFormProps } from './index';
 import {
   DATA_FIELD_TYPES,
-  dataFieldTypeLabel,
   normalizeDataFieldType,
   type DataFieldType,
 } from '../../../shared/data-field-types';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
-import { GlassRowList } from './shared/GlassRowList';
+import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
+import { useDataFieldTypeLabel } from '../../hooks/useDataFieldTypeLabel';
 import { computeUsedFields } from './shared/used-fields';
+import { GlassFormTextInput } from './shared/GlassFormTextInput';
+import {
+  DATE_FORMAT_PRESETS,
+  SCALE_MIN,
+  SCALE_MAX,
+} from '../../../shared/operator-schemas/type-convert';
 
 interface ConversionEntry {
   column: string;
   type: string;
   onError?: string;
+  format?: string;
+  scale?: number;
 }
 
 const DEFAULT_CONVERSION: ConversionEntry = { column: '', type: 'text' };
@@ -31,6 +39,7 @@ export default function FormTypeConvert({
   onNodeChange,
 }: OperatorFormProps) {
   const tr = useFormTranslation();
+  const dataTypeLabel = useDataFieldTypeLabel();
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 
@@ -88,6 +97,23 @@ export default function FormTypeConvert({
     [activeConversions, commitConversions]
   );
 
+  const copyConversion = useCallback(
+    (index: number) => {
+      if (activeConversions.length >= fieldCompletions.length) return;
+      const source = activeConversions[index];
+      const next = [...activeConversions];
+      next.splice(index + 1, 0, {
+        column: '',
+        type: source.type,
+        onError: source.onError,
+        format: source.format,
+        scale: source.scale,
+      } as ConversionEntry);
+      commitConversions(next);
+    },
+    [activeConversions, fieldCompletions.length, commitConversions]
+  );
+
   const usedFields = useMemo(
     () => computeUsedFields(activeConversions, (c) => c.column),
     [activeConversions]
@@ -95,9 +121,9 @@ export default function FormTypeConvert({
 
   const onErrorOptions = useMemo(
     () => [
-      { value: 'null', label: tr('typeConvertErrorNull', '转换出错则填充空值') },
-      { value: 'fail', label: tr('typeConvertErrorFail', '转换出错则显示报错') },
-      { value: 'keep', label: tr('typeConvertErrorKeep', '转换出错则保留原值') },
+      { value: 'null', label: tr('typeConvertErrorNull') },
+      { value: 'fail', label: tr('typeConvertErrorFail') },
+      { value: 'keep', label: tr('typeConvertErrorKeep') },
     ],
     [tr]
   );
@@ -112,8 +138,8 @@ export default function FormTypeConvert({
             items={activeConversions}
             columns={[
               {
-                flex: 'flex-[3]',
-                header: tr('typeConvertSourceField', '待转换字段'),
+                flex: 'flex-[2]',
+                header: tr('typeConvertSourceField'),
                 render: (conv: ConversionEntry, i: number) => {
                   const disabledFields = new Set(usedFields);
                   if (conv.column) disabledFields.delete(conv.column);
@@ -123,9 +149,9 @@ export default function FormTypeConvert({
                       options={fieldCompletions}
                       columnTypes={columnTypes}
                       onChange={(value) => updateConversion(i, { column: value })}
-                      placeholder={tr('typeConvertSelectField', '选择字段')}
-                      searchPlaceholder={tr('searchField', '搜索字段')}
-                      emptyText={tr('noMatch', '无匹配字段')}
+                      placeholder={tr('typeConvertSelectField')}
+                      searchPlaceholder={tr('searchField')}
+                      emptyText={tr('noMatch')}
                       disabledOptions={disabledFields}
                       className="flex-1 min-w-0 h-7"
                     />
@@ -133,18 +159,18 @@ export default function FormTypeConvert({
                 },
               },
               {
-                flex: 'flex-[1.2]',
-                header: tr('typeConvertOriginalType', '原类型'),
+                flex: 'flex-[1]',
+                header: tr('typeConvertOriginalType'),
                 render: (conv: ConversionEntry) => (
                   <span className="w-full text-center text-[11px] text-text-muted tabular-nums">
                     {conv.column && columnTypes?.[conv.column]
-                      ? dataFieldTypeLabel(columnTypes[conv.column])
+                      ? dataTypeLabel(columnTypes[conv.column])
                       : ''}
                   </span>
                 ),
               },
               {
-                flex: 'flex-[0.6]',
+                flex: 'flex-[0.5]',
                 header: '',
                 render: () => (
                   <div className="flex items-center gap-0.5 justify-center text-text-muted">
@@ -154,18 +180,27 @@ export default function FormTypeConvert({
                 ),
               },
               {
-                flex: 'flex-[2]',
-                header: tr('typeConvertTargetType', '目标类型'),
+                flex: 'flex-[1.5]',
+                header: tr('typeConvertTargetType'),
                 render: (conv: ConversionEntry, i: number) => (
                   <GlassOptionSingleSelect
                     value={normalizeDataFieldType(conv.type)}
-                    onChange={(v) => updateConversion(i, { type: v as DataFieldType })}
+                    onChange={(v) => {
+                      const newType = v as DataFieldType;
+                      const isDateType = newType === 'date' || newType === 'datetime';
+                      const isDecimal = newType === 'decimal';
+                      updateConversion(i, {
+                        type: newType,
+                        ...(isDateType ? {} : { format: undefined }),
+                        ...(isDecimal ? {} : { scale: undefined }),
+                      });
+                    }}
                     groups={[
                       {
                         key: 'types',
                         items: DATA_FIELD_TYPES.map((t) => ({
                           value: t,
-                          label: dataFieldTypeLabel(t),
+                          label: dataTypeLabel(t),
                         })),
                       },
                     ]}
@@ -174,8 +209,50 @@ export default function FormTypeConvert({
                 ),
               },
               {
+                flex: 'flex-[1.5]',
+                header: tr('typeConvertDateFormat'),
+                render: (conv: ConversionEntry, i: number) => {
+                  const isDateType = conv.type === 'date' || conv.type === 'datetime';
+                  const formatOptions = [
+                    { value: '', label: tr('typeConvertAutoParse') },
+                    ...DATE_FORMAT_PRESETS.map((p) => ({ value: p.value, label: p.example })),
+                  ];
+                  return (
+                    <GlassOptionSingleSelect
+                      value={isDateType ? (conv.format ?? '') : ''}
+                      disabled={!isDateType}
+                      groups={[{ key: 'formats', items: formatOptions }]}
+                      onChange={(v) => updateConversion(i, { format: v || undefined })}
+                      className="h-6 w-full text-[12px]"
+                    />
+                  );
+                },
+              },
+              {
+                flex: 'flex-[1]',
+                header: tr('typeConvertScale'),
+                render: (conv: ConversionEntry, i: number) => (
+                  <GlassFormTextInput
+                    value={conv.type === 'decimal' ? String(conv.scale ?? '') : ''}
+                    disabled={conv.type !== 'decimal'}
+                    textCenter
+                    className="h-6 w-full text-[12px]"
+                    placeholder={`${SCALE_MIN}`}
+                    min={SCALE_MIN}
+                    max={SCALE_MAX}
+                    type="number"
+                    onChange={(v) => {
+                      const n = v === '' ? undefined : Number(v);
+                      updateConversion(i, {
+                        scale: n !== undefined && !isNaN(n) ? n : undefined,
+                      });
+                    }}
+                  />
+                ),
+              },
+              {
                 flex: 'flex-[2]',
-                header: tr('typeConvertErrorHandling', '错误处理'),
+                header: tr('typeConvertErrorHandling'),
                 render: (conv: ConversionEntry, i: number) => (
                   <GlassOptionSingleSelect
                     value={conv.onError ?? 'null'}
@@ -200,14 +277,20 @@ export default function FormTypeConvert({
             ]}
             onAdd={(i) => addConversionAfter(i)}
             onRemove={(i) => removeConversion(i)}
-            addTitle={tr('typeConvertAdd', '添加转换')}
-            removeTitle={tr('typeConvertRemove', '删除转换')}
+            onCopy={copyConversion}
+            addTitle={tr('typeConvertAdd')}
+            removeTitle={tr('typeConvertRemove')}
+            copyTitle={tr('fieldMappingCopy')}
+            actions={['add', 'copy', 'remove']}
+            canAct={(action: RowAction) =>
+              action === 'remove' ? true : activeConversions.length < fieldCompletions.length
+            }
             draggable
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
             getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-            dragTitle={tr('dragToReorder', '拖拽排序')}
+            dragTitle={tr('dragToReorder')}
           />
         </div>
       </div>

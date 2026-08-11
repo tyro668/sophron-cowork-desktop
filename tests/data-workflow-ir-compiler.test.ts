@@ -86,9 +86,9 @@ describe('JavaScript Workflow SDK pipeline', () => {
     expect(prompt).toContain('strategy: "drop_empty_rows"');
     expect(prompt).toContain('strategy: "by_column"');
     expect(prompt).toContain('method: "skip|drop|nullify_values|literal_fill"');
-    expect(prompt).toContain('on: ["pivotField"]');
+    expect(prompt).toContain('on: [{ field: "pivotField"');
     expect(prompt).toContain('groupBy: ["groupField"]');
-    expect(prompt).toContain('never use expr(...) in on or groupBy');
+    expect(prompt).toContain('never use expr(...) in on[].field or groupBy');
     expect(prompt).toContain('only using[].expression uses expr(...)');
     expect(prompt).toContain('workflow.step(input, "derive_window"');
     expect(prompt).toContain('Use empty partitionBy and orderBy for an all-rows total');

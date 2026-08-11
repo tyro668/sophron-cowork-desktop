@@ -34,13 +34,13 @@ function migrateEntry(e: Record<string, unknown>): MappingEntry {
     return {
       source,
       targetMode: 'suffix',
-      targetValue: target.slice(source.length).replace(/^_/, ''),
+      targetValue: target.slice(source.length),
     };
   if (target.endsWith(source))
     return {
       source,
       targetMode: 'prefix',
-      targetValue: target.slice(0, -source.length).replace(/_$/, ''),
+      targetValue: target.slice(0, -source.length),
     };
   return { source, targetMode: 'rename', targetValue: target };
 }
@@ -59,14 +59,10 @@ export default function FormFieldMapping({
     () => ((node.config.mappings as Record<string, unknown>[]) ?? []).map(migrateEntry),
     [node.config.mappings]
   );
-
-  // Auto-initialize with one empty row
-  useEffect(() => {
-    if (mappings.length === 0) {
-      commitMappings([{ ...DEFAULT_MAPPING }]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const editableMappings = useMemo(
+    () => (mappings.length > 0 ? mappings : [{ ...DEFAULT_MAPPING }]),
+    [mappings]
+  );
 
   const commitMappings = useCallback(
     (next: MappingEntry[]) => {
@@ -83,7 +79,7 @@ export default function FormFieldMapping({
     isDragging,
     resetDrag,
     dragIndexRef,
-  } = useDragReorder(mappings, commitMappings);
+  } = useDragReorder(editableMappings, commitMappings);
 
   useEffect(() => {
     if (!isDragging) resetDrag();
@@ -131,7 +127,7 @@ export default function FormFieldMapping({
   const removeMapping = useCallback(
     (index: number) => {
       if (activeMappings.length <= 1) {
-        commitMappings([{ ...DEFAULT_MAPPING }]);
+        commitMappings([]);
         return;
       }
       commitMappings(activeMappings.filter((_, i) => i !== index));
@@ -141,9 +137,9 @@ export default function FormFieldMapping({
 
   const targetModeOptions = useMemo(
     () => [
-      { value: 'prefix', label: tr('fieldMappingModePrefix', '加前缀') },
-      { value: 'suffix', label: tr('fieldMappingModeSuffix', '加后缀') },
-      { value: 'rename', label: tr('fieldMappingModeRename', '改名') },
+      { value: 'prefix', label: tr('fieldMappingModePrefix') },
+      { value: 'suffix', label: tr('fieldMappingModeSuffix') },
+      { value: 'rename', label: tr('fieldMappingModeRename') },
     ],
     [tr]
   );
@@ -152,7 +148,7 @@ export default function FormFieldMapping({
     () => [
       {
         flex: 'flex-[3]',
-        header: tr('fieldMappingSourceField', '源字段'),
+        header: tr('fieldMappingSourceField'),
         render: (item, i) => {
           const disabledFields = new Set(usedFields);
           if (item.source) disabledFields.delete(item.source);
@@ -161,9 +157,9 @@ export default function FormFieldMapping({
               value={item.source}
               options={fieldCompletions}
               onChange={(value) => updateMapping(i, { source: value })}
-              placeholder={tr('fieldMappingSelectField', '选择字段')}
-              searchPlaceholder={tr('searchField', '搜索字段')}
-              emptyText={tr('noMatch', '无匹配字段')}
+              placeholder={tr('fieldMappingSelectField')}
+              searchPlaceholder={tr('searchField')}
+              emptyText={tr('noMatch')}
               disabledOptions={disabledFields}
               className="flex-1 min-w-0 h-7"
             />
@@ -172,7 +168,7 @@ export default function FormFieldMapping({
       },
       {
         flex: 'flex-[1.5]',
-        header: tr('fieldMappingMode', '模式'),
+        header: tr('fieldMappingMode'),
         render: (item, i) => (
           <GlassOptionSingleSelect
             value={item.targetMode}
@@ -184,17 +180,17 @@ export default function FormFieldMapping({
       },
       {
         flex: 'flex-[2.5]',
-        header: tr('fieldMappingValue', '值'),
+        header: tr('fieldMappingValue'),
         render: (item, i) => (
           <GlassFormTextInput
             value={item.targetValue}
             onChange={(v) => updateMapping(i, { targetValue: v })}
             placeholder={
               item.targetMode === 'rename'
-                ? tr('fieldMappingRenamePlaceholder', '新字段名')
+                ? tr('fieldMappingRenamePlaceholder')
                 : item.targetMode === 'prefix'
-                  ? tr('fieldMappingPrefixPlaceholder', '前缀')
-                  : tr('fieldMappingSuffixPlaceholder', '后缀')
+                  ? tr('fieldMappingPrefixPlaceholder')
+                  : tr('fieldMappingSuffixPlaceholder')
             }
             className="h-7 px-1.5 text-[12px] w-full"
           />
@@ -207,7 +203,7 @@ export default function FormFieldMapping({
       },
       {
         flex: 'flex-[2]',
-        header: tr('fieldMappingTargetField', '新字段名'),
+        header: tr('fieldMappingTargetField'),
         render: (item, _i) => {
           const target = computeTarget(item);
           return (
@@ -233,8 +229,8 @@ export default function FormFieldMapping({
             onAdd={addMappingAfter}
             onRemove={removeMapping}
             onCopy={copyMapping}
-            addTitle={tr('fieldMappingAdd', '添加映射')}
-            removeTitle={tr('fieldMappingRemove', '删除映射')}
+            addTitle={tr('fieldMappingAdd')}
+            removeTitle={tr('fieldMappingRemove')}
             canAct={(action: RowAction) =>
               action === 'copy'
                 ? activeMappings.length < fieldCompletions.length
@@ -248,7 +244,7 @@ export default function FormFieldMapping({
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
             getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-            dragTitle={tr('dragToReorder', '拖拽排序')}
+            dragTitle={tr('dragToReorder')}
           />
         </div>
       </div>
