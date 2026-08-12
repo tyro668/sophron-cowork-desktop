@@ -70,6 +70,7 @@ resources/python
 docs/*
 !docs/development/
 !docs/development/**
+/docs/Review/
 /docs/feature/
 /.mcp.json
 /eng.traineddata

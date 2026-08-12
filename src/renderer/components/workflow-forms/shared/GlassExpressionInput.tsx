@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useFormTranslation } from '../../../hooks/useFormTranslation';
-import { Pencil, X, ChevronDown, Search } from 'lucide-react';
+import { Pencil, X, ChevronDown, Search, WandSparkles } from 'lucide-react';
 import { StreamLanguage } from '@codemirror/language';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { Compartment, EditorState } from '@codemirror/state';
@@ -8,6 +8,7 @@ import { EditorView, placeholder, keymap } from '@codemirror/view';
 import { defaultKeymap } from '@codemirror/commands';
 import { Tag, tags } from '@lezer/highlight';
 import { useDataFieldTypeLabel } from '../../../hooks/useDataFieldTypeLabel';
+import { CalculationFunctionWizard } from './CalculationFunctionWizard';
 
 export interface HelperToken {
   label: string;
@@ -454,6 +455,7 @@ interface GlassExpressionInputProps {
   columnTypes?: Record<string, string>;
   placeholder?: string;
   excludeFunctionCategories?: string[];
+  enableCalculationWizard?: boolean;
 }
 
 const exprLanguage = StreamLanguage.define({
@@ -674,6 +676,7 @@ export function GlassExpressionInput({
   columnTypes,
   placeholder: placeholderProp,
   excludeFunctionCategories,
+  enableCalculationWizard,
 }: GlassExpressionInputProps) {
   const tr = useFormTranslation();
   const dataTypeLabel = useDataFieldTypeLabel();
@@ -703,6 +706,7 @@ export function GlassExpressionInput({
       columnTypes={columnTypes}
       onClose={() => setOpen(false)}
       excludeFunctionCategories={excludeFunctionCategories}
+      enableCalculationWizard={enableCalculationWizard}
       tr={tr}
       dataTypeLabel={dataTypeLabel}
     />
@@ -716,6 +720,7 @@ function ExpressionEditorDialog({
   columnTypes,
   onClose,
   excludeFunctionCategories,
+  enableCalculationWizard,
   tr,
   dataTypeLabel,
 }: GlassExpressionInputProps & {
@@ -728,6 +733,7 @@ function ExpressionEditorDialog({
   const [showFields, setShowFields] = useState(true);
   const [showFn, setShowFn] = useState(true);
   const [showDetail, setShowDetail] = useState(true);
+  const [showWizard, setShowWizard] = useState(false);
   const [fieldQuery, setFieldQuery] = useState('');
   const [hoveredToken, setHoveredToken] = useState<HelperToken | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -795,9 +801,25 @@ function ExpressionEditorDialog({
     >
       <div className="flex h-[36rem] max-h-[calc(100vh-3rem)] w-[56rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl">
         <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-          <h3 className="text-[14px] font-medium text-text-primary">
-            {tr('aggregateExpressionEditor')}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-[14px] font-medium text-text-primary">
+              {tr('aggregateExpressionEditor')}
+            </h3>
+            {enableCalculationWizard && (
+              <button
+                type="button"
+                onClick={() => setShowWizard((current) => !current)}
+                className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
+                  showWizard
+                    ? 'border-accent/30 bg-accent/10 text-accent'
+                    : 'border-border-muted bg-background/42 text-text-secondary hover:bg-surface-hover'
+                }`}
+              >
+                <WandSparkles className="h-3.5 w-3.5" />
+                {showWizard ? tr('calcFieldCloseWizard') : tr('calcFieldOpenWizard')}
+              </button>
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -808,108 +830,120 @@ function ExpressionEditorDialog({
         </div>
         <div className="flex flex-1 flex-col gap-3 overflow-hidden p-4">
           <div ref={hostRef} />
-          <div className="grid grid-cols-[1fr_1fr_1.5fr] gap-3 min-h-0 min-w-0 flex-1 overflow-hidden">
-            <div className="flex flex-col rounded-lg border border-border-muted/60 min-h-0">
-              <button
-                type="button"
-                onClick={() => setShowFields(!showFields)}
-                className="flex w-full items-center gap-1 px-3 py-1.5 text-[11px] font-medium text-text-muted hover:text-text-secondary transition-colors border-b border-border-muted/60"
-              >
-                <ChevronDown
-                  className={`h-3 w-3 transition-transform ${showFields ? 'rotate-180' : ''}`}
-                />
-                {tr('calcFieldTabFields')}
-              </button>
-              {showFields && (
-                <div className="flex-1 flex flex-col min-h-0">
-                  <div className="relative shrink-0 px-3 pt-2 pb-2">
-                    <Search className="pointer-events-none absolute left-[22px] top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
-                    <input
-                      type="text"
-                      value={fieldQuery}
-                      onChange={(e) => setFieldQuery(e.target.value)}
-                      placeholder={tr('calcFieldFieldSearchPlaceholder')}
-                      className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+          {showWizard ? (
+            <CalculationFunctionWizard
+              fieldCompletions={fieldCompletions}
+              columnTypes={columnTypes}
+              onInsert={(expression) => {
+                editAtCursor(expression);
+                setShowWizard(false);
+              }}
+              tr={tr}
+            />
+          ) : (
+            <div className="grid grid-cols-[1fr_1fr_1.5fr] gap-3 min-h-0 min-w-0 flex-1 overflow-hidden">
+              <div className="flex flex-col rounded-lg border border-border-muted/60 min-h-0">
+                <button
+                  type="button"
+                  onClick={() => setShowFields(!showFields)}
+                  className="flex w-full items-center gap-1 px-3 py-1.5 text-[11px] font-medium text-text-muted hover:text-text-secondary transition-colors border-b border-border-muted/60"
+                >
+                  <ChevronDown
+                    className={`h-3 w-3 transition-transform ${showFields ? 'rotate-180' : ''}`}
+                  />
+                  {tr('calcFieldTabFields')}
+                </button>
+                {showFields && (
+                  <div className="flex-1 flex flex-col min-h-0">
+                    <div className="relative shrink-0 px-3 pt-2 pb-2">
+                      <Search className="pointer-events-none absolute left-[22px] top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
+                      <input
+                        type="text"
+                        value={fieldQuery}
+                        onChange={(e) => setFieldQuery(e.target.value)}
+                        placeholder={tr('calcFieldFieldSearchPlaceholder')}
+                        className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+                      />
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-2 min-h-0">
+                      {sortedFields.length === 0 ? (
+                        <div className="px-2 py-4 text-center text-[11px] text-text-muted">
+                          {tr('noMatch')}
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {sortedFields.map((col) => {
+                            const isStar = col === '*';
+                            const colType = isStar ? undefined : columnTypes?.[col];
+                            return (
+                              <button
+                                key={col}
+                                type="button"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  if (isStar) {
+                                    editAtCursor('*');
+                                    return;
+                                  }
+                                  editAtCursor(`[${col}]`);
+                                }}
+                                className={`inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-border-muted/60 bg-background/20 px-1.5 text-[11px] text-text-secondary transition-colors hover:border-accent/40 hover:bg-accent/10 hover:text-accent ${isStar ? 'bg-accent/5 border-accent/30 font-semibold' : ''}`}
+                              >
+                                {colType && (
+                                  <span className="rounded bg-background/60 px-0.5 text-[10px] leading-none text-text-muted">
+                                    {dataTypeLabel(colType)}
+                                  </span>
+                                )}
+                                <span>{isStar ? tr('calcFieldAllFieldsStar') : col}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-col rounded-lg border border-border-muted/60 min-h-0">
+                <button
+                  type="button"
+                  onClick={() => setShowFn(!showFn)}
+                  className="flex w-full items-center gap-1 px-3 py-1.5 text-[11px] font-medium text-text-muted hover:text-text-secondary transition-colors"
+                >
+                  <ChevronDown
+                    className={`h-3 w-3 transition-transform ${showFn ? 'rotate-180' : ''}`}
+                  />
+                  {tr('calcFieldFnHelperLabel')}
+                </button>
+                {showFn && (
+                  <div className="flex-1 overflow-y-auto border-t border-border-muted/60 p-2 min-h-0">
+                    <GlassFunctionHelper
+                      onInsert={editAtCursor}
+                      excludeCategories={excludeFunctionCategories}
+                      onTokenHover={setHoveredToken}
                     />
                   </div>
-                  <div className="flex-1 overflow-y-auto p-2 min-h-0">
-                    {sortedFields.length === 0 ? (
-                      <div className="px-2 py-4 text-center text-[11px] text-text-muted">
-                        {tr('noMatch')}
-                      </div>
-                    ) : (
-                      <div className="flex flex-wrap gap-1">
-                        {sortedFields.map((col) => {
-                          const isStar = col === '*';
-                          const colType = isStar ? undefined : columnTypes?.[col];
-                          return (
-                            <button
-                              key={col}
-                              type="button"
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                if (isStar) {
-                                  editAtCursor('*');
-                                  return;
-                                }
-                                editAtCursor(`[${col}]`);
-                              }}
-                              className={`inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-border-muted/60 bg-background/20 px-1.5 text-[11px] text-text-secondary transition-colors hover:border-accent/40 hover:bg-accent/10 hover:text-accent ${isStar ? 'bg-accent/5 border-accent/30 font-semibold' : ''}`}
-                            >
-                              {colType && (
-                                <span className="rounded bg-background/60 px-0.5 text-[10px] leading-none text-text-muted">
-                                  {dataTypeLabel(colType)}
-                                </span>
-                              )}
-                              <span>{isStar ? tr('calcFieldAllFieldsStar') : col}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="flex flex-col rounded-lg border border-border-muted/60 min-h-0">
-              <button
-                type="button"
-                onClick={() => setShowFn(!showFn)}
-                className="flex w-full items-center gap-1 px-3 py-1.5 text-[11px] font-medium text-text-muted hover:text-text-secondary transition-colors"
-              >
-                <ChevronDown
-                  className={`h-3 w-3 transition-transform ${showFn ? 'rotate-180' : ''}`}
-                />
-                {tr('calcFieldFnHelperLabel')}
-              </button>
-              {showFn && (
-                <div className="flex-1 overflow-y-auto border-t border-border-muted/60 p-2 min-h-0">
-                  <GlassFunctionHelper
-                    onInsert={editAtCursor}
-                    excludeCategories={excludeFunctionCategories}
-                    onTokenHover={setHoveredToken}
+                )}
+              </div>
+              <div className="flex flex-col rounded-lg border border-border-muted/60 min-h-0">
+                <button
+                  type="button"
+                  onClick={() => setShowDetail(!showDetail)}
+                  className="flex w-full items-center gap-1 px-3 py-1.5 text-[11px] font-medium text-text-muted hover:text-text-secondary transition-colors"
+                >
+                  <ChevronDown
+                    className={`h-3 w-3 transition-transform ${showDetail ? 'rotate-180' : ''}`}
                   />
-                </div>
-              )}
+                  {tr('calcFieldDetailLabel')}
+                </button>
+                {showDetail && (
+                  <div className="flex-1 overflow-y-auto border-t border-border-muted/60 p-2 min-h-0">
+                    <FunctionDetailPanel token={hoveredToken} tr={tr} />
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="flex flex-col rounded-lg border border-border-muted/60 min-h-0">
-              <button
-                type="button"
-                onClick={() => setShowDetail(!showDetail)}
-                className="flex w-full items-center gap-1 px-3 py-1.5 text-[11px] font-medium text-text-muted hover:text-text-secondary transition-colors"
-              >
-                <ChevronDown
-                  className={`h-3 w-3 transition-transform ${showDetail ? 'rotate-180' : ''}`}
-                />
-                {tr('calcFieldDetailLabel')}
-              </button>
-              {showDetail && (
-                <div className="flex-1 overflow-y-auto border-t border-border-muted/60 p-2 min-h-0">
-                  <FunctionDetailPanel token={hoveredToken} tr={tr} />
-                </div>
-              )}
-            </div>
-          </div>
+          )}
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-border-subtle px-4 py-3">
           <button

@@ -164,7 +164,11 @@ function numericArg(
 }
 
 function textArg(value: string | undefined): string {
-  return JSON.stringify(value ?? '');
+  return formatCalculationStringLiteral(value ?? '');
+}
+
+export function formatCalculationStringLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
 }
 
 export const TIME_WINDOW_DEFS: Record<
@@ -286,6 +290,32 @@ export function normalizeCalculationEntries(
         entry.fiscalStartMonth <= 12
           ? entry.fiscalStartMonth
           : undefined,
+    };
+  });
+}
+
+/**
+ * Converts legacy structured calculations into the unified expression model used by the form.
+ * The execution layer still accepts the legacy fields while saved edits use expression text only.
+ */
+export function normalizeExpressionCalculationEntries(
+  entries: readonly CalculationConfigEntry[] | null | undefined,
+  sourceFields: readonly string[] = []
+): CalculationRow[] {
+  const rawEntries = entries ?? [];
+  const sourceFieldsByName = new Map(
+    sourceFields.map((field) => [field.trim().toLowerCase(), field] as const)
+  );
+  return normalizeCalculationEntries(rawEntries).map((entry, index) => {
+    const explicitAction = rawEntries[index]?.action;
+    const matchingSourceField = sourceFieldsByName.get(entry.field.trim().toLowerCase());
+    const action = explicitAction ?? (matchingSourceField ? 'replace' : 'add');
+    return {
+      id: entry.id,
+      field: action === 'replace' && matchingSourceField ? matchingSourceField : entry.field,
+      action,
+      expression:
+        entry.expression.trim() || (entry.type !== 'row' && entry.fn ? exprFromParts(entry) : ''),
     };
   });
 }
@@ -449,18 +479,4 @@ export function parseBound(bound: string | undefined): { type: string; value: nu
 function isAllowedBoundOffset(value: string): boolean {
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed >= 0 && parsed <= 1_000_000;
-}
-
-export function needsCalculationIdNormalization(
-  entries: readonly CalculationConfigEntry[] | null | undefined
-): boolean {
-  const seenIds = new Set<string>();
-  for (const entry of entries ?? []) {
-    const id = typeof entry.id === 'string' ? entry.id.trim() : '';
-    if (!id || seenIds.has(id)) {
-      return true;
-    }
-    seenIds.add(id);
-  }
-  return false;
 }

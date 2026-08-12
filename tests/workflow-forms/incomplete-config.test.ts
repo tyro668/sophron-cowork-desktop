@@ -148,11 +148,11 @@ describe('incomplete config guards', () => {
       expect(hasInvalidCalculateFieldConfig(node)).toBe(false);
     });
 
-    it('does not flag cross-mode calculations (loose check)', () => {
+    it('flags a placeholder cross-row calculation without a target or function', () => {
       const node = makeNode('calculate_field', {
         calculations: [{ type: 'cross', field: '', expression: '' }],
       });
-      expect(hasInvalidCalculateFieldConfig(node)).toBe(false);
+      expect(hasInvalidCalculateFieldConfig(node)).toBe(true);
     });
   });
 

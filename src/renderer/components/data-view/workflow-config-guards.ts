@@ -185,15 +185,7 @@ export function hasInvalidCalculateFieldConfig(node: DataWorkflowNode): boolean 
   if (node.type !== 'calculate_field') return false;
   const calculations = Array.isArray(node.config.calculations) ? node.config.calculations : [];
   if (calculations.length === 0) return true;
-  return calculations.some((calculation) => {
-    if (!calculation || typeof calculation !== 'object') return true;
-    const entry = calculation as Record<string, unknown>;
-    const type = typeof entry.type === 'string' ? entry.type : 'row';
-    if (type === 'cross') return false;
-    const field = typeof entry.field === 'string' ? entry.field.trim() : '';
-    const expression = typeof entry.expression === 'string' ? entry.expression.trim() : '';
-    return !field || !expression;
-  });
+  return calculations.some((calculation) => !isCompleteCalculation(calculation));
 }
 
 export function hasInvalidAggregateConfig(node: DataWorkflowNode): boolean {

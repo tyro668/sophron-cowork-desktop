@@ -13,8 +13,14 @@ export function compileCalculateFieldSql(
   const replaces: string[] = [];
   const additions: string[] = [];
   const existingColumns = new Set(inputColumns.map((column) => column.toLowerCase()));
+  const generatedFields = new Set<string>();
   for (const calculation of calculations) {
     if (!calculation.field?.trim()) continue;
+    const field = calculation.field.trim();
+    const normalizedField = field.toLowerCase();
+    if (generatedFields.has(normalizedField)) {
+      throw new Error(`Calculate field target '${field}' is configured more than once`);
+    }
     let expr: string;
     if (calculation.type !== 'row' && calculation.fn?.trim()) {
       expr = exprFromParts(calculation as CalculationRow);
@@ -22,15 +28,24 @@ export function compileCalculateFieldSql(
       if (!calculation.expression?.trim()) continue;
       expr = calculation.expression;
     }
-    const compiled = `${compileScalarExpression(expr)} AS ${quoteIdentifier(calculation.field)}`;
-    if (
-      calculation.action === 'replace' ||
-      existingColumns.has(calculation.field.trim().toLowerCase())
-    ) {
+    const compiled = `${compileScalarExpression(expr)} AS ${quoteIdentifier(field)}`;
+    const fieldExists = existingColumns.has(normalizedField);
+    if (calculation.action === 'replace') {
+      if (!fieldExists) {
+        throw new Error(`Calculate field replacement target '${field}' does not exist`);
+      }
+      replaces.push(compiled);
+    } else if (calculation.action === 'add') {
+      if (fieldExists) {
+        throw new Error(`Calculate field addition target '${field}' already exists`);
+      }
+      additions.push(compiled);
+    } else if (fieldExists) {
       replaces.push(compiled);
     } else {
       additions.push(compiled);
     }
+    generatedFields.add(normalizedField);
   }
   let sql = `CREATE TEMP TABLE ${output} AS SELECT *`;
   if (replaces.length > 0) sql += ` REPLACE (${replaces.join(', ')})`;

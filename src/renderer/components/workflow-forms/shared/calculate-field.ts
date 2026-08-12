@@ -8,6 +8,6 @@ export {
   createCalculationId,
   createCalculationRow,
   normalizeCalculationEntries,
+  normalizeExpressionCalculationEntries,
   exprFromParts,
-  needsCalculationIdNormalization,
 } from '../../../../shared/calculate-field/index';

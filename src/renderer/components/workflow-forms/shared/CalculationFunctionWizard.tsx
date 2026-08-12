@@ -1,0 +1,603 @@
+import { useMemo, useState } from 'react';
+import {
+  buildCalculationFunctionExpression,
+  calculationFunctionsByCategory,
+  CALCULATION_FUNCTION_CATEGORIES,
+  usesTemporalCalculationRangeUnit,
+  type CalculationFunctionCategory,
+  type CalculationOrderField,
+  type CalculationWindowFrame,
+} from '../../../../shared/calculate-field/function-registry';
+import { useDragReorder } from '../../../hooks/useDragReorder';
+import { GlassDirectionToggle } from './GlassDirectionToggle';
+import { GlassFieldMultiSelect } from './GlassFieldMultiSelect';
+import { GlassFieldSingleSelect } from './GlassFieldSingleSelect';
+import { GlassFormTextInput } from './GlassFormTextInput';
+import { GlassOptionSingleSelect } from './GlassOptionSingleSelect';
+import { GlassRowList } from './GlassRowList';
+import { GlassTagBar } from './GlassTagBar';
+
+interface CalculationFunctionWizardProps {
+  fieldCompletions: string[];
+  columnTypes?: Record<string, string>;
+  onInsert: (expression: string) => void;
+  tr: (key: string) => string;
+}
+
+type BoundType =
+  | 'unbounded preceding'
+  | 'preceding'
+  | 'current row'
+  | 'following'
+  | 'unbounded following';
+
+const CATEGORY_LABEL_KEYS: Record<CalculationFunctionCategory, string> = {
+  group_metrics: 'calcFieldScenarioGroupMetrics',
+  ranking: 'calcFieldScenarioRanking',
+  cumulative: 'calcFieldScenarioCumulative',
+  offset: 'calcFieldScenarioOffset',
+  moving_window: 'calcFieldScenarioMovingWindow',
+};
+
+const BOUND_TYPES: BoundType[] = [
+  'unbounded preceding',
+  'preceding',
+  'current row',
+  'following',
+  'unbounded following',
+];
+const START_BOUND_TYPES = BOUND_TYPES.filter((value) => value !== 'unbounded following');
+const END_BOUND_TYPES = BOUND_TYPES.filter((value) => value !== 'unbounded preceding');
+
+const BOUND_LABEL_KEYS: Record<BoundType, string> = {
+  'unbounded preceding': 'calcFieldUnboundedPre',
+  preceding: 'calcFieldNPreRows',
+  'current row': 'calcFieldCurrentRows',
+  following: 'calcFieldNFollRows',
+  'unbounded following': 'calcFieldUnboundedFoll',
+};
+
+const INTERVAL_UNITS = ['day', 'week', 'month', 'quarter', 'year'] as const;
+
+export function CalculationFunctionWizard({
+  fieldCompletions,
+  columnTypes,
+  onInsert,
+  tr,
+}: CalculationFunctionWizardProps) {
+  const [category, setCategory] = useState<CalculationFunctionCategory>('group_metrics');
+  const initialFunction = calculationFunctionsByCategory(category)[0];
+  const [functionId, setFunctionId] = useState(initialFunction.id);
+  const [value, setValue] = useState('');
+  const [extraParameter, setExtraParameter] = useState('');
+  const [partitionBy, setPartitionBy] = useState<string[]>([]);
+  const [partitionOpen, setPartitionOpen] = useState(true);
+  const [orderBy, setOrderBy] = useState<CalculationOrderField[]>([]);
+  const [frameType, setFrameType] = useState<CalculationWindowFrame['type']>('rows');
+  const [frameStartType, setFrameStartType] = useState<BoundType>('preceding');
+  const [frameStartOffset, setFrameStartOffset] = useState('1');
+  const [frameStartUnit, setFrameStartUnit] = useState('day');
+  const [frameEndType, setFrameEndType] = useState<BoundType>('current row');
+  const [frameEndOffset, setFrameEndOffset] = useState('1');
+  const [frameEndUnit, setFrameEndUnit] = useState('day');
+  const [frameExclude, setFrameExclude] = useState<CalculationWindowFrame['exclude']>('no others');
+
+  const definitions = useMemo(() => calculationFunctionsByCategory(category), [category]);
+  const definition = definitions.find((item) => item.id === functionId) ?? definitions[0];
+  const effectiveExtraParameter = extraParameter || definition.extraParameter?.defaultValue || '';
+  const configuredOrderBy = orderBy.filter((item) => item.field.trim());
+  const usesRangeOffset =
+    frameType === 'range' &&
+    (frameStartType === 'preceding' ||
+      frameStartType === 'following' ||
+      frameEndType === 'preceding' ||
+      frameEndType === 'following');
+  const usesTemporalRangeUnit =
+    usesRangeOffset && usesTemporalCalculationRangeUnit(frameType, configuredOrderBy, columnTypes);
+  const frame = useMemo<CalculationWindowFrame | undefined>(() => {
+    if (definition.frame !== 'custom') return undefined;
+    return {
+      type: frameType,
+      start: formatFrameBound(
+        frameStartType,
+        frameStartOffset,
+        usesTemporalRangeUnit,
+        frameStartUnit
+      ),
+      end: formatFrameBound(frameEndType, frameEndOffset, usesTemporalRangeUnit, frameEndUnit),
+      exclude: frameExclude,
+    };
+  }, [
+    definition.frame,
+    frameEndOffset,
+    frameEndType,
+    frameEndUnit,
+    frameExclude,
+    frameStartOffset,
+    frameStartType,
+    frameStartUnit,
+    frameType,
+    usesTemporalRangeUnit,
+  ]);
+
+  const preview = useMemo(() => {
+    try {
+      return {
+        expression: buildCalculationFunctionExpression({
+          functionId: definition.id,
+          value,
+          extraParameter: effectiveExtraParameter,
+          partitionBy,
+          orderBy,
+          frame,
+        }),
+        error: '',
+      };
+    } catch (error) {
+      return {
+        expression: '',
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }, [definition.id, effectiveExtraParameter, frame, orderBy, partitionBy, value]);
+
+  function selectCategory(nextCategory: CalculationFunctionCategory): void {
+    const [firstDefinition] = calculationFunctionsByCategory(nextCategory);
+    setCategory(nextCategory);
+    setFunctionId(firstDefinition.id);
+    setExtraParameter(firstDefinition.extraParameter?.defaultValue ?? '');
+  }
+
+  function selectFunction(nextFunctionId: string): void {
+    const nextDefinition = definitions.find((item) => item.id === nextFunctionId);
+    setFunctionId(nextFunctionId);
+    setExtraParameter(nextDefinition?.extraParameter?.defaultValue ?? '');
+  }
+
+  const valueOptions =
+    definition.valueArgument === 'field-or-star' ? ['*', ...fieldCompletions] : fieldCompletions;
+
+  const editableOrderBy = useMemo<CalculationOrderField[]>(
+    () => (orderBy.length > 0 ? orderBy : [{ field: '', direction: 'asc' }]),
+    [orderBy]
+  );
+  const {
+    activeItems: activeOrderBy,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+    isDragging,
+    dragIndexRef,
+  } = useDragReorder(editableOrderBy, setOrderBy);
+
+  function updateOrderField(index: number, patch: Partial<CalculationOrderField>): void {
+    setOrderBy(activeOrderBy.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  }
+
+  function addOrderField(index: number): void {
+    if (activeOrderBy.some((item) => !item.field)) return;
+    const next = [...activeOrderBy];
+    next.splice(index + 1, 0, { field: '', direction: 'asc' });
+    setOrderBy(next);
+  }
+
+  function removeOrderField(index: number): void {
+    const next = activeOrderBy.filter((_, i) => i !== index);
+    setOrderBy(next.length === 1 && !next[0].field ? [] : next);
+  }
+
+  const hasSpecialConfig = definition.frame === 'cumulative' || definition.frame === 'custom';
+  const basicColumnClass =
+    definition.valueArgument !== 'none' && definition.extraParameter
+      ? 'grid-cols-3'
+      : definition.valueArgument !== 'none' || definition.extraParameter
+        ? 'grid-cols-2'
+        : 'grid-cols-1';
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border-muted/60">
+        <div
+          role="tablist"
+          aria-label={tr('calcFieldOpenWizard')}
+          className="flex shrink-0 items-stretch overflow-x-auto overflow-y-hidden border-b border-border-muted/60 bg-background/20 px-2"
+        >
+          {CALCULATION_FUNCTION_CATEGORIES.map((item) => (
+            <button
+              key={item}
+              type="button"
+              role="tab"
+              aria-selected={item === category}
+              onClick={() => selectCategory(item)}
+              className={`h-9 shrink-0 border-b-2 px-3 text-[12px] outline-none transition-colors focus-visible:bg-accent/8 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${
+                item === category
+                  ? 'border-accent font-medium text-accent'
+                  : 'border-transparent text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+              }`}
+            >
+              {tr(CATEGORY_LABEL_KEYS[item])}
+            </button>
+          ))}
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          <section className="p-3">
+            <SectionTitle>{tr('calcFieldBasicConfig')}</SectionTitle>
+            <div className={`grid gap-3 ${basicColumnClass}`}>
+              <WizardLabel text={tr('calcFieldFunction')}>
+                <GlassOptionSingleSelect
+                  value={definition.id}
+                  groups={[
+                    {
+                      key: category,
+                      items: definitions.map((item) => ({
+                        value: item.id,
+                        label: tr(item.labelKey),
+                      })),
+                    },
+                  ]}
+                  onChange={selectFunction}
+                  className="h-7 w-full text-[12px]"
+                />
+              </WizardLabel>
+
+              {definition.valueArgument !== 'none' && (
+                <WizardLabel text={tr('calcFieldFnArg')}>
+                  <GlassFieldSingleSelect
+                    value={value}
+                    options={valueOptions}
+                    columnTypes={columnTypes}
+                    onChange={setValue}
+                    placeholder={tr('calcFieldFnArgPlaceholder')}
+                    className="h-7 w-full"
+                  />
+                </WizardLabel>
+              )}
+
+              {definition.extraParameter && (
+                <WizardLabel text={tr(definition.extraParameter.labelKey)}>
+                  <GlassFormTextInput
+                    inputMode={definition.extraParameter.kind === 'text' ? undefined : 'numeric'}
+                    value={effectiveExtraParameter}
+                    onChange={setExtraParameter}
+                    className="h-7 w-full rounded-md px-2 text-[12px]"
+                  />
+                </WizardLabel>
+              )}
+            </div>
+          </section>
+
+          <div className="grid grid-cols-1 border-t border-border-muted/60 md:grid-cols-[minmax(0,1.35fr)_minmax(15rem,0.65fr)]">
+            <section className="flex min-w-0 flex-col gap-3 p-3">
+              <SectionTitle>{tr('calcFieldFieldConfig')}</SectionTitle>
+              <div className="flex min-h-0 flex-col gap-1.5">
+                <span className="text-[11px] font-medium text-text-muted">
+                  {tr('calcFieldPartitionBy')}
+                </span>
+                <GlassTagBar
+                  items={partitionBy}
+                  onRemove={(field) =>
+                    setPartitionBy((current) => current.filter((item) => item !== field))
+                  }
+                  onClear={() => setPartitionBy([])}
+                  open={partitionOpen}
+                  onToggle={() => setPartitionOpen((current) => !current)}
+                  toggleStyle="chevron"
+                  density="default"
+                  className="min-h-7"
+                  placeholder={tr('noFieldsSelected')}
+                />
+                {partitionOpen && (
+                  <GlassFieldMultiSelect
+                    columns={fieldCompletions}
+                    selected={partitionBy}
+                    onChange={setPartitionBy}
+                    columnTypes={columnTypes}
+                    maxHeight="132px"
+                  />
+                )}
+              </div>
+
+              <div className="border-t border-border-muted/60 pt-3">
+                <div className="mb-1.5 text-[11px] font-medium text-text-muted">
+                  {tr('calcFieldOrderBy')}
+                </div>
+                {definition.order === 'required' ? (
+                  <GlassRowList
+                    headerClassName="text-[11px]"
+                    items={activeOrderBy}
+                    columns={[
+                      {
+                        flex: 'flex-[3]',
+                        header: tr('sortFieldHeader'),
+                        render: (item, index) => {
+                          const disabledOptions = new Set(
+                            activeOrderBy.map((entry) => entry.field).filter(Boolean)
+                          );
+                          disabledOptions.delete(item.field);
+                          return (
+                            <GlassFieldSingleSelect
+                              value={item.field}
+                              options={fieldCompletions}
+                              columnTypes={columnTypes}
+                              disabledOptions={disabledOptions}
+                              onChange={(field) => updateOrderField(index, { field })}
+                              placeholder={tr('calcFieldFnArgPlaceholder')}
+                              className="w-full"
+                            />
+                          );
+                        },
+                      },
+                      {
+                        flex: 'flex-[1.4]',
+                        header: tr('sortDirectionHeader'),
+                        render: (item, index) => (
+                          <GlassDirectionToggle
+                            value={item.direction}
+                            onChange={(direction) => updateOrderField(index, { direction })}
+                            className="h-6 w-full px-1 text-[11px]"
+                          />
+                        ),
+                      },
+                    ]}
+                    onAdd={addOrderField}
+                    onRemove={removeOrderField}
+                    addTitle={tr('sortAddKey')}
+                    removeTitle={tr('sortRemoveKey')}
+                    canAct={(action) =>
+                      action !== 'add' ||
+                      (!(definition.frame === 'custom' && usesRangeOffset) &&
+                        !activeOrderBy.some((item) => !item.field) &&
+                        activeOrderBy.length < fieldCompletions.length)
+                    }
+                    draggable
+                    onDragStart={handleDragStart}
+                    onDragOver={handleDragOver}
+                    onDragEnd={handleDragEnd}
+                    getRowOpacity={(index) => !!(isDragging && dragIndexRef.current === index)}
+                    dragTitle={tr('dragToReorder')}
+                  />
+                ) : (
+                  <div className="rounded-md bg-background/30 p-2 text-[11px] text-text-muted">
+                    {tr('calcFieldOrderNotRequired')}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className="flex min-w-0 flex-col border-t border-border-muted/60 p-3 md:border-l md:border-t-0">
+              <SectionTitle>{tr('calcFieldSpecialConfig')}</SectionTitle>
+              {!hasSpecialConfig && (
+                <div className="flex min-h-32 flex-1 items-center justify-center rounded-md bg-background/20 px-4 text-center text-[11px] leading-5 text-text-muted">
+                  {tr('calcFieldNoSpecialConfig')}
+                </div>
+              )}
+              {definition.frame === 'cumulative' && (
+                <div className="rounded-md bg-accent/8 p-2 font-mono text-[10px] leading-4 text-text-muted">
+                  ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                </div>
+              )}
+              {definition.frame === 'custom' && (
+                <FrameEditor
+                  frameType={frameType}
+                  setFrameType={setFrameType}
+                  startType={frameStartType}
+                  setStartType={setFrameStartType}
+                  startOffset={frameStartOffset}
+                  setStartOffset={setFrameStartOffset}
+                  startUnit={frameStartUnit}
+                  setStartUnit={setFrameStartUnit}
+                  endType={frameEndType}
+                  setEndType={setFrameEndType}
+                  endOffset={frameEndOffset}
+                  setEndOffset={setFrameEndOffset}
+                  endUnit={frameEndUnit}
+                  setEndUnit={setFrameEndUnit}
+                  exclude={frameExclude}
+                  setExclude={setFrameExclude}
+                  usesTemporalRangeUnit={usesTemporalRangeUnit}
+                  tr={tr}
+                />
+              )}
+            </section>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-end gap-3 rounded-lg border border-border-muted/60 bg-background/20 p-3">
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 text-[10px] font-medium text-text-muted">
+            {tr('calcFieldExpressionPreview')}
+          </div>
+          <pre
+            className={`max-h-20 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-5 ${
+              preview.error ? 'text-error' : 'text-text-secondary'
+            }`}
+          >
+            {preview.error || preview.expression}
+          </pre>
+        </div>
+        <button
+          type="button"
+          disabled={!preview.expression}
+          onClick={() => onInsert(preview.expression)}
+          className="h-7 shrink-0 rounded-md bg-accent px-3 text-[12px] text-white transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {tr('calcFieldInsertExpression')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <div className="mb-2 text-[11px] font-medium text-text-secondary">{children}</div>;
+}
+
+function WizardLabel({ text, children }: { text: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] font-medium text-text-muted">{text}</span>
+      {children}
+    </label>
+  );
+}
+
+interface FrameEditorProps {
+  frameType: CalculationWindowFrame['type'];
+  setFrameType: (value: CalculationWindowFrame['type']) => void;
+  startType: BoundType;
+  setStartType: (value: BoundType) => void;
+  startOffset: string;
+  setStartOffset: (value: string) => void;
+  startUnit: string;
+  setStartUnit: (value: string) => void;
+  endType: BoundType;
+  setEndType: (value: BoundType) => void;
+  endOffset: string;
+  setEndOffset: (value: string) => void;
+  endUnit: string;
+  setEndUnit: (value: string) => void;
+  exclude: CalculationWindowFrame['exclude'];
+  setExclude: (value: CalculationWindowFrame['exclude']) => void;
+  usesTemporalRangeUnit: boolean;
+  tr: (key: string) => string;
+}
+
+function FrameEditor(props: FrameEditorProps) {
+  const typeOptions = ['rows', 'range', 'groups'].map((value) => ({
+    value,
+    label: trFrameType(value, props.tr),
+  }));
+  return (
+    <div className="flex flex-col gap-2">
+      <WizardLabel text={props.tr('calcFieldFrameType')}>
+        <GlassOptionSingleSelect
+          value={props.frameType}
+          groups={[{ key: 'frameType', items: typeOptions }]}
+          onChange={(value) => props.setFrameType(value as CalculationWindowFrame['type'])}
+          className="h-7 w-full text-[11px]"
+        />
+      </WizardLabel>
+      <BoundEditor
+        label={props.tr('calcFieldBoundStart')}
+        options={START_BOUND_TYPES}
+        type={props.startType}
+        setType={props.setStartType}
+        offset={props.startOffset}
+        setOffset={props.setStartOffset}
+        unit={props.startUnit}
+        setUnit={props.setStartUnit}
+        usesTemporalRangeUnit={props.usesTemporalRangeUnit}
+        tr={props.tr}
+      />
+      <BoundEditor
+        label={props.tr('calcFieldBoundEnd')}
+        options={END_BOUND_TYPES}
+        type={props.endType}
+        setType={props.setEndType}
+        offset={props.endOffset}
+        setOffset={props.setEndOffset}
+        unit={props.endUnit}
+        setUnit={props.setEndUnit}
+        usesTemporalRangeUnit={props.usesTemporalRangeUnit}
+        tr={props.tr}
+      />
+      <WizardLabel text={props.tr('calcFieldFrameExclude')}>
+        <GlassOptionSingleSelect
+          value={props.exclude ?? 'no others'}
+          groups={[
+            {
+              key: 'exclude',
+              items: [
+                { value: 'no others', label: props.tr('calcFieldFrameExcludeNone') },
+                { value: 'current row', label: props.tr('calcFieldFrameExcludeCurrent') },
+                { value: 'group', label: props.tr('calcFieldFrameExcludeGroup') },
+                { value: 'ties', label: props.tr('calcFieldFrameExcludeTies') },
+              ],
+            },
+          ]}
+          onChange={(value) => props.setExclude(value as CalculationWindowFrame['exclude'])}
+          className="h-7 w-full text-[11px]"
+        />
+      </WizardLabel>
+    </div>
+  );
+}
+
+interface BoundEditorProps {
+  label: string;
+  options: BoundType[];
+  type: BoundType;
+  setType: (value: BoundType) => void;
+  offset: string;
+  setOffset: (value: string) => void;
+  unit: string;
+  setUnit: (value: string) => void;
+  usesTemporalRangeUnit: boolean;
+  tr: (key: string) => string;
+}
+
+function BoundEditor(props: BoundEditorProps) {
+  const needsOffset = props.type === 'preceding' || props.type === 'following';
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-[10px] text-text-muted">{props.label}</span>
+      <div className="flex gap-1">
+        <GlassOptionSingleSelect
+          value={props.type}
+          groups={[
+            {
+              key: 'bound',
+              items: props.options.map((value) => ({
+                value,
+                label: props.tr(BOUND_LABEL_KEYS[value]),
+              })),
+            },
+          ]}
+          onChange={(value) => props.setType(value as BoundType)}
+          className="h-7 min-w-0 flex-1 text-[10px]"
+        />
+        {needsOffset && (
+          <GlassFormTextInput
+            inputMode="numeric"
+            value={props.offset}
+            onChange={props.setOffset}
+            className="h-7 w-12 rounded-md px-1 text-center text-[11px]"
+          />
+        )}
+        {needsOffset && props.usesTemporalRangeUnit && (
+          <GlassOptionSingleSelect
+            value={props.unit}
+            groups={[
+              {
+                key: 'unit',
+                items: INTERVAL_UNITS.map((value) => ({ value, label: value })),
+              },
+            ]}
+            onChange={props.setUnit}
+            className="h-7 w-16 text-[10px]"
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function formatFrameBound(
+  type: BoundType,
+  offset: string,
+  usesTemporalRangeUnit: boolean,
+  unit: string
+): string {
+  if (type !== 'preceding' && type !== 'following') return type;
+  const normalizedOffset = offset.trim();
+  if (usesTemporalRangeUnit) return `interval ${normalizedOffset} ${unit} ${type}`;
+  return `${normalizedOffset} ${type}`;
+}
+
+function trFrameType(value: string, tr: (key: string) => string): string {
+  if (value === 'range') return tr('calcFieldFrameRange');
+  if (value === 'groups') return tr('calcFieldFrameGroups');
+  return tr('calcFieldFrameRows');
+}
