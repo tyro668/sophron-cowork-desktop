@@ -1028,6 +1028,7 @@
         "setOpIncompleteField": "Please select the right input source",
         "missingValueIncompleteField": "Please complete the missing-value rules",
         "limitIncompleteField": "Please enter a row limit",
+        "incompleteConfigRows": "Please remove or complete the incomplete configuration rows",
         "setOpRightInput": "Right table source",
         "setOpRightInputPlaceholder": "Please select input source",
         "setOpDedupMode": "Duplicate handling",

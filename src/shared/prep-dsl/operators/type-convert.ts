@@ -5,6 +5,7 @@ import { unquoteString } from '../syntax/literals';
 import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, objectArray, type OperatorDslCodec } from './codec';
 import { DATE_FORMAT_VALUES, SCALE_MIN, SCALE_MAX } from '../../operator-schemas/type-convert';
+import { isCompleteTypeConversion } from '../../operator-completeness';
 
 export const typeConvertCodec: OperatorDslCodec = {
   type: 'type_convert',
@@ -128,7 +129,7 @@ export const typeConvertCodec: OperatorDslCodec = {
     return createOperator('type_convert', command.text, { conversions });
   },
   format: (config) => {
-    const conversions = objectArray(config?.conversions);
+    const conversions = objectArray(config?.conversions).filter(isCompleteTypeConversion);
     if (conversions.length === 0) return null;
     return `cast ${conversions
       .map((conversion) => {

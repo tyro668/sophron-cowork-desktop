@@ -5,6 +5,7 @@ import { formatLiteral, parseLiteral } from '../syntax/literals';
 import { splitTopLevel } from '../syntax/scanner';
 import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, objectArray, stringArray, type OperatorDslCodec } from './codec';
+import { isCompleteMissingValueRule } from '../../operator-completeness';
 
 export const missingValueCodec: OperatorDslCodec = {
   type: 'missing_value',
@@ -50,7 +51,7 @@ export const missingValueCodec: OperatorDslCodec = {
         columns ? ` in ${columns}` : ''
       }`;
     }
-    const ruleConfigs = objectArray(config?.rules);
+    const ruleConfigs = objectArray(config?.rules).filter(isCompleteMissingValueRule);
     if (ruleConfigs.length === 0) return null;
     const columns = ruleConfigs.map((rule) => String(rule.column ?? '').trim()).filter(Boolean);
     if (columns.length !== ruleConfigs.length || new Set(columns).size !== columns.length) {

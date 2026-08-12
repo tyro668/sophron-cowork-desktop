@@ -557,7 +557,7 @@ describe('operator DSL executable cases', () => {
     ]);
   });
 
-  it('does not export a pivot with an incomplete axis', () => {
+  it('filters an incomplete pivot axis from DSL while keeping complete ones', () => {
     expect(
       exportPrepOperatorDsl({
         id: 'pivot-partial',
@@ -570,7 +570,144 @@ describe('operator DSL executable cases', () => {
           using: [{ function: 'count', expression: '*' }],
         },
       })
+    ).toBe('pivot on [year] using count(*)');
+  });
+
+  it('does not export a pivot when all axes are incomplete', () => {
+    expect(
+      exportPrepOperatorDsl({
+        id: 'pivot-all-empty',
+        type: 'pivot',
+        config: {
+          on: [{ field: '', values: [] }],
+          using: [{ function: 'count', expression: '*' }],
+        },
+      })
     ).toBe('');
+  });
+
+  it.each([
+    {
+      type: 'sort' as const,
+      config: { keys: [{ field: 'a', direction: 'asc' }, { field: '' }] },
+      expected: 'sort by [a] asc',
+    },
+    {
+      type: 'type_convert' as const,
+      config: {
+        conversions: [
+          { column: 'a', type: 'integer' },
+          { column: '', type: 'text' },
+        ],
+      },
+      expected: 'cast [a] as integer',
+    },
+    {
+      type: 'aggregate' as const,
+      config: {
+        metrics: [
+          { function: 'sum', expression: '[a]', alias: 'total' },
+          { function: 'sum', expression: '[b]', alias: '' },
+        ],
+      },
+      expected: 'aggregate all metrics sum([a]) as [total]',
+    },
+    {
+      type: 'field_mapping' as const,
+      config: {
+        mappings: [
+          { source: 'a', target: 'b' },
+          { source: '', target: '' },
+        ],
+      },
+      expected: 'map [a] to [b]',
+    },
+    {
+      type: 'missing_value' as const,
+      config: {
+        strategy: 'by_column',
+        rules: [
+          { column: 'a', method: 'literal_fill', value: 'x' },
+          { column: '', method: 'literal_fill', value: '' },
+        ],
+      },
+      expected: 'missing value [a] fill "x"',
+    },
+  ])('filters incomplete $type rows while keeping complete ones', ({ type, config, expected }) => {
+    const dsl = exportPrepOperatorDsl({ id: `${type}-filtered`, type, config });
+    expect(dsl).toBe(expected);
+
+    const parsed = parsePrepOperatorDsl(dsl, type);
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      type: 'sort' as const,
+      config: { keys: [{ field: '' }] },
+    },
+    {
+      type: 'type_convert' as const,
+      config: { conversions: [{ column: '' }] },
+    },
+    {
+      type: 'aggregate' as const,
+      config: { metrics: [{ function: 'sum', expression: '[a]', alias: '' }] },
+    },
+    {
+      type: 'field_mapping' as const,
+      config: { mappings: [{ source: '', target: '' }] },
+    },
+    {
+      type: 'missing_value' as const,
+      config: { strategy: 'by_column', rules: [{ column: '', method: 'literal_fill', value: '' }] },
+    },
+  ])('does not export $type when all entries are incomplete', ({ type, config }) => {
+    expect(exportPrepOperatorDsl({ id: `${type}-all-incomplete`, type, config })).toBe('');
+  });
+
+  it('filters incomplete conditions from a regular join DSL', () => {
+    const dsl = exportPrepOperatorDsl({
+      id: 'join-filtered',
+      type: 'join',
+      config: {
+        joinType: 'left',
+        rightInput: 'R',
+        conditions: [
+          { left: 'L', operator: '=', right: 'R' },
+          { left: 'L2', operator: '=', right: '' },
+        ],
+      },
+    });
+    expect(dsl).toBe('join left R on [L] = [R]');
+  });
+
+  it('keeps a complete deduplicate orderBy and omits incomplete ones', () => {
+    const dsl = exportPrepOperatorDsl({
+      id: 'dedup-filtered',
+      type: 'deduplicate',
+      config: {
+        strategy: 'by_columns',
+        columns: ['a'],
+        orderBy: [{ field: 'x', direction: 'asc' }, { field: '' }],
+      },
+    });
+    expect(dsl).toBe('deduplicate by [a] order by [x] asc');
+  });
+
+  it('filters incomplete row calculations from a calculate_field DSL', () => {
+    const dsl = exportPrepOperatorDsl({
+      id: 'calc-filtered',
+      type: 'calculate_field',
+      config: {
+        calculations: [
+          { field: 'm', expression: '[a] - [b]', type: 'row' },
+          { field: 'n', expression: '', type: 'row' },
+        ],
+      },
+    });
+    expect(dsl).toBe('derive [m] = [a] - [b]');
+    expect(dsl).not.toContain('[n]');
   });
 
   it('does not export a pivot with an axis whose values are not an array', () => {
@@ -758,8 +895,8 @@ describe('operator DSL executable cases', () => {
     );
   });
 
-  it('rejects a half-filled ASOF by condition after DSL export and reparse', () => {
-    const { parsed } = (() => {
+  it('filters a half-filled ASOF by condition from DSL export', () => {
+    const { parsed, dsl } = (() => {
       const config = {
         joinType: 'asof',
         asof: {
@@ -778,7 +915,8 @@ describe('operator DSL executable cases', () => {
       return result;
     })();
 
-    expect(errorsOf(parsed.diagnostics)).toHaveLength(1);
+    expect(dsl).toBe('join asof R on [Date] >= [Date]');
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
   });
 
   it('round-trips a join whose right input is renamed with an as clause', () => {

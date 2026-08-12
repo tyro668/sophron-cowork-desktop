@@ -6,6 +6,7 @@ import {
   type ExprToken,
 } from '../../expression-tokenizer';
 import { formatFieldRef } from '../syntax/fields';
+import { isCompletePivotAxis, isCompletePivotMetric } from '../../operator-completeness';
 import { formatLiteral } from '../syntax/literals';
 import { createOperator, objectArray, type OperatorDslCodec } from './codec';
 import { formatMetric, parseMetrics } from './metrics';
@@ -80,13 +81,10 @@ export const pivotCodec: OperatorDslCodec = {
     });
   },
   format: (config) => {
-    const on = Array.isArray(config?.on) ? config.on : [];
-    if (on.length === 0) return null;
+    const on = (Array.isArray(config?.on) ? config.on : []).filter(isCompletePivotAxis);
     const onSegments: string[] = [];
     for (const axis of on) {
-      if (!axis || typeof axis !== 'object') return null;
       const field = String((axis as Record<string, unknown>)?.field ?? '').trim();
-      if (!field) return null;
       const rawValues = (axis as Record<string, unknown>)?.values;
       // A missing values key means dynamic all-values; a present-but-
       // non-array value is an invalid axis and must fail the export.
@@ -98,12 +96,8 @@ export const pivotCodec: OperatorDslCodec = {
     }
     const onDsl = onSegments.join(', ');
     if (!onDsl) return null;
-    const using = objectArray(config?.using);
+    const using = objectArray(config?.using).filter(isCompletePivotMetric);
     if (using.length === 0) return null;
-    const hasIncomplete = using.some(
-      (metric) => !String(metric.function ?? '').trim() || !String(metric.expression ?? '').trim()
-    );
-    if (hasIncomplete) return null;
     const usingDsl = using.map(formatMetric).join(', ');
     const groupBy = Array.isArray(config?.groupBy) ? config.groupBy : [];
     const groupSql =

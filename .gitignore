@@ -60,6 +60,7 @@ AGENTS.md
 
 # codex
 .codex/*
+.codex-tmp/
 .cowork-user-data/
 
 dist*
@@ -69,6 +70,7 @@ resources/python
 docs/*
 !docs/development/
 !docs/development/**
+/docs/feature/
 /.mcp.json
 /eng.traineddata
 /jpn.traineddata
@@ -101,6 +103,7 @@ DEV_LOG.md
 
 # Agents
 .agents/
+.opencode/
 
 # Build cache
 .build-cache/

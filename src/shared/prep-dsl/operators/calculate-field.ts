@@ -3,6 +3,7 @@ import { createPrepDiagnostic } from '../diagnostics';
 import { formatFieldRef, parseFieldRefExact, toFieldName } from '../syntax/fields';
 import { splitTopLevel } from '../syntax/scanner';
 import { createOperator, objectArray, stringArray, type OperatorDslCodec } from './codec';
+import { isCompleteCalculation } from '../../operator-completeness';
 
 export const calculateFieldCodec: OperatorDslCodec = {
   type: 'calculate_field',
@@ -21,7 +22,9 @@ export const calculateFieldCodec: OperatorDslCodec = {
     return createOperator('calculate_field', text, { calculations });
   },
   format: (config) => {
-    const calculations = objectArray(config?.calculations).map(formatCalculation);
+    const calculations = objectArray(config?.calculations)
+      .filter(isCompleteCalculation)
+      .map(formatCalculation);
     if (calculations.length === 0) return null;
     return `derive ${calculations.join(', ')}`;
   },

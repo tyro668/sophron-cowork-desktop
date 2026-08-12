@@ -6,6 +6,7 @@ import { quoteString, unquoteString } from '../syntax/literals';
 import { findFirstTopLevelKeyword, splitTopLevel, splitTopLevelKeyword } from '../syntax/scanner';
 import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, objectArray, type OperatorCommand, type OperatorDslCodec } from './codec';
+import { isCompleteJoinCondition } from '../../operator-completeness';
 
 interface Clause {
   name: string;
@@ -489,11 +490,12 @@ function formatConflict(value: unknown): string | null {
 
 function formatConditions(value: unknown): string {
   return objectArray(value)
+    .filter(isCompleteJoinCondition)
     .map(
       (condition) =>
-        `${formatFieldRef(String(condition.left ?? 'left.id'))} ${String(
+        `${formatFieldRef(String(condition.left))} ${String(
           condition.operator || '='
-        )} ${formatFieldRef(String(condition.right ?? 'right.id'))}`
+        )} ${formatFieldRef(String(condition.right))}`
     )
     .join(' and ');
 }

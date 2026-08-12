@@ -2,6 +2,7 @@ import { createPrepDiagnostic } from '../diagnostics';
 import { formatFieldRef, toFieldName } from '../syntax/fields';
 import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, objectArray, type OperatorDslCodec } from './codec';
+import { isCompleteFieldMapping } from '../../operator-completeness';
 
 export const fieldMappingCodec: OperatorDslCodec = {
   type: 'field_mapping',
@@ -41,7 +42,7 @@ export const fieldMappingCodec: OperatorDslCodec = {
     return createOperator('field_mapping', text, { mappings });
   },
   format: (config) => {
-    const mappings = objectArray(config?.mappings);
+    const mappings = objectArray(config?.mappings).filter(isCompleteFieldMapping);
     if (mappings.length === 0) return null;
     const formatted = mappings.map((mapping) => {
       const source = typeof mapping.source === 'string' ? mapping.source.trim() : '';

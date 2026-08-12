@@ -368,5 +368,149 @@ describe('incomplete config guards', () => {
       });
       expect(incompleteConfigMessageKey(node)).toBeNull();
     });
+
+    it('uses the generic incomplete-rows message when complete and incomplete entries coexist', () => {
+      const cases: Array<[DataWorkflowNode['type'], Record<string, unknown>]> = [
+        [
+          'type_convert',
+          {
+            conversions: [
+              { column: 'a', type: 'integer' },
+              { column: '', type: 'text' },
+            ],
+          },
+        ],
+        ['sort', { keys: [{ field: 'a' }, { field: '' }] }],
+        [
+          'aggregate',
+          {
+            metrics: [
+              { function: 'sum', expression: '[a]', alias: 't' },
+              { function: 'sum', expression: '[b]', alias: '' },
+            ],
+          },
+        ],
+        [
+          'join',
+          {
+            joinType: 'left',
+            rightInput: 'R',
+            conditions: [
+              { left: '[L].a', operator: '=', right: '[R].b' },
+              { left: '[L].c', operator: '=', right: '' },
+            ],
+          },
+        ],
+        [
+          'pivot',
+          {
+            on: [{ field: 'a' }, { field: '' }],
+            using: [{ function: 'count', expression: '*' }],
+          },
+        ],
+        [
+          'calculate_field',
+          {
+            calculations: [
+              { field: 'm', expression: '[a]', type: 'row' },
+              { field: 'n', expression: '', type: 'row' },
+            ],
+          },
+        ],
+        [
+          'field_mapping',
+          {
+            mappings: [
+              { source: 'a', target: 'b' },
+              { source: '', target: '' },
+            ],
+          },
+        ],
+        [
+          'missing_value',
+          {
+            strategy: 'by_column',
+            rules: [
+              { column: 'a', method: 'literal_fill', value: 'x' },
+              { column: '', method: 'literal_fill', value: '' },
+            ],
+          },
+        ],
+        ['deduplicate', { strategy: 'by_columns', columns: ['a'], orderBy: [{ field: '' }] }],
+      ];
+      for (const [type, config] of cases) {
+        expect(incompleteConfigMessageKey(makeNode(type, config)), `operator ${type}`).toBe(
+          'data.workflow.formLabels.incompleteConfigRows'
+        );
+      }
+    });
+
+    it('keeps the operator-specific message when only the required config is missing', () => {
+      expect(incompleteConfigMessageKey(makeNode('type_convert', {}))).toBe(
+        'data.workflow.formLabels.typeConvertIncompleteField'
+      );
+      expect(incompleteConfigMessageKey(makeNode('pivot', { using: [] }))).toBe(
+        'data.workflow.formLabels.pivotIncompleteField'
+      );
+    });
+
+    it('treats an empty deduplicate orderBy as optional', () => {
+      const node = makeNode('deduplicate', {
+        strategy: 'by_columns',
+        columns: ['a'],
+        orderBy: [],
+      });
+      expect(incompleteConfigMessageKey(node)).toBeNull();
+    });
+
+    it('ignores incomplete regular conditions for an ASOF join', () => {
+      const node = makeNode('join', {
+        joinType: 'asof',
+        rightInput: 'R',
+        conditions: [{ left: '', operator: '=', right: '' }],
+        asof: {
+          leftTime: 'left_time',
+          rightTime: 'right_time',
+          by: [{ left: '[a]', operator: '=', right: '[b]' }],
+        },
+      });
+      expect(incompleteConfigMessageKey(node)).toBeNull();
+    });
+
+    it('reports incomplete asof.by entries for an ASOF join', () => {
+      const node = makeNode('join', {
+        joinType: 'asof',
+        rightInput: 'R',
+        asof: {
+          leftTime: 'left_time',
+          rightTime: 'right_time',
+          by: [{ left: '[a]', operator: '=', right: '' }],
+        },
+      });
+      expect(incompleteConfigMessageKey(node)).toBe(
+        'data.workflow.formLabels.incompleteConfigRows'
+      );
+    });
+
+    it('ignores asof.by for a regular join', () => {
+      const node = makeNode('join', {
+        joinType: 'left',
+        rightInput: 'R',
+        conditions: [{ left: '[L].a', operator: '=', right: '[R].b' }],
+        asof: { by: [{ left: '', operator: '=', right: '' }] },
+      });
+      expect(incompleteConfigMessageKey(node)).toBeNull();
+    });
+
+    it('keeps deduplicate columns in the operator-specific guard, not generic rows', () => {
+      const node = makeNode('deduplicate', {
+        strategy: 'by_columns',
+        columns: ['', 'a'],
+        orderBy: [],
+      });
+      expect(incompleteConfigMessageKey(node)).toBe(
+        'data.workflow.formLabels.dedupIncompleteField'
+      );
+    });
   });
 });

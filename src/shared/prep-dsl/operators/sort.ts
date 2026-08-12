@@ -3,6 +3,7 @@ import { formatFieldRef, toFieldName } from '../syntax/fields';
 import { PrepTokenCursor } from '../syntax/token-cursor';
 import type { PrepDiagnostic } from '../ast';
 import { createOperator, objectArray, type OperatorDslCodec } from './codec';
+import { isCompleteSortKey } from '../../operator-completeness';
 
 export const sortCodec: OperatorDslCodec = {
   type: 'sort',
@@ -64,7 +65,7 @@ export function parseSortKeys(
 
 export function formatSortKeys(value: unknown): string {
   return objectArray(value)
-    .filter((key) => key.field)
+    .filter(isCompleteSortKey)
     .map((key) => {
       const nulls = typeof key.nulls === 'string' ? ` nulls ${key.nulls}` : '';
       return `${formatFieldRef(String(key.field))} ${String(key.direction ?? 'asc')}${nulls}`;

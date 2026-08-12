@@ -6,6 +6,7 @@ import { formatFieldRef, parseFieldRefExact, toFieldName, unwrapFieldName } from
 import { splitTopLevel } from '../syntax/scanner';
 import { createOperator, objectArray, stringArray, type OperatorDslCodec } from './codec';
 import { parseMetrics } from './metrics';
+import { isCompleteAggregateMetric } from '../../operator-completeness';
 
 const GRANULARITIES = new Set(['year', 'quarter', 'month', 'week', 'day']);
 
@@ -53,16 +54,15 @@ export const aggregateCodec: OperatorDslCodec = {
         return gran ? `${gran}(${formatFieldRef(field)})` : formatFieldRef(field);
       })
       .join(', ');
-    const metrics = objectArray(config?.metrics);
-    if (metrics.length === 0) return null;
+    const metrics = objectArray(config?.metrics).filter(isCompleteAggregateMetric);
     const parts: string[] = [];
     for (const metric of metrics) {
       const fn = String(metric.function ?? '').trim();
       const expression = String(metric.expression ?? '').trim();
       const alias = String(metric.alias ?? '').trim();
-      if (!fn || !expression || !alias) return null;
       parts.push(`${fn}(${expression}) as ${formatFieldRef(alias)}`);
     }
+    if (parts.length === 0) return null;
     return `aggregate ${groupByDsl ? `by ${groupByDsl}` : 'all'} metrics ${parts.join(', ')}`;
   },
 };
