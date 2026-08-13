@@ -90,6 +90,130 @@ describe('FormCalculateField — config ↔ DSL', () => {
     });
     expect(dsl2).toBe(dsl1);
   });
+
+  it.each([
+    'derive [previous_sales] = previous_value([sales], [date]) over(partition by [region])',
+    'derive [yoy_sales] = year_over_year_value([sales], [date], "month") over(partition by [region])',
+    'derive [year_sales] = year_to_date(sum([sales]), [date], 4) over(partition by [region])',
+    'derive [rolling_sales] = rolling_time(avg([sales]), [date], 7, "day") over(partition by [region])',
+  ])('round-trips canonical calculation domain DSL: %s', (dsl) => {
+    const parsed = parsePrepOperatorDsl(dsl, 'calculate_field');
+    expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
+
+    expect(
+      exportPrepOperatorDsl({
+        id: 'test',
+        type: 'calculate_field',
+        config: parsed.operator!.config,
+      })
+    ).toBe(dsl);
+  });
+
+  it('normalizes calculation domain function spacing on export', () => {
+    const parsed = parsePrepOperatorDsl(
+      'derive [x] = year_over_year_value( [sales] , [date] , "month" ) over( partition by [region] )',
+      'calculate_field'
+    );
+
+    expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
+    expect(
+      exportPrepOperatorDsl({
+        id: 'test',
+        type: 'calculate_field',
+        config: parsed.operator!.config,
+      })
+    ).toBe(
+      'derive [x] = year_over_year_value([sales], [date], "month") over(partition by [region])'
+    );
+  });
+
+  it.each([
+    'derive [x] = previous_value([sales])',
+    'derive [x] = year_over_year_value([sales], [date], "months")',
+    'derive [x] = year_to_date([sales], [date])',
+    'derive [x] = quarter_to_date(sum([sales]), [date], 4)',
+    'derive [x] = rolling_time(sum([sales]), [date], 0, "day")',
+    'derive [x] = rolling_time(sum([sales]), [date], 7, "hour")',
+    'derive [x] = year_to_date(sum([sales]), [date]) over(order by [date])',
+    'derive [x] = year_to_date(sum([sales])), [date])',
+    'derive [x] = year_to_date(sum([sales]), [date]) extra',
+    'derive [x] = year_to_date(sum([sales]), [date]);',
+    'derive [x] = year_to_date(sum([sales]), [date]',
+  ])('rejects invalid calculation domain DSL: %s', (dsl) => {
+    const parsed = parsePrepOperatorDsl(dsl, 'calculate_field');
+    expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).not.toEqual(
+      []
+    );
+  });
+
+  it.each([
+    'derive [x] = year_to_date(sum([sales]), [date]) over(partition by [region] [product])',
+    'derive [x] = year_to_date(sum([sales]), [date]) over(partition by , [region])',
+    'derive [x] = year_to_date(sum([sales]), [date]) over(partition by [region],)',
+    'derive [x] = year_to_date(sum([sales]), [date]) over(partition by [region],, [product])',
+    'derive [x] = year_to_date(sum([sales]), [date]) over(partition by [region]',
+  ])('rejects malformed domain partition lists: %s', (dsl) => {
+    const parsed = parsePrepOperatorDsl(dsl, 'calculate_field');
+
+    expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).not.toEqual(
+      []
+    );
+  });
+
+  it('exports legacy structured configurations with canonical domain functions', () => {
+    const dsl = exportPrepOperatorDsl({
+      id: 'test',
+      type: 'calculate_field',
+      config: {
+        calculations: [
+          {
+            field: 'yoy_sales',
+            expression: '',
+            type: 'cross',
+            fn: 'period_yoy_prev',
+            fnArg: 'sales',
+            orderBy: [{ field: 'date', direction: 'asc' }],
+            partitionBy: ['region'],
+          },
+          {
+            field: 'year_sales',
+            expression: '',
+            type: 'cross',
+            fn: 'ytd_sum',
+            fnArg: 'sales',
+            orderBy: [{ field: 'date', direction: 'asc' }],
+            partitionBy: ['region'],
+          },
+        ],
+      },
+    });
+
+    expect(dsl).toBe(
+      'derive [yoy_sales] = year_over_year_value([sales], [date], "month") over(partition by [region]), [year_sales] = year_to_date(sum([sales]), [date]) over(partition by [region])'
+    );
+  });
+
+  it.each([
+    [
+      'derive [x] = period_compare(yoy_prev, [sales], [date]) over(partition by [region])',
+      'derive [x] = year_over_year_value([sales], [date], "month") over(partition by [region])',
+    ],
+    [
+      'derive [x] = accumulate(ytd, sum, [sales], [date]) over(partition by [region])',
+      'derive [x] = year_to_date(sum([sales]), [date]) over(partition by [region])',
+    ],
+  ])('normalizes legacy calculation DSL to the new canonical form', (legacyDsl, expectedDsl) => {
+    const parsed = parsePrepOperatorDsl(legacyDsl, 'calculate_field');
+    expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
+
+    expect(
+      exportPrepOperatorDsl({
+        id: 'test',
+        type: 'calculate_field',
+        config: parsed.operator!.config,
+      })
+    ).toBe(expectedDsl);
+  });
 });
 
 describe('FormCalculateField — id normalization', () => {
@@ -268,6 +392,35 @@ describe('FormCalculateField — unified expression migration', () => {
 
     expect(calculation.expression).toBe(
       "string_agg([name], 'it''s, ') OVER (PARTITION BY [region])"
+    );
+  });
+
+  it('materializes legacy period comparison and time accumulation configurations', () => {
+    const calculations = normalizeExpressionCalculationEntries([
+      {
+        field: 'previous_year_sales',
+        expression: '',
+        type: 'cross',
+        fn: 'period_yoy_prev',
+        fnArg: 'sales',
+        partitionBy: ['region'],
+        orderBy: [{ field: 'date', direction: 'asc' }],
+      },
+      {
+        field: 'year_sales',
+        expression: '',
+        type: 'cross',
+        fn: 'ytd_sum',
+        fnArg: 'sales',
+        partitionBy: ['region'],
+        orderBy: [{ field: 'date', direction: 'asc' }],
+      },
+    ]);
+
+    expect(calculations[0].expression).toContain("CASE WHEN (extract('year' FROM [date])");
+    expect(calculations[0].expression).toContain('ELSE NULL END');
+    expect(calculations[1].expression).toBe(
+      'sum([sales]) OVER (PARTITION BY year([date]), [region] ORDER BY [date] ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)'
     );
   });
 

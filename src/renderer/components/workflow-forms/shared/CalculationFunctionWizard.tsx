@@ -1,13 +1,16 @@
 import { useMemo, useState } from 'react';
+import { isTemporalDataFieldType } from '../../../../shared/data-field-types';
 import {
   buildCalculationFunctionExpression,
   calculationFunctionsByCategory,
   CALCULATION_FUNCTION_CATEGORIES,
   usesTemporalCalculationRangeUnit,
   type CalculationFunctionCategory,
+  type CalculationFunctionParameter,
   type CalculationOrderField,
   type CalculationWindowFrame,
 } from '../../../../shared/calculate-field/function-registry';
+import { buildCalculationFunctionDslExpression } from '../../../../shared/calculate-field/domain-dsl';
 import { useDragReorder } from '../../../hooks/useDragReorder';
 import { GlassDirectionToggle } from './GlassDirectionToggle';
 import { GlassFieldMultiSelect } from './GlassFieldMultiSelect';
@@ -37,6 +40,8 @@ const CATEGORY_LABEL_KEYS: Record<CalculationFunctionCategory, string> = {
   cumulative: 'calcFieldScenarioCumulative',
   offset: 'calcFieldScenarioOffset',
   moving_window: 'calcFieldScenarioMovingWindow',
+  period_compare: 'calcFieldScenarioPeriodCompare',
+  time_intelligence: 'calcFieldScenarioTimeIntel',
 };
 
 const BOUND_TYPES: BoundType[] = [
@@ -70,6 +75,7 @@ export function CalculationFunctionWizard({
   const [functionId, setFunctionId] = useState(initialFunction.id);
   const [value, setValue] = useState('');
   const [extraParameter, setExtraParameter] = useState('');
+  const [parameterValues, setParameterValues] = useState<Record<string, string>>({});
   const [partitionBy, setPartitionBy] = useState<string[]>([]);
   const [partitionOpen, setPartitionOpen] = useState(true);
   const [orderBy, setOrderBy] = useState<CalculationOrderField[]>([]);
@@ -85,6 +91,16 @@ export function CalculationFunctionWizard({
   const definitions = useMemo(() => calculationFunctionsByCategory(category), [category]);
   const definition = definitions.find((item) => item.id === functionId) ?? definitions[0];
   const effectiveExtraParameter = extraParameter || definition.extraParameter?.defaultValue || '';
+  const effectiveParameterValues = useMemo(
+    () =>
+      Object.fromEntries(
+        (definition.parameters ?? []).map((parameter) => [
+          parameter.key,
+          parameterValues[parameter.key] ?? parameter.defaultValue ?? '',
+        ])
+      ),
+    [definition.parameters, parameterValues]
+  );
   const configuredOrderBy = orderBy.filter((item) => item.field.trim());
   const usesRangeOffset =
     frameType === 'range' &&
@@ -123,13 +139,17 @@ export function CalculationFunctionWizard({
   const preview = useMemo(() => {
     try {
       return {
-        expression: buildCalculationFunctionExpression({
+        expression: (definition.category === 'period_compare' ||
+          definition.category === 'time_intelligence'
+          ? buildCalculationFunctionDslExpression
+          : buildCalculationFunctionExpression)({
           functionId: definition.id,
           value,
           extraParameter: effectiveExtraParameter,
           partitionBy,
           orderBy,
           frame,
+          parameters: effectiveParameterValues,
         }),
         error: '',
       };
@@ -139,23 +159,37 @@ export function CalculationFunctionWizard({
         error: error instanceof Error ? error.message : String(error),
       };
     }
-  }, [definition.id, effectiveExtraParameter, frame, orderBy, partitionBy, value]);
+  }, [
+    definition.category,
+    definition.id,
+    effectiveExtraParameter,
+    effectiveParameterValues,
+    frame,
+    orderBy,
+    partitionBy,
+    value,
+  ]);
 
   function selectCategory(nextCategory: CalculationFunctionCategory): void {
     const [firstDefinition] = calculationFunctionsByCategory(nextCategory);
     setCategory(nextCategory);
     setFunctionId(firstDefinition.id);
     setExtraParameter(firstDefinition.extraParameter?.defaultValue ?? '');
+    setParameterValues(defaultParameterValues(firstDefinition.parameters));
   }
 
   function selectFunction(nextFunctionId: string): void {
     const nextDefinition = definitions.find((item) => item.id === nextFunctionId);
     setFunctionId(nextFunctionId);
     setExtraParameter(nextDefinition?.extraParameter?.defaultValue ?? '');
+    setParameterValues(defaultParameterValues(nextDefinition?.parameters));
   }
 
-  const valueOptions =
-    definition.valueArgument === 'field-or-star' ? ['*', ...fieldCompletions] : fieldCompletions;
+  const allowsStar =
+    definition.valueArgument === 'field-or-star' &&
+    (definition.category !== 'time_intelligence' ||
+      effectiveParameterValues.aggregation === 'count');
+  const valueOptions = allowsStar ? ['*', ...fieldCompletions] : fieldCompletions;
 
   const editableOrderBy = useMemo<CalculationOrderField[]>(
     () => (orderBy.length > 0 ? orderBy : [{ field: '', direction: 'asc' }]),
@@ -187,12 +221,9 @@ export function CalculationFunctionWizard({
   }
 
   const hasSpecialConfig = definition.frame === 'cumulative' || definition.frame === 'custom';
-  const basicColumnClass =
-    definition.valueArgument !== 'none' && definition.extraParameter
-      ? 'grid-cols-3'
-      : definition.valueArgument !== 'none' || definition.extraParameter
-        ? 'grid-cols-2'
-        : 'grid-cols-1';
+  const temporalFields = fieldCompletions.filter((field) =>
+    isTemporalDataFieldType(columnTypes?.[field])
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -223,7 +254,7 @@ export function CalculationFunctionWizard({
         <div className="min-h-0 flex-1 overflow-y-auto pr-1">
           <section className="p-3">
             <SectionTitle>{tr('calcFieldBasicConfig')}</SectionTitle>
-            <div className={`grid gap-3 ${basicColumnClass}`}>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
               <WizardLabel text={tr('calcFieldFunction')}>
                 <GlassOptionSingleSelect
                   value={definition.id}
@@ -264,6 +295,58 @@ export function CalculationFunctionWizard({
                   />
                 </WizardLabel>
               )}
+
+              {definition.parameters?.map((parameter) => (
+                <WizardLabel key={parameter.key} text={tr(parameter.labelKey)}>
+                  {parameter.kind === 'temporal-field' ? (
+                    <GlassFieldSingleSelect
+                      value={effectiveParameterValues[parameter.key]}
+                      options={temporalFields}
+                      columnTypes={columnTypes}
+                      onChange={(nextValue) =>
+                        setParameterValues((current) => ({
+                          ...current,
+                          [parameter.key]: nextValue,
+                        }))
+                      }
+                      placeholder={tr('calcFieldFnArgPlaceholder')}
+                      className="h-7 w-full"
+                    />
+                  ) : parameter.kind === 'option' ? (
+                    <GlassOptionSingleSelect
+                      value={effectiveParameterValues[parameter.key]}
+                      groups={[
+                        {
+                          key: parameter.key,
+                          items: (parameter.options ?? []).map((option) => ({
+                            value: option.value,
+                            label: tr(option.labelKey),
+                          })),
+                        },
+                      ]}
+                      onChange={(nextValue) =>
+                        setParameterValues((current) => ({
+                          ...current,
+                          [parameter.key]: nextValue,
+                        }))
+                      }
+                      className="h-7 w-full text-[12px]"
+                    />
+                  ) : (
+                    <GlassFormTextInput
+                      inputMode="numeric"
+                      value={effectiveParameterValues[parameter.key]}
+                      onChange={(nextValue) =>
+                        setParameterValues((current) => ({
+                          ...current,
+                          [parameter.key]: nextValue,
+                        }))
+                      }
+                      className="h-7 w-full rounded-md px-2 text-[12px]"
+                    />
+                  )}
+                </WizardLabel>
+              ))}
             </div>
           </section>
 
@@ -594,6 +677,14 @@ function formatFrameBound(
   const normalizedOffset = offset.trim();
   if (usesTemporalRangeUnit) return `interval ${normalizedOffset} ${unit} ${type}`;
   return `${normalizedOffset} ${type}`;
+}
+
+function defaultParameterValues(
+  parameters: CalculationFunctionParameter[] | undefined
+): Record<string, string> {
+  return Object.fromEntries(
+    (parameters ?? []).map((parameter) => [parameter.key, parameter.defaultValue ?? ''])
+  );
 }
 
 function trFrameType(value: string, tr: (key: string) => string): string {

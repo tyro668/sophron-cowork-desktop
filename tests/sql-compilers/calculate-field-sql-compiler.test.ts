@@ -264,6 +264,119 @@ describe('compileScalarExpression', () => {
   });
 });
 
+describe('DuckDB integration — period comparison and time accumulation', () => {
+  it('executes canonical domain DSL expressions through the SQL compiler', async () => {
+    const conn = await connect();
+    await conn.run('CREATE TABLE period_data (id INT, region VARCHAR, date DATE, sales DOUBLE)');
+    await conn.run(
+      "INSERT INTO period_data VALUES (1, 'A', DATE '2024-01-01', 10), (2, 'A', DATE '2024-01-02', 15)"
+    );
+    await conn.run(
+      compileCalculateFieldSql('out', 'period_data', {
+        calculations: [
+          {
+            field: 'running_sales',
+            expression: 'year_to_date(sum([sales]), [date]) over(partition by [region])',
+          },
+        ],
+      })
+    );
+    const reader = await conn.runAndReadAll('SELECT running_sales FROM out ORDER BY id');
+    const rows = reader.getRowObjectsJson() as Record<string, unknown>[];
+
+    expect(rows.map((row) => row.running_sales)).toEqual([10, 25]);
+  });
+
+  async function runGeneratedCalculation(
+    functionId: string,
+    parameters: Record<string, string>,
+    insertRows: string
+  ): Promise<Record<string, unknown>[]> {
+    const conn = await connect();
+    await conn.run('CREATE TABLE period_data (id INT, region VARCHAR, date DATE, sales DOUBLE)');
+    await conn.run(insertRows);
+    const expression = buildCalculationFunctionExpression({
+      functionId,
+      value: 'sales',
+      partitionBy: ['region'],
+      parameters,
+    });
+    await conn.run(
+      compileCalculateFieldSql('out', 'period_data', {
+        calculations: [{ field: 'result', expression }],
+      })
+    );
+    const reader = await conn.runAndReadAll('SELECT * FROM out ORDER BY id');
+    return reader.getRowObjectsJson() as Record<string, unknown>[];
+  }
+
+  it('compares with the previous row after date ordering', async () => {
+    const rows = await runGeneratedCalculation(
+      'previous_difference',
+      { dateField: 'date' },
+      "INSERT INTO period_data VALUES (1, 'A', DATE '2024-01-02', 15), (2, 'A', DATE '2024-01-01', 10)"
+    );
+
+    expect(rows[0].result).toBe(5);
+    expect(rows[1].result).toBe(null);
+  });
+
+  it('returns null when the matching year-over-year period is missing', async () => {
+    const rows = await runGeneratedCalculation(
+      'year_over_year_value',
+      { dateField: 'date', granularity: 'month' },
+      "INSERT INTO period_data VALUES (1, 'A', DATE '2023-01-01', 10), (2, 'A', DATE '2025-01-01', 30), (3, 'A', DATE '2026-01-01', 40)"
+    );
+
+    expect(rows[0].result).toBe(null);
+    expect(rows[1].result).toBe(null);
+    expect(rows[2].result).toBe(30);
+  });
+
+  it('accumulates from the start of the year through the current row', async () => {
+    const rows = await runGeneratedCalculation(
+      'year_to_date',
+      { dateField: 'date', aggregation: 'sum', fiscalStartMonth: '1' },
+      "INSERT INTO period_data VALUES (1, 'A', DATE '2024-01-01', 10), (2, 'A', DATE '2024-01-02', 15), (3, 'A', DATE '2025-01-01', 7)"
+    );
+
+    expect(rows.map((row) => row.result)).toEqual([10, 25, 7]);
+  });
+
+  it('week_to_date keeps ISO week rows in the same partition across the year boundary', async () => {
+    const rows = await runGeneratedCalculation(
+      'week_to_date',
+      { dateField: 'date', aggregation: 'sum' },
+      "INSERT INTO period_data VALUES (1, 'A', DATE '2024-12-30', 10), (2, 'A', DATE '2024-12-31', 15), (3, 'A', DATE '2025-01-01', 20)"
+    );
+
+    expect(rows.map((row) => row.result)).toEqual([10, 25, 45]);
+  });
+
+  it('year_over_year week grain matches by ISO year, not calendar year', async () => {
+    const rows = await runGeneratedCalculation(
+      'year_over_year_value',
+      { dateField: 'date', granularity: 'week' },
+      "INSERT INTO period_data VALUES (1, 'A', DATE '2024-01-01', 100), (2, 'A', DATE '2024-12-30', 10), (3, 'A', DATE '2025-01-01', 15)"
+    );
+
+    expect(rows[0].result).toBe(null);
+    expect(rows[1].result).toBe(100);
+    expect(rows[2].result).toBe(null);
+  });
+
+  it('month grain year_over_year still matches by calendar year', async () => {
+    const rows = await runGeneratedCalculation(
+      'year_over_year_value',
+      { dateField: 'date', granularity: 'month' },
+      "INSERT INTO period_data VALUES (1, 'A', DATE '2024-01-01', 100), (2, 'A', DATE '2025-01-01', 15)"
+    );
+
+    expect(rows[0].result).toBe(null);
+    expect(rows[1].result).toBe(100);
+  });
+});
+
 describe('compileCalculateFieldSql', () => {
   it('replaces an existing input column when imported DSL omitted the action flag', () => {
     const sql = compileCalculateFieldSql(

@@ -5,6 +5,10 @@ import {
   CALCULATION_FUNCTION_CATEGORIES,
   usesTemporalCalculationRangeUnit,
 } from '../../src/shared/calculate-field/function-registry';
+import {
+  buildCalculationFunctionDslExpression,
+  normalizeCalculationDomainExpression,
+} from '../../src/shared/calculate-field/domain-dsl';
 
 describe('calculation function registry', () => {
   it('registers every first-phase function category', () => {
@@ -14,6 +18,8 @@ describe('calculation function registry', () => {
       'cumulative',
       'offset',
       'moving_window',
+      'period_compare',
+      'time_intelligence',
     ]);
     for (const category of CALCULATION_FUNCTION_CATEGORIES) {
       expect(calculationFunctionsByCategory(category).length).toBeGreaterThan(0);
@@ -265,5 +271,142 @@ describe('calculation function registry', () => {
         },
       })
     ).toBe('sum([amount]) OVER (ORDER BY [id] ROWS BETWEEN 5 PRECEDING AND 1 PRECEDING)');
+  });
+
+  it('builds previous-row value, difference, and rate expressions', () => {
+    const input = {
+      value: 'sales',
+      partitionBy: ['region'],
+      parameters: { dateField: 'date' },
+    };
+    expect(buildCalculationFunctionExpression({ functionId: 'previous_value', ...input })).toBe(
+      'lag([sales]) OVER (PARTITION BY [region] ORDER BY [date])'
+    );
+    expect(
+      buildCalculationFunctionExpression({ functionId: 'previous_difference', ...input })
+    ).toBe('[sales] - (lag([sales]) OVER (PARTITION BY [region] ORDER BY [date]))');
+    expect(buildCalculationFunctionExpression({ functionId: 'previous_rate', ...input })).toBe(
+      '([sales] - (lag([sales]) OVER (PARTITION BY [region] ORDER BY [date]))) / nullif((lag([sales]) OVER (PARTITION BY [region] ORDER BY [date])), 0)'
+    );
+  });
+
+  it('builds a strict year-over-year expression that returns null for a missing year', () => {
+    expect(
+      buildCalculationFunctionExpression({
+        functionId: 'year_over_year_value',
+        value: 'sales',
+        partitionBy: ['region'],
+        parameters: { dateField: 'date', granularity: 'month' },
+      })
+    ).toContain("CASE WHEN (extract('year' FROM [date]) - lag(extract('year' FROM [date]))");
+    expect(
+      buildCalculationFunctionExpression({
+        functionId: 'year_over_year_value',
+        value: 'sales',
+        partitionBy: ['region'],
+        parameters: { dateField: 'date', granularity: 'month' },
+      })
+    ).toContain('= 1 THEN lag([sales])');
+    expect(
+      buildCalculationFunctionExpression({
+        functionId: 'year_over_year_value',
+        value: 'sales',
+        partitionBy: ['region'],
+        parameters: { dateField: 'date', granularity: 'month' },
+      })
+    ).toContain('ELSE NULL END');
+  });
+
+  it('builds current-row time accumulation and rolling-time expressions', () => {
+    expect(
+      buildCalculationFunctionExpression({
+        functionId: 'year_to_date',
+        value: 'sales',
+        partitionBy: ['region'],
+        parameters: { dateField: 'date', aggregation: 'sum', fiscalStartMonth: '1' },
+      })
+    ).toBe(
+      "sum([sales]) OVER (PARTITION BY extract('year' FROM [date]), [region] ORDER BY [date] ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)"
+    );
+    expect(
+      buildCalculationFunctionExpression({
+        functionId: 'rolling_time',
+        value: 'sales',
+        partitionBy: ['region'],
+        parameters: {
+          dateField: 'date',
+          aggregation: 'avg',
+          windowSize: '7',
+          intervalUnit: 'day',
+        },
+      })
+    ).toBe(
+      'avg([sales]) OVER (PARTITION BY [region] ORDER BY [date] RANGE BETWEEN INTERVAL 7 DAY PRECEDING AND CURRENT ROW)'
+    );
+  });
+
+  it('builds canonical domain DSL for period comparison and time accumulation', () => {
+    expect(
+      buildCalculationFunctionDslExpression({
+        functionId: 'year_over_year_value',
+        value: 'sales',
+        partitionBy: ['region'],
+        parameters: { dateField: 'date', granularity: 'month' },
+      })
+    ).toBe('year_over_year_value([sales], [date], "month") over(partition by [region])');
+    expect(
+      buildCalculationFunctionDslExpression({
+        functionId: 'year_to_date',
+        value: 'sales',
+        partitionBy: ['region'],
+        parameters: { dateField: 'date', aggregation: 'sum', fiscalStartMonth: '4' },
+      })
+    ).toBe('year_to_date(sum([sales]), [date], 4) over(partition by [region])');
+  });
+
+  it('normalizes domain DSL spacing', () => {
+    expect(
+      normalizeCalculationDomainExpression(
+        'year_over_year_value( [sales] , [date] , "month" ) over( partition by [region] )'
+      )
+    ).toBe('year_over_year_value([sales], [date], "month") over(partition by [region])');
+  });
+
+  it('week_to_date partitions by ISO year so the year boundary does not split a week', () => {
+    expect(
+      buildCalculationFunctionExpression({
+        functionId: 'week_to_date',
+        value: 'sales',
+        partitionBy: ['region'],
+        parameters: { dateField: 'date', aggregation: 'sum' },
+      })
+    ).toBe(
+      "sum([sales]) OVER (PARTITION BY extract('isoyear' FROM [date]), extract('week' FROM [date]), [region] ORDER BY [date] ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)"
+    );
+  });
+
+  it('week grain year_over_year orders and guards by ISO year', () => {
+    const expression = buildCalculationFunctionExpression({
+      functionId: 'year_over_year_value',
+      value: 'sales',
+      partitionBy: ['region'],
+      parameters: { dateField: 'date', granularity: 'week' },
+    });
+
+    expect(expression).toContain("extract('isoyear' FROM [date])");
+    expect(expression).not.toContain("extract('year' FROM [date])");
+    expect(expression).toContain("extract('week' FROM [date])");
+  });
+
+  it('month grain year_over_year keeps the calendar year', () => {
+    const expression = buildCalculationFunctionExpression({
+      functionId: 'year_over_year_value',
+      value: 'sales',
+      partitionBy: ['region'],
+      parameters: { dateField: 'date', granularity: 'month' },
+    });
+
+    expect(expression).toContain("extract('year' FROM [date])");
+    expect(expression).not.toContain('isoyear');
   });
 });

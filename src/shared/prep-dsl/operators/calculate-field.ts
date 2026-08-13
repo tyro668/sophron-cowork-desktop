@@ -1,9 +1,10 @@
 import type { PrepDiagnostic } from '../ast';
 import { createPrepDiagnostic } from '../diagnostics';
 import { formatFieldRef, parseFieldRefExact, toFieldName } from '../syntax/fields';
-import { splitTopLevel } from '../syntax/scanner';
+import { findMatchingParenthesis, splitTopLevel } from '../syntax/scanner';
 import { createOperator, objectArray, stringArray, type OperatorDslCodec } from './codec';
 import { isCompleteCalculation } from '../../operator-completeness';
+import { normalizeCalculationDomainExpression } from '../../calculate-field/domain-dsl';
 
 export const calculateFieldCodec: OperatorDslCodec = {
   type: 'calculate_field',
@@ -19,7 +20,9 @@ export const calculateFieldCodec: OperatorDslCodec = {
         line: command.line,
       });
     }
-    return createOperator('calculate_field', text, { calculations });
+    const normalizedDsl =
+      calculations.length > 0 ? `derive ${calculations.map(formatCalculation).join(', ')}` : text;
+    return createOperator('calculate_field', normalizedDsl, { calculations });
   },
   format: (config) => {
     const calculations = objectArray(config?.calculations)
@@ -44,7 +47,7 @@ function parseCalculation(
     });
     return [];
   }
-  const expression = part.slice(equals + 1).trim();
+  let expression = part.slice(equals + 1).trim();
   if (!expression) {
     diagnostics.push({
       ...createPrepDiagnostic('invalidCalculationExpression', 'Calculation expression is empty'),
@@ -52,12 +55,28 @@ function parseCalculation(
     });
     return [];
   }
+  try {
+    expression = normalizeCalculationDomainExpression(expression);
+  } catch (error) {
+    diagnostics.push({
+      ...createPrepDiagnostic(
+        'invalidCalculationDomainFunction',
+        error instanceof Error ? error.message : String(error)
+      ),
+      line,
+    });
+    return [{ field: toFieldName(field), expression }];
+  }
   const open = expression.indexOf('(');
   if (open <= 0) return [{ field: toFieldName(field), expression }];
 
-  const close = expression.lastIndexOf(')');
+  const close = findMatchingParenthesis(expression, open);
+  if (close < 0) return [{ field: toFieldName(field), expression }];
   const functionName = expression.slice(0, open);
   const args = splitTopLevel(expression.slice(open + 1, close)).map((arg) => arg.trim());
+  if (functionName !== 'period_compare' && functionName !== 'accumulate') {
+    return [{ field: toFieldName(field), expression }];
+  }
   const tail = expression.slice(close + 1).trim();
   const partitionBy = parsePartitionBy(tail, line, diagnostics);
   if (tail && !partitionBy) {
@@ -196,18 +215,17 @@ function formatCalculation(calculation: Record<string, unknown>): string {
   const target = formatFieldRef(String(calculation.field ?? 'new_field'));
 
   if (fn.startsWith('period_yoy') || fn.startsWith('period_mom')) {
-    const modes: Record<string, string> = {
-      period_yoy_value: 'yoy_diff',
-      period_yoy_rate: 'yoy_rate',
-      period_yoy_prev: 'yoy_prev',
-      period_mom_value: 'mom_diff',
-      period_mom_rate: 'mom_rate',
-      period_mom_prev: 'mom_prev',
+    const functions: Record<string, string> = {
+      period_yoy_value: 'year_over_year_difference',
+      period_yoy_rate: 'year_over_year_rate',
+      period_yoy_prev: 'year_over_year_value',
+      period_mom_value: 'previous_difference',
+      period_mom_rate: 'previous_rate',
+      period_mom_prev: 'previous_value',
     };
-    const args = [modes[fn] || fn, formatFieldRef(fnArg), formatFieldRef(dateField)]
-      .filter(Boolean)
-      .join(', ');
-    return `${target} = period_compare(${args})${over}`;
+    const args = [formatFieldRef(fnArg), formatFieldRef(dateField)];
+    if (fn.startsWith('period_yoy')) args.push('"month"');
+    return `${target} = ${functions[fn]}(${args.join(', ')})${over}`;
   }
 
   const prefix = [
@@ -223,15 +241,22 @@ function formatCalculation(calculation: Record<string, unknown>): string {
   if (prefix) {
     const rawPrefix = prefix.replace(/_$/, '');
     const rolling = rawPrefix.startsWith('rolling_');
-    const args = [
-      rawPrefix,
-      fn.slice(prefix.length),
-      formatFieldRef(fnArg),
-      formatFieldRef(dateField),
-    ];
-    if (rolling && fnArg2) args.push(fnArg2, rawPrefix.slice(8));
-    else if (!rolling && fiscalStartMonth > 1) args.push(`fiscal_start=${fiscalStartMonth}`);
-    return `${target} = accumulate(${args.filter(Boolean).join(', ')})${over}`;
+    const aggregateName = fn.slice(prefix.length);
+    const aggregate =
+      aggregateName === 'distinct_count'
+        ? `count(distinct ${formatFieldRef(fnArg)})`
+        : `${aggregateName}(${fnArg === '*' ? '*' : formatFieldRef(fnArg)})`;
+    if (rolling) {
+      return `${target} = rolling_time(${aggregate}, ${formatFieldRef(dateField)}, ${fnArg2 || '1'}, "${rawPrefix.slice(8)}")${over}`;
+    }
+    const functions: Record<string, string> = {
+      ytd: 'year_to_date',
+      qtd: 'quarter_to_date',
+      mtd: 'month_to_date',
+      wtd: 'week_to_date',
+    };
+    const fiscal = rawPrefix === 'ytd' && fiscalStartMonth > 1 ? `, ${fiscalStartMonth}` : '';
+    return `${target} = ${functions[rawPrefix]}(${aggregate}, ${formatFieldRef(dateField)}${fiscal})${over}`;
   }
   return `${target} = ${String(calculation.expression ?? 'null')}`;
 }
