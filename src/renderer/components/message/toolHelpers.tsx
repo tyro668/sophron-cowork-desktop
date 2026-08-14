@@ -11,6 +11,7 @@ import {
   Table2,
   Workflow,
   Play,
+  CalendarClock,
 } from 'lucide-react';
 
 /** Map a tool name to a small icon element */
@@ -30,6 +31,7 @@ export function getToolIcon(name: string) {
   }
   if (n.includes('output_table')) return <Table2 className="w-3.5 h-3.5" />;
   if (n.startsWith('data_')) return <Database className="w-3.5 h-3.5" />;
+  if (n.startsWith('automation_')) return <CalendarClock className="w-3.5 h-3.5" />;
   return <Terminal className="w-3.5 h-3.5" />;
 }
 
@@ -97,6 +99,19 @@ export function getToolLabel(
   if (nameLower.startsWith('data_')) {
     return getDataToolLabel(nameLower, inp);
   }
+  if (nameLower.startsWith('automation_')) {
+    return getAutomationToolLabel(nameLower, inp);
+  }
+  return name;
+}
+
+function getAutomationToolLabel(name: string, input: Record<string, unknown>): string {
+  if (name === 'automation_list') return 'List automations';
+  if (name === 'automation_prepare') {
+    const automationName = firstString(input, ['name']);
+    return `Prepare automation${automationName ? ` ${automationName}` : ''}`;
+  }
+  if (name === 'automation_create') return 'Create automation';
   return name;
 }
 

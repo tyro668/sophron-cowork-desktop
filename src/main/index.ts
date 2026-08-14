@@ -94,6 +94,8 @@ import { AutomationService } from './automation/automation-service';
 import { AutomationRunner } from './automation/automation-runner';
 import { AutomationScheduler } from './automation/automation-scheduler';
 import { createDefaultAutomationActionRegistry } from './automation/default-actions';
+import { createAutomationAgentRuntimeExtension } from './automation/tools';
+import { AutomationToolService } from './automation/tools/service';
 import { DesktopAuthService } from './auth/desktop-auth-service';
 import type {
   Automation,
@@ -1235,6 +1237,13 @@ app
       resolveProjectCwd: (projectId) => db.projects?.get(projectId)?.cwd ?? null,
     });
     automationScheduler.start();
+    const automationToolService = new AutomationToolService({
+      automationService,
+      dataTaskStore: initializedDataTaskStore,
+      projectExists: (projectId) => Boolean(db.projects?.get(projectId)),
+      onAutomationsChanged: rescheduleAutomations,
+    });
+    extensionManager.register(createAutomationAgentRuntimeExtension(automationToolService));
 
     // 初始化远程管理器
     remoteManager.setRendererCallback(sendToRenderer);
