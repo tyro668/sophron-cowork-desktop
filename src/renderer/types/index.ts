@@ -258,6 +258,7 @@ export type TraceOutcome =
   | 'cancelled'
   | 'timed_out'
   | 'provider_failed'
+  | 'protocol_violation'
   | 'loop_guard_stopped';
 
 export type TraceStepType = 'thinking' | 'text' | 'tool_call' | 'tool_result' | 'permission';
@@ -1424,6 +1425,7 @@ export interface SandboxSyncStatus {
 export type ServerEvent =
   | { type: 'stream.message'; payload: { sessionId: string; message: Message } }
   | { type: 'stream.partial'; payload: { sessionId: string; delta: string } }
+  | { type: 'stream.reset'; payload: { sessionId: string } }
   | { type: 'stream.thinking'; payload: { sessionId: string; delta: string } }
   | {
       type: 'stream.executionTime';

@@ -18,7 +18,7 @@ function buildRoutingSection(): string {
     'Do not automatically create a data task for one-off exploration, casual analysis, simple questions, or requests that explicitly ask you to use Python.',
     'If the user has not asked for a fixed/reusable workflow, ask whether they want to save the processing as a reusable data task before using write or execute data tools.',
     'Never read the app SQLite database, DuckDB files, or raw local data files directly for data processing. Use data_* tools instead.',
-    'Never write pseudo tool markup such as <tool_use>...</tool_use> in assistant text. If a data operation is needed, call the actual data_* tool.',
+    'Invoke data operations only through the runtime structured tool-call channel. Never represent an intended tool call as ordinary assistant text.',
     'Do not load entire tables into chat. Use preview tools with bounded limits.',
     'When creating a new data task, call data_analyze_task_requirement immediately after resolving one inputTableId. Do not call data_preview_table first just to discover columns; requirement analysis reads the schema internally.',
     'Use data_preview_table with includeRows=true only when the user explicitly asks to inspect row values. Otherwise keep its default schema-only response.',

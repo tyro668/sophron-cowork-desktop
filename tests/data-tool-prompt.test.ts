@@ -23,7 +23,8 @@ describe('data tool prompt', () => {
     expect(prompt).toContain('data_create_input_table');
     expect(prompt).toContain('data_create_input_table_with_processing_strategy');
     expect(prompt).toContain('processingStrategy.strategy="customize"');
-    expect(prompt).toContain('Never write pseudo tool markup');
+    expect(prompt).toContain('runtime structured tool-call channel');
+    expect(prompt).not.toContain('<tool_use>');
     expect(prompt).toContain('data_analyze_task_requirement');
     expect(prompt).toContain('data_generate_task_from_requirement');
     expect(prompt).toContain('mandatory two-turn flow');
