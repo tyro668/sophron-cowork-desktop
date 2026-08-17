@@ -708,7 +708,7 @@
         "calcFieldFn_period_mom_value": "MoM Value",
         "calcFieldFn_period_mom_rate": "MoM Rate",
         "calcFieldFn_period_mom_prev": "Prior Period",
-        "calcFieldFn_offset_diff": "Custom offset diff",
+        "calcFieldFn_offset_difference": "Custom offset difference",
         "calcFieldFn_offset_rate": "Custom offset rate",
         "calcFieldFn_string_agg": "String Agg",
         "calcFieldFn_ytd_sum": "YTD Sum",

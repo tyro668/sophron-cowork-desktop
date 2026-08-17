@@ -140,7 +140,12 @@ export function CalculationFunctionWizard({
     try {
       return {
         expression: (definition.category === 'period_compare' ||
-          definition.category === 'time_intelligence'
+          definition.category === 'time_intelligence' ||
+          definition.category === 'group_metrics' ||
+          definition.category === 'ranking' ||
+          definition.category === 'cumulative' ||
+          definition.category === 'moving_window' ||
+          definition.category === 'offset'
           ? buildCalculationFunctionDslExpression
           : buildCalculationFunctionExpression)({
           functionId: definition.id,

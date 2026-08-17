@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
 import type { CalculationConfigEntry } from '../../src/renderer/components/workflow-forms/shared/calculate-field';
 import {
@@ -96,6 +96,24 @@ describe('FormCalculateField — config ↔ DSL', () => {
     'derive [yoy_sales] = year_over_year_value([sales], [date], "month") over(partition by [region])',
     'derive [year_sales] = year_to_date(sum([sales]), [date], 4) over(partition by [region])',
     'derive [rolling_sales] = rolling_time(avg([sales]), [date], 7, "day") over(partition by [region])',
+    'derive [prev_sales] = lag([sales]) over(partition by [region] order by [date])',
+    'derive [next_sales] = lead([sales], 2) over(partition by [region] order by [date])',
+    'derive [first_sales] = first_value([sales]) over(order by [date])',
+    'derive [last_sales] = last_value([sales]) over(partition by [region] order by [date])',
+    'derive [nth_sales] = nth_value([sales], 3) over(order by [date])',
+    'derive [sales_diff] = offset_difference([sales], 2) over(partition by [region] order by [amount] desc, [date])',
+    'derive [sales_rate] = offset_rate([sales], 2) over(partition by [region] order by [date])',
+    'derive [group_sales] = group_sum([sales]) over(partition by [region])',
+    'derive [group_names] = group_string_agg([name], ", ") over(partition by [region])',
+    'derive [cum_sales] = cumulative_sum([sales]) over(partition by [region] order by [date])',
+    'derive [mov_sales] = moving_avg([sales]) over(partition by [region] order by [date] rows between 1 preceding and current row)',
+    'derive [mov_range] = moving_sum([sales]) over(order by [date] range between interval 7 "day" preceding and current row)',
+    'derive [rn] = row_number() over(partition by [region] order by [amount] desc)',
+    'derive [ranked] = rank() over(order by [amount] desc, [date])',
+    'derive [dense] = dense_rank() over(partition by [region] order by [amount])',
+    'derive [pct] = percent_rank() over(order by [amount])',
+    'derive [cume] = cume_dist() over(partition by [region] order by [amount])',
+    'derive [bucket] = ntile(4) over(order by [amount] desc)',
   ])('round-trips canonical calculation domain DSL: %s', (dsl) => {
     const parsed = parsePrepOperatorDsl(dsl, 'calculate_field');
     expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
@@ -139,6 +157,20 @@ describe('FormCalculateField — config ↔ DSL', () => {
     'derive [x] = year_to_date(sum([sales]), [date]) extra',
     'derive [x] = year_to_date(sum([sales]), [date]);',
     'derive [x] = year_to_date(sum([sales]), [date]',
+    'derive [x] = cumulative_sum([sales]) over(order by [date] rows between 1 preceding and current row)',
+    'derive [x] = moving_avg([sales]) over(order by [date])',
+    'derive [x] = moving_avg([sales]) over(order by [date] rows between 1 following and current row)',
+    'derive [x] = group_quantile_cont([sales]) over(partition by [region])',
+    'derive [x] = group_quantile_cont([sales], 3) over(partition by [region])',
+    'derive [x] = group_string_agg([name], ", ") extra',
+    'derive [x] = lag([sales]) over(order by [date] rows between 1 preceding and current row)',
+    'derive [x] = moving_avg([sales]) over(order by date)',
+    'derive [x] = moving_avg([sales]) over(order by [date] rows between 2 preceding and 10 preceding)',
+    'derive [x] = rank() over(partition by [region])',
+    'derive [x] = rank() over(order by [date] rows between 1 preceding and current row)',
+    'derive [x] = ntile() over(order by [date])',
+    'derive [x] = ntile(0) over(order by [date])',
+    'derive [x] = row_number(2) over(order by [date])',
   ])('rejects invalid calculation domain DSL: %s', (dsl) => {
     const parsed = parsePrepOperatorDsl(dsl, 'calculate_field');
     expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).not.toEqual(
@@ -371,7 +403,7 @@ describe('FormCalculateField — unified expression migration', () => {
     expect(calculation).toEqual({
       id: 'calc_rank',
       field: 'rank',
-      expression: 'dense_rank() OVER (PARTITION BY [region] ORDER BY [amount] desc)',
+      expression: 'dense_rank() over (partition by [region] order by [amount] desc)',
       action: 'add',
     });
   });

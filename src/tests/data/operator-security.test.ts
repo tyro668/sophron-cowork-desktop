@@ -82,10 +82,53 @@ describe('data operator security boundaries', () => {
     expect(() => exprFromParts({ ...base, fn: 'quantile_cont', fnArg2: '1.1' })).toThrow(
       /outside the allowed range/
     );
-    expect(exprFromParts({ ...base, fn: 'lag', fnArg2: '0' })).toContain('lag([amount], 0)');
+    expect(() => exprFromParts({ ...base, fn: 'lag', fnArg2: '0' })).toThrow(
+      /outside the allowed range/
+    );
     expect(exprFromParts({ ...base, fn: 'quantile_cont', fnArg2: '0.5' })).toContain(
       'quantile_cont([amount], 0.5)'
     );
+  });
+
+  it('applies the default bucket count when ntile omits its argument', () => {
+    expect(
+      exprFromParts({
+        id: '1',
+        field: 'bucket',
+        expression: '',
+        type: 'window',
+        fn: 'ntile',
+      })
+    ).toContain('ntile(2) over ()');
+  });
+
+  it('omits the lag offset when the legacy config has no fnArg2', () => {
+    expect(
+      exprFromParts({
+        id: '1',
+        field: 'prev',
+        expression: '',
+        type: 'window',
+        fn: 'lag',
+        fnArg: 'amount',
+      })
+    ).toBe('lag([amount]) over ()');
+  });
+
+  it('emits offset and ranking domain DSL in lowercase', () => {
+    expect(
+      exprFromParts({
+        id: '1',
+        field: 'prev',
+        expression: '',
+        type: 'window',
+        fn: 'lag',
+        fnArg: 'amount',
+        fnArg2: '2',
+        partitionBy: ['region'],
+        orderBy: [{ field: 'date', direction: 'asc' }],
+      })
+    ).toBe('lag([amount], 2) over (partition by [region] order by [date])');
   });
 
   it('quotes text function arguments as DSL string literals', () => {

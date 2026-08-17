@@ -708,7 +708,7 @@
         "calcFieldFn_period_mom_value": "环比值",
         "calcFieldFn_period_mom_rate": "环比率",
         "calcFieldFn_period_mom_prev": "前期值",
-        "calcFieldFn_offset_diff": "自定义差值",
+        "calcFieldFn_offset_difference": "自定义差值",
         "calcFieldFn_offset_rate": "自定义差率",
         "calcFieldFn_string_agg": "字符串聚合",
         "calcFieldFn_ytd_sum": "年初至今求和",

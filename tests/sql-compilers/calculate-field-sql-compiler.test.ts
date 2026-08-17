@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api';
 import { compileScalarExpression } from '../../src/main/data/operators/compute';
 import { compileCalculateFieldSql } from '../../src/main/data/operators/calculate-field';
-import { buildCalculationFunctionExpression } from '../../src/shared/calculate-field/function-registry';
+import {
+  buildCalculationFunctionExpression,
+  type CalculationFunctionInput,
+} from '../../src/shared/calculate-field/function-registry';
+import { buildCalculationFunctionDslExpression } from '../../src/shared/calculate-field/domain-dsl';
 import {
   normalizeExpressionCalculationEntries,
   type CalculationConfigEntry,
@@ -375,6 +379,69 @@ describe('DuckDB integration — period comparison and time accumulation', () =>
     expect(rows[0].result).toBe(null);
     expect(rows[1].result).toBe(100);
   });
+
+  async function runGeneratedOffsetCalculation(
+    functionId: string,
+    input: Omit<CalculationFunctionInput, 'functionId'>,
+    insertRows: string
+  ): Promise<Record<string, unknown>[]> {
+    const conn = await connect();
+    await conn.run('CREATE TABLE period_data (id INT, region VARCHAR, date DATE, sales DOUBLE)');
+    await conn.run(insertRows);
+    const expression = buildCalculationFunctionDslExpression({ functionId, ...input });
+    await conn.run(
+      compileCalculateFieldSql('out', 'period_data', {
+        calculations: [{ field: 'result', expression }],
+      })
+    );
+    const reader = await conn.runAndReadAll('SELECT * FROM out ORDER BY id');
+    return reader.getRowObjectsJson() as Record<string, unknown>[];
+  }
+
+  it('lag returns the previous row after date ordering', async () => {
+    const rows = await runGeneratedOffsetCalculation(
+      'lag',
+      {
+        value: '[sales]',
+        valueIsExpression: true,
+        partitionBy: ['region'],
+        orderBy: [{ field: 'date', direction: 'asc' }],
+      },
+      "INSERT INTO period_data VALUES (1, 'A', DATE '2024-01-01', 10), (2, 'A', DATE '2024-01-02', 15), (3, 'A', DATE '2024-01-03', 20)"
+    );
+
+    expect(rows.map((row) => row.result)).toEqual([null, 10, 15]);
+  });
+
+  it('offset_difference compares against N rows back', async () => {
+    const rows = await runGeneratedOffsetCalculation(
+      'offset_difference',
+      {
+        value: '[sales]',
+        valueIsExpression: true,
+        extraParameter: '2',
+        orderBy: [{ field: 'date', direction: 'asc' }],
+      },
+      "INSERT INTO period_data VALUES (1, 'A', DATE '2024-01-01', 10), (2, 'A', DATE '2024-01-02', 15), (3, 'A', DATE '2024-01-03', 20)"
+    );
+
+    expect(rows.map((row) => row.result)).toEqual([null, null, 10]);
+  });
+
+  it('last_value returns the last row of the partition', async () => {
+    const rows = await runGeneratedOffsetCalculation(
+      'last_value',
+      {
+        value: '[sales]',
+        valueIsExpression: true,
+        partitionBy: ['region'],
+        orderBy: [{ field: 'date', direction: 'asc' }],
+      },
+      "INSERT INTO period_data VALUES (1, 'A', DATE '2024-01-01', 10), (2, 'A', DATE '2024-01-02', 15), (3, 'A', DATE '2024-01-03', 20)"
+    );
+
+    expect(rows.map((row) => row.result)).toEqual([20, 20, 20]);
+  });
 });
 
 describe('compileCalculateFieldSql', () => {
@@ -484,7 +551,7 @@ describe('compileCalculateFieldSql', () => {
       ],
     });
     expect(sql).toBe(
-      'CREATE TEMP TABLE out AS SELECT *, row_number() over(partition by "region" order by "amount" desc) AS "rn" FROM inp'
+      'CREATE TEMP TABLE out AS SELECT *, row_number() OVER (PARTITION BY "region" ORDER BY "amount" desc) AS "rn" FROM inp'
     );
   });
 
@@ -1167,6 +1234,20 @@ describe('DuckDB integration — cross-row window functions', () => {
     expect(rows[2].r).toBe('2');
   });
 
+  it('row_number() over(...) domain DSL expands to the same result', async () => {
+    const rows = await runW('row_number() over(partition by [region] order by [amount] desc)');
+    expect(rows[0].r).toBe('1'); // Alice (East, amount=100)
+    expect(rows[1].r).toBe('1'); // Bob (West, amount=200)
+    expect(rows[2].r).toBe('2'); // Charlie (East, amount=50)
+  });
+
+  it('ntile(2) over(...) domain DSL with a bare order identifier expands correctly', async () => {
+    const rows = await runW('ntile(2) over(order by id)');
+    expect(rows[0].r).toBe('1');
+    expect(rows[1].r).toBe('1');
+    expect(rows[2].r).toBe('2');
+  });
+
   // ── Offset ──
   it('lag([amount]) OVER (ORDER BY id) returns previous row value', async () => {
     const rows = await runW('lag([amount]) OVER (ORDER BY id)');
@@ -1210,10 +1291,8 @@ describe('DuckDB integration — cross-row window functions', () => {
     expect(rows[2].r).toBe(100); // Charlie (East, first=100)
   });
 
-  it('last_value([amount]) OVER (PARTITION BY region ORDER BY id ROWS UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)', async () => {
-    const rows = await runW(
-      'last_value([amount]) OVER (PARTITION BY region ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)'
-    );
+  it('last_value([amount]) OVER (PARTITION BY region ORDER BY id) uses the full partition frame', async () => {
+    const rows = await runW('last_value([amount]) OVER (PARTITION BY region ORDER BY id)');
     // East: last=50(Charlie), West: last=200(Bob)
     expect(rows[0].r).toBe(50); // Alice (East, last=50)
     expect(rows[1].r).toBe(200); // Bob (West, last=200)
@@ -1253,7 +1332,7 @@ describe('DuckDB integration — cross-row window functions', () => {
   });
 
   // ── Custom offset types ──
-  it('offset_diff with N=2 compares against 2 rows back', async () => {
+  it('compound lag expression with N=2 compares against 2 rows back', async () => {
     const conn = await connect();
     await conn.run('CREATE TABLE w (id INTEGER, amount DOUBLE)');
     await conn.run('INSERT INTO w VALUES (1, 100), (2, 200), (3, 50)');
@@ -1274,7 +1353,7 @@ describe('DuckDB integration — cross-row window functions', () => {
     expect(rows[2].r).toBe(-50); // id=3: 50 - 100(1) = -50
   });
 
-  it('offset_rate with N=2 calculates rate against 2 rows back', async () => {
+  it('compound lag rate expression with N=2 calculates rate against 2 rows back', async () => {
     const conn = await connect();
     await conn.run('CREATE TABLE w (id INTEGER, amount DOUBLE)');
     await conn.run('INSERT INTO w VALUES (1, 100), (2, 200), (3, 50)');

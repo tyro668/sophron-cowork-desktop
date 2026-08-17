@@ -163,7 +163,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         'dense_rank() over(order by [score] desc)',
       ]),
       functionToken('ntile', 'calcFieldDesc_ntile', [{ name: 'buckets', type: 'int' }], 'int', [
-        'ntile(4) over(order by [amount] desc)',
+        'ntile(2) over(order by [amount] desc)',
       ]),
       functionToken(
         'first_value',

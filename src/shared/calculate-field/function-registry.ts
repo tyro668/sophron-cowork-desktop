@@ -178,7 +178,7 @@ const rankingFunctions: CalculationFunctionDefinition[] = [
     frame: 'none',
     extraParameter: {
       kind: 'integer',
-      defaultValue: '4',
+      defaultValue: '2',
       min: 1,
       max: MAX_CALCULATION_WINDOW_SIZE,
       labelKey: 'calcFieldPlaceholderBuckets',
@@ -234,13 +234,13 @@ const offsetFunctions: CalculationFunctionDefinition[] = [
       extraParameter: {
         kind: 'integer',
         defaultValue: '1',
-        min: 0,
+        min: 1,
         max: MAX_CALCULATION_WINDOW_SIZE,
         labelKey: 'calcFieldPlaceholderOffset',
       },
     })
   ),
-  ...(['offset_diff', 'offset_rate'] as const).map(
+  ...(['offset_difference', 'offset_rate'] as const).map(
     (id): CalculationFunctionDefinition => ({
       id,
       category: 'offset',
@@ -248,7 +248,7 @@ const offsetFunctions: CalculationFunctionDefinition[] = [
       valueArgument: 'field',
       order: 'required',
       frame: 'none',
-      expressionKind: id === 'offset_diff' ? 'offset-diff' : 'offset-rate',
+      expressionKind: id === 'offset_difference' ? 'offset-diff' : 'offset-rate',
       extraParameter: {
         kind: 'integer',
         defaultValue: '1',
@@ -620,7 +620,7 @@ function buildValueArgument(
   return formatCalculationField(value);
 }
 
-function buildExtraParameter(
+export function buildExtraParameter(
   definition: CalculationFunctionDefinition,
   rawValue: string | undefined
 ): string {
@@ -676,6 +676,8 @@ function buildOverClause(
 
   if (definition.frame === 'cumulative') {
     clauses.push('ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW');
+  } else if (definition.category === 'offset') {
+    clauses.push('ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING');
   } else if (definition.frame === 'custom') {
     const frame = input.frame;
     if (!frame) throw new Error(`Calculation function '${definition.id}' requires a window frame`);

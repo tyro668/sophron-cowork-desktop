@@ -67,17 +67,9 @@ export const FN_ARG_SPEC: Record<string, ParamSpec[]> = {
   ],
   lag: [
     { key: 'fnArg', type: 'field' },
-    { key: 'fnArg2', type: 'number', numberRule: { integer: true, min: 0, max: 1_000_000 } },
-  ],
-  lead: [
-    { key: 'fnArg', type: 'field' },
-    { key: 'fnArg2', type: 'number', numberRule: { integer: true, min: 0, max: 1_000_000 } },
-  ],
-  offset_diff: [
-    { key: 'fnArg', type: 'field' },
     { key: 'fnArg2', type: 'number', numberRule: { integer: true, min: 1, max: 1_000_000 } },
   ],
-  offset_rate: [
+  lead: [
     { key: 'fnArg', type: 'field' },
     { key: 'fnArg2', type: 'number', numberRule: { integer: true, min: 1, max: 1_000_000 } },
   ],
@@ -115,8 +107,6 @@ export const FN_WHITELIST = new Set([
   'nth_value',
   'lag',
   'lead',
-  'offset_diff',
-  'offset_rate',
   'period_yoy_value',
   'period_yoy_rate',
   'period_yoy_prev',
@@ -326,22 +316,29 @@ export function exprFromParts(item: CalculationRow): string {
   const partition = item.partitionBy?.filter(Boolean);
   const order = item.orderBy?.filter((o) => o.field);
 
-  function overStr(useOrder: boolean): string {
+  function overStr(useOrder: boolean, lowercase = false): string {
+    const upper = (value: string): string => (lowercase ? value.toLowerCase() : value);
     const parts: string[] = [];
-    if (partition?.length) parts.push(`PARTITION BY ${partition.map(fieldRef).join(', ')}`);
+    if (partition?.length)
+      parts.push(`${upper('PARTITION BY')} ${partition.map(fieldRef).join(', ')}`);
     if (useOrder && order?.length)
       parts.push(
-        `ORDER BY ${order.map((o) => `${fieldRef(o.field)}${o.direction === 'desc' ? ' desc' : ''}`).join(', ')}`
+        `${upper('ORDER BY')} ${order.map((o) => `${fieldRef(o.field)}${o.direction === 'desc' ? ' desc' : ''}`).join(', ')}`
       );
     if (item.frameStart && order?.length) {
-      const ft = (item.frameType || 'rows').toUpperCase();
-      const end = item.frameEnd || 'current row';
-      parts.push(`${ft} BETWEEN ${item.frameStart} AND ${end}`);
+      const ft = upper(item.frameType || 'rows');
+      const start = lowerize(item.frameStart, lowercase);
+      const end = lowerize(item.frameEnd || 'current row', lowercase);
+      parts.push(`${ft} BETWEEN ${start} AND ${end}`);
     }
     if (item.frameExclude && item.frameExclude !== 'no others') {
-      parts.push(`EXCLUDE ${item.frameExclude.toUpperCase()}`);
+      parts.push(`${upper('EXCLUDE')} ${upper(item.frameExclude)}`);
     }
-    return parts.length > 0 ? ` OVER (${parts.join(' ')})` : ' OVER ()';
+    return parts.length > 0 ? ` ${upper('OVER')} (${parts.join(' ')})` : ` ${upper('OVER')} ()`;
+  }
+
+  function lowerize(value: string, lowercase: boolean): string {
+    return lowercase ? value.toLowerCase() : value;
   }
 
   const fieldArg = item.fnArg || '*';
@@ -383,18 +380,6 @@ export function exprFromParts(item: CalculationRow): string {
     return `${wrappedFieldArg} - ${lag}`;
   }
 
-  // Custom offset types
-  if (fn === 'offset_diff' || fn === 'offset_rate') {
-    const offset = numericArg(item.fnArg2, 1, {
-      integer: true,
-      min: 1,
-      max: 1_000_000,
-    });
-    const isRate = fn === 'offset_rate';
-    const lag = `lag(${wrappedFieldArg}, ${offset})${overStr(true)}`;
-    if (isRate) return `(${wrappedFieldArg} - ${lag}) / nullif(${lag}, 0)`;
-    return `${wrappedFieldArg} - ${lag}`;
-  }
   // Time intelligence: ytd_sum, qtd_avg, rolling_year_count, etc.
   const prefix = Object.keys(TIME_WINDOW_DEFS).find((p) => fn.startsWith(p + '_'));
   if (prefix) {
@@ -428,9 +413,30 @@ export function exprFromParts(item: CalculationRow): string {
   const fnSqlMap: Record<string, string> = {
     var: 'var_pop',
   };
-  const noArgFns = new Set(['row_number', 'rank', 'dense_rank', 'percent_rank', 'cume_dist']);
+  const noArgRankingFns = new Set([
+    'row_number',
+    'rank',
+    'dense_rank',
+    'percent_rank',
+    'cume_dist',
+  ]);
+  const domainFns = new Set([
+    'row_number',
+    'rank',
+    'dense_rank',
+    'percent_rank',
+    'cume_dist',
+    'ntile',
+    'lag',
+    'lead',
+    'first_value',
+    'last_value',
+    'nth_value',
+    'offset_difference',
+    'offset_rate',
+  ]);
   let fnCall: string;
-  if (noArgFns.has(fn)) {
+  if (noArgRankingFns.has(fn)) {
     fnCall = `${fn}()`;
   } else if (fn === 'count_distinct') {
     fnCall = `count(DISTINCT ${wrappedFieldArg})`;
@@ -443,15 +449,18 @@ export function exprFromParts(item: CalculationRow): string {
     const args = specs
       .map((s) => {
         const raw = item[s.key];
+        if (s.type === 'number') {
+          if ((fn === 'lag' || fn === 'lead') && !raw) return '';
+          return numericArg(raw, fn === 'ntile' ? 2 : 1, s.numberRule);
+        }
         if (!raw) return s.type === 'field' ? '*' : '';
         if (s.type === 'field') return fieldRef(raw.replace(/^\[|\]$/g, ''));
-        if (s.type === 'number') return numericArg(raw, 1, s.numberRule);
         return textArg(raw);
       })
       .filter((a) => a !== '');
     fnCall = `${sqlFn}(${args.join(', ')})`;
   }
-  const over = overStr(true);
+  const over = overStr(true, domainFns.has(fn));
   return fnCall + over;
 }
 
