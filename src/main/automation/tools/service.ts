@@ -3,21 +3,27 @@ import type { DataTaskStore } from '../../data/data-task-store';
 import { createDataResourceHref } from '../../../shared/data-resource-link';
 import type { Automation, AutomationActionNode } from '../../../shared/automation/types';
 import type { AutomationService } from '../automation-service';
-import { computeNextAutomationRunAt } from '../automation-trigger';
+import { computeNextAutomationRunAt, normalizeAutomationTrigger } from '../automation-trigger';
 import {
   compileAutomationSchedule,
   formatAutomationTrigger,
   formatTimestamp,
 } from './schedule-compiler';
-import { AutomationDraftReceiptStore, type AutomationDraftReceipt } from './draft-receipt-store';
+import {
+  AutomationDraftReceiptStore,
+  type AutomationDraftReceipt,
+  type AutomationScheduleUpdateDraftReceipt,
+} from './draft-receipt-store';
 import type {
   AutomationCreateToolInput,
   AutomationListToolInput,
+  AutomationPrepareScheduleUpdateToolInput,
   AutomationPrepareToolInput,
   AutomationToolActionInput,
   AutomationToolExecutionContext,
   AutomationToolListItem,
   AutomationToolResult,
+  AutomationUpdateScheduleToolInput,
   PreparedAutomationDependency,
 } from './contract';
 
@@ -170,6 +176,114 @@ export class AutomationToolService {
     return this.formatCreatedResult(created, receipt, 'created');
   }
 
+  prepareScheduleUpdate(
+    input: AutomationPrepareScheduleUpdateToolInput,
+    context: AutomationToolExecutionContext
+  ): AutomationToolResult {
+    const automationId = input.automationId.trim();
+    const automation = this.automationService.get(automationId);
+    if (!automation) throw new Error(`Automation not found: ${automationId}`);
+
+    const compiledSchedule = compileAutomationSchedule(input.schedule, {
+      now: this.now(),
+      systemTimezone: this.systemTimezone(),
+      nextRunCount: 3,
+    });
+    const summary = {
+      automationId: automation.id,
+      name: automation.name,
+      previousScheduleText: formatAutomationTrigger(automation.trigger),
+      scheduleText: compiledSchedule.summary,
+      timezone: compiledSchedule.timezone,
+      nextRuns: compiledSchedule.nextRuns,
+      enabled: automation.enabled,
+      status: automation.status,
+    };
+    const receipt = this.receiptStore.createScheduleUpdate({
+      sessionId: context.sessionId,
+      sourceUserMessageId: context.currentUserMessageId,
+      input: { ...input, automationId },
+      automationId,
+      expectedTrigger: automation.trigger,
+      trigger: compiledSchedule.trigger,
+      summary,
+    });
+    const warnings = buildScheduleUpdateWarnings(automation, compiledSchedule.trigger);
+    return toolResult(
+      [
+        `Automation schedule update draft is ready: ${automation.name} (${automation.id})`,
+        `Previous schedule: ${summary.previousScheduleText}`,
+        `New schedule: ${summary.scheduleText}`,
+        `Next runs: ${summary.nextRuns.map((run) => run.text).join('; ')}`,
+        ...warnings.map((warning) => `Warning: ${warning}`),
+        `Draft id: ${receipt.id}`,
+        'Call automation_update_schedule only if the user explicitly requested this schedule change.',
+      ].join('\n'),
+      {
+        status: 'ready',
+        draftId: receipt.id,
+        expiresAt: receipt.expiresAt,
+        summary,
+        warnings,
+        errors: [],
+      }
+    );
+  }
+
+  updateSchedule(
+    input: AutomationUpdateScheduleToolInput,
+    context: AutomationToolExecutionContext
+  ): AutomationToolResult {
+    if (input.confirmed !== true) {
+      throw new Error('Explicit confirmation is required to update an automation schedule.');
+    }
+    const receipt = this.receiptStore.getScheduleUpdate(input.draftId);
+    if (!receipt) {
+      throw new Error(
+        'Automation schedule update draft was not found or has expired. Prepare it again.'
+      );
+    }
+    if (receipt.sessionId !== context.sessionId) {
+      throw new Error('Automation schedule update draft belongs to another conversation.');
+    }
+    if (receipt.updatedAutomation) {
+      return this.formatScheduleUpdatedResult(
+        receipt.updatedAutomation,
+        receipt,
+        'already_updated'
+      );
+    }
+
+    const current = this.automationService.get(receipt.automationId);
+    if (!current) throw new Error(`Automation not found: ${receipt.automationId}`);
+
+    const currentTriggerFingerprint = automationTriggerFingerprint(current.trigger);
+    const expectedTriggerFingerprint = automationTriggerFingerprint(receipt.expectedTrigger);
+    const nextTriggerFingerprint = automationTriggerFingerprint(receipt.trigger);
+    if (currentTriggerFingerprint === nextTriggerFingerprint) {
+      this.receiptStore.markScheduleUpdated(receipt.id, current);
+      return this.formatScheduleUpdatedResult(current, receipt, 'unchanged');
+    }
+    if (currentTriggerFingerprint !== expectedTriggerFingerprint) {
+      throw new Error(
+        'Automation schedule changed after this draft was prepared. Review the latest schedule and prepare the update again.'
+      );
+    }
+    if (computeNextAutomationRunAt(receipt.trigger, this.now()) === null) {
+      throw new Error(
+        'Automation schedule no longer has a future execution time. Prepare the update again.'
+      );
+    }
+
+    const updated = this.automationService.update(receipt.automationId, {
+      trigger: receipt.trigger,
+    });
+    if (!updated) throw new Error(`Automation not found: ${receipt.automationId}`);
+    this.receiptStore.markScheduleUpdated(receipt.id, updated);
+    this.onAutomationsChanged?.();
+    return this.formatScheduleUpdatedResult(updated, receipt, 'updated');
+  }
+
   clearConversationContext(sessionId: string): void {
     this.receiptStore.deleteForSession(sessionId);
   }
@@ -297,6 +411,51 @@ export class AutomationToolService {
     );
   }
 
+  private formatScheduleUpdatedResult(
+    automation: Automation,
+    receipt: AutomationScheduleUpdateDraftReceipt,
+    status: 'updated' | 'already_updated' | 'unchanged'
+  ): AutomationToolResult {
+    const nextRunAtText =
+      automation.nextRunAt === null
+        ? null
+        : formatTimestamp(automation.nextRunAt, automation.trigger.timezone);
+    const headline =
+      status === 'updated'
+        ? `Updated automation schedule: ${automation.name} (${automation.id})`
+        : status === 'already_updated'
+          ? `Automation schedule was already updated: ${automation.name} (${automation.id})`
+          : `Automation already uses this schedule: ${automation.name} (${automation.id})`;
+    const stateNote = !automation.enabled
+      ? 'The automation remains disabled.'
+      : automation.status === 'paused'
+        ? 'The automation remains paused.'
+        : null;
+    return toolResult(
+      [
+        headline,
+        `Previous schedule: ${receipt.summary.previousScheduleText}`,
+        `New schedule: ${formatAutomationTrigger(automation.trigger)}`,
+        `Next run: ${nextRunAtText ?? 'none'}`,
+        ...(stateNote ? [stateNote] : []),
+        'The automation is available on the Automation page.',
+      ].join('\n'),
+      {
+        status,
+        automation: {
+          id: automation.id,
+          name: automation.name,
+          enabled: automation.enabled,
+          status: automation.status,
+          scheduleText: formatAutomationTrigger(automation.trigger),
+          nextRunAt: automation.nextRunAt,
+          nextRunAtText,
+          timezone: automation.trigger.timezone,
+        },
+      }
+    );
+  }
+
   private toListItem(automation: Automation): AutomationToolListItem {
     const enabledNode = automation.actionGraph.nodes.find((node) => node.enabled !== false);
     const actionKind =
@@ -329,4 +488,24 @@ export class AutomationToolService {
 
 function toolResult(text: string, details: unknown): AutomationToolResult {
   return { content: [{ type: 'text', text }], details };
+}
+
+function automationTriggerFingerprint(trigger: Automation['trigger']): string {
+  return JSON.stringify(normalizeAutomationTrigger(trigger));
+}
+
+function buildScheduleUpdateWarnings(
+  automation: Automation,
+  trigger: Automation['trigger']
+): string[] {
+  const warnings: string[] = [];
+  if (!automation.enabled) {
+    warnings.push('This automation is disabled and changing its schedule will not enable it.');
+  } else if (automation.status === 'paused') {
+    warnings.push('This automation is paused and changing its schedule will not resume it.');
+  }
+  if (automationTriggerFingerprint(automation.trigger) === automationTriggerFingerprint(trigger)) {
+    warnings.push('This automation already uses the requested schedule.');
+  }
+  return warnings;
 }

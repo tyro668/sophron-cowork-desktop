@@ -1,6 +1,10 @@
 import { Type, type Static, type TSchema } from '@sinclair/typebox';
 import { z } from 'zod';
-import type { Automation, AutomationCreateInput } from '../../../shared/automation/types';
+import type {
+  Automation,
+  AutomationCreateInput,
+  AutomationTrigger,
+} from '../../../shared/automation/types';
 
 const TimezoneSchema = Type.Optional(
   Type.String({
@@ -176,12 +180,50 @@ export const AutomationCreateInputSchema = Type.Object(
   { additionalProperties: false }
 );
 
+export const AutomationPrepareScheduleUpdateInputSchema = Type.Object(
+  {
+    automationId: Type.String({
+      minLength: 1,
+      description:
+        'Exact automation id. Resolve it with automation_list; never guess an id from a name.',
+    }),
+    schedule: AutomationScheduleInputSchema,
+  },
+  { additionalProperties: false }
+);
+
+export const AutomationPrepareScheduleUpdateParametersSchema = Type.Object(
+  {
+    automationId: Type.String({
+      minLength: 1,
+      description:
+        'Exact automation id. Resolve it with automation_list; never guess an id from a name.',
+    }),
+    schedule: Type.Union([AutomationScheduleInputSchema, SerializedObjectFallbackSchema]),
+  },
+  { additionalProperties: false }
+);
+
+export const AutomationUpdateScheduleInputSchema = Type.Object(
+  {
+    draftId: Type.String({ minLength: 1 }),
+    confirmed: Type.Literal(true, {
+      description: 'Pass true only when the user explicitly requested this schedule change.',
+    }),
+  },
+  { additionalProperties: false }
+);
+
 export type AutomationWeekdayName = Static<typeof AutomationWeekdaySchema>;
 export type AutomationToolScheduleInput = Static<typeof AutomationScheduleInputSchema>;
 export type AutomationToolActionInput = Static<typeof AutomationActionInputSchema>;
 export type AutomationPrepareToolInput = Static<typeof AutomationPrepareInputSchema>;
 export type AutomationCreateToolInput = Static<typeof AutomationCreateInputSchema>;
 export type AutomationListToolInput = Static<typeof AutomationListInputSchema>;
+export type AutomationPrepareScheduleUpdateToolInput = Static<
+  typeof AutomationPrepareScheduleUpdateInputSchema
+>;
+export type AutomationUpdateScheduleToolInput = Static<typeof AutomationUpdateScheduleInputSchema>;
 
 export interface AutomationToolExecutionContext {
   sessionId: string;
@@ -209,6 +251,25 @@ export interface PreparedAutomationDraft {
   dependency: PreparedAutomationDependency;
 }
 
+export interface PreparedAutomationScheduleUpdateSummary {
+  automationId: string;
+  name: string;
+  previousScheduleText: string;
+  scheduleText: string;
+  timezone: string;
+  nextRuns: Array<{ at: number; text: string }>;
+  enabled: boolean;
+  status: Automation['status'];
+}
+
+export interface PreparedAutomationScheduleUpdateDraft {
+  input: AutomationPrepareScheduleUpdateToolInput;
+  automationId: string;
+  expectedTrigger: AutomationTrigger;
+  trigger: AutomationTrigger;
+  summary: PreparedAutomationScheduleUpdateSummary;
+}
+
 export type PreparedAutomationDependency =
   | { kind: 'data_task'; taskId: string; taskName: string }
   | { kind: 'conversation'; projectId: string | null };
@@ -229,6 +290,12 @@ export interface AutomationToolListItem {
 const AutomationListRuntimeSchema = createRuntimeSchema(AutomationListInputSchema);
 const AutomationPrepareRuntimeSchema = createRuntimeSchema(AutomationPrepareInputSchema);
 const AutomationCreateRuntimeSchema = createRuntimeSchema(AutomationCreateInputSchema);
+const AutomationPrepareScheduleUpdateRuntimeSchema = createRuntimeSchema(
+  AutomationPrepareScheduleUpdateInputSchema
+);
+const AutomationUpdateScheduleRuntimeSchema = createRuntimeSchema(
+  AutomationUpdateScheduleInputSchema
+);
 
 export function parseAutomationListInput(input: unknown): Static<typeof AutomationListInputSchema> {
   return parseRuntimeInput('automation_list', AutomationListRuntimeSchema, input);
@@ -245,7 +312,36 @@ export function parseAutomationCreateInput(
   return parseRuntimeInput('automation_create', AutomationCreateRuntimeSchema, input);
 }
 
-function normalizeSerializedObjectFields(input: unknown, fields: string[]): unknown {
+export function parseAutomationPrepareScheduleUpdateInput(
+  input: unknown
+): AutomationPrepareScheduleUpdateToolInput {
+  const normalized = normalizeSerializedObjectFields(
+    input,
+    ['schedule'],
+    'automation_prepare_schedule_update'
+  );
+  return parseRuntimeInput(
+    'automation_prepare_schedule_update',
+    AutomationPrepareScheduleUpdateRuntimeSchema,
+    normalized
+  );
+}
+
+export function parseAutomationUpdateScheduleInput(
+  input: unknown
+): AutomationUpdateScheduleToolInput {
+  return parseRuntimeInput(
+    'automation_update_schedule',
+    AutomationUpdateScheduleRuntimeSchema,
+    input
+  );
+}
+
+function normalizeSerializedObjectFields(
+  input: unknown,
+  fields: string[],
+  toolName = 'automation_prepare'
+): unknown {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return input;
   const normalized = { ...(input as Record<string, unknown>) };
   for (const field of fields) {
@@ -255,7 +351,7 @@ function normalizeSerializedObjectFields(input: unknown, fields: string[]): unkn
       normalized[field] = JSON.parse(value);
     } catch {
       throw new Error(
-        `Invalid automation_prepare arguments: ${field} must be an object or a valid JSON object string`
+        `Invalid ${toolName} arguments: ${field} must be an object or a valid JSON object string`
       );
     }
   }

@@ -2,7 +2,7 @@ export function buildAutomationToolPrompt(input: { now: number; timezone: string
   const localNow = formatSystemRfc3339(input.now);
   return [
     '<automation_tools>',
-    'You have automation_* tools for creating scheduled automations from the main conversation.',
+    'You have automation_* tools for creating scheduled automations and updating their schedules from the main conversation.',
     `Current desktop time: ${localNow}. Desktop timezone: ${input.timezone}.`,
     'Use automation tools only when the user wants a persistent task that runs later or repeatedly. Do not create an automation for a one-off request.',
     'Supported automation actions are: run one saved data task, or start one general task conversation from a fixed prompt.',
@@ -14,6 +14,9 @@ export function buildAutomationToolPrompt(input: { now: number; timezone: string
     'If the user gives a recurring frequency without an execution time, ask for the time. Do not invent 09:00 or another default.',
     'Use the desktop timezone when the user does not specify one. This version cannot schedule another timezone; explain that limitation if requested.',
     'Before creating, call automation_prepare to validate the action and show exact future run times. Call automation_create only when the user explicitly asked to create that prepared automation.',
+    'To change an existing automation schedule, first call automation_list and resolve exactly one automation id. Never guess an id or update an ambiguous name.',
+    'Then call automation_prepare_schedule_update to validate and show the previous schedule, new schedule, and exact future run times. Call automation_update_schedule only when the user explicitly requested that exact change.',
+    'A schedule update changes only the trigger. It must preserve the action, delivery configuration, and enabled or paused state. Do not silently enable or resume an automation.',
     'Do not expose or construct raw automation action graphs.',
     '</automation_tools>',
   ].join('\n');

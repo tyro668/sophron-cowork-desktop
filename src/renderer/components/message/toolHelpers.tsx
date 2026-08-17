@@ -112,6 +112,11 @@ function getAutomationToolLabel(name: string, input: Record<string, unknown>): s
     return `Prepare automation${automationName ? ` ${automationName}` : ''}`;
   }
   if (name === 'automation_create') return 'Create automation';
+  if (name === 'automation_prepare_schedule_update') {
+    const automationId = firstString(input, ['automationId']);
+    return `Prepare automation schedule update${automationId ? ` ${automationId}` : ''}`;
+  }
+  if (name === 'automation_update_schedule') return 'Update automation schedule';
   return name;
 }
 

@@ -12,6 +12,7 @@ import type {
   AutomationRun,
   AutomationRunQuery,
   AutomationRunStatus,
+  AutomationStatus,
   AutomationTrigger,
   AutomationTriggerReason,
   AutomationUpdateInput,
@@ -222,11 +223,7 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
           ? current.trigger
           : normalizeAutomationTrigger(updates.trigger);
       const nextEnabled = updates.enabled === undefined ? current.enabled : updates.enabled;
-      const nextStatus = nextEnabled
-        ? current.status === 'running'
-          ? 'running'
-          : 'enabled'
-        : 'disabled';
+      const nextStatus = resolveAutomationStatusAfterUpdate(current.status, nextEnabled);
       const next: Automation = {
         ...current,
         name: updates.name === undefined ? current.name : updates.name.trim() || current.name,
@@ -425,6 +422,16 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
       return recoverInterruptedAutomationRuns(raw, now);
     },
   };
+}
+
+export function resolveAutomationStatusAfterUpdate(
+  currentStatus: AutomationStatus,
+  nextEnabled: boolean
+): AutomationStatus {
+  if (!nextEnabled) return 'disabled';
+  if (currentStatus === 'running') return 'running';
+  if (currentStatus === 'paused') return 'paused';
+  return 'enabled';
 }
 
 function recoverInterruptedAutomationRuns(

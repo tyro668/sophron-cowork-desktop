@@ -6,10 +6,14 @@ import type {
 import {
   AutomationCreateInputSchema,
   AutomationListInputSchema,
+  AutomationPrepareScheduleUpdateParametersSchema,
   AutomationPrepareParametersSchema,
+  AutomationUpdateScheduleInputSchema,
   parseAutomationCreateInput,
   parseAutomationListInput,
+  parseAutomationPrepareScheduleUpdateInput,
   parseAutomationPrepareInput,
+  parseAutomationUpdateScheduleInput,
 } from './contract';
 import { buildAutomationToolPrompt } from './prompt';
 import type { AutomationToolService } from './service';
@@ -70,6 +74,27 @@ export function createAutomationCustomTools(
       parameters: AutomationCreateInputSchema,
       execute: async (_toolCallId, params) =>
         service.create(parseAutomationCreateInput(params), executionContext),
+    },
+    {
+      name: 'automation_prepare_schedule_update',
+      label: 'Prepare automation schedule update',
+      description:
+        'Validate and preview a schedule-only update for an existing automation. Resolve the exact automation id with automation_list first. This preserves the automation action and enabled or paused state, and returns a draftId for automation_update_schedule.',
+      parameters: AutomationPrepareScheduleUpdateParametersSchema,
+      execute: async (_toolCallId, params) =>
+        service.prepareScheduleUpdate(
+          parseAutomationPrepareScheduleUpdateInput(params),
+          executionContext
+        ),
+    },
+    {
+      name: 'automation_update_schedule',
+      label: 'Update automation schedule',
+      description:
+        'Apply a prepared schedule-only automation update. Call only when the user explicitly requested the exact schedule change. Retrying the same draft is idempotent.',
+      parameters: AutomationUpdateScheduleInputSchema,
+      execute: async (_toolCallId, params) =>
+        service.updateSchedule(parseAutomationUpdateScheduleInput(params), executionContext),
     },
   ];
 }

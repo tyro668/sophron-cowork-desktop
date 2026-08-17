@@ -7,6 +7,8 @@ import { AutomationDraftReceiptStore } from '../src/main/automation/tools/draft-
 import { createAutomationCustomTools } from '../src/main/automation/tools';
 import {
   AutomationPrepareParametersSchema,
+  AutomationPrepareScheduleUpdateParametersSchema,
+  parseAutomationPrepareScheduleUpdateInput,
   parseAutomationPrepareInput,
 } from '../src/main/automation/tools/contract';
 import { createDefaultAutomationActionRegistry } from '../src/main/automation/default-actions';
@@ -14,7 +16,7 @@ import { createDefaultAutomationActionRegistry } from '../src/main/automation/de
 function createServiceFixture(options: { now?: () => number } = {}) {
   const automations: Automation[] = [];
   const create = vi.fn((input) => {
-    const now = Date.now();
+    const now = options.now?.() ?? Date.now();
     const automation: Automation = {
       id: `automation-${automations.length + 1}`,
       name: input.name,
@@ -42,10 +44,43 @@ function createServiceFixture(options: { now?: () => number } = {}) {
     automations.push(automation);
     return automation;
   });
+  const update = vi.fn((id: string, input: Partial<Automation>) => {
+    const index = automations.findIndex((automation) => automation.id === id);
+    if (index < 0) return null;
+    const current = automations[index];
+    const trigger = input.trigger ?? current.trigger;
+    const enabled = input.enabled ?? current.enabled;
+    const now = options.now?.() ?? Date.now();
+    const updated: Automation = {
+      ...current,
+      ...input,
+      enabled,
+      status: !enabled
+        ? 'disabled'
+        : current.status === 'paused'
+          ? 'paused'
+          : current.status === 'running'
+            ? 'running'
+            : 'enabled',
+      trigger,
+      nextRunAt:
+        enabled && trigger.kind === 'once'
+          ? trigger.runAt > now
+            ? trigger.runAt
+            : null
+          : enabled
+            ? now + 60_000
+            : null,
+      updatedAt: now,
+    };
+    automations[index] = updated;
+    return updated;
+  });
   const automationService = {
     list: vi.fn(() => automations),
     get: vi.fn((id: string) => automations.find((automation) => automation.id === id) ?? null),
     create,
+    update,
   };
   const task = {
     id: 'task-1',
@@ -70,17 +105,27 @@ function createServiceFixture(options: { now?: () => number } = {}) {
     systemTimezone: () => systemTimezone,
     onAutomationsChanged,
   });
-  return { service, create, dataTaskStore, onAutomationsChanged, systemTimezone };
+  return {
+    service,
+    automations,
+    create,
+    update,
+    dataTaskStore,
+    onAutomationsChanged,
+    systemTimezone,
+  };
 }
 
 describe('automation conversation tools', () => {
-  it('exposes list, prepare, and create tools', () => {
+  it('exposes create and schedule-update tools', () => {
     const { service } = createServiceFixture();
     const tools = createAutomationCustomTools(service, { sessionId: 'session-1' });
     expect(tools.map((tool) => tool.name)).toEqual([
       'automation_list',
       'automation_prepare',
       'automation_create',
+      'automation_prepare_schedule_update',
+      'automation_update_schedule',
     ]);
   });
 
@@ -128,6 +173,22 @@ describe('automation conversation tools', () => {
         action: { kind: 'data_task', taskId: 'task-1' },
       })
     ).toThrow('schedule: Invalid input');
+
+    expect(
+      parseAutomationPrepareScheduleUpdateInput({
+        automationId: 'automation-1',
+        schedule: JSON.stringify({ kind: 'daily', times: ['10:00'] }),
+      })
+    ).toEqual({
+      automationId: 'automation-1',
+      schedule: { kind: 'daily', times: ['10:00'] },
+    });
+    expect(
+      Value.Check(AutomationPrepareScheduleUpdateParametersSchema, {
+        automationId: 'automation-1',
+        schedule: JSON.stringify({ kind: 'daily', times: ['10:00'] }),
+      })
+    ).toBe(true);
   });
 
   it('prepares a saved data task and creates it idempotently', async () => {
@@ -218,6 +279,145 @@ describe('automation conversation tools', () => {
         permissionPolicy: 'auto_review',
       },
     });
+  });
+
+  it('previews and applies a schedule-only update idempotently', async () => {
+    const now = new Date(2026, 7, 17, 8, 0, 0, 0).getTime();
+    const { service, create, update, onAutomationsChanged } = createServiceFixture({
+      now: () => now,
+    });
+    create({
+      name: 'Daily sales cleanup',
+      enabled: true,
+      trigger: {
+        kind: 'daily',
+        times: ['09:00'],
+        startAt: null,
+        endAt: null,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      },
+      actionGraph: { version: 1, nodes: [], edges: [] },
+    });
+
+    const prepared = service.prepareScheduleUpdate(
+      {
+        automationId: 'automation-1',
+        schedule: { kind: 'daily', times: ['10:00'] },
+      },
+      { sessionId: 'session-1', currentUserMessageId: 'message-1' }
+    );
+    const details = prepared.details as {
+      draftId: string;
+      summary: { previousScheduleText: string; scheduleText: string };
+    };
+    expect(details.summary.previousScheduleText).toContain('09:00');
+    expect(details.summary.scheduleText).toContain('10:00');
+
+    const first = service.updateSchedule(
+      { draftId: details.draftId, confirmed: true },
+      { sessionId: 'session-1' }
+    );
+    const second = service.updateSchedule(
+      { draftId: details.draftId, confirmed: true },
+      { sessionId: 'session-1' }
+    );
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledWith(
+      'automation-1',
+      expect.objectContaining({
+        trigger: expect.objectContaining({ kind: 'daily', times: ['10:00'] }),
+      })
+    );
+    expect(Object.keys(update.mock.calls[0]?.[1] ?? {})).toEqual(['trigger']);
+    expect(onAutomationsChanged).toHaveBeenCalledTimes(1);
+    expect(first.details).toMatchObject({ status: 'updated' });
+    expect(second.details).toMatchObject({ status: 'already_updated' });
+  });
+
+  it('does not overwrite a schedule changed after update preparation', () => {
+    const now = new Date(2026, 7, 17, 8, 0, 0, 0).getTime();
+    const { service, automations, create, update } = createServiceFixture({ now: () => now });
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    create({
+      name: 'Daily report',
+      trigger: { kind: 'daily', times: ['09:00'], startAt: null, endAt: null, timezone },
+      actionGraph: { version: 1, nodes: [], edges: [] },
+    });
+    const prepared = service.prepareScheduleUpdate(
+      { automationId: 'automation-1', schedule: { kind: 'daily', times: ['10:00'] } },
+      { sessionId: 'session-1' }
+    );
+    automations[0] = {
+      ...automations[0],
+      trigger: { kind: 'daily', times: ['11:00'], startAt: null, endAt: null, timezone },
+    };
+
+    expect(() =>
+      service.updateSchedule(
+        { draftId: (prepared.details as { draftId: string }).draftId, confirmed: true },
+        { sessionId: 'session-1' }
+      )
+    ).toThrow('schedule changed after this draft was prepared');
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('does not allow a schedule update draft to cross conversations', () => {
+    const now = new Date(2026, 7, 17, 8, 0, 0, 0).getTime();
+    const { service, create, update } = createServiceFixture({ now: () => now });
+    create({
+      name: 'Daily report',
+      trigger: {
+        kind: 'daily',
+        times: ['09:00'],
+        startAt: null,
+        endAt: null,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      },
+      actionGraph: { version: 1, nodes: [], edges: [] },
+    });
+    const prepared = service.prepareScheduleUpdate(
+      { automationId: 'automation-1', schedule: { kind: 'daily', times: ['10:00'] } },
+      { sessionId: 'session-1' }
+    );
+
+    expect(() =>
+      service.updateSchedule(
+        { draftId: (prepared.details as { draftId: string }).draftId, confirmed: true },
+        { sessionId: 'session-2' }
+      )
+    ).toThrow('belongs to another conversation');
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('rejects a one-time schedule update after its future time has passed', () => {
+    let now = new Date(2026, 7, 17, 8, 0, 0, 0).getTime();
+    const { service, create, update } = createServiceFixture({ now: () => now });
+    create({
+      name: 'One time report',
+      trigger: {
+        kind: 'once',
+        runAt: now + 60_000,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      },
+      actionGraph: { version: 1, nodes: [], edges: [] },
+    });
+    const prepared = service.prepareScheduleUpdate(
+      {
+        automationId: 'automation-1',
+        schedule: { kind: 'once', runAt: new Date(now + 120_000).toISOString() },
+      },
+      { sessionId: 'session-1' }
+    );
+    now += 180_000;
+
+    expect(() =>
+      service.updateSchedule(
+        { draftId: (prepared.details as { draftId: string }).draftId, confirmed: true },
+        { sessionId: 'session-1' }
+      )
+    ).toThrow('no longer has a future execution time');
+    expect(update).not.toHaveBeenCalled();
   });
 });
 

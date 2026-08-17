@@ -38,6 +38,8 @@ export const DEFAULT_PERMISSION_RULES: PermissionRule[] = [
   { tool: 'automation_list', action: 'allow' },
   { tool: 'automation_prepare', action: 'allow' },
   { tool: 'automation_create', action: 'ask' },
+  { tool: 'automation_prepare_schedule_update', action: 'allow' },
+  { tool: 'automation_update_schedule', action: 'ask' },
   { tool: 'data_generate_task_from_requirement', action: 'ask' },
   { tool: 'write', action: 'ask' },
   { tool: 'edit', action: 'ask' },
