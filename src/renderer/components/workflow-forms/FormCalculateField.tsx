@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
-import { GlassExpressionInput } from './shared/GlassExpressionInput';
+import { CalculateFieldExpressionInput } from './calculate-field/CalculateFieldExpressionInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassRowList, type GlassRowListColumn } from './shared/GlassRowList';
@@ -14,7 +14,7 @@ import {
   normalizeCalculationEntries,
   type CalculationConfigEntry,
   type CalculationRow,
-} from './shared/calculate-field';
+} from './calculate-field/config';
 
 function persistableCalculation(row: CalculationRow): CalculationConfigEntry {
   return {
@@ -176,13 +176,12 @@ export default function FormCalculateField({
       flex: 'flex-[5]',
       header: tr('calcFieldExpressionLabel'),
       render: (calculation, index) => (
-        <GlassExpressionInput
+        <CalculateFieldExpressionInput
           value={calculation.expression}
           onChange={(expression) => updateCalculation(index, { expression })}
           fieldCompletions={fieldCompletions}
           columnTypes={columnTypes}
-          placeholder={tr('calcFieldExpressionPlaceholder')}
-          enableCalculationWizard
+          placeholder={tr('expressionPlaceholder')}
         />
       ),
     },

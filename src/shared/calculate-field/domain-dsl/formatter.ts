@@ -1,28 +1,27 @@
 import { quoteString } from '../../prep-dsl/syntax/literals';
+import { buildExtraParameter, formatCalculationField } from '../expression-format';
 import {
-  buildExtraParameter,
+  integerParameter,
+  INTERVAL_UNITS,
+  parameterDefault,
+  requiredParameter,
+  TIME_AGGREGATIONS,
+  validateCalculationFunctionInput,
+} from '../function-input';
+import {
   calculationFunctionDslId,
-  formatCalculationField,
   getCalculationFunction,
   type CalculationFunctionDefinition,
   type CalculationFunctionInput,
   type CalculationOrderField,
 } from '../function-registry';
 import { parseWindowFrameBound, validateWindowFrameOrder } from '../window-frame';
-import {
-  INTERVAL_UNITS,
-  integerParameter,
-  parameterDefault,
-  requiredParameter,
-  TIME_AGGREGATIONS,
-  validateDomainFunctionInput,
-} from './validators';
 
 export function buildCalculationFunctionDslExpression(input: CalculationFunctionInput): string {
   const definition = getCalculationFunction(input.functionId);
   if (!definition) throw new Error(`Unknown calculation function '${input.functionId}'`);
 
-  validateDomainFunctionInput(definition, input);
+  validateCalculationFunctionInput(definition, input);
 
   const canonicalId = canonicalDomainFunctionId(definition);
   if (definition.category === 'ranking') {

@@ -12,11 +12,8 @@ import {
   tokenizeDomainExpression,
   type DomainParseOptions,
 } from './token-cursor';
+import { INTERVAL_UNITS, parameterMax, PERIOD_GRAINS, TIME_AGGREGATIONS } from '../function-input';
 import {
-  PERIOD_GRAINS,
-  INTERVAL_UNITS,
-  TIME_AGGREGATIONS,
-  parameterMax,
   positiveInteger,
   requireArgumentCount,
   requireArgumentRange,

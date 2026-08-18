@@ -2,10 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api';
 import { compileScalarExpression } from '../../src/main/data/operators/compute';
 import { compileCalculateFieldSql } from '../../src/main/data/operators/calculate-field';
-import {
-  buildCalculationFunctionExpression,
-  type CalculationFunctionInput,
-} from '../../src/shared/calculate-field/function-registry';
+import type { CalculationFunctionInput } from '../../src/shared/calculate-field/function-registry';
+import { buildCalculationFunctionExpression } from '../../src/shared/calculate-field/sql-expression-builder';
 import { buildCalculationFunctionDslExpression } from '../../src/shared/calculate-field/domain-dsl';
 import {
   normalizeCalculationEntries,
@@ -1305,8 +1303,7 @@ describe('DuckDB integration — cross-row window functions', () => {
     expect(Number(rows[2].r)).toBeCloseTo(50 / 350, 5);
   });
 
-  // ── Cross type frame ──
-  it('cross type with frame produces correct running total', async () => {
+  it('executes a raw window expression with a bounded frame', async () => {
     const conn = await connect();
     await conn.run('CREATE TABLE wf (id INTEGER, amount DOUBLE)');
     await conn.run('INSERT INTO wf VALUES (1, 100), (2, 200), (3, 50)');

@@ -1,10 +1,10 @@
 ﻿import { describe, expect, it } from 'vitest';
 import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
-import type { CalculationConfigEntry } from '../../src/renderer/components/workflow-forms/shared/calculate-field';
+import type { CalculationConfigEntry } from '../../src/renderer/components/workflow-forms/calculate-field/config';
 import {
   createCalculationRow,
   normalizeCalculationEntries,
-} from '../../src/renderer/components/workflow-forms/shared/calculate-field';
+} from '../../src/renderer/components/workflow-forms/calculate-field/config';
 
 interface OkResult {
   config: Record<string, unknown> & { calculations?: CalculationConfigEntry[] };

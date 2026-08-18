@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useFormTranslation } from '../../../hooks/useFormTranslation';
 import { Pencil, X, ChevronDown, Search, WandSparkles } from 'lucide-react';
 import { StreamLanguage } from '@codemirror/language';
@@ -8,7 +8,17 @@ import { EditorView, placeholder, keymap } from '@codemirror/view';
 import { defaultKeymap } from '@codemirror/commands';
 import { Tag, tags } from '@lezer/highlight';
 import { useDataFieldTypeLabel } from '../../../hooks/useDataFieldTypeLabel';
-import { CalculationFunctionWizard } from './CalculationFunctionWizard';
+
+export interface ExpressionAssistantPanelContext {
+  insertExpression: (expression: string) => void;
+  closePanel: () => void;
+}
+
+export interface ExpressionAssistantPanel {
+  openLabel: string;
+  closeLabel: string;
+  render: (context: ExpressionAssistantPanelContext) => ReactNode;
+}
 
 export interface HelperToken {
   label: string;
@@ -20,7 +30,7 @@ export interface HelperToken {
   examples?: string[];
 }
 
-function functionToken(
+export function functionToken(
   label: string,
   descKey?: string,
   params?: HelperToken['params'],
@@ -43,15 +53,20 @@ const FN_CHIP =
 const FN_CHIP_HOVERED =
   'inline-flex h-6 cursor-pointer items-center rounded-md border border-accent bg-accent/10 px-1.5 font-mono text-[11px] text-accent';
 
-const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
+export interface ExpressionFunctionGroup {
+  i18nKey: string;
+  tokens: HelperToken[];
+}
+
+export const COMMON_EXPRESSION_FUNCTION_GROUPS: ExpressionFunctionGroup[] = [
   {
-    i18nKey: 'calcFieldCategoryCondition',
+    i18nKey: 'expressionFunctionCategoryCondition',
     tokens: [
       {
         label: 'if … then … else … end',
         apply: 'if  then  else  end',
         cursorOffset: 3,
-        i18nDescKey: 'calcFieldDesc_ifElseEnd',
+        i18nDescKey: 'expressionFunctionDesc_ifElseEnd',
         params: [
           { name: 'condition', type: 'boolean' },
           { name: 'thenExpr', type: 'any' },
@@ -64,7 +79,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         label: 'if … then … end',
         apply: 'if  then  end',
         cursorOffset: 3,
-        i18nDescKey: 'calcFieldDesc_ifEnd',
+        i18nDescKey: 'expressionFunctionDesc_ifEnd',
         params: [
           { name: 'condition', type: 'boolean' },
           { name: 'thenExpr', type: 'any' },
@@ -76,7 +91,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         label: 'case … when … then … end',
         apply: 'case  when  then  end',
         cursorOffset: 5,
-        i18nDescKey: 'calcFieldDesc_caseWhenEnd',
+        i18nDescKey: 'expressionFunctionDesc_caseWhenEnd',
         params: [
           { name: 'value', type: 'any' },
           { name: 'match', type: 'any' },
@@ -88,20 +103,28 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
     ],
   },
   {
-    i18nKey: 'calcFieldCategoryDate',
+    i18nKey: 'expressionFunctionCategoryDate',
     tokens: [
-      functionToken('year', 'calcFieldDesc_year', [{ name: 'date', type: 'date' }], 'int', [
-        'year([order_date])',
-      ]),
-      functionToken('month', 'calcFieldDesc_month', [{ name: 'date', type: 'date' }], 'int', [
-        'month([order_date])',
-      ]),
-      functionToken('day', 'calcFieldDesc_day', [{ name: 'date', type: 'date' }], 'int', [
+      functionToken(
+        'year',
+        'expressionFunctionDesc_year',
+        [{ name: 'date', type: 'date' }],
+        'int',
+        ['year([order_date])']
+      ),
+      functionToken(
+        'month',
+        'expressionFunctionDesc_month',
+        [{ name: 'date', type: 'date' }],
+        'int',
+        ['month([order_date])']
+      ),
+      functionToken('day', 'expressionFunctionDesc_day', [{ name: 'date', type: 'date' }], 'int', [
         'day([order_date])',
       ]),
       functionToken(
         'date_diff',
-        'calcFieldDesc_date_diff',
+        'expressionFunctionDesc_date_diff',
         [
           { name: 'part', type: 'string' },
           { name: 'start', type: 'date' },
@@ -112,7 +135,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'date_trunc',
-        'calcFieldDesc_date_trunc',
+        'expressionFunctionDesc_date_trunc',
         [
           { name: 'part', type: 'string' },
           { name: 'date', type: 'date' },
@@ -122,7 +145,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'strptime',
-        'calcFieldDesc_parse_date',
+        'expressionFunctionDesc_parse_date',
         [
           { name: 'str', type: 'string' },
           { name: 'format', type: 'string' },
@@ -134,7 +157,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         label: 'current_date',
         apply: 'current_date',
         cursorOffset: 12,
-        i18nDescKey: 'calcFieldDesc_current_date',
+        i18nDescKey: 'expressionFunctionDesc_current_date',
         params: [],
         returnType: 'date',
         examples: ['current_date'],
@@ -143,7 +166,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         label: 'now',
         apply: 'now()',
         cursorOffset: 4,
-        i18nDescKey: 'calcFieldDesc_now',
+        i18nDescKey: 'expressionFunctionDesc_now',
         params: [],
         returnType: 'timestamp',
         examples: ['now()'],
@@ -151,90 +174,50 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
     ],
   },
   {
-    i18nKey: 'calcFieldCategoryWindow',
+    i18nKey: 'expressionFunctionCategoryAggregate',
     tokens: [
-      functionToken('row_number', 'calcFieldDesc_rowNumber', [], 'int', [
-        'row_number() over(partition by [dept] order by [salary] desc)',
-      ]),
-      functionToken('rank', 'calcFieldDesc_rank', [], 'int', [
-        'rank() over(order by [score] desc)',
-      ]),
-      functionToken('dense_rank', 'calcFieldDesc_dense_rank', [], 'int', [
-        'dense_rank() over(order by [score] desc)',
-      ]),
-      functionToken('ntile', 'calcFieldDesc_ntile', [{ name: 'buckets', type: 'int' }], 'int', [
-        'ntile(2) over(order by [amount] desc)',
-      ]),
       functionToken(
-        'first_value',
-        'calcFieldDesc_first_value',
+        'sum',
+        'expressionFunctionDesc_sum',
+        [{ name: 'expr', type: 'number' }],
+        'number',
+        ['sum([amount])', 'sum([quantity] * [price])']
+      ),
+      functionToken(
+        'avg',
+        'expressionFunctionDesc_avg',
+        [{ name: 'expr', type: 'number' }],
+        'number',
+        ['avg([amount])']
+      ),
+      functionToken(
+        'count',
+        'expressionFunctionDesc_count',
         [{ name: 'expr', type: 'any' }],
-        'any',
-        ['first_value([amount]) over(partition by [dept] order by [date])']
+        'int',
+        ['count(*)', 'count([order_id])']
       ),
-      functionToken(
-        'last_value',
-        'calcFieldDesc_last_value',
-        [{ name: 'expr', type: 'any' }],
-        'any',
-        ['last_value([amount]) over(partition by [dept] order by [date])']
-      ),
-      functionToken(
-        'lag',
-        'calcFieldDesc_lag',
-        [
-          { name: 'expr', type: 'any' },
-          { name: 'offset', type: 'int', optional: true },
-          { name: 'default', type: 'any', optional: true },
-        ],
-        'any',
-        ['lag([amount])', 'lag([amount], 2)']
-      ),
-      functionToken(
-        'lead',
-        'calcFieldDesc_lead',
-        [
-          { name: 'expr', type: 'any' },
-          { name: 'offset', type: 'int', optional: true },
-          { name: 'default', type: 'any', optional: true },
-        ],
-        'any',
-        ['lead([amount])']
-      ),
-    ],
-  },
-  {
-    i18nKey: 'calcFieldCategoryAggregate',
-    tokens: [
-      functionToken('sum', 'calcFieldDesc_sum', [{ name: 'expr', type: 'number' }], 'number', [
-        'sum([amount])',
-        'sum([quantity] * [price])',
-      ]),
-      functionToken('avg', 'calcFieldDesc_avg', [{ name: 'expr', type: 'number' }], 'number', [
-        'avg([amount])',
-      ]),
-      functionToken('count', 'calcFieldDesc_count', [{ name: 'expr', type: 'any' }], 'int', [
-        'count(*)',
-        'count([order_id])',
-      ]),
-      functionToken('min', 'calcFieldDesc_min', [{ name: 'expr', type: 'any' }], 'any', [
+      functionToken('min', 'expressionFunctionDesc_min', [{ name: 'expr', type: 'any' }], 'any', [
         'min([amount])',
       ]),
-      functionToken('max', 'calcFieldDesc_max', [{ name: 'expr', type: 'any' }], 'any', [
+      functionToken('max', 'expressionFunctionDesc_max', [{ name: 'expr', type: 'any' }], 'any', [
         'max([amount])',
       ]),
     ],
   },
   {
-    i18nKey: 'calcFieldCategoryMath',
+    i18nKey: 'expressionFunctionCategoryMath',
     tokens: [
-      functionToken('abs', 'calcFieldDesc_abs', [{ name: 'expr', type: 'number' }], 'number', [
-        'abs([amount])',
-        'abs([profit] - [cost])',
-      ]),
+      functionToken(
+        'abs',
+        'expressionFunctionDesc_abs',
+        [{ name: 'expr', type: 'number' }],
+        'number',
+        ['abs([amount])', 'abs([profit] - [cost])']
+      ),
       functionToken(
         'round',
-        'calcFieldDesc_round',
+        'expressionFunctionDesc_round',
         [
           { name: 'expr', type: 'number' },
           { name: 'precision', type: 'int', optional: true },
@@ -242,32 +225,56 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         'number',
         ['round([amount])', 'round([amount], 2)']
       ),
-      functionToken('ceil', 'calcFieldDesc_ceil', [{ name: 'expr', type: 'number' }], 'number', [
-        'ceil([amount])',
-      ]),
-      functionToken('floor', 'calcFieldDesc_floor', [{ name: 'expr', type: 'number' }], 'number', [
-        'floor([amount])',
-      ]),
+      functionToken(
+        'ceil',
+        'expressionFunctionDesc_ceil',
+        [{ name: 'expr', type: 'number' }],
+        'number',
+        ['ceil([amount])']
+      ),
+      functionToken(
+        'floor',
+        'expressionFunctionDesc_floor',
+        [{ name: 'expr', type: 'number' }],
+        'number',
+        ['floor([amount])']
+      ),
     ],
   },
   {
-    i18nKey: 'calcFieldCategoryString',
+    i18nKey: 'expressionFunctionCategoryString',
     tokens: [
-      functionToken('upper', 'calcFieldDesc_upper', [{ name: 'str', type: 'string' }], 'string', [
-        'upper([name])',
-      ]),
-      functionToken('lower', 'calcFieldDesc_lower', [{ name: 'str', type: 'string' }], 'string', [
-        'lower([name])',
-      ]),
-      functionToken('trim', 'calcFieldDesc_trim', [{ name: 'str', type: 'string' }], 'string', [
-        'trim([name])',
-      ]),
-      functionToken('length', 'calcFieldDesc_length', [{ name: 'str', type: 'string' }], 'int', [
-        'length([name])',
-      ]),
+      functionToken(
+        'upper',
+        'expressionFunctionDesc_upper',
+        [{ name: 'str', type: 'string' }],
+        'string',
+        ['upper([name])']
+      ),
+      functionToken(
+        'lower',
+        'expressionFunctionDesc_lower',
+        [{ name: 'str', type: 'string' }],
+        'string',
+        ['lower([name])']
+      ),
+      functionToken(
+        'trim',
+        'expressionFunctionDesc_trim',
+        [{ name: 'str', type: 'string' }],
+        'string',
+        ['trim([name])']
+      ),
+      functionToken(
+        'length',
+        'expressionFunctionDesc_length',
+        [{ name: 'str', type: 'string' }],
+        'int',
+        ['length([name])']
+      ),
       functionToken(
         'substr',
-        'calcFieldDesc_substr',
+        'expressionFunctionDesc_substr',
         [
           { name: 'str', type: 'string' },
           { name: 'start', type: 'int' },
@@ -278,7 +285,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'split_part',
-        'calcFieldDesc_splitPart',
+        'expressionFunctionDesc_splitPart',
         [
           { name: 'str', type: 'string' },
           { name: 'delimiter', type: 'string' },
@@ -289,7 +296,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'concat',
-        'calcFieldDesc_concat',
+        'expressionFunctionDesc_concat',
         [
           { name: 'str', type: 'string' },
           { name: '...rest', type: 'string' },
@@ -299,7 +306,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'contains',
-        'calcFieldDesc_contains',
+        'expressionFunctionDesc_contains',
         [
           { name: 'str', type: 'string' },
           { name: 'substr', type: 'string' },
@@ -309,7 +316,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'starts_with',
-        'calcFieldDesc_starts_with',
+        'expressionFunctionDesc_starts_with',
         [
           { name: 'str', type: 'string' },
           { name: 'prefix', type: 'string' },
@@ -319,7 +326,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'ends_with',
-        'calcFieldDesc_ends_with',
+        'expressionFunctionDesc_ends_with',
         [
           { name: 'str', type: 'string' },
           { name: 'suffix', type: 'string' },
@@ -329,7 +336,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'replace',
-        'calcFieldDesc_replace',
+        'expressionFunctionDesc_replace',
         [
           { name: 'str', type: 'string' },
           { name: 'search', type: 'string' },
@@ -340,7 +347,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'regexp_replace',
-        'calcFieldDesc_regexp_replace',
+        'expressionFunctionDesc_regexp_replace',
         [
           { name: 'str', type: 'string' },
           { name: 'pattern', type: 'string' },
@@ -351,7 +358,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'lpad',
-        'calcFieldDesc_lpad',
+        'expressionFunctionDesc_lpad',
         [
           { name: 'str', type: 'string' },
           { name: 'len', type: 'int' },
@@ -362,7 +369,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'rpad',
-        'calcFieldDesc_rpad',
+        'expressionFunctionDesc_rpad',
         [
           { name: 'str', type: 'string' },
           { name: 'len', type: 'int' },
@@ -373,14 +380,14 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'reverse',
-        'calcFieldDesc_reverse',
+        'expressionFunctionDesc_reverse',
         [{ name: 'str', type: 'string' }],
         'string',
         ['reverse([name])']
       ),
       functionToken(
         'repeat',
-        'calcFieldDesc_repeat',
+        'expressionFunctionDesc_repeat',
         [
           { name: 'str', type: 'string' },
           { name: 'count', type: 'int' },
@@ -391,11 +398,11 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
     ],
   },
   {
-    i18nKey: 'calcFieldCategoryNull',
+    i18nKey: 'expressionFunctionCategoryNull',
     tokens: [
       functionToken(
         'coalesce',
-        'calcFieldDesc_coalesce',
+        'expressionFunctionDesc_coalesce',
         [
           { name: 'expr', type: 'any' },
           { name: '...rest', type: 'any' },
@@ -407,7 +414,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         label: 'nullif',
         apply: 'nullif( )',
         cursorOffset: 7,
-        i18nDescKey: 'calcFieldDesc_nullif',
+        i18nDescKey: 'expressionFunctionDesc_nullif',
         params: [
           { name: 'expr1', type: 'any' },
           { name: 'expr2', type: 'any' },
@@ -418,13 +425,13 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
     ],
   },
   {
-    i18nKey: 'calcFieldCategoryType',
+    i18nKey: 'expressionFunctionCategoryType',
     tokens: [
       {
         label: 'CAST',
         apply: 'CAST( AS )',
         cursorOffset: 5,
-        i18nDescKey: 'calcFieldDesc_cast',
+        i18nDescKey: 'expressionFunctionDesc_cast',
         params: [
           { name: 'expr', type: 'any' },
           { name: 'type', type: 'type' },
@@ -436,7 +443,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         label: 'try_cast',
         apply: 'try_cast( AS )',
         cursorOffset: 9,
-        i18nDescKey: 'calcFieldDesc_try_cast',
+        i18nDescKey: 'expressionFunctionDesc_try_cast',
         params: [
           { name: 'expr', type: 'any' },
           { name: 'type', type: 'type' },
@@ -448,14 +455,15 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
   },
 ];
 
-interface GlassExpressionInputProps {
+export interface GlassExpressionInputProps {
   value: string;
   onChange: (value: string) => void;
   fieldCompletions: string[];
   columnTypes?: Record<string, string>;
   placeholder?: string;
   excludeFunctionCategories?: string[];
-  enableCalculationWizard?: boolean;
+  functionGroups?: ExpressionFunctionGroup[];
+  assistantPanel?: ExpressionAssistantPanel;
 }
 
 const exprLanguage = StreamLanguage.define({
@@ -534,7 +542,7 @@ function FunctionDetailPanel({
   if (!token) {
     return (
       <div className="flex h-full items-center justify-center text-[11px] text-text-muted px-3 text-center leading-5">
-        {tr('calcFieldDetailHint')}
+        {tr('expressionFunctionDetailHint')}
       </div>
     );
   }
@@ -543,7 +551,7 @@ function FunctionDetailPanel({
       <div className="text-[13px] font-semibold text-text-primary font-mono">{token.label}</div>
       <div className="space-y-0.5">
         <div className="flex gap-2">
-          <span className="text-text-muted shrink-0">{tr('calcFieldFunctionDesc')}:</span>
+          <span className="text-text-muted shrink-0">{tr('expressionFunctionDescription')}:</span>
           <span className="text-text-secondary">
             {token.i18nDescKey ? tr(token.i18nDescKey) : '-'}
           </span>
@@ -557,7 +565,7 @@ function FunctionDetailPanel({
       </div>
       {token.params && token.params.length > 0 && (
         <div>
-          <div className="mb-1 text-text-muted">{tr('calcFieldFnArg')}:</div>
+          <div className="mb-1 text-text-muted">{tr('expressionFunctionArgument')}:</div>
           <div className="space-y-0.5">
             {token.params.map((p) => (
               <div
@@ -576,7 +584,7 @@ function FunctionDetailPanel({
       )}
       {token.examples && token.examples.length > 0 && (
         <div>
-          <div className="mb-1 text-text-muted">{tr('calcFieldExampleLabel')}:</div>
+          <div className="mb-1 text-text-muted">{tr('expressionFunctionExampleLabel')}:</div>
           <div className="space-y-1">
             {token.examples.map((ex) => (
               <pre
@@ -595,10 +603,12 @@ function FunctionDetailPanel({
 
 function GlassFunctionHelper({
   onInsert,
+  functionGroups,
   excludeCategories,
   onTokenHover,
 }: {
   onInsert: (text: string, cursorOffset?: number) => void;
+  functionGroups: ExpressionFunctionGroup[];
   excludeCategories?: string[];
   onTokenHover?: (token: HelperToken | null) => void;
 }) {
@@ -609,9 +619,9 @@ function GlassFunctionHelper({
   const rawGroups = useMemo(
     () =>
       excludeCategories
-        ? FUNCTION_GROUPS.filter((g) => !excludeCategories.includes(g.i18nKey))
-        : FUNCTION_GROUPS,
-    [excludeCategories]
+        ? functionGroups.filter((g) => !excludeCategories.includes(g.i18nKey))
+        : functionGroups,
+    [excludeCategories, functionGroups]
   );
   const groups = useMemo(() => {
     if (!query.trim()) return rawGroups;
@@ -629,7 +639,7 @@ function GlassFunctionHelper({
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={tr('calcFieldFnSearchPlaceholder')}
+          placeholder={tr('expressionFunctionSearchPlaceholder')}
           className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-6 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
         />
       </div>
@@ -676,7 +686,8 @@ export function GlassExpressionInput({
   columnTypes,
   placeholder: placeholderProp,
   excludeFunctionCategories,
-  enableCalculationWizard,
+  functionGroups = COMMON_EXPRESSION_FUNCTION_GROUPS,
+  assistantPanel,
 }: GlassExpressionInputProps) {
   const tr = useFormTranslation();
   const dataTypeLabel = useDataFieldTypeLabel();
@@ -706,7 +717,8 @@ export function GlassExpressionInput({
       columnTypes={columnTypes}
       onClose={() => setOpen(false)}
       excludeFunctionCategories={excludeFunctionCategories}
-      enableCalculationWizard={enableCalculationWizard}
+      functionGroups={functionGroups}
+      assistantPanel={assistantPanel}
       tr={tr}
       dataTypeLabel={dataTypeLabel}
     />
@@ -720,7 +732,8 @@ function ExpressionEditorDialog({
   columnTypes,
   onClose,
   excludeFunctionCategories,
-  enableCalculationWizard,
+  functionGroups = COMMON_EXPRESSION_FUNCTION_GROUPS,
+  assistantPanel,
   tr,
   dataTypeLabel,
 }: GlassExpressionInputProps & {
@@ -733,7 +746,7 @@ function ExpressionEditorDialog({
   const [showFields, setShowFields] = useState(true);
   const [showFn, setShowFn] = useState(true);
   const [showDetail, setShowDetail] = useState(true);
-  const [showWizard, setShowWizard] = useState(false);
+  const [showAssistantPanel, setShowAssistantPanel] = useState(false);
   const [fieldQuery, setFieldQuery] = useState('');
   const [hoveredToken, setHoveredToken] = useState<HelperToken | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -744,7 +757,7 @@ function ExpressionEditorDialog({
     () => sortFields(fieldCompletions, fieldQuery),
     [fieldCompletions, fieldQuery]
   );
-  const placeholderText = useMemo(() => tr('calcFieldExpressionPlaceholder'), [tr]);
+  const placeholderText = useMemo(() => tr('expressionPlaceholder'), [tr]);
 
   useLayoutEffect(() => {
     if (!hostRef.current) return;
@@ -805,18 +818,18 @@ function ExpressionEditorDialog({
             <h3 className="text-[14px] font-medium text-text-primary">
               {tr('aggregateExpressionEditor')}
             </h3>
-            {enableCalculationWizard && (
+            {assistantPanel && (
               <button
                 type="button"
-                onClick={() => setShowWizard((current) => !current)}
+                onClick={() => setShowAssistantPanel((current) => !current)}
                 className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
-                  showWizard
+                  showAssistantPanel
                     ? 'border-accent/30 bg-accent/10 text-accent'
                     : 'border-border-muted bg-background/42 text-text-secondary hover:bg-surface-hover'
                 }`}
               >
                 <WandSparkles className="h-3.5 w-3.5" />
-                {showWizard ? tr('calcFieldCloseWizard') : tr('calcFieldOpenWizard')}
+                {showAssistantPanel ? assistantPanel.closeLabel : assistantPanel.openLabel}
               </button>
             )}
           </div>
@@ -830,16 +843,11 @@ function ExpressionEditorDialog({
         </div>
         <div className="flex flex-1 flex-col gap-3 overflow-hidden p-4">
           <div ref={hostRef} />
-          {showWizard ? (
-            <CalculationFunctionWizard
-              fieldCompletions={fieldCompletions}
-              columnTypes={columnTypes}
-              onInsert={(expression) => {
-                editAtCursor(expression);
-                setShowWizard(false);
-              }}
-              tr={tr}
-            />
+          {showAssistantPanel && assistantPanel ? (
+            assistantPanel.render({
+              insertExpression: editAtCursor,
+              closePanel: () => setShowAssistantPanel(false),
+            })
           ) : (
             <div className="grid grid-cols-[1fr_1fr_1.5fr] gap-3 min-h-0 min-w-0 flex-1 overflow-hidden">
               <div className="flex flex-col rounded-lg border border-border-muted/60 min-h-0">
@@ -851,7 +859,7 @@ function ExpressionEditorDialog({
                   <ChevronDown
                     className={`h-3 w-3 transition-transform ${showFields ? 'rotate-180' : ''}`}
                   />
-                  {tr('calcFieldTabFields')}
+                  {tr('expressionFieldsTab')}
                 </button>
                 {showFields && (
                   <div className="flex-1 flex flex-col min-h-0">
@@ -861,7 +869,7 @@ function ExpressionEditorDialog({
                         type="text"
                         value={fieldQuery}
                         onChange={(e) => setFieldQuery(e.target.value)}
-                        placeholder={tr('calcFieldFieldSearchPlaceholder')}
+                        placeholder={tr('expressionFieldSearchPlaceholder')}
                         className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
                       />
                     </div>
@@ -894,7 +902,7 @@ function ExpressionEditorDialog({
                                     {dataTypeLabel(colType)}
                                   </span>
                                 )}
-                                <span>{isStar ? tr('calcFieldAllFieldsStar') : col}</span>
+                                <span>{isStar ? tr('expressionAllFieldsStar') : col}</span>
                               </button>
                             );
                           })}
@@ -913,12 +921,13 @@ function ExpressionEditorDialog({
                   <ChevronDown
                     className={`h-3 w-3 transition-transform ${showFn ? 'rotate-180' : ''}`}
                   />
-                  {tr('calcFieldFnHelperLabel')}
+                  {tr('expressionFunctionHelperLabel')}
                 </button>
                 {showFn && (
                   <div className="flex-1 overflow-y-auto border-t border-border-muted/60 p-2 min-h-0">
                     <GlassFunctionHelper
                       onInsert={editAtCursor}
+                      functionGroups={functionGroups}
                       excludeCategories={excludeFunctionCategories}
                       onTokenHover={setHoveredToken}
                     />
@@ -934,7 +943,7 @@ function ExpressionEditorDialog({
                   <ChevronDown
                     className={`h-3 w-3 transition-transform ${showDetail ? 'rotate-180' : ''}`}
                   />
-                  {tr('calcFieldDetailLabel')}
+                  {tr('expressionFunctionDetailLabel')}
                 </button>
                 {showDetail && (
                   <div className="flex-1 overflow-y-auto border-t border-border-muted/60 p-2 min-h-0">

@@ -1,4 +1,4 @@
-import { buildCalculationFunctionExpression } from '../function-registry';
+import { buildCalculationFunctionExpression } from '../sql-expression-builder';
 import { buildCalculationFunctionDslExpression } from './formatter';
 import { parseDomainExpression } from './parser';
 

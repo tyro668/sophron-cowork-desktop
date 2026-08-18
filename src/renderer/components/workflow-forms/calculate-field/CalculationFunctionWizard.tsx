@@ -11,13 +11,13 @@ import {
 import { type CalculationWindowFrame } from '../../../../shared/calculate-field/window-frame';
 import { buildCalculationFunctionDslExpression } from '../../../../shared/calculate-field/domain-dsl';
 import { useDragReorder } from '../../../hooks/useDragReorder';
-import { GlassDirectionToggle } from './GlassDirectionToggle';
-import { GlassFieldMultiSelect } from './GlassFieldMultiSelect';
-import { GlassFieldSingleSelect } from './GlassFieldSingleSelect';
-import { GlassFormTextInput } from './GlassFormTextInput';
-import { GlassOptionSingleSelect } from './GlassOptionSingleSelect';
-import { GlassRowList } from './GlassRowList';
-import { GlassTagBar } from './GlassTagBar';
+import { GlassDirectionToggle } from '../shared/GlassDirectionToggle';
+import { GlassFieldMultiSelect } from '../shared/GlassFieldMultiSelect';
+import { GlassFieldSingleSelect } from '../shared/GlassFieldSingleSelect';
+import { GlassFormTextInput } from '../shared/GlassFormTextInput';
+import { GlassOptionSingleSelect } from '../shared/GlassOptionSingleSelect';
+import { GlassRowList } from '../shared/GlassRowList';
+import { GlassTagBar } from '../shared/GlassTagBar';
 
 interface CalculationFunctionWizardProps {
   fieldCompletions: string[];
@@ -215,7 +215,7 @@ export function CalculationFunctionWizard({
     setOrderBy(next.length === 1 && !next[0].field ? [] : next);
   }
 
-  const hasSpecialConfig = definition.frame === 'cumulative' || definition.frame === 'custom';
+  const hasSpecialConfig = definition.frame === 'custom';
   const temporalFields = fieldCompletions.filter((field) =>
     isTemporalDataFieldType(columnTypes?.[field])
   );
@@ -268,13 +268,13 @@ export function CalculationFunctionWizard({
               </WizardLabel>
 
               {definition.valueArgument !== 'none' && (
-                <WizardLabel text={tr('calcFieldFnArg')}>
+                <WizardLabel text={tr('expressionFunctionArgument')}>
                   <GlassFieldSingleSelect
                     value={value}
                     options={valueOptions}
                     columnTypes={columnTypes}
                     onChange={setValue}
-                    placeholder={tr('calcFieldFnArgPlaceholder')}
+                    placeholder={tr('expressionFunctionArgumentPlaceholder')}
                     className="h-7 w-full"
                   />
                 </WizardLabel>
@@ -304,7 +304,7 @@ export function CalculationFunctionWizard({
                           [parameter.key]: nextValue,
                         }))
                       }
-                      placeholder={tr('calcFieldFnArgPlaceholder')}
+                      placeholder={tr('expressionFunctionArgumentPlaceholder')}
                       className="h-7 w-full"
                     />
                   ) : parameter.kind === 'option' ? (
@@ -400,7 +400,7 @@ export function CalculationFunctionWizard({
                               columnTypes={columnTypes}
                               disabledOptions={disabledOptions}
                               onChange={(field) => updateOrderField(index, { field })}
-                              placeholder={tr('calcFieldFnArgPlaceholder')}
+                              placeholder={tr('expressionFunctionArgumentPlaceholder')}
                               className="w-full"
                             />
                           );
@@ -448,11 +448,6 @@ export function CalculationFunctionWizard({
               {!hasSpecialConfig && (
                 <div className="flex min-h-32 flex-1 items-center justify-center rounded-md bg-background/20 px-4 text-center text-[11px] leading-5 text-text-muted">
                   {tr('calcFieldNoSpecialConfig')}
-                </div>
-              )}
-              {definition.frame === 'cumulative' && (
-                <div className="rounded-md bg-accent/8 p-2 font-mono text-[10px] leading-4 text-text-muted">
-                  ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
                 </div>
               )}
               {definition.frame === 'custom' && (

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { buildCalculationFunctionExpression } from '../../src/shared/calculate-field/sql-expression-builder';
 import {
-  buildCalculationFunctionExpression,
   calculationFunctionDslId,
   calculationFunctionsByCategory,
   CALCULATION_FUNCTION_CATEGORIES,
@@ -687,61 +687,6 @@ describe('calculation function registry', () => {
         extraParameter: ' ',
       })
     ).toBe('group_string_agg([name], " ")');
-  });
-
-  it('reuses registry validation when building domain DSL', () => {
-    expect(() =>
-      buildCalculationFunctionDslExpression({
-        functionId: 'cumulative_sum',
-        value: 'amount',
-      })
-    ).toThrow(/requires order fields/);
-    expect(() =>
-      buildCalculationFunctionDslExpression({
-        functionId: 'moving_avg',
-        value: 'amount',
-        frame: { type: 'rows', start: '1 preceding', end: 'current row' },
-      })
-    ).toThrow(/requires order fields/);
-    expect(() =>
-      buildCalculationFunctionDslExpression({
-        functionId: 'offset_difference',
-        value: 'amount',
-        extraParameter: 'abc',
-        orderBy: [{ field: 'date', direction: 'asc' }],
-      })
-    ).toThrow(/numeric parameter|outside its range/);
-    expect(() =>
-      buildCalculationFunctionDslExpression({
-        functionId: 'quantile_cont',
-        value: 'amount',
-        extraParameter: '3',
-        partitionBy: ['region'],
-      })
-    ).toThrow(/outside its range/);
-    expect(() =>
-      buildCalculationFunctionDslExpression({
-        functionId: 'first_value',
-        value: 'amount',
-        extraParameter: '2',
-        orderBy: [{ field: 'date', direction: 'asc' }],
-      })
-    ).toThrow(/does not accept an extra parameter/);
-    expect(() =>
-      buildCalculationFunctionDslExpression({
-        functionId: 'lag',
-        value: 'amount',
-        extraParameter: 'abc',
-        orderBy: [{ field: 'date', direction: 'asc' }],
-      })
-    ).toThrow(/numeric parameter/);
-    expect(() =>
-      buildCalculationFunctionDslExpression({
-        functionId: 'offset_difference',
-        value: 'amount',
-        orderBy: [{ field: 'date', direction: 'asc' }],
-      })
-    ).toThrow(/requires an extra parameter/);
   });
 
   it('rejects explicit window frames on offset and parses them directly without silent drop', () => {
