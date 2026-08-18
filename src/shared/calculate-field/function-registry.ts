@@ -1,5 +1,6 @@
 import { isTemporalDataFieldType } from '../data-field-types';
-import { formatCalculationStringLiteral } from './index';
+import { formatCalculationStringLiteral } from './string-literal';
+import { validateWindowFrame, type CalculationWindowFrame } from './window-frame';
 
 export type CalculationFunctionCategory =
   | 'group_metrics'
@@ -29,6 +30,7 @@ export interface CalculationFunctionDefinition {
   valueArgument: CalculationValueArgument;
   order: CalculationOrderRequirement;
   frame: CalculationFrameMode;
+  domainDslId?: string;
   extraParameter?: CalculationExtraParameter;
   expressionKind?: 'native' | 'count-distinct' | 'percentage' | 'offset-diff' | 'offset-rate';
   parameters?: CalculationFunctionParameter[];
@@ -58,13 +60,6 @@ export function getCalculationParameter(
 export interface CalculationOrderField {
   field: string;
   direction: 'asc' | 'desc';
-}
-
-export interface CalculationWindowFrame {
-  type: 'rows' | 'range' | 'groups';
-  start: string;
-  end: string;
-  exclude?: 'current row' | 'group' | 'ties' | 'no others';
 }
 
 export interface CalculationFunctionInput {
@@ -97,6 +92,7 @@ const groupMetricFunctions: CalculationFunctionDefinition[] = [
       id,
       category: 'group_metrics',
       labelKey: `calcFieldFn_${id}`,
+      domainDslId: `group_${id}`,
       valueArgument: 'field',
       order: 'none',
       frame: 'none',
@@ -106,6 +102,7 @@ const groupMetricFunctions: CalculationFunctionDefinition[] = [
     id: 'count',
     category: 'group_metrics',
     labelKey: 'calcFieldFn_count',
+    domainDslId: 'group_count',
     valueArgument: 'field-or-star',
     order: 'none',
     frame: 'none',
@@ -123,6 +120,7 @@ const groupMetricFunctions: CalculationFunctionDefinition[] = [
     id: 'quantile_cont',
     category: 'group_metrics',
     labelKey: 'calcFieldFn_quantile_cont',
+    domainDslId: 'group_quantile_cont',
     valueArgument: 'field',
     order: 'none',
     frame: 'none',
@@ -138,6 +136,7 @@ const groupMetricFunctions: CalculationFunctionDefinition[] = [
     id: 'string_agg',
     category: 'group_metrics',
     labelKey: 'calcFieldFn_string_agg',
+    domainDslId: 'group_string_agg',
     valueArgument: 'field',
     order: 'none',
     frame: 'none',
@@ -409,6 +408,61 @@ export function getCalculationFunction(
   functionId: string
 ): CalculationFunctionDefinition | undefined {
   return CALCULATION_FUNCTIONS.find((definition) => definition.id === functionId);
+}
+
+export function calculationFunctionDslId(definition: CalculationFunctionDefinition): string {
+  return definition.domainDslId ?? definition.id;
+}
+
+export function getCalculationFunctionByDslId(
+  dslId: string
+): CalculationFunctionDefinition | undefined {
+  return CALCULATION_FUNCTIONS.find(
+    (definition) => (definition.domainDslId ?? definition.id) === dslId
+  );
+}
+
+export const DOMAIN_FUNCTION_IDS: ReadonlySet<string> = new Set(
+  CALCULATION_FUNCTIONS.map((definition) => calculationFunctionDslId(definition))
+);
+
+export const MODERN_FUNCTION_WHITELIST: ReadonlySet<string> = new Set(
+  CALCULATION_FUNCTIONS.map((definition) => definition.id)
+);
+
+export interface ParamSpec {
+  key: 'fnArg' | 'fnArg2';
+  type: 'field' | 'number' | 'text';
+  numberRule?: {
+    integer?: boolean;
+    min?: number;
+    max?: number;
+  };
+}
+
+export function getCalculationFunctionArgumentSpec(fn: string): ParamSpec[] {
+  const definition = getCalculationFunction(fn);
+  if (!definition) return [{ key: 'fnArg', type: 'field' }];
+  const specs: ParamSpec[] = [];
+  if (definition.valueArgument !== 'none') {
+    specs.push({ key: 'fnArg', type: 'field' });
+  }
+  if (definition.extraParameter) {
+    const extraKey = definition.valueArgument === 'none' ? 'fnArg' : 'fnArg2';
+    specs.push({
+      key: extraKey,
+      type: definition.extraParameter.kind === 'text' ? 'text' : 'number',
+      numberRule:
+        definition.extraParameter.kind === 'text'
+          ? undefined
+          : {
+              integer: definition.extraParameter.kind === 'integer' || undefined,
+              min: definition.extraParameter.min,
+              max: definition.extraParameter.max,
+            },
+    });
+  }
+  return specs.length > 0 ? specs : [];
 }
 
 export function buildCalculationFunctionExpression(input: CalculationFunctionInput): string {
@@ -691,93 +745,6 @@ function buildOverClause(
   }
 
   return ` OVER (${clauses.join(' ')})`;
-}
-
-interface ParsedFrameBound {
-  position:
-    | 'unbounded-preceding'
-    | 'preceding'
-    | 'current-row'
-    | 'following'
-    | 'unbounded-following';
-  offset?: number;
-  unit?: string;
-}
-
-function validateWindowFrame(
-  functionId: string,
-  frame: CalculationWindowFrame,
-  orderFieldCount: number
-): void {
-  const start = parseFrameBound(functionId, frame.start);
-  const end = parseFrameBound(functionId, frame.end);
-  if (
-    frame.type === 'range' &&
-    (isOffsetFrameBound(start) || isOffsetFrameBound(end)) &&
-    orderFieldCount !== 1
-  ) {
-    throw new Error(
-      `Calculation function '${functionId}' requires exactly one order field for a RANGE offset`
-    );
-  }
-  if (!isFrameStartBeforeOrEqual(start, end)) {
-    throw new Error(`Calculation function '${functionId}' frame start must not be after its end`);
-  }
-}
-
-function parseFrameBound(functionId: string, bound: string): ParsedFrameBound {
-  const normalized = bound.trim();
-  if (/^unbounded preceding$/i.test(normalized)) return { position: 'unbounded-preceding' };
-  if (/^current row$/i.test(normalized)) return { position: 'current-row' };
-  if (/^unbounded following$/i.test(normalized)) return { position: 'unbounded-following' };
-
-  const numeric = /^(\d+) (preceding|following)$/i.exec(normalized);
-  if (numeric) {
-    return {
-      position: numeric[2].toLowerCase() as 'preceding' | 'following',
-      offset: Number(numeric[1]),
-    };
-  }
-
-  const interval = /^interval (\d+) (day|week|month|quarter|year) (preceding|following)$/i.exec(
-    normalized
-  );
-  if (interval) {
-    return {
-      position: interval[3].toLowerCase() as 'preceding' | 'following',
-      offset: Number(interval[1]),
-      unit: interval[2].toLowerCase(),
-    };
-  }
-
-  throw new Error(`Calculation function '${functionId}' has an invalid window frame bound`);
-}
-
-function isOffsetFrameBound(bound: ParsedFrameBound): boolean {
-  return bound.position === 'preceding' || bound.position === 'following';
-}
-
-function isFrameStartBeforeOrEqual(start: ParsedFrameBound, end: ParsedFrameBound): boolean {
-  if (start.position === 'unbounded-following' || end.position === 'unbounded-preceding') {
-    return false;
-  }
-
-  const positionRank: Record<ParsedFrameBound['position'], number> = {
-    'unbounded-preceding': 0,
-    preceding: 1,
-    'current-row': 2,
-    following: 3,
-    'unbounded-following': 4,
-  };
-  const startRank = positionRank[start.position];
-  const endRank = positionRank[end.position];
-  if (startRank !== endRank) return startRank < endRank;
-
-  const comparableOffsets = start.unit === end.unit;
-  if (!comparableOffsets || start.offset === undefined || end.offset === undefined) return true;
-  if (start.position === 'preceding') return start.offset >= end.offset;
-  if (start.position === 'following') return start.offset <= end.offset;
-  return true;
 }
 
 export function formatCalculationField(value: string): string {

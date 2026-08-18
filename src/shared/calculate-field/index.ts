@@ -1,3 +1,11 @@
+import { formatCalculationStringLiteral } from './string-literal';
+import {
+  CALCULATION_FUNCTIONS,
+  getCalculationFunctionArgumentSpec,
+  MODERN_FUNCTION_WHITELIST,
+  type ParamSpec,
+} from './function-registry';
+
 export interface CalculationConfigEntry {
   id?: string;
   field: string;
@@ -17,33 +25,8 @@ export interface CalculationConfigEntry {
   fiscalStartMonth?: number;
 }
 
-export interface CalculationRow {
+export interface CalculationRow extends CalculationConfigEntry {
   id: string;
-  field: string;
-  expression: string;
-  type?: 'row' | 'agg' | 'window' | 'cross';
-  action?: 'add' | 'replace';
-  fn?: string;
-  fnArg?: string;
-  fnArg2?: string;
-  scenario?: string;
-  partitionBy?: string[];
-  orderBy?: Array<{ field: string; direction?: 'asc' | 'desc' }>;
-  frameType?: 'rows' | 'range' | 'groups';
-  frameStart?: string;
-  frameEnd?: string;
-  frameExclude?: 'current row' | 'group' | 'ties' | 'no others';
-  fiscalStartMonth?: number;
-}
-
-export interface ParamSpec {
-  key: 'fnArg' | 'fnArg2';
-  type: 'field' | 'number' | 'text';
-  numberRule?: {
-    integer?: boolean;
-    min?: number;
-    max?: number;
-  };
 }
 
 export const SCENARIO_MIGRATION: Record<string, string> = {
@@ -54,72 +37,21 @@ export const SCENARIO_MIGRATION: Record<string, string> = {
   time: 'time_intel',
 };
 
-export const FN_ARG_SPEC: Record<string, ParamSpec[]> = {
-  '*': [{ key: 'fnArg', type: 'field' }],
-  ntile: [{ key: 'fnArg', type: 'number', numberRule: { integer: true, min: 1, max: 1_000_000 } }],
-  nth_value: [
-    { key: 'fnArg', type: 'field' },
-    { key: 'fnArg2', type: 'number', numberRule: { integer: true, min: 1, max: 1_000_000 } },
-  ],
-  quantile_cont: [
-    { key: 'fnArg', type: 'field' },
-    { key: 'fnArg2', type: 'number', numberRule: { min: 0, max: 1 } },
-  ],
-  lag: [
-    { key: 'fnArg', type: 'field' },
-    { key: 'fnArg2', type: 'number', numberRule: { integer: true, min: 1, max: 1_000_000 } },
-  ],
-  lead: [
-    { key: 'fnArg', type: 'field' },
-    { key: 'fnArg2', type: 'number', numberRule: { integer: true, min: 1, max: 1_000_000 } },
-  ],
-  string_agg: [
-    { key: 'fnArg', type: 'field' },
-    { key: 'fnArg2', type: 'text' },
-  ],
-};
-
-export const FN_WHITELIST = new Set([
-  'sum',
-  'avg',
-  'min',
-  'max',
-  'count',
-  'count_distinct',
-  'median',
-  'stddev',
-  'var',
+export const LEGACY_FUNCTION_WHITELIST: ReadonlySet<string> = new Set([
   'var_pop',
-  'mode',
-  'quantile_cont',
   'product',
-  'string_agg',
-  'bool_and',
-  'bool_or',
-  'row_number',
-  'rank',
-  'dense_rank',
-  'ntile',
-  'percent_rank',
-  'cume_dist',
-  'first_value',
-  'last_value',
-  'nth_value',
-  'lag',
-  'lead',
   'period_yoy_value',
   'period_yoy_rate',
   'period_yoy_prev',
   'period_mom_value',
   'period_mom_rate',
   'period_mom_prev',
-  'percentage',
 ]);
 
 const TIME_AGG_WHITELIST = new Set(['sum', 'avg', 'count', 'min', 'max', 'distinct_count']);
 
 export function isAllowedCalculationFunction(fn: string): boolean {
-  if (FN_WHITELIST.has(fn)) return true;
+  if (MODERN_FUNCTION_WHITELIST.has(fn) || LEGACY_FUNCTION_WHITELIST.has(fn)) return true;
   const prefix = Object.keys(TIME_WINDOW_DEFS).find((item) => fn.startsWith(`${item}_`));
   return Boolean(prefix && TIME_AGG_WHITELIST.has(fn.slice((prefix?.length ?? 0) + 1)));
 }
@@ -155,10 +87,6 @@ function numericArg(
 
 function textArg(value: string | undefined): string {
   return formatCalculationStringLiteral(value ?? '');
-}
-
-export function formatCalculationStringLiteral(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
 }
 
 export const TIME_WINDOW_DEFS: Record<
@@ -413,28 +341,16 @@ export function exprFromParts(item: CalculationRow): string {
   const fnSqlMap: Record<string, string> = {
     var: 'var_pop',
   };
-  const noArgRankingFns = new Set([
-    'row_number',
-    'rank',
-    'dense_rank',
-    'percent_rank',
-    'cume_dist',
-  ]);
-  const domainFns = new Set([
-    'row_number',
-    'rank',
-    'dense_rank',
-    'percent_rank',
-    'cume_dist',
-    'ntile',
-    'lag',
-    'lead',
-    'first_value',
-    'last_value',
-    'nth_value',
-    'offset_difference',
-    'offset_rate',
-  ]);
+  const noArgRankingFns = new Set(
+    CALCULATION_FUNCTIONS.filter(
+      (d) => d.category === 'ranking' && d.valueArgument === 'none' && !d.extraParameter
+    ).map((d) => d.id)
+  );
+  const domainFns = new Set(
+    CALCULATION_FUNCTIONS.filter((d) => d.category === 'offset' || d.category === 'ranking').map(
+      (d) => d.id
+    )
+  );
   let fnCall: string;
   if (noArgRankingFns.has(fn)) {
     fnCall = `${fn}()`;
@@ -445,7 +361,7 @@ export function exprFromParts(item: CalculationRow): string {
       throw new Error(`Unsupported function '${fn}' in calculation expression`);
     }
     const sqlFn = fnSqlMap[fn] || fn;
-    const specs = FN_ARG_SPEC[fn] || FN_ARG_SPEC['*'];
+    const specs = getCalculationFunctionArgumentSpec(fn);
     const args = specs
       .map((s) => {
         const raw = item[s.key];

@@ -1,15 +1,14 @@
 import { useMemo, useState } from 'react';
 import { isTemporalDataFieldType } from '../../../../shared/data-field-types';
 import {
-  buildCalculationFunctionExpression,
   calculationFunctionsByCategory,
   CALCULATION_FUNCTION_CATEGORIES,
   usesTemporalCalculationRangeUnit,
   type CalculationFunctionCategory,
   type CalculationFunctionParameter,
   type CalculationOrderField,
-  type CalculationWindowFrame,
 } from '../../../../shared/calculate-field/function-registry';
+import { type CalculationWindowFrame } from '../../../../shared/calculate-field/window-frame';
 import { buildCalculationFunctionDslExpression } from '../../../../shared/calculate-field/domain-dsl';
 import { useDragReorder } from '../../../hooks/useDragReorder';
 import { GlassDirectionToggle } from './GlassDirectionToggle';
@@ -139,15 +138,7 @@ export function CalculationFunctionWizard({
   const preview = useMemo(() => {
     try {
       return {
-        expression: (definition.category === 'period_compare' ||
-          definition.category === 'time_intelligence' ||
-          definition.category === 'group_metrics' ||
-          definition.category === 'ranking' ||
-          definition.category === 'cumulative' ||
-          definition.category === 'moving_window' ||
-          definition.category === 'offset'
-          ? buildCalculationFunctionDslExpression
-          : buildCalculationFunctionExpression)({
+        expression: buildCalculationFunctionDslExpression({
           functionId: definition.id,
           value,
           extraParameter: effectiveExtraParameter,
@@ -165,7 +156,6 @@ export function CalculationFunctionWizard({
       };
     }
   }, [
-    definition.category,
     definition.id,
     effectiveExtraParameter,
     effectiveParameterValues,

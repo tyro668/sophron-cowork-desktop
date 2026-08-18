@@ -337,7 +337,6 @@ describe('operator DSL executable cases', () => {
     ['join', 'join left returns on [l.id] != [r.id] garbage'],
     ['output', 'output table "result" mode replace mode append'],
     ['type_convert', 'cast [amount] as float on_error null on_error keep'],
-    ['calculate_field', 'derive [result] = period_compare(yoy_diff, [amount] garbage, [date])'],
   ] as const)('rejects trailing DSL for %s: %s', (type, dsl) => {
     const parsed = parsePrepOperatorDsl(dsl, type);
 

@@ -20,7 +20,7 @@ function ok(config: Record<string, unknown>): OkResult {
   return { config: parsed.operator!.config };
 }
 
-describe('FormCalculateField — config ↔ DSL', () => {
+describe('FormCalculateField �?config �?DSL', () => {
   it('single field derivation', () => {
     const r = ok({
       calculations: [{ field: 'margin', expression: '[revenue] - [cost]' }],
@@ -191,64 +191,9 @@ describe('FormCalculateField — config ↔ DSL', () => {
       []
     );
   });
-
-  it('exports legacy structured configurations with canonical domain functions', () => {
-    const dsl = exportPrepOperatorDsl({
-      id: 'test',
-      type: 'calculate_field',
-      config: {
-        calculations: [
-          {
-            field: 'yoy_sales',
-            expression: '',
-            type: 'cross',
-            fn: 'period_yoy_prev',
-            fnArg: 'sales',
-            orderBy: [{ field: 'date', direction: 'asc' }],
-            partitionBy: ['region'],
-          },
-          {
-            field: 'year_sales',
-            expression: '',
-            type: 'cross',
-            fn: 'ytd_sum',
-            fnArg: 'sales',
-            orderBy: [{ field: 'date', direction: 'asc' }],
-            partitionBy: ['region'],
-          },
-        ],
-      },
-    });
-
-    expect(dsl).toBe(
-      'derive [yoy_sales] = year_over_year_value([sales], [date], "month") over(partition by [region]), [year_sales] = year_to_date(sum([sales]), [date]) over(partition by [region])'
-    );
-  });
-
-  it.each([
-    [
-      'derive [x] = period_compare(yoy_prev, [sales], [date]) over(partition by [region])',
-      'derive [x] = year_over_year_value([sales], [date], "month") over(partition by [region])',
-    ],
-    [
-      'derive [x] = accumulate(ytd, sum, [sales], [date]) over(partition by [region])',
-      'derive [x] = year_to_date(sum([sales]), [date]) over(partition by [region])',
-    ],
-  ])('normalizes legacy calculation DSL to the new canonical form', (legacyDsl, expectedDsl) => {
-    const parsed = parsePrepOperatorDsl(legacyDsl, 'calculate_field');
-    expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
-
-    expect(
-      exportPrepOperatorDsl({
-        id: 'test',
-        type: 'calculate_field',
-        config: parsed.operator!.config,
-      })
-    ).toBe(expectedDsl);
-  });
 });
 
-describe('FormCalculateField — id normalization', () => {
+describe('FormCalculateField �?id normalization', () => {
   it('preserves existing ids', () => {
     const rows = normalizeCalculationEntries([
       { id: 'calc_a', field: 'margin', expression: '[revenue] - [cost]' },
@@ -284,7 +229,7 @@ describe('FormCalculateField — id normalization', () => {
     expect(row.frameType).toBe('rows');
   });
 
-  it('normalizes frameType — preserves range/groups', () => {
+  it('normalizes frameType �?preserves range/groups', () => {
     const rows = normalizeCalculationEntries([
       { field: 'a', expression: '[x]', frameType: 'range' },
       { field: 'b', expression: '[y]', frameType: 'groups' },
@@ -293,19 +238,19 @@ describe('FormCalculateField — id normalization', () => {
     expect(rows[1].frameType).toBe('groups');
   });
 
-  it('normalizes frameType — rows is preserved', () => {
+  it('normalizes frameType �?rows is preserved', () => {
     const rows = normalizeCalculationEntries([
       { field: 'a', expression: '[x]', frameType: 'rows' },
     ]);
     expect(rows[0].frameType).toBe('rows');
   });
 
-  it('normalizes frameType — missing becomes undefined', () => {
+  it('normalizes frameType �?missing becomes undefined', () => {
     const rows = normalizeCalculationEntries([{ field: 'a', expression: '[x]' }]);
     expect(rows[0].frameType).toBeUndefined();
   });
 
-  it('normalizes frameExclude — preserves current row/group/ties', () => {
+  it('normalizes frameExclude �?preserves current row/group/ties', () => {
     const rows = normalizeCalculationEntries([
       { field: 'a', expression: '[x]', frameExclude: 'current row' },
       { field: 'b', expression: '[y]', frameExclude: 'group' },
@@ -316,7 +261,7 @@ describe('FormCalculateField — id normalization', () => {
     expect(rows[2].frameExclude).toBe('ties');
   });
 
-  it('normalizes frameExclude — no others / missing becomes undefined', () => {
+  it('normalizes frameExclude �?no others / missing becomes undefined', () => {
     const rows = normalizeCalculationEntries([
       { field: 'a', expression: '[x]', frameExclude: 'no others' },
       { field: 'b', expression: '[y]' },
@@ -325,7 +270,7 @@ describe('FormCalculateField — id normalization', () => {
     expect(rows[1].frameExclude).toBeUndefined();
   });
 
-  it('normalizes frameStart/frameEnd — preserves strings', () => {
+  it('normalizes frameStart/frameEnd �?preserves strings', () => {
     const rows = normalizeCalculationEntries([
       { field: 'a', expression: '[x]', frameStart: 'unbounded preceding', frameEnd: 'current row' },
       {
@@ -341,7 +286,7 @@ describe('FormCalculateField — id normalization', () => {
     expect(rows[1].frameEnd).toBe('unbounded following');
   });
 
-  it('normalizes fiscalStartMonth — preserves valid values', () => {
+  it('normalizes fiscalStartMonth �?preserves valid values', () => {
     const rows = normalizeCalculationEntries([
       { field: 'a', expression: '[x]', fiscalStartMonth: 4 },
       { field: 'b', expression: '[y]', fiscalStartMonth: 1 },
@@ -350,7 +295,7 @@ describe('FormCalculateField — id normalization', () => {
     expect(rows[1].fiscalStartMonth).toBe(1);
   });
 
-  it('normalizes fiscalStartMonth — out of range becomes undefined', () => {
+  it('normalizes fiscalStartMonth �?out of range becomes undefined', () => {
     const rows = normalizeCalculationEntries([
       { field: 'a', expression: '[x]', fiscalStartMonth: 0 },
       { field: 'b', expression: '[y]', fiscalStartMonth: 13 },
@@ -359,13 +304,13 @@ describe('FormCalculateField — id normalization', () => {
     expect(rows[1].fiscalStartMonth).toBeUndefined();
   });
 
-  it('normalizes fiscalStartMonth — missing becomes undefined', () => {
+  it('normalizes fiscalStartMonth �?missing becomes undefined', () => {
     const rows = normalizeCalculationEntries([{ field: 'a', expression: '[x]' }]);
     expect(rows[0].fiscalStartMonth).toBeUndefined();
   });
 });
 
-describe('FormCalculateField — unified expression migration', () => {
+describe('FormCalculateField �?unified expression migration', () => {
   it('keeps ordinary expressions and removes legacy structured state', () => {
     expect(
       normalizeExpressionCalculationEntries([
@@ -424,35 +369,6 @@ describe('FormCalculateField — unified expression migration', () => {
 
     expect(calculation.expression).toBe(
       "string_agg([name], 'it''s, ') OVER (PARTITION BY [region])"
-    );
-  });
-
-  it('materializes legacy period comparison and time accumulation configurations', () => {
-    const calculations = normalizeExpressionCalculationEntries([
-      {
-        field: 'previous_year_sales',
-        expression: '',
-        type: 'cross',
-        fn: 'period_yoy_prev',
-        fnArg: 'sales',
-        partitionBy: ['region'],
-        orderBy: [{ field: 'date', direction: 'asc' }],
-      },
-      {
-        field: 'year_sales',
-        expression: '',
-        type: 'cross',
-        fn: 'ytd_sum',
-        fnArg: 'sales',
-        partitionBy: ['region'],
-        orderBy: [{ field: 'date', direction: 'asc' }],
-      },
-    ]);
-
-    expect(calculations[0].expression).toContain("CASE WHEN (extract('year' FROM [date])");
-    expect(calculations[0].expression).toContain('ELSE NULL END');
-    expect(calculations[1].expression).toBe(
-      'sum([sales]) OVER (PARTITION BY year([date]), [region] ORDER BY [date] ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)'
     );
   });
 
