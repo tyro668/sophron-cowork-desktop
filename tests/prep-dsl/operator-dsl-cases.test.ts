@@ -700,8 +700,8 @@ describe('operator DSL executable cases', () => {
       type: 'calculate_field',
       config: {
         calculations: [
-          { field: 'm', expression: '[a] - [b]', type: 'row' },
-          { field: 'n', expression: '', type: 'row' },
+          { field: 'm', expression: '[a] - [b]' },
+          { field: 'n', expression: '' },
         ],
       },
     });

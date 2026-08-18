@@ -1,7 +1,6 @@
 import { quoteIdentifier } from './utils';
 import { compileScalarExpression } from './compute';
 import { CalculateFieldConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
-import { exprFromParts, type CalculationRow } from '../../../shared/calculate-field/index';
 import { expandCalculationDomainExpression } from '../../../shared/calculate-field/domain-dsl';
 
 export function compileCalculateFieldSql(
@@ -22,14 +21,11 @@ export function compileCalculateFieldSql(
     if (generatedFields.has(normalizedField)) {
       throw new Error(`Calculate field target '${field}' is configured more than once`);
     }
-    let expr: string;
-    if (calculation.type !== 'row' && calculation.fn?.trim()) {
-      expr = exprFromParts(calculation as CalculationRow);
-    } else {
-      if (!calculation.expression?.trim()) continue;
-      expr = calculation.expression;
-    }
-    const compiled = `${compileScalarExpression(expandCalculationDomainExpression(expr))} AS ${quoteIdentifier(field)}`;
+    const expression = calculation.expression.trim();
+    if (!expression) continue;
+    const expanded = expandCalculationDomainExpression(expression);
+    const compiledExpression = compileScalarExpression(expanded);
+    const compiled = `${compiledExpression} AS ${quoteIdentifier(field)}`;
     const fieldExists = existingColumns.has(normalizedField);
     if (calculation.action === 'replace') {
       if (!fieldExists) {

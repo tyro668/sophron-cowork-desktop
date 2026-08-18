@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { compileScalarExpression } from '../../main/data/operators/compute';
 import { compileFilterConditionExpression } from '../../main/data/operators/filter';
-import { exprFromParts } from '../../shared/calculate-field';
+import {
+  normalizeCalculationDomainExpression,
+  expandCalculationDomainExpression,
+} from '../../shared/calculate-field/domain-dsl';
 import {
   AggregateConfigSchema,
   CalculateFieldConfigSchema,
@@ -29,119 +32,74 @@ describe('data operator security boundaries', () => {
     );
   });
 
-  it('accepts valid time-intelligence function combinations', () => {
+  it('accepts a modern expression-only calculation config', () => {
     const result = CalculateFieldConfigSchema.safeParse({
-      calculations: [
-        {
-          field: 'running_total',
-          type: 'window',
-          fn: 'ytd_sum',
-          fnArg: 'amount',
-          orderBy: [{ field: 'date', direction: 'asc' }],
-        },
-      ],
+      calculations: [{ field: 'running_total', expression: 'sum([amount]) over ()' }],
     });
     expect(result.success).toBe(true);
   });
 
-  it('rejects unsupported time-intelligence aggregations', () => {
+  it('rejects legacy structured calculation fields as unsupported', () => {
+    const legacyConfigs = [
+      { calculations: [{ field: 'x', expression: '', type: 'window', fn: 'ytd_sum' }] },
+      { calculations: [{ field: 'x', expression: '', fn: 'lag', fnArg: 'amount' }] },
+      { calculations: [{ field: 'x', expression: '', scenario: 'group_metrics' }] },
+      { calculations: [{ field: 'x', expression: '', frameStart: 'unbounded preceding' }] },
+      { calculations: [{ field: 'x', expression: '', orderBy: [{ field: 'date' }] }] },
+      { calculations: [{ field: 'x', expression: '', partitionBy: ['region'] }] },
+    ];
+    for (const config of legacyConfigs) {
+      const result = CalculateFieldConfigSchema.safeParse(config);
+      expect(result.success).toBe(false);
+    }
+  });
+
+  it('rejects legacy top-level mode state', () => {
     const result = CalculateFieldConfigSchema.safeParse({
-      calculations: [{ field: 'x', type: 'window', fn: 'ytd_execute' }],
+      calculations: [{ field: 'x', expression: 'sum([amount]) over ()' }],
+      _activeMode: 'row',
     });
     expect(result.success).toBe(false);
   });
 
-  it('rejects structural content in numeric function arguments', () => {
+  it('defaults missing calculations to an empty list', () => {
+    const result = CalculateFieldConfigSchema.safeParse({});
+    expect(result.success).toBe(true);
+    expect(result.data?.calculations).toEqual([]);
+  });
+
+  it('rejects DSL argument injection in domain functions', () => {
     expect(() =>
-      exprFromParts({
-        id: '1',
-        field: 'previous',
-        expression: '',
-        type: 'window',
-        fn: 'lag',
-        fnArg: 'amount',
-        fnArg2: '1) + 1',
-      })
-    ).toThrow(/Invalid numeric calculation argument/);
+      normalizeCalculationDomainExpression('ntile(1.5) over(order by [amount])')
+    ).toThrow(/must be an integer/);
+    expect(() =>
+      normalizeCalculationDomainExpression('nth_value([amount], 0) over(order by [date])')
+    ).toThrow(/outside its range/);
+    expect(() =>
+      normalizeCalculationDomainExpression('lag([amount], 0) over(order by [date])')
+    ).toThrow(/outside its range/);
   });
 
-  it('applies function-specific numeric argument constraints', () => {
-    const base = {
-      id: '1',
-      field: 'result',
-      expression: '',
-      type: 'window' as const,
-      fnArg: 'amount',
-    };
-    expect(() => exprFromParts({ ...base, fn: 'ntile', fnArg: '1.5' })).toThrow(
-      /outside the allowed range/
+  it('accepts valid domain function arguments', () => {
+    expect(normalizeCalculationDomainExpression('ntile(2) over(order by [amount])')).toBe(
+      'ntile(2) over(order by [amount])'
     );
-    expect(() => exprFromParts({ ...base, fn: 'nth_value', fnArg2: '0' })).toThrow(
-      /outside the allowed range/
+    expect(normalizeCalculationDomainExpression('lag([amount], 1) over(order by [date])')).toBe(
+      'lag([amount], 1) over(order by [date])'
     );
-    expect(() => exprFromParts({ ...base, fn: 'quantile_cont', fnArg2: '1.1' })).toThrow(
-      /outside the allowed range/
-    );
-    expect(() => exprFromParts({ ...base, fn: 'lag', fnArg2: '0' })).toThrow(
-      /outside the allowed range/
-    );
-    expect(exprFromParts({ ...base, fn: 'quantile_cont', fnArg2: '0.5' })).toContain(
-      'quantile_cont([amount], 0.5)'
-    );
-  });
-
-  it('applies the default bucket count when ntile omits its argument', () => {
     expect(
-      exprFromParts({
-        id: '1',
-        field: 'bucket',
-        expression: '',
-        type: 'window',
-        fn: 'ntile',
-      })
-    ).toContain('ntile(2) over ()');
+      expandCalculationDomainExpression(
+        'group_quantile_cont([amount], 0.5) over(partition by [region])'
+      )
+    ).toContain('quantile_cont([amount], 0.5)');
   });
 
-  it('omits the lag offset when the legacy config has no fnArg2', () => {
-    expect(
-      exprFromParts({
-        id: '1',
-        field: 'prev',
-        expression: '',
-        type: 'window',
-        fn: 'lag',
-        fnArg: 'amount',
-      })
-    ).toBe('lag([amount]) over ()');
-  });
-
-  it('emits offset and ranking domain DSL in lowercase', () => {
-    expect(
-      exprFromParts({
-        id: '1',
-        field: 'prev',
-        expression: '',
-        type: 'window',
-        fn: 'lag',
-        fnArg: 'amount',
-        fnArg2: '2',
-        partitionBy: ['region'],
-        orderBy: [{ field: 'date', direction: 'asc' }],
-      })
-    ).toBe('lag([amount], 2) over (partition by [region] order by [date])');
-  });
-
-  it('quotes text function arguments as DSL string literals', () => {
-    const expression = exprFromParts({
-      id: '1',
-      field: 'joined',
-      expression: '',
-      type: 'window',
-      fn: 'string_agg',
-      fnArg: 'name',
-      fnArg2: "', injected",
-    });
-    expect(compileScalarExpression(expression)).toContain("string_agg(\"name\", ''', injected')");
+  it('rejects out-of-range quantile parameters when expanding to SQL', () => {
+    expect(() =>
+      expandCalculationDomainExpression(
+        'group_quantile_cont([amount], 1.1) over(partition by [region])'
+      )
+    ).toThrow(/outside its range/);
   });
 
   it('rejects unknown aggregate and pivot functions', () => {

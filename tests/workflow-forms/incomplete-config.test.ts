@@ -141,16 +141,16 @@ describe('incomplete config guards', () => {
       expect(hasInvalidCalculateFieldConfig(emptyField)).toBe(true);
     });
 
-    it('accepts a complete row-mode calculation', () => {
+    it('accepts a complete calculation', () => {
       const node = makeNode('calculate_field', {
         calculations: [{ field: 'margin', expression: '[revenue] - [cost]' }],
       });
       expect(hasInvalidCalculateFieldConfig(node)).toBe(false);
     });
 
-    it('flags a placeholder cross-row calculation without a target or function', () => {
+    it('flags a placeholder calculation without a target or expression', () => {
       const node = makeNode('calculate_field', {
-        calculations: [{ type: 'cross', field: '', expression: '' }],
+        calculations: [{ field: '', expression: '' }],
       });
       expect(hasInvalidCalculateFieldConfig(node)).toBe(true);
     });
@@ -412,8 +412,8 @@ describe('incomplete config guards', () => {
           'calculate_field',
           {
             calculations: [
-              { field: 'm', expression: '[a]', type: 'row' },
-              { field: 'n', expression: '', type: 'row' },
+              { field: 'm', expression: '[a]' },
+              { field: 'n', expression: '' },
             ],
           },
         ],

@@ -11,7 +11,7 @@ import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import {
   createCalculationRow,
-  normalizeExpressionCalculationEntries,
+  normalizeCalculationEntries,
   type CalculationConfigEntry,
   type CalculationRow,
 } from './shared/calculate-field';
@@ -23,12 +23,6 @@ function persistableCalculation(row: CalculationRow): CalculationConfigEntry {
     expression: row.expression,
     action: row.action,
   };
-}
-
-function omitLegacyModeState(config: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(config).filter(([key]) => key !== '_activeMode' && key !== '_activeScenario')
-  );
 }
 
 export default function FormCalculateField({
@@ -46,7 +40,7 @@ export default function FormCalculateField({
     [node.config.calculations]
   );
   const [calculations, setCalculations] = useState<CalculationRow[]>(() =>
-    normalizeExpressionCalculationEntries(rawCalculations, fieldCompletions)
+    normalizeCalculationEntries(rawCalculations, fieldCompletions)
   );
   const sourceFieldNames = useMemo(
     () => new Set(fieldCompletions.map((field) => field.toLowerCase())),
@@ -55,12 +49,9 @@ export default function FormCalculateField({
 
   const storeCalculations = useCallback(
     (next: CalculationRow[]) => {
-      updateConfig((config) => {
-        return {
-          ...omitLegacyModeState(config),
-          calculations: next.length > 0 ? next.map(persistableCalculation) : undefined,
-        };
-      });
+      updateConfig(() => ({
+        calculations: next.length > 0 ? next.map(persistableCalculation) : undefined,
+      }));
     },
     [updateConfig]
   );
@@ -74,7 +65,7 @@ export default function FormCalculateField({
   );
 
   useEffect(() => {
-    const normalized = normalizeExpressionCalculationEntries(rawCalculations, fieldCompletions);
+    const normalized = normalizeCalculationEntries(rawCalculations, fieldCompletions);
     setCalculations(normalized);
   }, [fieldCompletions, rawCalculations]);
 

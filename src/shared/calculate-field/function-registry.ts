@@ -426,45 +426,6 @@ export const DOMAIN_FUNCTION_IDS: ReadonlySet<string> = new Set(
   CALCULATION_FUNCTIONS.map((definition) => calculationFunctionDslId(definition))
 );
 
-export const MODERN_FUNCTION_WHITELIST: ReadonlySet<string> = new Set(
-  CALCULATION_FUNCTIONS.map((definition) => definition.id)
-);
-
-export interface ParamSpec {
-  key: 'fnArg' | 'fnArg2';
-  type: 'field' | 'number' | 'text';
-  numberRule?: {
-    integer?: boolean;
-    min?: number;
-    max?: number;
-  };
-}
-
-export function getCalculationFunctionArgumentSpec(fn: string): ParamSpec[] {
-  const definition = getCalculationFunction(fn);
-  if (!definition) return [{ key: 'fnArg', type: 'field' }];
-  const specs: ParamSpec[] = [];
-  if (definition.valueArgument !== 'none') {
-    specs.push({ key: 'fnArg', type: 'field' });
-  }
-  if (definition.extraParameter) {
-    const extraKey = definition.valueArgument === 'none' ? 'fnArg' : 'fnArg2';
-    specs.push({
-      key: extraKey,
-      type: definition.extraParameter.kind === 'text' ? 'text' : 'number',
-      numberRule:
-        definition.extraParameter.kind === 'text'
-          ? undefined
-          : {
-              integer: definition.extraParameter.kind === 'integer' || undefined,
-              min: definition.extraParameter.min,
-              max: definition.extraParameter.max,
-            },
-    });
-  }
-  return specs.length > 0 ? specs : [];
-}
-
 export function buildCalculationFunctionExpression(input: CalculationFunctionInput): string {
   const definition = getCalculationFunction(input.functionId);
   if (!definition) throw new Error(`Unknown calculation function '${input.functionId}'`);

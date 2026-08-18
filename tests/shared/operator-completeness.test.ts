@@ -161,23 +161,12 @@ describe('isCompleteMissingValueRule', () => {
 });
 
 describe('isCompleteCalculation', () => {
-  it('accepts a row calculation with field and expression', () => {
-    expect(isCompleteCalculation({ field: 'm', expression: '[a] - [b]', type: 'row' })).toBe(true);
+  it('accepts a calculation with field and expression', () => {
+    expect(isCompleteCalculation({ field: 'm', expression: '[a] - [b]' })).toBe(true);
   });
 
-  it('rejects a row calculation missing field or expression', () => {
-    expect(isCompleteCalculation({ field: '', expression: '[a]', type: 'row' })).toBe(false);
-    expect(isCompleteCalculation({ field: 'm', expression: '', type: 'row' })).toBe(false);
-  });
-
-  it('accepts agg/window/cross calculations with field and fn', () => {
-    expect(isCompleteCalculation({ field: 'm', fn: 'sum', fnArg: '[a]', type: 'agg' })).toBe(true);
-    expect(isCompleteCalculation({ field: 'm', fn: 'sum', fnArg: '[a]', type: 'cross' })).toBe(
-      true
-    );
-  });
-
-  it('rejects agg/window/cross calculations missing fn', () => {
-    expect(isCompleteCalculation({ field: 'm', fn: '', type: 'cross' })).toBe(false);
+  it('rejects a calculation missing field or expression', () => {
+    expect(isCompleteCalculation({ field: '', expression: '[a]' })).toBe(false);
+    expect(isCompleteCalculation({ field: 'm', expression: '' })).toBe(false);
   });
 });

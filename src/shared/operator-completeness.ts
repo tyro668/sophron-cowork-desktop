@@ -80,13 +80,9 @@ export function isCompleteMissingValueRule(entry: unknown): boolean {
 }
 
 /**
- * CalculateField 计算条目：按类型判断。
- * - row：field 与 expression 必填；
- * - agg / window / cross（或存在 fn）：field 与 fn 必填（fnArg 缺省 `*`）。
+ * CalculateField 计算条目：field 与 expression 必填。
  */
 export function isCompleteCalculation(entry: unknown): boolean {
   if (!isObject(entry) || !hasNonEmptyString(entry.field)) return false;
-  const type = typeof entry.type === 'string' ? entry.type : 'row';
-  if (type === 'row' && !hasNonEmptyString(entry.fn)) return hasNonEmptyString(entry.expression);
-  return hasNonEmptyString(entry.fn);
+  return hasNonEmptyString(entry.expression);
 }

@@ -2,17 +2,9 @@ import type { PrepDiagnostic } from '../ast';
 import { createPrepDiagnostic } from '../diagnostics';
 import { formatFieldRef, parseFieldRefExact, toFieldName } from '../syntax/fields';
 import { splitTopLevel } from '../syntax/scanner';
-import { createOperator, objectArray, stringArray, type OperatorDslCodec } from './codec';
+import { createOperator, objectArray, type OperatorDslCodec } from './codec';
 import { isCompleteCalculation } from '../../operator-completeness';
-import {
-  buildCalculationFunctionDslExpression,
-  normalizeCalculationDomainExpression,
-} from '../../calculate-field/domain-dsl';
-import {
-  getCalculationFunction,
-  type CalculationFunctionInput,
-} from '../../calculate-field/function-registry';
-import { type CalculationWindowFrame } from '../../calculate-field/window-frame';
+import { normalizeCalculationDomainExpression } from '../../calculate-field/domain-dsl';
 
 export const calculateFieldCodec: OperatorDslCodec = {
   type: 'calculate_field',
@@ -78,57 +70,7 @@ function parseCalculation(
   return [{ field: toFieldName(field), expression }];
 }
 
-function formatStructuredDomainCalculation(calculation: Record<string, unknown>): string | null {
-  const fn = String(calculation.fn ?? '');
-  const definition = getCalculationFunction(fn);
-  if (!definition) {
-    return null;
-  }
-  const orderBy = objectArray(calculation.orderBy).map((entry) => ({
-    field: String(entry.field ?? ''),
-    direction: entry.direction === 'desc' ? ('desc' as const) : ('asc' as const),
-  }));
-  const frameStart =
-    typeof calculation.frameStart === 'string' ? calculation.frameStart : undefined;
-  const frameEnd = typeof calculation.frameEnd === 'string' ? calculation.frameEnd : undefined;
-  const frameType =
-    calculation.frameType === 'range' || calculation.frameType === 'groups'
-      ? calculation.frameType
-      : 'rows';
-  const frameExclude =
-    calculation.frameExclude === 'current row' ||
-    calculation.frameExclude === 'group' ||
-    calculation.frameExclude === 'ties' ||
-    calculation.frameExclude === 'no others'
-      ? calculation.frameExclude
-      : undefined;
-  const input: CalculationFunctionInput = {
-    functionId: fn,
-    value: typeof calculation.fnArg === 'string' ? calculation.fnArg : undefined,
-    extraParameter:
-      typeof calculation.fnArg2 === 'string' && calculation.fnArg2 !== ''
-        ? calculation.fnArg2
-        : undefined,
-    partitionBy: stringArray(calculation.partitionBy),
-    orderBy,
-    ...(frameStart && frameEnd
-      ? {
-          frame: {
-            type: frameType as CalculationWindowFrame['type'],
-            start: frameStart,
-            end: frameEnd,
-            ...(frameExclude ? { exclude: frameExclude as CalculationWindowFrame['exclude'] } : {}),
-          },
-        }
-      : {}),
-  };
-  return buildCalculationFunctionDslExpression(input);
-}
-
 function formatCalculation(calculation: Record<string, unknown>): string {
   const target = formatFieldRef(String(calculation.field ?? 'new_field'));
-  const structuredDsl = formatStructuredDomainCalculation(calculation);
-  if (structuredDsl) return `${target} = ${structuredDsl}`;
-
   return `${target} = ${String(calculation.expression ?? 'null')}`;
 }

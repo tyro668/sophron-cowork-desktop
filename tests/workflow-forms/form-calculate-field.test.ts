@@ -1,10 +1,9 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
 import type { CalculationConfigEntry } from '../../src/renderer/components/workflow-forms/shared/calculate-field';
 import {
   createCalculationRow,
   normalizeCalculationEntries,
-  normalizeExpressionCalculationEntries,
 } from '../../src/renderer/components/workflow-forms/shared/calculate-field';
 
 interface OkResult {
@@ -20,7 +19,7 @@ function ok(config: Record<string, unknown>): OkResult {
   return { config: parsed.operator!.config };
 }
 
-describe('FormCalculateField �?config �?DSL', () => {
+describe('FormCalculateField 锟?config 锟?DSL', () => {
   it('single field derivation', () => {
     const r = ok({
       calculations: [{ field: 'margin', expression: '[revenue] - [cost]' }],
@@ -192,8 +191,7 @@ describe('FormCalculateField �?config �?DSL', () => {
     );
   });
 });
-
-describe('FormCalculateField �?id normalization', () => {
+describe('FormCalculateField - id normalization', () => {
   it('preserves existing ids', () => {
     const rows = normalizeCalculationEntries([
       { id: 'calc_a', field: 'margin', expression: '[revenue] - [cost]' },
@@ -223,104 +221,28 @@ describe('FormCalculateField �?id normalization', () => {
     expect(row.id.length).toBeGreaterThan(0);
     expect(row.field).toBe('');
     expect(row.expression).toBe('');
-    expect(row.frameStart).toBe('unbounded preceding');
-    expect(row.frameEnd).toBe('unbounded following');
-    expect(row.frameExclude).toBe('no others');
-    expect(row.frameType).toBe('rows');
+    expect(row.action).toBe('add');
   });
 
-  it('normalizes frameType �?preserves range/groups', () => {
-    const rows = normalizeCalculationEntries([
-      { field: 'a', expression: '[x]', frameType: 'range' },
-      { field: 'b', expression: '[y]', frameType: 'groups' },
-    ]);
-    expect(rows[0].frameType).toBe('range');
-    expect(rows[1].frameType).toBe('groups');
-  });
+  it('normalizes malformed current fields without crashing the form', () => {
+    const malformed = [
+      { id: 42, field: null, expression: false, action: 'unsupported' },
+    ] as unknown as CalculationConfigEntry[];
 
-  it('normalizes frameType �?rows is preserved', () => {
-    const rows = normalizeCalculationEntries([
-      { field: 'a', expression: '[x]', frameType: 'rows' },
-    ]);
-    expect(rows[0].frameType).toBe('rows');
-  });
+    const [row] = normalizeCalculationEntries(malformed, ['amount']);
 
-  it('normalizes frameType �?missing becomes undefined', () => {
-    const rows = normalizeCalculationEntries([{ field: 'a', expression: '[x]' }]);
-    expect(rows[0].frameType).toBeUndefined();
-  });
-
-  it('normalizes frameExclude �?preserves current row/group/ties', () => {
-    const rows = normalizeCalculationEntries([
-      { field: 'a', expression: '[x]', frameExclude: 'current row' },
-      { field: 'b', expression: '[y]', frameExclude: 'group' },
-      { field: 'c', expression: '[z]', frameExclude: 'ties' },
-    ]);
-    expect(rows[0].frameExclude).toBe('current row');
-    expect(rows[1].frameExclude).toBe('group');
-    expect(rows[2].frameExclude).toBe('ties');
-  });
-
-  it('normalizes frameExclude �?no others / missing becomes undefined', () => {
-    const rows = normalizeCalculationEntries([
-      { field: 'a', expression: '[x]', frameExclude: 'no others' },
-      { field: 'b', expression: '[y]' },
-    ]);
-    expect(rows[0].frameExclude).toBeUndefined();
-    expect(rows[1].frameExclude).toBeUndefined();
-  });
-
-  it('normalizes frameStart/frameEnd �?preserves strings', () => {
-    const rows = normalizeCalculationEntries([
-      { field: 'a', expression: '[x]', frameStart: 'unbounded preceding', frameEnd: 'current row' },
-      {
-        field: 'b',
-        expression: '[y]',
-        frameStart: 'INTERVAL 7 DAYS PRECEDING',
-        frameEnd: 'unbounded following',
-      },
-    ]);
-    expect(rows[0].frameStart).toBe('unbounded preceding');
-    expect(rows[0].frameEnd).toBe('current row');
-    expect(rows[1].frameStart).toBe('INTERVAL 7 DAYS PRECEDING');
-    expect(rows[1].frameEnd).toBe('unbounded following');
-  });
-
-  it('normalizes fiscalStartMonth �?preserves valid values', () => {
-    const rows = normalizeCalculationEntries([
-      { field: 'a', expression: '[x]', fiscalStartMonth: 4 },
-      { field: 'b', expression: '[y]', fiscalStartMonth: 1 },
-    ]);
-    expect(rows[0].fiscalStartMonth).toBe(4);
-    expect(rows[1].fiscalStartMonth).toBe(1);
-  });
-
-  it('normalizes fiscalStartMonth �?out of range becomes undefined', () => {
-    const rows = normalizeCalculationEntries([
-      { field: 'a', expression: '[x]', fiscalStartMonth: 0 },
-      { field: 'b', expression: '[y]', fiscalStartMonth: 13 },
-    ]);
-    expect(rows[0].fiscalStartMonth).toBeUndefined();
-    expect(rows[1].fiscalStartMonth).toBeUndefined();
-  });
-
-  it('normalizes fiscalStartMonth �?missing becomes undefined', () => {
-    const rows = normalizeCalculationEntries([{ field: 'a', expression: '[x]' }]);
-    expect(rows[0].fiscalStartMonth).toBeUndefined();
+    expect(row.id).toBeTruthy();
+    expect(row.field).toBe('');
+    expect(row.expression).toBe('');
+    expect(row.action).toBe('add');
   });
 });
 
-describe('FormCalculateField �?unified expression migration', () => {
-  it('keeps ordinary expressions and removes legacy structured state', () => {
+describe('FormCalculateField - unified expression migration', () => {
+  it('keeps ordinary expressions and infers missing actions', () => {
     expect(
-      normalizeExpressionCalculationEntries([
-        {
-          id: 'calc_margin',
-          field: 'margin',
-          expression: '[revenue] - [cost]',
-          type: 'row',
-          scenario: 'group_metrics',
-        },
+      normalizeCalculationEntries([
+        { id: 'calc_margin', field: 'margin', expression: '[revenue] - [cost]' },
       ])
     ).toEqual([
       {
@@ -332,48 +254,8 @@ describe('FormCalculateField �?unified expression migration', () => {
     ]);
   });
 
-  it('materializes a legacy structured window calculation as expression text', () => {
-    const [calculation] = normalizeExpressionCalculationEntries([
-      {
-        id: 'calc_rank',
-        field: 'rank',
-        expression: '',
-        type: 'cross',
-        fn: 'dense_rank',
-        partitionBy: ['region'],
-        orderBy: [{ field: 'amount', direction: 'desc' }],
-      },
-    ]);
-
-    expect(calculation).toEqual({
-      id: 'calc_rank',
-      field: 'rank',
-      expression: 'dense_rank() over (partition by [region] order by [amount] desc)',
-      action: 'add',
-    });
-  });
-
-  it('materializes a legacy string aggregation with a valid quoted delimiter', () => {
-    const [calculation] = normalizeExpressionCalculationEntries([
-      {
-        id: 'calc_names',
-        field: 'names',
-        expression: '',
-        type: 'cross',
-        fn: 'string_agg',
-        fnArg: 'name',
-        fnArg2: "it's, ",
-        partitionBy: ['region'],
-      },
-    ]);
-
-    expect(calculation.expression).toBe(
-      "string_agg([name], 'it''s, ') OVER (PARTITION BY [region])"
-    );
-  });
-
   it('infers missing actions from source fields without overriding explicit actions', () => {
-    const calculations = normalizeExpressionCalculationEntries(
+    const calculations = normalizeCalculationEntries(
       [
         { field: 'Amount', expression: '[Amount] * 2' },
         { field: 'margin', expression: '[revenue] - [cost]' },
@@ -389,8 +271,26 @@ describe('FormCalculateField �?unified expression migration', () => {
     ]);
   });
 
+  it('restores the canonical source field casing when replacing', () => {
+    const [calculation] = normalizeCalculationEntries(
+      [{ field: 'AMOUNT', expression: '[amount] * 2' }],
+      ['Amount']
+    );
+    expect(calculation.action).toBe('replace');
+    expect(calculation.field).toBe('Amount');
+  });
+
+  it('keeps an explicit field casing when the target does not match a source field', () => {
+    const [calculation] = normalizeCalculationEntries(
+      [{ field: 'GROSS_MARGIN', expression: '[revenue] - [cost]' }],
+      ['revenue', 'cost']
+    );
+    expect(calculation.action).toBe('add');
+    expect(calculation.field).toBe('GROSS_MARGIN');
+  });
+
   it('preserves multiple calculations in list order', () => {
-    const calculations = normalizeExpressionCalculationEntries([
+    const calculations = normalizeCalculationEntries([
       { field: 'margin', expression: '[revenue] - [cost]' },
       { field: 'rank', expression: 'rank() over(order by [revenue] desc)' },
     ]);

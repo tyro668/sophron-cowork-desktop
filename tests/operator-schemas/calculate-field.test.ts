@@ -20,21 +20,30 @@ describe('CalculateFieldConfigSchema', () => {
     expect(result.calculations).toEqual([]);
   });
 
-  it('parses config with window function fields', () => {
-    const result = CalculateFieldConfigSchema.parse({
-      calculations: [
-        {
-          field: 'rn',
-          expression: 'row_number()',
-          type: 'window',
-          fn: 'row_number',
-          partitionBy: ['region'],
-          orderBy: [{ field: 'amount', direction: 'desc' }],
-        },
-      ],
-    });
-    expect(result.calculations[0].type).toBe('window');
-    expect(result.calculations[0].partitionBy).toEqual(['region']);
+  it('rejects legacy structured window fields', () => {
+    expect(() =>
+      CalculateFieldConfigSchema.parse({
+        calculations: [
+          {
+            field: 'rn',
+            expression: 'row_number()',
+            type: 'window',
+            fn: 'row_number',
+            partitionBy: ['region'],
+            orderBy: [{ field: 'amount', direction: 'desc' }],
+          },
+        ],
+      })
+    ).toThrow(z.ZodError);
+  });
+
+  it('rejects unknown top-level mode state', () => {
+    expect(() =>
+      CalculateFieldConfigSchema.parse({
+        calculations: [{ field: 'x', expression: 'sum([amount]) over ()' }],
+        _activeMode: 'row',
+      })
+    ).toThrow(z.ZodError);
   });
 
   it('rejects calculations with wrong type', () => {

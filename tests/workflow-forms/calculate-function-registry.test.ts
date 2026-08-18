@@ -5,8 +5,6 @@ import {
   calculationFunctionsByCategory,
   CALCULATION_FUNCTION_CATEGORIES,
   getCalculationFunctionByDslId,
-  getCalculationFunctionArgumentSpec,
-  MODERN_FUNCTION_WHITELIST,
   usesTemporalCalculationRangeUnit,
 } from '../../src/shared/calculate-field/function-registry';
 import {
@@ -38,21 +36,6 @@ describe('calculation function registry', () => {
     expect(getCalculationFunctionByDslId('rank')?.id).toBe('rank');
     expect(getCalculationFunctionByDslId('lag')?.id).toBe('lag');
     expect(getCalculationFunctionByDslId('no_such_fn')).toBeUndefined();
-  });
-
-  it('derives the modern whitelist and argument specs from the registry', () => {
-    expect(MODERN_FUNCTION_WHITELIST.has('sum')).toBe(true);
-    expect(MODERN_FUNCTION_WHITELIST.has('lag')).toBe(true);
-    expect(MODERN_FUNCTION_WHITELIST.has('year_over_year_value')).toBe(true);
-    expect(MODERN_FUNCTION_WHITELIST.has('no_such_fn')).toBe(false);
-    expect(getCalculationFunctionArgumentSpec('lag')).toEqual([
-      { key: 'fnArg', type: 'field' },
-      { key: 'fnArg2', type: 'number', numberRule: { integer: true, min: 1, max: 1_000_000 } },
-    ]);
-    expect(getCalculationFunctionArgumentSpec('ntile')).toEqual([
-      { key: 'fnArg', type: 'number', numberRule: { integer: true, min: 1, max: 1_000_000 } },
-    ]);
-    expect(getCalculationFunctionArgumentSpec('sum')).toEqual([{ key: 'fnArg', type: 'field' }]);
   });
 
   it('uses the first range order field to determine whether to show time units', () => {
