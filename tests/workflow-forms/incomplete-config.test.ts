@@ -1,24 +1,53 @@
 import { describe, expect, it } from 'vitest';
 import type { DataWorkflowNode } from '../../src/renderer/types';
 import {
-  hasInvalidAggregateConfig,
-  hasInvalidCalculateFieldConfig,
-  hasInvalidDeduplicateConfig,
-  hasInvalidFieldMappingConfig,
-  hasInvalidFieldSelectConfig,
-  hasInvalidFilterConfig,
-  hasInvalidJoinConditionConfig,
-  hasInvalidLimitConfig,
-  hasInvalidLimitPercent,
-  hasInvalidMissingValueConfig,
-  hasInvalidPivotConfig,
-  hasInvalidSetOpConfig,
-  hasInvalidSortConfig,
-  hasInvalidTypeConvertConfig,
-  hasInvalidUnnestConfig,
-  hasInvalidUnpivotConfig,
-  incompleteConfigMessageKey,
-} from '../../src/renderer/components/data-view/workflow-config-guards';
+  getOperatorConfigIssue,
+  type OperatorConfigIssueCode,
+} from '../../src/shared/operator-validation';
+import { incompleteConfigMessageKey } from '../../src/renderer/components/data-view/workflow-config-guards';
+
+function hasIssue(
+  node: DataWorkflowNode,
+  type: DataWorkflowNode['type'],
+  code: OperatorConfigIssueCode
+): boolean {
+  if (node.type !== type) return false;
+  const issueCode = getOperatorConfigIssue(node)?.code;
+  return issueCode === 'incomplete_config_rows' || issueCode === code;
+}
+
+const hasInvalidAggregateConfig = (node: DataWorkflowNode) =>
+  hasIssue(node, 'aggregate', 'aggregate_incomplete_field');
+const hasInvalidCalculateFieldConfig = (node: DataWorkflowNode) =>
+  hasIssue(node, 'calculate_field', 'calculate_field_incomplete_field');
+const hasInvalidDeduplicateConfig = (node: DataWorkflowNode) =>
+  hasIssue(node, 'deduplicate', 'deduplicate_incomplete_field');
+const hasInvalidFieldMappingConfig = (node: DataWorkflowNode) =>
+  hasIssue(node, 'field_mapping', 'field_mapping_incomplete_field');
+const hasInvalidFieldSelectConfig = (node: DataWorkflowNode) =>
+  hasIssue(node, 'field_select', 'field_select_missing_field');
+const hasInvalidFilterConfig = (node: DataWorkflowNode) =>
+  hasIssue(node, 'filter', 'filter_incomplete_field');
+const hasInvalidJoinConditionConfig = (node: DataWorkflowNode) =>
+  hasIssue(node, 'join', 'join_incomplete_field');
+const hasInvalidLimitConfig = (node: DataWorkflowNode) =>
+  getOperatorConfigIssue(node)?.code === 'limit_incomplete_field';
+const hasInvalidLimitPercent = (node: DataWorkflowNode) =>
+  getOperatorConfigIssue(node)?.code === 'limit_percent_error';
+const hasInvalidMissingValueConfig = (node: DataWorkflowNode) =>
+  hasIssue(node, 'missing_value', 'missing_value_incomplete_field');
+const hasInvalidPivotConfig = (node: DataWorkflowNode) =>
+  hasIssue(node, 'pivot', 'pivot_incomplete_field');
+const hasInvalidSetOpConfig = (node: DataWorkflowNode) =>
+  hasIssue(node, 'set_op', 'set_op_incomplete_field');
+const hasInvalidSortConfig = (node: DataWorkflowNode) =>
+  hasIssue(node, 'sort', 'sort_incomplete_field');
+const hasInvalidTypeConvertConfig = (node: DataWorkflowNode) =>
+  hasIssue(node, 'type_convert', 'type_convert_incomplete_field');
+const hasInvalidUnnestConfig = (node: DataWorkflowNode) =>
+  hasIssue(node, 'unnest', 'unnest_incomplete_field');
+const hasInvalidUnpivotConfig = (node: DataWorkflowNode) =>
+  hasIssue(node, 'unpivot', 'unpivot_incomplete_field');
 
 function makeNode(
   type: DataWorkflowNode['type'],

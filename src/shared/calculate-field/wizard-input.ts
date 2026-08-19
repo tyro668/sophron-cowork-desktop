@@ -1,6 +1,6 @@
-import { parseCalculationFunctionDslExpression } from '../../../../shared/calculate-field/domain-dsl';
-import type { CalculationFunctionInput } from '../../../../shared/calculate-field/function-registry';
-import { parseFieldRefExact, toFieldName } from '../../../../shared/prep-dsl/syntax/fields';
+import { parseFieldRefExact, toFieldName } from '../prep-dsl/syntax/fields';
+import { parseCalculationFunctionDslExpression } from './domain-dsl';
+import type { CalculationFunctionInput } from './function-registry';
 
 export function parseCalculationFunctionWizardInput(
   expression: string

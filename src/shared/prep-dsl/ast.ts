@@ -1,21 +1,6 @@
-export type PrepOperatorType =
-  | 'input_source'
-  | 'filter'
-  | 'field_select'
-  | 'deduplicate'
-  | 'missing_value'
-  | 'type_convert'
-  | 'sort'
-  | 'join'
-  | 'aggregate'
-  | 'calculate_field'
-  | 'field_mapping'
-  | 'limit'
-  | 'pivot'
-  | 'unpivot'
-  | 'set_op'
-  | 'unnest'
-  | 'output';
+import type { DataWorkflowOperatorType } from '../data-workflow-types';
+
+export type PrepOperatorType = DataWorkflowOperatorType;
 
 export type PrepDiagnosticSeverity = 'error' | 'warning';
 

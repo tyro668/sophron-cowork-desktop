@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Loader2, Trash2, X } from 'lucide-react';
 import { useClickOutside } from '../../../hooks/useClickOutside';
 import { useFormTranslation } from '../../../hooks/useFormTranslation';
-import { splitInValues, joinInValues } from './filter-condition';
+import { splitInValues, joinInValues } from '../../../../shared/filter-condition';
 
 interface GlassValueInputProps {
   value: string;

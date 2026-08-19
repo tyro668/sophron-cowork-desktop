@@ -13,7 +13,7 @@ import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTyp
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useDataFieldTypeLabel } from '../../hooks/useDataFieldTypeLabel';
-import { computeUsedFields } from './shared/used-fields';
+import { computeUsedFields } from '../../../shared/collections/used-fields';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import {
   DATE_FORMAT_PRESETS,

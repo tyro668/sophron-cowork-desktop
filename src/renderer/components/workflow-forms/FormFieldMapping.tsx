@@ -7,7 +7,7 @@ import { GlassRowList, type GlassRowListColumn, type RowAction } from './shared/
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
-import { computeUsedFields } from './shared/used-fields';
+import { computeUsedFields } from '../../../shared/collections/used-fields';
 
 export interface MappingEntry {
   source: string;

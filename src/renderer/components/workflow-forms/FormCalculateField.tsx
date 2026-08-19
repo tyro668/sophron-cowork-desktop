@@ -14,7 +14,7 @@ import {
   normalizeCalculationEntries,
   type CalculationConfigEntry,
   type CalculationRow,
-} from './calculate-field/config';
+} from '../../../shared/calculate-field';
 
 function persistableCalculation(row: CalculationRow): CalculationConfigEntry {
   return {

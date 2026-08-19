@@ -5,7 +5,7 @@ import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
-import { toggleSelectAll } from './shared/join-dialog';
+import { toggleSelectAll } from '../../../shared/collections/selection';
 import { isTemporalDataFieldType } from '@/shared/data-field-types';
 import { parseFieldRef } from '@/shared/prep-dsl/parser';
 import { parseDuration, normalizeDuration } from '@/shared/operator-schemas/join';

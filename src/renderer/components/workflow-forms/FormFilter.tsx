@@ -14,14 +14,14 @@ import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import {
   buildFilterConditionTree,
-  parseConditionTree,
-  resetNodeIdCounter,
+  parseEditableFilterCondition,
   isLeaf,
-  isBranch,
   createEmptyLeaf,
   addLeafToBranch,
   removeNodeFromBranch,
   updateLeafInBranch,
+  updateBranchInTree,
+  toggleBranchConnectiveInTree,
   wrapItemsInGroup,
   splitInValues,
   joinInValues,
@@ -30,7 +30,7 @@ import {
   type FilterConditionBranch,
   type FilterConditionNode,
   type FilterConditionConnective,
-} from './shared/filter-condition';
+} from '../../../shared/filter-condition';
 
 // ── Operator definitions ──────────────────────────────────────────────
 
@@ -532,27 +532,6 @@ function BranchGroupRenderer({
   );
 }
 
-// ── Main FormFilter ───────────────────────────────────────────────────
-
-function parseFilterConfig(condition: string | undefined): {
-  tree: FilterConditionBranch;
-  error: string | null;
-} {
-  resetNodeIdCounter();
-  try {
-    const tree = parseConditionTree(condition);
-    if (tree.items.length === 0) tree.items.push(createEmptyLeaf());
-    return { tree, error: null };
-  } catch (error) {
-    const tree = parseConditionTree(undefined);
-    tree.items.push(createEmptyLeaf());
-    return {
-      tree,
-      error: error instanceof Error ? error.message : 'Invalid filter condition',
-    };
-  }
-}
-
 export default function FormFilter({
   node,
   taskId,
@@ -568,7 +547,7 @@ export default function FormFilter({
 
   // Parse condition from config into tree (ensure at least one empty row)
   const [initialParse] = useState(() =>
-    parseFilterConfig(node.config.condition as string | undefined)
+    parseEditableFilterCondition(node.config.condition as string | undefined)
   );
   const [root, setRoot] = useState<FilterConditionBranch>(initialParse.tree);
   const [parseError, setParseError] = useState<string | null>(initialParse.error);
@@ -585,7 +564,7 @@ export default function FormFilter({
     const fromConfig = node.config.condition as string | undefined;
     if ((fromTree || undefined) === (fromConfig || undefined)) return;
     // Re-parse from config
-    const reparsed = parseFilterConfig(node.config.condition as string | undefined);
+    const reparsed = parseEditableFilterCondition(node.config.condition as string | undefined);
     setParseError(reparsed.error);
     if (!reparsed.error) {
       setRoot(reparsed.tree);
@@ -750,7 +729,7 @@ export default function FormFilter({
     (branchId: string) => {
       setParseError(null);
       setRoot((prev) => {
-        const next = updateBranchConnectiveInTree(prev, branchId);
+        const next = toggleBranchConnectiveInTree(prev, branchId);
         localUpdateRef.current = true;
         updateConfig((cfg) => ({
           ...cfg,
@@ -833,42 +812,4 @@ export default function FormFilter({
       </div>
     </div>
   );
-}
-
-// ── Tree walking helpers ──────────────────────────────────────────────
-
-function updateBranchInTree(
-  branch: FilterConditionBranch,
-  branchId: string,
-  updater: (b: FilterConditionBranch) => FilterConditionBranch
-): FilterConditionBranch {
-  if (branch.id === branchId) {
-    return updater(branch);
-  }
-  const items = branch.items.map((item) => {
-    if (isBranch(item)) {
-      return updateBranchInTree(item, branchId, updater);
-    }
-    return item;
-  });
-  return { ...branch, items };
-}
-
-function updateBranchConnectiveInTree(
-  branch: FilterConditionBranch,
-  branchId: string
-): FilterConditionBranch {
-  if (branch.id === branchId) {
-    return {
-      ...branch,
-      connective: branch.connective === 'and' ? 'or' : 'and',
-    };
-  }
-  const items = branch.items.map((item) => {
-    if (isBranch(item)) {
-      return updateBranchConnectiveInTree(item, branchId);
-    }
-    return item;
-  });
-  return { ...branch, items };
 }

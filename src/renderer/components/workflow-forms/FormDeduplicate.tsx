@@ -12,7 +12,7 @@ import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
-import { computeUsedFields } from './shared/used-fields';
+import { computeUsedFields } from '../../../shared/collections/used-fields';
 import type { SortKey } from '../../../shared/operator-schemas';
 
 const DEFAULT_SORT_KEY: SortKey = { field: '', direction: 'asc' };

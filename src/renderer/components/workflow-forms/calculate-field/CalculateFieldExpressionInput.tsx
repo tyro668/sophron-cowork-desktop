@@ -5,9 +5,8 @@ import {
   type ExpressionAssistantPanel,
   type GlassExpressionInputProps,
 } from '../shared/GlassExpressionInput';
+import { parseCalculationFunctionWizardInput } from '../../../../shared/calculate-field/wizard-input';
 import { CalculationFunctionWizard } from './CalculationFunctionWizard';
-import { CALCULATE_FIELD_EXPRESSION_FUNCTION_GROUPS } from './expression-function-groups';
-import { parseCalculationFunctionWizardInput } from './wizard-input';
 
 type CalculateFieldExpressionInputProps = Omit<GlassExpressionInputProps, 'assistantPanel'>;
 
@@ -46,7 +45,6 @@ export function CalculateFieldExpressionInput({
       {...expressionInputProps}
       fieldCompletions={fieldCompletions}
       columnTypes={columnTypes}
-      functionGroups={CALCULATE_FIELD_EXPRESSION_FUNCTION_GROUPS}
       assistantPanel={assistantPanel}
     />
   );

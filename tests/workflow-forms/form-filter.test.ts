@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it, vi } from 'vitest';
 import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
 import { compileFilterConditionExpression } from '../../src/main/data/operators/filter';
+import { getOperatorConfigIssue } from '../../src/shared/operator-validation';
+import FormFilter from '../../src/renderer/components/workflow-forms/FormFilter';
+import { incompleteConfigMessageKey } from '../../src/renderer/components/data-view/workflow-config-guards';
+import type { DataWorkflowNode } from '../../src/renderer/types';
 import {
   buildFilterCondition,
   formatFilterConditionValue,
@@ -14,6 +20,8 @@ import {
   addLeafToBranch,
   removeNodeFromBranch,
   updateLeafInBranch,
+  updateBranchInTree,
+  toggleBranchConnectiveInTree,
   wrapItemsInGroup,
   unwrapGroup,
   createEmptyLeaf,
@@ -21,9 +29,13 @@ import {
   joinInValues,
   type FilterConditionLeaf,
   type FilterConditionBranch,
-} from '../../src/renderer/components/workflow-forms/shared/filter-condition';
+} from '../../src/shared/filter-condition';
 import fs from 'node:fs';
 import path from 'node:path';
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -606,6 +618,50 @@ describe('FilterCondition — tree mutation helpers', () => {
     }
   });
 
+  it('updateBranchInTree updates a nested branch without changing its siblings', () => {
+    const sibling = leaf('a', '=', '1');
+    const nested: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'nested',
+      connective: 'and',
+      items: [leaf('b', '=', '2')],
+    };
+    const root: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'root',
+      connective: 'and',
+      items: [sibling, nested],
+    };
+
+    const next = updateBranchInTree(root, nested.id, (branch) => ({
+      ...branch,
+      items: [...branch.items, leaf('c', '=', '3')],
+    }));
+
+    expect(next.items[0]).toBe(sibling);
+    expect(isBranch(next.items[1]) && next.items[1].items).toHaveLength(2);
+  });
+
+  it('toggleBranchConnectiveInTree toggles only the requested nested branch', () => {
+    const nested: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'nested',
+      connective: 'and',
+      items: [leaf('a', '=', '1')],
+    };
+    const root: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'root',
+      connective: 'and',
+      items: [nested],
+    };
+
+    const next = toggleBranchConnectiveInTree(root, nested.id);
+
+    expect(next.connective).toBe('and');
+    expect(isBranch(next.items[0]) && next.items[0].connective).toBe('or');
+  });
+
   it('wrapItemsInGroup wraps two adjacent leaves into a group', () => {
     resetNodeIdCounter();
     const l1 = leaf('a', '=', '1');
@@ -1019,15 +1075,33 @@ const formFilterSource = fs.readFileSync(
 );
 
 describe('FormFilter — UI source inspection', () => {
-  it('catches parser failures and renders an inline error', () => {
-    expect(formFilterSource).toContain('function parseFilterConfig(');
-    expect(formFilterSource).toContain('catch (error)');
-    expect(formFilterSource).toContain('role="alert"');
-  });
+  it('renders parser failures while keeping the graphical add action available', () => {
+    const node: DataWorkflowNode = {
+      id: 'filter-node',
+      taskId: 'task',
+      type: 'filter',
+      label: 'Filter',
+      x: 0,
+      y: 0,
+      config: { condition: '[a] =' },
+      createdAt: 0,
+      updatedAt: 0,
+    };
 
-  it('does not block graphical edits when a parse error is active', () => {
-    expect(formFilterSource).not.toContain('if (parseError) return;');
-    expect(formFilterSource).not.toMatch(/disabled=\{Boolean\(parseError\)\}/);
+    const html = renderToStaticMarkup(
+      React.createElement(FormFilter, {
+        node,
+        fieldCompletions: ['a'],
+        otherNodes: [],
+        onNodeChange: () => undefined,
+      })
+    );
+
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('Invalid filter condition segment');
+    expect(html).toMatch(
+      /<button(?![^>]*disabled)[^>]*>[\s\S]*?data\.workflow\.formLabels\.filterAddCondition[\s\S]*?<\/button>/
+    );
   });
 
   it('has addWithConnective in LeafRowContext', () => {
@@ -1075,7 +1149,7 @@ describe('FormFilter — UI source inspection', () => {
 
   it('imports MAX_NESTING_DEPTH from shared module', () => {
     expect(formFilterSource).toContain('MAX_NESTING_DEPTH');
-    expect(formFilterSource).toContain("from './shared/filter-condition'");
+    expect(formFilterSource).toContain("from '../../../shared/filter-condition'");
   });
 
   it('no longer imports Layers icon', () => {
@@ -1169,23 +1243,22 @@ describe('GlassValueInput — single-value input survives remount', () => {
 
 // ── Empty-config gating (aligned with sort) ─────────────────────────────
 
-const dataTasksSource = fs.readFileSync(
-  path.resolve(process.cwd(), 'src/renderer/components/data-view/data-tasks.tsx'),
-  'utf8'
-);
-const configGuardsSource = fs.readFileSync(
-  path.resolve(process.cwd(), 'src/renderer/components/data-view/workflow-config-guards.ts'),
-  'utf8'
-);
-
 describe('FormFilter — empty-config run is blocked', () => {
-  it('defines hasInvalidFilterConfig and blocks empty conditions', () => {
-    expect(dataTasksSource).toContain('incompleteConfigMessageKey');
-    expect(configGuardsSource).toContain('export function hasInvalidFilterConfig(');
-    expect(configGuardsSource).toContain("node.type !== 'filter'");
-    expect(configGuardsSource).toContain("typeof node.config.condition === 'string'");
-    expect(configGuardsSource).toContain('condition.length === 0');
-    expect(configGuardsSource).toContain('filterIncompleteField');
+  it('maps an empty condition through the shared validator to the renderer message key', () => {
+    const node: DataWorkflowNode = {
+      id: 'filter-node',
+      taskId: 'task',
+      type: 'filter',
+      label: 'Filter',
+      x: 0,
+      y: 0,
+      config: { condition: '' },
+      createdAt: 0,
+      updatedAt: 0,
+    };
+
+    expect(getOperatorConfigIssue(node)).toEqual({ code: 'filter_incomplete_field' });
+    expect(incompleteConfigMessageKey(node)).toBe('data.workflow.formLabels.filterIncompleteField');
   });
 });
 

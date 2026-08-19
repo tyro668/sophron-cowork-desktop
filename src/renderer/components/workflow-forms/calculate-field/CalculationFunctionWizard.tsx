@@ -7,15 +7,21 @@ import {
   usesTemporalCalculationRangeUnit,
   type CalculationFunctionCategory,
   type CalculationFunctionInput,
-  type CalculationFunctionParameter,
   type CalculationOrderField,
 } from '../../../../shared/calculate-field/function-registry';
 import {
   parseWindowFrameBound,
   type CalculationWindowFrame,
-  type ParsedWindowFrameBound,
 } from '../../../../shared/calculate-field/window-frame';
 import { buildCalculationFunctionDslExpression } from '../../../../shared/calculate-field/domain-dsl';
+import {
+  CALCULATION_FRAME_BOUND_TYPES,
+  CALCULATION_INTERVAL_UNITS,
+  calculationFrameBoundType,
+  defaultCalculationParameterValues,
+  formatCalculationFrameBound,
+  type CalculationFrameBoundType,
+} from '../../../../shared/calculate-field/wizard-state';
 import { useDragReorder } from '../../../hooks/useDragReorder';
 import { GlassDirectionToggle } from '../shared/GlassDirectionToggle';
 import { GlassFieldMultiSelect } from '../shared/GlassFieldMultiSelect';
@@ -33,13 +39,6 @@ interface CalculationFunctionWizardProps {
   tr: (key: string) => string;
 }
 
-type BoundType =
-  | 'unbounded preceding'
-  | 'preceding'
-  | 'current row'
-  | 'following'
-  | 'unbounded following';
-
 const CATEGORY_LABEL_KEYS: Record<CalculationFunctionCategory, string> = {
   group_metrics: 'calcFieldScenarioGroupMetrics',
   ranking: 'calcFieldScenarioRanking',
@@ -50,25 +49,20 @@ const CATEGORY_LABEL_KEYS: Record<CalculationFunctionCategory, string> = {
   time_intelligence: 'calcFieldScenarioTimeIntel',
 };
 
-const BOUND_TYPES: BoundType[] = [
-  'unbounded preceding',
-  'preceding',
-  'current row',
-  'following',
-  'unbounded following',
-];
-const START_BOUND_TYPES = BOUND_TYPES.filter((value) => value !== 'unbounded following');
-const END_BOUND_TYPES = BOUND_TYPES.filter((value) => value !== 'unbounded preceding');
+const START_BOUND_TYPES = CALCULATION_FRAME_BOUND_TYPES.filter(
+  (value) => value !== 'unbounded following'
+);
+const END_BOUND_TYPES = CALCULATION_FRAME_BOUND_TYPES.filter(
+  (value) => value !== 'unbounded preceding'
+);
 
-const BOUND_LABEL_KEYS: Record<BoundType, string> = {
+const BOUND_LABEL_KEYS: Record<CalculationFrameBoundType, string> = {
   'unbounded preceding': 'calcFieldUnboundedPre',
   preceding: 'calcFieldNPreRows',
   'current row': 'calcFieldCurrentRows',
   following: 'calcFieldNFollRows',
   'unbounded following': 'calcFieldUnboundedFoll',
 };
-
-const INTERVAL_UNITS = ['day', 'week', 'month', 'quarter', 'year'] as const;
 
 export function CalculationFunctionWizard({
   fieldCompletions,
@@ -98,13 +92,13 @@ export function CalculationFunctionWizard({
   const [frameType, setFrameType] = useState<CalculationWindowFrame['type']>(
     initialFrame?.type ?? 'rows'
   );
-  const [frameStartType, setFrameStartType] = useState<BoundType>(
-    frameBoundType(initialStart, 'preceding')
+  const [frameStartType, setFrameStartType] = useState<CalculationFrameBoundType>(
+    calculationFrameBoundType(initialStart, 'preceding')
   );
   const [frameStartOffset, setFrameStartOffset] = useState(String(initialStart?.offset ?? 1));
   const [frameStartUnit, setFrameStartUnit] = useState(initialStart?.unit ?? 'day');
-  const [frameEndType, setFrameEndType] = useState<BoundType>(
-    frameBoundType(initialEnd, 'current row')
+  const [frameEndType, setFrameEndType] = useState<CalculationFrameBoundType>(
+    calculationFrameBoundType(initialEnd, 'current row')
   );
   const [frameEndOffset, setFrameEndOffset] = useState(String(initialEnd?.offset ?? 1));
   const [frameEndUnit, setFrameEndUnit] = useState(initialEnd?.unit ?? 'day');
@@ -143,13 +137,18 @@ export function CalculationFunctionWizard({
     if (definition.frame !== 'custom') return undefined;
     return {
       type: frameType,
-      start: formatFrameBound(
+      start: formatCalculationFrameBound(
         frameStartType,
         frameStartOffset,
         usesTemporalRangeUnit,
         frameStartUnit
       ),
-      end: formatFrameBound(frameEndType, frameEndOffset, usesTemporalRangeUnit, frameEndUnit),
+      end: formatCalculationFrameBound(
+        frameEndType,
+        frameEndOffset,
+        usesTemporalRangeUnit,
+        frameEndUnit
+      ),
       exclude: frameExclude,
     };
   }, [
@@ -200,14 +199,14 @@ export function CalculationFunctionWizard({
     setCategory(nextCategory);
     setFunctionId(firstDefinition.id);
     setExtraParameter(firstDefinition.extraParameter?.defaultValue ?? '');
-    setParameterValues(defaultParameterValues(firstDefinition.parameters));
+    setParameterValues(defaultCalculationParameterValues(firstDefinition.parameters));
   }
 
   function selectFunction(nextFunctionId: string): void {
     const nextDefinition = definitions.find((item) => item.id === nextFunctionId);
     setFunctionId(nextFunctionId);
     setExtraParameter(nextDefinition?.extraParameter?.defaultValue ?? '');
-    setParameterValues(defaultParameterValues(nextDefinition?.parameters));
+    setParameterValues(defaultCalculationParameterValues(nextDefinition?.parameters));
   }
 
   const allowsStar =
@@ -549,14 +548,14 @@ function WizardLabel({ text, children }: { text: string; children: React.ReactNo
 interface FrameEditorProps {
   frameType: CalculationWindowFrame['type'];
   setFrameType: (value: CalculationWindowFrame['type']) => void;
-  startType: BoundType;
-  setStartType: (value: BoundType) => void;
+  startType: CalculationFrameBoundType;
+  setStartType: (value: CalculationFrameBoundType) => void;
   startOffset: string;
   setStartOffset: (value: string) => void;
   startUnit: string;
   setStartUnit: (value: string) => void;
-  endType: BoundType;
-  setEndType: (value: BoundType) => void;
+  endType: CalculationFrameBoundType;
+  setEndType: (value: CalculationFrameBoundType) => void;
   endOffset: string;
   setEndOffset: (value: string) => void;
   endUnit: string;
@@ -630,9 +629,9 @@ function FrameEditor(props: FrameEditorProps) {
 
 interface BoundEditorProps {
   label: string;
-  options: BoundType[];
-  type: BoundType;
-  setType: (value: BoundType) => void;
+  options: CalculationFrameBoundType[];
+  type: CalculationFrameBoundType;
+  setType: (value: CalculationFrameBoundType) => void;
   offset: string;
   setOffset: (value: string) => void;
   unit: string;
@@ -658,7 +657,7 @@ function BoundEditor(props: BoundEditorProps) {
               })),
             },
           ]}
-          onChange={(value) => props.setType(value as BoundType)}
+          onChange={(value) => props.setType(value as CalculationFrameBoundType)}
           className="h-7 min-w-0 flex-1 text-[10px]"
         />
         {needsOffset && (
@@ -675,7 +674,7 @@ function BoundEditor(props: BoundEditorProps) {
             groups={[
               {
                 key: 'unit',
-                items: INTERVAL_UNITS.map((value) => ({ value, label: value })),
+                items: CALCULATION_INTERVAL_UNITS.map((value) => ({ value, label: value })),
               },
             ]}
             onChange={props.setUnit}
@@ -684,41 +683,6 @@ function BoundEditor(props: BoundEditorProps) {
         )}
       </div>
     </div>
-  );
-}
-
-function formatFrameBound(
-  type: BoundType,
-  offset: string,
-  usesTemporalRangeUnit: boolean,
-  unit: string
-): string {
-  if (type !== 'preceding' && type !== 'following') return type;
-  const normalizedOffset = offset.trim();
-  if (usesTemporalRangeUnit) return `interval ${normalizedOffset} ${unit} ${type}`;
-  return `${normalizedOffset} ${type}`;
-}
-
-function frameBoundType(bound: ParsedWindowFrameBound | undefined, fallback: BoundType): BoundType {
-  if (!bound) return fallback;
-  switch (bound.position) {
-    case 'unbounded-preceding':
-      return 'unbounded preceding';
-    case 'current-row':
-      return 'current row';
-    case 'unbounded-following':
-      return 'unbounded following';
-    case 'preceding':
-    case 'following':
-      return bound.position;
-  }
-}
-
-function defaultParameterValues(
-  parameters: CalculationFunctionParameter[] | undefined
-): Record<string, string> {
-  return Object.fromEntries(
-    (parameters ?? []).map((parameter) => [parameter.key, parameter.defaultValue ?? ''])
   );
 }
 

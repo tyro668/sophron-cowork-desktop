@@ -1,10 +1,10 @@
 ﻿import { describe, expect, it } from 'vitest';
 import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
-import type { CalculationConfigEntry } from '../../src/renderer/components/workflow-forms/calculate-field/config';
 import {
+  type CalculationConfigEntry,
   createCalculationRow,
   normalizeCalculationEntries,
-} from '../../src/renderer/components/workflow-forms/calculate-field/config';
+} from '../../src/shared/calculate-field';
 
 interface OkResult {
   config: Record<string, unknown> & { calculations?: CalculationConfigEntry[] };
@@ -19,7 +19,7 @@ function ok(config: Record<string, unknown>): OkResult {
   return { config: parsed.operator!.config };
 }
 
-describe('FormCalculateField 锟?config 锟?DSL', () => {
+describe('FormCalculateField - config and DSL', () => {
   it('single field derivation', () => {
     const r = ok({
       calculations: [{ field: 'margin', expression: '[revenue] - [cost]' }],
