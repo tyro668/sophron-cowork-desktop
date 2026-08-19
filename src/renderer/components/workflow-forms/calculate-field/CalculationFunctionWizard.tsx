@@ -3,12 +3,18 @@ import { isTemporalDataFieldType } from '../../../../shared/data-field-types';
 import {
   calculationFunctionsByCategory,
   CALCULATION_FUNCTION_CATEGORIES,
+  getCalculationFunction,
   usesTemporalCalculationRangeUnit,
   type CalculationFunctionCategory,
+  type CalculationFunctionInput,
   type CalculationFunctionParameter,
   type CalculationOrderField,
 } from '../../../../shared/calculate-field/function-registry';
-import { type CalculationWindowFrame } from '../../../../shared/calculate-field/window-frame';
+import {
+  parseWindowFrameBound,
+  type CalculationWindowFrame,
+  type ParsedWindowFrameBound,
+} from '../../../../shared/calculate-field/window-frame';
 import { buildCalculationFunctionDslExpression } from '../../../../shared/calculate-field/domain-dsl';
 import { useDragReorder } from '../../../hooks/useDragReorder';
 import { GlassDirectionToggle } from '../shared/GlassDirectionToggle';
@@ -22,6 +28,7 @@ import { GlassTagBar } from '../shared/GlassTagBar';
 interface CalculationFunctionWizardProps {
   fieldCompletions: string[];
   columnTypes?: Record<string, string>;
+  initialInput?: CalculationFunctionInput;
   onInsert: (expression: string) => void;
   tr: (key: string) => string;
 }
@@ -66,26 +73,44 @@ const INTERVAL_UNITS = ['day', 'week', 'month', 'quarter', 'year'] as const;
 export function CalculationFunctionWizard({
   fieldCompletions,
   columnTypes,
+  initialInput,
   onInsert,
   tr,
 }: CalculationFunctionWizardProps) {
-  const [category, setCategory] = useState<CalculationFunctionCategory>('group_metrics');
+  const initialDefinition = initialInput
+    ? getCalculationFunction(initialInput.functionId)
+    : undefined;
+  const initialCategory = initialDefinition?.category ?? 'group_metrics';
+  const initialFrame = initialInput?.frame;
+  const initialStart = initialFrame ? parseWindowFrameBound(initialFrame.start) : undefined;
+  const initialEnd = initialFrame ? parseWindowFrameBound(initialFrame.end) : undefined;
+  const [category, setCategory] = useState<CalculationFunctionCategory>(initialCategory);
   const initialFunction = calculationFunctionsByCategory(category)[0];
-  const [functionId, setFunctionId] = useState(initialFunction.id);
-  const [value, setValue] = useState('');
-  const [extraParameter, setExtraParameter] = useState('');
-  const [parameterValues, setParameterValues] = useState<Record<string, string>>({});
-  const [partitionBy, setPartitionBy] = useState<string[]>([]);
+  const [functionId, setFunctionId] = useState(initialDefinition?.id ?? initialFunction.id);
+  const [value, setValue] = useState(initialInput?.value ?? '');
+  const [extraParameter, setExtraParameter] = useState(initialInput?.extraParameter ?? '');
+  const [parameterValues, setParameterValues] = useState<Record<string, string>>(
+    initialInput?.parameters ?? {}
+  );
+  const [partitionBy, setPartitionBy] = useState<string[]>(initialInput?.partitionBy ?? []);
   const [partitionOpen, setPartitionOpen] = useState(true);
-  const [orderBy, setOrderBy] = useState<CalculationOrderField[]>([]);
-  const [frameType, setFrameType] = useState<CalculationWindowFrame['type']>('rows');
-  const [frameStartType, setFrameStartType] = useState<BoundType>('preceding');
-  const [frameStartOffset, setFrameStartOffset] = useState('1');
-  const [frameStartUnit, setFrameStartUnit] = useState('day');
-  const [frameEndType, setFrameEndType] = useState<BoundType>('current row');
-  const [frameEndOffset, setFrameEndOffset] = useState('1');
-  const [frameEndUnit, setFrameEndUnit] = useState('day');
-  const [frameExclude, setFrameExclude] = useState<CalculationWindowFrame['exclude']>('no others');
+  const [orderBy, setOrderBy] = useState<CalculationOrderField[]>(initialInput?.orderBy ?? []);
+  const [frameType, setFrameType] = useState<CalculationWindowFrame['type']>(
+    initialFrame?.type ?? 'rows'
+  );
+  const [frameStartType, setFrameStartType] = useState<BoundType>(
+    frameBoundType(initialStart, 'preceding')
+  );
+  const [frameStartOffset, setFrameStartOffset] = useState(String(initialStart?.offset ?? 1));
+  const [frameStartUnit, setFrameStartUnit] = useState(initialStart?.unit ?? 'day');
+  const [frameEndType, setFrameEndType] = useState<BoundType>(
+    frameBoundType(initialEnd, 'current row')
+  );
+  const [frameEndOffset, setFrameEndOffset] = useState(String(initialEnd?.offset ?? 1));
+  const [frameEndUnit, setFrameEndUnit] = useState(initialEnd?.unit ?? 'day');
+  const [frameExclude, setFrameExclude] = useState<CalculationWindowFrame['exclude']>(
+    initialFrame?.exclude ?? 'no others'
+  );
 
   const definitions = useMemo(() => calculationFunctionsByCategory(category), [category]);
   const definition = definitions.find((item) => item.id === functionId) ?? definitions[0];
@@ -107,8 +132,13 @@ export function CalculationFunctionWizard({
       frameStartType === 'following' ||
       frameEndType === 'preceding' ||
       frameEndType === 'following');
+  const configuredOrderType = columnTypes?.[configuredOrderBy[0]?.field];
+  const importedFrameUsesTemporalUnit = Boolean(initialStart?.unit || initialEnd?.unit);
   const usesTemporalRangeUnit =
-    usesRangeOffset && usesTemporalCalculationRangeUnit(frameType, configuredOrderBy, columnTypes);
+    usesRangeOffset &&
+    (configuredOrderType
+      ? usesTemporalCalculationRangeUnit(frameType, configuredOrderBy, columnTypes)
+      : importedFrameUsesTemporalUnit);
   const frame = useMemo<CalculationWindowFrame | undefined>(() => {
     if (definition.frame !== 'custom') return undefined;
     return {
@@ -667,6 +697,21 @@ function formatFrameBound(
   const normalizedOffset = offset.trim();
   if (usesTemporalRangeUnit) return `interval ${normalizedOffset} ${unit} ${type}`;
   return `${normalizedOffset} ${type}`;
+}
+
+function frameBoundType(bound: ParsedWindowFrameBound | undefined, fallback: BoundType): BoundType {
+  if (!bound) return fallback;
+  switch (bound.position) {
+    case 'unbounded-preceding':
+      return 'unbounded preceding';
+    case 'current-row':
+      return 'current row';
+    case 'unbounded-following':
+      return 'unbounded following';
+    case 'preceding':
+    case 'following':
+      return bound.position;
+  }
 }
 
 function defaultParameterValues(

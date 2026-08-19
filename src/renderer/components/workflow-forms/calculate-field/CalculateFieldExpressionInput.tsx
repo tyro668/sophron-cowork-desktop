@@ -7,6 +7,7 @@ import {
 } from '../shared/GlassExpressionInput';
 import { CalculationFunctionWizard } from './CalculationFunctionWizard';
 import { CALCULATE_FIELD_EXPRESSION_FUNCTION_GROUPS } from './expression-function-groups';
+import { parseCalculationFunctionWizardInput } from './wizard-input';
 
 type CalculateFieldExpressionInputProps = Omit<GlassExpressionInputProps, 'assistantPanel'>;
 
@@ -20,17 +21,22 @@ export function CalculateFieldExpressionInput({
     () => ({
       openLabel: tr('calcFieldOpenWizard'),
       closeLabel: tr('calcFieldCloseWizard'),
-      render: ({ insertExpression, closePanel }) => (
-        <CalculationFunctionWizard
-          fieldCompletions={fieldCompletions}
-          columnTypes={columnTypes}
-          onInsert={(expression) => {
-            insertExpression(expression);
-            closePanel();
-          }}
-          tr={tr}
-        />
-      ),
+      render: ({ currentExpression, replaceExpression, closePanel }) => {
+        const initialInput = parseCalculationFunctionWizardInput(currentExpression);
+        return (
+          <CalculationFunctionWizard
+            key={initialInput ? currentExpression : 'new-calculation-function'}
+            fieldCompletions={fieldCompletions}
+            columnTypes={columnTypes}
+            initialInput={initialInput}
+            onInsert={(expression) => {
+              replaceExpression(expression);
+              closePanel();
+            }}
+            tr={tr}
+          />
+        );
+      },
     }),
     [columnTypes, fieldCompletions, tr]
   );

@@ -2261,11 +2261,12 @@ function WorkflowInputSourceConfig({
   );
 
   return (
-    <label className="block sm:col-span-2">
+    <div className="block sm:col-span-2">
       <span className="mb-1.5 block text-xs font-medium text-text-secondary">
         {t('data.workflow.inputTable')}
       </span>
       <GlassSelect
+        ariaLabel={t('data.workflow.inputTable')}
         value={selectedInputTableId || undefined}
         onValueChange={handleInputTableChange}
         options={[
@@ -2288,7 +2289,7 @@ function WorkflowInputSourceConfig({
         triggerClassName="h-8 w-full justify-between rounded-lg bg-surface px-2 text-xs font-medium text-text-secondary"
         contentClassName="w-[var(--radix-select-trigger-width)]"
       />
-    </label>
+    </div>
   );
 }
 

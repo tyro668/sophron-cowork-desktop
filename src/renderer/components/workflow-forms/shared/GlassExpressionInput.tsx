@@ -1,4 +1,12 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
 import { useFormTranslation } from '../../../hooks/useFormTranslation';
 import { Pencil, X, ChevronDown, Search, WandSparkles } from 'lucide-react';
 import { StreamLanguage } from '@codemirror/language';
@@ -10,7 +18,9 @@ import { Tag, tags } from '@lezer/highlight';
 import { useDataFieldTypeLabel } from '../../../hooks/useDataFieldTypeLabel';
 
 export interface ExpressionAssistantPanelContext {
+  currentExpression: string;
   insertExpression: (expression: string) => void;
+  replaceExpression: (expression: string) => void;
   closePanel: () => void;
 }
 
@@ -49,9 +59,13 @@ export function functionToken(
 }
 
 const FN_CHIP =
-  'inline-flex h-6 cursor-pointer items-center rounded-md border border-border-muted/60 bg-background/20 px-1.5 font-mono text-[11px] text-text-secondary transition-colors hover:border-accent/40 hover:bg-accent/10 hover:text-accent';
+  'flex min-h-9 w-full cursor-pointer items-center px-3 text-left font-mono text-[12px] uppercase text-text-secondary transition-colors hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
 const FN_CHIP_HOVERED =
-  'inline-flex h-6 cursor-pointer items-center rounded-md border border-accent bg-accent/10 px-1.5 font-mono text-[11px] text-accent';
+  'flex min-h-9 w-full cursor-pointer items-center bg-accent/10 px-3 text-left font-mono text-[12px] uppercase text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
+const MIN_EXPRESSION_EDITOR_HEIGHT = 80;
+const DEFAULT_EXPRESSION_EDITOR_HEIGHT = 104;
+const MAX_EXPRESSION_EDITOR_HEIGHT = 240;
+const EXPRESSION_EDITOR_RESIZE_STEP = 16;
 
 export interface ExpressionFunctionGroup {
   i18nKey: string;
@@ -122,6 +136,23 @@ export const COMMON_EXPRESSION_FUNCTION_GROUPS: ExpressionFunctionGroup[] = [
       functionToken('day', 'expressionFunctionDesc_day', [{ name: 'date', type: 'date' }], 'int', [
         'day([order_date])',
       ]),
+      ...[
+        ['quarter', 'int'],
+        ['week', 'int'],
+        ['dayofweek', 'int'],
+        ['dayofyear', 'int'],
+        ['hour', 'int'],
+        ['minute', 'int'],
+        ['second', 'int'],
+      ].map(([name, returnType]) =>
+        functionToken(
+          name,
+          `expressionFunctionDesc_${name}`,
+          [{ name: 'date', type: 'date/time' }],
+          returnType,
+          [`${name}([order_time])`]
+        )
+      ),
       functionToken(
         'date_diff',
         'expressionFunctionDesc_date_diff',
@@ -142,6 +173,23 @@ export const COMMON_EXPRESSION_FUNCTION_GROUPS: ExpressionFunctionGroup[] = [
         ],
         'date',
         ["date_trunc('month', [date])"]
+      ),
+      functionToken(
+        'strftime',
+        'expressionFunctionDesc_strftime',
+        [
+          { name: 'date', type: 'date/time' },
+          { name: 'format', type: 'string' },
+        ],
+        'string',
+        ["strftime([order_date], '%Y-%m')"]
+      ),
+      functionToken(
+        'last_day',
+        'expressionFunctionDesc_last_day',
+        [{ name: 'date', type: 'date' }],
+        'date',
+        ['last_day([order_date])']
       ),
       functionToken(
         'strptime',
@@ -171,38 +219,6 @@ export const COMMON_EXPRESSION_FUNCTION_GROUPS: ExpressionFunctionGroup[] = [
         returnType: 'timestamp',
         examples: ['now()'],
       },
-    ],
-  },
-  {
-    i18nKey: 'expressionFunctionCategoryAggregate',
-    tokens: [
-      functionToken(
-        'sum',
-        'expressionFunctionDesc_sum',
-        [{ name: 'expr', type: 'number' }],
-        'number',
-        ['sum([amount])', 'sum([quantity] * [price])']
-      ),
-      functionToken(
-        'avg',
-        'expressionFunctionDesc_avg',
-        [{ name: 'expr', type: 'number' }],
-        'number',
-        ['avg([amount])']
-      ),
-      functionToken(
-        'count',
-        'expressionFunctionDesc_count',
-        [{ name: 'expr', type: 'any' }],
-        'int',
-        ['count(*)', 'count([order_id])']
-      ),
-      functionToken('min', 'expressionFunctionDesc_min', [{ name: 'expr', type: 'any' }], 'any', [
-        'min([amount])',
-      ]),
-      functionToken('max', 'expressionFunctionDesc_max', [{ name: 'expr', type: 'any' }], 'any', [
-        'max([amount])',
-      ]),
     ],
   },
   {
@@ -238,6 +254,57 @@ export const COMMON_EXPRESSION_FUNCTION_GROUPS: ExpressionFunctionGroup[] = [
         [{ name: 'expr', type: 'number' }],
         'number',
         ['floor([amount])']
+      ),
+      functionToken(
+        'trunc',
+        'expressionFunctionDesc_trunc',
+        [
+          { name: 'expr', type: 'number' },
+          { name: 'precision', type: 'int', optional: true },
+        ],
+        'number',
+        ['trunc([amount])', 'trunc([amount], 2)']
+      ),
+      ...['sqrt', 'exp', 'ln', 'log10', 'sign'].map((name) =>
+        functionToken(
+          name,
+          `expressionFunctionDesc_${name}`,
+          [{ name: 'expr', type: 'number' }],
+          'number',
+          [`${name}([amount])`]
+        )
+      ),
+      functionToken(
+        'pow',
+        'expressionFunctionDesc_pow',
+        [
+          { name: 'base', type: 'number' },
+          { name: 'exponent', type: 'number' },
+        ],
+        'number',
+        ['pow([amount], 2)']
+      ),
+      functionToken(
+        'mod',
+        'expressionFunctionDesc_mod',
+        [
+          { name: 'dividend', type: 'number' },
+          { name: 'divisor', type: 'number' },
+        ],
+        'number',
+        ['mod([amount], 10)']
+      ),
+      ...['greatest', 'least'].map((name) =>
+        functionToken(
+          name,
+          `expressionFunctionDesc_${name}`,
+          [
+            { name: 'expr', type: 'comparable' },
+            { name: '...rest', type: 'comparable' },
+          ],
+          'any',
+          [`${name}([actual], [target])`]
+        )
       ),
     ],
   },
@@ -305,6 +372,29 @@ export const COMMON_EXPRESSION_FUNCTION_GROUPS: ExpressionFunctionGroup[] = [
         ["concat([first], ' ', [last])"]
       ),
       functionToken(
+        'concat_ws',
+        'expressionFunctionDesc_concat_ws',
+        [
+          { name: 'separator', type: 'string' },
+          { name: 'str', type: 'string' },
+          { name: '...rest', type: 'string' },
+        ],
+        'string',
+        ["concat_ws('-', [province], [city], [district])"]
+      ),
+      ...['left', 'right'].map((name) =>
+        functionToken(
+          name,
+          `expressionFunctionDesc_${name}`,
+          [
+            { name: 'str', type: 'string' },
+            { name: 'count', type: 'int' },
+          ],
+          'string',
+          [`${name}([code], 3)`]
+        )
+      ),
+      functionToken(
         'contains',
         'expressionFunctionDesc_contains',
         [
@@ -355,6 +445,27 @@ export const COMMON_EXPRESSION_FUNCTION_GROUPS: ExpressionFunctionGroup[] = [
         ],
         'string',
         ["regexp_replace([phone], '[^0-9]', '')"]
+      ),
+      functionToken(
+        'regexp_extract',
+        'expressionFunctionDesc_regexp_extract',
+        [
+          { name: 'str', type: 'string' },
+          { name: 'pattern', type: 'string' },
+          { name: 'group', type: 'int', optional: true },
+        ],
+        'string',
+        ["regexp_extract([code], '([0-9]+)', 1)"]
+      ),
+      functionToken(
+        'regexp_matches',
+        'expressionFunctionDesc_regexp_matches',
+        [
+          { name: 'str', type: 'string' },
+          { name: 'pattern', type: 'string' },
+        ],
+        'boolean',
+        ["regexp_matches([email], '^[^@]+@[^@]+$')"]
       ),
       functionToken(
         'lpad',
@@ -422,6 +533,16 @@ export const COMMON_EXPRESSION_FUNCTION_GROUPS: ExpressionFunctionGroup[] = [
         returnType: 'any',
         examples: ["nullif([status], 'CANCELLED')", "nullif([name], '')"],
       },
+      functionToken(
+        'ifnull',
+        'expressionFunctionDesc_ifnull',
+        [
+          { name: 'expr', type: 'any' },
+          { name: 'fallback', type: 'any' },
+        ],
+        'any',
+        ['ifnull([discount], 0)']
+      ),
     ],
   },
   {
@@ -451,6 +572,13 @@ export const COMMON_EXPRESSION_FUNCTION_GROUPS: ExpressionFunctionGroup[] = [
         returnType: 'any',
         examples: ['try_cast([amount] AS int)', 'try_cast([revenue] AS double)'],
       },
+      functionToken(
+        'typeof',
+        'expressionFunctionDesc_typeof',
+        [{ name: 'expr', type: 'any' }],
+        'string',
+        ['typeof([amount])']
+      ),
     ],
   },
 ];
@@ -501,8 +629,8 @@ const exprTheme = EditorView.theme({
     borderRadius: '0.5rem',
     backgroundColor: 'transparent',
     fontSize: '13px',
+    height: '100%',
     minHeight: '80px',
-    maxHeight: '104px',
   },
   '&.cm-focused': {
     outline: 'none',
@@ -514,6 +642,7 @@ const exprTheme = EditorView.theme({
       'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
     lineHeight: '1.6',
     overflow: 'auto',
+    height: '100%',
   },
   '.cm-content': {
     boxSizing: 'border-box',
@@ -529,7 +658,7 @@ function sortFields(fields: string[], query: string): string[] {
   const filtered = query.trim()
     ? fields.filter((f) => f.toLowerCase().includes(query.toLowerCase()))
     : fields;
-  return ['*', ...filtered.sort((a, b) => a.localeCompare(b, 'zh-CN'))];
+  return [...filtered].sort((a, b) => a.localeCompare(b, 'zh-CN'));
 }
 
 function FunctionDetailPanel({
@@ -615,6 +744,7 @@ function GlassFunctionHelper({
   const tr = useFormTranslation();
   const [query, setQuery] = useState('');
   const [hoveredLabel, setHoveredLabel] = useState<string | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
 
   const rawGroups = useMemo(
     () =>
@@ -632,45 +762,62 @@ function GlassFunctionHelper({
   }, [rawGroups, query]);
 
   return (
-    <div className="flex flex-col gap-2 min-h-0">
-      <div className="relative shrink-0">
-        <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="relative shrink-0 border-b border-border-muted/60 p-2">
+        <Search className="pointer-events-none absolute left-4 top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={tr('expressionFunctionSearchPlaceholder')}
-          className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-6 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+          className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
         />
       </div>
-      <div className="space-y-2 flex-1 overflow-y-auto min-h-0">
+      <div className="flex-1 overflow-y-auto min-h-0">
         {groups.length === 0 ? (
           <div className="px-2 py-4 text-center text-[11px] text-text-muted">{tr('noMatch')}</div>
         ) : (
           groups.map((group) => (
-            <div key={group.i18nKey}>
-              <div className="mb-1 text-[11px] font-medium text-text-muted">
-                {tr(group.i18nKey)}
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {group.tokens.map((token) => (
-                  <button
-                    key={token.label}
-                    type="button"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      onInsert(token.apply, token.cursorOffset);
-                    }}
-                    onMouseEnter={() => {
-                      setHoveredLabel(token.label);
-                      onTokenHover?.(token);
-                    }}
-                    className={hoveredLabel === token.label ? FN_CHIP_HOVERED : FN_CHIP}
-                  >
-                    {token.label}
-                  </button>
-                ))}
-              </div>
+            <div key={group.i18nKey} className="border-b border-border-muted/60 last:border-b-0">
+              <button
+                type="button"
+                aria-expanded={!collapsedGroups.has(group.i18nKey)}
+                onClick={() => {
+                  setCollapsedGroups((current) => {
+                    const next = new Set(current);
+                    if (next.has(group.i18nKey)) next.delete(group.i18nKey);
+                    else next.add(group.i18nKey);
+                    return next;
+                  });
+                }}
+                className="flex w-full items-center gap-2 border-b border-border-muted/60 bg-background/20 px-3 py-2 text-left text-[11px] font-medium text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
+              >
+                <ChevronDown
+                  className={`h-3.5 w-3.5 shrink-0 transition-transform ${collapsedGroups.has(group.i18nKey) ? '-rotate-90' : ''}`}
+                />
+                <span>{tr(group.i18nKey)}</span>
+              </button>
+              {!collapsedGroups.has(group.i18nKey) && (
+                <div className="divide-y divide-border-muted/60">
+                  {group.tokens.map((token) => (
+                    <button
+                      key={token.label}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        onInsert(token.apply, token.cursorOffset);
+                      }}
+                      onMouseEnter={() => {
+                        setHoveredLabel(token.label);
+                        onTokenHover?.(token);
+                      }}
+                      className={hoveredLabel === token.label ? FN_CHIP_HOVERED : FN_CHIP}
+                    >
+                      {token.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           ))
         )}
@@ -743,10 +890,13 @@ function ExpressionEditorDialog({
 }) {
   const [draft, setDraft] = useState(value);
   const initialDraftRef = useRef(value);
-  const [showFields, setShowFields] = useState(true);
-  const [showFn, setShowFn] = useState(true);
-  const [showDetail, setShowDetail] = useState(true);
   const [showAssistantPanel, setShowAssistantPanel] = useState(false);
+  const [editorHeight, setEditorHeight] = useState(DEFAULT_EXPRESSION_EDITOR_HEIGHT);
+  const editorResizeRef = useRef<{
+    pointerId: number;
+    startY: number;
+    startHeight: number;
+  } | null>(null);
   const [fieldQuery, setFieldQuery] = useState('');
   const [hoveredToken, setHoveredToken] = useState<HelperToken | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -798,6 +948,52 @@ function ExpressionEditorDialog({
     view.focus();
   }, []);
 
+  const replaceExpression = useCallback((text: string) => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: text },
+      selection: { anchor: text.length },
+    });
+    view.focus();
+  }, []);
+
+  const clampEditorHeight = useCallback(
+    (height: number) =>
+      Math.min(MAX_EXPRESSION_EDITOR_HEIGHT, Math.max(MIN_EXPRESSION_EDITOR_HEIGHT, height)),
+    []
+  );
+
+  const handleEditorResizeStart = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      editorResizeRef.current = {
+        pointerId: event.pointerId,
+        startY: event.clientY,
+        startHeight: editorHeight,
+      };
+    },
+    [editorHeight]
+  );
+
+  const handleEditorResizeMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const resize = editorResizeRef.current;
+      if (!resize || resize.pointerId !== event.pointerId) return;
+      setEditorHeight(clampEditorHeight(resize.startHeight + event.clientY - resize.startY));
+    },
+    [clampEditorHeight]
+  );
+
+  const handleEditorResizeEnd = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (editorResizeRef.current?.pointerId !== event.pointerId) return;
+    editorResizeRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }, []);
+
   function handleConfirm() {
     onChange(draft);
     onClose();
@@ -841,115 +1037,109 @@ function ExpressionEditorDialog({
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="flex flex-1 flex-col gap-3 overflow-hidden p-4">
-          <div ref={hostRef} />
+        <div className="flex flex-1 flex-col overflow-hidden p-4">
+          <div ref={hostRef} className="shrink-0" style={{ height: editorHeight }} />
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-valuemin={MIN_EXPRESSION_EDITOR_HEIGHT}
+            aria-valuemax={MAX_EXPRESSION_EDITOR_HEIGHT}
+            aria-valuenow={editorHeight}
+            tabIndex={0}
+            onPointerDown={handleEditorResizeStart}
+            onPointerMove={handleEditorResizeMove}
+            onPointerUp={handleEditorResizeEnd}
+            onPointerCancel={handleEditorResizeEnd}
+            onKeyDown={(event) => {
+              if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+              event.preventDefault();
+              const delta =
+                event.key === 'ArrowUp'
+                  ? -EXPRESSION_EDITOR_RESIZE_STEP
+                  : EXPRESSION_EDITOR_RESIZE_STEP;
+              setEditorHeight((current) => clampEditorHeight(current + delta));
+            }}
+            className="group flex h-4 shrink-0 cursor-row-resize items-center justify-center outline-none"
+          >
+            <span className="h-px w-full bg-border-muted/60 transition-colors group-hover:bg-accent/50 group-focus-visible:bg-accent" />
+          </div>
           {showAssistantPanel && assistantPanel ? (
             assistantPanel.render({
+              currentExpression: draft,
               insertExpression: editAtCursor,
+              replaceExpression,
               closePanel: () => setShowAssistantPanel(false),
             })
           ) : (
-            <div className="grid grid-cols-[1fr_1fr_1.5fr] gap-3 min-h-0 min-w-0 flex-1 overflow-hidden">
-              <div className="flex flex-col rounded-lg border border-border-muted/60 min-h-0">
-                <button
-                  type="button"
-                  onClick={() => setShowFields(!showFields)}
-                  className="flex w-full items-center gap-1 px-3 py-1.5 text-[11px] font-medium text-text-muted hover:text-text-secondary transition-colors border-b border-border-muted/60"
-                >
-                  <ChevronDown
-                    className={`h-3 w-3 transition-transform ${showFields ? 'rotate-180' : ''}`}
-                  />
+            <div className="grid grid-cols-[1fr_1fr_1.5fr] min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border border-border-muted/60">
+              <div className="flex flex-col border-r border-border-muted/60 min-h-0">
+                <div className="flex w-full items-center px-3 py-1.5 text-[11px] font-medium text-text-muted border-b border-border-muted/60">
                   {tr('expressionFieldsTab')}
-                </button>
-                {showFields && (
-                  <div className="flex-1 flex flex-col min-h-0">
-                    <div className="relative shrink-0 px-3 pt-2 pb-2">
-                      <Search className="pointer-events-none absolute left-[22px] top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
-                      <input
-                        type="text"
-                        value={fieldQuery}
-                        onChange={(e) => setFieldQuery(e.target.value)}
-                        placeholder={tr('expressionFieldSearchPlaceholder')}
-                        className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
-                      />
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-2 min-h-0">
-                      {sortedFields.length === 0 ? (
-                        <div className="px-2 py-4 text-center text-[11px] text-text-muted">
-                          {tr('noMatch')}
-                        </div>
-                      ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {sortedFields.map((col) => {
-                            const isStar = col === '*';
-                            const colType = isStar ? undefined : columnTypes?.[col];
-                            return (
-                              <button
-                                key={col}
-                                type="button"
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  if (isStar) {
-                                    editAtCursor('*');
-                                    return;
-                                  }
-                                  editAtCursor(`[${col}]`);
-                                }}
-                                className={`inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-border-muted/60 bg-background/20 px-1.5 text-[11px] text-text-secondary transition-colors hover:border-accent/40 hover:bg-accent/10 hover:text-accent ${isStar ? 'bg-accent/5 border-accent/30 font-semibold' : ''}`}
-                              >
-                                {colType && (
-                                  <span className="rounded bg-background/60 px-0.5 text-[10px] leading-none text-text-muted">
-                                    {dataTypeLabel(colType)}
-                                  </span>
-                                )}
-                                <span>{isStar ? tr('expressionAllFieldsStar') : col}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className="flex flex-col rounded-lg border border-border-muted/60 min-h-0">
-                <button
-                  type="button"
-                  onClick={() => setShowFn(!showFn)}
-                  className="flex w-full items-center gap-1 px-3 py-1.5 text-[11px] font-medium text-text-muted hover:text-text-secondary transition-colors"
-                >
-                  <ChevronDown
-                    className={`h-3 w-3 transition-transform ${showFn ? 'rotate-180' : ''}`}
-                  />
-                  {tr('expressionFunctionHelperLabel')}
-                </button>
-                {showFn && (
-                  <div className="flex-1 overflow-y-auto border-t border-border-muted/60 p-2 min-h-0">
-                    <GlassFunctionHelper
-                      onInsert={editAtCursor}
-                      functionGroups={functionGroups}
-                      excludeCategories={excludeFunctionCategories}
-                      onTokenHover={setHoveredToken}
+                </div>
+                <div className="flex-1 flex flex-col min-h-0">
+                  <div className="relative shrink-0 px-3 pt-2 pb-2">
+                    <Search className="pointer-events-none absolute left-[22px] top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
+                    <input
+                      type="text"
+                      value={fieldQuery}
+                      onChange={(e) => setFieldQuery(e.target.value)}
+                      placeholder={tr('expressionFieldSearchPlaceholder')}
+                      className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
                     />
                   </div>
-                )}
-              </div>
-              <div className="flex flex-col rounded-lg border border-border-muted/60 min-h-0">
-                <button
-                  type="button"
-                  onClick={() => setShowDetail(!showDetail)}
-                  className="flex w-full items-center gap-1 px-3 py-1.5 text-[11px] font-medium text-text-muted hover:text-text-secondary transition-colors"
-                >
-                  <ChevronDown
-                    className={`h-3 w-3 transition-transform ${showDetail ? 'rotate-180' : ''}`}
-                  />
-                  {tr('expressionFunctionDetailLabel')}
-                </button>
-                {showDetail && (
-                  <div className="flex-1 overflow-y-auto border-t border-border-muted/60 p-2 min-h-0">
-                    <FunctionDetailPanel token={hoveredToken} tr={tr} />
+                  <div className="flex-1 overflow-y-auto min-h-0">
+                    {sortedFields.length === 0 ? (
+                      <div className="px-2 py-4 text-center text-[11px] text-text-muted">
+                        {tr('noMatch')}
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-border-muted/60">
+                        {sortedFields.map((col) => {
+                          const colType = columnTypes?.[col];
+                          return (
+                            <button
+                              key={col}
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                editAtCursor(`[${col}]`);
+                              }}
+                              className="flex min-h-9 w-full cursor-pointer items-center justify-between gap-2 px-3 text-left text-[12px] text-text-secondary transition-colors hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
+                            >
+                              <span className="min-w-0 truncate">{col}</span>
+                              {colType && (
+                                <span className="shrink-0 rounded bg-background/60 px-1 py-0.5 text-[10px] leading-none text-text-muted">
+                                  {dataTypeLabel(colType)}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
+              </div>
+              <div className="flex flex-col border-r border-border-muted/60 min-h-0">
+                <div className="flex w-full items-center px-3 py-1.5 text-[11px] font-medium text-text-muted">
+                  {tr('expressionFunctionHelperLabel')}
+                </div>
+                <div className="flex-1 border-t border-border-muted/60 min-h-0">
+                  <GlassFunctionHelper
+                    onInsert={editAtCursor}
+                    functionGroups={functionGroups}
+                    excludeCategories={excludeFunctionCategories}
+                    onTokenHover={setHoveredToken}
+                  />
+                </div>
+              </div>
+              <div className="flex flex-col min-h-0">
+                <div className="flex w-full items-center px-3 py-1.5 text-[11px] font-medium text-text-muted">
+                  {tr('expressionFunctionDetailLabel')}
+                </div>
+                <div className="flex-1 overflow-y-auto border-t border-border-muted/60 p-2 min-h-0">
+                  <FunctionDetailPanel token={hoveredToken} tr={tr} />
+                </div>
               </div>
             </div>
           )}

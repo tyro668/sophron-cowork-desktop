@@ -86,7 +86,27 @@ export function usesTemporalCalculationRangeUnit(
 }
 
 const groupMetricFunctions: CalculationFunctionDefinition[] = [
-  ...['sum', 'avg', 'min', 'max', 'median', 'stddev', 'var', 'mode', 'bool_and', 'bool_or'].map(
+  ...['sum', 'avg', 'min', 'max'].map(
+    (id): CalculationFunctionDefinition => ({
+      id,
+      category: 'group_metrics',
+      labelKey: `calcFieldFn_${id}`,
+      domainDslId: `group_${id}`,
+      valueArgument: 'field',
+      order: 'none',
+      frame: 'none',
+    })
+  ),
+  {
+    id: 'percentage',
+    category: 'group_metrics',
+    labelKey: 'calcFieldFn_percentage',
+    valueArgument: 'field',
+    order: 'none',
+    frame: 'none',
+    expressionKind: 'percentage',
+  },
+  ...['median', 'stddev', 'var', 'mode', 'bool_and', 'bool_or'].map(
     (id): CalculationFunctionDefinition => ({
       id,
       category: 'group_metrics',
@@ -144,15 +164,6 @@ const groupMetricFunctions: CalculationFunctionDefinition[] = [
       defaultValue: ', ',
       labelKey: 'calcFieldPlaceholderDelimiter',
     },
-  },
-  {
-    id: 'percentage',
-    category: 'group_metrics',
-    labelKey: 'calcFieldFn_percentage',
-    valueArgument: 'field',
-    order: 'none',
-    frame: 'none',
-    expressionKind: 'percentage',
   },
 ];
 
