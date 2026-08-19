@@ -34,6 +34,7 @@ import { createDataTaskStore, type DataTaskStore } from './data/data-task-store'
 import { DataCommandService } from './data/data-command-service';
 import { createPersonalAnalysisClient } from './data/personal-analysis-client';
 import { DataToolService } from './data/data-tool-service';
+import { RequirementAnalysisReceiptStore } from './data/requirement-analysis-receipt-store';
 import { createDataAgentRuntimeExtension } from './data/data-agent-extension';
 import { createLlmInputTableNormalizerProjectGenerator } from './data/input-table-normalizer-generator';
 import {
@@ -1110,6 +1111,7 @@ app
     memoryService = new MemoryService(db, {
       llmClient: new MemoryLLMClient(() => resolveAppConfigForAuth(configStore.getAll())),
     });
+    const requirementAnalysisReceipts = new RequirementAnalysisReceiptStore();
     dataCommandService = new DataCommandService(
       initializedDataTaskStore,
       createLlmInputTableNormalizerProjectGenerator(() =>
@@ -1120,9 +1122,10 @@ app
         onTaskCompleted: notifyDataTaskCompleted,
         getPersonalAnalysisConnection: () => desktopAuthService.getPersonalAnalysisConnection(),
         recordLlmUsage: (event) => recordDataTaskLlmUsage?.(event),
+        requirementAnalysisReceipts,
       }
     );
-    const dataToolService = new DataToolService(dataCommandService);
+    const dataToolService = new DataToolService(dataCommandService, requirementAnalysisReceipts);
     const extensionManager = new AgentRuntimeExtensionManager([
       new MemoryExtension(memoryService),
       createDataAgentRuntimeExtension(dataToolService),

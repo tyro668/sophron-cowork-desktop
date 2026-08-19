@@ -5,6 +5,7 @@ import type { DataTaskStore } from './data-task-store';
 import type { DataTaskLlmUsageRecorder } from './data-task-llm-usage-recorder';
 import {
   DataCommandError,
+  type AnalyzedTaskRequirement,
   type AnalyzeTaskRequirementCommand,
   type AnalyzeTaskRequirementResult,
   type GenerateTaskFromRequirementCommand,
@@ -48,6 +49,12 @@ import {
   workflowDiagnosticsFromError,
 } from './workflow';
 import { AI_PREP_DSL_RUNTIME_PROFILE_VERSION } from './workflow/prep-dsl-capability-profile';
+import {
+  createRequirementCapabilityContract,
+  getRequirementCapabilityContractOperationTypes,
+  type RequirementCapabilityContract,
+} from './workflow/requirement-capability-registry';
+import { RequirementAnalysisReceiptStore } from './requirement-analysis-receipt-store';
 
 interface GeneratedWorkflowCandidateValidation {
   diagnostics: PrepDiagnostic[];
@@ -70,6 +77,7 @@ export class GeneratedTaskCommandService {
     private readonly outputResolver: GeneratedOutputResolver,
     private readonly tasks: TaskCommandService,
     private readonly preview: WorkflowPreviewService,
+    private readonly analysisReceipts: RequirementAnalysisReceiptStore,
     private readonly options: GeneratedTaskCommandServiceOptions = {}
   ) {}
 
@@ -82,6 +90,11 @@ export class GeneratedTaskCommandService {
       'Processing requirement is required'
     );
     const preparedInput = await this.inputResolver.prepareGeneratedTaskInput(input);
+    const requirementContract = this.assertAnalysisReceipt(
+      input,
+      preparedInput.inputTable.id,
+      preparedInput.columnsSnapshot
+    );
     const displayInputTableName =
       normalizeOptionalName(input.source.tableName) || preparedInput.inputTable.name;
     const resolvedOutput = await this.outputResolver.resolveGeneratedOutputTable(
@@ -122,6 +135,7 @@ export class GeneratedTaskCommandService {
           outputTableName: outputTable.name,
           requirement: processRequirement,
           columns: preparedInput.columnsSnapshot,
+          requirementContract,
           runtimeConfig: input.runtimeConfig,
           repairBudget,
           onModelUsage,
@@ -171,6 +185,7 @@ export class GeneratedTaskCommandService {
             outputTableName: outputTable.name,
             requirement: processRequirement,
             columns: preparedInput.columnsSnapshot,
+            requirementContract,
             runtimeConfig: input.runtimeConfig,
             failedJavascriptSource: generated.javascriptSource,
             diagnostics: validationErrors,
@@ -259,7 +274,7 @@ export class GeneratedTaskCommandService {
         });
       },
     });
-    return {
+    const result: AnalyzedTaskRequirement = {
       ...analysis,
       inputTableId: preparedInput.inputTable.id,
       inputTableName: preparedInput.inputTable.name,
@@ -267,6 +282,83 @@ export class GeneratedTaskCommandService {
       sourceSummaryHash: hashColumns(preparedInput.columnsSnapshot),
       capabilityProfileVersion: AI_PREP_DSL_RUNTIME_PROFILE_VERSION,
     };
+    const receipt = this.analysisReceipts.create({
+      sessionId: generationId,
+      sourceUserMessageId: normalizeOptionalName(input.sourceUserMessageId),
+      inputTableId: result.inputTableId,
+      inputTableName: result.inputTableName,
+      inputSchemaHash: result.sourceSummaryHash,
+      processRequirement,
+      analysis: result,
+      capabilityProfileVersion: result.capabilityProfileVersion,
+    });
+    return { ...result, analysisId: receipt.id, expiresAt: receipt.expiresAt };
+  }
+
+  private assertAnalysisReceipt(
+    input: GenerateTaskFromRequirementCommand,
+    inputTableId: string,
+    columns: DataAutomationColumnSnapshot[]
+  ): RequirementCapabilityContract | undefined {
+    const analysisId = normalizeOptionalName(
+      typeof input.analysisId === 'string' ? input.analysisId : undefined
+    );
+    if (!analysisId) return undefined;
+    const receipt = this.analysisReceipts.get(analysisId);
+    if (!receipt) {
+      throw new DataCommandError(
+        'ANALYSIS_REQUIRED',
+        'Requirement analysis was not found or has expired. Analyze the requirement again.'
+      );
+    }
+    if (receipt.sessionId !== normalizeOptionalName(input.usageTraceId)) {
+      throw new DataCommandError(
+        'ANALYSIS_REQUIRED',
+        'Requirement analysis does not belong to this generation flow.'
+      );
+    }
+    if (receipt.capabilityProfileVersion !== AI_PREP_DSL_RUNTIME_PROFILE_VERSION) {
+      throw new DataCommandError(
+        'ANALYSIS_STALE',
+        'Data-task capabilities changed after analysis. Analyze the requirement again.'
+      );
+    }
+    if (receipt.inputTableId !== inputTableId || receipt.inputSchemaHash !== hashColumns(columns)) {
+      throw new DataCommandError(
+        'ANALYSIS_STALE',
+        'The input table schema changed after analysis. Analyze the requirement again.'
+      );
+    }
+    const supportedRequirement = receipt.analysis.items
+      .filter((item) => item.status === 'supported')
+      .map((item) => item.suggestedRequirement || item.requirement)
+      .join('\n')
+      .trim();
+    const requestedRequirement = input.processRequirement.trim();
+    const originalRequirement = receipt.processRequirement.trim();
+    const canGenerateOriginal =
+      receipt.analysis.status === 'supported' && requestedRequirement === originalRequirement;
+    if (
+      !supportedRequirement ||
+      (!canGenerateOriginal && requestedRequirement !== supportedRequirement)
+    ) {
+      throw new DataCommandError(
+        'REQUIREMENT_NOT_SUPPORTED',
+        'Generation must use the supported requirements from the confirmed analysis.'
+      );
+    }
+    const supportedItems = receipt.analysis.items.filter((item) => item.status === 'supported');
+    const requirementContract = createRequirementCapabilityContract(
+      supportedItems.flatMap((item) => item.capabilities ?? [])
+    );
+    const operationTypes = getRequirementCapabilityContractOperationTypes(requirementContract);
+    if (requirementContract.capabilityIds.length === 0 || operationTypes.length === 0) {
+      throw new DataCommandError(
+        'ANALYSIS_STALE',
+        'Requirement analysis does not contain a certified generation capability contract. Analyze the requirement again.'
+      );
+    }
+    return requirementContract;
   }
 
   private async validateGeneratedWorkflowCandidate(input: {

@@ -5,7 +5,11 @@ import {
   executeWorkflowJavaScriptInSandbox,
   WORKFLOW_SANDBOX_RUNNER_SOURCE,
 } from '../src/main/data/workflow/javascript-runtime';
-import { compileGeneratedJavaScriptWorkflow } from '../src/main/data/workflow/workflow-generator';
+import {
+  buildWorkflowGenerationSystemPrompt,
+  compileGeneratedJavaScriptWorkflow,
+} from '../src/main/data/workflow/workflow-generator';
+import { validateGeneratedOperatorConfig } from '../src/main/data/workflow/generated-operator-config-validator';
 import { lowerGeneratedWorkflowIrSemantics } from '../src/main/data/workflow/workflow-ir-lowerer';
 import { compileLoweredWorkflowToPlatformNodes } from '../src/main/data/workflow/workflow-node-compiler';
 import { exportPrepWorkflowDsl } from '../src/shared/prep-dsl';
@@ -84,8 +88,14 @@ describe('JavaScript Workflow SDK pipeline', () => {
     expect(WORKFLOW_SANDBOX_RUNNER_SOURCE).toContain('step: (inputValue, type, fields)');
     expect(WORKFLOW_SANDBOX_RUNNER_SOURCE).not.toContain('sdk.drop =');
     expect(prompt).toContain('strategy: "drop_empty_rows"');
+    expect(prompt).toContain('strategy: "drop_rows_by_nulls"');
     expect(prompt).toContain('strategy: "by_column"');
-    expect(prompt).toContain('method: "skip|drop|nullify_values|literal_fill"');
+    expect(prompt).toContain('mean_fill|median_fill|mode_fill|forward_fill|backward_fill');
+    expect(prompt).toContain('Per-group limits are unsupported');
+    expect(prompt).toContain('Percent limits require offset 0');
+    expect(buildWorkflowGenerationSystemPrompt()).toContain(
+      'config.strategy is only "drop_empty_rows", "drop_rows_by_nulls", or "by_column"'
+    );
     expect(prompt).toContain('on: [{ field: "pivotField"');
     expect(prompt).toContain('groupBy: ["groupField"]');
     expect(prompt).toContain('never use expr(...) in on[].field or groupBy');
@@ -218,9 +228,9 @@ function main() {
       compileWorkflowJavaScript(invalidScale, { columns: [{ name: 'Value', type: 'text' }] })
     ).toThrow(/No overload matches this call|scale/);
 
-    const unsupportedKeepLast = `function removeDuplicates(input) {
+    const invalidKeepPolicy = `function removeDuplicates(input) {
   return workflow.step(input, "deduplicate", {
-    config: { columns: ["ID"], keep: "last", orderBy: [] }
+    config: { columns: ["ID"], keep: "middle", orderBy: [] }
   });
 }
 function main() {
@@ -228,10 +238,10 @@ function main() {
   return workflow.output(removeDuplicates(input), OUTPUT_TABLE_NAME);
 }`;
     expect(() =>
-      compileWorkflowJavaScript(unsupportedKeepLast, {
+      compileWorkflowJavaScript(invalidKeepPolicy, {
         columns: [{ name: 'ID', type: 'integer' }],
       })
-    ).toThrow(/not assignable to type '"first"'|No overload matches this call/);
+    ).toThrow(/not assignable|No overload matches this call/);
 
     const nonTextNullMarker = `function nullifyMarkers(input) {
   return workflow.step(input, "missing_value", {
@@ -410,40 +420,26 @@ function main() {
       })
     ).toThrow(/not assignable|No overload matches/);
 
-    const statisticalFill = `function fillMissing(input) {
-  return workflow.step(input, "missing_value", {
-    config: { strategy: "by_column", rules: [{ column: "Value", method: "mean_fill" }] }
-  });
-}
-function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(fillMissing(input), OUTPUT_TABLE_NAME);
-}`;
-    expect(() =>
-      compileWorkflowJavaScript(statisticalFill, {
-        columns: [{ name: 'Value', type: 'integer' }],
-      })
-    ).toThrow(/not assignable|No overload matches/);
-
-    const unsupportedUngroupedTies = `function takeTies(input) {
-  return workflow.step(input, "limit", {
+    const jsonObjectUnnest = `function expandObject(input) {
+  return workflow.step(input, "unnest", {
     config: {
-      mode: "limit",
-      limit: 1,
-      unit: "rows",
-      offset: 0,
-      orderBy: [{ field: "Value", direction: "desc" }],
-      ties: true
+      sourceKind: "json",
+      column: "Value",
+      alias: "item",
+      keepParentNames: false,
+      preserveOrder: false
     }
   });
 }
 function main() {
   const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(takeTies(input), OUTPUT_TABLE_NAME);
+  return workflow.output(expandObject(input), OUTPUT_TABLE_NAME);
 }`;
-    expect(() => buildIr(unsupportedUngroupedTies)).toThrow(
-      'ties is not supported for ungrouped row-count limits'
-    );
+    expect(() =>
+      compileWorkflowJavaScript(jsonObjectUnnest, {
+        columns: [{ name: 'Value', type: 'text' }],
+      })
+    ).toThrow(/not assignable|No overload matches/);
   });
 
   it('uses V8 to compile standard JavaScript and the sandbox SDK to build stable IR', () => {
@@ -541,6 +537,33 @@ function main() {
         ],
       })
     ).toThrow(/single linear chain/);
+  });
+
+  it('normalizes the legacy top limit shape at the IR boundary', () => {
+    const ir = buildIr();
+    const operationId = ir.operations[0]?.operationId;
+    const normalized = validateAndNormalizeWorkflowIr({
+      ...ir,
+      operations: [
+        {
+          operationId,
+          inputOperationId: 'input',
+          type: 'limit',
+          config: {
+            mode: 'top',
+            limit: 10,
+            unit: 'rows',
+            offset: 0,
+            orderBy: [{ field: '记录数', direction: 'desc' }],
+          },
+        },
+      ],
+    });
+
+    expect(normalized.operations[0]).toMatchObject({
+      type: 'limit',
+      config: { mode: 'limit', unit: 'rows', offset: 0, ties: false },
+    });
   });
 
   it('lowers stable IR directly to platform nodes with runtime bindings', () => {
@@ -1502,6 +1525,32 @@ function main() {
   );
 });
 
+it('materializes a root boolean function used directly as a filter predicate', () => {
+  const source = `function keepMatchingCodes(input) {
+  return workflow.step(input, "filter", {
+    condition: expr(row => regexpMatches(row["Code"], "^[A-Z]+-[0-9]+$"))
+  });
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  return workflow.output(keepMatchingCodes(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+}`;
+  const result = compileGeneratedJavaScriptWorkflow({
+    javascriptSource: source,
+    inputTableId: 'input-1',
+    outputTableName: 'output-1',
+    requirement: '只保留编码格式正确的记录',
+    columns: [{ name: 'Code', type: 'text' }],
+  });
+  const dsl = exportGeneratedWorkflowDsl(result);
+
+  expect(dsl).toContain(
+    "derive [__sophron_ai_filter_predicate] = REGEXP_MATCHES([Code], '^[A-Z]+-[0-9]+$')"
+  );
+  expect(dsl).toContain('filter [__sophron_ai_filter_predicate] = true');
+  expect(dsl).toContain('drop [__sophron_ai_filter_predicate]');
+});
+
 it('types native cast results and normalizes timestamp as datetime during DSL lowering', () => {
   const source = `function addAmount(input) {
   return workflow.step(input, "derive", {
@@ -1576,4 +1625,89 @@ function main() {
   expect(exportGeneratedWorkflowDsl(result)).toContain(
     "derive [`Elapsed Hours`] = DATE_DIFF('hour', [`Started At`], [`Finished At`])"
   );
+});
+
+it('rejects a generated percent limit whose offset would be discarded by the platform schema', () => {
+  const source = `function takePercent(input) {
+  return workflow.step(input, "limit", {
+    config: { mode: "limit", limit: 25, unit: "percent", offset: 5, orderBy: [] }
+  });
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  return workflow.output(takePercent(input), OUTPUT_TABLE_NAME);
+}`;
+
+  expect(() => compileWorkflowJavaScript(source, { columns: [] })).toThrow(
+    /not assignable|No overload matches|offset/
+  );
+  expect(
+    validateGeneratedOperatorConfig('limit', {
+      mode: 'fixed',
+      limit: 25,
+      unit: 'percent',
+      offset: 5,
+      orderBy: [],
+      ties: false,
+    })
+  ).toEqual([
+    expect.objectContaining({
+      severity: 'error',
+      params: expect.objectContaining({ path: 'offset' }),
+      message: expect.stringContaining('not canonical'),
+    }),
+  ]);
+});
+
+it('rejects an IR operation type that was not approved by requirement analysis', () => {
+  expect(() =>
+    compileGeneratedJavaScriptWorkflow({
+      javascriptSource: SOURCE,
+      inputTableId: 'input-1',
+      outputTableName: 'output-1',
+      requirement: '删除记录数',
+      columns: [{ name: '记录数', type: 'integer' }],
+      requirementContract: {
+        capabilityIds: ['filter.boolean_predicate'],
+      },
+    })
+  ).toThrow(/does not match the confirmed requirement-analysis capability contract/);
+});
+
+it('rejects a generated operation variant that differs from the analyzed capability', () => {
+  const source = `function deduplicate(input) {
+  return workflow.step(input, "deduplicate", {
+    config: { columns: ["id"], keep: "last", orderBy: [] }
+  });
+}
+function main() {
+  const input = workflow.input(INPUT_TABLE_ID);
+  return workflow.output(deduplicate(input), OUTPUT_TABLE_NAME);
+}`;
+
+  try {
+    compileGeneratedJavaScriptWorkflow({
+      javascriptSource: source,
+      inputTableId: 'input-1',
+      outputTableName: 'output-1',
+      requirement: '按 id 去重并保留第一条',
+      columns: [{ name: 'id', type: 'integer' }],
+      requirementContract: {
+        capabilityIds: ['deduplicate.keep_first'],
+      },
+    });
+    throw new Error('expected capability mismatch to fail');
+  } catch (error) {
+    const diagnostics = (error as { details?: { diagnostics?: Array<Record<string, unknown>> } })
+      .details?.diagnostics;
+    expect(diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'ANALYSIS_CAPABILITY_MISMATCH',
+          operationType: 'deduplicate',
+          repairClass: 'full_regeneration',
+        }),
+      ])
+    );
+  }
 });

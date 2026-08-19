@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { DataCommandService } from '../src/main/data/data-command-service';
 import { createDataCustomTools } from '../src/main/data/data-tool-definitions';
 import { DataToolService } from '../src/main/data/data-tool-service';
+import type { AnalyzeTaskRequirementCommand } from '../src/main/data/data-command-types';
+import { RequirementAnalysisReceiptStore } from '../src/main/data/requirement-analysis-receipt-store';
 import { AI_PREP_DSL_RUNTIME_PROFILE_VERSION } from '../src/main/data/workflow/prep-dsl-capability-profile';
 import { hashColumns } from '../src/main/data/workflow';
 import type {
@@ -41,7 +43,7 @@ describe('DataToolService', () => {
         offset: 0,
       })),
     } as unknown as DataCommandService;
-    const service = new DataToolService(commandService);
+    const service = new DataToolService(commandService, new RequirementAnalysisReceiptStore());
 
     const result = await service.listInputTables({});
 
@@ -85,11 +87,14 @@ describe('DataToolService', () => {
     }));
     const runTask = vi.fn(async () => ({ task, preview, diagnostics: [] }));
     const getRunResult = vi.fn(async () => ({ task, preview }));
-    const service = new DataToolService({
-      previewTable,
-      runTask,
-      getRunResult,
-    } as unknown as DataCommandService);
+    const service = new DataToolService(
+      {
+        previewTable,
+        runTask,
+        getRunResult,
+      } as unknown as DataCommandService,
+      new RequirementAnalysisReceiptStore()
+    );
 
     const schemaOnly = await service.previewTable({
       tableKind: 'input',
@@ -175,7 +180,7 @@ describe('DataToolService', () => {
         offset: 0,
       })),
     } as unknown as DataCommandService;
-    const service = new DataToolService(commandService);
+    const service = new DataToolService(commandService, new RequirementAnalysisReceiptStore());
 
     const outputResult = await service.listOutputTables({});
     const taskResult = await service.listTasks({});
@@ -247,7 +252,7 @@ describe('DataToolService', () => {
         },
       })),
     } as unknown as DataCommandService;
-    const service = new DataToolService(commandService);
+    const service = new DataToolService(commandService, new RequirementAnalysisReceiptStore());
 
     const result = await service.createInputTableWithProcessingStrategy({
       name: 'customers normalized',
@@ -309,7 +314,7 @@ describe('DataToolService', () => {
     const commandService = {
       createInputTableWithProcessingStrategy,
     } as unknown as DataCommandService;
-    const service = new DataToolService(commandService);
+    const service = new DataToolService(commandService, new RequirementAnalysisReceiptStore());
     const tool = createDataCustomTools(service, {
       sessionId: 'session_1',
       workspacePath: '/workspace',
@@ -344,21 +349,36 @@ describe('DataToolService', () => {
   it('requires a supported analysis and a later user turn before generating a task', async () => {
     const columnsSnapshot = [{ name: 'Sales', type: 'integer' }];
     const sourceSummaryHash = hashColumns(columnsSnapshot);
-    const analyzeTaskRequirement = vi.fn(async () => ({
-      status: 'supported' as const,
-      items: [
-        {
-          requirement: '过滤 Sales 小于 100 的记录',
-          status: 'supported' as const,
-          operations: ['filter'],
-        },
-      ],
-      inputTableId: 'input_1',
-      inputTableName: 'Sales input',
-      columnsSnapshot,
-      sourceSummaryHash,
-      capabilityProfileVersion: AI_PREP_DSL_RUNTIME_PROFILE_VERSION,
-    }));
+    const analysisReceipts = new RequirementAnalysisReceiptStore();
+    const analyzeTaskRequirement = vi.fn(async (input: AnalyzeTaskRequirementCommand) => {
+      const result = {
+        status: 'supported' as const,
+        items: [
+          {
+            requirement: '过滤 Sales 小于 100 的记录',
+            status: 'supported' as const,
+            operations: ['filter'],
+            capabilities: ['filter.boolean_predicate'],
+          },
+        ],
+        inputTableId: 'input_1',
+        inputTableName: 'Sales input',
+        columnsSnapshot,
+        sourceSummaryHash,
+        capabilityProfileVersion: AI_PREP_DSL_RUNTIME_PROFILE_VERSION,
+      };
+      const receipt = analysisReceipts.create({
+        sessionId: input.usageTraceId!,
+        sourceUserMessageId: input.sourceUserMessageId,
+        inputTableId: result.inputTableId,
+        inputTableName: result.inputTableName,
+        inputSchemaHash: result.sourceSummaryHash,
+        processRequirement: input.processRequirement,
+        analysis: result,
+        capabilityProfileVersion: result.capabilityProfileVersion,
+      });
+      return { ...result, analysisId: receipt.id, expiresAt: receipt.expiresAt };
+    });
     const previewTable = vi.fn(async () => ({
       tableKind: 'input' as const,
       id: 'input_1',
@@ -388,11 +408,14 @@ describe('DataToolService', () => {
       version: 1,
       generatedAt: 1,
     }));
-    const service = new DataToolService({
-      analyzeTaskRequirement,
-      previewTable,
-      generateTaskFromRequirement,
-    } as unknown as DataCommandService);
+    const service = new DataToolService(
+      {
+        analyzeTaskRequirement,
+        previewTable,
+        generateTaskFromRequirement,
+      } as unknown as DataCommandService,
+      analysisReceipts
+    );
     const runtimeConfig = {
       provider: 'custom' as const,
       apiKey: 'secret-key',
@@ -432,6 +455,25 @@ describe('DataToolService', () => {
       processRequirement: '过滤 Sales 小于 100 的记录',
     });
     const analysisId = (analysis.details as { analysisId: string }).analysisId;
+
+    expect(analyzeTaskRequirement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        usageTraceId: 'session_1',
+        sourceUserMessageId: 'user_message_1',
+      })
+    );
+
+    await expect(
+      service.generateTaskFromAnalysis(
+        {
+          analysisId,
+          confirmed: true,
+          outputMode: 'create',
+          outputTableName: 'Sales output',
+        },
+        { sessionId: 'session_2', currentUserMessageId: 'user_message_2' }
+      )
+    ).rejects.toMatchObject({ code: 'ANALYSIS_REQUIRED' });
 
     await expect(
       generateTool!.execute('generation_call_1', {
@@ -480,6 +522,8 @@ describe('DataToolService', () => {
         processRequirement: '过滤 Sales 小于 100 的记录',
         taskName: 'Sales task',
         runtimeConfig,
+        analysisId,
+        usageTraceId: 'session_1',
         outputConflictPolicy: 'unique',
         output: {
           location: 'local',
@@ -537,8 +581,9 @@ describe('DataToolService', () => {
   it('does not generate ambiguous or unsupported analysis receipts', async () => {
     const columnsSnapshot = [{ name: 'Customer', type: 'text' }];
     const sourceSummaryHash = hashColumns(columnsSnapshot);
-    const service = new DataToolService({
-      analyzeTaskRequirement: vi.fn(async () => ({
+    const analysisReceipts = new RequirementAnalysisReceiptStore();
+    const analyzeTaskRequirement = vi.fn(async (input: AnalyzeTaskRequirementCommand) => {
+      const result = {
         status: 'needs_confirmation' as const,
         items: [
           {
@@ -554,8 +599,23 @@ describe('DataToolService', () => {
         columnsSnapshot,
         sourceSummaryHash,
         capabilityProfileVersion: AI_PREP_DSL_RUNTIME_PROFILE_VERSION,
-      })),
-    } as unknown as DataCommandService);
+      };
+      const receipt = analysisReceipts.create({
+        sessionId: input.usageTraceId!,
+        sourceUserMessageId: input.sourceUserMessageId,
+        inputTableId: result.inputTableId,
+        inputTableName: result.inputTableName,
+        inputSchemaHash: result.sourceSummaryHash,
+        processRequirement: input.processRequirement,
+        analysis: result,
+        capabilityProfileVersion: result.capabilityProfileVersion,
+      });
+      return { ...result, analysisId: receipt.id, expiresAt: receipt.expiresAt };
+    });
+    const service = new DataToolService(
+      { analyzeTaskRequirement } as unknown as DataCommandService,
+      analysisReceipts
+    );
     const analysis = await service.analyzeTaskRequirement(
       { inputTableId: 'input_2', processRequirement: '筛选优质客户' },
       { sessionId: 'session_1', currentUserMessageId: 'message_1' }
@@ -574,7 +634,7 @@ describe('DataToolService', () => {
 
   it('returns embedded workflow DSL reference without relying on source docs', async () => {
     const commandService = {} as DataCommandService;
-    const service = new DataToolService(commandService);
+    const service = new DataToolService(commandService, new RequirementAnalysisReceiptStore());
 
     const result = await service.getWorkflowDslReference({ topic: 'examples' });
 

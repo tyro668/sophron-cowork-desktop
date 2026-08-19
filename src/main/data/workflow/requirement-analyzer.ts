@@ -8,7 +8,10 @@ import { DataCommandError } from '../data-command-types';
 import requirementAnalysisSystemPrompt from './prompts/requirement-analysis-system.txt?raw';
 import { getWorkflowJavascriptCapabilityPrompt } from './workflow-ir-operation-registry';
 import { getWorkflowExpressionCapabilityPrompt } from './workflow-expression-registry';
-import { getWorkflowIrOperationDefinition } from './workflow-ir-operation-registry';
+import {
+  getRequirementCapabilityOperation,
+  getRequirementCapabilityPrompt,
+} from './requirement-capability-registry';
 import { extractJsonObject, isRecord } from './utils';
 
 const VALID_STATUSES = new Set(['supported', 'ambiguous', 'unsupported']);
@@ -70,6 +73,7 @@ export async function analyzeDataTaskRequirement({
 function buildRequirementAnalysisSystemPrompt(): string {
   return requirementAnalysisSystemPrompt
     .replace('{{WORKFLOW_CAPABILITIES}}', getWorkflowJavascriptCapabilityPrompt())
+    .replace('{{REQUIREMENT_CAPABILITIES}}', getRequirementCapabilityPrompt())
     .replace('{{WORKFLOW_EXPRESSION_CAPABILITIES}}', getWorkflowExpressionCapabilityPrompt())
     .trim();
 }
@@ -87,24 +91,38 @@ function normalizeAnalysisItem(value: unknown): DataTaskRequirementAnalysisItem 
       'Requirement analysis returned an invalid item'
     );
   }
-  const operations = Array.isArray(value.operations)
-    ? value.operations.filter(
-        (item): item is string => typeof item === 'string' && Boolean(item.trim())
-      )
+  const capabilities = Array.isArray(value.capabilities)
+    ? value.capabilities
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean)
     : [];
-  const unknownOperations = operations.filter(
-    (operation) => !getWorkflowIrOperationDefinition(operation)
+  const unknownCapabilities = capabilities.filter(
+    (capability) => !getRequirementCapabilityOperation(capability)
   );
+  const validCapabilities = capabilities.filter((capability) =>
+    getRequirementCapabilityOperation(capability)
+  );
+  const derivedOperations = [
+    ...new Set(
+      validCapabilities
+        .map((capability) => getRequirementCapabilityOperation(capability))
+        .filter((operation): operation is string => Boolean(operation))
+    ),
+  ];
   const declaredStatus = value.status as DataTaskRequirementAnalysisItem['status'];
   const status =
-    declaredStatus === 'supported' && unknownOperations.length > 0
+    declaredStatus === 'supported' &&
+    (unknownCapabilities.length > 0 || validCapabilities.length === 0)
       ? ('unsupported' as const)
       : declaredStatus;
   const modelReason =
     typeof value.reason === 'string' ? value.reason.trim() || undefined : undefined;
-  const registryReason = unknownOperations.length
-    ? `Unavailable operation${unknownOperations.length > 1 ? 's' : ''}: ${unknownOperations.join(', ')}`
-    : undefined;
+  const registryReason = unknownCapabilities.length
+    ? `${unknownCapabilities.length > 1 ? 'Unavailable capabilities' : 'Unavailable capability'}: ${unknownCapabilities.join(', ')}`
+    : declaredStatus === 'supported' && validCapabilities.length === 0
+      ? 'Supported requirements must declare at least one certified capability'
+      : undefined;
   return {
     requirement: value.requirement.trim(),
     status,
@@ -113,6 +131,7 @@ function normalizeAnalysisItem(value: unknown): DataTaskRequirementAnalysisItem 
       typeof value.suggestedRequirement === 'string'
         ? value.suggestedRequirement.trim() || undefined
         : undefined,
-    operations: operations.filter((operation) => getWorkflowIrOperationDefinition(operation)),
+    operations: derivedOperations,
+    capabilities: validCapabilities,
   };
 }

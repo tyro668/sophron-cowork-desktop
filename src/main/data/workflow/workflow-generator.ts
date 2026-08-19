@@ -33,6 +33,12 @@ import {
   type WorkflowRepairStrategy,
 } from './workflow-failure';
 import { computeWorkflowIrSemanticHash } from './workflow-ir';
+import {
+  getRequirementCapabilityContractOperationTypes,
+  getRequirementCapabilityPrompt,
+  validateWorkflowIrAgainstRequirementCapabilityContract,
+  type RequirementCapabilityContract,
+} from './requirement-capability-registry';
 import { extractJsonObject, isRecord } from './utils';
 
 export const GENERATED_WORKFLOW_REPAIR_ATTEMPTS = 5;
@@ -80,12 +86,14 @@ export function compileGeneratedJavaScriptWorkflow({
   outputTableName,
   requirement,
   columns,
+  requirementContract,
 }: {
   javascriptSource: string;
   inputTableId: string;
   outputTableName: string;
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
+  requirementContract?: RequirementCapabilityContract;
 }): GeneratedDataTaskWorkflow {
   let compiled: ReturnType<typeof compileWorkflowJavaScript>;
   try {
@@ -128,6 +136,9 @@ export function compileGeneratedJavaScriptWorkflow({
           ],
         }
       );
+    }
+    if (requirementContract) {
+      validateWorkflowIrAgainstRequirementCapabilityContract(ir, requirementContract);
     }
   } catch (error) {
     throw contextualizeWorkflowError(error, {
@@ -202,6 +213,7 @@ export async function generateDataTaskWorkflowFromRequirement({
   outputTableName,
   requirement,
   columns,
+  requirementContract,
   runtimeConfig,
   repairBudget,
   onModelUsage,
@@ -211,6 +223,7 @@ export async function generateDataTaskWorkflowFromRequirement({
   outputTableName: string;
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
+  requirementContract?: RequirementCapabilityContract;
   runtimeConfig?: AgentRuntimeConfig;
   repairBudget?: WorkflowRepairBudget;
   onModelUsage?: WorkflowModelUsageObserver;
@@ -225,6 +238,7 @@ export async function generateDataTaskWorkflowFromRequirement({
         outputTableName,
         requirement,
         columns,
+        requirementContract,
       }),
       buildWorkflowGenerationSystemPrompt(),
       config,
@@ -237,6 +251,7 @@ export async function generateDataTaskWorkflowFromRequirement({
         outputTableName,
         requirement,
         columns,
+        requirementContract,
         runtimeConfig,
         failedJavascriptSource:
           extractJavascriptSourceFromModelResponse(response.text) ?? response.text,
@@ -253,6 +268,7 @@ export async function generateDataTaskWorkflowFromRequirement({
         outputTableName,
         requirement,
         columns,
+        requirementContract,
       });
     } catch (parseError) {
       const generationError = contextualizeWorkflowError(parseError, {
@@ -269,6 +285,7 @@ export async function generateDataTaskWorkflowFromRequirement({
         outputTableName,
         requirement,
         columns,
+        requirementContract,
         runtimeConfig,
         failedJavascriptSource:
           extractJavascriptSourceFromModelResponse(response.text) ?? response.text,
@@ -293,6 +310,7 @@ export async function repairGeneratedWorkflowFromDiagnostics({
   outputTableName,
   requirement,
   columns,
+  requirementContract,
   runtimeConfig,
   failedJavascriptSource,
   diagnostics,
@@ -304,6 +322,7 @@ export async function repairGeneratedWorkflowFromDiagnostics({
   outputTableName: string;
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
+  requirementContract?: RequirementCapabilityContract;
   runtimeConfig?: AgentRuntimeConfig;
   failedJavascriptSource: string;
   diagnostics: PrepDiagnostic[];
@@ -367,6 +386,7 @@ export async function repairGeneratedWorkflowFromDiagnostics({
           outputTableName,
           requirement,
           columns,
+          requirementContract,
           failedJavascriptSource: currentJavascriptSource,
           diagnostics: currentDiagnostics,
           repairFunctionName,
@@ -406,6 +426,7 @@ export async function repairGeneratedWorkflowFromDiagnostics({
           outputTableName,
           requirement,
           columns,
+          requirementContract,
         });
         recordRepairUsage('success');
         return repairedWorkflow;
@@ -542,7 +563,7 @@ function createModelOutputTruncatedDiagnostics(): PrepDiagnostic[] {
   }));
 }
 
-function buildWorkflowGenerationSystemPrompt(): string {
+export function buildWorkflowGenerationSystemPrompt(): string {
   return workflowGenerationSystemPrompt
     .replace('{{WORKFLOW_CAPABILITIES}}', getWorkflowJavascriptCapabilityPrompt())
     .replace('{{WORKFLOW_EXPRESSION_CAPABILITIES}}', getWorkflowExpressionCapabilityPrompt())
@@ -554,6 +575,7 @@ function buildWorkflowGenerationUserPrompt(input: {
   outputTableName: string;
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
+  requirementContract?: RequirementCapabilityContract;
   failedJavascriptSource?: string;
   diagnostics?: PrepDiagnostic[];
   repairFunctionName?: string;
@@ -572,6 +594,19 @@ function buildWorkflowGenerationUserPrompt(input: {
         inputTableId: input.inputTableId,
         outputTableName: input.outputTableName,
       },
+      confirmedRequirementCapabilityContract: input.requirementContract
+        ? {
+            operationTypes: getRequirementCapabilityContractOperationTypes(
+              input.requirementContract
+            ),
+            capabilities: input.requirementContract.capabilityIds.map((id) => ({
+              id,
+              description: getRequirementCapabilityPrompt([id]),
+            })),
+            instruction:
+              'Implement every listed operation type and capability variant. Do not add operation types or capability variants that are not listed. Multiple steps of an approved operation type are allowed only when needed by the requirement.',
+          }
+        : undefined,
       generationRules: {
         sequentialHelpers:
           'A helper may call workflow.step() multiple times in sequence. Bind every intermediate workflow value to a descriptive const, pass it to the next step, and return the final value.',
@@ -720,6 +755,7 @@ function compileRepairResponse({
   outputTableName,
   requirement,
   columns,
+  requirementContract,
 }: {
   text: string;
   failedJavascriptSource: string;
@@ -728,6 +764,7 @@ function compileRepairResponse({
   outputTableName: string;
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
+  requirementContract?: RequirementCapabilityContract;
 }): GeneratedDataTaskWorkflow {
   let parsed: unknown;
   try {
@@ -764,6 +801,7 @@ function compileRepairResponse({
       outputTableName,
       requirement,
       columns,
+      requirementContract,
     });
   }
   if (repairFunctionName) {
@@ -778,6 +816,7 @@ function compileRepairResponse({
     outputTableName,
     requirement,
     columns,
+    requirementContract,
   });
 }
 
@@ -879,12 +918,14 @@ function compileGeneratedJavascriptResponse({
   outputTableName,
   requirement,
   columns,
+  requirementContract,
 }: {
   text: string;
   inputTableId: string;
   outputTableName: string;
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
+  requirementContract?: RequirementCapabilityContract;
 }): GeneratedDataTaskWorkflow {
   const javascriptSource = extractGeneratedJavascriptSource(text);
   return compileGeneratedJavaScriptWorkflow({
@@ -893,5 +934,6 @@ function compileGeneratedJavascriptResponse({
     outputTableName,
     requirement,
     columns,
+    requirementContract,
   });
 }

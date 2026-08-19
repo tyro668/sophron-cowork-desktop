@@ -84,6 +84,7 @@ import { AutomationInputResolver } from './automation-input-resolver';
 import { GeneratedOutputResolver } from './generated-output-resolver';
 import { GeneratedTaskCommandService } from './generated-task-command-service';
 import { TaskExecutionCommandService } from './task-execution-command-service';
+import { RequirementAnalysisReceiptStore } from './requirement-analysis-receipt-store';
 
 export interface DataCommandServiceOptions {
   onTaskCompleted?: (task: DataCleaningTask) => void;
@@ -91,6 +92,8 @@ export interface DataCommandServiceOptions {
   recordLlmUsage?: DataTaskLlmUsageRecorder;
   /** Test seam and optional compatibility exporter; native nodes remain the source of truth. */
   exportWorkflowDsl?: typeof exportPrepWorkflowDsl;
+  /** Shared only with the AI data-task tool chain; avoids process-global receipt state. */
+  requirementAnalysisReceipts?: RequirementAnalysisReceiptStore;
 }
 
 /**
@@ -127,6 +130,8 @@ export class DataCommandService {
     this.preview = new WorkflowPreviewService(store, this.resources);
     const compiler = new WorkflowDslCompiler(this.resources);
     this.tasks = new TaskCommandService(store, this.resources);
+    const requirementAnalysisReceipts =
+      options.requirementAnalysisReceipts ?? new RequirementAnalysisReceiptStore();
     const inputResolver = new AutomationInputResolver(
       this.resources,
       locks,
@@ -155,6 +160,7 @@ export class DataCommandService {
       outputResolver,
       this.tasks,
       this.preview,
+      requirementAnalysisReceipts,
       {
         recordLlmUsage: options.recordLlmUsage,
         exportWorkflowDsl: options.exportWorkflowDsl,

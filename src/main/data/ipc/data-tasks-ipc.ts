@@ -9,6 +9,7 @@ import type {
   DataWorkflowSaveInput,
 } from '../../../renderer/types';
 import type { DataIpcContext } from './types';
+import { DataCommandError } from '../data-command-types';
 
 export function registerDataTasksIpc({
   ipcMain,
@@ -69,6 +70,12 @@ export function registerDataTasksIpc({
     'data.generateTaskFromRequirement',
     async (_event, payload: DataGenerateTaskFromRequirementInput) => {
       try {
+        if (typeof payload.analysisId !== 'string' || !payload.analysisId.trim()) {
+          throw new DataCommandError(
+            'ANALYSIS_REQUIRED',
+            'Analyze and confirm the data-task requirement before generation.'
+          );
+        }
         const modelConfigSetId =
           typeof payload.modelConfigSetId === 'string' ? payload.modelConfigSetId.trim() : '';
         const runtimeConfig = modelConfigSetId

@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import type {
-  AnalyzeTaskRequirementResult,
+  AnalyzedTaskRequirement,
   GenerateTaskFromRequirementResult,
 } from './data-command-types';
 
@@ -14,7 +14,7 @@ export interface RequirementAnalysisReceipt {
   inputTableName: string;
   inputSchemaHash: string;
   processRequirement: string;
-  analysis: AnalyzeTaskRequirementResult;
+  analysis: AnalyzedTaskRequirement;
   capabilityProfileVersion: string;
   createdAt: number;
   expiresAt: number;

@@ -798,6 +798,8 @@ export interface DataGenerateTaskFromRequirementInput {
   output: DataAutomationOutputBinding;
   /** Correlates requirement analysis, generation, and repair calls from one UI flow. */
   usageTraceId?: string;
+  /** Short-lived backend receipt binding a confirmed analysis to this generation request. */
+  analysisId?: string | null;
   modelConfigSetId?: string | null;
   model?: string | null;
   reuseTaskId?: string | null;
@@ -812,11 +814,16 @@ export interface DataTaskRequirementAnalysisItem {
   reason?: string;
   suggestedRequirement?: string;
   operations: string[];
+  capabilities?: string[];
 }
 
 export interface DataAnalyzeTaskRequirementResult {
   status: 'supported' | 'needs_confirmation' | 'unsupported';
   items: DataTaskRequirementAnalysisItem[];
+  analysisId?: string;
+  capabilityProfileVersion?: string;
+  sourceSummaryHash?: string;
+  expiresAt?: number;
 }
 
 export interface DataGenerateTaskFromRequirementResult {

@@ -4,9 +4,9 @@ import type {
   DataWorkflowEdgeInput,
   DataWorkflowNodeInput,
 } from '../../../renderer/types';
-import { validateOperatorConfig } from '../../../shared/operator-schemas';
 import { DataCommandError } from '../data-command-types';
 import { DEFAULT_OPERATOR_LABELS } from '../store/workflow-model';
+import { validateGeneratedOperatorConfig } from './generated-operator-config-validator';
 import type {
   GeneratedWorkflowIrSemantics,
   GeneratedWorkflowOperationOrigin,
@@ -20,7 +20,7 @@ export interface WorkflowNodeCompilerBindings {
   outputTableName: string;
   outputTableId?: string;
   outputPhysicalTableName?: string;
-  outputMode?: 'replace' | 'append';
+  outputMode?: 'replace';
 }
 
 export interface GeneratedWorkflowOperationNodeOrigin extends GeneratedWorkflowOperationOrigin {
@@ -53,7 +53,7 @@ export function compileLoweredWorkflowToPlatformNodes({
   const inputTableId = requireBinding(bindings.inputTableId, 'inputTableId');
   const outputTableName = requireBinding(bindings.outputTableName, 'outputTableName');
   const inputAlias = sanitizeAlias(bindings.inputAlias) || 'src';
-  const outputMode = bindings.outputMode ?? 'replace';
+  const outputMode = 'replace';
   const originsByOperatorIndex = new Map(
     semantics.operationOrigins.map((origin) => [origin.operatorIndex, origin] as const)
   );
@@ -140,7 +140,7 @@ function assertValidLoweredOperator(
   origin?: GeneratedWorkflowOperationOrigin
 ): void {
   const nodeId = makeNodeId(operator.type, String(operatorIndex + 1));
-  const diagnostics = validateOperatorConfig(operator.type, operator.config)
+  const diagnostics = validateGeneratedOperatorConfig(operator.type, operator.config)
     .filter((diagnostic) => diagnostic.severity === 'error')
     .map((diagnostic) => ({
       ...diagnostic,

@@ -1,7 +1,7 @@
 import type { DataWorkflowOperatorType } from '../../../renderer/types';
 import type { WorkflowExpressionIr, WorkflowOperationIr } from './workflow-model';
 
-export const AI_PREP_DSL_RUNTIME_PROFILE_VERSION = 'platform-node-runtime-compat/v2' as const;
+export const AI_PREP_DSL_RUNTIME_PROFILE_VERSION = 'platform-node-runtime-compat/v3' as const;
 
 export type AiPrepDslExpressionContext =
   | 'filter'
@@ -118,7 +118,7 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
     aiEnabled: true,
     lowering: 'direct',
     runtimeContract:
-      'Deduplicate by resolved columns with optional deterministic ordering; only keep-first is certified.',
+      'Deduplicate by resolved columns with optional deterministic ordering and keep-first or keep-last policy.',
   },
   missing_value: {
     irType: 'missing_value',
@@ -127,7 +127,7 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
     aiEnabled: true,
     lowering: 'direct',
     runtimeContract:
-      'Use drop-empty-rows, selected-column null-row dropping, or validated by-column rules.',
+      'Use row dropping, literal fill, textual-sentinel cleanup, statistical fills, or forward/backward fills through validated by-column rules.',
   },
   limit: {
     irType: 'limit',
@@ -136,7 +136,7 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
     aiEnabled: true,
     lowering: 'direct',
     runtimeContract:
-      'Use fixed rows/percent, grouped top-N/percent, supported ties variants, or validated random sampling options.',
+      'Use global fixed rows/percent, supported ties variants, or validated random sampling options. Per-group limits remain unavailable until the platform node contract supports them.',
   },
   pivot: {
     irType: 'pivot',
@@ -161,7 +161,8 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
     emittedNodeTypes: ['unnest'],
     aiEnabled: true,
     lowering: 'direct',
-    runtimeContract: 'Unnest a resolved list or JSON column using validated options.',
+    runtimeContract:
+      'Expand a native list or JSON-array string into rows, with optional index, parent-name prefix, JSON path, and stable source ordering. JSON-object-to-columns remains platform-only because its output schema is data-dependent.',
   },
 } as const satisfies {
   [T in WorkflowIrOperationType]: AiPrepDslOperationCapability & { irType: T };

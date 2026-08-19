@@ -113,16 +113,24 @@ export interface WorkflowDeriveWindowConfig {
 
 export interface WorkflowDeduplicateConfig {
   columns: string[];
-  /** The platform SQL compiler currently guarantees only the first-row policy. */
-  keep: 'first';
+  keep: 'first' | 'last';
   orderBy: WorkflowSortKeyIr[];
 }
 
 export interface WorkflowMissingValueRule {
   column: string;
-  method: 'skip' | 'drop' | 'nullify_values' | 'literal_fill';
-  value?: WorkflowLiteral;
-  /** The platform node schema accepts textual missing-value markers. */
+  method:
+    | 'skip'
+    | 'drop'
+    | 'nullify_values'
+    | 'literal_fill'
+    | 'mean_fill'
+    | 'median_fill'
+    | 'mode_fill'
+    | 'forward_fill'
+    | 'backward_fill';
+  value?: Exclude<WorkflowLiteral, null>;
+  /** Platform SQL currently certifies textual sentinels for generated workflows. */
   values?: string[];
 }
 
@@ -135,17 +143,47 @@ export type WorkflowMissingValueConfig =
     }
   | { strategy: 'by_column'; rules: WorkflowMissingValueRule[] };
 
-export interface WorkflowLimitConfig {
-  mode: 'limit' | 'top' | 'random';
-  limit: number;
-  unit: 'rows' | 'percent';
-  offset: number;
-  orderBy: WorkflowSortKeyIr[];
-  groupBy?: string[];
-  ties?: boolean;
-  method?: 'system' | 'bernoulli';
-  seed?: number;
-}
+export type WorkflowLimitConfig =
+  | {
+      mode: 'limit';
+      limit: number;
+      unit: 'rows';
+      offset: number;
+      orderBy: WorkflowSortKeyIr[];
+      ties?: boolean;
+      method?: never;
+      seed?: never;
+    }
+  | {
+      mode: 'limit';
+      limit: number;
+      unit: 'percent';
+      offset: 0;
+      orderBy: WorkflowSortKeyIr[];
+      ties?: boolean;
+      method?: never;
+      seed?: never;
+    }
+  | {
+      mode: 'random';
+      limit: number;
+      unit: 'rows';
+      offset: 0;
+      orderBy: [];
+      ties?: never;
+      method?: 'system';
+      seed?: number;
+    }
+  | {
+      mode: 'random';
+      limit: number;
+      unit: 'percent';
+      offset: 0;
+      orderBy: [];
+      ties?: never;
+      method?: 'system' | 'bernoulli';
+      seed?: number;
+    };
 
 export interface WorkflowPivotMetricIr {
   function: string;
@@ -174,14 +212,14 @@ export interface WorkflowUnpivotConfig {
 }
 
 export interface WorkflowUnnestConfig {
-  sourceKind: 'list' | 'json';
+  /** Platform list mode accepts native lists and JSON-array strings. */
+  sourceKind: 'list';
   column: string;
   alias: string;
   path?: string;
   withIndex?: string;
-  recursive: boolean;
-  maxDepth?: number;
   keepParentNames: boolean;
+  preserveOrder: boolean;
 }
 
 export type WorkflowOperationIr = (

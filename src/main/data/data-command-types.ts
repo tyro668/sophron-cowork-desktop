@@ -168,13 +168,20 @@ export type GenerateTaskFromRequirementCommand = DataGenerateTaskFromRequirement
 export type AnalyzeTaskRequirementCommand = Pick<
   GenerateTaskFromRequirementCommand,
   'source' | 'processRequirement' | 'usageTraceId' | 'runtimeConfig' | 'signal'
->;
-export interface AnalyzeTaskRequirementResult extends DataAnalyzeTaskRequirementResult {
+> & {
+  /** User message that initiated a tool-driven analysis; used to enforce a later confirmation turn. */
+  sourceUserMessageId?: string;
+};
+export interface AnalyzedTaskRequirement extends DataAnalyzeTaskRequirementResult {
   inputTableId: string;
   inputTableName: string;
   columnsSnapshot: DataAutomationColumnSnapshot[];
   sourceSummaryHash: string;
   capabilityProfileVersion: string;
+}
+export interface AnalyzeTaskRequirementResult extends AnalyzedTaskRequirement {
+  analysisId: string;
+  expiresAt: number;
 }
 
 export type GenerateTaskFromRequirementResult = DataGenerateTaskFromRequirementResult;

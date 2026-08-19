@@ -40,9 +40,9 @@ import type {
   GenerateDataTaskFromAnalysisToolInput,
 } from './data-tool-types';
 import { DataCommandError } from './data-command-types';
-import {
+import type {
+  RequirementAnalysisReceipt,
   RequirementAnalysisReceiptStore,
-  type RequirementAnalysisReceipt,
 } from './requirement-analysis-receipt-store';
 import { AI_PREP_DSL_RUNTIME_PROFILE_VERSION } from './workflow/prep-dsl-capability-profile';
 import { hashColumns, normalizeColumnSnapshot } from './workflow';
@@ -71,7 +71,7 @@ export class DataToolService {
 
   constructor(
     private readonly commandService: DataCommandService,
-    private readonly analysisReceipts = new RequirementAnalysisReceiptStore()
+    private readonly analysisReceipts: RequirementAnalysisReceiptStore
   ) {}
 
   updateExecutionContext(context: Omit<DataToolExecutionContext, 'toolCallId' | 'signal'>): void {
@@ -364,19 +364,17 @@ export class DataToolService {
       source: { location: 'local', tableId: input.inputTableId },
       processRequirement: input.processRequirement,
       runtimeConfig: context.runtimeConfig,
-      usageTraceId: context.toolCallId,
+      usageTraceId: context.sessionId,
+      sourceUserMessageId: context.currentUserMessageId,
       signal: context.signal,
     });
-    const receipt = this.analysisReceipts.create({
-      sessionId: context.sessionId,
-      sourceUserMessageId: context.currentUserMessageId,
-      inputTableId: result.inputTableId,
-      inputTableName: result.inputTableName,
-      inputSchemaHash: result.sourceSummaryHash,
-      processRequirement: input.processRequirement.trim(),
-      analysis: result,
-      capabilityProfileVersion: result.capabilityProfileVersion,
-    });
+    const receipt = this.analysisReceipts.get(result.analysisId);
+    if (!receipt) {
+      throw new DataCommandError(
+        'INTERNAL_ERROR',
+        'Requirement analysis receipt is unavailable in the tool generation flow.'
+      );
+    }
     return toolResult(formatRequirementAnalysis(receipt.id, result, receipt.expiresAt), {
       analysisId: receipt.id,
       status: result.status,
@@ -482,7 +480,8 @@ export class DataToolService {
       output,
       taskName: input.taskName,
       runtimeConfig: context.runtimeConfig,
-      usageTraceId: receipt.id,
+      usageTraceId: receipt.sessionId,
+      analysisId: receipt.id,
       signal: context.signal,
       outputConflictPolicy: 'unique',
     });
