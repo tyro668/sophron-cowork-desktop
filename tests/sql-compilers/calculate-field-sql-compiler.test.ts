@@ -278,7 +278,7 @@ describe('DuckDB integration — period comparison and time accumulation', () =>
         calculations: [
           {
             field: 'running_sales',
-            expression: 'year_to_date(sum([sales]), [date]) over(partition by [region])',
+            expression: 'accumulate(yeartodate(sum([sales]), [date])) over(partition by [region])',
           },
         ],
       })
@@ -544,7 +544,7 @@ describe('compileCalculateFieldSql', () => {
       calculations: [
         {
           field: 'rn',
-          expression: 'row_number() over(partition by [region] order by [amount] desc)',
+          expression: 'ranking(row_number()) over(partition by [region] order by [amount] desc)',
         },
       ],
     });
@@ -754,7 +754,7 @@ describe('DuckDB integration — compileCalculateFieldSql execution', () => {
       calculations: [
         {
           field: 'rn',
-          expression: 'row_number() over(partition by [region] order by [amount] desc)',
+          expression: 'ranking(row_number()) over(partition by [region] order by [amount] desc)',
         },
       ],
     });
@@ -1198,61 +1198,77 @@ describe('DuckDB integration — cross-row window functions', () => {
   });
 
   // ── Ranking ──
-  it('rank() OVER (ORDER BY amount DESC)', async () => {
-    const rows = await runW('rank() OVER (ORDER BY amount DESC)');
+  it('ranking(rank()) orders rows by amount descending', async () => {
+    const rows = await runW('ranking(rank()) over(order by [amount] desc)');
     // 200(Bob) rank1, 100(Alice) rank2, 50(Charlie) rank3
     expect(rows[0].r).toBe('2'); // Alice rank 2
     expect(rows[1].r).toBe('1'); // Bob rank 1
     expect(rows[2].r).toBe('3'); // Charlie rank 3
   });
 
-  it('row_number() OVER (ORDER BY id)', async () => {
-    const rows = await runW('row_number() OVER (ORDER BY id)');
+  it('ranking(row_number()) assigns row numbers', async () => {
+    const rows = await runW('ranking(row_number()) over(order by [id])');
     expect(rows[0].r).toBe('1');
     expect(rows[1].r).toBe('2');
     expect(rows[2].r).toBe('3');
   });
 
-  it('dense_rank() OVER (PARTITION BY region ORDER BY amount)', async () => {
-    const rows = await runW('dense_rank() OVER (PARTITION BY region ORDER BY amount)');
+  it('ranking(dense_rank()) assigns dense ranks within a partition', async () => {
+    const rows = await runW('ranking(dense_rank()) over(partition by [region] order by [amount])');
     // East: 50(Charlie)=1, 100(Alice)=2; West: 200(Bob)=1
     expect(rows[0].r).toBe('2'); // Alice (East, amount=100 rank2)
     expect(rows[1].r).toBe('1'); // Bob (West, amount=200 rank1)
     expect(rows[2].r).toBe('1'); // Charlie (East, amount=50 rank1)
   });
 
-  it('ntile(2) OVER (ORDER BY id) divides into 2 buckets', async () => {
-    const rows = await runW('ntile(2) OVER (ORDER BY id)');
+  it('ranking(ntile(2)) divides rows into two buckets', async () => {
+    const rows = await runW('ranking(ntile(2)) over(order by [id])');
     // 3 rows, 2 buckets: 1→bucket1, 2→bucket1, 3→bucket2
     expect(rows[0].r).toBe('1');
     expect(rows[1].r).toBe('1');
     expect(rows[2].r).toBe('2');
   });
 
-  it('row_number() over(...) domain DSL expands to the same result', async () => {
-    const rows = await runW('row_number() over(partition by [region] order by [amount] desc)');
+  it('ranking(percent_rank()) calculates the relative rank', async () => {
+    const rows = await runW('ranking(percent_rank()) over(order by [amount])');
+    expect(Number(rows[0].r)).toBeCloseTo(0.5);
+    expect(Number(rows[1].r)).toBeCloseTo(1);
+    expect(Number(rows[2].r)).toBeCloseTo(0);
+  });
+
+  it('ranking(cume_dist()) calculates the cumulative distribution', async () => {
+    const rows = await runW('ranking(cume_dist()) over(order by [amount])');
+    expect(Number(rows[0].r)).toBeCloseTo(2 / 3);
+    expect(Number(rows[1].r)).toBeCloseTo(1);
+    expect(Number(rows[2].r)).toBeCloseTo(1 / 3);
+  });
+
+  it('ranking(row_number()) over(...) domain DSL expands to the same result', async () => {
+    const rows = await runW(
+      'ranking(row_number()) over(partition by [region] order by [amount] desc)'
+    );
     expect(rows[0].r).toBe('1'); // Alice (East, amount=100)
     expect(rows[1].r).toBe('1'); // Bob (West, amount=200)
     expect(rows[2].r).toBe('2'); // Charlie (East, amount=50)
   });
 
-  it('ntile(2) over(...) domain DSL with a bare order identifier expands correctly', async () => {
-    const rows = await runW('ntile(2) over(order by id)');
+  it('ranking(ntile(2)) domain DSL with a bare order identifier expands correctly', async () => {
+    const rows = await runW('ranking(ntile(2)) over(order by id)');
     expect(rows[0].r).toBe('1');
     expect(rows[1].r).toBe('1');
     expect(rows[2].r).toBe('2');
   });
 
   // ── Offset ──
-  it('lag([amount]) OVER (ORDER BY id) returns previous row value', async () => {
-    const rows = await runW('lag([amount]) OVER (ORDER BY id)');
+  it('reference(lag([amount])) returns the previous row value', async () => {
+    const rows = await runW('reference(lag([amount])) over(order by [id])');
     expect(rows[0].r).toBe(null); // Alice: no previous
     expect(rows[1].r).toBe(100); // Bob: previous=100
     expect(rows[2].r).toBe(200); // Charlie: previous=200
   });
 
-  it('lead([amount]) OVER (ORDER BY id) returns next row value', async () => {
-    const rows = await runW('lead([amount]) OVER (ORDER BY id)');
+  it('reference(lead([amount])) returns the next row value', async () => {
+    const rows = await runW('reference(lead([amount])) over(order by [id])');
     expect(rows[0].r).toBe(200); // Alice: next=200
     expect(rows[1].r).toBe(50); // Bob: next=50
     expect(rows[2].r).toBe(null); // Charlie: no next
@@ -1278,20 +1294,51 @@ describe('DuckDB integration — cross-row window functions', () => {
   });
 
   // ── Value ──
-  it('first_value([amount]) OVER (PARTITION BY region ORDER BY id)', async () => {
-    const rows = await runW('first_value([amount]) OVER (PARTITION BY region ORDER BY id)');
+  it('reference(first([amount])) returns the first partition value', async () => {
+    const rows = await runW('reference(first([amount])) over(partition by [region] order by [id])');
     // East: first=100(Alice), West: first=200(Bob)
     expect(rows[0].r).toBe(100); // Alice (East, first=100)
     expect(rows[1].r).toBe(200); // Bob (West, first=200)
     expect(rows[2].r).toBe(100); // Charlie (East, first=100)
   });
 
-  it('last_value([amount]) OVER (PARTITION BY region ORDER BY id) uses the full partition frame', async () => {
-    const rows = await runW('last_value([amount]) OVER (PARTITION BY region ORDER BY id)');
+  it('reference(last([amount])) uses the full partition frame', async () => {
+    const rows = await runW('reference(last([amount])) over(partition by [region] order by [id])');
     // East: last=50(Charlie), West: last=200(Bob)
     expect(rows[0].r).toBe(50); // Alice (East, last=50)
     expect(rows[1].r).toBe(200); // Bob (West, last=200)
     expect(rows[2].r).toBe(50); // Charlie (East, last=50)
+  });
+
+  it('executes renamed group aggregate operations', async () => {
+    const variance = await runW('group(var_pop([amount])) over(partition by [region])');
+    expect(Number(variance[0].r)).toBeCloseTo(625);
+    expect(Number(variance[1].r)).toBeCloseTo(0);
+    expect(Number(variance[2].r)).toBeCloseTo(625);
+
+    const distinct = await runW('group(count_distinct([name])) over(partition by [region])');
+    expect(distinct.map((row) => row.r)).toEqual(['2', '1', '2']);
+
+    const quantile = await runW('group(quantile_cont([amount], 0.5)) over(partition by [region])');
+    expect(quantile.map((row) => Number(row.r))).toEqual([75, 200, 75]);
+
+    const allPositive = await runW('group(bool_and([amount] > 0)) over(partition by [region])');
+    expect(allPositive.map((row) => row.r)).toEqual([true, true, true]);
+
+    const anyAbove150 = await runW('group(bool_or([amount] > 150)) over(partition by [region])');
+    expect(anyAbove150.map((row) => row.r)).toEqual([false, true, false]);
+  });
+
+  it('executes group percentoftotal and string_agg operations', async () => {
+    const percentage = await runW('group(percentoftotal([amount])) over(partition by [region])');
+    expect(Number(percentage[0].r)).toBeCloseTo(2 / 3);
+    expect(Number(percentage[1].r)).toBeCloseTo(1);
+    expect(Number(percentage[2].r)).toBeCloseTo(1 / 3);
+
+    const concatenated = await runW('group(string_agg([name], ",")) over(partition by [region])');
+    expect(new Set(String(concatenated[0].r).split(','))).toEqual(new Set(['Alice', 'Charlie']));
+    expect(concatenated[1].r).toBe('Bob');
+    expect(new Set(String(concatenated[2].r).split(','))).toEqual(new Set(['Alice', 'Charlie']));
   });
 
   // ── Percentage ──
@@ -1399,7 +1446,7 @@ describe('DuckDB integration — cross-row window functions', () => {
       compileCalculateFieldSql('out', 'w', {
         calculations: [
           { field: 'total', expression: 'sum([amount]) OVER ()' },
-          { field: 'rn', expression: 'row_number() OVER (ORDER BY id)' },
+          { field: 'rn', expression: 'ranking(row_number()) over(order by [id])' },
         ],
       })
     );

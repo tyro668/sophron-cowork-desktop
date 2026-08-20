@@ -9,7 +9,8 @@ import {
   validateCalculationFunctionInput,
 } from '../function-input';
 import {
-  calculationFunctionDslId,
+  calculationOperationDslId,
+  calculationSceneDslId,
   getCalculationFunction,
   type CalculationFunctionDefinition,
   type CalculationFunctionInput,
@@ -27,24 +28,30 @@ export function buildCalculationFunctionDslExpression(input: CalculationFunction
   if (definition.category === 'ranking') {
     const args =
       definition.id === 'ntile' ? [buildExtraParameter(definition, input.extraParameter)] : [];
-    return `${canonicalId}(${args.join(', ')})${formatOrderedPartition(input.partitionBy, input.orderBy)}`;
+    return (
+      wrapScene(definition, `${canonicalId}(${args.join(', ')})`) +
+      formatOrderedPartition(input.partitionBy, input.orderBy)
+    );
   }
   const value = formatValue(definition, input);
   if (definition.category === 'group_metrics') {
     return formatGroupMetricDslExpression(definition, input, canonicalId, value);
   }
   if (definition.category === 'cumulative') {
-    return `${canonicalId}(${value})${formatOrderedPartition(input.partitionBy, input.orderBy)}`;
+    return (
+      wrapScene(definition, `${canonicalId}(${value})`) +
+      formatOrderedPartition(input.partitionBy, input.orderBy)
+    );
   }
   if (definition.category === 'moving_window') {
-    return `${canonicalId}(${value})${formatMovingWindowOver(input)}`;
+    return wrapScene(definition, `${canonicalId}(${value})`) + formatMovingWindowOver(input);
   }
   if (definition.category === 'offset') {
     const args = [value];
     const extraParameter = input.extraParameter;
     if (extraParameter) args.push(buildExtraParameter(definition, extraParameter));
     const orderedOver = formatOrderedPartition(input.partitionBy, input.orderBy);
-    return `${canonicalId}(${args.join(', ')})${orderedOver}`;
+    return wrapScene(definition, `${canonicalId}(${args.join(', ')})`) + orderedOver;
   }
   const over = formatPartition(input.partitionBy);
   const date = formatCalculationField(requiredParameter(input, 'dateField'));
@@ -54,7 +61,13 @@ export function buildCalculationFunctionDslExpression(input: CalculationFunction
       const granularity = parameterDefault(definition, 'granularity', 'month');
       args.push(quoteString(input.parameters?.granularity || granularity));
     }
-    return `${canonicalId}(${args.join(', ')})${over}`;
+    const result = input.functionId.endsWith('_value')
+      ? 'value'
+      : input.functionId.endsWith('_difference')
+        ? 'difference'
+        : 'percentchange';
+    args.push(quoteString(result));
+    return wrapScene(definition, `${canonicalId}(${args.join(', ')})`) + over;
   }
 
   const aggregation = parameterDefault(definition, 'aggregation', 'sum');
@@ -70,7 +83,12 @@ export function buildCalculationFunctionDslExpression(input: CalculationFunction
     if (!INTERVAL_UNITS.has(intervalUnit)) {
       throw new Error(`Unsupported rolling interval unit '${intervalUnit}'`);
     }
-    return `rolling_time(${aggregate}, ${date}, ${size}, ${quoteString(intervalUnit)})${over}`;
+    return (
+      wrapScene(
+        definition,
+        `rolling(${aggregate}, ${date}, ${size}, ${quoteString(intervalUnit)})`
+      ) + over
+    );
   }
 
   const args = [aggregate, date];
@@ -82,11 +100,15 @@ export function buildCalculationFunctionDslExpression(input: CalculationFunction
     );
     if (fiscalMonth !== '1') args.push(fiscalMonth);
   }
-  return `${canonicalId}(${args.join(', ')})${over}`;
+  return wrapScene(definition, `${canonicalId}(${args.join(', ')})`) + over;
 }
 
 function canonicalDomainFunctionId(definition: CalculationFunctionDefinition): string {
-  return calculationFunctionDslId(definition);
+  return calculationOperationDslId(definition);
+}
+
+function wrapScene(definition: CalculationFunctionDefinition, operation: string): string {
+  return `${calculationSceneDslId(definition.category)}(${operation})`;
 }
 
 function formatGroupMetricDslExpression(
@@ -107,7 +129,9 @@ function formatGroupMetricDslExpression(
       args.push(buildExtraParameter(definition, input.extraParameter));
     }
   }
-  return `${canonicalId}(${args.join(', ')})${formatPartition(input.partitionBy)}`;
+  return (
+    wrapScene(definition, `${canonicalId}(${args.join(', ')})`) + formatPartition(input.partitionBy)
+  );
 }
 
 function formatMovingWindowOver(input: CalculationFunctionInput): string {

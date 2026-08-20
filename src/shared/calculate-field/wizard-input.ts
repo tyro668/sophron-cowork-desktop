@@ -1,6 +1,7 @@
 import { parseFieldRefExact, toFieldName } from '../prep-dsl/syntax/fields';
 import { parseCalculationFunctionDslExpression } from './domain-dsl';
-import type { CalculationFunctionInput } from './function-registry';
+import { validateCalculationFunctionInput } from './function-input';
+import { getCalculationFunction, type CalculationFunctionInput } from './function-registry';
 
 export function parseCalculationFunctionWizardInput(
   expression: string
@@ -9,6 +10,9 @@ export function parseCalculationFunctionWizardInput(
   try {
     const input = parseCalculationFunctionDslExpression(expression);
     if (!input) return undefined;
+    const definition = getCalculationFunction(input.functionId);
+    if (!definition) return undefined;
+    validateCalculationFunctionInput(definition, input);
     const value = input.value?.trim();
     if (!value || value === '*') return input;
     const field = parseFieldRefExact(value);

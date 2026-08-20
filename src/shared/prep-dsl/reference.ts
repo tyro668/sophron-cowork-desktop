@@ -110,7 +110,7 @@ export const PREP_DSL_OPERATOR_EXAMPLES: PrepDslOperatorExample[] = [
   {
     type: 'calculate_field',
     title: 'Derive window fields',
-    dsl: 'derive [rn] = row_number() over(partition by [region] order by [amount] desc)',
+    dsl: 'derive [rn] = ranking(row_number()) over(partition by [region] order by [amount] desc)',
   },
   {
     type: 'pivot',
@@ -175,20 +175,20 @@ const OPERATORS = [
 
 const DERIVE_WINDOW = [
   'Window analysis is part of derive/calculate_field DSL:',
-  'derive [rn] = row_number() over(partition by [region] order by [amount] desc)',
+  'derive [rn] = ranking(row_number()) over(partition by [region] order by [amount] desc)',
   'derive [running_amount] = sum([amount]) over(partition by [region] order by [created_at] rows between unbounded preceding and current row)',
   '',
   'Period comparison domain functions:',
-  'derive [previous_amount] = previous_value([amount], [created_at]) over(partition by [region])',
-  'derive [yoy_rate] = year_over_year_rate([amount], [created_at], "month") over(partition by [region])',
+  'derive [previous_amount] = compare(previous([amount], [created_at], "value")) over(partition by [region])',
+  'derive [yoy_rate] = compare(sameperiodlastyear([amount], [created_at], "month", "percentchange")) over(partition by [region])',
   'Supported year-over-year grains: "year", "quarter", "month", "week", and "day".',
   'A missing matching year-over-year period produces null.',
   '',
   'Time accumulation domain functions:',
-  'derive [year_amount] = year_to_date(sum([amount]), [created_at]) over(partition by [region])',
-  'derive [fiscal_year_amount] = year_to_date(sum([amount]), [created_at], 4) over(partition by [region])',
-  'derive [month_amount] = month_to_date(sum([amount]), [created_at]) over(partition by [region])',
-  'derive [rolling_7_day_amount] = rolling_time(sum([amount]), [created_at], 7, "day") over(partition by [region])',
+  'derive [year_amount] = accumulate(yeartodate(sum([amount]), [created_at])) over(partition by [region])',
+  'derive [fiscal_year_amount] = accumulate(yeartodate(sum([amount]), [created_at], 4)) over(partition by [region])',
+  'derive [month_amount] = accumulate(monthtodate(sum([amount]), [created_at])) over(partition by [region])',
+  'derive [rolling_7_day_amount] = accumulate(rolling(sum([amount]), [created_at], 7, "day")) over(partition by [region])',
   'Supported time aggregates: sum, avg, count, count(distinct [field]), min, and max.',
   'Domain-function over(...) clauses may contain partition by only; date arguments determine ordering and window behavior.',
 ].join('\n');

@@ -1,16 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { buildCalculationFunctionExpression } from '../../src/shared/calculate-field/sql-expression-builder';
 import {
-  calculationFunctionDslId,
+  calculationSceneDslId,
   calculationFunctionsByCategory,
   CALCULATION_FUNCTION_CATEGORIES,
-  getCalculationFunctionByDslId,
+  getCalculationFunctionBySceneOperation,
+  isCalculationSceneDslId,
   usesTemporalCalculationRangeUnit,
 } from '../../src/shared/calculate-field/function-registry';
 import {
   buildCalculationFunctionDslExpression,
   normalizeCalculationDomainExpression,
 } from '../../src/shared/calculate-field/domain-dsl';
+import { parseCalculationFunctionWizardInput } from '../../src/shared/calculate-field/wizard-input';
 
 describe('calculation function registry', () => {
   it('registers every first-phase function category', () => {
@@ -28,14 +30,28 @@ describe('calculation function registry', () => {
     }
   });
 
-  it('derives DSL ids and resolves them back to registry definitions', () => {
-    const sum = getCalculationFunctionByDslId('group_sum');
-    expect(sum?.id).toBe('sum');
-    expect(sum && calculationFunctionDslId(sum)).toBe('group_sum');
-    expect(getCalculationFunctionByDslId('sum')).toBeUndefined();
-    expect(getCalculationFunctionByDslId('rank')?.id).toBe('rank');
-    expect(getCalculationFunctionByDslId('lag')?.id).toBe('lag');
-    expect(getCalculationFunctionByDslId('no_such_fn')).toBeUndefined();
+  it('resolves operations within their calculation scene', () => {
+    expect(getCalculationFunctionBySceneOperation('group', 'sum')?.id).toBe('sum');
+    expect(getCalculationFunctionBySceneOperation('running', 'sum')?.id).toBe('cumulative_sum');
+    expect(getCalculationFunctionBySceneOperation('ranking', 'rank')?.id).toBe('rank');
+    expect(getCalculationFunctionBySceneOperation('reference', 'lag')?.id).toBe('lag');
+    expect(getCalculationFunctionBySceneOperation('group', 'group_sum')).toBeUndefined();
+    expect(getCalculationFunctionBySceneOperation('group', 'no_such_fn')).toBeUndefined();
+  });
+
+  it('derives the supported scene ids from the category registry', () => {
+    const scenes = CALCULATION_FUNCTION_CATEGORIES.map(calculationSceneDslId);
+    expect(scenes).toEqual([
+      'group',
+      'ranking',
+      'running',
+      'reference',
+      'moving',
+      'compare',
+      'accumulate',
+    ]);
+    expect(scenes.every(isCalculationSceneDslId)).toBe(true);
+    expect(isCalculationSceneDslId('unknown')).toBe(false);
   });
 
   it('uses the first range order field to determine whether to show time units', () => {
@@ -164,20 +180,32 @@ describe('calculation function registry', () => {
           { field: 'date', direction: 'asc' },
         ],
       })
-    ).toBe('rank() over(partition by [region] order by [amount] desc, [date])');
+    ).toBe('ranking(rank()) over(partition by [region] order by [amount] desc, [date])');
     expect(
       buildCalculationFunctionDslExpression({
         functionId: 'ntile',
         extraParameter: '4',
         orderBy: [{ field: 'amount', direction: 'desc' }],
       })
-    ).toBe('ntile(4) over(order by [amount] desc)');
+    ).toBe('ranking(ntile(4)) over(order by [amount] desc)');
     expect(
       buildCalculationFunctionDslExpression({
         functionId: 'row_number',
         orderBy: [{ field: 'id', direction: 'asc' }],
       })
-    ).toBe('row_number() over(order by [id])');
+    ).toBe('ranking(row_number()) over(order by [id])');
+    expect(
+      ['dense_rank', 'percent_rank', 'cume_dist'].map((functionId) =>
+        buildCalculationFunctionDslExpression({
+          functionId,
+          orderBy: [{ field: 'amount', direction: 'asc' }],
+        })
+      )
+    ).toEqual([
+      'ranking(dense_rank()) over(order by [amount])',
+      'ranking(percent_rank()) over(order by [amount])',
+      'ranking(cume_dist()) over(order by [amount])',
+    ]);
   });
 
   it('applies the default bucket count when ntile omits the parameter', () => {
@@ -186,35 +214,64 @@ describe('calculation function registry', () => {
         functionId: 'ntile',
         orderBy: [{ field: 'amount', direction: 'desc' }],
       })
-    ).toBe('ntile(2) over(order by [amount] desc)');
+    ).toBe('ranking(ntile(2)) over(order by [amount] desc)');
   });
 
   it('parses and normalizes ranking domain DSL', () => {
     expect(
       normalizeCalculationDomainExpression(
-        'rank() over(partition by [region] order by [amount] desc, [date])'
+        'ranking(rank()) over(partition by [region] order by [amount] desc, [date])'
       )
-    ).toBe('rank() over(partition by [region] order by [amount] desc, [date])');
-    expect(normalizeCalculationDomainExpression('ntile(4) over(order by [amount] desc)')).toBe(
-      'ntile(4) over(order by [amount] desc)'
+    ).toBe('ranking(rank()) over(partition by [region] order by [amount] desc, [date])');
+    expect(
+      normalizeCalculationDomainExpression('ranking(ntile(4)) over(order by [amount] desc)')
+    ).toBe('ranking(ntile(4)) over(order by [amount] desc)');
+  });
+
+  it('rejects unterminated over clauses in direct and wizard parsing', () => {
+    const partitionExpression = 'group(sum([amount])) over(partition by [region]';
+    const orderedExpression = 'ranking(rank()) over(order by [amount]';
+    const framedExpression =
+      'moving(avg([amount])) over(order by [date] rows between 1 preceding and current row';
+
+    expect(() => normalizeCalculationDomainExpression(partitionExpression)).toThrow(
+      /closing parenthesis/
     );
+    expect(() => normalizeCalculationDomainExpression(orderedExpression)).toThrow(
+      /closing parenthesis/
+    );
+    expect(() => normalizeCalculationDomainExpression(framedExpression)).toThrow(
+      /closing parenthesis/
+    );
+    expect(parseCalculationFunctionWizardInput(partitionExpression)).toBeUndefined();
+    expect(parseCalculationFunctionWizardInput(orderedExpression)).toBeUndefined();
+    expect(parseCalculationFunctionWizardInput(framedExpression)).toBeUndefined();
+  });
+
+  it('rejects invalid domain parameters before restoring graphical configuration', () => {
+    expect(
+      parseCalculationFunctionWizardInput('group(quantile_cont([amount], 3))')
+    ).toBeUndefined();
+    expect(
+      parseCalculationFunctionWizardInput('group(quantile_cont([amount], 0.5))')
+    ).toMatchObject({ functionId: 'quantile_cont', value: 'amount', extraParameter: '0.5' });
   });
 
   it('rejects ranking without order, with a frame, or with a bad bucket count', () => {
     expect(() =>
-      normalizeCalculationDomainExpression('rank() over(partition by [region])')
+      normalizeCalculationDomainExpression('ranking(rank()) over(partition by [region])')
     ).toThrow(/order by|order fields/);
     expect(() =>
       normalizeCalculationDomainExpression(
-        'rank() over(order by [amount] rows between 1 preceding and current row)'
+        'ranking(rank()) over(order by [amount] rows between 1 preceding and current row)'
       )
     ).toThrow(/does not allow a window frame/);
-    expect(() => normalizeCalculationDomainExpression('ntile() over(order by [amount])')).toThrow(
-      /expects 1 arguments/
-    );
-    expect(() => normalizeCalculationDomainExpression('ntile(0) over(order by [amount])')).toThrow(
-      /outside its range/
-    );
+    expect(() =>
+      normalizeCalculationDomainExpression('ranking(ntile()) over(order by [amount])')
+    ).toThrow(/expects 1 arguments/);
+    expect(() =>
+      normalizeCalculationDomainExpression('ranking(ntile(0)) over(order by [amount])')
+    ).toThrow(/outside its range/);
   });
 
   it('builds a cumulative calculation with a fixed frame', () => {
@@ -428,7 +485,9 @@ describe('calculation function registry', () => {
         partitionBy: ['region'],
         parameters: { dateField: 'date', granularity: 'month' },
       })
-    ).toBe('year_over_year_value([sales], [date], "month") over(partition by [region])');
+    ).toBe(
+      'compare(sameperiodlastyear([sales], [date], "month", "value")) over(partition by [region])'
+    );
     expect(
       buildCalculationFunctionDslExpression({
         functionId: 'year_to_date',
@@ -436,15 +495,17 @@ describe('calculation function registry', () => {
         partitionBy: ['region'],
         parameters: { dateField: 'date', aggregation: 'sum', fiscalStartMonth: '4' },
       })
-    ).toBe('year_to_date(sum([sales]), [date], 4) over(partition by [region])');
+    ).toBe('accumulate(yeartodate(sum([sales]), [date], 4)) over(partition by [region])');
   });
 
   it('normalizes domain DSL spacing', () => {
     expect(
       normalizeCalculationDomainExpression(
-        'year_over_year_value( [sales] , [date] , "month" ) over( partition by [region] )'
+        'compare( sameperiodlastyear( [sales] , [date] , "month" , "value" ) ) over( partition by [region] )'
       )
-    ).toBe('year_over_year_value([sales], [date], "month") over(partition by [region])');
+    ).toBe(
+      'compare(sameperiodlastyear([sales], [date], "month", "value")) over(partition by [region])'
+    );
   });
 
   it('week_to_date partitions by ISO year so the year boundary does not split a week', () => {
@@ -494,7 +555,7 @@ describe('calculation function registry', () => {
         partitionBy: ['region'],
         orderBy,
       })
-    ).toBe('lag([sales]) over(partition by [region] order by [date])');
+    ).toBe('reference(lag([sales])) over(partition by [region] order by [date])');
     expect(
       buildCalculationFunctionDslExpression({
         functionId: 'lead',
@@ -503,7 +564,7 @@ describe('calculation function registry', () => {
         partitionBy: ['region'],
         orderBy,
       })
-    ).toBe('lead([sales], 2) over(partition by [region] order by [date])');
+    ).toBe('reference(lead([sales], 2)) over(partition by [region] order by [date])');
   });
 
   it('builds offset_difference and offset_rate domain DSL', () => {
@@ -520,7 +581,7 @@ describe('calculation function registry', () => {
         orderBy,
       })
     ).toBe(
-      'offset_difference([sales], 2) over(partition by [region] order by [amount] desc, [date])'
+      'reference(difference([sales], 2)) over(partition by [region] order by [amount] desc, [date])'
     );
     expect(
       buildCalculationFunctionDslExpression({
@@ -530,7 +591,9 @@ describe('calculation function registry', () => {
         partitionBy: ['region'],
         orderBy,
       })
-    ).toBe('offset_rate([sales], 2) over(partition by [region] order by [amount] desc, [date])');
+    ).toBe(
+      'reference(rate([sales], 2)) over(partition by [region] order by [amount] desc, [date])'
+    );
   });
 
   it('builds first_value, last_value and nth_value domain DSL', () => {
@@ -541,7 +604,7 @@ describe('calculation function registry', () => {
         value: 'sales',
         orderBy,
       })
-    ).toBe('first_value([sales]) over(order by [date])');
+    ).toBe('reference(first([sales])) over(order by [date])');
     expect(
       buildCalculationFunctionDslExpression({
         functionId: 'last_value',
@@ -549,7 +612,7 @@ describe('calculation function registry', () => {
         partitionBy: ['region'],
         orderBy,
       })
-    ).toBe('last_value([sales]) over(partition by [region] order by [date])');
+    ).toBe('reference(last([sales])) over(partition by [region] order by [date])');
     expect(
       buildCalculationFunctionDslExpression({
         functionId: 'nth_value',
@@ -557,15 +620,15 @@ describe('calculation function registry', () => {
         extraParameter: '3',
         orderBy,
       })
-    ).toBe('nth_value([sales], 3) over(order by [date])');
+    ).toBe('reference(nth([sales], 3)) over(order by [date])');
   });
 
   it('parses offset domain DSL back into a structured input', () => {
     const parsed = normalizeCalculationDomainExpression(
-      'offset_difference([sales], 2) over(partition by [region] order by [amount] desc, [date])'
+      'reference(difference([sales], 2)) over(partition by [region] order by [amount] desc, [date])'
     );
     expect(parsed).toBe(
-      'offset_difference([sales], 2) over(partition by [region] order by [amount] desc, [date])'
+      'reference(difference([sales], 2)) over(partition by [region] order by [amount] desc, [date])'
     );
   });
 
@@ -589,14 +652,14 @@ describe('calculation function registry', () => {
         value: 'amount',
         partitionBy: ['region'],
       })
-    ).toBe('group_sum([amount]) over(partition by [region])');
+    ).toBe('group(sum([amount])) over(partition by [region])');
     expect(
       buildCalculationFunctionDslExpression({
         functionId: 'count',
         value: '*',
         partitionBy: ['region'],
       })
-    ).toBe('group_count(*) over(partition by [region])');
+    ).toBe('group(count(*)) over(partition by [region])');
     expect(
       buildCalculationFunctionDslExpression({
         functionId: 'quantile_cont',
@@ -604,7 +667,7 @@ describe('calculation function registry', () => {
         extraParameter: '0.5',
         partitionBy: ['region'],
       })
-    ).toBe('group_quantile_cont([amount], 0.5) over(partition by [region])');
+    ).toBe('group(quantile_cont([amount], 0.5)) over(partition by [region])');
     expect(
       buildCalculationFunctionDslExpression({
         functionId: 'string_agg',
@@ -612,7 +675,28 @@ describe('calculation function registry', () => {
         extraParameter: ', ',
         partitionBy: ['region'],
       })
-    ).toBe('group_string_agg([name], ", ") over(partition by [region])');
+    ).toBe('group(string_agg([name], ", ")) over(partition by [region])');
+    expect(
+      ['var', 'bool_and', 'bool_or', 'count_distinct'].map((functionId) =>
+        buildCalculationFunctionDslExpression({
+          functionId,
+          value: 'amount',
+          partitionBy: ['region'],
+        })
+      )
+    ).toEqual([
+      'group(var_pop([amount])) over(partition by [region])',
+      'group(bool_and([amount])) over(partition by [region])',
+      'group(bool_or([amount])) over(partition by [region])',
+      'group(count_distinct([amount])) over(partition by [region])',
+    ]);
+    expect(
+      buildCalculationFunctionDslExpression({
+        functionId: 'percentage',
+        value: 'amount',
+        partitionBy: ['region'],
+      })
+    ).toBe('group(percentoftotal([amount])) over(partition by [region])');
   });
 
   it('builds canonical cumulative and moving window domain DSL', () => {
@@ -624,7 +708,7 @@ describe('calculation function registry', () => {
         partitionBy: ['region'],
         orderBy,
       })
-    ).toBe('cumulative_sum([amount]) over(partition by [region] order by [date])');
+    ).toBe('running(sum([amount])) over(partition by [region] order by [date])');
     expect(
       buildCalculationFunctionDslExpression({
         functionId: 'moving_avg',
@@ -638,36 +722,36 @@ describe('calculation function registry', () => {
         },
       })
     ).toBe(
-      'moving_avg([amount]) over(partition by [region] order by [date] rows between 1 preceding and current row)'
+      'moving(avg([amount])) over(partition by [region] order by [date] rows between 1 preceding and current row)'
     );
   });
 
   it('parses and normalizes group, cumulative and moving domain DSL', () => {
     expect(
-      normalizeCalculationDomainExpression('group_sum( [amount] ) over( partition by [region] )')
-    ).toBe('group_sum([amount]) over(partition by [region])');
+      normalizeCalculationDomainExpression('group(sum( [amount] )) over( partition by [region] )')
+    ).toBe('group(sum([amount])) over(partition by [region])');
     expect(
       normalizeCalculationDomainExpression(
-        'cumulative_sum([amount]) over(partition by [region] order by [date])'
+        'running(sum([amount])) over(partition by [region] order by [date])'
       )
-    ).toBe('cumulative_sum([amount]) over(partition by [region] order by [date])');
+    ).toBe('running(sum([amount])) over(partition by [region] order by [date])');
     expect(
       normalizeCalculationDomainExpression(
-        'moving_avg([amount]) over(partition by [region] order by [date] rows between 1 preceding and current row)'
+        'moving(avg([amount])) over(partition by [region] order by [date] rows between 1 preceding and current row)'
       )
     ).toBe(
-      'moving_avg([amount]) over(partition by [region] order by [date] rows between 1 preceding and current row)'
+      'moving(avg([amount])) over(partition by [region] order by [date] rows between 1 preceding and current row)'
     );
   });
 
   it('rejects cumulative with a frame and moving without a frame', () => {
     expect(() =>
       normalizeCalculationDomainExpression(
-        'cumulative_sum([amount]) over(order by [date] rows between 1 preceding and current row)'
+        'running(sum([amount])) over(order by [date] rows between 1 preceding and current row)'
       )
     ).toThrow(/does not allow a window frame/);
     expect(() =>
-      normalizeCalculationDomainExpression('moving_avg([amount]) over(order by [date])')
+      normalizeCalculationDomainExpression('moving(avg([amount])) over(order by [date])')
     ).toThrow(/requires a window frame/);
   });
 
@@ -679,32 +763,32 @@ describe('calculation function registry', () => {
         extraParameter: ', ',
         partitionBy: ['region'],
       })
-    ).toBe('group_string_agg([name], ", ") over(partition by [region])');
+    ).toBe('group(string_agg([name], ", ")) over(partition by [region])');
     expect(
       buildCalculationFunctionDslExpression({
         functionId: 'string_agg',
         value: 'name',
         extraParameter: ' ',
       })
-    ).toBe('group_string_agg([name], " ")');
+    ).toBe('group(string_agg([name], " "))');
   });
 
   it('rejects explicit window frames on offset and parses them directly without silent drop', () => {
     expect(() =>
       normalizeCalculationDomainExpression(
-        'lag([sales]) over(order by [date] rows between 1 preceding and current row)'
+        'reference(lag([sales])) over(order by [date] rows between 1 preceding and current row)'
       )
     ).toThrow(/does not allow a window frame/);
     expect(() =>
       normalizeCalculationDomainExpression(
-        'offset_difference([sales], 2) over(order by [date] rows between 1 preceding and current row)'
+        'reference(difference([sales], 2)) over(order by [date] rows between 1 preceding and current row)'
       )
     ).toThrow(/does not allow a window frame/);
   });
 
   it('rejects bare identifiers in over order by', () => {
     expect(() =>
-      normalizeCalculationDomainExpression('moving_avg([sales]) over(order by date)')
+      normalizeCalculationDomainExpression('moving(avg([sales])) over(order by date)')
     ).toThrow(/field references/);
   });
 
@@ -722,12 +806,12 @@ describe('calculation function registry', () => {
   it('rejects same-category frame bounds whose start is after end', () => {
     expect(() =>
       normalizeCalculationDomainExpression(
-        'moving_avg([sales]) over(order by [date] rows between 2 preceding and 10 preceding)'
+        'moving(avg([sales])) over(order by [date] rows between 2 preceding and 10 preceding)'
       )
     ).toThrow(/Invalid window frame order|invalid window frame/i);
     expect(() =>
       normalizeCalculationDomainExpression(
-        'moving_avg([sales]) over(order by [date] rows between 10 following and 2 following)'
+        'moving(avg([sales])) over(order by [date] rows between 10 following and 2 following)'
       )
     ).toThrow(/Invalid window frame order|invalid window frame/i);
   });
@@ -735,17 +819,17 @@ describe('calculation function registry', () => {
   it('parses frame directly from the token cursor without regex fallback', () => {
     expect(
       normalizeCalculationDomainExpression(
-        'moving_avg([sales]) over(order by [date] range between interval 7 "day" preceding and current row)'
+        'moving(avg([sales])) over(order by [date] range between interval 7 "day" preceding and current row)'
       )
     ).toBe(
-      'moving_avg([sales]) over(order by [date] range between interval 7 "day" preceding and current row)'
+      'moving(avg([sales])) over(order by [date] range between interval 7 "day" preceding and current row)'
     );
   });
 
   it('rejects unquoted interval units in frame bounds', () => {
     expect(() =>
       normalizeCalculationDomainExpression(
-        'moving_avg([sales]) over(order by [date] range between interval 7 day preceding and current row)'
+        'moving(avg([sales])) over(order by [date] range between interval 7 day preceding and current row)'
       )
     ).toThrow(/interval frame unit/i);
   });

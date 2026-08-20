@@ -216,12 +216,12 @@ const currentOperatorCases: Array<{
   {
     name: 'derive window field',
     type: 'calculate_field',
-    dsl: 'derive [rn] = row_number() over(partition by [region] order by [revenue] desc)',
+    dsl: 'derive [rn] = ranking(row_number()) over(partition by [region] order by [revenue] desc)',
     expectedConfig: {
       calculations: [
         {
           field: 'rn',
-          expression: 'row_number() over(partition by [region] order by [revenue] desc)',
+          expression: 'ranking(row_number()) over(partition by [region] order by [revenue] desc)',
         },
       ],
     },
@@ -1071,7 +1071,7 @@ describe('operator DSL executable cases', () => {
         | missing value [region] nullify values ("", "N/A")
         | missing value [region] fill "UNKNOWN"
         | deduplicate by [order_id] keep last order by [updated_at] desc
-        | derive [rn] = row_number() over(partition by [region] order by [revenue] desc)
+        | derive [rn] = ranking(row_number()) over(partition by [region] order by [revenue] desc)
         | filter [status] = "PAID" and [revenue] > 0
         | join left customers
             on [orders].[customer_id] = [customers].[customer_id]

@@ -1,6 +1,8 @@
 import { splitTopLevel } from '../../prep-dsl/syntax/scanner';
 import {
-  getCalculationFunctionByDslId,
+  getCalculationFunctionBySceneOperation,
+  isCalculationSceneDslId,
+  LEGACY_DOMAIN_FUNCTION_IDS,
   MAX_CALCULATION_WINDOW_SIZE,
   MAX_FISCAL_START_MONTH,
   type CalculationFunctionDefinition,
@@ -27,28 +29,60 @@ export function parseDomainExpression(
   options: DomainParseOptions = {}
 ): CalculationFunctionInput | null {
   const tokens = tokenizeDomainExpression(expression);
-  const functionToken = tokens[0];
-  const openToken = tokens[1];
+  const sceneToken = tokens[0];
+  const sceneOpenToken = tokens[1];
   if (
-    !functionToken ||
-    functionToken.type !== 'Ident' ||
-    !openToken ||
-    openToken.type !== 'ParenOpen'
+    !sceneToken ||
+    sceneToken.type !== 'Ident' ||
+    !sceneOpenToken ||
+    sceneOpenToken.type !== 'ParenOpen'
   ) {
     return null;
   }
-  const functionId = functionToken.value.toLowerCase();
-  const definition = getCalculationFunctionByDslId(functionId);
-  if (!definition) return null;
-
-  const closeToken = findMatchingParenToken(tokens, 1);
+  const scene = sceneToken.value.toLowerCase();
+  if (!isCalculationSceneDslId(scene)) {
+    if (LEGACY_DOMAIN_FUNCTION_IDS.has(scene)) {
+      throw new Error(`Legacy calculation function '${scene}' is no longer supported`);
+    }
+    return null;
+  }
+  const sceneCloseToken = findMatchingParenToken(tokens, 1);
+  if (!sceneCloseToken) {
+    throw new Error(`Calculation scene '${scene}' has an unclosed argument list`);
+  }
+  const operationExpression = expression.slice(sceneOpenToken.end, sceneCloseToken.start).trim();
+  const operationTokens = tokenizeDomainExpression(operationExpression);
+  const operationToken = operationTokens[0];
+  const openToken = operationTokens[1];
+  if (!operationToken || operationToken.type !== 'Ident' || openToken?.type !== 'ParenOpen') {
+    throw new Error(`Calculation scene '${scene}' requires one operation call`);
+  }
+  const functionId = operationToken.value.toLowerCase();
+  const closeToken = findMatchingParenToken(operationTokens, 1);
   if (!closeToken) {
     throw new Error(`Calculation function '${functionId}' has an unclosed argument list`);
   }
-  const args = splitTopLevel(expression.slice(openToken.end, closeToken.start)).map((arg) =>
-    arg.trim()
+  if (operationExpression.slice(closeToken.end).trim()) {
+    throw new Error(`Calculation scene '${scene}' only allows one operation call`);
+  }
+  const args = splitTopLevel(operationExpression.slice(openToken.end, closeToken.start)).map(
+    (arg) => arg.trim()
   );
-  const tail = expression.slice(closeToken.end).trim();
+  const tail = expression.slice(sceneCloseToken.end).trim();
+  let result: string | undefined;
+  if (scene === 'compare') {
+    const expectedArguments =
+      functionId === 'previous' ? 3 : functionId === 'sameperiodlastyear' ? 4 : undefined;
+    if (!expectedArguments) {
+      throw new Error(`Calculation scene '${scene}' does not support operation '${functionId}'`);
+    }
+    requireArgumentCount(functionId, args, expectedArguments);
+    result = requiredString(functionId, args[expectedArguments - 1], expectedArguments);
+  }
+  const definition = getCalculationFunctionBySceneOperation(scene, functionId, result);
+  if (!definition) {
+    throw new Error(`Calculation scene '${scene}' does not support operation '${functionId}'`);
+  }
 
   if (definition.category === 'group_metrics') {
     const partitionBy = parsePartition(tail);
@@ -113,9 +147,9 @@ export function parseDomainExpression(
       throw new Error(`Calculation function '${functionId}' does not allow a window frame`);
     }
     if (
-      functionId === 'nth_value' ||
-      functionId === 'offset_difference' ||
-      functionId === 'offset_rate'
+      definition.id === 'nth_value' ||
+      definition.id === 'offset_difference' ||
+      definition.id === 'offset_rate'
     ) {
       requireArgumentCount(functionId, args, 2);
       const offset = positiveInteger(functionId, args[1], 2, MAX_CALCULATION_WINDOW_SIZE);
@@ -128,7 +162,7 @@ export function parseDomainExpression(
         extraParameter: offset,
       };
     }
-    if (functionId === 'first_value' || functionId === 'last_value') {
+    if (definition.id === 'first_value' || definition.id === 'last_value') {
       requireArgumentCount(functionId, args, 1);
       return {
         functionId: definition.id,
@@ -162,14 +196,12 @@ export function parseDomainExpression(
   const partitionBy = parsePartition(tail);
 
   if (definition.category === 'period_compare') {
-    if (functionId.startsWith('previous_')) {
-      requireArgumentCount(functionId, args, 2);
+    if (functionId === 'previous') {
       return domainInput(definition.id, requiredValue(functionId, args[0], 1), partitionBy, {
         dateField: requiredField(functionId, args[1], 2),
       });
     }
-    if (functionId.startsWith('year_over_year_')) {
-      requireArgumentCount(functionId, args, 3);
+    if (functionId === 'sameperiodlastyear') {
       const granularity = requiredString(functionId, args[2], 3);
       if (!PERIOD_GRAINS.has(granularity)) {
         throw new Error(
@@ -182,7 +214,7 @@ export function parseDomainExpression(
       });
     }
   }
-  return parseTimeExpression(functionId, args, partitionBy);
+  return parseTimeExpression(definition.id, functionId, args, partitionBy);
 }
 
 function parseGroupMetricExpression(
@@ -215,13 +247,14 @@ function parseGroupMetricExpression(
 }
 
 function parseTimeExpression(
+  internalFunctionId: string,
   functionId: string,
   args: string[],
   partitionBy: string[]
 ): CalculationFunctionInput {
-  const rolling = functionId === 'rolling_time';
+  const rolling = internalFunctionId === 'rolling_time';
   const minArgs = rolling ? 4 : 2;
-  const maxArgs = functionId === 'year_to_date' ? 3 : minArgs;
+  const maxArgs = internalFunctionId === 'year_to_date' ? 3 : minArgs;
   if (args.length < minArgs || args.length > maxArgs) {
     const expected = minArgs === maxArgs ? minArgs : `${minArgs} or ${maxArgs}`;
     throw new Error(`Calculation function '${functionId}' expects ${expected} arguments`);
@@ -253,7 +286,7 @@ function parseTimeExpression(
       parameterMax(functionId, 'fiscalStartMonth', MAX_FISCAL_START_MONTH)
     );
   }
-  return domainInput(functionId, aggregate.value, partitionBy, parameters);
+  return domainInput(internalFunctionId, aggregate.value, partitionBy, parameters);
 }
 
 function domainInput(

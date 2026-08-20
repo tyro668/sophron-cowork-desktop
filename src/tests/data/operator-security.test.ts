@@ -70,26 +70,26 @@ describe('data operator security boundaries', () => {
 
   it('rejects DSL argument injection in domain functions', () => {
     expect(() =>
-      normalizeCalculationDomainExpression('ntile(1.5) over(order by [amount])')
+      normalizeCalculationDomainExpression('ranking(ntile(1.5)) over(order by [amount])')
     ).toThrow(/must be an integer/);
     expect(() =>
-      normalizeCalculationDomainExpression('nth_value([amount], 0) over(order by [date])')
+      normalizeCalculationDomainExpression('reference(nth([amount], 0)) over(order by [date])')
     ).toThrow(/outside its range/);
     expect(() =>
-      normalizeCalculationDomainExpression('lag([amount], 0) over(order by [date])')
+      normalizeCalculationDomainExpression('reference(lag([amount], 0)) over(order by [date])')
     ).toThrow(/outside its range/);
   });
 
   it('accepts valid domain function arguments', () => {
-    expect(normalizeCalculationDomainExpression('ntile(2) over(order by [amount])')).toBe(
-      'ntile(2) over(order by [amount])'
-    );
-    expect(normalizeCalculationDomainExpression('lag([amount], 1) over(order by [date])')).toBe(
-      'lag([amount], 1) over(order by [date])'
+    expect(normalizeCalculationDomainExpression('ranking(ntile(2)) over(order by [amount])')).toBe(
+      'ranking(ntile(2)) over(order by [amount])'
     );
     expect(
+      normalizeCalculationDomainExpression('reference(lag([amount], 1)) over(order by [date])')
+    ).toBe('reference(lag([amount], 1)) over(order by [date])');
+    expect(
       expandCalculationDomainExpression(
-        'group_quantile_cont([amount], 0.5) over(partition by [region])'
+        'group(quantile_cont([amount], 0.5)) over(partition by [region])'
       )
     ).toContain('quantile_cont([amount], 0.5)');
   });
@@ -97,7 +97,7 @@ describe('data operator security boundaries', () => {
   it('rejects out-of-range quantile parameters when expanding to SQL', () => {
     expect(() =>
       expandCalculationDomainExpression(
-        'group_quantile_cont([amount], 1.1) over(partition by [region])'
+        'group(quantile_cont([amount], 1.1)) over(partition by [region])'
       )
     ).toThrow(/outside its range/);
   });

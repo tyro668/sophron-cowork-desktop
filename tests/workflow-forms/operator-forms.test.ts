@@ -142,7 +142,7 @@ describe('operator forms — config ↔ DSL round-trip', () => {
         calculations: [
           {
             field: 'rn',
-            expression: 'row_number() over(partition by [region] order by [revenue] desc)',
+            expression: 'ranking(row_number()) over(partition by [region] order by [revenue] desc)',
           },
         ],
       },

@@ -29,7 +29,6 @@ export interface CalculationFunctionDefinition {
   valueArgument: CalculationValueArgument;
   order: CalculationOrderRequirement;
   frame: CalculationFrameMode;
-  domainDslId?: string;
   extraParameter?: CalculationExtraParameter;
   expressionKind?: 'native' | 'count-distinct' | 'percentage' | 'offset-diff' | 'offset-rate';
   parameters?: CalculationFunctionParameter[];
@@ -91,7 +90,6 @@ const groupMetricFunctions: CalculationFunctionDefinition[] = [
       id,
       category: 'group_metrics',
       labelKey: `calcFieldFn_${id}`,
-      domainDslId: `group_${id}`,
       valueArgument: 'field',
       order: 'none',
       frame: 'none',
@@ -111,7 +109,6 @@ const groupMetricFunctions: CalculationFunctionDefinition[] = [
       id,
       category: 'group_metrics',
       labelKey: `calcFieldFn_${id}`,
-      domainDslId: `group_${id}`,
       valueArgument: 'field',
       order: 'none',
       frame: 'none',
@@ -121,7 +118,6 @@ const groupMetricFunctions: CalculationFunctionDefinition[] = [
     id: 'count',
     category: 'group_metrics',
     labelKey: 'calcFieldFn_count',
-    domainDslId: 'group_count',
     valueArgument: 'field-or-star',
     order: 'none',
     frame: 'none',
@@ -139,7 +135,6 @@ const groupMetricFunctions: CalculationFunctionDefinition[] = [
     id: 'quantile_cont',
     category: 'group_metrics',
     labelKey: 'calcFieldFn_quantile_cont',
-    domainDslId: 'group_quantile_cont',
     valueArgument: 'field',
     order: 'none',
     frame: 'none',
@@ -155,7 +150,6 @@ const groupMetricFunctions: CalculationFunctionDefinition[] = [
     id: 'string_agg',
     category: 'group_metrics',
     labelKey: 'calcFieldFn_string_agg',
-    domainDslId: 'group_string_agg',
     valueArgument: 'field',
     order: 'none',
     frame: 'none',
@@ -420,18 +414,71 @@ export function getCalculationFunction(
   return CALCULATION_FUNCTIONS.find((definition) => definition.id === functionId);
 }
 
-export function calculationFunctionDslId(definition: CalculationFunctionDefinition): string {
-  return definition.domainDslId ?? definition.id;
+const CALCULATION_SCENE_BY_CATEGORY = {
+  group_metrics: 'group',
+  ranking: 'ranking',
+  cumulative: 'running',
+  offset: 'reference',
+  moving_window: 'moving',
+  period_compare: 'compare',
+  time_intelligence: 'accumulate',
+} as const satisfies Record<CalculationFunctionCategory, string>;
+
+const CALCULATION_SCENE_DSL_IDS: ReadonlySet<string> = new Set(
+  Object.values(CALCULATION_SCENE_BY_CATEGORY)
+);
+
+export function calculationSceneDslId(category: CalculationFunctionCategory): string {
+  return CALCULATION_SCENE_BY_CATEGORY[category];
 }
 
-export function getCalculationFunctionByDslId(
-  dslId: string
+export function isCalculationSceneDslId(value: string): boolean {
+  return CALCULATION_SCENE_DSL_IDS.has(value);
+}
+
+export function calculationOperationDslId(definition: CalculationFunctionDefinition): string {
+  const ids: Record<string, string> = {
+    percentage: 'percentoftotal',
+    var: 'var_pop',
+    first_value: 'first',
+    last_value: 'last',
+    nth_value: 'nth',
+    offset_difference: 'difference',
+    offset_rate: 'rate',
+    rolling_time: 'rolling',
+    year_to_date: 'yeartodate',
+    quarter_to_date: 'quartertodate',
+    month_to_date: 'monthtodate',
+    week_to_date: 'weektodate',
+  };
+  if (definition.category === 'period_compare') {
+    return definition.id.startsWith('previous_') ? 'previous' : 'sameperiodlastyear';
+  }
+  if (definition.category === 'cumulative') return definition.id.slice('cumulative_'.length);
+  if (definition.category === 'moving_window') return definition.id.slice('moving_'.length);
+  return ids[definition.id] ?? definition.id;
+}
+
+export function getCalculationFunctionBySceneOperation(
+  scene: string,
+  operation: string,
+  result?: string
 ): CalculationFunctionDefinition | undefined {
-  return CALCULATION_FUNCTIONS.find(
-    (definition) => (definition.domainDslId ?? definition.id) === dslId
-  );
+  return CALCULATION_FUNCTIONS.find((definition) => {
+    if (calculationSceneDslId(definition.category) !== scene) return false;
+    if (calculationOperationDslId(definition) !== operation) return false;
+    if (definition.category !== 'period_compare') return true;
+    const suffix = result === 'percentchange' ? 'rate' : result;
+    return definition.id.endsWith(`_${suffix}`);
+  });
 }
 
-export const DOMAIN_FUNCTION_IDS: ReadonlySet<string> = new Set(
-  CALCULATION_FUNCTIONS.map((definition) => calculationFunctionDslId(definition))
+export const LEGACY_DOMAIN_FUNCTION_IDS: ReadonlySet<string> = new Set(
+  CALCULATION_FUNCTIONS.map((definition) => {
+    if (definition.category !== 'group_metrics') return definition.id;
+    if (definition.id === 'percentage' || definition.id === 'count_distinct') {
+      return definition.id;
+    }
+    return `group_${definition.id}`;
+  })
 );

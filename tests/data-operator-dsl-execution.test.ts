@@ -253,7 +253,7 @@ function main() {
       `
         input source task as orders
           | cast [revenue] as float on_error null
-          | derive [rn] = row_number() over(partition by [region] order by [revenue] desc)
+          | derive [rn] = ranking(row_number()) over(partition by [region] order by [revenue] desc)
           | filter [rn] <= 2
           | sort by [region] asc, [rn] asc
           | output table "operator_window_derive_output" mode replace
