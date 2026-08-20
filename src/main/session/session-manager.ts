@@ -43,6 +43,10 @@ import { mcpConfigStore } from '../mcp/mcp-config-store';
 import { PluginRuntimeService } from '../skills/plugin-runtime-service';
 import { AgentRuntimeExtensionManager } from '../extensions/agent-runtime-extension-manager';
 import {
+  buildCloudTableAttachmentPrompt,
+  buildFileAttachmentPrompt,
+} from '../prompts/conversation-context';
+import {
   clearSessionPermissionRules,
   forgetSessionPermissions,
   setSessionPermissionRules,
@@ -675,12 +679,7 @@ export class SessionManager {
       connection: table.connectionLabel,
     }));
 
-    return [
-      '[Cloud analysis tables added to this conversation]',
-      'Use these Personal Analysis table references when answering the user.',
-      'If the user asks to modify or overwrite a cloud table, first import the table into the local cowork data workspace, create or update a local output table, then ask for confirmation before uploading with REPLACE mode.',
-      JSON.stringify(payload, null, 2),
-    ].join('\n');
+    return buildCloudTableAttachmentPrompt(payload);
   }
 
   // Process a prompt using ClaudeAgentRunner
@@ -727,12 +726,7 @@ export class SessionManager {
           (c) => c.type === 'file_attachment'
         ) as FileAttachmentContent[];
         if (fileAttachments.length > 0) {
-          const fileInfo = fileAttachments
-            .map(
-              (f) => `- ${f.filename} (${(f.size / 1024).toFixed(1)} KB) at path: ${f.relativePath}`
-            )
-            .join('\n');
-          enhancedPrompt = `${prompt}\n\n[Attached files - use Read tool to access them]:\n${fileInfo}`;
+          enhancedPrompt = `${prompt}\n\n${buildFileAttachmentPrompt(fileAttachments)}`;
           logCtx('[SessionManager] Enhanced prompt with file info:', enhancedPrompt);
         }
         const cloudTableAttachments = messageContent.filter(

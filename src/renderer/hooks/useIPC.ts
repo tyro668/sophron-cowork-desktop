@@ -191,6 +191,13 @@ export function useIPC() {
             bufferPartial(event.payload.sessionId, event.payload.delta);
             break;
 
+          case 'stream.reset':
+            delete pendingPartials[event.payload.sessionId];
+            delete pendingThinking[event.payload.sessionId];
+            store.clearPartialMessage(event.payload.sessionId);
+            store.clearPartialThinking(event.payload.sessionId);
+            break;
+
           case 'stream.thinking':
             bufferThinking(event.payload.sessionId, event.payload.delta);
             break;

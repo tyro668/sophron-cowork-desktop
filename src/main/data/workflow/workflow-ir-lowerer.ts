@@ -209,13 +209,14 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
   filter: {
     compile(operation, context) {
       const conditionIr = operation.condition;
-      if (conditionIr.kind !== 'binary' && conditionIr.kind !== 'unary') {
+      if (conditionIr.kind === 'literal') {
         throw new DataCommandError(
           'VALIDATION_FAILED',
-          'filter() requires a comparison expression such as col("Sales").gt(lit(100))'
+          'filter() requires a row-dependent boolean predicate'
         );
       }
       const compiled = compileWorkflowExpression(conditionIr, context, 'filter.condition');
+      assertCompiledBooleanOperand(compiled, 'filter.condition');
       if (
         getAiPrepDslExpressionLowering(conditionIr, 'filter') === 'materialize_filter_predicate'
       ) {
@@ -550,7 +551,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
       context.emitOperator('deduplicate', {
         strategy: columns.length > 0 ? 'by_columns' : 'all_columns',
         columns: columns.length > 0 ? columns : undefined,
-        keep: 'first',
+        keep: operation.config.keep,
         orderBy: orderBy.length > 0 ? orderBy : undefined,
       });
     },
@@ -595,14 +596,27 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
               values: rule.values,
             };
           case 'literal_fill':
-            if (rule.value === undefined) {
+            if (rule.value === undefined || rule.value === null) {
               throw new DataCommandError(
                 'VALIDATION_FAILED',
-                `Missing-value fill rule for ${column.name} requires value`
+                `Missing-value fill rule for ${column.name} requires a non-null value`
               );
             }
             assertGeneratedFilterComparable(column, '=', rule.value, 'missing_value.literal_fill');
             return { column: column.name, method: 'literal_fill', value: rule.value };
+          case 'mean_fill':
+          case 'median_fill':
+            if (column.type && !isNumericDslType(column.type)) {
+              throw new DataCommandError(
+                'VALIDATION_FAILED',
+                `Missing-value ${rule.method} requires a numeric column: ${column.name}`
+              );
+            }
+            return { column: column.name, method: rule.method };
+          case 'mode_fill':
+          case 'forward_fill':
+          case 'backward_fill':
+            return { column: column.name, method: rule.method };
         }
       });
       context.emitOperator('missing_value', { strategy: 'by_column', rules });
@@ -611,53 +625,16 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
   limit: {
     compile(operation, context) {
       const config = operation.config;
-      if (!Number.isFinite(config.limit) || config.limit <= 0) {
-        throw new DataCommandError(
-          'VALIDATION_FAILED',
-          'Generated limit must be greater than zero'
-        );
-      }
-      if (config.unit === 'percent' && config.limit > 100) {
-        throw new DataCommandError(
-          'VALIDATION_FAILED',
-          'Generated limit percent cannot exceed 100'
-        );
-      }
-      if (!Number.isInteger(config.offset) || config.offset < 0) {
-        throw new DataCommandError(
-          'VALIDATION_FAILED',
-          'Generated limit offset must be a non-negative integer'
-        );
-      }
       const orderBy = config.orderBy.map((key) => ({
         ...key,
         field: context.requireColumn(key.field, 'limit.orderBy').name,
       }));
-      const groupBy = (config.groupBy ?? []).map(
-        (name) => context.requireColumn(name, 'limit.groupBy').name
-      );
-      if (config.mode === 'top') {
-        if (orderBy.length === 0) {
-          throw new DataCommandError(
-            'VALIDATION_FAILED',
-            'Generated top operation requires orderBy'
-          );
-        }
-        context.emitOperator('limit', {
-          mode: 'fixed',
-          limit: Math.floor(config.limit),
-          unit: 'rows',
-          orderBy,
-          ties: false,
-        });
-        return;
-      }
       if (config.mode === 'random') {
         context.emitOperator('limit', {
           mode: 'random',
           limit: config.unit === 'rows' ? Math.floor(config.limit) : config.limit,
           unit: config.unit,
-          method: config.method ?? 'system',
+          method: config.unit === 'percent' ? (config.method ?? 'system') : undefined,
           seed: config.seed,
         });
         return;
@@ -667,9 +644,8 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         limit: config.unit === 'rows' ? Math.floor(config.limit) : config.limit,
         unit: config.unit === 'percent' ? 'percent' : 'rows',
         orderBy: orderBy.length > 0 ? orderBy : undefined,
-        groupBy: groupBy.length > 0 ? groupBy : undefined,
         ties: config.ties === true,
-        offset: config.offset > 0 ? config.offset : undefined,
+        offset: config.unit === 'rows' && config.offset > 0 ? config.offset : undefined,
       });
     },
   },
@@ -754,34 +730,21 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
           `Generated unnest index column already exists: ${config.withIndex}`
         );
       }
-      if (config.sourceKind === 'json' && !config.path) {
-        throw new DataCommandError('VALIDATION_FAILED', 'Generated JSON unnest requires path');
-      }
-      if (config.maxDepth !== undefined && (!config.recursive || config.maxDepth <= 0)) {
-        throw new DataCommandError(
-          'VALIDATION_FAILED',
-          'Generated unnest maxDepth requires recursive mode and a positive value'
-        );
-      }
-      const alias =
-        config.keepParentNames && config.sourceKind === 'json'
-          ? `${source.name}_${config.alias}`
-          : config.alias;
+      const alias = config.keepParentNames ? `${source.name}_${config.alias}` : config.alias;
       context.emitOperator('unnest', {
-        sourceKind: config.sourceKind,
+        sourceKind: 'list',
         column: source.name,
-        path: config.sourceKind === 'json' ? config.path : undefined,
+        path: config.path,
         alias: config.alias,
         withIndex: config.withIndex,
-        recursive: config.recursive,
-        maxDepth: config.maxDepth,
         keepParentNames: config.keepParentNames,
+        preserveOrder: config.preserveOrder,
       });
       context.upsertColumn({
         name: alias,
-        type: config.sourceKind === 'json' ? 'json' : undefined,
+        type: undefined,
         sourceColumns: sourceColumnsFromBinding(source),
-        expression: `${config.sourceKind} unnest ${source.name}`,
+        expression: `list unnest ${source.name}`,
       });
       if (config.withIndex) {
         context.upsertColumn({

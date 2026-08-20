@@ -23,7 +23,7 @@ describe('analyzeDataTaskRequirement', () => {
           {
             requirement: '删除记录数字段',
             status: 'supported',
-            operations: ['drop'],
+            capabilities: ['drop.exclude_columns'],
           },
         ],
       }),
@@ -35,7 +35,10 @@ describe('analyzeDataTaskRequirement', () => {
         columns: [{ name: '记录数' }],
         runtimeConfig,
       })
-    ).resolves.toMatchObject({ status: 'supported' });
+    ).resolves.toMatchObject({
+      status: 'supported',
+      items: [{ operations: ['drop'], capabilities: ['drop.exclude_columns'] }],
+    });
   });
 
   it('requires confirmation when supported and unsupported requirements are mixed', async () => {
@@ -45,13 +48,12 @@ describe('analyzeDataTaskRequirement', () => {
           {
             requirement: '删除记录数字段',
             status: 'supported',
-            operations: ['drop'],
+            capabilities: ['drop.exclude_columns'],
           },
           {
             requirement: '把地址转换为经纬度',
             status: 'unsupported',
             reason: '当前不支持地理编码',
-            operations: [],
           },
         ],
       }),

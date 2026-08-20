@@ -16,7 +16,11 @@ describe('data agent extension', () => {
         canImportLocalFiles: true,
       },
     }));
-    const service = { resolveConversationContext } as unknown as DataToolService;
+    const updateExecutionContext = vi.fn();
+    const service = {
+      resolveConversationContext,
+      updateExecutionContext,
+    } as unknown as DataToolService;
     const extension = createDataAgentRuntimeExtension(service);
     const session: Session = {
       id: 'session-1',
@@ -40,16 +44,26 @@ describe('data agent extension', () => {
     expect(resolveConversationContext).toHaveBeenCalledWith(
       expect.objectContaining({ session, prompt: '创建一个固定数据处理流程' })
     );
+    expect(updateExecutionContext).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 'session-1' })
+    );
     expect(result?.promptPrefix).toContain('data_* tools');
     expect(result?.customTools?.map((tool) => tool.name)).toEqual(
       expect.arrayContaining([
-        'data_get_workflow_dsl_reference',
         'data_create_input_table',
         'data_create_input_table_with_processing_strategy',
         'data_create_output_table',
+        'data_analyze_task_requirement',
+        'data_generate_task_from_requirement',
+        'data_run_task',
+      ])
+    );
+    expect(result?.customTools?.map((tool) => tool.name)).not.toEqual(
+      expect.arrayContaining([
+        'data_get_workflow_dsl_reference',
         'data_create_task',
         'data_apply_workflow_dsl',
-        'data_run_task',
+        'data_apply_operator_dsl',
       ])
     );
   });

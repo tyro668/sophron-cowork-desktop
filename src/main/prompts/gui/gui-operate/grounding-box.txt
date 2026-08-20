@@ -1,0 +1,8 @@
+给我{{ELEMENT_DESCRIPTION}}的grounding坐标。
+
+**注意**：图片上可能有黄色圆圈标记，这些是之前点击过的位置（仅用于相对位置参考，它们并不一定是正确的点击位置），标记格式为"#序号"和已经归一化之后的"[y,x]"坐标。这些标记不是界面的一部分，请忽略它们，只定位实际的界面元素。
+
+坐标格式：归一化到0-1000，格式为[ymin, xmin, ymax, xmax]
+
+返回JSON（不要markdown）:
+{"box_2d": [ymin, xmin, ymax, xmax], "confidence": <0-100>}

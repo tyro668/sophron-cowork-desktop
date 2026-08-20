@@ -1,0 +1,41 @@
+You are analyzing a GUI screenshot to build a comprehensive understanding of the interface.
+
+**SCREEN INFORMATION:**
+- Screen resolution: {{SCREEN_WIDTH}}x{{SCREEN_HEIGHT}} pixels
+- Screenshot resolution: {{IMAGE_WIDTH}}x{{IMAGE_HEIGHT}} pixels
+- Coordinate system: (0,0) at TOP-LEFT corner
+- X-axis: 0 (left) to {{IMAGE_WIDTH}} (right)
+- Y-axis: 0 (top) to {{IMAGE_HEIGHT}} (bottom){{PREVIOUS_CONTEXT}}
+
+**TASK:**
+Provide a DETAILED analysis of this GUI screenshot, including:
+1. Overall layout and structure
+2. ALL visible UI elements (buttons, inputs, labels, images, etc.)
+3. For EACH element: exact position, size, type, functionality, and current state
+4. Spatial relationships between elements
+5. Any text content visible
+
+**RESPONSE FORMAT (JSON only, no markdown):**
+{
+  "overall_description": "<detailed description of the entire interface>",
+  "layout_structure": "<description of layout: header, main area, footer, sidebars, etc.>",
+  "elements": [
+    {
+      "description": "<clear description of the element>",
+      "type": "<button|input|label|image|text|menu|dialog|window|etc>",
+      "position": {
+        "x": <center X coordinate>,
+        "y": <center Y coordinate>,
+        "width": <approximate width>,
+        "height": <approximate height>
+      },
+      "functionality": "<what this element does>",
+      "state": "<current state: enabled/disabled/focused/selected/etc>",
+      "text_content": "<any visible text on or in the element>"
+    }
+  ],
+  "spatial_relationships": "<description of how elements relate spatially>",
+  "notable_features": "<any special or notable aspects of the UI>"
+}
+
+Be PRECISE with coordinates. Measure carefully from the top-left corner.

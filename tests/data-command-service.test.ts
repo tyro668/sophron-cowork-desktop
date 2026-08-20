@@ -4,6 +4,8 @@ import * as os from 'os';
 import * as path from 'path';
 import * as XLSX from 'xlsx';
 import { DataCommandService } from '../src/main/data/data-command-service';
+import { DataToolService } from '../src/main/data/data-tool-service';
+import { RequirementAnalysisReceiptStore } from '../src/main/data/requirement-analysis-receipt-store';
 import { createDataTaskStore, type DataTaskStore } from '../src/main/data/data-task-store';
 import type { InputTableNormalizerProjectGenerator } from '../src/main/data/input-table-normalizer-generator';
 import { createInputTableNormalizerProjectTemplate } from '../src/shared/input-table-normalizer/templates';
@@ -91,6 +93,257 @@ afterEach(() => {
 });
 
 describe('DataCommandService', () => {
+  it('binds direct UI generation to the analysis flow and supported requirement', async () => {
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        items: [
+          {
+            requirement: '只保留 Market 不等于 EU 的记录',
+            status: 'supported',
+            capabilities: ['filter.boolean_predicate'],
+          },
+        ],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'analysis-bound.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'analysis-bound input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+    const analysis = await service.analyzeTaskRequirement({
+      source: { location: 'local', tableId: input.inputTable.id },
+      processRequirement: '只保留 Market 不等于 EU 的记录',
+      usageTraceId: 'ui-analysis-flow',
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(analysis.analysisId).toEqual(expect.any(String));
+    expect(analysis.capabilityProfileVersion).toBe('platform-node-runtime-compat/v3');
+    expect(analysis.items[0]?.capabilities).toEqual(['filter.boolean_predicate']);
+    await expect(
+      service.generateTaskFromRequirement({
+        source: { location: 'local', tableId: input.inputTable.id },
+        processRequirement: '改成汇总销售额',
+        output: { location: 'local', writeMode: 'create', tableName: 'analysis-bound output' },
+        usageTraceId: 'ui-analysis-flow',
+        analysisId: analysis.analysisId,
+        runtimeConfig: testRuntimeConfig,
+      })
+    ).rejects.toMatchObject({ code: 'REQUIREMENT_NOT_SUPPORTED' });
+    await expect(
+      service.generateTaskFromRequirement({
+        source: { location: 'local', tableId: input.inputTable.id },
+        processRequirement: '只保留 Market 不等于 EU 的记录',
+        output: { location: 'local', writeMode: 'create', tableName: 'analysis-bound output' },
+        usageTraceId: 'another-ui-flow',
+        analysisId: analysis.analysisId,
+        runtimeConfig: testRuntimeConfig,
+      })
+    ).rejects.toMatchObject({ code: 'ANALYSIS_REQUIRED' });
+  });
+
+  it('downgrades a supported analysis that cites an unknown capability variant', async () => {
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        items: [
+          {
+            requirement: '递归展开 JSON 对象',
+            status: 'supported',
+            capabilities: ['unnest.recursive_json_object'],
+          },
+        ],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'unsupported-capability.csv');
+    fs.writeFileSync(csvPath, 'payload\n"{""a"":1}"\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'unsupported capability input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+    const analysis = await service.analyzeTaskRequirement({
+      source: { location: 'local', tableId: input.inputTable.id },
+      processRequirement: '递归展开 JSON 对象',
+      usageTraceId: 'unsupported-capability-flow',
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(analysis.status).toBe('unsupported');
+    expect(analysis.items[0]).toMatchObject({
+      status: 'unsupported',
+      reason: expect.stringContaining('Unavailable capability'),
+      capabilities: [],
+    });
+  });
+
+  it('carries the analyzed capability variant through generation and repair', async () => {
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        items: [
+          {
+            requirement: '按 id 去重并保留第一条',
+            status: 'supported',
+            capabilities: ['deduplicate.keep_first'],
+          },
+        ],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'capability-variant.csv');
+    fs.writeFileSync(csvPath, 'id,value\n1,first\n1,last\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'capability variant input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+    const analysis = await service.analyzeTaskRequirement({
+      source: { location: 'local', tableId: input.inputTable.id },
+      processRequirement: '按 id 去重并保留第一条',
+      usageTraceId: 'capability-variant-flow',
+      runtimeConfig: testRuntimeConfig,
+    });
+    vi.mocked(runPiAiOneShot)
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          javascriptSource: asFunctionWorkflow([
+            'deduplicate',
+            '{ config: { columns: ["id"], keep: "last", orderBy: [] } }',
+          ]),
+        }),
+        hasThinking: false,
+        durationMs: 1,
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          javascriptSource: asFunctionWorkflow([
+            'deduplicate',
+            '{ config: { columns: ["id"], keep: "first", orderBy: [] } }',
+          ]),
+        }),
+        hasThinking: false,
+        durationMs: 1,
+      });
+
+    await service.generateTaskFromRequirement({
+      source: { location: 'local', tableId: input.inputTable.id },
+      processRequirement: '按 id 去重并保留第一条',
+      output: { location: 'local', writeMode: 'create', tableName: 'capability variant output' },
+      usageTraceId: 'capability-variant-flow',
+      analysisId: analysis.analysisId,
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    for (const callIndex of [1, 2]) {
+      const generationPrompt = JSON.parse(
+        String(vi.mocked(runPiAiOneShot).mock.calls[callIndex]?.[0])
+      ) as Record<string, unknown>;
+      expect(generationPrompt.confirmedRequirementCapabilityContract).toMatchObject({
+        operationTypes: ['deduplicate'],
+        capabilities: [expect.objectContaining({ id: 'deduplicate.keep_first' })],
+      });
+    }
+  });
+
+  it('uses the same analysis receipt across the real tool and command generation chain', async () => {
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        items: [
+          {
+            requirement: '按 id 去重并保留第一条',
+            status: 'supported',
+            capabilities: ['deduplicate.keep_first'],
+          },
+        ],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+    });
+    const requirementAnalysisReceipts = new RequirementAnalysisReceiptStore();
+    const { service, tempRoot } = createService({ requirementAnalysisReceipts });
+    const toolService = new DataToolService(service, requirementAnalysisReceipts);
+    const csvPath = path.join(tempRoot, 'tool-capability-variant.csv');
+    fs.writeFileSync(csvPath, 'id,value\n1,first\n1,last\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'tool capability variant input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const analysis = await toolService.analyzeTaskRequirement(
+      {
+        inputTableId: input.inputTable.id,
+        processRequirement: '按 id 去重并保留第一条',
+      },
+      {
+        sessionId: 'tool-capability-session',
+        currentUserMessageId: 'tool-user-message-1',
+        runtimeConfig: testRuntimeConfig,
+      }
+    );
+    const analysisId = (analysis.details as { analysisId: string }).analysisId;
+    expect(requirementAnalysisReceipts.get(analysisId)).toMatchObject({
+      sessionId: 'tool-capability-session',
+      sourceUserMessageId: 'tool-user-message-1',
+    });
+
+    vi.mocked(runPiAiOneShot)
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          javascriptSource: asFunctionWorkflow([
+            'deduplicate',
+            '{ config: { columns: ["id"], keep: "last", orderBy: [] } }',
+          ]),
+        }),
+        hasThinking: false,
+        durationMs: 1,
+      })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          javascriptSource: asFunctionWorkflow([
+            'deduplicate',
+            '{ config: { columns: ["id"], keep: "first", orderBy: [] } }',
+          ]),
+        }),
+        hasThinking: false,
+        durationMs: 1,
+      });
+
+    await toolService.generateTaskFromAnalysis(
+      {
+        analysisId,
+        confirmed: true,
+        taskName: 'tool capability variant task',
+        outputMode: 'create',
+        outputTableName: 'tool capability variant output',
+      },
+      {
+        sessionId: 'tool-capability-session',
+        currentUserMessageId: 'tool-user-message-2',
+        runtimeConfig: testRuntimeConfig,
+      }
+    );
+
+    for (const callIndex of [1, 2]) {
+      const generationPrompt = JSON.parse(
+        String(vi.mocked(runPiAiOneShot).mock.calls[callIndex]?.[0])
+      ) as Record<string, unknown>;
+      expect(generationPrompt.confirmedRequirementCapabilityContract).toMatchObject({
+        operationTypes: ['deduplicate'],
+        capabilities: [expect.objectContaining({ id: 'deduplicate.keep_first' })],
+      });
+    }
+  });
+
   it('records a successful repair outcome after the repaired function compiles', async () => {
     const invalidSource = `function step1(input) {
   return workflow.step(input, "filter", { condition: expr(row => row["Market"] !== "EU") }));
@@ -4150,6 +4403,7 @@ function createService(
     getPersonalAnalysisConnection?: () => PersonalAnalysisConnectionInput | null;
     onTaskCompleted?: (task: DataCleaningTask) => void;
     exportWorkflowDsl?: typeof exportPrepWorkflowDsl;
+    requirementAnalysisReceipts?: RequirementAnalysisReceiptStore;
   } = {}
 ): { service: DataCommandService; store: DataTaskStore; tempRoot: string } {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-data-command-'));
@@ -4174,6 +4428,7 @@ function createService(
         getPersonalAnalysisConnection: options.getPersonalAnalysisConnection,
         onTaskCompleted: options.onTaskCompleted,
         exportWorkflowDsl: options.exportWorkflowDsl,
+        requirementAnalysisReceipts: options.requirementAnalysisReceipts,
       }
     ),
     store,

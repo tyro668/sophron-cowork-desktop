@@ -102,6 +102,29 @@ describe('validateGeneratedExecutableWorkflow', () => {
     );
   });
 
+  it('rejects generated configuration keys that the platform schema would strip', () => {
+    const workflow = validWorkflow();
+    workflow.nodes[1] = {
+      ...workflow.nodes[1],
+      config: {
+        calculations: [{ field: 'Margin', expression: '[Profit] / [Sales]' }],
+        inventedRuntimeOption: true,
+      },
+    };
+
+    expect(validateGeneratedExecutableWorkflow(workflow)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'invalidConfig',
+          severity: 'error',
+          nodeId: 'derive',
+          nodeType: 'calculate_field',
+          params: expect.objectContaining({ path: 'inventedRuntimeOption' }),
+        }),
+      ])
+    );
+  });
+
   it.each(['join', 'set_op'] as const)(
     'rejects platform-wide %s nodes that are not enabled for AI generation',
     (type) => {

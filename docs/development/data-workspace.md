@@ -167,10 +167,25 @@ Agent 会话
 - 列出输入表、输出表、任务。
 - 创建/更新输入表和输出表。
 - 预览表。
-- 创建/更新/运行数据任务。
-- 读取、应用、导出 workflow DSL。
+- 分析自然语言数据任务要求，并通过短期 `analysisId` 约束跨轮用户确认。
+- 从已确认、能力支持的分析结果生成、临时执行验证并保存原生节点数据任务。
+- 更新/运行数据任务，并读取或导出 workflow。
 - 生成/预览/发布 input-table normalizer。
 - 获取 run result。
+
+主对话创建数据任务必须走两阶段流程：
+
+1. `data_analyze_task_requirement` 根据输入表字段和能力注册表返回 supported、needs_confirmation 或 unsupported。
+2. Agent 向用户展示逐项分析并结束当前回合；歧义或不支持的要求必须修改后重新分析。
+3. 用户在新消息中明确确认后，`data_generate_task_from_requirement` 使用同一会话的 `analysisId` 生成任务。输出参数使用扁平字段：新建表传 `outputMode=create` 和 `outputTableName`，替换现有表传 `outputMode=replace` 和 `outputTableId`，避免模型将嵌套对象序列化成 JSON 字符串。
+4. 生成服务继续复用自动化界面的受限 JavaScript -> Workflow IR -> 原生节点 -> DuckDB 临时执行链路；验证通过后才保存任务。
+5. 正式输出仍由 `data_run_task` 的 persisted 模式单独触发。
+
+为了控制主对话上下文体积，确认输入表 id 后应直接调用需求分析工具，无需先预览数据行；需求分析服务会自行读取 schema。`data_preview_table` 默认只向模型返回字段结构，只有用户明确要求查看数据值时才传 `includeRows=true`。`data_run_task` 和 `data_get_run_result` 返回给主对话的结果样例默认且最多为 5 行。
+
+`analysisId` 默认保存在主进程内存中并设置过期时间，同时绑定 session、输入表 schema hash 和能力 profile 版本。应用重启、schema 变化或能力版本变化后需要重新分析。模型运行配置只通过执行上下文传递，不能进入工具 schema、prompt 或结果。
+
+主对话默认不再暴露创建空任务、应用 DSL、单节点 DSL 和输入/输出节点配置工具；这些底层 command、IPC 和 UI 能力仍然保留。
 
 权限策略中部分只读数据工具默认 allow，见 [`permission-policies.ts`](../../src/shared/permission-policies.ts)。
 

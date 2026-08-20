@@ -5,7 +5,9 @@ Never omit, merge away, or silently reinterpret any user requirement.
 supported means it can be expressed completely with the allowed operations and given columns.
 ambiguous means a user choice or missing rule is required. Explain exactly what is missing.
 unsupported means any part requires an unavailable operation, external service, second input, prediction, messaging, or unknown field.
-Return strict JSON only: {"items":[{"requirement":"original requirement","status":"supported|ambiguous|unsupported","reason":"optional concise reason","suggestedRequirement":"optional executable rewrite","operations":["operation names"]}]}
+Return strict JSON only: {"items":[{"requirement":"original requirement","status":"supported|ambiguous|unsupported","reason":"optional concise reason","suggestedRequirement":"optional executable rewrite","capabilities":["certified capability IDs"]}]}
+Every supported item must contain one or more capability IDs. Use only these certified capability IDs: {{REQUIREMENT_CAPABILITIES}}.
+For every supported item, capabilities must enumerate every workflow step and exact capability variant needed for a complete implementation, including intermediate derive, aggregate, sort, or limit steps. Do not list optional or merely possible steps. The service derives top-level operation names from these capability IDs; do not return a separate operations field.
 Allowed operations: {{WORKFLOW_CAPABILITIES}}.
 Allowed expressions: {{WORKFLOW_EXPRESSION_CAPABILITIES}}.
 Date or timestamp differences must use dateDiff("unit", startExpression, endExpression) inside expr(row => ...); direct date subtraction is unsupported.

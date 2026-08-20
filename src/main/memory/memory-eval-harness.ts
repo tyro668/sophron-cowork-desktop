@@ -4,6 +4,10 @@ import type { MemoryService } from './memory-service';
 import type { MemoryLLMClientLike } from './memory-llm-client';
 import { MemoryLLMClient } from './memory-llm-client';
 import { extractJson, loadJsonFile, normalizeWorkspaceKey, saveJsonFile } from './memory-utils';
+import {
+  MEMORY_RETRIEVAL_EVAL_SYSTEM_PROMPT,
+  buildMemoryRetrievalEvalUserPrompt,
+} from '../prompts/memory';
 
 export interface MemoryEvalMessage {
   role: 'user' | 'assistant';
@@ -269,15 +273,8 @@ export class MemoryEvalHarness {
   private async judgeQuery(prompt: string, promptPrefix: string): Promise<number | null> {
     try {
       const response = await this.llm.complete({
-        systemPrompt: [
-          'You are a strict memory retrieval evaluator.',
-          'Score whether the injected memory context is useful, specific, and not overly noisy for answering the user prompt.',
-          'Return JSON only with shape {"score": number, "reason": string}.',
-          'Score must be between 0 and 1.',
-        ].join('\n'),
-        userPrompt: [`User prompt: ${prompt}`, '', 'Injected memory context:', promptPrefix].join(
-          '\n'
-        ),
+        systemPrompt: MEMORY_RETRIEVAL_EVAL_SYSTEM_PROMPT,
+        userPrompt: buildMemoryRetrievalEvalUserPrompt({ prompt, promptPrefix }),
         temperature: 0,
         maxTokens: 800,
       });

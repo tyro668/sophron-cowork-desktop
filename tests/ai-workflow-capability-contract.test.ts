@@ -9,9 +9,16 @@ import {
   compileWorkflowJavaScript,
   executeWorkflowJavaScriptInSandbox,
 } from '../src/main/data/workflow/javascript-runtime';
+import { validateAndNormalizeWorkflowIr } from '../src/main/data/workflow/workflow-ir';
 import { AI_PREP_DSL_OPERATION_CAPABILITIES } from '../src/main/data/workflow/prep-dsl-capability-profile';
+import {
+  getRequiredRequirementCapabilities,
+  REQUIREMENT_CAPABILITY_REGISTRY,
+  type RequirementCapabilityId,
+} from '../src/main/data/workflow/requirement-capability-registry';
 import { lowerGeneratedWorkflowIrSemantics } from '../src/main/data/workflow/workflow-ir-lowerer';
 import { compileLoweredWorkflowToPlatformNodes } from '../src/main/data/workflow/workflow-node-compiler';
+import type { WorkflowOperationIr } from '../src/main/data/workflow/workflow-model';
 
 const CORE_OPERATION_TYPES = [
   'select',
@@ -39,6 +46,182 @@ const CERTIFIED_OPERATION_GROUPS = [
   UNNEST_OPERATION_TYPES,
 ] as const;
 
+const COLUMN_EXPRESSION = { kind: 'column', name: 'value' } as const;
+const CAPABILITY_VARIANT_CASES: Array<{
+  capability: RequirementCapabilityId;
+  operation: WorkflowOperationIr;
+}> = [
+  {
+    capability: 'filter.boolean_predicate',
+    operation: {
+      type: 'filter',
+      condition: {
+        kind: 'binary',
+        op: '>',
+        left: COLUMN_EXPRESSION,
+        right: { kind: 'literal', value: 0 },
+      },
+    },
+  },
+  { capability: 'select.include_columns', operation: { type: 'select', columns: ['value'] } },
+  { capability: 'drop.exclude_columns', operation: { type: 'drop', columns: ['value'] } },
+  {
+    capability: 'rename.single_column',
+    operation: { type: 'rename', source: 'value', target: 'renamed' },
+  },
+  {
+    capability: 'derive.scalar',
+    operation: { type: 'derive', column: 'derived', expression: COLUMN_EXPRESSION },
+  },
+  {
+    capability: 'derive_window.aggregate',
+    operation: {
+      type: 'derive_window',
+      column: 'total',
+      function: 'sum',
+      expression: COLUMN_EXPRESSION,
+      partitionBy: [],
+      orderBy: [],
+    },
+  },
+  {
+    capability: 'derive_window.ranking',
+    operation: {
+      type: 'derive_window',
+      column: 'ranked',
+      function: 'row_number',
+      partitionBy: [],
+      orderBy: [{ field: 'value', direction: 'asc' }],
+    },
+  },
+  {
+    capability: 'derive_window.value_or_offset',
+    operation: {
+      type: 'derive_window',
+      column: 'previous',
+      function: 'lag',
+      expression: COLUMN_EXPRESSION,
+      partitionBy: [],
+      orderBy: [{ field: 'value', direction: 'asc' }],
+    },
+  },
+  {
+    capability: 'convert_type.certified',
+    operation: { type: 'convert_type', column: 'value', targetType: 'decimal', options: {} },
+  },
+  {
+    capability: 'sort.multi_key',
+    operation: { type: 'sort', keys: [{ field: 'value', direction: 'asc' }] },
+  },
+  {
+    capability: 'aggregate.scalar',
+    operation: {
+      type: 'aggregate',
+      groupBy: [],
+      metrics: [{ fn: 'sum', expression: COLUMN_EXPRESSION, alias: 'total' }],
+    },
+  },
+  {
+    capability: 'deduplicate.keep_first',
+    operation: {
+      type: 'deduplicate',
+      config: { columns: ['value'], keep: 'first', orderBy: [] },
+    },
+  },
+  {
+    capability: 'deduplicate.keep_last',
+    operation: {
+      type: 'deduplicate',
+      config: { columns: ['value'], keep: 'last', orderBy: [] },
+    },
+  },
+  {
+    capability: 'missing.drop_rows',
+    operation: { type: 'missing_value', config: { strategy: 'drop_empty_rows' } },
+  },
+  {
+    capability: 'missing.literal_or_sentinel',
+    operation: {
+      type: 'missing_value',
+      config: {
+        strategy: 'by_column',
+        rules: [{ column: 'value', method: 'literal_fill', value: 0 }],
+      },
+    },
+  },
+  {
+    capability: 'missing.statistical_fill',
+    operation: {
+      type: 'missing_value',
+      config: {
+        strategy: 'by_column',
+        rules: [{ column: 'value', method: 'mean_fill' }],
+      },
+    },
+  },
+  {
+    capability: 'missing.ordered_fill',
+    operation: {
+      type: 'missing_value',
+      config: {
+        strategy: 'by_column',
+        rules: [{ column: 'value', method: 'forward_fill' }],
+      },
+    },
+  },
+  {
+    capability: 'limit.global',
+    operation: {
+      type: 'limit',
+      config: { mode: 'limit', limit: 10, unit: 'rows', offset: 0, orderBy: [] },
+    },
+  },
+  {
+    capability: 'limit.random',
+    operation: {
+      type: 'limit',
+      config: { mode: 'random', limit: 10, unit: 'rows', offset: 0, orderBy: [] },
+    },
+  },
+  {
+    capability: 'pivot.fixed_values',
+    operation: {
+      type: 'pivot',
+      config: {
+        on: [{ field: 'category', values: ['A'] }],
+        using: [{ function: 'sum', expression: COLUMN_EXPRESSION, alias: 'total' }],
+        groupBy: [],
+      },
+    },
+  },
+  {
+    capability: 'unpivot.columns',
+    operation: {
+      type: 'unpivot',
+      config: {
+        mode: 'columns',
+        columns: ['value'],
+        nameColumn: 'name',
+        valueColumn: 'unpivoted_value',
+        includeNulls: false,
+      },
+    },
+  },
+  {
+    capability: 'unnest.list_rows',
+    operation: {
+      type: 'unnest',
+      config: {
+        sourceKind: 'list',
+        column: 'value',
+        alias: 'item',
+        keepParentNames: false,
+        preserveOrder: true,
+      },
+    },
+  },
+];
+
 const tempRoots: string[] = [];
 const stores: DataTaskStore[] = [];
 
@@ -57,8 +240,42 @@ describe('AI workflow capability contract', () => {
       .map((capability) => capability.irType)
       .sort();
     const certified = [...new Set(CERTIFIED_OPERATION_GROUPS.flat())].sort();
+    const requirementAnalyzed = [
+      ...new Set(
+        Object.values(REQUIREMENT_CAPABILITY_REGISTRY).map((capability) => capability.operation)
+      ),
+    ].sort();
 
     expect(certified).toEqual(enabled);
+    expect(requirementAnalyzed).toEqual(enabled);
+  });
+
+  it.each(CAPABILITY_VARIANT_CASES)(
+    'classifies $capability from its canonical IR variant',
+    ({ capability, operation }) => {
+      const [canonicalOperation] = validateAndNormalizeWorkflowIr({
+        irVersion: '1.0',
+        kind: 'workflow',
+        sourceLanguage: 'javascript',
+        inputSeen: true,
+        outputSeen: true,
+        outputOperationId: 'op-1',
+        operations: [{ ...operation, operationId: 'op-1', inputOperationId: 'input' }],
+        provenance: [],
+      }).operations;
+
+      expect(getRequiredRequirementCapabilities(canonicalOperation)).toEqual([capability]);
+      expect(REQUIREMENT_CAPABILITY_REGISTRY[capability].operation).toBe(canonicalOperation.type);
+    }
+  );
+
+  it('keeps every registered requirement capability reachable from canonical IR', () => {
+    const reachable = new Set(
+      CAPABILITY_VARIANT_CASES.flatMap(({ operation }) =>
+        getRequiredRequirementCapabilities(operation)
+      )
+    );
+    expect([...reachable].sort()).toEqual(Object.keys(REQUIREMENT_CAPABILITY_REGISTRY).sort());
   });
 
   it('executes the certified core cleaning operations through native platform nodes', async () => {
@@ -110,7 +327,7 @@ describe('AI workflow capability contract', () => {
           name: 'deduplicateOrders',
           type: 'deduplicate',
           payload:
-            '{ config: { columns: ["order_id"], keep: "first", orderBy: [{ field: "updated_at", direction: "desc" }] } }',
+            '{ config: { columns: ["order_id"], keep: "last", orderBy: [{ field: "updated_at", direction: "asc" }] } }',
         },
         {
           name: 'deriveMargin',
@@ -172,6 +389,35 @@ describe('AI workflow capability contract', () => {
       { order_id: 1, region: 'East', revenue: 120, profit: 36, margin: 0.3 },
       { order_id: 2, region: 'UNKNOWN', revenue: 80, profit: 24, margin: 0.3 },
     ]);
+  });
+
+  it('executes certified statistical and ordered missing-value fills', async () => {
+    const result = await runCertifiedWorkflow({
+      name: 'advanced-missing-fills',
+      csv: ['id,amount,label', '1,10,A', '2,,', '3,30,B'].join('\n'),
+      columns: [
+        { name: 'id', type: 'integer' },
+        { name: 'amount', type: 'decimal' },
+        { name: 'label', type: 'text' },
+      ],
+      expectedOperationTypes: ['missing_value'],
+      javascriptSource: workflowSource([
+        {
+          name: 'fillMissingValues',
+          type: 'missing_value',
+          payload:
+            '{ config: { strategy: "by_column", rules: [{ column: "amount", method: "mean_fill" }, { column: "label", method: "backward_fill" }] } }',
+        },
+      ]),
+    });
+    const rows = await queryRows(
+      result.dbPath,
+      `SELECT id, amount, label FROM ${result.outputTable} WHERE id = 2`
+    );
+
+    expect(
+      rows.map((row) => ({ id: Number(row.id), amount: Number(row.amount), label: row.label }))
+    ).toEqual([{ id: 2, amount: 20, label: 'B' }]);
   });
 
   it('executes aggregate through native platform nodes', async () => {
@@ -670,7 +916,7 @@ describe('AI workflow capability contract', () => {
     ]);
   });
 
-  it('executes selected-null-row cleanup, multi-key sort, and grouped percent limit', async () => {
+  it('executes selected-null-row cleanup, multi-key sort, and a global percent limit', async () => {
     const result = await runCertifiedWorkflow({
       name: 'expanded-row-operators',
       csv: [
@@ -706,10 +952,10 @@ describe('AI workflow capability contract', () => {
             '{ keys: [{ field: "score", direction: "desc" }, { field: "label", direction: "asc" }] }',
         },
         {
-          name: 'takeTopHalfPerRegion',
+          name: 'takeTopHalf',
           type: 'limit',
           payload:
-            '{ config: { mode: "limit", limit: 50, unit: "percent", offset: 0, orderBy: [{ field: "score", direction: "desc" }, { field: "label", direction: "asc" }], groupBy: ["region"], ties: false } }',
+            '{ config: { mode: "limit", limit: 50, unit: "percent", offset: 0, orderBy: [{ field: "score", direction: "desc" }, { field: "label", direction: "asc" }], ties: false } }',
         },
       ]),
     });
@@ -726,9 +972,9 @@ describe('AI workflow capability contract', () => {
     );
     expect(rows.map((row) => `${row.region}:${row.score}:${row.label}`)).toEqual([
       'East:20:A',
-      'East:10:C',
       'West:30:A',
       'West:30:C',
+      'West:20:B',
     ]);
   });
 
@@ -754,41 +1000,31 @@ describe('AI workflow capability contract', () => {
     expect(Number(row.count)).toBe(5);
   });
 
-  it('executes grouped row limits with ties through the implemented rank path', async () => {
-    const result = await runCertifiedWorkflow({
-      name: 'grouped-limit-ties',
-      csv: [
-        'region,score,label',
-        'East,100,A',
-        'East,100,B',
-        'East,90,C',
-        'West,80,A',
-        'West,70,B',
-      ].join('\n'),
-      columns: [
-        { name: 'region', type: 'text' },
-        { name: 'score', type: 'integer' },
-        { name: 'label', type: 'text' },
-      ],
-      expectedOperationTypes: ['limit'],
-      javascriptSource: workflowSource([
-        {
-          name: 'takeBestPerRegionWithTies',
-          type: 'limit',
-          payload:
-            '{ config: { mode: "limit", limit: 1, unit: "rows", offset: 0, orderBy: [{ field: "score", direction: "desc" }], groupBy: ["region"], ties: true } }',
-        },
-      ]),
-    });
-    const rows = await queryRows(
-      result.dbPath,
-      `SELECT region, score, label FROM ${result.outputTable} ORDER BY region, label`
-    );
-    expect(rows.map((row) => `${row.region}:${row.score}:${row.label}`)).toEqual([
-      'East:100:A',
-      'East:100:B',
-      'West:80:A',
+  it('does not advertise or compile per-group limits before the platform contract supports them', () => {
+    expect(REQUIREMENT_CAPABILITY_REGISTRY).not.toHaveProperty('limit.grouped');
+
+    const source = workflowSource([
+      {
+        name: 'takeBestPerRegion',
+        type: 'limit',
+        payload:
+          '{ config: { mode: "limit", limit: 1, unit: "rows", offset: 0, orderBy: [{ field: "score", direction: "desc" }], groupBy: ["region"], ties: true } }',
+      },
     ]);
+
+    expect(() => {
+      const compiled = compileWorkflowJavaScript(source, {
+        columns: [
+          { name: 'region', type: 'text' },
+          { name: 'score', type: 'integer' },
+        ],
+      });
+      executeWorkflowJavaScriptInSandbox({
+        compiled,
+        inputTableId: 'input-1',
+        outputTableName: 'output-1',
+      });
+    }).toThrow(/groupBy|No overload matches|not assignable/);
   });
 
   it('executes unpivot through native platform nodes', async () => {
@@ -834,7 +1070,7 @@ describe('AI workflow capability contract', () => {
     ]);
   });
 
-  it('executes JSON unnest through native platform nodes', async () => {
+  it('executes a JSON-array string through certified list unnest mode', async () => {
     const result = await runCertifiedWorkflow({
       name: 'unnest',
       csv: ['id,items', '1,"[10,20]"', '2,"[30]"'].join('\n'),
@@ -848,7 +1084,7 @@ describe('AI workflow capability contract', () => {
           name: 'unnestItems',
           type: 'unnest',
           payload:
-            '{ config: { sourceKind: "json", column: "items", alias: "item", path: "$", recursive: false, keepParentNames: false } }',
+            '{ config: { sourceKind: "list", column: "items", alias: "item", path: "$", keepParentNames: false, preserveOrder: true } }',
         },
       ]),
     });

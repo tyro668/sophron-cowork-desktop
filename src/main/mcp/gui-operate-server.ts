@@ -33,6 +33,12 @@ import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
+import {
+  buildGuiActionPlanPrompt,
+  buildGuiExtractionPrompt,
+  buildGuiGroundingBoxPrompt,
+  buildGuiOperationVerificationPrompt,
+} from '../prompts/gui-vision';
 writeMCPLog('Imported Node.js built-in modules', 'Bootstrap');
 
 const execFileAsync = promisify(execFile);
@@ -5010,14 +5016,7 @@ async function analyzeScreenshotWithVision(
     // Get image dimensions
     const imageDims = await getImageDimensions(annotatedPath);
 
-    const prompt = `给我${elementDescription}的grounding坐标。
-
-**注意**：图片上可能有黄色圆圈标记，这些是之前点击过的位置（仅用于相对位置参考，它们并不一定是正确的点击位置），标记格式为"#序号"和已经归一化之后的"[y,x]"坐标。这些标记不是界面的一部分，请忽略它们，只定位实际的界面元素。
-
-坐标格式：归一化到0-1000，格式为[ymin, xmin, ymax, xmax]
-
-返回JSON（不要markdown）:
-{"box_2d": [ymin, xmin, ymax, xmax], "confidence": <0-100>}`;
+    const prompt = buildGuiGroundingBoxPrompt(elementDescription);
 
     writeMCPLog(`[analyzeScreenshotWithVision] Prompt: ${prompt}`);
 
@@ -5337,48 +5336,11 @@ async function planGUIActions(
   const imageBuffer = await fs.readFile(screenshotPath);
   const base64Image = imageBuffer.toString('base64');
 
-  const prompt = `Analyze this GUI screenshot and create a step-by-step plan to accomplish the following task: "${taskDescription}"
-
-**COORDINATE SYSTEM:**
-- Image dimensions: ${imageDims.width}x${imageDims.height} pixels
-- Origin (0,0) is at TOP-LEFT corner
-
-**TASK:**
-Break down the task "${taskDescription}" into a sequence of GUI operations.
-
-**INSTRUCTIONS:**
-1. Analyze the current GUI state shown in the screenshot
-2. Identify what elements need to be interacted with
-3. Create a step-by-step plan with specific actions
-4. For each step, describe the element to interact with and what action to perform
-5. Include any text values that need to be entered
-
-**AVAILABLE ACTIONS:**
-- click: Single click on an element
-- double_click: Double click on an element
-- right_click: Right click on an element
-- type: Type text into an input field (requires value parameter)
-- hover: Move mouse over an element
-- key_press: Press a key (requires value parameter with key name)
-
-**RESPONSE FORMAT (JSON only, no markdown):**
-{
-  "steps": [
-    {
-      "step": 1,
-      "action": "click|double_click|right_click|type|hover|key_press",
-      "element_description": "<detailed description of the element to interact with>",
-      "value": "<optional: text to type or key to press>",
-      "reasoning": "<explanation of why this step is needed>"
-    }
-  ],
-  "summary": "<brief summary of the plan>"
-}
-
-Be specific and detailed in element descriptions. For example:
-- Instead of "button", use "the red Start button in the top-right corner"
-- Instead of "input", use "the text input field labeled 'File Name'"
-- Instead of "menu", use "the File menu in the menu bar"`;
+  const prompt = buildGuiActionPlanPrompt({
+    taskDescription,
+    imageWidth: imageDims.width,
+    imageHeight: imageDims.height,
+  });
 
   const responseText = await callVisionAPI(base64Image, prompt, 20000, 'planGUIActions');
   writeMCPLog(`[planGUIActions] Raw Response Length: ${responseText.length}`, 'Response');
@@ -5896,22 +5858,7 @@ async function verifyGUIState(question: string, displayIndex?: number): Promise<
     });
   }
 
-  const prompt = `Analyze this GUI screenshot and answer the following question:
-
-${question}
-
-Provide a detailed answer based on what you can see in the image.
-
-IMPORTANT: At the end of your response, you MUST provide a formatted judgment on whether the most recent GUI operation was accurate/successful. Use this exact format:
-
-**Operation Success Judgment:**
-- Status: [SUCCESS/FAILURE]
-- Reason: [Brief explanation of why the operation succeeded or failed]
-
-Example:
-**Operation Success Judgment:**
-- Status: SUCCESS
-- Reason: The button was clicked correctly in the expected dialog window.`;
+  const prompt = buildGuiOperationVerificationPrompt(question);
 
   let answer = await callVisionAPI(base64Image, prompt, 20000, 'verifyGUIState');
   writeMCPLog(`[verifyGUIState] Response Length: ${answer.length}`, 'Response');
@@ -6056,20 +6003,7 @@ async function extractGUIInfo(extractionPrompt: string, displayIndex?: number): 
   const imageBuffer = await fs.readFile(screenshotPath);
   const base64Image = imageBuffer.toString('base64');
 
-  const prompt = `You are an expert at extracting information from GUI screenshots. Analyze this screenshot and extract the requested information.
-
-**Extraction Request:**
-${extractionPrompt}
-
-**Instructions:**
-1. Carefully examine the screenshot to find the requested information.
-2. Extract the information as accurately and completely as possible.
-3. If the information is structured (like a list of messages, table data, menu items), format it clearly.
-4. If certain information cannot be found or is partially visible, mention what is visible and what is missing.
-5. Use appropriate formatting (bullet points, numbered lists, etc.) to present the extracted information clearly.
-
-**Response Format:**
-Provide the extracted information in a clear, structured format. If extracting multiple items, organize them logically.`;
+  const prompt = buildGuiExtractionPrompt(extractionPrompt);
 
   const extractedInfo = await callVisionAPI(base64Image, prompt, 30000, 'extractGUIInfo');
   writeMCPLog(`[extractGUIInfo] Response Length: ${extractedInfo.length}`, 'Response');

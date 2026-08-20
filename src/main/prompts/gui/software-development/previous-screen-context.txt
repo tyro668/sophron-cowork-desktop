@@ -1,0 +1,9 @@
+
+
+**PREVIOUS SCREEN ANALYSIS:**
+{{PREVIOUS_ANALYSIS}}
+
+**PREVIOUS ELEMENTS:**
+{{PREVIOUS_ELEMENTS}}
+
+Please UPDATE this analysis based on any changes you observe.

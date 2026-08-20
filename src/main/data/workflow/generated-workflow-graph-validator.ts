@@ -1,7 +1,7 @@
 import type { DataWorkflowNodeInput, DataWorkflowSaveInput } from '../../../renderer/types';
 import type { PrepDiagnostic } from '../../../shared/prep-dsl';
-import { validateOperatorConfig } from '../../../shared/operator-schemas';
 import { compileFilterConditionExpression } from '../operators/filter';
+import { validateGeneratedOperatorConfig } from './generated-operator-config-validator';
 import { AI_GENERATED_WORKFLOW_NODE_TYPE_SET } from './prep-dsl-capability-profile';
 
 export interface GeneratedWorkflowDiagnostic extends PrepDiagnostic {
@@ -227,16 +227,18 @@ export function validateGeneratedExecutableWorkflow(
 
 function validateNodeConfig(node: DataWorkflowNodeInput): GeneratedWorkflowDiagnostic[] {
   const config = node.config ?? {};
-  const diagnostics: GeneratedWorkflowDiagnostic[] = validateOperatorConfig(node.type, config).map(
-    (item) =>
-      withNodeContext(
-        {
-          ...item,
-          code: item.code || 'NODE_CONFIG_INVALID',
-          params: { ...(item.params ?? {}), nodeId: node.id, nodeType: node.type },
-        },
-        node
-      )
+  const diagnostics: GeneratedWorkflowDiagnostic[] = validateGeneratedOperatorConfig(
+    node.type,
+    config
+  ).map((item) =>
+    withNodeContext(
+      {
+        ...item,
+        code: item.code || 'NODE_CONFIG_INVALID',
+        params: { ...(item.params ?? {}), nodeId: node.id, nodeType: node.type },
+      },
+      node
+    )
   );
 
   if (node.type === 'input_source') {
