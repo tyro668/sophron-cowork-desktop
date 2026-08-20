@@ -2,16 +2,14 @@ import { z } from 'zod';
 
 const MAX_MAPPING_COUNT = 100;
 
-const MappingEntrySchema = z
+export const FieldMappingEntrySchema = z
   .object({
     source: z.string().optional().default(''),
-    target: z.string().optional().default(''),
-    targetMode: z.enum(['prefix', 'suffix', 'rename']).optional(),
+    targetMode: z.enum(['prefix', 'suffix', 'rename']),
     targetValue: z.string().optional().default(''),
   })
   .superRefine((data, ctx) => {
     if (!data.source) return;
-    if (!data.targetMode && data.target) return;
     if (data.targetMode === 'rename' && !data.targetValue?.trim()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -33,7 +31,7 @@ const MappingEntrySchema = z
 
 export const FieldMappingConfigSchema = z
   .object({
-    mappings: z.array(MappingEntrySchema).max(MAX_MAPPING_COUNT).default([]),
+    mappings: z.array(FieldMappingEntrySchema).max(MAX_MAPPING_COUNT).default([]),
   })
   .superRefine((data, ctx) => {
     if (data.mappings.length === 0) {
@@ -51,13 +49,6 @@ export const FieldMappingConfigSchema = z
           path: ['mappings', index, 'source'],
         });
       }
-      if (!mapping.targetMode && !mapping.target.trim()) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Target field is required',
-          path: ['mappings', index, 'target'],
-        });
-      }
     });
     const sources = data.mappings.map((m) => m.source).filter(Boolean);
     if (new Set(sources).size !== sources.length) {
@@ -65,8 +56,8 @@ export const FieldMappingConfigSchema = z
     }
     const targets = data.mappings
       .map((m) => {
-        if (!m.source || !m.targetMode) return '';
-        if (m.targetMode === 'rename') return m.targetValue || m.target || '';
+        if (!m.source) return '';
+        if (m.targetMode === 'rename') return m.targetValue;
         if (m.targetMode === 'prefix') return `${m.targetValue}${m.source}`;
         if (m.targetMode === 'suffix') return `${m.source}${m.targetValue}`;
         return '';
@@ -80,3 +71,5 @@ export const FieldMappingConfigSchema = z
       });
     }
   });
+
+export type FieldMappingEntry = z.infer<typeof FieldMappingEntrySchema>;

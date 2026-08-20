@@ -47,14 +47,8 @@ function hasInvalidFieldMappingConfig(node: OperatorConfigNode): boolean {
       const entry = mapping as Record<string, unknown>;
       const source = typeof entry.source === 'string' ? entry.source.trim() : '';
       const mode = typeof entry.targetMode === 'string' ? entry.targetMode : '';
-      const target =
-        mode === 'prefix' || mode === 'suffix' || mode === 'rename'
-          ? typeof entry.targetValue === 'string'
-            ? entry.targetValue.trim()
-            : ''
-          : typeof entry.target === 'string'
-            ? entry.target.trim()
-            : '';
+      const target = typeof entry.targetValue === 'string' ? entry.targetValue.trim() : '';
+      if (mode !== 'prefix' && mode !== 'suffix' && mode !== 'rename') return true;
       return !source || !target;
     })
   );

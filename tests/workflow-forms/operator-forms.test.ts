@@ -53,8 +53,8 @@ describe('operator forms — config ↔ DSL round-trip', () => {
     const result = ok(
       {
         mappings: [
-          { source: 'dt', target: 'order_date' },
-          { source: 'rev', target: 'revenue' },
+          { source: 'dt', targetMode: 'rename', targetValue: 'order_date' },
+          { source: 'rev', targetMode: 'rename', targetValue: 'revenue' },
         ],
       },
       'field_mapping'

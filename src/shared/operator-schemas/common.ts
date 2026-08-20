@@ -57,6 +57,8 @@ export const MetricEntrySchema = z.object({
   alias: z.string().trim().min(1).max(MAX_METRIC_ALIAS_LENGTH),
 });
 
+export type AggregateFunction = z.infer<typeof AggregateFunctionSchema>;
+export type MetricEntry = z.infer<typeof MetricEntrySchema>;
 export type SortKey = z.infer<typeof SortKeySchema>;
 
 export const KeepItemSchema = z.object({

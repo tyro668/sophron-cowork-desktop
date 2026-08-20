@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
-import {
-  addPivotCandidate,
-  addPivotValue,
-  removePivotValue,
-} from '../../src/renderer/components/workflow-forms/FormPivot';
+import { addPivotCandidate, addPivotValue } from '../../src/shared/operator-config';
 
 function ok(config: Record<string, unknown>) {
   const dsl = exportPrepOperatorDsl({ id: 'test', type: 'pivot', config });
@@ -154,14 +150,6 @@ describe('addPivotValue', () => {
 
   it('treats whitespace-only as no-op for numeric columns', () => {
     expect(addPivotValue([2024], '   ', 'integer')).toEqual([2024]);
-  });
-});
-
-describe('removePivotValue', () => {
-  it('removes by index and preserves remaining types', () => {
-    const values: Array<string | number | null> = [null, 2024, '2024'];
-    expect(removePivotValue(values, 0)).toEqual([2024, '2024']);
-    expect(removePivotValue(values, 2)).toEqual([null, 2024]);
   });
 });
 

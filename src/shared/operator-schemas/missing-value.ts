@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const MissingMethodSchema = z.enum([
+export const MissingValueMethodSchema = z.enum([
   'skip',
   'nullify_values',
   'literal_fill',
@@ -12,10 +12,12 @@ const MissingMethodSchema = z.enum([
   'backward_fill',
 ]);
 
-const MissingRuleSchema = z.object({
+export type MissingValueMethod = z.infer<typeof MissingValueMethodSchema>;
+
+export const MissingValueRuleSchema = z.object({
   id: z.string().optional(),
   column: z.string().trim().min(1),
-  method: MissingMethodSchema.default('literal_fill'),
+  method: MissingValueMethodSchema.default('literal_fill'),
   values: z.array(z.unknown()).optional(),
   value: z.unknown().optional(),
 });
@@ -23,7 +25,7 @@ const MissingRuleSchema = z.object({
 export const MissingValueConfigSchema = z
   .object({
     strategy: z.enum(['by_column', 'drop_empty_rows', 'drop_rows_by_nulls']).default('by_column'),
-    rules: z.array(MissingRuleSchema).default([]),
+    rules: z.array(MissingValueRuleSchema).default([]),
     columns: z.array(z.string().trim().min(1)).optional(),
     condition: z.enum(['all_null', 'any_null']).optional(),
   })
@@ -93,3 +95,5 @@ export const MissingValueConfigSchema = z
       }
     });
   });
+
+export type MissingValueRule = z.infer<typeof MissingValueRuleSchema>;

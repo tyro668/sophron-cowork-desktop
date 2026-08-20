@@ -256,8 +256,9 @@ describe('FormMissingValue — config ↔ DSL', () => {
       )
     );
     expect(source).not.toContain('disabled={!item.column}');
-    expect(source).toContain('if (!colType)');
-    expect(source).toContain('...STATISTICAL_METHODS, ...MODE_METHODS');
+    expect(source).toContain('methodsForMissingValueType(colType)');
+    expect(source).toContain('STATISTICAL_METHODS');
+    expect(source).toContain('MODE_METHODS');
   });
 
   it('derives all-null condition from legacy drop_empty_rows graphical config', async () => {

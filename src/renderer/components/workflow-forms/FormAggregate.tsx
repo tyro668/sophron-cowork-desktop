@@ -13,6 +13,18 @@ import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { isTemporalDataFieldType } from '../../../shared/data-field-types';
 import { AGGREGATE_FUNCTIONS } from '../../../shared/operator-schemas/common';
+import {
+  retainSelectedDateGranularity,
+  setDateGranularity,
+  type AggregateDateGranularity,
+} from '../../../shared/operator-config';
+import type { AggregateFunction, MetricEntry } from '../../../shared/operator-schemas';
+
+const EMPTY_METRIC: Readonly<MetricEntry> = {
+  function: 'count',
+  expression: '',
+  alias: '',
+};
 
 const GRANULARITY_OPTIONS = [
   { value: '', labelKey: 'granularityNone', labelFallback: '不处理' },
@@ -22,16 +34,6 @@ const GRANULARITY_OPTIONS = [
   { value: 'week', labelKey: 'granularityWeek', labelFallback: '按周' },
   { value: 'day', labelKey: 'granularityDay', labelFallback: '按天' },
 ] as const;
-
-interface MetricEntry {
-  function: string;
-  expression: string;
-  alias: string;
-}
-
-function createDefault(): MetricEntry {
-  return { function: 'count', expression: '', alias: '' };
-}
 
 export default function FormAggregate({
   node,
@@ -54,7 +56,7 @@ export default function FormAggregate({
     [node.config.metrics]
   );
   const metrics = useMemo(
-    () => (rawMetrics.length > 0 ? rawMetrics : [createDefault()]),
+    () => (rawMetrics.length > 0 ? rawMetrics : [{ ...EMPTY_METRIC }]),
     [rawMetrics]
   );
 
@@ -74,14 +76,13 @@ export default function FormAggregate({
   const handleGroupByChange = useCallback(
     (next: string[]) => {
       updateConfig((cfg) => {
-        const granularity = cfg.dateGranularity as Record<string, string> | undefined;
-        const filtered = granularity
-          ? Object.fromEntries(Object.entries(granularity).filter(([k]) => next.includes(k)))
-          : undefined;
         return {
           ...cfg,
           groupBy: next.length > 0 ? next : undefined,
-          dateGranularity: filtered && Object.keys(filtered).length > 0 ? filtered : undefined,
+          dateGranularity: retainSelectedDateGranularity(
+            cfg.dateGranularity as Record<string, string> | undefined,
+            next
+          ),
         };
       });
     },
@@ -91,15 +92,14 @@ export default function FormAggregate({
   const handleGranularityChange = useCallback(
     (field: string, value: string) => {
       updateConfig((cfg) => {
-        const next: Record<string, string> = {
-          ...((cfg.dateGranularity ?? {}) as Record<string, string>),
+        return {
+          ...cfg,
+          dateGranularity: setDateGranularity(
+            cfg.dateGranularity as Record<string, string> | undefined,
+            field,
+            value as AggregateDateGranularity | ''
+          ),
         };
-        if (value) {
-          next[field] = value;
-        } else {
-          delete next[field];
-        }
-        return { ...cfg, dateGranularity: Object.keys(next).length > 0 ? next : undefined };
       });
     },
     [updateConfig]
@@ -120,23 +120,24 @@ export default function FormAggregate({
   }
 
   function addMetricAfter(index: number) {
-    const hasEmpty = activeMetrics.some((m) => !m.expression);
-    if (hasEmpty) return;
-    const entry = createDefault();
+    if (activeMetrics.some((metric) => !metric.expression)) return;
     handleMetricsChange([
       ...activeMetrics.slice(0, index + 1),
-      entry,
+      { ...EMPTY_METRIC },
       ...activeMetrics.slice(index + 1),
     ]);
   }
 
   function removeMetric(index: number) {
-    let next = activeMetrics.filter((_, i) => i !== index);
-    const firstEmpty = next.findIndex((m) => !m.expression);
-    if (firstEmpty >= 0) {
-      next = next.filter((m, i) => i === firstEmpty || m.expression);
-    }
-    handleMetricsChange(next);
+    const remaining = activeMetrics.filter((_, metricIndex) => metricIndex !== index);
+    const firstEmptyIndex = remaining.findIndex((metric) => !metric.expression);
+    handleMetricsChange(
+      firstEmptyIndex < 0
+        ? remaining
+        : remaining.filter(
+            (metric, metricIndex) => metricIndex === firstEmptyIndex || metric.expression
+          )
+    );
   }
 
   const {
@@ -243,7 +244,7 @@ export default function FormAggregate({
                     <GlassOptionSingleSelect
                       value={item.function}
                       groups={functionGroups}
-                      onChange={(v) => updateMetric(i, { function: v })}
+                      onChange={(v) => updateMetric(i, { function: v as AggregateFunction })}
                       className="h-7 rounded-md text-[12px] w-full"
                     />
                   ),

@@ -67,10 +67,6 @@ describe('isCompleteTypeConversion', () => {
 });
 
 describe('isCompleteFieldMapping', () => {
-  it('accepts a mapping with source and target', () => {
-    expect(isCompleteFieldMapping({ source: 'a', target: 'b' })).toBe(true);
-  });
-
   it('accepts rename/prefix/suffix mode via targetValue', () => {
     expect(isCompleteFieldMapping({ source: 'a', targetMode: 'rename', targetValue: 'b' })).toBe(
       true
@@ -85,11 +81,13 @@ describe('isCompleteFieldMapping', () => {
 
   it('rejects missing source or effective target', () => {
     expect(isCompleteFieldMapping({})).toBe(false);
-    expect(isCompleteFieldMapping({ source: 'a', target: '' })).toBe(false);
+    expect(isCompleteFieldMapping({ source: 'a', target: 'b' })).toBe(false);
     expect(isCompleteFieldMapping({ source: 'a', targetMode: 'rename', targetValue: '' })).toBe(
       false
     );
-    expect(isCompleteFieldMapping({ source: '', target: 'b' })).toBe(false);
+    expect(isCompleteFieldMapping({ source: '', targetMode: 'rename', targetValue: 'b' })).toBe(
+      false
+    );
   });
 });
 

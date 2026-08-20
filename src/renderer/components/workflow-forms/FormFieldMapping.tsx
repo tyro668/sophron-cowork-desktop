@@ -8,44 +8,12 @@ import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { computeUsedFields } from '../../../shared/collections/used-fields';
-
-export interface MappingEntry {
-  source: string;
-  targetMode: 'prefix' | 'suffix' | 'rename';
-  targetValue: string;
-}
-
-function computeTarget(m: MappingEntry): string {
-  if (!m.source) return '';
-  if (m.targetMode === 'rename') return m.targetValue || '';
-  return m.targetMode === 'prefix' ? `${m.targetValue}${m.source}` : `${m.source}${m.targetValue}`;
-}
-
-function migrateEntry(e: Record<string, unknown>): MappingEntry {
-  const source = (e.source as string) || '';
-  const target = (e.target as string) || '';
-  const targetMode = e.targetMode as string;
-  if (targetMode === 'prefix' || targetMode === 'suffix' || targetMode === 'rename') {
-    const targetValue = (e.targetValue as string) || '';
-    return { source, targetMode, targetValue };
-  }
-  if (!source || !target) return { source, targetMode: 'rename', targetValue: target };
-  if (target.startsWith(source))
-    return {
-      source,
-      targetMode: 'suffix',
-      targetValue: target.slice(source.length),
-    };
-  if (target.endsWith(source))
-    return {
-      source,
-      targetMode: 'prefix',
-      targetValue: target.slice(0, -source.length),
-    };
-  return { source, targetMode: 'rename', targetValue: target };
-}
-
-const DEFAULT_MAPPING: MappingEntry = { source: '', targetMode: 'rename', targetValue: '' };
+import {
+  computeFieldMappingTarget,
+  EMPTY_FIELD_MAPPING,
+  normalizeFieldMappingEntry,
+} from '../../../shared/operator-config';
+import type { FieldMappingEntry } from '../../../shared/operator-schemas';
 
 export default function FormFieldMapping({
   node,
@@ -55,17 +23,18 @@ export default function FormFieldMapping({
   const tr = useFormTranslation();
   const updateConfig = useUpdateConfig(onNodeChange);
 
-  const mappings = useMemo<MappingEntry[]>(
-    () => ((node.config.mappings as Record<string, unknown>[]) ?? []).map(migrateEntry),
+  const mappings = useMemo<FieldMappingEntry[]>(
+    () =>
+      ((node.config.mappings as Record<string, unknown>[]) ?? []).map(normalizeFieldMappingEntry),
     [node.config.mappings]
   );
   const editableMappings = useMemo(
-    () => (mappings.length > 0 ? mappings : [{ ...DEFAULT_MAPPING }]),
+    () => (mappings.length > 0 ? mappings : [{ ...EMPTY_FIELD_MAPPING }]),
     [mappings]
   );
 
   const commitMappings = useCallback(
-    (next: MappingEntry[]) => {
+    (next: FieldMappingEntry[]) => {
       updateConfig((cfg) => ({ ...cfg, mappings: next.length > 0 ? next : undefined }));
     },
     [updateConfig]
@@ -91,7 +60,7 @@ export default function FormFieldMapping({
   );
 
   const updateMapping = useCallback(
-    (index: number, patch: Partial<MappingEntry>) => {
+    (index: number, patch: Partial<FieldMappingEntry>) => {
       const next = activeMappings.map((m, i) => (i === index ? { ...m, ...patch } : m));
       commitMappings(next);
     },
@@ -103,7 +72,7 @@ export default function FormFieldMapping({
       const hasEmpty = activeMappings.some((m) => !m.source);
       if (hasEmpty || activeMappings.length >= fieldCompletions.length) return;
       const next = [...activeMappings];
-      next.splice(index + 1, 0, { ...DEFAULT_MAPPING });
+      next.splice(index + 1, 0, { ...EMPTY_FIELD_MAPPING });
       commitMappings(next);
     },
     [activeMappings, fieldCompletions.length, commitMappings]
@@ -118,7 +87,7 @@ export default function FormFieldMapping({
         source: '',
         targetMode: source.targetMode,
         targetValue: source.targetValue,
-      } as MappingEntry);
+      } as FieldMappingEntry);
       commitMappings(next);
     },
     [activeMappings, fieldCompletions.length, commitMappings]
@@ -144,7 +113,7 @@ export default function FormFieldMapping({
     [tr]
   );
 
-  const columns = useMemo<GlassRowListColumn<MappingEntry>[]>(
+  const columns = useMemo<GlassRowListColumn<FieldMappingEntry>[]>(
     () => [
       {
         flex: 'flex-[3]',
@@ -172,7 +141,7 @@ export default function FormFieldMapping({
         render: (item, i) => (
           <GlassOptionSingleSelect
             value={item.targetMode}
-            onChange={(v) => updateMapping(i, { targetMode: v as MappingEntry['targetMode'] })}
+            onChange={(v) => updateMapping(i, { targetMode: v as FieldMappingEntry['targetMode'] })}
             groups={[{ key: 'mode', items: targetModeOptions }]}
             className="h-7 w-full text-[12px]"
           />
@@ -205,7 +174,7 @@ export default function FormFieldMapping({
         flex: 'flex-[2]',
         header: tr('fieldMappingTargetField'),
         render: (item, _i) => {
-          const target = computeTarget(item);
+          const target = computeFieldMappingTarget(item);
           return (
             <span className="truncate text-[12px] text-text-muted" title={target}>
               {target || '—'}

@@ -1,5 +1,6 @@
-import { quoteIdentifier, computeMappingTarget } from './utils';
+import { quoteIdentifier } from './utils';
 import { FieldMappingConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
+import { computeFieldMappingTarget } from '../../../shared/operator-config/field-mapping';
 
 export function compileFieldMappingSql(
   output: string,
@@ -19,7 +20,7 @@ export function compileFieldMappingSql(
   const sourceToTarget = new Map(
     mappings.flatMap((mapping) => {
       const source = mapping.source;
-      const target = computeMappingTarget(mapping as Record<string, unknown>);
+      const target = computeFieldMappingTarget(mapping);
       return source && target ? [[source, target] as const] : [];
     })
   );

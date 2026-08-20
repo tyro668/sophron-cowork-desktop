@@ -37,10 +37,10 @@ export function isCompleteTypeConversion(entry: unknown): boolean {
 export function isCompleteFieldMapping(entry: unknown): boolean {
   if (!isObject(entry) || !hasNonEmptyString(entry.source)) return false;
   const mode = typeof entry.targetMode === 'string' ? entry.targetMode : '';
-  if (mode === 'rename' || mode === 'prefix' || mode === 'suffix') {
-    return hasNonEmptyString(entry.targetValue);
-  }
-  return hasNonEmptyString(entry.target);
+  return (
+    (mode === 'rename' || mode === 'prefix' || mode === 'suffix') &&
+    hasNonEmptyString(entry.targetValue)
+  );
 }
 
 /** Aggregate 指标：function、expression、alias 均必填。 */

@@ -9,6 +9,7 @@ import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
+import { mergeSelectedFields } from '../../../shared/operator-config';
 
 export default function FormFieldSelect({
   node,
@@ -42,12 +43,10 @@ export default function FormFieldSelect({
 
   const handleSelectionChange = useCallback(
     (next: string[]) => {
-      const existing = columns.filter((c) => next.includes(c));
-      const added = next.filter((c) => !columns.includes(c));
       updateConfig((cfg) => ({
         ...cfg,
         mode: 'include',
-        columns: [...existing, ...added],
+        columns: mergeSelectedFields(columns, next),
       }));
     },
     [columns, updateConfig]
@@ -62,18 +61,14 @@ export default function FormFieldSelect({
 
   const moveToTop = useCallback(
     (col: string) => {
-      const next = columns.filter((c) => c !== col);
-      next.unshift(col);
-      commitColumns(next);
+      commitColumns([col, ...columns.filter((candidate) => candidate !== col)]);
     },
     [columns, commitColumns]
   );
 
   const moveToBottom = useCallback(
     (col: string) => {
-      const next = columns.filter((c) => c !== col);
-      next.push(col);
-      commitColumns(next);
+      commitColumns([...columns.filter((candidate) => candidate !== col), col]);
     },
     [columns, commitColumns]
   );

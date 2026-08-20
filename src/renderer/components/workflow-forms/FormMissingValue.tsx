@@ -8,11 +8,6 @@ import type { OperatorFormProps } from './index';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
-import {
-  isNumericDataFieldType,
-  isTemporalDataFieldType,
-  normalizeDataFieldType,
-} from '../../../shared/data-field-types';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
@@ -24,50 +19,56 @@ import {
   validateMissingValueInput,
   validateMissingValueListInput,
 } from '../../../shared/missing-value-values';
+import { methodsForMissingValueType } from '../../../shared/operator-config';
+import type {
+  MissingValueMethod,
+  MissingValueRule,
+} from '../../../shared/operator-schemas/missing-value';
 
-const BASE_METHODS = [
+function createRuleId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function createEmptyRule(): MissingValueRule {
+  return { id: createRuleId(), column: '', method: 'literal_fill', value: '' };
+}
+
+interface MissingValueMethodDefinition {
+  value: MissingValueMethod;
+  labelKey: string;
+  label: string;
+}
+
+const BASE_METHODS: MissingValueMethodDefinition[] = [
   { value: 'skip', labelKey: 'ruleMethods.skip', label: '不处理' },
   { value: 'nullify_values', labelKey: 'ruleMethods.nullify_values', label: '特殊值转空' },
   { value: 'literal_fill', labelKey: 'ruleMethods.literal_fill', label: '固定值填充' },
   { value: 'drop', labelKey: 'ruleMethods.drop', label: '删除含缺失的行' },
 ];
 
-const STATISTICAL_METHODS = [
+const STATISTICAL_METHODS: MissingValueMethodDefinition[] = [
   { value: 'mean_fill', labelKey: 'ruleMethods.mean_fill', label: '均值填充' },
   { value: 'median_fill', labelKey: 'ruleMethods.median_fill', label: '中位数填充' },
 ];
 
-const MODE_METHODS = [{ value: 'mode_fill', labelKey: 'ruleMethods.mode_fill', label: '众数填充' }];
+const MODE_METHODS: MissingValueMethodDefinition[] = [
+  { value: 'mode_fill', labelKey: 'ruleMethods.mode_fill', label: '众数填充' },
+];
 
-const ORDERED_METHODS = [
+const ORDERED_METHODS: MissingValueMethodDefinition[] = [
   { value: 'forward_fill', labelKey: 'ruleMethods.forward_fill', label: '前向填充' },
   { value: 'backward_fill', labelKey: 'ruleMethods.backward_fill', label: '后向填充' },
 ];
 
 function methodsForType(colType: string | undefined) {
-  if (!colType)
-    return [...BASE_METHODS, ...ORDERED_METHODS, ...STATISTICAL_METHODS, ...MODE_METHODS];
-  const type = normalizeDataFieldType(colType);
-  if (isNumericDataFieldType(type))
-    return [...BASE_METHODS, ...ORDERED_METHODS, ...STATISTICAL_METHODS, ...MODE_METHODS];
-  if (isTemporalDataFieldType(type)) return [...BASE_METHODS, ...ORDERED_METHODS, ...MODE_METHODS];
-  return [...BASE_METHODS, ...ORDERED_METHODS, ...MODE_METHODS];
-}
-
-interface MissingRule {
-  id?: string;
-  column: string;
-  method: string;
-  values?: unknown[];
-  value?: unknown;
-}
-
-function generateId() {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function createDefault(overrides: Partial<MissingRule> = {}): MissingRule {
-  return { id: generateId(), column: '', method: 'literal_fill', value: '', ...overrides };
+  const definitions = [
+    ...BASE_METHODS,
+    ...ORDERED_METHODS,
+    ...STATISTICAL_METHODS,
+    ...MODE_METHODS,
+  ];
+  const allowedMethods = new Set(methodsForMissingValueType(colType));
+  return definitions.filter((method) => allowedMethods.has(method.value));
 }
 
 type TabMode = 'row' | 'column';
@@ -84,8 +85,8 @@ export default function FormMissingValue({
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const strategy = (node.config.strategy as string) ?? 'by_column';
-  const rules = useMemo<MissingRule[]>(
-    () => (node.config.rules as MissingRule[]) ?? [createDefault()],
+  const rules = useMemo<MissingValueRule[]>(
+    () => (node.config.rules as MissingValueRule[]) ?? [createEmptyRule()],
     [node.config.rules]
   );
   const rowColumns = useMemo<string[]>(
@@ -102,6 +103,14 @@ export default function FormMissingValue({
   const [valueDrafts, setValueDrafts] = useState<Record<string, string>>({});
   const removingRef = useRef(false);
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const handleRulesChange = useCallback(
+    (items: MissingValueRule[]) => {
+      const itemsWithId = items.map((item) => (item.id ? item : { ...item, id: createRuleId() }));
+      updateConfig((cfg) => ({ ...cfg, rules: itemsWithId.length > 0 ? itemsWithId : undefined }));
+    },
+    [updateConfig]
+  );
+
   const {
     activeItems: activeRules,
     handleDragStart,
@@ -133,11 +142,6 @@ export default function FormMissingValue({
       condition: undefined,
       columns: undefined,
     }));
-  }
-
-  function handleRulesChange(items: MissingRule[]) {
-    const itemsWithId = items.map((item) => (item.id ? item : { ...item, id: generateId() }));
-    updateConfig((cfg) => ({ ...cfg, rules: itemsWithId.length > 0 ? itemsWithId : undefined }));
   }
 
   const handleRowsColumnsChange = useCallback(
@@ -202,7 +206,7 @@ export default function FormMissingValue({
   );
 
   const updateRule = useCallback(
-    (index: number, patch: Partial<MissingRule>) => {
+    (index: number, patch: Partial<MissingValueRule>) => {
       handleRulesChange(
         rules.map((existing, i) => (i === index ? { ...existing, ...patch } : existing))
       );
@@ -213,7 +217,7 @@ export default function FormMissingValue({
   const removeRule = useCallback(
     (index: number) => {
       let next = rules.filter((_, i) => i !== index);
-      if (next.length === 0) next = [createDefault()];
+      if (next.length === 0) next = [createEmptyRule()];
       handleRulesChange(next);
     },
     [rules, handleRulesChange]
@@ -223,7 +227,7 @@ export default function FormMissingValue({
     (index: number) => {
       if (rules.length >= fieldCompletions.length) return;
       const next = [...rules];
-      next.splice(index + 1, 0, createDefault());
+      next.splice(index + 1, 0, createEmptyRule());
       handleRulesChange(next);
     },
     [rules, fieldCompletions.length, handleRulesChange]
@@ -237,7 +241,7 @@ export default function FormMissingValue({
       const next = [...rules];
       next.splice(index + 1, 0, {
         ...source,
-        id: generateId(),
+        id: createRuleId(),
         column: '',
         values: source.values ? [...source.values] : undefined,
       });
@@ -351,7 +355,7 @@ export default function FormMissingValue({
                   {
                     flex: 'flex-[2]',
                     header: '',
-                    render: (item: MissingRule, i: number) => (
+                    render: (item: MissingValueRule, i: number) => (
                       <GlassFieldSingleSelect
                         value={item.column}
                         options={fieldCompletions}
@@ -381,7 +385,7 @@ export default function FormMissingValue({
                   {
                     flex: 'flex-[1.5]',
                     header: '',
-                    render: (item: MissingRule, i: number) => {
+                    render: (item: MissingValueRule, i: number) => {
                       const colType = item.column ? columnTypes[item.column] : undefined;
                       const availableMethods = methodsForType(colType);
                       const validMethodValues = availableMethods.map((m) => m.value);
@@ -393,7 +397,7 @@ export default function FormMissingValue({
                           value={effectiveMethod}
                           onChange={(m) => {
                             updateRule(i, {
-                              method: m,
+                              method: m as MissingValueMethod,
                               values: m === 'nullify_values' ? (item.values ?? []) : undefined,
                               value: m === 'literal_fill' ? (item.value ?? '') : undefined,
                             });
@@ -415,7 +419,7 @@ export default function FormMissingValue({
                   {
                     flex: 'flex-[3]',
                     header: '',
-                    render: (item: MissingRule, i: number) => {
+                    render: (item: MissingValueRule, i: number) => {
                       const colType = item.column ? columnTypes[item.column] : undefined;
                       const availableMethods = methodsForType(colType);
                       const validMethodValues = availableMethods.map((m) => m.value);

@@ -39,7 +39,7 @@ export const DATE_FORMAT_PRESETS: Array<{ value: DateFormat; example: string }> 
 export const SCALE_MIN = 0;
 export const SCALE_MAX = 18;
 
-const ConversionEntrySchema = z
+export const TypeConversionEntrySchema = z
   .object({
     column: z.string().optional().default(''),
     type: z
@@ -71,5 +71,7 @@ const ConversionEntrySchema = z
   });
 
 export const TypeConvertConfigSchema = z.object({
-  conversions: z.array(ConversionEntrySchema).default([]),
+  conversions: z.array(TypeConversionEntrySchema).default([]),
 });
+
+export type TypeConversionEntry = z.infer<typeof TypeConversionEntrySchema>;

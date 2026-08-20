@@ -3,6 +3,10 @@ import { formatFieldRef, toFieldName } from '../syntax/fields';
 import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, objectArray, type OperatorDslCodec } from './codec';
 import { isCompleteFieldMapping } from '../../operator-completeness';
+import {
+  computeFieldMappingTarget,
+  normalizeFieldMappingEntry,
+} from '../../operator-config/field-mapping';
 
 export const fieldMappingCodec: OperatorDslCodec = {
   type: 'field_mapping',
@@ -11,7 +15,11 @@ export const fieldMappingCodec: OperatorDslCodec = {
     const { text } = command;
     const isMap = text.startsWith('map ');
     const cursor = new PrepTokenCursor(text.slice(isMap ? 4 : 7), command.line, diagnostics);
-    const mappings: Array<{ source: string; target: string }> = [];
+    const mappings: Array<{
+      source: string;
+      targetMode: 'rename';
+      targetValue: string;
+    }> = [];
     while (!cursor.eof) {
       const source = cursor.expectFieldRef('invalidFieldMapping');
       if (!source || !cursor.expect(isMap ? 'to' : 'as', 'invalidFieldMapping')) break;
@@ -20,7 +28,11 @@ export const fieldMappingCodec: OperatorDslCodec = {
         cursor.report('invalidFieldMapping', 'Field mapping requires non-empty fields');
         break;
       }
-      mappings.push({ source: toFieldName(source), target: toFieldName(target) });
+      mappings.push({
+        source: toFieldName(source),
+        targetMode: 'rename',
+        targetValue: toFieldName(target),
+      });
       if (cursor.eof) break;
       if (!cursor.matchType('Comma')) {
         cursor.expectEof('unexpectedFieldMappingToken');
@@ -46,22 +58,9 @@ export const fieldMappingCodec: OperatorDslCodec = {
     if (mappings.length === 0) return null;
     const formatted = mappings.map((mapping) => {
       const source = typeof mapping.source === 'string' ? mapping.source.trim() : '';
-      const target = computeTarget(mapping).trim();
+      const target = computeFieldMappingTarget(normalizeFieldMappingEntry(mapping)).trim();
       return source && target ? `${formatFieldRef(source)} to ${formatFieldRef(target)}` : '';
     });
     return formatted.every(Boolean) ? `map ${formatted.join(', ')}` : null;
   },
 };
-
-function computeTarget(mapping: Record<string, unknown>): string {
-  const source = typeof mapping.source === 'string' ? mapping.source : '';
-  const target = typeof mapping.target === 'string' ? mapping.target : '';
-  const mode = typeof mapping.targetMode === 'string' ? mapping.targetMode : '';
-  const value = typeof mapping.targetValue === 'string' ? mapping.targetValue : '';
-  if (target && !mode) return target;
-  if (!source || !mode) return target;
-  if (mode === 'rename') return value || target;
-  if (mode === 'prefix') return `${value}${source}`;
-  if (mode === 'suffix') return `${source}${value}`;
-  return target;
-}

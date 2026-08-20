@@ -297,7 +297,9 @@ describe('incomplete config guards', () => {
       expect(hasInvalidFieldMappingConfig(makeNode('field_mapping', {}))).toBe(true);
       expect(
         hasInvalidFieldMappingConfig(
-          makeNode('field_mapping', { mappings: [{ source: 'a', target: 'b' }] })
+          makeNode('field_mapping', {
+            mappings: [{ source: 'a', targetMode: 'rename', targetValue: 'b' }],
+          })
         )
       ).toBe(false);
     });
@@ -450,8 +452,8 @@ describe('incomplete config guards', () => {
           'field_mapping',
           {
             mappings: [
-              { source: 'a', target: 'b' },
-              { source: '', target: '' },
+              { source: 'a', targetMode: 'rename', targetValue: 'b' },
+              { source: '', targetMode: 'rename', targetValue: '' },
             ],
           },
         ],

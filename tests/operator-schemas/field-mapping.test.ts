@@ -15,10 +15,10 @@ describe('FieldMappingConfigSchema', () => {
     expect(result.mappings[1].targetMode).toBe('prefix');
   });
 
-  it('defaults optional fields in legacy mapping entries', () => {
-    const result = FieldMappingConfigSchema.parse({ mappings: [{ source: 'a', target: 'b' }] });
-    expect(result.mappings[0].source).toBe('a');
-    expect(result.mappings[0].targetValue).toBe('');
+  it('rejects mappings without an explicit target mode', () => {
+    expect(() =>
+      FieldMappingConfigSchema.parse({ mappings: [{ source: 'a', target: 'b' }] })
+    ).toThrow(z.ZodError);
   });
 
   it('rejects config when mappings are omitted', () => {
@@ -75,13 +75,6 @@ describe('FieldMappingConfigSchema', () => {
         ],
       })
     ).toThrow(z.ZodError);
-  });
-
-  it('accepts old format without targetMode (legacy compat)', () => {
-    const result = FieldMappingConfigSchema.parse({
-      mappings: [{ source: 'a', target: 'b' }],
-    });
-    expect(result.mappings[0].source).toBe('a');
   });
 
   it('rejects an empty source placeholder row', () => {

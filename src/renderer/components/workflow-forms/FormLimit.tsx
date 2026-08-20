@@ -5,6 +5,7 @@ import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
+import { parseNonNegativeInteger } from '../../../shared/operator-config';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import type { SortKey } from '../../../shared/operator-schemas';
 
@@ -42,7 +43,8 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
   function pushLimit(value: string) {
     setLocalLimit(value);
     if (value === '') return;
-    const n = Math.max(0, Math.floor(Number(value) || 0));
+    const n = parseNonNegativeInteger(value);
+    if (n === undefined) return;
     const clamped = String(n);
     if (clamped !== value) setLocalLimit(clamped);
     setErrors(runValidation(n, unit));
@@ -52,7 +54,8 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
   function pushOffset(value: string) {
     setLocalOffset(value);
     if (value === '') return;
-    const n = Math.max(0, Math.floor(Number(value) || 0));
+    const n = parseNonNegativeInteger(value);
+    if (n === undefined) return;
     const clamped = String(n);
     if (clamped !== value) setLocalOffset(clamped);
     setErrors(runValidation(limit ?? 0, unit));
@@ -65,7 +68,8 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
       updateConfig((cfg) => ({ ...cfg, seed: undefined }));
       return;
     }
-    const n = Math.max(0, Math.floor(Number(value) || 0));
+    const n = parseNonNegativeInteger(value);
+    if (n === undefined) return;
     updateConfig((cfg) => ({ ...cfg, seed: n }));
   }
 
@@ -85,26 +89,25 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
   function toggleSortDirection(field: string) {
     updateConfig((cfg) => ({
       ...cfg,
-      orderBy: (cfg.orderBy as SortKey[])?.map((k) =>
-        k.field === field ? { ...k, direction: k.direction === 'asc' ? 'desc' : 'asc' } : k
+      orderBy: ((cfg.orderBy as SortKey[]) ?? []).map((key) =>
+        key.field === field ? { ...key, direction: key.direction === 'asc' ? 'desc' : 'asc' } : key
       ),
     }));
   }
 
   function removeSortField(field: string) {
     updateConfig((cfg) => {
-      const next = (cfg.orderBy as SortKey[])?.filter((k) => k.field !== field);
-      return { ...cfg, orderBy: next && next.length > 0 ? next : undefined };
+      const next = ((cfg.orderBy as SortKey[]) ?? []).filter((key) => key.field !== field);
+      return { ...cfg, orderBy: next.length > 0 ? next : undefined };
     });
   }
 
   function setSortFields(next: string[]) {
     updateConfig((cfg) => {
       const prev = (cfg.orderBy as SortKey[]) ?? [];
-      const mapped = next.map((f) => {
-        const existing = prev.find((k) => k.field === f);
-        return existing ?? { field: f, direction: 'asc' as const };
-      });
+      const mapped = next.map(
+        (field) => prev.find((key) => key.field === field) ?? { field, direction: 'asc' as const }
+      );
       return { ...cfg, orderBy: mapped.length > 0 ? mapped : undefined };
     });
   }

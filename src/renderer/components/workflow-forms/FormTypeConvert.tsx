@@ -15,21 +15,19 @@ import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useDataFieldTypeLabel } from '../../hooks/useDataFieldTypeLabel';
 import { computeUsedFields } from '../../../shared/collections/used-fields';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
+import { parseTypeConversionScale, prepareTypeConversion } from '../../../shared/operator-config';
 import {
   DATE_FORMAT_PRESETS,
   SCALE_MIN,
   SCALE_MAX,
+  type DateFormat,
+  type TypeConversionEntry,
 } from '../../../shared/operator-schemas/type-convert';
 
-interface ConversionEntry {
-  column: string;
-  type: string;
-  onError?: string;
-  format?: string;
-  scale?: number;
-}
-
-const DEFAULT_CONVERSION: ConversionEntry = { column: '', type: 'text' };
+const EMPTY_TYPE_CONVERSION: Readonly<TypeConversionEntry> = {
+  column: '',
+  type: 'text',
+};
 
 export default function FormTypeConvert({
   node,
@@ -43,13 +41,13 @@ export default function FormTypeConvert({
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 
-  const conversions = useMemo<ConversionEntry[]>(
-    () => (node.config.conversions as ConversionEntry[]) ?? [{ ...DEFAULT_CONVERSION }],
+  const conversions = useMemo<TypeConversionEntry[]>(
+    () => (node.config.conversions as TypeConversionEntry[]) ?? [{ ...EMPTY_TYPE_CONVERSION }],
     [node.config.conversions]
   );
 
   const commitConversions = useCallback(
-    (next: ConversionEntry[]) => {
+    (next: TypeConversionEntry[]) => {
       updateConfig((cfg) => ({ ...cfg, conversions: next.length > 0 ? next : undefined }));
     },
     [updateConfig]
@@ -70,7 +68,7 @@ export default function FormTypeConvert({
   }, [conversions, isDragging, resetDrag]);
 
   const updateConversion = useCallback(
-    (index: number, patch: Partial<ConversionEntry>) => {
+    (index: number, patch: Partial<TypeConversionEntry>) => {
       const next = activeConversions.map((c, i) => (i === index ? { ...c, ...patch } : c));
       commitConversions(next);
     },
@@ -80,7 +78,7 @@ export default function FormTypeConvert({
   const addConversionAfter = useCallback(
     (index: number) => {
       const next = [...activeConversions];
-      next.splice(index + 1, 0, { ...DEFAULT_CONVERSION });
+      next.splice(index + 1, 0, { ...EMPTY_TYPE_CONVERSION });
       commitConversions(next);
     },
     [activeConversions, commitConversions]
@@ -89,7 +87,7 @@ export default function FormTypeConvert({
   const removeConversion = useCallback(
     (index: number) => {
       if (activeConversions.length <= 1) {
-        commitConversions([{ ...DEFAULT_CONVERSION }]);
+        commitConversions([{ ...EMPTY_TYPE_CONVERSION }]);
         return;
       }
       commitConversions(activeConversions.filter((_, i) => i !== index));
@@ -108,7 +106,7 @@ export default function FormTypeConvert({
         onError: source.onError,
         format: source.format,
         scale: source.scale,
-      } as ConversionEntry);
+      } as TypeConversionEntry);
       commitConversions(next);
     },
     [activeConversions, fieldCompletions.length, commitConversions]
@@ -140,7 +138,7 @@ export default function FormTypeConvert({
               {
                 flex: 'flex-[2]',
                 header: tr('typeConvertSourceField'),
-                render: (conv: ConversionEntry, i: number) => {
+                render: (conv: TypeConversionEntry, i: number) => {
                   const disabledFields = new Set(usedFields);
                   if (conv.column) disabledFields.delete(conv.column);
                   return (
@@ -161,7 +159,7 @@ export default function FormTypeConvert({
               {
                 flex: 'flex-[1]',
                 header: tr('typeConvertOriginalType'),
-                render: (conv: ConversionEntry) => (
+                render: (conv: TypeConversionEntry) => (
                   <span className="w-full text-center text-[11px] text-text-muted tabular-nums">
                     {conv.column && columnTypes?.[conv.column]
                       ? dataTypeLabel(columnTypes[conv.column])
@@ -182,17 +180,13 @@ export default function FormTypeConvert({
               {
                 flex: 'flex-[1.5]',
                 header: tr('typeConvertTargetType'),
-                render: (conv: ConversionEntry, i: number) => (
+                render: (conv: TypeConversionEntry, i: number) => (
                   <GlassOptionSingleSelect
                     value={normalizeDataFieldType(conv.type)}
                     onChange={(v) => {
                       const newType = v as DataFieldType;
-                      const isDateType = newType === 'date' || newType === 'datetime';
-                      const isDecimal = newType === 'decimal';
                       updateConversion(i, {
-                        type: newType,
-                        ...(isDateType ? {} : { format: undefined }),
-                        ...(isDecimal ? {} : { scale: undefined }),
+                        ...prepareTypeConversion(newType),
                       });
                     }}
                     groups={[
@@ -211,7 +205,7 @@ export default function FormTypeConvert({
               {
                 flex: 'flex-[1.5]',
                 header: tr('typeConvertDateFormat'),
-                render: (conv: ConversionEntry, i: number) => {
+                render: (conv: TypeConversionEntry, i: number) => {
                   const isDateType = conv.type === 'date' || conv.type === 'datetime';
                   const formatOptions = [
                     { value: '', label: tr('typeConvertAutoParse') },
@@ -222,7 +216,11 @@ export default function FormTypeConvert({
                       value={isDateType ? (conv.format ?? '') : ''}
                       disabled={!isDateType}
                       groups={[{ key: 'formats', items: formatOptions }]}
-                      onChange={(v) => updateConversion(i, { format: v || undefined })}
+                      onChange={(v) =>
+                        updateConversion(i, {
+                          format: (v || undefined) as DateFormat | undefined,
+                        })
+                      }
                       className="h-6 w-full text-[12px]"
                     />
                   );
@@ -231,7 +229,7 @@ export default function FormTypeConvert({
               {
                 flex: 'flex-[1]',
                 header: tr('typeConvertScale'),
-                render: (conv: ConversionEntry, i: number) => (
+                render: (conv: TypeConversionEntry, i: number) => (
                   <GlassFormTextInput
                     value={conv.type === 'decimal' ? String(conv.scale ?? '') : ''}
                     disabled={conv.type !== 'decimal'}
@@ -242,9 +240,9 @@ export default function FormTypeConvert({
                     max={SCALE_MAX}
                     type="number"
                     onChange={(v) => {
-                      const n = v === '' ? undefined : Number(v);
+                      const n = parseTypeConversionScale(v);
                       updateConversion(i, {
-                        scale: n !== undefined && !isNaN(n) ? n : undefined,
+                        scale: n,
                       });
                     }}
                   />
@@ -253,12 +251,12 @@ export default function FormTypeConvert({
               {
                 flex: 'flex-[2]',
                 header: tr('typeConvertErrorHandling'),
-                render: (conv: ConversionEntry, i: number) => (
+                render: (conv: TypeConversionEntry, i: number) => (
                   <GlassOptionSingleSelect
                     value={conv.onError ?? 'null'}
                     onChange={(v) =>
                       updateConversion(i, {
-                        onError: v !== 'null' ? v : undefined,
+                        onError: v !== 'null' ? (v as 'keep' | 'fail') : undefined,
                       })
                     }
                     groups={[

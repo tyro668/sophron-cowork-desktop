@@ -7,7 +7,6 @@ import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
-import { translatePivotInput } from '../../../shared/data-field-types';
 import { useWorkflowNodeColumnValues } from '../../hooks/useWorkflowNodeColumnValues';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
@@ -15,42 +14,24 @@ import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useClickOutside } from '../../hooks/useClickOutside';
 import { ChevronDown, Loader2, Trash2, X } from 'lucide-react';
+import {
+  addPivotCandidate,
+  addPivotValue,
+  normalizePivotAxes,
+} from '../../../shared/operator-config';
+import type {
+  AggregateFunction,
+  PivotAxisEntry,
+  PivotLiteral,
+  PivotMetric,
+} from '../../../shared/operator-schemas';
 
-const PIVOT_FUNCTIONS = ['sum', 'avg', 'min', 'max', 'count', 'count_distinct'];
-
-type ValueLiteral = string | number | boolean | null;
-
-interface PivotAxis {
-  field: string;
-  values: ValueLiteral[];
-}
-
-function isPivotLiteral(value: unknown): value is ValueLiteral {
-  return (
-    value === null ||
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean'
-  );
-}
-
-interface PivotMetric {
-  function: string;
-  expression: string;
-  alias: string;
-}
-
-function createDefaultMetric(): PivotMetric {
-  return { function: 'count', expression: '', alias: '' };
-}
-
-function createDefaultAxis(): PivotAxis {
-  return { field: '', values: [] };
-}
-
-function isAxisId(value: unknown): value is { field: string; values: unknown } {
-  return Boolean(value) && typeof value === 'object';
-}
+const PIVOT_FUNCTIONS = ['sum', 'avg', 'min', 'max', 'count', 'count_distinct'] as const;
+const EMPTY_METRIC: Readonly<PivotMetric> = {
+  function: 'count',
+  expression: '',
+  alias: '',
+};
 
 export default function FormPivot({
   node,
@@ -63,48 +44,40 @@ export default function FormPivot({
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 
-  const axes = useMemo(() => {
-    const raw = node.config.on;
-    if (!Array.isArray(raw) || raw.length === 0) return [createDefaultAxis()];
-    return raw.filter(isAxisId).map((axis) => ({
-      field: typeof axis.field === 'string' ? axis.field : '',
-      values: Array.isArray(axis.values) ? axis.values.filter(isPivotLiteral) : [],
-    }));
-  }, [node.config?.on]);
+  const axes = useMemo(() => normalizePivotAxes(node.config.on), [node.config.on]);
 
   const rawUsing = useMemo(() => (node.config.using as PivotMetric[]) ?? [], [node.config?.using]);
-  const using = useMemo(
-    () => (rawUsing.length > 0 ? rawUsing : [createDefaultMetric()]),
-    [rawUsing]
-  );
+  const using = useMemo(() => (rawUsing.length > 0 ? rawUsing : [{ ...EMPTY_METRIC }]), [rawUsing]);
   const groupBy = useMemo(() => (node.config.groupBy as string[]) ?? [], [node.config?.groupBy]);
 
   const handleAxesChange = useCallback(
-    (next: PivotAxis[]) => {
+    (next: PivotAxisEntry[]) => {
       updateConfig((cfg) => ({ ...cfg, on: next.length > 0 ? next : undefined }));
     },
     [updateConfig]
   );
 
-  function updateAxis(index: number, patch: Partial<PivotAxis>) {
+  function updateAxis(index: number, patch: Partial<PivotAxisEntry>) {
     handleAxesChange(axes.map((axis, i) => (i === index ? { ...axis, ...patch } : axis)));
   }
 
   function handleAxisFieldChange(index: number, field: string) {
-    const current = axes[index]?.field;
-    if (current === field) return;
+    if (axes[index]?.field === field) return;
     updateAxis(index, { field, values: [] });
   }
 
   function addAxisAfter(index: number) {
-    const hasEmpty = axes.some((axis) => !axis.field);
-    if (hasEmpty) return;
-    handleAxesChange([...axes.slice(0, index + 1), createDefaultAxis(), ...axes.slice(index + 1)]);
+    if (axes.some((axis) => !axis.field)) return;
+    handleAxesChange([
+      ...axes.slice(0, index + 1),
+      { field: '', values: [] },
+      ...axes.slice(index + 1),
+    ]);
   }
 
   function removeAxis(index: number) {
     if (axes.length <= 1) return;
-    handleAxesChange(axes.filter((_, i) => i !== index));
+    handleAxesChange(axes.filter((_, axisIndex) => axisIndex !== index));
   }
 
   const usedFields = useMemo(() => new Set(axes.map((axis) => axis.field)), [axes]);
@@ -155,23 +128,25 @@ export default function FormPivot({
   }
 
   function addMetricAfter(index: number) {
-    const hasEmpty = using.some((m) => !m.expression);
-    if (hasEmpty) return;
+    if (using.some((metric) => !metric.expression)) return;
     handleUsingChange([
       ...using.slice(0, index + 1),
-      createDefaultMetric(),
+      { ...EMPTY_METRIC },
       ...using.slice(index + 1),
     ]);
   }
 
   function removeMetric(index: number) {
     if (using.length <= 1) return;
-    let next = using.filter((_, i) => i !== index);
-    const firstEmpty = next.findIndex((m) => !m.expression);
-    if (firstEmpty >= 0) {
-      next = next.filter((m, i) => i === firstEmpty || m.expression);
-    }
-    handleUsingChange(next);
+    const remaining = using.filter((_, metricIndex) => metricIndex !== index);
+    const firstEmptyIndex = remaining.findIndex((metric) => !metric.expression);
+    handleUsingChange(
+      firstEmptyIndex < 0
+        ? remaining
+        : remaining.filter(
+            (metric, metricIndex) => metricIndex === firstEmptyIndex || metric.expression
+          )
+    );
   }
 
   const fnGroups = useMemo(
@@ -210,7 +185,7 @@ export default function FormPivot({
                 {
                   flex: 'flex-[1.5]',
                   header: '',
-                  render: (axis: PivotAxis, i: number) => (
+                  render: (axis: PivotAxisEntry, i: number) => (
                     <GlassFieldSingleSelect
                       value={axis.field}
                       options={fieldCompletions}
@@ -226,7 +201,7 @@ export default function FormPivot({
                 {
                   flex: 'flex-[10]',
                   header: '',
-                  render: (axis: PivotAxis, i: number) => (
+                  render: (axis: PivotAxisEntry, i: number) => (
                     <AxisValueCell
                       field={axis.field}
                       columnType={columnTypes[axis.field]}
@@ -306,7 +281,7 @@ export default function FormPivot({
                   <GlassOptionSingleSelect
                     value={metric.function}
                     groups={fnGroups}
-                    onChange={(v) => updateMetric(i, { function: v })}
+                    onChange={(v) => updateMetric(i, { function: v as AggregateFunction })}
                     className="h-7 text-[12px] [&>span]:text-left w-full"
                   />
                 ),
@@ -329,7 +304,7 @@ export default function FormPivot({
                 header: tr('aggregateAlias'),
                 render: (metric: PivotMetric, i: number) => (
                   <GlassFormTextInput
-                    value={metric.alias}
+                    value={metric.alias ?? ''}
                     onChange={(v) => updateMetric(i, { alias: v })}
                     placeholder={tr('pivotAliasPlaceholder')}
                     className="h-7 px-1.5 text-[12px] w-full"
@@ -354,60 +329,27 @@ export default function FormPivot({
 interface AxisValueCellProps {
   field: string;
   columnType?: string;
-  values: ValueLiteral[];
+  values: PivotLiteral[];
   taskId?: string;
   sourceNode?: { id: string; type: string; config?: Record<string, unknown> };
-  onChange: (values: ValueLiteral[]) => void;
+  onChange: (values: PivotLiteral[]) => void;
   tr: (key: string, params?: Record<string, unknown>) => string;
 }
 
 // 纯展示用，不代表存储类型：null 显示为 "null"，空字符串显示为 ""，其余按 String 显示。
-function literalDisplay(value: ValueLiteral): string {
+function literalDisplay(value: PivotLiteral): string {
   if (value === null) return 'null';
   if (value === '') return '""';
   return String(value);
 }
 
-// 只翻译新添加的那一个值，追加到既有类型化数组；既有值类型保持不变。
-// trim 决策统一收敛到 translatePivotInput（text 保留原始，其余按字段类型处理）。
-// 空串视为无操作，避免误添加空字符串值（手工输入语义）。
-export function addPivotValue(
-  values: ValueLiteral[],
-  raw: string,
-  columnType?: string
-): ValueLiteral[] {
-  if (raw === '') return values;
-  const translated = translatePivotInput(raw, columnType);
-  // 转换后为空串（如纯空白在数值/日期列）视为无操作，避免误添加。
-  if (translated === '') return values;
-  if (values.some((v) => literalDisplay(v) === literalDisplay(translated))) return values;
-  return [...values, translated];
-}
-
-// 候选点击专用：允许添加空字符串（候选值来自数据库 DISTINCT，原列真实存在空串时需可选）。
-// 手工输入的 no-op 语义不影响候选路径。
-export function addPivotCandidate(
-  values: ValueLiteral[],
-  raw: string,
-  columnType?: string
-): ValueLiteral[] {
-  const translated = translatePivotInput(raw, columnType);
-  if (values.some((v) => literalDisplay(v) === literalDisplay(translated))) return values;
-  return [...values, translated];
-}
-
-// 删除按索引过滤，保留既有值的类型，不重新解析整个数组。
-export function removePivotValue(values: ValueLiteral[], index: number): ValueLiteral[] {
-  return values.filter((_, i) => i !== index);
-}
-
 interface TypedValueMultiInputProps {
-  values: ValueLiteral[];
+  values: PivotLiteral[];
   columnType?: string;
   suggestions: string[];
   isLoading?: boolean;
   disabled?: boolean;
-  onChange: (values: ValueLiteral[]) => void;
+  onChange: (values: PivotLiteral[]) => void;
   onOpen?: () => void;
   placeholder?: string;
   addLabel?: string;
@@ -452,7 +394,7 @@ function TypedValueMultiInput({
   }, [values, inputText, columnType, onChange]);
 
   const removeTag = useCallback(
-    (idx: number) => onChange(removePivotValue(values, idx)),
+    (idx: number) => onChange(values.filter((_, valueIndex) => valueIndex !== idx)),
     [values, onChange]
   );
 

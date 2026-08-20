@@ -310,7 +310,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
           columns: [column.name],
         });
         context.emitOperator('field_mapping', {
-          mappings: [{ source: tempColumn, target: column.name }],
+          mappings: [{ source: tempColumn, targetMode: 'rename', targetValue: column.name }],
         });
         context.removeColumn(column.name);
         context.upsertColumn({ ...convertedColumn, expression });
@@ -371,7 +371,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         'Generated rename operation requires target'
       );
       context.emitOperator('field_mapping', {
-        mappings: [{ source: source.name, target }],
+        mappings: [{ source: source.name, targetMode: 'rename', targetValue: target }],
       });
       context.renameColumn(source.name, target);
     },
@@ -407,7 +407,9 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
           columns: [existingColumn.name],
         });
         context.emitOperator('field_mapping', {
-          mappings: [{ source: tempColumn, target: existingColumn.name }],
+          mappings: [
+            { source: tempColumn, targetMode: 'rename', targetValue: existingColumn.name },
+          ],
         });
         context.removeColumn(existingColumn.name);
         context.upsertColumn({
@@ -480,7 +482,9 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
           columns: [existingColumn.name],
         });
         context.emitOperator('field_mapping', {
-          mappings: [{ source: tempColumn, target: existingColumn.name }],
+          mappings: [
+            { source: tempColumn, targetMode: 'rename', targetValue: existingColumn.name },
+          ],
         });
         context.removeColumn(existingColumn.name);
         context.upsertColumn({

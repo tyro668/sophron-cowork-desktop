@@ -22,7 +22,7 @@ export const PivotAxisEntrySchema = z.object({
   values: z.array(PivotLiteralSchema).max(MAX_VALUES_PER_FIELD).default([]),
 });
 
-const PivotMetricSchema = z.object({
+export const PivotMetricSchema = z.object({
   function: AggregateFunctionSchema,
   expression: z.string().trim().min(1).max(MAX_EXPRESSION_LENGTH),
   alias: z.string().trim().max(MAX_ALIAS_LENGTH).optional(),
@@ -45,3 +45,7 @@ export const PivotConfigSchema = z.object({
   using: z.array(PivotMetricSchema).min(1).max(MAX_USING_COUNT),
   groupBy: z.array(z.string().max(MAX_FIELD_NAME_LENGTH)).max(MAX_GROUP_BY_COUNT).default([]),
 });
+
+export type PivotLiteral = z.infer<typeof PivotLiteralSchema>;
+export type PivotAxisEntry = z.infer<typeof PivotAxisEntrySchema>;
+export type PivotMetric = z.infer<typeof PivotMetricSchema>;

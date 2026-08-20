@@ -44,8 +44,8 @@ const currentOperatorCases: Array<{
     dsl: 'map [dt] to [order_date], [rev] to [revenue]',
     expectedConfig: {
       mappings: [
-        { source: 'dt', target: 'order_date' },
-        { source: 'rev', target: 'revenue' },
+        { source: 'dt', targetMode: 'rename', targetValue: 'order_date' },
+        { source: 'rev', targetMode: 'rename', targetValue: 'revenue' },
       ],
     },
   },
@@ -615,8 +615,8 @@ describe('operator DSL executable cases', () => {
       type: 'field_mapping' as const,
       config: {
         mappings: [
-          { source: 'a', target: 'b' },
-          { source: '', target: '' },
+          { source: 'a', targetMode: 'rename', targetValue: 'b' },
+          { source: '', targetMode: 'rename', targetValue: '' },
         ],
       },
       expected: 'map [a] to [b]',
@@ -655,7 +655,9 @@ describe('operator DSL executable cases', () => {
     },
     {
       type: 'field_mapping' as const,
-      config: { mappings: [{ source: '', target: '' }] },
+      config: {
+        mappings: [{ source: '', targetMode: 'rename', targetValue: '' }],
+      },
     },
     {
       type: 'missing_value' as const,
@@ -1128,7 +1130,11 @@ describe('operator DSL executable cases', () => {
 
     expect(errorsOf(mapping.diagnostics)).toHaveLength(0);
     expect(mapping.operator?.config.mappings).toEqual([
-      { source: 'from to', target: 'mapped as value' },
+      {
+        source: 'from to',
+        targetMode: 'rename',
+        targetValue: 'mapped as value',
+      },
     ]);
     expect(errorsOf(join.diagnostics)).toHaveLength(0);
     expect(join.operator?.config.conditions).toEqual([

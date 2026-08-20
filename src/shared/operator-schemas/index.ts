@@ -8,30 +8,45 @@ export {
   ConditionSchema,
   ConflictSchema,
   MetricEntrySchema,
+  type AggregateFunction,
+  type MetricEntry,
   KeepItemSchema,
   nonEmptyTrimmed,
 } from './common';
 export { SortConfigSchema } from './sort';
 export { FieldSelectConfigSchema } from './field-select';
-export { FieldMappingConfigSchema } from './field-mapping';
+export { FieldMappingConfigSchema, FieldMappingEntrySchema } from './field-mapping';
+export type { FieldMappingEntry } from './field-mapping';
 export { DeduplicateConfigSchema } from './deduplicate';
 export {
   TypeConvertConfigSchema,
+  TypeConversionEntrySchema,
   DATE_FORMAT_VALUES,
   DATE_FORMAT_PRESETS,
   SCALE_MIN,
   SCALE_MAX,
 } from './type-convert';
-export type { DateFormat } from './type-convert';
+export type { DateFormat, TypeConversionEntry } from './type-convert';
 export { UnpivotConfigSchema } from './unpivot';
 export { UnnestConfigSchema } from './unnest';
 export { SetOpConfigSchema } from './set-op';
 export { DEFAULT_OPERATION, DEFAULT_MODE, DEFAULT_MATCH } from './set-op';
 export { AggregateConfigSchema } from './aggregate';
 export { CalculateFieldConfigSchema } from './calculate-field';
-export { MissingValueConfigSchema } from './missing-value';
+export {
+  MissingValueConfigSchema,
+  MissingValueMethodSchema,
+  MissingValueRuleSchema,
+} from './missing-value';
+export type { MissingValueMethod, MissingValueRule } from './missing-value';
 export { LimitConfigSchema } from './limit';
-export { PivotConfigSchema } from './pivot';
+export {
+  PivotConfigSchema,
+  PivotLiteralSchema,
+  PivotAxisEntrySchema,
+  PivotMetricSchema,
+} from './pivot';
+export type { PivotLiteral, PivotAxisEntry, PivotMetric } from './pivot';
 export { JoinConfigSchema } from './join';
 export { FilterConfigSchema } from './filter';
 
