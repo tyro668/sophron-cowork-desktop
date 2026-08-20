@@ -5,25 +5,25 @@ import type {
   AutomationCreateInput,
   AutomationTrigger,
 } from '../../../shared/automation/types';
+import { TOOL_SCHEMA_COPY } from '../../prompts/tool-copy';
 
 const TimezoneSchema = Type.Optional(
   Type.String({
     minLength: 1,
-    description:
-      'IANA timezone. Omit to use the desktop system timezone. This version only supports the system timezone.',
+    description: TOOL_SCHEMA_COPY.automation.timezone,
   })
 );
 
 const DateRangeProperties = {
   timezone: TimezoneSchema,
-  startDate: Type.Optional(Type.String({ description: 'Optional local start date, YYYY-MM-DD.' })),
-  endDate: Type.Optional(Type.String({ description: 'Optional local end date, YYYY-MM-DD.' })),
+  startDate: Type.Optional(Type.String({ description: TOOL_SCHEMA_COPY.automation.startDate })),
+  endDate: Type.Optional(Type.String({ description: TOOL_SCHEMA_COPY.automation.endDate })),
 };
 
 const TimesSchema = Type.Array(Type.String({ pattern: '^([01]\\d|2[0-3]):([0-5]\\d)$' }), {
   minItems: 1,
   maxItems: 24,
-  description: 'Local execution times in HH:mm format.',
+  description: TOOL_SCHEMA_COPY.automation.times,
 });
 
 export const AutomationWeekdaySchema = Type.Union([
@@ -42,8 +42,7 @@ export const AutomationScheduleInputSchema = Type.Union([
       kind: Type.Literal('once'),
       runAt: Type.String({
         minLength: 1,
-        description:
-          'RFC3339 timestamp with an explicit offset, for example 2026-08-15T09:00:00+08:00.',
+        description: TOOL_SCHEMA_COPY.automation.runAt,
       }),
       timezone: TimezoneSchema,
     },
@@ -83,11 +82,9 @@ export const AutomationScheduleInputSchema = Type.Union([
       unit: Type.Union([Type.Literal('minute'), Type.Literal('hour'), Type.Literal('day')]),
       startAt: Type.String({
         minLength: 1,
-        description: 'RFC3339 timestamp with an explicit timezone offset.',
+        description: TOOL_SCHEMA_COPY.automation.intervalStartAt,
       }),
-      endAt: Type.Optional(
-        Type.String({ description: 'Optional RFC3339 timestamp with an explicit timezone offset.' })
-      ),
+      endAt: Type.Optional(Type.String({ description: TOOL_SCHEMA_COPY.automation.intervalEndAt })),
       timezone: TimezoneSchema,
     },
     { additionalProperties: false }
@@ -100,8 +97,7 @@ export const AutomationActionInputSchema = Type.Union([
       kind: Type.Literal('data_task'),
       taskId: Type.String({
         minLength: 1,
-        description:
-          'Existing saved data task id. Resolve names with data_list_tasks. For a new task, first finish data_generate_task_from_requirement and use its returned task id.',
+        description: TOOL_SCHEMA_COPY.automation.dataTaskId,
       }),
     },
     { additionalProperties: false }
@@ -112,7 +108,7 @@ export const AutomationActionInputSchema = Type.Union([
       prompt: Type.String({
         minLength: 1,
         maxLength: 20_000,
-        description: 'The complete instruction that each scheduled conversation should execute.',
+        description: TOOL_SCHEMA_COPY.automation.conversationPrompt,
       }),
       projectId: Type.Optional(Type.String({ minLength: 1 })),
       selectedSkillNames: Type.Optional(
@@ -125,7 +121,7 @@ export const AutomationActionInputSchema = Type.Union([
 
 export const AutomationListInputSchema = Type.Object(
   {
-    query: Type.Optional(Type.String({ description: 'Search automation name or description.' })),
+    query: Type.Optional(Type.String({ description: TOOL_SCHEMA_COPY.automation.query })),
     status: Type.Optional(
       Type.Union([
         Type.Literal('enabled'),
@@ -155,8 +151,7 @@ export const AutomationPrepareInputSchema = Type.Object(
 
 const SerializedObjectFallbackSchema = Type.String({
   minLength: 2,
-  description:
-    'Compatibility fallback for models that accidentally serialize this object as JSON. Prefer passing an object.',
+  description: TOOL_SCHEMA_COPY.automation.serializedObject,
 });
 
 export const AutomationPrepareParametersSchema = Type.Object(
@@ -174,7 +169,7 @@ export const AutomationCreateInputSchema = Type.Object(
   {
     draftId: Type.String({ minLength: 1 }),
     confirmed: Type.Literal(true, {
-      description: 'Pass true only when the user explicitly requested creation.',
+      description: TOOL_SCHEMA_COPY.automation.createConfirmed,
     }),
   },
   { additionalProperties: false }
@@ -184,8 +179,7 @@ export const AutomationPrepareScheduleUpdateInputSchema = Type.Object(
   {
     automationId: Type.String({
       minLength: 1,
-      description:
-        'Exact automation id. Resolve it with automation_list; never guess an id from a name.',
+      description: TOOL_SCHEMA_COPY.automation.automationId,
     }),
     schedule: AutomationScheduleInputSchema,
   },
@@ -196,8 +190,7 @@ export const AutomationPrepareScheduleUpdateParametersSchema = Type.Object(
   {
     automationId: Type.String({
       minLength: 1,
-      description:
-        'Exact automation id. Resolve it with automation_list; never guess an id from a name.',
+      description: TOOL_SCHEMA_COPY.automation.automationId,
     }),
     schedule: Type.Union([AutomationScheduleInputSchema, SerializedObjectFallbackSchema]),
   },
@@ -208,7 +201,7 @@ export const AutomationUpdateScheduleInputSchema = Type.Object(
   {
     draftId: Type.String({ minLength: 1 }),
     confirmed: Type.Literal(true, {
-      description: 'Pass true only when the user explicitly requested this schedule change.',
+      description: TOOL_SCHEMA_COPY.automation.scheduleUpdateConfirmed,
     }),
   },
   { additionalProperties: false }

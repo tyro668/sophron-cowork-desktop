@@ -1,0 +1,4 @@
+User prompt: {{USER_PROMPT}}
+
+Injected memory context:
+{{PROMPT_PREFIX}}

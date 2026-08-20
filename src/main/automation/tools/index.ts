@@ -15,7 +15,8 @@ import {
   parseAutomationPrepareInput,
   parseAutomationUpdateScheduleInput,
 } from './contract';
-import { buildAutomationToolPrompt } from './prompt';
+import { buildAutomationToolPrompt } from '../../prompts/automation-tools';
+import { AUTOMATION_TOOL_COPY } from '../../prompts/tool-copy';
 import type { AutomationToolService } from './service';
 import type { AutomationToolExecutionContext } from './contract';
 
@@ -51,35 +52,27 @@ export function createAutomationCustomTools(
   return [
     {
       name: 'automation_list',
-      label: 'List automations',
-      description:
-        'List existing automations. Use before referencing an automation by name or when checking whether a similar automation already exists.',
+      ...AUTOMATION_TOOL_COPY.automation_list,
       parameters: AutomationListInputSchema,
       execute: async (_toolCallId, params) => service.list(parseAutomationListInput(params)),
     },
     {
       name: 'automation_prepare',
-      label: 'Prepare automation',
-      description:
-        'Validate and prepare a scheduled automation without creating it. Call only after action and execution time are fully known. Pass schedule and action as objects, not JSON strings. For a new data task, generate and validate the saved data task first, then pass its returned task id. This returns a draftId for automation_create.',
+      ...AUTOMATION_TOOL_COPY.automation_prepare,
       parameters: AutomationPrepareParametersSchema,
       execute: async (_toolCallId, params) =>
         service.prepare(parseAutomationPrepareInput(params), executionContext),
     },
     {
       name: 'automation_create',
-      label: 'Create automation',
-      description:
-        'Create a persistent scheduled automation from a valid automation_prepare draft. Call only when the user explicitly asked to create the prepared automation. Retrying the same draft is idempotent.',
+      ...AUTOMATION_TOOL_COPY.automation_create,
       parameters: AutomationCreateInputSchema,
       execute: async (_toolCallId, params) =>
         service.create(parseAutomationCreateInput(params), executionContext),
     },
     {
       name: 'automation_prepare_schedule_update',
-      label: 'Prepare automation schedule update',
-      description:
-        'Validate and preview a schedule-only update for an existing automation. Resolve the exact automation id with automation_list first. This preserves the automation action and enabled or paused state, and returns a draftId for automation_update_schedule.',
+      ...AUTOMATION_TOOL_COPY.automation_prepare_schedule_update,
       parameters: AutomationPrepareScheduleUpdateParametersSchema,
       execute: async (_toolCallId, params) =>
         service.prepareScheduleUpdate(
@@ -89,9 +82,7 @@ export function createAutomationCustomTools(
     },
     {
       name: 'automation_update_schedule',
-      label: 'Update automation schedule',
-      description:
-        'Apply a prepared schedule-only automation update. Call only when the user explicitly requested the exact schedule change. Retrying the same draft is idempotent.',
+      ...AUTOMATION_TOOL_COPY.automation_update_schedule,
       parameters: AutomationUpdateScheduleInputSchema,
       execute: async (_toolCallId, params) =>
         service.updateSchedule(parseAutomationUpdateScheduleInput(params), executionContext),

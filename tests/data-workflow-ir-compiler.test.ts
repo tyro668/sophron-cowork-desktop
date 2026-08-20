@@ -5,10 +5,8 @@ import {
   executeWorkflowJavaScriptInSandbox,
   WORKFLOW_SANDBOX_RUNNER_SOURCE,
 } from '../src/main/data/workflow/javascript-runtime';
-import {
-  buildWorkflowGenerationSystemPrompt,
-  compileGeneratedJavaScriptWorkflow,
-} from '../src/main/data/workflow/workflow-generator';
+import { compileGeneratedJavaScriptWorkflow } from '../src/main/data/workflow/workflow-generator';
+import { buildWorkflowGenerationSystemPrompt } from '../src/main/prompts';
 import { validateGeneratedOperatorConfig } from '../src/main/data/workflow/generated-operator-config-validator';
 import { lowerGeneratedWorkflowIrSemantics } from '../src/main/data/workflow/workflow-ir-lowerer';
 import { compileLoweredWorkflowToPlatformNodes } from '../src/main/data/workflow/workflow-node-compiler';

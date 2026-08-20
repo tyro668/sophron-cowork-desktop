@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildDataToolPrompt } from '../src/main/data/data-tool-prompt';
+import { buildDataToolPrompt } from '../src/main/prompts';
 import type { DataToolPromptContext } from '../src/main/data/data-tool-types';
 
 const baseContext: DataToolPromptContext = {

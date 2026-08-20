@@ -1,0 +1,16 @@
+Analyze this GUI screenshot and answer the following question:
+
+{{QUESTION}}
+
+Provide a detailed answer based on what you can see in the image.
+
+IMPORTANT: At the end of your response, you MUST provide a formatted judgment on whether the most recent GUI operation was accurate/successful. Use this exact format:
+
+**Operation Success Judgment:**
+- Status: [SUCCESS/FAILURE]
+- Reason: [Brief explanation of why the operation succeeded or failed]
+
+Example:
+**Operation Success Judgment:**
+- Status: SUCCESS
+- Reason: The button was clicked correctly in the expected dialog window.

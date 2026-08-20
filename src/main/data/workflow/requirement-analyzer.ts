@@ -4,14 +4,12 @@ import type {
   DataTaskRequirementAnalysisItem,
 } from '../../../renderer/types';
 import { runPiAiOneShot, type PiAiOneShotResult } from '../../claude/claude-sdk-one-shot';
-import { DataCommandError } from '../data-command-types';
-import requirementAnalysisSystemPrompt from './prompts/requirement-analysis-system.txt?raw';
-import { getWorkflowJavascriptCapabilityPrompt } from './workflow-ir-operation-registry';
-import { getWorkflowExpressionCapabilityPrompt } from './workflow-expression-registry';
 import {
-  getRequirementCapabilityOperation,
-  getRequirementCapabilityPrompt,
-} from './requirement-capability-registry';
+  buildRequirementAnalysisSystemPrompt,
+  buildRequirementAnalysisUserPrompt,
+} from '../../prompts/data-workflow';
+import { DataCommandError } from '../data-command-types';
+import { getRequirementCapabilityOperation } from './requirement-capability-registry';
 import { extractJsonObject, isRecord } from './utils';
 
 const VALID_STATUSES = new Set(['supported', 'ambiguous', 'unsupported']);
@@ -36,7 +34,7 @@ export async function analyzeDataTaskRequirement({
     );
   }
   const response = await runPiAiOneShot(
-    JSON.stringify({ requirement, inputColumns: columns }, null, 2),
+    buildRequirementAnalysisUserPrompt({ requirement, inputColumns: columns }),
     buildRequirementAnalysisSystemPrompt(),
     runtimeConfig,
     { temperature: 0, maxTokens: 2_000, signal }
@@ -68,14 +66,6 @@ export async function analyzeDataTaskRequirement({
           : 'needs_confirmation',
     items,
   };
-}
-
-function buildRequirementAnalysisSystemPrompt(): string {
-  return requirementAnalysisSystemPrompt
-    .replace('{{WORKFLOW_CAPABILITIES}}', getWorkflowJavascriptCapabilityPrompt())
-    .replace('{{REQUIREMENT_CAPABILITIES}}', getRequirementCapabilityPrompt())
-    .replace('{{WORKFLOW_EXPRESSION_CAPABILITIES}}', getWorkflowExpressionCapabilityPrompt())
-    .trim();
 }
 
 function normalizeAnalysisItem(value: unknown): DataTaskRequirementAnalysisItem {

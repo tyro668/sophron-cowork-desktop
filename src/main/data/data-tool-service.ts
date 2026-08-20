@@ -61,6 +61,7 @@ import type {
   PersonalAnalysisSpace,
   PersonalAnalysisTable,
 } from '../../shared/personal-analysis-types';
+import { TOOL_RESULT_GUIDANCE } from '../prompts/tool-copy';
 
 export class DataToolService {
   private readonly generationInFlight = new Map<string, Promise<DataToolResult>>();
@@ -638,10 +639,10 @@ function formatRequirementAnalysis(
   });
   const nextStep =
     result.status === 'supported'
-      ? 'Show this plan to the user and wait for an explicit confirmation in a new user message. Then call data_generate_task_from_requirement with this analysisId.'
+      ? TOOL_RESULT_GUIDANCE.dataAnalysisSupported
       : result.status === 'needs_confirmation'
-        ? 'Ask the user to clarify or revise the ambiguous/unsupported items, then analyze the revised requirement again. Do not generate yet.'
-        : 'Explain the unsupported capability and suggested alternatives. Do not generate this requirement.';
+        ? TOOL_RESULT_GUIDANCE.dataAnalysisNeedsConfirmation
+        : TOOL_RESULT_GUIDANCE.dataAnalysisUnsupported;
   return [
     `Requirement analysis: status=${result.status} analysisId=${analysisId}`,
     `Input table: ${result.inputTableName} (${result.inputTableId})`,
@@ -667,7 +668,7 @@ function formatGeneratedTaskToolResult(
       `Input table: ${receipt.inputTableName} (${receipt.inputTableId})`,
       `Output table: ${outputLink} (${result.outputTableId})`,
       `Temporary execution validation passed. Expected output columns=${result.expectedOutputSchema.length}.`,
-      'The reusable task is saved. Formal output has not been written; use data_run_task with mode=persisted only when the user requests it.',
+      TOOL_RESULT_GUIDANCE.dataTaskSaved,
     ].join('\n'),
     {
       status: 'ready',

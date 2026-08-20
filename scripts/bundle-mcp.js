@@ -217,6 +217,10 @@ async function bundleWithEsbuild() {
       target: 'node20',
       format: 'cjs',
       external: NODE_EXTERNALS,
+      // GUI prompt templates use the same Vite-style `?raw` imports as the
+      // Electron main process. Inline them so packaged MCP servers remain
+      // self-contained and never depend on source-tree text files at runtime.
+      loader: { '.txt': 'text' },
       sourcemap: false,
       minify: false,
       logLevel: 'warning',

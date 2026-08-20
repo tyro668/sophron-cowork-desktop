@@ -26,6 +26,7 @@ import type {
   AutomationUpdateScheduleToolInput,
   PreparedAutomationDependency,
 } from './contract';
+import { TOOL_RESULT_GUIDANCE } from '../../prompts/tool-copy';
 
 interface AutomationToolServiceOptions {
   automationService: AutomationService;
@@ -132,7 +133,7 @@ export class AutomationToolService {
         `Schedule: ${summary.scheduleText}`,
         `Next runs: ${summary.nextRuns.map((run) => run.text).join('; ')}`,
         `Draft id: ${receipt.id}`,
-        'Call automation_create only if the user explicitly asked to create this automation.',
+        TOOL_RESULT_GUIDANCE.automationPrepared,
       ].join('\n'),
       {
         status: 'ready',
@@ -217,7 +218,7 @@ export class AutomationToolService {
         `Next runs: ${summary.nextRuns.map((run) => run.text).join('; ')}`,
         ...warnings.map((warning) => `Warning: ${warning}`),
         `Draft id: ${receipt.id}`,
-        'Call automation_update_schedule only if the user explicitly requested this schedule change.',
+        TOOL_RESULT_GUIDANCE.automationScheduleUpdatePrepared,
       ].join('\n'),
       {
         status: 'ready',

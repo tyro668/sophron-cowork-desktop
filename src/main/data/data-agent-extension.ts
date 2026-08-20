@@ -4,7 +4,7 @@ import type {
 } from '../extensions/agent-runtime-extension';
 import type { DataToolService } from './data-tool-service';
 import { createDataCustomTools } from './data-tool-definitions';
-import { buildDataToolPrompt } from './data-tool-prompt';
+import { buildDataToolPrompt } from '../prompts/data-tools';
 
 export function createDataAgentRuntimeExtension(
   dataToolService: DataToolService

@@ -1,0 +1,5 @@
+Analyze this GUI screenshot and answer the following question:
+
+{{QUESTION}}
+
+Provide a clear yes/no answer or the specific information requested.
