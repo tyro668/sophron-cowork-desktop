@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api';
-import { compilePivotSql } from '../../src/main/data/operators/pivot';
+import {
+  compilePivotSql,
+  RESOLVED_DYNAMIC_PIVOT_VALUES,
+} from '../../src/main/data/operators/pivot';
 
 async function connect(): Promise<DuckDBConnection> {
   const instance = await DuckDBInstance.create(':memory:');
@@ -101,24 +104,31 @@ describe('compilePivotSql', () => {
     ]);
   });
 
-  it('leaves fields without configured values dynamically expanded', async () => {
-    const connection = await connect();
-    await connection.run(
-      'CREATE TABLE sales (region VARCHAR, year INTEGER, quarter VARCHAR, amount INTEGER)'
-    );
-    await connection.run("INSERT INTO sales VALUES ('East', 2024, 'Q1', 10)");
+  it('rejects unresolved dynamic values at the SQL compiler boundary', () => {
+    expect(() =>
+      compilePivotSql('result', 'sales', {
+        on: [
+          { field: 'year', values: ['2024'] },
+          { field: 'quarter', values: [] },
+        ],
+        using: [{ function: 'sum', expression: '[amount]' }],
+        groupBy: ['region'],
+      })
+    ).toThrow(/quarter.*unresolved dynamic values/);
+  });
 
+  it('accepts an empty resolved value set for an empty input relation', async () => {
+    const connection = await connect();
+    await connection.run('CREATE TABLE sales (region VARCHAR, quarter VARCHAR, amount INTEGER)');
     const sql = compilePivotSql('result', 'sales', {
-      on: [
-        { field: 'year', values: ['2024'] },
-        { field: 'quarter', values: [] },
-      ],
+      on: [{ field: 'quarter', values: [] }],
       using: [{ function: 'sum', expression: '[amount]' }],
       groupBy: ['region'],
+      [RESOLVED_DYNAMIC_PIVOT_VALUES]: true,
     });
     await connection.run(sql);
 
-    expect(await columnNames(connection, 'result')).toEqual(['region', '2024_Q1']);
+    expect(await columnNames(connection, 'result')).toEqual(['region']);
   });
 
   it('compiles numeric values as bare literals, not quoted strings', async () => {
@@ -143,6 +153,49 @@ describe('compilePivotSql', () => {
       using: [{ function: 'count', expression: '*' }],
     });
     expect(sql).toContain(`ON "status" IN (NULL)`);
+  });
+
+  it('creates a stable column name for a selected empty-string pivot value', async () => {
+    const connection = await connect();
+    await connection.run('CREATE TABLE sales (status VARCHAR, amount INTEGER)');
+    await connection.run("INSERT INTO sales VALUES ('', 10), ('paid', 20)");
+
+    const sql = compilePivotSql('result', 'sales', {
+      on: [{ field: 'status', values: [''] }],
+      using: [{ function: 'sum', expression: '[amount]' }],
+    });
+    expect(sql).toContain(`IN ('' AS "empty")`);
+    await connection.run(sql);
+
+    expect(await columnNames(connection, 'result')).toEqual(['empty']);
+    const selectedReader = await connection.runAndReadAll('SELECT * FROM result');
+    expect(selectedReader.getRowObjectsJson()).toEqual([{ empty: '10' }]);
+  });
+
+  it('suffixes the empty-string column without merging conflicting source values', async () => {
+    const connection = await connect();
+    await connection.run('CREATE TABLE sales (status VARCHAR, amount INTEGER)');
+    await connection.run(
+      "INSERT INTO sales VALUES ('', 10), ('empty', 20), ('empty_0', 30), ('paid', 40)"
+    );
+
+    const sql = compilePivotSql('result', 'sales', {
+      on: [{ field: 'status', values: ['', 'empty', 'empty_0', 'paid'] }],
+      using: [{ function: 'sum', expression: '[amount]' }],
+    });
+    expect(sql).toContain(`IN ('' AS "empty_1", 'empty', 'empty_0', 'paid')`);
+    await connection.run(sql);
+
+    expect(await columnNames(connection, 'result')).toEqual([
+      'empty_1',
+      'empty',
+      'empty_0',
+      'paid',
+    ]);
+    const reader = await connection.runAndReadAll('SELECT * FROM result');
+    expect(reader.getRowObjectsJson()).toEqual([
+      { empty_1: '10', empty: '20', empty_0: '30', paid: '40' },
+    ]);
   });
 
   it('escapes a quoted value containing a comma', async () => {

@@ -1196,7 +1196,7 @@ describe('operator DSL executable cases', () => {
         ],
         [{ sourceNodeId: 'source', targetNodeId: 'limit', targetHandle: 'input' }]
       )
-    ).toBe('input source task\n  | limit 20');
+    ).toBe('input source task as src\n  | limit 20');
   });
 
   it('rejects workflow export when an incomplete operator cannot be formatted', () => {

@@ -8,7 +8,7 @@ const MAX_GROUP_BY_COUNT = 100;
 const MAX_EXPRESSION_LENGTH = 10_000;
 const MAX_ALIAS_LENGTH = 256;
 const MAX_VALUE_LENGTH = 10_000;
-const MAX_VALUES_PER_FIELD = 1_000;
+export const MAX_PIVOT_VALUES_PER_FIELD = 1_000;
 
 export const PivotLiteralSchema = z.union([
   z.string().max(MAX_VALUE_LENGTH),
@@ -19,7 +19,7 @@ export const PivotLiteralSchema = z.union([
 
 export const PivotAxisEntrySchema = z.object({
   field: z.string().trim().min(1).max(MAX_FIELD_NAME_LENGTH),
-  values: z.array(PivotLiteralSchema).max(MAX_VALUES_PER_FIELD).default([]),
+  values: z.array(PivotLiteralSchema).max(MAX_PIVOT_VALUES_PER_FIELD).default([]),
 });
 
 export const PivotMetricSchema = z.object({

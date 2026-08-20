@@ -85,10 +85,10 @@ export default function FormMissingValue({
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const strategy = (node.config.strategy as string) ?? 'by_column';
-  const rules = useMemo<MissingValueRule[]>(
-    () => (node.config.rules as MissingValueRule[]) ?? [createEmptyRule()],
-    [node.config.rules]
-  );
+  const rules = useMemo<MissingValueRule[]>(() => {
+    const configuredRules = (node.config.rules as MissingValueRule[] | undefined) ?? [];
+    return configuredRules.length > 0 ? configuredRules : [createEmptyRule()];
+  }, [node.config.rules]);
   const rowColumns = useMemo<string[]>(
     () => (node.config.columns as string[]) ?? [],
     [node.config.columns]
@@ -216,9 +216,7 @@ export default function FormMissingValue({
 
   const removeRule = useCallback(
     (index: number) => {
-      let next = rules.filter((_, i) => i !== index);
-      if (next.length === 0) next = [createEmptyRule()];
-      handleRulesChange(next);
+      handleRulesChange(rules.filter((_, i) => i !== index));
     },
     [rules, handleRulesChange]
   );
@@ -494,7 +492,7 @@ export default function FormMissingValue({
                   if (action === 'add' || action === 'copy') {
                     return rules.length < fieldCompletions.length;
                   }
-                  return action === 'remove' ? rules.length > 1 : true;
+                  return true;
                 }}
                 draggable
                 onDragStart={handleDragStart}

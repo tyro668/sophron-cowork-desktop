@@ -76,7 +76,10 @@ export default function FormPivot({
   }
 
   function removeAxis(index: number) {
-    if (axes.length <= 1) return;
+    if (axes.length <= 1) {
+      handleAxesChange([]);
+      return;
+    }
     handleAxesChange(axes.filter((_, axisIndex) => axisIndex !== index));
   }
 
@@ -137,7 +140,10 @@ export default function FormPivot({
   }
 
   function removeMetric(index: number) {
-    if (using.length <= 1) return;
+    if (using.length <= 1) {
+      handleUsingChange([]);
+      return;
+    }
     const remaining = using.filter((_, metricIndex) => metricIndex !== index);
     const firstEmptyIndex = remaining.findIndex((metric) => !metric.expression);
     handleUsingChange(

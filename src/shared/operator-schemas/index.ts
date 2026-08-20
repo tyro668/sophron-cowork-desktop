@@ -46,6 +46,7 @@ export {
   PivotLiteralSchema,
   PivotAxisEntrySchema,
   PivotMetricSchema,
+  MAX_PIVOT_VALUES_PER_FIELD,
 } from './pivot';
 export type { PivotLiteral, PivotAxisEntry, PivotMetric } from './pivot';
 export { JoinConfigSchema, JoinConditionSchema } from './join';

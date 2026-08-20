@@ -41,10 +41,13 @@ export default function FormTypeConvert({
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 
-  const conversions = useMemo<TypeConversionEntry[]>(
-    () => (node.config.conversions as TypeConversionEntry[]) ?? [{ ...EMPTY_TYPE_CONVERSION }],
-    [node.config.conversions]
-  );
+  const conversions = useMemo<TypeConversionEntry[]>(() => {
+    const configuredConversions =
+      (node.config.conversions as TypeConversionEntry[] | undefined) ?? [];
+    return configuredConversions.length > 0
+      ? configuredConversions
+      : [{ ...EMPTY_TYPE_CONVERSION }];
+  }, [node.config.conversions]);
 
   const commitConversions = useCallback(
     (next: TypeConversionEntry[]) => {
@@ -87,7 +90,7 @@ export default function FormTypeConvert({
   const removeConversion = useCallback(
     (index: number) => {
       if (activeConversions.length <= 1) {
-        commitConversions([{ ...EMPTY_TYPE_CONVERSION }]);
+        commitConversions([]);
         return;
       }
       commitConversions(activeConversions.filter((_, i) => i !== index));

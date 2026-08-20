@@ -1,7 +1,12 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import type { DataWorkflowEdge, DataWorkflowNode } from '../../../renderer/types';
 import type { PrepDiagnostic } from '../../../shared/prep-dsl/ast';
-import { JoinConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
+import {
+  JoinConfigSchema,
+  MAX_PIVOT_VALUES_PER_FIELD,
+  PivotConfigSchema,
+  parseOperatorConfig,
+} from '../../../shared/operator-schemas';
 import {
   compileAsofJoinSql,
   compileJoinConditionList,
@@ -9,6 +14,7 @@ import {
   compileSetOpSql,
   literalToSql,
   quoteIdentifier,
+  RESOLVED_DYNAMIC_PIVOT_VALUES,
 } from '../operators';
 import { COMPILE_STRATEGIES } from '../operators/strategy';
 import { tableNameFromId } from './data-store-records';
@@ -146,6 +152,27 @@ export abstract class WorkflowCompiler extends DatasetStore {
       return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input}`;
     }
     let compileConfig = node.config;
+    if (node.type === 'pivot') {
+      const pivotConfig = parseOperatorConfig(PivotConfigSchema, node.config);
+      const on: typeof pivotConfig.on = [];
+      for (const axis of pivotConfig.on) {
+        if (axis.values.length > 0) {
+          on.push(axis);
+          continue;
+        }
+        const field = quoteIdentifier(axis.field);
+        const rows = await this.queryRows<{ value: string | null }>(
+          `SELECT DISTINCT CAST(${field} AS VARCHAR) AS value FROM ${input} ORDER BY value LIMIT ${MAX_PIVOT_VALUES_PER_FIELD + 1}`
+        );
+        if (rows.length > MAX_PIVOT_VALUES_PER_FIELD) {
+          throw new Error(
+            `Pivot field "${axis.field}" has more than ${MAX_PIVOT_VALUES_PER_FIELD} distinct values`
+          );
+        }
+        on.push({ ...axis, values: rows.map((row) => row.value) });
+      }
+      compileConfig = { ...pivotConfig, on, [RESOLVED_DYNAMIC_PIVOT_VALUES]: true };
+    }
     if (node.type === 'unnest' && node.config.sourceKind === 'json') {
       const columnName = String(node.config.column ?? '');
       const jsonPath = String(node.config.path ?? '$');
