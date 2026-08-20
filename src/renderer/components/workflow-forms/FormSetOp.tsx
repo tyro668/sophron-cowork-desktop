@@ -2,112 +2,43 @@ import { useCallback, useEffect, useMemo, useId, useState } from 'react';
 
 import type { OperatorFormProps } from './index';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
-import type { DataColumnTypeInfo } from '../../../shared/data-field-types';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import {
+  analyzeSetOpCompatibility,
+  type SetOpCompatibilityIssue,
+} from '../../../shared/operator-config';
 import {
   DEFAULT_OPERATION,
   DEFAULT_MODE,
   DEFAULT_MATCH,
 } from '../../../shared/operator-schemas/set-op';
 
-const NUMERIC_TYPES = ['integer', 'float', 'decimal'];
-const TEMPORAL_TYPES = ['date', 'datetime'];
-
-function checkTypeWarnings(
-  leftTypes: DataColumnTypeInfo[],
-  rightTypes: DataColumnTypeInfo[],
-  leftColumns: string[],
-  rightColumns: string[],
-  operation: string,
-  match: string,
+function formatCompatibilityIssue(
+  issue: SetOpCompatibilityIssue,
   tr: (key: string) => string
-): string[] {
-  const warnings: string[] = [];
-  const effectiveMatch = operation === 'union' ? match : 'by_position';
-  const isUnionByName = operation === 'union' && effectiveMatch === 'by_name';
-
-  if (!isUnionByName && leftColumns.length !== rightColumns.length) {
-    warnings.push(
-      tr('setOpColumnCountMismatch')
-        .replace('{{leftCount}}', String(leftColumns.length))
-        .replace('{{rightCount}}', String(rightColumns.length))
+): string {
+  if (issue.kind === 'column-count') {
+    return tr('setOpColumnCountMismatch')
+      .replace('{{leftCount}}', String(issue.leftCount))
+      .replace('{{rightCount}}', String(issue.rightCount));
+  }
+  if (issue.kind === 'column-names') {
+    const details = issue.mismatches.map((mismatch) =>
+      tr('setOpColumnNameMismatch')
+        .replace('{{index}}', String(mismatch.index))
+        .replace('{{left}}', mismatch.left)
+        .replace('{{right}}', mismatch.right)
     );
+    return tr('setOpPositionMatchWarnings').replace('{{details}}', details.join('；'));
   }
-
-  if (effectiveMatch !== 'by_name') {
-    const minLen = Math.min(leftColumns.length, rightColumns.length);
-    const mismatches: string[] = [];
-    for (let i = 0; i < minLen; i++) {
-      if (leftColumns[i] !== rightColumns[i]) {
-        mismatches.push(
-          tr('setOpColumnNameMismatch')
-            .replace('{{index}}', String(i + 1))
-            .replace('{{left}}', leftColumns[i])
-            .replace('{{right}}', rightColumns[i])
-        );
-      }
-    }
-    if (mismatches.length > 0) {
-      warnings.push(tr('setOpPositionMatchWarnings').replace('{{details}}', mismatches.join('；')));
-    }
-  }
-
-  if (effectiveMatch === 'by_name') {
-    const rightMap = new Map(rightTypes.map((t) => [t.name.toLowerCase(), t]));
-    for (const leftType of leftTypes) {
-      const rightType = rightMap.get(leftType.name.toLowerCase());
-      if (!rightType) continue;
-      if (leftType.type === rightType.type) continue;
-      if (NUMERIC_TYPES.includes(leftType.type) && NUMERIC_TYPES.includes(rightType.type)) continue;
-      if (TEMPORAL_TYPES.includes(leftType.type) && TEMPORAL_TYPES.includes(rightType.type))
-        continue;
-      if (leftType.type === 'text' || rightType.type === 'text') {
-        warnings.push(
-          tr('setOpTypeMismatchWarning')
-            .replace('{{index}}', leftType.name)
-            .replace('{{col}}', leftType.name)
-            .replace('{{leftType}}', leftType.type)
-            .replace('{{rightType}}', rightType.type)
-        );
-      } else {
-        warnings.push(
-          tr('setOpTypeIncompatibleWarning')
-            .replace('{{index}}', leftType.name)
-            .replace('{{col}}', leftType.name)
-            .replace('{{leftType}}', leftType.type)
-            .replace('{{rightType}}', rightType.type)
-        );
-      }
-    }
-  } else {
-    const minLen = Math.min(leftTypes.length, rightTypes.length);
-    for (let i = 0; i < minLen; i++) {
-      const lt = leftTypes[i].type;
-      const rt = rightTypes[i].type;
-      if (lt === rt) continue;
-      if (NUMERIC_TYPES.includes(lt) && NUMERIC_TYPES.includes(rt)) continue;
-      if (TEMPORAL_TYPES.includes(lt) && TEMPORAL_TYPES.includes(rt)) continue;
-      if (lt === 'text' || rt === 'text') {
-        warnings.push(
-          tr('setOpTypeMismatchWarning')
-            .replace('{{index}}', String(i + 1))
-            .replace('{{col}}', leftTypes[i].name)
-            .replace('{{leftType}}', lt)
-            .replace('{{rightType}}', rt)
-        );
-      } else {
-        warnings.push(
-          tr('setOpTypeIncompatibleWarning')
-            .replace('{{index}}', String(i + 1))
-            .replace('{{col}}', leftTypes[i].name)
-            .replace('{{leftType}}', lt)
-            .replace('{{rightType}}', rt)
-        );
-      }
-    }
-  }
-  return warnings;
+  const key =
+    issue.severity === 'coercible' ? 'setOpTypeMismatchWarning' : 'setOpTypeIncompatibleWarning';
+  return tr(key)
+    .replace('{{index}}', String(issue.index))
+    .replace('{{col}}', issue.column)
+    .replace('{{leftType}}', issue.leftType)
+    .replace('{{rightType}}', issue.rightType);
 }
 
 function VennSVG({ type }: { type: 'union' | 'intersect' | 'except' }) {
@@ -260,10 +191,10 @@ export default function FormSetOp({
     ])
       .then(([leftTypes, rightTypes]) => {
         if (aborted) return;
-        const leftCols = leftTypes.map((t) => t.name);
-        const rightCols = rightTypes.map((t) => t.name);
         setWarnings(
-          checkTypeWarnings(leftTypes, rightTypes, leftCols, rightCols, operation, match, tr)
+          analyzeSetOpCompatibility(leftTypes, rightTypes, operation, match).map((issue) =>
+            formatCompatibilityIssue(issue, tr)
+          )
         );
       })
       .catch((error: unknown) => {
@@ -288,6 +219,7 @@ export default function FormSetOp({
     otherNodes,
     operation,
     match,
+    tr,
   ]);
 
   return (

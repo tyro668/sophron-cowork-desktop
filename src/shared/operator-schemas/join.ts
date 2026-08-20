@@ -1,11 +1,20 @@
 import { z } from 'zod';
 import { ConditionSchema, ConflictSchema, KeepItemSchema, nonEmptyTrimmed } from './common';
 
-const JoinConditionSchema = ConditionSchema.extend({
+export const JoinConditionSchema = ConditionSchema.extend({
   operator: z.enum(['=', '<', '<=', '>', '>=']),
 });
 
 export const ASOF_TOLERANCE_PATTERN = /^(?:\d+(?:\.\d+)?(?:ms|[dhms]))+$/;
+
+export type JoinCondition = z.infer<typeof JoinConditionSchema>;
+export interface DurationParts {
+  d: number;
+  h: number;
+  m: number;
+  s: number;
+  ms: number;
+}
 
 export function isValidAsofTolerance(value: string): boolean {
   return ASOF_TOLERANCE_PATTERN.test(value.trim());
@@ -97,7 +106,7 @@ export const JoinConfigSchema = z
     }
   });
 
-function msToParts(ms: number): { d: number; h: number; m: number; s: number; ms: number } {
+function msToParts(ms: number): DurationParts {
   let r = ms;
   const d = Math.floor(r / 86_400_000);
   r -= d * 86_400_000;
@@ -110,13 +119,7 @@ function msToParts(ms: number): { d: number; h: number; m: number; s: number; ms
   return { d, h, m, s, ms: r };
 }
 
-export function parseDuration(value: string): {
-  d: number;
-  h: number;
-  m: number;
-  s: number;
-  ms: number;
-} {
+export function parseDuration(value: string): DurationParts {
   if (!value) return { d: 0, h: 0, m: 0, s: 0, ms: 0 };
   if (/^\d+$/.test(value)) return msToParts(Number(value));
   let totalMs = 0;

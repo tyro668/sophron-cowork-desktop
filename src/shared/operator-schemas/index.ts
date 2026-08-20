@@ -9,6 +9,7 @@ export {
   ConflictSchema,
   MetricEntrySchema,
   type AggregateFunction,
+  type KeepItem,
   type MetricEntry,
   KeepItemSchema,
   nonEmptyTrimmed,
@@ -47,7 +48,8 @@ export {
   PivotMetricSchema,
 } from './pivot';
 export type { PivotLiteral, PivotAxisEntry, PivotMetric } from './pivot';
-export { JoinConfigSchema } from './join';
+export { JoinConfigSchema, JoinConditionSchema } from './join';
+export type { DurationParts, JoinCondition } from './join';
 export { FilterConfigSchema } from './filter';
 
 // Import schemas for local use (separate from exports for CJS bundler compatibility)

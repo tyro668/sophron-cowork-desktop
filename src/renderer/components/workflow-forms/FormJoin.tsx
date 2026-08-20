@@ -7,17 +7,20 @@ import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { toggleSelectAll } from '../../../shared/collections/selection';
 import { isTemporalDataFieldType } from '@/shared/data-field-types';
-import { parseFieldRef } from '@/shared/prep-dsl/parser';
-import { parseDuration, normalizeDuration } from '@/shared/operator-schemas/join';
+import { parseDuration } from '@/shared/operator-schemas/join';
+import type { DurationParts, JoinCondition, KeepItem } from '@/shared/operator-schemas';
+import {
+  createJoinKeepDraft,
+  qualifyJoinField,
+  serializeJoinKeepDraft,
+  summarizeJoinKeep,
+  updateJoinDurationPart,
+} from '@/shared/operator-config';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 
-export interface ConditionEntry {
-  left: string;
-  operator: string;
-  right: string;
-}
+export type ConditionEntry = JoinCondition;
 
 const DEFAULT_CONDITION: ConditionEntry = { left: '', operator: '=', right: '' };
 
@@ -28,18 +31,6 @@ const OPERATOR_KEYS = [
   { value: '>', key: 'operatorGt' },
   { value: '>=', key: 'operatorGte' },
 ];
-
-function isLeftField(source: string, leftAlias: string): boolean {
-  const ref = parseFieldRef(source);
-  if (ref?.source) return ref.source.toLowerCase() === leftAlias.toLowerCase();
-  return source.toLowerCase().startsWith(`${leftAlias}.`.toLowerCase());
-}
-
-function isRightField(source: string, rightAlias: string): boolean {
-  const ref = parseFieldRef(source);
-  if (ref?.source) return ref.source.toLowerCase() === rightAlias.toLowerCase();
-  return source.toLowerCase().startsWith(`${rightAlias}.`.toLowerCase());
-}
 
 // ── Venn-diagram SVG for each join type ──
 function JoinVennSVG({ type, selected }: { type: string; selected: boolean }) {
@@ -171,7 +162,7 @@ export default function FormJoin({
         conflict: { strategy: 'suffix', leftSuffix: '_left', rightSuffix: '_right' },
       }));
     }
-  }, []);
+  }, [node.config.conflict, node.config.joinType, updateConfig]);
 
   const joinType = (node.config.joinType as string) ?? 'left';
   const conditions = useMemo(
@@ -187,10 +178,7 @@ export default function FormJoin({
     const raw = (conflict.rightPrefix as string) ?? '';
     return conflictStrategy === 'right_prefix' ? raw || 'right_' : raw;
   }, [conflict, conflictStrategy]);
-  const keepItems = useMemo(
-    () => (node.config.keep as Array<Record<string, unknown>>) ?? [],
-    [node.config.keep]
-  );
+  const keepItems = useMemo(() => (node.config.keep as KeepItem[]) ?? [], [node.config.keep]);
 
   // ASOF
   const asof = (node.config.asof as Record<string, unknown>) ?? {};
@@ -206,16 +194,12 @@ export default function FormJoin({
   const durationParts = useMemo(() => parseDuration(toleranceVal), [toleranceVal]);
   const showToleranceError = asofOperator === 'nearest' && !toleranceVal;
 
-  function handleDurationChange(part: keyof ReturnType<typeof parseDuration>, val: number) {
-    const next = { ...durationParts, [part]: val };
-    const totalMs =
-      next.d * 86_400_000 + next.h * 3_600_000 + next.m * 60_000 + next.s * 1_000 + next.ms;
-    const str = normalizeDuration(String(totalMs));
+  function handleDurationChange(part: keyof DurationParts, val: number) {
     updateConfig((cfg) => ({
       ...cfg,
       asof: {
         ...((cfg.asof as Record<string, unknown>) ?? {}),
-        tolerance: str || undefined,
+        tolerance: updateJoinDurationPart(toleranceVal, part, val),
       },
     }));
   }
@@ -376,7 +360,7 @@ export default function FormJoin({
     }));
   }
 
-  function handleKeepChange(items: Array<Record<string, unknown>>) {
+  function handleKeepChange(items: KeepItem[]) {
     updateConfig((cfg) => ({ ...cfg, keep: items.length > 0 ? items : undefined }));
   }
 
@@ -390,78 +374,35 @@ export default function FormJoin({
   const [draftRightAliases, setDraftRightAliases] = useState(new Map<string, string>());
 
   function openKeepDialog() {
-    const hasLeftWildcard = keepItems.some((i) => i.side === 'left' && i.wildcard);
-    const hasRightWildcard = keepItems.some((i) => i.side === 'right' && i.wildcard);
-    const isEmpty = keepItems.length === 0;
-
-    setDraftLeftWildcard(hasLeftWildcard || isEmpty);
-    setDraftRightWildcard(hasRightWildcard || isEmpty);
-
-    const leftSel = new Set<string>();
-    const rightSel = new Set<string>();
-    const leftAliases = new Map<string, string>();
-    const rightAliases = new Map<string, string>();
-
-    if (isEmpty) {
-      fieldCompletions.forEach((f) => leftSel.add(`[${leftAlias}].[${f}]`));
-      rightRawColumns.forEach((f) => rightSel.add(`[${rightAlias}].[${f}]`));
-    } else {
-      for (const item of keepItems) {
-        if (item.wildcard) {
-          if (item.side === 'left') {
-            fieldCompletions.forEach((f) => leftSel.add(`[${leftAlias}].[${f}]`));
-          } else if (item.side === 'right') {
-            rightRawColumns.forEach((f) => rightSel.add(`[${rightAlias}].[${f}]`));
-          }
-          continue;
-        }
-        if (typeof item.source !== 'string') continue;
-        const isLeft =
-          typeof item.side === 'string'
-            ? item.side === 'left'
-            : isLeftField(item.source, leftAlias);
-        const isRight =
-          typeof item.side === 'string'
-            ? item.side === 'right'
-            : isRightField(item.source, rightAlias);
-        if (isLeft) {
-          leftSel.add(item.source);
-          if (typeof item.alias === 'string') leftAliases.set(item.source, item.alias);
-        } else if (isRight) {
-          rightSel.add(item.source);
-          if (typeof item.alias === 'string') rightAliases.set(item.source, item.alias);
-        }
-      }
-    }
-
-    setDraftLeftSel(leftSel);
-    setDraftRightSel(rightSel);
-    setDraftLeftAliases(leftAliases);
-    setDraftRightAliases(rightAliases);
+    const draft = createJoinKeepDraft(
+      keepItems,
+      fieldCompletions,
+      rightRawColumns,
+      leftAlias,
+      rightAlias
+    );
+    setDraftLeftWildcard(draft.leftWildcard);
+    setDraftRightWildcard(draft.rightWildcard);
+    setDraftLeftSel(draft.leftSelected);
+    setDraftRightSel(draft.rightSelected);
+    setDraftLeftAliases(draft.leftAliases);
+    setDraftRightAliases(draft.rightAliases);
     setKeepDialogOpen(true);
   }
 
   function confirmKeep() {
-    const items: Array<Record<string, unknown>> = [];
-    const emitSide = (
-      side: 'left' | 'right',
-      sel: Set<string>,
-      aliases: Map<string, string>,
-      wildcard: boolean,
-      total: number
-    ) => {
-      if (wildcard && sel.size === total) {
-        items.push({ side, wildcard: true });
-        return;
-      }
-      for (const f of sel) {
-        const alias = aliases.get(f);
-        items.push({ side, source: f, ...(alias ? { alias } : {}) });
-      }
-    };
-    emitSide('left', draftLeftSel, draftLeftAliases, draftLeftWildcard, fieldCompletions.length);
-    emitSide('right', draftRightSel, draftRightAliases, draftRightWildcard, rightRawColumns.length);
-    handleKeepChange(items);
+    handleKeepChange(
+      serializeJoinKeepDraft({
+        leftTotal: fieldCompletions.length,
+        rightTotal: rightRawColumns.length,
+        leftWildcard: draftLeftWildcard,
+        rightWildcard: draftRightWildcard,
+        leftSelected: draftLeftSel,
+        rightSelected: draftRightSel,
+        leftAliases: draftLeftAliases,
+        rightAliases: draftRightAliases,
+      })
+    );
     setKeepDialogOpen(false);
   }
 
@@ -507,13 +448,13 @@ export default function FormJoin({
 
   function toggleDraftLeftAll() {
     setDraftLeftWildcard(false);
-    const allFields = fieldCompletions.map((f) => `[${leftAlias}].[${f}]`);
+    const allFields = fieldCompletions.map((field) => qualifyJoinField(leftAlias, field));
     setDraftLeftSel((prev) => toggleSelectAll(prev, allFields));
   }
 
   function toggleDraftRightAll() {
     setDraftRightWildcard(false);
-    const allFields = rightRawColumns.map((f) => `[${rightAlias}].[${f}]`);
+    const allFields = rightRawColumns.map((field) => qualifyJoinField(rightAlias, field));
     setDraftRightSel((prev) => toggleSelectAll(prev, allFields));
   }
 
@@ -546,52 +487,14 @@ export default function FormJoin({
     [draftRightSel, rightRawColumns]
   );
 
-  const leftKeepCount = useMemo(() => {
-    const wildcardItem = keepItems.find((i) => i.side === 'left' && i.wildcard);
-    if (wildcardItem || keepItems.length === 0) return fieldCompletions.length;
-    return keepItems.filter(
-      (i) =>
-        !i.wildcard &&
-        (typeof i.side === 'string'
-          ? i.side === 'left'
-          : isLeftField(String(i.source ?? ''), leftAlias))
-    ).length;
-  }, [keepItems, fieldCompletions, leftAlias]);
-  const rightKeepCount = useMemo(() => {
-    const wildcardItem = keepItems.find((i) => i.side === 'right' && i.wildcard);
-    if (wildcardItem || keepItems.length === 0) return rightRawColumns.length;
-    return keepItems.filter(
-      (i) =>
-        !i.wildcard &&
-        (typeof i.side === 'string'
-          ? i.side === 'right'
-          : isRightField(String(i.source ?? ''), rightAlias))
-    ).length;
-  }, [keepItems, rightRawColumns, rightAlias]);
-
-  const leftRenameCount = useMemo(() => {
-    return keepItems.filter(
-      (i) =>
-        !i.wildcard &&
-        (typeof i.side === 'string'
-          ? i.side === 'left'
-          : isLeftField(String(i.source ?? ''), leftAlias)) &&
-        typeof i.alias === 'string' &&
-        i.alias
-    ).length;
-  }, [keepItems, leftAlias]);
-
-  const rightRenameCount = useMemo(() => {
-    return keepItems.filter(
-      (i) =>
-        !i.wildcard &&
-        (typeof i.side === 'string'
-          ? i.side === 'right'
-          : isRightField(String(i.source ?? ''), rightAlias)) &&
-        typeof i.alias === 'string' &&
-        i.alias
-    ).length;
-  }, [keepItems, rightAlias]);
+  const leftKeepSummary = useMemo(
+    () => summarizeJoinKeep(keepItems, 'left', leftAlias, fieldCompletions.length),
+    [keepItems, leftAlias, fieldCompletions.length]
+  );
+  const rightKeepSummary = useMemo(
+    () => summarizeJoinKeep(keepItems, 'right', rightAlias, rightRawColumns.length),
+    [keepItems, rightAlias, rightRawColumns.length]
+  );
 
   // ── Inline condition handlers ──
   const [asofPending, setAsofPending] = useState<ConditionEntry>({ ...DEFAULT_CONDITION });
@@ -690,7 +593,7 @@ export default function FormJoin({
             groups={[{ key: 'op', items: conditionOperatorItems }]}
             onChange={(v) =>
               condHandleChange(isEmpty, pending, setPending, onChange, i, sourceConditions, {
-                operator: v,
+                operator: v as JoinCondition['operator'],
               })
             }
             className="h-7 w-[72px] shrink-0 text-[12px] [&>span]:text-center"
@@ -1004,7 +907,9 @@ export default function FormJoin({
                             groups={[{ key: 'op', items: conditionOperatorItems }]}
                             onChange={(v) =>
                               handleConditionsChange(
-                                conditions.map((c, j) => (j === i ? { ...c, operator: v } : c))
+                                conditions.map((c, j) =>
+                                  j === i ? { ...c, operator: v as JoinCondition['operator'] } : c
+                                )
                               )
                             }
                             className="h-7 w-full text-[12px] [&>span]:text-center"
@@ -1071,7 +976,8 @@ export default function FormJoin({
                     </span>
                     <div className="flex items-center gap-1">
                       <span className="text-[12px] text-text-muted tabular-nums">
-                        {leftKeepCount}/{leftRenameCount}/{fieldCompletions.length}
+                        {leftKeepSummary.selected}/{leftKeepSummary.renamed}/
+                        {fieldCompletions.length}
                       </span>
                       <button
                         type="button"
@@ -1089,7 +995,8 @@ export default function FormJoin({
                     </span>
                     <div className="flex items-center gap-1">
                       <span className="text-[12px] text-text-muted tabular-nums">
-                        {rightKeepCount}/{rightRenameCount}/{rightRawColumns.length}
+                        {rightKeepSummary.selected}/{rightKeepSummary.renamed}/
+                        {rightRawColumns.length}
                       </span>
                       <button
                         type="button"

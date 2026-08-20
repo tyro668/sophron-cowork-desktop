@@ -67,3 +67,5 @@ export const KeepItemSchema = z.object({
   source: z.string().optional(),
   alias: z.string().optional(),
 });
+
+export type KeepItem = z.infer<typeof KeepItemSchema>;
