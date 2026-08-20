@@ -258,6 +258,7 @@ export type TraceOutcome =
   | 'cancelled'
   | 'timed_out'
   | 'provider_failed'
+  | 'protocol_violation'
   | 'loop_guard_stopped';
 
 export type TraceStepType = 'thinking' | 'text' | 'tool_call' | 'tool_result' | 'permission';
@@ -797,6 +798,8 @@ export interface DataGenerateTaskFromRequirementInput {
   output: DataAutomationOutputBinding;
   /** Correlates requirement analysis, generation, and repair calls from one UI flow. */
   usageTraceId?: string;
+  /** Short-lived backend receipt binding a confirmed analysis to this generation request. */
+  analysisId?: string | null;
   modelConfigSetId?: string | null;
   model?: string | null;
   reuseTaskId?: string | null;
@@ -811,11 +814,16 @@ export interface DataTaskRequirementAnalysisItem {
   reason?: string;
   suggestedRequirement?: string;
   operations: string[];
+  capabilities?: string[];
 }
 
 export interface DataAnalyzeTaskRequirementResult {
   status: 'supported' | 'needs_confirmation' | 'unsupported';
   items: DataTaskRequirementAnalysisItem[];
+  analysisId?: string;
+  capabilityProfileVersion?: string;
+  sourceSummaryHash?: string;
+  expiresAt?: number;
 }
 
 export interface DataGenerateTaskFromRequirementResult {
@@ -1424,6 +1432,7 @@ export interface SandboxSyncStatus {
 export type ServerEvent =
   | { type: 'stream.message'; payload: { sessionId: string; message: Message } }
   | { type: 'stream.partial'; payload: { sessionId: string; delta: string } }
+  | { type: 'stream.reset'; payload: { sessionId: string } }
   | { type: 'stream.thinking'; payload: { sessionId: string; delta: string } }
   | {
       type: 'stream.executionTime';

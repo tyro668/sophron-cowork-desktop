@@ -42,7 +42,7 @@ describe('application branding', () => {
     expect(read('src/main/index.ts')).toContain('function getRuntimeAppName()');
     expect(read('src/main/index.ts')).toContain('tray.setToolTip(getRuntimeAppName())');
     expect(read('src/main/index.ts')).toContain('getRuntimeAppName()} 启动失败');
-    expect(read('src/main/claude/agent-runner.ts')).toContain(
+    expect(read('src/main/prompts/main-agent-system.txt')).toContain(
       'You are sophron cowork (九思助理 in Chinese)'
     );
   });

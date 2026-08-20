@@ -157,9 +157,18 @@ export function createDefaultAutomationActionRegistry(
       }
     },
     execute: async (config, context, node) => {
-      const task = await options.dataTaskStore.runTask(String(config.taskId), {
+      const taskId = String(config.taskId);
+      const task = await options.dataTaskStore.runTask(taskId, {
         outputMode: config.outputMode === 'temporary' ? 'temporary' : 'persisted',
       });
+      const workflow = await options.dataTaskStore.getTaskWorkflow(taskId);
+      const outputNode = workflow.nodes.find((workflowNode) => workflowNode.type === 'output');
+      const outputTableId =
+        typeof outputNode?.config.outputDatasetId === 'string'
+          ? outputNode.config.outputDatasetId
+          : typeof outputNode?.config.outputTableId === 'string'
+            ? outputNode.config.outputTableId
+            : null;
       context.emitArtifact({
         sourceNodeId: node.id,
         kind: 'data_output',
@@ -168,7 +177,7 @@ export function createDefaultAutomationActionRegistry(
           task.rowCount === null
             ? undefined
             : `${task.rowCount} rows, ${task.columnCount ?? 0} columns`,
-        dataRef: { kind: 'output_table', id: task.id },
+        dataRef: outputTableId ? { kind: 'output_table', id: outputTableId } : undefined,
       });
       return task;
     },

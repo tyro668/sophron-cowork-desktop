@@ -1,244 +1,209 @@
-/**
- * Tests for the cold-start `<conversation_history>` rebuild path in
- * `src/main/claude/agent-runner.ts`.
- *
- * The rebuild path is exercised when the cached pi-coding-agent SDK session is
- * disposed (cwd change at `session-manager.ts:~993`, or runtime-signature
- * change at `agent-runner.ts:~1583`) and agent-runner has to reconstruct
- * conversation history from DB-persisted messages.
- *
- * Bug #162 (Bug B): the previous implementation filtered to `type === 'text'`
- * only, silently dropping `thinking`, `tool_use`, and `tool_result` blocks.
- * Providers that require previous reasoning/tool-call replay (DeepSeek V4
- * Flash, and any thinking-capable model after a cwd switch) then 400 on the
- * next turn. These tests pin the new serializer behavior so the regression
- * cannot return.
- */
+import { describe, expect, it } from 'vitest';
+import type { Message } from '../../renderer/types';
+import {
+  buildColdStartAgentHistory,
+  containsPseudoToolCallMarkup,
+  PseudoToolCallStreamGuard,
+} from '../../main/claude/agent-protocol-safety';
 
-import { describe, expect, it, vi } from 'vitest';
+const HISTORY_OPTIONS = {
+  api: 'openai-completions',
+  provider: 'test-provider',
+  model: 'test-model',
+  maxChars: 100_000,
+};
 
-// agent-runner.ts pulls a wide tree of Electron + native deps via its
-// constructor; we only need a pure helper, so stub the heaviest imports.
-vi.mock('@mariozechner/pi-ai', () => ({
-  completeSimple: vi.fn(),
-  getModel: vi.fn(() => undefined),
-}));
+function message(
+  id: string,
+  role: Message['role'],
+  content: Message['content'],
+  timestamp: number
+): Message {
+  return { id, sessionId: 'session-1', role, content, timestamp };
+}
 
-vi.mock('../../main/claude/shared-auth', () => ({
-  getSharedAuthStorage: () => ({ setRuntimeApiKey: vi.fn() }),
-  ModelRegistry: vi.fn(),
-}));
-
-import type { ContentBlock } from '../../renderer/types';
-import { serializeMessageContentForHistory } from '../../main/claude/agent-runner';
-
-describe('serializeMessageContentForHistory', () => {
-  it('serializes a single text block as raw text (legacy compatible)', () => {
-    const blocks: ContentBlock[] = [{ type: 'text', text: 'hello world' }];
-    expect(serializeMessageContentForHistory(blocks)).toBe('hello world');
-  });
-
-  it('omits empty text blocks', () => {
-    const blocks: ContentBlock[] = [
-      { type: 'text', text: '' },
-      { type: 'text', text: 'kept' },
-    ];
-    expect(serializeMessageContentForHistory(blocks)).toBe('kept');
-  });
-
-  it('wraps thinking blocks in <thinking> tags', () => {
-    const blocks: ContentBlock[] = [{ type: 'thinking', thinking: 'reasoning trace' }];
-    expect(serializeMessageContentForHistory(blocks)).toBe('<thinking>reasoning trace</thinking>');
-  });
-
-  it('serializes tool_use blocks with name, id, and JSON input', () => {
-    const blocks: ContentBlock[] = [
-      {
-        type: 'tool_use',
-        id: 'toolu_01',
-        name: 'Bash',
-        input: { command: 'ls -la' },
-      },
-    ];
-    expect(serializeMessageContentForHistory(blocks)).toBe(
-      '<tool_use name="Bash" id="toolu_01">{"command":"ls -la"}</tool_use>'
-    );
-  });
-
-  it('serializes tool_result blocks with toolUseId and content', () => {
-    const blocks: ContentBlock[] = [
-      { type: 'tool_result', toolUseId: 'toolu_01', content: 'file1\nfile2' },
-    ];
-    expect(serializeMessageContentForHistory(blocks)).toBe(
-      '<tool_result tool_use_id="toolu_01">file1\nfile2</tool_result>'
-    );
-  });
-
-  it('marks tool_result errors with is_error="true"', () => {
-    const blocks: ContentBlock[] = [
-      { type: 'tool_result', toolUseId: 'toolu_02', content: 'boom', isError: true },
-    ];
-    expect(serializeMessageContentForHistory(blocks)).toBe(
-      '<tool_result tool_use_id="toolu_02" is_error="true">boom</tool_result>'
-    );
-  });
-
-  it('skips image and file_attachment blocks (binary / oversized)', () => {
-    const blocks: ContentBlock[] = [
-      { type: 'text', text: 'before' },
-      {
-        type: 'image',
-        source: { type: 'base64', media_type: 'image/png', data: 'AAAA' },
-      },
-      {
-        type: 'file_attachment',
-        filename: 'data.bin',
-        relativePath: 'tmp/data.bin',
-        size: 1024,
-      },
-      { type: 'text', text: 'after' },
-    ];
-    expect(serializeMessageContentForHistory(blocks)).toBe('before\nafter');
-  });
-
-  it('preserves block ordering for a typical assistant turn (thinking → text → tool_use)', () => {
-    // This is the exact shape that fails on DeepSeek V4 Flash without the fix:
-    // an assistant turn with reasoning, followed by a textual answer fragment,
-    // followed by a tool call. The model's next turn must see all three to
-    // pass schema validation on providers that replay reasoning.
-    const blocks: ContentBlock[] = [
-      { type: 'thinking', thinking: 'need to inspect the dir first' },
-      { type: 'text', text: 'Let me check the directory.' },
-      {
-        type: 'tool_use',
-        id: 'toolu_99',
-        name: 'Bash',
-        input: { command: 'pwd' },
-      },
-    ];
-    expect(serializeMessageContentForHistory(blocks)).toBe(
+describe('buildColdStartAgentHistory', () => {
+  it('restores tool calls and results through native SDK message roles', () => {
+    const history = buildColdStartAgentHistory(
       [
-        '<thinking>need to inspect the dir first</thinking>',
-        'Let me check the directory.',
-        '<tool_use name="Bash" id="toolu_99">{"command":"pwd"}</tool_use>',
-      ].join('\n')
+        message('u1', 'user', [{ type: 'text', text: 'list my tasks' }], 1),
+        message(
+          'a1',
+          'assistant',
+          [
+            { type: 'text', text: 'I will check.' },
+            {
+              type: 'tool_use',
+              id: 'call-1',
+              name: 'data_list_tasks',
+              input: { query: 'daily' },
+            },
+          ],
+          2
+        ),
+        message(
+          'r1',
+          'assistant',
+          [{ type: 'tool_result', toolUseId: 'call-1', content: 'Found one task.' }],
+          3
+        ),
+        message('a2', 'assistant', [{ type: 'text', text: 'Found it.' }], 4),
+      ],
+      HISTORY_OPTIONS
     );
+
+    expect(history.map((item) => item.role)).toEqual([
+      'user',
+      'assistant',
+      'toolResult',
+      'assistant',
+    ]);
+    expect(history[1]).toMatchObject({
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'I will check.' },
+        {
+          type: 'toolCall',
+          id: 'call-1',
+          name: 'data_list_tasks',
+          arguments: { query: 'daily' },
+        },
+      ],
+      stopReason: 'toolUse',
+    });
+    expect(history[2]).toMatchObject({
+      role: 'toolResult',
+      toolCallId: 'call-1',
+      toolName: 'data_list_tasks',
+      isError: false,
+    });
+    expect(JSON.stringify(history)).not.toContain('<tool_use');
+    expect(JSON.stringify(history)).not.toContain('<tool_result');
   });
 
-  it('preserves block ordering for a user turn carrying a tool_result + free text', () => {
-    const blocks: ContentBlock[] = [
-      { type: 'tool_result', toolUseId: 'toolu_99', content: '/home/user' },
-      { type: 'text', text: 'thanks, now list it' },
+  it('does not replay persisted thinking or malformed assistant protocol text', () => {
+    const history = buildColdStartAgentHistory(
+      [
+        message('u1', 'user', [{ type: 'text', text: 'create it' }], 1),
+        message(
+          'a1',
+          'assistant',
+          [
+            { type: 'thinking', thinking: 'private reasoning' },
+            {
+              type: 'text',
+              text: '<tool_use name="data_list_tasks"><parameter=query>daily</parameter>',
+            },
+          ],
+          2
+        ),
+      ],
+      HISTORY_OPTIONS
+    );
+
+    const serialized = JSON.stringify(history);
+    expect(serialized).not.toContain('private reasoning');
+    expect(serialized).not.toContain('<tool_use');
+    expect(serialized).toContain('Previous assistant response omitted');
+  });
+
+  it('drops orphan tool calls and results instead of creating invalid provider history', () => {
+    const history = buildColdStartAgentHistory(
+      [
+        message('u1', 'user', [{ type: 'text', text: 'run it' }], 1),
+        message(
+          'a1',
+          'assistant',
+          [{ type: 'tool_use', id: 'orphan-call', name: 'run', input: {} }],
+          2
+        ),
+        message(
+          'r1',
+          'assistant',
+          [{ type: 'tool_result', toolUseId: 'unknown-call', content: 'orphan result' }],
+          3
+        ),
+      ],
+      HISTORY_OPTIONS
+    );
+
+    expect(history).toEqual([{ role: 'user', content: 'run it', timestamp: 1 }]);
+  });
+
+  it('does not pair a tool result that appears before its tool call', () => {
+    const history = buildColdStartAgentHistory(
+      [
+        message('u1', 'user', [{ type: 'text', text: 'run it' }], 1),
+        message(
+          'r1',
+          'assistant',
+          [{ type: 'tool_result', toolUseId: 'call-1', content: 'out of order' }],
+          2
+        ),
+        message('a1', 'assistant', [{ type: 'tool_use', id: 'call-1', name: 'run', input: {} }], 3),
+      ],
+      HISTORY_OPTIONS
+    );
+
+    expect(history).toEqual([{ role: 'user', content: 'run it', timestamp: 1 }]);
+  });
+
+  it('keeps complete recent user turns within the history budget', () => {
+    const messages = [
+      message('u1', 'user', [{ type: 'text', text: 'old question' }], 1),
+      message('a1', 'assistant', [{ type: 'text', text: 'old answer' }], 2),
+      message('u2', 'user', [{ type: 'text', text: 'recent question' }], 3),
+      message('a2', 'assistant', [{ type: 'text', text: 'recent answer' }], 4),
     ];
-    expect(serializeMessageContentForHistory(blocks)).toBe(
-      ['<tool_result tool_use_id="toolu_99">/home/user</tool_result>', 'thanks, now list it'].join(
-        '\n'
+    const recentTurnSize = JSON.stringify(
+      buildColdStartAgentHistory(messages.slice(2), HISTORY_OPTIONS)
+    ).length;
+    const history = buildColdStartAgentHistory(messages, {
+      ...HISTORY_OPTIONS,
+      maxChars: recentTurnSize,
+    });
+
+    expect(history.map((item) => item.role)).toEqual(['user', 'assistant']);
+    expect(JSON.stringify(history)).toContain('recent question');
+    expect(JSON.stringify(history)).not.toContain('old question');
+  });
+});
+
+describe('pseudo tool-call protocol guard', () => {
+  it('detects the mixed protocol shape from the reported failure', () => {
+    expect(
+      containsPseudoToolCallMarkup(
+        'Checking now: <tool_use name="data_list_tasks"><parameter=query>daily</parameter></function>'
       )
-    );
+    ).toBe(true);
   });
 
-  it('falls back to defaults when tool_use fields are missing or unserializable', () => {
-    const circular: Record<string, unknown> = {};
-    circular.self = circular;
-    const blocks: ContentBlock[] = [
-      // Force a JSON.stringify failure (circular ref) — should degrade to "{}"
-      {
-        type: 'tool_use',
-        id: '',
-        name: '',
-        input: circular,
-      } as ContentBlock,
-    ];
-    expect(serializeMessageContentForHistory(blocks)).toBe('<tool_use name="" id="">{}</tool_use>');
+  it('blocks a pseudo tool call split across streaming chunks without emitting the marker', () => {
+    const guard = new PseudoToolCallStreamGuard();
+    const first = guard.push('Checking now: <too');
+    const second = guard.push('l_use na');
+    const third = guard.push('me="data_list_tasks">');
+
+    expect(first).toEqual({ text: 'Checking now: ', violated: false });
+    expect(second).toEqual({ text: '', violated: false });
+    expect(third).toEqual({ text: '', violated: true });
   });
 
-  it('returns an empty string for messages composed entirely of skipped blocks', () => {
-    const blocks: ContentBlock[] = [
-      {
-        type: 'image',
-        source: { type: 'base64', media_type: 'image/jpeg', data: 'AAAA' },
-      },
-      {
-        type: 'file_attachment',
-        filename: 'a.bin',
-        relativePath: 'a.bin',
-        size: 1,
-      },
-    ];
-    expect(serializeMessageContentForHistory(blocks)).toBe('');
+  it('streams normal angle-bracket text unchanged', () => {
+    const guard = new PseudoToolCallStreamGuard();
+    const first = guard.push('Use <table> for layout and compare a < b.');
+    const final = guard.flush();
+
+    expect(first).toEqual({ text: 'Use <table> for layout and compare a < b.', violated: false });
+    expect(final).toEqual({ text: '', violated: false });
   });
 
-  it('XML-escapes thinking content so </thinking> or & literals cannot break the envelope', () => {
-    const blocks: ContentBlock[] = [
-      { type: 'thinking', thinking: 'I read </thinking> then ran A & B with <foo>' },
-    ];
-    expect(serializeMessageContentForHistory(blocks)).toBe(
-      '<thinking>I read &lt;/thinking&gt; then ran A &amp; B with &lt;foo&gt;</thinking>'
-    );
-  });
+  it('allows a non-call-shaped tag mention after the candidate is flushed', () => {
+    const guard = new PseudoToolCallStreamGuard();
+    const first = guard.push('The literal tag is <tool_use> in this document.');
+    const final = guard.flush();
 
-  it('XML-escapes tool_use attributes and body', () => {
-    const blocks: ContentBlock[] = [
-      {
-        type: 'tool_use',
-        id: 'id"with&quote',
-        name: 'name<x>',
-        input: { cmd: 'echo "hi" & echo <bar>' },
-      },
-    ];
-    const out = serializeMessageContentForHistory(blocks);
-    // Attribute values must escape `"` so they don't break the attribute
-    expect(out).toContain('name="name&lt;x&gt;"');
-    expect(out).toContain('id="id&quot;with&amp;quote"');
-    // Body keeps `"` literal (so JSON stays legible) but escapes `<`, `>`, `&`
-    expect(out).toMatch(/<\/tool_use>$/);
-    expect(out).not.toContain('<bar>');
-    expect(out).toContain('&lt;bar&gt;');
-    expect(out).toContain('"cmd"'); // body `"` not escaped
-  });
-
-  it('XML-escapes tool_result content (including </tool_result> literals)', () => {
-    const blocks: ContentBlock[] = [
-      {
-        type: 'tool_result',
-        toolUseId: 'call-1',
-        content: 'output </tool_result> & more',
-      },
-    ];
-    expect(serializeMessageContentForHistory(blocks)).toBe(
-      '<tool_result tool_use_id="call-1">output &lt;/tool_result&gt; &amp; more</tool_result>'
-    );
-  });
-
-  it('flattens tool_result.content when stored as a content-block array (defensive)', () => {
-    // Older message rows or third-party providers may persist tool_result.content
-    // as an Anthropic-style array of content blocks. The local TS type is `string`,
-    // but the serializer must not produce "[object Object]" for legacy data.
-    const blocks = [
-      {
-        type: 'tool_result',
-        toolUseId: 'call-2',
-        content: [
-          { type: 'text', text: 'first line' },
-          { type: 'text', text: 'second line' },
-        ] as unknown as string,
-      },
-    ] as ContentBlock[];
-    const out = serializeMessageContentForHistory(blocks);
-    expect(out).toBe('<tool_result tool_use_id="call-2">first line\nsecond line</tool_result>');
-    expect(out).not.toContain('[object Object]');
-  });
-
-  it('falls back to empty string when tool_result.content is neither string nor array', () => {
-    const blocks = [
-      {
-        type: 'tool_result',
-        toolUseId: 'call-3',
-        content: 42 as unknown as string,
-      },
-    ] as ContentBlock[];
-    expect(serializeMessageContentForHistory(blocks)).toBe(
-      '<tool_result tool_use_id="call-3"></tool_result>'
-    );
+    expect(first).toEqual({ text: 'The literal tag is ', violated: false });
+    expect(final).toEqual({ text: '<tool_use> in this document.', violated: false });
   });
 });

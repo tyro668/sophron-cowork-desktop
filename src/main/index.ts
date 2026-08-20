@@ -34,6 +34,7 @@ import { createDataTaskStore, type DataTaskStore } from './data/data-task-store'
 import { DataCommandService } from './data/data-command-service';
 import { createPersonalAnalysisClient } from './data/personal-analysis-client';
 import { DataToolService } from './data/data-tool-service';
+import { RequirementAnalysisReceiptStore } from './data/requirement-analysis-receipt-store';
 import { createDataAgentRuntimeExtension } from './data/data-agent-extension';
 import { createLlmInputTableNormalizerProjectGenerator } from './data/input-table-normalizer-generator';
 import {
@@ -94,6 +95,8 @@ import { AutomationService } from './automation/automation-service';
 import { AutomationRunner } from './automation/automation-runner';
 import { AutomationScheduler } from './automation/automation-scheduler';
 import { createDefaultAutomationActionRegistry } from './automation/default-actions';
+import { createAutomationAgentRuntimeExtension } from './automation/tools';
+import { AutomationToolService } from './automation/tools/service';
 import { DesktopAuthService } from './auth/desktop-auth-service';
 import type {
   Automation,
@@ -1108,6 +1111,7 @@ app
     memoryService = new MemoryService(db, {
       llmClient: new MemoryLLMClient(() => resolveAppConfigForAuth(configStore.getAll())),
     });
+    const requirementAnalysisReceipts = new RequirementAnalysisReceiptStore();
     dataCommandService = new DataCommandService(
       initializedDataTaskStore,
       createLlmInputTableNormalizerProjectGenerator(() =>
@@ -1118,9 +1122,10 @@ app
         onTaskCompleted: notifyDataTaskCompleted,
         getPersonalAnalysisConnection: () => desktopAuthService.getPersonalAnalysisConnection(),
         recordLlmUsage: (event) => recordDataTaskLlmUsage?.(event),
+        requirementAnalysisReceipts,
       }
     );
-    const dataToolService = new DataToolService(dataCommandService);
+    const dataToolService = new DataToolService(dataCommandService, requirementAnalysisReceipts);
     const extensionManager = new AgentRuntimeExtensionManager([
       new MemoryExtension(memoryService),
       createDataAgentRuntimeExtension(dataToolService),
@@ -1235,6 +1240,13 @@ app
       resolveProjectCwd: (projectId) => db.projects?.get(projectId)?.cwd ?? null,
     });
     automationScheduler.start();
+    const automationToolService = new AutomationToolService({
+      automationService,
+      dataTaskStore: initializedDataTaskStore,
+      projectExists: (projectId) => Boolean(db.projects?.get(projectId)),
+      onAutomationsChanged: rescheduleAutomations,
+    });
+    extensionManager.register(createAutomationAgentRuntimeExtension(automationToolService));
 
     // 初始化远程管理器
     remoteManager.setRendererCallback(sendToRenderer);

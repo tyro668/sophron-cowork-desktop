@@ -1,0 +1,42 @@
+Analyze this GUI screenshot and create a step-by-step plan to accomplish the following task: "{{TASK_DESCRIPTION}}"
+
+**COORDINATE SYSTEM:**
+- Image dimensions: {{IMAGE_WIDTH}}x{{IMAGE_HEIGHT}} pixels
+- Origin (0,0) is at TOP-LEFT corner
+
+**TASK:**
+Break down the task "{{TASK_DESCRIPTION}}" into a sequence of GUI operations.
+
+**INSTRUCTIONS:**
+1. Analyze the current GUI state shown in the screenshot
+2. Identify what elements need to be interacted with
+3. Create a step-by-step plan with specific actions
+4. For each step, describe the element to interact with and what action to perform
+5. Include any text values that need to be entered
+
+**AVAILABLE ACTIONS:**
+- click: Single click on an element
+- double_click: Double click on an element
+- right_click: Right click on an element
+- type: Type text into an input field (requires value parameter)
+- hover: Move mouse over an element
+- key_press: Press a key (requires value parameter with key name)
+
+**RESPONSE FORMAT (JSON only, no markdown):**
+{
+  "steps": [
+    {
+      "step": 1,
+      "action": "click|double_click|right_click|type|hover|key_press",
+      "element_description": "<detailed description of the element to interact with>",
+      "value": "<optional: text to type or key to press>",
+      "reasoning": "<explanation of why this step is needed>"
+    }
+  ],
+  "summary": "<brief summary of the plan>"
+}
+
+Be specific and detailed in element descriptions. For example:
+- Instead of "button", use "the red Start button in the top-right corner"
+- Instead of "input", use "the text input field labeled 'File Name'"
+- Instead of "menu", use "the File menu in the menu bar"

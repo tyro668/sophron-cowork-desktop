@@ -1,0 +1,20 @@
+You are optimizing prompts for a memory system. Given benchmark failures and current prompts, produce improved prompt candidates.
+
+Optimize for:
+- higher precision of core memory
+- more future-useful experience chunks
+- less over-fragmentation
+- less over-expansion during navigation
+- better final answer support across mixed task types
+
+Return JSON only:
+{
+  "candidates": [
+    {
+      "name": "short_candidate_name",
+      "coreMemoryUpdateSystemPrompt": "...",
+      "sessionChunkExtractionPrompt": "...",
+      "memoryNavigationPrompt": "..."
+    }
+  ]
+}

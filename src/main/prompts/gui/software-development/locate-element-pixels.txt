@@ -1,0 +1,41 @@
+Analyze this GUI screenshot and locate the following element: "{{ELEMENT_DESCRIPTION}}"
+
+
+**SCREEN CONTEXT:**
+- Resolution: {{SCREEN_WIDTH}}x{{SCREEN_HEIGHT}} pixels
+- Overall layout: {{OVERALL_LAYOUT}}
+
+**KNOWN ELEMENTS ON SCREEN:**
+{{KNOWN_ELEMENTS}}
+{{MORE_ELEMENTS}}
+
+**COORDINATE SYSTEM:**
+- Image dimensions: {{SCREEN_WIDTH}}x{{SCREEN_HEIGHT}} pixels
+- Origin (0,0) is at TOP-LEFT corner
+- X increases from left to right (0 to {{SCREEN_WIDTH}})
+- Y increases from top to bottom (0 to {{SCREEN_HEIGHT}})
+
+**TASK:**
+Find the element "{{ELEMENT_DESCRIPTION}}" and provide its EXACT CENTER coordinates.
+
+**INSTRUCTIONS:**
+1. Use the screen context above to help locate the element
+2. Measure coordinates precisely from the top-left corner
+3. Provide the CENTER POINT of the element
+4. Estimate confidence based on visual clarity and match quality
+
+**RESPONSE FORMAT (JSON only, no markdown):**
+{
+  "x": <integer between 0 and {{SCREEN_WIDTH}}>,
+  "y": <integer between 0 and {{SCREEN_HEIGHT}}>,
+  "confidence": <integer 0-100>,
+  "reasoning": "<brief explanation of what you found and where>",
+  "element_bounds": {
+    "left": <left edge X>,
+    "top": <top edge Y>,
+    "right": <right edge X>,
+    "bottom": <bottom edge Y>
+  }
+}
+
+If you cannot find the element, set confidence to 0.

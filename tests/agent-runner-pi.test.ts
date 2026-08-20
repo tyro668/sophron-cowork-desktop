@@ -4,6 +4,8 @@ import path from 'node:path';
 
 const agentRunnerPath = path.resolve(process.cwd(), 'src/main/claude/agent-runner.ts');
 const agentRunnerContent = readFileSync(agentRunnerPath, 'utf8');
+const mainAgentPromptPath = path.resolve(process.cwd(), 'src/main/prompts/main-agent-system.txt');
+const mainAgentPromptContent = readFileSync(mainAgentPromptPath, 'utf8');
 
 describe('ClaudeAgentRunner sophron SDK integration', () => {
   it('avoids dynamic re-import shadowing for config store singletons', () => {
@@ -24,7 +26,7 @@ describe('ClaudeAgentRunner sophron SDK integration', () => {
   });
 
   it('uses standard markdown link guidance for sources citations', () => {
-    expect(agentRunnerContent).toContain(
+    expect(mainAgentPromptContent).toContain(
       'otherwise use standard Markdown links: [Title](https://claude.ai/chat/URL)'
     );
   });
@@ -92,9 +94,9 @@ describe('ClaudeAgentRunner sophron SDK integration', () => {
   });
 
   it('nudges the model to proceed with reasonable assumptions', () => {
-    expect(agentRunnerContent).toContain('proceed immediately with reasonable assumptions');
-    expect(agentRunnerContent).toContain('within two days');
-    expect(agentRunnerContent).toContain('most recent two relevant publication days');
+    expect(mainAgentPromptContent).toContain('proceed immediately with reasonable assumptions');
+    expect(mainAgentPromptContent).toContain('within two days');
+    expect(mainAgentPromptContent).toContain('most recent two relevant publication days');
   });
 
   it('routes MCP image results through structured helpers instead of stringifying base64 into text', () => {
@@ -124,10 +126,10 @@ describe('ClaudeAgentRunner sophron SDK integration', () => {
   });
 
   it('chat-first behavioral rules are present', () => {
-    expect(agentRunnerContent).toContain('CHAT FIRST');
-    expect(agentRunnerContent).toContain(
+    expect(mainAgentPromptContent).toContain('CHAT FIRST');
+    expect(mainAgentPromptContent).toContain(
       'Do NOT create, write, or edit files unless the user explicitly asks'
     );
-    expect(agentRunnerContent).toContain('START DOING IT');
+    expect(mainAgentPromptContent).toContain('START DOING IT');
   });
 });

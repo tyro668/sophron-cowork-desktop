@@ -4,10 +4,12 @@ import type {
   DataTaskRequirementAnalysisItem,
 } from '../../../renderer/types';
 import { runPiAiOneShot, type PiAiOneShotResult } from '../../claude/claude-sdk-one-shot';
+import {
+  buildRequirementAnalysisSystemPrompt,
+  buildRequirementAnalysisUserPrompt,
+} from '../../prompts/data-workflow';
 import { DataCommandError } from '../data-command-types';
-import requirementAnalysisSystemPrompt from './prompts/requirement-analysis-system.txt?raw';
-import { getWorkflowJavascriptCapabilityPrompt } from './workflow-ir-operation-registry';
-import { getWorkflowExpressionCapabilityPrompt } from './workflow-expression-registry';
+import { getRequirementCapabilityOperation } from './requirement-capability-registry';
 import { extractJsonObject, isRecord } from './utils';
 
 const VALID_STATUSES = new Set(['supported', 'ambiguous', 'unsupported']);
@@ -17,11 +19,13 @@ export async function analyzeDataTaskRequirement({
   columns,
   runtimeConfig,
   onModelUsage,
+  signal,
 }: {
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
   runtimeConfig?: AgentRuntimeConfig;
   onModelUsage?: (result: PiAiOneShotResult) => void;
+  signal?: AbortSignal;
 }): Promise<DataAnalyzeTaskRequirementResult> {
   if (!runtimeConfig?.model?.trim()) {
     throw new DataCommandError(
@@ -30,10 +34,10 @@ export async function analyzeDataTaskRequirement({
     );
   }
   const response = await runPiAiOneShot(
-    JSON.stringify({ requirement, inputColumns: columns }, null, 2),
+    buildRequirementAnalysisUserPrompt({ requirement, inputColumns: columns }),
     buildRequirementAnalysisSystemPrompt(),
     runtimeConfig,
-    { temperature: 0, maxTokens: 2_000 }
+    { temperature: 0, maxTokens: 2_000, signal }
   );
   onModelUsage?.(response);
   let parsed: unknown;
@@ -64,13 +68,6 @@ export async function analyzeDataTaskRequirement({
   };
 }
 
-function buildRequirementAnalysisSystemPrompt(): string {
-  return requirementAnalysisSystemPrompt
-    .replace('{{WORKFLOW_CAPABILITIES}}', getWorkflowJavascriptCapabilityPrompt())
-    .replace('{{WORKFLOW_EXPRESSION_CAPABILITIES}}', getWorkflowExpressionCapabilityPrompt())
-    .trim();
-}
-
 function normalizeAnalysisItem(value: unknown): DataTaskRequirementAnalysisItem {
   if (
     !isRecord(value) ||
@@ -84,16 +81,47 @@ function normalizeAnalysisItem(value: unknown): DataTaskRequirementAnalysisItem 
       'Requirement analysis returned an invalid item'
     );
   }
+  const capabilities = Array.isArray(value.capabilities)
+    ? value.capabilities
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
+  const unknownCapabilities = capabilities.filter(
+    (capability) => !getRequirementCapabilityOperation(capability)
+  );
+  const validCapabilities = capabilities.filter((capability) =>
+    getRequirementCapabilityOperation(capability)
+  );
+  const derivedOperations = [
+    ...new Set(
+      validCapabilities
+        .map((capability) => getRequirementCapabilityOperation(capability))
+        .filter((operation): operation is string => Boolean(operation))
+    ),
+  ];
+  const declaredStatus = value.status as DataTaskRequirementAnalysisItem['status'];
+  const status =
+    declaredStatus === 'supported' &&
+    (unknownCapabilities.length > 0 || validCapabilities.length === 0)
+      ? ('unsupported' as const)
+      : declaredStatus;
+  const modelReason =
+    typeof value.reason === 'string' ? value.reason.trim() || undefined : undefined;
+  const registryReason = unknownCapabilities.length
+    ? `${unknownCapabilities.length > 1 ? 'Unavailable capabilities' : 'Unavailable capability'}: ${unknownCapabilities.join(', ')}`
+    : declaredStatus === 'supported' && validCapabilities.length === 0
+      ? 'Supported requirements must declare at least one certified capability'
+      : undefined;
   return {
     requirement: value.requirement.trim(),
-    status: value.status as DataTaskRequirementAnalysisItem['status'],
-    reason: typeof value.reason === 'string' ? value.reason.trim() || undefined : undefined,
+    status,
+    reason: registryReason ?? modelReason,
     suggestedRequirement:
       typeof value.suggestedRequirement === 'string'
         ? value.suggestedRequirement.trim() || undefined
         : undefined,
-    operations: Array.isArray(value.operations)
-      ? value.operations.filter((item): item is string => typeof item === 'string' && Boolean(item))
-      : [],
+    operations: derivedOperations,
+    capabilities: validCapabilities,
   };
 }

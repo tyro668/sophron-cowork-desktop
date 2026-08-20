@@ -1058,6 +1058,7 @@ function CloudTableProcessActionEditor({
       typeof reusableTaskOutput.localOutputTableId === 'string';
     return {
       usageTraceId: usageTraceIdRef.current,
+      analysisId: requirementAnalysis?.analysisId,
       source: {
         location: sourceLocation,
         tableId: config.source.tableId,
@@ -1216,6 +1217,7 @@ function CloudTableProcessActionEditor({
             appConfig={appConfig}
             selectedModelConfigSetId={selectedModelConfigSetId}
             onModelSelect={({ configSetId, model }) => {
+              setRequirementAnalysis(null);
               resetUsageTraceId();
               updateConfig(config, {
                 modelConfigSetId: configSetId,

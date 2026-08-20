@@ -23,6 +23,12 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
+import {
+  buildSoftwareElementLocatorPrompt,
+  buildSoftwareGuiAssertionPrompt,
+  buildSoftwareGuiDescriptionPrompt,
+  buildSoftwareScreenContextPrompt,
+} from '../prompts/gui-vision';
 // import { start } from 'repl';
 // import { log, logError, logWarn } from '../utils/logger';
 // import { configStore } from '../config/config-store';
@@ -1197,60 +1203,18 @@ async function analyzeAndBuildScreenContext(
     const imageBuffer = await fs.readFile(screenshotPath);
     const base64Image = imageBuffer.toString('base64');
 
-    // Build comprehensive analysis prompt
-    const previousContext = currentScreenContext
-      ? `
-
-**PREVIOUS SCREEN ANALYSIS:**
-${currentScreenContext.lastAnalysis}
-
-**PREVIOUS ELEMENTS:**
-${currentScreenContext.elements.map((el) => `- ${el.description} at (${el.position.x}, ${el.position.y})`).join('\n')}
-
-Please UPDATE this analysis based on any changes you observe.`
-      : '';
-
-    const prompt = `You are analyzing a GUI screenshot to build a comprehensive understanding of the interface.
-
-**SCREEN INFORMATION:**
-- Screen resolution: ${screenDims.width}x${screenDims.height} pixels
-- Screenshot resolution: ${imageDims.width}x${imageDims.height} pixels
-- Coordinate system: (0,0) at TOP-LEFT corner
-- X-axis: 0 (left) to ${imageDims.width} (right)
-- Y-axis: 0 (top) to ${imageDims.height} (bottom)${previousContext}
-
-**TASK:**
-Provide a DETAILED analysis of this GUI screenshot, including:
-1. Overall layout and structure
-2. ALL visible UI elements (buttons, inputs, labels, images, etc.)
-3. For EACH element: exact position, size, type, functionality, and current state
-4. Spatial relationships between elements
-5. Any text content visible
-
-**RESPONSE FORMAT (JSON only, no markdown):**
-{
-  "overall_description": "<detailed description of the entire interface>",
-  "layout_structure": "<description of layout: header, main area, footer, sidebars, etc.>",
-  "elements": [
-    {
-      "description": "<clear description of the element>",
-      "type": "<button|input|label|image|text|menu|dialog|window|etc>",
-      "position": {
-        "x": <center X coordinate>,
-        "y": <center Y coordinate>,
-        "width": <approximate width>,
-        "height": <approximate height>
-      },
-      "functionality": "<what this element does>",
-      "state": "<current state: enabled/disabled/focused/selected/etc>",
-      "text_content": "<any visible text on or in the element>"
-    }
-  ],
-  "spatial_relationships": "<description of how elements relate spatially>",
-  "notable_features": "<any special or notable aspects of the UI>"
-}
-
-Be PRECISE with coordinates. Measure carefully from the top-left corner.`;
+    const prompt = buildSoftwareScreenContextPrompt({
+      screenWidth: screenDims.width,
+      screenHeight: screenDims.height,
+      imageWidth: imageDims.width,
+      imageHeight: imageDims.height,
+      previousContext: currentScreenContext
+        ? {
+            analysis: currentScreenContext.lastAnalysis,
+            elements: currentScreenContext.elements,
+          }
+        : undefined,
+    });
 
     const responseText = await callVisionAPI(base64Image, prompt, 4096);
 
@@ -1307,56 +1271,13 @@ async function analyzeScreenshotWithVision(
     const imageBuffer = await fs.readFile(screenshotPath);
     const base64Image = imageBuffer.toString('base64');
 
-    // Build context-aware prompt
-    const contextInfo = `
-**SCREEN CONTEXT:**
-- Resolution: ${context.screenWidth}x${context.screenHeight} pixels
-- Overall layout: ${context.lastAnalysis}
-
-**KNOWN ELEMENTS ON SCREEN:**
-${context.elements
-  .slice(0, 20)
-  .map(
-    (el) =>
-      `- ${el.description} (${el.type}) at position (${el.position.x}, ${el.position.y}), size ${el.position.width}x${el.position.height}`
-  )
-  .join('\n')}
-${context.elements.length > 20 ? `... and ${context.elements.length - 20} more elements` : ''}`;
-
-    const prompt = `Analyze this GUI screenshot and locate the following element: "${elementDescription}"
-
-${contextInfo}
-
-**COORDINATE SYSTEM:**
-- Image dimensions: ${context.screenWidth}x${context.screenHeight} pixels
-- Origin (0,0) is at TOP-LEFT corner
-- X increases from left to right (0 to ${context.screenWidth})
-- Y increases from top to bottom (0 to ${context.screenHeight})
-
-**TASK:**
-Find the element "${elementDescription}" and provide its EXACT CENTER coordinates.
-
-**INSTRUCTIONS:**
-1. Use the screen context above to help locate the element
-2. Measure coordinates precisely from the top-left corner
-3. Provide the CENTER POINT of the element
-4. Estimate confidence based on visual clarity and match quality
-
-**RESPONSE FORMAT (JSON only, no markdown):**
-{
-  "x": <integer between 0 and ${context.screenWidth}>,
-  "y": <integer between 0 and ${context.screenHeight}>,
-  "confidence": <integer 0-100>,
-  "reasoning": "<brief explanation of what you found and where>",
-  "element_bounds": {
-    "left": <left edge X>,
-    "top": <top edge Y>,
-    "right": <right edge X>,
-    "bottom": <bottom edge Y>
-  }
-}
-
-If you cannot find the element, set confidence to 0.`;
+    const prompt = buildSoftwareElementLocatorPrompt({
+      elementDescription,
+      screenWidth: context.screenWidth,
+      screenHeight: context.screenHeight,
+      overallLayout: context.lastAnalysis,
+      elements: context.elements,
+    });
 
     writeMCPLog(`[analyzeScreenshotWithVision] Prompt: ${prompt}`);
 
@@ -3029,7 +2950,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const imageBuffer = await fs.readFile(screenshotPath);
           const base64Image = imageBuffer.toString('base64');
 
-          const prompt = `Analyze this GUI screenshot and answer the following question:\n\n${question}\n\nProvide a clear yes/no answer or the specific information requested.`;
+          const prompt = buildSoftwareGuiAssertionPrompt(question);
           const answer = await callVisionAPI(base64Image, prompt, 1024);
 
           // Check if answer matches expected (if provided)
@@ -3272,7 +3193,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const imageBuffer = await fs.readFile(screenshotPath);
           const base64Image = imageBuffer.toString('base64');
 
-          const prompt = `Analyze this GUI screenshot and answer the following question:\n\n${question}\n\nProvide a detailed answer based on what you can see in the image.`;
+          const prompt = buildSoftwareGuiDescriptionPrompt(question);
           const answer = await callVisionAPI(base64Image, prompt, 2048);
 
           return {
