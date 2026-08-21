@@ -359,6 +359,36 @@
     -webkit-backdrop-filter: blur(26px) saturate(1.18);
   }
 
+  /* Dense operator forms use one compact, readable type scale. */
+  .operator-ui {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  .operator-ui .text-\[10px\],
+  .operator-ui .text-\[11px\] {
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .operator-ui button {
+    min-width: 28px;
+    min-height: 28px;
+  }
+
+  .operator-ui input:not([type='checkbox']):not([type='radio']),
+  .operator-ui select {
+    min-height: 28px;
+    font-size: 13px;
+  }
+
+  .operator-ui .operator-section {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
   .glass-table {
     background: var(--glass-card);
     border: 1px solid var(--color-border-subtle);

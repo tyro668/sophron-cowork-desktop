@@ -81,7 +81,7 @@ export function GlassFieldSingleSelect({
       if (!type) return false;
       return dataTypeLabel(type).toLowerCase().includes(lower);
     });
-  }, [options, search, columnTypes]);
+  }, [columnTypes, dataTypeLabel, options, search]);
 
   const selectedIndex = useMemo(
     () => filteredOptions.findIndex((opt) => opt === value),
@@ -147,7 +147,7 @@ export function GlassFieldSingleSelect({
       `[data-index="${highlightedIndex}"]`
     ) as HTMLElement | null;
     el?.scrollIntoView({ block: 'nearest' });
-  }, [highlightedIndex, open]);
+  }, [dropdownRef, highlightedIndex, open]);
 
   const handleTriggerKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLButtonElement>) => {
@@ -182,7 +182,7 @@ export function GlassFieldSingleSelect({
         if (opt) handleSelect(opt);
       }
     },
-    [filteredOptions, highlightedIndex, handleSelect, handleClose]
+    [filteredOptions, highlightedIndex, handleSelect, handleClose, triggerRef]
   );
 
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -213,17 +213,17 @@ export function GlassFieldSingleSelect({
         aria-expanded={open}
         aria-label={placeholder}
         className={[
-          'inline-flex h-6 min-w-0 items-center gap-1 rounded border px-1.5 text-[12px] outline-none transition-colors',
-          'border-border-muted bg-background/42 text-text-primary hover:bg-surface-hover focus:border-accent',
+          'inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded border px-2 text-[13px] outline-none transition-colors',
+          'border-border-muted bg-background/42 text-text-primary hover:bg-surface-hover focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30',
           className || '',
         ].join(' ')}
       >
-        <span className="flex-1 text-center truncate">
+        <span className="flex-1 truncate text-left">
           {value ? (
             showType && columnTypes[value] ? (
               <>
                 {displayLabel || value}
-                <span className="ml-1 text-[11px] text-text-muted">
+                <span className="ml-1 text-[12px] text-text-muted">
                   ({dataTypeLabel(columnTypes[value])})
                 </span>
               </>
@@ -254,17 +254,17 @@ export function GlassFieldSingleSelect({
               minWidth: position.minWidth,
               maxHeight,
             }}
-            className="fixed z-50 flex flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-elevated backdrop-blur-xl"
+            className="operator-ui fixed z-50 flex flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-elevated backdrop-blur-xl"
           >
-            <div className="flex items-center gap-1.5 border-b border-border-subtle px-2 py-1.5">
-              <Search className="h-3 w-3 flex-shrink-0 text-text-muted" />
+            <div className="flex min-h-9 items-center gap-1.5 border-b border-border-subtle px-2 py-1.5">
+              <Search className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
               <input
                 ref={inputRef}
                 type="text"
                 value={search}
                 onChange={handleSearchChange}
                 placeholder={searchPlaceholder}
-                className="h-5 flex-1 min-w-0 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
+                className="h-7 flex-1 min-w-0 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted"
               />
             </div>
 
@@ -290,7 +290,7 @@ export function GlassFieldSingleSelect({
                       disabled={disabled}
                       onClick={() => handleSelect(opt)}
                       className={[
-                        'flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] outline-none transition-colors',
+                        'flex min-h-8 w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30',
                         selected
                           ? 'bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/20'
                           : 'text-text-secondary hover:bg-background/58 hover:text-text-primary',
@@ -302,7 +302,7 @@ export function GlassFieldSingleSelect({
                     >
                       <span className="min-w-0 flex-1 truncate">{optLabel}</span>
                       {columnTypes[opt] && (
-                        <span className="flex-shrink-0 text-[11px] text-text-muted tabular-nums">
+                        <span className="flex-shrink-0 text-[12px] text-text-muted tabular-nums">
                           {dataTypeLabel(columnTypes[opt])}
                         </span>
                       )}

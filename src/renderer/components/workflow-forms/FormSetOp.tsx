@@ -238,7 +238,7 @@ export default function FormSetOp({
               <span className="text-[10px] text-text-muted">{tr('setOpSourcesHint')}</span>
             </div>
           </div>
-          <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
+          <section className="operator-section flex-1">
             <div className="p-3 grid gap-2.5">
               <div className="grid gap-1">
                 <span className="mb-1 block text-[12px] font-medium text-text-secondary">
@@ -257,7 +257,7 @@ export default function FormSetOp({
                 </div>
               </div>
             </div>
-          </div>
+          </section>
         </div>
 
         {/* Arrow */}
@@ -278,7 +278,7 @@ export default function FormSetOp({
               <span className="text-[10px] text-text-muted">{tr('setOpConnectionHint')}</span>
             </div>
           </div>
-          <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
+          <section className="operator-section flex-1 border-x border-border-subtle/70">
             <div className="p-3 grid gap-2">
               {(['union', 'intersect', 'except'] as const).map((op) => (
                 <button
@@ -320,7 +320,7 @@ export default function FormSetOp({
                 </button>
               ))}
             </div>
-          </div>
+          </section>
         </div>
 
         {/* Arrow */}
@@ -341,7 +341,7 @@ export default function FormSetOp({
               <span className="text-[10px] text-text-muted">{tr('setOpConfigHint')}</span>
             </div>
           </div>
-          <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
+          <section className="operator-section flex-1">
             <div className="p-3 grid gap-2.5">
               <GlassRadioSelect
                 value={mode}
@@ -380,7 +380,7 @@ export default function FormSetOp({
                 />
               )}
             </div>
-          </div>
+          </section>
         </div>
       </div>
       {warnings.length > 0 && (

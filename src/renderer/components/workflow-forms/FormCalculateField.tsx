@@ -188,7 +188,7 @@ export default function FormCalculateField({
   ];
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-background/42">
+    <div className="operator-section flex h-full min-h-0 flex-col overflow-hidden">
       <div className="shrink-0 px-3 pb-2 pt-2.5">
         <div className="text-[13px] font-semibold text-text-primary">
           {tr('calcFieldConfigHeader')}

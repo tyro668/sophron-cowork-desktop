@@ -112,7 +112,7 @@ export function GlassOptionSingleSelect({
         if (open) close();
       }
     },
-    [open, highlightedIndex, toggleOpen, close]
+    [close, dropdownRef, highlightedIndex, open, toggleOpen]
   );
 
   const handleDropdownKeyDown = useCallback(
@@ -139,7 +139,7 @@ export function GlassOptionSingleSelect({
         }
       }
     },
-    [flattenedItems, highlightedIndex, onChange, close]
+    [close, flattenedItems, highlightedIndex, onChange, triggerRef]
   );
 
   // Scroll highlighted item into view
@@ -149,7 +149,7 @@ export function GlassOptionSingleSelect({
       `[data-index="${highlightedIndex}"]`
     ) as HTMLElement | null;
     el?.scrollIntoView({ block: 'nearest' });
-  }, [highlightedIndex, open]);
+  }, [dropdownRef, highlightedIndex, open]);
 
   // Focus highlighted option on open so keyboard navigation works immediately
   useEffect(() => {
@@ -161,7 +161,7 @@ export function GlassOptionSingleSelect({
       el?.focus();
     }, 0);
     return () => window.clearTimeout(id);
-  }, [open, highlightedIndex]);
+  }, [dropdownRef, highlightedIndex, open]);
 
   return (
     <>
@@ -171,9 +171,9 @@ export function GlassOptionSingleSelect({
         disabled={disabled}
         onClick={toggleOpen}
         onKeyDown={handleTriggerKeyDown}
-        className={`flex items-center rounded border border-border-muted bg-background/42 text-text-secondary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-40 ${className ?? ''}`}
+        className={`flex min-h-8 items-center rounded border border-border-muted bg-background/42 text-[13px] text-text-secondary outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-40 ${className ?? ''}`}
       >
-        <span className="flex-1 px-2 text-center whitespace-nowrap truncate">
+        <span className="flex-1 truncate whitespace-nowrap px-2 text-left">
           {value ? (
             selectedLabel
           ) : placeholder ? (
@@ -201,7 +201,7 @@ export function GlassOptionSingleSelect({
               width: position.width,
               maxHeight,
             }}
-            className="fixed z-50 overflow-y-auto rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl"
+            className="operator-ui fixed z-50 overflow-y-auto rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl"
           >
             {groups.map((g, gi) => (
               <div key={g.key}>
@@ -209,7 +209,7 @@ export function GlassOptionSingleSelect({
                   <div className="mx-3 my-0.5 border-t border-border-muted" />
                 )}
                 {g.header && (
-                  <div className="px-3 py-1 text-[10px] font-medium text-text-muted uppercase">
+                  <div className="px-3 py-1.5 text-[12px] font-medium text-text-muted uppercase">
                     {g.header}
                   </div>
                 )}
@@ -224,7 +224,7 @@ export function GlassOptionSingleSelect({
                       role="option"
                       aria-selected={selected}
                       data-index={globalIdx}
-                      className={`w-full whitespace-nowrap px-3 py-1.5 text-center text-[12px] transition-colors ${
+                      className={`min-h-8 w-full whitespace-nowrap px-3 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${
                         selected
                           ? 'text-accent font-medium bg-accent/10 ring-1 ring-inset ring-accent/20'
                           : 'text-text-secondary hover:bg-surface-hover'

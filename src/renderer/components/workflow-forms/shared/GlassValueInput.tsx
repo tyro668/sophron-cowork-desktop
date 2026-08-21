@@ -138,7 +138,7 @@ export function GlassValueInput({
               setInputText('');
               inputRef.current?.focus();
             }}
-            className="inline-flex flex-shrink-0 items-center justify-center rounded px-0.5 text-text-muted hover:text-error hover:bg-error/10 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-text-muted outline-none transition-colors hover:bg-error/10 hover:text-error focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-40"
             title={clearLabel ?? tr('filterClearValues')}
           >
             <Trash2 className="h-3 w-3" />
@@ -150,7 +150,7 @@ export function GlassValueInput({
             tags.map((v, i) => (
               <span
                 key={i}
-                className="inline-flex flex-shrink-0 items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[12px] font-medium text-accent"
+                className="inline-flex min-h-6 flex-shrink-0 items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[12px] font-medium text-accent"
               >
                 {v}
                 <button
@@ -161,7 +161,7 @@ export function GlassValueInput({
                     e.stopPropagation();
                     removeTag(i);
                   }}
-                  className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
+                  className="ml-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full outline-none hover:bg-accent/20 focus-visible:ring-2 focus-visible:ring-accent/30"
                 >
                   <X className="h-2.5 w-2.5" />
                 </button>
@@ -177,7 +177,7 @@ export function GlassValueInput({
             onFocus={() => openDropdown()}
             onBlur={multi ? undefined : () => setTimeout(() => onChange(inputText), 100)}
             placeholder={multi ? (tags.length === 0 ? placeholder : '') : placeholder}
-            className={`bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed ${multi ? 'h-6 min-w-[60px] flex-1 pl-0.5' : 'h-8 min-w-[60px] flex-1 pl-2'}`}
+            className={`bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed ${multi ? 'h-7 min-w-[60px] flex-1 pl-0.5' : 'h-8 min-w-[60px] flex-1 pl-2'}`}
           />
         </div>
 
@@ -192,7 +192,7 @@ export function GlassValueInput({
             e.stopPropagation();
             openDropdown();
           }}
-          className={`flex flex-shrink-0 items-center justify-center text-text-muted hover:text-text-secondary transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${multi ? 'h-6 w-5' : 'w-7 border-l border-border-muted rounded-r-md'}`}
+          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center text-text-muted outline-none transition-colors hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-40 ${multi ? '' : 'border-l border-border-muted rounded-r-md'}`}
         >
           <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
         </button>
@@ -204,7 +204,7 @@ export function GlassValueInput({
             <button
               key={s}
               type="button"
-              className={`w-full px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-surface-hover ${!multi && s === inputText ? 'text-accent' : 'text-text-secondary'}`}
+              className={`min-h-8 w-full px-2.5 py-1.5 text-left text-[13px] outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${!multi && s === inputText ? 'text-accent' : 'text-text-secondary'}`}
               onMouseDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -217,7 +217,7 @@ export function GlassValueInput({
           {multi && inputText && !filtered.includes(inputText) && (
             <button
               type="button"
-              className="w-full px-2.5 py-1.5 text-left text-[12px] text-accent transition-colors hover:bg-surface-hover"
+              className="min-h-8 w-full px-2.5 py-1.5 text-left text-[13px] text-accent outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
               onMouseDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();

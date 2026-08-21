@@ -36,7 +36,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
               <span className="text-[10px] text-text-muted">{tr('unnestSourceHint')}</span>
             </div>
           </div>
-          <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
+          <section className="operator-section flex-1">
             <div className="p-3 grid gap-2.5">
               <label className="grid gap-1">
                 <span className="mb-1 block text-[12px] font-medium text-text-secondary">
@@ -86,7 +86,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                 <span className="text-[11px] text-text-muted">{tr('unnestListHint')}</span>
               )}
             </div>
-          </div>
+          </section>
         </div>
 
         {/* Arrow */}
@@ -107,7 +107,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
               <span className="text-[10px] text-text-muted">{tr('unnestRulesHint')}</span>
             </div>
           </div>
-          <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
+          <section className="operator-section flex-1 border-l border-border-subtle/70">
             <div className="p-3 grid gap-2.5">
               {isObjectMode ? (
                 <span className="text-[11px] text-text-muted">{tr('unnestAliasObjectHint')}</span>
@@ -138,7 +138,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                 <span className="text-[10px] text-text-muted">{tr('unnestPathHint')}</span>
               </label>
             </div>
-          </div>
+          </section>
         </div>
 
         {/* Arrow */}
@@ -160,11 +160,11 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                 <span className="text-[10px] text-text-muted">{tr('unnestOutputHint')}</span>
               </div>
             </div>
-            <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
+            <section className="operator-section flex-1">
               <div className="p-3">
                 <span className="text-[11px] text-text-muted">{tr('unnestObjectNoConfig')}</span>
               </div>
-            </div>
+            </section>
           </div>
         ) : (
           <div className="flex-1 flex flex-col gap-2">
@@ -179,7 +179,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                 <span className="text-[10px] text-text-muted">{tr('unnestOutputHint')}</span>
               </div>
             </div>
-            <div className="flex-1 rounded-lg border border-border-muted bg-background/42">
+            <section className="operator-section flex-1 border-l border-border-subtle/70">
               <div className="p-3 grid gap-2.5">
                 <div className="grid gap-1">
                   <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
@@ -235,7 +235,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
                   {tr('unnestPreserveOrder')}
                 </label>
               </div>
-            </div>
+            </section>
           </div>
         )}
       </div>

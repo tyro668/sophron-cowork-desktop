@@ -111,8 +111,8 @@ export function GlassRowList<T>({
         return toBottomTitle ?? tr('toBottom');
     }
   }
-  const extraActionsWidth = renderExtraActions ? 28 : 0;
-  const actionsWidth = actions.length * 24 + (actions.length - 1) * 4 + extraActionsWidth;
+  const extraActionsWidth = renderExtraActions ? 32 : 0;
+  const actionsWidth = actions.length * 28 + (actions.length - 1) * 4 + extraActionsWidth;
 
   return (
     <div className="flex flex-col gap-2">
@@ -122,7 +122,7 @@ export function GlassRowList<T>({
         >
           {draggable && (
             <span
-              className="flex h-6 w-4 flex-shrink-0 items-center justify-center"
+              className="flex h-7 w-6 flex-shrink-0 items-center justify-center"
               aria-hidden="true"
             />
           )}
@@ -141,7 +141,7 @@ export function GlassRowList<T>({
       {items.map((item, index) => (
         <div
           key={index}
-          className={`flex items-center gap-1 px-0.5 ${
+          className={`flex min-h-8 items-center gap-1 px-0.5 ${
             draggable ? 'rounded transition-colors hover:bg-surface-hover/40' : ''
           } ${getRowOpacity?.(index) ? 'opacity-50' : ''}`}
           onDragOver={draggable ? (e) => onDragOver?.(e, index) : undefined}
@@ -151,7 +151,7 @@ export function GlassRowList<T>({
               draggable
               onDragStart={() => onDragStart?.(index)}
               onDragEnd={() => onDragEnd?.()}
-              className="flex h-6 w-4 flex-shrink-0 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
+              className="flex h-7 w-6 flex-shrink-0 cursor-grab items-center justify-center rounded text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-accent/30 active:cursor-grabbing"
               title={dragTitle ?? tr('dragToReorder')}
               aria-label={dragTitle ?? tr('dragToReorder')}
             >
@@ -195,7 +195,7 @@ export function GlassRowList<T>({
                   type="button"
                   onClick={handler}
                   disabled={disabled}
-                  className={`inline-flex h-6 w-6 flex-shrink-0 cursor-pointer items-center justify-center rounded transition-colors ${
+                  className={`inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
                     disabled
                       ? 'opacity-40 cursor-not-allowed'
                       : action === 'remove'

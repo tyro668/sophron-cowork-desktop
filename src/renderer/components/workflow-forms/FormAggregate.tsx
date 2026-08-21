@@ -158,7 +158,7 @@ export default function FormAggregate({
     <div className="flex h-full min-h-0 overflow-hidden">
       <div className="flex gap-2.5 flex-1 min-h-0">
         {/* Left: group-by fields */}
-        <div className="flex-[1.5] rounded-lg border border-border-muted bg-background/42 content-start flex flex-col min-h-0">
+        <section className="operator-section flex-[1.5] content-start flex flex-col min-h-0">
           <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5 shrink-0">
             <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
               1
@@ -217,10 +217,10 @@ export default function FormAggregate({
               }}
             />
           </div>
-        </div>
+        </section>
 
         {/* Right: metrics */}
-        <div className="flex-[8.5] rounded-lg border border-border-muted bg-background/42 content-start flex flex-col min-h-0">
+        <section className="operator-section flex-[8.5] content-start flex flex-col min-h-0 border-l border-border-subtle/70">
           <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5 shrink-0">
             <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
               2
@@ -290,7 +290,7 @@ export default function FormAggregate({
               dragTitle={tr('dragToReorder')}
             />
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );

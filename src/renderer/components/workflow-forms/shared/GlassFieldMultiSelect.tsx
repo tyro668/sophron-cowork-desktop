@@ -89,7 +89,7 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
       if (type.toLowerCase().includes(lower)) return true;
       return dataTypeLabel(type).toLowerCase().includes(lower);
     });
-  }, [columns, columnTypes, search]);
+  }, [columns, columnTypes, dataTypeLabel, search]);
 
   const allFilteredSelected = filtered.length > 0 && filtered.every((c) => selected.includes(c));
 
@@ -123,13 +123,11 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
   return (
     <div
       className={`flex min-h-0 flex-col rounded-lg border ${
-        isGlass
-          ? 'border-border-subtle bg-[var(--glass-card-strong)] shadow-elevated backdrop-blur-xl'
-          : 'border-border-muted bg-background/60'
+        isGlass ? 'border-border-subtle bg-background/48' : 'border-border-muted bg-background/60'
       }`}
     >
       <div
-        className={`flex items-center border-b border-border-subtle px-2.5 py-1 ${
+        className={`flex min-h-9 items-center border-b border-border-subtle px-2.5 py-1 ${
           isGlass ? 'gap-1.5' : 'gap-2'
         }`}
       >
@@ -141,13 +139,13 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={tr('searchField')}
-          className={`${isGlass ? 'h-6' : 'h-5'} min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted`}
+          className="h-7 min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted"
         />
         {selectionMode === 'multi' && (
           <label
             className={`flex shrink-0 cursor-pointer items-center gap-1 ${
               isGlass
-                ? 'text-[11px] text-text-muted hover:text-text-secondary'
+                ? 'text-[12px] text-text-muted hover:text-text-secondary'
                 : 'text-[12px] text-text-secondary font-medium'
             }`}
             onMouseDown={(e) => {
@@ -183,8 +181,8 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
             return (
               <label
                 key={col}
-                className={`flex cursor-pointer items-center gap-2 px-2.5 transition-colors hover:bg-surface-hover ${
-                  isGlass ? 'py-1.5 text-[12px]' : 'py-[4px] text-[13px]'
+                className={`flex min-h-8 cursor-pointer items-center gap-2 px-2.5 transition-colors hover:bg-surface-hover ${
+                  isGlass ? 'py-1.5 text-[13px]' : 'py-1 text-[13px]'
                 } ${checked ? 'text-text-primary' : 'text-text-secondary'}`}
                 onMouseDown={(e) => {
                   e.preventDefault();
@@ -202,7 +200,7 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
                 {itemExtras?.(col)}
                 {columnTypes?.[col] && (
                   <span
-                    className={`flex-shrink-0 text-[11px] text-text-muted tabular-nums ${
+                    className={`flex-shrink-0 text-[12px] text-text-muted tabular-nums ${
                       isGlass ? '' : 'w-14 text-right'
                     }`}
                   >

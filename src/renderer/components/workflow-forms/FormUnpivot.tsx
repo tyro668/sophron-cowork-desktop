@@ -52,7 +52,7 @@ export default function FormUnpivot({
   return (
     <div className="flex gap-2.5">
       {/* ═══ 左列: 列展开 ═══ */}
-      <div className="flex-[4] rounded-lg border border-border-muted bg-background/42 content-start">
+      <section className="operator-section flex-[4] content-start">
         <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5">
           <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
             1
@@ -89,10 +89,10 @@ export default function FormUnpivot({
             )}
           </div>
         </div>
-      </div>
+      </section>
 
       {/* ═══ 右列: 输出配置 ═══ */}
-      <div className="flex-[6] rounded-lg border border-border-muted bg-background/42 content-start">
+      <section className="operator-section flex-[6] content-start border-l border-border-subtle/70">
         <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5">
           <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
             2
@@ -155,7 +155,7 @@ export default function FormUnpivot({
             {tr('unpivotIncludeNulls')}
           </label>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

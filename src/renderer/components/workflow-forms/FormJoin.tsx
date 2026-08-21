@@ -673,7 +673,7 @@ export default function FormJoin({
   return (
     <div className="grid content-start gap-2.5">
       {/* ═══ Big card: 1:1 two-column layout ═══ */}
-      <div className="rounded-lg border border-border-muted bg-background/42">
+      <section className="operator-section">
         <div className="flex">
           {/* ── Left column (flex-1): only Step 1 ── */}
           <div className="flex-[4] border-r border-border-muted/50">
@@ -1065,7 +1065,7 @@ export default function FormJoin({
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
       {/* ═══ Keep field dialog ═══ */}
       {keepDialogOpen && (

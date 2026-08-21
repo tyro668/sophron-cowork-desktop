@@ -1984,10 +1984,6 @@ function WorkflowInspector({
   const catalog = getOperatorCatalog(node.type);
   const Icon = catalog.Icon;
   const summary = getWorkflowConfigSummary(node, t);
-  const dslSummaryLabel = t('data.workflow.summaryLabels.dsl');
-  const configInfoRows = [...summary.primary, ...summary.details].filter(
-    (row) => row.label !== dslSummaryLabel
-  );
 
   return (
     <aside className="glass-card flex min-h-0 flex-col overflow-hidden rounded-xl">
@@ -2108,9 +2104,6 @@ function WorkflowInspector({
             }
             fieldCompletions={operatorFieldCompletions}
             upstreamRowCount={nodePreviewData?.totalRows}
-            summaryRows={configInfoRows}
-            summaryTitle={t('data.workflow.summary')}
-            summaryEmptyText={t('data.workflow.noConfig')}
             operatorDsl={operatorDsl}
             operatorDslStatus={operatorDslStatus}
             operatorDslDiagnostics={operatorDslDiagnostics}

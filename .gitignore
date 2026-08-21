@@ -51,7 +51,7 @@ coverage/
 *.pem
 *.p12
 
-# Claude 
+# Claude
 .claude/*
 !.claude/skills/
 CLAUDE.md
@@ -87,6 +87,7 @@ vendor/
 
 # Design drafts
 workflow-form-design/
+docs/development/operator-ui-audit.md
 
 # Temp work products
 progress.md
@@ -129,3 +130,4 @@ website/.vitepress/cache/
 !resources/social-preview.png
 !resources/icon.iconset/
 !resources/icon.iconset/*.png
+docs/development/operator-ui-typography-migration.md

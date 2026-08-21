@@ -171,7 +171,7 @@ export default function FormPivot({
   return (
     <div className="flex flex-col gap-3">
       {/* ═══ 上块: 列与分组 ═══ */}
-      <div className="w-full rounded-lg border border-border-muted bg-background/42 content-start">
+      <section className="operator-section w-full content-start">
         <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5">
           <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
             1
@@ -262,10 +262,10 @@ export default function FormPivot({
             )}
           </div>
         </div>
-      </div>
+      </section>
 
       {/* ═══ 下块: 聚合指标 ═══ */}
-      <div className="w-full rounded-lg border border-border-muted bg-background/42 content-start">
+      <section className="operator-section w-full content-start border-t border-border-subtle/70">
         <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5">
           <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
             2
@@ -327,7 +327,7 @@ export default function FormPivot({
             }
           />
         </div>
-      </div>
+      </section>
     </div>
   );
 }

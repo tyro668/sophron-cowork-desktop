@@ -39,13 +39,13 @@ export function GlassTagBar({
 
   return (
     <div
-      className={`w-full min-w-0 flex items-center rounded-md border border-border-muted bg-background/42 ${containerPad} ${className}`}
+      className={`min-h-8 w-full min-w-0 flex items-center rounded-md border border-border-muted bg-background/42 ${containerPad} ${className}`}
     >
       <div className="flex flex-1 items-center gap-1 min-w-0">
         <button
           type="button"
           onClick={onClear}
-          className="inline-flex flex-shrink-0 items-center justify-center self-stretch rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
+          className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center self-center rounded text-text-muted outline-none transition-colors hover:bg-error/10 hover:text-error focus-visible:ring-2 focus-visible:ring-accent/30"
           title={tr('clearAll')}
           aria-label={tr('clearAll')}
         >
@@ -64,13 +64,13 @@ export function GlassTagBar({
           {items.map((item, index) => (
             <span
               key={`${item}-${index}`}
-              className={`inline-flex shrink-0 items-center gap-0.5 rounded bg-accent/10 ${tagPad} text-[12px] font-medium text-accent max-w-[180px]`}
+              className={`inline-flex min-h-6 shrink-0 items-center gap-0.5 rounded bg-accent/10 ${tagPad} text-[12px] font-medium text-accent max-w-[180px]`}
             >
               <span className="truncate">{item}</span>
               <button
                 type="button"
                 onClick={() => onRemove(item)}
-                className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
+                className="ml-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full outline-none hover:bg-accent/20 focus-visible:ring-2 focus-visible:ring-accent/30"
                 aria-label={tr('removeField')}
               >
                 <X className="h-2.5 w-2.5" />
@@ -84,7 +84,8 @@ export function GlassTagBar({
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={onToggle}
-            className="flex w-7 flex-shrink-0 items-center justify-center self-stretch border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
+            className="flex w-8 flex-shrink-0 items-center justify-center self-stretch rounded-r-md border-l border-border-muted text-text-muted outline-none transition-colors hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
+            aria-label={tr('selectField')}
           >
             <ChevronDown
               className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`}
