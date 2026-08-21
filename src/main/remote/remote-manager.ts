@@ -64,9 +64,6 @@ export class RemoteManager extends EventEmitter {
   private agentExecutor?: AgentExecutor;
   private sendToRenderer?: (event: ServerEvent) => void;
 
-  // Session state tracking
-  private remoteSessionIds: Set<string> = new Set();
-
   // Mapping: actual session ID -> remote session ID
   private sessionIdMapping: Map<string, string> = new Map();
 
@@ -466,7 +463,26 @@ export class RemoteManager extends EventEmitter {
    * Clear remote session
    */
   clearRemoteSession(sessionId: string): boolean {
-    return this.messageRouter.clearSession(sessionId);
+    const actualSessionId = this.reverseSessionIdMapping.get(sessionId);
+
+    if (actualSessionId) {
+      this.sessionIdMapping.delete(actualSessionId);
+      this.responseBuffers.delete(actualSessionId);
+      this.sentMessageHashes.delete(actualSessionId);
+
+      const timer = this.sendTimers.get(actualSessionId);
+      if (timer) {
+        clearTimeout(timer);
+        this.sendTimers.delete(actualSessionId);
+      }
+    }
+
+    this.reverseSessionIdMapping.delete(sessionId);
+    this.sessionChannelMapping.delete(sessionId);
+    this.sessionOwnerMapping.delete(sessionId);
+
+    const routerCleared = this.messageRouter.clearSession(sessionId);
+    return Boolean(actualSessionId) || routerCleared;
   }
 
   /**
@@ -1047,8 +1063,9 @@ export class RemoteManager extends EventEmitter {
   }
 
   /**
-   * Clear session response buffer (call when session ends)
-   * Flushes any pending messages before clearing
+   * Clear per-turn response state after a session becomes idle or errors.
+   * The remote-to-actual session mappings must remain so the next message can
+   * continue the same conversation.
    */
   async clearSessionBuffer(actualSessionId: string): Promise<void> {
     // First flush any pending messages
@@ -1061,20 +1078,6 @@ export class RemoteManager extends EventEmitter {
     if (timer) {
       clearTimeout(timer);
       this.sendTimers.delete(actualSessionId);
-    }
-
-    // Clean up session mappings
-    const sessionId = this.sessionIdMapping.get(actualSessionId);
-    this.sessionIdMapping.delete(actualSessionId);
-    if (sessionId) {
-      for (const [key, value] of this.reverseSessionIdMapping) {
-        if (value === actualSessionId) {
-          this.reverseSessionIdMapping.delete(key);
-          break;
-        }
-      }
-      this.sessionChannelMapping.delete(sessionId);
-      this.sessionOwnerMapping.delete(sessionId);
     }
   }
 
@@ -1197,19 +1200,18 @@ export class RemoteManager extends EventEmitter {
     log('[RemoteManager] Executing agent for session:', sessionId);
     log('[RemoteManager] Working directory:', workingDirectory || '(default)');
 
-    // Check if this is a new remote session
-    const isNewSession = !this.remoteSessionIds.has(sessionId);
+    // The reverse mapping is the single source of truth. If it is missing,
+    // recover by creating a new actual session instead of treating the remote
+    // session as existing and failing with an internal error.
+    const actualSessionId = this.reverseSessionIdMapping.get(sessionId);
 
-    if (isNewSession) {
+    if (!actualSessionId) {
       // Create new session with working directory
       const newSession = await this.agentExecutor.startSession(
         buildRemoteSessionTitle(prompt),
         prompt,
         workingDirectory
       );
-
-      // Map remote session ID to actual session ID
-      this.remoteSessionIds.add(sessionId);
 
       // Store bidirectional mapping
       this.sessionIdMapping.set(newSession.id, sessionId);
@@ -1240,10 +1242,6 @@ export class RemoteManager extends EventEmitter {
       this.emitRemoteUserMessage(newSession.id, content, prompt);
     } else {
       // Continue existing session - use actual session ID
-      const actualSessionId = this.reverseSessionIdMapping.get(sessionId);
-      if (!actualSessionId) {
-        throw new Error(`No actual session ID found for remote session: ${sessionId}`);
-      }
       log('[RemoteManager] Continuing session:', actualSessionId, 'for remote:', sessionId);
       this.emitRemoteUserMessage(actualSessionId, content, prompt);
       await this.agentExecutor.continueSession(actualSessionId, prompt, content, workingDirectory);

@@ -983,11 +983,11 @@ function sendToRenderer(event: ServerEvent) {
 
     // trace.update 预留；当前主要用 trace.step
 
-    // 拦截 session.status 用于清理
+    // 拦截 session.status，仅清理本轮回复缓冲；idle/error 后会话仍可继续
     if (event.type === 'session.status') {
       const status = payload.status as string;
       if (status === 'idle' || status === 'error') {
-        // 会话结束，清空缓冲
+        // 本轮结束，清空缓冲但保留远程会话映射
         remoteManager.clearSessionBuffer(sessionId).catch((err: Error) => {
           logError('[Remote] Failed to clear session buffer:', err);
         });
