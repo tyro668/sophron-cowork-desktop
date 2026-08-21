@@ -207,6 +207,22 @@ export const AutomationUpdateScheduleInputSchema = Type.Object(
   { additionalProperties: false }
 );
 
+export const AutomationSetEnabledInputSchema = Type.Object(
+  {
+    automationId: Type.String({
+      minLength: 1,
+      description: TOOL_SCHEMA_COPY.automation.automationId,
+    }),
+    enabled: Type.Boolean({
+      description: TOOL_SCHEMA_COPY.automation.enabled,
+    }),
+    confirmed: Type.Literal(true, {
+      description: TOOL_SCHEMA_COPY.automation.enabledConfirmed,
+    }),
+  },
+  { additionalProperties: false }
+);
+
 export type AutomationWeekdayName = Static<typeof AutomationWeekdaySchema>;
 export type AutomationToolScheduleInput = Static<typeof AutomationScheduleInputSchema>;
 export type AutomationToolActionInput = Static<typeof AutomationActionInputSchema>;
@@ -217,6 +233,7 @@ export type AutomationPrepareScheduleUpdateToolInput = Static<
   typeof AutomationPrepareScheduleUpdateInputSchema
 >;
 export type AutomationUpdateScheduleToolInput = Static<typeof AutomationUpdateScheduleInputSchema>;
+export type AutomationSetEnabledToolInput = Static<typeof AutomationSetEnabledInputSchema>;
 
 export interface AutomationToolExecutionContext {
   sessionId: string;
@@ -289,6 +306,7 @@ const AutomationPrepareScheduleUpdateRuntimeSchema = createRuntimeSchema(
 const AutomationUpdateScheduleRuntimeSchema = createRuntimeSchema(
   AutomationUpdateScheduleInputSchema
 );
+const AutomationSetEnabledRuntimeSchema = createRuntimeSchema(AutomationSetEnabledInputSchema);
 
 export function parseAutomationListInput(input: unknown): Static<typeof AutomationListInputSchema> {
   return parseRuntimeInput('automation_list', AutomationListRuntimeSchema, input);
@@ -328,6 +346,10 @@ export function parseAutomationUpdateScheduleInput(
     AutomationUpdateScheduleRuntimeSchema,
     input
   );
+}
+
+export function parseAutomationSetEnabledInput(input: unknown): AutomationSetEnabledToolInput {
+  return parseRuntimeInput('automation_set_enabled', AutomationSetEnabledRuntimeSchema, input);
 }
 
 function normalizeSerializedObjectFields(

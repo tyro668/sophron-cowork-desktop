@@ -19,6 +19,7 @@ import type {
   AutomationListToolInput,
   AutomationPrepareScheduleUpdateToolInput,
   AutomationPrepareToolInput,
+  AutomationSetEnabledToolInput,
   AutomationToolActionInput,
   AutomationToolExecutionContext,
   AutomationToolListItem,
@@ -78,6 +79,29 @@ export class AutomationToolService {
         : 'No automations found.',
       { total: matches.length, automations }
     );
+  }
+
+  setEnabled(input: AutomationSetEnabledToolInput): AutomationToolResult {
+    if (input.confirmed !== true) {
+      throw new Error('Explicit confirmation is required to enable or disable an automation.');
+    }
+
+    const automationId = input.automationId.trim();
+    const current = this.automationService.get(automationId);
+    if (!current) throw new Error(`Automation not found: ${automationId}`);
+
+    const alreadyInRequestedState = input.enabled
+      ? current.enabled && (current.status === 'enabled' || current.status === 'running')
+      : !current.enabled && current.status === 'disabled';
+    if (alreadyInRequestedState) {
+      return this.formatEnabledResult(current, 'unchanged');
+    }
+
+    const updated = this.automationService.setEnabled(automationId, input.enabled);
+    if (!updated) throw new Error(`Automation not found: ${automationId}`);
+
+    this.onAutomationsChanged?.();
+    return this.formatEnabledResult(updated, 'updated', current.status === 'running');
   }
 
   async prepare(
@@ -453,6 +477,56 @@ export class AutomationToolService {
           nextRunAtText,
           timezone: automation.trigger.timezone,
         },
+      }
+    );
+  }
+
+  private formatEnabledResult(
+    automation: Automation,
+    status: 'updated' | 'unchanged',
+    wasRunning = false
+  ): AutomationToolResult {
+    const nextRunAtText =
+      automation.nextRunAt === null
+        ? null
+        : formatTimestamp(automation.nextRunAt, automation.trigger.timezone);
+    const stateText = automation.enabled ? 'enabled' : 'disabled';
+    const headline =
+      status === 'updated'
+        ? `${automation.enabled ? 'Enabled' : 'Disabled'} automation: ${automation.name} (${automation.id})`
+        : `Automation is already ${stateText}: ${automation.name} (${automation.id})`;
+    const runningNote =
+      wasRunning && !automation.enabled
+        ? 'The current execution was not cancelled; future scheduled executions are disabled.'
+        : null;
+    const noFutureRunNote =
+      automation.enabled && automation.nextRunAt === null
+        ? 'This automation is enabled but its schedule has no future execution time. Update the schedule before it can run again.'
+        : null;
+
+    return toolResult(
+      [
+        headline,
+        `Status: ${automation.status}`,
+        `Schedule: ${formatAutomationTrigger(automation.trigger)}`,
+        `Next run: ${nextRunAtText ?? 'none'}`,
+        ...(runningNote ? [runningNote] : []),
+        ...(noFutureRunNote ? [noFutureRunNote] : []),
+        'The automation is available on the Automation page.',
+      ].join('\n'),
+      {
+        status,
+        automation: {
+          id: automation.id,
+          name: automation.name,
+          enabled: automation.enabled,
+          status: automation.status,
+          scheduleText: formatAutomationTrigger(automation.trigger),
+          nextRunAt: automation.nextRunAt,
+          nextRunAtText,
+          timezone: automation.trigger.timezone,
+        },
+        ...(runningNote ? { currentExecutionCancelled: false } : {}),
       }
     );
   }
