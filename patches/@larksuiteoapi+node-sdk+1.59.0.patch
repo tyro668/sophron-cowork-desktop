@@ -1,0 +1,26 @@
+diff --git a/node_modules/@larksuiteoapi/node-sdk/es/index.js b/node_modules/@larksuiteoapi/node-sdk/es/index.js
+index a94ab5f..cc50624 100644
+--- a/node_modules/@larksuiteoapi/node-sdk/es/index.js
++++ b/node_modules/@larksuiteoapi/node-sdk/es/index.js
+@@ -85616,7 +85616,7 @@ class WSClient {
+                 return;
+             }
+             this.eventDispatcher = eventDispatcher;
+-            this.reConnect(true);
++            yield this.reConnect(true);
+         });
+     }
+ }
+diff --git a/node_modules/@larksuiteoapi/node-sdk/lib/index.js b/node_modules/@larksuiteoapi/node-sdk/lib/index.js
+index 3643f7f..de098da 100644
+--- a/node_modules/@larksuiteoapi/node-sdk/lib/index.js
++++ b/node_modules/@larksuiteoapi/node-sdk/lib/index.js
+@@ -85631,7 +85631,7 @@ class WSClient {
+                 return;
+             }
+             this.eventDispatcher = eventDispatcher;
+-            this.reConnect(true);
++            yield this.reConnect(true);
+         });
+     }
+ }

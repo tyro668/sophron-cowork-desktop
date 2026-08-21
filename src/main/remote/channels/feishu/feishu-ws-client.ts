@@ -38,6 +38,8 @@ export class FeishuWSClient extends EventEmitter {
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 10;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private lifecycleGeneration: number = 0;
+  private startCompletion: Promise<void> | null = null;
 
   constructor(config: FeishuWSConfig) {
     super();
@@ -53,8 +55,10 @@ export class FeishuWSClient extends EventEmitter {
       return;
     }
 
+    const generation = ++this.lifecycleGeneration;
     this.starting = true;
     this.stopped = false;
+    this.connected = false;
 
     const { appId, appSecret } = this.config;
 
@@ -63,11 +67,23 @@ export class FeishuWSClient extends EventEmitter {
       throw new Error('Feishu appId and appSecret are required');
     }
 
+    let resolveStartCompletion!: () => void;
+    const startCompletion = new Promise<void>((resolve) => {
+      resolveStartCompletion = resolve;
+    });
+    this.startCompletion = startCompletion;
+
     log('[FeishuWS] Starting long connection...');
+
+    let sdkWSClient: Lark.WSClient | null = null;
 
     try {
       // Close any lingering previous connection before creating a new one
       await this.closeWSClient();
+
+      if (this.stopped || generation !== this.lifecycleGeneration) {
+        throw new Error('Feishu WebSocket start cancelled');
+      }
 
       this.client = new Lark.Client({
         appId,
@@ -77,21 +93,22 @@ export class FeishuWSClient extends EventEmitter {
 
       const loggerLevel = this.getLoggerLevel();
 
-      this.wsClient = new Lark.WSClient({
+      sdkWSClient = new Lark.WSClient({
         appId,
         appSecret,
         loggerLevel,
       });
+      this.wsClient = sdkWSClient;
 
       // Bail out if stop() was called while we were setting up
       if (this.stopped) {
-        await this.closeWSClient();
+        this.closeSpecificWSClient(sdkWSClient);
         this.client = null;
         this.starting = false;
-        return;
+        throw new Error('Feishu WebSocket start cancelled');
       }
 
-      await this.wsClient.start({
+      await sdkWSClient.start({
         eventDispatcher: new Lark.EventDispatcher({}).register({
           'im.message.receive_v1': async (data: Record<string, unknown>) => {
             try {
@@ -104,11 +121,19 @@ export class FeishuWSClient extends EventEmitter {
       });
 
       // Double-check: stop() may have been called during the async start above
-      if (this.stopped) {
-        await this.closeWSClient();
+      if (
+        this.stopped ||
+        generation !== this.lifecycleGeneration ||
+        this.wsClient !== sdkWSClient
+      ) {
+        this.closeSpecificWSClient(sdkWSClient);
         this.client = null;
         this.starting = false;
-        return;
+        throw new Error('Feishu WebSocket start cancelled');
+      }
+
+      if (!this.isUnderlyingConnectionOpen(sdkWSClient)) {
+        throw new Error('Feishu WebSocket did not reach the open state');
       }
 
       this.connected = true;
@@ -117,12 +142,30 @@ export class FeishuWSClient extends EventEmitter {
       log('[FeishuWS] Long connection established successfully');
       this.emit('connected');
     } catch (error) {
+      const isCurrentStart =
+        generation === this.lifecycleGeneration && !this.stopped && this.wsClient === sdkWSClient;
+
+      if (sdkWSClient) {
+        this.closeSpecificWSClient(sdkWSClient);
+      }
+
+      if (!isCurrentStart) {
+        throw error;
+      }
+
       this.starting = false;
-      logError('[FeishuWS] Failed to start:', error);
       this.connected = false;
+      this.client = null;
+      logError('[FeishuWS] Failed to start:', error);
       this.emit('error', error);
 
       this.scheduleReconnect();
+      throw error;
+    } finally {
+      resolveStartCompletion();
+      if (this.startCompletion === startCompletion) {
+        this.startCompletion = null;
+      }
     }
   }
 
@@ -130,9 +173,17 @@ export class FeishuWSClient extends EventEmitter {
    * Stop the WebSocket connection
    */
   async stop(): Promise<void> {
+    if (this.stopped && !this.starting && !this.connected && !this.wsClient) {
+      return;
+    }
+
     log('[FeishuWS] Stopping long connection...');
 
+    this.lifecycleGeneration++;
     this.stopped = true;
+    this.starting = false;
+    this.connected = false;
+    const pendingStart = this.startCompletion;
 
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -140,8 +191,10 @@ export class FeishuWSClient extends EventEmitter {
     }
 
     await this.closeWSClient();
+    if (pendingStart) {
+      await pendingStart;
+    }
     this.client = null;
-    this.connected = false;
 
     this.emit('disconnected');
     log('[FeishuWS] Long connection stopped');
@@ -151,13 +204,41 @@ export class FeishuWSClient extends EventEmitter {
    * Close the underlying Lark WSClient connection
    */
   private async closeWSClient(): Promise<void> {
-    if (this.wsClient) {
-      try {
-        this.wsClient.close({ force: true });
-      } catch (err) {
-        logWarn('[FeishuWS] Error closing WSClient:', err);
-      }
+    const client = this.wsClient;
+    if (client) {
+      this.closeSpecificWSClient(client);
+    }
+  }
+
+  /**
+   * Close exactly the SDK instance that belongs to a lifecycle generation.
+   * A late completion from an old start must never close the replacement.
+   */
+  private closeSpecificWSClient(client: Lark.WSClient): void {
+    try {
+      client.close({ force: true });
+    } catch (err) {
+      logWarn('[FeishuWS] Error closing WSClient:', err);
+    }
+
+    if (this.wsClient === client) {
       this.wsClient = null;
+    }
+  }
+
+  /**
+   * SDK 1.59.0 exposes no public readiness callback. Its runtime WSConfig is
+   * inspected only after the patched start() resolves so connected=true means
+   * there is an actual OPEN socket, not merely a scheduled connection attempt.
+   */
+  private isUnderlyingConnectionOpen(client: Lark.WSClient): boolean {
+    try {
+      const runtimeClient = client as unknown as {
+        wsConfig?: { getWSInstance?: () => { readyState?: number } | null };
+      };
+      return runtimeClient.wsConfig?.getWSInstance?.()?.readyState === 1;
+    } catch {
+      return false;
     }
   }
 
