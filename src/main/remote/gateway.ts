@@ -38,6 +38,9 @@ interface WSMessage {
   requestId?: string;
 }
 
+const PAIRING_REQUEST_WINDOW_MS = 10 * 60 * 1000;
+const MAX_PAIRING_REQUESTS_PER_WINDOW = 3;
+
 export class RemoteGateway extends EventEmitter {
   private config: GatewayConfig;
   private httpServer?: HttpServer;
@@ -54,6 +57,9 @@ export class RemoteGateway extends EventEmitter {
 
   // Rate limiting for WebSocket auth
   private authAttempts: Map<string, { count: number; resetTime: number }> = new Map();
+
+  // Rate limiting for new channel pairing requests (pending requests are reused)
+  private pairingRequestAttempts: Map<string, { count: number; resetTime: number }> = new Map();
 
   constructor(config: GatewayConfig, messageRouter: MessageRouter) {
     super();
@@ -156,6 +162,8 @@ export class RemoteGateway extends EventEmitter {
       }
     }
     this.wsClients.clear();
+    this.authAttempts.clear();
+    this.pairingRequestAttempts.clear();
 
     // Close WebSocket server
     if (this.wss) {
@@ -311,16 +319,23 @@ export class RemoteGateway extends EventEmitter {
    * Send response to channel (public method for RemoteManager)
    */
   async sendResponse(response: RemoteResponse): Promise<void> {
-    await this.sendToChannel(response);
+    await this.sendToChannel(response, true);
   }
 
   /**
    * Send response to channel (internal)
    */
-  private async sendToChannel(response: RemoteResponse): Promise<void> {
+  private async sendToChannel(
+    response: RemoteResponse,
+    propagateError: boolean = false
+  ): Promise<void> {
     const channel = this.channels.get(response.channelType);
     if (!channel) {
-      logError(`[Gateway] Channel not found: ${response.channelType}`);
+      const error = new Error(`Channel not found: ${response.channelType}`);
+      logError(`[Gateway] ${error.message}`);
+      if (propagateError) {
+        throw error;
+      }
       return;
     }
 
@@ -329,6 +344,9 @@ export class RemoteGateway extends EventEmitter {
       this.emitEvent('message.sent', { response });
     } catch (error) {
       logError(`[Gateway] Failed to send message to channel ${response.channelType}:`, error);
+      if (propagateError) {
+        throw error;
+      }
     }
   }
 
@@ -391,50 +409,35 @@ export class RemoteGateway extends EventEmitter {
     if (this.pairingRequests.has(userKey)) {
       const existing = this.pairingRequests.get(userKey)!;
 
-      // Check if message contains the pairing code
-      const inputCode = message.content.text?.trim();
-      if (inputCode === existing.code) {
-        // Pairing successful
-        this.pairedUsers.set(userKey, {
-          userId: message.sender.id,
-          userName: message.sender.name,
-          channelType: message.channelType,
-          pairedAt: Date.now(),
-          lastActiveAt: Date.now(),
-        });
-
-        this.pairingRequests.delete(userKey);
-
-        await this.sendToChannel({
-          channelType: message.channelType,
-          channelId: message.channelId,
-          content: {
-            type: 'text',
-            text: '✅ 配对成功！您现在可以开始使用机器人了。',
-          },
-          replyTo: message.id,
-        });
-
-        log('[Gateway] User paired successfully:', userKey);
-        return;
-      }
-
       // Check if expired
       if (Date.now() > existing.expiresAt) {
         this.pairingRequests.delete(userKey);
       } else {
-        // Already has valid pairing request
+        // A requester cannot approve their own access by echoing the code.
         await this.sendToChannel({
           channelType: message.channelType,
           channelId: message.channelId,
           content: {
             type: 'text',
-            text: `请输入配对码进行验证。\n\n您的配对码是: **${existing.code}**\n\n请将此配对码发送给管理员进行确认，或直接回复配对码完成配对。`,
+            text: `您的授权申请正在等待管理员审批。\n\n申请码: **${existing.code}**\n\n请让管理员在九思助理的“授权用户”页面批准。直接回复申请码不会自动获得权限。`,
           },
           replyTo: message.id,
         });
         return;
       }
+    }
+
+    if (!this.checkPairingRequestRateLimit(userKey)) {
+      await this.sendToChannel({
+        channelType: message.channelType,
+        channelId: message.channelId,
+        content: {
+          type: 'text',
+          text: '⚠️ 授权申请过于频繁，请稍后再试或联系管理员。',
+        },
+        replyTo: message.id,
+      });
+      return;
     }
 
     // Generate new pairing code
@@ -445,7 +448,7 @@ export class RemoteGateway extends EventEmitter {
       userId: message.sender.id,
       userName: message.sender.name,
       createdAt: Date.now(),
-      expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
+      expiresAt: Date.now() + PAIRING_REQUEST_WINDOW_MS,
     };
 
     this.pairingRequests.set(userKey, pairingRequest);
@@ -455,7 +458,7 @@ export class RemoteGateway extends EventEmitter {
       channelId: message.channelId,
       content: {
         type: 'text',
-        text: `👋 您好！首次使用需要进行配对验证。\n\n您的配对码是: **${code}**\n\n请将此配对码发送给管理员进行确认。配对码有效期10分钟。`,
+        text: `👋 您好！首次使用需要管理员授权。\n\n申请码: **${code}**\n\n请让管理员在九思助理的“授权用户”页面核对并批准。申请有效期10分钟，直接回复申请码不会自动获得权限。`,
       },
       replyTo: message.id,
     });
@@ -498,6 +501,7 @@ export class RemoteGateway extends EventEmitter {
     });
 
     this.pairingRequests.delete(userKey);
+    this.pairingRequestAttempts.delete(userKey);
     log('[Gateway] Pairing approved:', userKey);
     return true;
   }
@@ -565,11 +569,27 @@ export class RemoteGateway extends EventEmitter {
     return Array.from(this.pairingRequests.values());
   }
 
+  private checkPairingRequestRateLimit(userKey: string): boolean {
+    const now = Date.now();
+    const attempt = this.pairingRequestAttempts.get(userKey);
+    if (!attempt || now > attempt.resetTime) {
+      this.pairingRequestAttempts.set(userKey, {
+        count: 1,
+        resetTime: now + PAIRING_REQUEST_WINDOW_MS,
+      });
+      return true;
+    }
+
+    attempt.count += 1;
+    return attempt.count <= MAX_PAIRING_REQUESTS_PER_WINDOW;
+  }
+
   /**
-   * Generate 6-digit pairing code
+   * Generate an 8-digit request correlation code. It is display-only and is
+   * never accepted as proof of authorization.
    */
   private generatePairingCode(): string {
-    return crypto.randomInt(100000, 999999).toString();
+    return crypto.randomInt(0, 100_000_000).toString().padStart(8, '0');
   }
 
   // ============================================================================

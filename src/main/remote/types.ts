@@ -480,7 +480,7 @@ export interface IChannel {
 // ============================================================================
 
 export interface PairingRequest {
-  /** Pairing code (6 digits) */
+  /** Display-only request correlation code (8 digits) */
   code: string;
 
   /** Channel type */

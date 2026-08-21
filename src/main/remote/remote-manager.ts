@@ -4,6 +4,7 @@
  */
 
 import { EventEmitter } from 'events';
+import { createHash } from 'node:crypto';
 import { log, logError, logWarn } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 import { RemoteGateway } from './gateway';
@@ -58,6 +59,28 @@ export interface RemoteInteraction {
   expiresAt: number;
 }
 
+interface RemoteResponseBuffer {
+  texts: string[];
+  lastSent: number;
+  toolSteps: string[];
+  retryCount: number;
+}
+
+const RESPONSE_DEBOUNCE_MS = 2000;
+const RESPONSE_RETRY_BASE_MS = 1000;
+const MAX_RESPONSE_RETRIES = 3;
+const INTERACTION_TIMEOUT_MS = 5 * 60 * 1000;
+const MAX_SENT_MESSAGE_KEYS = 500;
+
+interface StopOptions {
+  preserveInteractions?: boolean;
+}
+
+interface SettledInteraction {
+  interaction: RemoteInteraction;
+  resolver?: (response: string) => void;
+}
+
 export class RemoteManager extends EventEmitter {
   private gateway?: RemoteGateway;
   private messageRouter: MessageRouter;
@@ -83,15 +106,21 @@ export class RemoteManager extends EventEmitter {
   // Callbacks for resolving pending interactions
   private interactionResolvers: Map<string, (response: string) => void> = new Map();
 
-  // Response buffer for collecting messages before sending (to avoid spam)
-  private responseBuffers: Map<string, { texts: string[]; lastSent: number; toolSteps: string[] }> =
-    new Map();
+  // Timeout handles for pending interactions, keyed by question/tool-use ID
+  private interactionTimers: Map<string, NodeJS.Timeout> = new Map();
 
-  // Sent message hashes to avoid duplicates
-  private sentMessageHashes: Map<string, Set<string>> = new Map();
+  // Response buffer for collecting messages before sending (to avoid spam)
+  private responseBuffers: Map<string, RemoteResponseBuffer> = new Map();
+
+  // Stable renderer message IDs (or SHA-256 fallback keys) used for per-turn deduplication
+  private sentMessageKeys: Map<string, Set<string>> = new Map();
 
   // Debounce timers for sending buffered responses
   private sendTimers: Map<string, NodeJS.Timeout> = new Map();
+
+  // In-flight flushes and deferred per-turn cleanup prevent concurrent sends or lost retries
+  private flushPromises: Map<string, Promise<boolean>> = new Map();
+  private cleanupAfterFlush: Set<string> = new Set();
 
   // Promise-chain mutex for synchronizing pendingInteractions access
   private lockChain: Promise<void> = Promise.resolve();
@@ -102,6 +131,9 @@ export class RemoteManager extends EventEmitter {
   constructor() {
     super();
     this.messageRouter = new MessageRouter();
+    this.messageRouter.onSessionExpired((remoteSessionId) => {
+      this.clearRemoteSession(remoteSessionId);
+    });
   }
 
   /**
@@ -112,17 +144,7 @@ export class RemoteManager extends EventEmitter {
 
     // Set up message router callback
     this.messageRouter.setAgentCallback(
-      async (
-        sessionId,
-        prompt,
-        content,
-        workingDirectory,
-        channelType,
-        channelId,
-        senderId,
-        onMessage,
-        onPartial
-      ) => {
+      async (sessionId, prompt, content, workingDirectory, channelType, channelId, senderId) => {
         await this.executeAgent(
           sessionId,
           prompt,
@@ -130,9 +152,7 @@ export class RemoteManager extends EventEmitter {
           workingDirectory,
           channelType as ChannelType,
           channelId,
-          senderId,
-          onMessage,
-          onPartial
+          senderId
         );
       }
     );
@@ -234,10 +254,16 @@ export class RemoteManager extends EventEmitter {
   /**
    * Stop remote control
    */
-  async stop(): Promise<void> {
-    if (!this.gateway) {
-      return;
+  async stop(options: StopOptions = {}): Promise<void> {
+    if (!options.preserveInteractions) {
+      const cancelled = await this.cancelPendingInteractions();
+      await this.notifyCancelledInteractions(
+        cancelled,
+        '⚠️ 远程控制服务已停止，本次待处理请求已取消。'
+      );
     }
+
+    if (!this.gateway) return;
 
     log('[RemoteManager] Stopping remote control system...');
 
@@ -265,7 +291,9 @@ export class RemoteManager extends EventEmitter {
    * Restart remote control
    */
   async restart(): Promise<void> {
-    await this.stop();
+    // A transport/config restart is temporary. Keep interaction timers and
+    // resolvers alive so the user can still answer after the channel reconnects.
+    await this.stop({ preserveInteractions: true });
     await this.start();
   }
 
@@ -464,11 +492,17 @@ export class RemoteManager extends EventEmitter {
    */
   clearRemoteSession(sessionId: string): boolean {
     const actualSessionId = this.reverseSessionIdMapping.get(sessionId);
+    const cancelled = this.cancelPendingInteractionsForSession(sessionId);
+    void this.notifyCancelledInteractions(
+      cancelled,
+      '⚠️ 当前远程会话已结束，本次待处理请求已取消。'
+    );
 
     if (actualSessionId) {
       this.sessionIdMapping.delete(actualSessionId);
       this.responseBuffers.delete(actualSessionId);
-      this.sentMessageHashes.delete(actualSessionId);
+      this.sentMessageKeys.delete(actualSessionId);
+      this.cleanupAfterFlush.delete(actualSessionId);
 
       const timer = this.sendTimers.get(actualSessionId);
       if (timer) {
@@ -564,11 +598,19 @@ export class RemoteManager extends EventEmitter {
       questionId,
       questions,
       createdAt: Date.now(),
-      expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes timeout
+      expiresAt: Date.now() + INTERACTION_TIMEOUT_MS,
     };
-    await this.withInteractionLock(async () => {
-      this.pendingInteractions.set(questionId, interaction);
+    let resolveResponse!: (response: string) => void;
+    const responsePromise = new Promise<string>((resolve) => {
+      resolveResponse = resolve;
     });
+    const registered = await this.registerPendingInteraction(
+      questionId,
+      interaction,
+      resolveResponse
+    );
+    if (!registered) return null;
+    if (!this.pendingInteractions.has(questionId)) return responsePromise;
 
     // Send to channel
     try {
@@ -582,31 +624,11 @@ export class RemoteManager extends EventEmitter {
       });
     } catch (err) {
       logError('[RemoteManager] Failed to send question to channel:', err);
-      await this.withInteractionLock(async () => {
-        this.pendingInteractions.delete(questionId);
-      });
-      return null;
+      const cancelled = await this.settlePendingInteraction(questionId, '{}');
+      return cancelled ? null : responsePromise;
     }
 
-    // Wait for user response
-    return new Promise((resolve) => {
-      this.interactionResolvers.set(questionId, resolve);
-
-      // Set timeout
-      setTimeout(
-        () => {
-          this.withInteractionLock(async () => {
-            if (this.pendingInteractions.has(questionId)) {
-              log('[RemoteManager] Question timeout:', questionId);
-              this.pendingInteractions.delete(questionId);
-              this.interactionResolvers.delete(questionId);
-              resolve('{}'); // Return empty answer on timeout
-            }
-          }).catch((err) => logError('[RemoteManager] Question timeout lock error:', err));
-        },
-        5 * 60 * 1000
-      );
-    });
+    return responsePromise;
   }
 
   /**
@@ -690,11 +712,21 @@ export class RemoteManager extends EventEmitter {
       toolName,
       input,
       createdAt: Date.now(),
-      expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes timeout
+      expiresAt: Date.now() + INTERACTION_TIMEOUT_MS,
     };
-    await this.withInteractionLock(async () => {
-      this.pendingInteractions.set(toolUseId, interaction);
+    let resolveResponse!: (response: string) => void;
+    const responsePromise = new Promise<string>((resolve) => {
+      resolveResponse = resolve;
     });
+    const registered = await this.registerPendingInteraction(
+      toolUseId,
+      interaction,
+      resolveResponse
+    );
+    if (!registered) return null;
+    if (!this.pendingInteractions.has(toolUseId)) {
+      return this.parsePermissionResponse(await responsePromise);
+    }
 
     // Send to channel
     try {
@@ -708,45 +740,146 @@ export class RemoteManager extends EventEmitter {
       });
     } catch (err) {
       logError('[RemoteManager] Failed to send permission request to channel:', err);
-      await this.withInteractionLock(async () => {
-        this.pendingInteractions.delete(toolUseId);
-      });
-      return null;
+      const cancelled = await this.settlePendingInteraction(toolUseId, '拒绝');
+      if (cancelled) return null;
     }
 
-    // Wait for user response
-    return new Promise((resolve) => {
-      this.interactionResolvers.set(toolUseId, (response) => {
-        const lowerResponse = response.toLowerCase().trim();
-        if (
-          lowerResponse === '允许' ||
-          lowerResponse === 'y' ||
-          lowerResponse === 'yes' ||
-          lowerResponse === '是'
-        ) {
-          resolve({ allow: true });
-        } else if (lowerResponse === '始终允许' || lowerResponse === 'always') {
-          resolve({ allow: true, remember: true });
-        } else {
-          resolve({ allow: false });
-        }
-      });
+    return this.parsePermissionResponse(await responsePromise);
+  }
 
-      // Set timeout - auto deny on timeout
-      setTimeout(
+  private async registerPendingInteraction(
+    id: string,
+    interaction: RemoteInteraction,
+    resolver: (response: string) => void
+  ): Promise<boolean> {
+    return this.withInteractionLock(async () => {
+      // The session may have been cleared while this registration was queued.
+      if (this.sessionIdMapping.get(interaction.sessionId) !== interaction.remoteSessionId) {
+        resolver(this.getInteractionFallback(interaction));
+        return false;
+      }
+
+      // IDs should be unique. If an upstream caller reuses one, settle the old
+      // waiter before replacing it so no promise is left hanging.
+      const previous = this.takePendingInteraction(id);
+      if (previous) {
+        previous.resolver?.(this.getInteractionFallback(previous.interaction));
+      }
+
+      this.pendingInteractions.set(id, interaction);
+      this.interactionResolvers.set(id, resolver);
+      const timer = setTimeout(
         () => {
-          this.withInteractionLock(async () => {
-            if (this.pendingInteractions.has(toolUseId)) {
-              log('[RemoteManager] Permission timeout:', toolUseId);
-              this.pendingInteractions.delete(toolUseId);
-              this.interactionResolvers.delete(toolUseId);
-              resolve({ allow: false }); // Deny on timeout
-            }
-          }).catch((err) => logError('[RemoteManager] Permission timeout lock error:', err));
+          void this.expirePendingInteraction(id).catch((error) => {
+            logError('[RemoteManager] Interaction timeout lock error:', error);
+          });
         },
-        5 * 60 * 1000
+        Math.max(0, interaction.expiresAt - Date.now())
       );
+      this.interactionTimers.set(id, timer);
+      return true;
     });
+  }
+
+  private async expirePendingInteraction(id: string): Promise<void> {
+    await this.withInteractionLock(async () => {
+      const settled = this.takePendingInteraction(id);
+      if (!settled) return;
+
+      log(
+        `[RemoteManager] ${settled.interaction.type === 'question' ? 'Question' : 'Permission'} timeout:`,
+        id
+      );
+      settled.resolver?.(this.getInteractionFallback(settled.interaction));
+    });
+  }
+
+  private async settlePendingInteraction(id: string, response: string): Promise<boolean> {
+    return this.withInteractionLock(async () => {
+      const settled = this.takePendingInteraction(id);
+      if (!settled) return false;
+      settled.resolver?.(response);
+      return true;
+    });
+  }
+
+  private takePendingInteraction(id: string): SettledInteraction | undefined {
+    const interaction = this.pendingInteractions.get(id);
+    const resolver = this.interactionResolvers.get(id);
+    const timer = this.interactionTimers.get(id);
+
+    this.pendingInteractions.delete(id);
+    this.interactionResolvers.delete(id);
+    this.interactionTimers.delete(id);
+    if (timer) clearTimeout(timer);
+
+    return interaction ? { interaction, resolver } : undefined;
+  }
+
+  private getInteractionFallback(interaction: RemoteInteraction): string {
+    return interaction.type === 'question' ? '{}' : '拒绝';
+  }
+
+  private parsePermissionResponse(response: string): { allow: boolean; remember?: boolean } {
+    const lowerResponse = response.toLowerCase().trim();
+    if (
+      lowerResponse === '允许' ||
+      lowerResponse === 'y' ||
+      lowerResponse === 'yes' ||
+      lowerResponse === '是'
+    ) {
+      return { allow: true };
+    }
+    if (lowerResponse === '始终允许' || lowerResponse === 'always') {
+      return { allow: true, remember: true };
+    }
+    return { allow: false };
+  }
+
+  private async cancelPendingInteractions(): Promise<RemoteInteraction[]> {
+    return this.withInteractionLock(async () => this.cancelPendingInteractionsMatching(() => true));
+  }
+
+  private cancelPendingInteractionsForSession(remoteSessionId: string): RemoteInteraction[] {
+    return this.cancelPendingInteractionsMatching(
+      (interaction) => interaction.remoteSessionId === remoteSessionId
+    );
+  }
+
+  private cancelPendingInteractionsMatching(
+    predicate: (interaction: RemoteInteraction) => boolean
+  ): RemoteInteraction[] {
+    const cancelled: RemoteInteraction[] = [];
+    for (const [id, interaction] of this.pendingInteractions) {
+      if (!predicate(interaction)) continue;
+      const settled = this.takePendingInteraction(id);
+      if (!settled) continue;
+      settled.resolver?.(this.getInteractionFallback(settled.interaction));
+      cancelled.push(settled.interaction);
+    }
+    return cancelled;
+  }
+
+  private async notifyCancelledInteractions(
+    interactions: RemoteInteraction[],
+    message: string
+  ): Promise<void> {
+    if (!this.gateway || interactions.length === 0) return;
+
+    const destinations = new Map<string, { channelType: ChannelType; channelId: string }>();
+    for (const interaction of interactions) {
+      const channelInfo = this.sessionChannelMapping.get(interaction.remoteSessionId);
+      if (channelInfo) destinations.set(interaction.remoteSessionId, channelInfo);
+    }
+
+    const results = await Promise.allSettled(
+      [...destinations.values()].map((channelInfo) => this.doSendToChannel(channelInfo, message))
+    );
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        logError('[RemoteManager] Failed to send interaction cancellation notice:', result.reason);
+      }
+    }
   }
 
   private async withInteractionLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -790,21 +923,15 @@ export class RemoteManager extends EventEmitter {
 
           log('[RemoteManager] Found pending interaction:', id);
 
-          // Remove from pending
-          this.pendingInteractions.delete(id);
-
-          // Resolve the interaction
-          const resolver = this.interactionResolvers.get(id);
-          if (resolver) {
-            this.interactionResolvers.delete(id);
-
+          const settled = this.takePendingInteraction(id);
+          if (settled?.resolver) {
             if (interaction.type === 'question') {
               // Parse question response
               const response = this.parseQuestionResponse(messageText, interaction.questions || []);
-              resolver(response);
+              settled.resolver(response);
             } else {
               // Pass through for permission
-              resolver(messageText);
+              settled.resolver(messageText);
             }
           }
 
@@ -875,7 +1002,8 @@ export class RemoteManager extends EventEmitter {
   async sendResponseToChannel(
     actualSessionId: string,
     text: string,
-    immediate: boolean = false
+    immediate: boolean = false,
+    messageId?: string
   ): Promise<void> {
     const remoteSessionId = this.sessionIdMapping.get(actualSessionId);
     if (!remoteSessionId) {
@@ -889,76 +1017,152 @@ export class RemoteManager extends EventEmitter {
       return;
     }
 
-    // Check for duplicate
-    const hash = this.hashText(text);
-    if (!this.sentMessageHashes.has(actualSessionId)) {
-      this.sentMessageHashes.set(actualSessionId, new Set());
+    // Prefer the renderer event ID. SHA-256 is only a fallback for older callers
+    // that cannot provide a stable source-message identity.
+    const messageKey = messageId
+      ? `message:${messageId}`
+      : `text:${createHash('sha256').update(text).digest('base64url')}`;
+    if (!this.sentMessageKeys.has(actualSessionId)) {
+      this.sentMessageKeys.set(actualSessionId, new Set());
     }
-    const sentHashes = this.sentMessageHashes.get(actualSessionId)!;
-    if (sentHashes.has(hash)) {
+    const sentKeys = this.sentMessageKeys.get(actualSessionId)!;
+    if (sentKeys.has(messageKey)) {
       log('[RemoteManager] Skipping duplicate message');
       return;
     }
-    // Prevent unbounded growth: clear oldest entries when set exceeds 500 entries
-    if (sentHashes.size >= 500) {
-      sentHashes.clear();
+    // Keep a bounded insertion-ordered window instead of dropping all recent
+    // deduplication history when the limit is reached.
+    if (sentKeys.size >= MAX_SENT_MESSAGE_KEYS) {
+      const oldestKey = sentKeys.values().next().value;
+      if (oldestKey) sentKeys.delete(oldestKey);
     }
-    sentHashes.add(hash);
+    sentKeys.add(messageKey);
 
     // For immediate sends (like final result), send directly
     if (immediate) {
-      await this.doSendToChannel(channelInfo, text);
+      try {
+        await this.doSendToChannel(channelInfo, text);
+      } catch (error) {
+        // Allow the caller to retry an immediate message after a failed send.
+        sentKeys.delete(messageKey);
+        throw error;
+      }
       return;
     }
 
     // Buffer the response
     if (!this.responseBuffers.has(actualSessionId)) {
-      this.responseBuffers.set(actualSessionId, { texts: [], lastSent: 0, toolSteps: [] });
+      this.responseBuffers.set(actualSessionId, {
+        texts: [],
+        lastSent: 0,
+        toolSteps: [],
+        retryCount: 0,
+      });
     }
     const buffer = this.responseBuffers.get(actualSessionId)!;
     buffer.texts.push(text);
+    buffer.retryCount = 0;
+    this.cleanupAfterFlush.delete(actualSessionId);
 
-    // Clear existing timer
+    // Set debounce timer (send after 2 seconds of no new messages)
+    this.scheduleResponseFlush(actualSessionId, RESPONSE_DEBOUNCE_MS);
+  }
+
+  /**
+   * Schedule one flush per session, replacing any older debounce/retry timer.
+   */
+  private scheduleResponseFlush(actualSessionId: string, delayMs: number): void {
     const existingTimer = this.sendTimers.get(actualSessionId);
     if (existingTimer) {
       clearTimeout(existingTimer);
     }
 
-    // Set debounce timer (send after 2 seconds of no new messages)
     const timer = setTimeout(() => {
-      this.flushResponseBuffer(actualSessionId).catch((err) => {
-        logError('[RemoteManager] Failed to flush buffer:', err);
-      });
-    }, 2000);
+      this.sendTimers.delete(actualSessionId);
+      void this.flushResponseBuffer(actualSessionId);
+    }, delayMs);
     this.sendTimers.set(actualSessionId, timer);
   }
 
   /**
-   * Flush buffered responses and send to channel
+   * Serialize flushes per session so a timer and an idle event cannot send the
+   * same buffered response concurrently.
    */
-  private async flushResponseBuffer(actualSessionId: string): Promise<void> {
+  private async flushResponseBuffer(actualSessionId: string): Promise<boolean> {
+    const existingFlush = this.flushPromises.get(actualSessionId);
+    if (existingFlush) {
+      return existingFlush;
+    }
+
+    const flushPromise = this.performResponseFlush(actualSessionId);
+    this.flushPromises.set(actualSessionId, flushPromise);
+
+    try {
+      return await flushPromise;
+    } finally {
+      if (this.flushPromises.get(actualSessionId) === flushPromise) {
+        this.flushPromises.delete(actualSessionId);
+      }
+    }
+  }
+
+  /**
+   * Flush buffered responses. Text is removed only after the channel confirms
+   * success; transient failures retain it and schedule bounded retries.
+   */
+  private async performResponseFlush(actualSessionId: string): Promise<boolean> {
     const buffer = this.responseBuffers.get(actualSessionId);
-    if (!buffer || buffer.texts.length === 0) return;
+    if (!buffer || buffer.texts.length === 0) {
+      if (this.cleanupAfterFlush.has(actualSessionId)) {
+        this.cleanupResponseState(actualSessionId);
+      }
+      return true;
+    }
 
     const remoteSessionId = this.sessionIdMapping.get(actualSessionId);
-    if (!remoteSessionId) return;
+    if (!remoteSessionId) return false;
 
     const channelInfo = this.sessionChannelMapping.get(remoteSessionId);
-    if (!channelInfo || !this.gateway) return;
+    if (!channelInfo || !this.gateway) return false;
 
-    // Combine all buffered texts
-    const combinedText = buffer.texts.join('\n\n');
-    buffer.texts = [];
-    buffer.lastSent = Date.now();
+    // Snapshot the current batch. New messages may be appended while awaiting
+    // the network and must remain queued for the next flush.
+    const batchSize = buffer.texts.length;
+    const combinedText = buffer.texts.slice(0, batchSize).join('\n\n');
 
-    // Clear timer
     const timer = this.sendTimers.get(actualSessionId);
     if (timer) {
       clearTimeout(timer);
       this.sendTimers.delete(actualSessionId);
     }
 
-    await this.doSendToChannel(channelInfo, combinedText);
+    try {
+      await this.doSendToChannel(channelInfo, combinedText);
+      buffer.texts.splice(0, batchSize);
+      buffer.lastSent = Date.now();
+      buffer.retryCount = 0;
+
+      if (buffer.texts.length > 0) {
+        this.scheduleResponseFlush(actualSessionId, RESPONSE_DEBOUNCE_MS);
+      } else if (this.cleanupAfterFlush.has(actualSessionId)) {
+        this.cleanupResponseState(actualSessionId);
+      }
+      return true;
+    } catch (error) {
+      buffer.retryCount += 1;
+      logError(
+        `[RemoteManager] Failed to send buffered response (attempt ${buffer.retryCount}):`,
+        error
+      );
+
+      if (buffer.retryCount <= MAX_RESPONSE_RETRIES) {
+        const retryDelay = RESPONSE_RETRY_BASE_MS * 2 ** (buffer.retryCount - 1);
+        this.scheduleResponseFlush(actualSessionId, retryDelay);
+      } else {
+        logError('[RemoteManager] Response retries exhausted; retaining buffered text');
+      }
+      return false;
+    }
   }
 
   /**
@@ -973,31 +1177,14 @@ export class RemoteManager extends EventEmitter {
       textLength: text.length,
     });
 
-    try {
-      await this.gateway!.sendResponse({
-        channelType: channelInfo.channelType,
-        channelId: channelInfo.channelId,
-        content: {
-          type: 'markdown',
-          markdown: text,
-        },
-      });
-    } catch (err) {
-      logError('[RemoteManager] Failed to send to channel:', err);
-    }
-  }
-
-  /**
-   * Simple hash function for deduplication
-   */
-  private hashText(text: string): string {
-    let hash = 0;
-    for (let i = 0; i < text.length; i++) {
-      const char = text.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash = hash & hash; // Convert to 32bit integer
-    }
-    return hash.toString();
+    await this.gateway!.sendResponse({
+      channelType: channelInfo.channelType,
+      channelId: channelInfo.channelId,
+      content: {
+        type: 'markdown',
+        markdown: text,
+      },
+    });
   }
 
   /**
@@ -1049,7 +1236,12 @@ export class RemoteManager extends EventEmitter {
     if (status === 'running') {
       // Add to buffer's tool steps
       if (!this.responseBuffers.has(actualSessionId)) {
-        this.responseBuffers.set(actualSessionId, { texts: [], lastSent: 0, toolSteps: [] });
+        this.responseBuffers.set(actualSessionId, {
+          texts: [],
+          lastSent: 0,
+          toolSteps: [],
+          retryCount: 0,
+        });
       }
       this.responseBuffers.get(actualSessionId)!.toolSteps.push(`${emoji} ${statusText}`);
       return;
@@ -1068,12 +1260,20 @@ export class RemoteManager extends EventEmitter {
    * continue the same conversation.
    */
   async clearSessionBuffer(actualSessionId: string): Promise<void> {
-    // First flush any pending messages
+    // Mark cleanup first so a successful in-flight flush can finish the job.
+    this.cleanupAfterFlush.add(actualSessionId);
     await this.flushResponseBuffer(actualSessionId);
 
-    // Then clear the buffer
+    const buffer = this.responseBuffers.get(actualSessionId);
+    if (!buffer || buffer.texts.length === 0) {
+      this.cleanupResponseState(actualSessionId);
+    }
+  }
+
+  private cleanupResponseState(actualSessionId: string): void {
     this.responseBuffers.delete(actualSessionId);
-    this.sentMessageHashes.delete(actualSessionId);
+    this.sentMessageKeys.delete(actualSessionId);
+    this.cleanupAfterFlush.delete(actualSessionId);
     const timer = this.sendTimers.get(actualSessionId);
     if (timer) {
       clearTimeout(timer);
@@ -1189,9 +1389,7 @@ export class RemoteManager extends EventEmitter {
     workingDirectory: string | undefined,
     channelType: ChannelType,
     channelId: string,
-    senderId: string,
-    _onMessage: (message: Message) => void,
-    _onPartial: (delta: string) => void
+    senderId: string
   ): Promise<void> {
     if (!this.agentExecutor) {
       throw new Error('Agent executor not set');
@@ -1247,12 +1445,8 @@ export class RemoteManager extends EventEmitter {
       await this.agentExecutor.continueSession(actualSessionId, prompt, content, workingDirectory);
     }
 
-    // Note: The actual response handling is done through the session manager
-    // and agent runner callbacks. This is a simplified implementation.
-    // In a full implementation, we would:
-    // 1. Hook into the agent runner's streaming output
-    // 2. Call onMessage and onPartial as the agent produces output
-    // 3. Handle errors and timeouts
+    // Responses are emitted by the session manager and intercepted once in
+    // sendToRenderer(), which is the single outbound response pipeline.
   }
 
   /**

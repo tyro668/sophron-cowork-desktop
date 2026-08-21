@@ -937,6 +937,7 @@ function sendToRenderer(event: ServerEvent) {
     // 拦截 stream.message，用于回传到远程通道
     if (event.type === 'stream.message') {
       const message = payload.message as {
+        id?: string;
         role?: string;
         content?: Array<{ type: string; text?: string }>;
       };
@@ -949,9 +950,11 @@ function sendToRenderer(event: ServerEvent) {
 
         if (textContent) {
           // 发送到远程通道（带缓冲）
-          remoteManager.sendResponseToChannel(sessionId, textContent).catch((err: Error) => {
-            logError('[Remote] Failed to send response to channel:', err);
-          });
+          remoteManager
+            .sendResponseToChannel(sessionId, textContent, false, message.id)
+            .catch((err: Error) => {
+              logError('[Remote] Failed to send response to channel:', err);
+            });
         }
       }
     }
