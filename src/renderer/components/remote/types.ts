@@ -76,6 +76,23 @@ export interface TunnelStatus {
   error?: string;
 }
 
+export type RemoteSection = 'channels' | 'users' | 'global' | 'logs';
+
+export type RemoteChannelType = 'feishu' | 'dingtalk' | 'wecom';
+
+export type ChannelConfigTab = 'basic' | 'access' | 'advanced';
+
+/** @deprecated Kept for the legacy step navigation component. */
 export type ConfigStep = 'feishu' | 'connection' | 'advanced';
+
+export interface RemoteChannelViewModel {
+  type: RemoteChannelType;
+  name: string;
+  description: string;
+  configured: boolean;
+  connected: boolean;
+  backendAvailable: boolean;
+  authorizedUsers: number;
+}
 
 export type LocalizedBanner = { key?: string; text?: string | null };

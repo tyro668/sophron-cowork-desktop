@@ -1,47 +1,50 @@
 /**
- * Remote Control Settings Panel
- * Composes sub-components for Feishu/Lark bot remote control configuration.
+ * Multi-channel remote control settings shell.
+ *
+ * Feishu remains the only channel wired to the backend in this phase. DingTalk
+ * and WeCom are intentionally rendered as configuration previews until their
+ * channel drivers and IPC APIs are implemented.
  */
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { GatewayControlCard } from './remote/GatewayControlCard';
-import { PairingRequestsSection } from './remote/PairingRequestsSection';
-import { PairingGuideCard } from './remote/PairingGuideCard';
-import { ConfigStepNav } from './remote/ConfigStepNav';
-import { FeishuConfigStep } from './remote/FeishuConfigStep';
-import { ConnectionConfigStep } from './remote/ConnectionConfigStep';
+import { AlertTriangle, Check, CheckCircle2, Info, Loader2, Save, ScrollText } from 'lucide-react';
 import { AdvancedConfigStep } from './remote/AdvancedConfigStep';
 import { AuthorizedUsersSection } from './remote/AuthorizedUsersSection';
-import { QuickStartGuide } from './remote/QuickStartGuide';
+import { ChannelDetailPanel } from './remote/ChannelDetailPanel';
+import { ChannelList } from './remote/ChannelList';
+import { ChannelBrandIcon } from './remote/ChannelBrandIcon';
+import { GatewayControlCard } from './remote/GatewayControlCard';
+import { PairingGuideCard } from './remote/PairingGuideCard';
+import { PairingRequestsSection } from './remote/PairingRequestsSection';
+import { RemoteSectionNav } from './remote/RemoteSectionNav';
 import type {
   GatewayStatus,
+  LocalizedBanner,
   PairedUser,
   PairingRequest,
+  RemoteChannelType,
+  RemoteChannelViewModel,
   RemoteConfig,
+  RemoteSection,
   TunnelStatus,
-  ConfigStep,
-  LocalizedBanner,
 } from './remote/types';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 
 export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
-  const { i18n, t } = useTranslation();
+  const { t } = useTranslation();
 
-  // Remote state
   const [isLoading, setIsLoading] = useState(true);
   const [status, setStatus] = useState<GatewayStatus | null>(null);
-  const [, setConfig] = useState<RemoteConfig | null>(null);
   const [pairedUsers, setPairedUsers] = useState<PairedUser[]>([]);
   const [pendingPairings, setPendingPairings] = useState<PairingRequest[]>([]);
   const [isTogglingGateway, setIsTogglingGateway] = useState(false);
   const [error, setError] = useState<LocalizedBanner | null>(null);
   const [success, setSuccess] = useState<LocalizedBanner | null>(null);
-  const [activeStep, setActiveStep] = useState<ConfigStep>('feishu');
+  const [activeSection, setActiveSection] = useState<RemoteSection>('channels');
+  const [selectedChannel, setSelectedChannel] = useState<RemoteChannelType>('feishu');
 
-  // Form state
   const [feishuAppId, setFeishuAppId] = useState('');
   const [feishuAppSecret, setFeishuAppSecret] = useState('');
   const [feishuDmPolicy, setFeishuDmPolicy] = useState('pairing');
@@ -55,15 +58,29 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   const [tunnelStatus, setTunnelStatus] = useState<TunnelStatus | null>(null);
   const [webhookUrl, setWebhookUrl] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!isActive) return;
-    loadData();
-    const interval = setInterval(refreshStatus, 5000);
-    return () => clearInterval(interval);
-  }, [isActive]);
+  const applyConfig = useCallback((configResult: RemoteConfig | null) => {
+    if (!configResult) return;
 
-  async function loadData() {
-    if (!isElectron) return;
+    setGatewayPort(configResult.gateway?.port || 18789);
+    setDefaultWorkingDirectory(configResult.gateway?.defaultWorkingDirectory || '');
+    setAutoApproveSafeTools(configResult.gateway?.autoApproveSafeTools !== false);
+    setTunnelEnabled(configResult.gateway?.tunnel?.enabled || false);
+    setNgrokAuthToken(configResult.gateway?.tunnel?.ngrok?.authToken || '');
+
+    if (configResult.channels?.feishu) {
+      setFeishuAppId(configResult.channels.feishu.appId || '');
+      setFeishuAppSecret(configResult.channels.feishu.appSecret || '');
+      setFeishuDmPolicy(configResult.channels.feishu.dm?.policy || 'pairing');
+      setUseLongConnection(configResult.channels.feishu.useWebSocket !== false);
+    }
+  }, []);
+
+  const loadData = useCallback(async () => {
+    if (!isElectron) {
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     try {
       const [
@@ -82,34 +99,21 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
         window.electronAPI.remote.getWebhookUrl(),
       ]);
 
-      setConfig(configResult);
       setStatus(statusResult);
       setPairedUsers(usersResult);
       setPendingPairings(pairingsResult);
       setTunnelStatus(tunnelStatusResult);
       setWebhookUrl(webhookUrlResult);
-
-      if (configResult) {
-        setGatewayPort(configResult.gateway?.port || 18789);
-        setDefaultWorkingDirectory(configResult.gateway?.defaultWorkingDirectory || '');
-        setAutoApproveSafeTools(configResult.gateway?.autoApproveSafeTools !== false);
-        setTunnelEnabled(configResult.gateway?.tunnel?.enabled || false);
-        setNgrokAuthToken(configResult.gateway?.tunnel?.ngrok?.authToken || '');
-        if (configResult.channels?.feishu) {
-          setFeishuAppId(configResult.channels.feishu.appId || '');
-          setFeishuAppSecret(configResult.channels.feishu.appSecret || '');
-          setFeishuDmPolicy(configResult.channels.feishu.dm?.policy || 'pairing');
-          setUseLongConnection(configResult.channels.feishu.useWebSocket !== false);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to load remote config:', err);
+      applyConfig(configResult);
+    } catch (loadError) {
+      console.error('Failed to load remote config:', loadError);
+      setError({ key: 'remote.loadFailed' });
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [applyConfig]);
 
-  async function refreshStatus() {
+  const refreshStatus = useCallback(async () => {
     if (!isElectron) return;
     try {
       const [statusResult, pairingsResult, tunnelStatusResult, webhookUrlResult] =
@@ -123,10 +127,17 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
       setPendingPairings(pairingsResult);
       setTunnelStatus(tunnelStatusResult);
       setWebhookUrl(webhookUrlResult);
-    } catch (err) {
-      console.error('Failed to refresh status:', err);
+    } catch (refreshError) {
+      console.error('Failed to refresh status:', refreshError);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    if (!isActive) return;
+    void loadData();
+    const interval = setInterval(() => void refreshStatus(), 5000);
+    return () => clearInterval(interval);
+  }, [isActive, loadData, refreshStatus]);
 
   async function toggleGateway() {
     if (!isElectron || isTogglingGateway) return;
@@ -136,48 +147,68 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
       const newEnabled = !status?.running;
       await window.electronAPI.remote.setEnabled(newEnabled);
       await refreshStatus();
-      setSuccess({ key: newEnabled ? 'remote.started' : 'remote.stopped' });
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (err) {
+      showSuccess({ key: newEnabled ? 'remote.started' : 'remote.stopped' });
+    } catch (toggleError) {
+      console.error('Failed to toggle remote gateway:', toggleError);
       setError({ key: 'remote.actionFailed' });
     } finally {
       setIsTogglingGateway(false);
     }
   }
 
-  async function saveConfig() {
+  function gatewayConfigPatch() {
+    return {
+      port: gatewayPort,
+      defaultWorkingDirectory: defaultWorkingDirectory || undefined,
+      autoApproveSafeTools,
+      tunnel:
+        tunnelEnabled && ngrokAuthToken
+          ? {
+              enabled: true as const,
+              type: 'ngrok' as const,
+              ngrok: { authToken: ngrokAuthToken, region: 'us' },
+            }
+          : { enabled: false as const, type: 'ngrok' as const },
+    };
+  }
+
+  async function saveGatewayConfig() {
     if (!isElectron) return;
     setIsSaving(true);
     setError(null);
     try {
-      await window.electronAPI.remote.updateGatewayConfig({
-        port: gatewayPort,
-        defaultWorkingDirectory: defaultWorkingDirectory || undefined,
-        autoApproveSafeTools,
-        tunnel:
-          tunnelEnabled && ngrokAuthToken
-            ? {
-                enabled: true,
-                type: 'ngrok',
-                ngrok: { authToken: ngrokAuthToken, region: 'us' },
-              }
-            : { enabled: false, type: 'ngrok' },
-      });
-
-      if (feishuAppId && feishuAppSecret) {
-        await window.electronAPI.remote.updateFeishuConfig({
-          type: 'feishu',
-          appId: feishuAppId,
-          appSecret: feishuAppSecret,
-          useWebSocket: useLongConnection,
-          dm: { policy: feishuDmPolicy as 'open' | 'pairing' | 'allowlist' },
-        });
-      }
-
-      setSuccess({ key: 'remote.configSaved' });
-      setTimeout(() => setSuccess(null), 3000);
+      await window.electronAPI.remote.updateGatewayConfig(gatewayConfigPatch());
+      showSuccess({ key: 'remote.configSaved' });
       await loadData();
-    } catch (err) {
+    } catch (saveError) {
+      console.error('Failed to save gateway config:', saveError);
+      setError({ key: 'remote.saveFailed' });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function saveFeishuConfig() {
+    if (!isElectron) return;
+    if (!feishuAppId || !feishuAppSecret) {
+      setError({ key: 'remote.feishuCredentialsRequired' });
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+    try {
+      await window.electronAPI.remote.updateFeishuConfig({
+        type: 'feishu',
+        appId: feishuAppId,
+        appSecret: feishuAppSecret,
+        useWebSocket: useLongConnection,
+        dm: { policy: feishuDmPolicy as 'open' | 'pairing' | 'allowlist' },
+      });
+      showSuccess({ key: 'remote.configSaved' });
+      await loadData();
+    } catch (saveError) {
+      console.error('Failed to save Feishu config:', saveError);
       setError({ key: 'remote.saveFailed' });
     } finally {
       setIsSaving(false);
@@ -187,11 +218,18 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   async function approvePairing(request: PairingRequest) {
     if (!isElectron) return;
     try {
-      await window.electronAPI.remote.approvePairing(request.channelType, request.userId);
-      setSuccess({ key: 'remote.pairingApproved' });
-      setTimeout(() => setSuccess(null), 3000);
+      const result = await window.electronAPI.remote.approvePairing(
+        request.channelType,
+        request.userId
+      );
+      if (!result.success) {
+        setError(result.error ? { text: result.error } : { key: 'remote.approveFailed' });
+        return;
+      }
+      showSuccess({ key: 'remote.pairingApproved' });
       await loadData();
-    } catch (err) {
+    } catch (approveError) {
+      console.error('Failed to approve pairing:', approveError);
       setError({ key: 'remote.approveFailed' });
     }
   }
@@ -207,10 +245,10 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
         setError(result.error ? { text: result.error } : { key: 'remote.rejectFailed' });
         return;
       }
-      setSuccess({ key: 'remote.pairingRejected' });
-      setTimeout(() => setSuccess(null), 3000);
+      showSuccess({ key: 'remote.pairingRejected' });
       await loadData();
-    } catch (err) {
+    } catch (rejectError) {
+      console.error('Failed to reject pairing:', rejectError);
       setError({ key: 'remote.rejectFailed' });
     }
   }
@@ -219,142 +257,242 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     if (!isElectron) return;
     try {
       await window.electronAPI.remote.revokePairing(user.channelType, user.userId);
-      setSuccess({ key: 'remote.userRemoved' });
-      setTimeout(() => setSuccess(null), 3000);
+      showSuccess({ key: 'remote.userRemoved' });
       await loadData();
-    } catch (err) {
+    } catch (revokeError) {
+      console.error('Failed to revoke pairing:', revokeError);
       setError({ key: 'remote.revokeFailed' });
     }
   }
 
   function copyToClipboard(text: string) {
-    navigator.clipboard.writeText(text);
-    setSuccess({ key: 'remote.copied' });
-    setTimeout(() => setSuccess(null), 2000);
+    void navigator.clipboard.writeText(text);
+    showSuccess({ key: 'remote.copied' }, 2000);
+  }
+
+  function showSuccess(message: LocalizedBanner, duration = 3000) {
+    setSuccess(message);
+    setTimeout(() => setSuccess(null), duration);
   }
 
   const isFeishuConfigured = !!(feishuAppId && feishuAppSecret);
-  const isConnectionConfigured =
-    useLongConnection || (tunnelEnabled && !!ngrokAuthToken) || !!tunnelStatus?.connected;
-  const permissionSeparator = i18n.language.startsWith('zh') ? '、' : ', ';
-  const permissionScopes = [
-    'im:resource',
-    'im:message',
-    'im:message:send_as_bot',
-    'im:message.group_at_msg:readonly',
-    'im:message.p2p_msg:readonly',
-    'contact:user.base:readonly',
-  ];
+  const isFeishuConnected =
+    status?.channels.some((channel) => channel.type === 'feishu' && channel.connected) ?? false;
+
+  const channels = useMemo<RemoteChannelViewModel[]>(
+    () => [
+      {
+        type: 'feishu',
+        name: t('remote.channelName.feishu'),
+        description: isFeishuConfigured
+          ? t('remote.channelDesc.feishuConfigured', {
+              mode: useLongConnection ? t('remote.longConnection') : t('remote.webhookMode'),
+              count: pairedUsers.filter((user) => user.channelType === 'feishu').length,
+            })
+          : t('remote.channelDesc.feishu'),
+        configured: isFeishuConfigured,
+        connected: isFeishuConnected,
+        backendAvailable: true,
+        authorizedUsers: pairedUsers.filter((user) => user.channelType === 'feishu').length,
+      },
+      {
+        type: 'dingtalk',
+        name: t('remote.channelName.dingtalk'),
+        description: t('remote.channelDesc.dingtalk'),
+        configured: false,
+        connected: false,
+        backendAvailable: false,
+        authorizedUsers: 0,
+      },
+      {
+        type: 'wecom',
+        name: t('remote.channelName.wecom'),
+        description: t('remote.channelDesc.wecom'),
+        configured: false,
+        connected: false,
+        backendAvailable: false,
+        authorizedUsers: 0,
+      },
+    ],
+    [isFeishuConfigured, isFeishuConnected, pairedUsers, t, useLongConnection]
+  );
+
+  const selectedChannelModel =
+    channels.find((channel) => channel.type === selectedChannel) ?? channels[0];
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-accent" />
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-accent" />
       </div>
     );
   }
 
   return (
-    <div className="w-full space-y-4">
-      {/* Notification banners */}
-      {error && (
-        <div className="p-3 bg-error/10 border border-error/30 rounded-lg flex items-center gap-3">
-          <AlertTriangle className="w-5 h-5 text-error flex-shrink-0" />
-          <span className="text-error">{error.key ? t(error.key) : error.text}</span>
-        </div>
-      )}
-      {success && (
-        <div className="p-3 bg-success/10 border border-success/30 rounded-lg flex items-center gap-3">
-          <CheckCircle2 className="w-5 h-5 text-success flex-shrink-0" />
-          <span className="text-success">{success.key ? t(success.key) : success.text}</span>
-        </div>
-      )}
-
-      <GatewayControlCard
-        status={status}
-        pairedUsers={pairedUsers}
-        pendingPairings={pendingPairings}
-        isTogglingGateway={isTogglingGateway}
-        isFeishuConfigured={isFeishuConfigured}
-        onToggle={toggleGateway}
-      />
-
-      {status?.running && feishuDmPolicy === 'pairing' && <PairingGuideCard />}
-
-      <PairingRequestsSection
-        pendingPairings={pendingPairings}
-        showEmpty={status?.running && feishuDmPolicy === 'pairing'}
-        onApprove={approvePairing}
-        onReject={rejectPairing}
-      />
-
-      <ConfigStepNav
-        activeStep={activeStep}
-        isFeishuConfigured={isFeishuConfigured}
-        isConnectionConfigured={isConnectionConfigured}
-        onStepChange={setActiveStep}
-      />
-
-      {/* Configuration content */}
-      <div className="glass-card rounded-xl p-4">
-        {activeStep === 'feishu' && (
-          <FeishuConfigStep
-            feishuAppId={feishuAppId}
-            feishuAppSecret={feishuAppSecret}
-            feishuDmPolicy={feishuDmPolicy}
-            onAppIdChange={setFeishuAppId}
-            onAppSecretChange={setFeishuAppSecret}
-            onDmPolicyChange={setFeishuDmPolicy}
-          />
+    <div className="w-full overflow-hidden rounded-[2rem] border border-border-subtle bg-background/18 shadow-card">
+      <div className="space-y-3 p-4 sm:p-5">
+        {error && (
+          <div className="flex items-center gap-3 rounded-xl border border-error/30 bg-error/10 p-3">
+            <AlertTriangle className="h-5 w-5 shrink-0 text-error" />
+            <span className="text-sm text-error">{error.key ? t(error.key) : error.text}</span>
+          </div>
         )}
-        {activeStep === 'connection' && (
-          <ConnectionConfigStep
-            useLongConnection={useLongConnection}
-            tunnelEnabled={tunnelEnabled}
-            ngrokAuthToken={ngrokAuthToken}
-            gatewayPort={gatewayPort}
-            tunnelStatus={tunnelStatus}
-            webhookUrl={webhookUrl}
-            onLongConnectionChange={setUseLongConnection}
-            onTunnelEnabledChange={setTunnelEnabled}
-            onNgrokAuthTokenChange={setNgrokAuthToken}
-            onCopy={copyToClipboard}
-          />
-        )}
-        {activeStep === 'advanced' && (
-          <AdvancedConfigStep
-            defaultWorkingDirectory={defaultWorkingDirectory}
-            gatewayPort={gatewayPort}
-            autoApproveSafeTools={autoApproveSafeTools}
-            onWorkingDirectoryChange={setDefaultWorkingDirectory}
-            onGatewayPortChange={setGatewayPort}
-            onAutoApproveChange={setAutoApproveSafeTools}
-          />
+        {success && (
+          <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/10 p-3">
+            <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
+            <span className="text-sm text-success">
+              {success.key ? t(success.key) : success.text}
+            </span>
+          </div>
         )}
 
-        {/* Save button */}
-        <div className="flex justify-end mt-4 pt-4 border-t border-border">
-          <button
-            onClick={saveConfig}
-            disabled={isSaving}
-            className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-          >
-            {isSaving ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Check className="w-4 h-4" />
-            )}
-            {t('remote.saveConfig')}
-          </button>
-        </div>
+        <GatewayControlCard
+          status={status}
+          pairedUsers={pairedUsers}
+          pendingPairings={pendingPairings}
+          isTogglingGateway={isTogglingGateway}
+          configuredChannels={isFeishuConfigured ? 1 : 0}
+          connectedChannels={isFeishuConnected ? 1 : 0}
+          totalChannels={channels.length}
+          canStartService={isFeishuConfigured}
+          onToggle={toggleGateway}
+        />
       </div>
 
-      <AuthorizedUsersSection pairedUsers={pairedUsers} onRevoke={revokePairing} />
-
-      <QuickStartGuide
-        permissionScopes={permissionScopes}
-        permissionSeparator={permissionSeparator}
+      <RemoteSectionNav
+        activeSection={activeSection}
+        pendingPairings={pendingPairings.length}
+        onSectionChange={setActiveSection}
       />
+
+      <div className="p-4 sm:p-5">
+        {activeSection === 'channels' && (
+          <div className="grid items-start gap-4 xl:grid-cols-[minmax(300px,0.78fr)_minmax(520px,1.5fr)]">
+            <ChannelList
+              channels={channels}
+              selectedChannel={selectedChannel}
+              onSelect={setSelectedChannel}
+            />
+            <ChannelDetailPanel
+              channel={selectedChannelModel}
+              feishuAppId={feishuAppId}
+              feishuAppSecret={feishuAppSecret}
+              feishuDmPolicy={feishuDmPolicy}
+              useLongConnection={useLongConnection}
+              gatewayPort={gatewayPort}
+              tunnelEnabled={tunnelEnabled}
+              ngrokAuthToken={ngrokAuthToken}
+              tunnelStatus={tunnelStatus}
+              webhookUrl={webhookUrl}
+              isSaving={isSaving}
+              onFeishuAppIdChange={setFeishuAppId}
+              onFeishuAppSecretChange={setFeishuAppSecret}
+              onFeishuDmPolicyChange={setFeishuDmPolicy}
+              onLongConnectionChange={setUseLongConnection}
+              onTunnelEnabledChange={setTunnelEnabled}
+              onNgrokAuthTokenChange={setNgrokAuthToken}
+              onCopy={copyToClipboard}
+              onSaveFeishu={saveFeishuConfig}
+            />
+          </div>
+        )}
+
+        {activeSection === 'users' && (
+          <div className="space-y-4">
+            {status?.running && feishuDmPolicy === 'pairing' && <PairingGuideCard />}
+            <PairingRequestsSection
+              pendingPairings={pendingPairings}
+              showEmpty={status?.running && feishuDmPolicy === 'pairing'}
+              onApprove={approvePairing}
+              onReject={rejectPairing}
+            />
+            <AuthorizedUsersSection pairedUsers={pairedUsers} onRevoke={revokePairing} />
+          </div>
+        )}
+
+        {activeSection === 'global' && (
+          <section className="glass-card overflow-hidden rounded-2xl border border-border-subtle shadow-card">
+            <div className="p-4 sm:p-5">
+              <AdvancedConfigStep
+                defaultWorkingDirectory={defaultWorkingDirectory}
+                gatewayPort={gatewayPort}
+                autoApproveSafeTools={autoApproveSafeTools}
+                onWorkingDirectoryChange={setDefaultWorkingDirectory}
+                onGatewayPortChange={setGatewayPort}
+                onAutoApproveChange={setAutoApproveSafeTools}
+              />
+              <div className="mt-4 flex items-start gap-2 rounded-xl border border-accent/20 bg-accent/5 p-3 text-xs leading-5 text-text-secondary">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                {t('remote.globalSettingsHint')}
+              </div>
+            </div>
+            <div className="flex justify-end border-t border-border-subtle p-4">
+              <button
+                type="button"
+                onClick={saveGatewayConfig}
+                disabled={isSaving}
+                className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+              >
+                {isSaving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                {t('remote.saveGlobalSettings')}
+              </button>
+            </div>
+          </section>
+        )}
+
+        {activeSection === 'logs' && (
+          <section className="glass-card rounded-2xl border border-border-subtle p-5 shadow-card">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-accent/10 p-2.5">
+                <ScrollText className="h-5 w-5 text-accent" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-text-primary">
+                  {t('remote.runtimeOverview')}
+                </h3>
+                <p className="mt-1 text-xs text-text-muted">{t('remote.runtimeOverviewDesc')}</p>
+              </div>
+            </div>
+            <div className="mt-5 space-y-2">
+              {channels.map((channel) => (
+                <div
+                  key={channel.type}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-border-subtle bg-background/34 p-3"
+                >
+                  <div className="flex items-center gap-2.5 text-sm text-text-secondary">
+                    <ChannelBrandIcon type={channel.type} className="h-7 w-7" />
+                    {channel.name}
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 text-xs text-text-muted">
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${channel.connected ? 'bg-success' : 'bg-text-muted'}`}
+                    />
+                    <span>
+                      {channel.backendAvailable
+                        ? t(
+                            channel.connected
+                              ? 'remote.channelState.connected'
+                              : channel.configured
+                                ? 'remote.channelState.stopped'
+                                : 'remote.channelState.unconfigured'
+                          )
+                        : t('remote.channelState.preview')}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 flex items-center gap-2 rounded-xl border border-dashed border-border p-4 text-xs text-text-muted">
+              <Check className="h-4 w-4" />
+              {t('remote.fullLogsPending')}
+            </div>
+          </section>
+        )}
+      </div>
     </div>
   );
 }
