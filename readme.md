@@ -305,7 +305,7 @@ Skills are built-in workflows for specific tasks like generating PPTX, DOCX, PDF
 MCP (Model Context Protocol) lets AI connect to external tools and services. sophron cowork supports MCP connectors for browsers, Notion, and other desktop apps — extending the AI's capabilities beyond just file management and code.
 
 **How do I set up remote control via Feishu or Slack?**
-sophron cowork supports remote control through Feishu (Lark) and Slack integration, allowing you to send commands and receive results from collaboration platforms. Check the app settings for remote control configuration.
+sophron cowork supports remote control through Feishu (Lark), DingTalk, and Slack integration, allowing you to send commands and receive results from collaboration platforms. DingTalk in-app bots can use either Stream or Webhook (HTTP) delivery; Webhook mode requires a public HTTPS callback while Sophron remains running. Check the app settings for remote control configuration.
 
 **Is my data safe? Does sophron cowork send data to external servers?**
 sophron cowork runs locally on your machine. Your files stay in your workspace. The only external communication is with the AI model API you configure (e.g., Anthropic, OpenRouter). No data is sent to sophron cowork servers.

@@ -31,6 +31,7 @@ Remote channel
 | [`remote-title.ts`](../../src/main/remote/remote-title.ts)                                 | 远程会话标题                                                                   |
 | [`channels/channel-base.ts`](../../src/main/remote/channels/channel-base.ts)               | channel 抽象、长消息切分、错误事件                                             |
 | [`channels/feishu`](../../src/main/remote/channels/feishu)                                 | 飞书 API、webhook、WebSocket 长连接                                            |
+| [`channels/dingtalk`](../../src/main/remote/channels/dingtalk)                             | 钉钉 Stream/Webhook 接收、sessionWebhook 与机器人 OpenAPI                      |
 | [`channels/slack/slack-channel.ts`](../../src/main/remote/channels/slack/slack-channel.ts) | Slack bot/socket/webhook                                                       |
 
 ### RemoteManager
@@ -127,6 +128,17 @@ Slack：
 - 自动过滤 bot 消息和自身消息。
 - group 需要 mention。
 
+DingTalk：
+
+- 使用官方 `dingtalk-stream` SDK 建立 Stream 长连接，不要求公网回调地址。
+- 也可使用应用内机器人的 HTTP/Webhook 模式，公网入口为 `/webhook/dingtalk`；该模式需要 HTTPS 公网地址，可复用内置 ngrok 隧道。
+- Webhook 按钉钉协议校验 `timestamp` 和 `sign` 请求头：签名为以 AppSecret 为 key、对 `timestamp + "\n" + AppSecret` 计算的 HMAC-SHA256 Base64 值；超过一小时的请求会被拒绝。
+- Webhook 收到合法请求后立即返回空 JSON ACK，异步回复继续复用 `sessionWebhook` 或机器人 OpenAPI，避免等待模型执行导致平台超时。
+- 回调入队后立即 ACK，并按 Stream message ID 与机器人 message ID 去重。
+- 回复优先使用当前会话的 `sessionWebhook`，失效后降级到机器人 OpenAPI。
+- 群聊与私聊目标分别编码为 `group:<conversationId>` 和 `dm:<senderStaffId>`。
+- 当前接收文本消息；图片、文件和互动卡片留待统一媒体管线接入。
+
 ### 远程 UI
 
 [`RemoteControlPanel`](../../src/renderer/components/RemoteControlPanel.tsx) 负责：
@@ -134,7 +146,7 @@ Slack：
 - 加载 config/status/paired users/pending pairings/tunnel/webhook URL。
 - 5 秒轮询状态。
 - 启停 gateway。
-- 保存 gateway 和 Feishu 配置。
+- 保存 gateway、Feishu 和 DingTalk 配置。
 - 配对 approve/reject/revoke。
 - 拆分配置步骤：
   - [`FeishuConfigStep`](../../src/renderer/components/remote/FeishuConfigStep.tsx)
