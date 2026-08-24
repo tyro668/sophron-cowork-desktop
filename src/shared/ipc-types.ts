@@ -83,6 +83,23 @@ export interface FeishuChannelConfig {
   defaultGroupSettings?: { requireMention: boolean };
 }
 
+/** DingTalk channel configuration (mirrors DingtalkChannelConfig in remote/types.ts). */
+export type ChannelType = 'feishu' | 'wechat' | 'telegram' | 'dingtalk' | 'websocket' | 'slack';
+
+export interface DingtalkChannelConfig {
+  type: 'dingtalk';
+  receiveMode?: 'stream' | 'webhook';
+  appKey: string;
+  appSecret: string;
+  robotCode?: string;
+  dm: {
+    policy: 'open' | 'pairing' | 'allowlist';
+    allowFrom?: string[];
+  };
+  groups?: Record<string, { requireMention: boolean; allowFrom?: string[] }>;
+  defaultGroupSettings?: { requireMention: boolean };
+}
+
 /** Gateway authentication config. */
 export interface GatewayAuthConfig {
   mode: 'token' | 'allowlist' | 'pairing' | 'open';
@@ -123,7 +140,7 @@ export interface RemoteConfig {
     feishu?: FeishuChannelConfig;
     wechat?: Record<string, unknown>;
     telegram?: Record<string, unknown>;
-    dingtalk?: Record<string, unknown>;
+    dingtalk?: DingtalkChannelConfig;
     websocket?: Record<string, unknown>;
   };
 }

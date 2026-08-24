@@ -83,7 +83,12 @@ import type {
 } from '../renderer/types';
 import { remoteManager, type AgentExecutor } from './remote/remote-manager';
 import { remoteConfigStore } from './remote/remote-config-store';
-import type { GatewayConfig, FeishuChannelConfig, ChannelType } from './remote/types';
+import type {
+  GatewayConfig,
+  FeishuChannelConfig,
+  DingtalkChannelConfig,
+  ChannelType,
+} from './remote/types';
 import { startNavServer, stopNavServer } from './nav-server';
 import {
   type ScheduledTask,
@@ -2980,6 +2985,19 @@ ipcMain.handle('remote.updateFeishuConfig', async (_event, config: FeishuChannel
   }
 });
 
+ipcMain.handle(
+  'remote.updateDingtalkConfig',
+  async (_event, config: DingtalkChannelConfig, gatewayConfig?: Partial<GatewayConfig>) => {
+    try {
+      await remoteManager.updateDingtalkConfig(config, gatewayConfig);
+      return { success: true };
+    } catch (error) {
+      logError('[Remote] Error updating DingTalk config:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+);
+
 ipcMain.handle('remote.getPairedUsers', () => {
   try {
     return remoteManager.getPairedUsers();
@@ -3056,9 +3074,9 @@ ipcMain.handle('remote.getTunnelStatus', () => {
   }
 });
 
-ipcMain.handle('remote.getWebhookUrl', () => {
+ipcMain.handle('remote.getWebhookUrl', (_event, channelType?: ChannelType) => {
   try {
-    return remoteManager.getFeishuWebhookUrl();
+    return remoteManager.getWebhookUrl(channelType);
   } catch (error) {
     logError('[Remote] Error getting webhook URL:', error);
     return null;

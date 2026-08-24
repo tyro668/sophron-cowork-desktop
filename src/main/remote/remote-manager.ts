@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { RemoteGateway } from './gateway';
 import { MessageRouter } from './message-router';
 import { FeishuChannel } from './channels/feishu';
+import { DingtalkChannel } from './channels/dingtalk';
 import { SlackChannel } from './channels/slack';
 import { remoteConfigStore } from './remote-config-store';
 import { tunnelManager, TunnelStatus } from './tunnel-manager';
@@ -18,6 +19,7 @@ import type {
   GatewayStatus,
   GatewayConfig,
   FeishuChannelConfig,
+  DingtalkChannelConfig,
   ChannelType,
   RemoteSessionMapping,
   PairedUser,
@@ -195,7 +197,7 @@ export class RemoteManager extends EventEmitter {
 
     try {
       // Create gateway
-      this.gateway = new RemoteGateway(config.gateway, this.messageRouter);
+      this.gateway = new RemoteGateway(config.gateway, this.messageRouter, config.channels);
 
       // 设置远程默认工作目录（优先使用配置，其次使用全局默认）
       const configuredDefaultWorkingDir =
@@ -230,7 +232,12 @@ export class RemoteManager extends EventEmitter {
       const tunnelUrl = await tunnelManager.start(config.gateway.port);
       if (tunnelUrl) {
         log('[RemoteManager] Tunnel URL:', tunnelUrl);
-        log('[RemoteManager] Feishu Webhook URL:', `${tunnelUrl}/webhook/feishu`);
+        if (config.channels.feishu?.useWebSocket === false) {
+          log('[RemoteManager] Feishu Webhook URL:', `${tunnelUrl}/webhook/feishu`);
+        }
+        if (config.channels.dingtalk?.receiveMode === 'webhook') {
+          log('[RemoteManager] DingTalk Webhook URL:', `${tunnelUrl}/webhook/dingtalk`);
+        }
       }
 
       log('[RemoteManager] Remote control system started');
@@ -323,11 +330,9 @@ export class RemoteManager extends EventEmitter {
     return tunnelManager.getStatus();
   }
 
-  /**
-   * Get Feishu webhook URL (from tunnel)
-   */
-  getFeishuWebhookUrl(): string | null {
-    return tunnelManager.getWebhookUrl();
+  /** Get a channel webhook URL from the active tunnel. */
+  getWebhookUrl(channelType: ChannelType = 'feishu'): string | null {
+    return tunnelManager.getWebhookUrl(channelType);
   }
 
   /**
@@ -348,59 +353,21 @@ export class RemoteManager extends EventEmitter {
   async updateFeishuConfig(config: FeishuChannelConfig): Promise<void> {
     remoteConfigStore.setFeishuConfig(config);
 
-    // Sync Feishu DM policy to gateway auth mode so checkAuthorization() matches.
-    // Note: gateway auth mode is a cross-channel setting — changing it here affects
-    // authorization for all channel types (feishu, telegram, etc.), not just Feishu.
-    // Skip sync if gateway is using token auth, as that would disable token protection
-    // for non-Feishu channels (e.g. WebSocket).
-    if (config.dm) {
-      const currentGateway = remoteConfigStore.getGatewayConfig();
-      const currentAuth = currentGateway.auth;
-
-      if (currentAuth.mode === 'token' || currentAuth.token) {
-        log(
-          '[RemoteManager] Skipping DM policy sync: gateway uses token auth, preserving for other channels'
-        );
-      } else {
-        switch (config.dm.policy) {
-          case 'open':
-            remoteConfigStore.setGatewayConfig({
-              auth: { ...currentAuth, mode: 'open' },
-            });
-            break;
-          case 'pairing':
-            remoteConfigStore.setGatewayConfig({
-              auth: { ...currentAuth, mode: 'pairing' },
-            });
-            break;
-          case 'allowlist': {
-            // Scope Feishu IDs and merge with existing entries (preserving other channels)
-            const feishuEntries = (config.dm.allowFrom ?? []).map((id) => `feishu:${id}`);
-            const nonFeishuEntries = (currentAuth.allowlist ?? []).filter(
-              (entry) => !entry.startsWith('feishu:')
-            );
-            // Include paired Feishu users so they retain access when switching from pairing mode
-            // (syncAllowlist() only populates allowlist when already in allowlist mode)
-            const pairedFeishuEntries = remoteConfigStore
-              .getPairedUsers()
-              .filter((u) => u.channelType === 'feishu')
-              .map((u) => `feishu:${u.userId}`);
-            remoteConfigStore.setGatewayConfig({
-              auth: {
-                ...currentAuth,
-                mode: 'allowlist',
-                allowlist: [
-                  ...new Set([...nonFeishuEntries, ...pairedFeishuEntries, ...feishuEntries]),
-                ],
-              },
-            });
-            break;
-          }
-        }
-      }
-    }
-
     // Restart to apply changes
+    if (this.gateway?.running) {
+      await this.restart();
+    }
+  }
+
+  /**
+   * Update DingTalk channel config
+   */
+  async updateDingtalkConfig(
+    config: DingtalkChannelConfig,
+    gatewayConfig?: Partial<GatewayConfig>
+  ): Promise<void> {
+    remoteConfigStore.setDingtalkConfig(config);
+    if (gatewayConfig) remoteConfigStore.setGatewayConfig(gatewayConfig);
     if (this.gateway?.running) {
       await this.restart();
     }
@@ -1363,7 +1330,25 @@ export class RemoteManager extends EventEmitter {
       log('[RemoteManager] Slack channel registered');
     }
 
-    // TODO: Register other channels (WeChat, Telegram, DingTalk)
+    const dingtalkConfig = config.channels.dingtalk;
+    if (dingtalkConfig && dingtalkConfig.appKey && dingtalkConfig.appSecret) {
+      const dingtalkChannel = new DingtalkChannel(dingtalkConfig);
+      this.gateway.registerChannel(dingtalkChannel);
+      this.gateway.on(
+        'webhook:dingtalk',
+        (data: {
+          headers: Record<string, string | string[] | undefined>;
+          body: string;
+          respond: (status: number, responseData: unknown) => void;
+        }) => {
+          const result = dingtalkChannel.handleWebhook(data.headers, data.body);
+          data.respond(result.status, result.data);
+        }
+      );
+      log('[RemoteManager] DingTalk channel registered');
+    }
+
+    // TODO: Register other channels (WeChat, Telegram)
   }
 
   /**

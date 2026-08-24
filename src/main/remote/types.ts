@@ -195,6 +195,9 @@ export interface TelegramChannelConfig {
 export interface DingtalkChannelConfig {
   type: 'dingtalk';
 
+  /** Message receiving mode. Defaults to Stream for existing configurations. */
+  receiveMode?: 'stream' | 'webhook';
+
   /** App Key */
   appKey: string;
 
@@ -216,6 +219,11 @@ export interface DingtalkChannelConfig {
       requireMention: boolean;
       allowFrom?: string[];
     };
+  };
+
+  /** Default group settings (when not specified per-group) */
+  defaultGroupSettings?: {
+    requireMention: boolean;
   };
 }
 

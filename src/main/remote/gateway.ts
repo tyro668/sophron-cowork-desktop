@@ -18,6 +18,7 @@ import type {
   PairingRequest,
   PairedUser,
   GatewayEvent,
+  RemoteConfig,
 } from './types';
 import { MessageRouter } from './message-router';
 
@@ -48,6 +49,7 @@ export class RemoteGateway extends EventEmitter {
   private channels: Map<ChannelType, IChannel> = new Map();
   private wsClients: Map<string, WSClient> = new Map();
   private messageRouter: MessageRouter;
+  private channelConfigs: RemoteConfig['channels'];
 
   // Pairing management
   private pairingRequests: Map<string, PairingRequest> = new Map();
@@ -61,10 +63,15 @@ export class RemoteGateway extends EventEmitter {
   // Rate limiting for new channel pairing requests (pending requests are reused)
   private pairingRequestAttempts: Map<string, { count: number; resetTime: number }> = new Map();
 
-  constructor(config: GatewayConfig, messageRouter: MessageRouter) {
+  constructor(
+    config: GatewayConfig,
+    messageRouter: MessageRouter,
+    channelConfigs: RemoteConfig['channels'] = {}
+  ) {
     super();
     this.config = config;
     this.messageRouter = messageRouter;
+    this.channelConfigs = channelConfigs;
 
     // Set up message router callback
     this.messageRouter.onResponse(this.handleAgentResponse.bind(this));
@@ -268,7 +275,9 @@ export class RemoteGateway extends EventEmitter {
       log('[Gateway] User not authorized:', message.sender.id);
 
       // Handle pairing if enabled
-      if (this.config.auth.mode === 'pairing') {
+      const effectivePolicy =
+        this.getChannelDmPolicy(message.channelType)?.policy ?? this.config.auth.mode;
+      if (effectivePolicy === 'pairing') {
         await this.handlePairingRequest(message);
       } else {
         // Send unauthorized response
@@ -354,6 +363,25 @@ export class RemoteGateway extends EventEmitter {
    * Check if user is authorized
    */
   private async checkAuthorization(message: RemoteMessage): Promise<boolean> {
+    const channelPolicy = this.getChannelDmPolicy(message.channelType);
+    if (channelPolicy) {
+      switch (channelPolicy.policy) {
+        case 'open':
+          return true;
+        case 'pairing':
+          return this.pairedUsers.has(`${message.channelType}:${message.sender.id}`);
+        case 'allowlist': {
+          const pairedKey = `${message.channelType}:${message.sender.id}`;
+          return (
+            (channelPolicy.allowFrom ?? []).includes(message.sender.id) ||
+            this.pairedUsers.has(pairedKey)
+          );
+        }
+      }
+    }
+
+    // Gateway auth remains the fallback for channels without their own policy
+    // and for compatibility with older configurations.
     const { mode, allowlist } = this.config.auth;
 
     switch (mode) {
@@ -389,14 +417,36 @@ export class RemoteGateway extends EventEmitter {
    * Check if group message should be processed
    */
   private shouldProcessGroupMessage(message: RemoteMessage): boolean {
-    // Always process if explicitly mentioned
-    if (message.isMentioned) {
+    const rawChannelId = message.channelId.replace(/^(group|dm):/, '');
+    const channelConfig = this.channelConfigs[message.channelType];
+    let requireMention = true;
+
+    if (channelConfig && ('groups' in channelConfig || 'defaultGroupSettings' in channelConfig)) {
+      requireMention =
+        channelConfig.groups?.[rawChannelId]?.requireMention ??
+        ('defaultGroupSettings' in channelConfig
+          ? channelConfig.defaultGroupSettings?.requireMention
+          : undefined) ??
+        true;
+    } else if (channelConfig && 'channels' in channelConfig) {
+      requireMention = channelConfig.channels?.[rawChannelId]?.requireMention ?? true;
+    }
+
+    if (!requireMention || message.isMentioned) {
       return true;
     }
 
     // TODO: Check channel-specific group settings
     // For now, require mention in groups by default
     return false;
+  }
+
+  private getChannelDmPolicy(
+    channelType: ChannelType
+  ): { policy: 'open' | 'pairing' | 'allowlist'; allowFrom?: string[] } | undefined {
+    const channelConfig = this.channelConfigs[channelType];
+    if (!channelConfig || !('dm' in channelConfig)) return undefined;
+    return channelConfig.dm;
   }
 
   /**
@@ -625,8 +675,14 @@ export class RemoteGateway extends EventEmitter {
   }
 
   private handleWebhook(req: IncomingMessage, res: ServerResponse, url: string): void {
+    if (req.method !== 'POST') {
+      res.writeHead(405, { 'Content-Type': 'application/json', Allow: 'POST' });
+      res.end(JSON.stringify({ error: 'Method not allowed' }));
+      return;
+    }
+
     // Extract channel type from URL: /webhook/feishu, /webhook/telegram, etc.
-    const channelType = url.split('/')[2] as ChannelType;
+    const channelType = url.split('?')[0]?.split('/')[2] as ChannelType;
 
     log(`[Gateway] Received webhook for channel: ${channelType}, URL: ${url}`);
 
@@ -662,9 +718,9 @@ export class RemoteGateway extends EventEmitter {
         log(`[Gateway] Listeners for webhook:${channelType}: ${listenerCount}`);
 
         if (listenerCount === 0) {
-          log(`[Gateway] No listeners for webhook:${channelType}, returning OK`);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ code: 0 }));
+          log(`[Gateway] No listeners for webhook:${channelType}`);
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: `Webhook handler for ${channelType} is unavailable` }));
           return;
         }
 
