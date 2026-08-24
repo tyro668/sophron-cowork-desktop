@@ -389,6 +389,32 @@
     box-shadow: none;
   }
 
+  /* Scrollable container whose scrollbar only appears while hovered. */
+  .scrollbar-hover {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  .scrollbar-hover::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .scrollbar-hover::-webkit-scrollbar-thumb {
+    background: transparent;
+  }
+
+  .scrollbar-hover:hover {
+    scrollbar-color: var(--color-border-muted) transparent;
+  }
+
+  .scrollbar-hover:hover::-webkit-scrollbar-thumb {
+    background: var(--color-border-muted);
+  }
+
+  .scrollbar-hover:hover::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-muted);
+  }
+
   .glass-table {
     background: var(--glass-card);
     border: 1px solid var(--color-border-subtle);

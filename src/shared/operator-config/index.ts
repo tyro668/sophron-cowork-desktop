@@ -5,5 +5,4 @@ export * from './join';
 export * from './limit';
 export * from './missing-value';
 export * from './pivot';
-export * from './set-op';
 export * from './type-convert';

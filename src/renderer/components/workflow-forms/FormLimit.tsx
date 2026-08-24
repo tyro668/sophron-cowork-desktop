@@ -4,12 +4,13 @@ import type { OperatorFormProps } from './index';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
+import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { parseNonNegativeInteger } from '../../../shared/operator-config';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import type { SortKey } from '../../../shared/operator-schemas';
 
-const LABEL_CLASS = 'text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7';
+const LABEL_CLASS = 'h-7 w-16 shrink-0 text-[13px] leading-7 text-text-secondary';
 
 const TAG_CONTAINER =
   'flex min-h-7 items-center rounded-md border border-border-muted bg-background/42 focus-within:border-accent';
@@ -112,230 +113,238 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
     });
   }
 
+  function setMode(nextMode: string) {
+    if (nextMode === 'fixed') {
+      updateConfig((cfg) => ({
+        ...cfg,
+        mode: 'fixed',
+        method: undefined,
+        seed: undefined,
+      }));
+      return;
+    }
+
+    updateConfig((cfg) => ({
+      ...cfg,
+      mode: 'random',
+      ties: undefined,
+      orderBy: undefined,
+      method: unit === 'percent' ? (cfg.method ?? 'system') : undefined,
+    }));
+  }
+
   return (
-    <div className="flex flex-col gap-3 h-full min-h-0 overflow-y-auto p-4">
-      {/* 模式 */}
-      <div className="flex items-center gap-2">
-        <span className={LABEL_CLASS}>{tr('limitMode')}</span>
-        <GlassOptionSingleSelect
+    <div className="flex h-full min-h-0 overflow-hidden">
+      <div className="scrollbar-hover flex w-[180px] shrink-0 flex-col overflow-y-auto border-r border-border-muted bg-surface/40 p-3.5">
+        <GlassRadioSelect
           value={mode}
-          groups={[
+          options={[
             {
-              key: 'mode',
-              items: [
-                { value: 'fixed', label: tr('limitFixedMode') },
-                { value: 'random', label: tr('limitRandomMode') },
-              ],
+              value: 'fixed',
+              label: tr('limitFixedMode'),
+              tip: tr('limitFixedModeTip'),
+            },
+            {
+              value: 'random',
+              label: tr('limitRandomMode'),
+              tip: tr('limitRandomModeTip'),
             },
           ]}
-          onChange={(v) => {
-            if (v === 'fixed') {
-              updateConfig((cfg) => ({
-                ...cfg,
-                mode: 'fixed',
-                method: undefined,
-                seed: undefined,
-              }));
-            } else {
-              updateConfig((cfg) => ({
-                ...cfg,
-                mode: 'random',
-                ties: undefined,
-                orderBy: undefined,
-                method: unit === 'percent' ? (cfg.method ?? 'system') : undefined,
-              }));
-            }
-          }}
-          className="h-7 text-[12px] w-28"
+          onChange={setMode}
+          label={tr('limitMode')}
         />
       </div>
 
-      {/* 数量 + 单位 + 偏移量/种子 */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex items-center gap-2">
-          <span className={LABEL_CLASS}>
-            {isRandomMode ? tr('limitSampleSize') : tr('limitCount')}
-          </span>
-          <GlassFormTextInput
-            inputMode="numeric"
-            value={localLimit}
-            onChange={(v) => pushLimit(v)}
-            placeholder="10"
-            textCenter
-            className="h-7 rounded-md px-2 text-[12px] w-28"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={LABEL_CLASS}>{tr('limitUnit')}</span>
-          <GlassOptionSingleSelect
-            value={unit}
-            groups={[
-              {
-                key: 'unit',
-                items: [
-                  { value: 'rows', label: tr('limitUnitRows') },
-                  { value: 'percent', label: tr('limitUnitPercent') },
-                ],
-              },
-            ]}
-            onChange={(value) => {
-              updateConfig((cfg) => ({
-                ...cfg,
-                unit: value,
-                offset: value === 'percent' ? undefined : cfg.offset,
-                method:
-                  mode === 'random' && value === 'percent' ? (cfg.method ?? 'system') : undefined,
-              }));
-              setErrors(runValidation(limit ?? 0, value));
-            }}
-            className="h-7 text-[12px] w-28"
-          />
-        </div>
-        {isRandomMode ? (
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+        {/* 数量 + 单位 + 偏移量/种子 */}
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-2">
-            <span className={LABEL_CLASS}>{tr('limitSampleSeed')}</span>
+            <span className={LABEL_CLASS}>
+              {isRandomMode ? tr('limitSampleSize') : tr('limitCount')}
+            </span>
             <GlassFormTextInput
               inputMode="numeric"
-              value={localSeed}
-              onChange={(v) => pushSeed(v)}
-              placeholder={tr('limitSampleSeedPlaceholder')}
+              value={localLimit}
+              onChange={(v) => pushLimit(v)}
+              placeholder="10"
               textCenter
               className="h-7 rounded-md px-2 text-[12px] w-28"
             />
           </div>
-        ) : isRows ? (
           <div className="flex items-center gap-2">
-            <span className={LABEL_CLASS}>{tr('limitOffset')}</span>
-            <GlassFormTextInput
-              inputMode="numeric"
-              value={localOffset}
-              onChange={(v) => pushOffset(v)}
-              placeholder="0"
-              textCenter
-              className="h-7 rounded-md px-2 text-[12px] w-28"
+            <span className={LABEL_CLASS}>{tr('limitUnit')}</span>
+            <GlassOptionSingleSelect
+              value={unit}
+              groups={[
+                {
+                  key: 'unit',
+                  items: [
+                    { value: 'rows', label: tr('limitUnitRows') },
+                    { value: 'percent', label: tr('limitUnitPercent') },
+                  ],
+                },
+              ]}
+              onChange={(value) => {
+                updateConfig((cfg) => ({
+                  ...cfg,
+                  unit: value,
+                  offset: value === 'percent' ? undefined : cfg.offset,
+                  method:
+                    mode === 'random' && value === 'percent' ? (cfg.method ?? 'system') : undefined,
+                }));
+                setErrors(runValidation(limit ?? 0, value));
+              }}
+              className="h-7 text-[12px] w-28"
             />
           </div>
-        ) : null}
-      </div>
-
-      {/* 采样方式（仅随机采样） */}
-      {isRandomMode && !isRows && (
-        <div className="flex items-center gap-2">
-          <span className={LABEL_CLASS}>{tr('limitSampleMethod')}</span>
-          <GlassOptionSingleSelect
-            value={method}
-            groups={[
-              {
-                key: 'method',
-                items: [
-                  { value: 'system', label: tr('limitSampleSystem') },
-                  { value: 'bernoulli', label: tr('limitSampleBernoulli') },
-                ],
-              },
-            ]}
-            onChange={(value) => updateConfig((cfg) => ({ ...cfg, method: value }))}
-            className="h-7 text-[12px] w-28"
-          />
-        </div>
-      )}
-
-      {errors.map((err) => (
-        <div key={err} className="text-[11px] text-warning">
-          {err}
-        </div>
-      ))}
-
-      {/* 限制取样：排序 + TIES */}
-      {isFixedMode && (
-        <>
-          {/* 排序字段 */}
-          <div className="flex items-center gap-2">
-            <span className={LABEL_CLASS}>{tr('limitSortHeader')}</span>
-            <div className="w-72 min-w-0 relative">
-              <div className={TAG_CONTAINER}>
-                {sortFields.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => updateConfig((cfg) => ({ ...cfg, orderBy: undefined }))}
-                    className="ml-1 inline-flex flex-shrink-0 items-center justify-center self-stretch rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
-                    title={tr('clearAll')}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                )}
-                <div className="flex flex-1 items-center gap-1 px-1.5 min-w-0 overflow-x-auto">
-                  {orderBy.map((k) => (
-                    <span
-                      key={k.field}
-                      className="inline-flex shrink-0 items-center gap-0.5 rounded bg-accent/10 px-1 py-0.5 text-[12px] font-medium text-accent"
-                    >
-                      {k.field}
-                      <button
-                        type="button"
-                        onClick={() => toggleSortDirection(k.field)}
-                        className="text-[11px] leading-none px-0.5 hover:text-text-primary rounded"
-                        title={k.direction === 'asc' ? tr('asc') : tr('desc')}
-                      >
-                        {k.direction === 'asc' ? '↑' : '↓'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeSortField(k.field)}
-                        className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
-                      >
-                        <X className="h-2.5 w-2.5" />
-                      </button>
-                    </span>
-                  ))}
-                  <input
-                    key="sort-input"
-                    type="text"
-                    readOnly
-                    placeholder={!sortFields.length ? tr('limitSortPlaceholder') : ''}
-                    onFocus={() => setSortOpen(true)}
-                    onBlur={() => setTimeout(() => setSortOpen(false), 150)}
-                    className="h-5 min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted cursor-pointer"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => setSortOpen((o) => !o)}
-                  className="flex w-7 flex-shrink-0 items-center justify-center self-stretch border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
-                >
-                  <ChevronDown
-                    className={`h-3.5 w-3.5 transition-transform ${sortOpen ? 'rotate-180' : ''}`}
-                  />
-                </button>
-              </div>
-              {sortOpen && (
-                <div className="absolute z-10 left-0 right-0 mt-0.5">
-                  <GlassFieldMultiSelect
-                    columns={fieldCompletions}
-                    selected={sortFields}
-                    onChange={(v) => setSortFields(v)}
-                    maxHeight="160px"
-                    variant="glass"
-                  />
-                </div>
-              )}
+          {isFixedMode && isRows ? (
+            <div className="flex items-center gap-2">
+              <span className={LABEL_CLASS}>{tr('limitOffset')}</span>
+              <GlassFormTextInput
+                inputMode="numeric"
+                value={localOffset}
+                onChange={(v) => pushOffset(v)}
+                placeholder="0"
+                textCenter
+                className="h-7 rounded-md px-2 text-[12px] w-28"
+              />
             </div>
-            {hasSort && (
-              <label className="flex items-center gap-1.5 text-[12px] cursor-pointer select-none whitespace-nowrap">
-                <input
-                  type="checkbox"
-                  checked={ties}
-                  onChange={(e) =>
-                    updateConfig((cfg) => ({ ...cfg, ties: e.target.checked || undefined }))
-                  }
-                  className="h-4 w-4 rounded border-border-muted accent-accent"
+          ) : null}
+        </div>
+
+        {isRandomMode && (
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            <div className="flex items-center gap-2">
+              <span className={LABEL_CLASS}>{tr('limitSampleSeed')}</span>
+              <GlassFormTextInput
+                inputMode="numeric"
+                value={localSeed}
+                onChange={(v) => pushSeed(v)}
+                placeholder={tr('limitSampleSeedPlaceholder')}
+                textCenter
+                className="h-7 rounded-md px-2 text-[12px] w-60"
+              />
+            </div>
+            {!isRows && (
+              <div className="flex items-center gap-2">
+                <span className={LABEL_CLASS}>{tr('limitSampleMethod')}</span>
+                <GlassOptionSingleSelect
+                  value={method}
+                  groups={[
+                    {
+                      key: 'method',
+                      items: [
+                        { value: 'system', label: tr('limitSampleSystem') },
+                        { value: 'bernoulli', label: tr('limitSampleBernoulli') },
+                      ],
+                    },
+                  ]}
+                  onChange={(value) => updateConfig((cfg) => ({ ...cfg, method: value }))}
+                  className="h-7 text-[12px] w-28"
                 />
-                {tr('limitTies')}
-              </label>
+              </div>
             )}
           </div>
-        </>
-      )}
+        )}
+
+        {errors.map((err) => (
+          <div key={err} className="text-[11px] text-warning">
+            {err}
+          </div>
+        ))}
+
+        {/* 限制取样：排序 + TIES */}
+        {isFixedMode && (
+          <>
+            {/* 排序字段 */}
+            <div className="flex items-center gap-2">
+              <span className={LABEL_CLASS}>{tr('limitSortHeader')}</span>
+              <div className="w-72 min-w-0 relative">
+                <div className={TAG_CONTAINER}>
+                  {sortFields.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => updateConfig((cfg) => ({ ...cfg, orderBy: undefined }))}
+                      className="ml-1 inline-flex flex-shrink-0 items-center justify-center self-stretch rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
+                      title={tr('clearAll')}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  )}
+                  <div className="flex flex-1 items-center gap-1 px-1.5 min-w-0 overflow-x-auto">
+                    {orderBy.map((k) => (
+                      <span
+                        key={k.field}
+                        className="inline-flex shrink-0 items-center gap-0.5 rounded bg-accent/10 px-1 py-0.5 text-[12px] font-medium text-accent"
+                      >
+                        {k.field}
+                        <button
+                          type="button"
+                          onClick={() => toggleSortDirection(k.field)}
+                          className="text-[11px] leading-none px-0.5 hover:text-text-primary rounded"
+                          title={k.direction === 'asc' ? tr('asc') : tr('desc')}
+                        >
+                          {k.direction === 'asc' ? '↑' : '↓'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeSortField(k.field)}
+                          className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      </span>
+                    ))}
+                    <input
+                      key="sort-input"
+                      type="text"
+                      readOnly
+                      placeholder={!sortFields.length ? tr('limitSortPlaceholder') : ''}
+                      onFocus={() => setSortOpen(true)}
+                      onBlur={() => setTimeout(() => setSortOpen(false), 150)}
+                      className="h-5 min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted cursor-pointer"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => setSortOpen((o) => !o)}
+                    className="flex w-7 flex-shrink-0 items-center justify-center self-stretch border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
+                  >
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 transition-transform ${sortOpen ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+                </div>
+                {sortOpen && (
+                  <div className="absolute z-10 left-0 right-0 mt-0.5">
+                    <GlassFieldMultiSelect
+                      columns={fieldCompletions}
+                      selected={sortFields}
+                      onChange={(v) => setSortFields(v)}
+                      maxHeight="160px"
+                      variant="glass"
+                    />
+                  </div>
+                )}
+              </div>
+              {hasSort && (
+                <label className="flex items-center gap-1.5 text-[12px] cursor-pointer select-none whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    checked={ties}
+                    onChange={(e) =>
+                      updateConfig((cfg) => ({ ...cfg, ties: e.target.checked || undefined }))
+                    }
+                    className="h-4 w-4 rounded border-border-muted accent-accent"
+                  />
+                  {tr('limitTies')}
+                </label>
+              )}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

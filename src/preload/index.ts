@@ -324,32 +324,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('data.inputTableNormalizerDraftProgress', listener);
       return () => ipcRenderer.removeListener('data.inputTableNormalizerDraftProgress', listener);
     },
-    onOperatorConfirm: (
-      callback: (payload: {
-        channel: string;
-        title?: string;
-        message: string;
-        detail?: string;
-        confirmLabel?: string;
-        cancelLabel?: string;
-      }) => void
-    ) => {
-      const listener = (
-        _event: Electron.IpcRendererEvent,
-        payload: {
-          channel: string;
-          title?: string;
-          message: string;
-          detail?: string;
-          confirmLabel?: string;
-          cancelLabel?: string;
-        }
-      ) => callback(payload);
-      ipcRenderer.on('data.operatorConfirm', listener);
-      return () => ipcRenderer.removeListener('data.operatorConfirm', listener);
-    },
-    respondOperatorConfirm: (channel: string, confirmed: boolean): Promise<boolean> =>
-      ipcRenderer.invoke(channel, confirmed),
     previewInputTableNormalizerVersion: (
       payload: DataPreviewInputTableNormalizerVersionInput
     ): Promise<{ preview: DataInputTablePreview }> =>
@@ -820,17 +794,6 @@ declare global {
         onInputTableNormalizerDraftProgress: (
           callback: (event: DataInputTableNormalizerDraftProgressEvent) => void
         ) => () => void;
-        onOperatorConfirm: (
-          callback: (payload: {
-            channel: string;
-            title?: string;
-            message: string;
-            detail?: string;
-            confirmLabel?: string;
-            cancelLabel?: string;
-          }) => void
-        ) => () => void;
-        respondOperatorConfirm: (channel: string, confirmed: boolean) => Promise<boolean>;
         previewInputTableNormalizerVersion: (
           payload: DataPreviewInputTableNormalizerVersionInput
         ) => Promise<{ preview: DataInputTablePreview }>;

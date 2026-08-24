@@ -430,8 +430,7 @@ export class TaskWorkflowStore extends WorkflowCompiler {
         task,
         sourcePath,
         runtimeWorkflow,
-        outputMode,
-        diagnostics
+        outputMode
       );
       if (!recordTaskState) {
         return {
@@ -913,8 +912,7 @@ export class TaskWorkflowStore extends WorkflowCompiler {
     task: DataCleaningTask,
     sourcePath: string | null,
     workflow: RuntimeWorkflow,
-    outputMode: WorkflowOutputMode,
-    diagnostics: PrepDiagnostic[]
+    outputMode: WorkflowOutputMode
   ): Promise<{
     outputTable: string;
     rowCount: number;
@@ -927,8 +925,7 @@ export class TaskWorkflowStore extends WorkflowCompiler {
         sourcePath,
         workflow.nodes,
         workflow.edges,
-        outputMode,
-        diagnostics
+        outputMode
       );
     }
 
@@ -984,8 +981,7 @@ export class TaskWorkflowStore extends WorkflowCompiler {
     sourcePath: string | null,
     nodes: DataWorkflowNode[],
     edges: DataWorkflowEdge[],
-    outputMode: WorkflowOutputMode,
-    diagnostics: PrepDiagnostic[]
+    outputMode: WorkflowOutputMode
   ): Promise<{
     outputTable: string;
     rowCount: number;
@@ -1076,13 +1072,7 @@ export class TaskWorkflowStore extends WorkflowCompiler {
         }
 
         await this.dropTableIfExists(outputRelation);
-        const sql = await this.compileWorkflowNodeSql(
-          node,
-          outputRelation,
-          relationByNode,
-          edges,
-          diagnostics
-        );
+        const sql = await this.compileWorkflowNodeSql(node, outputRelation, relationByNode, edges);
         try {
           await this.runSql(toPersistentCreateTableSql(sql));
         } catch (error) {

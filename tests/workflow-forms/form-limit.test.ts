@@ -196,13 +196,15 @@ describe('FormLimit — UI source structure', () => {
     expect(limitSource).not.toContain('GlassSortKeyEditor');
   });
 
-  it('no longer imports GlassRadioSelect (sidebar removed)', () => {
-    expect(limitSource).not.toContain('GlassRadioSelect');
+  it('uses GlassRadioSelect for the mode sidebar', () => {
+    expect(limitSource).toContain('import { GlassRadioSelect }');
+    expect(limitSource).toContain('<GlassRadioSelect');
+    expect(limitSource).toContain('w-[180px]');
   });
 
-  it('mode uses GlassOperatorSelect (single-column layout)', () => {
-    expect(limitSource).toContain('<GlassOptionSingleSelect');
+  it('mode selection is separate from the detail controls', () => {
     expect(limitSource).toContain("'limitMode'");
+    expect(limitSource).toContain('onChange={setMode}');
   });
 
   it('sort field tag-input has direction toggles (↑↓)', () => {
@@ -232,19 +234,13 @@ describe('FormLimit — UI source structure', () => {
     expect(limitSource).not.toContain('className="flex-1 min-w-0 relative"');
   });
 
-  it('mode select width is w-28', () => {
-    const modeSelect = limitSource.match(/className="h-7 text-\[12px\] w-28"/);
-    expect(modeSelect).not.toBeNull();
-  });
-
-  it('quantity, unit, offset/seed controls all w-28', () => {
+  it('quantity, unit, offset/seed controls use the same width', () => {
     const w28Controls = limitSource.match(/w-28/g);
-    // Mode select + quantity + unit + offset/seed + group range select = at least 5
-    expect(w28Controls!.length).toBeGreaterThanOrEqual(5);
+    expect(w28Controls!.length).toBeGreaterThanOrEqual(4);
   });
 
   it('only shows system and bernoulli methods for percentage sampling', () => {
-    expect(limitSource).toContain('{isRandomMode && !isRows && (');
+    expect(limitSource).toContain('{!isRows && (');
   });
 
   it('sort tags use compact padding (px-1)', () => {

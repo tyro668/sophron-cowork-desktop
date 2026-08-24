@@ -279,25 +279,25 @@ export default function FormMissingValue({
   return (
     <div className="flex h-full min-h-0 flex-1 gap-0 overflow-hidden">
       {/* Left sidebar — global config */}
-      <div className="flex w-[180px] shrink-0 flex-col gap-3.5 border-r border-border-muted bg-surface/40 p-3.5">
-        <section className="flex flex-col gap-1.5">
-          <GlassRadioSelect
-            value={tabMode}
-            options={[
-              { value: 'row', label: tr('rowProcess') },
-              { value: 'column', label: tr('colProcess') },
-            ]}
-            onChange={(v) => {
-              if (v === 'row') setRowMode('any_null');
-              else setColumnMode();
-            }}
-            label={tr('missingProcessMode')}
-          />
-        </section>
+      <div className="scrollbar-hover flex w-[180px] shrink-0 flex-col overflow-y-auto border-r border-border-muted bg-surface/40 p-3.5">
+        <GlassRadioSelect
+          value={tabMode}
+          options={[
+            { value: 'row', label: tr('rowProcess'), tip: tr('missingRowProcessTip') },
+            { value: 'column', label: tr('colProcess'), tip: tr('missingColumnProcessTip') },
+          ]}
+          onChange={(v) => {
+            if (v === 'row') setRowMode('any_null');
+            else setColumnMode();
+          }}
+          label={tr('missingProcessMode')}
+        />
+      </div>
 
+      {/* Right content */}
+      <div className="flex flex-1 flex-col overflow-hidden">
         {tabMode === 'row' && (
-          <>
-            <div className="h-px bg-border-muted" />
+          <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
             <GlassRadioSelect
               value={rowCondition}
               options={[
@@ -306,15 +306,9 @@ export default function FormMissingValue({
               ]}
               onChange={(v) => setRowMode(v as 'all_null' | 'any_null')}
               label={tr('missingTriggerCondition')}
+              direction="horizontal"
             />
-          </>
-        )}
-      </div>
 
-      {/* Right content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {tabMode === 'row' && (
-          <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
             {/* Description */}
             <p className="text-[11px] leading-4 text-text-muted">{description}</p>
 

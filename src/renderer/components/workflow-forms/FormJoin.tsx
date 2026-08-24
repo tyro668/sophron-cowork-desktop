@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
-import { Plus, Settings, Trash2 } from 'lucide-react';
+import { useEffect, useId, useMemo, useState } from 'react';
+import { Settings } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
@@ -23,6 +23,11 @@ import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTyp
 export type ConditionEntry = JoinCondition;
 
 const DEFAULT_CONDITION: ConditionEntry = { left: '', operator: '=', right: '' };
+const DEFAULT_JOIN_CONFLICT = {
+  strategy: 'suffix',
+  leftSuffix: '_left',
+  rightSuffix: '_right',
+} as const;
 
 const OPERATOR_KEYS = [
   { value: '=', key: 'operatorEq' },
@@ -32,7 +37,20 @@ const OPERATOR_KEYS = [
   { value: '>=', key: 'operatorGte' },
 ];
 
-// ── Venn-diagram SVG for each join type ──
+function insertCondition(conditions: ConditionEntry[], index: number): ConditionEntry[] {
+  const next = [...conditions];
+  next.splice(index + 1, 0, { ...DEFAULT_CONDITION });
+  return next;
+}
+
+function removeCondition(conditions: ConditionEntry[], index: number): ConditionEntry[] {
+  const next = conditions.filter((_, conditionIndex) => conditionIndex !== index);
+  return next.length === 0 || next.every((condition) => !condition.left && !condition.right)
+    ? []
+    : next;
+}
+
+// Shared geometry keeps the selected regions comparable across join types.
 function JoinVennSVG({ type, selected }: { type: string; selected: boolean }) {
   const id = useId();
   const op = selected ? '0.55' : '0.2';
@@ -141,6 +159,81 @@ function JoinVennSVG({ type, selected }: { type: string; selected: boolean }) {
   );
 }
 
+interface JoinKeepFieldColumnProps {
+  side: 'left' | 'right';
+  title: string;
+  fields: string[];
+  alias: string;
+  selected: ReadonlySet<string>;
+  aliases: ReadonlyMap<string, string>;
+  allChecked: boolean;
+  onToggleAll: () => void;
+  onToggleField: (field: string) => void;
+  onAliasChange: (field: string, alias: string) => void;
+}
+
+function JoinKeepFieldColumn({
+  side,
+  title,
+  fields,
+  alias,
+  selected,
+  aliases,
+  allChecked,
+  onToggleAll,
+  onToggleField,
+  onAliasChange,
+}: JoinKeepFieldColumnProps) {
+  const tr = useFormTranslation();
+
+  return (
+    <div
+      className={side === 'left' ? 'flex-1 border-r border-border-muted/50 pr-4' : 'flex-1 pl-4'}
+    >
+      <h4 className="mb-1 text-[12px] font-medium text-text-secondary">{title}</h4>
+      <p className="mb-2 text-[10px] text-text-muted">{tr('joinKeepAliasPrompt')}</p>
+      <label className="mb-1.5 flex cursor-pointer items-center gap-1.5 text-[12px] font-medium text-text-secondary">
+        <input
+          type="checkbox"
+          checked={allChecked}
+          onChange={onToggleAll}
+          className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
+        />
+        {tr('selectAllFields')}
+      </label>
+      <div className="max-h-48 space-y-1 overflow-y-auto">
+        {fields.map((field) => {
+          const qualifiedField = qualifyJoinField(alias, field);
+          const isChecked = selected.has(qualifiedField);
+          const fieldAlias = aliases.get(qualifiedField) ?? '';
+          return (
+            <div key={field} className="flex items-center gap-1.5 text-[12px] text-text-primary">
+              <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={() => onToggleField(qualifiedField)}
+                  className="h-3.5 w-3.5 shrink-0 rounded border-border-muted accent-accent"
+                />
+                <span className="truncate">{field}</span>
+              </label>
+              {isChecked && (
+                <input
+                  type="text"
+                  value={fieldAlias}
+                  onChange={(event) => onAliasChange(qualifiedField, event.target.value)}
+                  placeholder={field}
+                  className="h-5 w-28 shrink-0 rounded border border-border-muted/50 bg-background/30 px-1.5 text-[11px] text-text-primary outline-none placeholder:text-text-muted/50 focus:border-accent"
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function FormJoin({
   node,
   taskId,
@@ -159,7 +252,7 @@ export default function FormJoin({
     if (jt !== 'semi' && jt !== 'anti' && !node.config.conflict) {
       updateConfig((cfg) => ({
         ...cfg,
-        conflict: { strategy: 'suffix', leftSuffix: '_left', rightSuffix: '_right' },
+        conflict: { ...DEFAULT_JOIN_CONFLICT },
       }));
     }
   }, [node.config.conflict, node.config.joinType, updateConfig]);
@@ -185,6 +278,11 @@ export default function FormJoin({
   const asofLeftTime = (asof.leftTime as string) ?? '';
   const asofOperator = (asof.operator as string) ?? '>=';
   const asofRightTime = (asof.rightTime as string) ?? '';
+  const asofBy = useMemo(() => (asof.by as ConditionEntry[]) ?? [], [asof.by]);
+  const displayedAsofBy = useMemo(
+    () => (asofBy.length > 0 ? asofBy : [DEFAULT_CONDITION]),
+    [asofBy]
+  );
 
   const isAsof = joinType === 'asof';
   const needsConditions = joinType !== 'cross';
@@ -192,7 +290,6 @@ export default function FormJoin({
 
   const toleranceVal = (asof.tolerance as string) ?? '';
   const durationParts = useMemo(() => parseDuration(toleranceVal), [toleranceVal]);
-  const showToleranceError = asofOperator === 'nearest' && !toleranceVal;
 
   function handleDurationChange(part: keyof DurationParts, val: number) {
     updateConfig((cfg) => ({
@@ -204,24 +301,17 @@ export default function FormJoin({
     }));
   }
 
-  const resolveNodeLabel = useCallback(
-    (nodeRef: { id: string; config?: Record<string, unknown> } | undefined): string => {
-      if (!nodeRef) return '';
-      const full = otherNodes.find((n) => n.id === nodeRef.id);
-      if (full) return full.label || (full.config?.alias as string) || '';
-      return (nodeRef.config?.alias as string) || nodeRef.id;
-    },
-    [otherNodes]
-  );
+  function resolveNodeLabel(
+    nodeRef: { id: string; config?: Record<string, unknown> } | undefined
+  ): string {
+    if (!nodeRef) return '';
+    const fullNode = otherNodes.find((candidate) => candidate.id === nodeRef.id);
+    if (fullNode) return fullNode.label || (fullNode.config?.alias as string) || '';
+    return (nodeRef.config?.alias as string) || nodeRef.id;
+  }
 
-  const leftSourceLabel = useMemo(
-    () => resolveNodeLabel(sourceNode),
-    [sourceNode, resolveNodeLabel]
-  );
-  const rightSourceLabel = useMemo(
-    () => resolveNodeLabel(rightSourceNode),
-    [rightSourceNode, resolveNodeLabel]
-  );
+  const leftSourceLabel = resolveNodeLabel(sourceNode);
+  const rightSourceLabel = resolveNodeLabel(rightSourceNode);
 
   const leftAlias = leftSourceLabel || 'left';
   const rightAlias = rightSourceLabel || 'right_source';
@@ -260,24 +350,24 @@ export default function FormJoin({
   const joinTypes = useMemo(
     () => [
       {
-        value: 'inner',
-        label: tr('joinInner'),
-        tip: tr('joinInnerTip'),
-      },
-      {
         value: 'left',
         label: tr('joinLeft'),
         tip: tr('joinLeftTip'),
       },
       {
-        value: 'right',
-        label: tr('joinRight'),
-        tip: tr('joinRightTip'),
+        value: 'inner',
+        label: tr('joinInner'),
+        tip: tr('joinInnerTip'),
       },
       {
         value: 'full',
         label: tr('joinFull'),
         tip: tr('joinFullTip'),
+      },
+      {
+        value: 'right',
+        label: tr('joinRight'),
+        tip: tr('joinRightTip'),
       },
       {
         value: 'cross',
@@ -305,11 +395,11 @@ export default function FormJoin({
 
   const rightFieldCompletions = useMemo(() => {
     if (!rightSourceLabel || rightRawColumns.length === 0) return [] as string[];
-    return rightRawColumns.map((c) => `[${rightAlias}].[${c}]`);
+    return rightRawColumns.map((field) => qualifyJoinField(rightAlias, field));
   }, [rightAlias, rightRawColumns, rightSourceLabel]);
 
   const leftFieldCompletions = useMemo(
-    () => fieldCompletions.map((c) => `[${leftAlias}].[${c}]`),
+    () => fieldCompletions.map((field) => qualifyJoinField(leftAlias, field)),
     [fieldCompletions, leftAlias]
   );
 
@@ -318,7 +408,7 @@ export default function FormJoin({
   const leftColumnTypesQualified = useMemo(() => {
     const map: Record<string, string> = {};
     for (const [name, type] of Object.entries(leftColumnTypes)) {
-      map[`[${leftAlias}].[${name}]`] = type;
+      map[qualifyJoinField(leftAlias, name)] = type;
     }
     return map;
   }, [leftColumnTypes, leftAlias]);
@@ -326,27 +416,23 @@ export default function FormJoin({
     const filtered = hasLeftTypes
       ? fieldCompletions.filter((c) => isTemporalDataFieldType(leftColumnTypes[c]))
       : fieldCompletions;
-    return filtered.map((c) => `[${leftAlias}].[${c}]`);
+    return filtered.map((field) => qualifyJoinField(leftAlias, field));
   }, [fieldCompletions, leftColumnTypes, hasLeftTypes, leftAlias]);
   const rightColumnTypesQualified = useMemo(() => {
     const map: Record<string, string> = {};
     for (const [name, type] of Object.entries(rightColumnTypes)) {
-      map[`[${rightAlias}].[${name}]`] = type;
+      map[qualifyJoinField(rightAlias, name)] = type;
     }
     return map;
   }, [rightColumnTypes, rightAlias]);
-  const asofRightTimeOptions = useMemo(
-    () =>
-      hasRightTypes
-        ? rightFieldCompletions.filter((opt) => {
-            const m = opt.match(/\[.*?\]\.\[(.+?)\]/);
-            return m ? isTemporalDataFieldType(rightColumnTypes[m[1]]) : false;
-          })
-        : rightFieldCompletions,
-    [rightFieldCompletions, rightColumnTypes, hasRightTypes]
-  );
+  const asofRightTimeOptions = useMemo(() => {
+    const filtered = hasRightTypes
+      ? rightRawColumns.filter((field) => isTemporalDataFieldType(rightColumnTypes[field]))
+      : rightRawColumns;
+    return filtered.map((field) => qualifyJoinField(rightAlias, field));
+  }, [hasRightTypes, rightAlias, rightColumnTypes, rightRawColumns]);
 
-  async function handleJoinTypeChange(value: string) {
+  function handleJoinTypeChange(value: string) {
     updateConfig((cfg) => ({
       ...cfg,
       joinType: value,
@@ -356,7 +442,7 @@ export default function FormJoin({
       conflict:
         value === 'semi' || value === 'anti'
           ? undefined
-          : (cfg.conflict ?? { strategy: 'suffix', leftSuffix: '_left', rightSuffix: '_right' }),
+          : (cfg.conflict ?? { ...DEFAULT_JOIN_CONFLICT }),
     }));
   }
 
@@ -364,7 +450,7 @@ export default function FormJoin({
     updateConfig((cfg) => ({ ...cfg, keep: items.length > 0 ? items : undefined }));
   }
 
-  // ── Keep field modal state ──
+  // Keep-field edits stay local until the user confirms the dialog.
   const [keepDialogOpen, setKeepDialogOpen] = useState(false);
   const [draftLeftWildcard, setDraftLeftWildcard] = useState(false);
   const [draftRightWildcard, setDraftRightWildcard] = useState(false);
@@ -495,157 +581,47 @@ export default function FormJoin({
     () => summarizeJoinKeep(keepItems, 'right', rightAlias, rightRawColumns.length),
     [keepItems, rightAlias, rightRawColumns.length]
   );
-
-  // ── Inline condition handlers ──
-  const [asofPending, setAsofPending] = useState<ConditionEntry>({ ...DEFAULT_CONDITION });
+  const hasOutputFieldConflict = useMemo(() => {
+    if (!rightSourceLabel || rightRawColumns.length === 0) return false;
+    const draft = createJoinKeepDraft(
+      keepItems,
+      fieldCompletions,
+      rightRawColumns,
+      leftAlias,
+      rightAlias
+    );
+    const leftOutputNames = new Set(
+      fieldCompletions
+        .map((field) => {
+          const qualified = qualifyJoinField(leftAlias, field);
+          if (!draft.leftSelected.has(qualified)) return null;
+          return (draft.leftAliases.get(qualified) || field).toLowerCase();
+        })
+        .filter((field): field is string => field !== null)
+    );
+    return rightRawColumns.some((field) => {
+      const qualified = qualifyJoinField(rightAlias, field);
+      if (!draft.rightSelected.has(qualified)) return false;
+      const outputName = (draft.rightAliases.get(qualified) || field).toLowerCase();
+      return leftOutputNames.has(outputName);
+    });
+  }, [fieldCompletions, keepItems, leftAlias, rightAlias, rightRawColumns, rightSourceLabel]);
 
   const conditionOperatorItems = useMemo(
     () => OPERATOR_KEYS.map((op) => ({ value: op.value, label: tr(op.key) })),
     [tr]
   );
 
-  function condHandleChange(
-    isEmpty: boolean,
-    pending: ConditionEntry,
-    setPending: (v: ConditionEntry) => void,
-    onChange: (next: ConditionEntry[]) => void,
-    index: number,
-    sourceConditions: ConditionEntry[],
-    patch: Partial<ConditionEntry>
-  ) {
-    if (isEmpty) {
-      const next = { ...pending, ...patch };
-      setPending(next);
-      if (next.left || next.right) {
-        setPending({ ...DEFAULT_CONDITION });
-        onChange([next]);
-      }
-    } else {
-      onChange(sourceConditions.map((c, i) => (i === index ? { ...c, ...patch } : c)));
-    }
-  }
-
-  function condHandleRemove(
-    isEmpty: boolean,
-    setPending: (v: ConditionEntry) => void,
-    onChange: (next: ConditionEntry[]) => void,
-    index: number,
-    sourceConditions: ConditionEntry[]
-  ) {
-    if (isEmpty) {
-      setPending({ ...DEFAULT_CONDITION });
-    } else {
-      onChange(sourceConditions.filter((_, i) => i !== index));
-    }
-  }
-
-  function condHandleAdd(
-    isEmpty: boolean,
-    pending: ConditionEntry,
-    setPending: (v: ConditionEntry) => void,
-    onChange: (next: ConditionEntry[]) => void,
-    index: number,
-    sourceConditions: ConditionEntry[]
-  ) {
-    if (isEmpty) {
-      if (!pending.left && !pending.right) return;
-      onChange([pending, { ...DEFAULT_CONDITION }]);
-      setPending({ ...DEFAULT_CONDITION });
-    } else {
-      const next = [...sourceConditions];
-      next.splice(index + 1, 0, { ...DEFAULT_CONDITION });
-      onChange(next);
-    }
-  }
-
-  function renderConditionRow(
-    cond: ConditionEntry,
-    i: number,
-    isEmpty: boolean,
-    pending: ConditionEntry,
-    setPending: (v: ConditionEntry) => void,
-    onChange: (next: ConditionEntry[]) => void,
-    sourceConditions: ConditionEntry[],
-    leftLabel: string,
-    rightLabel: string,
-    hideOperator?: boolean
-  ) {
-    return (
-      <div key={i} className="flex items-center gap-1">
-        <GlassFieldSingleSelect
-          value={cond.left}
-          options={leftFieldCompletions}
-          onChange={(v) =>
-            condHandleChange(isEmpty, pending, setPending, onChange, i, sourceConditions, {
-              left: v,
-            })
-          }
-          placeholder={leftLabel}
-          className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
-        />
-        {hideOperator ? (
-          <span className="flex h-7 w-[72px] shrink-0 items-center justify-center text-[12px] text-text-secondary [&>span]:text-center">
-            {tr('operatorEq')}
-          </span>
-        ) : (
-          <GlassOptionSingleSelect
-            value={cond.operator}
-            groups={[{ key: 'op', items: conditionOperatorItems }]}
-            onChange={(v) =>
-              condHandleChange(isEmpty, pending, setPending, onChange, i, sourceConditions, {
-                operator: v as JoinCondition['operator'],
-              })
-            }
-            className="h-7 w-[72px] shrink-0 text-[12px] [&>span]:text-center"
-          />
-        )}
-        <GlassFieldSingleSelect
-          value={cond.right}
-          options={rightFieldCompletions}
-          onChange={(v) =>
-            condHandleChange(isEmpty, pending, setPending, onChange, i, sourceConditions, {
-              right: v,
-            })
-          }
-          placeholder={rightLabel}
-          className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
-        />
-        <button
-          type="button"
-          onClick={() => condHandleAdd(isEmpty, pending, setPending, onChange, i, sourceConditions)}
-          className="h-6 w-6 flex shrink-0 items-center justify-center rounded text-text-muted/40 hover:text-accent transition-colors"
-          title={tr('addCondition')}
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={() => condHandleRemove(isEmpty, setPending, onChange, i, sourceConditions)}
-          className="h-6 w-6 flex shrink-0 items-center justify-center rounded text-text-muted/40 hover:text-error transition-colors"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    );
-  }
-
   function handleConditionsChange(next: ConditionEntry[]) {
     updateConfig((cfg) => ({ ...cfg, conditions: next.length > 0 ? next : undefined }));
   }
 
   function handleCondAdd(index: number) {
-    const next = [...conditions];
-    next.splice(index + 1, 0, { ...DEFAULT_CONDITION });
-    handleConditionsChange(next);
+    handleConditionsChange(insertCondition(conditions, index));
   }
 
   function handleCondRemove(index: number) {
-    const next = conditions.filter((_, j) => j !== index);
-    if (next.length === 0 || next.every((c) => !c.left && !c.right)) {
-      handleConditionsChange([]);
-    } else {
-      handleConditionsChange(next);
-    }
+    handleConditionsChange(removeCondition(conditions, index));
   }
 
   function handleAsofByChange(next: ConditionEntry[]) {
@@ -658,82 +634,56 @@ export default function FormJoin({
     }));
   }
 
-  const conflictOptions = useMemo(
+  function handleAsofByAdd(index: number) {
+    handleAsofByChange(insertCondition(asofBy, index));
+  }
+
+  function handleAsofByRemove(index: number) {
+    handleAsofByChange(removeCondition(asofBy, index));
+  }
+
+  const conflictGroups = useMemo(
     () => [
-      { value: 'right_prefix', label: tr('conflictPrefix') },
-      { value: 'suffix', label: tr('conflictSuffix') },
+      {
+        key: 'conflict',
+        items: [
+          { value: 'right_prefix', label: tr('conflictPrefix') },
+          { value: 'suffix', label: tr('conflictSuffix') },
+        ],
+      },
     ],
     [tr]
   );
-  const conflictGroups = useMemo(
-    () => [{ key: 'conflict', items: conflictOptions }],
-    [conflictOptions]
-  );
 
   return (
-    <div className="grid content-start gap-2.5">
-      {/* ═══ Big card: 1:1 two-column layout ═══ */}
-      <section className="operator-section">
-        <div className="flex">
-          {/* ── Left column (flex-1): only Step 1 ── */}
-          <div className="flex-[4] border-r border-border-muted/50">
+    <div className="flex h-full min-h-0 overflow-hidden">
+      {/* Fixed mode rail with a flexible configuration area. */}
+      <section className="flex h-full min-h-0 w-full overflow-hidden">
+        <div className="flex h-full min-h-0 w-full">
+          {/* Join mode rail */}
+          <div className="scrollbar-hover w-[180px] shrink-0 overflow-y-auto border-r border-border-muted bg-surface/40 p-3.5">
             {/* Data source section */}
-            <div className="p-3 grid gap-2.5">
-              <div className="flex items-end gap-3 px-0.5">
-                <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
-                  1
-                </span>
-                <div className="grid">
-                  <span className="text-[13px] font-semibold text-text-primary">
-                    {tr('joinSourcesHeader')}
-                  </span>
-                  <span className="text-[10px] text-text-muted">{tr('joinSourcesHint')}</span>
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <div className="flex-1 flex items-center gap-2">
-                  <span className="shrink-0 text-[11px] font-medium text-text-secondary">
-                    {tr('leftInput')}
-                  </span>
-                  <div className="flex-1 flex items-center rounded-md border border-border-muted/70 bg-background/28 px-2 h-7 min-w-0">
-                    <span className="text-[12px] text-text-primary truncate">
-                      {leftSourceLabel || tr('noLeftSource')}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex-1 flex items-center gap-2">
-                  <span className="shrink-0 text-[11px] font-medium text-text-secondary">
-                    {tr('rightInput')}
-                  </span>
-                  <div className="flex-1 flex items-center rounded-md border border-border-muted/70 bg-background/28 px-2 h-7 min-w-0">
-                    <span className="text-[12px] text-text-primary truncate">
-                      {rightSourceLabel || tr('noRightSource')}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-1 text-center">
+            <div className="grid gap-2.5">
+              <div className="grid gap-1">
                 <span className="mb-1 block text-[12px] font-medium text-text-secondary">
                   {tr('joinType')}
                 </span>
-                <div className="grid grid-cols-4 gap-1">
+                <div className="grid grid-cols-1 gap-1">
                   {joinTypes.map((jt) => (
                     <button
                       key={jt.value}
                       type="button"
                       onClick={() => handleJoinTypeChange(jt.value)}
                       title={jt.tip}
-                      className={`flex flex-col items-center gap-0.5 rounded-lg border py-1.5 px-0.5 transition-colors ${
+                      className={`flex min-h-8 items-center gap-2 rounded-md px-2 text-left transition-colors ${
                         joinType === jt.value
-                          ? 'border-accent bg-accent/5'
-                          : 'border-border-muted bg-background/28 hover:border-border-muted/80'
+                          ? 'bg-accent/10 text-accent'
+                          : 'text-text-secondary hover:bg-surface-hover'
                       }`}
                     >
                       <JoinVennSVG type={jt.value} selected={joinType === jt.value} />
                       <span
-                        className={`text-[10px] leading-tight ${joinType === jt.value ? 'text-accent font-medium' : 'text-text-muted'}`}
+                        className={`text-[13px] leading-tight ${joinType === jt.value ? 'font-medium text-accent' : 'text-text-secondary'}`}
                       >
                         {jt.label}
                       </span>
@@ -744,20 +694,73 @@ export default function FormJoin({
             </div>
           </div>
 
-          {/* ── Right column (flex-[6]): Steps 2 + 3 stacked ── */}
-          <div className="flex-[6] flex flex-col">
-            {/* Step 2: Condition section */}
-            <div className="p-3 grid gap-2">
-              <div className="flex items-end gap-3 px-0.5">
-                <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
-                  2
-                </span>
-                <div className="grid">
-                  <span className="text-[13px] font-semibold text-text-primary">
-                    {tr('joinConditionsHeader')}
+          {/* Join configuration */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
+            <div className="order-1 p-4">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-20 shrink-0 text-[13px] text-text-secondary">
+                    {tr('leftInput')}
                   </span>
-                  <span className="text-[10px] text-text-muted">{tr('joinConditionsHint')}</span>
+                  <div className="flex h-7 w-48 min-w-0 items-center rounded-md border border-border-muted/70 bg-background/28 px-2">
+                    <span className="truncate text-[12px] text-text-primary">
+                      {leftSourceLabel || tr('noLeftSource')}
+                    </span>
+                  </div>
                 </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-20 shrink-0 text-[13px] text-text-secondary">
+                    {tr('rightInput')}
+                  </span>
+                  <div className="flex h-7 w-48 min-w-0 items-center rounded-md border border-border-muted/70 bg-background/28 px-2">
+                    <span className="truncate text-[12px] text-text-primary">
+                      {rightSourceLabel || tr('noRightSource')}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {isAsof && (
+              <div className="order-2 px-4 pb-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="w-20 shrink-0 whitespace-nowrap text-[13px] text-text-secondary">
+                    {tr('tolerance')}
+                  </span>
+                  {(
+                    [
+                      { key: 'd', label: tr('toleranceDay'), max: 365 },
+                      { key: 'h', label: tr('toleranceHour'), max: 23 },
+                      { key: 'm', label: tr('toleranceMin'), max: 59 },
+                      { key: 's', label: tr('toleranceSec'), max: 59 },
+                      { key: 'ms', label: tr('toleranceMs'), max: 999 },
+                    ] as const
+                  ).map(({ key, label, max }) => (
+                    <div key={key} className="flex items-center gap-1">
+                      <GlassFormTextInput
+                        type="number"
+                        min={0}
+                        max={max}
+                        value={toleranceVal ? String(durationParts[key]) : ''}
+                        placeholder="0"
+                        onChange={(value) => {
+                          const parsed = parseInt(value, 10);
+                          handleDurationChange(key, Number.isNaN(parsed) ? 0 : Math.max(0, parsed));
+                        }}
+                        textCenter
+                        className="h-7 w-[46px] !px-1.5 text-[12px]"
+                      />
+                      <span className="w-[28px] text-[12px] text-text-muted">{label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Conditions */}
+            <div className="order-4 mx-4 grid gap-2 border-t border-border-muted/60 pb-4 pt-3">
+              <div className="text-[13px] font-medium text-text-secondary">
+                {tr('joinConditionsHeader')}
               </div>
 
               {rightSourceLabel && rightColumnsError && !isAsof && (
@@ -766,114 +769,130 @@ export default function FormJoin({
 
               {isAsof ? (
                 <div className="grid gap-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <GlassFieldSingleSelect
-                      value={asofLeftTime}
-                      options={asofLeftTimeOptions}
-                      columnTypes={leftColumnTypesQualified}
-                      showType
-                      onChange={(v) =>
-                        updateConfig((cfg) => ({
-                          ...cfg,
-                          asof: {
-                            ...((cfg.asof as Record<string, unknown>) ?? {}),
-                            leftTime: v || undefined,
+                  <div className="flex min-h-8 items-center gap-1 px-0.5">
+                    <div className="flex min-w-0 flex-[1] items-center">
+                      <GlassFieldSingleSelect
+                        value={asofLeftTime}
+                        options={asofLeftTimeOptions}
+                        columnTypes={leftColumnTypesQualified}
+                        showType
+                        onChange={(v) =>
+                          updateConfig((cfg) => ({
+                            ...cfg,
+                            asof: {
+                              ...((cfg.asof as Record<string, unknown>) ?? {}),
+                              leftTime: v || undefined,
+                            },
+                          }))
+                        }
+                        placeholder={tr('leftTimeCol')}
+                        className="h-7 w-full min-w-0 text-[12px]"
+                      />
+                    </div>
+                    <div className="flex min-w-0 flex-[0.6] items-center">
+                      <GlassOptionSingleSelect
+                        value={asofOperator}
+                        groups={[
+                          {
+                            key: 'op',
+                            items: [
+                              { value: '>=', label: tr('asofOpBackward') },
+                              { value: '<=', label: tr('asofOpForward') },
+                              { value: 'nearest', label: tr('asofOpNearest') },
+                            ],
                           },
-                        }))
-                      }
-                      placeholder={tr('leftTimeCol')}
-                      className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
-                    />
-                    <GlassOptionSingleSelect
-                      value={asofOperator}
-                      groups={[
+                        ]}
+                        onChange={(v) =>
+                          updateConfig((cfg) => ({
+                            ...cfg,
+                            asof: {
+                              ...((cfg.asof as Record<string, unknown>) ?? {}),
+                              operator: v,
+                            },
+                          }))
+                        }
+                        className="h-7 w-full text-[12px] [&>span]:text-center"
+                      />
+                    </div>
+                    <div className="flex min-w-0 flex-[1] items-center">
+                      <GlassFieldSingleSelect
+                        value={asofRightTime}
+                        options={asofRightTimeOptions}
+                        columnTypes={rightColumnTypesQualified}
+                        showType
+                        onChange={(v) =>
+                          updateConfig((cfg) => ({
+                            ...cfg,
+                            asof: {
+                              ...((cfg.asof as Record<string, unknown>) ?? {}),
+                              rightTime: v || undefined,
+                            },
+                          }))
+                        }
+                        placeholder={tr('rightTimeCol')}
+                        className="h-7 w-full min-w-0 text-[12px]"
+                      />
+                    </div>
+                    <span className="w-[60px] flex-shrink-0" aria-hidden="true" />
+                  </div>
+                  <div className="min-w-0 max-h-[180px] overflow-x-hidden overflow-y-auto">
+                    <GlassRowList
+                      items={displayedAsofBy}
+                      columns={[
                         {
-                          key: 'op',
-                          items: [
-                            { value: '>=', label: tr('asofOpBackward') },
-                            { value: '<=', label: tr('asofOpForward') },
-                            { value: 'nearest', label: tr('asofOpNearest') },
-                          ],
+                          flex: 'flex-[1]',
+                          header: '',
+                          render: (cond: ConditionEntry, i: number) => (
+                            <GlassFieldSingleSelect
+                              value={cond.left}
+                              options={leftFieldCompletions}
+                              onChange={(v) =>
+                                handleAsofByChange(
+                                  displayedAsofBy.map((c, j) => (j === i ? { ...c, left: v } : c))
+                                )
+                              }
+                              placeholder={tr('leftField')}
+                              className="h-7 w-full text-[12px]"
+                            />
+                          ),
+                        },
+                        {
+                          flex: 'flex-[0.6]',
+                          header: '',
+                          render: () => (
+                            <span className="w-full text-center text-[12px] text-text-secondary">
+                              {tr('operatorEq')}
+                            </span>
+                          ),
+                        },
+                        {
+                          flex: 'flex-[1]',
+                          header: '',
+                          render: (cond: ConditionEntry, i: number) => (
+                            <GlassFieldSingleSelect
+                              value={cond.right}
+                              options={rightFieldCompletions}
+                              onChange={(v) =>
+                                handleAsofByChange(
+                                  displayedAsofBy.map((c, j) => (j === i ? { ...c, right: v } : c))
+                                )
+                              }
+                              placeholder={tr('rightField')}
+                              className="h-7 w-full text-[12px]"
+                            />
+                          ),
                         },
                       ]}
-                      onChange={(v) =>
-                        updateConfig((cfg) => ({
-                          ...cfg,
-                          asof: { ...((cfg.asof as Record<string, unknown>) ?? {}), operator: v },
-                        }))
+                      onAdd={handleAsofByAdd}
+                      onRemove={handleAsofByRemove}
+                      addTitle={tr('addCondition')}
+                      canAct={(action: RowAction, index: number) =>
+                        action === 'add'
+                          ? Boolean(displayedAsofBy[index]?.left && displayedAsofBy[index]?.right)
+                          : true
                       }
-                      className="h-7 w-[84px] shrink-0 text-[12px] [&>span]:text-center"
+                      hideHeader
                     />
-                    <GlassFieldSingleSelect
-                      value={asofRightTime}
-                      options={asofRightTimeOptions}
-                      columnTypes={rightColumnTypesQualified}
-                      showType
-                      onChange={(v) =>
-                        updateConfig((cfg) => ({
-                          ...cfg,
-                          asof: {
-                            ...((cfg.asof as Record<string, unknown>) ?? {}),
-                            rightTime: v || undefined,
-                          },
-                        }))
-                      }
-                      placeholder={tr('rightTimeCol')}
-                      className="h-7 w-0 flex-[1_1_0] min-w-[100px] text-[12px]"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {(
-                      [
-                        { key: 'd', label: tr('toleranceDay'), max: 365 },
-                        { key: 'h', label: tr('toleranceHour'), max: 23 },
-                        { key: 'm', label: tr('toleranceMin'), max: 59 },
-                        { key: 's', label: tr('toleranceSec'), max: 59 },
-                        { key: 'ms', label: tr('toleranceMs'), max: 999 },
-                      ] as const
-                    ).map(({ key, label, max }) => (
-                      <div key={key} className="flex items-center gap-0.5">
-                        <GlassFormTextInput
-                          type="number"
-                          min={0}
-                          max={max}
-                          value={String(durationParts[key])}
-                          onChange={(v) => {
-                            const n = parseInt(v, 10);
-                            handleDurationChange(key, Number.isNaN(n) ? 0 : Math.max(0, n));
-                          }}
-                          textCenter
-                          className={`h-7 w-[46px] !px-1.5 text-[12px] ${showToleranceError ? 'border-error ring-error/20 ring-2' : ''}`}
-                        />
-                        <span className="text-[10px] text-text-muted w-[28px]">{label}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {showToleranceError && (
-                    <div className="text-[11px] text-warning px-0.5">{tr('toleranceRequired')}</div>
-                  )}
-                  <div className="max-h-[180px] overflow-y-auto">
-                    <div className="space-y-1">
-                      {(() => {
-                        const asofBy = (asof.by as ConditionEntry[]) ?? [];
-                        const isEmpty = asofBy.length === 0;
-                        const display = isEmpty ? [asofPending] : asofBy;
-                        return display.map((cond, i) =>
-                          renderConditionRow(
-                            cond,
-                            i,
-                            isEmpty,
-                            asofPending,
-                            setAsofPending,
-                            handleAsofByChange,
-                            asofBy,
-                            tr('leftField'),
-                            tr('rightField'),
-                            true
-                          )
-                        );
-                      })()}
-                    </div>
                   </div>
                 </div>
               ) : needsConditions ? (
@@ -944,67 +963,54 @@ export default function FormJoin({
                   />
                 </div>
               ) : (
-                <div className="text-[12px] text-text-secondary px-0.5">
-                  {tr('noConditionsNeeded')}
-                </div>
+                <div className="px-0.5 text-[12px] text-text-muted">{tr('noConditionsNeeded')}</div>
               )}
             </div>
 
-            {/* ── Separator ── */}
-            <div className="border-t border-border-muted/50" />
-
-            {/* Step 3: Config section */}
-            <div className="p-3 grid gap-3 content-start">
-              <div className="flex items-end gap-3 px-0.5">
-                <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
-                  3
-                </span>
-                <div className="grid">
-                  <span className="text-[13px] font-semibold text-text-primary">
-                    {tr('joinConfigHeader')}
-                  </span>
-                  <span className="text-[10px] text-text-muted">{tr('joinConfigHint')}</span>
-                </div>
-              </div>
-
+            {/* Output fields and conflict handling */}
+            <div className="order-3 flex min-h-7 flex-wrap items-center gap-x-5 gap-y-2 px-4 pb-4">
               {/* Keep fields */}
               {!isSemiAnti && (
-                <div className="flex gap-4 px-0.5">
-                  <div className="flex-1 flex items-center justify-between">
-                    <span className="text-[12px] text-text-primary">
-                      {tr('keepFieldStatsLeft')}
-                    </span>
+                <div className="flex shrink-0 items-center gap-5 px-0.5">
+                  <div className="flex items-center gap-2" title={tr('keepFieldStatsLeft')}>
+                    <span className="text-[12px] text-text-primary">{tr('joinLeftFields')}</span>
                     <div className="flex items-center gap-1">
                       <span className="text-[12px] text-text-muted tabular-nums">
-                        {leftKeepSummary.selected}/{leftKeepSummary.renamed}/
-                        {fieldCompletions.length}
+                        {tr('joinFieldSummary', {
+                          selected: leftKeepSummary.selected,
+                          total: fieldCompletions.length,
+                          renamed: leftKeepSummary.renamed,
+                        })}
                       </span>
                       <button
                         type="button"
                         onClick={openKeepDialog}
-                        className="flex h-6 w-6 items-center justify-center rounded text-text-muted/50 hover:text-accent transition-colors"
+                        className="flex h-7 items-center gap-1 rounded px-1.5 text-[12px] text-text-secondary transition-colors hover:bg-accent-subtle hover:text-accent"
                         title={tr('adjustKeepFields')}
                       >
                         <Settings className="h-3.5 w-3.5" />
+                        <span>{tr('joinAdjustFields')}</span>
                       </button>
                     </div>
                   </div>
-                  <div className="flex-1 flex items-center justify-between">
-                    <span className="text-[12px] text-text-primary">
-                      {tr('keepFieldStatsRight')}
-                    </span>
+                  <div className="flex items-center gap-2" title={tr('keepFieldStatsRight')}>
+                    <span className="text-[12px] text-text-primary">{tr('joinRightFields')}</span>
                     <div className="flex items-center gap-1">
                       <span className="text-[12px] text-text-muted tabular-nums">
-                        {rightKeepSummary.selected}/{rightKeepSummary.renamed}/
-                        {rightRawColumns.length}
+                        {tr('joinFieldSummary', {
+                          selected: rightKeepSummary.selected,
+                          total: rightRawColumns.length,
+                          renamed: rightKeepSummary.renamed,
+                        })}
                       </span>
                       <button
                         type="button"
                         onClick={openKeepDialog}
-                        className="flex h-6 w-6 items-center justify-center rounded text-text-muted/50 hover:text-accent transition-colors"
+                        className="flex h-7 items-center gap-1 rounded px-1.5 text-[12px] text-text-secondary transition-colors hover:bg-accent-subtle hover:text-accent"
                         title={tr('adjustKeepFields')}
                       >
                         <Settings className="h-3.5 w-3.5" />
+                        <span>{tr('joinAdjustFields')}</span>
                       </button>
                     </div>
                   </div>
@@ -1012,47 +1018,54 @@ export default function FormJoin({
               )}
 
               {/* Conflict */}
-              {!isSemiAnti && (
-                <div className="flex items-center gap-2 px-0.5">
-                  <span className="shrink-0 text-[11px] font-medium text-text-secondary">
-                    {tr('conflict')}
+              {!isSemiAnti &&
+                rightSourceLabel &&
+                !rightColumnsError &&
+                (hasOutputFieldConflict ? (
+                  <div className="flex shrink-0 items-center gap-2 px-0.5">
+                    <span className="shrink-0 text-[12px] text-text-primary">{tr('conflict')}</span>
+                    <GlassOptionSingleSelect
+                      value={conflictStrategy}
+                      groups={conflictGroups}
+                      onChange={(v) =>
+                        updateConfig((cfg) => {
+                          const current = (cfg.conflict as Record<string, unknown>) ?? {};
+                          return {
+                            ...cfg,
+                            conflict: {
+                              ...current,
+                              strategy: v,
+                              ...(v === 'right_prefix' && !current.rightPrefix
+                                ? { rightPrefix: 'right_' }
+                                : {}),
+                            },
+                          };
+                        })
+                      }
+                      className="h-7 w-40 text-[12px] [&>span]:text-left"
+                    />
+                    {conflictStrategy === 'right_prefix' && (
+                      <GlassFormTextInput
+                        value={rightPrefix}
+                        onChange={(v) =>
+                          updateConfig((cfg) => ({
+                            ...cfg,
+                            conflict: {
+                              ...((cfg.conflict as Record<string, unknown>) ?? {}),
+                              rightPrefix: v.trim() || 'right_',
+                            },
+                          }))
+                        }
+                        placeholder={tr('prefix')}
+                        className="h-7 w-28 text-[13px]"
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <span className="px-0.5 text-[12px] text-text-muted">
+                    {tr('joinNoFieldConflict')}
                   </span>
-                  <GlassOptionSingleSelect
-                    value={conflictStrategy}
-                    groups={conflictGroups}
-                    onChange={(v) =>
-                      updateConfig((cfg) => {
-                        const current = (cfg.conflict as Record<string, unknown>) ?? {};
-                        return {
-                          ...cfg,
-                          conflict: {
-                            ...current,
-                            strategy: v,
-                            ...(v === 'right_prefix' && !current.rightPrefix
-                              ? { rightPrefix: 'right_' }
-                              : {}),
-                          },
-                        };
-                      })
-                    }
-                    className="h-7 text-[12px] [&>span]:text-left flex-1 min-w-0"
-                  />
-                  <GlassFormTextInput
-                    value={rightPrefix}
-                    onChange={(v) =>
-                      updateConfig((cfg) => ({
-                        ...cfg,
-                        conflict: {
-                          ...((cfg.conflict as Record<string, unknown>) ?? {}),
-                          rightPrefix: v.trim() || 'right_',
-                        },
-                      }))
-                    }
-                    placeholder={tr('prefix')}
-                    className={`h-7 text-[13px] flex-1 min-w-0 ${conflictStrategy !== 'right_prefix' ? 'invisible' : ''}`}
-                  />
-                </div>
-              )}
+                ))}
 
               {/* Semi/Anti: no extra config needed */}
               {isSemiAnti && (
@@ -1067,7 +1080,7 @@ export default function FormJoin({
         </div>
       </section>
 
-      {/* ═══ Keep field dialog ═══ */}
+      {/* Keep field dialog */}
       {keepDialogOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/28 px-4 py-6"
@@ -1084,102 +1097,30 @@ export default function FormJoin({
               </h3>
             </div>
             <div className="flex gap-4 overflow-y-auto p-4">
-              {/* Left table fields */}
-              <div className="flex-1 border-r border-border-muted/50 pr-4">
-                <h4 className="mb-1 text-[12px] font-medium text-text-secondary">
-                  {leftSourceLabel || tr('leftInput')}
-                </h4>
-                <p className="mb-2 text-[10px] text-text-muted">{tr('joinKeepAliasPrompt')}</p>
-                <label className="flex cursor-pointer items-center gap-1.5 mb-1.5 text-[12px] text-text-secondary font-medium">
-                  <input
-                    type="checkbox"
-                    checked={draftLeftAllChecked}
-                    onChange={toggleDraftLeftAll}
-                    className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
-                  />
-                  {tr('selectAllFields')}
-                </label>
-                <div className="space-y-1 max-h-48 overflow-y-auto">
-                  {fieldCompletions.map((f) => {
-                    const qualified = `[${leftAlias}].[${f}]`;
-                    const isChecked = draftLeftSel.has(qualified);
-                    const alias = draftLeftAliases.get(qualified) ?? '';
-                    return (
-                      <div
-                        key={f}
-                        className="flex items-center gap-1.5 text-[12px] text-text-primary"
-                      >
-                        <label className="flex cursor-pointer items-center gap-1.5 flex-1 min-w-0">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => toggleDraftLeftField(qualified)}
-                            className="h-3.5 w-3.5 shrink-0 rounded border-border-muted accent-accent"
-                          />
-                          <span className="truncate">{f}</span>
-                        </label>
-                        {isChecked && (
-                          <input
-                            type="text"
-                            value={alias}
-                            onChange={(e) => updateLeftAlias(qualified, e.target.value)}
-                            placeholder={f}
-                            className="h-5 w-28 shrink-0 rounded border border-border-muted/50 bg-background/30 px-1.5 text-[11px] text-text-primary outline-none focus:border-accent placeholder:text-text-muted/50"
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-              {/* Right table fields */}
-              <div className="flex-1 pl-4">
-                <h4 className="mb-1 text-[12px] font-medium text-text-secondary">
-                  {rightSourceLabel || tr('rightInput')}
-                </h4>
-                <p className="mb-2 text-[10px] text-text-muted">{tr('joinKeepAliasPrompt')}</p>
-                <label className="flex cursor-pointer items-center gap-1.5 mb-1.5 text-[12px] text-text-secondary font-medium">
-                  <input
-                    type="checkbox"
-                    checked={draftRightAllChecked}
-                    onChange={toggleDraftRightAll}
-                    className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
-                  />
-                  {tr('selectAllFields')}
-                </label>
-                <div className="space-y-1 max-h-48 overflow-y-auto">
-                  {rightRawColumns.map((f) => {
-                    const qualified = `[${rightAlias}].[${f}]`;
-                    const isChecked = draftRightSel.has(qualified);
-                    const alias = draftRightAliases.get(qualified) ?? '';
-                    return (
-                      <div
-                        key={f}
-                        className="flex items-center gap-1.5 text-[12px] text-text-primary"
-                      >
-                        <label className="flex cursor-pointer items-center gap-1.5 flex-1 min-w-0">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => toggleDraftRightField(qualified)}
-                            className="h-3.5 w-3.5 shrink-0 rounded border-border-muted accent-accent"
-                          />
-                          <span className="truncate">{f}</span>
-                        </label>
-                        {isChecked && (
-                          <input
-                            type="text"
-                            value={alias}
-                            onChange={(e) => updateRightAlias(qualified, e.target.value)}
-                            placeholder={f}
-                            className="h-5 w-28 shrink-0 rounded border border-border-muted/50 bg-background/30 px-1.5 text-[11px] text-text-primary outline-none focus:border-accent placeholder:text-text-muted/50"
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              <JoinKeepFieldColumn
+                side="left"
+                title={leftSourceLabel || tr('leftInput')}
+                fields={fieldCompletions}
+                alias={leftAlias}
+                selected={draftLeftSel}
+                aliases={draftLeftAliases}
+                allChecked={draftLeftAllChecked}
+                onToggleAll={toggleDraftLeftAll}
+                onToggleField={toggleDraftLeftField}
+                onAliasChange={updateLeftAlias}
+              />
+              <JoinKeepFieldColumn
+                side="right"
+                title={rightSourceLabel || tr('rightInput')}
+                fields={rightRawColumns}
+                alias={rightAlias}
+                selected={draftRightSel}
+                aliases={draftRightAliases}
+                allChecked={draftRightAllChecked}
+                onToggleAll={toggleDraftRightAll}
+                onToggleField={toggleDraftRightField}
+                onAliasChange={updateRightAlias}
+              />
             </div>
             <div className="flex justify-end gap-2 border-t border-border-muted/50 px-4 py-3">
               <button

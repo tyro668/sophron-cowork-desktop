@@ -1,6 +1,4 @@
-import { BrowserWindow, ipcMain } from 'electron';
 import type { DataWorkflowEdge, DataWorkflowNode } from '../../../renderer/types';
-import type { PrepDiagnostic } from '../../../shared/prep-dsl/ast';
 import {
   JoinConfigSchema,
   MAX_PIVOT_VALUES_PER_FIELD,
@@ -126,14 +124,13 @@ export abstract class WorkflowCompiler extends DatasetStore {
     node: DataWorkflowNode,
     outputRelation: string,
     relationByNode: Map<string, string>,
-    edges: DataWorkflowEdge[],
-    diagnostics: PrepDiagnostic[]
+    edges: DataWorkflowEdge[]
   ): Promise<string> {
     if (node.type === 'join') {
       return this.compileJoinSql(node, outputRelation, relationByNode, edges);
     }
     if (node.type === 'set_op') {
-      return this.compileSetOpSql(node, outputRelation, relationByNode, edges, diagnostics);
+      return this.compileSetOpSql(node, outputRelation, relationByNode, edges);
     }
     const inputId = this.findIncomingNodeId(node.id, edges, 'input');
     const inputRelation = inputId ? relationByNode.get(inputId) : null;
@@ -211,8 +208,7 @@ export abstract class WorkflowCompiler extends DatasetStore {
     node: DataWorkflowNode,
     outputRelation: string,
     relationByNode: Map<string, string>,
-    edges: DataWorkflowEdge[],
-    diagnostics: PrepDiagnostic[]
+    edges: DataWorkflowEdge[]
   ): Promise<string> {
     const leftNodeId = this.findIncomingNodeId(node.id, edges, 'left');
     const rightNodeId = this.findIncomingNodeId(node.id, edges, 'right');
@@ -224,82 +220,6 @@ export abstract class WorkflowCompiler extends DatasetStore {
     const leftColumns = await this.getTableColumns(leftRelation);
     const rightColumns = await this.getTableColumns(rightRelation);
     const config = node.config;
-
-    // 前置检查：列数不一致（仅对非 UNION BY NAME 场景）
-    const isUnionByName =
-      String(config.operation ?? 'union') === 'union' && config.match === 'by_name';
-    if (!isUnionByName && leftColumns.length !== rightColumns.length) {
-      diagnostics.push({
-        severity: 'warning',
-        message: `左右两表列数不一致（左表 ${leftColumns.length} 列，右表 ${rightColumns.length} 列），缺失列已自动填充 NULL`,
-      });
-    }
-
-    // 前置检查：按位置匹配时列名不同
-    if (config.match !== 'by_name') {
-      const minLen = Math.min(leftColumns.length, rightColumns.length);
-      const mismatches: string[] = [];
-      for (let i = 0; i < minLen; i++) {
-        if (leftColumns[i] !== rightColumns[i]) {
-          mismatches.push(`第 ${i + 1} 列：左表「${leftColumns[i]}」≠ 右表「${rightColumns[i]}」`);
-        }
-      }
-      if (mismatches.length > 0) {
-        diagnostics.push({
-          severity: 'warning',
-          message: `左右两表按位置匹配，但列名不同：${mismatches.join('；')}`,
-        });
-      }
-    }
-
-    // 前置检查：类型兼容性
-    const NUMERIC_TYPES = ['integer', 'float', 'decimal'];
-    const TEMPORAL_TYPES = ['date', 'datetime'];
-    const leftTypes = await this.getTableColumnTypes(leftRelation);
-    const rightTypes = await this.getTableColumnTypes(rightRelation);
-    const minTypeLen = Math.min(leftTypes.length, rightTypes.length);
-    for (let i = 0; i < minTypeLen; i++) {
-      const lt = leftTypes[i].type;
-      const rt = rightTypes[i].type;
-      if (lt === rt) continue;
-      const bothNumeric = NUMERIC_TYPES.includes(lt) && NUMERIC_TYPES.includes(rt);
-      const bothTemporal = TEMPORAL_TYPES.includes(lt) && TEMPORAL_TYPES.includes(rt);
-      if (bothNumeric || bothTemporal) continue;
-      if (lt === 'text' || rt === 'text') {
-        diagnostics.push({
-          severity: 'warning',
-          message: `第 ${i + 1} 列类型不一致（左表「${leftColumns[i]}」: ${lt}，右表「${rightColumns[i]}」: ${rt}），可能导致数据转换异常`,
-        });
-      } else {
-        diagnostics.push({
-          severity: 'warning',
-          message: `第 ${i + 1} 列类型不兼容（左表「${leftColumns[i]}」: ${lt}，右表「${rightColumns[i]}」: ${rt}），可能导致执行错误`,
-        });
-      }
-    }
-
-    const typeWarnings = diagnostics.filter(
-      (d) => d.severity === 'warning' && d.message.includes('类型')
-    );
-    if (typeWarnings.length > 0) {
-      const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
-      if (!win) throw new Error('无法找到窗口来显示确认对话框');
-      const channel = `operator-confirm:${Date.now()}`;
-      win.webContents.send('data.operatorConfirm', {
-        channel,
-        title: '列类型不匹配',
-        message: '左右两表的列类型不完全匹配，执行时可能出现数据转换异常或精度丢失。',
-        detail: typeWarnings.map((d) => d.message).join('\n'),
-        confirmLabel: '忽略警告，继续执行',
-        cancelLabel: '取消执行',
-      });
-      const confirmed = await new Promise<boolean>((resolve) => {
-        ipcMain.handleOnce(channel, (_event, result: boolean) => resolve(result));
-      });
-      if (!confirmed) {
-        throw new Error('用户取消了集合操作执行：列类型不匹配');
-      }
-    }
 
     return compileSetOpSql(
       quoteIdentifier(outputRelation),
