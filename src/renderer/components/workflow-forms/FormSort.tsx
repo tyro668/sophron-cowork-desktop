@@ -55,8 +55,7 @@ export default function FormSort({
 
   const addKeyAfter = useCallback(
     (index: number) => {
-      const hasEmpty = activeKeys.some((k) => !k.field);
-      if (hasEmpty || activeKeys.length >= fieldCompletions.length) return;
+      if (activeKeys.length >= fieldCompletions.length) return;
       const next = [...activeKeys];
       next.splice(index + 1, 0, { ...DEFAULT_SORT_KEY });
       commitKeys(next);
@@ -75,6 +74,17 @@ export default function FormSort({
     [activeKeys, commitKeys]
   );
 
+  const copyKeyAfter = useCallback(
+    (index: number) => {
+      if (activeKeys.length >= fieldCompletions.length) return;
+      const source = activeKeys[index];
+      const next = [...activeKeys];
+      next.splice(index + 1, 0, { field: '', direction: source.direction, nulls: source.nulls });
+      commitKeys(next);
+    },
+    [activeKeys, fieldCompletions.length, commitKeys]
+  );
+
   // Sync drag state from config when not dragging
   useEffect(() => {
     if (!isDragging) resetDrag();
@@ -89,7 +99,7 @@ export default function FormSort({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex-1 space-y-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
           <GlassRowList
-            headerClassName="text-[12px]"
+            headerClassName=""
             items={activeKeys}
             columns={[
               {
@@ -116,6 +126,7 @@ export default function FormSort({
               {
                 flex: 'flex-[2]',
                 header: tr('sortDirectionHeader'),
+                align: 'center',
                 render: (key: SortKey, i) => (
                   <GlassDirectionToggle
                     value={key.direction}
@@ -150,8 +161,11 @@ export default function FormSort({
             ]}
             onAdd={addKeyAfter}
             onRemove={removeKey}
+            onCopy={copyKeyAfter}
+            actions={['add', 'copy', 'remove']}
             addTitle={tr('sortAddKey')}
             removeTitle={tr('sortRemoveKey')}
+            copyTitle={tr('fieldMappingCopy')}
             draggable
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}

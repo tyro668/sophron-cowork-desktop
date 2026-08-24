@@ -17,6 +17,7 @@ export type RowAction = 'add' | 'copy' | 'remove' | 'moveUp' | 'moveDown' | 'toT
 export interface GlassRowListColumn<T> {
   flex: string;
   header: string;
+  align?: 'left' | 'center';
   render: (item: T, index: number) => ReactNode;
 }
 
@@ -118,7 +119,7 @@ export function GlassRowList<T>({
     <div className="flex flex-col gap-2">
       {!hideHeader && (
         <div
-          className={`flex items-center gap-1 px-0.5 pb-0.5 font-medium text-text-muted ${headerClassName ?? ''}`}
+          className={`flex items-center gap-1 px-0.5 pb-0.5 text-[13px] leading-[20px] font-medium tracking-normal text-text-muted ${headerClassName ?? ''}`}
         >
           {draggable && (
             <span
@@ -129,7 +130,9 @@ export function GlassRowList<T>({
           {columns.map((col, i) => (
             <span
               key={i}
-              className={`flex items-center justify-center ${col.flex} min-w-0 text-center`}
+              className={`flex items-center min-w-0 ${
+                col.align === 'center' ? 'justify-center text-center' : 'justify-start text-left'
+              } ${col.flex}`}
             >
               {col.header}
             </span>
@@ -160,7 +163,12 @@ export function GlassRowList<T>({
           )}
 
           {columns.map((col, i) => (
-            <div key={i} className={`flex items-center justify-center ${col.flex} min-w-0`}>
+            <div
+              key={i}
+              className={`flex items-center min-w-0 ${
+                col.align === 'center' ? 'justify-center' : 'justify-start'
+              } ${col.flex}`}
+            >
               <div className="w-full flex">{col.render(item, index)}</div>
             </div>
           ))}

@@ -9,6 +9,7 @@ import { GlassRowList, type GlassRowListColumn } from './shared/GlassRowList';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
+import { useDragReorder } from '../../hooks/useDragReorder';
 import {
   createCalculationRow,
   normalizeCalculationEntries,
@@ -64,25 +65,39 @@ export default function FormCalculateField({
     [storeCalculations]
   );
 
+  const {
+    activeItems: activeCalculations,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+    isDragging,
+    resetDrag,
+    dragIndexRef,
+  } = useDragReorder(calculations, changeCalculations);
+
+  useEffect(() => {
+    if (!isDragging) resetDrag();
+  }, [calculations, isDragging, resetDrag]);
+
   useEffect(() => {
     const normalized = normalizeCalculationEntries(rawCalculations, fieldCompletions);
     setCalculations(normalized);
   }, [fieldCompletions, rawCalculations]);
 
   function updateCalculation(index: number, patch: Partial<CalculationRow>): void {
-    if (!calculations[index]) {
+    if (!activeCalculations[index]) {
       changeCalculations([{ ...createCalculationRow(), ...patch }]);
       return;
     }
     changeCalculations(
-      calculations.map((calculation, currentIndex) =>
+      activeCalculations.map((calculation, currentIndex) =>
         currentIndex === index ? { ...calculation, ...patch } : calculation
       )
     );
   }
 
   function updateCalculationAction(index: number, action: CalculationRow['action']): void {
-    const calculation = calculations[index];
+    const calculation = activeCalculations[index];
     const targetIsInputField = calculation
       ? sourceFieldNames.has(calculation.field.toLowerCase())
       : false;
@@ -95,24 +110,25 @@ export default function FormCalculateField({
   }
 
   function addCalculation(index: number): void {
-    const next = [...calculations];
+    const next = [...activeCalculations];
     next.splice(index + 1, 0, createCalculationRow());
     changeCalculations(next);
   }
 
   function copyCalculation(index: number): void {
-    const source = calculations[index];
+    const source = activeCalculations[index];
     const copy = { ...source, id: createCalculationRow().id, field: '' };
-    const next = [...calculations];
+    const next = [...activeCalculations];
     next.splice(index + 1, 0, copy);
     changeCalculations(next);
   }
 
   function removeCalculation(index: number): void {
-    changeCalculations(calculations.filter((_, currentIndex) => currentIndex !== index));
+    changeCalculations(activeCalculations.filter((_, currentIndex) => currentIndex !== index));
   }
 
-  const visibleCalculations = calculations.length > 0 ? calculations : [createCalculationRow()];
+  const visibleCalculations =
+    activeCalculations.length > 0 ? activeCalculations : [createCalculationRow()];
   const actionOptions = [
     { value: 'add', label: tr('calcFieldActionAdd') },
     { value: 'replace', label: tr('calcFieldActionReplace') },
@@ -173,7 +189,7 @@ export default function FormCalculateField({
       },
     },
     {
-      flex: 'flex-[5]',
+      flex: 'flex-[4]',
       header: tr('calcFieldExpressionLabel'),
       render: (calculation, index) => (
         <CalculateFieldExpressionInput
@@ -188,24 +204,28 @@ export default function FormCalculateField({
   ];
 
   return (
-    <div className="operator-section flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="shrink-0 px-3 pb-2 pt-2.5">
-        <div className="text-[13px] font-semibold text-text-primary">
-          {tr('calcFieldConfigHeader')}
+    <div className="flex h-full min-h-0 overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
+          <GlassRowList
+            headerClassName=""
+            items={visibleCalculations}
+            columns={columns}
+            actions={['add', 'copy', 'remove']}
+            onAdd={addCalculation}
+            onCopy={copyCalculation}
+            onRemove={removeCalculation}
+            canAct={(action) =>
+              (action !== 'remove' && action !== 'copy') || calculations.length > 0
+            }
+            draggable
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+            getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
+            dragTitle={tr('dragToReorder')}
+          />
         </div>
-        <div className="text-[10px] text-text-muted">{tr('calcFieldUnifiedHint')}</div>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-        <GlassRowList
-          headerClassName="text-[12px]"
-          items={visibleCalculations}
-          columns={columns}
-          actions={['add', 'copy', 'remove']}
-          onAdd={addCalculation}
-          onCopy={copyCalculation}
-          onRemove={removeCalculation}
-          canAct={(action) => (action !== 'remove' && action !== 'copy') || calculations.length > 0}
-        />
       </div>
     </div>
   );

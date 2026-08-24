@@ -69,8 +69,7 @@ export default function FormFieldMapping({
 
   const addMappingAfter = useCallback(
     (index: number) => {
-      const hasEmpty = activeMappings.some((m) => !m.source);
-      if (hasEmpty || activeMappings.length >= fieldCompletions.length) return;
+      if (activeMappings.length >= fieldCompletions.length) return;
       const next = [...activeMappings];
       next.splice(index + 1, 0, { ...EMPTY_FIELD_MAPPING });
       commitMappings(next);
@@ -191,7 +190,7 @@ export default function FormFieldMapping({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
           <GlassRowList
-            headerClassName="text-[12px]"
+            headerClassName=""
             items={activeMappings}
             columns={columns}
             actions={['add', 'copy', 'remove']}
@@ -204,8 +203,7 @@ export default function FormFieldMapping({
               action === 'copy'
                 ? activeMappings.length < fieldCompletions.length
                 : action === 'add'
-                  ? !activeMappings.some((m) => !m.source) &&
-                    activeMappings.length < fieldCompletions.length
+                  ? activeMappings.length < fieldCompletions.length
                   : true
             }
             draggable

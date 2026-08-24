@@ -234,7 +234,7 @@ export default function FormAggregate({
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-3">
             <GlassRowList
-              headerClassName="text-[12px]"
+              headerClassName=""
               items={activeMetrics}
               columns={[
                 {

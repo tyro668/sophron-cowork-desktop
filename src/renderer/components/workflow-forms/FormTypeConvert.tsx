@@ -80,11 +80,12 @@ export default function FormTypeConvert({
 
   const addConversionAfter = useCallback(
     (index: number) => {
+      if (activeConversions.length >= fieldCompletions.length) return;
       const next = [...activeConversions];
       next.splice(index + 1, 0, { ...EMPTY_TYPE_CONVERSION });
       commitConversions(next);
     },
-    [activeConversions, commitConversions]
+    [activeConversions, fieldCompletions.length, commitConversions]
   );
 
   const removeConversion = useCallback(
@@ -135,7 +136,7 @@ export default function FormTypeConvert({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex-1 space-y-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
           <GlassRowList
-            headerClassName="text-[12px]"
+            headerClassName=""
             items={activeConversions}
             columns={[
               {
@@ -160,24 +161,15 @@ export default function FormTypeConvert({
                 },
               },
               {
-                flex: 'flex-[1]',
+                flex: 'flex-[1.5]',
                 header: tr('typeConvertOriginalType'),
+                align: 'center',
                 render: (conv: TypeConversionEntry) => (
                   <span className="w-full text-center text-[11px] text-text-muted tabular-nums">
                     {conv.column && columnTypes?.[conv.column]
                       ? dataTypeLabel(columnTypes[conv.column])
-                      : ''}
+                      : '—'}
                   </span>
-                ),
-              },
-              {
-                flex: 'flex-[0.5]',
-                header: '',
-                render: () => (
-                  <div className="flex items-center gap-0.5 justify-center text-text-muted">
-                    <div className="h-[2.5px] w-[14px] bg-current rounded-full" />
-                    <div className="h-0 w-0 border-l-[9px] border-l-current border-y-[7px] border-y-transparent" />
-                  </div>
                 ),
               },
               {
@@ -206,53 +198,61 @@ export default function FormTypeConvert({
                 ),
               },
               {
-                flex: 'flex-[1.5]',
-                header: tr('typeConvertDateFormat'),
+                flex: 'flex-[2.5]',
+                header: tr('typeConvertTypeSettings'),
                 render: (conv: TypeConversionEntry, i: number) => {
                   const isDateType = conv.type === 'date' || conv.type === 'datetime';
-                  const formatOptions = [
-                    { value: '', label: tr('typeConvertAutoParse') },
-                    ...DATE_FORMAT_PRESETS.map((p) => ({ value: p.value, label: p.example })),
-                  ];
+                  if (isDateType) {
+                    const formatOptions = [
+                      { value: '', label: tr('typeConvertAutoParse') },
+                      ...DATE_FORMAT_PRESETS.map((p) => ({ value: p.value, label: p.example })),
+                    ];
+                    return (
+                      <GlassOptionSingleSelect
+                        value={conv.format ?? ''}
+                        groups={[{ key: 'formats', items: formatOptions }]}
+                        onChange={(v) =>
+                          updateConversion(i, {
+                            format: (v || undefined) as DateFormat | undefined,
+                          })
+                        }
+                        className="h-6 w-full text-[12px]"
+                      />
+                    );
+                  }
+                  if (conv.type === 'decimal') {
+                    return (
+                      <div className="flex w-full items-center justify-start gap-1">
+                        <GlassFormTextInput
+                          value={conv.scale != null ? String(conv.scale) : ''}
+                          textCenter
+                          className="h-6 w-14 text-[12px]"
+                          placeholder={`${SCALE_MIN}`}
+                          min={SCALE_MIN}
+                          max={SCALE_MAX}
+                          type="number"
+                          onChange={(v) => {
+                            const n = parseTypeConversionScale(v);
+                            updateConversion(i, {
+                              scale: n,
+                            });
+                          }}
+                        />
+                        <span className="shrink-0 text-[12px] text-text-muted">
+                          {tr('typeConvertScaleUnit')}
+                        </span>
+                      </div>
+                    );
+                  }
                   return (
-                    <GlassOptionSingleSelect
-                      value={isDateType ? (conv.format ?? '') : ''}
-                      disabled={!isDateType}
-                      groups={[{ key: 'formats', items: formatOptions }]}
-                      onChange={(v) =>
-                        updateConversion(i, {
-                          format: (v || undefined) as DateFormat | undefined,
-                        })
-                      }
-                      className="h-6 w-full text-[12px]"
-                    />
+                    <span className="w-full text-left text-[12px] text-text-muted">
+                      {tr('typeConvertNoSettings')}
+                    </span>
                   );
                 },
               },
               {
-                flex: 'flex-[1]',
-                header: tr('typeConvertScale'),
-                render: (conv: TypeConversionEntry, i: number) => (
-                  <GlassFormTextInput
-                    value={conv.type === 'decimal' ? String(conv.scale ?? '') : ''}
-                    disabled={conv.type !== 'decimal'}
-                    textCenter
-                    className="h-6 w-full text-[12px]"
-                    placeholder={`${SCALE_MIN}`}
-                    min={SCALE_MIN}
-                    max={SCALE_MAX}
-                    type="number"
-                    onChange={(v) => {
-                      const n = parseTypeConversionScale(v);
-                      updateConversion(i, {
-                        scale: n,
-                      });
-                    }}
-                  />
-                ),
-              },
-              {
-                flex: 'flex-[2]',
+                flex: 'flex-[1.5]',
                 header: tr('typeConvertErrorHandling'),
                 render: (conv: TypeConversionEntry, i: number) => (
                   <GlassOptionSingleSelect

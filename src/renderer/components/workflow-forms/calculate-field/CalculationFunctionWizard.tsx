@@ -411,7 +411,7 @@ export function CalculationFunctionWizard({
                 </div>
                 {definition.order === 'required' ? (
                   <GlassRowList
-                    headerClassName="text-[11px]"
+                    headerClassName=""
                     items={activeOrderBy}
                     columns={[
                       {

@@ -184,7 +184,7 @@ export default function FormPivot({
         <div className="px-3 pb-3 grid gap-3 content-start">
           <div className="grid gap-1.5 content-start">
             <GlassRowList
-              headerClassName="text-[12px]"
+              headerClassName=""
               hideHeader
               items={activeAxes}
               columns={[
@@ -277,7 +277,7 @@ export default function FormPivot({
         </div>
         <div className="px-3 pb-3 grid gap-3 content-start">
           <GlassRowList
-            headerClassName="text-[12px]"
+            headerClassName=""
             items={using}
             columns={[
               {

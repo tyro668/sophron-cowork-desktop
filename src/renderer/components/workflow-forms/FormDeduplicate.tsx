@@ -167,7 +167,7 @@ export default function FormDeduplicate({
               <div className="rounded-lg border border-border-muted bg-background/60">
                 <div className="p-2">
                   <GlassRowList
-                    headerClassName="text-[12px]"
+                    headerClassName=""
                     items={activeKeys}
                     columns={[
                       {
@@ -194,6 +194,7 @@ export default function FormDeduplicate({
                       {
                         flex: 'flex-[2]',
                         header: tr('sortDirectionHeader'),
+                        align: 'center',
                         render: (key: SortKey, i) => (
                           <GlassDirectionToggle
                             value={key.direction}
