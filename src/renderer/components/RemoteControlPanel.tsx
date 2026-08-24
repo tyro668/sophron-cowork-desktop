@@ -1,9 +1,8 @@
 /**
  * Multi-channel remote control settings shell.
  *
- * Feishu remains the only channel wired to the backend in this phase. DingTalk
- * and WeCom are intentionally rendered as configuration previews until their
- * channel drivers and IPC APIs are implemented.
+ * Feishu and DingTalk are wired to the remote backend. WeCom remains a
+ * configuration preview until its channel driver and IPC APIs are implemented.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -48,6 +47,12 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   const [feishuAppId, setFeishuAppId] = useState('');
   const [feishuAppSecret, setFeishuAppSecret] = useState('');
   const [feishuDmPolicy, setFeishuDmPolicy] = useState('pairing');
+  const [dingtalkAppKey, setDingtalkAppKey] = useState('');
+  const [dingtalkAppSecret, setDingtalkAppSecret] = useState('');
+  const [dingtalkRobotCode, setDingtalkRobotCode] = useState('');
+  const [dingtalkDmPolicy, setDingtalkDmPolicy] = useState('pairing');
+  const [dingtalkRequireMention, setDingtalkRequireMention] = useState(true);
+  const [dingtalkReceiveMode, setDingtalkReceiveMode] = useState<'stream' | 'webhook'>('stream');
   const [gatewayPort, setGatewayPort] = useState(18789);
   const [defaultWorkingDirectory, setDefaultWorkingDirectory] = useState('');
   const [autoApproveSafeTools, setAutoApproveSafeTools] = useState(true);
@@ -72,6 +77,16 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
       setFeishuAppSecret(configResult.channels.feishu.appSecret || '');
       setFeishuDmPolicy(configResult.channels.feishu.dm?.policy || 'pairing');
       setUseLongConnection(configResult.channels.feishu.useWebSocket !== false);
+    }
+    if (configResult.channels?.dingtalk) {
+      setDingtalkAppKey(configResult.channels.dingtalk.appKey || '');
+      setDingtalkAppSecret(configResult.channels.dingtalk.appSecret || '');
+      setDingtalkRobotCode(configResult.channels.dingtalk.robotCode || '');
+      setDingtalkReceiveMode(configResult.channels.dingtalk.receiveMode || 'stream');
+      setDingtalkDmPolicy(configResult.channels.dingtalk.dm?.policy || 'pairing');
+      setDingtalkRequireMention(
+        configResult.channels.dingtalk.defaultGroupSettings?.requireMention !== false
+      );
     }
   }, []);
 
@@ -215,6 +230,42 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     }
   }
 
+  async function saveDingtalkConfig() {
+    if (!isElectron) return;
+    if (!dingtalkAppKey || !dingtalkAppSecret) {
+      setError({ key: 'remote.dingtalkCredentialsRequired' });
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+    try {
+      const result = await window.electronAPI.remote.updateDingtalkConfig(
+        {
+          type: 'dingtalk',
+          receiveMode: dingtalkReceiveMode,
+          appKey: dingtalkAppKey,
+          appSecret: dingtalkAppSecret,
+          robotCode: dingtalkRobotCode || undefined,
+          dm: { policy: dingtalkDmPolicy as 'open' | 'pairing' | 'allowlist' },
+          defaultGroupSettings: { requireMention: dingtalkRequireMention },
+        },
+        dingtalkReceiveMode === 'webhook' ? gatewayConfigPatch() : undefined
+      );
+      if (!result.success) {
+        setError(result.error ? { text: result.error } : { key: 'remote.saveFailed' });
+        return;
+      }
+      showSuccess({ key: 'remote.configSaved' });
+      await loadData();
+    } catch (saveError) {
+      console.error('Failed to save DingTalk config:', saveError);
+      setError({ key: 'remote.saveFailed' });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   async function approvePairing(request: PairingRequest) {
     if (!isElectron) return;
     try {
@@ -278,6 +329,12 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   const isFeishuConfigured = !!(feishuAppId && feishuAppSecret);
   const isFeishuConnected =
     status?.channels.some((channel) => channel.type === 'feishu' && channel.connected) ?? false;
+  const isDingtalkConfigured = !!(dingtalkAppKey && dingtalkAppSecret);
+  const isDingtalkConnected =
+    status?.channels.some((channel) => channel.type === 'dingtalk' && channel.connected) ?? false;
+  const configuredChannelCount = Number(isFeishuConfigured) + Number(isDingtalkConfigured);
+  const connectedChannelCount = Number(isFeishuConnected) + Number(isDingtalkConnected);
+  const isPairingEnabled = feishuDmPolicy === 'pairing' || dingtalkDmPolicy === 'pairing';
 
   const channels = useMemo<RemoteChannelViewModel[]>(
     () => [
@@ -298,11 +355,19 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
       {
         type: 'dingtalk',
         name: t('remote.channelName.dingtalk'),
-        description: t('remote.channelDesc.dingtalk'),
-        configured: false,
-        connected: false,
-        backendAvailable: false,
-        authorizedUsers: 0,
+        description: isDingtalkConfigured
+          ? t('remote.channelDesc.dingtalkConfigured', {
+              mode:
+                dingtalkReceiveMode === 'stream'
+                  ? t('remote.streamConnection')
+                  : t('remote.webhookMode'),
+              count: pairedUsers.filter((user) => user.channelType === 'dingtalk').length,
+            })
+          : t('remote.channelDesc.dingtalk'),
+        configured: isDingtalkConfigured,
+        connected: isDingtalkConnected,
+        backendAvailable: true,
+        authorizedUsers: pairedUsers.filter((user) => user.channelType === 'dingtalk').length,
       },
       {
         type: 'wecom',
@@ -314,7 +379,16 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
         authorizedUsers: 0,
       },
     ],
-    [isFeishuConfigured, isFeishuConnected, pairedUsers, t, useLongConnection]
+    [
+      isDingtalkConfigured,
+      isDingtalkConnected,
+      dingtalkReceiveMode,
+      isFeishuConfigured,
+      isFeishuConnected,
+      pairedUsers,
+      t,
+      useLongConnection,
+    ]
   );
 
   const selectedChannelModel =
@@ -351,10 +425,10 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
           pairedUsers={pairedUsers}
           pendingPairings={pendingPairings}
           isTogglingGateway={isTogglingGateway}
-          configuredChannels={isFeishuConfigured ? 1 : 0}
-          connectedChannels={isFeishuConnected ? 1 : 0}
+          configuredChannels={configuredChannelCount}
+          connectedChannels={connectedChannelCount}
           totalChannels={channels.length}
-          canStartService={isFeishuConfigured}
+          canStartService={configuredChannelCount > 0}
           onToggle={toggleGateway}
         />
       </div>
@@ -378,6 +452,12 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
               feishuAppId={feishuAppId}
               feishuAppSecret={feishuAppSecret}
               feishuDmPolicy={feishuDmPolicy}
+              dingtalkAppKey={dingtalkAppKey}
+              dingtalkAppSecret={dingtalkAppSecret}
+              dingtalkRobotCode={dingtalkRobotCode}
+              dingtalkDmPolicy={dingtalkDmPolicy}
+              dingtalkRequireMention={dingtalkRequireMention}
+              dingtalkReceiveMode={dingtalkReceiveMode}
               useLongConnection={useLongConnection}
               gatewayPort={gatewayPort}
               tunnelEnabled={tunnelEnabled}
@@ -388,21 +468,28 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
               onFeishuAppIdChange={setFeishuAppId}
               onFeishuAppSecretChange={setFeishuAppSecret}
               onFeishuDmPolicyChange={setFeishuDmPolicy}
+              onDingtalkAppKeyChange={setDingtalkAppKey}
+              onDingtalkAppSecretChange={setDingtalkAppSecret}
+              onDingtalkRobotCodeChange={setDingtalkRobotCode}
+              onDingtalkDmPolicyChange={setDingtalkDmPolicy}
+              onDingtalkRequireMentionChange={setDingtalkRequireMention}
+              onDingtalkReceiveModeChange={setDingtalkReceiveMode}
               onLongConnectionChange={setUseLongConnection}
               onTunnelEnabledChange={setTunnelEnabled}
               onNgrokAuthTokenChange={setNgrokAuthToken}
               onCopy={copyToClipboard}
               onSaveFeishu={saveFeishuConfig}
+              onSaveDingtalk={saveDingtalkConfig}
             />
           </div>
         )}
 
         {activeSection === 'users' && (
           <div className="space-y-4">
-            {status?.running && feishuDmPolicy === 'pairing' && <PairingGuideCard />}
+            {status?.running && isPairingEnabled && <PairingGuideCard />}
             <PairingRequestsSection
               pendingPairings={pendingPairings}
-              showEmpty={status?.running && feishuDmPolicy === 'pairing'}
+              showEmpty={status?.running && isPairingEnabled}
               onApprove={approvePairing}
               onReject={rejectPairing}
             />

@@ -2628,7 +2628,8 @@
     "channelDesc": {
       "feishu": "填写应用凭证后启用",
       "feishuConfigured": "{{mode}} · {{count}} 位授权用户",
-      "dingtalk": "Stream 长连接 · 后端待接入",
+      "dingtalk": "填写应用凭证后启用 Stream 或 Webhook 模式",
+      "dingtalkConfigured": "{{mode}} · {{count}} 位授权用户",
       "wecom": "智能机器人长连接 · 后端待接入"
     },
     "channelState": {
@@ -2646,7 +2647,7 @@
     "credentialsTitle": "机器人凭证",
     "credentialsDesc": {
       "feishu": "填写飞书开放平台中应用的 App ID 和 App Secret。",
-      "dingtalk": "计划通过钉钉 Stream 模式建立长连接。",
+      "dingtalk": "填写钉钉企业内部应用的 Client ID 和 Client Secret，可选择 Stream 长连接或 Webhook 回调。",
       "wecom": "计划通过企业微信智能机器人的 Bot ID 和 Secret 建立长连接。"
     },
     "displayName": "显示名称",
@@ -2684,7 +2685,7 @@
       "testTitle": "最后一步：发送消息验证",
       "intro": {
         "feishu": "整个过程大约需要 5～10 分钟。先在飞书开放平台创建并发布机器人应用，再回到九思助理填写凭证、保存配置并启动服务。",
-        "dingtalk": "先在钉钉开发者后台创建企业内部应用，在应用内添加机器人并选择 Stream 模式，再回到九思助理填写凭证。",
+        "dingtalk": "先在钉钉开发者后台创建企业内部应用，在应用内添加机器人并选择与本页一致的 Stream 或 Webhook 模式，再回到九思助理填写凭证。",
         "wecom": "先创建 API 模式的企业微信智能机器人并选择长连接，取得 Bot ID 和 Secret 后，再回到九思助理完成绑定。"
       },
       "prerequisite": {
@@ -2756,6 +2757,12 @@
             "path": "应用详情 → 添加应用能力 → 机器人 → 机器人配置",
             "result": "机器人能力已启用，消息接收模式显示为 Stream"
           },
+          "addBotWebhook": {
+            "title": "添加应用内机器人并选择 HTTP 模式",
+            "description": "在应用详情中添加“机器人”能力，把消息接收模式设为 HTTP/Webhook，并将下面的 HTTPS 公网地址填写为消息接收地址。不要使用只能向群里推送通知的群自定义机器人。",
+            "path": "应用详情 → 添加应用能力 → 机器人 → 机器人配置 → 消息接收模式",
+            "result": "消息接收模式为 HTTP，公网地址保存并校验成功"
+          },
           "credentials": {
             "title": "复制 Client ID 和 Client Secret",
             "description": "复制应用凭证。Client ID 也可能标为 AppKey，Client Secret 也可能标为 AppSecret；它们是同一组凭证的新旧名称。",
@@ -2770,9 +2777,9 @@
           },
           "finish": {
             "title": "回到九思助理填写凭证",
-            "description": "钉钉后端接入完成后，在“基本配置”填入 Client ID 和 Client Secret，保存配置并启动该渠道。当前页面可以预览字段，但暂时不会保存。",
+            "description": "在“基本配置”填入 Client ID 和 Client Secret；如需 OpenAPI 兜底发送，再填写 RobotCode。保存配置并启动远程控制服务。",
             "path": "九思助理 → 设置 → 远程控制 → 钉钉 → 基本配置",
-            "result": "后续版本中渠道状态显示为“已连接”"
+            "result": "渠道状态显示为“已连接”"
           },
           "test": {
             "title": "在钉钉中找到机器人",
@@ -2822,16 +2829,17 @@
       },
       "test": {
         "feishu": "私聊机器人发送“你好”；群聊中先添加机器人，再 @机器人 发送“你好”。如果九思助理收到消息并在飞书返回回复，说明接入成功。",
-        "dingtalk": "后端接入完成后，先在机器人单聊中发送“你好”；群聊测试必须 @机器人。如果能收到九思助理回复，说明 Stream 连接正常。",
+        "dingtalk": "先在机器人单聊中发送“你好”；群聊测试必须 @机器人。如果能收到九思助理回复，说明所选接收模式正常。",
         "wecom": "后端接入完成后，在机器人单聊中发送“你好”，或在群聊中 @机器人。如果能收到九思助理回复，说明长连接和可见范围配置正确。"
       },
       "warning": {
         "feishu": "常见问题：应用未发布、用户不在可用范围、未订阅 im.message.receive_v1，都会导致机器人没有反应。App Secret 属于敏感信息，请勿发送给他人。",
-        "dingtalk": "请确认创建的是“应用内机器人”并选择 Stream，而不是只能通过 Webhook 发通知的群自定义机器人。钉钉群聊只会把 @机器人 的消息发送给机器人。",
+        "dingtalk": "请确认创建的是“应用内机器人”。Webhook 模式需要可公网访问的 HTTPS 地址并保持九思助理运行；它不是只能向群里发通知的群自定义机器人。钉钉群聊只会转发 @机器人 的消息。",
         "wecom": "一个企业微信智能机器人同一时间只能保持一个有效长连接；如果它已连接其他程序，新连接可能使旧连接失效。重新获取 Secret 后，旧 Secret 会立即失效。"
       }
     },
     "feishuSaveHint": "保存后继续使用现有飞书后端能力",
+    "dingtalkSaveHint": "保存后将使用钉钉 {{mode}} 接收机器人消息",
     "previewSaveHint": "后端接口完成后才会开放保存和连接测试",
     "globalSettingsHint": "这些设置作用于整个远程控制服务；渠道凭证和访问权限请在对应渠道中配置。",
     "saveGlobalSettings": "保存全局设置",
@@ -2842,6 +2850,7 @@
     "noAuthorizedUsersDesc": "用户完成配对或被加入白名单后会显示在这里。",
     "loadFailed": "远程控制配置加载失败",
     "feishuCredentialsRequired": "请先填写飞书 App ID 和 App Secret",
+    "dingtalkCredentialsRequired": "请先填写钉钉 Client ID 和 Client Secret",
     "startService": "启动服务",
     "stopService": "停止服务",
     "activeSessions": "活跃会话",

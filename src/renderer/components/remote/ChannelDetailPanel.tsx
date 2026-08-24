@@ -24,6 +24,12 @@ interface Props {
   feishuAppId: string;
   feishuAppSecret: string;
   feishuDmPolicy: string;
+  dingtalkAppKey: string;
+  dingtalkAppSecret: string;
+  dingtalkRobotCode: string;
+  dingtalkDmPolicy: string;
+  dingtalkRequireMention: boolean;
+  dingtalkReceiveMode: 'stream' | 'webhook';
   useLongConnection: boolean;
   gatewayPort: number;
   tunnelEnabled: boolean;
@@ -34,18 +40,22 @@ interface Props {
   onFeishuAppIdChange: (value: string) => void;
   onFeishuAppSecretChange: (value: string) => void;
   onFeishuDmPolicyChange: (value: string) => void;
+  onDingtalkAppKeyChange: (value: string) => void;
+  onDingtalkAppSecretChange: (value: string) => void;
+  onDingtalkRobotCodeChange: (value: string) => void;
+  onDingtalkDmPolicyChange: (value: string) => void;
+  onDingtalkRequireMentionChange: (value: boolean) => void;
+  onDingtalkReceiveModeChange: (value: 'stream' | 'webhook') => void;
   onLongConnectionChange: (value: boolean) => void;
   onTunnelEnabledChange: (value: boolean) => void;
   onNgrokAuthTokenChange: (value: string) => void;
   onCopy: (value: string) => void;
   onSaveFeishu: () => void;
+  onSaveDingtalk: () => void;
 }
 
 interface PreviewCredentials {
   displayName: string;
-  clientId: string;
-  clientSecret: string;
-  robotCode: string;
   botId: string;
   botSecret: string;
 }
@@ -55,6 +65,12 @@ export function ChannelDetailPanel({
   feishuAppId,
   feishuAppSecret,
   feishuDmPolicy,
+  dingtalkAppKey,
+  dingtalkAppSecret,
+  dingtalkRobotCode,
+  dingtalkDmPolicy,
+  dingtalkRequireMention,
+  dingtalkReceiveMode,
   useLongConnection,
   gatewayPort,
   tunnelEnabled,
@@ -65,11 +81,18 @@ export function ChannelDetailPanel({
   onFeishuAppIdChange,
   onFeishuAppSecretChange,
   onFeishuDmPolicyChange,
+  onDingtalkAppKeyChange,
+  onDingtalkAppSecretChange,
+  onDingtalkRobotCodeChange,
+  onDingtalkDmPolicyChange,
+  onDingtalkRequireMentionChange,
+  onDingtalkReceiveModeChange,
   onLongConnectionChange,
   onTunnelEnabledChange,
   onNgrokAuthTokenChange,
   onCopy,
   onSaveFeishu,
+  onSaveDingtalk,
 }: Props) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<ChannelConfigTab>('basic');
@@ -77,9 +100,6 @@ export function ChannelDetailPanel({
   const [requireMention, setRequireMention] = useState(true);
   const [previewCredentials, setPreviewCredentials] = useState<PreviewCredentials>({
     displayName: '',
-    clientId: '',
-    clientSecret: '',
-    robotCode: '',
     botId: '',
     botSecret: '',
   });
@@ -88,8 +108,32 @@ export function ChannelDetailPanel({
     setActiveTab('basic');
   }, [channel.type]);
 
-  const dmPolicy = channel.type === 'feishu' ? feishuDmPolicy : previewPolicy;
-  const setDmPolicy = channel.type === 'feishu' ? onFeishuDmPolicyChange : setPreviewPolicy;
+  const dmPolicy =
+    channel.type === 'feishu'
+      ? feishuDmPolicy
+      : channel.type === 'dingtalk'
+        ? dingtalkDmPolicy
+        : previewPolicy;
+  const setDmPolicy =
+    channel.type === 'feishu'
+      ? onFeishuDmPolicyChange
+      : channel.type === 'dingtalk'
+        ? onDingtalkDmPolicyChange
+        : setPreviewPolicy;
+  const activeRequireMention =
+    channel.type === 'dingtalk' ? dingtalkRequireMention : requireMention;
+  const channelUsesLongConnection =
+    channel.type === 'feishu'
+      ? useLongConnection
+      : channel.type === 'dingtalk'
+        ? dingtalkReceiveMode === 'stream'
+        : true;
+  const channelUsesWebhook = channel.backendAvailable && !channelUsesLongConnection;
+  const activeWebhookUrl = tunnelStatus?.url
+    ? `${tunnelStatus.url.replace(/\/$/, '')}/webhook/${channel.type}`
+    : channel.type === 'feishu'
+      ? webhookUrl
+      : null;
 
   function updatePreviewCredential(field: keyof PreviewCredentials, value: string) {
     setPreviewCredentials((current) => ({ ...current, [field]: value }));
@@ -201,33 +245,26 @@ export function ChannelDetailPanel({
             {channel.type === 'dingtalk' && (
               <div className="grid gap-3 sm:grid-cols-2">
                 <CredentialField
-                  id="dingtalk-name"
-                  label={t('remote.displayName')}
-                  value={previewCredentials.displayName}
-                  placeholder={t('remote.dingtalkNamePlaceholder')}
-                  onChange={(value) => updatePreviewCredential('displayName', value)}
-                />
-                <CredentialField
                   id="dingtalk-client-id"
                   label="Client ID / AppKey"
-                  value={previewCredentials.clientId}
+                  value={dingtalkAppKey}
                   placeholder="dingxxxxxxxxxxxxxxxx"
-                  onChange={(value) => updatePreviewCredential('clientId', value)}
+                  onChange={onDingtalkAppKeyChange}
                 />
                 <CredentialField
                   id="dingtalk-client-secret"
                   label="Client Secret / AppSecret"
-                  value={previewCredentials.clientSecret}
+                  value={dingtalkAppSecret}
                   placeholder="••••••••••••••••"
                   type="password"
-                  onChange={(value) => updatePreviewCredential('clientSecret', value)}
+                  onChange={onDingtalkAppSecretChange}
                 />
                 <CredentialField
                   id="dingtalk-robot-code"
                   label="RobotCode"
-                  value={previewCredentials.robotCode}
+                  value={dingtalkRobotCode}
                   placeholder={t('remote.optional')}
-                  onChange={(value) => updatePreviewCredential('robotCode', value)}
+                  onChange={onDingtalkRobotCodeChange}
                 />
               </div>
             )}
@@ -265,7 +302,7 @@ export function ChannelDetailPanel({
               </h4>
               <div className="grid gap-2 sm:grid-cols-2">
                 <ConnectionOption
-                  selected={channel.type === 'feishu' ? useLongConnection : true}
+                  selected={channelUsesLongConnection}
                   title={
                     channel.type === 'dingtalk'
                       ? t('remote.streamConnection')
@@ -276,26 +313,28 @@ export function ChannelDetailPanel({
                   icon={Zap}
                   onClick={() => {
                     if (channel.type === 'feishu') onLongConnectionChange(true);
+                    if (channel.type === 'dingtalk') onDingtalkReceiveModeChange('stream');
                   }}
                 />
                 <ConnectionOption
-                  selected={channel.type === 'feishu' && !useLongConnection}
+                  selected={channelUsesWebhook}
                   title={t('remote.webhookMode')}
                   description={
                     channel.type === 'wecom'
                       ? t('remote.webhookUnavailable')
                       : t('remote.webhookChannelDesc')
                   }
-                  disabled={channel.type !== 'feishu'}
+                  disabled={!channel.backendAvailable}
                   icon={Link2}
                   onClick={() => {
                     if (channel.type === 'feishu') onLongConnectionChange(false);
+                    if (channel.type === 'dingtalk') onDingtalkReceiveModeChange('webhook');
                   }}
                 />
               </div>
             </div>
 
-            {channel.type === 'feishu' && !useLongConnection && (
+            {channelUsesWebhook && (
               <div className="space-y-3 rounded-xl border border-border-subtle bg-background/30 p-3">
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-text-secondary">
@@ -303,11 +342,13 @@ export function ChannelDetailPanel({
                   </label>
                   <div className="flex items-center gap-2">
                     <code className="min-w-0 flex-1 truncate rounded-lg bg-surface-hover px-3 py-2 text-xs text-text-secondary">
-                      http://127.0.0.1:{gatewayPort}/webhook/feishu
+                      http://127.0.0.1:{gatewayPort}/webhook/{channel.type}
                     </code>
                     <button
                       type="button"
-                      onClick={() => onCopy(`http://127.0.0.1:${gatewayPort}/webhook/feishu`)}
+                      onClick={() =>
+                        onCopy(`http://127.0.0.1:${gatewayPort}/webhook/${channel.type}`)
+                      }
                       className="rounded-lg p-2 text-text-muted transition-colors hover:bg-surface-active hover:text-text-primary"
                       title={t('remote.copied')}
                     >
@@ -349,9 +390,9 @@ export function ChannelDetailPanel({
                     placeholder="ngrok authtoken"
                   />
                 )}
-                {tunnelStatus?.connected && webhookUrl && (
+                {tunnelStatus?.connected && activeWebhookUrl && (
                   <div className="rounded-lg bg-success/10 px-3 py-2 text-xs text-success">
-                    {t('remote.tunnelConnected')}: {webhookUrl}
+                    {t('remote.tunnelConnected')}: {activeWebhookUrl}
                   </div>
                 )}
               </div>
@@ -399,15 +440,21 @@ export function ChannelDetailPanel({
               <button
                 type="button"
                 role="switch"
-                aria-checked={requireMention}
-                onClick={() => setRequireMention((value) => !value)}
+                aria-checked={activeRequireMention}
+                onClick={() => {
+                  if (channel.type === 'dingtalk') {
+                    onDingtalkRequireMentionChange(!activeRequireMention);
+                  } else {
+                    setRequireMention((value) => !value);
+                  }
+                }}
                 className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                  requireMention ? 'bg-accent' : 'bg-surface-active'
+                  activeRequireMention ? 'bg-accent' : 'bg-surface-active'
                 }`}
               >
                 <span
                   className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-soft transition-transform ${
-                    requireMention ? 'left-6' : 'left-1'
+                    activeRequireMention ? 'left-6' : 'left-1'
                   }`}
                 />
               </button>
@@ -418,8 +465,8 @@ export function ChannelDetailPanel({
         {activeTab === 'advanced' && (
           <ChannelSetupGuide
             channelType={channel.type}
-            useLongConnection={useLongConnection}
-            webhookUrl={webhookUrl}
+            useLongConnection={channelUsesLongConnection}
+            webhookUrl={activeWebhookUrl}
             onCopy={onCopy}
           />
         )}
@@ -427,11 +474,24 @@ export function ChannelDetailPanel({
 
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle p-4">
         <p className="text-[11px] text-text-muted">
-          {channel.backendAvailable ? t('remote.feishuSaveHint') : t('remote.previewSaveHint')}
+          {channel.backendAvailable
+            ? t(channel.type === 'dingtalk' ? 'remote.dingtalkSaveHint' : 'remote.feishuSaveHint', {
+                mode:
+                  dingtalkReceiveMode === 'stream'
+                    ? t('remote.streamConnection')
+                    : t('remote.webhookMode'),
+              })
+            : t('remote.previewSaveHint')}
         </p>
         <button
           type="button"
-          onClick={channel.backendAvailable ? onSaveFeishu : undefined}
+          onClick={
+            channel.backendAvailable
+              ? channel.type === 'dingtalk'
+                ? onSaveDingtalk
+                : onSaveFeishu
+              : undefined
+          }
           disabled={!channel.backendAvailable || isSaving}
           className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-45"
         >

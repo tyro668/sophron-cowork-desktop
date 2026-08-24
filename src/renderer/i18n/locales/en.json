@@ -2628,7 +2628,8 @@
     "channelDesc": {
       "feishu": "Enter app credentials to enable",
       "feishuConfigured": "{{mode}} · {{count}} authorized users",
-      "dingtalk": "Stream connection · Backend pending",
+      "dingtalk": "Enter app credentials to enable Stream or Webhook mode",
+      "dingtalkConfigured": "{{mode}} · {{count}} authorized users",
       "wecom": "AI bot connection · Backend pending"
     },
     "channelState": {
@@ -2646,7 +2647,7 @@
     "credentialsTitle": "Bot credentials",
     "credentialsDesc": {
       "feishu": "Enter the App ID and App Secret from Feishu Open Platform.",
-      "dingtalk": "The planned integration uses DingTalk Stream mode.",
+      "dingtalk": "Enter the Client ID and Client Secret of a DingTalk internal app, then choose Stream or Webhook delivery.",
       "wecom": "The planned integration uses the Bot ID and Secret of a WeCom AI bot."
     },
     "displayName": "Display name",
@@ -2684,7 +2685,7 @@
       "testTitle": "Final step: send a test message",
       "intro": {
         "feishu": "This usually takes 5–10 minutes. Create and publish a bot app in Feishu first, then return to Sophron, enter the credentials, save, and start the service.",
-        "dingtalk": "Create an internal app in DingTalk, add a bot capability with Stream mode, then return to Sophron and enter the app credentials.",
+        "dingtalk": "Create an internal app in DingTalk, add a bot, choose the same Stream or Webhook mode selected here, then return to Sophron and enter the app credentials.",
         "wecom": "Create a WeCom AI bot in API mode with a long connection, then return to Sophron with its Bot ID and Secret."
       },
       "prerequisite": {
@@ -2756,6 +2757,12 @@
             "path": "App details → Add app capability → Bot → Bot configuration",
             "result": "the Bot capability is enabled and message mode is Stream"
           },
+          "addBotWebhook": {
+            "title": "Add an in-app bot and choose HTTP mode",
+            "description": "Add the Bot capability, set message delivery to HTTP/Webhook, and enter the public HTTPS URL below as the receiving endpoint. Do not use a custom group bot that can only push notifications.",
+            "path": "App details → Add app capability → Bot → Bot configuration → Message delivery mode",
+            "result": "HTTP mode is selected and the public callback URL passes validation"
+          },
           "credentials": {
             "title": "Copy the Client ID and Client Secret",
             "description": "Copy the app credentials. Client ID may also be labeled AppKey, and Client Secret may be labeled AppSecret; these are the new and legacy names for the same values.",
@@ -2770,9 +2777,9 @@
           },
           "finish": {
             "title": "Return to Sophron and enter the credentials",
-            "description": "After the DingTalk backend is available, enter the Client ID and Client Secret in Basic setup, save, and start the channel. The current form is a preview and does not save yet.",
+            "description": "Enter the Client ID and Client Secret in Basic setup. Add the RobotCode for OpenAPI fallback delivery, then save and start the remote service.",
             "path": "Sophron → Settings → Remote Control → DingTalk → Basic setup",
-            "result": "a future version shows the channel as Connected"
+            "result": "the channel status changes to Connected"
           },
           "test": {
             "title": "Find the bot in DingTalk",
@@ -2822,16 +2829,17 @@
       },
       "test": {
         "feishu": "Send “Hello” in a direct bot chat. In a group, add the bot and @mention it before sending “Hello.” Receiving a reply from Sophron confirms the connection.",
-        "dingtalk": "After backend support is available, send “Hello” in a direct bot chat. Group tests must @mention the bot. A Sophron reply confirms the Stream connection.",
+        "dingtalk": "Send “Hello” in a direct bot chat. Group tests must @mention the bot. A Sophron reply confirms the selected delivery mode.",
         "wecom": "After backend support is available, send “Hello” in a direct bot chat or @mention the bot in a group. A reply confirms the long connection and visibility scope."
       },
       "warning": {
         "feishu": "Common causes of no response include an unpublished app, a user outside the availability scope, or a missing im.message.receive_v1 subscription. Keep the App Secret private.",
-        "dingtalk": "Make sure this is an in-app bot using Stream mode, not a custom group webhook used only to push notifications. DingTalk forwards group messages only when the bot is @mentioned.",
+        "dingtalk": "Use an in-app bot. Webhook mode requires a publicly reachable HTTPS endpoint and Sophron must remain running; it is not the custom group webhook used only to push notifications. DingTalk forwards group messages only when the bot is @mentioned.",
         "wecom": "A WeCom AI bot can maintain only one active long connection at a time; connecting it elsewhere may replace the old connection. Regenerating the Secret invalidates the previous Secret immediately."
       }
     },
     "feishuSaveHint": "Saving continues to use the existing Feishu backend.",
+    "dingtalkSaveHint": "Saving receives DingTalk bot messages through {{mode}}.",
     "previewSaveHint": "Saving and connection tests will be enabled after the backend API is available.",
     "globalSettingsHint": "These settings apply to the entire remote service. Configure credentials and access policies inside each channel.",
     "saveGlobalSettings": "Save global settings",
@@ -2842,6 +2850,7 @@
     "noAuthorizedUsersDesc": "Users will appear here after pairing or being added to an allowlist.",
     "loadFailed": "Failed to load remote control configuration",
     "feishuCredentialsRequired": "Enter the Feishu App ID and App Secret first",
+    "dingtalkCredentialsRequired": "Enter the DingTalk Client ID and Client Secret first",
     "startService": "Start service",
     "stopService": "Stop service",
     "activeSessions": "Active sessions",

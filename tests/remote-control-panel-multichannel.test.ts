@@ -27,7 +27,7 @@ describe('RemoteControlPanel multi-channel UI', () => {
     expect(source).toContain("type: 'wecom'");
   });
 
-  it('keeps unsupported channel saving disabled in the UI layer', () => {
+  it('keeps only unsupported channel saving disabled in the UI layer', () => {
     const source = readFileSync(detailPath, 'utf8');
 
     expect(source).toContain('!channel.backendAvailable || isSaving');
@@ -83,11 +83,21 @@ describe('RemoteControlPanel multi-channel UI', () => {
     }
   });
 
-  it('does not call backend APIs that have not been implemented', () => {
+  it('calls DingTalk backend APIs while keeping WeCom as a preview', () => {
     const source = readFileSync(panelPath, 'utf8');
 
-    expect(source).not.toContain('updateDingtalkConfig');
+    expect(source).toContain('updateDingtalkConfig');
     expect(source).not.toContain('updateWecomConfig');
+  });
+
+  it('enables DingTalk Webhook mode and persists its receive mode', () => {
+    const panelSource = readFileSync(panelPath, 'utf8');
+    const detailSource = readFileSync(detailPath, 'utf8');
+
+    expect(panelSource).toContain('receiveMode: dingtalkReceiveMode');
+    expect(detailSource).toContain("onDingtalkReceiveModeChange('webhook')");
+    expect(detailSource).toContain('/webhook/${channel.type}');
+    expect(detailSource).toContain('disabled={!channel.backendAvailable}');
   });
 
   it('saves Feishu and gateway settings independently to avoid duplicate restarts', () => {
@@ -110,5 +120,12 @@ describe('RemoteControlPanel multi-channel UI', () => {
 
     expect(approvalBody).toContain('if (!result.success)');
     expect(approvalBody).toContain("setError({ key: 'remote.approveFailed' })");
+  });
+
+  it('shows the pairing empty state when either Feishu or DingTalk uses pairing', () => {
+    const source = readFileSync(panelPath, 'utf8');
+
+    expect(source).toContain("feishuDmPolicy === 'pairing' || dingtalkDmPolicy === 'pairing'");
+    expect(source).toContain('showEmpty={status?.running && isPairingEnabled}');
   });
 });

@@ -83,15 +83,23 @@ export function ChannelSetupGuide({ channelType, useLongConnection, webhookUrl, 
   const [copiedStep, setCopiedStep] = useState<string | null>(null);
 
   const steps = baseSteps[channelType].map((step) => {
-    if (channelType !== 'feishu' || step.id !== 'eventsLong' || useLongConnection) {
-      return step;
+    if (channelType === 'feishu' && step.id === 'eventsLong' && !useLongConnection) {
+      return {
+        id: 'eventsWebhook',
+        copyValue: webhookUrl || undefined,
+        copyLabelKey: webhookUrl ? 'remote.setupGuide.webhookUrlLabel' : undefined,
+      };
     }
 
-    return {
-      id: 'eventsWebhook',
-      copyValue: webhookUrl || undefined,
-      copyLabelKey: webhookUrl ? 'remote.setupGuide.webhookUrlLabel' : undefined,
-    };
+    if (channelType === 'dingtalk' && step.id === 'addBot' && !useLongConnection) {
+      return {
+        id: 'addBotWebhook',
+        copyValue: webhookUrl || undefined,
+        copyLabelKey: webhookUrl ? 'remote.setupGuide.webhookUrlLabel' : undefined,
+      };
+    }
+
+    return step;
   });
 
   function copyStepValue(step: StepDefinition) {

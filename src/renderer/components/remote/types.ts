@@ -58,6 +58,18 @@ export interface RemoteConfig {
         policy: string;
       };
     };
+    dingtalk?: {
+      appKey: string;
+      appSecret: string;
+      robotCode?: string;
+      receiveMode?: 'stream' | 'webhook';
+      dm: {
+        policy: string;
+      };
+      defaultGroupSettings?: {
+        requireMention: boolean;
+      };
+    };
     slack?: {
       botToken: string;
       appToken?: string;
