@@ -1,33 +1,40 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const sdkMocks = vi.hoisted(() => {
+  type WSClientOptions = {
+    handshakeTimeoutMs?: number;
+    onReady?: () => void;
+    onError?: (error: Error) => void;
+    onReconnecting?: () => void;
+    onReconnected?: () => void;
+  };
+
   class FakeWSClient {
     static instances: FakeWSClient[] = [];
 
-    private resolveStartPromise?: () => void;
-    private readyState = 0;
-    readonly close = vi.fn(() => {
-      this.readyState = 3;
-    });
-    readonly wsConfig = {
-      getWSInstance: () => (this.readyState === 1 ? { readyState: 1 } : null),
-    };
+    readonly options: WSClientOptions;
+    readonly start = vi.fn(async () => undefined);
+    readonly close = vi.fn();
 
-    constructor() {
+    constructor(options: WSClientOptions) {
+      this.options = options;
       FakeWSClient.instances.push(this);
     }
 
-    async start(): Promise<void> {
-      await new Promise<void>((resolve) => {
-        this.resolveStartPromise = () => {
-          this.readyState = 1;
-          resolve();
-        };
-      });
+    triggerReady(): void {
+      this.options.onReady?.();
     }
 
-    resolveStart(): void {
-      this.resolveStartPromise?.();
+    triggerError(error: Error): void {
+      this.options.onError?.(error);
+    }
+
+    triggerReconnecting(): void {
+      this.options.onReconnecting?.();
+    }
+
+    triggerReconnected(): void {
+      this.options.onReconnected?.();
     }
   }
 
@@ -67,10 +74,11 @@ async function waitForSDKInstance(
 
 describe('FeishuWSClient lifecycle', () => {
   beforeEach(() => {
+    vi.useRealTimers();
     sdkMocks.FakeWSClient.instances.length = 0;
   });
 
-  it('reports connected only after the SDK start promise and socket are ready', async () => {
+  it('reports connected only after the SDK emits its public ready signal', async () => {
     const client = new FeishuWSClient({ appId: 'app-id', appSecret: 'app-secret' });
     const connected = vi.fn();
     client.on('connected', connected);
@@ -82,53 +90,144 @@ describe('FeishuWSClient lifecycle', () => {
     expect(client.isConnected()).toBe(false);
     expect(connected).not.toHaveBeenCalled();
 
-    sdkClient.resolveStart();
+    expect(sdkClient.start).toHaveBeenCalledOnce();
+    expect(sdkClient.options.handshakeTimeoutMs).toBe(15_000);
+
+    sdkClient.triggerReady();
     await startPromise;
 
     expect(client.isConnected()).toBe(true);
     expect(connected).toHaveBeenCalledOnce();
   });
 
-  it('closes an SDK connection that finishes after stop was requested', async () => {
+  it('cancels a pending start immediately when stop is requested', async () => {
     const client = new FeishuWSClient({ appId: 'app-id', appSecret: 'app-secret' });
     client.on('error', vi.fn());
 
     const startPromise = client.start();
     const sdkClient = await waitForSDKInstance(0);
 
-    let stopCompleted = false;
-    const stopPromise = client.stop().then(() => {
-      stopCompleted = true;
-    });
-    await Promise.resolve();
-    expect(stopCompleted).toBe(false);
-
-    sdkClient.resolveStart();
-
+    const stopPromise = client.stop();
     await expect(startPromise).rejects.toThrow('start cancelled');
     await stopPromise;
     expect(client.isConnected()).toBe(false);
     expect(sdkClient.close).toHaveBeenCalled();
+
+    // A late callback from the closed SDK instance must not revive the client.
+    sdkClient.triggerReady();
+    expect(client.isConnected()).toBe(false);
   });
 
-  it('starts a clean replacement only after the stopped start has settled', async () => {
+  it('ignores a stale ready callback after a replacement start', async () => {
     const client = new FeishuWSClient({ appId: 'app-id', appSecret: 'app-secret' });
     client.on('error', vi.fn());
 
     const firstStart = client.start();
     const firstSDKClient = await waitForSDKInstance(0);
     const stopPromise = client.stop();
-    firstSDKClient.resolveStart();
     await expect(firstStart).rejects.toThrow('start cancelled');
     await stopPromise;
 
     const secondStart = client.start();
     const secondSDKClient = await waitForSDKInstance(1);
-    secondSDKClient.resolveStart();
+
+    firstSDKClient.triggerReady();
+    expect(client.isConnected()).toBe(false);
+    expect(secondSDKClient.close).not.toHaveBeenCalled();
+
+    secondSDKClient.triggerReady();
     await secondStart;
 
     expect(client.isConnected()).toBe(true);
     expect(secondSDKClient.close).not.toHaveBeenCalled();
+  });
+
+  it('rejects the initial start when the SDK reports a terminal error', async () => {
+    const client = new FeishuWSClient({ appId: 'app-id', appSecret: 'app-secret' });
+    const errors = vi.fn();
+    client.on('error', errors);
+
+    const startPromise = client.start();
+    const sdkClient = await waitForSDKInstance(0);
+    sdkClient.triggerError(new Error('invalid credentials'));
+
+    await expect(startPromise).rejects.toThrow('invalid credentials');
+    expect(client.isConnected()).toBe(false);
+    expect(errors).toHaveBeenCalledOnce();
+    expect(sdkClient.close).toHaveBeenCalled();
+    await client.stop();
+  });
+
+  it('times out when the SDK never reports ready', async () => {
+    const client = new FeishuWSClient({
+      appId: 'app-id',
+      appSecret: 'app-secret',
+      connectTimeoutMs: 5,
+    });
+    client.on('error', vi.fn());
+
+    const startPromise = client.start();
+    const startRejection = expect(startPromise).rejects.toThrow('connection timed out after 5ms');
+    const sdkClient = await waitForSDKInstance(0);
+
+    await startRejection;
+    expect(client.isConnected()).toBe(false);
+    expect(sdkClient.close).toHaveBeenCalled();
+    await client.stop();
+  });
+
+  it('tracks SDK reconnecting and reconnected callbacks', async () => {
+    const client = new FeishuWSClient({ appId: 'app-id', appSecret: 'app-secret' });
+    const connected = vi.fn();
+    const disconnected = vi.fn();
+    client.on('connected', connected);
+    client.on('disconnected', disconnected);
+    client.on('error', vi.fn());
+
+    const startPromise = client.start();
+    const sdkClient = await waitForSDKInstance(0);
+    sdkClient.triggerReady();
+    await startPromise;
+
+    sdkClient.triggerReconnecting();
+    expect(client.isConnected()).toBe(false);
+    expect(disconnected).toHaveBeenCalledOnce();
+
+    sdkClient.triggerReconnected();
+    expect(client.isConnected()).toBe(true);
+    expect(connected).toHaveBeenCalledTimes(2);
+
+    await client.stop();
+  });
+
+  it('creates only one fresh client after the SDK exhausts its reconnects', async () => {
+    const client = new FeishuWSClient({ appId: 'app-id', appSecret: 'app-secret' });
+    const errors = vi.fn();
+    client.on('error', errors);
+
+    const startPromise = client.start();
+    const firstSDKClient = await waitForSDKInstance(0);
+    firstSDKClient.triggerReady();
+    await startPromise;
+
+    vi.useFakeTimers();
+    firstSDKClient.triggerError(new Error('reconnect exhausted'));
+    firstSDKClient.triggerError(new Error('duplicate terminal error'));
+
+    expect(client.isConnected()).toBe(false);
+    expect(errors).toHaveBeenCalledOnce();
+    expect(firstSDKClient.close).toHaveBeenCalledOnce();
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await Promise.resolve();
+    expect(sdkMocks.FakeWSClient.instances).toHaveLength(2);
+
+    const secondSDKClient = sdkMocks.FakeWSClient.instances[1];
+    secondSDKClient.triggerReady();
+    await Promise.resolve();
+    expect(client.isConnected()).toBe(true);
+
+    await client.stop();
   });
 });
 

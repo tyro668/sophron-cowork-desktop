@@ -11,6 +11,10 @@ export interface FeishuWSConfig {
   appId: string;
   appSecret: string;
   logLevel?: 'debug' | 'info' | 'warn' | 'error';
+  /** Maximum time to wait for the first successful connection. */
+  connectTimeoutMs?: number;
+  /** Maximum time the SDK waits for a single WebSocket handshake. */
+  handshakeTimeoutMs?: number;
 }
 
 export interface FeishuMessage {
@@ -29,6 +33,12 @@ export interface FeishuMessage {
  * Uses Feishu SDK's long connection mode
  */
 export class FeishuWSClient extends EventEmitter {
+  // The SDK can spend up to 15s discovering the endpoint and another 15s on
+  // the WebSocket handshake. Keep the outer deadline beyond both phases so a
+  // timeout does not abandon the SDK in the middle of its initial handshake.
+  private static readonly DEFAULT_CONNECT_TIMEOUT_MS = 35_000;
+  private static readonly DEFAULT_HANDSHAKE_TIMEOUT_MS = 15_000;
+
   private config: FeishuWSConfig;
   private client: Lark.Client | null = null;
   private wsClient: Lark.WSClient | null = null;
@@ -40,6 +50,7 @@ export class FeishuWSClient extends EventEmitter {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private lifecycleGeneration: number = 0;
   private startCompletion: Promise<void> | null = null;
+  private cancelPendingStart: ((error: Error) => void) | null = null;
 
   constructor(config: FeishuWSConfig) {
     super();
@@ -76,6 +87,29 @@ export class FeishuWSClient extends EventEmitter {
     log('[FeishuWS] Starting long connection...');
 
     let sdkWSClient: Lark.WSClient | null = null;
+    let cancelStart: ((error: Error) => void) | null = null;
+    let readySettled = false;
+    let readyTimer: ReturnType<typeof setTimeout> | null = null;
+    let resolveReady!: () => void;
+    let rejectReady!: (error: Error) => void;
+    const readyPromise = new Promise<void>((resolve, reject) => {
+      resolveReady = resolve;
+      rejectReady = reject;
+    });
+    const settleReady = (error?: Error): boolean => {
+      if (readySettled) return false;
+      readySettled = true;
+      if (readyTimer) {
+        clearTimeout(readyTimer);
+        readyTimer = null;
+      }
+      if (error) {
+        rejectReady(error);
+      } else {
+        resolveReady();
+      }
+      return true;
+    };
 
     try {
       // Close any lingering previous connection before creating a new one
@@ -97,8 +131,56 @@ export class FeishuWSClient extends EventEmitter {
         appId,
         appSecret,
         loggerLevel,
+        autoReconnect: true,
+        handshakeTimeoutMs:
+          this.config.handshakeTimeoutMs ?? FeishuWSClient.DEFAULT_HANDSHAKE_TIMEOUT_MS,
+        onReady: () => {
+          if (!this.isCurrentClient(generation, sdkWSClient)) {
+            if (sdkWSClient) this.closeSpecificWSClient(sdkWSClient);
+            settleReady(new Error('Feishu WebSocket start cancelled'));
+            return;
+          }
+          settleReady();
+        },
+        onError: (error: Error) => {
+          const client = sdkWSClient;
+          if (!client || !this.isCurrentClient(generation, client)) return;
+
+          // Before the first ready signal, let start() own cleanup and retry.
+          if (settleReady(error)) return;
+
+          // The SDK emits onError only after its reconnect loop is exhausted.
+          this.handleTerminalConnectionError(client, error);
+        },
+        onReconnecting: () => {
+          if (!this.isCurrentClient(generation, sdkWSClient)) return;
+          const wasConnected = this.connected;
+          this.connected = false;
+          logWarn('[FeishuWS] Connection lost, SDK is reconnecting...');
+          if (wasConnected) this.emit('disconnected');
+        },
+        onReconnected: () => {
+          if (!this.isCurrentClient(generation, sdkWSClient)) {
+            if (sdkWSClient) this.closeSpecificWSClient(sdkWSClient);
+            return;
+          }
+          this.connected = true;
+          this.reconnectAttempts = 0;
+          log('[FeishuWS] Long connection re-established successfully');
+          this.emit('connected');
+        },
       });
       this.wsClient = sdkWSClient;
+      cancelStart = (error: Error) => {
+        settleReady(error);
+      };
+      this.cancelPendingStart = cancelStart;
+
+      const connectTimeoutMs =
+        this.config.connectTimeoutMs ?? FeishuWSClient.DEFAULT_CONNECT_TIMEOUT_MS;
+      readyTimer = setTimeout(() => {
+        settleReady(new Error(`Feishu WebSocket connection timed out after ${connectTimeoutMs}ms`));
+      }, connectTimeoutMs);
 
       // Bail out if stop() was called while we were setting up
       if (this.stopped) {
@@ -120,7 +202,11 @@ export class FeishuWSClient extends EventEmitter {
         }),
       });
 
-      // Double-check: stop() may have been called during the async start above
+      // SDK 1.73.0 start() starts the connection in the background. onReady is
+      // the public signal that the first WebSocket handshake actually succeeded.
+      await readyPromise;
+
+      // Double-check: stop() may have been called while waiting for onReady.
       if (
         this.stopped ||
         generation !== this.lifecycleGeneration ||
@@ -130,10 +216,6 @@ export class FeishuWSClient extends EventEmitter {
         this.client = null;
         this.starting = false;
         throw new Error('Feishu WebSocket start cancelled');
-      }
-
-      if (!this.isUnderlyingConnectionOpen(sdkWSClient)) {
-        throw new Error('Feishu WebSocket did not reach the open state');
       }
 
       this.connected = true;
@@ -162,6 +244,10 @@ export class FeishuWSClient extends EventEmitter {
       this.scheduleReconnect();
       throw error;
     } finally {
+      settleReady();
+      if (cancelStart && this.cancelPendingStart === cancelStart) {
+        this.cancelPendingStart = null;
+      }
       resolveStartCompletion();
       if (this.startCompletion === startCompletion) {
         this.startCompletion = null;
@@ -184,12 +270,15 @@ export class FeishuWSClient extends EventEmitter {
     this.starting = false;
     this.connected = false;
     const pendingStart = this.startCompletion;
+    const cancelPendingStart = this.cancelPendingStart;
+    this.cancelPendingStart = null;
 
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
 
+    cancelPendingStart?.(new Error('Feishu WebSocket start cancelled'));
     await this.closeWSClient();
     if (pendingStart) {
       await pendingStart;
@@ -226,20 +315,32 @@ export class FeishuWSClient extends EventEmitter {
     }
   }
 
+  private isCurrentClient(generation: number, client: Lark.WSClient | null): boolean {
+    return (
+      client !== null &&
+      !this.stopped &&
+      generation === this.lifecycleGeneration &&
+      this.wsClient === client
+    );
+  }
+
   /**
-   * SDK 1.59.0 exposes no public readiness callback. Its runtime WSConfig is
-   * inspected only after the patched start() resolves so connected=true means
-   * there is an actual OPEN socket, not merely a scheduled connection attempt.
+   * The SDK has already exhausted its own reconnect loop. Close that instance
+   * before the outer retry creates a fresh one, so only one reconnect owner is
+   * active at a time.
    */
-  private isUnderlyingConnectionOpen(client: Lark.WSClient): boolean {
-    try {
-      const runtimeClient = client as unknown as {
-        wsConfig?: { getWSInstance?: () => { readyState?: number } | null };
-      };
-      return runtimeClient.wsConfig?.getWSInstance?.()?.readyState === 1;
-    } catch {
-      return false;
-    }
+  private handleTerminalConnectionError(client: Lark.WSClient, error: Error): void {
+    if (this.wsClient !== client || this.stopped) return;
+
+    const wasConnected = this.connected;
+    this.connected = false;
+    this.starting = false;
+    this.closeSpecificWSClient(client);
+    this.client = null;
+    logError('[FeishuWS] Connection failed after SDK retries:', error);
+    this.emit('error', error);
+    if (wasConnected) this.emit('disconnected');
+    this.scheduleReconnect();
   }
 
   /**
@@ -428,6 +529,9 @@ export class FeishuWSClient extends EventEmitter {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       logError('[FeishuWS] Max reconnect attempts reached');
       this.emit('reconnectFailed');
+      return;
+    }
+    if (this.reconnectTimer) {
       return;
     }
 
