@@ -53,6 +53,8 @@ describe('RemoteControlPanel multi-channel UI', () => {
       expect(messages.remote.setupGuide.steps.feishu.finish).toBeTruthy();
       expect(messages.remote.setupGuide.steps.dingtalk.test).toBeTruthy();
       expect(messages.remote.setupGuide.steps.wecom.test).toBeTruthy();
+      expect(messages.remote.setupGuide.steps.wecom.webhookConnection).toBeTruthy();
+      expect(messages.remote.setupGuide.steps.wecom.webhookCredentials).toBeTruthy();
       expect(messages.remote.setupGuide.warning.wecom).toBeTruthy();
     }
   });
@@ -83,21 +85,25 @@ describe('RemoteControlPanel multi-channel UI', () => {
     }
   });
 
-  it('calls DingTalk backend APIs while keeping WeCom as a preview', () => {
+  it('calls DingTalk and WeCom backend APIs', () => {
     const source = readFileSync(panelPath, 'utf8');
 
     expect(source).toContain('updateDingtalkConfig');
-    expect(source).not.toContain('updateWecomConfig');
+    expect(source).toContain('updateWecomConfig');
+    expect(source).toContain('backendAvailable: true');
   });
 
-  it('enables DingTalk Webhook mode and persists its receive mode', () => {
+  it('enables DingTalk and WeCom Webhook modes and persists their receive modes', () => {
     const panelSource = readFileSync(panelPath, 'utf8');
     const detailSource = readFileSync(detailPath, 'utf8');
 
     expect(panelSource).toContain('receiveMode: dingtalkReceiveMode');
     expect(detailSource).toContain("onDingtalkReceiveModeChange('webhook')");
     expect(detailSource).toContain('/webhook/${channel.type}');
-    expect(detailSource).toContain('disabled={!channel.backendAvailable}');
+    expect(panelSource).toContain('receiveMode: wecomReceiveMode');
+    expect(panelSource).toContain('webhookEncodingAESKey: wecomWebhookEncodingAESKey');
+    expect(detailSource).toContain("onWecomReceiveModeChange('webhook')");
+    expect(detailSource).toContain('wecom-webhook-aes-key');
   });
 
   it('saves Feishu and gateway settings independently to avoid duplicate restarts', () => {
@@ -122,10 +128,10 @@ describe('RemoteControlPanel multi-channel UI', () => {
     expect(approvalBody).toContain("setError({ key: 'remote.approveFailed' })");
   });
 
-  it('shows the pairing empty state when either Feishu or DingTalk uses pairing', () => {
+  it('shows the pairing empty state when any supported channel uses pairing', () => {
     const source = readFileSync(panelPath, 'utf8');
 
-    expect(source).toContain("feishuDmPolicy === 'pairing' || dingtalkDmPolicy === 'pairing'");
+    expect(source).toContain("wecomDmPolicy === 'pairing'");
     expect(source).toContain('showEmpty={status?.running && isPairingEnabled}');
   });
 });

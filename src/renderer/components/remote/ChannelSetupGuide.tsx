@@ -99,6 +99,18 @@ export function ChannelSetupGuide({ channelType, useLongConnection, webhookUrl, 
       };
     }
 
+    if (channelType === 'wecom' && step.id === 'longConnection' && !useLongConnection) {
+      return {
+        id: 'webhookConnection',
+        copyValue: webhookUrl || undefined,
+        copyLabelKey: webhookUrl ? 'remote.setupGuide.webhookUrlLabel' : undefined,
+      };
+    }
+
+    if (channelType === 'wecom' && step.id === 'credentials' && !useLongConnection) {
+      return { id: 'webhookCredentials' };
+    }
+
     return step;
   });
 

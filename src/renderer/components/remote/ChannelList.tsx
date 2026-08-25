@@ -35,13 +35,15 @@ export function ChannelList({ channels, selectedChannel, onSelect }: Props) {
       <div className="space-y-1.5 p-2">
         {channels.map((channel) => {
           const isSelected = selectedChannel === channel.type;
-          const state = channel.connected
-            ? 'connected'
-            : channel.configured
-              ? 'stopped'
-              : channel.backendAvailable
-                ? 'unconfigured'
-                : 'preview';
+          const state = channel.error
+            ? 'error'
+            : channel.connected
+              ? 'connected'
+              : channel.configured
+                ? 'stopped'
+                : channel.backendAvailable
+                  ? 'unconfigured'
+                  : 'preview';
 
           return (
             <button
@@ -60,7 +62,7 @@ export function ChannelList({ channels, selectedChannel, onSelect }: Props) {
                   {channel.name}
                 </span>
                 <span className="mt-1 block truncate text-xs text-text-muted">
-                  {channel.description}
+                  {channel.error || channel.description}
                 </span>
               </span>
               <span className="flex items-center gap-2">
@@ -68,18 +70,22 @@ export function ChannelList({ channels, selectedChannel, onSelect }: Props) {
                   className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold ${
                     state === 'connected'
                       ? 'bg-success/10 text-success'
-                      : state === 'stopped'
-                        ? 'bg-warning/10 text-warning'
-                        : 'bg-surface-active text-text-muted'
+                      : state === 'error'
+                        ? 'bg-error/10 text-error'
+                        : state === 'stopped'
+                          ? 'bg-warning/10 text-warning'
+                          : 'bg-surface-active text-text-muted'
                   }`}
                 >
                   <span
                     className={`h-1.5 w-1.5 rounded-full ${
                       state === 'connected'
                         ? 'bg-success'
-                        : state === 'stopped'
-                          ? 'bg-warning'
-                          : 'bg-text-muted'
+                        : state === 'error'
+                          ? 'bg-error'
+                          : state === 'stopped'
+                            ? 'bg-warning'
+                            : 'bg-text-muted'
                     }`}
                   />
                   {t(`remote.channelState.${state}`)}

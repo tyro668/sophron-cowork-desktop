@@ -70,6 +70,20 @@ export interface RemoteConfig {
         requireMention: boolean;
       };
     };
+    wecom?: {
+      receiveMode?: 'websocket' | 'webhook';
+      botId: string;
+      secret: string;
+      wsUrl?: string;
+      webhookToken?: string;
+      webhookEncodingAESKey?: string;
+      dm: {
+        policy: string;
+      };
+      defaultGroupSettings?: {
+        requireMention: boolean;
+      };
+    };
     slack?: {
       botToken: string;
       appToken?: string;
@@ -105,6 +119,7 @@ export interface RemoteChannelViewModel {
   connected: boolean;
   backendAvailable: boolean;
   authorizedUsers: number;
+  error?: string;
 }
 
 export type LocalizedBanner = { key?: string; text?: string | null };

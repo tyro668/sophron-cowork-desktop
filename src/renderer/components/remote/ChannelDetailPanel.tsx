@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Check,
+  AlertTriangle,
   Copy,
   Info,
   Link2,
@@ -30,6 +31,13 @@ interface Props {
   dingtalkDmPolicy: string;
   dingtalkRequireMention: boolean;
   dingtalkReceiveMode: 'stream' | 'webhook';
+  wecomBotId: string;
+  wecomSecret: string;
+  wecomWebhookToken: string;
+  wecomWebhookEncodingAESKey: string;
+  wecomReceiveMode: 'websocket' | 'webhook';
+  wecomDmPolicy: string;
+  wecomRequireMention: boolean;
   useLongConnection: boolean;
   gatewayPort: number;
   tunnelEnabled: boolean;
@@ -46,18 +54,20 @@ interface Props {
   onDingtalkDmPolicyChange: (value: string) => void;
   onDingtalkRequireMentionChange: (value: boolean) => void;
   onDingtalkReceiveModeChange: (value: 'stream' | 'webhook') => void;
+  onWecomBotIdChange: (value: string) => void;
+  onWecomSecretChange: (value: string) => void;
+  onWecomWebhookTokenChange: (value: string) => void;
+  onWecomWebhookEncodingAESKeyChange: (value: string) => void;
+  onWecomReceiveModeChange: (value: 'websocket' | 'webhook') => void;
+  onWecomDmPolicyChange: (value: string) => void;
+  onWecomRequireMentionChange: (value: boolean) => void;
   onLongConnectionChange: (value: boolean) => void;
   onTunnelEnabledChange: (value: boolean) => void;
   onNgrokAuthTokenChange: (value: string) => void;
   onCopy: (value: string) => void;
   onSaveFeishu: () => void;
   onSaveDingtalk: () => void;
-}
-
-interface PreviewCredentials {
-  displayName: string;
-  botId: string;
-  botSecret: string;
+  onSaveWecom: () => void;
 }
 
 export function ChannelDetailPanel({
@@ -71,6 +81,13 @@ export function ChannelDetailPanel({
   dingtalkDmPolicy,
   dingtalkRequireMention,
   dingtalkReceiveMode,
+  wecomBotId,
+  wecomSecret,
+  wecomWebhookToken,
+  wecomWebhookEncodingAESKey,
+  wecomReceiveMode,
+  wecomDmPolicy,
+  wecomRequireMention,
   useLongConnection,
   gatewayPort,
   tunnelEnabled,
@@ -87,22 +104,24 @@ export function ChannelDetailPanel({
   onDingtalkDmPolicyChange,
   onDingtalkRequireMentionChange,
   onDingtalkReceiveModeChange,
+  onWecomBotIdChange,
+  onWecomSecretChange,
+  onWecomWebhookTokenChange,
+  onWecomWebhookEncodingAESKeyChange,
+  onWecomReceiveModeChange,
+  onWecomDmPolicyChange,
+  onWecomRequireMentionChange,
   onLongConnectionChange,
   onTunnelEnabledChange,
   onNgrokAuthTokenChange,
   onCopy,
   onSaveFeishu,
   onSaveDingtalk,
+  onSaveWecom,
 }: Props) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<ChannelConfigTab>('basic');
-  const [previewPolicy, setPreviewPolicy] = useState('pairing');
   const [requireMention, setRequireMention] = useState(true);
-  const [previewCredentials, setPreviewCredentials] = useState<PreviewCredentials>({
-    displayName: '',
-    botId: '',
-    botSecret: '',
-  });
 
   useEffect(() => {
     setActiveTab('basic');
@@ -113,31 +132,31 @@ export function ChannelDetailPanel({
       ? feishuDmPolicy
       : channel.type === 'dingtalk'
         ? dingtalkDmPolicy
-        : previewPolicy;
+        : wecomDmPolicy;
   const setDmPolicy =
     channel.type === 'feishu'
       ? onFeishuDmPolicyChange
       : channel.type === 'dingtalk'
         ? onDingtalkDmPolicyChange
-        : setPreviewPolicy;
+        : onWecomDmPolicyChange;
   const activeRequireMention =
-    channel.type === 'dingtalk' ? dingtalkRequireMention : requireMention;
+    channel.type === 'dingtalk'
+      ? dingtalkRequireMention
+      : channel.type === 'wecom'
+        ? wecomRequireMention
+        : requireMention;
   const channelUsesLongConnection =
     channel.type === 'feishu'
       ? useLongConnection
       : channel.type === 'dingtalk'
         ? dingtalkReceiveMode === 'stream'
-        : true;
+        : wecomReceiveMode === 'websocket';
   const channelUsesWebhook = channel.backendAvailable && !channelUsesLongConnection;
   const activeWebhookUrl = tunnelStatus?.url
     ? `${tunnelStatus.url.replace(/\/$/, '')}/webhook/${channel.type}`
     : channel.type === 'feishu'
       ? webhookUrl
       : null;
-
-  function updatePreviewCredential(field: keyof PreviewCredentials, value: string) {
-    setPreviewCredentials((current) => ({ ...current, [field]: value }));
-  }
 
   const tabs = [
     { id: 'basic' as const, label: t('remote.channelTabBasic'), icon: Settings2 },
@@ -210,6 +229,12 @@ export function ChannelDetailPanel({
             <span>{t('remote.previewOnlyNotice')}</span>
           </div>
         )}
+        {channel.error && (
+          <div className="mb-4 flex items-start gap-2 rounded-xl border border-error/25 bg-error/5 p-3 text-xs leading-5 text-error">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{channel.error}</span>
+          </div>
+        )}
 
         {activeTab === 'basic' && (
           <div className="space-y-5">
@@ -269,29 +294,43 @@ export function ChannelDetailPanel({
               </div>
             )}
 
-            {channel.type === 'wecom' && (
+            {channel.type === 'wecom' && wecomReceiveMode === 'websocket' && (
               <div className="grid gap-3 sm:grid-cols-2">
-                <CredentialField
-                  id="wecom-name"
-                  label={t('remote.displayName')}
-                  value={previewCredentials.displayName}
-                  placeholder={t('remote.wecomNamePlaceholder')}
-                  onChange={(value) => updatePreviewCredential('displayName', value)}
-                />
                 <CredentialField
                   id="wecom-bot-id"
                   label="Bot ID"
-                  value={previewCredentials.botId}
-                  placeholder="bot_xxxxxxxxxxxxxxxx"
-                  onChange={(value) => updatePreviewCredential('botId', value)}
+                  value={wecomBotId}
+                  placeholder="aibxxxxxxxxxxxxxxxx"
+                  onChange={onWecomBotIdChange}
                 />
                 <CredentialField
                   id="wecom-bot-secret"
                   label="Secret"
-                  value={previewCredentials.botSecret}
+                  value={wecomSecret}
                   placeholder="••••••••••••••••"
                   type="password"
-                  onChange={(value) => updatePreviewCredential('botSecret', value)}
+                  onChange={onWecomSecretChange}
+                />
+              </div>
+            )}
+
+            {channel.type === 'wecom' && wecomReceiveMode === 'webhook' && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <CredentialField
+                  id="wecom-webhook-token"
+                  label="Token"
+                  value={wecomWebhookToken}
+                  placeholder="Token"
+                  type="password"
+                  onChange={onWecomWebhookTokenChange}
+                />
+                <CredentialField
+                  id="wecom-webhook-aes-key"
+                  label="EncodingAESKey"
+                  value={wecomWebhookEncodingAESKey}
+                  placeholder="43 characters"
+                  type="password"
+                  onChange={onWecomWebhookEncodingAESKeyChange}
                 />
               </div>
             )}
@@ -314,21 +353,23 @@ export function ChannelDetailPanel({
                   onClick={() => {
                     if (channel.type === 'feishu') onLongConnectionChange(true);
                     if (channel.type === 'dingtalk') onDingtalkReceiveModeChange('stream');
+                    if (channel.type === 'wecom') onWecomReceiveModeChange('websocket');
                   }}
                 />
                 <ConnectionOption
                   selected={channelUsesWebhook}
                   title={t('remote.webhookMode')}
-                  description={
+                  description={t(
                     channel.type === 'wecom'
-                      ? t('remote.webhookUnavailable')
-                      : t('remote.webhookChannelDesc')
-                  }
+                      ? 'remote.wecomWebhookChannelDesc'
+                      : 'remote.webhookChannelDesc'
+                  )}
                   disabled={!channel.backendAvailable}
                   icon={Link2}
                   onClick={() => {
                     if (channel.type === 'feishu') onLongConnectionChange(false);
                     if (channel.type === 'dingtalk') onDingtalkReceiveModeChange('webhook');
+                    if (channel.type === 'wecom') onWecomReceiveModeChange('webhook');
                   }}
                 />
               </div>
@@ -444,6 +485,8 @@ export function ChannelDetailPanel({
                 onClick={() => {
                   if (channel.type === 'dingtalk') {
                     onDingtalkRequireMentionChange(!activeRequireMention);
+                  } else if (channel.type === 'wecom') {
+                    onWecomRequireMentionChange(!activeRequireMention);
                   } else {
                     setRequireMention((value) => !value);
                   }
@@ -475,12 +518,23 @@ export function ChannelDetailPanel({
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle p-4">
         <p className="text-[11px] text-text-muted">
           {channel.backendAvailable
-            ? t(channel.type === 'dingtalk' ? 'remote.dingtalkSaveHint' : 'remote.feishuSaveHint', {
-                mode:
-                  dingtalkReceiveMode === 'stream'
-                    ? t('remote.streamConnection')
-                    : t('remote.webhookMode'),
-              })
+            ? t(
+                channel.type === 'dingtalk'
+                  ? 'remote.dingtalkSaveHint'
+                  : channel.type === 'wecom'
+                    ? 'remote.wecomSaveHint'
+                    : 'remote.feishuSaveHint',
+                {
+                  mode:
+                    channel.type === 'wecom'
+                      ? wecomReceiveMode === 'websocket'
+                        ? t('remote.longConnection')
+                        : t('remote.webhookMode')
+                      : dingtalkReceiveMode === 'stream'
+                        ? t('remote.streamConnection')
+                        : t('remote.webhookMode'),
+                }
+              )
             : t('remote.previewSaveHint')}
         </p>
         <button
@@ -489,7 +543,9 @@ export function ChannelDetailPanel({
             channel.backendAvailable
               ? channel.type === 'dingtalk'
                 ? onSaveDingtalk
-                : onSaveFeishu
+                : channel.type === 'wecom'
+                  ? onSaveWecom
+                  : onSaveFeishu
               : undefined
           }
           disabled={!channel.backendAvailable || isSaving}

@@ -2630,13 +2630,15 @@
       "feishuConfigured": "{{mode}} · {{count}} 位授权用户",
       "dingtalk": "填写应用凭证后启用 Stream 或 Webhook 模式",
       "dingtalkConfigured": "{{mode}} · {{count}} 位授权用户",
-      "wecom": "智能机器人长连接 · 后端待接入"
+      "wecom": "可使用 WebSocket 长连接或 Webhook 回调",
+      "wecomConfigured": "{{mode}} · {{count}} 位授权用户"
     },
     "channelState": {
       "connected": "已连接",
       "stopped": "已配置",
       "unconfigured": "未配置",
-      "preview": "界面预览"
+      "preview": "界面预览",
+      "error": "连接错误"
     },
     "channelTabBasic": "基本配置",
     "channelTabAccess": "访问权限",
@@ -2648,7 +2650,7 @@
     "credentialsDesc": {
       "feishu": "填写飞书开放平台中应用的 App ID 和 App Secret。",
       "dingtalk": "填写钉钉企业内部应用的 Client ID 和 Client Secret，可选择 Stream 长连接或 Webhook 回调。",
-      "wecom": "计划通过企业微信智能机器人的 Bot ID 和 Secret 建立长连接。"
+      "wecom": "长连接填写 Bot ID 和 Secret；Webhook 填写 Token 和 EncodingAESKey。"
     },
     "displayName": "显示名称",
     "dingtalkNamePlaceholder": "例如：内部机器人",
@@ -2662,7 +2664,7 @@
       "wecom": "通过智能机器人 WebSocket 长连接收发消息。"
     },
     "webhookChannelDesc": "平台向本地服务推送消息，需要公网回调地址。",
-    "webhookUnavailable": "第一阶段不开放该平台的 Webhook 模式。",
+    "wecomWebhookChannelDesc": "企业微信向加密回调地址推送消息，支持流式刷新回复。",
     "ngrokChannelHint": "为本地 Webhook 提供公网可访问地址",
     "accessPolicyDesc": "访问策略将按渠道独立保存，互不影响。",
     "requireMention": "群聊中需要 @机器人",
@@ -2686,7 +2688,7 @@
       "intro": {
         "feishu": "整个过程大约需要 5～10 分钟。先在飞书开放平台创建并发布机器人应用，再回到九思助理填写凭证、保存配置并启动服务。",
         "dingtalk": "先在钉钉开发者后台创建企业内部应用，在应用内添加机器人并选择与本页一致的 Stream 或 Webhook 模式，再回到九思助理填写凭证。",
-        "wecom": "先创建 API 模式的企业微信智能机器人并选择长连接，取得 Bot ID 和 Secret 后，再回到九思助理完成绑定。"
+        "wecom": "先创建 API 模式的企业微信智能机器人，选择长连接或 URL 回调，再回到九思助理填写对应凭证。"
       },
       "prerequisite": {
         "feishu": "你需要拥有当前飞书企业中创建自建应用的权限；没有权限时，请让企业管理员创建应用或授予开发者权限。",
@@ -2807,17 +2809,29 @@
             "path": "机器人编辑页 → 可使用成员 / 可见范围 → API 配置 → 使用长连接",
             "result": "目标用户在可见范围内，连接方式显示为长连接"
           },
+          "webhookConnection": {
+            "title": "选择 URL 回调并填写公网地址",
+            "description": "在 API 配置中选择“使用 URL 回调”，把下方 HTTPS 公网地址填入 URL。保存机器人前，九思助理远程控制服务必须已经启动。",
+            "path": "机器人编辑页 → API 配置 → 使用 URL 回调 → URL",
+            "result": "企业微信可以访问该地址并通过 URL 有效性校验"
+          },
           "credentials": {
             "title": "获取 Bot ID 和 Secret 并保存机器人",
             "description": "复制 Bot ID，在 Secret 一栏点击“点击获取”并立即保存 Secret，然后保存机器人。Secret 通常不会一直完整显示，请妥善保管。",
             "path": "机器人编辑页 → API 配置 → 配置方法 → Bot ID / Secret",
             "result": "Bot ID 和 Secret 已保存，机器人详情页可以正常打开"
           },
+          "webhookCredentials": {
+            "title": "生成 Token 和 EncodingAESKey",
+            "description": "在 URL 回调配置中生成 Token 和 EncodingAESKey，并把两项完整复制到九思助理基本配置。两项均用于验签和消息加密，请勿泄露。",
+            "path": "机器人编辑页 → API 配置 → URL 回调 → Token / EncodingAESKey",
+            "result": "企业微信后台与九思助理中的 Token、EncodingAESKey 完全一致"
+          },
           "finish": {
             "title": "回到九思助理填写凭证",
-            "description": "企业微信后端接入完成后，在“基本配置”填入 Bot ID 和 Secret，保存配置并启动该渠道。当前页面可以预览字段，但暂时不会保存。",
+            "description": "在“基本配置”填入 Bot ID 和 Secret，保存配置并启动远程控制服务。",
             "path": "九思助理 → 设置 → 远程控制 → 企业微信 → 基本配置",
-            "result": "后续版本中渠道状态显示为“已连接”"
+            "result": "企业微信渠道状态显示为“已连接”"
           },
           "test": {
             "title": "添加机器人并发送测试消息",
@@ -2830,16 +2844,17 @@
       "test": {
         "feishu": "私聊机器人发送“你好”；群聊中先添加机器人，再 @机器人 发送“你好”。如果九思助理收到消息并在飞书返回回复，说明接入成功。",
         "dingtalk": "先在机器人单聊中发送“你好”；群聊测试必须 @机器人。如果能收到九思助理回复，说明所选接收模式正常。",
-        "wecom": "后端接入完成后，在机器人单聊中发送“你好”，或在群聊中 @机器人。如果能收到九思助理回复，说明长连接和可见范围配置正确。"
+        "wecom": "在机器人单聊中发送“你好”，或在群聊中 @机器人。如果能收到九思助理回复，说明当前接收模式和可见范围配置正确。"
       },
       "warning": {
         "feishu": "常见问题：应用未发布、用户不在可用范围、未订阅 im.message.receive_v1，都会导致机器人没有反应。App Secret 属于敏感信息，请勿发送给他人。",
         "dingtalk": "请确认创建的是“应用内机器人”。Webhook 模式需要可公网访问的 HTTPS 地址并保持九思助理运行；它不是只能向群里发通知的群自定义机器人。钉钉群聊只会转发 @机器人 的消息。",
-        "wecom": "一个企业微信智能机器人同一时间只能保持一个有效长连接；如果它已连接其他程序，新连接可能使旧连接失效。重新获取 Secret 后，旧 Secret 会立即失效。"
+        "wecom": "长连接模式下同一机器人只能保持一个有效连接；Webhook 模式需要公网可访问的 HTTPS 地址，并要求九思助理持续运行。Token、Secret 和 EncodingAESKey 都属于敏感信息。"
       }
     },
     "feishuSaveHint": "保存后继续使用现有飞书后端能力",
     "dingtalkSaveHint": "保存后将使用钉钉 {{mode}} 接收机器人消息",
+    "wecomSaveHint": "保存后将使用企业微信 {{mode}} 接收机器人消息",
     "previewSaveHint": "后端接口完成后才会开放保存和连接测试",
     "globalSettingsHint": "这些设置作用于整个远程控制服务；渠道凭证和访问权限请在对应渠道中配置。",
     "saveGlobalSettings": "保存全局设置",
@@ -2851,6 +2866,8 @@
     "loadFailed": "远程控制配置加载失败",
     "feishuCredentialsRequired": "请先填写飞书 App ID 和 App Secret",
     "dingtalkCredentialsRequired": "请先填写钉钉 Client ID 和 Client Secret",
+    "wecomCredentialsRequired": "请先填写企业微信 Bot ID 和 Secret",
+    "wecomWebhookCredentialsRequired": "请先填写企业微信 Webhook Token 和 43 位 EncodingAESKey",
     "startService": "启动服务",
     "stopService": "停止服务",
     "activeSessions": "活跃会话",

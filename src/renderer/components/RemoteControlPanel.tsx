@@ -1,8 +1,7 @@
 /**
  * Multi-channel remote control settings shell.
  *
- * Feishu and DingTalk are wired to the remote backend. WeCom remains a
- * configuration preview until its channel driver and IPC APIs are implemented.
+ * Feishu, DingTalk, and WeCom are wired to the remote backend.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -53,6 +52,13 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   const [dingtalkDmPolicy, setDingtalkDmPolicy] = useState('pairing');
   const [dingtalkRequireMention, setDingtalkRequireMention] = useState(true);
   const [dingtalkReceiveMode, setDingtalkReceiveMode] = useState<'stream' | 'webhook'>('stream');
+  const [wecomBotId, setWecomBotId] = useState('');
+  const [wecomSecret, setWecomSecret] = useState('');
+  const [wecomWebhookToken, setWecomWebhookToken] = useState('');
+  const [wecomWebhookEncodingAESKey, setWecomWebhookEncodingAESKey] = useState('');
+  const [wecomReceiveMode, setWecomReceiveMode] = useState<'websocket' | 'webhook'>('websocket');
+  const [wecomDmPolicy, setWecomDmPolicy] = useState('pairing');
+  const [wecomRequireMention, setWecomRequireMention] = useState(true);
   const [gatewayPort, setGatewayPort] = useState(18789);
   const [defaultWorkingDirectory, setDefaultWorkingDirectory] = useState('');
   const [autoApproveSafeTools, setAutoApproveSafeTools] = useState(true);
@@ -86,6 +92,17 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
       setDingtalkDmPolicy(configResult.channels.dingtalk.dm?.policy || 'pairing');
       setDingtalkRequireMention(
         configResult.channels.dingtalk.defaultGroupSettings?.requireMention !== false
+      );
+    }
+    if (configResult.channels?.wecom) {
+      setWecomBotId(configResult.channels.wecom.botId || '');
+      setWecomSecret(configResult.channels.wecom.secret || '');
+      setWecomWebhookToken(configResult.channels.wecom.webhookToken || '');
+      setWecomWebhookEncodingAESKey(configResult.channels.wecom.webhookEncodingAESKey || '');
+      setWecomReceiveMode(configResult.channels.wecom.receiveMode || 'websocket');
+      setWecomDmPolicy(configResult.channels.wecom.dm?.policy || 'pairing');
+      setWecomRequireMention(
+        configResult.channels.wecom.defaultGroupSettings?.requireMention !== false
       );
     }
   }, []);
@@ -266,6 +283,47 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     }
   }
 
+  async function saveWecomConfig() {
+    if (!isElectron) return;
+    if (wecomReceiveMode === 'websocket' && (!wecomBotId || !wecomSecret)) {
+      setError({ key: 'remote.wecomCredentialsRequired' });
+      return;
+    }
+    if (wecomReceiveMode === 'webhook' && (!wecomWebhookToken || !wecomWebhookEncodingAESKey)) {
+      setError({ key: 'remote.wecomWebhookCredentialsRequired' });
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+    try {
+      const result = await window.electronAPI.remote.updateWecomConfig(
+        {
+          type: 'wecom',
+          receiveMode: wecomReceiveMode,
+          botId: wecomBotId.trim(),
+          secret: wecomSecret.trim(),
+          webhookToken: wecomWebhookToken.trim() || undefined,
+          webhookEncodingAESKey: wecomWebhookEncodingAESKey.trim() || undefined,
+          dm: { policy: wecomDmPolicy as 'open' | 'pairing' | 'allowlist' },
+          defaultGroupSettings: { requireMention: wecomRequireMention },
+        },
+        wecomReceiveMode === 'webhook' ? gatewayConfigPatch() : undefined
+      );
+      if (!result.success) {
+        setError(result.error ? { text: result.error } : { key: 'remote.saveFailed' });
+        return;
+      }
+      showSuccess({ key: 'remote.configSaved' });
+      await loadData();
+    } catch (saveError) {
+      console.error('Failed to save WeCom config:', saveError);
+      setError({ key: 'remote.saveFailed' });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   async function approvePairing(request: PairingRequest) {
     if (!isElectron) return;
     try {
@@ -332,9 +390,18 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   const isDingtalkConfigured = !!(dingtalkAppKey && dingtalkAppSecret);
   const isDingtalkConnected =
     status?.channels.some((channel) => channel.type === 'dingtalk' && channel.connected) ?? false;
-  const configuredChannelCount = Number(isFeishuConfigured) + Number(isDingtalkConfigured);
-  const connectedChannelCount = Number(isFeishuConnected) + Number(isDingtalkConnected);
-  const isPairingEnabled = feishuDmPolicy === 'pairing' || dingtalkDmPolicy === 'pairing';
+  const isWecomConfigured =
+    wecomReceiveMode === 'webhook'
+      ? !!(wecomWebhookToken && wecomWebhookEncodingAESKey)
+      : !!(wecomBotId && wecomSecret);
+  const isWecomConnected =
+    status?.channels.some((channel) => channel.type === 'wecom' && channel.connected) ?? false;
+  const configuredChannelCount =
+    Number(isFeishuConfigured) + Number(isDingtalkConfigured) + Number(isWecomConfigured);
+  const connectedChannelCount =
+    Number(isFeishuConnected) + Number(isDingtalkConnected) + Number(isWecomConnected);
+  const isPairingEnabled =
+    feishuDmPolicy === 'pairing' || dingtalkDmPolicy === 'pairing' || wecomDmPolicy === 'pairing';
 
   const channels = useMemo<RemoteChannelViewModel[]>(
     () => [
@@ -351,6 +418,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
         connected: isFeishuConnected,
         backendAvailable: true,
         authorizedUsers: pairedUsers.filter((user) => user.channelType === 'feishu').length,
+        error: status?.channels.find((channel) => channel.type === 'feishu')?.error,
       },
       {
         type: 'dingtalk',
@@ -368,15 +436,25 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
         connected: isDingtalkConnected,
         backendAvailable: true,
         authorizedUsers: pairedUsers.filter((user) => user.channelType === 'dingtalk').length,
+        error: status?.channels.find((channel) => channel.type === 'dingtalk')?.error,
       },
       {
         type: 'wecom',
         name: t('remote.channelName.wecom'),
-        description: t('remote.channelDesc.wecom'),
-        configured: false,
-        connected: false,
-        backendAvailable: false,
-        authorizedUsers: 0,
+        description: isWecomConfigured
+          ? t('remote.channelDesc.wecomConfigured', {
+              mode:
+                wecomReceiveMode === 'websocket'
+                  ? t('remote.longConnection')
+                  : t('remote.webhookMode'),
+              count: pairedUsers.filter((user) => user.channelType === 'wecom').length,
+            })
+          : t('remote.channelDesc.wecom'),
+        configured: isWecomConfigured,
+        connected: isWecomConnected,
+        backendAvailable: true,
+        authorizedUsers: pairedUsers.filter((user) => user.channelType === 'wecom').length,
+        error: status?.channels.find((channel) => channel.type === 'wecom')?.error,
       },
     ],
     [
@@ -388,6 +466,10 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
       pairedUsers,
       t,
       useLongConnection,
+      isWecomConfigured,
+      isWecomConnected,
+      wecomReceiveMode,
+      status?.channels,
     ]
   );
 
@@ -458,6 +540,13 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
               dingtalkDmPolicy={dingtalkDmPolicy}
               dingtalkRequireMention={dingtalkRequireMention}
               dingtalkReceiveMode={dingtalkReceiveMode}
+              wecomBotId={wecomBotId}
+              wecomSecret={wecomSecret}
+              wecomWebhookToken={wecomWebhookToken}
+              wecomWebhookEncodingAESKey={wecomWebhookEncodingAESKey}
+              wecomReceiveMode={wecomReceiveMode}
+              wecomDmPolicy={wecomDmPolicy}
+              wecomRequireMention={wecomRequireMention}
               useLongConnection={useLongConnection}
               gatewayPort={gatewayPort}
               tunnelEnabled={tunnelEnabled}
@@ -474,12 +563,20 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
               onDingtalkDmPolicyChange={setDingtalkDmPolicy}
               onDingtalkRequireMentionChange={setDingtalkRequireMention}
               onDingtalkReceiveModeChange={setDingtalkReceiveMode}
+              onWecomBotIdChange={setWecomBotId}
+              onWecomSecretChange={setWecomSecret}
+              onWecomWebhookTokenChange={setWecomWebhookToken}
+              onWecomWebhookEncodingAESKeyChange={setWecomWebhookEncodingAESKey}
+              onWecomReceiveModeChange={setWecomReceiveMode}
+              onWecomDmPolicyChange={setWecomDmPolicy}
+              onWecomRequireMentionChange={setWecomRequireMention}
               onLongConnectionChange={setUseLongConnection}
               onTunnelEnabledChange={setTunnelEnabled}
               onNgrokAuthTokenChange={setNgrokAuthToken}
               onCopy={copyToClipboard}
               onSaveFeishu={saveFeishuConfig}
               onSaveDingtalk={saveDingtalkConfig}
+              onSaveWecom={saveWecomConfig}
             />
           </div>
         )}
