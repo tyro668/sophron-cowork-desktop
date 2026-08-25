@@ -1,24 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { OperatorFormProps } from './index';
-import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
-import { GlassRowList, type RowAction } from './shared/GlassRowList';
+import { GlassTagBar } from './shared/GlassTagBar';
 import { useWorkflowNodeColumnValues } from '../../hooks/useWorkflowNodeColumnValues';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
-import { useClickOutside } from '../../hooks/useClickOutside';
-import { ChevronDown, Loader2, Trash2, X } from 'lucide-react';
-import {
-  addPivotCandidate,
-  addPivotValue,
-  normalizePivotAxes,
-} from '../../../shared/operator-config';
+import { useDataFieldTypeLabel } from '../../hooks/useDataFieldTypeLabel';
+import { ChevronDown, GripVertical, Loader2, Plus, Search, Trash2, XCircle } from 'lucide-react';
+import { addPivotCandidate, normalizePivotAxes } from '../../../shared/operator-config';
 import type {
   AggregateFunction,
   PivotAxisEntry,
@@ -41,6 +36,7 @@ export default function FormPivot({
   onNodeChange,
 }: OperatorFormProps) {
   const tr = useFormTranslation();
+  const dataTypeLabel = useDataFieldTypeLabel();
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 
@@ -85,20 +81,6 @@ export default function FormPivot({
 
   const usedFields = useMemo(() => new Set(axes.map((axis) => axis.field)), [axes]);
 
-  const {
-    activeItems: activeAxes,
-    handleDragStart: handleAxisDragStart,
-    handleDragOver: handleAxisDragOver,
-    handleDragEnd: handleAxisDragEnd,
-    isDragging: isAxesDragging,
-    resetDrag: resetAxesDrag,
-    dragIndexRef: axesDragIndexRef,
-  } = useDragReorder(axes, handleAxesChange);
-
-  useEffect(() => {
-    if (!isAxesDragging) resetAxesDrag();
-  }, [axes, isAxesDragging, resetAxesDrag]);
-
   const handleGroupByChange = useCallback(
     (next: string[]) =>
       updateConfig((cfg) => ({ ...cfg, groupBy: next.length > 0 ? next : undefined })),
@@ -110,9 +92,9 @@ export default function FormPivot({
     [handleGroupByChange, groupBy]
   );
 
-  const clearGroupBy = useCallback(() => handleGroupByChange([]), [handleGroupByChange]);
-
+  const [expandedAxisIndex, setExpandedAxisIndex] = useState<number | null>(null);
   const [groupByOpen, setGroupByOpen] = useState(false);
+  const clearGroupBy = useCallback(() => handleGroupByChange([]), [handleGroupByChange]);
 
   // ── 多指标管理 ──
 
@@ -167,179 +149,195 @@ export default function FormPivot({
     ],
     [tr]
   );
+  const {
+    activeItems: activeMetrics,
+    handleDragStart: handleMetricDragStart,
+    handleDragOver: handleMetricDragOver,
+    handleDragEnd: handleMetricDragEnd,
+    isDragging: isMetricDragging,
+    dragIndexRef: metricDragIndexRef,
+  } = useDragReorder(using, handleUsingChange);
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* ═══ 上块: 列与分组 ═══ */}
-      <section className="operator-section w-full content-start">
-        <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5">
-          <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
-            1
-          </span>
-          <div className="grid">
-            <span className="text-[13px] font-semibold text-text-primary">{tr('pivotAxes')}</span>
-            <span className="text-[10px] text-text-muted">{tr('pivotSourcesHint')}</span>
-          </div>
-        </div>
-        <div className="px-3 pb-3 grid gap-3 content-start">
-          <div className="grid gap-1.5 content-start">
-            <GlassRowList
-              headerClassName=""
-              hideHeader
-              items={activeAxes}
-              columns={[
-                {
-                  flex: 'flex-[1.5]',
-                  header: '',
-                  render: (axis: PivotAxisEntry, i: number) => (
-                    <GlassFieldSingleSelect
-                      value={axis.field}
-                      options={fieldCompletions}
-                      columnTypes={columnTypes}
-                      onChange={(field) => handleAxisFieldChange(i, field)}
-                      disabledOptions={new Set([...usedFields].filter((f) => f !== axis.field))}
-                      placeholder={tr('pivotAxisFieldPlaceholder')}
-                      searchPlaceholder={tr('searchField')}
-                      className="h-7 flex-1 min-w-0"
-                    />
-                  ),
-                },
-                {
-                  flex: 'flex-[10]',
-                  header: '',
-                  render: (axis: PivotAxisEntry, i: number) => (
-                    <AxisValueCell
-                      field={axis.field}
-                      columnType={columnTypes[axis.field]}
-                      values={axis.values}
-                      taskId={taskId}
-                      sourceNode={sourceNode}
-                      tr={tr}
-                      onChange={(values) => updateAxis(i, { values })}
-                    />
-                  ),
-                },
-              ]}
-              onAdd={(i) => addAxisAfter(i)}
-              onRemove={(i) => removeAxis(i)}
-              addTitle={tr('pivotAddAxis')}
-              removeTitle={tr('pivotRemoveAxis')}
-              canAct={(action: RowAction) =>
-                action === 'add' ? !axes.some((a) => !a.field) : true
-              }
-              draggable
-              onDragStart={handleAxisDragStart}
-              onDragOver={handleAxisDragOver}
-              onDragEnd={handleAxisDragEnd}
-              getRowOpacity={(i) => !!(isAxesDragging && axesDragIndexRef.current === i)}
-              dragTitle={tr('dragToReorder')}
-            />
-          </div>
-          <div className="grid gap-1.5 content-start">
-            <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-              {tr('pivotGroupByLabel')}
-              <span className="text-[10px] text-text-muted ml-1">({tr('optional')})</span>
-            </span>
-            <GlassTagBar
-              items={groupBy}
-              onRemove={removeGroupBy}
-              onClear={clearGroupBy}
-              open={groupByOpen}
-              onToggle={() => setGroupByOpen((v) => !v)}
-              toggleStyle="chevron"
-              density="default"
-              className="min-h-7"
-              placeholder={tr('noFieldsSelected')}
-            />
-            {groupByOpen && (
-              <GlassFieldMultiSelect
-                columns={fieldCompletions}
-                selected={groupBy}
-                onChange={handleGroupByChange}
-                columnTypes={columnTypes}
-                maxHeight="180px"
-              />
-            )}
-          </div>
-        </div>
-      </section>
+    <div className="flex h-full min-h-0 overflow-hidden">
+      <div className="flex gap-2.5 flex-1 min-h-0">
+        {/* ═══ 左块: 透视字段与分组字段 ═══ */}
+        <section className="operator-section scrollbar-hover flex flex-[5] min-h-0 flex-col content-start overflow-y-auto">
+          <div className="grid content-start gap-3 px-3 pb-3">
+            <div className="px-0.5 pt-1">
+              <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
+                <span className="h-2 w-2 rounded-full bg-blue-500" />
+                {tr('pivotDimensionsLabel')}
+              </div>
+              <p className="mt-1 text-[12px] leading-5 text-text-muted">
+                {tr('pivotDimensionsHint')}
+              </p>
+            </div>
 
-      {/* ═══ 下块: 聚合指标 ═══ */}
-      <section className="operator-section w-full content-start border-t border-border-subtle/70">
-        <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5">
-          <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
-            2
-          </span>
-          <div className="grid">
-            <span className="text-[13px] font-semibold text-text-primary">{tr('pivotUsing')}</span>
-            <span className="text-[10px] text-text-muted">{tr('pivotAggHint')}</span>
-          </div>
-        </div>
-        <div className="px-3 pb-3 grid gap-3 content-start">
-          <GlassRowList
-            headerClassName=""
-            items={using}
-            columns={[
-              {
-                flex: 'flex-[1.5]',
-                header: tr('aggregateFunction'),
-                render: (metric: PivotMetric, i: number) => (
-                  <GlassOptionSingleSelect
-                    value={metric.function}
-                    groups={fnGroups}
-                    onChange={(v) => updateMetric(i, { function: v as AggregateFunction })}
-                    className="h-7 text-[12px] [&>span]:text-left w-full"
-                  />
-                ),
-              },
-              {
-                flex: 'flex-[2]',
-                header: tr('expressionLabel'),
-                render: (metric: PivotMetric, i: number) => (
-                  <GlassExpressionInput
-                    value={metric.expression}
-                    onChange={(v) => updateMetric(i, { expression: v })}
+            <div className="rounded-lg border border-border-subtle/80 bg-surface-hover/45 p-2.5">
+              <div className="mb-2 text-[13px] font-medium text-text-primary">
+                {tr('pivotFieldsLabel')}
+              </div>
+              <div className="grid gap-2">
+                {axes.map((axis, index) => (
+                  <PivotAxisCard
+                    key={`${axis.field}-${index}`}
+                    axis={axis}
+                    expanded={expandedAxisIndex === index}
                     fieldCompletions={fieldCompletions}
                     columnTypes={columnTypes}
-                    placeholder={tr('pivotExpressionPlaceholder')}
+                    disabledFields={
+                      new Set([...usedFields].filter((field) => field !== axis.field))
+                    }
+                    taskId={taskId}
+                    sourceNode={sourceNode}
+                    tr={tr}
+                    dataTypeLabel={dataTypeLabel}
+                    onFieldChange={(field) => handleAxisFieldChange(index, field)}
+                    onValuesChange={(values) => updateAxis(index, { values })}
+                    onToggle={() =>
+                      setExpandedAxisIndex((current) => (current === index ? null : index))
+                    }
+                    onRemove={() => {
+                      removeAxis(index);
+                      setExpandedAxisIndex(null);
+                    }}
                   />
-                ),
-              },
-              {
-                flex: 'flex-[1.5]',
-                header: tr('aggregateAlias'),
-                render: (metric: PivotMetric, i: number) => (
-                  <GlassFormTextInput
-                    value={metric.alias ?? ''}
-                    onChange={(v) => updateMetric(i, { alias: v })}
-                    placeholder={tr('pivotAliasPlaceholder')}
-                    className="h-7 px-1.5 text-[12px] w-full"
-                  />
-                ),
-              },
-            ]}
-            onAdd={(i) => addMetricAfter(i)}
-            onRemove={(i) => removeMetric(i)}
-            addTitle={tr('pivotAddMetric')}
-            removeTitle={tr('pivotRemoveMetric')}
-            canAct={(action: RowAction) =>
-              action === 'add' ? !using.some((m) => !m.expression) : true
-            }
-          />
-        </div>
-      </section>
+                ))}
+                <button
+                  type="button"
+                  disabled={axes.some((axis) => !axis.field)}
+                  onClick={() => addAxisAfter(axes.length - 1)}
+                  className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-dashed border-border-muted text-[12px] text-text-secondary transition-colors hover:border-accent/50 hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  {tr('pivotAddAxis')}
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-1">
+              <div className="mb-2 flex items-center gap-1.5 text-[13px] font-medium text-text-primary">
+                {tr('pivotGroupByLabel')}
+                <span className="text-[11px] font-normal text-text-muted">{tr('optional')}</span>
+              </div>
+              <GlassTagBar
+                items={groupBy}
+                onRemove={removeGroupBy}
+                onClear={clearGroupBy}
+                open={groupByOpen}
+                onToggle={() => setGroupByOpen((current) => !current)}
+                toggleStyle="chevron"
+                density="default"
+                className="min-h-10"
+                placeholder={tr('aggregateGroupByPlaceholder')}
+              />
+              {groupByOpen && (
+                <GlassFieldMultiSelect
+                  columns={fieldCompletions}
+                  selected={groupBy}
+                  onChange={handleGroupByChange}
+                  columnTypes={columnTypes}
+                  maxHeight="180px"
+                  className="mt-2 border-0 bg-transparent rounded-none"
+                  searchBordered
+                />
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* ═══ 右块: 聚合指标 ═══ */}
+        <section className="operator-section flex flex-[5] min-h-0 flex-col content-start">
+          <div className="flex-1 min-h-0 overflow-x-hidden overflow-y-auto border-l border-border-subtle/70 pl-3 pr-3 grid content-start gap-3">
+            <div className="flex items-start justify-between gap-3 pt-1">
+              <div>
+                <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
+                  <span className="h-2 w-2 rounded-full bg-accent" />
+                  {tr('pivotMeasuresLabel')}
+                </div>
+                <p className="mt-1 text-[12px] leading-5 text-text-muted">
+                  {tr('pivotMeasuresHint')}
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={using.some((metric) => !metric.expression)}
+                onClick={() => addMetricAfter(using.length - 1)}
+                className="flex h-9 flex-none items-center gap-1.5 rounded-lg border border-accent px-3 text-[12px] font-medium text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {tr('pivotAddMetric')}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-[minmax(88px,0.7fr)_minmax(0,1.5fr)_minmax(96px,0.9fr)_28px_32px] items-center gap-2 px-3 text-[12px] font-medium text-text-muted">
+              <span>{tr('aggregateFunction')}</span>
+              <span>{tr('expressionLabel')}</span>
+              <span>{tr('aggregateAlias')}</span>
+              <span />
+              <span />
+            </div>
+
+            <div className="grid gap-2">
+              {activeMetrics.map((metric, index) => {
+                const dragging = isMetricDragging && metricDragIndexRef.current === index;
+                return (
+                  <div
+                    key={index}
+                    onDragOver={(event) => handleMetricDragOver(event, index)}
+                    className={`grid min-h-14 grid-cols-[minmax(88px,0.7fr)_minmax(0,1.5fr)_minmax(96px,0.9fr)_28px_32px] items-center gap-2 rounded-lg border border-border-muted bg-background px-3 py-2 transition-opacity ${
+                      dragging ? 'opacity-50' : ''
+                    }`}
+                  >
+                    <GlassOptionSingleSelect
+                      value={metric.function}
+                      groups={fnGroups}
+                      onChange={(value) =>
+                        updateMetric(index, { function: value as AggregateFunction })
+                      }
+                      className="h-8 w-full !border-transparent !bg-[rgb(var(--color-surface-active-rgb))] text-[12px] !text-accent-text hover:!bg-[rgb(var(--color-surface-active-rgb))] [&>span]:text-left"
+                    />
+                    <GlassExpressionInput
+                      value={metric.expression}
+                      onChange={(value) => updateMetric(index, { expression: value })}
+                      fieldCompletions={fieldCompletions}
+                      columnTypes={columnTypes}
+                      placeholder={tr('pivotExpressionPlaceholder')}
+                    />
+                    <GlassFormTextInput
+                      value={metric.alias ?? ''}
+                      onChange={(value) => updateMetric(index, { alias: value })}
+                      placeholder={tr('pivotAliasPlaceholder')}
+                      className="h-8 w-full px-2 text-[12px]"
+                    />
+                    <div
+                      draggable
+                      onDragStart={() => handleMetricDragStart(index)}
+                      onDragEnd={handleMetricDragEnd}
+                      className="flex h-8 w-7 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
+                      title={tr('dragToReorder')}
+                    >
+                      <GripVertical className="h-4 w-4" />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeMetric(index)}
+                      className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error"
+                      title={tr('pivotRemoveMetric')}
+                      aria-label={tr('pivotRemoveMetric')}
+                    >
+                      <XCircle className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
   );
-}
-
-interface AxisValueCellProps {
-  field: string;
-  columnType?: string;
-  values: PivotLiteral[];
-  taskId?: string;
-  sourceNode?: { id: string; type: string; config?: Record<string, unknown> };
-  onChange: (values: PivotLiteral[]) => void;
-  tr: (key: string, params?: Record<string, unknown>) => string;
 }
 
 // 纯展示用，不代表存储类型：null 显示为 "null"，空字符串显示为 ""，其余按 String 显示。
@@ -349,211 +347,37 @@ function literalDisplay(value: PivotLiteral): string {
   return String(value);
 }
 
-interface TypedValueMultiInputProps {
-  values: PivotLiteral[];
-  columnType?: string;
-  suggestions: string[];
-  isLoading?: boolean;
-  disabled?: boolean;
-  onChange: (values: PivotLiteral[]) => void;
-  onOpen?: () => void;
-  placeholder?: string;
-  addLabel?: string;
-  noSuggestionsLabel?: string;
-  clearLabel?: string;
+interface PivotAxisCardProps {
+  axis: PivotAxisEntry;
+  expanded: boolean;
+  fieldCompletions: string[];
+  columnTypes: Record<string, string>;
+  disabledFields: Set<string>;
+  taskId?: string;
+  sourceNode?: { id: string; type: string; config?: Record<string, unknown> };
+  tr: (key: string, params?: Record<string, unknown>) => string;
+  dataTypeLabel: (type: string | null | undefined) => string;
+  onFieldChange: (field: string) => void;
+  onValuesChange: (values: PivotLiteral[]) => void;
+  onToggle: () => void;
+  onRemove: () => void;
 }
 
-function TypedValueMultiInput({
-  values,
-  columnType,
-  suggestions,
-  isLoading,
-  disabled,
-  onChange,
-  onOpen,
-  placeholder,
-  addLabel,
-  noSuggestionsLabel,
-  clearLabel,
-}: TypedValueMultiInputProps) {
-  const tr = useFormTranslation();
-  const [open, setOpen] = useState(false);
-  const [inputText, setInputText] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useClickOutside(ref, () => setOpen(false));
-
-  const openDropdown = () => {
-    setOpen((prev) => {
-      if (!prev) onOpen?.();
-      return !prev;
-    });
-  };
-
-  const addTag = useCallback(() => {
-    const next = addPivotValue(values, inputText, columnType);
-    if (next !== values) {
-      onChange(next);
-      setInputText('');
-    }
-  }, [values, inputText, columnType, onChange]);
-
-  const removeTag = useCallback(
-    (idx: number) => onChange(values.filter((_, valueIndex) => valueIndex !== idx)),
-    [values, onChange]
-  );
-
-  const tags = useMemo(() => values.map(literalDisplay), [values]);
-
-  const filtered = useMemo(() => {
-    const available = suggestions.filter((s) => !tags.includes(literalDisplay(s)));
-    if (!inputText) return available.slice(0, 20);
-    const lower = inputText.toLowerCase();
-    return available.filter((s) => s.toLowerCase().includes(lower)).slice(0, 20);
-  }, [inputText, suggestions, tags]);
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      addTag();
-    } else if (e.key === 'Backspace' && !inputText && values.length > 0) {
-      removeTag(values.length - 1);
-    } else if (e.key === 'Escape') {
-      setOpen(false);
-    }
-  }
-
-  return (
-    <div ref={ref} className="relative" style={{ width: 280, flexShrink: 0 }}>
-      <div
-        className={`flex h-8 w-full items-center gap-1 rounded-md border bg-background/42 transition-colors pl-1.5 pr-1 py-0.5 ${
-          open ? 'border-accent' : 'border-border-muted'
-        } ${disabled ? 'cursor-not-allowed opacity-40' : ''}`}
-      >
-        {values.length > 0 && (
-          <button
-            type="button"
-            disabled={disabled}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onChange([]);
-              setInputText('');
-              inputRef.current?.focus();
-            }}
-            className="inline-flex flex-shrink-0 items-center justify-center rounded px-0.5 text-text-muted hover:text-error hover:bg-error/10 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-            title={clearLabel ?? tr('filterClearValues')}
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
-        )}
-
-        <div className="flex flex-1 min-w-0 items-center gap-1 overflow-x-auto">
-          {tags.map((v, i) => (
-            <span
-              key={i}
-              className="inline-flex flex-shrink-0 items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[12px] font-medium text-accent"
-            >
-              {v}
-              <button
-                type="button"
-                disabled={disabled}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  removeTag(i);
-                }}
-                className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full hover:bg-accent/20"
-              >
-                <X className="h-2.5 w-2.5" />
-              </button>
-            </span>
-          ))}
-          <input
-            ref={inputRef}
-            type="text"
-            value={inputText}
-            disabled={disabled}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onFocus={() => openDropdown()}
-            placeholder={values.length === 0 ? placeholder : ''}
-            className="bg-transparent h-6 min-w-[60px] flex-1 pl-0.5 text-[12px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed"
-          />
-        </div>
-
-        {isLoading && (
-          <Loader2 className="my-auto h-3.5 w-3.5 flex-shrink-0 animate-spin text-text-muted" />
-        )}
-        <button
-          type="button"
-          disabled={disabled}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            openDropdown();
-          }}
-          className="flex h-6 w-5 flex-shrink-0 items-center justify-center text-text-muted hover:text-text-secondary transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
-        </button>
-      </div>
-
-      {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-full rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl">
-          {filtered.map((s) => (
-            <button
-              key={s}
-              type="button"
-              className="w-full px-2.5 py-1.5 text-left text-[12px] text-text-secondary transition-colors hover:bg-surface-hover"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const next = addPivotCandidate(values, s, columnType);
-                if (next !== values) {
-                  onChange(next);
-                  setInputText('');
-                }
-              }}
-            >
-              {s === '' ? '""' : s}
-            </button>
-          ))}
-          {inputText && !filtered.includes(inputText) && (
-            <button
-              type="button"
-              className="w-full px-2.5 py-1.5 text-left text-[12px] text-accent transition-colors hover:bg-surface-hover"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                addTag();
-              }}
-            >
-              {addLabel} "{inputText}"
-            </button>
-          )}
-          {filtered.length === 0 && !inputText && (
-            <div className="px-2.5 py-4 text-center text-[12px] text-text-muted">
-              {noSuggestionsLabel}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function AxisValueCell({
-  field,
-  columnType,
-  values,
+function PivotAxisCard({
+  axis,
+  expanded,
+  fieldCompletions,
+  columnTypes,
+  disabledFields,
   taskId,
   sourceNode,
-  onChange,
   tr,
-}: AxisValueCellProps) {
-  // 懒加载：每次展开下拉才发起查询，避免切 tab 重挂载自动查库，且每次展开都反映上游当前内容。
+  dataTypeLabel,
+  onFieldChange,
+  onValuesChange,
+  onToggle,
+  onRemove,
+}: PivotAxisCardProps) {
   const {
     values: distinctValues,
     loading,
@@ -562,33 +386,205 @@ function AxisValueCell({
   } = useWorkflowNodeColumnValues({
     taskId,
     sourceNode,
-    column: field,
+    column: axis.field,
   });
+  const totalValueCount = useMemo(
+    () =>
+      new Set([
+        ...distinctValues.map((value) => literalDisplay(value)),
+        ...axis.values.map((value) => literalDisplay(value)),
+      ]).size,
+    [axis.values, distinctValues]
+  );
 
-  const handleOpen = () => {
-    if (field) reload();
-  };
+  function handleToggle() {
+    if (!expanded && axis.field) reload();
+    onToggle();
+  }
 
   return (
-    <div className="flex items-center gap-1.5">
-      <TypedValueMultiInput
-        values={values}
-        columnType={columnType}
-        suggestions={error ? [] : distinctValues}
-        isLoading={loading}
-        onChange={onChange}
-        onOpen={handleOpen}
-        disabled={!field}
-        placeholder={tr('pivotAllValues')}
-        addLabel={tr('pivotAddValue')}
-        noSuggestionsLabel={tr('pivotValuesEmpty')}
-        clearLabel={tr('filterClearValues')}
-      />
-      {error && (
-        <span className="text-[11px] text-error" title={tr('pivotValuesLoadFailed')}>
-          {tr('pivotValuesLoadFailed')}
+    <div className="overflow-hidden rounded-lg border border-border-muted bg-background">
+      <div className="grid h-11 grid-cols-[minmax(0,1fr)_56px_88px_32px] items-center gap-2 px-2">
+        <GlassFieldSingleSelect
+          value={axis.field}
+          options={fieldCompletions}
+          columnTypes={columnTypes}
+          onChange={onFieldChange}
+          disabledOptions={disabledFields}
+          placeholder={tr('pivotAxisFieldPlaceholder')}
+          searchPlaceholder={tr('searchField')}
+          className="h-8 min-w-0 border-0 bg-transparent shadow-none"
+        />
+        <span className="truncate text-[12px] text-text-secondary">
+          {axis.field && columnTypes[axis.field] ? dataTypeLabel(columnTypes[axis.field]) : '—'}
         </span>
+        <button
+          type="button"
+          disabled={!axis.field}
+          onClick={handleToggle}
+          className="flex h-8 items-center justify-center gap-1 rounded-md text-[12px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-35"
+          aria-expanded={expanded}
+        >
+          {tr('pivotSelectedValues', {
+            selected: axis.values.length,
+            total: totalValueCount > 0 ? totalValueCount : '—',
+          })}
+          <ChevronDown
+            className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`}
+          />
+        </button>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error"
+          title={tr('pivotRemoveAxis')}
+          aria-label={tr('pivotRemoveAxis')}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      {expanded && (
+        <PivotValueList
+          columnType={columnTypes[axis.field]}
+          values={axis.values}
+          distinctValues={distinctValues}
+          loading={loading}
+          error={error}
+          reload={reload}
+          tr={tr}
+          onChange={onValuesChange}
+        />
       )}
+    </div>
+  );
+}
+
+interface PivotValueListProps {
+  columnType?: string;
+  values: PivotLiteral[];
+  distinctValues: string[];
+  loading: boolean;
+  error: boolean;
+  reload: () => void;
+  onChange: (values: PivotLiteral[]) => void;
+  tr: (key: string, params?: Record<string, unknown>) => string;
+}
+
+function PivotValueList({
+  columnType,
+  values,
+  distinctValues,
+  loading,
+  error,
+  reload,
+  onChange,
+  tr,
+}: PivotValueListProps) {
+  const [search, setSearch] = useState('');
+
+  const selectedDisplays = useMemo(
+    () => new Set(values.map((value) => literalDisplay(value))),
+    [values]
+  );
+  const allValues = useMemo(() => {
+    const byDisplay = new Map<string, string>();
+    values.forEach((value) => byDisplay.set(literalDisplay(value), String(value ?? 'null')));
+    distinctValues.forEach((value) => byDisplay.set(literalDisplay(value), value));
+    return [...byDisplay.entries()].map(([display, raw]) => ({ display, raw }));
+  }, [distinctValues, values]);
+  const visibleValues = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return query
+      ? allValues.filter((value) => value.display.toLowerCase().includes(query))
+      : allValues;
+  }, [allValues, search]);
+  const allSelected =
+    values.length > 0 &&
+    allValues.length > 0 &&
+    allValues.every((value) => selectedDisplays.has(value.display));
+
+  function toggleValue(raw: string, display: string) {
+    if (selectedDisplays.has(display)) {
+      onChange(values.filter((value) => literalDisplay(value) !== display));
+      return;
+    }
+    const next = addPivotCandidate(values, raw, columnType);
+    const nextDisplays = new Set(next.map((value) => literalDisplay(value)));
+    onChange(allValues.every((value) => nextDisplays.has(value.display)) ? [] : next);
+  }
+
+  function toggleAllValues() {
+    if (allSelected) {
+      onChange([]);
+      return;
+    }
+    let next: PivotLiteral[] = [];
+    for (const value of allValues) {
+      next = addPivotCandidate(next, value.raw, columnType);
+    }
+    onChange(next);
+  }
+
+  return (
+    <div className="border-t border-border-subtle/80">
+      <div className="flex h-10 items-center gap-2 border-b border-border-subtle/70 px-3">
+        <Search className="h-3.5 w-3.5 flex-none text-text-muted" />
+        <input
+          type="text"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder={tr('pivotSearchValues')}
+          className="h-8 min-w-0 flex-1 border-0 bg-transparent px-0 text-[12px] text-text-primary outline-none placeholder:text-text-muted"
+        />
+        <label className="flex h-8 cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
+          <input
+            type="checkbox"
+            checked={allSelected}
+            disabled={loading || allValues.length === 0}
+            onChange={toggleAllValues}
+            className="h-3.5 w-3.5 accent-accent"
+          />
+          {tr('selectAll')}
+        </label>
+      </div>
+      <div className="max-h-[216px] overflow-y-auto py-1">
+        {loading && allValues.length === 0 ? (
+          <div className="flex h-16 items-center justify-center gap-2 text-[12px] text-text-muted">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            {tr('loadingValues')}
+          </div>
+        ) : error ? (
+          <button
+            type="button"
+            onClick={reload}
+            className="flex h-16 w-full items-center justify-center text-[12px] text-error hover:bg-error/5"
+          >
+            {tr('pivotValuesLoadFailed')}
+          </button>
+        ) : visibleValues.length === 0 ? (
+          <div className="flex h-16 items-center justify-center text-[12px] text-text-muted">
+            {tr('pivotValuesEmpty')}
+          </div>
+        ) : (
+          visibleValues.map((value) => {
+            const checked = selectedDisplays.has(value.display);
+            return (
+              <label
+                key={value.display}
+                className="flex h-9 cursor-pointer items-center gap-2.5 px-3 text-[13px] text-text-primary transition-colors hover:bg-surface-hover"
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggleValue(value.raw, value.display)}
+                  className="h-3.5 w-3.5 flex-none accent-accent"
+                />
+                <span className="min-w-0 truncate">{value.display}</span>
+              </label>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }

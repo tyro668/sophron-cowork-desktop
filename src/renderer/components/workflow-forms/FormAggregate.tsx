@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import { Settings } from 'lucide-react';
+import { GripVertical, Plus, Settings, XCircle } from 'lucide-react';
 import type { OperatorFormProps } from './index';
-import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
+import { GlassFieldCompactSelect } from './shared/GlassFieldCompactSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
-import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
@@ -158,20 +157,18 @@ export default function FormAggregate({
     <div className="flex h-full min-h-0 overflow-hidden">
       <div className="flex gap-2.5 flex-1 min-h-0">
         {/* Left: group-by fields */}
-        <section className="operator-section flex-[1.5] content-start flex flex-col min-h-0">
-          <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5 shrink-0">
-            <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
-              1
-            </span>
-            <div className="grid">
-              <span className="text-[13px] font-semibold text-text-primary">
-                {tr('aggregateGroupBy')}
-              </span>
-              <span className="text-[10px] text-text-muted">{tr('aggregateGroupByHint')}</span>
-            </div>
-          </div>
+        <section className="operator-section flex-[4] content-start flex flex-col min-h-0">
           <div className="flex-1 min-h-0 px-3 pb-3 flex flex-col">
-            <GlassFieldMultiSelect
+            <div className="mb-3 px-0.5 pt-1">
+              <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
+                <span className="h-2 w-2 rounded-full bg-blue-500" />
+                {tr('aggregateDimensionsLabel')}
+              </div>
+              <p className="mt-1 text-[12px] leading-5 text-text-muted">
+                {tr('aggregateDimensionsHint')}
+              </p>
+            </div>
+            <GlassFieldCompactSelect
               columns={fieldCompletions}
               selected={groupBy}
               onChange={handleGroupByChange}
@@ -220,75 +217,91 @@ export default function FormAggregate({
         </section>
 
         {/* Right: metrics */}
-        <section className="operator-section flex-[8.5] content-start flex flex-col min-h-0 border-l border-border-subtle/70">
-          <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5 shrink-0">
-            <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
-              2
-            </span>
-            <div className="grid">
-              <span className="text-[13px] font-semibold text-text-primary">
-                {tr('aggregateMetric')}
-              </span>
-              <span className="text-[10px] text-text-muted">{tr('aggregateMetricHint')}</span>
+        <section className="operator-section flex flex-[6] min-h-0 flex-col content-start">
+          <div className="flex-1 min-h-0 overflow-x-hidden overflow-y-auto border-l border-border-subtle/70 pl-3 pr-3 grid content-start gap-3">
+            <div className="flex items-start justify-between gap-3 pt-1">
+              <div>
+                <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
+                  <span className="h-2 w-2 rounded-full bg-accent" />
+                  {tr('aggregateMeasuresLabel')}
+                </div>
+                <p className="mt-1 text-[12px] leading-5 text-text-muted">
+                  {tr('aggregateMeasuresHint')}
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={activeMetrics.some((metric) => !metric.expression)}
+                onClick={() => addMetricAfter(activeMetrics.length - 1)}
+                className="flex h-9 flex-none items-center gap-1.5 rounded-lg border border-accent px-3 text-[12px] font-medium text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {tr('aggregateAddMetric')}
+              </button>
             </div>
-          </div>
-          <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-3">
-            <GlassRowList
-              headerClassName=""
-              items={activeMetrics}
-              columns={[
-                {
-                  flex: 'flex-[2.5]',
-                  header: tr('aggregateFunction'),
-                  render: (item: MetricEntry, i: number) => (
+
+            <div className="grid grid-cols-[minmax(88px,0.7fr)_minmax(0,1.5fr)_minmax(96px,0.9fr)_28px_32px] items-center gap-2 px-3 text-[12px] font-medium text-text-muted">
+              <span>{tr('aggregateFunction')}</span>
+              <span>{tr('expressionLabel')}</span>
+              <span>{tr('aggregateAlias')}</span>
+              <span />
+              <span />
+            </div>
+
+            <div className="grid gap-2">
+              {activeMetrics.map((metric, index) => {
+                const dragging = isDragging && dragIndexRef.current === index;
+                return (
+                  <div
+                    key={index}
+                    onDragOver={(event) => handleDragOver(event, index)}
+                    className={`grid min-h-14 grid-cols-[minmax(88px,0.7fr)_minmax(0,1.5fr)_minmax(96px,0.9fr)_28px_32px] items-center gap-2 rounded-lg border border-border-muted bg-background px-3 py-2 transition-opacity ${
+                      dragging ? 'opacity-50' : ''
+                    }`}
+                  >
                     <GlassOptionSingleSelect
-                      value={item.function}
+                      value={metric.function}
                       groups={functionGroups}
-                      onChange={(v) => updateMetric(i, { function: v as AggregateFunction })}
-                      className="h-7 rounded-md text-[12px] w-full"
+                      onChange={(value) =>
+                        updateMetric(index, { function: value as AggregateFunction })
+                      }
+                      className="h-8 w-full !border-transparent !bg-[rgb(var(--color-surface-active-rgb))] text-[12px] !text-accent-text hover:!bg-[rgb(var(--color-surface-active-rgb))] [&>span]:text-left"
                     />
-                  ),
-                },
-                {
-                  flex: 'flex-[3.5]',
-                  header: tr('expressionLabel'),
-                  render: (item: MetricEntry, i: number) => (
                     <GlassExpressionInput
-                      value={item.expression}
-                      onChange={(v) => updateMetric(i, { expression: v })}
+                      value={metric.expression}
+                      onChange={(value) => updateMetric(index, { expression: value })}
                       fieldCompletions={fieldCompletions}
                       columnTypes={columnTypes}
                       placeholder={tr('aggregateExpressionPlaceholder')}
                     />
-                  ),
-                },
-                {
-                  flex: 'flex-[2]',
-                  header: tr('aggregateAlias'),
-                  render: (item: MetricEntry, i: number) => (
                     <GlassFormTextInput
-                      value={item.alias ?? ''}
-                      onChange={(v) => updateMetric(i, { alias: v })}
+                      value={metric.alias ?? ''}
+                      onChange={(value) => updateMetric(index, { alias: value })}
                       placeholder={tr('aggregateAliasPlaceholder')}
-                      className="h-7 px-1.5 text-[12px] w-full"
+                      className="h-8 w-full px-2 text-[12px]"
                     />
-                  ),
-                },
-              ]}
-              onAdd={(i) => addMetricAfter(i)}
-              onRemove={(i) => removeMetric(i)}
-              addTitle={tr('aggregateAddMetric')}
-              removeTitle={tr('aggregateRemoveMetric')}
-              canAct={(action: RowAction) =>
-                action === 'add' ? !activeMetrics.some((m) => !m.expression) : true
-              }
-              draggable
-              onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
-              onDragEnd={handleDragEnd}
-              getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-              dragTitle={tr('dragToReorder')}
-            />
+                    <div
+                      draggable
+                      onDragStart={() => handleDragStart(index)}
+                      onDragEnd={handleDragEnd}
+                      className="flex h-8 w-7 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
+                      title={tr('dragToReorder')}
+                    >
+                      <GripVertical className="h-4 w-4" />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeMetric(index)}
+                      className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error"
+                      title={tr('aggregateRemoveMetric')}
+                      aria-label={tr('aggregateRemoveMetric')}
+                    >
+                      <XCircle className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </section>
       </div>

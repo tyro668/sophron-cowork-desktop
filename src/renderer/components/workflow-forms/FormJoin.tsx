@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Settings } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
@@ -167,6 +167,7 @@ interface JoinKeepFieldColumnProps {
   selected: ReadonlySet<string>;
   aliases: ReadonlyMap<string, string>;
   allChecked: boolean;
+  allIndeterminate?: boolean;
   onToggleAll: () => void;
   onToggleField: (field: string) => void;
   onAliasChange: (field: string, alias: string) => void;
@@ -180,11 +181,20 @@ function JoinKeepFieldColumn({
   selected,
   aliases,
   allChecked,
+  allIndeterminate,
   onToggleAll,
   onToggleField,
   onAliasChange,
 }: JoinKeepFieldColumnProps) {
   const tr = useFormTranslation();
+
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = Boolean(allIndeterminate);
+    }
+  }, [allIndeterminate]);
 
   return (
     <div
@@ -194,6 +204,7 @@ function JoinKeepFieldColumn({
       <p className="mb-2 text-[10px] text-text-muted">{tr('joinKeepAliasPrompt')}</p>
       <label className="mb-1.5 flex cursor-pointer items-center gap-1.5 text-[12px] font-medium text-text-secondary">
         <input
+          ref={selectAllRef}
           type="checkbox"
           checked={allChecked}
           onChange={onToggleAll}
@@ -570,6 +581,14 @@ export default function FormJoin({
   );
   const draftRightAllChecked = useMemo(
     () => draftRightSel.size === rightRawColumns.length,
+    [draftRightSel, rightRawColumns]
+  );
+  const draftLeftIndeterminate = useMemo(
+    () => draftLeftSel.size > 0 && draftLeftSel.size < fieldCompletions.length,
+    [draftLeftSel, fieldCompletions]
+  );
+  const draftRightIndeterminate = useMemo(
+    () => draftRightSel.size > 0 && draftRightSel.size < rightRawColumns.length,
     [draftRightSel, rightRawColumns]
   );
 
@@ -1105,6 +1124,7 @@ export default function FormJoin({
                 selected={draftLeftSel}
                 aliases={draftLeftAliases}
                 allChecked={draftLeftAllChecked}
+                allIndeterminate={draftLeftIndeterminate}
                 onToggleAll={toggleDraftLeftAll}
                 onToggleField={toggleDraftLeftField}
                 onAliasChange={updateLeftAlias}
@@ -1117,6 +1137,7 @@ export default function FormJoin({
                 selected={draftRightSel}
                 aliases={draftRightAliases}
                 allChecked={draftRightAllChecked}
+                allIndeterminate={draftRightIndeterminate}
                 onToggleAll={toggleDraftRightAll}
                 onToggleField={toggleDraftRightField}
                 onAliasChange={updateRightAlias}

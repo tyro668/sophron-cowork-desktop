@@ -15,6 +15,8 @@ export interface GlassFieldMultiSelectProps {
   maxHeight?: string;
   selectionMode?: SelectionMode;
   variant?: 'flat' | 'glass';
+  className?: string;
+  searchBordered?: boolean;
   itemExtras?: (column: string) => ReactNode;
   columnLabel?: (column: string) => string;
 }
@@ -27,6 +29,8 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
   maxHeight = '160px',
   selectionMode = 'multi',
   variant = 'flat',
+  className = '',
+  searchBordered = false,
   itemExtras,
   columnLabel,
 }: GlassFieldMultiSelectProps) {
@@ -92,6 +96,16 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
   }, [columns, columnTypes, dataTypeLabel, search]);
 
   const allFilteredSelected = filtered.length > 0 && filtered.every((c) => selected.includes(c));
+  const someFilteredSelected = filtered.some((c) => selected.includes(c));
+  const selectAllIndeterminate = someFilteredSelected && !allFilteredSelected;
+
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = selectAllIndeterminate;
+    }
+  }, [selectAllIndeterminate]);
 
   const isGlass = variant === 'glass';
 
@@ -124,12 +138,14 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
     <div
       className={`flex min-h-0 flex-col rounded-lg border ${
         isGlass ? 'border-border-subtle bg-background/48' : 'border-border-muted bg-background/60'
-      }`}
+      } ${className}`}
     >
       <div
-        className={`flex min-h-9 items-center border-b border-border-subtle px-2.5 py-1 ${
-          isGlass ? 'gap-1.5' : 'gap-2'
-        }`}
+        className={`flex min-h-9 items-center px-2.5 py-1 ${
+          searchBordered
+            ? 'mb-2 rounded-md border border-border-muted bg-background/60'
+            : 'border-b border-border-subtle'
+        } ${isGlass ? 'gap-1.5' : 'gap-2'}`}
       >
         <Search
           className={`flex-shrink-0 text-text-muted ${isGlass ? 'h-3 w-3' : 'h-3.5 w-3.5'}`}
@@ -154,12 +170,13 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
             }}
           >
             <input
+              ref={selectAllRef}
               type="checkbox"
               checked={allFilteredSelected}
               onChange={toggleAll}
               className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
             />
-            {allFilteredSelected ? tr('deselectAll') : tr('selectAll')}
+            {tr('selectAll')}
           </label>
         )}
       </div>

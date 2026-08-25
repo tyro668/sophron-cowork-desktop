@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo } from 'react';
+import { GripVertical, Plus, XCircle } from 'lucide-react';
 
 import type { OperatorFormProps } from './index';
-import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
-import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
+import { GlassFieldCompactSelect } from './shared/GlassFieldCompactSelect';
 import { GlassDirectionToggle } from './shared/GlassDirectionToggle';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
-import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
@@ -42,17 +41,6 @@ export default function FormDeduplicate({
     },
     [updateConfig]
   );
-
-  const removeColumn = useCallback(
-    (col: string) => {
-      commitColumns(columns.filter((c) => c !== col));
-    },
-    [columns, commitColumns]
-  );
-
-  const clearAll = useCallback(() => {
-    commitColumns([]);
-  }, [commitColumns]);
 
   // ── Sort key actions ──
   const commitSortKeys = useCallback(
@@ -118,39 +106,54 @@ export default function FormDeduplicate({
   const usedSortFields = useMemo(() => computeUsedFields(activeKeys, (k) => k.field), [activeKeys]);
 
   return (
-    <div className="flex flex-col min-h-0 overflow-hidden" style={{ height: '100%' }}>
-      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-        {/* ── 已选字段（全宽）── */}
-        {columns.length > 0 && (
-          <div className="mb-2">
-            <GlassTagBar
-              items={columns}
-              onRemove={removeColumn}
-              onClear={clearAll}
-              open={false}
-              onToggle={() => {}}
-              toggleStyle="none"
-              density="spacious"
+    <div className="flex h-full min-h-0 overflow-hidden">
+      <div className="flex gap-2.5 flex-1 min-h-0">
+        {/* ═══ LEFT: 选择字段 ═══ */}
+        <section className="operator-section flex-[4] content-start flex flex-col min-h-0">
+          <div className="flex-1 min-h-0 px-3 pb-3 flex flex-col">
+            <div className="mb-3 px-0.5 pt-1">
+              <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
+                <span className="h-2 w-2 rounded-full bg-blue-500" />
+                {tr('dedupDimensionsLabel')}
+              </div>
+              <p className="mt-1 text-[12px] leading-5 text-text-muted">
+                {tr('dedupDimensionsHint')}
+              </p>
+            </div>
+            <GlassFieldCompactSelect
+              columns={fieldCompletions}
+              selected={columns}
+              onChange={commitColumns}
+              columnTypes={columnTypes}
+              maxHeight="none"
             />
           </div>
-        )}
-        {columns.length === 0 && (
-          <p className="text-[11px] text-error/80 mb-2">{tr('dedupMustSelectField')}</p>
-        )}
+        </section>
 
-        <div className="grid grid-cols-[40fr_60fr] gap-3 flex-1 min-h-0">
-          {/* ═══ LEFT: 选择字段 ═══ */}
-          <GlassFieldMultiSelect
-            columns={fieldCompletions}
-            selected={columns}
-            onChange={commitColumns}
-            columnTypes={columnTypes}
-            maxHeight="none"
-          />
-
-          {/* ═══ RIGHT: 保留策略 + 排序设置 ═══ */}
-          <div className="overflow-y-auto min-h-0">
-            <div className="grid content-start gap-2">
+        {/* ═══ RIGHT: 保留策略 + 排序设置 ═══ */}
+        <section className="operator-section flex-[6] content-start flex flex-col min-h-0">
+          <div className="flex-1 min-h-0 overflow-y-auto border-l border-border-subtle/70 pl-3 pr-3">
+            <div className="grid content-start gap-3">
+              <div className="flex items-start justify-between gap-3 px-0.5 pt-1">
+                <div>
+                  <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
+                    <span className="h-2 w-2 rounded-full bg-accent" />
+                    {tr('dedupConfigLabel')}
+                  </div>
+                  <p className="mt-1 text-[12px] leading-5 text-text-muted">
+                    {tr('dedupConfigHint')}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={activeKeys.some((key) => !key.field)}
+                  onClick={() => addSortKeyAfter(activeKeys.length - 1)}
+                  className="flex h-9 flex-none items-center gap-1.5 rounded-lg border border-accent px-3 text-[12px] font-medium text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  {tr('sortAddKey')}
+                </button>
+              </div>
               {/* ── 保留策略 ── */}
               <GlassRadioSelect
                 value={keep}
@@ -164,90 +167,87 @@ export default function FormDeduplicate({
               />
 
               {/* ── 排序设置 ── */}
-              <div className="rounded-lg border border-border-muted bg-background/60">
-                <div className="p-2">
-                  <GlassRowList
-                    headerClassName=""
-                    items={activeKeys}
-                    columns={[
-                      {
-                        flex: 'flex-[4]',
-                        header: tr('sortFieldHeader'),
-                        render: (key: SortKey, i) => {
-                          const disabledSortFields = new Set(usedSortFields);
-                          if (key.field) disabledSortFields.delete(key.field);
-                          return (
-                            <GlassFieldSingleSelect
-                              value={key.field}
-                              options={fieldCompletions}
-                              columnTypes={columnTypes}
-                              onChange={(value) => updateSortKey(i, { field: value })}
-                              placeholder={tr('sortSelectField')}
-                              searchPlaceholder={tr('searchField')}
-                              emptyText={tr('noMatch')}
-                              disabledOptions={disabledSortFields}
-                              className="w-full"
-                            />
-                          );
-                        },
-                      },
-                      {
-                        flex: 'flex-[2]',
-                        header: tr('sortDirectionHeader'),
-                        align: 'center',
-                        render: (key: SortKey, i) => (
-                          <GlassDirectionToggle
-                            value={key.direction}
-                            onChange={(v) => updateSortKey(i, { direction: v })}
-                            className="h-6 w-full px-1 text-[11px]"
-                          />
-                        ),
-                      },
-                      {
-                        flex: 'flex-[3]',
-                        header: tr('sortNullsHeader'),
-                        render: (key: SortKey, i) => (
-                          <GlassOptionSingleSelect
-                            value={key.nulls ?? ''}
-                            groups={[
-                              {
-                                key: 'nulls',
-                                items: [
-                                  { value: '', label: tr('sortNullsDefault') },
-                                  { value: 'first', label: tr('sortNullsFirst') },
-                                  { value: 'last', label: tr('sortNullsLast') },
-                                ],
-                              },
-                            ]}
-                            onChange={(v) =>
-                              updateSortKey(i, {
-                                nulls: (v || undefined) as 'first' | 'last' | undefined,
-                              })
-                            }
-                            className="h-6 w-full text-center rounded border border-border-muted bg-background/60 px-1 text-[11px] text-text-secondary outline-none"
-                          />
-                        ),
-                      },
-                    ]}
-                    onAdd={addSortKeyAfter}
-                    onRemove={removeSortKey}
-                    addTitle={tr('sortAddKey')}
-                    removeTitle={tr('filterDeleteCondition')}
-                    canAct={(action: RowAction) =>
-                      action === 'add' ? activeKeys.length < fieldCompletions.length : true
-                    }
-                    draggable
-                    onDragStart={handleDragStart}
-                    onDragOver={handleDragOver}
-                    onDragEnd={handleDragEnd}
-                    getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-                    dragTitle={tr('dragToReorder')}
-                  />
-                </div>
+              <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(88px,0.8fr)_minmax(96px,0.9fr)_28px_32px] items-center gap-2 px-3 text-[12px] font-medium text-text-muted">
+                <span>{tr('sortFieldHeader')}</span>
+                <span>{tr('sortDirectionHeader')}</span>
+                <span>{tr('sortNullsHeader')}</span>
+                <span />
+                <span />
+              </div>
+
+              <div className="grid gap-2">
+                {activeKeys.map((key, index) => {
+                  const dragging = isDragging && dragIndexRef.current === index;
+                  const disabledSortFields = new Set(usedSortFields);
+                  if (key.field) disabledSortFields.delete(key.field);
+                  return (
+                    <div
+                      key={index}
+                      onDragOver={(event) => handleDragOver(event, index)}
+                      className={`grid min-h-14 grid-cols-[minmax(0,1.5fr)_minmax(88px,0.8fr)_minmax(96px,0.9fr)_28px_32px] items-center gap-2 rounded-lg border border-border-muted bg-background px-3 py-2 transition-opacity ${
+                        dragging ? 'opacity-50' : ''
+                      }`}
+                    >
+                      <GlassFieldSingleSelect
+                        value={key.field}
+                        options={fieldCompletions}
+                        columnTypes={columnTypes}
+                        onChange={(value) => updateSortKey(index, { field: value })}
+                        placeholder={tr('sortSelectField')}
+                        searchPlaceholder={tr('searchField')}
+                        emptyText={tr('noMatch')}
+                        disabledOptions={disabledSortFields}
+                        className="w-full"
+                      />
+                      <GlassDirectionToggle
+                        value={key.direction}
+                        onChange={(v) => updateSortKey(index, { direction: v })}
+                        className="h-6 w-full px-1 text-[11px]"
+                      />
+                      <GlassOptionSingleSelect
+                        value={key.nulls ?? ''}
+                        groups={[
+                          {
+                            key: 'nulls',
+                            items: [
+                              { value: '', label: tr('sortNullsDefault') },
+                              { value: 'first', label: tr('sortNullsFirst') },
+                              { value: 'last', label: tr('sortNullsLast') },
+                            ],
+                          },
+                        ]}
+                        onChange={(v) =>
+                          updateSortKey(index, {
+                            nulls: (v || undefined) as 'first' | 'last' | undefined,
+                          })
+                        }
+                        className="h-6 w-full text-center rounded border border-border-muted bg-background/60 px-1 text-[11px] text-text-secondary outline-none"
+                      />
+                      <div
+                        draggable
+                        onDragStart={() => handleDragStart(index)}
+                        onDragEnd={handleDragEnd}
+                        className="flex h-8 w-7 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
+                        title={tr('dragToReorder')}
+                      >
+                        <GripVertical className="h-4 w-4" />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeSortKey(index)}
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error"
+                        title={tr('filterDeleteCondition')}
+                        aria-label={tr('filterDeleteCondition')}
+                      >
+                        <XCircle className="h-4 w-4" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );
