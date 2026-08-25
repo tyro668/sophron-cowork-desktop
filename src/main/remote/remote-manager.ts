@@ -9,8 +9,10 @@ import { log, logError, logWarn } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 import { RemoteGateway } from './gateway';
 import { MessageRouter } from './message-router';
+import { isNonRetryableChannelError } from './channels/channel-base';
 import { FeishuChannel } from './channels/feishu';
 import { DingtalkChannel } from './channels/dingtalk';
+import { WecomChannel } from './channels/wecom';
 import { SlackChannel } from './channels/slack';
 import { remoteConfigStore } from './remote-config-store';
 import { tunnelManager, TunnelStatus } from './tunnel-manager';
@@ -20,6 +22,7 @@ import type {
   GatewayConfig,
   FeishuChannelConfig,
   DingtalkChannelConfig,
+  WecomChannelConfig,
   ChannelType,
   RemoteSessionMapping,
   PairedUser,
@@ -37,6 +40,7 @@ export interface AgentExecutor {
     content?: ContentBlock[],
     cwd?: string
   ): Promise<void>;
+  waitForSessionIdle?(sessionId: string): Promise<void>;
   stopSession(sessionId: string): Promise<void>;
   validateWorkingDirectory?(cwd: string): Promise<string | null> | string | null;
 }
@@ -62,10 +66,16 @@ export interface RemoteInteraction {
 }
 
 interface RemoteResponseBuffer {
-  texts: string[];
+  items: Array<{ text: string; channelInfo: RemoteChannelContext }>;
   lastSent: number;
   toolSteps: string[];
   retryCount: number;
+}
+
+interface RemoteChannelContext {
+  channelType: ChannelType;
+  channelId: string;
+  replyTo?: string;
 }
 
 const RESPONSE_DEBOUNCE_MS = 2000;
@@ -96,8 +106,7 @@ export class RemoteManager extends EventEmitter {
   private reverseSessionIdMapping: Map<string, string> = new Map();
 
   // Mapping: remote session ID -> channel info (for routing responses back)
-  private sessionChannelMapping: Map<string, { channelType: ChannelType; channelId: string }> =
-    new Map();
+  private sessionChannelMapping: Map<string, RemoteChannelContext> = new Map();
 
   // Mapping: remote session ID -> owner sender ID (for interaction security)
   private sessionOwnerMapping: Map<string, string> = new Map();
@@ -146,7 +155,16 @@ export class RemoteManager extends EventEmitter {
 
     // Set up message router callback
     this.messageRouter.setAgentCallback(
-      async (sessionId, prompt, content, workingDirectory, channelType, channelId, senderId) => {
+      async (
+        sessionId,
+        prompt,
+        content,
+        workingDirectory,
+        channelType,
+        channelId,
+        senderId,
+        messageId
+      ) => {
         await this.executeAgent(
           sessionId,
           prompt,
@@ -154,7 +172,8 @@ export class RemoteManager extends EventEmitter {
           workingDirectory,
           channelType as ChannelType,
           channelId,
-          senderId
+          senderId,
+          messageId
         );
       }
     );
@@ -237,6 +256,9 @@ export class RemoteManager extends EventEmitter {
         }
         if (config.channels.dingtalk?.receiveMode === 'webhook') {
           log('[RemoteManager] DingTalk Webhook URL:', `${tunnelUrl}/webhook/dingtalk`);
+        }
+        if (config.channels.wecom?.receiveMode === 'webhook') {
+          log('[RemoteManager] WeCom Webhook URL:', `${tunnelUrl}/webhook/wecom`);
         }
       }
 
@@ -367,6 +389,59 @@ export class RemoteManager extends EventEmitter {
     gatewayConfig?: Partial<GatewayConfig>
   ): Promise<void> {
     remoteConfigStore.setDingtalkConfig(config);
+    if (gatewayConfig) remoteConfigStore.setGatewayConfig(gatewayConfig);
+    if (this.gateway?.running) {
+      await this.restart();
+    }
+  }
+
+  /** Update the WeCom AI Bot channel config. */
+  async updateWecomConfig(
+    config: WecomChannelConfig,
+    gatewayConfig?: Partial<GatewayConfig>
+  ): Promise<void> {
+    const receiveMode = config.receiveMode === 'webhook' ? 'webhook' : 'websocket';
+    const botId = typeof config.botId === 'string' ? config.botId.trim() : '';
+    const secret = typeof config.secret === 'string' ? config.secret.trim() : '';
+    const wsUrl = typeof config.wsUrl === 'string' ? config.wsUrl.trim() || undefined : undefined;
+    const webhookToken =
+      typeof config.webhookToken === 'string' ? config.webhookToken.trim() || undefined : undefined;
+    const webhookEncodingAESKey =
+      typeof config.webhookEncodingAESKey === 'string'
+        ? config.webhookEncodingAESKey.trim() || undefined
+        : undefined;
+    if (receiveMode === 'websocket' && (!botId || !secret)) {
+      throw new Error('WeCom Bot ID and Secret are required');
+    }
+    if (receiveMode === 'webhook') {
+      if (!webhookToken || !/^[A-Za-z0-9]{1,32}$/.test(webhookToken)) {
+        throw new Error('WeCom Webhook Token must contain 1-32 letters or digits');
+      }
+      if (!webhookEncodingAESKey || !/^[A-Za-z0-9]{43}$/.test(webhookEncodingAESKey)) {
+        throw new Error('WeCom EncodingAESKey must contain exactly 43 letters or digits');
+      }
+    }
+    if (receiveMode === 'websocket' && wsUrl) {
+      let parsed: URL;
+      try {
+        parsed = new URL(wsUrl);
+      } catch {
+        throw new Error('Invalid WeCom WebSocket URL');
+      }
+      if (parsed.protocol !== 'wss:') {
+        throw new Error('WeCom WebSocket URL must use wss://');
+      }
+    }
+
+    remoteConfigStore.setWecomConfig({
+      ...config,
+      receiveMode,
+      botId,
+      secret,
+      wsUrl,
+      webhookToken,
+      webhookEncodingAESKey,
+    });
     if (gatewayConfig) remoteConfigStore.setGatewayConfig(gatewayConfig);
     if (this.gateway?.running) {
       await this.restart();
@@ -588,6 +663,7 @@ export class RemoteManager extends EventEmitter {
           type: 'markdown',
           markdown: messageText,
         },
+        replyTo: channelInfo.replyTo,
       });
     } catch (err) {
       logError('[RemoteManager] Failed to send question to channel:', err);
@@ -704,6 +780,7 @@ export class RemoteManager extends EventEmitter {
           type: 'markdown',
           markdown: messageText,
         },
+        replyTo: channelInfo.replyTo,
       });
     } catch (err) {
       logError('[RemoteManager] Failed to send permission request to channel:', err);
@@ -833,7 +910,7 @@ export class RemoteManager extends EventEmitter {
   ): Promise<void> {
     if (!this.gateway || interactions.length === 0) return;
 
-    const destinations = new Map<string, { channelType: ChannelType; channelId: string }>();
+    const destinations = new Map<string, RemoteChannelContext>();
     for (const interaction of interactions) {
       const channelInfo = this.sessionChannelMapping.get(interaction.remoteSessionId);
       if (channelInfo) destinations.set(interaction.remoteSessionId, channelInfo);
@@ -1020,14 +1097,14 @@ export class RemoteManager extends EventEmitter {
     // Buffer the response
     if (!this.responseBuffers.has(actualSessionId)) {
       this.responseBuffers.set(actualSessionId, {
-        texts: [],
+        items: [],
         lastSent: 0,
         toolSteps: [],
         retryCount: 0,
       });
     }
     const buffer = this.responseBuffers.get(actualSessionId)!;
-    buffer.texts.push(text);
+    buffer.items.push({ text, channelInfo: { ...channelInfo } });
     buffer.retryCount = 0;
     this.cleanupAfterFlush.delete(actualSessionId);
 
@@ -1079,23 +1156,30 @@ export class RemoteManager extends EventEmitter {
    */
   private async performResponseFlush(actualSessionId: string): Promise<boolean> {
     const buffer = this.responseBuffers.get(actualSessionId);
-    if (!buffer || buffer.texts.length === 0) {
+    if (!buffer || buffer.items.length === 0) {
       if (this.cleanupAfterFlush.has(actualSessionId)) {
         this.cleanupResponseState(actualSessionId);
       }
       return true;
     }
 
-    const remoteSessionId = this.sessionIdMapping.get(actualSessionId);
-    if (!remoteSessionId) return false;
+    if (!this.gateway) return false;
 
-    const channelInfo = this.sessionChannelMapping.get(remoteSessionId);
-    if (!channelInfo || !this.gateway) return false;
-
-    // Snapshot the current batch. New messages may be appended while awaiting
-    // the network and must remain queued for the next flush.
-    const batchSize = buffer.texts.length;
-    const combinedText = buffer.texts.slice(0, batchSize).join('\n\n');
+    // Snapshot only the contiguous items for the same inbound message. A
+    // failed batch may remain queued while a later remote turn starts, so its
+    // reply context must never be replaced by the session's latest mapping.
+    const channelInfo = buffer.items[0].channelInfo;
+    let batchSize = 1;
+    while (
+      batchSize < buffer.items.length &&
+      this.isSameReplyContext(buffer.items[batchSize].channelInfo, channelInfo)
+    ) {
+      batchSize += 1;
+    }
+    const combinedText = buffer.items
+      .slice(0, batchSize)
+      .map((item) => item.text)
+      .join('\n\n');
 
     const timer = this.sendTimers.get(actualSessionId);
     if (timer) {
@@ -1105,17 +1189,29 @@ export class RemoteManager extends EventEmitter {
 
     try {
       await this.doSendToChannel(channelInfo, combinedText);
-      buffer.texts.splice(0, batchSize);
+      buffer.items.splice(0, batchSize);
       buffer.lastSent = Date.now();
       buffer.retryCount = 0;
 
-      if (buffer.texts.length > 0) {
+      if (buffer.items.length > 0) {
         this.scheduleResponseFlush(actualSessionId, RESPONSE_DEBOUNCE_MS);
       } else if (this.cleanupAfterFlush.has(actualSessionId)) {
         this.cleanupResponseState(actualSessionId);
       }
       return true;
     } catch (error) {
+      if (isNonRetryableChannelError(error)) {
+        buffer.items.splice(0, batchSize);
+        buffer.retryCount = 0;
+        logError('[RemoteManager] Non-retryable channel response failed; dropping batch:', error);
+        if (buffer.items.length > 0) {
+          this.scheduleResponseFlush(actualSessionId, RESPONSE_DEBOUNCE_MS);
+        } else if (this.cleanupAfterFlush.has(actualSessionId)) {
+          this.cleanupResponseState(actualSessionId);
+        }
+        return true;
+      }
+
       buffer.retryCount += 1;
       logError(
         `[RemoteManager] Failed to send buffered response (attempt ${buffer.retryCount}):`,
@@ -1135,10 +1231,7 @@ export class RemoteManager extends EventEmitter {
   /**
    * Actually send message to channel
    */
-  private async doSendToChannel(
-    channelInfo: { channelType: ChannelType; channelId: string },
-    text: string
-  ): Promise<void> {
+  private async doSendToChannel(channelInfo: RemoteChannelContext, text: string): Promise<void> {
     log('[RemoteManager] Sending to channel:', {
       channelType: channelInfo.channelType,
       textLength: text.length,
@@ -1151,6 +1244,7 @@ export class RemoteManager extends EventEmitter {
         type: 'markdown',
         markdown: text,
       },
+      replyTo: channelInfo.replyTo,
     });
   }
 
@@ -1204,7 +1298,7 @@ export class RemoteManager extends EventEmitter {
       // Add to buffer's tool steps
       if (!this.responseBuffers.has(actualSessionId)) {
         this.responseBuffers.set(actualSessionId, {
-          texts: [],
+          items: [],
           lastSent: 0,
           toolSteps: [],
           retryCount: 0,
@@ -1229,12 +1323,26 @@ export class RemoteManager extends EventEmitter {
   async clearSessionBuffer(actualSessionId: string): Promise<void> {
     // Mark cleanup first so a successful in-flight flush can finish the job.
     this.cleanupAfterFlush.add(actualSessionId);
-    await this.flushResponseBuffer(actualSessionId);
+    let flushed = await this.flushResponseBuffer(actualSessionId);
 
-    const buffer = this.responseBuffers.get(actualSessionId);
-    if (!buffer || buffer.texts.length === 0) {
+    // Different inbound messages are deliberately kept in separate batches.
+    // Drain every successful batch at the turn boundary, but retain the rest
+    // for the existing bounded retry path after the first failure.
+    let buffer = this.responseBuffers.get(actualSessionId);
+    while (flushed && buffer && buffer.items.length > 0) {
+      flushed = await this.flushResponseBuffer(actualSessionId);
+      buffer = this.responseBuffers.get(actualSessionId);
+    }
+
+    if (!buffer || buffer.items.length === 0) {
       this.cleanupResponseState(actualSessionId);
     }
+  }
+
+  private isSameReplyContext(a: RemoteChannelContext, b: RemoteChannelContext): boolean {
+    return (
+      a.channelType === b.channelType && a.channelId === b.channelId && a.replyTo === b.replyTo
+    );
   }
 
   private cleanupResponseState(actualSessionId: string): void {
@@ -1348,7 +1456,30 @@ export class RemoteManager extends EventEmitter {
       log('[RemoteManager] DingTalk channel registered');
     }
 
-    // TODO: Register other channels (WeChat, Telegram)
+    const wecomConfig = config.channels.wecom;
+    const wecomConfigured =
+      wecomConfig?.receiveMode === 'webhook'
+        ? Boolean(wecomConfig.webhookToken && wecomConfig.webhookEncodingAESKey)
+        : Boolean(wecomConfig?.botId && wecomConfig.secret);
+    if (wecomConfig && wecomConfigured) {
+      const wecomChannel = new WecomChannel(wecomConfig);
+      this.gateway.registerChannel(wecomChannel);
+      this.gateway.on(
+        'webhook:wecom',
+        (data: {
+          method: string;
+          url: string;
+          body: string;
+          respond: (status: number, responseData: unknown, contentType?: string) => void;
+        }) => {
+          const result = wecomChannel.handleWebhook(data.method, data.url, data.body);
+          data.respond(result.status, result.data, result.contentType);
+        }
+      );
+      log('[RemoteManager] WeCom channel registered');
+    }
+
+    // TODO: Register other channels (personal WeChat, Telegram)
   }
 
   /**
@@ -1374,7 +1505,8 @@ export class RemoteManager extends EventEmitter {
     workingDirectory: string | undefined,
     channelType: ChannelType,
     channelId: string,
-    senderId: string
+    senderId: string,
+    messageId: string
   ): Promise<void> {
     if (!this.agentExecutor) {
       throw new Error('Agent executor not set');
@@ -1401,7 +1533,11 @@ export class RemoteManager extends EventEmitter {
       this.reverseSessionIdMapping.set(sessionId, newSession.id);
 
       // Store channel info for routing responses back
-      this.sessionChannelMapping.set(sessionId, { channelType, channelId });
+      this.sessionChannelMapping.set(sessionId, {
+        channelType,
+        channelId,
+        replyTo: channelType === 'wecom' ? messageId : undefined,
+      });
 
       // Store session owner for interaction security verification
       this.sessionOwnerMapping.set(sessionId, senderId);
@@ -1423,11 +1559,23 @@ export class RemoteManager extends EventEmitter {
       });
 
       this.emitRemoteUserMessage(newSession.id, content, prompt);
+
+      if (this.agentExecutor.waitForSessionIdle) {
+        await this.agentExecutor.waitForSessionIdle(newSession.id);
+      }
     } else {
       // Continue existing session - use actual session ID
       log('[RemoteManager] Continuing session:', actualSessionId, 'for remote:', sessionId);
+      this.sessionChannelMapping.set(sessionId, {
+        channelType,
+        channelId,
+        replyTo: channelType === 'wecom' ? messageId : undefined,
+      });
       this.emitRemoteUserMessage(actualSessionId, content, prompt);
       await this.agentExecutor.continueSession(actualSessionId, prompt, content, workingDirectory);
+      if (this.agentExecutor.waitForSessionIdle) {
+        await this.agentExecutor.waitForSessionIdle(actualSessionId);
+      }
     }
 
     // Responses are emitted by the session manager and intercepted once in

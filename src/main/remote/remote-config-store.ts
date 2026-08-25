@@ -11,6 +11,7 @@ import type {
   GatewayConfig,
   FeishuChannelConfig,
   WechatChannelConfig,
+  WecomChannelConfig,
   TelegramChannelConfig,
   DingtalkChannelConfig,
   WebSocketChannelConfig,
@@ -140,6 +141,17 @@ class RemoteConfigStore {
   setWechatConfig(config: WechatChannelConfig): void {
     this.store.set('channels.wechat', config);
     log('[RemoteConfig] WeChat config updated');
+  }
+
+  /** Get the WeCom AI Bot channel config. */
+  getWecomConfig(): WecomChannelConfig | undefined {
+    return this.store.get('channels.wecom');
+  }
+
+  /** Persist the WeCom AI Bot channel config. */
+  setWecomConfig(config: WecomChannelConfig): void {
+    this.store.set('channels.wecom', config);
+    log('[RemoteConfig] WeCom config updated');
   }
 
   /**

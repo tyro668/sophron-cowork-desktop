@@ -47,6 +47,7 @@ export class RemoteGateway extends EventEmitter {
   private httpServer?: HttpServer;
   private wss?: WebSocketServer;
   private channels: Map<ChannelType, IChannel> = new Map();
+  private channelErrors: Map<ChannelType, string> = new Map();
   private wsClients: Map<string, WSClient> = new Map();
   private messageRouter: MessageRouter;
   private channelConfigs: RemoteConfig['channels'];
@@ -125,8 +126,10 @@ export class RemoteGateway extends EventEmitter {
       for (const [type, channel] of this.channels) {
         try {
           await channel.start();
+          this.channelErrors.delete(type);
           log(`[Gateway] Channel ${type} started`);
         } catch (error) {
+          this.channelErrors.set(type, error instanceof Error ? error.message : String(error));
           logError(`[Gateway] Failed to start channel ${type}:`, error);
         }
       }
@@ -171,6 +174,7 @@ export class RemoteGateway extends EventEmitter {
     this.wsClients.clear();
     this.authAttempts.clear();
     this.pairingRequestAttempts.clear();
+    this.channelErrors.clear();
 
     // Close WebSocket server
     if (this.wss) {
@@ -202,6 +206,7 @@ export class RemoteGateway extends EventEmitter {
     // Set up message handler
     channel.onMessage(this.handleChannelMessage.bind(this));
     channel.onError((error) => {
+      this.channelErrors.set(channel.type, error.message);
       logError(`[Gateway] Channel ${channel.type} error:`, error);
       this.emitEvent('channel.error', { channel: channel.type, error: error.message });
     });
@@ -212,6 +217,10 @@ export class RemoteGateway extends EventEmitter {
     // Start channel if gateway is already running
     if (this._running) {
       channel.start().catch((error) => {
+        this.channelErrors.set(
+          channel.type,
+          error instanceof Error ? error.message : String(error)
+        );
         logError(`[Gateway] Failed to start channel ${channel.type}:`, error);
       });
     }
@@ -225,6 +234,7 @@ export class RemoteGateway extends EventEmitter {
     if (channel) {
       await channel.stop();
       this.channels.delete(type);
+      this.channelErrors.delete(type);
       log(`[Gateway] Unregistered channel: ${type}`);
     }
   }
@@ -236,6 +246,7 @@ export class RemoteGateway extends EventEmitter {
     const channelStatuses = Array.from(this.channels.entries()).map(([type, channel]) => ({
       type,
       connected: channel.connected,
+      error: channel.connected ? undefined : this.channelErrors.get(type),
     }));
 
     return {
@@ -675,8 +686,8 @@ export class RemoteGateway extends EventEmitter {
   }
 
   private handleWebhook(req: IncomingMessage, res: ServerResponse, url: string): void {
-    if (req.method !== 'POST') {
-      res.writeHead(405, { 'Content-Type': 'application/json', Allow: 'POST' });
+    if (req.method !== 'GET' && req.method !== 'POST') {
+      res.writeHead(405, { 'Content-Type': 'application/json', Allow: 'GET, POST' });
       res.end(JSON.stringify({ error: 'Method not allowed' }));
       return;
     }
@@ -693,7 +704,55 @@ export class RemoteGateway extends EventEmitter {
       return;
     }
 
-    // Collect request body
+    const dispatch = (body: string) => {
+      try {
+        log(`[Gateway] Webhook body received, length: ${body.length}`);
+
+        const listenerCount = this.listenerCount(`webhook:${channelType}`);
+        log(`[Gateway] Listeners for webhook:${channelType}: ${listenerCount}`);
+
+        if (listenerCount === 0) {
+          log(`[Gateway] No listeners for webhook:${channelType}`);
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: `Webhook handler for ${channelType} is unavailable` }));
+          return;
+        }
+
+        this.emit(`webhook:${channelType}`, {
+          method: req.method || 'GET',
+          url,
+          headers: req.headers,
+          body,
+          respond: (status: number, data: unknown, contentType?: string) => {
+            if (res.writableEnded) return;
+            log(`[Gateway] Webhook response: ${status}`);
+            if (typeof data === 'string' || Buffer.isBuffer(data)) {
+              res.writeHead(status, {
+                'Content-Type': contentType || 'text/plain; charset=utf-8',
+              });
+              res.end(data);
+              return;
+            }
+            res.writeHead(status, { 'Content-Type': contentType || 'application/json' });
+            res.end(JSON.stringify(data));
+          },
+        });
+      } catch (error) {
+        logError('[Gateway] Error processing webhook body:', error);
+        if (!res.writableEnded) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Internal server error' }));
+        }
+      }
+    };
+
+    // WeCom verifies callback URLs with an encrypted GET request.
+    if (req.method === 'GET') {
+      dispatch('');
+      return;
+    }
+
+    // Collect POST request body.
     let body = '';
     const MAX_BODY_SIZE = 1024 * 1024; // 1MB limit
     let bodyTooLarge = false;
@@ -710,35 +769,7 @@ export class RemoteGateway extends EventEmitter {
 
     req.on('end', () => {
       if (bodyTooLarge) return;
-      try {
-        log(`[Gateway] Webhook body received, length: ${body.length}`);
-
-        // Check if there are listeners for this webhook event
-        const listenerCount = this.listenerCount(`webhook:${channelType}`);
-        log(`[Gateway] Listeners for webhook:${channelType}: ${listenerCount}`);
-
-        if (listenerCount === 0) {
-          log(`[Gateway] No listeners for webhook:${channelType}`);
-          res.writeHead(503, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: `Webhook handler for ${channelType} is unavailable` }));
-          return;
-        }
-
-        // Emit webhook event for channel to handle
-        this.emit(`webhook:${channelType}`, {
-          headers: req.headers,
-          body,
-          respond: (status: number, data: unknown) => {
-            log(`[Gateway] Webhook response: ${status}`, data);
-            res.writeHead(status, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify(data));
-          },
-        });
-      } catch (error) {
-        logError('[Gateway] Error processing webhook body:', error);
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Internal server error' }));
-      }
+      dispatch(body);
     });
   }
 

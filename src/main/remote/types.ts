@@ -77,7 +77,14 @@ export interface TunnelConfig {
 // Channel Configuration
 // ============================================================================
 
-export type ChannelType = 'feishu' | 'wechat' | 'telegram' | 'dingtalk' | 'websocket' | 'slack';
+export type ChannelType =
+  | 'feishu'
+  | 'wechat'
+  | 'wecom'
+  | 'telegram'
+  | 'dingtalk'
+  | 'websocket'
+  | 'slack';
 
 export interface ChannelConfig {
   /** Channel type */
@@ -90,6 +97,7 @@ export interface ChannelConfig {
   config:
     | FeishuChannelConfig
     | WechatChannelConfig
+    | WecomChannelConfig
     | TelegramChannelConfig
     | DingtalkChannelConfig
     | WebSocketChannelConfig
@@ -163,6 +171,47 @@ export interface WechatChannelConfig {
       requireMention: boolean;
       allowFrom?: string[];
     };
+  };
+}
+
+// WeCom (企业微信) AI Bot Channel
+export interface WecomChannelConfig {
+  type: 'wecom';
+
+  /** Receive through the WebSocket SDK or an encrypted HTTP callback. */
+  receiveMode?: 'websocket' | 'webhook';
+
+  /** Bot ID from the WeCom AI Bot API configuration. */
+  botId: string;
+
+  /** Secret dedicated to the WeCom WebSocket long connection. */
+  secret: string;
+
+  /** Optional WebSocket URL for private WeCom deployments. */
+  wsUrl?: string;
+
+  /** Verification token configured for the WeCom callback URL. */
+  webhookToken?: string;
+
+  /** 43-character EncodingAESKey configured for the WeCom callback URL. */
+  webhookEncodingAESKey?: string;
+
+  /** Direct-message access policy. */
+  dm: {
+    policy: 'open' | 'pairing' | 'allowlist';
+    allowFrom?: string[];
+  };
+
+  /** Per-group access settings, keyed by WeCom chat ID. */
+  groups?: {
+    [chatId: string]: {
+      requireMention: boolean;
+      allowFrom?: string[];
+    };
+  };
+
+  defaultGroupSettings?: {
+    requireMention: boolean;
   };
 }
 
@@ -561,6 +610,7 @@ export interface RemoteConfig {
   channels: {
     feishu?: FeishuChannelConfig;
     wechat?: WechatChannelConfig;
+    wecom?: WecomChannelConfig;
     telegram?: TelegramChannelConfig;
     dingtalk?: DingtalkChannelConfig;
     websocket?: WebSocketChannelConfig;

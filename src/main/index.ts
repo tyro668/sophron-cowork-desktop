@@ -87,6 +87,7 @@ import type {
   GatewayConfig,
   FeishuChannelConfig,
   DingtalkChannelConfig,
+  WecomChannelConfig,
   ChannelType,
 } from './remote/types';
 import { startNavServer, stopNavServer } from './nav-server';
@@ -1276,6 +1277,10 @@ app
           }
         }
         await sessionManager.continueSession(sessionId, prompt, content);
+      },
+      waitForSessionIdle: async (sessionId) => {
+        if (!sessionManager) throw new Error('Session manager not initialized');
+        await sessionManager.waitForSessionIdle(sessionId);
       },
       stopSession: async (sessionId) => {
         if (!sessionManager) throw new Error('Session manager not initialized');
@@ -2993,6 +2998,19 @@ ipcMain.handle(
       return { success: true };
     } catch (error) {
       logError('[Remote] Error updating DingTalk config:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+);
+
+ipcMain.handle(
+  'remote.updateWecomConfig',
+  async (_event, config: WecomChannelConfig, gatewayConfig?: Partial<GatewayConfig>) => {
+    try {
+      await remoteManager.updateWecomConfig(config, gatewayConfig);
+      return { success: true };
+    } catch (error) {
+      logError('[Remote] Error updating WeCom config:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }

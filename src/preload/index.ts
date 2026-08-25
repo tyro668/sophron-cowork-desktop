@@ -101,6 +101,7 @@ import type {
   GatewayConfig,
   FeishuChannelConfig,
   DingtalkChannelConfig,
+  WecomChannelConfig,
   ChannelType,
   PairedUser,
   PairingRequest,
@@ -620,6 +621,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       gatewayConfig?: Partial<GatewayConfig>
     ): Promise<{ success: boolean; error?: string }> =>
       ipcRenderer.invoke('remote.updateDingtalkConfig', config, gatewayConfig),
+    updateWecomConfig: (
+      config: WecomChannelConfig,
+      gatewayConfig?: Partial<GatewayConfig>
+    ): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke('remote.updateWecomConfig', config, gatewayConfig),
     getPairedUsers: (): Promise<PairedUser[]> => ipcRenderer.invoke('remote.getPairedUsers'),
     getPendingPairings: (): Promise<PairingRequest[]> =>
       ipcRenderer.invoke('remote.getPendingPairings'),
@@ -1041,6 +1047,10 @@ declare global {
         ) => Promise<{ success: boolean; error?: string }>;
         updateDingtalkConfig: (
           config: DingtalkChannelConfig,
+          gatewayConfig?: Partial<GatewayConfig>
+        ) => Promise<{ success: boolean; error?: string }>;
+        updateWecomConfig: (
+          config: WecomChannelConfig,
           gatewayConfig?: Partial<GatewayConfig>
         ) => Promise<{ success: boolean; error?: string }>;
         getPairedUsers: () => Promise<PairedUser[]>;

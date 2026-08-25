@@ -90,6 +90,7 @@
     "@radix-ui/react-switch": "1.2.6",
     "@slack/bolt": "4.7.0",
     "@slack/web-api": "7.15.1",
+    "@wecom/aibot-node-sdk": "1.0.6",
     "@xyflow/react": "12.10.2",
     "acorn": "8.15.0",
     "archiver": "^7.0.1",

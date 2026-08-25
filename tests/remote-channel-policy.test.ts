@@ -23,11 +23,11 @@ function getGatewayInternals(gateway: RemoteGateway): RemoteGatewayInternals {
   return gateway as unknown as RemoteGatewayInternals;
 }
 
-function message(channelType: 'feishu' | 'dingtalk', senderId: string): RemoteMessage {
+function message(channelType: 'feishu' | 'dingtalk' | 'wecom', senderId: string): RemoteMessage {
   return {
     id: 'message-1',
     channelType,
-    channelId: channelType === 'dingtalk' ? 'dm:user' : 'chat-1',
+    channelId: channelType === 'feishu' ? 'chat-1' : 'dm:user',
     sender: { id: senderId, isBot: false },
     content: { type: 'text', text: 'hello' },
     timestamp: Date.now(),
@@ -37,7 +37,7 @@ function message(channelType: 'feishu' | 'dingtalk', senderId: string): RemoteMe
 }
 
 describe('RemoteGateway channel policies', () => {
-  it('evaluates Feishu and DingTalk DM policies independently', async () => {
+  it('evaluates Feishu, DingTalk, and WeCom DM policies independently', async () => {
     const gateway = new RemoteGateway(
       {
         enabled: true,
@@ -59,6 +59,12 @@ describe('RemoteGateway channel policies', () => {
           appSecret: 'secret',
           dm: { policy: 'allowlist', allowFrom: ['ding-user'] },
         },
+        wecom: {
+          type: 'wecom',
+          botId: 'bot-id',
+          secret: 'secret',
+          dm: { policy: 'allowlist', allowFrom: ['wecom-user'] },
+        },
       }
     );
 
@@ -70,6 +76,8 @@ describe('RemoteGateway channel policies', () => {
     await expect(internals.checkAuthorization(message('dingtalk', 'other-user'))).resolves.toBe(
       false
     );
+    await expect(internals.checkAuthorization(message('wecom', 'wecom-user'))).resolves.toBe(true);
+    await expect(internals.checkAuthorization(message('wecom', 'other-user'))).resolves.toBe(false);
   });
 
   it('honors DingTalk group mention defaults', () => {

@@ -21,7 +21,8 @@ type AgentCallback = (
   workingDirectory: string | undefined,
   channelType: string,
   channelId: string,
-  senderId: string
+  senderId: string,
+  messageId: string
 ) => Promise<void>;
 type WorkingDirectoryValidator = (cwd: string) => Promise<string | null> | string | null;
 type SessionExpiredCallback = (sessionId: string) => void;
@@ -334,7 +335,8 @@ export class MessageRouter {
         workingDirectory,
         message.channelType, // Pass channel type for routing
         message.channelId, // Pass channel ID for routing
-        message.sender.id // Pass sender ID for security verification
+        message.sender.id, // Pass sender ID for security verification
+        message.id // Preserve the exact inbound message for webhook replies
       );
 
       if (resolvedCwd) {
