@@ -162,7 +162,7 @@ export const GlassFieldCompactSelect = memo(function GlassFieldCompactSelect({
             return (
               <label
                 key={col}
-                className={`flex min-h-8 cursor-pointer items-center gap-2 px-2.5 py-1 text-[13px] transition-colors hover:bg-surface-hover ${
+                className={`flex min-h-7 cursor-pointer items-center gap-2 px-2.5 py-1 text-[13px] transition-colors hover:bg-surface-hover ${
                   checked ? 'text-text-primary' : 'text-text-secondary'
                 }`}
                 onMouseDown={(e) => {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import { GripVertical, Plus, Settings, XCircle } from 'lucide-react';
+import { GripVertical, Plus, Settings, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFieldCompactSelect } from './shared/GlassFieldCompactSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
@@ -240,11 +240,11 @@ export default function FormAggregate({
               </button>
             </div>
 
-            <div className="grid grid-cols-[minmax(88px,0.7fr)_minmax(0,1.5fr)_minmax(96px,0.9fr)_28px_32px] items-center gap-2 px-3 text-[12px] font-medium text-text-muted">
+            <div className="grid grid-cols-[28px_minmax(88px,0.7fr)_minmax(0,1.5fr)_minmax(96px,0.9fr)_28px] items-center gap-2 px-3 text-[12px] font-medium text-text-muted">
+              <span />
               <span>{tr('aggregateFunction')}</span>
               <span>{tr('expressionLabel')}</span>
               <span>{tr('aggregateAlias')}</span>
-              <span />
               <span />
             </div>
 
@@ -255,17 +255,27 @@ export default function FormAggregate({
                   <div
                     key={index}
                     onDragOver={(event) => handleDragOver(event, index)}
-                    className={`grid min-h-14 grid-cols-[minmax(88px,0.7fr)_minmax(0,1.5fr)_minmax(96px,0.9fr)_28px_32px] items-center gap-2 rounded-lg border border-border-muted bg-background px-3 py-2 transition-opacity ${
+                    className={`grid min-h-10 grid-cols-[28px_minmax(88px,0.7fr)_minmax(0,1.5fr)_minmax(96px,0.9fr)_28px] items-center gap-2 rounded-lg border border-border-muted bg-background px-3 py-1.5 transition-opacity ${
                       dragging ? 'opacity-50' : ''
                     }`}
                   >
+                    <div
+                      draggable
+                      onDragStart={() => handleDragStart(index)}
+                      onDragEnd={handleDragEnd}
+                      className="flex h-7 w-7 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
+                      title={tr('dragToReorder')}
+                    >
+                      <GripVertical className="h-4 w-4" />
+                    </div>
                     <GlassOptionSingleSelect
                       value={metric.function}
                       groups={functionGroups}
                       onChange={(value) =>
                         updateMetric(index, { function: value as AggregateFunction })
                       }
-                      className="h-8 w-full !border-transparent !bg-[rgb(var(--color-surface-active-rgb))] text-[12px] !text-accent-text hover:!bg-[rgb(var(--color-surface-active-rgb))] [&>span]:text-left"
+                      variant="highlight"
+                      className="h-7 w-full text-[12px] [&>span]:text-left"
                     />
                     <GlassExpressionInput
                       value={metric.expression}
@@ -278,25 +288,16 @@ export default function FormAggregate({
                       value={metric.alias ?? ''}
                       onChange={(value) => updateMetric(index, { alias: value })}
                       placeholder={tr('aggregateAliasPlaceholder')}
-                      className="h-8 w-full px-2 text-[12px]"
+                      className="h-7 w-full px-2 text-[12px]"
                     />
-                    <div
-                      draggable
-                      onDragStart={() => handleDragStart(index)}
-                      onDragEnd={handleDragEnd}
-                      className="flex h-8 w-7 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
-                      title={tr('dragToReorder')}
-                    >
-                      <GripVertical className="h-4 w-4" />
-                    </div>
                     <button
                       type="button"
                       onClick={() => removeMetric(index)}
-                      className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error"
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error"
                       title={tr('aggregateRemoveMetric')}
                       aria-label={tr('aggregateRemoveMetric')}
                     >
-                      <XCircle className="h-4 w-4" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 );

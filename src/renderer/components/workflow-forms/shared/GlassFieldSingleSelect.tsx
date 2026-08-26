@@ -213,7 +213,7 @@ export function GlassFieldSingleSelect({
         aria-expanded={open}
         aria-label={placeholder}
         className={[
-          'inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded border px-2 text-[13px] outline-none transition-colors',
+          'inline-flex min-h-7 min-w-0 items-center gap-1.5 rounded border px-2 text-[13px] outline-none transition-colors',
           'border-border-muted bg-background/42 text-text-primary hover:bg-surface-hover focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30',
           className || '',
         ].join(' ')}
@@ -290,7 +290,7 @@ export function GlassFieldSingleSelect({
                       disabled={disabled}
                       onClick={() => handleSelect(opt)}
                       className={[
-                        'flex min-h-8 w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30',
+                        'flex min-h-7 w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30',
                         selected
                           ? 'bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/20'
                           : 'text-text-secondary hover:bg-background/58 hover:text-text-primary',

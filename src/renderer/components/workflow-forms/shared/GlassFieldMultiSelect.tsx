@@ -198,7 +198,7 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
             return (
               <label
                 key={col}
-                className={`flex min-h-8 cursor-pointer items-center gap-2 px-2.5 transition-colors hover:bg-surface-hover ${
+                className={`flex min-h-7 cursor-pointer items-center gap-2 px-2.5 transition-colors hover:bg-surface-hover ${
                   isGlass ? 'py-1.5 text-[13px]' : 'py-1 text-[13px]'
                 } ${checked ? 'text-text-primary' : 'text-text-secondary'}`}
                 onMouseDown={(e) => {

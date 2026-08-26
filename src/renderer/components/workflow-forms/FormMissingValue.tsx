@@ -346,7 +346,7 @@ export default function FormMissingValue({
                 columns={[
                   {
                     flex: 'flex-[2]',
-                    header: '',
+                    header: tr('missingColumnHeader'),
                     render: (item: MissingValueRule, i: number) => (
                       <GlassFieldSingleSelect
                         value={item.column}
@@ -376,7 +376,7 @@ export default function FormMissingValue({
                   },
                   {
                     flex: 'flex-[1.5]',
-                    header: '',
+                    header: tr('missingMethodHeader'),
                     render: (item: MissingValueRule, i: number) => {
                       const colType = item.column ? columnTypes[item.column] : undefined;
                       const availableMethods = methodsForType(colType);
@@ -403,14 +403,15 @@ export default function FormMissingValue({
                               })),
                             },
                           ]}
-                          className="h-7 w-full text-[12px]"
+                          variant="highlight"
+                          className="h-7 w-full text-[12px] [&>span]:text-left"
                         />
                       );
                     },
                   },
                   {
                     flex: 'flex-[3]',
-                    header: '',
+                    header: tr('missingValueHeader'),
                     render: (item: MissingValueRule, i: number) => {
                       const colType = item.column ? columnTypes[item.column] : undefined;
                       const availableMethods = methodsForType(colType);
@@ -494,7 +495,6 @@ export default function FormMissingValue({
                 onDragEnd={handleDragEnd}
                 getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
                 dragTitle={tr('missingDragToReorder')}
-                hideHeader
               />
             </div>
           </div>

@@ -165,17 +165,15 @@ export default function FormFieldMapping({
         ),
       },
       {
-        flex: 'w-8',
-        header: '',
-        render: () => <div />,
-      },
-      {
         flex: 'flex-[2]',
         header: tr('fieldMappingTargetField'),
         render: (item, _i) => {
           const target = computeFieldMappingTarget(item);
           return (
-            <span className="truncate text-[12px] text-text-muted" title={target}>
+            <span
+              className="truncate w-full rounded border border-border-subtle/80 bg-surface-hover/45 px-1.5 py-1 text-[12px] text-text-muted"
+              title={target}
+            >
               {target || '—'}
             </span>
           );

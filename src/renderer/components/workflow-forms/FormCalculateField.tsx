@@ -143,6 +143,7 @@ export default function FormCalculateField({
           value={calculation.action ?? 'add'}
           groups={[{ key: 'action', items: actionOptions }]}
           onChange={(action) => updateCalculationAction(index, action as CalculationRow['action'])}
+          variant="highlight"
           className="h-7 w-full text-[12px] [&>span]:text-left"
         />
       ),

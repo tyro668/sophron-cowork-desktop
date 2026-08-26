@@ -123,7 +123,7 @@ export function GlassValueInput({
       style={multi ? { width: 280, flexShrink: 0 } : undefined}
     >
       <div
-        className={`flex h-8 w-full items-center gap-1 rounded-md border bg-background/42 transition-colors ${
+        className={`flex h-7 w-full items-center gap-1 rounded-md border bg-background/42 transition-colors ${
           multi ? 'pl-1.5 pr-1 py-0.5' : 'focus-within:border-accent'
         } ${open ? 'border-accent' : 'border-border-muted'} ${disabled ? 'cursor-not-allowed opacity-40' : ''}`}
       >
@@ -177,7 +177,7 @@ export function GlassValueInput({
             onFocus={() => openDropdown()}
             onBlur={multi ? undefined : () => setTimeout(() => onChange(inputText), 100)}
             placeholder={multi ? (tags.length === 0 ? placeholder : '') : placeholder}
-            className={`bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed ${multi ? 'h-7 min-w-[60px] flex-1 pl-0.5' : 'h-8 min-w-[60px] flex-1 pl-2'}`}
+            className={`bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed ${multi ? 'h-7 min-w-[60px] flex-1 pl-0.5' : 'h-7 min-w-[60px] flex-1 pl-2'}`}
           />
         </div>
 
@@ -204,7 +204,7 @@ export function GlassValueInput({
             <button
               key={s}
               type="button"
-              className={`min-h-8 w-full px-2.5 py-1.5 text-left text-[13px] outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${!multi && s === inputText ? 'text-accent' : 'text-text-secondary'}`}
+              className={`min-h-7 w-full px-2.5 py-1.5 text-left text-[13px] outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${!multi && s === inputText ? 'text-accent' : 'text-text-secondary'}`}
               onMouseDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -217,7 +217,7 @@ export function GlassValueInput({
           {multi && inputText && !filtered.includes(inputText) && (
             <button
               type="button"
-              className="min-h-8 w-full px-2.5 py-1.5 text-left text-[13px] text-accent outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
+              className="min-h-7 w-full px-2.5 py-1.5 text-left text-[13px] text-accent outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
               onMouseDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();

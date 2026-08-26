@@ -14,7 +14,6 @@ import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useDataFieldTypeLabel } from '../../hooks/useDataFieldTypeLabel';
 import { computeUsedFields } from '../../../shared/collections/used-fields';
-import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { parseTypeConversionScale, prepareTypeConversion } from '../../../shared/operator-config';
 import {
   DATE_FORMAT_PRESETS,
@@ -137,6 +136,7 @@ export default function FormTypeConvert({
         <div className="flex-1 space-y-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
           <GlassRowList
             headerClassName=""
+            variant="table"
             items={activeConversions}
             columns={[
               {
@@ -165,7 +165,7 @@ export default function FormTypeConvert({
                 header: tr('typeConvertOriginalType'),
                 align: 'center',
                 render: (conv: TypeConversionEntry) => (
-                  <span className="w-full text-center text-[11px] text-text-muted tabular-nums">
+                  <span className="flex h-7 w-full items-center justify-center rounded border border-border-subtle/80 bg-surface-hover/45 px-1 text-center text-[11px] text-text-muted tabular-nums">
                     {conv.column && columnTypes?.[conv.column]
                       ? dataTypeLabel(columnTypes[conv.column])
                       : '—'}
@@ -216,36 +216,39 @@ export default function FormTypeConvert({
                             format: (v || undefined) as DateFormat | undefined,
                           })
                         }
+                        variant="muted"
                         className="h-6 w-full text-[12px]"
                       />
                     );
                   }
                   if (conv.type === 'decimal') {
                     return (
-                      <div className="flex w-full items-center justify-start gap-1">
-                        <GlassFormTextInput
-                          value={conv.scale != null ? String(conv.scale) : ''}
-                          textCenter
-                          className="h-6 w-14 text-[12px]"
-                          placeholder={`${SCALE_MIN}`}
-                          min={SCALE_MIN}
-                          max={SCALE_MAX}
-                          type="number"
-                          onChange={(v) => {
-                            const n = parseTypeConversionScale(v);
-                            updateConversion(i, {
-                              scale: n,
-                            });
-                          }}
-                        />
-                        <span className="shrink-0 text-[12px] text-text-muted">
-                          {tr('typeConvertScaleUnit')}
-                        </span>
-                      </div>
+                      <GlassOptionSingleSelect
+                        value={conv.scale != null ? String(conv.scale) : String(SCALE_MIN)}
+                        groups={[
+                          {
+                            key: 'scale',
+                            items: Array.from({ length: SCALE_MAX - SCALE_MIN + 1 }, (_, k) => {
+                              const n = SCALE_MIN + k;
+                              return {
+                                value: String(n),
+                                label: tr('typeConvertScaleOption', { n }),
+                              };
+                            }),
+                          },
+                        ]}
+                        onChange={(v) =>
+                          updateConversion(i, {
+                            scale: parseTypeConversionScale(v),
+                          })
+                        }
+                        variant="muted"
+                        className="h-6 w-full text-[12px]"
+                      />
                     );
                   }
                   return (
-                    <span className="w-full text-left text-[12px] text-text-muted">
+                    <span className="flex h-7 w-full items-center rounded border border-border-subtle/80 bg-surface-hover/45 px-1.5 text-left text-[12px] text-text-muted">
                       {tr('typeConvertNoSettings')}
                     </span>
                   );

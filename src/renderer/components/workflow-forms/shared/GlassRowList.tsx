@@ -49,6 +49,8 @@ interface GlassRowListProps<T> {
   dragTitle?: string;
   hideHeader?: boolean;
   headerClassName?: string;
+  gapClassName?: string;
+  variant?: 'cards' | 'table';
 }
 
 const ACTION_ICON: Record<RowAction, React.ComponentType<{ className?: string }>> = {
@@ -91,6 +93,8 @@ export function GlassRowList<T>({
   dragTitle,
   hideHeader,
   headerClassName,
+  gapClassName = 'gap-2.5',
+  variant = 'cards',
 }: GlassRowListProps<T>) {
   const tr = useFormTranslation();
 
@@ -116,14 +120,18 @@ export function GlassRowList<T>({
   const actionsWidth = actions.length * 28 + (actions.length - 1) * 4 + extraActionsWidth;
 
   return (
-    <div className="flex flex-col gap-2">
+    <div
+      className={`flex flex-col ${variant === 'table' ? 'overflow-hidden rounded-lg border border-border-muted' : gapClassName}`}
+    >
       {!hideHeader && (
         <div
-          className={`flex items-center gap-1 px-0.5 pb-0.5 text-[13px] leading-[20px] font-medium tracking-normal text-text-muted ${headerClassName ?? ''}`}
+          className={`flex min-h-9 items-center gap-1 px-3 text-[13px] leading-[20px] font-medium tracking-normal text-text-muted ${
+            variant === 'table' ? 'border-b border-border-muted bg-background/60' : '-mb-1.5 pb-0.5'
+          } ${headerClassName ?? ''}`}
         >
           {draggable && (
             <span
-              className="flex h-7 w-6 flex-shrink-0 items-center justify-center"
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center"
               aria-hidden="true"
             />
           )}
@@ -141,85 +149,94 @@ export function GlassRowList<T>({
         </div>
       )}
 
-      {items.map((item, index) => (
-        <div
-          key={index}
-          className={`flex min-h-8 items-center gap-1 px-0.5 ${
-            draggable ? 'rounded transition-colors hover:bg-surface-hover/40' : ''
-          } ${getRowOpacity?.(index) ? 'opacity-50' : ''}`}
-          onDragOver={draggable ? (e) => onDragOver?.(e, index) : undefined}
-        >
-          {draggable && (
-            <div
-              draggable
-              onDragStart={() => onDragStart?.(index)}
-              onDragEnd={() => onDragEnd?.()}
-              className="flex h-7 w-6 flex-shrink-0 cursor-grab items-center justify-center rounded text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-accent/30 active:cursor-grabbing"
-              title={dragTitle ?? tr('dragToReorder')}
-              aria-label={dragTitle ?? tr('dragToReorder')}
-            >
-              <GripVertical className="h-4 w-4" />
-            </div>
-          )}
+      {items.map((item, index) => {
+        const isLast = index === items.length - 1;
+        return (
+          <div
+            key={index}
+            className={`flex min-h-10 items-center gap-1 px-3 py-1.5 ${
+              variant === 'table'
+                ? `border-border-muted ${isLast ? '' : 'border-b'} ${
+                    draggable ? 'transition-colors hover:bg-surface-hover/40' : ''
+                  }`
+                : `rounded-lg border border-border-muted bg-background ${
+                    draggable ? 'transition-colors hover:bg-surface-hover/40' : ''
+                  }`
+            } ${getRowOpacity?.(index) ? 'opacity-50' : ''}`}
+            onDragOver={draggable ? (e) => onDragOver?.(e, index) : undefined}
+          >
+            {draggable && (
+              <div
+                draggable
+                onDragStart={() => onDragStart?.(index)}
+                onDragEnd={() => onDragEnd?.()}
+                className="flex h-7 w-7 flex-shrink-0 cursor-grab items-center justify-center rounded text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-accent/30 active:cursor-grabbing"
+                title={dragTitle ?? tr('dragToReorder')}
+                aria-label={dragTitle ?? tr('dragToReorder')}
+              >
+                <GripVertical className="h-4 w-4" />
+              </div>
+            )}
 
-          {columns.map((col, i) => (
-            <div
-              key={i}
-              className={`flex items-center min-w-0 ${
-                col.align === 'center' ? 'justify-center' : 'justify-start'
-              } ${col.flex}`}
-            >
-              <div className="w-full flex">{col.render(item, index)}</div>
-            </div>
-          ))}
+            {columns.map((col, i) => (
+              <div
+                key={i}
+                className={`flex items-center min-w-0 ${
+                  col.align === 'center' ? 'justify-center' : 'justify-start'
+                } ${col.flex}`}
+              >
+                <div className="w-full flex">{col.render(item, index)}</div>
+              </div>
+            ))}
 
-          <div className="flex items-center gap-1 flex-shrink-0">
-            {renderExtraActions?.(index)}
-            {actions.map((action) => {
-              const Icon = ACTION_ICON[action];
-              const disabled = canAct !== undefined && !canAct(action, index);
-              const label = getActionLabel(action);
-              const handler = () => {
-                switch (action) {
-                  case 'add':
-                    return onAdd?.(index);
-                  case 'remove':
-                    return onRemove?.(index);
-                  case 'copy':
-                    return onCopy?.(index);
-                  case 'moveUp':
-                    return onMoveUp?.(index);
-                  case 'moveDown':
-                    return onMoveDown?.(index);
-                  case 'toTop':
-                    return onToTop?.(index);
-                  case 'toBottom':
-                    return onToBottom?.(index);
-                }
-              };
-              return (
-                <button
-                  key={action}
-                  type="button"
-                  onClick={handler}
-                  disabled={disabled}
-                  className={`inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
-                    disabled
-                      ? 'opacity-40 cursor-not-allowed'
-                      : action === 'remove'
-                        ? 'text-text-muted hover:text-error hover:bg-error/10'
-                        : 'text-text-muted hover:bg-surface-hover hover:text-accent'
-                  }`}
-                  title={label}
-                  aria-label={label}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                </button>
-              );
-            })}
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {renderExtraActions?.(index)}
+              {actions.map((action) => {
+                const Icon = ACTION_ICON[action];
+                const disabled = canAct !== undefined && !canAct(action, index);
+                const label = getActionLabel(action);
+                const handler = () => {
+                  switch (action) {
+                    case 'add':
+                      return onAdd?.(index);
+                    case 'remove':
+                      return onRemove?.(index);
+                    case 'copy':
+                      return onCopy?.(index);
+                    case 'moveUp':
+                      return onMoveUp?.(index);
+                    case 'moveDown':
+                      return onMoveDown?.(index);
+                    case 'toTop':
+                      return onToTop?.(index);
+                    case 'toBottom':
+                      return onToBottom?.(index);
+                  }
+                };
+                return (
+                  <button
+                    key={action}
+                    type="button"
+                    onClick={handler}
+                    disabled={disabled}
+                    className={`inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
+                      disabled
+                        ? 'opacity-40 cursor-not-allowed'
+                        : action === 'remove'
+                          ? 'text-text-muted hover:text-error hover:bg-error/10'
+                          : 'text-text-muted hover:bg-surface-hover hover:text-accent'
+                    }`}
+                    title={label}
+                    aria-label={label}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

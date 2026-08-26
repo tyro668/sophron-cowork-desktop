@@ -31,6 +31,7 @@ interface GlassOptionSingleSelectProps {
   disabled?: boolean;
   className?: string;
   placeholder?: string;
+  variant?: 'default' | 'highlight' | 'muted';
 }
 
 export function GlassOptionSingleSelect({
@@ -40,6 +41,7 @@ export function GlassOptionSingleSelect({
   onChange,
   className,
   placeholder,
+  variant = 'default',
 }: GlassOptionSingleSelectProps) {
   const {
     open,
@@ -171,7 +173,13 @@ export function GlassOptionSingleSelect({
         disabled={disabled}
         onClick={toggleOpen}
         onKeyDown={handleTriggerKeyDown}
-        className={`flex min-h-8 items-center rounded border border-border-muted bg-background/42 text-[13px] text-text-secondary outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-40 ${className ?? ''}`}
+        className={`flex min-h-7 items-center rounded border text-[13px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-40 ${
+          variant === 'highlight'
+            ? 'border-transparent bg-[rgb(var(--color-surface-active-rgb))] text-accent-text'
+            : variant === 'muted'
+              ? 'border-border-subtle/80 bg-surface-hover/45 text-text-secondary'
+              : 'border-border-muted bg-background/42 text-text-secondary'
+        } ${className ?? ''}`}
       >
         <span className="flex-1 truncate whitespace-nowrap px-2 text-left">
           {value ? (
@@ -224,7 +232,7 @@ export function GlassOptionSingleSelect({
                       role="option"
                       aria-selected={selected}
                       data-index={globalIdx}
-                      className={`min-h-8 w-full whitespace-nowrap px-3 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${
+                      className={`min-h-7 w-full whitespace-nowrap px-3 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${
                         selected
                           ? 'text-accent font-medium bg-accent/10 ring-1 ring-inset ring-accent/20'
                           : 'text-text-secondary hover:bg-surface-hover'

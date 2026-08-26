@@ -39,7 +39,7 @@ export function GlassTagBar({
 
   return (
     <div
-      className={`min-h-8 w-full min-w-0 flex items-center rounded-md border border-border-muted bg-background/42 ${containerPad} ${className}`}
+      className={`min-h-7 w-full min-w-0 flex items-center rounded-md border border-border-muted bg-background/42 ${containerPad} ${className}`}
     >
       <div className="flex flex-1 items-center gap-1 min-w-0">
         <button

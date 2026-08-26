@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDownToLine, ArrowUpToLine, GripVertical, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
+import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { useDataFieldTypeLabel } from '../../hooks/useDataFieldTypeLabel';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
@@ -94,15 +95,8 @@ export default function FormFieldSelect({
     }
   }, [selectAllIndeterminate]);
 
-  const {
-    activeItems: displayItems,
-    handleDragStart,
-    handleDragOver,
-    handleDragEnd,
-    isDragging,
-    resetDrag,
-    dragIndexRef,
-  } = useDragReorder(orderedFields, commitReorder);
+  const { handleDragStart, handleDragOver, handleDragEnd, isDragging, resetDrag, dragIndexRef } =
+    useDragReorder(orderedFields, commitReorder);
 
   useEffect(() => {
     if (!isDragging) resetDrag();
@@ -136,116 +130,117 @@ export default function FormFieldSelect({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border-subtle bg-background/24">
-          <div className="flex min-h-9 items-center gap-2 border-b border-border-subtle px-3 py-1">
-            <Search className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+        <div className="flex min-h-9 items-center gap-2 rounded-md border border-border-muted bg-background/60 px-2.5 py-1">
+          <Search className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+          <input
+            type="text"
+            value={rightSearch}
+            onChange={(event) => setRightSearch(event.target.value)}
+            placeholder={tr('searchField')}
+            className="h-7 min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-secondary"
+          />
+          <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary hover:text-text-primary">
             <input
-              type="text"
-              value={rightSearch}
-              onChange={(event) => setRightSearch(event.target.value)}
-              placeholder={tr('searchField')}
-              className="h-7 min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-secondary"
+              ref={selectAllRef}
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={() => {
+                if (allVisibleSelected) {
+                  const visibleSet = new Set(visibleFields);
+                  commitColumns(columns.filter((field) => !visibleSet.has(field)));
+                } else {
+                  commitColumns(mergeSelectedFields(columns, visibleFields));
+                }
+              }}
+              className="h-3.5 w-3.5 accent-accent"
             />
-            <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary hover:text-text-primary">
-              <input
-                ref={selectAllRef}
-                type="checkbox"
-                checked={allVisibleSelected}
-                onChange={() => {
-                  if (allVisibleSelected) {
-                    const visibleSet = new Set(visibleFields);
-                    commitColumns(columns.filter((field) => !visibleSet.has(field)));
-                  } else {
-                    commitColumns(mergeSelectedFields(columns, visibleFields));
-                  }
-                }}
-                className="h-3.5 w-3.5 accent-accent"
-              />
-              {tr('selectAll')}
-            </label>
-            <span className="text-[12px] text-text-secondary">
-              {tr('fieldSelectCount')
-                .replace('{{n}}', String(columns.length))
-                .replace('{{total}}', String(fieldCompletions.length))}
-            </span>
-          </div>
+            {tr('selectAll')}
+          </label>
+          <span className="text-[12px] text-text-secondary">
+            {tr('fieldSelectCount')
+              .replace('{{n}}', String(columns.length))
+              .replace('{{total}}', String(fieldCompletions.length))}
+          </span>
+        </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto [overflow-anchor:none]">
-            {visibleFields.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-[12px] text-text-muted">
-                {rightSearch ? tr('noMatch') : tr('noFields')}
-              </div>
-            ) : (
-              visibleFields.map((field) => {
-                const selected = columns.includes(field);
-                const rowIndex = displayItems.indexOf(field);
-                const dragging = isDragging && dragIndexRef.current === rowIndex;
-
-                return (
-                  <div
-                    key={field}
-                    className={`grid min-h-9 grid-cols-[32px_48px_minmax(0,1fr)_120px_32px_32px] items-center gap-2 px-2 text-[13px] transition-colors hover:bg-surface-hover/60 ${
-                      dragging ? 'opacity-50' : ''
-                    }`}
-                    onDragOver={
-                      rowIndex >= 0 ? (event) => handleDragOver(event, rowIndex) : undefined
-                    }
-                  >
-                    <div
-                      draggable
-                      onDragStart={() => handleDragStart(rowIndex)}
-                      onDragEnd={handleDragEnd}
-                      className="flex h-7 w-7 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
-                      title={tr('dragToReorder')}
-                    >
-                      <GripVertical className="h-4 w-4" />
-                    </div>
-
-                    <label className="flex h-7 cursor-pointer items-center justify-center">
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        onChange={() =>
-                          commitColumns(
-                            selected
-                              ? columns.filter((candidate) => candidate !== field)
-                              : [...columns, field]
-                          )
-                        }
-                        className="h-3.5 w-3.5 accent-accent"
-                      />
-                    </label>
-
+        <div className="mt-2 flex-1 min-h-0 overflow-y-auto [overflow-anchor:none]">
+          {visibleFields.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-[12px] text-text-muted">
+              {rightSearch ? tr('noMatch') : tr('noFields')}
+            </div>
+          ) : (
+            <GlassRowList
+              items={visibleFields}
+              hideHeader
+              draggable
+              onDragStart={(i) => {
+                const field = visibleFields[i];
+                handleDragStart(orderedFields.indexOf(field));
+              }}
+              onDragOver={(e, i) => {
+                const field = visibleFields[i];
+                handleDragOver(e, orderedFields.indexOf(field));
+              }}
+              onDragEnd={handleDragEnd}
+              getRowOpacity={(i) => {
+                const field = visibleFields[i];
+                return !!(isDragging && dragIndexRef.current === orderedFields.indexOf(field));
+              }}
+              dragTitle={tr('dragToReorder')}
+              actions={['toTop', 'toBottom']}
+              onToTop={(i) => moveToTop(visibleFields[i])}
+              onToBottom={(i) => moveToBottom(visibleFields[i])}
+              toTopTitle={tr('toTop')}
+              toBottomTitle={tr('toBottom')}
+              canAct={(action: RowAction, i) => {
+                const field = visibleFields[i];
+                if (action === 'toTop') return orderedFields[0] !== field;
+                if (action === 'toBottom') return orderedFields[orderedFields.length - 1] !== field;
+                return true;
+              }}
+              columns={[
+                {
+                  flex: 'flex-[1]',
+                  header: '',
+                  render: (field: string) => {
+                    const selected = columns.includes(field);
+                    return (
+                      <label className="flex h-7 cursor-pointer items-center justify-center">
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() =>
+                            commitColumns(
+                              selected
+                                ? columns.filter((candidate) => candidate !== field)
+                                : [...columns, field]
+                            )
+                          }
+                          className="h-3.5 w-3.5 accent-accent"
+                        />
+                      </label>
+                    );
+                  },
+                },
+                {
+                  flex: 'flex-[4]',
+                  header: '',
+                  render: (field: string) => (
                     <span className="min-w-0 truncate text-text-primary">{field}</span>
+                  ),
+                },
+                {
+                  flex: 'flex-[3]',
+                  header: '',
+                  render: (field: string) => (
                     <span className="truncate text-[12px] text-text-secondary">
                       {columnTypes?.[field] ? dataTypeLabel(columnTypes[field]) : '—'}
                     </span>
-
-                    <button
-                      type="button"
-                      disabled={orderedFields[0] === field}
-                      onClick={() => moveToTop(field)}
-                      className="flex h-7 w-7 items-center justify-center rounded text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-accent focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-default disabled:opacity-25"
-                      title={tr('toTop')}
-                      aria-label={tr('toTop')}
-                    >
-                      <ArrowUpToLine className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={orderedFields[orderedFields.length - 1] === field}
-                      onClick={() => moveToBottom(field)}
-                      className="flex h-7 w-7 items-center justify-center rounded text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-accent focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-default disabled:opacity-25"
-                      title={tr('toBottom')}
-                      aria-label={tr('toBottom')}
-                    >
-                      <ArrowDownToLine className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                );
-              })
-            )}
-          </div>
+                  ),
+                },
+              ]}
+            />
+          )}
         </div>
       </div>
     </div>

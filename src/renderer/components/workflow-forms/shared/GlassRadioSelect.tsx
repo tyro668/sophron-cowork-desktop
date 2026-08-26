@@ -37,7 +37,7 @@ export function GlassRadioSelect({
           title={opt.tip}
           onClick={() => onChange(opt.value)}
           aria-pressed={value === opt.value}
-          className={`flex min-h-8 items-center gap-1.5 rounded-md px-2 text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
+          className={`flex min-h-7 items-center gap-1.5 rounded-md px-2 text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
             isHorizontal
               ? 'cursor-pointer text-text-secondary hover:bg-surface-hover hover:text-text-primary'
               : 'w-full text-left hover:bg-surface-hover'

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import { GripVertical, Plus, XCircle } from 'lucide-react';
+import { GripVertical, Plus, Trash2 } from 'lucide-react';
 
 import type { OperatorFormProps } from './index';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
@@ -167,11 +167,11 @@ export default function FormDeduplicate({
               />
 
               {/* ── 排序设置 ── */}
-              <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(88px,0.8fr)_minmax(96px,0.9fr)_28px_32px] items-center gap-2 px-3 text-[12px] font-medium text-text-muted">
+              <div className="grid grid-cols-[28px_minmax(0,1.5fr)_minmax(88px,0.8fr)_minmax(96px,0.9fr)_28px] items-center gap-2 px-3 text-[12px] font-medium text-text-muted">
+                <span />
                 <span>{tr('sortFieldHeader')}</span>
                 <span>{tr('sortDirectionHeader')}</span>
                 <span>{tr('sortNullsHeader')}</span>
-                <span />
                 <span />
               </div>
 
@@ -184,10 +184,19 @@ export default function FormDeduplicate({
                     <div
                       key={index}
                       onDragOver={(event) => handleDragOver(event, index)}
-                      className={`grid min-h-14 grid-cols-[minmax(0,1.5fr)_minmax(88px,0.8fr)_minmax(96px,0.9fr)_28px_32px] items-center gap-2 rounded-lg border border-border-muted bg-background px-3 py-2 transition-opacity ${
+                      className={`grid min-h-10 grid-cols-[28px_minmax(0,1.5fr)_minmax(88px,0.8fr)_minmax(96px,0.9fr)_28px] items-center gap-2 rounded-lg border border-border-muted bg-background px-3 py-1.5 transition-opacity ${
                         dragging ? 'opacity-50' : ''
                       }`}
                     >
+                      <div
+                        draggable
+                        onDragStart={() => handleDragStart(index)}
+                        onDragEnd={handleDragEnd}
+                        className="flex h-7 w-7 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
+                        title={tr('dragToReorder')}
+                      >
+                        <GripVertical className="h-4 w-4" />
+                      </div>
                       <GlassFieldSingleSelect
                         value={key.field}
                         options={fieldCompletions}
@@ -202,7 +211,8 @@ export default function FormDeduplicate({
                       <GlassDirectionToggle
                         value={key.direction}
                         onChange={(v) => updateSortKey(index, { direction: v })}
-                        className="h-6 w-full px-1 text-[11px]"
+                        variant="highlight"
+                        className="h-7 w-full px-1 text-[11px]"
                       />
                       <GlassOptionSingleSelect
                         value={key.nulls ?? ''}
@@ -221,25 +231,16 @@ export default function FormDeduplicate({
                             nulls: (v || undefined) as 'first' | 'last' | undefined,
                           })
                         }
-                        className="h-6 w-full text-center rounded border border-border-muted bg-background/60 px-1 text-[11px] text-text-secondary outline-none"
+                        className="h-7 w-full text-center rounded border border-border-muted bg-background/60 px-1 text-[11px] text-text-secondary outline-none"
                       />
-                      <div
-                        draggable
-                        onDragStart={() => handleDragStart(index)}
-                        onDragEnd={handleDragEnd}
-                        className="flex h-8 w-7 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
-                        title={tr('dragToReorder')}
-                      >
-                        <GripVertical className="h-4 w-4" />
-                      </div>
                       <button
                         type="button"
                         onClick={() => removeSortKey(index)}
-                        className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error"
+                        className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error"
                         title={tr('filterDeleteCondition')}
                         aria-label={tr('filterDeleteCondition')}
                       >
-                        <XCircle className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   );
