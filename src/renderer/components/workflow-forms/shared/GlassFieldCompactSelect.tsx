@@ -150,7 +150,7 @@ export const GlassFieldCompactSelect = memo(function GlassFieldCompactSelect({
 
       <div
         ref={listRef}
-        className="scrollbar-hover overflow-y-auto [overflow-anchor:none] flex-1 min-h-0"
+        className="scrollbar-hover overflow-y-auto flex-1 min-h-0"
         style={{ maxHeight }}
       >
         {filtered.length === 0 ? (

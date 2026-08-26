@@ -97,13 +97,13 @@ export default function FormSort({
     <div className="flex h-full overflow-hidden">
       {/* Left: sort keys */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="flex-1 space-y-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
+        <div className="scrollbar-hover flex-1 space-y-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
           <GlassRowList
             headerClassName=""
             items={activeKeys}
             columns={[
               {
-                flex: 'flex-[4]',
+                flex: 'flex-[2]',
                 header: tr('sortFieldHeader'),
                 render: (key: SortKey, i) => {
                   const disabledOptions = new Set(usedFields);
@@ -124,7 +124,7 @@ export default function FormSort({
                 },
               },
               {
-                flex: 'flex-[2]',
+                flex: 'flex-[1]',
                 header: tr('sortDirectionHeader'),
                 align: 'center',
                 render: (key: SortKey, i) => (
@@ -137,7 +137,7 @@ export default function FormSort({
                 ),
               },
               {
-                flex: 'flex-[3]',
+                flex: 'flex-[1]',
                 header: tr('sortNullsHeader'),
                 render: (key: SortKey, i) => (
                   <GlassOptionSingleSelect

@@ -133,14 +133,14 @@ export default function FormTypeConvert({
     <div className="flex h-full overflow-hidden">
       {/* Left: conversion rules */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="flex-1 space-y-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
+        <div className="scrollbar-hover flex-1 space-y-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
           <GlassRowList
             headerClassName=""
             variant="table"
             items={activeConversions}
             columns={[
               {
-                flex: 'flex-1',
+                flex: 'flex-[1]',
                 header: tr('typeConvertSourceField'),
                 render: (conv: TypeConversionEntry, i: number) => {
                   const disabledFields = new Set(usedFields);
@@ -161,7 +161,7 @@ export default function FormTypeConvert({
                 },
               },
               {
-                flex: 'flex-1',
+                flex: 'flex-[1]',
                 header: tr('typeConvertTargetType'),
                 render: (conv: TypeConversionEntry, i: number) => (
                   <GlassOptionSingleSelect
@@ -186,7 +186,7 @@ export default function FormTypeConvert({
                 ),
               },
               {
-                flex: 'flex-1',
+                flex: 'flex-[1]',
                 header: tr('typeConvertTypeSettings'),
                 render: (conv: TypeConversionEntry, i: number) => {
                   const isDateType = conv.type === 'date' || conv.type === 'datetime';
@@ -243,7 +243,7 @@ export default function FormTypeConvert({
                 },
               },
               {
-                flex: 'flex-1',
+                flex: 'flex-[1]',
                 header: tr('typeConvertErrorHandling'),
                 render: (conv: TypeConversionEntry, i: number) => (
                   <GlassOptionSingleSelect

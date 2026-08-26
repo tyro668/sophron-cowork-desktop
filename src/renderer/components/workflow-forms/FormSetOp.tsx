@@ -2,6 +2,7 @@ import { useCallback, useMemo, useId } from 'react';
 
 import type { OperatorFormProps } from './index';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
+import { GlassFormLabel } from './shared/GlassFormLabel';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import {
@@ -170,9 +171,9 @@ export default function FormSetOp({
         </div>
       </aside>
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto p-4">
-        <div className="flex items-center gap-2">
-          <span className="w-20 shrink-0 text-[13px] text-text-secondary">{tr('leftInput')}</span>
+      <div className="scrollbar-hover flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto p-4">
+        <div className="flex items-center gap-4">
+          <GlassFormLabel>{tr('leftInput')}</GlassFormLabel>
           <div className="flex h-7 w-72 min-w-0 items-center rounded-md border border-border-muted/70 bg-background/28 px-2">
             <span className="truncate text-[12px] text-text-primary">
               {leftSourceLabel || tr('noLeftSource')}
@@ -180,10 +181,8 @@ export default function FormSetOp({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="w-20 shrink-0 text-[13px] text-text-secondary">
-            {tr('setOpRightInput')}
-          </span>
+        <div className="flex items-center gap-4">
+          <GlassFormLabel>{tr('rightInput')}</GlassFormLabel>
           <div className="flex h-7 w-72 min-w-0 items-center rounded-md border border-border-muted/70 bg-background/28 px-2">
             <span className="truncate text-[12px] text-text-primary">
               {rightSourceLabel || tr('noRightSource')}
@@ -191,10 +190,8 @@ export default function FormSetOp({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="w-20 shrink-0 text-[13px] text-text-secondary">
-            {tr('setOpDedupMode')}
-          </span>
+        <div className="flex items-center gap-4">
+          <GlassFormLabel>{tr('setOpDedupMode')}</GlassFormLabel>
           <GlassRadioSelect
             value={mode}
             options={[
@@ -207,10 +204,8 @@ export default function FormSetOp({
         </div>
 
         {operation === 'union' && (
-          <div className="flex items-center gap-2">
-            <span className="w-20 shrink-0 text-[13px] text-text-secondary">
-              {tr('setOpMatchMode')}
-            </span>
+          <div className="flex items-center gap-4">
+            <GlassFormLabel>{tr('setOpMatchMode')}</GlassFormLabel>
             <GlassRadioSelect
               value={match}
               options={[

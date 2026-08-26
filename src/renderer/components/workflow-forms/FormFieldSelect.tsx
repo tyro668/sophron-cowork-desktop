@@ -165,7 +165,7 @@ export default function FormFieldSelect({
             </span>
           </div>
 
-          <div className="mt-2 flex-1 min-h-0 overflow-y-auto [overflow-anchor:none]">
+          <div className="scrollbar-hover mt-2 flex-1 min-h-0 overflow-y-auto">
             {visibleFields.length === 0 ? (
               <div className="flex h-full items-center justify-center text-[12px] text-text-muted">
                 {rightSearch ? tr('noMatch') : tr('noFields')}
@@ -226,7 +226,7 @@ export default function FormFieldSelect({
                     },
                   },
                   {
-                    flex: 'flex-1',
+                    flex: 'flex-[1]',
                     header: '',
                     render: (field: string) => (
                       <div className="flex min-w-0 items-center gap-2">

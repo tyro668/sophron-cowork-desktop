@@ -154,7 +154,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
         />
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+      <div className="scrollbar-hover flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
         {/* 鏁伴噺 */}
         <div className="flex items-center gap-4">
           <GlassFormLabel>{isRandomMode ? tr('limitSampleSize') : tr('limitCount')}</GlassFormLabel>

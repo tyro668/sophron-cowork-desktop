@@ -209,7 +209,7 @@ export function GlassOptionSingleSelect({
               width: position.width,
               maxHeight,
             }}
-            className="operator-ui fixed z-50 overflow-y-auto rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl"
+            className="operator-ui scrollbar-hover fixed z-50 overflow-y-auto rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl"
           >
             {groups.map((g, gi) => (
               <div key={g.key}>

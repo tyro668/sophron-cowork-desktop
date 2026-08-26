@@ -1001,7 +1001,6 @@
         "missingValueIncompleteField": "请完整填写缺失值处理规则",
         "limitIncompleteField": "请输入限制行数",
         "incompleteConfigRows": "请删除或补齐不完整配置行",
-        "setOpRightInput": "右表数据源",
         "setOpDedupMode": "重复行处理",
         "setOpMatchMode": "匹配方式",
         "setOpUnion": "并集",

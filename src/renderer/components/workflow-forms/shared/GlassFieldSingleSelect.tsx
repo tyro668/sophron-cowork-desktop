@@ -265,7 +265,7 @@ export function GlassFieldSingleSelect({
               />
             </div>
 
-            <div className="flex-1 overflow-y-auto p-1">
+            <div className="scrollbar-hover flex-1 overflow-y-auto p-1">
               {filteredOptions.length === 0 ? (
                 <div className="px-2.5 py-4 text-center text-[12px] text-text-muted">
                   {emptyText ||

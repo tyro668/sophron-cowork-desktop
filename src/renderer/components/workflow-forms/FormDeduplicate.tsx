@@ -132,7 +132,7 @@ export default function FormDeduplicate({
 
         {/* ═══ RIGHT: 保留策略 + 排序设置 ═══ */}
         <section className="operator-section flex-[6] content-start flex flex-col min-h-0">
-          <div className="flex-1 min-h-0 overflow-y-auto border-l border-border-subtle/70 pl-3 pr-3">
+          <div className="scrollbar-hover flex-1 min-h-0 overflow-y-auto border-l border-border-subtle/70 pl-3 pr-3">
             <div className="grid content-start gap-3">
               <div className="flex items-start justify-between gap-3 px-0.5 pt-1">
                 <div>

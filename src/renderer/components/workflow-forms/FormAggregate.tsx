@@ -218,7 +218,7 @@ export default function FormAggregate({
 
         {/* Right: metrics */}
         <section className="operator-section flex flex-[6] min-h-0 flex-col content-start">
-          <div className="flex-1 min-h-0 overflow-x-hidden overflow-y-auto border-l border-border-subtle/70 pl-3 pr-3 grid content-start gap-3">
+          <div className="scrollbar-hover flex-1 min-h-0 overflow-x-hidden overflow-y-auto border-l border-border-subtle/70 pl-3 pr-3 grid content-start gap-3">
             <div className="flex items-start justify-between gap-3 pt-1">
               <div>
                 <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">

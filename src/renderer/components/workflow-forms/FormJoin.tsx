@@ -213,7 +213,7 @@ function JoinKeepFieldColumn({
         />
         {tr('selectAllFields')}
       </label>
-      <div className="max-h-48 space-y-1 overflow-y-auto">
+      <div className="scrollbar-hover max-h-48 space-y-1 overflow-y-auto">
         {fields.map((field) => {
           const qualifiedField = qualifyJoinField(alias, field);
           const isChecked = selected.has(qualifiedField);
@@ -690,7 +690,7 @@ export default function FormJoin({
           </div>
 
           {/* Join configuration */}
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
+          <div className="scrollbar-hover flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
             <div className="order-1 grid gap-2 p-4">
               <div className="flex items-center gap-4">
                 <GlassFormLabel>{tr('leftInput')}</GlassFormLabel>
@@ -866,7 +866,7 @@ export default function FormJoin({
                     </div>
                     <span className="w-[60px] flex-shrink-0" aria-hidden="true" />
                   </div>
-                  <div className="min-w-0 max-h-[180px] overflow-x-hidden overflow-y-auto">
+                  <div className="scrollbar-hover min-w-0 max-h-[180px] overflow-x-hidden overflow-y-auto">
                     <GlassRowList
                       items={displayedAsofBy}
                       columns={[
@@ -929,7 +929,7 @@ export default function FormJoin({
                   </div>
                 </div>
               ) : needsConditions ? (
-                <div className="max-h-[280px] overflow-y-auto">
+                <div className="scrollbar-hover max-h-[280px] overflow-y-auto">
                   <GlassRowList
                     items={conditions}
                     columns={[
@@ -1076,7 +1076,7 @@ export default function FormJoin({
                 {tr('selectKeepFields')}
               </h3>
             </div>
-            <div className="flex gap-4 overflow-y-auto p-4">
+            <div className="scrollbar-hover flex gap-4 overflow-y-auto p-4">
               <JoinKeepFieldColumn
                 side="left"
                 title={leftSourceLabel || tr('leftInput')}

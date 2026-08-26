@@ -275,7 +275,7 @@ export function CalculationFunctionWizard({
           ))}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        <div className="scrollbar-hover min-h-0 flex-1 overflow-y-auto pr-1">
           <section className="p-3">
             <SectionTitle>{tr('calcFieldBasicConfig')}</SectionTitle>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -512,7 +512,7 @@ export function CalculationFunctionWizard({
             {tr('calcFieldExpressionPreview')}
           </div>
           <pre
-            className={`max-h-20 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-5 ${
+            className={`scrollbar-hover max-h-20 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-5 ${
               preview.error ? 'text-error' : 'text-text-secondary'
             }`}
           >

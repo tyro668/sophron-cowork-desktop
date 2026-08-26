@@ -297,7 +297,7 @@ export default function FormMissingValue({
       {/* Right content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {tabMode === 'row' && (
-          <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
+          <div className="scrollbar-hover flex flex-1 flex-col gap-3 overflow-y-auto p-4">
             <GlassRadioSelect
               value={rowCondition}
               options={[
@@ -340,7 +340,7 @@ export default function FormMissingValue({
 
         {tabMode === 'column' && (
           <div className="flex flex-1 flex-col gap-2 overflow-hidden p-4">
-            <div className="flex flex-1 flex-col gap-2 overflow-y-auto pr-1">
+            <div className="scrollbar-hover flex flex-1 flex-col gap-2 overflow-y-auto pr-1">
               <GlassRowList
                 items={activeRules}
                 columns={[

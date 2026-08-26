@@ -773,7 +773,7 @@ function GlassFunctionHelper({
           className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
         />
       </div>
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="scrollbar-hover flex-1 overflow-y-auto min-h-0">
         {groups.length === 0 ? (
           <div className="px-2 py-4 text-center text-[11px] text-text-muted">{tr('noMatch')}</div>
         ) : (
@@ -1087,7 +1087,7 @@ function ExpressionEditorDialog({
                       className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
                     />
                   </div>
-                  <div className="flex-1 overflow-y-auto min-h-0">
+                  <div className="scrollbar-hover flex-1 overflow-y-auto min-h-0">
                     {sortedFields.length === 0 ? (
                       <div className="px-2 py-4 text-center text-[11px] text-text-muted">
                         {tr('noMatch')}
@@ -1137,7 +1137,7 @@ function ExpressionEditorDialog({
                 <div className="flex w-full items-center px-3 py-1.5 text-[11px] font-medium text-text-muted">
                   {tr('expressionFunctionDetailLabel')}
                 </div>
-                <div className="flex-1 overflow-y-auto border-t border-border-muted/60 p-2 min-h-0">
+                <div className="scrollbar-hover flex-1 overflow-y-auto border-t border-border-muted/60 p-2 min-h-0">
                   <FunctionDetailPanel token={hoveredToken} tr={tr} />
                 </div>
               </div>

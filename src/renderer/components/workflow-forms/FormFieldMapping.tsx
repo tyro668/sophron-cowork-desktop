@@ -119,7 +119,7 @@ export default function FormFieldMapping({
   const columns = useMemo<GlassRowListColumn<FieldMappingEntry>[]>(
     () => [
       {
-        flex: 'flex-1',
+        flex: 'flex-[1]',
         header: tr('fieldMappingSourceField'),
         render: (item, i) => {
           const disabledFields = new Set(usedFields);
@@ -140,7 +140,7 @@ export default function FormFieldMapping({
         },
       },
       {
-        flex: 'flex-1',
+        flex: 'flex-[1]',
         header: tr('fieldMappingMode'),
         render: (item, i) => (
           <GlassOptionSingleSelect
@@ -152,7 +152,7 @@ export default function FormFieldMapping({
         ),
       },
       {
-        flex: 'flex-1',
+        flex: 'flex-[1]',
         header: tr('fieldMappingValue'),
         render: (item, i) => (
           <GlassFormTextInput
@@ -170,7 +170,7 @@ export default function FormFieldMapping({
         ),
       },
       {
-        flex: 'flex-1',
+        flex: 'flex-[1]',
         header: tr('fieldMappingTargetField'),
         render: (item, _i) => {
           const target = computeFieldMappingTarget(item);
@@ -191,7 +191,7 @@ export default function FormFieldMapping({
   return (
     <div className="flex h-full overflow-hidden">
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="flex-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
+        <div className="scrollbar-hover flex-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
           <GlassRowList
             headerClassName=""
             items={activeMappings}

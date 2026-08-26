@@ -67,7 +67,7 @@ export default function FormUnpivot({
 
         {/* ═══ 右列: 输出配置 ═══ */}
         <section className="operator-section flex-[6] content-start flex flex-col min-h-0">
-          <div className="flex-1 min-h-0 overflow-y-auto border-l border-border-subtle/70 pl-3 pr-3 pb-3 grid content-start gap-3">
+          <div className="scrollbar-hover flex-1 min-h-0 overflow-y-auto border-l border-border-subtle/70 pl-3 pr-3 pb-3 grid content-start gap-3">
             <div className="px-0.5 pt-1">
               <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
                 <span className="h-2 w-2 rounded-full bg-accent" />

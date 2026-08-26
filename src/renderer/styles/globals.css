@@ -389,14 +389,19 @@
     box-shadow: none;
   }
 
-  /* Scrollable container whose scrollbar only appears while hovered. */
+  /* Scrollable container whose scrollbar only appears while hovered.
+     overflow-anchor is disabled because drag-reorder and list updates
+     otherwise cause the browser to shift scroll position mid-drag. */
   .scrollbar-hover {
+    scrollbar-gutter: stable;
     scrollbar-width: thin;
     scrollbar-color: transparent transparent;
+    overflow-anchor: none;
   }
 
   .scrollbar-hover::-webkit-scrollbar {
-    width: 6px;
+    width: 4px;
+    height: 4px;
   }
 
   .scrollbar-hover::-webkit-scrollbar-thumb {
