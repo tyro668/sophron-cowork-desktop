@@ -3,6 +3,7 @@ import { Settings } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
+import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { toggleSelectAll } from '../../../shared/collections/selection';
@@ -600,31 +601,6 @@ export default function FormJoin({
     () => summarizeJoinKeep(keepItems, 'right', rightAlias, rightRawColumns.length),
     [keepItems, rightAlias, rightRawColumns.length]
   );
-  const hasOutputFieldConflict = useMemo(() => {
-    if (!rightSourceLabel || rightRawColumns.length === 0) return false;
-    const draft = createJoinKeepDraft(
-      keepItems,
-      fieldCompletions,
-      rightRawColumns,
-      leftAlias,
-      rightAlias
-    );
-    const leftOutputNames = new Set(
-      fieldCompletions
-        .map((field) => {
-          const qualified = qualifyJoinField(leftAlias, field);
-          if (!draft.leftSelected.has(qualified)) return null;
-          return (draft.leftAliases.get(qualified) || field).toLowerCase();
-        })
-        .filter((field): field is string => field !== null)
-    );
-    return rightRawColumns.some((field) => {
-      const qualified = qualifyJoinField(rightAlias, field);
-      if (!draft.rightSelected.has(qualified)) return false;
-      const outputName = (draft.rightAliases.get(qualified) || field).toLowerCase();
-      return leftOutputNames.has(outputName);
-    });
-  }, [fieldCompletions, keepItems, leftAlias, rightAlias, rightRawColumns, rightSourceLabel]);
 
   const conditionOperatorItems = useMemo(
     () => OPERATOR_KEYS.map((op) => ({ value: op.value, label: tr(op.key) })),
@@ -715,37 +691,75 @@ export default function FormJoin({
 
           {/* Join configuration */}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
-            <div className="order-1 p-4">
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="w-20 shrink-0 text-[13px] text-text-secondary">
-                    {tr('leftInput')}
+            <div className="order-1 grid gap-2 p-4">
+              <div className="flex items-center gap-4">
+                <GlassFormLabel>{tr('leftInput')}</GlassFormLabel>
+                <div className="flex h-7 w-48 min-w-0 items-center rounded-md border border-border-muted/70 bg-background/28 px-2">
+                  <span className="truncate text-[12px] text-text-primary">
+                    {leftSourceLabel || tr('noLeftSource')}
                   </span>
-                  <div className="flex h-7 w-48 min-w-0 items-center rounded-md border border-border-muted/70 bg-background/28 px-2">
-                    <span className="truncate text-[12px] text-text-primary">
-                      {leftSourceLabel || tr('noLeftSource')}
-                    </span>
-                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="w-20 shrink-0 text-[13px] text-text-secondary">
-                    {tr('rightInput')}
+                {!isSemiAnti && (
+                  <div className="flex items-center gap-2" title={tr('keepFieldStatsLeft')}>
+                    <span className="w-24 shrink-0 truncate text-[12px] text-text-primary">
+                      {tr('joinLeftFields')}
+                    </span>
+                    <span className="text-[12px] text-text-muted tabular-nums">
+                      {tr('joinFieldSummary', {
+                        selected: leftKeepSummary.selected,
+                        total: fieldCompletions.length,
+                        renamed: leftKeepSummary.renamed,
+                      })}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={openKeepDialog}
+                      className="flex h-7 items-center gap-1 rounded px-1.5 text-[12px] text-text-secondary transition-colors hover:bg-accent-subtle hover:text-accent"
+                      title={tr('adjustKeepFields')}
+                    >
+                      <Settings className="h-3.5 w-3.5" />
+                      <span>{tr('joinAdjustFields')}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-4">
+                <GlassFormLabel>{tr('rightInput')}</GlassFormLabel>
+                <div className="flex h-7 w-48 min-w-0 items-center rounded-md border border-border-muted/70 bg-background/28 px-2">
+                  <span className="truncate text-[12px] text-text-primary">
+                    {rightSourceLabel || tr('noRightSource')}
                   </span>
-                  <div className="flex h-7 w-48 min-w-0 items-center rounded-md border border-border-muted/70 bg-background/28 px-2">
-                    <span className="truncate text-[12px] text-text-primary">
-                      {rightSourceLabel || tr('noRightSource')}
-                    </span>
-                  </div>
                 </div>
+                {!isSemiAnti && !rightColumnsError && (
+                  <div className="flex items-center gap-2" title={tr('keepFieldStatsRight')}>
+                    <span className="w-24 shrink-0 truncate text-[12px] text-text-primary">
+                      {tr('joinRightFields')}
+                    </span>
+                    <span className="text-[12px] text-text-muted tabular-nums">
+                      {tr('joinFieldSummary', {
+                        selected: rightKeepSummary.selected,
+                        total: rightRawColumns.length,
+                        renamed: rightKeepSummary.renamed,
+                      })}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={openKeepDialog}
+                      className="flex h-7 items-center gap-1 rounded px-1.5 text-[12px] text-text-secondary transition-colors hover:bg-accent-subtle hover:text-accent"
+                      title={tr('adjustKeepFields')}
+                    >
+                      <Settings className="h-3.5 w-3.5" />
+                      <span>{tr('joinAdjustFields')}</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
             {isAsof && (
               <div className="order-2 px-4 pb-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="w-20 shrink-0 whitespace-nowrap text-[13px] text-text-secondary">
-                    {tr('tolerance')}
-                  </span>
+                <div className="flex flex-wrap items-center gap-4">
+                  <GlassFormLabel>{tr('tolerance')}</GlassFormLabel>
                   {(
                     [
                       { key: 'd', label: tr('toleranceDay'), max: 365 },
@@ -990,103 +1004,48 @@ export default function FormJoin({
 
             {/* Output fields and conflict handling */}
             <div className="order-3 flex min-h-7 flex-wrap items-center gap-x-5 gap-y-2 px-4 pb-4">
-              {/* Keep fields */}
+              {/* Conflict */}
               {!isSemiAnti && (
-                <div className="flex shrink-0 items-center gap-5 px-0.5">
-                  <div className="flex items-center gap-2" title={tr('keepFieldStatsLeft')}>
-                    <span className="text-[12px] text-text-primary">{tr('joinLeftFields')}</span>
-                    <div className="flex items-center gap-1">
-                      <span className="text-[12px] text-text-muted tabular-nums">
-                        {tr('joinFieldSummary', {
-                          selected: leftKeepSummary.selected,
-                          total: fieldCompletions.length,
-                          renamed: leftKeepSummary.renamed,
-                        })}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={openKeepDialog}
-                        className="flex h-7 items-center gap-1 rounded px-1.5 text-[12px] text-text-secondary transition-colors hover:bg-accent-subtle hover:text-accent"
-                        title={tr('adjustKeepFields')}
-                      >
-                        <Settings className="h-3.5 w-3.5" />
-                        <span>{tr('joinAdjustFields')}</span>
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2" title={tr('keepFieldStatsRight')}>
-                    <span className="text-[12px] text-text-primary">{tr('joinRightFields')}</span>
-                    <div className="flex items-center gap-1">
-                      <span className="text-[12px] text-text-muted tabular-nums">
-                        {tr('joinFieldSummary', {
-                          selected: rightKeepSummary.selected,
-                          total: rightRawColumns.length,
-                          renamed: rightKeepSummary.renamed,
-                        })}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={openKeepDialog}
-                        className="flex h-7 items-center gap-1 rounded px-1.5 text-[12px] text-text-secondary transition-colors hover:bg-accent-subtle hover:text-accent"
-                        title={tr('adjustKeepFields')}
-                      >
-                        <Settings className="h-3.5 w-3.5" />
-                        <span>{tr('joinAdjustFields')}</span>
-                      </button>
-                    </div>
-                  </div>
+                <div className="flex shrink-0 items-center gap-2 px-0.5">
+                  <span className="shrink-0 text-[12px] text-text-primary">{tr('conflict')}</span>
+                  <GlassOptionSingleSelect
+                    value={conflictStrategy}
+                    groups={conflictGroups}
+                    onChange={(v) =>
+                      updateConfig((cfg) => {
+                        const current = (cfg.conflict as Record<string, unknown>) ?? {};
+                        return {
+                          ...cfg,
+                          conflict: {
+                            ...current,
+                            strategy: v,
+                            ...(v === 'right_prefix' && !current.rightPrefix
+                              ? { rightPrefix: 'right_' }
+                              : {}),
+                          },
+                        };
+                      })
+                    }
+                    className="h-7 w-40 text-[12px] [&>span]:text-left"
+                  />
+                  {conflictStrategy === 'right_prefix' && (
+                    <GlassFormTextInput
+                      value={rightPrefix}
+                      onChange={(v) =>
+                        updateConfig((cfg) => ({
+                          ...cfg,
+                          conflict: {
+                            ...((cfg.conflict as Record<string, unknown>) ?? {}),
+                            rightPrefix: v.trim() || 'right_',
+                          },
+                        }))
+                      }
+                      placeholder={tr('prefix')}
+                      className="h-7 w-28 text-[13px]"
+                    />
+                  )}
                 </div>
               )}
-
-              {/* Conflict */}
-              {!isSemiAnti &&
-                rightSourceLabel &&
-                !rightColumnsError &&
-                (hasOutputFieldConflict ? (
-                  <div className="flex shrink-0 items-center gap-2 px-0.5">
-                    <span className="shrink-0 text-[12px] text-text-primary">{tr('conflict')}</span>
-                    <GlassOptionSingleSelect
-                      value={conflictStrategy}
-                      groups={conflictGroups}
-                      onChange={(v) =>
-                        updateConfig((cfg) => {
-                          const current = (cfg.conflict as Record<string, unknown>) ?? {};
-                          return {
-                            ...cfg,
-                            conflict: {
-                              ...current,
-                              strategy: v,
-                              ...(v === 'right_prefix' && !current.rightPrefix
-                                ? { rightPrefix: 'right_' }
-                                : {}),
-                            },
-                          };
-                        })
-                      }
-                      className="h-7 w-40 text-[12px] [&>span]:text-left"
-                    />
-                    {conflictStrategy === 'right_prefix' && (
-                      <GlassFormTextInput
-                        value={rightPrefix}
-                        onChange={(v) =>
-                          updateConfig((cfg) => ({
-                            ...cfg,
-                            conflict: {
-                              ...((cfg.conflict as Record<string, unknown>) ?? {}),
-                              rightPrefix: v.trim() || 'right_',
-                            },
-                          }))
-                        }
-                        placeholder={tr('prefix')}
-                        className="h-7 w-28 text-[13px]"
-                      />
-                    )}
-                  </div>
-                ) : (
-                  <span className="px-0.5 text-[12px] text-text-muted">
-                    {tr('joinNoFieldConflict')}
-                  </span>
-                ))}
 
               {/* Semi/Anti: no extra config needed */}
               {isSemiAnti && (

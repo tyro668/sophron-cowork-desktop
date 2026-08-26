@@ -5,12 +5,11 @@ import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
+import { GlassFormLabel } from './shared/GlassFormLabel';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { parseNonNegativeInteger } from '../../../shared/operator-config';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import type { SortKey } from '../../../shared/operator-schemas';
-
-const LABEL_CLASS = 'h-7 w-16 shrink-0 text-[13px] leading-7 text-text-secondary';
 
 const TAG_CONTAINER =
   'flex min-h-7 items-center rounded-md border border-border-muted bg-background/42 focus-within:border-accent';
@@ -156,78 +155,80 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-        {/* 数量 + 单位 + 偏移量/种子 */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-2">
-            <span className={LABEL_CLASS}>
-              {isRandomMode ? tr('limitSampleSize') : tr('limitCount')}
-            </span>
-            <GlassFormTextInput
-              inputMode="numeric"
-              value={localLimit}
-              onChange={(v) => pushLimit(v)}
-              placeholder="10"
-              textCenter
-              className="h-7 rounded-md px-2 text-[12px] w-28"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className={LABEL_CLASS}>{tr('limitUnit')}</span>
-            <GlassOptionSingleSelect
-              value={unit}
-              groups={[
-                {
-                  key: 'unit',
-                  items: [
-                    { value: 'rows', label: tr('limitUnitRows') },
-                    { value: 'percent', label: tr('limitUnitPercent') },
-                  ],
-                },
-              ]}
-              onChange={(value) => {
-                updateConfig((cfg) => ({
-                  ...cfg,
-                  unit: value,
-                  offset: value === 'percent' ? undefined : cfg.offset,
-                  method:
-                    mode === 'random' && value === 'percent' ? (cfg.method ?? 'system') : undefined,
-                }));
-                setErrors(runValidation(limit ?? 0, value));
-              }}
-              className="h-7 text-[12px] w-28"
-            />
-          </div>
-          {isFixedMode && isRows ? (
-            <div className="flex items-center gap-2">
-              <span className={LABEL_CLASS}>{tr('limitOffset')}</span>
-              <GlassFormTextInput
-                inputMode="numeric"
-                value={localOffset}
-                onChange={(v) => pushOffset(v)}
-                placeholder="0"
-                textCenter
-                className="h-7 rounded-md px-2 text-[12px] w-28"
-              />
-            </div>
-          ) : null}
+        {/* 鏁伴噺 */}
+        <div className="flex items-center gap-4">
+          <GlassFormLabel>{isRandomMode ? tr('limitSampleSize') : tr('limitCount')}</GlassFormLabel>
+          <GlassFormTextInput
+            inputMode="numeric"
+            value={localLimit}
+            onChange={(v) => pushLimit(v)}
+            placeholder="10"
+            textCenter
+            className="h-8 rounded-md px-2 text-[12px] w-60"
+          />
         </div>
 
+        {/* 鍗曚綅 */}
+        <div className="flex items-center gap-4">
+          <GlassFormLabel>{tr('limitUnit')}</GlassFormLabel>
+          <GlassOptionSingleSelect
+            value={unit}
+            groups={[
+              {
+                key: 'unit',
+                items: [
+                  { value: 'rows', label: tr('limitUnitRows') },
+                  { value: 'percent', label: tr('limitUnitPercent') },
+                ],
+              },
+            ]}
+            onChange={(value) => {
+              updateConfig((cfg) => ({
+                ...cfg,
+                unit: value,
+                offset: value === 'percent' ? undefined : cfg.offset,
+                method:
+                  mode === 'random' && value === 'percent' ? (cfg.method ?? 'system') : undefined,
+              }));
+              setErrors(runValidation(limit ?? 0, value));
+            }}
+            className="h-8 text-[12px] w-60"
+          />
+        </div>
+
+        {/* 偏移量 */}
+        {isFixedMode && isRows ? (
+          <div className="flex items-center gap-4">
+            <GlassFormLabel>{tr('limitOffset')}</GlassFormLabel>
+            <GlassFormTextInput
+              inputMode="numeric"
+              value={localOffset}
+              onChange={(v) => pushOffset(v)}
+              placeholder="0"
+              textCenter
+              className="h-8 rounded-md px-2 text-[12px] w-60"
+            />
+          </div>
+        ) : null}
+
         {isRandomMode && (
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-            <div className="flex items-center gap-2">
-              <span className={LABEL_CLASS}>{tr('limitSampleSeed')}</span>
+          <>
+            {/* 閲囨牱绉嶅瓙 */}
+            <div className="flex items-center gap-4">
+              <GlassFormLabel>{tr('limitSampleSeed')}</GlassFormLabel>
               <GlassFormTextInput
                 inputMode="numeric"
                 value={localSeed}
                 onChange={(v) => pushSeed(v)}
                 placeholder={tr('limitSampleSeedPlaceholder')}
                 textCenter
-                className="h-7 rounded-md px-2 text-[12px] w-60"
+                className="h-8 rounded-md px-2 text-[12px] w-60"
               />
             </div>
+            {/* 閲囨牱鏂瑰紡 */}
             {!isRows && (
-              <div className="flex items-center gap-2">
-                <span className={LABEL_CLASS}>{tr('limitSampleMethod')}</span>
+              <div className="flex items-center gap-4">
+                <GlassFormLabel>{tr('limitSampleMethod')}</GlassFormLabel>
                 <GlassOptionSingleSelect
                   value={method}
                   groups={[
@@ -240,11 +241,11 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                     },
                   ]}
                   onChange={(value) => updateConfig((cfg) => ({ ...cfg, method: value }))}
-                  className="h-7 text-[12px] w-28"
+                  className="h-8 text-[12px] w-60"
                 />
               </div>
             )}
-          </div>
+          </>
         )}
 
         {errors.map((err) => (
@@ -256,9 +257,9 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
         {/* 限制取样：排序 + TIES */}
         {isFixedMode && (
           <>
-            {/* 排序字段 */}
-            <div className="flex items-center gap-2">
-              <span className={LABEL_CLASS}>{tr('limitSortHeader')}</span>
+            {/* 鎺掑簭瀛楁 */}
+            <div className="flex items-center gap-4">
+              <GlassFormLabel>{tr('limitSortHeader')}</GlassFormLabel>
               <div className="w-72 min-w-0 relative">
                 <div className={TAG_CONTAINER}>
                   {sortFields.length > 0 && (

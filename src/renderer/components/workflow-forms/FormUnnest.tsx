@@ -5,8 +5,7 @@ import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
-
-const LABEL_CLASS = 'flex h-8 w-20 shrink-0 items-center text-[13px] text-text-secondary';
+import { GlassFormLabel } from './shared/GlassFormLabel';
 
 export default function FormUnnest({
   node,
@@ -66,8 +65,8 @@ export default function FormUnnest({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-        <div className="flex items-center gap-2">
-          <span className={LABEL_CLASS}>{tr('unnestSourceField')}</span>
+        <div className="flex items-center gap-4">
+          <GlassFormLabel>{tr('unnestSourceField')}</GlassFormLabel>
           <GlassFieldSingleSelect
             value={column}
             options={fieldCompletions}
@@ -79,8 +78,8 @@ export default function FormUnnest({
         </div>
 
         {isRowMode && (
-          <div className="flex items-center gap-2">
-            <span className={LABEL_CLASS}>{tr('unnestAlias')}</span>
+          <div className="flex items-center gap-4">
+            <GlassFormLabel>{tr('unnestAlias')}</GlassFormLabel>
             <GlassFormTextInput
               value={alias}
               onChange={(value) => updateConfig((cfg) => ({ ...cfg, alias: value || undefined }))}
@@ -90,8 +89,8 @@ export default function FormUnnest({
           </div>
         )}
 
-        <div className="flex items-center gap-2">
-          <span className={LABEL_CLASS}>{tr('unnestPathLabel')}</span>
+        <div className="flex items-center gap-4">
+          <GlassFormLabel>{tr('unnestPathLabel')}</GlassFormLabel>
           <GlassFormTextInput
             value={path}
             onChange={(value) => updateConfig((cfg) => ({ ...cfg, path: value || undefined }))}
@@ -102,8 +101,8 @@ export default function FormUnnest({
 
         {isRowMode && (
           <>
-            <div className="flex items-center gap-2">
-              <span className={LABEL_CLASS}>{tr('unnestIndexCol')}</span>
+            <div className="flex items-center gap-4">
+              <GlassFormLabel>{tr('unnestIndexCol')}</GlassFormLabel>
               <div className="flex items-center gap-3">
                 <label className="flex h-8 shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap text-[13px] text-text-secondary">
                   <input
@@ -130,8 +129,8 @@ export default function FormUnnest({
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className={LABEL_CLASS}>{tr('unnestOutputHeader')}</span>
+            <div className="flex items-center gap-4">
+              <GlassFormLabel>{tr('unnestOutputHeader')}</GlassFormLabel>
               <div className="flex min-h-8 items-center gap-6">
                 <label className="flex shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap text-[13px] text-text-secondary">
                   <input

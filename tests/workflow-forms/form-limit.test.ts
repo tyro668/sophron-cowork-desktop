@@ -234,9 +234,10 @@ describe('FormLimit — UI source structure', () => {
     expect(limitSource).not.toContain('className="flex-1 min-w-0 relative"');
   });
 
-  it('quantity, unit, offset/seed controls use the same width', () => {
-    const w28Controls = limitSource.match(/w-28/g);
-    expect(w28Controls!.length).toBeGreaterThanOrEqual(4);
+  it('all quantity/unit/offset/seed/method controls use the standard width w-60', () => {
+    const w60Controls = limitSource.match(/w-60/g);
+    expect(w60Controls!.length).toBe(5);
+    expect(limitSource).not.toMatch(/w-28/);
   });
 
   it('only shows system and bernoulli methods for percentage sampling', () => {

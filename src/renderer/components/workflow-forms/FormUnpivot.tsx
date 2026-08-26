@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react';
 import type { OperatorFormProps } from './index';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldCompactSelect } from './shared/GlassFieldCompactSelect';
+import { GlassFormLabel } from './shared/GlassFormLabel';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
@@ -77,48 +78,47 @@ export default function FormUnpivot({
               </p>
             </div>
             <div className="grid gap-2">
-              <div className="flex items-center gap-2">
-                <span className="flex h-8 w-20 shrink-0 items-center text-[13px] text-text-secondary">
-                  {tr('unpivotNameCol')}
-                </span>
+              <div className="flex items-center gap-4">
+                <GlassFormLabel>{tr('unpivotNameCol')}</GlassFormLabel>
                 <GlassFormTextInput
                   value={nameColumn}
                   onChange={(v) => updateConfig((cfg) => ({ ...cfg, nameColumn: v || undefined }))}
                   placeholder={tr('unpivotNameColPlaceholder')}
-                  className="h-7 text-[13px] flex-1"
+                  className="h-8 w-60 shrink-0 text-[13px]"
                 />
               </div>
-              <div className="flex items-center gap-2">
-                <span className="flex h-8 w-20 shrink-0 items-center text-[13px] text-text-secondary">
-                  {tr('unpivotValueCol')}
-                </span>
+              <div className="flex items-center gap-4">
+                <GlassFormLabel>{tr('unpivotValueCol')}</GlassFormLabel>
                 <GlassFormTextInput
                   value={valueColumn}
                   onChange={(v) => updateConfig((cfg) => ({ ...cfg, valueColumn: v || undefined }))}
                   placeholder={tr('unpivotValueColPlaceholder')}
-                  className="h-7 text-[13px] flex-1"
+                  className="h-8 w-60 shrink-0 text-[13px]"
                 />
               </div>
             </div>
 
-            <label
-              className="flex cursor-pointer items-center gap-2 text-[12px] text-text-secondary"
-              title={tr('unpivotIncludeNullsTip')}
-            >
-              <input
-                type="checkbox"
-                checked={includeNulls}
-                onChange={(e) => {
-                  const v = e.target.checked;
-                  updateConfig((cfg) => ({
-                    ...cfg,
-                    includeNulls: v || undefined,
-                  }));
-                }}
-                className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
-              />
-              {tr('unpivotIncludeNulls')}
-            </label>
+            <div className="flex items-center gap-4">
+              <GlassFormLabel>{tr('unpivotNullsLabel')}</GlassFormLabel>
+              <label
+                className="flex cursor-pointer items-center gap-2 text-[13px] text-text-secondary"
+                title={tr('unpivotIncludeNullsTip')}
+              >
+                <input
+                  type="checkbox"
+                  checked={includeNulls}
+                  onChange={(e) => {
+                    const v = e.target.checked;
+                    updateConfig((cfg) => ({
+                      ...cfg,
+                      includeNulls: v || undefined,
+                    }));
+                  }}
+                  className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
+                />
+                {tr('unpivotIncludeNulls')}
+              </label>
+            </div>
           </div>
         </section>
       </div>
