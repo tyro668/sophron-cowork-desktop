@@ -140,7 +140,7 @@ export default function FormTypeConvert({
             items={activeConversions}
             columns={[
               {
-                flex: 'flex-[2]',
+                flex: 'flex-1',
                 header: tr('typeConvertSourceField'),
                 render: (conv: TypeConversionEntry, i: number) => {
                   const disabledFields = new Set(usedFields);
@@ -161,19 +161,7 @@ export default function FormTypeConvert({
                 },
               },
               {
-                flex: 'flex-[1.5]',
-                header: tr('typeConvertOriginalType'),
-                align: 'center',
-                render: (conv: TypeConversionEntry) => (
-                  <span className="flex h-7 w-full items-center justify-center rounded border border-border-subtle/80 bg-surface-hover/45 px-1 text-center text-[11px] text-text-muted tabular-nums">
-                    {conv.column && columnTypes?.[conv.column]
-                      ? dataTypeLabel(columnTypes[conv.column])
-                      : '—'}
-                  </span>
-                ),
-              },
-              {
-                flex: 'flex-[1.5]',
+                flex: 'flex-1',
                 header: tr('typeConvertTargetType'),
                 render: (conv: TypeConversionEntry, i: number) => (
                   <GlassOptionSingleSelect
@@ -198,7 +186,7 @@ export default function FormTypeConvert({
                 ),
               },
               {
-                flex: 'flex-[2.5]',
+                flex: 'flex-1',
                 header: tr('typeConvertTypeSettings'),
                 render: (conv: TypeConversionEntry, i: number) => {
                   const isDateType = conv.type === 'date' || conv.type === 'datetime';
@@ -255,7 +243,7 @@ export default function FormTypeConvert({
                 },
               },
               {
-                flex: 'flex-[1.5]',
+                flex: 'flex-1',
                 header: tr('typeConvertErrorHandling'),
                 render: (conv: TypeConversionEntry, i: number) => (
                   <GlassOptionSingleSelect

@@ -4,12 +4,20 @@ import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 
 const LABEL_CLASS = 'flex h-8 w-20 shrink-0 items-center text-[13px] text-text-secondary';
 
-export default function FormUnnest({ node, fieldCompletions, onNodeChange }: OperatorFormProps) {
+export default function FormUnnest({
+  node,
+  taskId,
+  fieldCompletions,
+  sourceNode,
+  onNodeChange,
+}: OperatorFormProps) {
   const tr = useFormTranslation();
   const updateConfig = useUpdateConfig(onNodeChange);
+  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
 
   const sourceKind = node.config.sourceKind === 'json' ? 'json' : 'list';
   const column = String(node.config.column ?? '');
@@ -63,6 +71,7 @@ export default function FormUnnest({ node, fieldCompletions, onNodeChange }: Ope
           <GlassFieldSingleSelect
             value={column}
             options={fieldCompletions}
+            columnTypes={columnTypes}
             onChange={(value) => updateConfig((cfg) => ({ ...cfg, column: value || undefined }))}
             placeholder={tr('unnestSelectField')}
             className="h-8 w-60 shrink-0"

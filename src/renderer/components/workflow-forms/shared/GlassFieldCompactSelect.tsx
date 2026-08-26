@@ -4,6 +4,7 @@ import { useFormTranslation } from '../../../hooks/useFormTranslation';
 
 import { Search } from 'lucide-react';
 import { useDataFieldTypeLabel } from '../../../hooks/useDataFieldTypeLabel';
+import { DataTypeIcon } from './DataTypeIcon';
 
 export interface GlassFieldCompactSelectProps {
   columns: string[];
@@ -177,13 +178,9 @@ export const GlassFieldCompactSelect = memo(function GlassFieldCompactSelect({
                   onChange={() => selectItem(col)}
                   className="h-3.5 w-3.5 flex-shrink-0 accent-accent"
                 />
+                <DataTypeIcon type={columnTypes?.[col]} />
                 <span className="flex-1 min-w-0 truncate">{columnLabel?.(col) ?? col}</span>
                 {itemExtras?.(col)}
-                {columnTypes?.[col] && (
-                  <span className="flex-shrink-0 w-14 text-right text-[12px] text-text-muted tabular-nums">
-                    {dataTypeLabel(columnTypes[col])}
-                  </span>
-                )}
               </label>
             );
           })

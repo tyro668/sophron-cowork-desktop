@@ -163,6 +163,7 @@ export default function FormCalculateField({
                 value={fieldCompletions.includes(calculation.field) ? calculation.field : ''}
                 options={fieldCompletions}
                 columnTypes={columnTypes}
+                showType
                 onChange={(field) => updateCalculation(index, { field })}
                 placeholder={tr('calcFieldSelectPlaceholder')}
                 className="h-7 w-full text-[12px]"

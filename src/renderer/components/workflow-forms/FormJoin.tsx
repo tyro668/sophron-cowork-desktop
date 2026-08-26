@@ -794,7 +794,6 @@ export default function FormJoin({
                         value={asofLeftTime}
                         options={asofLeftTimeOptions}
                         columnTypes={leftColumnTypesQualified}
-                        showType
                         onChange={(v) =>
                           updateConfig((cfg) => ({
                             ...cfg,
@@ -838,7 +837,6 @@ export default function FormJoin({
                         value={asofRightTime}
                         options={asofRightTimeOptions}
                         columnTypes={rightColumnTypesQualified}
-                        showType
                         onChange={(v) =>
                           updateConfig((cfg) => ({
                             ...cfg,
@@ -865,6 +863,7 @@ export default function FormJoin({
                             <GlassFieldSingleSelect
                               value={cond.left}
                               options={leftFieldCompletions}
+                              columnTypes={leftColumnTypesQualified}
                               onChange={(v) =>
                                 handleAsofByChange(
                                   displayedAsofBy.map((c, j) => (j === i ? { ...c, left: v } : c))
@@ -891,6 +890,7 @@ export default function FormJoin({
                             <GlassFieldSingleSelect
                               value={cond.right}
                               options={rightFieldCompletions}
+                              columnTypes={rightColumnTypesQualified}
                               onChange={(v) =>
                                 handleAsofByChange(
                                   displayedAsofBy.map((c, j) => (j === i ? { ...c, right: v } : c))
@@ -926,6 +926,7 @@ export default function FormJoin({
                           <GlassFieldSingleSelect
                             value={cond.left}
                             options={leftFieldCompletions}
+                            columnTypes={leftColumnTypesQualified}
                             onChange={(v) =>
                               handleConditionsChange(
                                 conditions.map((c, j) => (j === i ? { ...c, left: v } : c))
@@ -961,6 +962,7 @@ export default function FormJoin({
                           <GlassFieldSingleSelect
                             value={cond.right}
                             options={rightFieldCompletions}
+                            columnTypes={rightColumnTypesQualified}
                             onChange={(v) =>
                               handleConditionsChange(
                                 conditions.map((c, j) => (j === i ? { ...c, right: v } : c))

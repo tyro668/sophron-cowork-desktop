@@ -11,7 +11,6 @@ import { useDragReorder } from '../../hooks/useDragReorder';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
-import { useDataFieldTypeLabel } from '../../hooks/useDataFieldTypeLabel';
 import { ChevronDown, GripVertical, Loader2, Plus, Search, Trash2 } from 'lucide-react';
 import { addPivotCandidate, normalizePivotAxes } from '../../../shared/operator-config';
 import type {
@@ -36,7 +35,6 @@ export default function FormPivot({
   onNodeChange,
 }: OperatorFormProps) {
   const tr = useFormTranslation();
-  const dataTypeLabel = useDataFieldTypeLabel();
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 
@@ -162,7 +160,7 @@ export default function FormPivot({
     <div className="flex h-full min-h-0 overflow-hidden">
       <div className="flex gap-2.5 flex-1 min-h-0">
         {/* ═══ 左块: 透视字段与分组字段 ═══ */}
-        <section className="operator-section scrollbar-hover flex flex-[5] min-h-0 flex-col content-start overflow-y-auto">
+        <section className="operator-section scrollbar-hover flex-[4] content-start flex flex-col min-h-0 overflow-y-auto">
           <div className="grid content-start gap-3 px-3 pb-3">
             <div className="px-0.5 pt-1">
               <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
@@ -192,7 +190,6 @@ export default function FormPivot({
                     taskId={taskId}
                     sourceNode={sourceNode}
                     tr={tr}
-                    dataTypeLabel={dataTypeLabel}
                     onFieldChange={(field) => handleAxisFieldChange(index, field)}
                     onValuesChange={(values) => updateAxis(index, { values })}
                     onToggle={() =>
@@ -248,7 +245,7 @@ export default function FormPivot({
         </section>
 
         {/* ═══ 右块: 聚合指标 ═══ */}
-        <section className="operator-section flex flex-[5] min-h-0 flex-col content-start">
+        <section className="operator-section flex flex-[6] min-h-0 flex-col content-start">
           <div className="flex-1 min-h-0 overflow-x-hidden overflow-y-auto border-l border-border-subtle/70 pl-3 pr-3 grid content-start gap-3">
             <div className="flex items-start justify-between gap-3 pt-1">
               <div>
@@ -357,7 +354,6 @@ interface PivotAxisCardProps {
   taskId?: string;
   sourceNode?: { id: string; type: string; config?: Record<string, unknown> };
   tr: (key: string, params?: Record<string, unknown>) => string;
-  dataTypeLabel: (type: string | null | undefined) => string;
   onFieldChange: (field: string) => void;
   onValuesChange: (values: PivotLiteral[]) => void;
   onToggle: () => void;
@@ -373,7 +369,6 @@ function PivotAxisCard({
   taskId,
   sourceNode,
   tr,
-  dataTypeLabel,
   onFieldChange,
   onValuesChange,
   onToggle,
@@ -405,7 +400,7 @@ function PivotAxisCard({
 
   return (
     <div className="overflow-hidden rounded-lg border border-border-muted bg-background">
-      <div className="grid h-11 grid-cols-[minmax(0,1fr)_56px_88px_32px] items-center gap-2 px-2">
+      <div className="grid h-11 grid-cols-[minmax(0,1fr)_88px_32px] items-center gap-2 px-2">
         <GlassFieldSingleSelect
           value={axis.field}
           options={fieldCompletions}
@@ -414,11 +409,8 @@ function PivotAxisCard({
           disabledOptions={disabledFields}
           placeholder={tr('pivotAxisFieldPlaceholder')}
           searchPlaceholder={tr('searchField')}
-          className="h-7 min-w-0 border-0 bg-transparent shadow-none"
+          className="h-7 min-w-0"
         />
-        <span className="truncate text-[12px] text-text-secondary">
-          {axis.field && columnTypes[axis.field] ? dataTypeLabel(columnTypes[axis.field]) : '—'}
-        </span>
         <button
           type="button"
           disabled={!axis.field}

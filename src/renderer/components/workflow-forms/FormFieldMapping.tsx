@@ -7,6 +7,7 @@ import { GlassRowList, type GlassRowListColumn, type RowAction } from './shared/
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
+import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { computeUsedFields } from '../../../shared/collections/used-fields';
 import {
   computeFieldMappingTarget,
@@ -17,11 +18,14 @@ import type { FieldMappingEntry } from '../../../shared/operator-schemas';
 
 export default function FormFieldMapping({
   node,
+  taskId,
   fieldCompletions,
+  sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
   const tr = useFormTranslation();
   const updateConfig = useUpdateConfig(onNodeChange);
+  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
 
   const mappings = useMemo<FieldMappingEntry[]>(
     () =>
@@ -115,7 +119,7 @@ export default function FormFieldMapping({
   const columns = useMemo<GlassRowListColumn<FieldMappingEntry>[]>(
     () => [
       {
-        flex: 'flex-[3]',
+        flex: 'flex-1',
         header: tr('fieldMappingSourceField'),
         render: (item, i) => {
           const disabledFields = new Set(usedFields);
@@ -124,6 +128,7 @@ export default function FormFieldMapping({
             <GlassFieldSingleSelect
               value={item.source}
               options={fieldCompletions}
+              columnTypes={columnTypes}
               onChange={(value) => updateMapping(i, { source: value })}
               placeholder={tr('fieldMappingSelectField')}
               searchPlaceholder={tr('searchField')}
@@ -135,7 +140,7 @@ export default function FormFieldMapping({
         },
       },
       {
-        flex: 'flex-[1.5]',
+        flex: 'flex-1',
         header: tr('fieldMappingMode'),
         render: (item, i) => (
           <GlassOptionSingleSelect
@@ -147,7 +152,7 @@ export default function FormFieldMapping({
         ),
       },
       {
-        flex: 'flex-[2.5]',
+        flex: 'flex-1',
         header: tr('fieldMappingValue'),
         render: (item, i) => (
           <GlassFormTextInput
@@ -165,7 +170,7 @@ export default function FormFieldMapping({
         ),
       },
       {
-        flex: 'flex-[2]',
+        flex: 'flex-1',
         header: tr('fieldMappingTargetField'),
         render: (item, _i) => {
           const target = computeFieldMappingTarget(item);
@@ -180,7 +185,7 @@ export default function FormFieldMapping({
         },
       },
     ],
-    [fieldCompletions, usedFields, tr, updateMapping, targetModeOptions]
+    [columnTypes, fieldCompletions, usedFields, tr, updateMapping, targetModeOptions]
   );
 
   return (

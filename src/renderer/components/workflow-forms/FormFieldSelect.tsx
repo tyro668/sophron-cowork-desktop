@@ -3,6 +3,7 @@ import { Search } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
+import { DataTypeIcon } from './shared/DataTypeIcon';
 import { useDataFieldTypeLabel } from '../../hooks/useDataFieldTypeLabel';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
@@ -130,117 +131,114 @@ export default function FormFieldSelect({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
-        <div className="flex min-h-9 items-center gap-2 rounded-md border border-border-muted bg-background/60 px-2.5 py-1">
-          <Search className="h-3.5 w-3.5 shrink-0 text-text-muted" />
-          <input
-            type="text"
-            value={rightSearch}
-            onChange={(event) => setRightSearch(event.target.value)}
-            placeholder={tr('searchField')}
-            className="h-7 min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-secondary"
-          />
-          <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary hover:text-text-primary">
+        <div className="flex min-h-0 w-2/3 min-w-0 flex-col overflow-hidden">
+          <div className="flex min-h-9 items-center gap-2 rounded-md border border-border-muted bg-background/60 px-2.5 py-1">
+            <Search className="h-3.5 w-3.5 shrink-0 text-text-muted" />
             <input
-              ref={selectAllRef}
-              type="checkbox"
-              checked={allVisibleSelected}
-              onChange={() => {
-                if (allVisibleSelected) {
-                  const visibleSet = new Set(visibleFields);
-                  commitColumns(columns.filter((field) => !visibleSet.has(field)));
-                } else {
-                  commitColumns(mergeSelectedFields(columns, visibleFields));
-                }
-              }}
-              className="h-3.5 w-3.5 accent-accent"
+              type="text"
+              value={rightSearch}
+              onChange={(event) => setRightSearch(event.target.value)}
+              placeholder={tr('searchField')}
+              className="h-7 min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-secondary"
             />
-            {tr('selectAll')}
-          </label>
-          <span className="text-[12px] text-text-secondary">
-            {tr('fieldSelectCount')
-              .replace('{{n}}', String(columns.length))
-              .replace('{{total}}', String(fieldCompletions.length))}
-          </span>
-        </div>
+            <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary hover:text-text-primary">
+              <input
+                ref={selectAllRef}
+                type="checkbox"
+                checked={allVisibleSelected}
+                onChange={() => {
+                  if (allVisibleSelected) {
+                    const visibleSet = new Set(visibleFields);
+                    commitColumns(columns.filter((field) => !visibleSet.has(field)));
+                  } else {
+                    commitColumns(mergeSelectedFields(columns, visibleFields));
+                  }
+                }}
+                className="h-3.5 w-3.5 accent-accent"
+              />
+              {tr('selectAll')}
+            </label>
+            <span className="text-[12px] text-text-secondary">
+              {tr('fieldSelectCount')
+                .replace('{{n}}', String(columns.length))
+                .replace('{{total}}', String(fieldCompletions.length))}
+            </span>
+          </div>
 
-        <div className="mt-2 flex-1 min-h-0 overflow-y-auto [overflow-anchor:none]">
-          {visibleFields.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-[12px] text-text-muted">
-              {rightSearch ? tr('noMatch') : tr('noFields')}
-            </div>
-          ) : (
-            <GlassRowList
-              items={visibleFields}
-              hideHeader
-              draggable
-              onDragStart={(i) => {
-                const field = visibleFields[i];
-                handleDragStart(orderedFields.indexOf(field));
-              }}
-              onDragOver={(e, i) => {
-                const field = visibleFields[i];
-                handleDragOver(e, orderedFields.indexOf(field));
-              }}
-              onDragEnd={handleDragEnd}
-              getRowOpacity={(i) => {
-                const field = visibleFields[i];
-                return !!(isDragging && dragIndexRef.current === orderedFields.indexOf(field));
-              }}
-              dragTitle={tr('dragToReorder')}
-              actions={['toTop', 'toBottom']}
-              onToTop={(i) => moveToTop(visibleFields[i])}
-              onToBottom={(i) => moveToBottom(visibleFields[i])}
-              toTopTitle={tr('toTop')}
-              toBottomTitle={tr('toBottom')}
-              canAct={(action: RowAction, i) => {
-                const field = visibleFields[i];
-                if (action === 'toTop') return orderedFields[0] !== field;
-                if (action === 'toBottom') return orderedFields[orderedFields.length - 1] !== field;
-                return true;
-              }}
-              columns={[
-                {
-                  flex: 'flex-[1]',
-                  header: '',
-                  render: (field: string) => {
-                    const selected = columns.includes(field);
-                    return (
-                      <label className="flex h-7 cursor-pointer items-center justify-center">
-                        <input
-                          type="checkbox"
-                          checked={selected}
-                          onChange={() =>
-                            commitColumns(
-                              selected
-                                ? columns.filter((candidate) => candidate !== field)
-                                : [...columns, field]
-                            )
-                          }
-                          className="h-3.5 w-3.5 accent-accent"
-                        />
-                      </label>
-                    );
+          <div className="mt-2 flex-1 min-h-0 overflow-y-auto [overflow-anchor:none]">
+            {visibleFields.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-[12px] text-text-muted">
+                {rightSearch ? tr('noMatch') : tr('noFields')}
+              </div>
+            ) : (
+              <GlassRowList
+                items={visibleFields}
+                hideHeader
+                draggable
+                onDragStart={(i) => {
+                  const field = visibleFields[i];
+                  handleDragStart(orderedFields.indexOf(field));
+                }}
+                onDragOver={(e, i) => {
+                  const field = visibleFields[i];
+                  handleDragOver(e, orderedFields.indexOf(field));
+                }}
+                onDragEnd={handleDragEnd}
+                getRowOpacity={(i) => {
+                  const field = visibleFields[i];
+                  return !!(isDragging && dragIndexRef.current === orderedFields.indexOf(field));
+                }}
+                dragTitle={tr('dragToReorder')}
+                actions={['toTop', 'toBottom']}
+                onToTop={(i) => moveToTop(visibleFields[i])}
+                onToBottom={(i) => moveToBottom(visibleFields[i])}
+                toTopTitle={tr('toTop')}
+                toBottomTitle={tr('toBottom')}
+                canAct={(action: RowAction, i) => {
+                  const field = visibleFields[i];
+                  if (action === 'toTop') return orderedFields[0] !== field;
+                  if (action === 'toBottom')
+                    return orderedFields[orderedFields.length - 1] !== field;
+                  return true;
+                }}
+                columns={[
+                  {
+                    flex: 'w-8',
+                    header: '',
+                    render: (field: string) => {
+                      const selected = columns.includes(field);
+                      return (
+                        <label className="flex h-7 cursor-pointer items-center justify-center">
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() =>
+                              commitColumns(
+                                selected
+                                  ? columns.filter((candidate) => candidate !== field)
+                                  : [...columns, field]
+                              )
+                            }
+                            className="h-3.5 w-3.5 accent-accent"
+                          />
+                        </label>
+                      );
+                    },
                   },
-                },
-                {
-                  flex: 'flex-[4]',
-                  header: '',
-                  render: (field: string) => (
-                    <span className="min-w-0 truncate text-text-primary">{field}</span>
-                  ),
-                },
-                {
-                  flex: 'flex-[3]',
-                  header: '',
-                  render: (field: string) => (
-                    <span className="truncate text-[12px] text-text-secondary">
-                      {columnTypes?.[field] ? dataTypeLabel(columnTypes[field]) : '—'}
-                    </span>
-                  ),
-                },
-              ]}
-            />
-          )}
+                  {
+                    flex: 'flex-1',
+                    header: '',
+                    render: (field: string) => (
+                      <div className="flex min-w-0 items-center gap-2">
+                        <DataTypeIcon type={columnTypes?.[field]} />
+                        <span className="min-w-0 truncate text-text-primary">{field}</span>
+                      </div>
+                    ),
+                  },
+                ]}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -6,6 +6,7 @@ import { dataFieldTypeLabel } from '@/shared/data-field-types';
 import { useDataFieldTypeLabel } from '../../../hooks/useDataFieldTypeLabel';
 import { parseFieldRef } from '@/shared/prep-dsl/parser';
 import { useDropdown } from '../../../hooks/useDropdown';
+import { DataTypeIcon } from './DataTypeIcon';
 
 function extractFieldName(value: string): string {
   return parseFieldRef(value)?.name ?? value;
@@ -51,7 +52,7 @@ export function GlassFieldSingleSelect({
   emptyText,
   disabledOptions,
   className,
-  showType = false,
+  showType = true,
   displayLabel,
 }: GlassFieldSingleSelectProps) {
   const { t } = useTranslation();
@@ -218,22 +219,18 @@ export function GlassFieldSingleSelect({
           className || '',
         ].join(' ')}
       >
-        <span className="flex-1 truncate text-left">
-          {value ? (
-            showType && columnTypes[value] ? (
-              <>
-                {displayLabel || value}
-                <span className="ml-1 text-[12px] text-text-muted">
-                  ({dataTypeLabel(columnTypes[value])})
-                </span>
-              </>
-            ) : (
-              displayLabel || value
-            )
+        {value ? (
+          showType ? (
+            <>
+              <DataTypeIcon type={columnTypes[value]} />
+              <span className="flex-1 min-w-0 truncate text-left">{displayLabel || value}</span>
+            </>
           ) : (
-            <span className="text-text-muted">{placeholder}</span>
-          )}
-        </span>
+            <span className="flex-1 min-w-0 truncate text-left">{displayLabel || value}</span>
+          )
+        ) : (
+          <span className="flex-1 min-w-0 truncate text-left text-text-muted">{placeholder}</span>
+        )}
         <ChevronDown
           className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`}
         />
@@ -290,7 +287,7 @@ export function GlassFieldSingleSelect({
                       disabled={disabled}
                       onClick={() => handleSelect(opt)}
                       className={[
-                        'flex min-h-7 w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30',
+                        'flex min-h-7 w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30',
                         selected
                           ? 'bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/20'
                           : 'text-text-secondary hover:bg-background/58 hover:text-text-primary',
@@ -300,12 +297,8 @@ export function GlassFieldSingleSelect({
                           : '',
                       ].join(' ')}
                     >
+                      <DataTypeIcon type={columnTypes[opt]} />
                       <span className="min-w-0 flex-1 truncate">{optLabel}</span>
-                      {columnTypes[opt] && (
-                        <span className="flex-shrink-0 text-[12px] text-text-muted tabular-nums">
-                          {dataTypeLabel(columnTypes[opt])}
-                        </span>
-                      )}
                     </button>
                   );
                 })
