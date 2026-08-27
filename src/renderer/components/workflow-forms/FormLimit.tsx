@@ -12,7 +12,7 @@ import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import type { SortKey } from '../../../shared/operator-schemas';
 
 const TAG_CONTAINER =
-  'flex min-h-7 items-center rounded-md border border-border-muted bg-background/42 focus-within:border-accent';
+  'flex h-9 min-h-9 max-w-full items-center overflow-hidden rounded-md border border-border-muted bg-background/42 focus-within:border-accent';
 
 export default function FormLimit({ node, fieldCompletions, onNodeChange }: OperatorFormProps) {
   const tr = useFormTranslation();
@@ -261,7 +261,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
             <div className="flex items-center gap-4">
               <GlassFormLabel>{tr('limitSortHeader')}</GlassFormLabel>
               <div className="w-72 min-w-0 relative">
-                <div className={TAG_CONTAINER}>
+                <div className={`${TAG_CONTAINER} ${sortOpen ? 'rounded-b-none' : ''}`}>
                   {sortFields.length > 0 && (
                     <button
                       type="button"
@@ -272,7 +272,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                       <Trash2 className="h-3 w-3" />
                     </button>
                   )}
-                  <div className="flex flex-1 items-center gap-1 px-1.5 min-w-0 overflow-x-auto">
+                  <div className="scrollbar-hover flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-1.5">
                     {orderBy.map((k) => (
                       <span
                         key={k.field}
@@ -310,7 +310,9 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => setSortOpen((o) => !o)}
-                    className="flex w-7 flex-shrink-0 items-center justify-center self-stretch border-l border-border-muted text-text-muted hover:text-text-secondary transition-colors rounded-r-md"
+                    className={`flex w-7 flex-shrink-0 items-center justify-center self-stretch border-l border-border-muted text-text-muted transition-colors hover:text-text-secondary ${
+                      sortOpen ? 'rounded-br-none' : 'rounded-r-md'
+                    }`}
                   >
                     <ChevronDown
                       className={`h-3.5 w-3.5 transition-transform ${sortOpen ? 'rotate-180' : ''}`}
@@ -318,13 +320,14 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                   </button>
                 </div>
                 {sortOpen && (
-                  <div className="absolute z-10 left-0 right-0 mt-0.5">
+                  <div className="absolute left-0 right-0 z-10 -mt-px">
                     <GlassFieldMultiSelect
                       columns={fieldCompletions}
                       selected={sortFields}
                       onChange={(v) => setSortFields(v)}
                       maxHeight="160px"
                       variant="glass"
+                      className="rounded-t-none"
                     />
                   </div>
                 )}

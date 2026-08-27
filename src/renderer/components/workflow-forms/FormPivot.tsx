@@ -3,9 +3,8 @@ import type { OperatorFormProps } from './index';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
-import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
+import { GlassFieldTagPicker } from './shared/GlassFieldTagPicker';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
-import { GlassTagBar } from './shared/GlassTagBar';
 import { useWorkflowNodeColumnValues } from '../../hooks/useWorkflowNodeColumnValues';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
@@ -158,10 +157,10 @@ export default function FormPivot({
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden">
-      <div className="flex gap-2.5 flex-1 min-h-0">
+      <div className="flex min-h-0 min-w-0 flex-1 gap-2.5">
         {/* ═══ 左块: 透视字段与分组字段 ═══ */}
-        <section className="operator-section scrollbar-hover flex-[4] content-start flex flex-col min-h-0 overflow-y-auto">
-          <div className="grid content-start gap-3 px-3 pb-3">
+        <section className="operator-section scrollbar-hover flex min-h-0 min-w-0 flex-[4] content-start flex-col overflow-y-auto">
+          <div className="grid min-w-0 content-start gap-3 px-3 pb-3">
             <div className="px-0.5 pt-1">
               <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
                 <span className="h-2 w-2 rounded-full bg-blue-500" />
@@ -172,7 +171,7 @@ export default function FormPivot({
               </p>
             </div>
 
-            <div className="rounded-lg border border-border-subtle/80 bg-surface-hover/45 p-2.5">
+            <div className="min-w-0 rounded-lg border border-border-subtle/80 bg-surface-hover/45 p-2.5">
               <div className="mb-2 text-[13px] font-medium text-text-primary">
                 {tr('pivotFieldsLabel')}
               </div>
@@ -213,33 +212,24 @@ export default function FormPivot({
               </div>
             </div>
 
-            <div className="pt-1">
+            <div className="min-w-0 pt-1">
               <div className="mb-2 flex items-center gap-1.5 text-[13px] font-medium text-text-primary">
                 {tr('pivotGroupByLabel')}
                 <span className="text-[11px] font-normal text-text-muted">{tr('optional')}</span>
               </div>
-              <GlassTagBar
-                items={groupBy}
+              <GlassFieldTagPicker
+                columns={fieldCompletions}
+                selected={groupBy}
+                onChange={handleGroupByChange}
                 onRemove={removeGroupBy}
                 onClear={clearGroupBy}
                 open={groupByOpen}
                 onToggle={() => setGroupByOpen((current) => !current)}
-                toggleStyle="chevron"
-                density="default"
-                className="min-h-10"
+                columnTypes={columnTypes}
+                maxHeight="180px"
+                variant="flat"
                 placeholder={tr('aggregateGroupByPlaceholder')}
               />
-              {groupByOpen && (
-                <GlassFieldMultiSelect
-                  columns={fieldCompletions}
-                  selected={groupBy}
-                  onChange={handleGroupByChange}
-                  columnTypes={columnTypes}
-                  maxHeight="180px"
-                  className="mt-2 border-0 bg-transparent rounded-none"
-                  searchBordered
-                />
-              )}
             </div>
           </div>
         </section>

@@ -184,7 +184,6 @@ interface LeafRowContext {
   fetchColumnValues: (colName: string) => void;
   updateLeaf: (leafId: string, patch: Partial<FilterConditionLeaf>) => void;
   removeNode: (nodeId: string) => void;
-  addAfter: (branchId: string, afterIndex: number) => void;
   addWithConnective: (
     branchId: string,
     afterIndex: number,
@@ -250,7 +249,7 @@ function ConditionLeafRow({
             }}
             placeholder={ctx.tr('filterFieldPlaceholder')}
             emptyText={ctx.tr('noMatch')}
-            className="h-8 w-full"
+            className="h-7 w-full"
           />
         </div>
 
@@ -260,7 +259,7 @@ function ConditionLeafRow({
           groups={opGroupsTranslated}
           disabled={!fieldSelected}
           onChange={(v) => ctx.updateLeaf(leaf.id, { op: v })}
-          className="h-8 w-28 rounded-md text-[12px]"
+          className="h-7 w-28 rounded-md text-[12px]"
         />
 
         {/* Value(s) */}
@@ -315,7 +314,7 @@ function ConditionLeafRow({
             if (parentConnective !== 'and' && depth >= MAX_NESTING_DEPTH) return;
             ctx.addWithConnective(branchId, index, leaf.id, parentConnective, 'and');
           }}
-          className={`flex h-8 w-8 flex-shrink-0 items-center justify-center transition-colors ${
+          className={`flex h-7 flex-shrink-0 items-center justify-center transition-colors ${
             parentConnective !== 'and' && depth >= MAX_NESTING_DEPTH
               ? 'text-text-muted/20 cursor-not-allowed'
               : 'text-text-muted/50 hover:text-accent'
@@ -326,8 +325,8 @@ function ConditionLeafRow({
               : ctx.tr('filterAddAnd')
           }
         >
-          <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm border border-current text-[9px] font-bold leading-none">
-            A
+          <span className="inline-flex h-5 items-center justify-center rounded-sm border border-current px-1 text-[10px] font-medium leading-none">
+            {ctx.tr('filterConnectiveAnd')}
           </span>
         </button>
 
@@ -338,7 +337,7 @@ function ConditionLeafRow({
             if (parentConnective !== 'or' && depth >= MAX_NESTING_DEPTH) return;
             ctx.addWithConnective(branchId, index, leaf.id, parentConnective, 'or');
           }}
-          className={`flex h-8 w-8 flex-shrink-0 items-center justify-center transition-colors ${
+          className={`flex h-7 flex-shrink-0 items-center justify-center transition-colors ${
             parentConnective !== 'or' && depth >= MAX_NESTING_DEPTH
               ? 'text-text-muted/20 cursor-not-allowed'
               : 'text-text-muted/50 hover:text-accent'
@@ -349,8 +348,8 @@ function ConditionLeafRow({
               : ctx.tr('filterAddOr')
           }
         >
-          <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-current text-[9px] font-bold leading-none">
-            +
+          <span className="inline-flex h-5 items-center justify-center rounded-full border border-current px-1 text-[10px] font-medium leading-none">
+            {ctx.tr('filterConnectiveOr')}
           </span>
         </button>
 
@@ -358,7 +357,7 @@ function ConditionLeafRow({
         <button
           type="button"
           onClick={() => ctx.removeNode(leaf.id)}
-          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-text-muted/50 hover:text-error hover:bg-error/10 transition-colors"
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-text-muted/50 hover:text-error hover:bg-error/10 transition-colors"
           title={ctx.tr('filterDeleteCondition')}
         >
           <Trash2 className="h-3.5 w-3.5" />
@@ -372,12 +371,10 @@ function ConditionLeafRow({
 
 function BranchGroupRenderer({
   branch,
-  root,
   depth,
   ctx,
 }: {
   branch: FilterConditionBranch;
-  root: FilterConditionBranch;
   depth: number;
   ctx: LeafRowContext & {
     updateBranch: (
@@ -454,7 +451,6 @@ function BranchGroupRenderer({
       <div ref={ref}>
         <BranchGroupRenderer
           branch={item}
-          root={root}
           depth={item.items.length > 1 ? depth + 1 : depth}
           ctx={ctx}
         />
@@ -751,7 +747,6 @@ export default function FormFilter({
       fetchColumnValues,
       updateLeaf,
       removeNode,
-      addAfter,
       addWithConnective,
       tr,
     }),
@@ -763,7 +758,6 @@ export default function FormFilter({
       fetchColumnValues,
       updateLeaf,
       removeNode,
-      addAfter,
       addWithConnective,
       tr,
     ]
@@ -808,7 +802,7 @@ export default function FormFilter({
         </button>
 
         {/* Condition tree */}
-        <BranchGroupRenderer branch={root} root={root} depth={0} ctx={branchCtx} />
+        <BranchGroupRenderer branch={root} depth={0} ctx={branchCtx} />
       </div>
     </div>
   );

@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
-import { GlassTagBar } from './shared/GlassTagBar';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import type { OperatorFormProps } from './index';
-import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
+import { GlassFieldTagPicker } from './shared/GlassFieldTagPicker';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
@@ -297,7 +296,7 @@ export default function FormMissingValue({
       {/* Right content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {tabMode === 'row' && (
-          <div className="scrollbar-hover flex flex-1 flex-col gap-3 overflow-y-auto p-4">
+          <div className="scrollbar-hover flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
             <GlassRadioSelect
               value={rowCondition}
               options={[
@@ -313,28 +312,18 @@ export default function FormMissingValue({
             <p className="text-[11px] leading-4 text-text-muted">{description}</p>
 
             {/* Judge fields */}
-            <div className="grid gap-1.5">
-              <GlassTagBar
-                items={rowColumns}
-                onRemove={removeRowColumn}
-                onClear={() => handleRowsColumnsChange([])}
-                open={showFieldPicker}
-                onToggle={() => setShowFieldPicker((v) => !v)}
-                toggleStyle="chevron"
-                density="compact"
-                className="min-h-8"
-                placeholder={tr('missingEmptyMeansAllFields')}
-              />
-              {showFieldPicker && (
-                <GlassFieldMultiSelect
-                  columns={fieldCompletions}
-                  selected={rowColumns}
-                  onChange={handleRowsColumnsChange}
-                  maxHeight="160px"
-                  variant="glass"
-                />
-              )}
-            </div>
+            <GlassFieldTagPicker
+              columns={fieldCompletions}
+              selected={rowColumns}
+              onChange={handleRowsColumnsChange}
+              onRemove={removeRowColumn}
+              onClear={() => handleRowsColumnsChange([])}
+              open={showFieldPicker}
+              onToggle={() => setShowFieldPicker((v) => !v)}
+              maxHeight="160px"
+              variant="glass"
+              placeholder={tr('missingEmptyMeansAllFields')}
+            />
           </div>
         )}
 

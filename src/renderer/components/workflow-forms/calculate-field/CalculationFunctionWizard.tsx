@@ -24,12 +24,11 @@ import {
 } from '../../../../shared/calculate-field/wizard-state';
 import { useDragReorder } from '../../../hooks/useDragReorder';
 import { GlassDirectionToggle } from '../shared/GlassDirectionToggle';
-import { GlassFieldMultiSelect } from '../shared/GlassFieldMultiSelect';
 import { GlassFieldSingleSelect } from '../shared/GlassFieldSingleSelect';
+import { GlassFieldTagPicker } from '../shared/GlassFieldTagPicker';
 import { GlassFormTextInput } from '../shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from '../shared/GlassOptionSingleSelect';
 import { GlassRowList } from '../shared/GlassRowList';
-import { GlassTagBar } from '../shared/GlassTagBar';
 
 interface CalculationFunctionWizardProps {
   fieldCompletions: string[];
@@ -381,28 +380,21 @@ export function CalculationFunctionWizard({
                 <span className="text-[11px] font-medium text-text-muted">
                   {tr('calcFieldPartitionBy')}
                 </span>
-                <GlassTagBar
-                  items={partitionBy}
+                <GlassFieldTagPicker
+                  columns={fieldCompletions}
+                  selected={partitionBy}
+                  onChange={setPartitionBy}
                   onRemove={(field) =>
                     setPartitionBy((current) => current.filter((item) => item !== field))
                   }
                   onClear={() => setPartitionBy([])}
                   open={partitionOpen}
                   onToggle={() => setPartitionOpen((current) => !current)}
-                  toggleStyle="chevron"
-                  density="default"
-                  className="min-h-7"
+                  columnTypes={columnTypes}
+                  maxHeight="132px"
+                  variant="flat"
                   placeholder={tr('noFieldsSelected')}
                 />
-                {partitionOpen && (
-                  <GlassFieldMultiSelect
-                    columns={fieldCompletions}
-                    selected={partitionBy}
-                    onChange={setPartitionBy}
-                    columnTypes={columnTypes}
-                    maxHeight="132px"
-                  />
-                )}
               </div>
 
               <div className="border-t border-border-muted/60 pt-3">
