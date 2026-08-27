@@ -192,6 +192,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
               }));
               setErrors(runValidation(limit ?? 0, value));
             }}
+            variant="highlight"
             className="h-8 text-[12px] w-60"
           />
         </div>

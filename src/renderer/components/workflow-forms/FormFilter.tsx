@@ -260,6 +260,7 @@ function ConditionLeafRow({
           value={effectiveOp}
           groups={opGroupsTranslated}
           onChange={(v) => ctx.updateLeaf(leaf.id, { op: v })}
+          variant="highlight"
           className="h-7 w-28 rounded-md text-[12px]"
         />
 

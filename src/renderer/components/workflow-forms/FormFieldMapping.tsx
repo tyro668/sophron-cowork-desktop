@@ -147,6 +147,7 @@ export default function FormFieldMapping({
             value={item.targetMode}
             onChange={(v) => updateMapping(i, { targetMode: v as FieldMappingEntry['targetMode'] })}
             groups={[{ key: 'mode', items: targetModeOptions }]}
+            variant="highlight"
             className="h-7 w-full text-[12px]"
           />
         ),

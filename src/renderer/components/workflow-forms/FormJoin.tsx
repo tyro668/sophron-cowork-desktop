@@ -843,6 +843,7 @@ export default function FormJoin({
                             },
                           }))
                         }
+                        variant="highlight"
                         className="h-7 w-full text-[12px] [&>span]:text-center"
                       />
                     </div>
@@ -965,6 +966,7 @@ export default function FormJoin({
                                 )
                               )
                             }
+                            variant="highlight"
                             className="h-7 w-full text-[12px] [&>span]:text-center"
                           />
                         ),
