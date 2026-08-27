@@ -27,6 +27,7 @@ import {
   createEmptyLeaf,
   splitInValues,
   joinInValues,
+  MAX_NESTING_DEPTH,
   type FilterConditionLeaf,
   type FilterConditionBranch,
 } from '../../src/shared/filter-condition';
@@ -600,6 +601,29 @@ describe('FilterCondition — tree mutation helpers', () => {
     expect(next.items).toHaveLength(1);
   });
 
+  it('removeNodeFromBranch unwraps a nested group after it is reduced to one condition', () => {
+    const retained = leaf('b', '=', '2');
+    const removed = leaf('c', '=', '3');
+    const inner: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'inner',
+      connective: 'or',
+      items: [retained, removed],
+    };
+    const root: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'root',
+      connective: 'and',
+      items: [leaf('a', '=', '1'), inner],
+    };
+
+    const next = removeNodeFromBranch(root, removed.id);
+
+    expect(next.items).toHaveLength(2);
+    expect(next.items[1]).toBe(retained);
+    expect(isLeaf(next.items[1])).toBe(true);
+  });
+
   it('updateLeafInBranch patches leaf fields', () => {
     resetNodeIdCounter();
     const l1 = leaf('a', '=', '1');
@@ -1112,34 +1136,60 @@ describe('FormFilter — UI source inspection', () => {
     expect(formFilterSource).toContain('parentConnective');
   });
 
-  it('AND button has square A icon', () => {
-    expect(formFilterSource).toContain('rounded-sm');
-    expect(formFilterSource).toMatch(/>\s*A\s*<\/span>/);
+  it('AND button has rounded style', () => {
+    expect(formFilterSource).toContain('rounded');
+    expect(formFilterSource).toContain('filterConnectiveAnd');
   });
 
-  it('OR button has circle + icon', () => {
-    expect(formFilterSource).toContain('rounded-full');
-    expect(formFilterSource).toMatch(/>\s*\+\s*<\/span>/);
+  it('OR button has rounded style', () => {
+    expect(formFilterSource).toContain('rounded');
+    expect(formFilterSource).toContain('filterConnectiveOr');
   });
 
-  it('AND button guards mismatched connective + max depth', () => {
-    expect(formFilterSource).toContain("parentConnective !== 'and' && depth >= MAX_NESTING_DEPTH");
+  it('AND is disabled at max depth when it differs from the current group', () => {
+    expect(formFilterSource).toContain(
+      "const canAddAnd = parentConnective === 'and' || depth < MAX_NESTING_DEPTH;"
+    );
+    expect(formFilterSource).toContain('if (!canAddAnd) return;');
   });
 
-  it('OR button guards mismatched connective + max depth', () => {
-    expect(formFilterSource).toContain("parentConnective !== 'or' && depth >= MAX_NESTING_DEPTH");
+  it('OR is disabled at max depth when it differs from the current group', () => {
+    expect(formFilterSource).toContain(
+      "const canAddOr = parentConnective === 'or' || depth < MAX_NESTING_DEPTH;"
+    );
+    expect(formFilterSource).toContain('if (!canAddOr) return;');
   });
 
-  it('MAX_NESTING_DEPTH is imported from shared filter-condition', () => {
+  it('limits graphical condition groups to root plus one nested group', () => {
+    expect(MAX_NESTING_DEPTH).toBe(1);
     expect(formFilterSource).toContain('MAX_NESTING_DEPTH');
   });
 
-  it('single-item branch passes depth through unchanged', () => {
-    expect(formFilterSource).toContain('item.items.length > 1 ? depth + 1 : depth');
+  it('counts every nested branch as one visual tree level', () => {
+    expect(formFilterSource).toContain('depth={depth + 1}');
+    expect(formFilterSource).not.toContain('item.items.length > 1 ? depth + 1 : depth');
   });
 
   it('addAfterAndGroup accepts connective parameter', () => {
     expect(formFilterSource).toContain("connective: FilterConditionConnective = 'and'");
+  });
+
+  it('adds a sibling when the requested connective matches the current group', () => {
+    expect(formFilterSource).toMatch(
+      /if \(targetConnective === parentConnective\) \{\s*addAfter\(branchId, afterIndex\);\s*return;\s*\}/
+    );
+  });
+
+  it('creates a child group when the requested connective differs from the current group', () => {
+    expect(formFilterSource).toMatch(
+      /if \(depth < MAX_NESTING_DEPTH\) \{\s*addAfterAndGroup\(branchId, leafId, afterIndex, targetConnective\);\s*\}/
+    );
+    expect(formFilterSource).not.toContain('addSiblingWithConnective');
+  });
+
+  it('does not escape to the ancestor group after reaching max depth', () => {
+    expect(formFilterSource).not.toContain('ancestorBranchId');
+    expect(formFilterSource).not.toContain('ancestorConnective');
   });
 
   it('delete button still present', () => {
@@ -1156,11 +1206,50 @@ describe('FormFilter — UI source inspection', () => {
     expect(formFilterSource).not.toContain('Layers');
   });
 
+  it('renders logical nodes and orthogonal tree connectors only for multi-item groups', () => {
+    expect(formFilterSource).toContain('if (itemCount === 1)');
+    expect(formFilterSource).toContain('grid-cols-[36px_minmax(0,1fr)]');
+    expect(formFilterSource).toContain('i < itemCount - 1');
+    expect(formFilterSource).toContain('border-l border-text-secondary/55');
+    expect(formFilterSource).toContain('border-t border-text-secondary/55');
+    expect(formFilterSource).not.toContain('ResizeObserver');
+    expect(formFilterSource).not.toContain('diagLines');
+    expect(formFilterSource).not.toContain('<svg');
+    expect(formFilterSource).not.toContain('pl-[56px]');
+  });
+
+  it('owns a global vertical scrollbar like other operator forms', () => {
+    expect(formFilterSource).toContain('flex h-full min-h-0 overflow-hidden');
+    expect(formFilterSource).toContain('scrollbar-hover');
+    expect(formFilterSource).toContain('flex-1 overflow-y-auto');
+    // The root must not rely on the host panel's own scroll (double scrollbar).
+    expect(formFilterSource).not.toContain('grid content-start gap-2.5 min-w-0');
+  });
+
+  it('uses stable columns so value variants do not shift row actions', () => {
+    expect(formFilterSource).toContain(
+      'grid-cols-[minmax(140px,180px)_112px_minmax(180px,1fr)_40px_40px_28px]'
+    );
+    expect(formFilterSource).toContain('className="!w-full"');
+  });
+
   it('passes column types into the condition tree builder', () => {
     expect(formFilterSource).toContain('const columnTypesRef = useRef(columnTypes);');
     expect(formFilterSource).toContain('columnTypesRef.current = columnTypes;');
-    expect(formFilterSource).toMatch(/buildFilterConditionTree\(root, columnTypesRef\.current\)/);
     expect(formFilterSource).toMatch(/buildFilterConditionTree\(next, columnTypesRef\.current\)/);
+    expect(formFilterSource).not.toMatch(
+      /buildFilterConditionTree\(root, columnTypesRef\.current\)/
+    );
+  });
+
+  it('guards external config sync so local write-back and column-type refreshes never clobber edits', () => {
+    expect(formFilterSource).toContain('lastSyncedConfigRef');
+    expect(formFilterSource).toContain('useRef<string | undefined>(');
+    expect(formFilterSource).toContain('incoming === lastSyncedConfigRef.current');
+    expect(formFilterSource).toContain('lastSyncedConfigRef.current = incoming;');
+    // The old round-trip comparison that could reparse on column-type drift
+    // must be gone.
+    expect(formFilterSource).not.toContain('(fromTree || undefined) === (fromConfig || undefined)');
   });
 
   it('does not auto-fetch value suggestions on mount', () => {
@@ -1184,11 +1273,24 @@ describe('FormFilter — UI source inspection', () => {
   });
 
   it('renders empty values without falling back to stale val1 after clear', () => {
+    expect(formFilterSource).toMatch(/values=\{leaf\.values \?\? splitInValues\(leaf\.val1\)\}/);
     expect(formFilterSource).toMatch(
+      /onValuesChange=\{\(values\) =>\s*ctx\.updateLeaf\(leaf\.id, \{ values, val1: joinInValues\(values\) \}\)\s*\}/
+    );
+    // The multi-value input must not carry a `value`/`onChange` pair that could
+    // fall back to a stale comma-joined val1 after values are cleared.
+    expect(formFilterSource).not.toMatch(
       /joinInValues\(leaf\.values \?\? splitInValues\(leaf\.val1\)\)/
     );
-    expect(formFilterSource).toMatch(
+    expect(formFilterSource).not.toMatch(
       /onChange=\{\(v\) => ctx\.updateLeaf\(leaf\.id, \{ values: splitInValues\(v\), val1: v \}\)\}/
+    );
+  });
+
+  it('passes structured multi-values to avoid splitting values that contain commas', () => {
+    expect(formFilterSource).toMatch(/values=\{leaf\.values \?\? splitInValues\(leaf\.val1\)\}/);
+    expect(formFilterSource).toMatch(
+      /onValuesChange=\{\(values\) =>\s*ctx\.updateLeaf\(leaf\.id, \{ values, val1: joinInValues\(values\) \}\)\s*\}/
     );
   });
 
@@ -1211,15 +1313,33 @@ const glassValueInputSource = fs.readFileSync(
 
 describe('GlassValueInput — single-value input survives remount', () => {
   it('initializes single-value input from the value prop', () => {
-    expect(glassValueInputSource).toContain("useState(multi ? '' : value)");
+    expect(glassValueInputSource).toContain("useState<string>(multi ? '' : (value ?? '')");
   });
 
   it('syncs inputText from the value prop when it changes externally', () => {
-    expect(glassValueInputSource).toContain('if (!multi) setInputText(value);');
+    expect(glassValueInputSource).toContain("if (!multi) setInputText(value ?? '');");
+  });
+
+  it('commits single-value input on blur without delayed timeout races', () => {
+    expect(glassValueInputSource).toContain('function commitSingleValue()');
+    expect(glassValueInputSource).toContain('onBlur={multi ? undefined : commitSingleValue}');
+    expect(glassValueInputSource).not.toContain('setTimeout(() => onChange(inputText)');
   });
 
   it('drives multi-value tags from the value prop', () => {
-    expect(glassValueInputSource).toContain('splitInValues(value)');
+    expect(glassValueInputSource).toContain("splitInValues(value ?? '')");
+  });
+
+  it('can drive multi-value tags from a structured values prop', () => {
+    expect(glassValueInputSource).toContain('values?: string[];');
+    expect(glassValueInputSource).toContain('onValuesChange?: (values: string[]) => void;');
+    expect(glassValueInputSource).toContain("values ?? splitInValues(value ?? '')");
+  });
+
+  it('uses the compact hover scrollbar for overflowing multi-value tags', () => {
+    expect(glassValueInputSource).toContain(
+      'scrollbar-hover items-end overflow-x-auto overflow-y-hidden'
+    );
   });
 
   it('exposes an onOpen callback triggered once when the dropdown opens', () => {

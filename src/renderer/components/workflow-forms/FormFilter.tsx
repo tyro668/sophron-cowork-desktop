@@ -189,7 +189,8 @@ interface LeafRowContext {
     afterIndex: number,
     leafId: string,
     parentConnective: FilterConditionConnective,
-    targetConnective: FilterConditionConnective
+    targetConnective: FilterConditionConnective,
+    depth: number
   ) => void;
   tr: (key: string) => string;
 }
@@ -210,7 +211,6 @@ function ConditionLeafRow({
   ctx: LeafRowContext;
 }) {
   const { tr } = ctx;
-  const fieldSelected = !!leaf.field;
   const colType = ctx.columnTypes[leaf.field];
   const opGroups = useMemo(() => operatorsForType(colType), [colType]);
   const opGroupsTranslated = useMemo(
@@ -229,12 +229,14 @@ function ConditionLeafRow({
   const isNullOp = effectiveOp === 'is null' || effectiveOp === 'is not null';
   const colVals = ctx.columnValues[leaf.field] ?? [];
   const isValsLoading = ctx.loadingValues[leaf.field] ?? false;
+  const canAddAnd = parentConnective === 'and' || depth < MAX_NESTING_DEPTH;
+  const canAddOr = parentConnective === 'or' || depth < MAX_NESTING_DEPTH;
 
   return (
     <div className="group relative py-0.5">
-      <div className="flex items-center gap-2 min-w-0">
+      <div className="grid min-w-0 grid-cols-[minmax(140px,180px)_112px_minmax(180px,1fr)_40px_40px_28px] items-center gap-2">
         {/* Field */}
-        <div className="flex-1 min-w-[100px] max-w-[180px]">
+        <div className="min-w-0">
           <GlassFieldSingleSelect
             value={leaf.field}
             options={ctx.fieldCompletions}
@@ -257,75 +259,74 @@ function ConditionLeafRow({
         <GlassOptionSingleSelect
           value={effectiveOp}
           groups={opGroupsTranslated}
-          disabled={!fieldSelected}
           onChange={(v) => ctx.updateLeaf(leaf.id, { op: v })}
           className="h-7 w-28 rounded-md text-[12px]"
         />
 
         {/* Value(s) */}
-        {!isNullOp &&
-          (isMultiValue ? (
-            <GlassValueInput
-              multi
-              value={joinInValues(leaf.values ?? splitInValues(leaf.val1))}
-              suggestions={colVals}
-              isLoading={isValsLoading}
-              onChange={(v) => ctx.updateLeaf(leaf.id, { values: splitInValues(v), val1: v })}
-              placeholder={ctx.tr('filterValuesPlaceholder')}
-              disabled={!fieldSelected}
-              addLabel={ctx.tr('filterAddValue')}
-              noSuggestionsLabel={ctx.tr('noSuggestions')}
-              clearLabel={ctx.tr('filterClearValues')}
-              onOpen={() => ctx.fetchColumnValues(leaf.field)}
-            />
-          ) : (
-            <GlassValueInput
-              value={leaf.val1}
-              suggestions={colVals}
-              isLoading={isValsLoading}
-              onChange={(v) => ctx.updateLeaf(leaf.id, { val1: v })}
-              placeholder={ctx.tr('filterValuePlaceholder')}
-              disabled={!fieldSelected}
-              onOpen={() => ctx.fetchColumnValues(leaf.field)}
-            />
-          ))}
+        <div className="flex min-w-0 items-center gap-2">
+          {!isNullOp &&
+            (isMultiValue ? (
+              <GlassValueInput
+                multi
+                values={leaf.values ?? splitInValues(leaf.val1)}
+                suggestions={colVals}
+                isLoading={isValsLoading}
+                onValuesChange={(values) =>
+                  ctx.updateLeaf(leaf.id, { values, val1: joinInValues(values) })
+                }
+                placeholder={ctx.tr('filterValuesPlaceholder')}
+                className="!w-full"
+                addLabel={ctx.tr('filterAddValue')}
+                noSuggestionsLabel={ctx.tr('noSuggestions')}
+                clearLabel={ctx.tr('filterClearValues')}
+                onOpen={() => ctx.fetchColumnValues(leaf.field)}
+              />
+            ) : (
+              <GlassValueInput
+                value={leaf.val1}
+                suggestions={colVals}
+                isLoading={isValsLoading}
+                onChange={(v) => ctx.updateLeaf(leaf.id, { val1: v })}
+                placeholder={ctx.tr('filterValuePlaceholder')}
+                className="!w-full"
+                onOpen={() => ctx.fetchColumnValues(leaf.field)}
+              />
+            ))}
 
-        {isBetween && (
-          <>
-            <span className="text-[11px] text-text-muted flex-shrink-0">{ctx.tr('filterAnd')}</span>
-            <GlassValueInput
-              value={leaf.val2}
-              suggestions={colVals}
-              isLoading={isValsLoading}
-              onChange={(v) => ctx.updateLeaf(leaf.id, { val2: v })}
-              placeholder={ctx.tr('filterValue2Placeholder')}
-              disabled={!fieldSelected}
-              onOpen={() => ctx.fetchColumnValues(leaf.field)}
-            />
-          </>
-        )}
-
-        <div className="flex-1 min-w-0" />
+          {isBetween && (
+            <>
+              <span className="flex-shrink-0 text-[11px] text-text-muted">
+                {ctx.tr('filterAnd')}
+              </span>
+              <GlassValueInput
+                value={leaf.val2}
+                suggestions={colVals}
+                isLoading={isValsLoading}
+                onChange={(v) => ctx.updateLeaf(leaf.id, { val2: v })}
+                placeholder={ctx.tr('filterValue2Placeholder')}
+                className="!w-full"
+                onOpen={() => ctx.fetchColumnValues(leaf.field)}
+              />
+            </>
+          )}
+        </div>
 
         {/* Add AND condition */}
         <button
           type="button"
           onClick={() => {
-            if (parentConnective !== 'and' && depth >= MAX_NESTING_DEPTH) return;
-            ctx.addWithConnective(branchId, index, leaf.id, parentConnective, 'and');
+            if (!canAddAnd) return;
+            ctx.addWithConnective(branchId, index, leaf.id, parentConnective, 'and', depth);
           }}
           className={`flex h-7 flex-shrink-0 items-center justify-center transition-colors ${
-            parentConnective !== 'and' && depth >= MAX_NESTING_DEPTH
+            !canAddAnd
               ? 'text-text-muted/20 cursor-not-allowed'
               : 'text-text-muted/50 hover:text-accent'
           }`}
-          title={
-            parentConnective !== 'and' && depth >= MAX_NESTING_DEPTH
-              ? ctx.tr('filterMaxDepth')
-              : ctx.tr('filterAddAnd')
-          }
+          title={!canAddAnd ? ctx.tr('filterMaxDepth') : ctx.tr('filterAddAnd')}
         >
-          <span className="inline-flex h-5 items-center justify-center rounded-sm border border-current px-1 text-[10px] font-medium leading-none">
+          <span className="inline-flex h-5 w-8 items-center justify-center rounded border border-current text-[10px] font-medium leading-none">
             {ctx.tr('filterConnectiveAnd')}
           </span>
         </button>
@@ -334,21 +335,17 @@ function ConditionLeafRow({
         <button
           type="button"
           onClick={() => {
-            if (parentConnective !== 'or' && depth >= MAX_NESTING_DEPTH) return;
-            ctx.addWithConnective(branchId, index, leaf.id, parentConnective, 'or');
+            if (!canAddOr) return;
+            ctx.addWithConnective(branchId, index, leaf.id, parentConnective, 'or', depth);
           }}
           className={`flex h-7 flex-shrink-0 items-center justify-center transition-colors ${
-            parentConnective !== 'or' && depth >= MAX_NESTING_DEPTH
+            !canAddOr
               ? 'text-text-muted/20 cursor-not-allowed'
               : 'text-text-muted/50 hover:text-accent'
           }`}
-          title={
-            parentConnective !== 'or' && depth >= MAX_NESTING_DEPTH
-              ? ctx.tr('filterMaxDepth')
-              : ctx.tr('filterAddOr')
-          }
+          title={!canAddOr ? ctx.tr('filterMaxDepth') : ctx.tr('filterAddOr')}
         >
-          <span className="inline-flex h-5 items-center justify-center rounded-full border border-current px-1 text-[10px] font-medium leading-none">
+          <span className="inline-flex h-5 w-8 items-center justify-center rounded border border-current text-[10px] font-medium leading-none">
             {ctx.tr('filterConnectiveOr')}
           </span>
         </button>
@@ -385,57 +382,11 @@ function BranchGroupRenderer({
   };
 }) {
   const itemCount = branch.items.length;
-  const showBracket = itemCount > 1;
-  const groupRef = useRef<HTMLDivElement | null>(null);
-  const btnRef = useRef<HTMLDivElement | null>(null);
-  const firstRowRef = useRef<HTMLDivElement | null>(null);
-  const lastRowRef = useRef<HTMLDivElement | null>(null);
-  const [diagLines, setDiagLines] = useState<{ top: string; bottom: string } | null>(null);
-
-  const recalcDiag = useCallback(() => {
-    const group = groupRef.current;
-    const btn = btnRef.current;
-    const first = firstRowRef.current;
-    const last = lastRowRef.current;
-    if (!group || !btn || !first || !last) return;
-    const gr = group.getBoundingClientRect();
-    const br = btn.getBoundingClientRect();
-    const fr = first.getBoundingClientRect();
-    const lr = last.getBoundingClientRect();
-    const btnTop = br.top - gr.top;
-    const btnBottom = br.bottom - gr.top;
-    const btnRight = br.right - gr.left;
-    const firstLeft = fr.left - gr.left;
-    const lastLeft = lr.left - gr.left;
-    const firstY = (fr.top + fr.bottom) / 2 - gr.top;
-    const lastY = (lr.top + lr.bottom) / 2 - gr.top;
-    const next = {
-      top: `M${btnRight},${btnTop} L${firstLeft},${firstY}`,
-      bottom: `M${btnRight},${btnBottom} L${lastLeft},${lastY}`,
-    };
-    setDiagLines((prev) => (prev?.top === next.top && prev?.bottom === next.bottom ? prev : next));
-  }, []);
-
-  useEffect(() => {
-    recalcDiag();
-    const ro = new ResizeObserver(recalcDiag);
-    if (groupRef.current) ro.observe(groupRef.current);
-    return () => ro.disconnect();
-  }, [recalcDiag, itemCount]);
-
-  const singleItemRef = useCallback((el: HTMLDivElement | null) => {
-    firstRowRef.current = el;
-    lastRowRef.current = el;
-  }, []);
 
   const renderItem = (item: FilterConditionNode, i: number) => {
-    const isFirst = i === 0;
-    const isLast = i === itemCount - 1;
-    const ref =
-      isFirst && isLast ? singleItemRef : isFirst ? firstRowRef : isLast ? lastRowRef : undefined;
     if (isLeaf(item)) {
       return (
-        <div ref={ref}>
+        <div>
           <ConditionLeafRow
             leaf={item}
             branchId={branch.id}
@@ -448,12 +399,8 @@ function BranchGroupRenderer({
       );
     }
     return (
-      <div ref={ref}>
-        <BranchGroupRenderer
-          branch={item}
-          depth={item.items.length > 1 ? depth + 1 : depth}
-          ctx={ctx}
-        />
+      <div>
+        <BranchGroupRenderer branch={item} depth={depth + 1} ctx={ctx} />
       </div>
     );
   };
@@ -467,62 +414,36 @@ function BranchGroupRenderer({
     );
   }
 
-  // Single item: no bracket, just render directly
-  if (!showBracket) {
-    return (
-      <div>
-        {branch.items.map((item, i) => (
-          <div key={item.id}>{renderItem(item, i)}</div>
-        ))}
-      </div>
-    );
+  // Root and single-item branches do not need a standalone group header.
+  if (itemCount === 1) {
+    return <div>{renderItem(branch.items[0], 0)}</div>;
   }
 
-  // Multiple items: diagonal connector lines + AND/OR button
+  // Nested groups: file-tree style header + indentation.
   return (
-    <div ref={groupRef} className="relative min-w-0">
-      {/* AND/OR button vertically centered at far left */}
-      <div
-        ref={btnRef}
-        className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-0.5 z-10"
-      >
+    <div className="grid min-w-0 grid-cols-[36px_minmax(0,1fr)] gap-x-3">
+      <div className="relative flex h-7 items-center">
         <button
           type="button"
           onClick={() => ctx.toggleBranchConnective(branch.id)}
-          className="rounded border border-border-muted/60 bg-background/50 px-2 py-0.5 text-[12px] text-center text-accent hover:bg-accent/10 hover:border-accent/30 transition-colors"
+          className="flex h-6 w-8 items-center justify-center rounded border border-accent/70 bg-accent/10 text-center text-[12px] font-medium text-accent-text transition-colors hover:border-accent hover:bg-accent/15"
           title={ctx.tr('filterToggleAndOr')}
         >
           {ctx.tr(branch.connective === 'and' ? 'filterConnectiveAnd' : 'filterConnectiveOr')}
         </button>
+        <span className="pointer-events-none absolute left-8 top-1/2 w-1 border-t border-text-secondary/55" />
       </div>
 
-      {/* Diagonal connector lines */}
-      {diagLines && (
-        <svg
-          className="absolute inset-0 pointer-events-none overflow-visible"
-          style={{ zIndex: 5 }}
-        >
-          <path d={diagLines.top} fill="none" stroke="rgba(139,148,158,0.35)" strokeWidth={1.2} />
-          <path
-            d={diagLines.bottom}
-            fill="none"
-            stroke="rgba(139,148,158,0.35)"
-            strokeWidth={1.2}
-          />
-        </svg>
-      )}
-
-      {/* Content area — pushed right of the AND/OR button */}
-      <div className="pl-[56px]">
-        {branch.items.map((item, i) => {
-          return (
-            <div key={item.id}>
-              <div className="relative">
-                <div className="py-0.5">{renderItem(item, i)}</div>
-              </div>
-            </div>
-          );
-        })}
+      <div className="relative space-y-1">
+        {branch.items.map((item, i) => (
+          <div key={item.id} className="relative min-w-0">
+            <span className="pointer-events-none absolute -left-3 top-3.5 w-3 border-t border-text-secondary/55" />
+            {i < itemCount - 1 && (
+              <span className="pointer-events-none absolute -bottom-[18px] -left-3 top-3.5 border-l border-text-secondary/55" />
+            )}
+            {renderItem(item, i)}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -549,20 +470,26 @@ export default function FormFilter({
   const [parseError, setParseError] = useState<string | null>(initialParse.error);
 
   const localUpdateRef = useRef(false);
+  const lastSyncedConfigRef = useRef<string | undefined>(
+    node.config.condition as string | undefined
+  );
 
-  // Sync from external config changes
+  // Sync from external config changes. We only re-parse when the incoming
+  // config differs from the last value we wrote locally, so that column-type
+  // refreshes (which change `columnTypesRef` without touching the config) and
+  // our own write-back round-trips never clobber in-flight edits.
   useEffect(() => {
+    const incoming = node.config.condition as string | undefined;
     if (localUpdateRef.current) {
       localUpdateRef.current = false;
+      lastSyncedConfigRef.current = incoming;
       return;
     }
-    const fromTree = buildFilterConditionTree(root, columnTypesRef.current);
-    const fromConfig = node.config.condition as string | undefined;
-    if ((fromTree || undefined) === (fromConfig || undefined)) return;
-    // Re-parse from config
-    const reparsed = parseEditableFilterCondition(node.config.condition as string | undefined);
+    if (incoming === lastSyncedConfigRef.current) return;
+    const reparsed = parseEditableFilterCondition(incoming);
     setParseError(reparsed.error);
     if (!reparsed.error) {
+      lastSyncedConfigRef.current = incoming;
       setRoot(reparsed.tree);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -692,13 +619,14 @@ export default function FormFilter({
       afterIndex: number,
       leafId: string,
       parentConnective: FilterConditionConnective,
-      targetConnective: FilterConditionConnective
+      targetConnective: FilterConditionConnective,
+      depth: number
     ) => {
       if (targetConnective === parentConnective) {
-        // Same connective: just add a leaf after the current one
         addAfter(branchId, afterIndex);
-      } else {
-        // Different connective: wrap current + new into a nested group
+        return;
+      }
+      if (depth < MAX_NESTING_DEPTH) {
         addAfterAndGroup(branchId, leafId, afterIndex, targetConnective);
       }
     },
@@ -773,36 +701,40 @@ export default function FormFilter({
   );
 
   return (
-    <div className="grid content-start gap-2.5 min-w-0">
-      <div className="space-y-2.5">
-        {parseError && (
-          <p role="alert" className="rounded-md bg-error/10 px-2.5 py-2 text-[11px] text-error">
-            {tr('filterParseError')}: {parseError}
-          </p>
-        )}
-        {/* Global add button */}
-        <button
-          type="button"
-          onClick={() => {
-            setParseError(null);
-            setRoot((prev) => {
-              const next = addLeafToBranch(prev, prev.items.length - 1);
-              localUpdateRef.current = true;
-              updateConfig((cfg) => ({
-                ...cfg,
-                condition: buildFilterConditionTree(next, columnTypesRef.current),
-              }));
-              return next;
-            });
-          }}
-          className="inline-flex h-7 items-center gap-1 rounded-md border border-border-muted bg-background/42 px-2 text-[11px] text-text-secondary hover:border-accent/30 hover:text-accent transition-colors"
-        >
-          <Plus className="h-3 w-3" />
-          {tr('filterAddCondition')}
-        </button>
+    <div className="flex h-full min-h-0 overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="scrollbar-hover min-w-0 flex-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
+          <div className="space-y-2.5">
+            {parseError && (
+              <p role="alert" className="rounded-md bg-error/10 px-2.5 py-2 text-[11px] text-error">
+                {tr('filterParseError')}: {parseError}
+              </p>
+            )}
+            {/* Global add button */}
+            <button
+              type="button"
+              onClick={() => {
+                setParseError(null);
+                setRoot((prev) => {
+                  const next = addLeafToBranch(prev, prev.items.length - 1);
+                  localUpdateRef.current = true;
+                  updateConfig((cfg) => ({
+                    ...cfg,
+                    condition: buildFilterConditionTree(next, columnTypesRef.current),
+                  }));
+                  return next;
+                });
+              }}
+              className="inline-flex h-7 items-center gap-1 rounded-md border border-accent/30 bg-accent/10 px-2.5 text-[13px] font-medium text-accent hover:border-accent/50 hover:text-accent-hover transition-colors"
+            >
+              <Plus className="h-3 w-3" />
+              {tr('filterAddCondition')}
+            </button>
 
-        {/* Condition tree */}
-        <BranchGroupRenderer branch={root} depth={0} ctx={branchCtx} />
+            {/* Condition tree */}
+            <BranchGroupRenderer branch={root} depth={0} ctx={branchCtx} />
+          </div>
+        </div>
       </div>
     </div>
   );

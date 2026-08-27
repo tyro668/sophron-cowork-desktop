@@ -56,8 +56,8 @@ export function getBranchDepth(branch: FilterConditionBranch, root: FilterCondit
   return getNodeDepth(branch, root);
 }
 
-/** Maximum allowed nesting depth (3 levels of nesting + root = 4) */
-export const MAX_NESTING_DEPTH = 3;
+/** Maximum allowed group nesting depth: root group + one child group. */
+export const MAX_NESTING_DEPTH = 1;
 
 /**
  * Check if a branch can be nested further (i.e., create/wrap into a new
@@ -89,7 +89,9 @@ export function removeNodeFromBranch(
     .map((item) => {
       if (isBranch(item)) {
         const cleaned = removeNodeFromBranch(item, nodeId);
-        return cleaned.items.length > 0 ? cleaned : null;
+        if (cleaned.items.length === 0) return null;
+        if (cleaned.items.length === 1) return cleaned.items[0];
+        return cleaned;
       }
       return item;
     })
