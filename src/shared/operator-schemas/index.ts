@@ -8,6 +8,7 @@ export {
   ConditionSchema,
   ConflictSchema,
   MetricEntrySchema,
+  PIVOT_AGGREGATE_FUNCTIONS,
   type AggregateFunction,
   type KeepItem,
   type MetricEntry,

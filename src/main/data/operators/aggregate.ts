@@ -2,6 +2,14 @@ import { quoteIdentifier } from './utils';
 import { compileScalarExpression } from './compute';
 import { AggregateConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
+const AGGREGATE_FUNCTION_DEFAULT_PARAMETERS: Record<string, string[]> = {
+  string_agg: ["','"],
+  quantile_cont: ['0.5'],
+  quantile_disc: ['0.5'],
+  approx_quantile: ['0.5'],
+  approx_top_k: ['3'],
+};
+
 export function compileAggregateSql(
   output: string,
   input: string,
@@ -13,9 +21,15 @@ export function compileAggregateSql(
     const expression = metric.expression?.trim();
     const alias = metric.alias?.trim();
     const compiledExpression = expression === '*' ? '*' : compileScalarExpression(expression);
-    return fn === 'count_distinct'
-      ? `COUNT(DISTINCT ${compiledExpression}) AS ${quoteIdentifier(alias)}`
-      : `${fn.toUpperCase()}(${compiledExpression}) AS ${quoteIdentifier(alias)}`;
+    if (fn === 'count_distinct') {
+      return `COUNT(DISTINCT ${compiledExpression}) AS ${quoteIdentifier(alias)}`;
+    }
+    const defaults = AGGREGATE_FUNCTION_DEFAULT_PARAMETERS[fn];
+    const args =
+      defaults && !expression?.includes(',')
+        ? `${compiledExpression}, ${defaults.join(', ')}`
+        : compiledExpression;
+    return `${fn.toUpperCase()}(${args}) AS ${quoteIdentifier(alias)}`;
   });
   const granularity = dateGranularity ?? {};
   const groupExprs = groupBy.map((col) => {

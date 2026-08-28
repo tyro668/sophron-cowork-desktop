@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AggregateFunctionSchema } from './common';
+import { PivotFunctionSchema } from './common';
 
 const MAX_FIELD_NAME_LENGTH = 256;
 const MAX_ON_COUNT = 50;
@@ -24,7 +24,7 @@ export const PivotAxisEntrySchema = z.object({
 });
 
 export const PivotMetricSchema = z.object({
-  function: AggregateFunctionSchema,
+  function: PivotFunctionSchema,
   expression: z.string().trim().min(1).max(MAX_EXPRESSION_LENGTH),
   alias: z.string().trim().max(MAX_ALIAS_LENGTH).optional(),
 });

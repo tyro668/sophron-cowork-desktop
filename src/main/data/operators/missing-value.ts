@@ -88,14 +88,13 @@ export function compileMissingValueSql(
 function compileNullifyValuesPredicate(column: string, values: unknown[]): string {
   if (values.length === 0) return 'FALSE';
 
-  const includesNull = values.some((value) => value === null || value === undefined);
-  const textValues = values
-    .filter((value) => value !== null && value !== undefined)
-    .map((value) => literalToSql(String(value)));
   const predicates: string[] = [];
-  if (includesNull) predicates.push(`${column} IS NULL`);
-  if (textValues.length > 0) {
-    predicates.push(`CAST(${column} AS VARCHAR) IN (${textValues.join(', ')})`);
+  for (const value of values) {
+    if (value === null || value === undefined) {
+      predicates.push(`${column} IS NULL`);
+    } else {
+      predicates.push(`${column} = ${literalToSql(value)}`);
+    }
   }
   return predicates.length === 1 ? predicates[0] : `(${predicates.join(' OR ')})`;
 }

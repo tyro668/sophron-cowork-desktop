@@ -48,6 +48,21 @@ export const AGGREGATE_FUNCTIONS = [
 
 export const AggregateFunctionSchema = z.enum(AGGREGATE_FUNCTIONS);
 
+export const PIVOT_AGGREGATE_FUNCTIONS = [
+  'sum',
+  'avg',
+  'min',
+  'max',
+  'count',
+  'count_distinct',
+  'median',
+  'var_samp',
+  'stddev_samp',
+  'mode',
+] as const;
+
+export const PivotFunctionSchema = z.enum(PIVOT_AGGREGATE_FUNCTIONS);
+
 const MAX_METRIC_EXPRESSION_LENGTH = 10_000;
 const MAX_METRIC_ALIAS_LENGTH = 256;
 

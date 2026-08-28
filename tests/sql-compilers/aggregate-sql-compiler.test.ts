@@ -97,4 +97,81 @@ describe('compileAggregateSql', () => {
     const rows = reader.getRowObjectsJson() as Record<string, unknown>[];
     expect(rows[0].joined).toBe("Aliceit'sBob");
   });
+
+  it('injects a default comma separator into string_agg when expression has no comma', () => {
+    const sql = compileAggregateSql('out', 'in', {
+      metrics: [{ function: 'string_agg', expression: '[name]', alias: 'names' }],
+    });
+    expect(sql).toContain('STRING_AGG("name", \',\') AS "names"');
+  });
+
+  it('does not inject a default separator when expression already contains a comma', async () => {
+    const conn = await connect();
+    await conn.run('CREATE TABLE w (name VARCHAR)');
+    await conn.run("INSERT INTO w VALUES ('Alice'), ('Bob')");
+    await conn.run(
+      compileAggregateSql('out', 'w', {
+        metrics: [{ function: 'string_agg', expression: "[name], '|'", alias: 'names' }],
+      })
+    );
+    const reader = await conn.runAndReadAll('SELECT * FROM out');
+    const rows = reader.getRowObjectsJson() as Record<string, unknown>[];
+    expect(rows[0].names).toBe('Alice|Bob');
+  });
+
+  it('injects default k=3 into approx_top_k and executes correctly', async () => {
+    const conn = await connect();
+    await conn.run('CREATE TABLE w (val INTEGER)');
+    await conn.run('INSERT INTO w VALUES (10), (20), (30), (40), (50)');
+    const sql = compileAggregateSql('out', 'w', {
+      metrics: [{ function: 'approx_top_k', expression: '[val]', alias: 'top_vals' }],
+    });
+    expect(sql).toContain('APPROX_TOP_K("val", 3)');
+    await conn.run(sql);
+    const reader = await conn.runAndReadAll('SELECT * FROM out');
+    const rows = reader.getRowObjectsJson() as Record<string, unknown>[];
+    expect(rows[0].top_vals).toHaveLength(3);
+  });
+
+  it('injects default probability 0.5 into quantile_cont and executes correctly', async () => {
+    const conn = await connect();
+    await conn.run('CREATE TABLE w (val INTEGER)');
+    await conn.run('INSERT INTO w VALUES (10), (20), (30)');
+    const sql = compileAggregateSql('out', 'w', {
+      metrics: [{ function: 'quantile_cont', expression: '[val]', alias: 'median' }],
+    });
+    expect(sql).toContain('QUANTILE_CONT("val", 0.5)');
+    await conn.run(sql);
+    const reader = await conn.runAndReadAll('SELECT * FROM out');
+    const rows = reader.getRowObjectsJson() as Record<string, unknown>[];
+    expect(Number(rows[0].median)).toBe(20);
+  });
+
+  it('injects default probability 0.5 into quantile_disc and executes correctly', async () => {
+    const conn = await connect();
+    await conn.run('CREATE TABLE w (val INTEGER)');
+    await conn.run('INSERT INTO w VALUES (10), (20), (30)');
+    const sql = compileAggregateSql('out', 'w', {
+      metrics: [{ function: 'quantile_disc', expression: '[val]', alias: 'median' }],
+    });
+    expect(sql).toContain('QUANTILE_DISC("val", 0.5)');
+    await conn.run(sql);
+    const reader = await conn.runAndReadAll('SELECT * FROM out');
+    const rows = reader.getRowObjectsJson() as Record<string, unknown>[];
+    expect(Number(rows[0].median)).toBe(20);
+  });
+
+  it('injects default probability 0.5 into approx_quantile and executes correctly', async () => {
+    const conn = await connect();
+    await conn.run('CREATE TABLE w (val INTEGER)');
+    await conn.run('INSERT INTO w VALUES (10), (20), (30)');
+    const sql = compileAggregateSql('out', 'w', {
+      metrics: [{ function: 'approx_quantile', expression: '[val]', alias: 'median' }],
+    });
+    expect(sql).toContain('APPROX_QUANTILE("val", 0.5)');
+    await conn.run(sql);
+    const reader = await conn.runAndReadAll('SELECT * FROM out');
+    const rows = reader.getRowObjectsJson() as Record<string, unknown>[];
+    expect(Number(rows[0].median)).toBe(20);
+  });
 });

@@ -110,4 +110,34 @@ describe('PivotConfigSchema', () => {
       })
     ).toThrow(z.ZodError);
   });
+
+  it('accepts the full pivot whitelist including median, var_samp, stddev_samp, mode', () => {
+    for (const fn of ['median', 'var_samp', 'stddev_samp', 'mode'] as const) {
+      const result = PivotConfigSchema.parse({
+        on: [{ field: 'region', values: [] }],
+        using: [{ function: fn, expression: '[amount]', alias: `m_${fn}` }],
+      });
+      expect(result.using[0].function).toBe(fn);
+    }
+  });
+
+  it('rejects functions outside the pivot whitelist', () => {
+    for (const fn of [
+      'string_agg',
+      'approx_top_k',
+      'quantile_cont',
+      'list',
+      'first',
+      'last',
+      'stddev_pop',
+      'var_pop',
+    ] as const) {
+      expect(() =>
+        PivotConfigSchema.parse({
+          on: [{ field: 'region', values: [] }],
+          using: [{ function: fn, expression: '[amount]', alias: 'x' }],
+        })
+      ).toThrow(z.ZodError);
+    }
+  });
 });

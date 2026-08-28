@@ -22,14 +22,9 @@ import {
   removePivotCustomValue,
 } from '../../../shared/operator-config';
 import { MAX_PIVOT_VALUES_PER_FIELD } from '../../../shared/operator-schemas';
-import type {
-  AggregateFunction,
-  PivotAxisEntry,
-  PivotLiteral,
-  PivotMetric,
-} from '../../../shared/operator-schemas';
+import type { PivotAxisEntry, PivotLiteral, PivotMetric } from '../../../shared/operator-schemas';
+import { PIVOT_AGGREGATE_FUNCTIONS } from '../../../shared/operator-schemas';
 
-const PIVOT_FUNCTIONS = ['sum', 'avg', 'min', 'max', 'count', 'count_distinct'] as const;
 const EMPTY_METRIC: Readonly<PivotMetric> = {
   function: 'count',
   expression: '',
@@ -148,7 +143,7 @@ export default function FormPivot({
     () => [
       {
         key: 'fn',
-        items: PIVOT_FUNCTIONS.map((f) => ({
+        items: PIVOT_AGGREGATE_FUNCTIONS.map((f) => ({
           value: f,
           label: tr(`aggregateFn_${f}`),
         })),
@@ -307,7 +302,7 @@ export default function FormPivot({
                       value={metric.function}
                       groups={fnGroups}
                       onChange={(value) =>
-                        updateMetric(index, { function: value as AggregateFunction })
+                        updateMetric(index, { function: value as PivotMetric['function'] })
                       }
                       variant="highlight"
                       className="h-7 w-full text-[12px] [&>span]:text-left"

@@ -35,28 +35,27 @@ function createEmptyRule(): MissingValueRule {
 interface MissingValueMethodDefinition {
   value: MissingValueMethod;
   labelKey: string;
-  label: string;
 }
 
 const BASE_METHODS: MissingValueMethodDefinition[] = [
-  { value: 'skip', labelKey: 'ruleMethods.skip', label: '不处理' },
-  { value: 'nullify_values', labelKey: 'ruleMethods.nullify_values', label: '特殊值转空' },
-  { value: 'literal_fill', labelKey: 'ruleMethods.literal_fill', label: '固定值填充' },
-  { value: 'drop', labelKey: 'ruleMethods.drop', label: '删除含缺失的行' },
+  { value: 'skip', labelKey: 'ruleMethods.skip' },
+  { value: 'nullify_values', labelKey: 'ruleMethods.nullify_values' },
+  { value: 'literal_fill', labelKey: 'ruleMethods.literal_fill' },
+  { value: 'drop', labelKey: 'ruleMethods.drop' },
 ];
 
 const STATISTICAL_METHODS: MissingValueMethodDefinition[] = [
-  { value: 'mean_fill', labelKey: 'ruleMethods.mean_fill', label: '均值填充' },
-  { value: 'median_fill', labelKey: 'ruleMethods.median_fill', label: '中位数填充' },
+  { value: 'mean_fill', labelKey: 'ruleMethods.mean_fill' },
+  { value: 'median_fill', labelKey: 'ruleMethods.median_fill' },
 ];
 
 const MODE_METHODS: MissingValueMethodDefinition[] = [
-  { value: 'mode_fill', labelKey: 'ruleMethods.mode_fill', label: '众数填充' },
+  { value: 'mode_fill', labelKey: 'ruleMethods.mode_fill' },
 ];
 
 const ORDERED_METHODS: MissingValueMethodDefinition[] = [
-  { value: 'forward_fill', labelKey: 'ruleMethods.forward_fill', label: '前向填充' },
-  { value: 'backward_fill', labelKey: 'ruleMethods.backward_fill', label: '后向填充' },
+  { value: 'forward_fill', labelKey: 'ruleMethods.forward_fill' },
+  { value: 'backward_fill', labelKey: 'ruleMethods.backward_fill' },
 ];
 
 function methodsForType(colType: string | undefined) {

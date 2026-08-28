@@ -26,12 +26,12 @@ const EMPTY_METRIC: Readonly<MetricEntry> = {
 };
 
 const GRANULARITY_OPTIONS = [
-  { value: '', labelKey: 'granularityNone', labelFallback: '不处理' },
-  { value: 'year', labelKey: 'granularityYear', labelFallback: '按年' },
-  { value: 'quarter', labelKey: 'granularityQuarter', labelFallback: '按季度' },
-  { value: 'month', labelKey: 'granularityMonth', labelFallback: '按月' },
-  { value: 'week', labelKey: 'granularityWeek', labelFallback: '按周' },
-  { value: 'day', labelKey: 'granularityDay', labelFallback: '按天' },
+  { value: '', labelKey: 'granularityNone' },
+  { value: 'year', labelKey: 'granularityYear' },
+  { value: 'quarter', labelKey: 'granularityQuarter' },
+  { value: 'month', labelKey: 'granularityMonth' },
+  { value: 'week', labelKey: 'granularityWeek' },
+  { value: 'day', labelKey: 'granularityDay' },
 ] as const;
 
 export default function FormAggregate({
