@@ -92,12 +92,22 @@ describe('simple operator configuration logic', () => {
       { field: 1, values: 'invalid' },
     ]);
     expect(axes).toEqual([
-      { field: 'year', values: [2024, null] },
-      { field: '', values: [] },
+      { field: 'year', values: [2024, null], customValues: [] },
+      { field: '', values: [], customValues: [] },
     ]);
   });
 
   it('keeps one editable pivot axis when every stored axis is invalid', () => {
-    expect(normalizePivotAxes([null, 'year', 2024])).toEqual([{ field: '', values: [] }]);
+    expect(normalizePivotAxes([null, 'year', 2024])).toEqual([
+      { field: '', values: [], customValues: [] },
+    ]);
+  });
+
+  it('preserves valid custom pivot values while normalizing stored axes', () => {
+    expect(
+      normalizePivotAxes([
+        { field: 'month', values: ['Jan', 'Mar'], customValues: ['Mar', {}, null] },
+      ])
+    ).toEqual([{ field: 'month', values: ['Jan', 'Mar'], customValues: ['Mar', null] }]);
   });
 });

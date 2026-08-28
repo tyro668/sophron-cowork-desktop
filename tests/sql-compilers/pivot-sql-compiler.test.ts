@@ -33,7 +33,7 @@ describe('compilePivotSql', () => {
     expect(sql).toContain(`ON "month" IN ('Jan', 'Feb')`);
     await connection.run(sql);
 
-    expect(await columnNames(connection, 'result')).toEqual(['region', 'Jan', 'Feb']);
+    expect(await columnNames(connection, 'result')).toEqual(['region', 'Jan_sum', 'Feb_sum']);
   });
 
   it('preserves group rows with no matching data and keeps absent values as null columns', async () => {
@@ -55,8 +55,8 @@ describe('compilePivotSql', () => {
     const reader = await connection.runAndReadAll('SELECT * FROM result ORDER BY region');
     const rows = reader.getRowObjectsJson();
     expect(rows).toEqual([
-      { region: 'East', Jan: '10', Feb: null, Mar: null },
-      { region: 'West', Jan: null, Feb: '20', Mar: null },
+      { region: 'East', Jan_sum: '10', Feb_sum: null, Mar_sum: null },
+      { region: 'West', Jan_sum: null, Feb_sum: '20', Mar_sum: null },
     ]);
   });
 
@@ -89,17 +89,17 @@ describe('compilePivotSql', () => {
     expect(rows).toEqual([
       {
         region: 'East',
-        '2024_Q1': '10',
-        '2024_Q2': null,
-        '2025_Q1': '80',
-        '2025_Q2': null,
+        '2024_Q1_sum': '10',
+        '2024_Q2_sum': null,
+        '2025_Q1_sum': '80',
+        '2025_Q2_sum': null,
       },
       {
         region: 'West',
-        '2024_Q1': null,
-        '2024_Q2': null,
-        '2025_Q1': null,
-        '2025_Q2': '90',
+        '2024_Q1_sum': null,
+        '2024_Q2_sum': null,
+        '2025_Q1_sum': null,
+        '2025_Q2_sum': '90',
       },
     ]);
   });
@@ -167,9 +167,9 @@ describe('compilePivotSql', () => {
     expect(sql).toContain(`IN ('' AS "empty")`);
     await connection.run(sql);
 
-    expect(await columnNames(connection, 'result')).toEqual(['empty']);
+    expect(await columnNames(connection, 'result')).toEqual(['empty_sum']);
     const selectedReader = await connection.runAndReadAll('SELECT * FROM result');
-    expect(selectedReader.getRowObjectsJson()).toEqual([{ empty: '10' }]);
+    expect(selectedReader.getRowObjectsJson()).toEqual([{ empty_sum: '10' }]);
   });
 
   it('suffixes the empty-string column without merging conflicting source values', async () => {
@@ -187,14 +187,14 @@ describe('compilePivotSql', () => {
     await connection.run(sql);
 
     expect(await columnNames(connection, 'result')).toEqual([
-      'empty_1',
-      'empty',
-      'empty_0',
-      'paid',
+      'empty_1_sum',
+      'empty_sum',
+      'empty_0_sum',
+      'paid_sum',
     ]);
     const reader = await connection.runAndReadAll('SELECT * FROM result');
     expect(reader.getRowObjectsJson()).toEqual([
-      { empty_1: '10', empty: '20', empty_0: '30', paid: '40' },
+      { empty_1_sum: '10', empty_sum: '20', empty_0_sum: '30', paid_sum: '40' },
     ]);
   });
 
@@ -210,7 +210,7 @@ describe('compilePivotSql', () => {
     expect(sql).toContain(`ON "city" IN ('New York, NY')`);
     await connection.run(sql);
 
-    expect(await columnNames(connection, 'result')).toEqual(['New York, NY']);
+    expect(await columnNames(connection, 'result')).toEqual(['New York, NY_sum']);
   });
 
   it('rejects count_distinct with a star expression instead of emitting COUNT(DISTINCT *)', () => {
@@ -227,7 +227,15 @@ describe('compilePivotSql', () => {
       on: [{ field: 'month', values: ['Jan'] }],
       using: [{ function: 'count', expression: '*' }],
     });
-    expect(sql).toContain('COUNT(*)');
+    expect(sql).toContain('COUNT(*) AS "count"');
+  });
+
+  it('keeps a custom suffix instead of replacing it with the aggregate default', () => {
+    const sql = compilePivotSql('result', 'sales', {
+      on: [{ field: 'month', values: ['Jan'] }],
+      using: [{ function: 'max', expression: '[amount]', alias: 'peak' }],
+    });
+    expect(sql).toContain('MAX("amount") AS "peak"');
   });
 
   it('matches DECIMAL columns via string literals to preserve precision', async () => {
@@ -242,6 +250,10 @@ describe('compilePivotSql', () => {
     expect(sql).toContain(`ON "d" IN ('-5', '2024', '3.14')`);
     await connection.run(sql);
 
-    expect(await columnNames(connection, 'result')).toEqual(['-5', '2024', '3.14']);
+    expect(await columnNames(connection, 'result')).toEqual([
+      '-5_count',
+      '2024_count',
+      '3.14_count',
+    ]);
   });
 });

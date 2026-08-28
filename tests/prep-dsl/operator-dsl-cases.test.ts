@@ -569,7 +569,7 @@ describe('operator DSL executable cases', () => {
           using: [{ function: 'count', expression: '*' }],
         },
       })
-    ).toBe('pivot on [year] using count(*)');
+    ).toBe('pivot on [year] using count(*) as [count]');
   });
 
   it('does not export a pivot when all axes are incomplete', () => {
@@ -766,7 +766,7 @@ describe('operator DSL executable cases', () => {
         using: [{ function: 'count', expression: '*' }],
       },
     });
-    expect(dsl).toBe('pivot on [y] in ("a", "b") using count(*)');
+    expect(dsl).toBe('pivot on [y] in ("a", "b") using count(*) as [count]');
 
     const reparsed = parsePrepOperatorDsl(dsl, 'pivot');
     expect(errorsOf(reparsed.diagnostics)).toHaveLength(0);

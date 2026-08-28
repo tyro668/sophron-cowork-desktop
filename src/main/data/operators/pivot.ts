@@ -1,6 +1,7 @@
 import { quoteIdentifier, literalToSql, uniqueAlias } from './utils';
 import { compileScalarExpression } from './compute';
 import { PivotConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
+import { withPivotMetricDefaultSuffix } from '../../../shared/operator-config/pivot';
 
 function formatAggFn(metricFn: string): string {
   return metricFn === 'count_distinct' ? 'COUNT(DISTINCT ' : `${metricFn.toUpperCase()}(`;
@@ -57,8 +58,8 @@ export function compilePivotSql(
           `Aggregate function '${fn}' cannot use '*' as its expression in a pivot; only count may count all rows`
         );
       }
-      const alias = metric.alias ? ` AS ${quoteIdentifier(metric.alias)}` : '';
-      return `${formatAggFn(fn)}${expression})${alias}`;
+      const alias = quoteIdentifier(withPivotMetricDefaultSuffix(metric).alias);
+      return `${formatAggFn(fn)}${expression}) AS ${alias}`;
     })
     .join(', ');
   const groupSql = groupBy.length > 0 ? ` GROUP BY ${groupBy.map(quoteIdentifier).join(', ')}` : '';

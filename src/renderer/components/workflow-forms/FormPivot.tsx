@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { OperatorFormProps } from './index';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
@@ -10,8 +10,18 @@ import { useDragReorder } from '../../hooks/useDragReorder';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
-import { ChevronDown, GripVertical, Loader2, Plus, Search, Trash2 } from 'lucide-react';
-import { addPivotCandidate, normalizePivotAxes } from '../../../shared/operator-config';
+import { ChevronDown, GripVertical, Loader2, Plus, Search, Trash2, X } from 'lucide-react';
+import {
+  normalizePivotAxes,
+  togglePivotAxisValue,
+  addCustomPivotAxisValue,
+  getPivotMetricDefaultSuffix,
+  getPivotAxisSelectionSummary,
+  getPivotPreservedValues,
+  togglePivotVisibleValues,
+  removePivotCustomValue,
+} from '../../../shared/operator-config';
+import { MAX_PIVOT_VALUES_PER_FIELD } from '../../../shared/operator-schemas';
 import type {
   AggregateFunction,
   PivotAxisEntry,
@@ -56,14 +66,14 @@ export default function FormPivot({
 
   function handleAxisFieldChange(index: number, field: string) {
     if (axes[index]?.field === field) return;
-    updateAxis(index, { field, values: [] });
+    updateAxis(index, { field, values: [], customValues: [] });
   }
 
   function addAxisAfter(index: number) {
     if (axes.some((axis) => !axis.field)) return;
     handleAxesChange([
       ...axes.slice(0, index + 1),
-      { field: '', values: [] },
+      { field: '', values: [], customValues: [] },
       ...axes.slice(index + 1),
     ]);
   }
@@ -191,6 +201,13 @@ export default function FormPivot({
                     tr={tr}
                     onFieldChange={(field) => handleAxisFieldChange(index, field)}
                     onValuesChange={(values) => updateAxis(index, { values })}
+                    onCustomValueAdd={(values, customValues) =>
+                      updateAxis(index, { values, customValues })
+                    }
+                    onCustomValueRemove={(display) => {
+                      const next = removePivotCustomValue(axis.values, axis.customValues, display);
+                      updateAxis(index, next);
+                    }}
                     onToggle={() =>
                       setExpandedAxisIndex((current) => (current === index ? null : index))
                     }
@@ -262,7 +279,7 @@ export default function FormPivot({
               <span />
               <span>{tr('aggregateFunction')}</span>
               <span>{tr('expressionLabel')}</span>
-              <span>{tr('aggregateAlias')}</span>
+              <span>{tr('pivotSuffixLabel')}</span>
               <span />
             </div>
 
@@ -305,7 +322,9 @@ export default function FormPivot({
                     <GlassFormTextInput
                       value={metric.alias ?? ''}
                       onChange={(value) => updateMetric(index, { alias: value })}
-                      placeholder={tr('pivotAliasPlaceholder')}
+                      placeholder={tr('pivotDefaultSuffix', {
+                        suffix: getPivotMetricDefaultSuffix(metric.function),
+                      })}
                       className="h-7 w-full px-2 text-[12px]"
                     />
                     <button
@@ -346,6 +365,8 @@ interface PivotAxisCardProps {
   tr: (key: string, params?: Record<string, unknown>) => string;
   onFieldChange: (field: string) => void;
   onValuesChange: (values: PivotLiteral[]) => void;
+  onCustomValueAdd: (values: PivotLiteral[], customValues: PivotLiteral[]) => void;
+  onCustomValueRemove: (display: string) => void;
   onToggle: () => void;
   onRemove: () => void;
 }
@@ -361,12 +382,15 @@ function PivotAxisCard({
   tr,
   onFieldChange,
   onValuesChange,
+  onCustomValueAdd,
+  onCustomValueRemove,
   onToggle,
   onRemove,
 }: PivotAxisCardProps) {
   const {
     values: distinctValues,
     loading,
+    loaded,
     error,
     reload,
   } = useWorkflowNodeColumnValues({
@@ -374,17 +398,17 @@ function PivotAxisCard({
     sourceNode,
     column: axis.field,
   });
-  const totalValueCount = useMemo(
-    () =>
-      new Set([
-        ...distinctValues.map((value) => literalDisplay(value)),
-        ...axis.values.map((value) => literalDisplay(value)),
-      ]).size,
-    [axis.values, distinctValues]
+  const selectionSummary = useMemo(
+    () => getPivotAxisSelectionSummary(axis.values, distinctValues, loaded, axis.customValues),
+    [axis.customValues, axis.values, distinctValues, loaded]
   );
 
+  useEffect(() => {
+    if (axis.field) reload();
+  }, [axis.field, reload, sourceNode?.config, sourceNode?.id, sourceNode?.type, taskId]);
+
   function handleToggle() {
-    if (!expanded && axis.field) reload();
+    if (!expanded && axis.field && !loaded && !loading) reload();
     onToggle();
   }
 
@@ -409,8 +433,8 @@ function PivotAxisCard({
           aria-expanded={expanded}
         >
           {tr('pivotSelectedValues', {
-            selected: axis.values.length,
-            total: totalValueCount > 0 ? totalValueCount : '—',
+            selected: selectionSummary.selected ?? '—',
+            total: selectionSummary.total ?? '—',
           })}
           <ChevronDown
             className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`}
@@ -430,12 +454,16 @@ function PivotAxisCard({
         <PivotValueList
           columnType={columnTypes[axis.field]}
           values={axis.values}
+          customValues={axis.customValues}
           distinctValues={distinctValues}
           loading={loading}
+          loaded={loaded}
           error={error}
           reload={reload}
           tr={tr}
           onChange={onValuesChange}
+          onCustomValueAdd={onCustomValueAdd}
+          onCustomValueRemove={onCustomValueRemove}
         />
       )}
     </div>
@@ -445,67 +473,118 @@ function PivotAxisCard({
 interface PivotValueListProps {
   columnType?: string;
   values: PivotLiteral[];
+  customValues: PivotLiteral[];
   distinctValues: string[];
   loading: boolean;
+  loaded: boolean;
   error: boolean;
   reload: () => void;
   onChange: (values: PivotLiteral[]) => void;
+  onCustomValueAdd: (values: PivotLiteral[], customValues: PivotLiteral[]) => void;
+  onCustomValueRemove: (display: string) => void;
   tr: (key: string, params?: Record<string, unknown>) => string;
 }
 
 function PivotValueList({
   columnType,
   values,
+  customValues,
   distinctValues,
   loading,
+  loaded,
   error,
   reload,
   onChange,
+  onCustomValueAdd,
+  onCustomValueRemove,
   tr,
 }: PivotValueListProps) {
   const [search, setSearch] = useState('');
+  const [addingCustomValue, setAddingCustomValue] = useState(false);
+  const [customValue, setCustomValue] = useState('');
 
   const selectedDisplays = useMemo(
     () => new Set(values.map((value) => literalDisplay(value))),
     [values]
   );
+  const preservedValues = useMemo(
+    () => getPivotPreservedValues(values, customValues, distinctValues, loaded),
+    [customValues, distinctValues, loaded, values]
+  );
+  const removableCustomDisplays = useMemo(
+    () => new Set((loaded ? preservedValues : customValues).map(literalDisplay)),
+    [customValues, loaded, preservedValues]
+  );
   const allValues = useMemo(() => {
     const byDisplay = new Map<string, string>();
-    values.forEach((value) => byDisplay.set(literalDisplay(value), String(value ?? 'null')));
     distinctValues.forEach((value) => byDisplay.set(literalDisplay(value), value));
+    preservedValues.forEach((value) =>
+      byDisplay.set(literalDisplay(value), String(value ?? 'null'))
+    );
+    values.forEach((value) => byDisplay.set(literalDisplay(value), String(value ?? 'null')));
     return [...byDisplay.entries()].map(([display, raw]) => ({ display, raw }));
-  }, [distinctValues, values]);
+  }, [distinctValues, preservedValues, values]);
   const visibleValues = useMemo(() => {
     const query = search.trim().toLowerCase();
     return query
       ? allValues.filter((value) => value.display.toLowerCase().includes(query))
       : allValues;
   }, [allValues, search]);
+  const isValueSelected = (display: string) => selectedDisplays.has(display);
+  const visibleDisplays = useMemo(
+    () => new Set(visibleValues.map((value) => value.display)),
+    [visibleValues]
+  );
   const allSelected =
-    values.length > 0 &&
-    allValues.length > 0 &&
-    allValues.every((value) => selectedDisplays.has(value.display));
+    visibleValues.length > 0 && visibleValues.every((value) => isValueSelected(value.display));
+  const selectAllIndeterminate =
+    visibleValues.length > 0 &&
+    visibleValues.some((value) => isValueSelected(value.display)) &&
+    !allSelected;
+
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = selectAllIndeterminate;
+    }
+  }, [selectAllIndeterminate]);
 
   function toggleValue(raw: string, display: string) {
-    if (selectedDisplays.has(display)) {
-      onChange(values.filter((value) => literalDisplay(value) !== display));
-      return;
-    }
-    const next = addPivotCandidate(values, raw, columnType);
-    const nextDisplays = new Set(next.map((value) => literalDisplay(value)));
-    onChange(allValues.every((value) => nextDisplays.has(value.display)) ? [] : next);
+    onChange(togglePivotAxisValue(values, display, raw, columnType));
   }
 
   function toggleAllValues() {
-    if (allSelected) {
-      onChange([]);
-      return;
-    }
-    let next: PivotLiteral[] = [];
-    for (const value of allValues) {
-      next = addPivotCandidate(next, value.raw, columnType);
-    }
-    onChange(next);
+    onChange(togglePivotVisibleValues(values, allValues, visibleDisplays, columnType));
+  }
+
+  const configuredValueCount =
+    values.length === 0
+      ? allValues.length
+      : new Set([...values, ...preservedValues].map(literalDisplay)).size;
+  const canAddCustomValue =
+    loaded &&
+    !loading &&
+    !error &&
+    columnType !== 'boolean' &&
+    configuredValueCount < MAX_PIVOT_VALUES_PER_FIELD;
+
+  function closeCustomValueInput() {
+    setAddingCustomValue(false);
+    setCustomValue('');
+  }
+
+  function submitCustomValue() {
+    if (!canAddCustomValue || !customValue.trim()) return;
+    const next = addCustomPivotAxisValue(
+      values,
+      preservedValues,
+      customValue,
+      distinctValues.map((raw) => ({ raw })),
+      columnType
+    );
+    if (next.values.length > MAX_PIVOT_VALUES_PER_FIELD) return;
+    onCustomValueAdd(next.values, next.customValues);
+    closeCustomValueInput();
   }
 
   return (
@@ -519,17 +598,69 @@ function PivotValueList({
           placeholder={tr('pivotSearchValues')}
           className="h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-[12px] text-text-primary outline-none placeholder:text-text-muted"
         />
-        <label className="flex h-7 cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary">
+        <button
+          type="button"
+          disabled={!canAddCustomValue}
+          onClick={() => setAddingCustomValue((current) => !current)}
+          className="flex h-7 flex-none items-center gap-1 rounded-md px-1.5 text-[12px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-35"
+          aria-expanded={addingCustomValue}
+          title={
+            configuredValueCount >= MAX_PIVOT_VALUES_PER_FIELD
+              ? tr('pivotCustomValueLimit', { max: MAX_PIVOT_VALUES_PER_FIELD })
+              : !loaded || loading || error
+                ? tr('pivotAddValueAfterLoading')
+                : tr('pivotAddCustomValue')
+          }
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {tr('pivotAddValue')}
+        </button>
+        <label
+          className="flex h-7 cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary"
+          title={search.trim() ? tr('pivotToggleSearchResults') : tr('pivotAllValues')}
+        >
           <input
+            ref={selectAllRef}
             type="checkbox"
             checked={allSelected}
-            disabled={loading || allValues.length === 0}
+            disabled={loading || visibleValues.length === 0}
             onChange={toggleAllValues}
             className="h-3.5 w-3.5 accent-accent"
           />
           {tr('selectAll')}
         </label>
       </div>
+      {addingCustomValue && (
+        <div className="flex h-10 items-center gap-2 border-b border-border-subtle/70 px-3">
+          <input
+            autoFocus
+            type="text"
+            value={customValue}
+            onChange={(event) => setCustomValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') submitCustomValue();
+              if (event.key === 'Escape') closeCustomValueInput();
+            }}
+            placeholder={tr('pivotCustomValuePlaceholder')}
+            className="h-7 min-w-0 flex-1 rounded-md border border-border-muted bg-background px-2 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+          />
+          <button
+            type="button"
+            disabled={!customValue.trim()}
+            onClick={submitCustomValue}
+            className="h-7 flex-none rounded-md bg-accent px-2.5 text-[12px] font-medium text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {tr('confirm')}
+          </button>
+          <button
+            type="button"
+            onClick={closeCustomValueInput}
+            className="h-7 flex-none rounded-md px-2 text-[12px] text-text-secondary hover:bg-surface-hover"
+          >
+            {tr('cancel')}
+          </button>
+        </div>
+      )}
       <div className="scrollbar-hover max-h-[216px] overflow-y-auto py-1">
         {loading && allValues.length === 0 ? (
           <div className="flex h-16 items-center justify-center gap-2 text-[12px] text-text-muted">
@@ -550,20 +681,32 @@ function PivotValueList({
           </div>
         ) : (
           visibleValues.map((value) => {
-            const checked = selectedDisplays.has(value.display);
             return (
-              <label
+              <div
                 key={value.display}
-                className="flex h-9 cursor-pointer items-center gap-2.5 px-3 text-[13px] text-text-primary transition-colors hover:bg-surface-hover"
+                className="flex h-9 items-center gap-2 px-3 text-[13px] text-text-primary transition-colors hover:bg-surface-hover"
               >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => toggleValue(value.raw, value.display)}
-                  className="h-3.5 w-3.5 flex-none accent-accent"
-                />
-                <span className="min-w-0 truncate">{value.display}</span>
-              </label>
+                <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={selectedDisplays.has(value.display)}
+                    onChange={() => toggleValue(value.raw, value.display)}
+                    className="h-3.5 w-3.5 flex-none accent-accent"
+                  />
+                  <span className="min-w-0 truncate">{value.display}</span>
+                </label>
+                {removableCustomDisplays.has(value.display) && (
+                  <button
+                    type="button"
+                    onClick={() => onCustomValueRemove(value.display)}
+                    className="flex h-7 w-7 flex-none items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error"
+                    title={tr('pivotRemoveCustomValue')}
+                    aria-label={tr('pivotRemoveCustomValue')}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
             );
           })
         )}

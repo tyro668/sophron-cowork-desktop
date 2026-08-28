@@ -9,7 +9,7 @@ describe('PivotConfigSchema', () => {
       using: [{ function: 'sum', expression: 'amount', alias: 'total' }],
       groupBy: ['region'],
     });
-    expect(result.on).toEqual([{ field: 'category', values: ['A', 'B'] }]);
+    expect(result.on).toEqual([{ field: 'category', values: ['A', 'B'], customValues: [] }]);
     expect(result.using).toHaveLength(1);
     expect(result.groupBy).toEqual(['region']);
   });
@@ -20,6 +20,21 @@ describe('PivotConfigSchema', () => {
       using: [{ function: 'count', expression: '*' }],
     });
     expect(result.on[0].values).toEqual([]);
+  });
+
+  it('allows at most 100 configured values per pivot field', () => {
+    const config = {
+      on: [{ field: 'category', values: Array.from({ length: 100 }, (_, index) => index) }],
+      using: [{ function: 'count', expression: '*' }],
+    };
+
+    expect(PivotConfigSchema.parse(config).on[0].values).toHaveLength(100);
+    expect(() =>
+      PivotConfigSchema.parse({
+        ...config,
+        on: [{ field: 'category', values: [...config.on[0].values, 100] }],
+      })
+    ).toThrow(z.ZodError);
   });
 
   it('defaults on.values to empty array when omitted', () => {
