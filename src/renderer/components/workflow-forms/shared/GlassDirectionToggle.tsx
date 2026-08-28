@@ -15,7 +15,7 @@ export function GlassDirectionToggle({
   className,
   variant = 'default',
 }: GlassDirectionToggleProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('sortKeys');
 
   return (
     <button

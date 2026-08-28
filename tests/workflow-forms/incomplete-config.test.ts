@@ -368,28 +368,28 @@ describe('incomplete config guards', () => {
   describe('incompleteConfigMessageKey', () => {
     it('maps each invalid operator to its i18n key', () => {
       expect(incompleteConfigMessageKey(makeNode('type_convert', {}))).toBe(
-        'data.workflow.formLabels.typeConvertIncompleteField'
+        'data.workflow.formLabels.typeConvert.typeConvertIncompleteField'
       );
       expect(incompleteConfigMessageKey(makeNode('unpivot', {}))).toBe(
-        'data.workflow.formLabels.unpivotIncompleteField'
+        'data.workflow.formLabels.unpivot.unpivotIncompleteField'
       );
       expect(incompleteConfigMessageKey(makeNode('unnest', {}))).toBe(
-        'data.workflow.formLabels.unnestIncompleteField'
+        'data.workflow.formLabels.unnest.unnestIncompleteField'
       );
       expect(incompleteConfigMessageKey(makeNode('calculate_field', {}))).toBe(
-        'data.workflow.formLabels.calculateFieldIncompleteField'
+        'data.workflow.formLabels.calculateField.calculateFieldIncompleteField'
       );
       expect(incompleteConfigMessageKey(makeNode('aggregate', {}))).toBe(
-        'data.workflow.formLabels.aggregateIncompleteField'
+        'data.workflow.formLabels.aggregate.aggregateIncompleteField'
       );
       expect(incompleteConfigMessageKey(makeNode('set_op', {}))).toBe(
-        'data.workflow.formLabels.setOpIncompleteField'
+        'data.workflow.formLabels.setOp.setOpIncompleteField'
       );
       expect(incompleteConfigMessageKey(makeNode('missing_value', {}))).toBe(
-        'data.workflow.formLabels.missingValueIncompleteField'
+        'data.workflow.formLabels.missingValue.missingValueIncompleteField'
       );
       expect(incompleteConfigMessageKey(makeNode('limit', {}))).toBe(
-        'data.workflow.formLabels.limitIncompleteField'
+        'data.workflow.formLabels.limit.limitIncompleteField'
       );
     });
 
@@ -471,17 +471,17 @@ describe('incomplete config guards', () => {
       ];
       for (const [type, config] of cases) {
         expect(incompleteConfigMessageKey(makeNode(type, config)), `operator ${type}`).toBe(
-          'data.workflow.formLabels.incompleteConfigRows'
+          'data.workflow.formLabels.common.incompleteConfigRows'
         );
       }
     });
 
     it('keeps the operator-specific message when only the required config is missing', () => {
       expect(incompleteConfigMessageKey(makeNode('type_convert', {}))).toBe(
-        'data.workflow.formLabels.typeConvertIncompleteField'
+        'data.workflow.formLabels.typeConvert.typeConvertIncompleteField'
       );
       expect(incompleteConfigMessageKey(makeNode('pivot', { using: [] }))).toBe(
-        'data.workflow.formLabels.pivotIncompleteField'
+        'data.workflow.formLabels.pivot.pivotIncompleteField'
       );
     });
 
@@ -519,7 +519,7 @@ describe('incomplete config guards', () => {
         },
       });
       expect(incompleteConfigMessageKey(node)).toBe(
-        'data.workflow.formLabels.incompleteConfigRows'
+        'data.workflow.formLabels.common.incompleteConfigRows'
       );
     });
 
@@ -540,7 +540,7 @@ describe('incomplete config guards', () => {
         orderBy: [],
       });
       expect(incompleteConfigMessageKey(node)).toBe(
-        'data.workflow.formLabels.dedupIncompleteField'
+        'data.workflow.formLabels.deduplicate.dedupIncompleteField'
       );
     });
   });

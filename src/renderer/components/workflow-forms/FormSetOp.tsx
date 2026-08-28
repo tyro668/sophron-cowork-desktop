@@ -100,7 +100,7 @@ export default function FormSetOp({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('setOp');
 
   const updateConfig = useUpdateConfig(onNodeChange);
 
@@ -173,19 +173,19 @@ export default function FormSetOp({
 
       <div className="scrollbar-hover flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto p-4">
         <div className="flex items-center gap-4">
-          <GlassFormLabel>{tr('leftInput')}</GlassFormLabel>
+          <GlassFormLabel>{tr('sources.leftInput')}</GlassFormLabel>
           <div className="flex h-7 w-72 min-w-0 items-center rounded-md border border-border-muted/70 bg-background/28 px-2">
             <span className="truncate text-[12px] text-text-primary">
-              {leftSourceLabel || tr('noLeftSource')}
+              {leftSourceLabel || tr('sources.noLeftSource')}
             </span>
           </div>
         </div>
 
         <div className="flex items-center gap-4">
-          <GlassFormLabel>{tr('rightInput')}</GlassFormLabel>
+          <GlassFormLabel>{tr('sources.rightInput')}</GlassFormLabel>
           <div className="flex h-7 w-72 min-w-0 items-center rounded-md border border-border-muted/70 bg-background/28 px-2">
             <span className="truncate text-[12px] text-text-primary">
-              {rightSourceLabel || tr('noRightSource')}
+              {rightSourceLabel || tr('sources.noRightSource')}
             </span>
           </div>
         </div>

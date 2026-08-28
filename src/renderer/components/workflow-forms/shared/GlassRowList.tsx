@@ -96,7 +96,7 @@ export function GlassRowList<T>({
   gapClassName = 'gap-2.5',
   variant = 'cards',
 }: GlassRowListProps<T>) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('rowList');
 
   function getActionLabel(action: RowAction): string {
     switch (action) {

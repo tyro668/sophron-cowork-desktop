@@ -33,7 +33,7 @@ export default function FormCalculateField({
   taskId,
   onNodeChange,
 }: OperatorFormProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('calculateField');
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
   const rawCalculations = useMemo(
@@ -50,7 +50,8 @@ export default function FormCalculateField({
 
   const storeCalculations = useCallback(
     (next: CalculationRow[]) => {
-      updateConfig(() => ({
+      updateConfig((cfg) => ({
+        ...cfg,
         calculations: next.length > 0 ? next.map(persistableCalculation) : undefined,
       }));
     },
@@ -199,7 +200,7 @@ export default function FormCalculateField({
           onChange={(expression) => updateCalculation(index, { expression })}
           fieldCompletions={fieldCompletions}
           columnTypes={columnTypes}
-          placeholder={tr('expressionPlaceholder')}
+          placeholder={tr('expression.expressionPlaceholder')}
         />
       ),
     },
@@ -225,7 +226,7 @@ export default function FormCalculateField({
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
             getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-            dragTitle={tr('dragToReorder')}
+            dragTitle={tr('rowList.dragToReorder')}
           />
         </div>
       </div>

@@ -38,7 +38,7 @@ export default function FormPivot({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('pivot');
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 
@@ -145,7 +145,7 @@ export default function FormPivot({
         key: 'fn',
         items: PIVOT_AGGREGATE_FUNCTIONS.map((f) => ({
           value: f,
-          label: tr(`aggregateFn_${f}`),
+          label: tr(`aggregateFns.${f}`),
         })),
       },
     ],
@@ -272,8 +272,8 @@ export default function FormPivot({
 
             <div className="grid grid-cols-[28px_minmax(88px,0.7fr)_minmax(0,1.5fr)_minmax(96px,0.9fr)_28px] items-center gap-2 px-3 text-[12px] font-medium text-text-muted">
               <span />
-              <span>{tr('aggregateFunction')}</span>
-              <span>{tr('expressionLabel')}</span>
+              <span>{tr('aggregateFns.aggregateFunction')}</span>
+              <span>{tr('expression.expressionLabel')}</span>
               <span>{tr('pivotSuffixLabel')}</span>
               <span />
             </div>
@@ -294,7 +294,7 @@ export default function FormPivot({
                       onDragStart={() => handleMetricDragStart(index)}
                       onDragEnd={handleMetricDragEnd}
                       className="flex h-7 w-7 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
-                      title={tr('dragToReorder')}
+                      title={tr('rowList.dragToReorder')}
                     >
                       <GripVertical className="h-4 w-4" />
                     </div>
@@ -417,7 +417,7 @@ function PivotAxisCard({
           onChange={onFieldChange}
           disabledOptions={disabledFields}
           placeholder={tr('pivotAxisFieldPlaceholder')}
-          searchPlaceholder={tr('searchField')}
+          searchPlaceholder={tr('fieldPicker.searchField')}
           className="h-7 min-w-0"
         />
         <button
@@ -622,7 +622,7 @@ function PivotValueList({
             onChange={toggleAllValues}
             className="h-3.5 w-3.5 accent-accent"
           />
-          {tr('selectAll')}
+          {tr('fieldPicker.selectAll')}
         </label>
       </div>
       {addingCustomValue && (
@@ -660,7 +660,7 @@ function PivotValueList({
         {loading && allValues.length === 0 ? (
           <div className="flex h-16 items-center justify-center gap-2 text-[12px] text-text-muted">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            {tr('loadingValues')}
+            {tr('valueInput.loadingValues')}
           </div>
         ) : error ? (
           <button

@@ -37,7 +37,7 @@ export function GlassValueInput({
   clearLabel,
   onOpen,
 }: GlassValueInputProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('valueInput');
   const [open, setOpen] = useState(false);
   const [inputText, setInputText] = useState<string>(multi ? '' : (value ?? ''));
   const ref = useRef<HTMLDivElement>(null);

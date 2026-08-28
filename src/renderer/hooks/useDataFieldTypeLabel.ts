@@ -8,10 +8,10 @@ export function useDataFieldTypeLabel() {
     (type: string | null | undefined) => {
       const raw = String(type ?? '').trim();
       if (!raw || !isDataFieldType(raw)) {
-        return t('data.workflow.formLabels.dataTypeUnknown');
+        return t('data.workflow.formLabels.common.dataTypeUnknown');
       }
       const key = 'dataType' + raw.charAt(0).toUpperCase() + raw.slice(1);
-      return t(`data.workflow.formLabels.${key}`);
+      return t(`data.workflow.formLabels.common.${key}`);
     },
     [t]
   );

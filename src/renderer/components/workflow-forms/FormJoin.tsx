@@ -187,7 +187,7 @@ function JoinKeepFieldColumn({
   onToggleField,
   onAliasChange,
 }: JoinKeepFieldColumnProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('join');
 
   const selectAllRef = useRef<HTMLInputElement>(null);
 
@@ -255,7 +255,7 @@ export default function FormJoin({
   rightSourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('join');
   const updateConfig = useUpdateConfig(onNodeChange);
 
   // Initialize default conflict config (only for non-semi/anti joins)
@@ -693,10 +693,10 @@ export default function FormJoin({
           <div className="scrollbar-hover flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
             <div className="order-1 grid gap-2 p-4">
               <div className="flex items-center gap-4">
-                <GlassFormLabel>{tr('leftInput')}</GlassFormLabel>
+                <GlassFormLabel>{tr('sources.leftInput')}</GlassFormLabel>
                 <div className="flex h-7 w-48 min-w-0 items-center rounded-md border border-border-muted/70 bg-background/28 px-2">
                   <span className="truncate text-[12px] text-text-primary">
-                    {leftSourceLabel || tr('noLeftSource')}
+                    {leftSourceLabel || tr('sources.noLeftSource')}
                   </span>
                 </div>
                 {!isSemiAnti && (
@@ -724,10 +724,10 @@ export default function FormJoin({
                 )}
               </div>
               <div className="flex items-center gap-4">
-                <GlassFormLabel>{tr('rightInput')}</GlassFormLabel>
+                <GlassFormLabel>{tr('sources.rightInput')}</GlassFormLabel>
                 <div className="flex h-7 w-48 min-w-0 items-center rounded-md border border-border-muted/70 bg-background/28 px-2">
                   <span className="truncate text-[12px] text-text-primary">
-                    {rightSourceLabel || tr('noRightSource')}
+                    {rightSourceLabel || tr('sources.noRightSource')}
                   </span>
                 </div>
                 {!isSemiAnti && !rightColumnsError && (
@@ -1081,7 +1081,7 @@ export default function FormJoin({
             <div className="scrollbar-hover flex gap-4 overflow-y-auto p-4">
               <JoinKeepFieldColumn
                 side="left"
-                title={leftSourceLabel || tr('leftInput')}
+                title={leftSourceLabel || tr('sources.leftInput')}
                 fields={fieldCompletions}
                 alias={leftAlias}
                 selected={draftLeftSel}
@@ -1094,7 +1094,7 @@ export default function FormJoin({
               />
               <JoinKeepFieldColumn
                 side="right"
-                title={rightSourceLabel || tr('rightInput')}
+                title={rightSourceLabel || tr('sources.rightInput')}
                 fields={rightRawColumns}
                 alias={rightAlias}
                 selected={draftRightSel}

@@ -35,7 +35,7 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
   itemExtras,
   columnLabel,
 }: GlassFieldMultiSelectProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('fieldPicker');
   const dataTypeLabel = useDataFieldTypeLabel();
 
   const [search, setSearch] = useState('');

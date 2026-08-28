@@ -25,7 +25,7 @@ export const GlassFieldCompactSelect = memo(function GlassFieldCompactSelect({
   itemExtras,
   columnLabel,
 }: GlassFieldCompactSelectProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('fieldPicker');
   const dataTypeLabel = useDataFieldTypeLabel();
 
   const [search, setSearch] = useState('');

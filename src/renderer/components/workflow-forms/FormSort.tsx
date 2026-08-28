@@ -20,7 +20,7 @@ export default function FormSort({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('sort');
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const keys = useMemo<SortKey[]>(() => (node.config.keys as SortKey[]) ?? [], [node.config.keys]);
@@ -104,7 +104,7 @@ export default function FormSort({
             columns={[
               {
                 flex: 'flex-[2]',
-                header: tr('sortFieldHeader'),
+                header: tr('sortKeys.sortFieldHeader'),
                 render: (key: SortKey, i) => {
                   const disabledOptions = new Set(usedFields);
                   if (key.field) disabledOptions.delete(key.field);
@@ -114,9 +114,9 @@ export default function FormSort({
                       options={fieldCompletions}
                       columnTypes={columnTypes}
                       onChange={(value) => updateKey(i, { field: value })}
-                      placeholder={tr('sortSelectField')}
-                      searchPlaceholder={tr('searchField')}
-                      emptyText={tr('noMatch')}
+                      placeholder={tr('sortKeys.sortSelectField')}
+                      searchPlaceholder={tr('fieldPicker.searchField')}
+                      emptyText={tr('fieldPicker.noMatch')}
                       disabledOptions={disabledOptions}
                       className="w-full"
                     />
@@ -125,7 +125,7 @@ export default function FormSort({
               },
               {
                 flex: 'flex-[1]',
-                header: tr('sortDirectionHeader'),
+                header: tr('sortKeys.sortDirectionHeader'),
                 align: 'center',
                 render: (key: SortKey, i) => (
                   <GlassDirectionToggle
@@ -138,7 +138,7 @@ export default function FormSort({
               },
               {
                 flex: 'flex-[1]',
-                header: tr('sortNullsHeader'),
+                header: tr('sortKeys.sortNullsHeader'),
                 render: (key: SortKey, i) => (
                   <GlassOptionSingleSelect
                     value={key.nulls ?? ''}
@@ -146,9 +146,9 @@ export default function FormSort({
                       {
                         key: 'nulls',
                         items: [
-                          { value: '', label: tr('sortNullsDefault') },
-                          { value: 'first', label: tr('sortNullsFirst') },
-                          { value: 'last', label: tr('sortNullsLast') },
+                          { value: '', label: tr('sortKeys.sortNullsDefault') },
+                          { value: 'first', label: tr('sortKeys.sortNullsFirst') },
+                          { value: 'last', label: tr('sortKeys.sortNullsLast') },
                         ],
                       },
                     ]}
@@ -164,15 +164,14 @@ export default function FormSort({
             onRemove={removeKey}
             onCopy={copyKeyAfter}
             actions={['add', 'copy', 'remove']}
-            addTitle={tr('sortAddKey')}
-            removeTitle={tr('sortRemoveKey')}
-            copyTitle={tr('fieldMappingCopy')}
+            addTitle={tr('sortKeys.sortAddKey')}
+            removeTitle={tr('sortKeys.sortRemoveKey')}
             draggable
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
             getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-            dragTitle={tr('dragToReorder')}
+            dragTitle={tr('rowList.dragToReorder')}
           />
         </div>
       </div>

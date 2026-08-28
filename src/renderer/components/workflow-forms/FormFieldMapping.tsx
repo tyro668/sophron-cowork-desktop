@@ -23,7 +23,7 @@ export default function FormFieldMapping({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('fieldMapping');
   const updateConfig = useUpdateConfig(onNodeChange);
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
 
@@ -131,8 +131,8 @@ export default function FormFieldMapping({
               columnTypes={columnTypes}
               onChange={(value) => updateMapping(i, { source: value })}
               placeholder={tr('fieldMappingSelectField')}
-              searchPlaceholder={tr('searchField')}
-              emptyText={tr('noMatch')}
+              searchPlaceholder={tr('fieldPicker.searchField')}
+              emptyText={tr('fieldPicker.noMatch')}
               disabledOptions={disabledFields}
               className="flex-1 min-w-0 h-7"
             />
@@ -215,7 +215,7 @@ export default function FormFieldMapping({
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
             getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-            dragTitle={tr('dragToReorder')}
+            dragTitle={tr('rowList.dragToReorder')}
           />
         </div>
       </div>

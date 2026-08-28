@@ -296,7 +296,7 @@ export function CalculationFunctionWizard({
               </WizardLabel>
 
               {definition.valueArgument !== 'none' && (
-                <WizardLabel text={tr('expressionFunctionArgument')}>
+                <WizardLabel text={tr('expression.expressionFunctionArgument')}>
                   <GlassFieldSingleSelect
                     value={value}
                     options={valueOptions}
@@ -408,7 +408,7 @@ export function CalculationFunctionWizard({
                     columns={[
                       {
                         flex: 'flex-[3]',
-                        header: tr('sortFieldHeader'),
+                        header: tr('sortKeys.sortFieldHeader'),
                         render: (item, index) => {
                           const disabledOptions = new Set(
                             activeOrderBy.map((entry) => entry.field).filter(Boolean)
@@ -429,7 +429,7 @@ export function CalculationFunctionWizard({
                       },
                       {
                         flex: 'flex-[1.4]',
-                        header: tr('sortDirectionHeader'),
+                        header: tr('sortKeys.sortDirectionHeader'),
                         render: (item, index) => (
                           <GlassDirectionToggle
                             value={item.direction}
@@ -441,8 +441,8 @@ export function CalculationFunctionWizard({
                     ]}
                     onAdd={addOrderField}
                     onRemove={removeOrderField}
-                    addTitle={tr('sortAddKey')}
-                    removeTitle={tr('sortRemoveKey')}
+                    addTitle={tr('sortKeys.sortAddKey')}
+                    removeTitle={tr('sortKeys.sortRemoveKey')}
                     canAct={(action) =>
                       action !== 'add' ||
                       (!(definition.frame === 'custom' && usesRangeOffset) &&
@@ -454,7 +454,7 @@ export function CalculationFunctionWizard({
                     onDragOver={handleDragOver}
                     onDragEnd={handleDragEnd}
                     getRowOpacity={(index) => !!(isDragging && dragIndexRef.current === index)}
-                    dragTitle={tr('dragToReorder')}
+                    dragTitle={tr('rowList.dragToReorder')}
                   />
                 ) : (
                   <div className="rounded-md bg-background/30 p-2 text-[11px] text-text-muted">

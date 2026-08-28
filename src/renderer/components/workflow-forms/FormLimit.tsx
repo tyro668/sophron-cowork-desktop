@@ -15,7 +15,7 @@ const TAG_CONTAINER =
   'flex h-9 min-h-9 max-w-full items-center overflow-hidden rounded-md border border-border-muted bg-background/42 focus-within:border-accent';
 
 export default function FormLimit({ node, fieldCompletions, onNodeChange }: OperatorFormProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('limit');
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const mode = (node.config.mode as string) ?? 'fixed';
@@ -155,7 +155,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
       </div>
 
       <div className="scrollbar-hover flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-        {/* 鏁伴噺 */}
+        {/* 数量 */}
         <div className="flex items-center gap-4">
           <GlassFormLabel>{isRandomMode ? tr('limitSampleSize') : tr('limitCount')}</GlassFormLabel>
           <GlassFormTextInput
@@ -168,7 +168,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
           />
         </div>
 
-        {/* 鍗曚綅 */}
+        {/* 单位 */}
         <div className="flex items-center gap-4">
           <GlassFormLabel>{tr('limitUnit')}</GlassFormLabel>
           <GlassOptionSingleSelect
@@ -214,7 +214,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
 
         {isRandomMode && (
           <>
-            {/* 閲囨牱绉嶅瓙 */}
+            {/* 采样种子 */}
             <div className="flex items-center gap-4">
               <GlassFormLabel>{tr('limitSampleSeed')}</GlassFormLabel>
               <GlassFormTextInput
@@ -226,7 +226,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                 className="h-8 rounded-md px-2 text-[12px] w-60"
               />
             </div>
-            {/* 閲囨牱鏂瑰紡 */}
+            {/* 采样方式 */}
             {!isRows && (
               <div className="flex items-center gap-4">
                 <GlassFormLabel>{tr('limitSampleMethod')}</GlassFormLabel>
@@ -258,7 +258,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
         {/* 限制取样：排序 + TIES */}
         {isFixedMode && (
           <>
-            {/* 鎺掑簭瀛楁 */}
+            {/* 排序字段 */}
             <div className="flex items-center gap-4">
               <GlassFormLabel>{tr('limitSortHeader')}</GlassFormLabel>
               <div className="w-72 min-w-0 relative">
@@ -268,7 +268,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                       type="button"
                       onClick={() => updateConfig((cfg) => ({ ...cfg, orderBy: undefined }))}
                       className="ml-1 inline-flex flex-shrink-0 items-center justify-center self-stretch rounded px-1 text-text-muted hover:text-error hover:bg-error/10 transition-colors"
-                      title={tr('clearAll')}
+                      title={tr('fieldPicker.clearAll')}
                     >
                       <Trash2 className="h-3 w-3" />
                     </button>
@@ -284,7 +284,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                           type="button"
                           onClick={() => toggleSortDirection(k.field)}
                           className="text-[11px] leading-none px-0.5 hover:text-text-primary rounded"
-                          title={k.direction === 'asc' ? tr('asc') : tr('desc')}
+                          title={k.direction === 'asc' ? tr('sortKeys.asc') : tr('sortKeys.desc')}
                         >
                           {k.direction === 'asc' ? '↑' : '↓'}
                         </button>

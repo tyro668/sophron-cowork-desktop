@@ -14,7 +14,7 @@ export default function FormUnnest({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('unnest');
   const updateConfig = useUpdateConfig(onNodeChange);
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
 

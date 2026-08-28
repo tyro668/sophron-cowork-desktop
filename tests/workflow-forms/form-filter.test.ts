@@ -1124,7 +1124,7 @@ describe('FormFilter — UI source inspection', () => {
     expect(html).toContain('role="alert"');
     expect(html).toContain('Invalid filter condition segment');
     expect(html).toMatch(
-      /<button(?![^>]*disabled)[^>]*>[\s\S]*?data\.workflow\.formLabels\.filterAddCondition[\s\S]*?<\/button>/
+      /<button(?![^>]*disabled)[^>]*>[\s\S]*?data\.workflow\.formLabels\.filter\.filterAddCondition[\s\S]*?<\/button>/
     );
   });
 
@@ -1378,7 +1378,9 @@ describe('FormFilter — empty-config run is blocked', () => {
     };
 
     expect(getOperatorConfigIssue(node)).toEqual({ code: 'filter_incomplete_field' });
-    expect(incompleteConfigMessageKey(node)).toBe('data.workflow.formLabels.filterIncompleteField');
+    expect(incompleteConfigMessageKey(node)).toBe(
+      'data.workflow.formLabels.filter.filterIncompleteField'
+    );
   });
 });
 

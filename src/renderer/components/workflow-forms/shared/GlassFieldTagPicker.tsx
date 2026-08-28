@@ -42,7 +42,7 @@ export function GlassFieldTagPicker({
   tagClassName = '',
   listClassName = '',
 }: GlassFieldTagPickerProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('fieldPicker');
 
   return (
     <div className={`grid min-w-0 gap-0 ${className}`}>

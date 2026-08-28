@@ -79,7 +79,7 @@ export default function FormMissingValue({
   onNodeChange,
 }: OperatorFormProps) {
   const { t } = useTranslation();
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('missingValue');
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const strategy = (node.config.strategy as string) ?? 'by_column';
@@ -261,15 +261,15 @@ export default function FormMissingValue({
 
   const description = useMemo(() => {
     const cols = rowColumns;
-    const colList = cols.length > 0 ? cols.join('、') : undefined;
+    const colList = cols.length > 0 ? cols.join(tr('missingColListSeparator')) : undefined;
     if (rowCondition === 'all_null') {
       if (colList) {
-        return tr('missingDescAllNullWithCols').replace('{{cols}}', colList);
+        return tr('missingDescAllNullWithCols', { cols: colList });
       }
       return tr('missingDescAllNullNoCols');
     }
     if (colList) {
-      return tr('missingDescAnyNullWithCols').replace('{{cols}}', colList);
+      return tr('missingDescAnyNullWithCols', { cols: colList });
     }
     return tr('missingDescAnyNullNoCols');
   }, [rowCondition, rowColumns, tr]);
@@ -357,7 +357,7 @@ export default function FormMissingValue({
                             method: methodOk ? item.method : (methods[0]?.value ?? 'skip'),
                           });
                         }}
-                        placeholder={tr('selectField')}
+                        placeholder={tr('fieldPicker.selectField')}
                         className="h-7 w-full"
                       />
                     ),
@@ -469,7 +469,7 @@ export default function FormMissingValue({
                 onCopy={(i) => copyRule(i)}
                 onRemove={(i) => removeRule(i)}
                 addTitle={tr('missingAddRow')}
-                copyTitle={tr('copyRow')}
+                copyTitle={tr('rowList.copyRow')}
                 removeTitle={tr('missingRemoveRow')}
                 canAct={(action: RowAction) => {
                   if (action === 'add' || action === 'copy') {

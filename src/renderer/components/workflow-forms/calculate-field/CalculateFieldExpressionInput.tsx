@@ -15,7 +15,7 @@ export function CalculateFieldExpressionInput({
   columnTypes,
   ...expressionInputProps
 }: CalculateFieldExpressionInputProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('calculateField');
   const assistantPanel = useMemo<ExpressionAssistantPanel>(
     () => ({
       openLabel: tr('calcFieldOpenWizard'),

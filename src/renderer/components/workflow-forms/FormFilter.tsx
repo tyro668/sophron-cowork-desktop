@@ -250,7 +250,7 @@ function ConditionLeafRow({
               ctx.updateLeaf(leaf.id, { field: v, op: nextOp });
             }}
             placeholder={ctx.tr('filterFieldPlaceholder')}
-            emptyText={ctx.tr('noMatch')}
+            emptyText={ctx.tr('fieldPicker.noMatch')}
             className="h-7 w-full"
           />
         </div>
@@ -279,8 +279,8 @@ function ConditionLeafRow({
                 placeholder={ctx.tr('filterValuesPlaceholder')}
                 className="!w-full"
                 addLabel={ctx.tr('filterAddValue')}
-                noSuggestionsLabel={ctx.tr('noSuggestions')}
-                clearLabel={ctx.tr('filterClearValues')}
+                noSuggestionsLabel={ctx.tr('valueInput.noSuggestions')}
+                clearLabel={ctx.tr('valueInput.filterClearValues')}
                 onOpen={() => ctx.fetchColumnValues(leaf.field)}
               />
             ) : (
@@ -457,7 +457,7 @@ export default function FormFilter({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('filter');
 
   // ── Config sync ────────────────────────────────────────────────────
 

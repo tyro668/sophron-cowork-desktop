@@ -18,7 +18,7 @@ export default function FormFieldSelect({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('fieldSelect');
   const dataTypeLabel = useDataFieldTypeLabel();
 
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
@@ -138,7 +138,7 @@ export default function FormFieldSelect({
               type="text"
               value={rightSearch}
               onChange={(event) => setRightSearch(event.target.value)}
-              placeholder={tr('searchField')}
+              placeholder={tr('fieldPicker.searchField')}
               className="h-7 min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-secondary"
             />
             <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary hover:text-text-primary">
@@ -156,19 +156,20 @@ export default function FormFieldSelect({
                 }}
                 className="h-3.5 w-3.5 accent-accent"
               />
-              {tr('selectAll')}
+              {tr('fieldPicker.selectAll')}
             </label>
             <span className="text-[12px] text-text-secondary">
-              {tr('fieldSelectCount')
-                .replace('{{n}}', String(columns.length))
-                .replace('{{total}}', String(fieldCompletions.length))}
+              {tr('fieldSelectCount', {
+                n: String(columns.length),
+                total: String(fieldCompletions.length),
+              })}
             </span>
           </div>
 
           <div className="scrollbar-hover mt-2 flex-1 min-h-0 overflow-y-auto">
             {visibleFields.length === 0 ? (
               <div className="flex h-full items-center justify-center text-[12px] text-text-muted">
-                {rightSearch ? tr('noMatch') : tr('noFields')}
+                {rightSearch ? tr('fieldPicker.noMatch') : tr('fieldPicker.noFields')}
               </div>
             ) : (
               <GlassRowList
@@ -188,12 +189,12 @@ export default function FormFieldSelect({
                   const field = visibleFields[i];
                   return !!(isDragging && dragIndexRef.current === orderedFields.indexOf(field));
                 }}
-                dragTitle={tr('dragToReorder')}
+                dragTitle={tr('rowList.dragToReorder')}
                 actions={['toTop', 'toBottom']}
                 onToTop={(i) => moveToTop(visibleFields[i])}
                 onToBottom={(i) => moveToBottom(visibleFields[i])}
-                toTopTitle={tr('toTop')}
-                toBottomTitle={tr('toBottom')}
+                toTopTitle={tr('rowList.toTop')}
+                toBottomTitle={tr('rowList.toBottom')}
                 canAct={(action: RowAction, i) => {
                   const field = visibleFields[i];
                   if (action === 'toTop') return orderedFields[0] !== field;

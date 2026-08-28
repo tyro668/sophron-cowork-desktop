@@ -47,7 +47,9 @@ function LazyOperatorForm({
   if (!loader || !LazyComponent) {
     return (
       <div className="flex items-center justify-center py-8 text-[13px] text-text-muted">
-        {t('data.workflow.formLabels.noFormSupport', { defaultValue: '该算子暂不支持图形化配置' })}
+        {t('data.workflow.formLabels.common.noFormSupport', {
+          defaultValue: '该算子暂不支持图形化配置',
+        })}
       </div>
     );
   }
@@ -80,7 +82,7 @@ export function OperatorFormWrapper(props: OperatorFormWrapperProps) {
   if (!hasOperatorForm(props.node.type)) {
     return (
       <div className="px-1 py-2 text-center text-[12px] text-text-muted">
-        {t('data.workflow.formLabels.noFormSupportHint', {
+        {t('data.workflow.formLabels.common.noFormSupportHint', {
           defaultValue: '该算子暂不支持图形化配置，请切换到 DSL 模式',
         })}
       </div>

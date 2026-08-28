@@ -269,7 +269,9 @@ export function GlassFieldSingleSelect({
               {filteredOptions.length === 0 ? (
                 <div className="px-2.5 py-4 text-center text-[12px] text-text-muted">
                   {emptyText ||
-                    t('data.workflow.formLabels.noMatch', { defaultValue: '无匹配字段' })}
+                    t('data.workflow.formLabels.fieldPicker.noMatch', {
+                      defaultValue: '无匹配字段',
+                    })}
                 </div>
               ) : (
                 filteredOptions.map((opt, idx) => {

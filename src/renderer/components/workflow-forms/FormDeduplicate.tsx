@@ -23,7 +23,7 @@ export default function FormDeduplicate({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('deduplicate');
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 
@@ -47,7 +47,7 @@ export default function FormDeduplicate({
     (next: SortKey[]) => {
       updateConfig((cfg) => ({
         ...cfg,
-        orderBy: next,
+        orderBy: next.length > 0 ? next : undefined,
       }));
     },
     [updateConfig]
@@ -151,7 +151,7 @@ export default function FormDeduplicate({
                   className="flex h-9 flex-none items-center gap-1.5 rounded-lg border border-accent px-3 text-[12px] font-medium text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Plus className="h-3.5 w-3.5" />
-                  {tr('sortAddKey')}
+                  {tr('sortKeys.sortAddKey')}
                 </button>
               </div>
               {/* ── 保留策略 ── */}
@@ -169,9 +169,9 @@ export default function FormDeduplicate({
               {/* ── 排序设置 ── */}
               <div className="grid grid-cols-[28px_minmax(0,1.5fr)_minmax(88px,0.8fr)_minmax(96px,0.9fr)_28px] items-center gap-2 px-3 text-[12px] font-medium text-text-muted">
                 <span />
-                <span>{tr('sortFieldHeader')}</span>
-                <span>{tr('sortDirectionHeader')}</span>
-                <span>{tr('sortNullsHeader')}</span>
+                <span>{tr('sortKeys.sortFieldHeader')}</span>
+                <span>{tr('sortKeys.sortDirectionHeader')}</span>
+                <span>{tr('sortKeys.sortNullsHeader')}</span>
                 <span />
               </div>
 
@@ -193,7 +193,7 @@ export default function FormDeduplicate({
                         onDragStart={() => handleDragStart(index)}
                         onDragEnd={handleDragEnd}
                         className="flex h-7 w-7 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
-                        title={tr('dragToReorder')}
+                        title={tr('rowList.dragToReorder')}
                       >
                         <GripVertical className="h-4 w-4" />
                       </div>
@@ -202,9 +202,9 @@ export default function FormDeduplicate({
                         options={fieldCompletions}
                         columnTypes={columnTypes}
                         onChange={(value) => updateSortKey(index, { field: value })}
-                        placeholder={tr('sortSelectField')}
-                        searchPlaceholder={tr('searchField')}
-                        emptyText={tr('noMatch')}
+                        placeholder={tr('sortKeys.sortSelectField')}
+                        searchPlaceholder={tr('fieldPicker.searchField')}
+                        emptyText={tr('fieldPicker.noMatch')}
                         disabledOptions={disabledSortFields}
                         className="w-full"
                       />
@@ -220,9 +220,9 @@ export default function FormDeduplicate({
                           {
                             key: 'nulls',
                             items: [
-                              { value: '', label: tr('sortNullsDefault') },
-                              { value: 'first', label: tr('sortNullsFirst') },
-                              { value: 'last', label: tr('sortNullsLast') },
+                              { value: '', label: tr('sortKeys.sortNullsDefault') },
+                              { value: 'first', label: tr('sortKeys.sortNullsFirst') },
+                              { value: 'last', label: tr('sortKeys.sortNullsLast') },
                             ],
                           },
                         ]}
@@ -237,8 +237,8 @@ export default function FormDeduplicate({
                         type="button"
                         onClick={() => removeSortKey(index)}
                         className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error"
-                        title={tr('filterDeleteCondition')}
-                        aria-label={tr('filterDeleteCondition')}
+                        title={tr('rowList.removeRow')}
+                        aria-label={tr('rowList.removeRow')}
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>

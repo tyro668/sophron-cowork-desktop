@@ -41,7 +41,7 @@ export default function FormAggregate({
   taskId,
   onNodeChange,
 }: OperatorFormProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('aggregate');
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 
@@ -65,7 +65,7 @@ export default function FormAggregate({
         key: 'default',
         items: AGGREGATE_FUNCTIONS.map((f) => ({
           value: f,
-          label: tr('aggregateFn_' + f),
+          label: tr('aggregateFns.' + f),
         })),
       },
     ],
@@ -179,7 +179,7 @@ export default function FormAggregate({
                 if (gran && isTemporalDataFieldType(columnTypes[col])) {
                   const opt = GRANULARITY_OPTIONS.find((o) => o.value === gran);
                   const label = opt ? tr(opt.labelKey) : gran;
-                  return `${col}（${label}）`;
+                  return tr('aggregateFieldWithGranularity', { field: col, granularity: label });
                 }
                 return col;
               }}
@@ -242,8 +242,8 @@ export default function FormAggregate({
 
             <div className="grid grid-cols-[28px_minmax(88px,0.7fr)_minmax(0,1.5fr)_minmax(96px,0.9fr)_28px] items-center gap-2 px-3 text-[12px] font-medium text-text-muted">
               <span />
-              <span>{tr('aggregateFunction')}</span>
-              <span>{tr('expressionLabel')}</span>
+              <span>{tr('aggregateFns.aggregateFunction')}</span>
+              <span>{tr('expression.expressionLabel')}</span>
               <span>{tr('aggregateAlias')}</span>
               <span />
             </div>
@@ -264,7 +264,7 @@ export default function FormAggregate({
                       onDragStart={() => handleDragStart(index)}
                       onDragEnd={handleDragEnd}
                       className="flex h-7 w-7 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
-                      title={tr('dragToReorder')}
+                      title={tr('rowList.dragToReorder')}
                     >
                       <GripVertical className="h-4 w-4" />
                     </div>
