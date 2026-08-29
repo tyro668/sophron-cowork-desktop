@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
@@ -58,9 +58,13 @@ export default function FormCalculateField({
     [updateConfig]
   );
 
+  // Guard against self-echo: our own config writes must not be re-normalized
+  // back into local state while the user is editing a row.
+  const localUpdateRef = useRef(false);
   const changeCalculations = useCallback(
     (next: CalculationRow[]) => {
       setCalculations(next);
+      localUpdateRef.current = true;
       storeCalculations(next);
     },
     [storeCalculations]
@@ -81,6 +85,10 @@ export default function FormCalculateField({
   }, [calculations, isDragging, resetDrag]);
 
   useEffect(() => {
+    if (localUpdateRef.current) {
+      localUpdateRef.current = false;
+      return;
+    }
     const normalized = normalizeCalculationEntries(rawCalculations, fieldCompletions);
     setCalculations(normalized);
   }, [fieldCompletions, rawCalculations]);
@@ -213,6 +221,7 @@ export default function FormCalculateField({
           <GlassRowList
             headerClassName=""
             items={visibleCalculations}
+            getKey={(item) => item.id}
             columns={columns}
             actions={['add', 'copy', 'remove']}
             onAdd={addCalculation}

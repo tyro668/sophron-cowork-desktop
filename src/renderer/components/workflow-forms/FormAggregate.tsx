@@ -11,7 +11,7 @@ import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTyp
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { isTemporalDataFieldType } from '../../../shared/data-field-types';
-import { AGGREGATE_FUNCTIONS } from '../../../shared/operator-schemas/common';
+import { AGGREGATE_FUNCTIONS, createMetricId } from '../../../shared/operator-schemas/common';
 import {
   retainSelectedDateGranularity,
   setDateGranularity,
@@ -19,11 +19,20 @@ import {
 } from '../../../shared/operator-config';
 import type { AggregateFunction, MetricEntry } from '../../../shared/operator-schemas';
 
-const EMPTY_METRIC: Readonly<MetricEntry> = {
+const EMPTY_METRIC: Readonly<Omit<MetricEntry, 'id'>> = {
   function: 'count',
   expression: '',
   alias: '',
 };
+
+function createEmptyMetric(): MetricEntry {
+  return { ...EMPTY_METRIC, id: createMetricId() };
+}
+
+/** Backfill stable row ids so React keys survive row removal and reordering. */
+function withMetricIds(items: MetricEntry[]): MetricEntry[] {
+  return items.map((item) => (item.id ? item : { ...item, id: createMetricId() }));
+}
 
 const GRANULARITY_OPTIONS = [
   { value: '', labelKey: 'granularityNone' },
@@ -55,7 +64,7 @@ export default function FormAggregate({
     [node.config.metrics]
   );
   const metrics = useMemo(
-    () => (rawMetrics.length > 0 ? rawMetrics : [{ ...EMPTY_METRIC }]),
+    () => (rawMetrics.length > 0 ? rawMetrics : [createEmptyMetric()]),
     [rawMetrics]
   );
 
@@ -108,7 +117,7 @@ export default function FormAggregate({
     (items: MetricEntry[]) => {
       updateConfig((cfg) => ({
         ...cfg,
-        metrics: items.length > 0 ? items : undefined,
+        metrics: items.length > 0 ? withMetricIds(items) : undefined,
       }));
     },
     [updateConfig]
@@ -122,7 +131,7 @@ export default function FormAggregate({
     if (activeMetrics.some((metric) => !metric.expression)) return;
     handleMetricsChange([
       ...activeMetrics.slice(0, index + 1),
-      { ...EMPTY_METRIC },
+      createEmptyMetric(),
       ...activeMetrics.slice(index + 1),
     ]);
   }
@@ -253,7 +262,7 @@ export default function FormAggregate({
                 const dragging = isDragging && dragIndexRef.current === index;
                 return (
                   <div
-                    key={index}
+                    key={metric.id ?? `metric-${index}`}
                     onDragOver={(event) => handleDragOver(event, index)}
                     className={`grid min-h-10 grid-cols-[28px_minmax(88px,0.7fr)_minmax(0,1.5fr)_minmax(96px,0.9fr)_28px] items-center gap-2 rounded-lg border border-border-muted bg-background px-3 py-1.5 transition-opacity ${
                       dragging ? 'opacity-50' : ''

@@ -65,8 +65,19 @@ export const PivotFunctionSchema = z.enum(PIVOT_AGGREGATE_FUNCTIONS);
 
 const MAX_METRIC_EXPRESSION_LENGTH = 10_000;
 const MAX_METRIC_ALIAS_LENGTH = 256;
+export const MAX_METRIC_ID_LENGTH = 64;
 
+export function createMetricId(): string {
+  const globalCrypto = globalThis.crypto;
+  if (globalCrypto && typeof globalCrypto.randomUUID === 'function') {
+    return globalCrypto.randomUUID();
+  }
+  return `metric_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// id 仅为前端行标识（稳定 React key），DSL 导出只读取 function/expression/alias。
 export const MetricEntrySchema = z.object({
+  id: z.string().max(MAX_METRIC_ID_LENGTH).optional(),
   function: AggregateFunctionSchema,
   expression: z.string().trim().min(1).max(MAX_METRIC_EXPRESSION_LENGTH),
   alias: z.string().trim().min(1).max(MAX_METRIC_ALIAS_LENGTH),

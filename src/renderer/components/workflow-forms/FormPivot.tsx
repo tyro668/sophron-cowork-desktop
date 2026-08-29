@@ -23,13 +23,22 @@ import {
 } from '../../../shared/operator-config';
 import { MAX_PIVOT_VALUES_PER_FIELD } from '../../../shared/operator-schemas';
 import type { PivotAxisEntry, PivotLiteral, PivotMetric } from '../../../shared/operator-schemas';
-import { PIVOT_AGGREGATE_FUNCTIONS } from '../../../shared/operator-schemas';
+import { PIVOT_AGGREGATE_FUNCTIONS, createMetricId } from '../../../shared/operator-schemas';
 
-const EMPTY_METRIC: Readonly<PivotMetric> = {
+const EMPTY_METRIC: Readonly<Omit<PivotMetric, 'id'>> = {
   function: 'count',
   expression: '',
   alias: '',
 };
+
+function createEmptyMetric(): PivotMetric {
+  return { ...EMPTY_METRIC, id: createMetricId() };
+}
+
+/** Backfill stable row ids so React keys survive row removal and reordering. */
+function withMetricIds(items: PivotMetric[]): PivotMetric[] {
+  return items.map((item) => (item.id ? item : { ...item, id: createMetricId() }));
+}
 
 export default function FormPivot({
   node,
@@ -45,7 +54,7 @@ export default function FormPivot({
   const axes = useMemo(() => normalizePivotAxes(node.config.on), [node.config.on]);
 
   const rawUsing = useMemo(() => (node.config.using as PivotMetric[]) ?? [], [node.config?.using]);
-  const using = useMemo(() => (rawUsing.length > 0 ? rawUsing : [{ ...EMPTY_METRIC }]), [rawUsing]);
+  const using = useMemo(() => (rawUsing.length > 0 ? rawUsing : [createEmptyMetric()]), [rawUsing]);
   const groupBy = useMemo(() => (node.config.groupBy as string[]) ?? [], [node.config?.groupBy]);
 
   const handleAxesChange = useCallback(
@@ -104,7 +113,7 @@ export default function FormPivot({
     (items: PivotMetric[]) => {
       updateConfig((cfg) => ({
         ...cfg,
-        using: items.length > 0 ? items : undefined,
+        using: items.length > 0 ? withMetricIds(items) : undefined,
       }));
     },
     [updateConfig]
@@ -118,7 +127,7 @@ export default function FormPivot({
     if (using.some((metric) => !metric.expression)) return;
     handleUsingChange([
       ...using.slice(0, index + 1),
-      { ...EMPTY_METRIC },
+      createEmptyMetric(),
       ...using.slice(index + 1),
     ]);
   }
@@ -283,7 +292,7 @@ export default function FormPivot({
                 const dragging = isMetricDragging && metricDragIndexRef.current === index;
                 return (
                   <div
-                    key={index}
+                    key={metric.id ?? `metric-${index}`}
                     onDragOver={(event) => handleMetricDragOver(event, index)}
                     className={`grid min-h-10 grid-cols-[28px_minmax(88px,0.7fr)_minmax(0,1.5fr)_minmax(96px,0.9fr)_28px] items-center gap-2 rounded-lg border border-border-muted bg-background px-3 py-1.5 transition-opacity ${
                       dragging ? 'opacity-50' : ''
