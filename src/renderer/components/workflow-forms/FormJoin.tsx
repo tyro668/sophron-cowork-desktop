@@ -12,9 +12,12 @@ import { parseDuration } from '@/shared/operator-schemas/join';
 import type { DurationParts, JoinCondition, KeepItem } from '@/shared/operator-schemas';
 import {
   createJoinKeepDraft,
+  JOIN_CONFLICT_DEFAULTS,
   qualifyJoinField,
+  readJoinUiConfig,
   serializeJoinKeepDraft,
   summarizeJoinKeep,
+  updateJoinAsof,
   updateJoinDurationPart,
 } from '@/shared/operator-config';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
@@ -24,11 +27,6 @@ import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTyp
 export type ConditionEntry = JoinCondition;
 
 const DEFAULT_CONDITION: ConditionEntry = { left: '', operator: '=', right: '' };
-const DEFAULT_JOIN_CONFLICT = {
-  strategy: 'suffix',
-  leftSuffix: '_left',
-  rightSuffix: '_right',
-} as const;
 
 const OPERATOR_KEYS = [
   { value: '=', key: 'operatorEq' },
@@ -260,37 +258,25 @@ export default function FormJoin({
 
   // Initialize default conflict config (only for non-semi/anti joins)
   useEffect(() => {
-    const jt = (node.config.joinType as string) ?? 'left';
-    if (jt !== 'semi' && jt !== 'anti' && !node.config.conflict) {
+    const { joinType: currentJoinType } = readJoinUiConfig(node.config);
+    if (currentJoinType !== 'semi' && currentJoinType !== 'anti' && !node.config.conflict) {
       updateConfig((cfg) => ({
         ...cfg,
-        conflict: { ...DEFAULT_JOIN_CONFLICT },
+        conflict: { ...JOIN_CONFLICT_DEFAULTS },
       }));
     }
-  }, [node.config.conflict, node.config.joinType, updateConfig]);
+  }, [node.config.conflict, node.config.joinType, node.config, updateConfig]);
 
-  const joinType = (node.config.joinType as string) ?? 'left';
-  const conditions = useMemo(
-    () => (node.config.conditions as ConditionEntry[]) ?? [DEFAULT_CONDITION],
-    [node.config.conditions]
-  );
-  const conflict = useMemo(
-    () => (node.config.conflict as Record<string, unknown>) ?? {},
-    [node.config.conflict]
-  );
-  const conflictStrategy = (conflict.strategy as string) ?? 'suffix';
-  const rightPrefix = useMemo(() => {
-    const raw = (conflict.rightPrefix as string) ?? '';
-    return conflictStrategy === 'right_prefix' ? raw || 'right_' : raw;
-  }, [conflict, conflictStrategy]);
-  const keepItems = useMemo(() => (node.config.keep as KeepItem[]) ?? [], [node.config.keep]);
+  const ui = useMemo(() => readJoinUiConfig(node.config), [node.config]);
+  const { joinType, keep: keepItems } = ui;
+  const { strategy: conflictStrategy, rightPrefix } = ui.conflict;
+  const { operator: asofOperator, tolerance: toleranceVal } = ui.asof;
+  const conditions = ui.conditions.length > 0 ? ui.conditions : [DEFAULT_CONDITION];
 
   // ASOF
-  const asof = (node.config.asof as Record<string, unknown>) ?? {};
-  const asofLeftTime = (asof.leftTime as string) ?? '';
-  const asofOperator = (asof.operator as string) ?? '>=';
-  const asofRightTime = (asof.rightTime as string) ?? '';
-  const asofBy = useMemo(() => (asof.by as ConditionEntry[]) ?? [], [asof.by]);
+  const asofLeftTime = ui.asof.leftTime;
+  const asofRightTime = ui.asof.rightTime;
+  const asofBy = ui.asof.by;
   const displayedAsofBy = useMemo(
     () => (asofBy.length > 0 ? asofBy : [DEFAULT_CONDITION]),
     [asofBy]
@@ -300,16 +286,14 @@ export default function FormJoin({
   const needsConditions = joinType !== 'cross';
   const isSemiAnti = joinType === 'semi' || joinType === 'anti';
 
-  const toleranceVal = (asof.tolerance as string) ?? '';
   const durationParts = useMemo(() => parseDuration(toleranceVal), [toleranceVal]);
 
   function handleDurationChange(part: keyof DurationParts, val: number) {
     updateConfig((cfg) => ({
       ...cfg,
-      asof: {
-        ...((cfg.asof as Record<string, unknown>) ?? {}),
+      asof: updateJoinAsof(cfg.asof, {
         tolerance: updateJoinDurationPart(toleranceVal, part, val),
-      },
+      }),
     }));
   }
 
@@ -454,7 +438,7 @@ export default function FormJoin({
       conflict:
         value === 'semi' || value === 'anti'
           ? undefined
-          : (cfg.conflict ?? { ...DEFAULT_JOIN_CONFLICT }),
+          : (cfg.conflict ?? { ...JOIN_CONFLICT_DEFAULTS }),
     }));
   }
 
@@ -622,10 +606,7 @@ export default function FormJoin({
   function handleAsofByChange(next: ConditionEntry[]) {
     updateConfig((cfg) => ({
       ...cfg,
-      asof: {
-        ...((cfg.asof as Record<string, unknown>) ?? {}),
-        by: next.length > 0 ? next : undefined,
-      },
+      asof: updateJoinAsof(cfg.asof, { by: next.length > 0 ? next : undefined }),
     }));
   }
 
@@ -796,7 +777,7 @@ export default function FormJoin({
                 {tr('joinConditionsHeader')}
               </div>
 
-              {rightSourceLabel && rightColumnsError && !isAsof && (
+              {rightSourceLabel && rightColumnsError && (
                 <div className="text-[11px] text-warning px-0.5">{tr('rightColumnsFailed')}</div>
               )}
 
@@ -811,10 +792,7 @@ export default function FormJoin({
                         onChange={(v) =>
                           updateConfig((cfg) => ({
                             ...cfg,
-                            asof: {
-                              ...((cfg.asof as Record<string, unknown>) ?? {}),
-                              leftTime: v || undefined,
-                            },
+                            asof: updateJoinAsof(cfg.asof, { leftTime: v || undefined }),
                           }))
                         }
                         placeholder={tr('leftTimeCol')}
@@ -837,10 +815,7 @@ export default function FormJoin({
                         onChange={(v) =>
                           updateConfig((cfg) => ({
                             ...cfg,
-                            asof: {
-                              ...((cfg.asof as Record<string, unknown>) ?? {}),
-                              operator: v,
-                            },
+                            asof: updateJoinAsof(cfg.asof, { operator: v }),
                           }))
                         }
                         variant="highlight"
@@ -855,10 +830,7 @@ export default function FormJoin({
                         onChange={(v) =>
                           updateConfig((cfg) => ({
                             ...cfg,
-                            asof: {
-                              ...((cfg.asof as Record<string, unknown>) ?? {}),
-                              rightTime: v || undefined,
-                            },
+                            asof: updateJoinAsof(cfg.asof, { rightTime: v || undefined }),
                           }))
                         }
                         placeholder={tr('rightTimeCol')}

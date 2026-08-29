@@ -1,6 +1,11 @@
 import type { KeepItem } from '../operator-schemas';
 import { parseFieldRef } from '../prep-dsl/syntax/fields';
-import { normalizeDuration, parseDuration, type DurationParts } from '../operator-schemas/join';
+import {
+  normalizeDuration,
+  parseDuration,
+  type DurationParts,
+  type JoinCondition,
+} from '../operator-schemas/join';
 
 const DURATION_PART_MS: Record<keyof DurationParts, number> = {
   d: 86_400_000,
@@ -148,4 +153,83 @@ export function summarizeJoinKeep(
     selected: keepsAllFields ? totalFields : selectedItems.length,
     renamed: selectedItems.filter((item) => Boolean(item.alias)).length,
   };
+}
+
+export interface JoinConflictUi {
+  strategy: string;
+  leftSuffix: string;
+  rightSuffix: string;
+  rightPrefix: string;
+}
+
+export interface JoinAsofUi {
+  leftTime: string;
+  operator: string;
+  rightTime: string;
+  by: JoinCondition[];
+  tolerance: string;
+}
+
+export interface JoinUiConfig {
+  joinType: string;
+  conditions: JoinCondition[];
+  conflict: JoinConflictUi;
+  keep: KeepItem[];
+  asof: JoinAsofUi;
+}
+
+export const JOIN_CONFLICT_DEFAULTS: JoinConflictUi = {
+  strategy: 'suffix',
+  leftSuffix: '_left',
+  rightSuffix: '_right',
+  rightPrefix: 'right_',
+};
+
+function asString(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+}
+
+/** Single read-side normalizer for the join form: fills display defaults and
+ *  removes the per-field `as` casts that used to live in the component. */
+export function readJoinUiConfig(config: Record<string, unknown> | undefined): JoinUiConfig {
+  const cfg = config ?? {};
+  const joinType = asString(cfg.joinType, 'left');
+  const conflictRaw = asRecord(cfg.conflict);
+  const strategy = asString(conflictRaw.strategy, JOIN_CONFLICT_DEFAULTS.strategy);
+  const rightPrefixRaw = asString(conflictRaw.rightPrefix);
+  const conflict: JoinConflictUi = {
+    strategy,
+    leftSuffix: asString(conflictRaw.leftSuffix, JOIN_CONFLICT_DEFAULTS.leftSuffix),
+    rightSuffix: asString(conflictRaw.rightSuffix, JOIN_CONFLICT_DEFAULTS.rightSuffix),
+    rightPrefix:
+      strategy === 'right_prefix'
+        ? rightPrefixRaw || JOIN_CONFLICT_DEFAULTS.rightPrefix
+        : rightPrefixRaw,
+  };
+  const asofRaw = asRecord(cfg.asof);
+  return {
+    joinType,
+    conditions: Array.isArray(cfg.conditions) ? (cfg.conditions as JoinCondition[]) : [],
+    conflict,
+    keep: Array.isArray(cfg.keep) ? (cfg.keep as KeepItem[]) : [],
+    asof: {
+      leftTime: asString(asofRaw.leftTime),
+      operator: asString(asofRaw.operator, '>='),
+      rightTime: asString(asofRaw.rightTime),
+      by: Array.isArray(asofRaw.by) ? (asofRaw.by as JoinCondition[]) : [],
+      tolerance: asString(asofRaw.tolerance),
+    },
+  };
+}
+
+/** Merge an asof patch into the raw `asof` config object. */
+export function updateJoinAsof(
+  existing: unknown,
+  patch: Record<string, unknown>
+): Record<string, unknown> {
+  return { ...asRecord(existing), ...patch };
 }

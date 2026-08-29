@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readJoinUiConfig, JOIN_CONFLICT_DEFAULTS } from '../../src/shared/operator-config';
 import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
 import type { PrepOperatorAst, PrepOperatorType } from '../../src/shared/prep-dsl';
 
@@ -503,5 +504,38 @@ describe('operator forms — DSL generation stability', () => {
       config: parsed.operator!.config,
     });
     expect(dsl2).toBe(dsl1);
+  });
+});
+
+// ── join config read-side normalization ──────────────────────────────────
+
+describe('readJoinUiConfig', () => {
+  it('fills display defaults for an empty config', () => {
+    const ui = readJoinUiConfig({});
+    expect(ui.joinType).toBe('left');
+    expect(ui.conditions).toEqual([]);
+    expect(ui.conflict.strategy).toBe('suffix');
+    expect(ui.asof.operator).toBe('>=');
+    expect(ui.asof.by).toEqual([]);
+  });
+
+  it('fills the right prefix default only for right_prefix strategy', () => {
+    expect(readJoinUiConfig({ conflict: { strategy: 'right_prefix' } }).conflict.rightPrefix).toBe(
+      'right_'
+    );
+    expect(readJoinUiConfig({ conflict: { strategy: 'suffix' } }).conflict.rightPrefix).toBe('');
+    expect(JOIN_CONFLICT_DEFAULTS.leftSuffix).toBe('_left');
+  });
+
+  it('passes through configured values untouched', () => {
+    const ui = readJoinUiConfig({
+      joinType: 'asof',
+      conditions: [{ left: 'a', operator: '=', right: 'b' }],
+      asof: { leftTime: 't1', operator: 'nearest', rightTime: 't2', tolerance: '5m' },
+    });
+    expect(ui.joinType).toBe('asof');
+    expect(ui.conditions).toEqual([{ left: 'a', operator: '=', right: 'b' }]);
+    expect(ui.asof.operator).toBe('nearest');
+    expect(ui.asof.tolerance).toBe('5m');
   });
 });
