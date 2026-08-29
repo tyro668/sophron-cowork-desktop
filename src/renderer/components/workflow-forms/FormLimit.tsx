@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Trash2, X, ChevronDown } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
@@ -7,6 +7,7 @@ import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
+import { useClickOutside } from '../../hooks/useClickOutside';
 import { parseNonNegativeInteger } from '../../../shared/operator-config';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import type { SortKey } from '../../../shared/operator-schemas';
@@ -31,6 +32,8 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
   const [localOffset, setLocalOffset] = useState(offset != null ? String(offset) : '');
   const [localSeed, setLocalSeed] = useState(seed != null ? String(seed) : '');
   const [sortOpen, setSortOpen] = useState(false);
+  const sortPickerRef = useRef<HTMLDivElement>(null);
+  useClickOutside(sortPickerRef, () => setSortOpen(false));
 
   useEffect(() => {
     setLocalLimit(limit != null ? String(limit) : '');
@@ -261,7 +264,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
             {/* 排序字段 */}
             <div className="flex items-center gap-4">
               <GlassFormLabel>{tr('limitSortHeader')}</GlassFormLabel>
-              <div className="w-72 min-w-0 relative">
+              <div className="w-72 min-w-0 relative" ref={sortPickerRef}>
                 <div className={`${TAG_CONTAINER} ${sortOpen ? 'rounded-b-none' : ''}`}>
                   {sortFields.length > 0 && (
                     <button
@@ -302,14 +305,12 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
                       type="text"
                       readOnly
                       placeholder={!sortFields.length ? tr('limitSortPlaceholder') : ''}
-                      onFocus={() => setSortOpen(true)}
-                      onBlur={() => setTimeout(() => setSortOpen(false), 150)}
+                      onClick={() => setSortOpen(true)}
                       className="h-5 min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted cursor-pointer"
                     />
                   </div>
                   <button
                     type="button"
-                    onMouseDown={(e) => e.preventDefault()}
                     onClick={() => setSortOpen((o) => !o)}
                     className={`flex w-7 flex-shrink-0 items-center justify-center self-stretch border-l border-border-muted text-text-muted transition-colors hover:text-text-secondary ${
                       sortOpen ? 'rounded-br-none' : 'rounded-r-md'

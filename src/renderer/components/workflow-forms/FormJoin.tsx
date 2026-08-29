@@ -265,7 +265,7 @@ export default function FormJoin({
         conflict: { ...JOIN_CONFLICT_DEFAULTS },
       }));
     }
-  }, [node.config.conflict, node.config.joinType, node.config, updateConfig]);
+  }, [node.config, updateConfig]);
 
   const ui = useMemo(() => readJoinUiConfig(node.config), [node.config]);
   const { joinType, keep: keepItems } = ui;
@@ -448,6 +448,16 @@ export default function FormJoin({
 
   // Keep-field edits stay local until the user confirms the dialog.
   const [keepDialogOpen, setKeepDialogOpen] = useState(false);
+
+  // Escape closes the keep-fields dialog without applying the draft selection.
+  useEffect(() => {
+    if (!keepDialogOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setKeepDialogOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [keepDialogOpen]);
   const [draftLeftWildcard, setDraftLeftWildcard] = useState(false);
   const [draftRightWildcard, setDraftRightWildcard] = useState(false);
   const [draftLeftSel, setDraftLeftSel] = useState(new Set<string>());
@@ -1040,11 +1050,15 @@ export default function FormJoin({
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/28 px-4 py-6"
           role="dialog"
           aria-modal="true"
-          onMouseDown={(e) => {
+          onClick={(e) => {
             if (e.target === e.currentTarget) cancelKeep();
           }}
         >
-          <div className="flex max-h-full w-[680px] flex-col rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl">
+          <div
+            autoFocus
+            tabIndex={-1}
+            className="flex max-h-full w-[680px] flex-col rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl outline-none"
+          >
             <div className="flex items-center justify-between border-b border-border-muted/50 px-4 py-3">
               <h3 className="text-[13px] font-semibold text-text-primary">
                 {tr('selectKeepFields')}

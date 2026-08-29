@@ -461,6 +461,20 @@ function WorkflowOperatorDslDialog({
     (diagnostic) => diagnostic.severity === 'error'
   );
 
+  // Escape cancels the DSL edit (same as the Cancel button); disabled while a
+  // run is in progress, matching the dialog's action buttons. Escapes already
+  // consumed by the editor (e.g. dismissing the autocomplete popup) must not
+  // close the dialog.
+  useEffect(() => {
+    if (!isRunningOperatorDsl) {
+      const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+        if (event.key === 'Escape' && !event.defaultPrevented) onClose();
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [isRunningOperatorDsl, onClose]);
+
   return (
     <div className="operator-ui fixed inset-0 z-50 flex items-center justify-center bg-[#163526]/16 px-4 py-6 dark:bg-black/50">
       <div className="flex h-[42rem] max-h-[calc(100vh-3rem)] w-[72rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl">
