@@ -227,20 +227,20 @@ describe('FormDeduplicate — 组件结构检查', () => {
     expect(src).toContain('keep');
   });
 
-  it('排序区域包含拖拽手柄', () => {
-    expect(src).toContain('draggable');
-    expect(src).toContain('GripVertical');
-  });
-
-  it('排序字段支持 NULL 位置配置', () => {
-    expect(src).toContain('GlassOptionSingleSelect');
-    expect(src).toContain("value: 'first'");
-    expect(src).toContain("value: 'last'");
-  });
-
-  it('每行排序可添加和删除', () => {
-    expect(src).toContain('addSortKeyAfter');
-    expect(src).toContain('removeSortKey');
+  it('排序区域使用共享 SortKeysEditor（含拖拽、NULL 位置、行级增删）', () => {
+    expect(src).toContain('SortKeysEditor');
+    // 能力断言转移到共享组件源码
+    const editorSrc = readFileSync(
+      resolve(__dirname, '../../src/renderer/components/workflow-forms/shared/SortKeysEditor.tsx'),
+      'utf-8'
+    );
+    expect(editorSrc).toContain('draggable');
+    expect(editorSrc).toContain('GlassOptionSingleSelect');
+    expect(editorSrc).toContain("value: 'first'");
+    expect(editorSrc).toContain("value: 'last'");
+    expect(editorSrc).toContain('addKeyAfter');
+    expect(editorSrc).toContain('removeKey');
+    expect(editorSrc).toContain('GlassDirectionToggle');
   });
 
   it('字段列表支持搜索和类型显示', () => {
@@ -268,7 +268,13 @@ describe('FormDeduplicate — 组件结构检查', () => {
   });
 
   it('排序默认为升序', () => {
-    expect(src).toContain('GlassDirectionToggle');
+    // GlassDirectionToggle 与升序默认值都在共享 SortKeysEditor 中
+    const editorSrc = readFileSync(
+      resolve(__dirname, '../../src/renderer/components/workflow-forms/shared/SortKeysEditor.tsx'),
+      'utf-8'
+    );
+    expect(editorSrc).toContain('GlassDirectionToggle');
+    expect(editorSrc).toContain("direction: 'asc'");
   });
 
   it('默认保留策略为 first', () => {
