@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, Loader2, Trash2, X } from 'lucide-react';
+import { AlertCircle, ChevronDown, Loader2, Trash2, X } from 'lucide-react';
 import { useClickOutside } from '../../../hooks/useClickOutside';
 import { useFormTranslation } from '../../../hooks/useFormTranslation';
 import { splitInValues, joinInValues } from '../../../../shared/filter-condition';
@@ -9,6 +9,9 @@ interface GlassValueInputProps {
   values?: string[];
   suggestions: string[];
   isLoading?: boolean;
+  /** Distinct-value lookup failed; renders a retry row instead of "no match". */
+  error?: boolean;
+  onRetry?: () => void;
   disabled?: boolean;
   onChange?: (value: string) => void;
   onValuesChange?: (values: string[]) => void;
@@ -26,6 +29,8 @@ export function GlassValueInput({
   values,
   suggestions,
   isLoading = false,
+  error = false,
+  onRetry,
   disabled,
   onChange,
   onValuesChange,
@@ -253,14 +258,26 @@ export function GlassValueInput({
               </span>
             </button>
           )}
-          {filtered.length === 0 && (!multi || !inputText) && (
-            <div className="px-3 py-3 text-center text-[12px] text-text-muted">
-              {multi
-                ? (noSuggestionsLabel ?? tr('noSuggestions'))
-                : isLoading
-                  ? tr('loadingValues')
-                  : tr('noMatchValue')}
-            </div>
+          {error && !isLoading && onRetry ? (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="flex h-9 w-full items-center justify-center gap-1.5 px-3 text-[12px] text-error outline-none transition-colors hover:bg-error/5"
+            >
+              <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+              {tr('loadFailed')}
+            </button>
+          ) : (
+            filtered.length === 0 &&
+            (!multi || !inputText) && (
+              <div className="px-3 py-3 text-center text-[12px] text-text-muted">
+                {multi
+                  ? (noSuggestionsLabel ?? tr('noSuggestions'))
+                  : isLoading
+                    ? tr('loadingValues')
+                    : tr('noMatchValue')}
+              </div>
+            )
           )}
         </div>
       )}

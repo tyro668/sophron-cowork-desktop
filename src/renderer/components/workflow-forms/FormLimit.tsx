@@ -48,7 +48,7 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
     const clamped = String(n);
     if (clamped !== value) setLocalLimit(clamped);
     setErrors(runValidation(n, unit));
-    updateConfig((cfg) => ({ ...cfg, limit: n > 0 ? n : 0 }));
+    updateConfig((cfg) => ({ ...cfg, limit: n }));
   }
 
   function pushOffset(value: string) {

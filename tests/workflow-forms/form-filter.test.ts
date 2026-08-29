@@ -25,6 +25,9 @@ import {
   wrapItemsInGroup,
   unwrapGroup,
   createEmptyLeaf,
+  firstValidFilterOp,
+  normalizeFilterConditionOps,
+  validFilterOpsForType,
   splitInValues,
   joinInValues,
   MAX_NESTING_DEPTH,
@@ -1098,6 +1101,11 @@ const formFilterSource = fs.readFileSync(
   'utf8'
 );
 
+const filterOpsSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/shared/filter-condition/ops.ts'),
+  'utf8'
+);
+
 describe('FormFilter — UI source inspection', () => {
   it('renders parser failures while keeping the graphical add action available', () => {
     const node: DataWorkflowNode = {
@@ -1266,9 +1274,9 @@ describe('FormFilter — UI source inspection', () => {
 
   it('resets the operator to a value valid for the new field type on field switch', () => {
     expect(formFilterSource).toMatch(
-      /newValidOps = flattenOps\(operatorsForType\(ctx\.columnTypes\[v\]\)\)\.map\(/
+      /const nextOp = validFilterOpsForType\(ctx\.columnTypes\[v\]\)\.includes\(leaf\.op\)/
     );
-    expect(formFilterSource).toMatch(/newValidOps\.includes\(leaf\.op\) \? leaf\.op : '='/);
+    expect(formFilterSource).toMatch(/: firstValidFilterOp\(ctx\.columnTypes\[v\]\);/);
     expect(formFilterSource).not.toMatch(/updateLeaf\(leaf\.id, \{ field: v, op: effectiveOp \}\)/);
   });
 
@@ -1295,8 +1303,9 @@ describe('FormFilter — UI source inspection', () => {
   });
 
   it('offers is null / is not null operators and hides the value input for them', () => {
-    expect(formFilterSource).toContain("value: 'is null'");
-    expect(formFilterSource).toContain("value: 'is not null'");
+    // op values live in shared/filter-condition/ops since the type-compatibility refactor
+    expect(filterOpsSource).toContain("value: 'is null'");
+    expect(filterOpsSource).toContain("value: 'is not null'");
     expect(formFilterSource).toMatch(
       /isNullOp = effectiveOp === 'is null' \|\| effectiveOp === 'is not null'/
     );
@@ -1408,5 +1417,62 @@ describe('Filter — null operator i18n keys', () => {
     expect(flat).toContain('filterOpIsNotNull');
     expect(flat).toContain('noMatchValue');
     expect(flat).toContain('loadingValues');
+  });
+});
+
+// ── Op/type compatibility + normalization (shared/filter-condition/ops) ──
+
+describe('filter op type compatibility', () => {
+  it('restricts text columns to string-safe operators', () => {
+    const ops = validFilterOpsForType('text');
+    expect(ops).toContain('=');
+    expect(ops).toContain('like');
+    expect(ops).toContain('begin');
+    expect(ops).not.toContain('>');
+    expect(ops).not.toContain('between');
+  });
+
+  it('restricts boolean columns to equality and null checks', () => {
+    expect(validFilterOpsForType('boolean')).toEqual(['=', 'is null', 'is not null']);
+  });
+
+  it('allows the full operator set for unknown and numeric types', () => {
+    for (const type of [undefined, 'integer', 'decimal'] as const) {
+      const ops = validFilterOpsForType(type as string | undefined);
+      expect(ops).toContain('between');
+      expect(ops).toContain('>');
+    }
+  });
+
+  it('normalizes ops that the column type no longer supports', () => {
+    const branch = {
+      kind: 'branch',
+      id: 'b',
+      connective: 'and',
+      items: [
+        { kind: 'leaf', id: 'l1', field: 'amount', op: 'like', val1: '', val2: '' },
+        { kind: 'leaf', id: 'l2', field: 'name', op: 'like', val1: 'x', val2: '' },
+      ],
+    } as unknown as FilterConditionBranch;
+    const { next, changed } = normalizeFilterConditionOps(branch, {
+      amount: 'integer',
+      name: 'text',
+    });
+    expect(changed).toBe(true);
+    const leaves = next.items.filter(isLeaf);
+    expect(leaves.find((l) => l.id === 'l1')?.op).toBe(firstValidFilterOp('integer'));
+    expect(leaves.find((l) => l.id === 'l2')?.op).toBe('like');
+  });
+
+  it('leaves the tree untouched when every op is valid', () => {
+    const branch = {
+      kind: 'branch',
+      id: 'b',
+      connective: 'and',
+      items: [{ kind: 'leaf', id: 'l1', field: 'name', op: 'like', val1: '', val2: '' }],
+    } as unknown as FilterConditionBranch;
+    const { next, changed } = normalizeFilterConditionOps(branch, { name: 'text' });
+    expect(changed).toBe(false);
+    expect(next).toBe(branch);
   });
 });

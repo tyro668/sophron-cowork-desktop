@@ -4,15 +4,14 @@ import type { OperatorFormProps } from './index';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassValueInput } from './shared/GlassValueInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
-import {
-  isNumericDataFieldType,
-  isTemporalDataFieldType,
-  normalizeDataFieldType,
-} from '../../../shared/data-field-types';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import {
+  filterOpGroupsForType,
+  firstValidFilterOp,
+  normalizeFilterConditionOps,
+  validFilterOpsForType,
   buildFilterConditionTree,
   parseEditableFilterCondition,
   isLeaf,
@@ -34,145 +33,8 @@ import {
 
 // ── Operator definitions ──────────────────────────────────────────────
 
-type OpDef = { labelKey: string; value: string };
-type OpGroup = { groupKey: string; items: OpDef[] };
-
-const ALL_OP_GROUPS: OpGroup[] = [
-  {
-    groupKey: 'filterGroupCompare',
-    items: [
-      { labelKey: 'filterOpEq', value: '=' },
-      { labelKey: 'filterOpNeq', value: '!=' },
-    ],
-  },
-  {
-    groupKey: 'filterGroupRange',
-    items: [
-      { labelKey: 'filterOpGt', value: '>' },
-      { labelKey: 'filterOpLt', value: '<' },
-      { labelKey: 'filterOpGte', value: '>=' },
-      { labelKey: 'filterOpLte', value: '<=' },
-      { labelKey: 'filterOpBetween', value: 'between' },
-    ],
-  },
-  {
-    groupKey: 'filterGroupSet',
-    items: [
-      { labelKey: 'filterOpIn', value: 'in' },
-      { labelKey: 'filterOpNotIn', value: 'not in' },
-    ],
-  },
-  {
-    groupKey: 'filterGroupNull',
-    items: [
-      { labelKey: 'filterOpIsNull', value: 'is null' },
-      { labelKey: 'filterOpIsNotNull', value: 'is not null' },
-    ],
-  },
-];
-
-const STRING_OP_GROUPS: OpGroup[] = [
-  {
-    groupKey: 'filterGroupCompare',
-    items: [
-      { labelKey: 'filterOpEq', value: '=' },
-      { labelKey: 'filterOpNeq', value: '!=' },
-    ],
-  },
-  {
-    groupKey: 'filterGroupMatch',
-    items: [
-      { labelKey: 'filterOpLike', value: 'like' },
-      { labelKey: 'filterOpNotLike', value: 'not like' },
-      { labelKey: 'filterOpMatches', value: 'matches' },
-      { labelKey: 'filterOpNotMatches', value: 'not matches' },
-    ],
-  },
-  {
-    groupKey: 'filterGroupBoundary',
-    items: [
-      { labelKey: 'filterOpBegin', value: 'begin' },
-      { labelKey: 'filterOpEnd', value: 'end' },
-    ],
-  },
-  {
-    groupKey: 'filterGroupSet',
-    items: [
-      { labelKey: 'filterOpIn', value: 'in' },
-      { labelKey: 'filterOpNotIn', value: 'not in' },
-    ],
-  },
-  {
-    groupKey: 'filterGroupNull',
-    items: [
-      { labelKey: 'filterOpIsNull', value: 'is null' },
-      { labelKey: 'filterOpIsNotNull', value: 'is not null' },
-    ],
-  },
-];
-
-const BOOLEAN_OP_GROUPS: OpGroup[] = [
-  {
-    groupKey: 'filterGroupCompare',
-    items: [{ labelKey: 'filterOpEq', value: '=' }],
-  },
-  {
-    groupKey: 'filterGroupNull',
-    items: [
-      { labelKey: 'filterOpIsNull', value: 'is null' },
-      { labelKey: 'filterOpIsNotNull', value: 'is not null' },
-    ],
-  },
-];
-
-const TEMPORAL_OP_GROUPS: OpGroup[] = [
-  {
-    groupKey: 'filterGroupCompare',
-    items: [
-      { labelKey: 'filterOpEq', value: '=' },
-      { labelKey: 'filterOpNeq', value: '!=' },
-    ],
-  },
-  {
-    groupKey: 'filterGroupRange',
-    items: [
-      { labelKey: 'filterDateGt', value: '>' },
-      { labelKey: 'filterDateLt', value: '<' },
-      { labelKey: 'filterDateLte', value: '<=' },
-      { labelKey: 'filterDateGte', value: '>=' },
-      { labelKey: 'filterOpBetween', value: 'between' },
-    ],
-  },
-  {
-    groupKey: 'filterGroupSet',
-    items: [
-      { labelKey: 'filterOpIn', value: 'in' },
-      { labelKey: 'filterOpNotIn', value: 'not in' },
-    ],
-  },
-  {
-    groupKey: 'filterGroupNull',
-    items: [
-      { labelKey: 'filterOpIsNull', value: 'is null' },
-      { labelKey: 'filterOpIsNotNull', value: 'is not null' },
-    ],
-  },
-];
-
-function operatorsForType(colType: string | undefined): OpGroup[] {
-  if (!colType) return ALL_OP_GROUPS;
-  const type = normalizeDataFieldType(colType);
-  if (isNumericDataFieldType(type)) return ALL_OP_GROUPS;
-  if (type === 'text') return STRING_OP_GROUPS;
-  if (isTemporalDataFieldType(type)) return TEMPORAL_OP_GROUPS;
-  if (type === 'boolean') return BOOLEAN_OP_GROUPS;
-  return ALL_OP_GROUPS;
-}
-
-/** Flatten groups to a plain OpDef array for validation lookups. */
-function flattenOps(groups: OpGroup[]): OpDef[] {
-  return groups.flatMap((g) => g.items);
-}
+// Op values, grouping, and type compatibility live in shared/filter-condition/ops;
+// the component only resolves i18n labels for them.
 
 // ── Condition Leaf Row ────────────────────────────────────────────────
 
@@ -180,8 +42,10 @@ interface LeafRowContext {
   columnTypes: Record<string, string>;
   columnValues: Record<string, string[]>;
   loadingValues: Record<string, boolean>;
+  columnValuesError: Record<string, boolean>;
   fieldCompletions: string[];
   fetchColumnValues: (colName: string) => void;
+  retryColumnValues: (colName: string) => void;
   updateLeaf: (leafId: string, patch: Partial<FilterConditionLeaf>) => void;
   removeNode: (nodeId: string) => void;
   addWithConnective: (
@@ -212,23 +76,23 @@ function ConditionLeafRow({
 }) {
   const { tr } = ctx;
   const colType = ctx.columnTypes[leaf.field];
-  const opGroups = useMemo(() => operatorsForType(colType), [colType]);
+  const opGroups = useMemo(() => filterOpGroupsForType(colType), [colType]);
   const opGroupsTranslated = useMemo(
     () =>
       opGroups.map((g) => ({
-        key: g.groupKey,
-        items: g.items.map((o) => ({ value: o.value, label: tr(o.labelKey) })),
+        key: g.key,
+        items: g.items.map((item) => ({ value: item.value, label: tr(item.labelKey) })),
       })),
     [opGroups, tr]
   );
-  const allOps = flattenOps(opGroups);
-  const validOps = allOps.map((o) => o.value);
-  const effectiveOp = validOps.includes(leaf.op) ? leaf.op : (allOps[0]?.value ?? '=');
+  const validOps = useMemo(() => validFilterOpsForType(colType), [colType]);
+  const effectiveOp = validOps.includes(leaf.op) ? leaf.op : firstValidFilterOp(colType);
   const isBetween = effectiveOp === 'between';
   const isMultiValue = effectiveOp === 'in' || effectiveOp === 'not in';
   const isNullOp = effectiveOp === 'is null' || effectiveOp === 'is not null';
   const colVals = ctx.columnValues[leaf.field] ?? [];
   const isValsLoading = ctx.loadingValues[leaf.field] ?? false;
+  const isValsError = ctx.columnValuesError[leaf.field] ?? false;
   const canAddAnd = parentConnective === 'and' || depth < MAX_NESTING_DEPTH;
   const canAddOr = parentConnective === 'or' || depth < MAX_NESTING_DEPTH;
 
@@ -243,10 +107,9 @@ function ConditionLeafRow({
             columnTypes={ctx.columnTypes}
             onChange={(v) => {
               ctx.fetchColumnValues(v);
-              const newValidOps = flattenOps(operatorsForType(ctx.columnTypes[v])).map(
-                (o) => o.value
-              );
-              const nextOp = newValidOps.includes(leaf.op) ? leaf.op : '=';
+              const nextOp = validFilterOpsForType(ctx.columnTypes[v]).includes(leaf.op)
+                ? leaf.op
+                : firstValidFilterOp(ctx.columnTypes[v]);
               ctx.updateLeaf(leaf.id, { field: v, op: nextOp });
             }}
             placeholder={ctx.tr('filterFieldPlaceholder')}
@@ -273,6 +136,8 @@ function ConditionLeafRow({
                 values={leaf.values ?? splitInValues(leaf.val1)}
                 suggestions={colVals}
                 isLoading={isValsLoading}
+                error={isValsError}
+                onRetry={() => ctx.retryColumnValues(leaf.field)}
                 onValuesChange={(values) =>
                   ctx.updateLeaf(leaf.id, { values, val1: joinInValues(values) })
                 }
@@ -288,6 +153,8 @@ function ConditionLeafRow({
                 value={leaf.val1}
                 suggestions={colVals}
                 isLoading={isValsLoading}
+                error={isValsError}
+                onRetry={() => ctx.retryColumnValues(leaf.field)}
                 onChange={(v) => ctx.updateLeaf(leaf.id, { val1: v })}
                 placeholder={ctx.tr('filterValuePlaceholder')}
                 className="!w-full"
@@ -304,6 +171,8 @@ function ConditionLeafRow({
                 value={leaf.val2}
                 suggestions={colVals}
                 isLoading={isValsLoading}
+                error={isValsError}
+                onRetry={() => ctx.retryColumnValues(leaf.field)}
                 onChange={(v) => ctx.updateLeaf(leaf.id, { val2: v })}
                 placeholder={ctx.tr('filterValue2Placeholder')}
                 className="!w-full"
@@ -505,6 +374,7 @@ export default function FormFilter({
   }, [columnTypes]);
   const [columnValues, setColumnValues] = useState<Record<string, string[]>>({});
   const [loadingValues, setLoadingValues] = useState<Record<string, boolean>>({});
+  const [columnValuesError, setColumnValuesError] = useState<Record<string, boolean>>({});
 
   const fetchColumnValues = useCallback(
     (colName: string) => {
@@ -526,12 +396,37 @@ export default function FormFilter({
           setLoadingValues((prev) => ({ ...prev, [colName]: false }));
         })
         .catch(() => {
-          setColumnValues((prev) => ({ ...prev, [colName]: [] }));
+          setColumnValuesError((prev) => ({ ...prev, [colName]: true }));
           setLoadingValues((prev) => ({ ...prev, [colName]: false }));
         });
     },
     [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config, columnValues, loadingValues]
   );
+
+  const retryColumnValues = useCallback(
+    (colName: string) => {
+      setColumnValuesError((prev) => ({ ...prev, [colName]: false }));
+      fetchColumnValues(colName);
+    },
+    [fetchColumnValues]
+  );
+
+  // Ops configured against one column type may become invalid once the column
+  // types resolve (DSL imports, upstream schema changes). Write the corrected
+  // op back instead of displaying an operator the config does not hold.
+  useEffect(() => {
+    if (Object.keys(columnTypes).length === 0) return;
+    setRoot((prev) => {
+      const { next, changed } = normalizeFilterConditionOps(prev, columnTypes);
+      if (!changed) return prev;
+      localUpdateRef.current = true;
+      updateConfig((cfg) => ({
+        ...cfg,
+        condition: buildFilterConditionTree(next, columnTypesRef.current),
+      }));
+      return next;
+    });
+  }, [columnTypes, updateConfig]);
 
   // ── Tree mutation handlers ──────────────────────────────────────────
 
@@ -672,8 +567,10 @@ export default function FormFilter({
       columnTypes,
       columnValues,
       loadingValues,
+      columnValuesError,
       fieldCompletions,
       fetchColumnValues,
+      retryColumnValues,
       updateLeaf,
       removeNode,
       addWithConnective,
@@ -683,8 +580,10 @@ export default function FormFilter({
       columnTypes,
       columnValues,
       loadingValues,
+      columnValuesError,
       fieldCompletions,
       fetchColumnValues,
+      retryColumnValues,
       updateLeaf,
       removeNode,
       addWithConnective,
