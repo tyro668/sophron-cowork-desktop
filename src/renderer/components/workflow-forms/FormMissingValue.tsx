@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
@@ -18,7 +18,10 @@ import {
   validateMissingValueInput,
   validateMissingValueListInput,
 } from '../../../shared/missing-value-values';
-import { methodsForMissingValueType } from '../../../shared/operator-config';
+import {
+  methodsForMissingValueType,
+  normalizeMissingValueMethods,
+} from '../../../shared/operator-config';
 import type {
   MissingValueMethod,
   MissingValueRule,
@@ -99,7 +102,6 @@ export default function FormMissingValue({
 
   const [showFieldPicker, setShowFieldPicker] = useState(true);
   const [valueDrafts, setValueDrafts] = useState<Record<string, string>>({});
-  const removingRef = useRef(false);
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const handleRulesChange = useCallback(
     (items: MissingValueRule[]) => {
@@ -122,6 +124,16 @@ export default function FormMissingValue({
   useEffect(() => {
     if (!isDragging) resetDrag();
   }, [rules, isDragging, resetDrag]);
+
+  // A rule's method may become invalid once the column types resolve (DSL
+  // imports, upstream schema changes). Write the corrected method back instead
+  // of displaying a method the config does not hold.
+  useEffect(() => {
+    if (Object.keys(columnTypes).length === 0) return;
+    const { rules: next, changed } = normalizeMissingValueMethods(rules, columnTypes);
+    if (!changed) return;
+    handleRulesChange(next);
+  }, [columnTypes, rules, handleRulesChange]);
 
   function setRowMode(condition: 'all_null' | 'any_null') {
     updateConfig((cfg) => {
@@ -172,8 +184,6 @@ export default function FormMissingValue({
 
   const removeRowColumn = useCallback(
     (col: string) => {
-      if (removingRef.current) return;
-      removingRef.current = true;
       updateConfig((cfg) => {
         const next = ((cfg.columns as string[]) ?? []).filter((c) => c !== col);
         const condition =
@@ -195,9 +205,6 @@ export default function FormMissingValue({
           condition,
           columns: next.length > 0 ? next : undefined,
         };
-      });
-      requestAnimationFrame(() => {
-        removingRef.current = false;
       });
     },
     [updateConfig]
@@ -331,6 +338,7 @@ export default function FormMissingValue({
             <div className="scrollbar-hover flex flex-1 flex-col gap-2 overflow-y-auto pr-1">
               <GlassRowList
                 items={activeRules}
+                getKey={(item, index) => item.id ?? `rule-${index}`}
                 columns={[
                   {
                     flex: 'flex-[2]',

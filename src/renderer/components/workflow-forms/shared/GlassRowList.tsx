@@ -42,6 +42,9 @@ interface GlassRowListProps<T> {
   canAct?: (action: RowAction, index: number) => boolean;
   renderExtraActions?: (index: number) => ReactNode;
   draggable?: boolean;
+  /** Stable React key per row; required whenever rows carry internal state
+   *  (e.g. expression editors) and can be removed or reordered. */
+  getKey?: (item: T, index: number) => string;
   onDragStart?: (index: number) => void;
   onDragOver?: (e: React.DragEvent, index: number) => void;
   onDragEnd?: () => void;
@@ -91,6 +94,7 @@ export function GlassRowList<T>({
   onDragEnd,
   getRowOpacity,
   dragTitle,
+  getKey,
   hideHeader,
   headerClassName,
   gapClassName = 'gap-2.5',
@@ -153,7 +157,7 @@ export function GlassRowList<T>({
         const isLast = index === items.length - 1;
         return (
           <div
-            key={index}
+            key={getKey ? getKey(item, index) : index}
             className={`flex min-h-10 items-center gap-1 px-3 py-1.5 ${
               variant === 'table'
                 ? `border-border-muted ${isLast ? '' : 'border-b'} ${

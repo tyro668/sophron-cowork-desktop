@@ -1117,7 +1117,8 @@
           "noMatchValue": "无匹配值",
           "loadingValues": "加载中…",
           "noSuggestions": "暂无建议值",
-          "filterClearValues": "清空输入框"
+          "filterClearValues": "清空输入框",
+          "loadFailed": "加载失败，点击重试"
         },
         "sources": {
           "rightInput": "右表",

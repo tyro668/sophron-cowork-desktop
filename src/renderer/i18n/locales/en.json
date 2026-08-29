@@ -1117,7 +1117,8 @@
           "noMatchValue": "No matching values",
           "loadingValues": "Loading…",
           "noSuggestions": "No suggestions",
-          "filterClearValues": "Clear input"
+          "filterClearValues": "Clear input",
+          "loadFailed": "Failed to load. Click to retry"
         },
         "sources": {
           "rightInput": "Right table",
