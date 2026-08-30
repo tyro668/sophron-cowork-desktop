@@ -5,7 +5,7 @@ import { ChevronDown, Search } from 'lucide-react';
 import { dataFieldTypeLabel } from '@/shared/data-field-types';
 import { useDataFieldTypeLabel } from '../../../hooks/useDataFieldTypeLabel';
 import { parseFieldRef } from '@/shared/prep-dsl/parser';
-import { useDropdown } from '../../../hooks/useDropdown';
+import { computeDropdownPlacement, useDropdown } from '../../../hooks/useDropdown';
 import { DataTypeIcon } from './DataTypeIcon';
 
 function extractFieldName(value: string): string {
@@ -97,14 +97,15 @@ export function GlassFieldSingleSelect({
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
     const contentWidth = calcMaxOptionWidth(options, columnTypes);
+    const placement = computeDropdownPlacement(rect);
+    setMaxHeight(placement.maxHeight);
     setPosition({
       left: rect.left,
-      top: rect.bottom + 2,
+      top: placement.top,
+      bottom: placement.bottom,
       width: rect.width,
       minWidth: Math.max(rect.width, contentWidth),
     });
-    const spaceBelow = window.innerHeight - rect.bottom - 4;
-    setMaxHeight(Math.min(240, Math.max(100, spaceBelow)));
   }, [options, columnTypes, triggerRef, setPosition, setMaxHeight]);
 
   const handleClose = useCallback(() => {
@@ -113,6 +114,9 @@ export function GlassFieldSingleSelect({
   }, [close]);
 
   const handleOpen = useCallback(() => {
+    // The hook's outside-click/resize close bypasses handleClose, so stale
+    // search text must be cleared here to avoid reopening with a hidden filter.
+    setSearch('');
     updatePosition();
     setOpen(true);
   }, [updatePosition, setOpen]);
@@ -126,13 +130,6 @@ export function GlassFieldSingleSelect({
     },
     [disabledOptions, onChange, handleClose, triggerRef]
   );
-
-  // Close on window resize to avoid stale positioning
-  useEffect(() => {
-    if (!open) return;
-    window.addEventListener('resize', handleClose);
-    return () => window.removeEventListener('resize', handleClose);
-  }, [open, handleClose]);
 
   // Focus search input on open
   useEffect(() => {
@@ -246,7 +243,8 @@ export function GlassFieldSingleSelect({
             aria-label={placeholder}
             style={{
               left: position.left,
-              top: position.top,
+              top: position.top ?? undefined,
+              bottom: position.bottom ?? undefined,
               width: position.width,
               minWidth: position.minWidth,
               maxHeight,

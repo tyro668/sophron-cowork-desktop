@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
-import { useDropdown } from '../../../hooks/useDropdown';
+import { computeDropdownPlacement, useDropdown } from '../../../hooks/useDropdown';
 
 function flattenItems(groups: GlassOptionGroup[]): GlassOptionItem[] {
   const result: GlassOptionItem[] = [];
@@ -70,16 +70,12 @@ export function GlassOptionSingleSelect({
   const updatePosition = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const spaceBelow = window.innerHeight - rect.bottom - 4;
-    const spaceAbove = rect.top - 4;
-    const MIN_DROP = 140;
-    const preferDown = spaceBelow >= MIN_DROP;
-    const maxAvail = Math.min(240, Math.max(100, preferDown ? spaceBelow : spaceAbove));
-    setMaxHeight(maxAvail);
+    const placement = computeDropdownPlacement(rect);
+    setMaxHeight(placement.maxHeight);
     setPosition({
       left: rect.left,
-      top: preferDown ? rect.bottom + 2 : undefined,
-      bottom: preferDown ? undefined : window.innerHeight - rect.top + 2,
+      top: placement.top,
+      bottom: placement.bottom,
       width: rect.width,
     });
   }, [triggerRef, setPosition, setMaxHeight]);
