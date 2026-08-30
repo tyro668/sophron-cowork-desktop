@@ -9,17 +9,18 @@ import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { toggleSelectAll } from '../../../shared/collections/selection';
 import { isTemporalDataFieldType } from '@/shared/data-field-types';
 import { parseDuration } from '@/shared/operator-schemas/join';
-import type { DurationParts, JoinCondition, KeepItem } from '@/shared/operator-schemas';
+import type { DurationParts, JoinCondition } from '@/shared/operator-schemas';
 import {
+  buildJoinConflictConfig,
   createJoinKeepDraft,
   JOIN_CONFLICT_DEFAULTS,
   qualifyJoinField,
   readJoinUiConfig,
   serializeJoinKeepDraft,
-  summarizeJoinKeep,
   updateJoinAsof,
   updateJoinDurationPart,
 } from '@/shared/operator-config';
+import type { JoinConflictUi } from '@/shared/operator-config';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
@@ -227,15 +228,18 @@ function JoinKeepFieldColumn({
                 />
                 <span className="truncate">{field}</span>
               </label>
-              {isChecked && (
-                <input
-                  type="text"
-                  value={fieldAlias}
-                  onChange={(event) => onAliasChange(qualifiedField, event.target.value)}
-                  placeholder={field}
-                  className="h-5 w-28 shrink-0 rounded border border-border-muted/50 bg-background/30 px-1.5 text-[11px] text-text-primary outline-none placeholder:text-text-muted/50 focus:border-accent"
-                />
-              )}
+              {/* Always mounted (hidden when unchecked) so toggling selection
+                  does not change the row height or resize the dialog. */}
+              <input
+                type="text"
+                value={fieldAlias}
+                onChange={(event) => onAliasChange(qualifiedField, event.target.value)}
+                placeholder={field}
+                tabIndex={isChecked ? undefined : -1}
+                className={`h-5 w-28 shrink-0 rounded border border-border-muted/50 bg-background/30 px-1.5 text-[11px] text-text-primary outline-none placeholder:text-text-muted/50 focus:border-accent ${
+                  isChecked ? '' : 'invisible'
+                }`}
+              />
             </div>
           );
         })}
@@ -269,7 +273,6 @@ export default function FormJoin({
 
   const ui = useMemo(() => readJoinUiConfig(node.config), [node.config]);
   const { joinType, keep: keepItems } = ui;
-  const { strategy: conflictStrategy, rightPrefix } = ui.conflict;
   const { operator: asofOperator, tolerance: toleranceVal } = ui.asof;
   const conditions = ui.conditions.length > 0 ? ui.conditions : [DEFAULT_CONDITION];
 
@@ -442,10 +445,6 @@ export default function FormJoin({
     }));
   }
 
-  function handleKeepChange(items: KeepItem[]) {
-    updateConfig((cfg) => ({ ...cfg, keep: items.length > 0 ? items : undefined }));
-  }
-
   // Keep-field edits stay local until the user confirms the dialog.
   const [keepDialogOpen, setKeepDialogOpen] = useState(false);
 
@@ -464,6 +463,7 @@ export default function FormJoin({
   const [draftRightSel, setDraftRightSel] = useState(new Set<string>());
   const [draftLeftAliases, setDraftLeftAliases] = useState(new Map<string, string>());
   const [draftRightAliases, setDraftRightAliases] = useState(new Map<string, string>());
+  const [draftConflict, setDraftConflict] = useState<JoinConflictUi>(() => ui.conflict);
 
   function openKeepDialog() {
     const draft = createJoinKeepDraft(
@@ -479,22 +479,28 @@ export default function FormJoin({
     setDraftRightSel(draft.rightSelected);
     setDraftLeftAliases(draft.leftAliases);
     setDraftRightAliases(draft.rightAliases);
+    setDraftConflict({ ...ui.conflict });
     setKeepDialogOpen(true);
   }
 
   function confirmKeep() {
-    handleKeepChange(
-      serializeJoinKeepDraft({
-        leftTotal: fieldCompletions.length,
-        rightTotal: rightRawColumns.length,
-        leftWildcard: draftLeftWildcard,
-        rightWildcard: draftRightWildcard,
-        leftSelected: draftLeftSel,
-        rightSelected: draftRightSel,
-        leftAliases: draftLeftAliases,
-        rightAliases: draftRightAliases,
-      })
-    );
+    const items = serializeJoinKeepDraft({
+      leftTotal: fieldCompletions.length,
+      rightTotal: rightRawColumns.length,
+      leftWildcard: draftLeftWildcard,
+      rightWildcard: draftRightWildcard,
+      leftSelected: draftLeftSel,
+      rightSelected: draftRightSel,
+      leftAliases: draftLeftAliases,
+      rightAliases: draftRightAliases,
+    });
+    // Conflict edits live in the same draft so cancel reverts them together
+    // with the keep selection.
+    updateConfig((cfg) => ({
+      ...cfg,
+      keep: items.length > 0 ? items : undefined,
+      conflict: buildJoinConflictConfig(draftConflict),
+    }));
     setKeepDialogOpen(false);
   }
 
@@ -587,15 +593,6 @@ export default function FormJoin({
     [draftRightSel, rightRawColumns]
   );
 
-  const leftKeepSummary = useMemo(
-    () => summarizeJoinKeep(keepItems, 'left', leftAlias, fieldCompletions.length),
-    [keepItems, leftAlias, fieldCompletions.length]
-  );
-  const rightKeepSummary = useMemo(
-    () => summarizeJoinKeep(keepItems, 'right', rightAlias, rightRawColumns.length),
-    [keepItems, rightAlias, rightRawColumns.length]
-  );
-
   const conditionOperatorItems = useMemo(
     () => OPERATOR_KEYS.map((op) => ({ value: op.value, label: tr(op.key) })),
     [tr]
@@ -683,106 +680,46 @@ export default function FormJoin({
           {/* Join configuration */}
           <div className="scrollbar-hover flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
             <div className="order-1 grid gap-2 p-4">
-              <div className="flex items-center gap-4">
-                <GlassFormLabel>{tr('sources.leftInput')}</GlassFormLabel>
-                <div className="flex h-7 w-48 min-w-0 items-center rounded-md border border-border-muted/70 bg-background/28 px-2">
-                  <span className="truncate text-[12px] text-text-primary">
-                    {leftSourceLabel || tr('sources.noLeftSource')}
-                  </span>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <GlassFormLabel>{tr('sources.leftInput')}</GlassFormLabel>
+                  <div className="flex h-7 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-background/28 px-2">
+                    <span className="truncate text-[12px] text-text-primary">
+                      {leftSourceLabel || tr('sources.noLeftSource')}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <GlassFormLabel>{tr('sources.rightInput')}</GlassFormLabel>
+                  <div className="flex h-7 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-background/28 px-2">
+                    <span className="truncate text-[12px] text-text-primary">
+                      {rightSourceLabel || tr('sources.noRightSource')}
+                    </span>
+                  </div>
                 </div>
                 {!isSemiAnti && (
-                  <div className="flex items-center gap-2" title={tr('keepFieldStatsLeft')}>
-                    <span className="w-24 shrink-0 truncate text-[12px] text-text-primary">
-                      {tr('joinLeftFields')}
-                    </span>
-                    <span className="text-[12px] text-text-muted tabular-nums">
-                      {tr('joinFieldSummary', {
-                        selected: leftKeepSummary.selected,
-                        total: fieldCompletions.length,
-                        renamed: leftKeepSummary.renamed,
-                      })}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={openKeepDialog}
-                      className="flex h-7 items-center gap-1 rounded px-1.5 text-[12px] text-text-secondary transition-colors hover:bg-accent-subtle hover:text-accent"
-                      title={tr('adjustKeepFields')}
-                    >
-                      <Settings className="h-3.5 w-3.5" />
-                      <span>{tr('joinAdjustFields')}</span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={openKeepDialog}
+                    className="flex h-7 shrink-0 items-center gap-1 rounded px-1.5 text-[12px] text-text-secondary transition-colors hover:bg-accent-subtle hover:text-accent"
+                    title={tr('joinFieldSettingsTip')}
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                    <span>{tr('joinFieldSettings')}</span>
+                  </button>
                 )}
               </div>
-              <div className="flex items-center gap-4">
-                <GlassFormLabel>{tr('sources.rightInput')}</GlassFormLabel>
-                <div className="flex h-7 w-48 min-w-0 items-center rounded-md border border-border-muted/70 bg-background/28 px-2">
-                  <span className="truncate text-[12px] text-text-primary">
-                    {rightSourceLabel || tr('sources.noRightSource')}
-                  </span>
+              {isSemiAnti && (
+                <div className="text-[12px] text-text-muted">
+                  {tr('semiAntiConfigHint', {
+                    model: joinType === 'semi' ? tr('joinSemi') : tr('joinAnti'),
+                  })}
                 </div>
-                {!isSemiAnti && !rightColumnsError && (
-                  <div className="flex items-center gap-2" title={tr('keepFieldStatsRight')}>
-                    <span className="w-24 shrink-0 truncate text-[12px] text-text-primary">
-                      {tr('joinRightFields')}
-                    </span>
-                    <span className="text-[12px] text-text-muted tabular-nums">
-                      {tr('joinFieldSummary', {
-                        selected: rightKeepSummary.selected,
-                        total: rightRawColumns.length,
-                        renamed: rightKeepSummary.renamed,
-                      })}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={openKeepDialog}
-                      className="flex h-7 items-center gap-1 rounded px-1.5 text-[12px] text-text-secondary transition-colors hover:bg-accent-subtle hover:text-accent"
-                      title={tr('adjustKeepFields')}
-                    >
-                      <Settings className="h-3.5 w-3.5" />
-                      <span>{tr('joinAdjustFields')}</span>
-                    </button>
-                  </div>
-                )}
-              </div>
+              )}
             </div>
 
-            {isAsof && (
-              <div className="order-2 px-4 pb-4">
-                <div className="flex flex-wrap items-center gap-4">
-                  <GlassFormLabel>{tr('tolerance')}</GlassFormLabel>
-                  {(
-                    [
-                      { key: 'd', label: tr('toleranceDay'), max: 365 },
-                      { key: 'h', label: tr('toleranceHour'), max: 23 },
-                      { key: 'm', label: tr('toleranceMin'), max: 59 },
-                      { key: 's', label: tr('toleranceSec'), max: 59 },
-                      { key: 'ms', label: tr('toleranceMs'), max: 999 },
-                    ] as const
-                  ).map(({ key, label, max }) => (
-                    <div key={key} className="flex items-center gap-1">
-                      <GlassFormTextInput
-                        type="number"
-                        min={0}
-                        max={max}
-                        value={toleranceVal ? String(durationParts[key]) : ''}
-                        placeholder="0"
-                        onChange={(value) => {
-                          const parsed = parseInt(value, 10);
-                          handleDurationChange(key, Number.isNaN(parsed) ? 0 : Math.max(0, parsed));
-                        }}
-                        textCenter
-                        className="h-7 w-[46px] !px-1.5 text-[12px]"
-                      />
-                      <span className="w-[28px] text-[12px] text-text-muted">{label}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Conditions */}
-            <div className="order-4 mx-4 grid gap-2 border-t border-border-muted/60 pb-4 pt-3">
+            <div className="order-2 mx-4 mb-4 grid gap-2 border-t border-border-muted/60 pt-3">
               <div className="text-[13px] font-medium text-text-secondary">
                 {tr('joinConditionsHeader')}
               </div>
@@ -793,62 +730,104 @@ export default function FormJoin({
 
               {isAsof ? (
                 <div className="grid gap-1.5">
-                  <div className="flex min-h-8 items-center gap-1 px-0.5">
-                    <div className="flex min-w-0 flex-[1] items-center">
-                      <GlassFieldSingleSelect
-                        value={asofLeftTime}
-                        options={asofLeftTimeOptions}
-                        columnTypes={leftColumnTypesQualified}
-                        onChange={(v) =>
-                          updateConfig((cfg) => ({
-                            ...cfg,
-                            asof: updateJoinAsof(cfg.asof, { leftTime: v || undefined }),
-                          }))
-                        }
-                        placeholder={tr('leftTimeCol')}
-                        className="h-7 w-full min-w-0 text-[12px]"
-                      />
+                  {/* ASOF time settings card: the time trio and tolerance form their
+                      own group; only the by rows below use the condition grid. */}
+                  <div className="grid gap-2.5 rounded-lg border border-border-muted bg-background px-3 py-2.5">
+                    <div className="flex items-center gap-1">
+                      <div className="flex min-w-0 flex-[1] items-center">
+                        <div className="flex w-full">
+                          <GlassFieldSingleSelect
+                            value={asofLeftTime}
+                            options={asofLeftTimeOptions}
+                            columnTypes={leftColumnTypesQualified}
+                            onChange={(v) =>
+                              updateConfig((cfg) => ({
+                                ...cfg,
+                                asof: updateJoinAsof(cfg.asof, { leftTime: v || undefined }),
+                              }))
+                            }
+                            placeholder={tr('leftTimeCol')}
+                            className="h-7 w-full min-w-0 text-[12px]"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex min-w-0 flex-[0.6] items-center">
+                        <div className="flex w-full">
+                          <GlassOptionSingleSelect
+                            value={asofOperator}
+                            groups={[
+                              {
+                                key: 'op',
+                                items: [
+                                  { value: '>=', label: tr('asofOpBackward') },
+                                  { value: '<=', label: tr('asofOpForward') },
+                                  { value: 'nearest', label: tr('asofOpNearest') },
+                                ],
+                              },
+                            ]}
+                            onChange={(v) =>
+                              updateConfig((cfg) => ({
+                                ...cfg,
+                                asof: updateJoinAsof(cfg.asof, { operator: v }),
+                              }))
+                            }
+                            variant="highlight"
+                            className="h-7 w-full text-[12px] [&>span]:text-center"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex min-w-0 flex-[1] items-center">
+                        <div className="flex w-full">
+                          <GlassFieldSingleSelect
+                            value={asofRightTime}
+                            options={asofRightTimeOptions}
+                            columnTypes={rightColumnTypesQualified}
+                            onChange={(v) =>
+                              updateConfig((cfg) => ({
+                                ...cfg,
+                                asof: updateJoinAsof(cfg.asof, { rightTime: v || undefined }),
+                              }))
+                            }
+                            placeholder={tr('rightTimeCol')}
+                            className="h-7 w-full min-w-0 text-[12px]"
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex min-w-0 flex-[0.6] items-center">
-                      <GlassOptionSingleSelect
-                        value={asofOperator}
-                        groups={[
-                          {
-                            key: 'op',
-                            items: [
-                              { value: '>=', label: tr('asofOpBackward') },
-                              { value: '<=', label: tr('asofOpForward') },
-                              { value: 'nearest', label: tr('asofOpNearest') },
-                            ],
-                          },
-                        ]}
-                        onChange={(v) =>
-                          updateConfig((cfg) => ({
-                            ...cfg,
-                            asof: updateJoinAsof(cfg.asof, { operator: v }),
-                          }))
-                        }
-                        variant="highlight"
-                        className="h-7 w-full text-[12px] [&>span]:text-center"
-                      />
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                      <GlassFormLabel className="!h-7">{tr('tolerance')}</GlassFormLabel>
+                      {(
+                        [
+                          { key: 'd', label: tr('toleranceDay'), max: 365 },
+                          { key: 'h', label: tr('toleranceHour'), max: 23 },
+                          { key: 'm', label: tr('toleranceMin'), max: 59 },
+                          { key: 's', label: tr('toleranceSec'), max: 59 },
+                          { key: 'ms', label: tr('toleranceMs'), max: 999 },
+                        ] as const
+                      ).map(({ key, label, max }) => (
+                        <div key={key} className="flex items-center gap-1">
+                          <GlassFormTextInput
+                            type="number"
+                            min={0}
+                            max={max}
+                            value={toleranceVal ? String(durationParts[key]) : ''}
+                            placeholder="0"
+                            onChange={(value) => {
+                              const parsed = parseInt(value, 10);
+                              handleDurationChange(
+                                key,
+                                Number.isNaN(parsed) ? 0 : Math.max(0, parsed)
+                              );
+                            }}
+                            textCenter
+                            className="h-7 w-[46px] !px-1.5 text-[12px]"
+                          />
+                          <span className="w-[28px] text-[12px] text-text-muted">{label}</span>
+                        </div>
+                      ))}
                     </div>
-                    <div className="flex min-w-0 flex-[1] items-center">
-                      <GlassFieldSingleSelect
-                        value={asofRightTime}
-                        options={asofRightTimeOptions}
-                        columnTypes={rightColumnTypesQualified}
-                        onChange={(v) =>
-                          updateConfig((cfg) => ({
-                            ...cfg,
-                            asof: updateJoinAsof(cfg.asof, { rightTime: v || undefined }),
-                          }))
-                        }
-                        placeholder={tr('rightTimeCol')}
-                        className="h-7 w-full min-w-0 text-[12px]"
-                      />
-                    </div>
-                    <span className="w-[60px] flex-shrink-0" aria-hidden="true" />
                   </div>
+                  <div className="px-0.5 text-[12px] text-text-muted">{tr('joinAsofByHeader')}</div>
                   <div className="scrollbar-hover min-w-0 max-h-[180px] overflow-x-hidden overflow-y-auto">
                     <GlassRowList
                       items={displayedAsofBy}
@@ -985,61 +964,6 @@ export default function FormJoin({
                 <div className="px-0.5 text-[12px] text-text-muted">{tr('noConditionsNeeded')}</div>
               )}
             </div>
-
-            {/* Output fields and conflict handling */}
-            <div className="order-3 flex min-h-7 flex-wrap items-center gap-x-5 gap-y-2 px-4 pb-4">
-              {/* Conflict */}
-              {!isSemiAnti && (
-                <div className="flex shrink-0 items-center gap-2 px-0.5">
-                  <span className="shrink-0 text-[12px] text-text-primary">{tr('conflict')}</span>
-                  <GlassOptionSingleSelect
-                    value={conflictStrategy}
-                    groups={conflictGroups}
-                    onChange={(v) =>
-                      updateConfig((cfg) => {
-                        const current = (cfg.conflict as Record<string, unknown>) ?? {};
-                        return {
-                          ...cfg,
-                          conflict: {
-                            ...current,
-                            strategy: v,
-                            ...(v === 'right_prefix' && !current.rightPrefix
-                              ? { rightPrefix: 'right_' }
-                              : {}),
-                          },
-                        };
-                      })
-                    }
-                    className="h-7 w-40 text-[12px] [&>span]:text-left"
-                  />
-                  {conflictStrategy === 'right_prefix' && (
-                    <GlassFormTextInput
-                      value={rightPrefix}
-                      onChange={(v) =>
-                        updateConfig((cfg) => ({
-                          ...cfg,
-                          conflict: {
-                            ...((cfg.conflict as Record<string, unknown>) ?? {}),
-                            rightPrefix: v.trim() || 'right_',
-                          },
-                        }))
-                      }
-                      placeholder={tr('prefix')}
-                      className="h-7 w-28 text-[13px]"
-                    />
-                  )}
-                </div>
-              )}
-
-              {/* Semi/Anti: no extra config needed */}
-              {isSemiAnti && (
-                <div className="px-0.5 text-[12px] text-text-muted">
-                  {tr('semiAntiConfigHint', {
-                    model: joinType === 'semi' ? tr('joinSemi') : tr('joinAnti'),
-                  })}
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </section>
@@ -1061,7 +985,7 @@ export default function FormJoin({
           >
             <div className="flex items-center justify-between border-b border-border-muted/50 px-4 py-3">
               <h3 className="text-[13px] font-semibold text-text-primary">
-                {tr('selectKeepFields')}
+                {tr('joinFieldSettings')}
               </h3>
             </div>
             <div className="scrollbar-hover flex gap-4 overflow-y-auto p-4">
@@ -1092,7 +1016,48 @@ export default function FormJoin({
                 onAliasChange={updateRightAlias}
               />
             </div>
-            <div className="flex justify-end gap-2 border-t border-border-muted/50 px-4 py-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border-muted/50 px-4 py-3">
+              <span className="shrink-0 text-[12px] text-text-primary">{tr('conflict')}</span>
+              <GlassOptionSingleSelect
+                value={draftConflict.strategy}
+                groups={conflictGroups}
+                onChange={(v) => setDraftConflict((prev) => ({ ...prev, strategy: v }))}
+                className="h-7 w-40 text-[12px] [&>span]:text-left"
+              />
+              {draftConflict.strategy === 'suffix' ? (
+                <>
+                  <label className="flex items-center gap-1 text-[12px] text-text-secondary">
+                    {tr('conflictLeftSuffix')}
+                    <GlassFormTextInput
+                      value={draftConflict.leftSuffix}
+                      onChange={(v) => setDraftConflict((prev) => ({ ...prev, leftSuffix: v }))}
+                      placeholder={JOIN_CONFLICT_DEFAULTS.leftSuffix}
+                      className="h-7 w-24 text-[12px]"
+                    />
+                  </label>
+                  <label className="flex items-center gap-1 text-[12px] text-text-secondary">
+                    {tr('conflictRightSuffix')}
+                    <GlassFormTextInput
+                      value={draftConflict.rightSuffix}
+                      onChange={(v) => setDraftConflict((prev) => ({ ...prev, rightSuffix: v }))}
+                      placeholder={JOIN_CONFLICT_DEFAULTS.rightSuffix}
+                      className="h-7 w-24 text-[12px]"
+                    />
+                  </label>
+                </>
+              ) : (
+                <label className="flex items-center gap-1 text-[12px] text-text-secondary">
+                  {tr('prefix')}
+                  <GlassFormTextInput
+                    value={draftConflict.rightPrefix}
+                    onChange={(v) => setDraftConflict((prev) => ({ ...prev, rightPrefix: v }))}
+                    placeholder={JOIN_CONFLICT_DEFAULTS.rightPrefix}
+                    className="h-7 w-24 text-[12px]"
+                  />
+                </label>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 px-4 py-3">
               <button
                 type="button"
                 onClick={cancelKeep}

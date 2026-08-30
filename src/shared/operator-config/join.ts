@@ -28,11 +28,6 @@ export interface JoinKeepDraft {
   rightAliases: Map<string, string>;
 }
 
-export interface JoinKeepSummary {
-  selected: number;
-  renamed: number;
-}
-
 export function qualifyJoinField(alias: string, field: string): string {
   return `[${alias}].[${field}]`;
 }
@@ -138,23 +133,6 @@ export function serializeJoinKeepDraft(draft: JoinKeepDraft): KeepItem[] {
   return items;
 }
 
-export function summarizeJoinKeep(
-  keepItems: readonly KeepItem[],
-  side: JoinSide,
-  alias: string,
-  totalFields: number
-): JoinKeepSummary {
-  const selectedItems = keepItems.filter(
-    (item) => !item.wildcard && isKeepItemFromSide(item, side, alias)
-  );
-  const keepsAllFields =
-    keepItems.length === 0 || keepItems.some((item) => item.side === side && item.wildcard);
-  return {
-    selected: keepsAllFields ? totalFields : selectedItems.length,
-    renamed: selectedItems.filter((item) => Boolean(item.alias)).length,
-  };
-}
-
 export interface JoinConflictUi {
   strategy: string;
   leftSuffix: string;
@@ -184,6 +162,32 @@ export const JOIN_CONFLICT_DEFAULTS: JoinConflictUi = {
   rightSuffix: '_right',
   rightPrefix: 'right_',
 };
+
+/** Conflict object persisted to node config: only the fields relevant to the
+ *  chosen strategy are kept, so stale values never survive a strategy switch. */
+export interface JoinConflictConfig {
+  strategy: string;
+  leftSuffix?: string;
+  rightSuffix?: string;
+  rightPrefix?: string;
+}
+
+/** Normalize the dialog's conflict draft into the persisted config shape:
+ *  trims input and falls back to the defaults on blank values (blank prefixes
+ *  would otherwise fail JoinConfigSchema validation). */
+export function buildJoinConflictConfig(draft: JoinConflictUi): JoinConflictConfig {
+  return {
+    strategy: draft.strategy,
+    ...(draft.strategy === 'suffix'
+      ? {
+          leftSuffix: draft.leftSuffix.trim() || JOIN_CONFLICT_DEFAULTS.leftSuffix,
+          rightSuffix: draft.rightSuffix.trim() || JOIN_CONFLICT_DEFAULTS.rightSuffix,
+        }
+      : {
+          rightPrefix: draft.rightPrefix.trim() || JOIN_CONFLICT_DEFAULTS.rightPrefix,
+        }),
+  };
+}
 
 function asString(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
