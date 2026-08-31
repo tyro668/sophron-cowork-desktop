@@ -35,6 +35,7 @@ describe('RemoteGateway webhook HTTP transport', () => {
       onError: vi.fn(),
     } as IChannel;
     gateway.registerChannel(channel);
+    (gateway as unknown as { _running: boolean })._running = true;
     gateway.on(
       'webhook:wecom',
       (request: {

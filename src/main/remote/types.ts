@@ -86,6 +86,16 @@ export type ChannelType =
   | 'websocket'
   | 'slack';
 
+export type ControllableChannelType = 'feishu' | 'dingtalk' | 'wecom';
+
+/** Authoritative desired and runtime state returned after a per-channel toggle. */
+export interface ControllableChannelState {
+  type: ControllableChannelType;
+  desiredEnabled: boolean;
+  connected: boolean;
+  channelError?: string;
+}
+
 export interface ChannelConfig {
   /** Channel type */
   type: ChannelType;
@@ -107,6 +117,9 @@ export interface ChannelConfig {
 // Feishu (飞书) Channel
 export interface FeishuChannelConfig {
   type: 'feishu';
+
+  /** Whether this channel should start with the remote service. Defaults to true. */
+  enabled?: boolean;
 
   /** App ID from Feishu Open Platform */
   appId: string;
@@ -178,6 +191,9 @@ export interface WechatChannelConfig {
 export interface WecomChannelConfig {
   type: 'wecom';
 
+  /** Whether this channel should start with the remote service. Defaults to true. */
+  enabled?: boolean;
+
   /** Receive through the WebSocket SDK or an encrypted HTTP callback. */
   receiveMode?: 'websocket' | 'webhook';
 
@@ -243,6 +259,9 @@ export interface TelegramChannelConfig {
 // DingTalk (钉钉) Channel
 export interface DingtalkChannelConfig {
   type: 'dingtalk';
+
+  /** Whether this channel should start with the remote service. Defaults to true. */
+  enabled?: boolean;
 
   /** Message receiving mode. Defaults to Stream for existing configurations. */
   receiveMode?: 'stream' | 'webhook';
@@ -493,6 +512,8 @@ export type GatewayEventType =
   | 'gateway.error'
   | 'channel.connected'
   | 'channel.disconnected'
+  | 'channel.enabled'
+  | 'channel.disabled'
   | 'channel.error'
   | 'message.received'
   | 'message.sent'
@@ -590,6 +611,8 @@ export interface GatewayStatus {
   /** Connected channels */
   channels: {
     type: ChannelType;
+    /** Desired per-channel state. Missing legacy values are treated as enabled. */
+    enabled: boolean;
     connected: boolean;
     error?: string;
   }[];

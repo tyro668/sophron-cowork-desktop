@@ -6,7 +6,7 @@ export interface GatewayStatus {
   running: boolean;
   port?: number;
   publicUrl?: string;
-  channels: Array<{ type: string; connected: boolean; error?: string }>;
+  channels: Array<{ type: string; enabled: boolean; connected: boolean; error?: string }>;
   activeSessions: number;
   pendingPairings: number;
 }
@@ -51,6 +51,7 @@ export interface RemoteConfig {
   };
   channels: {
     feishu?: {
+      enabled?: boolean;
       appId: string;
       appSecret: string;
       useWebSocket?: boolean;
@@ -59,6 +60,7 @@ export interface RemoteConfig {
       };
     };
     dingtalk?: {
+      enabled?: boolean;
       appKey: string;
       appSecret: string;
       robotCode?: string;
@@ -71,6 +73,7 @@ export interface RemoteConfig {
       };
     };
     wecom?: {
+      enabled?: boolean;
       receiveMode?: 'websocket' | 'webhook';
       botId: string;
       secret: string;
@@ -116,6 +119,7 @@ export interface RemoteChannelViewModel {
   name: string;
   description: string;
   configured: boolean;
+  enabled: boolean;
   connected: boolean;
   backendAvailable: boolean;
   authorizedUsers: number;

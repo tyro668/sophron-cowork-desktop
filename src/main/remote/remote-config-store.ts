@@ -14,6 +14,7 @@ import type {
   WecomChannelConfig,
   TelegramChannelConfig,
   DingtalkChannelConfig,
+  ControllableChannelType,
   WebSocketChannelConfig,
   PairedUser,
 } from './types';
@@ -101,6 +102,14 @@ class RemoteConfigStore {
     return filtered;
   }
 
+  /** Preserve an existing channel toggle unless the incoming config explicitly changes it. */
+  private withPreservedChannelEnabled<T extends { enabled?: boolean }>(config: T, current?: T): T {
+    return {
+      ...config,
+      enabled: config.enabled ?? current?.enabled ?? true,
+    };
+  }
+
   /**
    * Update gateway config
    */
@@ -124,7 +133,8 @@ class RemoteConfigStore {
    * Set feishu channel config
    */
   setFeishuConfig(config: FeishuChannelConfig): void {
-    this.store.set('channels.feishu', config);
+    const current = this.getFeishuConfig();
+    this.store.set('channels.feishu', this.withPreservedChannelEnabled(config, current));
     log('[RemoteConfig] Feishu config updated');
   }
 
@@ -150,7 +160,8 @@ class RemoteConfigStore {
 
   /** Persist the WeCom AI Bot channel config. */
   setWecomConfig(config: WecomChannelConfig): void {
-    this.store.set('channels.wecom', config);
+    const current = this.getWecomConfig();
+    this.store.set('channels.wecom', this.withPreservedChannelEnabled(config, current));
     log('[RemoteConfig] WeCom config updated');
   }
 
@@ -180,8 +191,19 @@ class RemoteConfigStore {
    * Set dingtalk channel config
    */
   setDingtalkConfig(config: DingtalkChannelConfig): void {
-    this.store.set('channels.dingtalk', config);
+    const current = this.getDingtalkConfig();
+    this.store.set('channels.dingtalk', this.withPreservedChannelEnabled(config, current));
     log('[RemoteConfig] DingTalk config updated');
+  }
+
+  /** Persist the desired state of a configured, user-controllable channel. */
+  setChannelEnabled(type: ControllableChannelType, enabled: boolean): void {
+    const config = this.store.get(`channels.${type}`);
+    if (!config) {
+      throw new Error(`Channel is not configured: ${type}`);
+    }
+    this.store.set(`channels.${type}.enabled`, enabled);
+    log(`[RemoteConfig] Channel ${type} enabled:`, enabled);
   }
 
   /**

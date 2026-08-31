@@ -18,7 +18,17 @@ import {
 } from 'lucide-react';
 import { ChannelBrandIcon } from './ChannelBrandIcon';
 import { ChannelSetupGuide } from './ChannelSetupGuide';
+import { getChannelState, type RemoteChannelState } from './channel-state';
 import type { ChannelConfigTab, RemoteChannelViewModel, TunnelStatus } from './types';
+
+const CHANNEL_STATE_BADGE_CLASS = {
+  connected: 'bg-success/10 text-success',
+  error: 'bg-error/10 text-error',
+  disabled: 'bg-surface-active text-text-muted',
+  preview: 'bg-warning/10 text-warning',
+  unconfigured: 'bg-warning/10 text-warning',
+  stopped: 'bg-warning/10 text-warning',
+} satisfies Record<RemoteChannelState, string>;
 
 interface Props {
   channel: RemoteChannelViewModel;
@@ -45,6 +55,7 @@ interface Props {
   tunnelStatus: TunnelStatus | null;
   webhookUrl: string | null;
   isSaving: boolean;
+  isTogglingChannel: boolean;
   onFeishuAppIdChange: (value: string) => void;
   onFeishuAppSecretChange: (value: string) => void;
   onFeishuDmPolicyChange: (value: string) => void;
@@ -68,6 +79,7 @@ interface Props {
   onSaveFeishu: () => void;
   onSaveDingtalk: () => void;
   onSaveWecom: () => void;
+  onToggleChannel: () => void;
 }
 
 export function ChannelDetailPanel({
@@ -95,6 +107,7 @@ export function ChannelDetailPanel({
   tunnelStatus,
   webhookUrl,
   isSaving,
+  isTogglingChannel,
   onFeishuAppIdChange,
   onFeishuAppSecretChange,
   onFeishuDmPolicyChange,
@@ -118,6 +131,7 @@ export function ChannelDetailPanel({
   onSaveFeishu,
   onSaveDingtalk,
   onSaveWecom,
+  onToggleChannel,
 }: Props) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<ChannelConfigTab>('basic');
@@ -184,6 +198,7 @@ export function ChannelDetailPanel({
       icon: MessageSquareText,
     },
   ];
+  const channelState = getChannelState(channel);
 
   return (
     <section className="glass-card overflow-hidden rounded-2xl border border-border-subtle shadow-card">
@@ -195,13 +210,43 @@ export function ChannelDetailPanel({
             <p className="mt-0.5 truncate text-xs text-text-muted">{channel.description}</p>
           </div>
         </div>
-        <span
-          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-            channel.backendAvailable ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'
-          }`}
-        >
-          {channel.backendAvailable ? t('remote.backendAvailable') : t('remote.backendPending')}
-        </span>
+        <div className="flex items-center gap-2">
+          <span
+            className={`rounded-full px-2.5 py-1 text-xs font-semibold ${CHANNEL_STATE_BADGE_CLASS[channelState]}`}
+          >
+            {t(`remote.channelState.${channelState}`)}
+          </span>
+          {channel.backendAvailable && (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={channel.enabled}
+              aria-label={t(channel.enabled ? 'remote.disableChannel' : 'remote.enableChannel')}
+              title={t(channel.enabled ? 'remote.disableChannel' : 'remote.enableChannel')}
+              onClick={onToggleChannel}
+              disabled={!channel.configured || isTogglingChannel}
+              className="group inline-flex items-center gap-2.5 rounded-lg px-1 py-1 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <span
+                aria-hidden="true"
+                className={`relative inline-flex h-7 w-12 shrink-0 rounded-full transition-colors duration-200 ${
+                  channel.enabled ? 'bg-success' : 'bg-surface-active'
+                }`}
+              >
+                <span
+                  className={`absolute left-0.5 top-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                    channel.enabled ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                >
+                  {isTogglingChannel && (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
+                  )}
+                </span>
+              </span>
+              <span>{t(channel.enabled ? 'remote.enableChannel' : 'remote.disableChannel')}</span>
+            </button>
+          )}
+        </div>
       </header>
 
       <div className="flex gap-1 overflow-x-auto border-b border-border-subtle px-3 pt-2">

@@ -2614,7 +2614,7 @@
     "navGlobal": "Global settings",
     "navLogs": "Runtime logs",
     "connectedChannels": "Connected channels",
-    "startRequiresChannel": "Configure the Feishu channel first",
+    "startRequiresChannel": "Configure and enable at least one bot first",
     "noConfiguredChannels": "Configure at least one available channel before starting the service.",
     "channelListTitle": "Connected channels",
     "channelListDesc": "Configure each bot and inspect its status independently.",
@@ -2636,6 +2636,7 @@
     "channelState": {
       "connected": "Connected",
       "stopped": "Configured",
+      "disabled": "Disabled",
       "unconfigured": "Not configured",
       "preview": "UI preview",
       "error": "Connection error"
@@ -2645,6 +2646,17 @@
     "channelTabAdvanced": "Setup guide",
     "backendAvailable": "Available now",
     "backendPending": "Backend pending",
+    "enableChannel": "Enable",
+    "disableChannel": "Disable",
+    "channelEnabledSuccess": "Bot enabled",
+    "channelDisabledSuccess": "Bot disabled",
+    "channelToggleFailed": "Failed to change the bot state. Check the runtime logs and try again.",
+    "botMessages": {
+      "processing": "Processing, please wait…",
+      "remoteServiceStoppedCancellation": "⚠️ Remote control has stopped. This pending request was cancelled.",
+      "channelDisabledCancellation": "⚠️ This bot has been disabled. This pending request was cancelled.",
+      "remoteSessionEndedCancellation": "⚠️ This remote session has ended. This pending request was cancelled."
+    },
     "previewOnlyNotice": "This is a UI preview for a future channel. You can explore the form, but values are not saved and no real connection is created.",
     "credentialsTitle": "Bot credentials",
     "credentialsDesc": {

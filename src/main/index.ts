@@ -89,6 +89,8 @@ import type {
   DingtalkChannelConfig,
   WecomChannelConfig,
   ChannelType,
+  ControllableChannelType,
+  ControllableChannelState,
 } from './remote/types';
 import { startNavServer, stopNavServer } from './nav-server';
 import {
@@ -2967,6 +2969,34 @@ ipcMain.handle('remote.setEnabled', async (_event, enabled: boolean) => {
   } catch (error) {
     logError('[Remote] Error setting enabled:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+});
+
+ipcMain.handle('remote.setChannelEnabled', async (_event, type: unknown, enabled: unknown) => {
+  try {
+    if (type !== 'feishu' && type !== 'dingtalk' && type !== 'wecom') {
+      throw new Error('Unsupported remote channel type');
+    }
+    if (typeof enabled !== 'boolean') {
+      throw new Error('Channel enabled state must be a boolean');
+    }
+    const state = await remoteManager.setChannelEnabled(type as ControllableChannelType, enabled);
+    return { success: true, ...state };
+  } catch (error) {
+    logError('[Remote] Error setting channel enabled state:', error);
+    let state: ControllableChannelState | undefined;
+    if (type === 'feishu' || type === 'dingtalk' || type === 'wecom') {
+      try {
+        state = remoteManager.getChannelControlState(type);
+      } catch {
+        // Invalid or unavailable configuration has no authoritative state to return.
+      }
+    }
+    return {
+      success: false,
+      ...state,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
   }
 });
 

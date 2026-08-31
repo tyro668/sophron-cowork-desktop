@@ -1,7 +1,26 @@
 import { Plus, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { ChannelBrandIcon } from './ChannelBrandIcon';
+import { getChannelState, type RemoteChannelState } from './channel-state';
 import type { RemoteChannelType, RemoteChannelViewModel } from './types';
+
+const CHANNEL_STATE_BADGE_CLASS = {
+  connected: 'bg-success/10 text-success',
+  error: 'bg-error/10 text-error',
+  stopped: 'bg-warning/10 text-warning',
+  disabled: 'bg-surface-active text-text-muted',
+  unconfigured: 'bg-surface-active text-text-muted',
+  preview: 'bg-surface-active text-text-muted',
+} satisfies Record<RemoteChannelState, string>;
+
+const CHANNEL_STATE_DOT_CLASS = {
+  connected: 'bg-success',
+  error: 'bg-error',
+  stopped: 'bg-warning',
+  disabled: 'bg-text-muted',
+  unconfigured: 'bg-text-muted',
+  preview: 'bg-text-muted',
+} satisfies Record<RemoteChannelState, string>;
 
 interface Props {
   channels: RemoteChannelViewModel[];
@@ -35,15 +54,7 @@ export function ChannelList({ channels, selectedChannel, onSelect }: Props) {
       <div className="space-y-1.5 p-2">
         {channels.map((channel) => {
           const isSelected = selectedChannel === channel.type;
-          const state = channel.error
-            ? 'error'
-            : channel.connected
-              ? 'connected'
-              : channel.configured
-                ? 'stopped'
-                : channel.backendAvailable
-                  ? 'unconfigured'
-                  : 'preview';
+          const state = getChannelState(channel);
 
           return (
             <button
@@ -67,27 +78,9 @@ export function ChannelList({ channels, selectedChannel, onSelect }: Props) {
               </span>
               <span className="flex items-center gap-2">
                 <span
-                  className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold ${
-                    state === 'connected'
-                      ? 'bg-success/10 text-success'
-                      : state === 'error'
-                        ? 'bg-error/10 text-error'
-                        : state === 'stopped'
-                          ? 'bg-warning/10 text-warning'
-                          : 'bg-surface-active text-text-muted'
-                  }`}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold ${CHANNEL_STATE_BADGE_CLASS[state]}`}
                 >
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full ${
-                      state === 'connected'
-                        ? 'bg-success'
-                        : state === 'error'
-                          ? 'bg-error'
-                          : state === 'stopped'
-                            ? 'bg-warning'
-                            : 'bg-text-muted'
-                    }`}
-                  />
+                  <span className={`h-1.5 w-1.5 rounded-full ${CHANNEL_STATE_DOT_CLASS[state]}`} />
                   {t(`remote.channelState.${state}`)}
                 </span>
                 <ChevronRight

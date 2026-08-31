@@ -76,6 +76,7 @@ export type RemoteChannelType =
 /** Feishu channel configuration (mirrors FeishuChannelConfig in remote/types.ts). */
 export interface FeishuChannelConfig {
   type: 'feishu';
+  enabled?: boolean;
   appId: string;
   appSecret: string;
   verificationToken?: string;
@@ -99,8 +100,20 @@ export type ChannelType =
   | 'websocket'
   | 'slack';
 
+export type ControllableChannelType = 'feishu' | 'dingtalk' | 'wecom';
+
+export interface RemoteChannelToggleResult {
+  success: boolean;
+  type?: ControllableChannelType;
+  desiredEnabled?: boolean;
+  connected?: boolean;
+  channelError?: string;
+  error?: string;
+}
+
 export interface DingtalkChannelConfig {
   type: 'dingtalk';
+  enabled?: boolean;
   receiveMode?: 'stream' | 'webhook';
   appKey: string;
   appSecret: string;
@@ -116,6 +129,7 @@ export interface DingtalkChannelConfig {
 /** WeCom AI Bot configuration. */
 export interface WecomChannelConfig {
   type: 'wecom';
+  enabled?: boolean;
   receiveMode?: 'websocket' | 'webhook';
   botId: string;
   secret: string;

@@ -7,6 +7,10 @@ const detailPath = path.resolve(
   process.cwd(),
   'src/renderer/components/remote/ChannelDetailPanel.tsx'
 );
+const channelStatePath = path.resolve(
+  process.cwd(),
+  'src/renderer/components/remote/channel-state.ts'
+);
 const setupGuidePath = path.resolve(
   process.cwd(),
   'src/renderer/components/remote/ChannelSetupGuide.tsx'
@@ -91,6 +95,26 @@ describe('RemoteControlPanel multi-channel UI', () => {
     expect(source).toContain('updateDingtalkConfig');
     expect(source).toContain('updateWecomConfig');
     expect(source).toContain('backendAvailable: true');
+  });
+
+  it('exposes independent enable and disable controls for every configured bot', () => {
+    const panelSource = readFileSync(panelPath, 'utf8');
+    const detailSource = readFileSync(detailPath, 'utf8');
+    const channelStateSource = readFileSync(channelStatePath, 'utf8');
+
+    expect(panelSource).toContain('setChannelEnabled(type, nextEnabled)');
+    expect(panelSource).toContain('applyChannelToggleResult(type, result)');
+    expect(panelSource).toContain('result.desiredEnabled');
+    expect(panelSource).toContain('showLoading: false');
+    expect(panelSource).toContain('isTogglingChannel={togglingChannel === selectedChannel}');
+    expect(detailSource).toContain("'remote.disableChannel'");
+    expect(detailSource).toContain("'remote.enableChannel'");
+    expect(detailSource).toContain('getChannelState(channel)');
+    expect(channelStateSource).toContain("return 'disabled'");
+    expect(detailSource).toContain('role="switch"');
+    expect(detailSource).toContain('aria-checked={channel.enabled}');
+    expect(detailSource).toContain("channel.enabled ? 'bg-success' : 'bg-surface-active'");
+    expect(detailSource).toContain("channel.enabled ? 'translate-x-5' : 'translate-x-0'");
   });
 
   it('enables DingTalk and WeCom Webhook modes and persists their receive modes', () => {

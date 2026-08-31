@@ -17,6 +17,8 @@ import { SlackChannel } from './channels/slack';
 import { remoteConfigStore } from './remote-config-store';
 import { tunnelManager, TunnelStatus } from './tunnel-manager';
 import { buildRemoteSessionTitle } from './remote-title';
+import enTranslations from '../../renderer/i18n/locales/en.json';
+import zhTranslations from '../../renderer/i18n/locales/zh.json';
 import type {
   GatewayStatus,
   GatewayConfig,
@@ -24,6 +26,8 @@ import type {
   DingtalkChannelConfig,
   WecomChannelConfig,
   ChannelType,
+  ControllableChannelType,
+  ControllableChannelState,
   RemoteSessionMapping,
   PairedUser,
   PairingRequest,
@@ -76,7 +80,11 @@ interface RemoteChannelContext {
   channelType: ChannelType;
   channelId: string;
   replyTo?: string;
+  language?: RemoteMessageLanguage;
 }
+
+type RemoteMessageLanguage = 'en' | 'zh';
+type RemoteBotMessageKey = keyof typeof enTranslations.remote.botMessages;
 
 const RESPONSE_DEBOUNCE_MS = 2000;
 const RESPONSE_RETRY_BASE_MS = 1000;
@@ -135,6 +143,9 @@ export class RemoteManager extends EventEmitter {
 
   // Promise-chain mutex for synchronizing pendingInteractions access
   private lockChain: Promise<void> = Promise.resolve();
+
+  // Serialize the complete desired-state workflow before work reaches the gateway transport queue.
+  private channelControlOperations: Map<ControllableChannelType, Promise<void>> = new Map();
 
   // 远程默认工作目录（用于未指定 cwd 的会话）
   private defaultWorkingDirectory?: string;
@@ -251,13 +262,22 @@ export class RemoteManager extends EventEmitter {
       const tunnelUrl = await tunnelManager.start(config.gateway.port);
       if (tunnelUrl) {
         log('[RemoteManager] Tunnel URL:', tunnelUrl);
-        if (config.channels.feishu?.useWebSocket === false) {
+        if (
+          config.channels.feishu?.enabled !== false &&
+          config.channels.feishu?.useWebSocket === false
+        ) {
           log('[RemoteManager] Feishu Webhook URL:', `${tunnelUrl}/webhook/feishu`);
         }
-        if (config.channels.dingtalk?.receiveMode === 'webhook') {
+        if (
+          config.channels.dingtalk?.enabled !== false &&
+          config.channels.dingtalk?.receiveMode === 'webhook'
+        ) {
           log('[RemoteManager] DingTalk Webhook URL:', `${tunnelUrl}/webhook/dingtalk`);
         }
-        if (config.channels.wecom?.receiveMode === 'webhook') {
+        if (
+          config.channels.wecom?.enabled !== false &&
+          config.channels.wecom?.receiveMode === 'webhook'
+        ) {
           log('[RemoteManager] WeCom Webhook URL:', `${tunnelUrl}/webhook/wecom`);
         }
       }
@@ -286,10 +306,7 @@ export class RemoteManager extends EventEmitter {
   async stop(options: StopOptions = {}): Promise<void> {
     if (!options.preserveInteractions) {
       const cancelled = await this.cancelPendingInteractions();
-      await this.notifyCancelledInteractions(
-        cancelled,
-        '⚠️ 远程控制服务已停止，本次待处理请求已取消。'
-      );
+      await this.notifyCancelledInteractions(cancelled, 'remoteServiceStoppedCancellation');
     }
 
     if (!this.gateway) return;
@@ -331,9 +348,19 @@ export class RemoteManager extends EventEmitter {
    */
   getStatus(): GatewayStatus & { tunnel?: TunnelStatus } {
     if (!this.gateway) {
+      const config = remoteConfigStore.getAll();
+      const channels = Object.entries(config.channels)
+        .filter((entry): entry is [ChannelType, NonNullable<(typeof entry)[1]>] =>
+          Boolean(entry[1])
+        )
+        .map(([type, channelConfig]) => ({
+          type,
+          enabled: !('enabled' in channelConfig) || channelConfig.enabled !== false,
+          connected: false,
+        }));
       return {
         running: false,
-        channels: [],
+        channels,
         activeSessions: 0,
         pendingPairings: 0,
       };
@@ -448,6 +475,69 @@ export class RemoteManager extends EventEmitter {
     }
   }
 
+  /** Persist and apply one bot's desired state without restarting other channels. */
+  async setChannelEnabled(
+    type: ControllableChannelType,
+    enabled: boolean
+  ): Promise<ControllableChannelState> {
+    return this.enqueueChannelControlOperation(type, async () => {
+      const config = remoteConfigStore.getAll().channels[type];
+      if (!config) throw new Error(`Channel is not configured: ${type}`);
+
+      // Persist the desired state before cancelling interactions. If the store write
+      // fails, no user work is cancelled and the running transport remains unchanged.
+      remoteConfigStore.setChannelEnabled(type, enabled);
+
+      try {
+        if (!enabled) {
+          const cancelled = await this.cancelPendingInteractionsForChannel(type);
+          await this.notifyCancelledInteractions(cancelled, 'channelDisabledCancellation');
+        }
+
+        if (this.gateway) {
+          await this.gateway.setChannelEnabled(type, enabled);
+        }
+        return this.getChannelControlState(type);
+      } finally {
+        // A failed transport start/stop still changes observable desired/runtime state.
+        this.emitStatusUpdate();
+      }
+    });
+  }
+
+  /** Read the durable desired state together with the current transport state. */
+  getChannelControlState(type: ControllableChannelType): ControllableChannelState {
+    const config = remoteConfigStore.getAll().channels[type];
+    if (!config) throw new Error(`Channel is not configured: ${type}`);
+
+    const runtime = this.gateway?.getStatus().channels.find((channel) => channel.type === type);
+    return {
+      type,
+      desiredEnabled: config.enabled !== false,
+      connected: runtime?.connected ?? false,
+      channelError: runtime?.error,
+    };
+  }
+
+  private enqueueChannelControlOperation<T>(
+    type: ControllableChannelType,
+    operation: () => Promise<T>
+  ): Promise<T> {
+    const previous = this.channelControlOperations.get(type) ?? Promise.resolve();
+    const queued = previous.catch(() => undefined).then(operation);
+    const settled = queued.then(
+      () => undefined,
+      () => undefined
+    );
+    this.channelControlOperations.set(type, settled);
+    void settled.then(() => {
+      if (this.channelControlOperations.get(type) === settled) {
+        this.channelControlOperations.delete(type);
+      }
+    });
+    return queued;
+  }
+
   /**
    * Approve pairing request
    */
@@ -535,10 +625,7 @@ export class RemoteManager extends EventEmitter {
   clearRemoteSession(sessionId: string): boolean {
     const actualSessionId = this.reverseSessionIdMapping.get(sessionId);
     const cancelled = this.cancelPendingInteractionsForSession(sessionId);
-    void this.notifyCancelledInteractions(
-      cancelled,
-      '⚠️ 当前远程会话已结束，本次待处理请求已取消。'
-    );
+    void this.notifyCancelledInteractions(cancelled, 'remoteSessionEndedCancellation');
 
     if (actualSessionId) {
       this.sessionIdMapping.delete(actualSessionId);
@@ -884,6 +971,18 @@ export class RemoteManager extends EventEmitter {
     return this.withInteractionLock(async () => this.cancelPendingInteractionsMatching(() => true));
   }
 
+  private async cancelPendingInteractionsForChannel(
+    channelType: ControllableChannelType
+  ): Promise<RemoteInteraction[]> {
+    return this.withInteractionLock(async () =>
+      this.cancelPendingInteractionsMatching((interaction) => {
+        return (
+          this.sessionChannelMapping.get(interaction.remoteSessionId)?.channelType === channelType
+        );
+      })
+    );
+  }
+
   private cancelPendingInteractionsForSession(remoteSessionId: string): RemoteInteraction[] {
     return this.cancelPendingInteractionsMatching(
       (interaction) => interaction.remoteSessionId === remoteSessionId
@@ -906,7 +1005,7 @@ export class RemoteManager extends EventEmitter {
 
   private async notifyCancelledInteractions(
     interactions: RemoteInteraction[],
-    message: string
+    messageKey: RemoteBotMessageKey
   ): Promise<void> {
     if (!this.gateway || interactions.length === 0) return;
 
@@ -917,13 +1016,23 @@ export class RemoteManager extends EventEmitter {
     }
 
     const results = await Promise.allSettled(
-      [...destinations.values()].map((channelInfo) => this.doSendToChannel(channelInfo, message))
+      [...destinations.values()].map((channelInfo) =>
+        this.doSendToChannel(channelInfo, this.localizeRemoteBotMessage(messageKey, channelInfo))
+      )
     );
     for (const result of results) {
       if (result.status === 'rejected') {
         logError('[RemoteManager] Failed to send interaction cancellation notice:', result.reason);
       }
     }
+  }
+
+  private localizeRemoteBotMessage(
+    key: RemoteBotMessageKey,
+    channelInfo: RemoteChannelContext
+  ): string {
+    const translations = channelInfo.language === 'zh' ? zhTranslations : enTranslations;
+    return translations.remote.botMessages[key];
   }
 
   private async withInteractionLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -1398,7 +1507,7 @@ export class RemoteManager extends EventEmitter {
     const feishuConfig = config.channels.feishu;
     if (feishuConfig && feishuConfig.appId && feishuConfig.appSecret) {
       const feishuChannel = new FeishuChannel(feishuConfig);
-      this.gateway.registerChannel(feishuChannel);
+      this.gateway.registerChannel(feishuChannel, feishuConfig.enabled !== false);
 
       // Set up webhook handler
       this.gateway.on(
@@ -1441,7 +1550,7 @@ export class RemoteManager extends EventEmitter {
     const dingtalkConfig = config.channels.dingtalk;
     if (dingtalkConfig && dingtalkConfig.appKey && dingtalkConfig.appSecret) {
       const dingtalkChannel = new DingtalkChannel(dingtalkConfig);
-      this.gateway.registerChannel(dingtalkChannel);
+      this.gateway.registerChannel(dingtalkChannel, dingtalkConfig.enabled !== false);
       this.gateway.on(
         'webhook:dingtalk',
         (data: {
@@ -1463,7 +1572,7 @@ export class RemoteManager extends EventEmitter {
         : Boolean(wecomConfig?.botId && wecomConfig.secret);
     if (wecomConfig && wecomConfigured) {
       const wecomChannel = new WecomChannel(wecomConfig);
-      this.gateway.registerChannel(wecomChannel);
+      this.gateway.registerChannel(wecomChannel, wecomConfig.enabled !== false);
       this.gateway.on(
         'webhook:wecom',
         (data: {
@@ -1537,6 +1646,7 @@ export class RemoteManager extends EventEmitter {
         channelType,
         channelId,
         replyTo: channelType === 'wecom' ? messageId : undefined,
+        language: this.detectRemoteMessageLanguage(prompt),
       });
 
       // Store session owner for interaction security verification
@@ -1570,6 +1680,7 @@ export class RemoteManager extends EventEmitter {
         channelType,
         channelId,
         replyTo: channelType === 'wecom' ? messageId : undefined,
+        language: this.detectRemoteMessageLanguage(prompt),
       });
       this.emitRemoteUserMessage(actualSessionId, content, prompt);
       await this.agentExecutor.continueSession(actualSessionId, prompt, content, workingDirectory);
@@ -1580,6 +1691,10 @@ export class RemoteManager extends EventEmitter {
 
     // Responses are emitted by the session manager and intercepted once in
     // sendToRenderer(), which is the single outbound response pipeline.
+  }
+
+  private detectRemoteMessageLanguage(content: string): RemoteMessageLanguage {
+    return /[\u3400-\u9fff]/u.test(content) ? 'zh' : 'en';
   }
 
   /**

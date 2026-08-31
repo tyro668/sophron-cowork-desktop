@@ -21,6 +21,7 @@ import type {
   RemoteConfig,
 } from './types';
 import { MessageRouter } from './message-router';
+import { NonRetryableChannelError } from './channels/channel-base';
 
 // WebSocket client connection
 interface WSClient {
@@ -47,6 +48,8 @@ export class RemoteGateway extends EventEmitter {
   private httpServer?: HttpServer;
   private wss?: WebSocketServer;
   private channels: Map<ChannelType, IChannel> = new Map();
+  private channelEnabled: Map<ChannelType, boolean> = new Map();
+  private channelOperations: Map<ChannelType, Promise<void>> = new Map();
   private channelErrors: Map<ChannelType, string> = new Map();
   private wsClients: Map<string, WSClient> = new Map();
   private messageRouter: MessageRouter;
@@ -122,19 +125,24 @@ export class RemoteGateway extends EventEmitter {
         });
       });
 
+      // The transport is now accepting traffic. Channel activity is gated by
+      // both this flag and each channel's own connected state.
+      this._running = true;
+
       // Start all registered channels
       for (const [type, channel] of this.channels) {
-        try {
-          await channel.start();
+        if (!this.isChannelEnabled(type)) {
           this.channelErrors.delete(type);
-          log(`[Gateway] Channel ${type} started`);
+          log(`[Gateway] Channel ${type} is disabled; skipping startup`);
+          continue;
+        }
+        try {
+          await this.enqueueChannelOperation(type, () => this.startChannelTransport(type, channel));
         } catch (error) {
-          this.channelErrors.set(type, error instanceof Error ? error.message : String(error));
           logError(`[Gateway] Failed to start channel ${type}:`, error);
         }
       }
 
-      this._running = true;
       this.emitEvent('gateway.started', { port: this.config.port });
       log('[Gateway] Gateway started successfully');
     } catch (error) {
@@ -152,12 +160,14 @@ export class RemoteGateway extends EventEmitter {
     }
 
     log('[Gateway] Stopping gateway...');
+    // Reject new inbound, webhook, and outbound work before waiting for any
+    // individual transport to finish shutting down.
+    this._running = false;
 
     // Stop all channels
     for (const [type, channel] of this.channels) {
       try {
-        await channel.stop();
-        log(`[Gateway] Channel ${type} stopped`);
+        await this.enqueueChannelOperation(type, () => this.stopChannelTransport(type, channel));
       } catch (error) {
         logError(`[Gateway] Error stopping channel ${type}:`, error);
       }
@@ -198,7 +208,7 @@ export class RemoteGateway extends EventEmitter {
   /**
    * Register a channel
    */
-  registerChannel(channel: IChannel): void {
+  registerChannel(channel: IChannel, enabled: boolean = true): void {
     if (this.channels.has(channel.type)) {
       logWarn(`[Gateway] Channel ${channel.type} already registered, replacing...`);
     }
@@ -206,21 +216,24 @@ export class RemoteGateway extends EventEmitter {
     // Set up message handler
     channel.onMessage(this.handleChannelMessage.bind(this));
     channel.onError((error) => {
+      if (!this.isChannelEnabled(channel.type)) {
+        logWarn(`[Gateway] Ignoring error from disabled channel ${channel.type}:`, error.message);
+        return;
+      }
       this.channelErrors.set(channel.type, error.message);
       logError(`[Gateway] Channel ${channel.type} error:`, error);
       this.emitEvent('channel.error', { channel: channel.type, error: error.message });
     });
 
     this.channels.set(channel.type, channel);
+    this.channelEnabled.set(channel.type, enabled);
     log(`[Gateway] Registered channel: ${channel.type}`);
 
     // Start channel if gateway is already running
-    if (this._running) {
-      channel.start().catch((error) => {
-        this.channelErrors.set(
-          channel.type,
-          error instanceof Error ? error.message : String(error)
-        );
+    if (this._running && enabled) {
+      this.enqueueChannelOperation(channel.type, () =>
+        this.startChannelTransport(channel.type, channel)
+      ).catch((error) => {
         logError(`[Gateway] Failed to start channel ${channel.type}:`, error);
       });
     }
@@ -234,8 +247,84 @@ export class RemoteGateway extends EventEmitter {
     if (channel) {
       await channel.stop();
       this.channels.delete(type);
+      this.channelEnabled.delete(type);
+      this.channelOperations.delete(type);
       this.channelErrors.delete(type);
       log(`[Gateway] Unregistered channel: ${type}`);
+    }
+  }
+
+  /** Enable or disable one registered channel without restarting the gateway. */
+  async setChannelEnabled(type: ChannelType, enabled: boolean): Promise<void> {
+    const channel = this.channels.get(type);
+    if (!channel) throw new Error(`Channel not found: ${type}`);
+
+    await this.enqueueChannelOperation(type, async () => {
+      this.channelEnabled.set(type, enabled);
+      if (!enabled) {
+        // Flip the gate before awaiting transport shutdown so no new inbound,
+        // webhook, or outbound work is accepted during a slow stop.
+        this.channelErrors.delete(type);
+        this.clearPendingPairingsForChannel(type);
+        await this.stopChannelTransport(type, channel);
+        this.emitEvent('channel.disabled', { channel: type });
+        return;
+      }
+
+      if (!this._running) {
+        this.channelErrors.delete(type);
+        this.emitEvent('channel.enabled', { channel: type });
+        return;
+      }
+
+      await this.startChannelTransport(type, channel);
+      this.emitEvent('channel.enabled', { channel: type });
+    });
+  }
+
+  isChannelEnabled(type: ChannelType): boolean {
+    return this.channelEnabled.get(type) !== false;
+  }
+
+  private isChannelActive(type: ChannelType): boolean {
+    return (
+      this._running && this.isChannelEnabled(type) && this.channels.get(type)?.connected === true
+    );
+  }
+
+  private enqueueChannelOperation(
+    type: ChannelType,
+    operation: () => Promise<void>
+  ): Promise<void> {
+    const previous = this.channelOperations.get(type) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(operation);
+    this.channelOperations.set(type, next);
+    return next;
+  }
+
+  private async startChannelTransport(type: ChannelType, channel: IChannel): Promise<void> {
+    try {
+      await channel.start();
+      this.channelErrors.delete(type);
+      log(`[Gateway] Channel ${type} started`);
+    } catch (error) {
+      this.channelErrors.set(type, error instanceof Error ? error.message : String(error));
+      throw error;
+    }
+  }
+
+  private async stopChannelTransport(type: ChannelType, channel: IChannel): Promise<void> {
+    await channel.stop();
+    log(`[Gateway] Channel ${type} stopped`);
+  }
+
+  private clearPendingPairingsForChannel(type: ChannelType): void {
+    const prefix = `${type}:`;
+    for (const key of this.pairingRequests.keys()) {
+      if (key.startsWith(prefix)) this.pairingRequests.delete(key);
+    }
+    for (const key of this.pairingRequestAttempts.keys()) {
+      if (key.startsWith(prefix)) this.pairingRequestAttempts.delete(key);
     }
   }
 
@@ -245,8 +334,12 @@ export class RemoteGateway extends EventEmitter {
   getStatus(): GatewayStatus {
     const channelStatuses = Array.from(this.channels.entries()).map(([type, channel]) => ({
       type,
-      connected: channel.connected,
-      error: channel.connected ? undefined : this.channelErrors.get(type),
+      enabled: this.isChannelEnabled(type),
+      connected: this.isChannelActive(type),
+      error:
+        this.isChannelEnabled(type) && !channel.connected
+          ? this.channelErrors.get(type)
+          : undefined,
     }));
 
     return {
@@ -274,6 +367,11 @@ export class RemoteGateway extends EventEmitter {
    * Handle incoming message from a channel
    */
   private async handleChannelMessage(message: RemoteMessage): Promise<void> {
+    if (!this.isChannelActive(message.channelType)) {
+      logWarn(`[Gateway] Ignoring message from inactive channel: ${message.channelType}`);
+      return;
+    }
+
     log('[Gateway] Received message from channel:', {
       type: message.channelType,
       channelId: message.channelId,
@@ -356,6 +454,14 @@ export class RemoteGateway extends EventEmitter {
       if (propagateError) {
         throw error;
       }
+      return;
+    }
+    if (!this.isChannelActive(response.channelType)) {
+      const error = new NonRetryableChannelError(
+        `Channel is disabled or disconnected: ${response.channelType}`
+      );
+      logError(`[Gateway] ${error.message}`);
+      if (propagateError) throw error;
       return;
     }
 
@@ -701,6 +807,13 @@ export class RemoteGateway extends EventEmitter {
       log(`[Gateway] Channel ${channelType} not found`);
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: `Channel ${channelType} not found` }));
+      return;
+    }
+
+    if (!this.isChannelActive(channelType)) {
+      log(`[Gateway] Channel ${channelType} is disabled or disconnected`);
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: `Channel ${channelType} is disabled or disconnected` }));
       return;
     }
 

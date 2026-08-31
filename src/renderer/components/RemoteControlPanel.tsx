@@ -12,6 +12,7 @@ import { AuthorizedUsersSection } from './remote/AuthorizedUsersSection';
 import { ChannelDetailPanel } from './remote/ChannelDetailPanel';
 import { ChannelList } from './remote/ChannelList';
 import { ChannelBrandIcon } from './remote/ChannelBrandIcon';
+import { getChannelState, type RemoteChannelState } from './remote/channel-state';
 import { GatewayControlCard } from './remote/GatewayControlCard';
 import { PairingGuideCard } from './remote/PairingGuideCard';
 import { PairingRequestsSection } from './remote/PairingRequestsSection';
@@ -27,8 +28,23 @@ import type {
   RemoteSection,
   TunnelStatus,
 } from './remote/types';
+import type { RemoteChannelToggleResult } from '../../shared/ipc-types';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
+
+const CHANNEL_STATE_DOT_CLASS = {
+  connected: 'bg-success',
+  error: 'bg-error',
+  stopped: 'bg-text-muted',
+  disabled: 'bg-text-muted',
+  unconfigured: 'bg-text-muted',
+  preview: 'bg-text-muted',
+} satisfies Record<RemoteChannelState, string>;
+
+interface LoadDataOptions {
+  showLoading?: boolean;
+  reportError?: boolean;
+}
 
 export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   const { t } = useTranslation();
@@ -38,6 +54,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   const [pairedUsers, setPairedUsers] = useState<PairedUser[]>([]);
   const [pendingPairings, setPendingPairings] = useState<PairingRequest[]>([]);
   const [isTogglingGateway, setIsTogglingGateway] = useState(false);
+  const [togglingChannel, setTogglingChannel] = useState<RemoteChannelType | null>(null);
   const [error, setError] = useState<LocalizedBanner | null>(null);
   const [success, setSuccess] = useState<LocalizedBanner | null>(null);
   const [activeSection, setActiveSection] = useState<RemoteSection>('channels');
@@ -45,10 +62,12 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
 
   const [feishuAppId, setFeishuAppId] = useState('');
   const [feishuAppSecret, setFeishuAppSecret] = useState('');
+  const [feishuEnabled, setFeishuEnabled] = useState(true);
   const [feishuDmPolicy, setFeishuDmPolicy] = useState('pairing');
   const [dingtalkAppKey, setDingtalkAppKey] = useState('');
   const [dingtalkAppSecret, setDingtalkAppSecret] = useState('');
   const [dingtalkRobotCode, setDingtalkRobotCode] = useState('');
+  const [dingtalkEnabled, setDingtalkEnabled] = useState(true);
   const [dingtalkDmPolicy, setDingtalkDmPolicy] = useState('pairing');
   const [dingtalkRequireMention, setDingtalkRequireMention] = useState(true);
   const [dingtalkReceiveMode, setDingtalkReceiveMode] = useState<'stream' | 'webhook'>('stream');
@@ -56,6 +75,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   const [wecomSecret, setWecomSecret] = useState('');
   const [wecomWebhookToken, setWecomWebhookToken] = useState('');
   const [wecomWebhookEncodingAESKey, setWecomWebhookEncodingAESKey] = useState('');
+  const [wecomEnabled, setWecomEnabled] = useState(true);
   const [wecomReceiveMode, setWecomReceiveMode] = useState<'websocket' | 'webhook'>('websocket');
   const [wecomDmPolicy, setWecomDmPolicy] = useState('pairing');
   const [wecomRequireMention, setWecomRequireMention] = useState(true);
@@ -79,12 +99,14 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     setNgrokAuthToken(configResult.gateway?.tunnel?.ngrok?.authToken || '');
 
     if (configResult.channels?.feishu) {
+      setFeishuEnabled(configResult.channels.feishu.enabled !== false);
       setFeishuAppId(configResult.channels.feishu.appId || '');
       setFeishuAppSecret(configResult.channels.feishu.appSecret || '');
       setFeishuDmPolicy(configResult.channels.feishu.dm?.policy || 'pairing');
       setUseLongConnection(configResult.channels.feishu.useWebSocket !== false);
     }
     if (configResult.channels?.dingtalk) {
+      setDingtalkEnabled(configResult.channels.dingtalk.enabled !== false);
       setDingtalkAppKey(configResult.channels.dingtalk.appKey || '');
       setDingtalkAppSecret(configResult.channels.dingtalk.appSecret || '');
       setDingtalkRobotCode(configResult.channels.dingtalk.robotCode || '');
@@ -95,6 +117,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
       );
     }
     if (configResult.channels?.wecom) {
+      setWecomEnabled(configResult.channels.wecom.enabled !== false);
       setWecomBotId(configResult.channels.wecom.botId || '');
       setWecomSecret(configResult.channels.wecom.secret || '');
       setWecomWebhookToken(configResult.channels.wecom.webhookToken || '');
@@ -107,43 +130,49 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     }
   }, []);
 
-  const loadData = useCallback(async () => {
-    if (!isElectron) {
-      setIsLoading(false);
-      return;
-    }
+  const loadData = useCallback(
+    async (options: LoadDataOptions = {}): Promise<boolean> => {
+      const { showLoading = true, reportError = true } = options;
+      if (!isElectron) {
+        if (showLoading) setIsLoading(false);
+        return true;
+      }
 
-    setIsLoading(true);
-    try {
-      const [
-        configResult,
-        statusResult,
-        usersResult,
-        pairingsResult,
-        tunnelStatusResult,
-        webhookUrlResult,
-      ] = await Promise.all([
-        window.electronAPI.remote.getConfig(),
-        window.electronAPI.remote.getStatus(),
-        window.electronAPI.remote.getPairedUsers(),
-        window.electronAPI.remote.getPendingPairings(),
-        window.electronAPI.remote.getTunnelStatus(),
-        window.electronAPI.remote.getWebhookUrl(),
-      ]);
+      if (showLoading) setIsLoading(true);
+      try {
+        const [
+          configResult,
+          statusResult,
+          usersResult,
+          pairingsResult,
+          tunnelStatusResult,
+          webhookUrlResult,
+        ] = await Promise.all([
+          window.electronAPI.remote.getConfig(),
+          window.electronAPI.remote.getStatus(),
+          window.electronAPI.remote.getPairedUsers(),
+          window.electronAPI.remote.getPendingPairings(),
+          window.electronAPI.remote.getTunnelStatus(),
+          window.electronAPI.remote.getWebhookUrl(),
+        ]);
 
-      setStatus(statusResult);
-      setPairedUsers(usersResult);
-      setPendingPairings(pairingsResult);
-      setTunnelStatus(tunnelStatusResult);
-      setWebhookUrl(webhookUrlResult);
-      applyConfig(configResult);
-    } catch (loadError) {
-      console.error('Failed to load remote config:', loadError);
-      setError({ key: 'remote.loadFailed' });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [applyConfig]);
+        setStatus(statusResult);
+        setPairedUsers(usersResult);
+        setPendingPairings(pairingsResult);
+        setTunnelStatus(tunnelStatusResult);
+        setWebhookUrl(webhookUrlResult);
+        applyConfig(configResult);
+        return true;
+      } catch (loadError) {
+        console.error('Failed to load remote config:', loadError);
+        if (reportError) setError({ key: 'remote.loadFailed' });
+        return false;
+      } finally {
+        if (showLoading) setIsLoading(false);
+      }
+    },
+    [applyConfig]
+  );
 
   const refreshStatus = useCallback(async () => {
     if (!isElectron) return;
@@ -232,6 +261,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     try {
       await window.electronAPI.remote.updateFeishuConfig({
         type: 'feishu',
+        enabled: feishuEnabled,
         appId: feishuAppId,
         appSecret: feishuAppSecret,
         useWebSocket: useLongConnection,
@@ -260,6 +290,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
       const result = await window.electronAPI.remote.updateDingtalkConfig(
         {
           type: 'dingtalk',
+          enabled: dingtalkEnabled,
           receiveMode: dingtalkReceiveMode,
           appKey: dingtalkAppKey,
           appSecret: dingtalkAppSecret,
@@ -300,6 +331,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
       const result = await window.electronAPI.remote.updateWecomConfig(
         {
           type: 'wecom',
+          enabled: wecomEnabled,
           receiveMode: wecomReceiveMode,
           botId: wecomBotId.trim(),
           secret: wecomSecret.trim(),
@@ -374,6 +406,69 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     }
   }
 
+  function applyChannelToggleResult(
+    type: RemoteChannelType,
+    result: RemoteChannelToggleResult
+  ): void {
+    if (typeof result.desiredEnabled === 'boolean') {
+      if (type === 'feishu') setFeishuEnabled(result.desiredEnabled);
+      if (type === 'dingtalk') setDingtalkEnabled(result.desiredEnabled);
+      if (type === 'wecom') setWecomEnabled(result.desiredEnabled);
+    }
+
+    const connected = result.connected;
+    if (typeof connected !== 'boolean') return;
+    setStatus((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        channels: current.channels.map((channel) =>
+          channel.type === type
+            ? {
+                ...channel,
+                enabled: result.desiredEnabled ?? channel.enabled,
+                connected,
+                error: result.channelError,
+              }
+            : channel
+        ),
+      };
+    });
+  }
+
+  async function toggleChannel(type: RemoteChannelType) {
+    if (!isElectron || togglingChannel) return;
+    const currentlyEnabled =
+      type === 'feishu' ? feishuEnabled : type === 'dingtalk' ? dingtalkEnabled : wecomEnabled;
+    const nextEnabled = !currentlyEnabled;
+
+    setTogglingChannel(type);
+    setError(null);
+    try {
+      const result = await window.electronAPI.remote.setChannelEnabled(type, nextEnabled);
+      applyChannelToggleResult(type, result);
+      if (!result.success) {
+        setError(result.error ? { text: result.error } : { key: 'remote.channelToggleFailed' });
+        await loadData({ showLoading: false, reportError: false });
+        return;
+      }
+      showSuccess({
+        key:
+          (result.desiredEnabled ?? nextEnabled)
+            ? 'remote.channelEnabledSuccess'
+            : 'remote.channelDisabledSuccess',
+      });
+      const refreshed = await loadData({ showLoading: false, reportError: false });
+      if (!refreshed) setError({ key: 'remote.loadFailed' });
+    } catch (toggleError) {
+      console.error('Failed to toggle remote channel:', toggleError);
+      setError({ key: 'remote.channelToggleFailed' });
+      await loadData({ showLoading: false, reportError: false });
+    } finally {
+      setTogglingChannel(null);
+    }
+  }
+
   function copyToClipboard(text: string) {
     void navigator.clipboard.writeText(text);
     showSuccess({ key: 'remote.copied' }, 2000);
@@ -398,10 +493,16 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     status?.channels.some((channel) => channel.type === 'wecom' && channel.connected) ?? false;
   const configuredChannelCount =
     Number(isFeishuConfigured) + Number(isDingtalkConfigured) + Number(isWecomConfigured);
+  const enabledConfiguredChannelCount =
+    Number(isFeishuConfigured && feishuEnabled) +
+    Number(isDingtalkConfigured && dingtalkEnabled) +
+    Number(isWecomConfigured && wecomEnabled);
   const connectedChannelCount =
     Number(isFeishuConnected) + Number(isDingtalkConnected) + Number(isWecomConnected);
   const isPairingEnabled =
-    feishuDmPolicy === 'pairing' || dingtalkDmPolicy === 'pairing' || wecomDmPolicy === 'pairing';
+    (feishuEnabled && feishuDmPolicy === 'pairing') ||
+    (dingtalkEnabled && dingtalkDmPolicy === 'pairing') ||
+    (wecomEnabled && wecomDmPolicy === 'pairing');
 
   const channels = useMemo<RemoteChannelViewModel[]>(
     () => [
@@ -415,6 +516,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
             })
           : t('remote.channelDesc.feishu'),
         configured: isFeishuConfigured,
+        enabled: feishuEnabled,
         connected: isFeishuConnected,
         backendAvailable: true,
         authorizedUsers: pairedUsers.filter((user) => user.channelType === 'feishu').length,
@@ -433,6 +535,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
             })
           : t('remote.channelDesc.dingtalk'),
         configured: isDingtalkConfigured,
+        enabled: dingtalkEnabled,
         connected: isDingtalkConnected,
         backendAvailable: true,
         authorizedUsers: pairedUsers.filter((user) => user.channelType === 'dingtalk').length,
@@ -451,6 +554,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
             })
           : t('remote.channelDesc.wecom'),
         configured: isWecomConfigured,
+        enabled: wecomEnabled,
         connected: isWecomConnected,
         backendAvailable: true,
         authorizedUsers: pairedUsers.filter((user) => user.channelType === 'wecom').length,
@@ -461,11 +565,14 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
       isDingtalkConfigured,
       isDingtalkConnected,
       dingtalkReceiveMode,
+      dingtalkEnabled,
+      feishuEnabled,
       isFeishuConfigured,
       isFeishuConnected,
       pairedUsers,
       t,
       useLongConnection,
+      wecomEnabled,
       isWecomConfigured,
       isWecomConnected,
       wecomReceiveMode,
@@ -510,7 +617,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
           configuredChannels={configuredChannelCount}
           connectedChannels={connectedChannelCount}
           totalChannels={channels.length}
-          canStartService={configuredChannelCount > 0}
+          canStartService={enabledConfiguredChannelCount > 0}
           onToggle={toggleGateway}
         />
       </div>
@@ -554,6 +661,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
               tunnelStatus={tunnelStatus}
               webhookUrl={webhookUrl}
               isSaving={isSaving}
+              isTogglingChannel={togglingChannel === selectedChannel}
               onFeishuAppIdChange={setFeishuAppId}
               onFeishuAppSecretChange={setFeishuAppSecret}
               onFeishuDmPolicyChange={setFeishuDmPolicy}
@@ -577,6 +685,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
               onSaveFeishu={saveFeishuConfig}
               onSaveDingtalk={saveDingtalkConfig}
               onSaveWecom={saveWecomConfig}
+              onToggleChannel={() => void toggleChannel(selectedChannel)}
             />
           </div>
         )}
@@ -642,33 +751,26 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
               </div>
             </div>
             <div className="mt-5 space-y-2">
-              {channels.map((channel) => (
-                <div
-                  key={channel.type}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-border-subtle bg-background/34 p-3"
-                >
-                  <div className="flex items-center gap-2.5 text-sm text-text-secondary">
-                    <ChannelBrandIcon type={channel.type} className="h-7 w-7" />
-                    {channel.name}
-                  </div>
-                  <span className="inline-flex items-center gap-1.5 text-xs text-text-muted">
-                    <span
-                      className={`h-1.5 w-1.5 rounded-full ${channel.connected ? 'bg-success' : 'bg-text-muted'}`}
-                    />
-                    <span>
-                      {channel.backendAvailable
-                        ? t(
-                            channel.connected
-                              ? 'remote.channelState.connected'
-                              : channel.configured
-                                ? 'remote.channelState.stopped'
-                                : 'remote.channelState.unconfigured'
-                          )
-                        : t('remote.channelState.preview')}
+              {channels.map((channel) => {
+                const channelState = getChannelState(channel);
+                return (
+                  <div
+                    key={channel.type}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-border-subtle bg-background/34 p-3"
+                  >
+                    <div className="flex items-center gap-2.5 text-sm text-text-secondary">
+                      <ChannelBrandIcon type={channel.type} className="h-7 w-7" />
+                      {channel.name}
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 text-xs text-text-muted">
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${CHANNEL_STATE_DOT_CLASS[channelState]}`}
+                      />
+                      <span>{t(`remote.channelState.${channelState}`)}</span>
                     </span>
-                  </span>
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
             <div className="mt-4 flex items-center gap-2 rounded-xl border border-dashed border-border p-4 text-xs text-text-muted">
               <Check className="h-4 w-4" />

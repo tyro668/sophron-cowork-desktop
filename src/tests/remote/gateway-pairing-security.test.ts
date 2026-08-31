@@ -17,10 +17,12 @@ vi.mock('../../main/utils/logger', () => ({
 import { RemoteGateway } from '../../main/remote/gateway';
 
 type GatewayInternals = {
+  _running: boolean;
   handleChannelMessage(message: RemoteMessage): Promise<void>;
   pairingRequests: Map<string, PairingRequest>;
   pairedUsers: Map<string, PairedUser>;
-  channels: Map<string, { send(response: RemoteResponse): Promise<void> }>;
+  channelEnabled: Map<string, boolean>;
+  channels: Map<string, { connected: boolean; send(response: RemoteResponse): Promise<void> }>;
 };
 
 function createMessage(text: string, id: string = `message-${text}`): RemoteMessage {
@@ -58,7 +60,9 @@ describe('RemoteGateway pairing security', () => {
     gateway = new RemoteGateway(config, router);
     internals = gateway as unknown as GatewayInternals;
     send = vi.fn(async (_response: RemoteResponse) => undefined);
-    internals.channels.set('feishu', { send });
+    internals._running = true;
+    internals.channelEnabled.set('feishu', true);
+    internals.channels.set('feishu', { connected: true, send });
   });
 
   it('requires administrator approval and never accepts an echoed request code', async () => {

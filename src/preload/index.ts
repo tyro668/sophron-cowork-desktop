@@ -103,6 +103,8 @@ import type {
   DingtalkChannelConfig,
   WecomChannelConfig,
   ChannelType,
+  ControllableChannelType,
+  RemoteChannelToggleResult,
   PairedUser,
   PairingRequest,
   RemoteSessionMapping,
@@ -602,12 +604,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
       running: boolean;
       port?: number;
       publicUrl?: string;
-      channels: Array<{ type: string; connected: boolean; error?: string }>;
+      channels: Array<{ type: string; enabled: boolean; connected: boolean; error?: string }>;
       activeSessions: number;
       pendingPairings: number;
     }> => ipcRenderer.invoke('remote.getStatus'),
     setEnabled: (enabled: boolean): Promise<{ success: boolean; error?: string }> =>
       ipcRenderer.invoke('remote.setEnabled', enabled),
+    setChannelEnabled: (
+      type: ControllableChannelType,
+      enabled: boolean
+    ): Promise<RemoteChannelToggleResult> =>
+      ipcRenderer.invoke('remote.setChannelEnabled', type, enabled),
     updateGatewayConfig: (
       config: Partial<GatewayConfig>
     ): Promise<{ success: boolean; error?: string }> =>
@@ -1034,11 +1041,15 @@ declare global {
           running: boolean;
           port?: number;
           publicUrl?: string;
-          channels: Array<{ type: string; connected: boolean; error?: string }>;
+          channels: Array<{ type: string; enabled: boolean; connected: boolean; error?: string }>;
           activeSessions: number;
           pendingPairings: number;
         }>;
         setEnabled: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
+        setChannelEnabled: (
+          type: ControllableChannelType,
+          enabled: boolean
+        ) => Promise<RemoteChannelToggleResult>;
         updateGatewayConfig: (
           config: Partial<GatewayConfig>
         ) => Promise<{ success: boolean; error?: string }>;

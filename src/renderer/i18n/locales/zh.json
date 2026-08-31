@@ -2614,7 +2614,7 @@
     "navGlobal": "全局设置",
     "navLogs": "运行日志",
     "connectedChannels": "已连接渠道",
-    "startRequiresChannel": "请先完成飞书渠道配置",
+    "startRequiresChannel": "请先配置并启用至少一个机器人",
     "noConfiguredChannels": "完成至少一个可用渠道的配置后即可启动服务。",
     "channelListTitle": "接入渠道",
     "channelListDesc": "每个机器人可以独立配置和查看状态",
@@ -2636,6 +2636,7 @@
     "channelState": {
       "connected": "已连接",
       "stopped": "已配置",
+      "disabled": "已停用",
       "unconfigured": "未配置",
       "preview": "界面预览",
       "error": "连接错误"
@@ -2645,6 +2646,17 @@
     "channelTabAdvanced": "接入说明",
     "backendAvailable": "当前可用",
     "backendPending": "后端待接入",
+    "enableChannel": "启用",
+    "disableChannel": "停用",
+    "channelEnabledSuccess": "机器人已启用",
+    "channelDisabledSuccess": "机器人已停用",
+    "channelToggleFailed": "机器人启停失败，请查看运行日志后重试。",
+    "botMessages": {
+      "processing": "正在处理，请稍候…",
+      "remoteServiceStoppedCancellation": "⚠️ 远程控制服务已停止，本次待处理请求已取消。",
+      "channelDisabledCancellation": "⚠️ 当前机器人已停用，本次待处理请求已取消。",
+      "remoteSessionEndedCancellation": "⚠️ 当前远程会话已结束，本次待处理请求已取消。"
+    },
     "previewOnlyNotice": "这是下一阶段渠道的界面预览。你可以体验配置结构，但输入内容不会保存，也不会建立真实连接。",
     "credentialsTitle": "机器人凭证",
     "credentialsDesc": {
