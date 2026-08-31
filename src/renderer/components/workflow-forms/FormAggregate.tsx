@@ -5,6 +5,7 @@ import { GlassFieldCompactSelect } from './shared/GlassFieldCompactSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
+import { canAppendRow, insertRowAfter, removeRowAt } from './shared/rowListOperations';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
@@ -17,7 +18,11 @@ import {
   setDateGranularity,
   type AggregateDateGranularity,
 } from '../../../shared/operator-config';
-import type { AggregateFunction, MetricEntry } from '../../../shared/operator-schemas';
+import {
+  MAX_METRIC_COUNT,
+  type AggregateFunction,
+  type MetricEntry,
+} from '../../../shared/operator-schemas';
 
 const EMPTY_METRIC: Readonly<Omit<MetricEntry, 'id'>> = {
   function: 'count',
@@ -128,24 +133,12 @@ export default function FormAggregate({
   }
 
   function addMetricAfter(index: number) {
-    if (activeMetrics.some((metric) => !metric.expression)) return;
-    handleMetricsChange([
-      ...activeMetrics.slice(0, index + 1),
-      createEmptyMetric(),
-      ...activeMetrics.slice(index + 1),
-    ]);
+    if (!canAppendRow(activeMetrics.length, MAX_METRIC_COUNT)) return;
+    handleMetricsChange(insertRowAfter(activeMetrics, index, createEmptyMetric()));
   }
 
   function removeMetric(index: number) {
-    const remaining = activeMetrics.filter((_, metricIndex) => metricIndex !== index);
-    const firstEmptyIndex = remaining.findIndex((metric) => !metric.expression);
-    handleMetricsChange(
-      firstEmptyIndex < 0
-        ? remaining
-        : remaining.filter(
-            (metric, metricIndex) => metricIndex === firstEmptyIndex || metric.expression
-          )
-    );
+    handleMetricsChange(removeRowAt(activeMetrics, index));
   }
 
   const {
@@ -153,6 +146,7 @@ export default function FormAggregate({
     handleDragStart,
     handleDragOver,
     handleDragEnd,
+    handleKeyboardMove,
     isDragging,
     resetDrag,
     dragIndexRef,
@@ -240,7 +234,7 @@ export default function FormAggregate({
               </div>
               <button
                 type="button"
-                disabled={activeMetrics.some((metric) => !metric.expression)}
+                disabled={!canAppendRow(activeMetrics.length, MAX_METRIC_COUNT)}
                 onClick={() => addMetricAfter(activeMetrics.length - 1)}
                 className="flex h-9 flex-none items-center gap-1.5 rounded-lg border border-accent px-3 text-[12px] font-medium text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -268,15 +262,23 @@ export default function FormAggregate({
                       dragging ? 'opacity-50' : ''
                     }`}
                   >
-                    <div
+                    <button
+                      type="button"
                       draggable
                       onDragStart={() => handleDragStart(index)}
                       onDragEnd={handleDragEnd}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+                        event.preventDefault();
+                        handleKeyboardMove(index, event.key === 'ArrowUp' ? 'up' : 'down');
+                      }}
                       className="flex h-7 w-7 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
                       title={tr('rowList.dragToReorder')}
+                      aria-label={tr('rowList.dragToReorder')}
+                      aria-keyshortcuts="ArrowUp ArrowDown"
                     >
                       <GripVertical className="h-4 w-4" />
-                    </div>
+                    </button>
                     <GlassOptionSingleSelect
                       value={metric.function}
                       groups={functionGroups}

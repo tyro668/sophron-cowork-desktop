@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { AlertCircle } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
@@ -6,6 +6,7 @@ import { CalculateFieldExpressionInput } from './calculate-field/CalculateFieldE
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassRowList, type GlassRowListColumn } from './shared/GlassRowList';
+import { canAppendRow, insertRowAfter } from './shared/rowListOperations';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
@@ -16,6 +17,7 @@ import {
   type CalculationConfigEntry,
   type CalculationRow,
 } from '../../../shared/calculate-field';
+import { MAX_CALCULATION_COUNT } from '../../../shared/operator-schemas';
 
 function persistableCalculation(row: CalculationRow): CalculationConfigEntry {
   return {
@@ -36,19 +38,18 @@ export default function FormCalculateField({
   const tr = useFormTranslation('calculateField');
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
-  const rawCalculations = useMemo(
-    () => (node.config.calculations as CalculationConfigEntry[] | undefined) ?? [],
-    [node.config.calculations]
-  );
-  const [calculations, setCalculations] = useState<CalculationRow[]>(() =>
-    normalizeCalculationEntries(rawCalculations, fieldCompletions)
-  );
+  const calculations = useMemo(() => {
+    const configuredCalculations =
+      (node.config.calculations as CalculationConfigEntry[] | undefined) ?? [];
+    const normalized = normalizeCalculationEntries(configuredCalculations, fieldCompletions);
+    return normalized.length > 0 ? normalized : [createCalculationRow()];
+  }, [fieldCompletions, node.config.calculations]);
   const sourceFieldNames = useMemo(
     () => new Set(fieldCompletions.map((field) => field.toLowerCase())),
     [fieldCompletions]
   );
 
-  const storeCalculations = useCallback(
+  const commitCalculations = useCallback(
     (next: CalculationRow[]) => {
       updateConfig((cfg) => ({
         ...cfg,
@@ -58,47 +59,23 @@ export default function FormCalculateField({
     [updateConfig]
   );
 
-  // Guard against self-echo: our own config writes must not be re-normalized
-  // back into local state while the user is editing a row.
-  const localUpdateRef = useRef(false);
-  const changeCalculations = useCallback(
-    (next: CalculationRow[]) => {
-      setCalculations(next);
-      localUpdateRef.current = true;
-      storeCalculations(next);
-    },
-    [storeCalculations]
-  );
-
   const {
     activeItems: activeCalculations,
     handleDragStart,
     handleDragOver,
     handleDragEnd,
+    handleKeyboardMove,
     isDragging,
     resetDrag,
     dragIndexRef,
-  } = useDragReorder(calculations, changeCalculations);
+  } = useDragReorder(calculations, commitCalculations);
 
   useEffect(() => {
     if (!isDragging) resetDrag();
   }, [calculations, isDragging, resetDrag]);
 
-  useEffect(() => {
-    if (localUpdateRef.current) {
-      localUpdateRef.current = false;
-      return;
-    }
-    const normalized = normalizeCalculationEntries(rawCalculations, fieldCompletions);
-    setCalculations(normalized);
-  }, [fieldCompletions, rawCalculations]);
-
   function updateCalculation(index: number, patch: Partial<CalculationRow>): void {
-    if (!activeCalculations[index]) {
-      changeCalculations([{ ...createCalculationRow(), ...patch }]);
-      return;
-    }
-    changeCalculations(
+    commitCalculations(
       activeCalculations.map((calculation, currentIndex) =>
         currentIndex === index ? { ...calculation, ...patch } : calculation
       )
@@ -119,25 +96,25 @@ export default function FormCalculateField({
   }
 
   function addCalculation(index: number): void {
-    const next = [...activeCalculations];
-    next.splice(index + 1, 0, createCalculationRow());
-    changeCalculations(next);
+    if (!canAppendRow(activeCalculations.length, MAX_CALCULATION_COUNT)) return;
+    commitCalculations(insertRowAfter(activeCalculations, index, createCalculationRow()));
   }
 
   function copyCalculation(index: number): void {
+    if (!canAppendRow(activeCalculations.length, MAX_CALCULATION_COUNT)) return;
     const source = activeCalculations[index];
     const copy = { ...source, id: createCalculationRow().id, field: '' };
-    const next = [...activeCalculations];
-    next.splice(index + 1, 0, copy);
-    changeCalculations(next);
+    commitCalculations(insertRowAfter(activeCalculations, index, copy));
   }
 
   function removeCalculation(index: number): void {
-    changeCalculations(activeCalculations.filter((_, currentIndex) => currentIndex !== index));
+    if (activeCalculations.length <= 1) {
+      commitCalculations([]);
+      return;
+    }
+    commitCalculations(activeCalculations.filter((_, currentIndex) => currentIndex !== index));
   }
 
-  const visibleCalculations =
-    activeCalculations.length > 0 ? activeCalculations : [createCalculationRow()];
   const actionOptions = [
     { value: 'add', label: tr('calcFieldActionAdd') },
     { value: 'replace', label: tr('calcFieldActionReplace') },
@@ -220,20 +197,22 @@ export default function FormCalculateField({
         <div className="scrollbar-hover flex-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
           <GlassRowList
             headerClassName=""
-            items={visibleCalculations}
-            getKey={(item) => item.id}
+            items={activeCalculations}
+            getKey={(calculation) => calculation.id}
             columns={columns}
             actions={['add', 'copy', 'remove']}
             onAdd={addCalculation}
             onCopy={copyCalculation}
             onRemove={removeCalculation}
             canAct={(action) =>
-              (action !== 'remove' && action !== 'copy') || calculations.length > 0
+              (action !== 'add' && action !== 'copy') ||
+              canAppendRow(activeCalculations.length, MAX_CALCULATION_COUNT)
             }
             draggable
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
+            onKeyboardMove={handleKeyboardMove}
             getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
             dragTitle={tr('rowList.dragToReorder')}
           />

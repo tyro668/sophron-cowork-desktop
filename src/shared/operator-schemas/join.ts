@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { ConditionSchema, ConflictSchema, KeepItemSchema, nonEmptyTrimmed } from './common';
 
+export const MAX_JOIN_CONDITION_COUNT = 100;
+
 export const JoinConditionSchema = ConditionSchema.extend({
   operator: z.enum(['=', '<', '<=', '>', '>=']),
 });
@@ -38,6 +40,7 @@ export const AsofConfigSchema = z.object({
         right: nonEmptyTrimmed('right field is required'),
       })
     )
+    .max(MAX_JOIN_CONDITION_COUNT)
     .optional(),
 });
 
@@ -46,7 +49,7 @@ export const JoinConfigSchema = z
     joinType: z
       .enum(['inner', 'left', 'right', 'full', 'cross', 'semi', 'anti', 'asof'])
       .default('left'),
-    conditions: z.array(JoinConditionSchema).optional(),
+    conditions: z.array(JoinConditionSchema).max(MAX_JOIN_CONDITION_COUNT).optional(),
     conflict: ConflictSchema.optional(),
     keep: z.array(KeepItemSchema).default([]),
     asof: AsofConfigSchema.optional(),

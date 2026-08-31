@@ -29,6 +29,7 @@ import { GlassFieldTagPicker } from '../shared/GlassFieldTagPicker';
 import { GlassFormTextInput } from '../shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from '../shared/GlassOptionSingleSelect';
 import { GlassRowList } from '../shared/GlassRowList';
+import { insertRowAfter, removeRowAt } from '../shared/rowListOperations';
 
 interface CalculationFunctionWizardProps {
   fieldCompletions: string[];
@@ -223,6 +224,7 @@ export function CalculationFunctionWizard({
     handleDragStart,
     handleDragOver,
     handleDragEnd,
+    handleKeyboardMove,
     isDragging,
     dragIndexRef,
   } = useDragReorder(editableOrderBy, setOrderBy);
@@ -233,14 +235,11 @@ export function CalculationFunctionWizard({
 
   function addOrderField(index: number): void {
     if (activeOrderBy.some((item) => !item.field)) return;
-    const next = [...activeOrderBy];
-    next.splice(index + 1, 0, { field: '', direction: 'asc' });
-    setOrderBy(next);
+    setOrderBy(insertRowAfter(activeOrderBy, index, { field: '', direction: 'asc' }));
   }
 
   function removeOrderField(index: number): void {
-    const next = activeOrderBy.filter((_, i) => i !== index);
-    setOrderBy(next.length === 1 && !next[0].field ? [] : next);
+    setOrderBy(removeRowAt(activeOrderBy, index));
   }
 
   const hasSpecialConfig = definition.frame === 'custom';
@@ -453,6 +452,7 @@ export function CalculationFunctionWizard({
                     onDragStart={handleDragStart}
                     onDragOver={handleDragOver}
                     onDragEnd={handleDragEnd}
+                    onKeyboardMove={handleKeyboardMove}
                     getRowOpacity={(index) => !!(isDragging && dragIndexRef.current === index)}
                     dragTitle={tr('rowList.dragToReorder')}
                   />

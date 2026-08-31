@@ -34,8 +34,8 @@ export { UnpivotConfigSchema } from './unpivot';
 export { UnnestConfigSchema } from './unnest';
 export { SetOpConfigSchema } from './set-op';
 export { DEFAULT_OPERATION, DEFAULT_MODE, DEFAULT_MATCH } from './set-op';
-export { AggregateConfigSchema } from './aggregate';
-export { CalculateFieldConfigSchema } from './calculate-field';
+export { AggregateConfigSchema, MAX_METRIC_COUNT } from './aggregate';
+export { CalculateFieldConfigSchema, MAX_CALCULATION_COUNT } from './calculate-field';
 export {
   MissingValueConfigSchema,
   MissingValueMethodSchema,
@@ -48,10 +48,12 @@ export {
   PivotLiteralSchema,
   PivotAxisEntrySchema,
   PivotMetricSchema,
+  MAX_ON_COUNT,
+  MAX_USING_COUNT,
   MAX_PIVOT_VALUES_PER_FIELD,
 } from './pivot';
 export type { PivotLiteral, PivotAxisEntry, PivotMetric } from './pivot';
-export { JoinConfigSchema, JoinConditionSchema } from './join';
+export { JoinConfigSchema, JoinConditionSchema, MAX_JOIN_CONDITION_COUNT } from './join';
 export type { DurationParts, JoinCondition } from './join';
 export { FilterConfigSchema } from './filter';
 

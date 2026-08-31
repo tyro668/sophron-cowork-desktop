@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { MAX_METRIC_ID_LENGTH, PivotFunctionSchema } from './common';
 
 const MAX_FIELD_NAME_LENGTH = 256;
-const MAX_ON_COUNT = 50;
-const MAX_USING_COUNT = 100;
+export const MAX_ON_COUNT = 50;
+export const MAX_USING_COUNT = 100;
 const MAX_GROUP_BY_COUNT = 100;
 const MAX_EXPRESSION_LENGTH = 10_000;
 const MAX_ALIAS_LENGTH = 256;

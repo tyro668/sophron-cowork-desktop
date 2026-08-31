@@ -3,7 +3,7 @@ import { z } from 'zod';
 const MAX_CALCULATION_ID_LENGTH = 64;
 const MAX_CALCULATION_FIELD_LENGTH = 256;
 const MAX_CALCULATION_EXPRESSION_LENGTH = 10_000;
-const MAX_CALCULATION_COUNT = 100;
+export const MAX_CALCULATION_COUNT = 100;
 
 export const CalculationSchema = z
   .object({

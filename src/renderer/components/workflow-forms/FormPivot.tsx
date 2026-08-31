@@ -5,6 +5,7 @@ import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFieldTagPicker } from './shared/GlassFieldTagPicker';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
+import { canAppendRow, insertRowAfter, removeRowAt } from './shared/rowListOperations';
 import { useWorkflowNodeColumnValues } from '../../hooks/useWorkflowNodeColumnValues';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
@@ -21,7 +22,11 @@ import {
   togglePivotVisibleValues,
   removePivotCustomValue,
 } from '../../../shared/operator-config';
-import { MAX_PIVOT_VALUES_PER_FIELD } from '../../../shared/operator-schemas';
+import {
+  MAX_ON_COUNT,
+  MAX_PIVOT_VALUES_PER_FIELD,
+  MAX_USING_COUNT,
+} from '../../../shared/operator-schemas';
 import type { PivotAxisEntry, PivotLiteral, PivotMetric } from '../../../shared/operator-schemas';
 import { PIVOT_AGGREGATE_FUNCTIONS, createMetricId } from '../../../shared/operator-schemas';
 
@@ -74,12 +79,8 @@ export default function FormPivot({
   }
 
   function addAxisAfter(index: number) {
-    if (axes.some((axis) => !axis.field)) return;
-    handleAxesChange([
-      ...axes.slice(0, index + 1),
-      { field: '', values: [], customValues: [] },
-      ...axes.slice(index + 1),
-    ]);
+    if (!canAppendRow(axes.length, MAX_ON_COUNT)) return;
+    handleAxesChange(insertRowAfter(axes, index, { field: '', values: [], customValues: [] }));
   }
 
   function removeAxis(index: number) {
@@ -87,7 +88,7 @@ export default function FormPivot({
       handleAxesChange([]);
       return;
     }
-    handleAxesChange(axes.filter((_, axisIndex) => axisIndex !== index));
+    handleAxesChange(removeRowAt(axes, index));
   }
 
   const usedFields = useMemo(() => new Set(axes.map((axis) => axis.field)), [axes]);
@@ -124,28 +125,12 @@ export default function FormPivot({
   }
 
   function addMetricAfter(index: number) {
-    if (using.some((metric) => !metric.expression)) return;
-    handleUsingChange([
-      ...using.slice(0, index + 1),
-      createEmptyMetric(),
-      ...using.slice(index + 1),
-    ]);
+    if (!canAppendRow(using.length, MAX_USING_COUNT)) return;
+    handleUsingChange(insertRowAfter(using, index, createEmptyMetric()));
   }
 
   function removeMetric(index: number) {
-    if (using.length <= 1) {
-      handleUsingChange([]);
-      return;
-    }
-    const remaining = using.filter((_, metricIndex) => metricIndex !== index);
-    const firstEmptyIndex = remaining.findIndex((metric) => !metric.expression);
-    handleUsingChange(
-      firstEmptyIndex < 0
-        ? remaining
-        : remaining.filter(
-            (metric, metricIndex) => metricIndex === firstEmptyIndex || metric.expression
-          )
-    );
+    handleUsingChange(removeRowAt(using, index));
   }
 
   const fnGroups = useMemo(
@@ -165,6 +150,7 @@ export default function FormPivot({
     handleDragStart: handleMetricDragStart,
     handleDragOver: handleMetricDragOver,
     handleDragEnd: handleMetricDragEnd,
+    handleKeyboardMove: handleMetricKeyboardMove,
     isDragging: isMetricDragging,
     dragIndexRef: metricDragIndexRef,
   } = useDragReorder(using, handleUsingChange);
@@ -223,7 +209,7 @@ export default function FormPivot({
                 ))}
                 <button
                   type="button"
-                  disabled={axes.some((axis) => !axis.field)}
+                  disabled={!canAppendRow(axes.length, MAX_ON_COUNT)}
                   onClick={() => addAxisAfter(axes.length - 1)}
                   className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-dashed border-border-muted text-[12px] text-text-secondary transition-colors hover:border-accent/50 hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
                 >
@@ -270,7 +256,7 @@ export default function FormPivot({
               </div>
               <button
                 type="button"
-                disabled={using.some((metric) => !metric.expression)}
+                disabled={!canAppendRow(using.length, MAX_USING_COUNT)}
                 onClick={() => addMetricAfter(using.length - 1)}
                 className="flex h-9 flex-none items-center gap-1.5 rounded-lg border border-accent px-3 text-[12px] font-medium text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -298,15 +284,23 @@ export default function FormPivot({
                       dragging ? 'opacity-50' : ''
                     }`}
                   >
-                    <div
+                    <button
+                      type="button"
                       draggable
                       onDragStart={() => handleMetricDragStart(index)}
                       onDragEnd={handleMetricDragEnd}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+                        event.preventDefault();
+                        handleMetricKeyboardMove(index, event.key === 'ArrowUp' ? 'up' : 'down');
+                      }}
                       className="flex h-7 w-7 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
                       title={tr('rowList.dragToReorder')}
+                      aria-label={tr('rowList.dragToReorder')}
+                      aria-keyshortcuts="ArrowUp ArrowDown"
                     >
                       <GripVertical className="h-4 w-4" />
-                    </div>
+                    </button>
                     <GlassOptionSingleSelect
                       value={metric.function}
                       groups={fnGroups}

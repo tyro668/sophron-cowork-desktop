@@ -5,11 +5,16 @@ import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
-import { GlassRowList, type RowAction } from './shared/GlassRowList';
+import { GlassRowList } from './shared/GlassRowList';
+import { canAppendRow, insertRowAfter, removeRowAt } from './shared/rowListOperations';
 import { toggleSelectAll } from '../../../shared/collections/selection';
 import { isTemporalDataFieldType } from '@/shared/data-field-types';
 import { parseDuration } from '@/shared/operator-schemas/join';
-import type { DurationParts, JoinCondition } from '@/shared/operator-schemas';
+import {
+  MAX_JOIN_CONDITION_COUNT,
+  type DurationParts,
+  type JoinCondition,
+} from '@/shared/operator-schemas';
 import {
   buildJoinConflictConfig,
   createJoinKeepDraft,
@@ -38,16 +43,11 @@ const OPERATOR_KEYS = [
 ];
 
 function insertCondition(conditions: ConditionEntry[], index: number): ConditionEntry[] {
-  const next = [...conditions];
-  next.splice(index + 1, 0, { ...DEFAULT_CONDITION });
-  return next;
+  return insertRowAfter(conditions, index, { ...DEFAULT_CONDITION });
 }
 
 function removeCondition(conditions: ConditionEntry[], index: number): ConditionEntry[] {
-  const next = conditions.filter((_, conditionIndex) => conditionIndex !== index);
-  return next.length === 0 || next.every((condition) => !condition.left && !condition.right)
-    ? []
-    : next;
+  return removeRowAt(conditions, index);
 }
 
 // Shared geometry keeps the selected regions comparable across join types.
@@ -603,6 +603,7 @@ export default function FormJoin({
   }
 
   function handleCondAdd(index: number) {
+    if (!canAppendRow(conditions.length, MAX_JOIN_CONDITION_COUNT)) return;
     handleConditionsChange(insertCondition(conditions, index));
   }
 
@@ -618,11 +619,12 @@ export default function FormJoin({
   }
 
   function handleAsofByAdd(index: number) {
-    handleAsofByChange(insertCondition(asofBy, index));
+    if (!canAppendRow(displayedAsofBy.length, MAX_JOIN_CONDITION_COUNT)) return;
+    handleAsofByChange(insertCondition(displayedAsofBy, index));
   }
 
   function handleAsofByRemove(index: number) {
-    handleAsofByChange(removeCondition(asofBy, index));
+    handleAsofByChange(removeCondition(displayedAsofBy, index));
   }
 
   const conflictGroups = useMemo(
@@ -881,10 +883,9 @@ export default function FormJoin({
                       onAdd={handleAsofByAdd}
                       onRemove={handleAsofByRemove}
                       addTitle={tr('addCondition')}
-                      canAct={(action: RowAction, index: number) =>
-                        action === 'add'
-                          ? Boolean(displayedAsofBy[index]?.left && displayedAsofBy[index]?.right)
-                          : true
+                      canAct={(action) =>
+                        action !== 'add' ||
+                        canAppendRow(displayedAsofBy.length, MAX_JOIN_CONDITION_COUNT)
                       }
                       hideHeader
                     />
@@ -954,8 +955,8 @@ export default function FormJoin({
                     onAdd={handleCondAdd}
                     onRemove={handleCondRemove}
                     addTitle={tr('addCondition')}
-                    canAct={(action: RowAction) =>
-                      action === 'add' ? !conditions.some((c) => !c.left && !c.right) : true
+                    canAct={(action) =>
+                      action !== 'add' || canAppendRow(conditions.length, MAX_JOIN_CONDITION_COUNT)
                     }
                     hideHeader
                   />
