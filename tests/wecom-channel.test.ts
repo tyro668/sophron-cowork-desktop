@@ -371,7 +371,7 @@ describe('WecomChannel', () => {
     expect(received[0]?.raw).not.toHaveProperty('response_url');
     expect(initialReply).toMatchObject({
       msgtype: 'stream',
-      stream: { finish: false },
+      stream: { finish: false, content: 'Processing, please wait…' },
     });
 
     await channel.send({
@@ -389,6 +389,31 @@ describe('WecomChannel', () => {
     expect(decryptWebhookResult(refresh.result, refresh.crypto)).toEqual({
       msgtype: 'stream',
       stream: { id: initialReply.stream.id, finish: true, content: '**completed**' },
+    });
+  });
+
+  it('localizes the initial Webhook processing message from the user command', async () => {
+    const channel = await createStartedWebhookChannel();
+    const english = invokeEncryptedWebhook(channel, {
+      msgid: 'webhook-message-en',
+      chattype: 'single',
+      from: { userid: 'user-en' },
+      msgtype: 'text',
+      text: { content: 'summarize this report' },
+    });
+    const chinese = invokeEncryptedWebhook(channel, {
+      msgid: 'webhook-message-zh',
+      chattype: 'single',
+      from: { userid: 'user-zh' },
+      msgtype: 'text',
+      text: { content: '总结这份报告' },
+    });
+
+    expect(decryptWebhookResult(english.result, english.crypto)).toMatchObject({
+      stream: { content: 'Processing, please wait…', finish: false },
+    });
+    expect(decryptWebhookResult(chinese.result, chinese.crypto)).toMatchObject({
+      stream: { content: '正在处理，请稍候…', finish: false },
     });
   });
 

@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { ChannelBase, NonRetryableChannelError, withRetry } from '../channel-base';
 import { log, logError, logWarn } from '../../../utils/logger';
 import type { RemoteMessage, RemoteResponse, WecomChannelConfig } from '../../types';
+import enTranslations from '../../../../renderer/i18n/locales/en.json';
+import zhTranslations from '../../../../renderer/i18n/locales/zh.json';
 import { WecomWebhookCrypto, type WecomEncryptedEnvelope } from './wecom-webhook-crypto';
 import { WecomWsClient, type WecomTextFrame } from './wecom-ws-client';
 
@@ -16,7 +18,11 @@ const WEBHOOK_TIMESTAMP_TOLERANCE_MS = 5 * 60 * 1000;
 const MAX_MARKDOWN_BYTES = 18 * 1024;
 const RESPONSE_URL_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_ERROR_BYTES = 1_024;
-const PROCESSING_MESSAGE = '正在处理，请稍候…';
+
+function processingMessageFor(content: string): string {
+  const translations = /[\u3400-\u9fff]/u.test(content) ? zhTranslations : enTranslations;
+  return translations.remote.botMessages.processing;
+}
 
 interface CachedReplyFrame {
   frame: WecomTextFrame;
@@ -342,7 +348,7 @@ export class WecomChannel extends ChannelBase {
       channelId,
       responseUrl: this.validateResponseUrl(payload.response_url),
       responseUrlUsed: false,
-      content: PROCESSING_MESSAGE,
+      content: processingMessageFor(content),
       finish: false,
       delivered: false,
       createdAt: Date.now(),
