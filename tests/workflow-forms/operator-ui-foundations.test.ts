@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { GlassFormTextInput } from '../../src/renderer/components/workflow-forms/shared/GlassFormTextInput';
+import { GlassFieldCompactSelect } from '../../src/renderer/components/workflow-forms/shared/GlassFieldCompactSelect';
 import { GlassOptionSingleSelect } from '../../src/renderer/components/workflow-forms/shared/GlassOptionSingleSelect';
 import { GlassRadioSelect } from '../../src/renderer/components/workflow-forms/shared/GlassRadioSelect';
 import { GlassRowList } from '../../src/renderer/components/workflow-forms/shared/GlassRowList';
@@ -70,4 +73,32 @@ describe('operator UI foundations', () => {
     expect(html).toContain('aria-keyshortcuts="ArrowUp ArrowDown"');
     expect(html).toContain('data-row-drag-handle="true"');
   });
+
+  it('keeps compact field lists within their parent when a field name is very long', () => {
+    const html = renderToStaticMarkup(
+      createElement(GlassFieldCompactSelect, {
+        columns: [`field_${'x'.repeat(300)}`],
+        selected: [],
+        onChange: () => undefined,
+      })
+    );
+
+    expect(html).toContain('min-w-0 max-w-full flex-1 flex-col overflow-hidden');
+    expect(html).toContain('overflow-x-hidden overflow-y-auto');
+    expect(html).toContain('flex-1 min-w-0 truncate');
+  });
+
+  it.each(['FormAggregate.tsx', 'FormDeduplicate.tsx', 'FormUnpivot.tsx'])(
+    'keeps the %s split layout at a shrinkable 4:6 ratio',
+    (fileName) => {
+      const source = readFileSync(
+        resolve(__dirname, '../../src/renderer/components/workflow-forms', fileName),
+        'utf8'
+      );
+
+      expect(source).toContain('flex-[4]');
+      expect(source).toContain('flex-[6]');
+      expect(source.match(/min-w-0 w-0/g)).toHaveLength(2);
+    }
+  );
 });

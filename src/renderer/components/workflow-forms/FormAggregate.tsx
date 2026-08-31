@@ -157,11 +157,11 @@ export default function FormAggregate({
   }, [metrics, isDragging, resetDrag]);
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden">
-      <div className="flex gap-2.5 flex-1 min-h-0">
+    <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
+      <div className="flex min-h-0 min-w-0 w-full flex-1 gap-2.5">
         {/* Left: group-by fields */}
-        <section className="operator-section flex-[4] content-start flex flex-col min-h-0">
-          <div className="flex-1 min-h-0 px-3 pb-3 flex flex-col">
+        <section className="operator-section flex-[4] content-start flex min-h-0 min-w-0 w-0 flex-col">
+          <div className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col px-3 pb-3">
             <div className="mb-3 px-0.5 pt-1">
               <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
                 <span className="h-2 w-2 rounded-full bg-blue-500" />
@@ -220,9 +220,9 @@ export default function FormAggregate({
         </section>
 
         {/* Right: metrics */}
-        <section className="operator-section flex flex-[6] min-h-0 flex-col content-start">
-          <div className="scrollbar-hover flex-1 min-h-0 overflow-x-hidden overflow-y-auto border-l border-border-subtle/70 pl-3 pr-3 grid content-start gap-3">
-            <div className="flex items-start justify-between gap-3 pt-1">
+        <section className="operator-section flex flex-[6] min-h-0 min-w-0 w-0 flex-col content-start">
+          <div className="scrollbar-hover grid min-h-0 min-w-0 flex-1 content-start gap-3 overflow-x-hidden overflow-y-auto border-l border-border-subtle/70 pl-3 pr-3">
+            <div className="flex min-w-0 items-start justify-between gap-3 pt-1">
               <div>
                 <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
                   <span className="h-2 w-2 rounded-full bg-accent" />
@@ -243,7 +243,7 @@ export default function FormAggregate({
               </button>
             </div>
 
-            <div className="grid grid-cols-[28px_minmax(88px,0.7fr)_minmax(0,1.5fr)_minmax(96px,0.9fr)_28px] items-center gap-2 px-3 text-[12px] font-medium text-text-muted">
+            <div className="grid min-w-0 grid-cols-[28px_minmax(88px,0.7fr)_minmax(0,1.5fr)_minmax(96px,0.9fr)_28px] items-center gap-2 px-3 text-[12px] font-medium text-text-muted">
               <span />
               <span>{tr('aggregateFns.aggregateFunction')}</span>
               <span>{tr('expression.expressionLabel')}</span>
@@ -251,7 +251,7 @@ export default function FormAggregate({
               <span />
             </div>
 
-            <div className="grid gap-2">
+            <div className="grid min-w-0 gap-2">
               {activeMetrics.map((metric, index) => {
                 const dragging = isDragging && dragIndexRef.current === index;
                 return (

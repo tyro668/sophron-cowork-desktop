@@ -42,10 +42,10 @@ export default function FormUnpivot({
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden">
-      <div className="flex gap-2.5 flex-1 min-h-0">
+      <div className="flex min-h-0 min-w-0 w-full flex-1 gap-2.5">
         {/* ═══ 左列: 列展开 ═══ */}
-        <section className="operator-section flex-[4] content-start flex flex-col min-h-0">
-          <div className="flex-1 min-h-0 px-3 pb-3 flex flex-col">
+        <section className="operator-section flex-[4] content-start flex min-h-0 min-w-0 w-0 flex-col">
+          <div className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col px-3 pb-3">
             <div className="mb-3 px-0.5 pt-1">
               <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
                 <span className="h-2 w-2 rounded-full bg-blue-500" />
@@ -66,7 +66,7 @@ export default function FormUnpivot({
         </section>
 
         {/* ═══ 右列: 输出配置 ═══ */}
-        <section className="operator-section flex-[6] content-start flex flex-col min-h-0">
+        <section className="operator-section flex-[6] content-start flex min-h-0 min-w-0 w-0 flex-col">
           <div className="scrollbar-hover flex-1 min-h-0 overflow-y-auto border-l border-border-subtle/70 pl-3 pr-3 pb-3 grid content-start gap-3">
             <div className="px-0.5 pt-1">
               <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">

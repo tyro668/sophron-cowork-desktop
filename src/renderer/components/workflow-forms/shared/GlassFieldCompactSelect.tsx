@@ -120,8 +120,8 @@ export const GlassFieldCompactSelect = memo(function GlassFieldCompactSelect({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-2 flex min-h-9 items-center gap-2 rounded-md border border-border-muted bg-background/60 px-2.5 py-1">
+    <div className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden">
+      <div className="mb-2 flex min-h-9 min-w-0 max-w-full items-center gap-2 overflow-hidden rounded-md border border-border-muted bg-background/60 px-2.5 py-1">
         <Search className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
         <input
           type="text"
@@ -150,7 +150,7 @@ export const GlassFieldCompactSelect = memo(function GlassFieldCompactSelect({
 
       <div
         ref={listRef}
-        className="scrollbar-hover overflow-y-auto flex-1 min-h-0"
+        className="scrollbar-hover min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto"
         style={{ maxHeight }}
       >
         {filtered.length === 0 ? (
@@ -163,7 +163,7 @@ export const GlassFieldCompactSelect = memo(function GlassFieldCompactSelect({
             return (
               <label
                 key={col}
-                className={`flex min-h-7 cursor-pointer items-center gap-2 px-2.5 py-1 text-[13px] transition-colors hover:bg-surface-hover ${
+                className={`flex min-h-7 min-w-0 max-w-full cursor-pointer items-center gap-2 overflow-hidden px-2.5 py-1 text-[13px] transition-colors hover:bg-surface-hover ${
                   checked ? 'text-text-primary' : 'text-text-secondary'
                 }`}
                 onMouseDown={(e) => {
