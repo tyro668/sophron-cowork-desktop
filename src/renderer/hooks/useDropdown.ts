@@ -6,6 +6,7 @@ export interface DropdownPosition {
   bottom?: number;
   width: number;
   minWidth?: number;
+  maxWidth?: number;
 }
 
 /** Gap kept between the panel and the viewport edge when measuring space. */

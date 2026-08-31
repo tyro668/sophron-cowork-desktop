@@ -2,30 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Search } from 'lucide-react';
-import { dataFieldTypeLabel } from '@/shared/data-field-types';
 import { useDataFieldTypeLabel } from '../../../hooks/useDataFieldTypeLabel';
 import { parseFieldRef } from '@/shared/prep-dsl/parser';
 import { computeDropdownPlacement, useDropdown } from '../../../hooks/useDropdown';
 import { DataTypeIcon } from './DataTypeIcon';
+import { computeDropdownWidth, measureMaxTextWidth } from './dropdownWidth';
 
 function extractFieldName(value: string): string {
   return parseFieldRef(value)?.name ?? value;
-}
-
-function calcMaxOptionWidth(options: string[], columnTypes: Record<string, string>): number {
-  const el = document.createElement('span');
-  el.style.cssText =
-    'position:fixed;visibility:hidden;white-space:nowrap;font-size:12px;line-height:1.4;padding:0 2px;font-family:inherit';
-  document.body.appendChild(el);
-  let max = 0;
-  for (const opt of options) {
-    const name = extractFieldName(opt);
-    const type = columnTypes[opt] ? `  ${dataFieldTypeLabel(columnTypes[opt])}` : '';
-    el.textContent = name + type;
-    max = Math.max(max, el.offsetWidth);
-  }
-  document.body.removeChild(el);
-  return max + 48;
 }
 
 interface GlassFieldSingleSelectProps {
@@ -89,6 +73,8 @@ export function GlassFieldSingleSelect({
     [filteredOptions, value]
   );
 
+  const optionTexts = useMemo(() => options.map(extractFieldName), [options]);
+
   useEffect(() => {
     setHighlightedIndex(Math.max(0, selectedIndex));
   }, [selectedIndex, open]);
@@ -96,7 +82,8 @@ export function GlassFieldSingleSelect({
   const updatePosition = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const contentWidth = calcMaxOptionWidth(options, columnTypes);
+    const contentWidth = measureMaxTextWidth(optionTexts);
+    const dropdownWidth = computeDropdownWidth(rect.width, contentWidth);
     const placement = computeDropdownPlacement(rect);
     setMaxHeight(placement.maxHeight);
     setPosition({
@@ -104,9 +91,9 @@ export function GlassFieldSingleSelect({
       top: placement.top,
       bottom: placement.bottom,
       width: rect.width,
-      minWidth: Math.max(rect.width, contentWidth),
+      ...dropdownWidth,
     });
-  }, [options, columnTypes, triggerRef, setPosition, setMaxHeight]);
+  }, [optionTexts, triggerRef, setPosition, setMaxHeight]);
 
   const handleClose = useCallback(() => {
     close();
@@ -247,6 +234,7 @@ export function GlassFieldSingleSelect({
               bottom: position.bottom ?? undefined,
               width: position.width,
               minWidth: position.minWidth,
+              maxWidth: position.maxWidth,
               maxHeight,
             }}
             className="operator-ui fixed z-50 flex flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-elevated backdrop-blur-xl"

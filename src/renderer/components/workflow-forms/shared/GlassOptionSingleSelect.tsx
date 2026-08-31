@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
 import { computeDropdownPlacement, useDropdown } from '../../../hooks/useDropdown';
+import { computeDropdownWidth, measureMaxTextWidth } from './dropdownWidth';
 
 function flattenItems(groups: GlassOptionGroup[]): GlassOptionItem[] {
   const result: GlassOptionItem[] = [];
@@ -70,6 +71,8 @@ export function GlassOptionSingleSelect({
   const updatePosition = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
+    const contentWidth = measureMaxTextWidth(flattenedItems.map((item) => item.label));
+    const dropdownWidth = computeDropdownWidth(rect.width, contentWidth);
     const placement = computeDropdownPlacement(rect);
     setMaxHeight(placement.maxHeight);
     setPosition({
@@ -77,8 +80,9 @@ export function GlassOptionSingleSelect({
       top: placement.top,
       bottom: placement.bottom,
       width: rect.width,
+      ...dropdownWidth,
     });
-  }, [triggerRef, setPosition, setMaxHeight]);
+  }, [flattenedItems, triggerRef, setPosition, setMaxHeight]);
 
   const toggleOpen = useCallback(() => {
     if (open) {
@@ -203,6 +207,8 @@ export function GlassOptionSingleSelect({
               top: position.top ?? undefined,
               bottom: position.bottom ?? undefined,
               width: position.width,
+              minWidth: position.minWidth,
+              maxWidth: position.maxWidth,
               maxHeight,
             }}
             className="operator-ui scrollbar-hover fixed z-50 overflow-y-auto rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl"
@@ -228,7 +234,7 @@ export function GlassOptionSingleSelect({
                       role="option"
                       aria-selected={selected}
                       data-index={globalIdx}
-                      className={`min-h-7 w-full whitespace-nowrap px-3 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${
+                      className={`min-h-7 w-full overflow-hidden text-ellipsis whitespace-nowrap px-3 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${
                         selected
                           ? 'text-accent font-medium bg-accent/10 ring-1 ring-inset ring-accent/20'
                           : 'text-text-secondary hover:bg-surface-hover'
