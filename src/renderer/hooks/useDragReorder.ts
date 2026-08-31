@@ -1,5 +1,31 @@
 import { useCallback, useRef, useState } from 'react';
 
+export type ReorderDirection = 'up' | 'down';
+
+export function getReorderTargetIndex(
+  itemCount: number,
+  index: number,
+  direction: ReorderDirection
+): number | null {
+  const targetIndex = direction === 'up' ? index - 1 : index + 1;
+  return index >= 0 && index < itemCount && targetIndex >= 0 && targetIndex < itemCount
+    ? targetIndex
+    : null;
+}
+
+export function reorderItem<T>(
+  items: readonly T[],
+  index: number,
+  direction: ReorderDirection
+): T[] | null {
+  const targetIndex = getReorderTargetIndex(items.length, index, direction);
+  if (targetIndex === null) return null;
+  const next = [...items];
+  const [moved] = next.splice(index, 1);
+  next.splice(targetIndex, 0, moved);
+  return next;
+}
+
 export function useDragReorder<T>(
   items: T[],
   onCommit: (reordered: T[]) => void,
@@ -40,6 +66,14 @@ export function useDragReorder<T>(
     setDragState(null);
   }, [dragState, onCommit]);
 
+  const handleKeyboardMove = useCallback(
+    (index: number, direction: ReorderDirection) => {
+      const reordered = reorderItem(snapshotSource ?? items, index, direction);
+      if (reordered) onCommit(reordered);
+    },
+    [items, onCommit, snapshotSource]
+  );
+
   const resetDrag = useCallback(() => {
     dragIndexRef.current = null;
     setDragState(null);
@@ -50,6 +84,7 @@ export function useDragReorder<T>(
     handleDragStart,
     handleDragOver,
     handleDragEnd,
+    handleKeyboardMove,
     resetDrag,
     isDragging: dragState !== null,
     dragIndexRef,

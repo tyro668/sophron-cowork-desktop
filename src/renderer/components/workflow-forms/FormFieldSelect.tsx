@@ -185,6 +185,16 @@ export default function FormFieldSelect({
                   handleDragOver(e, orderedFields.indexOf(field));
                 }}
                 onDragEnd={handleDragEnd}
+                onKeyboardMove={(i, direction) => {
+                  const field = visibleFields[i];
+                  const adjacentField = visibleFields[direction === 'up' ? i - 1 : i + 1];
+                  if (!field || !adjacentField) return;
+                  const next = [...orderedFields];
+                  const fieldIndex = next.indexOf(field);
+                  const adjacentIndex = next.indexOf(adjacentField);
+                  [next[fieldIndex], next[adjacentIndex]] = [next[adjacentIndex], next[fieldIndex]];
+                  commitReorder(next);
+                }}
                 getRowOpacity={(i) => {
                   const field = visibleFields[i];
                   return !!(isDragging && dragIndexRef.current === orderedFields.indexOf(field));

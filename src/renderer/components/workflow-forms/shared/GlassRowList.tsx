@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useFormTranslation } from '../../../hooks/useFormTranslation';
+import { getReorderTargetIndex, type ReorderDirection } from '../../../hooks/useDragReorder';
 
 export type RowAction = 'add' | 'copy' | 'remove' | 'moveUp' | 'moveDown' | 'toTop' | 'toBottom';
 
@@ -48,6 +49,7 @@ interface GlassRowListProps<T> {
   onDragStart?: (index: number) => void;
   onDragOver?: (e: React.DragEvent, index: number) => void;
   onDragEnd?: () => void;
+  onKeyboardMove?: (index: number, direction: ReorderDirection) => void;
   getRowOpacity?: (index: number) => boolean;
   dragTitle?: string;
   hideHeader?: boolean;
@@ -92,6 +94,7 @@ export function GlassRowList<T>({
   onDragStart,
   onDragOver,
   onDragEnd,
+  onKeyboardMove,
   getRowOpacity,
   dragTitle,
   getKey,
@@ -101,6 +104,7 @@ export function GlassRowList<T>({
   variant = 'cards',
 }: GlassRowListProps<T>) {
   const tr = useFormTranslation('rowList');
+  const listRef = React.useRef<HTMLDivElement>(null);
 
   function getActionLabel(action: RowAction): string {
     switch (action) {
@@ -125,6 +129,7 @@ export function GlassRowList<T>({
 
   return (
     <div
+      ref={listRef}
       className={`flex flex-col ${variant === 'table' ? 'overflow-hidden rounded-lg border border-border-muted' : gapClassName}`}
     >
       {!hideHeader && (
@@ -170,16 +175,34 @@ export function GlassRowList<T>({
             onDragOver={draggable ? (e) => onDragOver?.(e, index) : undefined}
           >
             {draggable && (
-              <div
+              <button
+                type="button"
                 draggable
                 onDragStart={() => onDragStart?.(index)}
                 onDragEnd={() => onDragEnd?.()}
+                onKeyDown={(event) => {
+                  if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+                  event.preventDefault();
+                  const direction = event.key === 'ArrowUp' ? 'up' : 'down';
+                  const targetIndex = getReorderTargetIndex(items.length, index, direction);
+                  if (targetIndex === null || !onKeyboardMove) return;
+                  onKeyboardMove(index, direction);
+                  requestAnimationFrame(() => {
+                    const handles =
+                      listRef.current?.querySelectorAll<HTMLButtonElement>(
+                        '[data-row-drag-handle]'
+                      );
+                    handles?.[targetIndex]?.focus();
+                  });
+                }}
                 className="flex h-7 w-7 flex-shrink-0 cursor-grab items-center justify-center rounded text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-accent/30 active:cursor-grabbing"
                 title={dragTitle ?? tr('dragToReorder')}
                 aria-label={dragTitle ?? tr('dragToReorder')}
+                aria-keyshortcuts="ArrowUp ArrowDown"
+                data-row-drag-handle
               >
                 <GripVertical className="h-4 w-4" />
-              </div>
+              </button>
             )}
 
             {columns.map((col, i) => (

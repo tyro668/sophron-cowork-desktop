@@ -38,6 +38,7 @@ export function SortKeysEditor({
     handleDragStart,
     handleDragOver,
     handleDragEnd,
+    handleKeyboardMove,
     resetDrag,
     isDragging,
     dragIndexRef,
@@ -162,6 +163,7 @@ export function SortKeysEditor({
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
+      onKeyboardMove={handleKeyboardMove}
       getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
     />
   );

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { GlassFormTextInput } from '../../src/renderer/components/workflow-forms/shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from '../../src/renderer/components/workflow-forms/shared/GlassOptionSingleSelect';
 import { GlassRadioSelect } from '../../src/renderer/components/workflow-forms/shared/GlassRadioSelect';
+import { GlassRowList } from '../../src/renderer/components/workflow-forms/shared/GlassRowList';
 
 describe('operator UI foundations', () => {
   it('renders shared text inputs with the standard operator type and control size', () => {
@@ -47,5 +48,26 @@ describe('operator UI foundations', () => {
 
     expect(html).toContain('text-left');
     expect(html).not.toContain('text-center');
+  });
+
+  it('renders draggable row handles as keyboard-operable buttons', () => {
+    const html = renderToStaticMarkup(
+      createElement(GlassRowList<{ label: string }>, {
+        items: [{ label: 'Revenue' }],
+        columns: [
+          {
+            flex: 'flex-1',
+            header: 'Field',
+            render: (item) => item.label,
+          },
+        ],
+        draggable: true,
+        onKeyboardMove: () => undefined,
+      })
+    );
+
+    expect(html).toContain('<button type="button" draggable="true"');
+    expect(html).toContain('aria-keyshortcuts="ArrowUp ArrowDown"');
+    expect(html).toContain('data-row-drag-handle="true"');
   });
 });

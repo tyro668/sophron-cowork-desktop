@@ -60,6 +60,7 @@ export default function FormTypeConvert({
     handleDragStart,
     handleDragOver,
     handleDragEnd,
+    handleKeyboardMove,
     isDragging,
     resetDrag,
     dragIndexRef,
@@ -280,6 +281,7 @@ export default function FormTypeConvert({
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
+            onKeyboardMove={handleKeyboardMove}
             getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
             dragTitle={tr('rowList.dragToReorder')}
           />

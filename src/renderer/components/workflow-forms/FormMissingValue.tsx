@@ -116,6 +116,7 @@ export default function FormMissingValue({
     handleDragStart,
     handleDragOver,
     handleDragEnd,
+    handleKeyboardMove,
     isDragging,
     resetDrag,
     dragIndexRef,
@@ -489,6 +490,7 @@ export default function FormMissingValue({
                 onDragStart={handleDragStart}
                 onDragOver={handleDragOver}
                 onDragEnd={handleDragEnd}
+                onKeyboardMove={handleKeyboardMove}
                 getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
                 dragTitle={tr('missingDragToReorder')}
               />
