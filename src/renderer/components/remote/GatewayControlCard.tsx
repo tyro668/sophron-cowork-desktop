@@ -3,7 +3,7 @@
  */
 
 import { useTranslation } from 'react-i18next';
-import { Power, Smartphone, Loader2 } from 'lucide-react';
+import { Power, RadioTower, Loader2 } from 'lucide-react';
 import type { GatewayStatus, PairedUser, PairingRequest } from './types';
 
 interface Props {
@@ -11,7 +11,10 @@ interface Props {
   pairedUsers: PairedUser[];
   pendingPairings: PairingRequest[];
   isTogglingGateway: boolean;
-  isFeishuConfigured: boolean;
+  configuredChannels: number;
+  connectedChannels: number;
+  totalChannels: number;
+  canStartService: boolean;
   onToggle: () => void;
 }
 
@@ -20,20 +23,23 @@ export function GatewayControlCard({
   pairedUsers,
   pendingPairings,
   isTogglingGateway,
-  isFeishuConfigured,
+  configuredChannels,
+  connectedChannels,
+  totalChannels,
+  canStartService,
   onToggle,
 }: Props) {
   const { t } = useTranslation();
 
   return (
-    <div className="glass-card relative overflow-hidden rounded-xl">
-      <div className="relative p-4">
+    <div className="glass-card relative overflow-hidden rounded-2xl border border-border-subtle shadow-card">
+      <div className="relative p-5">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
             <div
               className={`p-2 rounded-lg ${status?.running ? 'bg-success/10' : 'bg-surface-active'}`}
             >
-              <Smartphone
+              <RadioTower
                 className={`w-5 h-5 ${status?.running ? 'text-success' : 'text-text-muted'}`}
               />
             </div>
@@ -47,7 +53,8 @@ export function GatewayControlCard({
 
           <button
             onClick={onToggle}
-            disabled={isTogglingGateway || !isFeishuConfigured}
+            disabled={isTogglingGateway || (!status?.running && !canStartService)}
+            title={!canStartService ? t('remote.startRequiresChannel') : undefined}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
               status?.running
                 ? 'bg-error hover:bg-error/90 text-white'
@@ -63,22 +70,28 @@ export function GatewayControlCard({
           </button>
         </div>
 
-        {/* Status metrics — only shown when running */}
-        {status?.running && (
-          <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-border/50">
-            <div className="rounded-lg border border-border-subtle bg-background/38 p-3 text-center shadow-soft">
-              <div className="text-xl font-semibold text-accent">{status.activeSessions}</div>
-              <div className="text-xs text-text-muted mt-1">{t('remote.activeSessions')}</div>
+        <div className="grid grid-cols-2 gap-2 mt-5 pt-4 border-t border-border/50 sm:grid-cols-4">
+          <div className="rounded-xl border border-border-subtle bg-background/38 p-3 text-center shadow-soft">
+            <div className="text-xl font-semibold text-accent">
+              {connectedChannels}/{totalChannels}
             </div>
-            <div className="rounded-lg border border-border-subtle bg-background/38 p-3 text-center shadow-soft">
-              <div className="text-xl font-semibold text-success">{pairedUsers.length}</div>
-              <div className="text-xs text-text-muted mt-1">{t('remote.authorizedUsers')}</div>
-            </div>
-            <div className="rounded-lg border border-border-subtle bg-background/38 p-3 text-center shadow-soft">
-              <div className="text-xl font-semibold text-warning">{pendingPairings.length}</div>
-              <div className="text-xs text-text-muted mt-1">{t('remote.pendingApprovals')}</div>
-            </div>
+            <div className="text-xs text-text-muted mt-1">{t('remote.connectedChannels')}</div>
           </div>
+          <div className="rounded-lg border border-border-subtle bg-background/38 p-3 text-center shadow-soft">
+            <div className="text-xl font-semibold text-accent">{status?.activeSessions ?? 0}</div>
+            <div className="text-xs text-text-muted mt-1">{t('remote.activeSessions')}</div>
+          </div>
+          <div className="rounded-lg border border-border-subtle bg-background/38 p-3 text-center shadow-soft">
+            <div className="text-xl font-semibold text-success">{pairedUsers.length}</div>
+            <div className="text-xs text-text-muted mt-1">{t('remote.authorizedUsers')}</div>
+          </div>
+          <div className="rounded-lg border border-border-subtle bg-background/38 p-3 text-center shadow-soft">
+            <div className="text-xl font-semibold text-warning">{pendingPairings.length}</div>
+            <div className="text-xs text-text-muted mt-1">{t('remote.pendingApprovals')}</div>
+          </div>
+        </div>
+        {!configuredChannels && (
+          <p className="mt-3 text-xs text-text-muted">{t('remote.noConfiguredChannels')}</p>
         )}
       </div>
     </div>

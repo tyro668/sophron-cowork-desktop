@@ -4,20 +4,30 @@
  */
 
 import { EventEmitter } from 'events';
+import { createHash } from 'node:crypto';
 import { log, logError, logWarn } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 import { RemoteGateway } from './gateway';
 import { MessageRouter } from './message-router';
+import { isNonRetryableChannelError } from './channels/channel-base';
 import { FeishuChannel } from './channels/feishu';
+import { DingtalkChannel } from './channels/dingtalk';
+import { WecomChannel } from './channels/wecom';
 import { SlackChannel } from './channels/slack';
 import { remoteConfigStore } from './remote-config-store';
 import { tunnelManager, TunnelStatus } from './tunnel-manager';
 import { buildRemoteSessionTitle } from './remote-title';
+import enTranslations from '../../renderer/i18n/locales/en.json';
+import zhTranslations from '../../renderer/i18n/locales/zh.json';
 import type {
   GatewayStatus,
   GatewayConfig,
   FeishuChannelConfig,
+  DingtalkChannelConfig,
+  WecomChannelConfig,
   ChannelType,
+  ControllableChannelType,
+  ControllableChannelState,
   RemoteSessionMapping,
   PairedUser,
   PairingRequest,
@@ -34,6 +44,7 @@ export interface AgentExecutor {
     content?: ContentBlock[],
     cwd?: string
   ): Promise<void>;
+  waitForSessionIdle?(sessionId: string): Promise<void>;
   stopSession(sessionId: string): Promise<void>;
   validateWorkingDirectory?(cwd: string): Promise<string | null> | string | null;
 }
@@ -58,14 +69,43 @@ export interface RemoteInteraction {
   expiresAt: number;
 }
 
+interface RemoteResponseBuffer {
+  items: Array<{ text: string; channelInfo: RemoteChannelContext }>;
+  lastSent: number;
+  toolSteps: string[];
+  retryCount: number;
+}
+
+interface RemoteChannelContext {
+  channelType: ChannelType;
+  channelId: string;
+  replyTo?: string;
+  language?: RemoteMessageLanguage;
+}
+
+type RemoteMessageLanguage = 'en' | 'zh';
+type RemoteBotMessageKey = keyof typeof enTranslations.remote.botMessages;
+
+const RESPONSE_DEBOUNCE_MS = 2000;
+const RESPONSE_RETRY_BASE_MS = 1000;
+const MAX_RESPONSE_RETRIES = 3;
+const INTERACTION_TIMEOUT_MS = 5 * 60 * 1000;
+const MAX_SENT_MESSAGE_KEYS = 500;
+
+interface StopOptions {
+  preserveInteractions?: boolean;
+}
+
+interface SettledInteraction {
+  interaction: RemoteInteraction;
+  resolver?: (response: string) => void;
+}
+
 export class RemoteManager extends EventEmitter {
   private gateway?: RemoteGateway;
   private messageRouter: MessageRouter;
   private agentExecutor?: AgentExecutor;
   private sendToRenderer?: (event: ServerEvent) => void;
-
-  // Session state tracking
-  private remoteSessionIds: Set<string> = new Set();
 
   // Mapping: actual session ID -> remote session ID
   private sessionIdMapping: Map<string, string> = new Map();
@@ -74,8 +114,7 @@ export class RemoteManager extends EventEmitter {
   private reverseSessionIdMapping: Map<string, string> = new Map();
 
   // Mapping: remote session ID -> channel info (for routing responses back)
-  private sessionChannelMapping: Map<string, { channelType: ChannelType; channelId: string }> =
-    new Map();
+  private sessionChannelMapping: Map<string, RemoteChannelContext> = new Map();
 
   // Mapping: remote session ID -> owner sender ID (for interaction security)
   private sessionOwnerMapping: Map<string, string> = new Map();
@@ -86,18 +125,27 @@ export class RemoteManager extends EventEmitter {
   // Callbacks for resolving pending interactions
   private interactionResolvers: Map<string, (response: string) => void> = new Map();
 
-  // Response buffer for collecting messages before sending (to avoid spam)
-  private responseBuffers: Map<string, { texts: string[]; lastSent: number; toolSteps: string[] }> =
-    new Map();
+  // Timeout handles for pending interactions, keyed by question/tool-use ID
+  private interactionTimers: Map<string, NodeJS.Timeout> = new Map();
 
-  // Sent message hashes to avoid duplicates
-  private sentMessageHashes: Map<string, Set<string>> = new Map();
+  // Response buffer for collecting messages before sending (to avoid spam)
+  private responseBuffers: Map<string, RemoteResponseBuffer> = new Map();
+
+  // Stable renderer message IDs (or SHA-256 fallback keys) used for per-turn deduplication
+  private sentMessageKeys: Map<string, Set<string>> = new Map();
 
   // Debounce timers for sending buffered responses
   private sendTimers: Map<string, NodeJS.Timeout> = new Map();
 
+  // In-flight flushes and deferred per-turn cleanup prevent concurrent sends or lost retries
+  private flushPromises: Map<string, Promise<boolean>> = new Map();
+  private cleanupAfterFlush: Set<string> = new Set();
+
   // Promise-chain mutex for synchronizing pendingInteractions access
   private lockChain: Promise<void> = Promise.resolve();
+
+  // Serialize the complete desired-state workflow before work reaches the gateway transport queue.
+  private channelControlOperations: Map<ControllableChannelType, Promise<void>> = new Map();
 
   // 远程默认工作目录（用于未指定 cwd 的会话）
   private defaultWorkingDirectory?: string;
@@ -105,6 +153,9 @@ export class RemoteManager extends EventEmitter {
   constructor() {
     super();
     this.messageRouter = new MessageRouter();
+    this.messageRouter.onSessionExpired((remoteSessionId) => {
+      this.clearRemoteSession(remoteSessionId);
+    });
   }
 
   /**
@@ -123,8 +174,7 @@ export class RemoteManager extends EventEmitter {
         channelType,
         channelId,
         senderId,
-        onMessage,
-        onPartial
+        messageId
       ) => {
         await this.executeAgent(
           sessionId,
@@ -134,8 +184,7 @@ export class RemoteManager extends EventEmitter {
           channelType as ChannelType,
           channelId,
           senderId,
-          onMessage,
-          onPartial
+          messageId
         );
       }
     );
@@ -178,7 +227,7 @@ export class RemoteManager extends EventEmitter {
 
     try {
       // Create gateway
-      this.gateway = new RemoteGateway(config.gateway, this.messageRouter);
+      this.gateway = new RemoteGateway(config.gateway, this.messageRouter, config.channels);
 
       // 设置远程默认工作目录（优先使用配置，其次使用全局默认）
       const configuredDefaultWorkingDir =
@@ -213,7 +262,24 @@ export class RemoteManager extends EventEmitter {
       const tunnelUrl = await tunnelManager.start(config.gateway.port);
       if (tunnelUrl) {
         log('[RemoteManager] Tunnel URL:', tunnelUrl);
-        log('[RemoteManager] Feishu Webhook URL:', `${tunnelUrl}/webhook/feishu`);
+        if (
+          config.channels.feishu?.enabled !== false &&
+          config.channels.feishu?.useWebSocket === false
+        ) {
+          log('[RemoteManager] Feishu Webhook URL:', `${tunnelUrl}/webhook/feishu`);
+        }
+        if (
+          config.channels.dingtalk?.enabled !== false &&
+          config.channels.dingtalk?.receiveMode === 'webhook'
+        ) {
+          log('[RemoteManager] DingTalk Webhook URL:', `${tunnelUrl}/webhook/dingtalk`);
+        }
+        if (
+          config.channels.wecom?.enabled !== false &&
+          config.channels.wecom?.receiveMode === 'webhook'
+        ) {
+          log('[RemoteManager] WeCom Webhook URL:', `${tunnelUrl}/webhook/wecom`);
+        }
       }
 
       log('[RemoteManager] Remote control system started');
@@ -237,10 +303,13 @@ export class RemoteManager extends EventEmitter {
   /**
    * Stop remote control
    */
-  async stop(): Promise<void> {
-    if (!this.gateway) {
-      return;
+  async stop(options: StopOptions = {}): Promise<void> {
+    if (!options.preserveInteractions) {
+      const cancelled = await this.cancelPendingInteractions();
+      await this.notifyCancelledInteractions(cancelled, 'remoteServiceStoppedCancellation');
     }
+
+    if (!this.gateway) return;
 
     log('[RemoteManager] Stopping remote control system...');
 
@@ -268,7 +337,9 @@ export class RemoteManager extends EventEmitter {
    * Restart remote control
    */
   async restart(): Promise<void> {
-    await this.stop();
+    // A transport/config restart is temporary. Keep interaction timers and
+    // resolvers alive so the user can still answer after the channel reconnects.
+    await this.stop({ preserveInteractions: true });
     await this.start();
   }
 
@@ -277,9 +348,19 @@ export class RemoteManager extends EventEmitter {
    */
   getStatus(): GatewayStatus & { tunnel?: TunnelStatus } {
     if (!this.gateway) {
+      const config = remoteConfigStore.getAll();
+      const channels = Object.entries(config.channels)
+        .filter((entry): entry is [ChannelType, NonNullable<(typeof entry)[1]>] =>
+          Boolean(entry[1])
+        )
+        .map(([type, channelConfig]) => ({
+          type,
+          enabled: !('enabled' in channelConfig) || channelConfig.enabled !== false,
+          connected: false,
+        }));
       return {
         running: false,
-        channels: [],
+        channels,
         activeSessions: 0,
         pendingPairings: 0,
       };
@@ -298,11 +379,9 @@ export class RemoteManager extends EventEmitter {
     return tunnelManager.getStatus();
   }
 
-  /**
-   * Get Feishu webhook URL (from tunnel)
-   */
-  getFeishuWebhookUrl(): string | null {
-    return tunnelManager.getWebhookUrl();
+  /** Get a channel webhook URL from the active tunnel. */
+  getWebhookUrl(channelType: ChannelType = 'feishu'): string | null {
+    return tunnelManager.getWebhookUrl(channelType);
   }
 
   /**
@@ -323,62 +402,140 @@ export class RemoteManager extends EventEmitter {
   async updateFeishuConfig(config: FeishuChannelConfig): Promise<void> {
     remoteConfigStore.setFeishuConfig(config);
 
-    // Sync Feishu DM policy to gateway auth mode so checkAuthorization() matches.
-    // Note: gateway auth mode is a cross-channel setting — changing it here affects
-    // authorization for all channel types (feishu, telegram, etc.), not just Feishu.
-    // Skip sync if gateway is using token auth, as that would disable token protection
-    // for non-Feishu channels (e.g. WebSocket).
-    if (config.dm) {
-      const currentGateway = remoteConfigStore.getGatewayConfig();
-      const currentAuth = currentGateway.auth;
-
-      if (currentAuth.mode === 'token' || currentAuth.token) {
-        log(
-          '[RemoteManager] Skipping DM policy sync: gateway uses token auth, preserving for other channels'
-        );
-      } else {
-        switch (config.dm.policy) {
-          case 'open':
-            remoteConfigStore.setGatewayConfig({
-              auth: { ...currentAuth, mode: 'open' },
-            });
-            break;
-          case 'pairing':
-            remoteConfigStore.setGatewayConfig({
-              auth: { ...currentAuth, mode: 'pairing' },
-            });
-            break;
-          case 'allowlist': {
-            // Scope Feishu IDs and merge with existing entries (preserving other channels)
-            const feishuEntries = (config.dm.allowFrom ?? []).map((id) => `feishu:${id}`);
-            const nonFeishuEntries = (currentAuth.allowlist ?? []).filter(
-              (entry) => !entry.startsWith('feishu:')
-            );
-            // Include paired Feishu users so they retain access when switching from pairing mode
-            // (syncAllowlist() only populates allowlist when already in allowlist mode)
-            const pairedFeishuEntries = remoteConfigStore
-              .getPairedUsers()
-              .filter((u) => u.channelType === 'feishu')
-              .map((u) => `feishu:${u.userId}`);
-            remoteConfigStore.setGatewayConfig({
-              auth: {
-                ...currentAuth,
-                mode: 'allowlist',
-                allowlist: [
-                  ...new Set([...nonFeishuEntries, ...pairedFeishuEntries, ...feishuEntries]),
-                ],
-              },
-            });
-            break;
-          }
-        }
-      }
-    }
-
     // Restart to apply changes
     if (this.gateway?.running) {
       await this.restart();
     }
+  }
+
+  /**
+   * Update DingTalk channel config
+   */
+  async updateDingtalkConfig(
+    config: DingtalkChannelConfig,
+    gatewayConfig?: Partial<GatewayConfig>
+  ): Promise<void> {
+    remoteConfigStore.setDingtalkConfig(config);
+    if (gatewayConfig) remoteConfigStore.setGatewayConfig(gatewayConfig);
+    if (this.gateway?.running) {
+      await this.restart();
+    }
+  }
+
+  /** Update the WeCom AI Bot channel config. */
+  async updateWecomConfig(
+    config: WecomChannelConfig,
+    gatewayConfig?: Partial<GatewayConfig>
+  ): Promise<void> {
+    const receiveMode = config.receiveMode === 'webhook' ? 'webhook' : 'websocket';
+    const botId = typeof config.botId === 'string' ? config.botId.trim() : '';
+    const secret = typeof config.secret === 'string' ? config.secret.trim() : '';
+    const wsUrl = typeof config.wsUrl === 'string' ? config.wsUrl.trim() || undefined : undefined;
+    const webhookToken =
+      typeof config.webhookToken === 'string' ? config.webhookToken.trim() || undefined : undefined;
+    const webhookEncodingAESKey =
+      typeof config.webhookEncodingAESKey === 'string'
+        ? config.webhookEncodingAESKey.trim() || undefined
+        : undefined;
+    if (receiveMode === 'websocket' && (!botId || !secret)) {
+      throw new Error('WeCom Bot ID and Secret are required');
+    }
+    if (receiveMode === 'webhook') {
+      if (!webhookToken || !/^[A-Za-z0-9]{1,32}$/.test(webhookToken)) {
+        throw new Error('WeCom Webhook Token must contain 1-32 letters or digits');
+      }
+      if (!webhookEncodingAESKey || !/^[A-Za-z0-9]{43}$/.test(webhookEncodingAESKey)) {
+        throw new Error('WeCom EncodingAESKey must contain exactly 43 letters or digits');
+      }
+    }
+    if (receiveMode === 'websocket' && wsUrl) {
+      let parsed: URL;
+      try {
+        parsed = new URL(wsUrl);
+      } catch {
+        throw new Error('Invalid WeCom WebSocket URL');
+      }
+      if (parsed.protocol !== 'wss:') {
+        throw new Error('WeCom WebSocket URL must use wss://');
+      }
+    }
+
+    remoteConfigStore.setWecomConfig({
+      ...config,
+      receiveMode,
+      botId,
+      secret,
+      wsUrl,
+      webhookToken,
+      webhookEncodingAESKey,
+    });
+    if (gatewayConfig) remoteConfigStore.setGatewayConfig(gatewayConfig);
+    if (this.gateway?.running) {
+      await this.restart();
+    }
+  }
+
+  /** Persist and apply one bot's desired state without restarting other channels. */
+  async setChannelEnabled(
+    type: ControllableChannelType,
+    enabled: boolean
+  ): Promise<ControllableChannelState> {
+    return this.enqueueChannelControlOperation(type, async () => {
+      const config = remoteConfigStore.getAll().channels[type];
+      if (!config) throw new Error(`Channel is not configured: ${type}`);
+
+      // Persist the desired state before cancelling interactions. If the store write
+      // fails, no user work is cancelled and the running transport remains unchanged.
+      remoteConfigStore.setChannelEnabled(type, enabled);
+
+      try {
+        if (!enabled) {
+          const cancelled = await this.cancelPendingInteractionsForChannel(type);
+          await this.notifyCancelledInteractions(cancelled, 'channelDisabledCancellation');
+        }
+
+        if (this.gateway) {
+          await this.gateway.setChannelEnabled(type, enabled);
+        }
+        return this.getChannelControlState(type);
+      } finally {
+        // A failed transport start/stop still changes observable desired/runtime state.
+        this.emitStatusUpdate();
+      }
+    });
+  }
+
+  /** Read the durable desired state together with the current transport state. */
+  getChannelControlState(type: ControllableChannelType): ControllableChannelState {
+    const config = remoteConfigStore.getAll().channels[type];
+    if (!config) throw new Error(`Channel is not configured: ${type}`);
+
+    const runtime = this.gateway?.getStatus().channels.find((channel) => channel.type === type);
+    return {
+      type,
+      desiredEnabled: config.enabled !== false,
+      connected: runtime?.connected ?? false,
+      channelError: runtime?.error,
+    };
+  }
+
+  private enqueueChannelControlOperation<T>(
+    type: ControllableChannelType,
+    operation: () => Promise<T>
+  ): Promise<T> {
+    const previous = this.channelControlOperations.get(type) ?? Promise.resolve();
+    const queued = previous.catch(() => undefined).then(operation);
+    const settled = queued.then(
+      () => undefined,
+      () => undefined
+    );
+    this.channelControlOperations.set(type, settled);
+    void settled.then(() => {
+      if (this.channelControlOperations.get(type) === settled) {
+        this.channelControlOperations.delete(type);
+      }
+    });
+    return queued;
   }
 
   /**
@@ -466,7 +623,29 @@ export class RemoteManager extends EventEmitter {
    * Clear remote session
    */
   clearRemoteSession(sessionId: string): boolean {
-    return this.messageRouter.clearSession(sessionId);
+    const actualSessionId = this.reverseSessionIdMapping.get(sessionId);
+    const cancelled = this.cancelPendingInteractionsForSession(sessionId);
+    void this.notifyCancelledInteractions(cancelled, 'remoteSessionEndedCancellation');
+
+    if (actualSessionId) {
+      this.sessionIdMapping.delete(actualSessionId);
+      this.responseBuffers.delete(actualSessionId);
+      this.sentMessageKeys.delete(actualSessionId);
+      this.cleanupAfterFlush.delete(actualSessionId);
+
+      const timer = this.sendTimers.get(actualSessionId);
+      if (timer) {
+        clearTimeout(timer);
+        this.sendTimers.delete(actualSessionId);
+      }
+    }
+
+    this.reverseSessionIdMapping.delete(sessionId);
+    this.sessionChannelMapping.delete(sessionId);
+    this.sessionOwnerMapping.delete(sessionId);
+
+    const routerCleared = this.messageRouter.clearSession(sessionId);
+    return Boolean(actualSessionId) || routerCleared;
   }
 
   /**
@@ -548,11 +727,19 @@ export class RemoteManager extends EventEmitter {
       questionId,
       questions,
       createdAt: Date.now(),
-      expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes timeout
+      expiresAt: Date.now() + INTERACTION_TIMEOUT_MS,
     };
-    await this.withInteractionLock(async () => {
-      this.pendingInteractions.set(questionId, interaction);
+    let resolveResponse!: (response: string) => void;
+    const responsePromise = new Promise<string>((resolve) => {
+      resolveResponse = resolve;
     });
+    const registered = await this.registerPendingInteraction(
+      questionId,
+      interaction,
+      resolveResponse
+    );
+    if (!registered) return null;
+    if (!this.pendingInteractions.has(questionId)) return responsePromise;
 
     // Send to channel
     try {
@@ -563,34 +750,15 @@ export class RemoteManager extends EventEmitter {
           type: 'markdown',
           markdown: messageText,
         },
+        replyTo: channelInfo.replyTo,
       });
     } catch (err) {
       logError('[RemoteManager] Failed to send question to channel:', err);
-      await this.withInteractionLock(async () => {
-        this.pendingInteractions.delete(questionId);
-      });
-      return null;
+      const cancelled = await this.settlePendingInteraction(questionId, '{}');
+      return cancelled ? null : responsePromise;
     }
 
-    // Wait for user response
-    return new Promise((resolve) => {
-      this.interactionResolvers.set(questionId, resolve);
-
-      // Set timeout
-      setTimeout(
-        () => {
-          this.withInteractionLock(async () => {
-            if (this.pendingInteractions.has(questionId)) {
-              log('[RemoteManager] Question timeout:', questionId);
-              this.pendingInteractions.delete(questionId);
-              this.interactionResolvers.delete(questionId);
-              resolve('{}'); // Return empty answer on timeout
-            }
-          }).catch((err) => logError('[RemoteManager] Question timeout lock error:', err));
-        },
-        5 * 60 * 1000
-      );
-    });
+    return responsePromise;
   }
 
   /**
@@ -674,11 +842,21 @@ export class RemoteManager extends EventEmitter {
       toolName,
       input,
       createdAt: Date.now(),
-      expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes timeout
+      expiresAt: Date.now() + INTERACTION_TIMEOUT_MS,
     };
-    await this.withInteractionLock(async () => {
-      this.pendingInteractions.set(toolUseId, interaction);
+    let resolveResponse!: (response: string) => void;
+    const responsePromise = new Promise<string>((resolve) => {
+      resolveResponse = resolve;
     });
+    const registered = await this.registerPendingInteraction(
+      toolUseId,
+      interaction,
+      resolveResponse
+    );
+    if (!registered) return null;
+    if (!this.pendingInteractions.has(toolUseId)) {
+      return this.parsePermissionResponse(await responsePromise);
+    }
 
     // Send to channel
     try {
@@ -689,48 +867,172 @@ export class RemoteManager extends EventEmitter {
           type: 'markdown',
           markdown: messageText,
         },
+        replyTo: channelInfo.replyTo,
       });
     } catch (err) {
       logError('[RemoteManager] Failed to send permission request to channel:', err);
-      await this.withInteractionLock(async () => {
-        this.pendingInteractions.delete(toolUseId);
-      });
-      return null;
+      const cancelled = await this.settlePendingInteraction(toolUseId, '拒绝');
+      if (cancelled) return null;
     }
 
-    // Wait for user response
-    return new Promise((resolve) => {
-      this.interactionResolvers.set(toolUseId, (response) => {
-        const lowerResponse = response.toLowerCase().trim();
-        if (
-          lowerResponse === '允许' ||
-          lowerResponse === 'y' ||
-          lowerResponse === 'yes' ||
-          lowerResponse === '是'
-        ) {
-          resolve({ allow: true });
-        } else if (lowerResponse === '始终允许' || lowerResponse === 'always') {
-          resolve({ allow: true, remember: true });
-        } else {
-          resolve({ allow: false });
-        }
-      });
+    return this.parsePermissionResponse(await responsePromise);
+  }
 
-      // Set timeout - auto deny on timeout
-      setTimeout(
+  private async registerPendingInteraction(
+    id: string,
+    interaction: RemoteInteraction,
+    resolver: (response: string) => void
+  ): Promise<boolean> {
+    return this.withInteractionLock(async () => {
+      // The session may have been cleared while this registration was queued.
+      if (this.sessionIdMapping.get(interaction.sessionId) !== interaction.remoteSessionId) {
+        resolver(this.getInteractionFallback(interaction));
+        return false;
+      }
+
+      // IDs should be unique. If an upstream caller reuses one, settle the old
+      // waiter before replacing it so no promise is left hanging.
+      const previous = this.takePendingInteraction(id);
+      if (previous) {
+        previous.resolver?.(this.getInteractionFallback(previous.interaction));
+      }
+
+      this.pendingInteractions.set(id, interaction);
+      this.interactionResolvers.set(id, resolver);
+      const timer = setTimeout(
         () => {
-          this.withInteractionLock(async () => {
-            if (this.pendingInteractions.has(toolUseId)) {
-              log('[RemoteManager] Permission timeout:', toolUseId);
-              this.pendingInteractions.delete(toolUseId);
-              this.interactionResolvers.delete(toolUseId);
-              resolve({ allow: false }); // Deny on timeout
-            }
-          }).catch((err) => logError('[RemoteManager] Permission timeout lock error:', err));
+          void this.expirePendingInteraction(id).catch((error) => {
+            logError('[RemoteManager] Interaction timeout lock error:', error);
+          });
         },
-        5 * 60 * 1000
+        Math.max(0, interaction.expiresAt - Date.now())
       );
+      this.interactionTimers.set(id, timer);
+      return true;
     });
+  }
+
+  private async expirePendingInteraction(id: string): Promise<void> {
+    await this.withInteractionLock(async () => {
+      const settled = this.takePendingInteraction(id);
+      if (!settled) return;
+
+      log(
+        `[RemoteManager] ${settled.interaction.type === 'question' ? 'Question' : 'Permission'} timeout:`,
+        id
+      );
+      settled.resolver?.(this.getInteractionFallback(settled.interaction));
+    });
+  }
+
+  private async settlePendingInteraction(id: string, response: string): Promise<boolean> {
+    return this.withInteractionLock(async () => {
+      const settled = this.takePendingInteraction(id);
+      if (!settled) return false;
+      settled.resolver?.(response);
+      return true;
+    });
+  }
+
+  private takePendingInteraction(id: string): SettledInteraction | undefined {
+    const interaction = this.pendingInteractions.get(id);
+    const resolver = this.interactionResolvers.get(id);
+    const timer = this.interactionTimers.get(id);
+
+    this.pendingInteractions.delete(id);
+    this.interactionResolvers.delete(id);
+    this.interactionTimers.delete(id);
+    if (timer) clearTimeout(timer);
+
+    return interaction ? { interaction, resolver } : undefined;
+  }
+
+  private getInteractionFallback(interaction: RemoteInteraction): string {
+    return interaction.type === 'question' ? '{}' : '拒绝';
+  }
+
+  private parsePermissionResponse(response: string): { allow: boolean; remember?: boolean } {
+    const lowerResponse = response.toLowerCase().trim();
+    if (
+      lowerResponse === '允许' ||
+      lowerResponse === 'y' ||
+      lowerResponse === 'yes' ||
+      lowerResponse === '是'
+    ) {
+      return { allow: true };
+    }
+    if (lowerResponse === '始终允许' || lowerResponse === 'always') {
+      return { allow: true, remember: true };
+    }
+    return { allow: false };
+  }
+
+  private async cancelPendingInteractions(): Promise<RemoteInteraction[]> {
+    return this.withInteractionLock(async () => this.cancelPendingInteractionsMatching(() => true));
+  }
+
+  private async cancelPendingInteractionsForChannel(
+    channelType: ControllableChannelType
+  ): Promise<RemoteInteraction[]> {
+    return this.withInteractionLock(async () =>
+      this.cancelPendingInteractionsMatching((interaction) => {
+        return (
+          this.sessionChannelMapping.get(interaction.remoteSessionId)?.channelType === channelType
+        );
+      })
+    );
+  }
+
+  private cancelPendingInteractionsForSession(remoteSessionId: string): RemoteInteraction[] {
+    return this.cancelPendingInteractionsMatching(
+      (interaction) => interaction.remoteSessionId === remoteSessionId
+    );
+  }
+
+  private cancelPendingInteractionsMatching(
+    predicate: (interaction: RemoteInteraction) => boolean
+  ): RemoteInteraction[] {
+    const cancelled: RemoteInteraction[] = [];
+    for (const [id, interaction] of this.pendingInteractions) {
+      if (!predicate(interaction)) continue;
+      const settled = this.takePendingInteraction(id);
+      if (!settled) continue;
+      settled.resolver?.(this.getInteractionFallback(settled.interaction));
+      cancelled.push(settled.interaction);
+    }
+    return cancelled;
+  }
+
+  private async notifyCancelledInteractions(
+    interactions: RemoteInteraction[],
+    messageKey: RemoteBotMessageKey
+  ): Promise<void> {
+    if (!this.gateway || interactions.length === 0) return;
+
+    const destinations = new Map<string, RemoteChannelContext>();
+    for (const interaction of interactions) {
+      const channelInfo = this.sessionChannelMapping.get(interaction.remoteSessionId);
+      if (channelInfo) destinations.set(interaction.remoteSessionId, channelInfo);
+    }
+
+    const results = await Promise.allSettled(
+      [...destinations.values()].map((channelInfo) =>
+        this.doSendToChannel(channelInfo, this.localizeRemoteBotMessage(messageKey, channelInfo))
+      )
+    );
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        logError('[RemoteManager] Failed to send interaction cancellation notice:', result.reason);
+      }
+    }
+  }
+
+  private localizeRemoteBotMessage(
+    key: RemoteBotMessageKey,
+    channelInfo: RemoteChannelContext
+  ): string {
+    const translations = channelInfo.language === 'zh' ? zhTranslations : enTranslations;
+    return translations.remote.botMessages[key];
   }
 
   private async withInteractionLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -774,21 +1076,15 @@ export class RemoteManager extends EventEmitter {
 
           log('[RemoteManager] Found pending interaction:', id);
 
-          // Remove from pending
-          this.pendingInteractions.delete(id);
-
-          // Resolve the interaction
-          const resolver = this.interactionResolvers.get(id);
-          if (resolver) {
-            this.interactionResolvers.delete(id);
-
+          const settled = this.takePendingInteraction(id);
+          if (settled?.resolver) {
             if (interaction.type === 'question') {
               // Parse question response
               const response = this.parseQuestionResponse(messageText, interaction.questions || []);
-              resolver(response);
+              settled.resolver(response);
             } else {
               // Pass through for permission
-              resolver(messageText);
+              settled.resolver(messageText);
             }
           }
 
@@ -859,7 +1155,8 @@ export class RemoteManager extends EventEmitter {
   async sendResponseToChannel(
     actualSessionId: string,
     text: string,
-    immediate: boolean = false
+    immediate: boolean = false,
+    messageId?: string
   ): Promise<void> {
     const remoteSessionId = this.sessionIdMapping.get(actualSessionId);
     if (!remoteSessionId) {
@@ -873,115 +1170,191 @@ export class RemoteManager extends EventEmitter {
       return;
     }
 
-    // Check for duplicate
-    const hash = this.hashText(text);
-    if (!this.sentMessageHashes.has(actualSessionId)) {
-      this.sentMessageHashes.set(actualSessionId, new Set());
+    // Prefer the renderer event ID. SHA-256 is only a fallback for older callers
+    // that cannot provide a stable source-message identity.
+    const messageKey = messageId
+      ? `message:${messageId}`
+      : `text:${createHash('sha256').update(text).digest('base64url')}`;
+    if (!this.sentMessageKeys.has(actualSessionId)) {
+      this.sentMessageKeys.set(actualSessionId, new Set());
     }
-    const sentHashes = this.sentMessageHashes.get(actualSessionId)!;
-    if (sentHashes.has(hash)) {
+    const sentKeys = this.sentMessageKeys.get(actualSessionId)!;
+    if (sentKeys.has(messageKey)) {
       log('[RemoteManager] Skipping duplicate message');
       return;
     }
-    // Prevent unbounded growth: clear oldest entries when set exceeds 500 entries
-    if (sentHashes.size >= 500) {
-      sentHashes.clear();
+    // Keep a bounded insertion-ordered window instead of dropping all recent
+    // deduplication history when the limit is reached.
+    if (sentKeys.size >= MAX_SENT_MESSAGE_KEYS) {
+      const oldestKey = sentKeys.values().next().value;
+      if (oldestKey) sentKeys.delete(oldestKey);
     }
-    sentHashes.add(hash);
+    sentKeys.add(messageKey);
 
     // For immediate sends (like final result), send directly
     if (immediate) {
-      await this.doSendToChannel(channelInfo, text);
+      try {
+        await this.doSendToChannel(channelInfo, text);
+      } catch (error) {
+        // Allow the caller to retry an immediate message after a failed send.
+        sentKeys.delete(messageKey);
+        throw error;
+      }
       return;
     }
 
     // Buffer the response
     if (!this.responseBuffers.has(actualSessionId)) {
-      this.responseBuffers.set(actualSessionId, { texts: [], lastSent: 0, toolSteps: [] });
+      this.responseBuffers.set(actualSessionId, {
+        items: [],
+        lastSent: 0,
+        toolSteps: [],
+        retryCount: 0,
+      });
     }
     const buffer = this.responseBuffers.get(actualSessionId)!;
-    buffer.texts.push(text);
+    buffer.items.push({ text, channelInfo: { ...channelInfo } });
+    buffer.retryCount = 0;
+    this.cleanupAfterFlush.delete(actualSessionId);
 
-    // Clear existing timer
+    // Set debounce timer (send after 2 seconds of no new messages)
+    this.scheduleResponseFlush(actualSessionId, RESPONSE_DEBOUNCE_MS);
+  }
+
+  /**
+   * Schedule one flush per session, replacing any older debounce/retry timer.
+   */
+  private scheduleResponseFlush(actualSessionId: string, delayMs: number): void {
     const existingTimer = this.sendTimers.get(actualSessionId);
     if (existingTimer) {
       clearTimeout(existingTimer);
     }
 
-    // Set debounce timer (send after 2 seconds of no new messages)
     const timer = setTimeout(() => {
-      this.flushResponseBuffer(actualSessionId).catch((err) => {
-        logError('[RemoteManager] Failed to flush buffer:', err);
-      });
-    }, 2000);
+      this.sendTimers.delete(actualSessionId);
+      void this.flushResponseBuffer(actualSessionId);
+    }, delayMs);
     this.sendTimers.set(actualSessionId, timer);
   }
 
   /**
-   * Flush buffered responses and send to channel
+   * Serialize flushes per session so a timer and an idle event cannot send the
+   * same buffered response concurrently.
    */
-  private async flushResponseBuffer(actualSessionId: string): Promise<void> {
+  private async flushResponseBuffer(actualSessionId: string): Promise<boolean> {
+    const existingFlush = this.flushPromises.get(actualSessionId);
+    if (existingFlush) {
+      return existingFlush;
+    }
+
+    const flushPromise = this.performResponseFlush(actualSessionId);
+    this.flushPromises.set(actualSessionId, flushPromise);
+
+    try {
+      return await flushPromise;
+    } finally {
+      if (this.flushPromises.get(actualSessionId) === flushPromise) {
+        this.flushPromises.delete(actualSessionId);
+      }
+    }
+  }
+
+  /**
+   * Flush buffered responses. Text is removed only after the channel confirms
+   * success; transient failures retain it and schedule bounded retries.
+   */
+  private async performResponseFlush(actualSessionId: string): Promise<boolean> {
     const buffer = this.responseBuffers.get(actualSessionId);
-    if (!buffer || buffer.texts.length === 0) return;
+    if (!buffer || buffer.items.length === 0) {
+      if (this.cleanupAfterFlush.has(actualSessionId)) {
+        this.cleanupResponseState(actualSessionId);
+      }
+      return true;
+    }
 
-    const remoteSessionId = this.sessionIdMapping.get(actualSessionId);
-    if (!remoteSessionId) return;
+    if (!this.gateway) return false;
 
-    const channelInfo = this.sessionChannelMapping.get(remoteSessionId);
-    if (!channelInfo || !this.gateway) return;
+    // Snapshot only the contiguous items for the same inbound message. A
+    // failed batch may remain queued while a later remote turn starts, so its
+    // reply context must never be replaced by the session's latest mapping.
+    const channelInfo = buffer.items[0].channelInfo;
+    let batchSize = 1;
+    while (
+      batchSize < buffer.items.length &&
+      this.isSameReplyContext(buffer.items[batchSize].channelInfo, channelInfo)
+    ) {
+      batchSize += 1;
+    }
+    const combinedText = buffer.items
+      .slice(0, batchSize)
+      .map((item) => item.text)
+      .join('\n\n');
 
-    // Combine all buffered texts
-    const combinedText = buffer.texts.join('\n\n');
-    buffer.texts = [];
-    buffer.lastSent = Date.now();
-
-    // Clear timer
     const timer = this.sendTimers.get(actualSessionId);
     if (timer) {
       clearTimeout(timer);
       this.sendTimers.delete(actualSessionId);
     }
 
-    await this.doSendToChannel(channelInfo, combinedText);
+    try {
+      await this.doSendToChannel(channelInfo, combinedText);
+      buffer.items.splice(0, batchSize);
+      buffer.lastSent = Date.now();
+      buffer.retryCount = 0;
+
+      if (buffer.items.length > 0) {
+        this.scheduleResponseFlush(actualSessionId, RESPONSE_DEBOUNCE_MS);
+      } else if (this.cleanupAfterFlush.has(actualSessionId)) {
+        this.cleanupResponseState(actualSessionId);
+      }
+      return true;
+    } catch (error) {
+      if (isNonRetryableChannelError(error)) {
+        buffer.items.splice(0, batchSize);
+        buffer.retryCount = 0;
+        logError('[RemoteManager] Non-retryable channel response failed; dropping batch:', error);
+        if (buffer.items.length > 0) {
+          this.scheduleResponseFlush(actualSessionId, RESPONSE_DEBOUNCE_MS);
+        } else if (this.cleanupAfterFlush.has(actualSessionId)) {
+          this.cleanupResponseState(actualSessionId);
+        }
+        return true;
+      }
+
+      buffer.retryCount += 1;
+      logError(
+        `[RemoteManager] Failed to send buffered response (attempt ${buffer.retryCount}):`,
+        error
+      );
+
+      if (buffer.retryCount <= MAX_RESPONSE_RETRIES) {
+        const retryDelay = RESPONSE_RETRY_BASE_MS * 2 ** (buffer.retryCount - 1);
+        this.scheduleResponseFlush(actualSessionId, retryDelay);
+      } else {
+        logError('[RemoteManager] Response retries exhausted; retaining buffered text');
+      }
+      return false;
+    }
   }
 
   /**
    * Actually send message to channel
    */
-  private async doSendToChannel(
-    channelInfo: { channelType: ChannelType; channelId: string },
-    text: string
-  ): Promise<void> {
+  private async doSendToChannel(channelInfo: RemoteChannelContext, text: string): Promise<void> {
     log('[RemoteManager] Sending to channel:', {
       channelType: channelInfo.channelType,
       textLength: text.length,
     });
 
-    try {
-      await this.gateway!.sendResponse({
-        channelType: channelInfo.channelType,
-        channelId: channelInfo.channelId,
-        content: {
-          type: 'markdown',
-          markdown: text,
-        },
-      });
-    } catch (err) {
-      logError('[RemoteManager] Failed to send to channel:', err);
-    }
-  }
-
-  /**
-   * Simple hash function for deduplication
-   */
-  private hashText(text: string): string {
-    let hash = 0;
-    for (let i = 0; i < text.length; i++) {
-      const char = text.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash = hash & hash; // Convert to 32bit integer
-    }
-    return hash.toString();
+    await this.gateway!.sendResponse({
+      channelType: channelInfo.channelType,
+      channelId: channelInfo.channelId,
+      content: {
+        type: 'markdown',
+        markdown: text,
+      },
+      replyTo: channelInfo.replyTo,
+    });
   }
 
   /**
@@ -1033,7 +1406,12 @@ export class RemoteManager extends EventEmitter {
     if (status === 'running') {
       // Add to buffer's tool steps
       if (!this.responseBuffers.has(actualSessionId)) {
-        this.responseBuffers.set(actualSessionId, { texts: [], lastSent: 0, toolSteps: [] });
+        this.responseBuffers.set(actualSessionId, {
+          items: [],
+          lastSent: 0,
+          toolSteps: [],
+          retryCount: 0,
+        });
       }
       this.responseBuffers.get(actualSessionId)!.toolSteps.push(`${emoji} ${statusText}`);
       return;
@@ -1047,34 +1425,43 @@ export class RemoteManager extends EventEmitter {
   }
 
   /**
-   * Clear session response buffer (call when session ends)
-   * Flushes any pending messages before clearing
+   * Clear per-turn response state after a session becomes idle or errors.
+   * The remote-to-actual session mappings must remain so the next message can
+   * continue the same conversation.
    */
   async clearSessionBuffer(actualSessionId: string): Promise<void> {
-    // First flush any pending messages
-    await this.flushResponseBuffer(actualSessionId);
+    // Mark cleanup first so a successful in-flight flush can finish the job.
+    this.cleanupAfterFlush.add(actualSessionId);
+    let flushed = await this.flushResponseBuffer(actualSessionId);
 
-    // Then clear the buffer
+    // Different inbound messages are deliberately kept in separate batches.
+    // Drain every successful batch at the turn boundary, but retain the rest
+    // for the existing bounded retry path after the first failure.
+    let buffer = this.responseBuffers.get(actualSessionId);
+    while (flushed && buffer && buffer.items.length > 0) {
+      flushed = await this.flushResponseBuffer(actualSessionId);
+      buffer = this.responseBuffers.get(actualSessionId);
+    }
+
+    if (!buffer || buffer.items.length === 0) {
+      this.cleanupResponseState(actualSessionId);
+    }
+  }
+
+  private isSameReplyContext(a: RemoteChannelContext, b: RemoteChannelContext): boolean {
+    return (
+      a.channelType === b.channelType && a.channelId === b.channelId && a.replyTo === b.replyTo
+    );
+  }
+
+  private cleanupResponseState(actualSessionId: string): void {
     this.responseBuffers.delete(actualSessionId);
-    this.sentMessageHashes.delete(actualSessionId);
+    this.sentMessageKeys.delete(actualSessionId);
+    this.cleanupAfterFlush.delete(actualSessionId);
     const timer = this.sendTimers.get(actualSessionId);
     if (timer) {
       clearTimeout(timer);
       this.sendTimers.delete(actualSessionId);
-    }
-
-    // Clean up session mappings
-    const sessionId = this.sessionIdMapping.get(actualSessionId);
-    this.sessionIdMapping.delete(actualSessionId);
-    if (sessionId) {
-      for (const [key, value] of this.reverseSessionIdMapping) {
-        if (value === actualSessionId) {
-          this.reverseSessionIdMapping.delete(key);
-          break;
-        }
-      }
-      this.sessionChannelMapping.delete(sessionId);
-      this.sessionOwnerMapping.delete(sessionId);
     }
   }
 
@@ -1120,7 +1507,7 @@ export class RemoteManager extends EventEmitter {
     const feishuConfig = config.channels.feishu;
     if (feishuConfig && feishuConfig.appId && feishuConfig.appSecret) {
       const feishuChannel = new FeishuChannel(feishuConfig);
-      this.gateway.registerChannel(feishuChannel);
+      this.gateway.registerChannel(feishuChannel, feishuConfig.enabled !== false);
 
       // Set up webhook handler
       this.gateway.on(
@@ -1160,7 +1547,48 @@ export class RemoteManager extends EventEmitter {
       log('[RemoteManager] Slack channel registered');
     }
 
-    // TODO: Register other channels (WeChat, Telegram, DingTalk)
+    const dingtalkConfig = config.channels.dingtalk;
+    if (dingtalkConfig && dingtalkConfig.appKey && dingtalkConfig.appSecret) {
+      const dingtalkChannel = new DingtalkChannel(dingtalkConfig);
+      this.gateway.registerChannel(dingtalkChannel, dingtalkConfig.enabled !== false);
+      this.gateway.on(
+        'webhook:dingtalk',
+        (data: {
+          headers: Record<string, string | string[] | undefined>;
+          body: string;
+          respond: (status: number, responseData: unknown) => void;
+        }) => {
+          const result = dingtalkChannel.handleWebhook(data.headers, data.body);
+          data.respond(result.status, result.data);
+        }
+      );
+      log('[RemoteManager] DingTalk channel registered');
+    }
+
+    const wecomConfig = config.channels.wecom;
+    const wecomConfigured =
+      wecomConfig?.receiveMode === 'webhook'
+        ? Boolean(wecomConfig.webhookToken && wecomConfig.webhookEncodingAESKey)
+        : Boolean(wecomConfig?.botId && wecomConfig.secret);
+    if (wecomConfig && wecomConfigured) {
+      const wecomChannel = new WecomChannel(wecomConfig);
+      this.gateway.registerChannel(wecomChannel, wecomConfig.enabled !== false);
+      this.gateway.on(
+        'webhook:wecom',
+        (data: {
+          method: string;
+          url: string;
+          body: string;
+          respond: (status: number, responseData: unknown, contentType?: string) => void;
+        }) => {
+          const result = wecomChannel.handleWebhook(data.method, data.url, data.body);
+          data.respond(result.status, result.data, result.contentType);
+        }
+      );
+      log('[RemoteManager] WeCom channel registered');
+    }
+
+    // TODO: Register other channels (personal WeChat, Telegram)
   }
 
   /**
@@ -1187,8 +1615,7 @@ export class RemoteManager extends EventEmitter {
     channelType: ChannelType,
     channelId: string,
     senderId: string,
-    _onMessage: (message: Message) => void,
-    _onPartial: (delta: string) => void
+    messageId: string
   ): Promise<void> {
     if (!this.agentExecutor) {
       throw new Error('Agent executor not set');
@@ -1197,10 +1624,12 @@ export class RemoteManager extends EventEmitter {
     log('[RemoteManager] Executing agent for session:', sessionId);
     log('[RemoteManager] Working directory:', workingDirectory || '(default)');
 
-    // Check if this is a new remote session
-    const isNewSession = !this.remoteSessionIds.has(sessionId);
+    // The reverse mapping is the single source of truth. If it is missing,
+    // recover by creating a new actual session instead of treating the remote
+    // session as existing and failing with an internal error.
+    const actualSessionId = this.reverseSessionIdMapping.get(sessionId);
 
-    if (isNewSession) {
+    if (!actualSessionId) {
       // Create new session with working directory
       const newSession = await this.agentExecutor.startSession(
         buildRemoteSessionTitle(prompt),
@@ -1208,15 +1637,17 @@ export class RemoteManager extends EventEmitter {
         workingDirectory
       );
 
-      // Map remote session ID to actual session ID
-      this.remoteSessionIds.add(sessionId);
-
       // Store bidirectional mapping
       this.sessionIdMapping.set(newSession.id, sessionId);
       this.reverseSessionIdMapping.set(sessionId, newSession.id);
 
       // Store channel info for routing responses back
-      this.sessionChannelMapping.set(sessionId, { channelType, channelId });
+      this.sessionChannelMapping.set(sessionId, {
+        channelType,
+        channelId,
+        replyTo: channelType === 'wecom' ? messageId : undefined,
+        language: this.detectRemoteMessageLanguage(prompt),
+      });
 
       // Store session owner for interaction security verification
       this.sessionOwnerMapping.set(sessionId, senderId);
@@ -1238,23 +1669,32 @@ export class RemoteManager extends EventEmitter {
       });
 
       this.emitRemoteUserMessage(newSession.id, content, prompt);
+
+      if (this.agentExecutor.waitForSessionIdle) {
+        await this.agentExecutor.waitForSessionIdle(newSession.id);
+      }
     } else {
       // Continue existing session - use actual session ID
-      const actualSessionId = this.reverseSessionIdMapping.get(sessionId);
-      if (!actualSessionId) {
-        throw new Error(`No actual session ID found for remote session: ${sessionId}`);
-      }
       log('[RemoteManager] Continuing session:', actualSessionId, 'for remote:', sessionId);
+      this.sessionChannelMapping.set(sessionId, {
+        channelType,
+        channelId,
+        replyTo: channelType === 'wecom' ? messageId : undefined,
+        language: this.detectRemoteMessageLanguage(prompt),
+      });
       this.emitRemoteUserMessage(actualSessionId, content, prompt);
       await this.agentExecutor.continueSession(actualSessionId, prompt, content, workingDirectory);
+      if (this.agentExecutor.waitForSessionIdle) {
+        await this.agentExecutor.waitForSessionIdle(actualSessionId);
+      }
     }
 
-    // Note: The actual response handling is done through the session manager
-    // and agent runner callbacks. This is a simplified implementation.
-    // In a full implementation, we would:
-    // 1. Hook into the agent runner's streaming output
-    // 2. Call onMessage and onPartial as the agent produces output
-    // 3. Handle errors and timeouts
+    // Responses are emitted by the session manager and intercepted once in
+    // sendToRenderer(), which is the single outbound response pipeline.
+  }
+
+  private detectRemoteMessageLanguage(content: string): RemoteMessageLanguage {
+    return /[\u3400-\u9fff]/u.test(content) ? 'zh' : 'en';
   }
 
   /**

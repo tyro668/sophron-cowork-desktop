@@ -77,25 +77,26 @@ export class FeishuChannel extends ChannelBase {
    * Stop the channel
    */
   async stop(): Promise<void> {
-    if (!this._connected) {
+    if (!this._connected && !this.wsClient) {
       return;
     }
 
     this.logStatus('Stopping channel...');
+    this._connected = false;
 
     // Close WebSocket if active
-    if (this.wsClient) {
+    const wsClient = this.wsClient;
+    this.wsClient = undefined;
+    if (wsClient) {
       try {
         // Remove event listeners before stopping to prevent state issues
-        this.wsClient.removeAllListeners();
-        await this.wsClient.stop();
+        wsClient.removeAllListeners();
+        await wsClient.stop();
       } catch (e) {
         // Ignore
       }
-      this.wsClient = undefined;
     }
 
-    this._connected = false;
     this.logStatus('Channel stopped');
   }
 

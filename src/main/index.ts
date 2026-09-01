@@ -83,7 +83,15 @@ import type {
 } from '../renderer/types';
 import { remoteManager, type AgentExecutor } from './remote/remote-manager';
 import { remoteConfigStore } from './remote/remote-config-store';
-import type { GatewayConfig, FeishuChannelConfig, ChannelType } from './remote/types';
+import type {
+  GatewayConfig,
+  FeishuChannelConfig,
+  DingtalkChannelConfig,
+  WecomChannelConfig,
+  ChannelType,
+  ControllableChannelType,
+  ControllableChannelState,
+} from './remote/types';
 import { startNavServer, stopNavServer } from './nav-server';
 import {
   type ScheduledTask,
@@ -937,6 +945,7 @@ function sendToRenderer(event: ServerEvent) {
     // 拦截 stream.message，用于回传到远程通道
     if (event.type === 'stream.message') {
       const message = payload.message as {
+        id?: string;
         role?: string;
         content?: Array<{ type: string; text?: string }>;
       };
@@ -949,9 +958,11 @@ function sendToRenderer(event: ServerEvent) {
 
         if (textContent) {
           // 发送到远程通道（带缓冲）
-          remoteManager.sendResponseToChannel(sessionId, textContent).catch((err: Error) => {
-            logError('[Remote] Failed to send response to channel:', err);
-          });
+          remoteManager
+            .sendResponseToChannel(sessionId, textContent, false, message.id)
+            .catch((err: Error) => {
+              logError('[Remote] Failed to send response to channel:', err);
+            });
         }
       }
     }
@@ -983,11 +994,11 @@ function sendToRenderer(event: ServerEvent) {
 
     // trace.update 预留；当前主要用 trace.step
 
-    // 拦截 session.status 用于清理
+    // 拦截 session.status，仅清理本轮回复缓冲；idle/error 后会话仍可继续
     if (event.type === 'session.status') {
       const status = payload.status as string;
       if (status === 'idle' || status === 'error') {
-        // 会话结束，清空缓冲
+        // 本轮结束，清空缓冲但保留远程会话映射
         remoteManager.clearSessionBuffer(sessionId).catch((err: Error) => {
           logError('[Remote] Failed to clear session buffer:', err);
         });
@@ -1268,6 +1279,10 @@ app
           }
         }
         await sessionManager.continueSession(sessionId, prompt, content);
+      },
+      waitForSessionIdle: async (sessionId) => {
+        if (!sessionManager) throw new Error('Session manager not initialized');
+        await sessionManager.waitForSessionIdle(sessionId);
       },
       stopSession: async (sessionId) => {
         if (!sessionManager) throw new Error('Session manager not initialized');
@@ -2957,6 +2972,34 @@ ipcMain.handle('remote.setEnabled', async (_event, enabled: boolean) => {
   }
 });
 
+ipcMain.handle('remote.setChannelEnabled', async (_event, type: unknown, enabled: unknown) => {
+  try {
+    if (type !== 'feishu' && type !== 'dingtalk' && type !== 'wecom') {
+      throw new Error('Unsupported remote channel type');
+    }
+    if (typeof enabled !== 'boolean') {
+      throw new Error('Channel enabled state must be a boolean');
+    }
+    const state = await remoteManager.setChannelEnabled(type as ControllableChannelType, enabled);
+    return { success: true, ...state };
+  } catch (error) {
+    logError('[Remote] Error setting channel enabled state:', error);
+    let state: ControllableChannelState | undefined;
+    if (type === 'feishu' || type === 'dingtalk' || type === 'wecom') {
+      try {
+        state = remoteManager.getChannelControlState(type);
+      } catch {
+        // Invalid or unavailable configuration has no authoritative state to return.
+      }
+    }
+    return {
+      success: false,
+      ...state,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+});
+
 ipcMain.handle('remote.updateGatewayConfig', async (_event, config: Partial<GatewayConfig>) => {
   try {
     await remoteManager.updateGatewayConfig(config);
@@ -2976,6 +3019,32 @@ ipcMain.handle('remote.updateFeishuConfig', async (_event, config: FeishuChannel
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 });
+
+ipcMain.handle(
+  'remote.updateDingtalkConfig',
+  async (_event, config: DingtalkChannelConfig, gatewayConfig?: Partial<GatewayConfig>) => {
+    try {
+      await remoteManager.updateDingtalkConfig(config, gatewayConfig);
+      return { success: true };
+    } catch (error) {
+      logError('[Remote] Error updating DingTalk config:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+);
+
+ipcMain.handle(
+  'remote.updateWecomConfig',
+  async (_event, config: WecomChannelConfig, gatewayConfig?: Partial<GatewayConfig>) => {
+    try {
+      await remoteManager.updateWecomConfig(config, gatewayConfig);
+      return { success: true };
+    } catch (error) {
+      logError('[Remote] Error updating WeCom config:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+);
 
 ipcMain.handle('remote.getPairedUsers', () => {
   try {
@@ -3053,9 +3122,9 @@ ipcMain.handle('remote.getTunnelStatus', () => {
   }
 });
 
-ipcMain.handle('remote.getWebhookUrl', () => {
+ipcMain.handle('remote.getWebhookUrl', (_event, channelType?: ChannelType) => {
   try {
-    return remoteManager.getFeishuWebhookUrl();
+    return remoteManager.getWebhookUrl(channelType);
   } catch (error) {
     logError('[Remote] Error getting webhook URL:', error);
     return null;

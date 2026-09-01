@@ -133,6 +133,14 @@ npm run dev:with-python
 
 ## 新增功能检查清单
 
+### 新增或修改用户可见文案
+
+1. 按照 [`src/renderer/i18n/README.md`](../../src/renderer/i18n/README.md) 使用项目原生 i18n，不在业务代码中硬编码用户可见文案。
+2. 渲染进程使用 `useTranslation()` 和 `t()`，不要在组件内维护双语常量或直接读取 locale JSON。
+3. 主进程、preload 和远程通道不得导入浏览器专用的 `src/renderer/i18n/config.ts`；根据明确的语言上下文读取现有 locale 资源。
+4. 新增或修改翻译 key 时，同步更新 `en.json`、`zh.json`，并确认两份文件层级一致。
+5. 为本地化行为补充中英文测试；用户可见错误、Toast 和机器人回复同样适用。
+
 ### 新增主进程 API
 
 1. 定义类型：`src/renderer/types/index.ts` 或 `src/shared/ipc-types.ts`。

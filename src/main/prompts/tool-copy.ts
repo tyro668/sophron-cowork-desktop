@@ -137,6 +137,11 @@ export const AUTOMATION_TOOL_COPY = {
     description:
       'List existing automations. Use before referencing an automation by name or when checking whether a similar automation already exists.',
   },
+  automation_set_enabled: {
+    label: 'Enable or disable automation',
+    description:
+      'Enable or disable an existing automation. Resolve the exact automation id with automation_list first. Call only when the user explicitly requested this state change. Enabling also resumes a paused or failed automation. Disabling prevents future scheduled executions but does not cancel an execution already in progress.',
+  },
   automation_prepare: {
     label: 'Prepare automation',
     description:
@@ -231,6 +236,9 @@ export const TOOL_SCHEMA_COPY = {
     createConfirmed: 'Pass true only when the user explicitly requested creation.',
     automationId:
       'Exact automation id. Resolve it with automation_list; never guess an id from a name.',
+    enabled: 'Set true to enable the automation or false to disable it.',
+    enabledConfirmed:
+      'Pass true only when the user explicitly requested enabling or disabling this automation.',
     scheduleUpdateConfirmed:
       'Pass true only when the user explicitly requested this schedule change.',
   },

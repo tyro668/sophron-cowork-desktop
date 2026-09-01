@@ -2599,8 +2599,280 @@
   },
   "remote": {
     "title": "远程控制",
-    "statusRunning": "正在运行，可通过飞书控制",
+    "statusRunning": "远程服务运行中，可通过已连接渠道使用",
     "statusStopped": "未启动",
+    "navigationLabel": "远程控制设置",
+    "navChannels": "接入渠道",
+    "navUsers": "授权用户",
+    "navGlobal": "全局设置",
+    "navLogs": "运行日志",
+    "connectedChannels": "已连接渠道",
+    "startRequiresChannel": "请先配置并启用至少一个机器人",
+    "noConfiguredChannels": "完成至少一个可用渠道的配置后即可启动服务。",
+    "channelListTitle": "接入渠道",
+    "channelListDesc": "每个机器人可以独立配置和查看状态",
+    "addChannel": "添加渠道",
+    "channelAddHint": "多实例创建将在后端渠道模型接入后开放",
+    "channelName": {
+      "feishu": "飞书",
+      "dingtalk": "钉钉",
+      "wecom": "企业微信"
+    },
+    "channelDesc": {
+      "feishu": "填写应用凭证后启用",
+      "feishuConfigured": "{{mode}} · {{count}} 位授权用户",
+      "dingtalk": "填写应用凭证后启用 Stream 或 Webhook 模式",
+      "dingtalkConfigured": "{{mode}} · {{count}} 位授权用户",
+      "wecom": "可使用 WebSocket 长连接或 Webhook 回调",
+      "wecomConfigured": "{{mode}} · {{count}} 位授权用户"
+    },
+    "channelState": {
+      "connected": "已连接",
+      "stopped": "已配置",
+      "disabled": "已停用",
+      "unconfigured": "未配置",
+      "preview": "界面预览",
+      "error": "连接错误"
+    },
+    "channelTabBasic": "基本配置",
+    "channelTabAccess": "访问权限",
+    "channelTabAdvanced": "接入说明",
+    "backendAvailable": "当前可用",
+    "backendPending": "后端待接入",
+    "enableChannel": "启用",
+    "disableChannel": "停用",
+    "channelEnabledSuccess": "机器人已启用",
+    "channelDisabledSuccess": "机器人已停用",
+    "channelToggleFailed": "机器人启停失败，请查看运行日志后重试。",
+    "botMessages": {
+      "processing": "正在处理，请稍候…",
+      "remoteServiceStoppedCancellation": "⚠️ 远程控制服务已停止，本次待处理请求已取消。",
+      "channelDisabledCancellation": "⚠️ 当前机器人已停用，本次待处理请求已取消。",
+      "remoteSessionEndedCancellation": "⚠️ 当前远程会话已结束，本次待处理请求已取消。"
+    },
+    "previewOnlyNotice": "这是下一阶段渠道的界面预览。你可以体验配置结构，但输入内容不会保存，也不会建立真实连接。",
+    "credentialsTitle": "机器人凭证",
+    "credentialsDesc": {
+      "feishu": "填写飞书开放平台中应用的 App ID 和 App Secret。",
+      "dingtalk": "填写钉钉企业内部应用的 Client ID 和 Client Secret，可选择 Stream 长连接或 Webhook 回调。",
+      "wecom": "长连接填写 Bot ID 和 Secret；Webhook 填写 Token 和 EncodingAESKey。"
+    },
+    "displayName": "显示名称",
+    "dingtalkNamePlaceholder": "例如：内部机器人",
+    "wecomNamePlaceholder": "例如：销售助理",
+    "optional": "选填",
+    "receiveMode": "接收消息方式",
+    "streamConnection": "Stream 长连接",
+    "longConnectionChannelDesc": {
+      "feishu": "应用主动连接飞书服务器，无需公网地址。",
+      "dingtalk": "本地应用通过 Stream 模式接收机器人消息。",
+      "wecom": "通过智能机器人 WebSocket 长连接收发消息。"
+    },
+    "webhookChannelDesc": "平台向本地服务推送消息，需要公网回调地址。",
+    "wecomWebhookChannelDesc": "企业微信向加密回调地址推送消息，支持流式刷新回复。",
+    "ngrokChannelHint": "为本地 Webhook 提供公网可访问地址",
+    "accessPolicyDesc": "访问策略将按渠道独立保存，互不影响。",
+    "requireMention": "群聊中需要 @机器人",
+    "requireMentionDesc": "避免机器人响应群聊中的普通消息",
+    "openPlatform": {
+      "feishu": "打开飞书开放平台",
+      "dingtalk": "打开钉钉开放平台",
+      "wecom": "打开企业微信管理后台"
+    },
+    "setupGuide": {
+      "title": "按以下步骤完成接入",
+      "beforeStart": "开始前确认",
+      "platformPath": "操作位置",
+      "copy": "复制",
+      "copied": "已复制",
+      "permissionsLabel": "需要开通的权限",
+      "eventLabel": "需要订阅的事件",
+      "webhookUrlLabel": "需要填写的回调地址",
+      "completeWhen": "完成标志：{{result}}",
+      "testTitle": "最后一步：发送消息验证",
+      "intro": {
+        "feishu": "整个过程大约需要 5～10 分钟。先在飞书开放平台创建并发布机器人应用，再回到九思助理填写凭证、保存配置并启动服务。",
+        "dingtalk": "先在钉钉开发者后台创建企业内部应用，在应用内添加机器人并选择与本页一致的 Stream 或 Webhook 模式，再回到九思助理填写凭证。",
+        "wecom": "先创建 API 模式的企业微信智能机器人，选择长连接或 URL 回调，再回到九思助理填写对应凭证。"
+      },
+      "prerequisite": {
+        "feishu": "你需要拥有当前飞书企业中创建自建应用的权限；没有权限时，请让企业管理员创建应用或授予开发者权限。",
+        "dingtalk": "你需要加入一个钉钉组织，并拥有该组织的应用开发权限；如果开发者后台无法创建应用，请联系组织管理员。",
+        "wecom": "管理员可在管理后台创建；普通成员可从企业微信客户端的“工作台 → 智能机器人”进入。看不到 API 模式时，请让管理员开放机器人创建权限。"
+      },
+      "steps": {
+        "feishu": {
+          "createApp": {
+            "title": "创建企业自建应用",
+            "description": "登录飞书开放平台，选择当前企业，创建一个企业自建应用。填写容易识别的名称、描述和图标。",
+            "path": "飞书开放平台 → 开发者后台 → 创建企业自建应用",
+            "result": "可以进入新应用的详情页面"
+          },
+          "addBot": {
+            "title": "为应用添加机器人能力",
+            "description": "进入刚创建的应用，在应用能力中添加“机器人”。没有添加机器人能力时，应用无法出现在飞书会话中。",
+            "path": "应用详情 → 添加应用能力 → 机器人",
+            "result": "应用能力列表中显示“机器人”"
+          },
+          "credentials": {
+            "title": "复制 App ID 和 App Secret",
+            "description": "复制应用凭证，然后回到本页面的“基本配置”，分别填入 App ID 和 App Secret。注意不要复制到多余空格。",
+            "path": "应用详情 → 凭证与基础信息 → 应用凭证",
+            "result": "九思助理基本配置中的两个凭证字段均已填写"
+          },
+          "permissions": {
+            "title": "开通机器人所需权限",
+            "description": "进入权限管理，逐项搜索并开通下面的权限。如果页面支持批量导入，可以复制整份权限清单后一次性粘贴。",
+            "path": "应用详情 → 权限管理 → 开通权限 / 批量导入",
+            "result": "下面列出的全部权限都显示为已开通"
+          },
+          "eventsLong": {
+            "title": "使用长连接订阅消息事件",
+            "description": "将订阅方式改为“使用长连接接收事件”，然后添加“接收消息”事件。长连接不需要填写公网回调地址。",
+            "path": "应用详情 → 事件与回调 → 事件配置 → 订阅方式",
+            "result": "订阅方式为长连接，事件列表中包含“接收消息”"
+          },
+          "eventsWebhook": {
+            "title": "配置 Webhook 并订阅消息事件",
+            "description": "将订阅方式设为回调地址，把下面的公网 Webhook URL 填入请求地址并通过校验，然后添加“接收消息”事件。",
+            "path": "应用详情 → 事件与回调 → 事件配置 → 请求地址",
+            "result": "回调地址校验通过，事件列表中包含“接收消息”"
+          },
+          "publish": {
+            "title": "创建版本、设置可用范围并发布",
+            "description": "创建应用版本，确认机器人能力、权限和事件配置已包含在版本中；设置允许使用机器人的成员或部门，然后提交发布。",
+            "path": "应用详情 → 版本管理与发布 → 创建版本",
+            "result": "版本状态显示已发布，目标用户在可用范围内"
+          },
+          "finish": {
+            "title": "回到九思助理保存并启动",
+            "description": "回到“基本配置”检查凭证和连接方式，点击“保存配置”；再回到页面顶部点击“启动服务”。",
+            "path": "九思助理 → 设置 → 远程控制 → 飞书",
+            "result": "飞书渠道状态变为“已连接”"
+          }
+        },
+        "dingtalk": {
+          "createApp": {
+            "title": "创建企业内部应用",
+            "description": "登录钉钉开发者后台，选择要安装机器人的组织，在应用开发中创建企业内部应用。填写应用名称和描述即可。",
+            "path": "钉钉开发者后台 → 应用开发 → 创建应用",
+            "result": "可以进入新应用的详情页面"
+          },
+          "addBot": {
+            "title": "在应用内添加机器人并选择 Stream",
+            "description": "不要创建仅用于推送通知的群自定义机器人。请在应用详情中添加“机器人”能力，开启机器人配置，并把消息接收模式设为 Stream 后发布机器人配置。",
+            "path": "应用详情 → 添加应用能力 → 机器人 → 机器人配置",
+            "result": "机器人能力已启用，消息接收模式显示为 Stream"
+          },
+          "addBotWebhook": {
+            "title": "添加应用内机器人并选择 HTTP 模式",
+            "description": "在应用详情中添加“机器人”能力，把消息接收模式设为 HTTP/Webhook，并将下面的 HTTPS 公网地址填写为消息接收地址。不要使用只能向群里推送通知的群自定义机器人。",
+            "path": "应用详情 → 添加应用能力 → 机器人 → 机器人配置 → 消息接收模式",
+            "result": "消息接收模式为 HTTP，公网地址保存并校验成功"
+          },
+          "credentials": {
+            "title": "复制 Client ID 和 Client Secret",
+            "description": "复制应用凭证。Client ID 也可能标为 AppKey，Client Secret 也可能标为 AppSecret；它们是同一组凭证的新旧名称。",
+            "path": "应用详情 → 凭证与基础信息 → 应用凭证",
+            "result": "已经保存 Client ID 和 Client Secret"
+          },
+          "publish": {
+            "title": "创建应用版本并设置可用范围",
+            "description": "创建并发布应用版本，同时把需要使用机器人的成员或部门加入可用范围。未发布的应用通常无法被普通成员找到。",
+            "path": "应用详情 → 版本管理与发布 → 创建版本",
+            "result": "版本已发布，目标成员在应用可用范围内"
+          },
+          "finish": {
+            "title": "回到九思助理填写凭证",
+            "description": "在“基本配置”填入 Client ID 和 Client Secret；如需 OpenAPI 兜底发送，再填写 RobotCode。保存配置并启动远程控制服务。",
+            "path": "九思助理 → 设置 → 远程控制 → 钉钉 → 基本配置",
+            "result": "渠道状态显示为“已连接”"
+          },
+          "test": {
+            "title": "在钉钉中找到机器人",
+            "description": "在钉钉中打开应用机器人单聊，或者把机器人加入群聊。群聊中需要 @机器人 后再发送任务。",
+            "path": "钉钉客户端 → 工作台 / 群设置 → 机器人",
+            "result": "机器人可以收到消息并返回回复"
+          }
+        },
+        "wecom": {
+          "prerequisite": {
+            "title": "确认可以创建智能机器人",
+            "description": "管理员可直接从管理后台进入；普通成员可在企业微信工作台搜索“智能机器人”。如果没有创建入口，需要管理员在机器人管理中开放创建权限。",
+            "path": "管理后台：安全与管理 → 管理工具 → 智能机器人；普通成员：工作台 → 智能机器人",
+            "result": "可以看到“创建机器人”按钮"
+          },
+          "createBot": {
+            "title": "使用 API 模式创建机器人",
+            "description": "点击创建机器人。如果首先进入 AI 自动生成页面，请选择“手动创建”，然后选择“API 模式创建”；不要选择普通 Webhook 群机器人。",
+            "path": "智能机器人 → 创建机器人 → 手动创建 → API 模式创建",
+            "result": "进入包含 API 配置的机器人编辑页面"
+          },
+          "longConnection": {
+            "title": "设置名称、可见范围和长连接",
+            "description": "填写机器人名称，把需要使用机器人的成员、部门或标签加入可见范围；在 API 配置的连接方式中选择“使用长连接”。",
+            "path": "机器人编辑页 → 可使用成员 / 可见范围 → API 配置 → 使用长连接",
+            "result": "目标用户在可见范围内，连接方式显示为长连接"
+          },
+          "webhookConnection": {
+            "title": "选择 URL 回调并填写公网地址",
+            "description": "在 API 配置中选择“使用 URL 回调”，把下方 HTTPS 公网地址填入 URL。保存机器人前，九思助理远程控制服务必须已经启动。",
+            "path": "机器人编辑页 → API 配置 → 使用 URL 回调 → URL",
+            "result": "企业微信可以访问该地址并通过 URL 有效性校验"
+          },
+          "credentials": {
+            "title": "获取 Bot ID 和 Secret 并保存机器人",
+            "description": "复制 Bot ID，在 Secret 一栏点击“点击获取”并立即保存 Secret，然后保存机器人。Secret 通常不会一直完整显示，请妥善保管。",
+            "path": "机器人编辑页 → API 配置 → 配置方法 → Bot ID / Secret",
+            "result": "Bot ID 和 Secret 已保存，机器人详情页可以正常打开"
+          },
+          "webhookCredentials": {
+            "title": "生成 Token 和 EncodingAESKey",
+            "description": "在 URL 回调配置中生成 Token 和 EncodingAESKey，并把两项完整复制到九思助理基本配置。两项均用于验签和消息加密，请勿泄露。",
+            "path": "机器人编辑页 → API 配置 → URL 回调 → Token / EncodingAESKey",
+            "result": "企业微信后台与九思助理中的 Token、EncodingAESKey 完全一致"
+          },
+          "finish": {
+            "title": "回到九思助理填写凭证",
+            "description": "在“基本配置”填入 Bot ID 和 Secret，保存配置并启动远程控制服务。",
+            "path": "九思助理 → 设置 → 远程控制 → 企业微信 → 基本配置",
+            "result": "企业微信渠道状态显示为“已连接”"
+          },
+          "test": {
+            "title": "添加机器人并发送测试消息",
+            "description": "在企业微信中找到刚创建的机器人并发起单聊；也可以把机器人加入群聊，在群里 @机器人 后发送任务。",
+            "path": "企业微信客户端 → 通讯录 / 工作台 → 智能机器人",
+            "result": "机器人可以收到消息并返回回复"
+          }
+        }
+      },
+      "test": {
+        "feishu": "私聊机器人发送“你好”；群聊中先添加机器人，再 @机器人 发送“你好”。如果九思助理收到消息并在飞书返回回复，说明接入成功。",
+        "dingtalk": "先在机器人单聊中发送“你好”；群聊测试必须 @机器人。如果能收到九思助理回复，说明所选接收模式正常。",
+        "wecom": "在机器人单聊中发送“你好”，或在群聊中 @机器人。如果能收到九思助理回复，说明当前接收模式和可见范围配置正确。"
+      },
+      "warning": {
+        "feishu": "常见问题：应用未发布、用户不在可用范围、未订阅 im.message.receive_v1，都会导致机器人没有反应。App Secret 属于敏感信息，请勿发送给他人。",
+        "dingtalk": "请确认创建的是“应用内机器人”。Webhook 模式需要可公网访问的 HTTPS 地址并保持九思助理运行；它不是只能向群里发通知的群自定义机器人。钉钉群聊只会转发 @机器人 的消息。",
+        "wecom": "长连接模式下同一机器人只能保持一个有效连接；Webhook 模式需要公网可访问的 HTTPS 地址，并要求九思助理持续运行。Token、Secret 和 EncodingAESKey 都属于敏感信息。"
+      }
+    },
+    "feishuSaveHint": "保存后继续使用现有飞书后端能力",
+    "dingtalkSaveHint": "保存后将使用钉钉 {{mode}} 接收机器人消息",
+    "wecomSaveHint": "保存后将使用企业微信 {{mode}} 接收机器人消息",
+    "previewSaveHint": "后端接口完成后才会开放保存和连接测试",
+    "globalSettingsHint": "这些设置作用于整个远程控制服务；渠道凭证和访问权限请在对应渠道中配置。",
+    "saveGlobalSettings": "保存全局设置",
+    "runtimeOverview": "渠道运行概览",
+    "runtimeOverviewDesc": "当前展示可从后端获得的连接状态。",
+    "fullLogsPending": "按渠道筛选、错误详情和重连记录将在后端渠道状态接口完成后接入。",
+    "noAuthorizedUsers": "暂无已授权用户",
+    "noAuthorizedUsersDesc": "用户完成配对或被加入白名单后会显示在这里。",
+    "loadFailed": "远程控制配置加载失败",
+    "feishuCredentialsRequired": "请先填写飞书 App ID 和 App Secret",
+    "dingtalkCredentialsRequired": "请先填写钉钉 Client ID 和 Client Secret",
+    "wecomCredentialsRequired": "请先填写企业微信 Bot ID 和 Secret",
+    "wecomWebhookCredentialsRequired": "请先填写企业微信 Webhook Token 和 43 位 EncodingAESKey",
     "startService": "启动服务",
     "stopService": "停止服务",
     "activeSessions": "活跃会话",
@@ -2608,7 +2880,7 @@
     "pendingApprovals": "待授权",
     "pairingRequests": "待授权的配对请求",
     "unknownUser": "未知用户",
-    "pairingCode": "配对码",
+    "pairingCode": "申请码",
     "approve": "批准",
     "stepFeishu": "飞书配置",
     "stepConnection": "连接方式",
@@ -2616,8 +2888,8 @@
     "feishuTitle": "飞书机器人配置",
     "feishuDesc": "在飞书开放平台创建应用后，填入凭证信息",
     "dmPolicy": "私聊授权策略",
-    "policyPairing": "配对验证",
-    "policyPairingDesc": "需要输入配对码",
+    "policyPairing": "管理员授权",
+    "policyPairingDesc": "新用户需要由管理员审批",
     "policyAllowlist": "白名单",
     "policyAllowlistDesc": "仅允许指定用户",
     "policyOpen": "开放",

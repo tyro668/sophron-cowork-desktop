@@ -11,6 +11,10 @@ export interface FeishuWSConfig {
   appId: string;
   appSecret: string;
   logLevel?: 'debug' | 'info' | 'warn' | 'error';
+  /** Maximum time to wait for the first successful connection. */
+  connectTimeoutMs?: number;
+  /** Maximum time the SDK waits for a single WebSocket handshake. */
+  handshakeTimeoutMs?: number;
 }
 
 export interface FeishuMessage {
@@ -29,6 +33,12 @@ export interface FeishuMessage {
  * Uses Feishu SDK's long connection mode
  */
 export class FeishuWSClient extends EventEmitter {
+  // The SDK can spend up to 15s discovering the endpoint and another 15s on
+  // the WebSocket handshake. Keep the outer deadline beyond both phases so a
+  // timeout does not abandon the SDK in the middle of its initial handshake.
+  private static readonly DEFAULT_CONNECT_TIMEOUT_MS = 35_000;
+  private static readonly DEFAULT_HANDSHAKE_TIMEOUT_MS = 15_000;
+
   private config: FeishuWSConfig;
   private client: Lark.Client | null = null;
   private wsClient: Lark.WSClient | null = null;
@@ -38,6 +48,9 @@ export class FeishuWSClient extends EventEmitter {
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 10;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private lifecycleGeneration: number = 0;
+  private startCompletion: Promise<void> | null = null;
+  private cancelPendingStart: ((error: Error) => void) | null = null;
 
   constructor(config: FeishuWSConfig) {
     super();
@@ -53,8 +66,10 @@ export class FeishuWSClient extends EventEmitter {
       return;
     }
 
+    const generation = ++this.lifecycleGeneration;
     this.starting = true;
     this.stopped = false;
+    this.connected = false;
 
     const { appId, appSecret } = this.config;
 
@@ -63,11 +78,46 @@ export class FeishuWSClient extends EventEmitter {
       throw new Error('Feishu appId and appSecret are required');
     }
 
+    let resolveStartCompletion!: () => void;
+    const startCompletion = new Promise<void>((resolve) => {
+      resolveStartCompletion = resolve;
+    });
+    this.startCompletion = startCompletion;
+
     log('[FeishuWS] Starting long connection...');
+
+    let sdkWSClient: Lark.WSClient | null = null;
+    let cancelStart: ((error: Error) => void) | null = null;
+    let readySettled = false;
+    let readyTimer: ReturnType<typeof setTimeout> | null = null;
+    let resolveReady!: () => void;
+    let rejectReady!: (error: Error) => void;
+    const readyPromise = new Promise<void>((resolve, reject) => {
+      resolveReady = resolve;
+      rejectReady = reject;
+    });
+    const settleReady = (error?: Error): boolean => {
+      if (readySettled) return false;
+      readySettled = true;
+      if (readyTimer) {
+        clearTimeout(readyTimer);
+        readyTimer = null;
+      }
+      if (error) {
+        rejectReady(error);
+      } else {
+        resolveReady();
+      }
+      return true;
+    };
 
     try {
       // Close any lingering previous connection before creating a new one
       await this.closeWSClient();
+
+      if (this.stopped || generation !== this.lifecycleGeneration) {
+        throw new Error('Feishu WebSocket start cancelled');
+      }
 
       this.client = new Lark.Client({
         appId,
@@ -77,21 +127,70 @@ export class FeishuWSClient extends EventEmitter {
 
       const loggerLevel = this.getLoggerLevel();
 
-      this.wsClient = new Lark.WSClient({
+      sdkWSClient = new Lark.WSClient({
         appId,
         appSecret,
         loggerLevel,
+        autoReconnect: true,
+        handshakeTimeoutMs:
+          this.config.handshakeTimeoutMs ?? FeishuWSClient.DEFAULT_HANDSHAKE_TIMEOUT_MS,
+        onReady: () => {
+          if (!this.isCurrentClient(generation, sdkWSClient)) {
+            if (sdkWSClient) this.closeSpecificWSClient(sdkWSClient);
+            settleReady(new Error('Feishu WebSocket start cancelled'));
+            return;
+          }
+          settleReady();
+        },
+        onError: (error: Error) => {
+          const client = sdkWSClient;
+          if (!client || !this.isCurrentClient(generation, client)) return;
+
+          // Before the first ready signal, let start() own cleanup and retry.
+          if (settleReady(error)) return;
+
+          // The SDK emits onError only after its reconnect loop is exhausted.
+          this.handleTerminalConnectionError(client, error);
+        },
+        onReconnecting: () => {
+          if (!this.isCurrentClient(generation, sdkWSClient)) return;
+          const wasConnected = this.connected;
+          this.connected = false;
+          logWarn('[FeishuWS] Connection lost, SDK is reconnecting...');
+          if (wasConnected) this.emit('disconnected');
+        },
+        onReconnected: () => {
+          if (!this.isCurrentClient(generation, sdkWSClient)) {
+            if (sdkWSClient) this.closeSpecificWSClient(sdkWSClient);
+            return;
+          }
+          this.connected = true;
+          this.reconnectAttempts = 0;
+          log('[FeishuWS] Long connection re-established successfully');
+          this.emit('connected');
+        },
       });
+      this.wsClient = sdkWSClient;
+      cancelStart = (error: Error) => {
+        settleReady(error);
+      };
+      this.cancelPendingStart = cancelStart;
+
+      const connectTimeoutMs =
+        this.config.connectTimeoutMs ?? FeishuWSClient.DEFAULT_CONNECT_TIMEOUT_MS;
+      readyTimer = setTimeout(() => {
+        settleReady(new Error(`Feishu WebSocket connection timed out after ${connectTimeoutMs}ms`));
+      }, connectTimeoutMs);
 
       // Bail out if stop() was called while we were setting up
       if (this.stopped) {
-        await this.closeWSClient();
+        this.closeSpecificWSClient(sdkWSClient);
         this.client = null;
         this.starting = false;
-        return;
+        throw new Error('Feishu WebSocket start cancelled');
       }
 
-      await this.wsClient.start({
+      await sdkWSClient.start({
         eventDispatcher: new Lark.EventDispatcher({}).register({
           'im.message.receive_v1': async (data: Record<string, unknown>) => {
             try {
@@ -103,12 +202,20 @@ export class FeishuWSClient extends EventEmitter {
         }),
       });
 
-      // Double-check: stop() may have been called during the async start above
-      if (this.stopped) {
-        await this.closeWSClient();
+      // SDK 1.73.0 start() starts the connection in the background. onReady is
+      // the public signal that the first WebSocket handshake actually succeeded.
+      await readyPromise;
+
+      // Double-check: stop() may have been called while waiting for onReady.
+      if (
+        this.stopped ||
+        generation !== this.lifecycleGeneration ||
+        this.wsClient !== sdkWSClient
+      ) {
+        this.closeSpecificWSClient(sdkWSClient);
         this.client = null;
         this.starting = false;
-        return;
+        throw new Error('Feishu WebSocket start cancelled');
       }
 
       this.connected = true;
@@ -117,12 +224,34 @@ export class FeishuWSClient extends EventEmitter {
       log('[FeishuWS] Long connection established successfully');
       this.emit('connected');
     } catch (error) {
+      const isCurrentStart =
+        generation === this.lifecycleGeneration && !this.stopped && this.wsClient === sdkWSClient;
+
+      if (sdkWSClient) {
+        this.closeSpecificWSClient(sdkWSClient);
+      }
+
+      if (!isCurrentStart) {
+        throw error;
+      }
+
       this.starting = false;
-      logError('[FeishuWS] Failed to start:', error);
       this.connected = false;
+      this.client = null;
+      logError('[FeishuWS] Failed to start:', error);
       this.emit('error', error);
 
       this.scheduleReconnect();
+      throw error;
+    } finally {
+      settleReady();
+      if (cancelStart && this.cancelPendingStart === cancelStart) {
+        this.cancelPendingStart = null;
+      }
+      resolveStartCompletion();
+      if (this.startCompletion === startCompletion) {
+        this.startCompletion = null;
+      }
     }
   }
 
@@ -130,18 +259,31 @@ export class FeishuWSClient extends EventEmitter {
    * Stop the WebSocket connection
    */
   async stop(): Promise<void> {
+    if (this.stopped && !this.starting && !this.connected && !this.wsClient) {
+      return;
+    }
+
     log('[FeishuWS] Stopping long connection...');
 
+    this.lifecycleGeneration++;
     this.stopped = true;
+    this.starting = false;
+    this.connected = false;
+    const pendingStart = this.startCompletion;
+    const cancelPendingStart = this.cancelPendingStart;
+    this.cancelPendingStart = null;
 
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
 
+    cancelPendingStart?.(new Error('Feishu WebSocket start cancelled'));
     await this.closeWSClient();
+    if (pendingStart) {
+      await pendingStart;
+    }
     this.client = null;
-    this.connected = false;
 
     this.emit('disconnected');
     log('[FeishuWS] Long connection stopped');
@@ -151,14 +293,54 @@ export class FeishuWSClient extends EventEmitter {
    * Close the underlying Lark WSClient connection
    */
   private async closeWSClient(): Promise<void> {
-    if (this.wsClient) {
-      try {
-        this.wsClient.close({ force: true });
-      } catch (err) {
-        logWarn('[FeishuWS] Error closing WSClient:', err);
-      }
+    const client = this.wsClient;
+    if (client) {
+      this.closeSpecificWSClient(client);
+    }
+  }
+
+  /**
+   * Close exactly the SDK instance that belongs to a lifecycle generation.
+   * A late completion from an old start must never close the replacement.
+   */
+  private closeSpecificWSClient(client: Lark.WSClient): void {
+    try {
+      client.close({ force: true });
+    } catch (err) {
+      logWarn('[FeishuWS] Error closing WSClient:', err);
+    }
+
+    if (this.wsClient === client) {
       this.wsClient = null;
     }
+  }
+
+  private isCurrentClient(generation: number, client: Lark.WSClient | null): boolean {
+    return (
+      client !== null &&
+      !this.stopped &&
+      generation === this.lifecycleGeneration &&
+      this.wsClient === client
+    );
+  }
+
+  /**
+   * The SDK has already exhausted its own reconnect loop. Close that instance
+   * before the outer retry creates a fresh one, so only one reconnect owner is
+   * active at a time.
+   */
+  private handleTerminalConnectionError(client: Lark.WSClient, error: Error): void {
+    if (this.wsClient !== client || this.stopped) return;
+
+    const wasConnected = this.connected;
+    this.connected = false;
+    this.starting = false;
+    this.closeSpecificWSClient(client);
+    this.client = null;
+    logError('[FeishuWS] Connection failed after SDK retries:', error);
+    this.emit('error', error);
+    if (wasConnected) this.emit('disconnected');
+    this.scheduleReconnect();
   }
 
   /**
@@ -347,6 +529,9 @@ export class FeishuWSClient extends EventEmitter {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       logError('[FeishuWS] Max reconnect attempts reached');
       this.emit('reconnectFailed');
+      return;
+    }
+    if (this.reconnectTimer) {
       return;
     }
 
