@@ -23,6 +23,7 @@ interface GlassOptionGroup {
 interface GlassOptionItem {
   value: string;
   label: string;
+  title?: string;
 }
 
 interface GlassOptionSingleSelectProps {
@@ -233,6 +234,7 @@ export function GlassOptionSingleSelect({
                       type="button"
                       role="option"
                       aria-selected={selected}
+                      title={o.title}
                       data-index={globalIdx}
                       className={`min-h-7 w-full overflow-hidden text-ellipsis whitespace-nowrap px-3 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${
                         selected

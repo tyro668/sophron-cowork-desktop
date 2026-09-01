@@ -15,7 +15,7 @@ import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView, placeholder, keymap } from '@codemirror/view';
 import { defaultKeymap } from '@codemirror/commands';
 import { Tag, tags } from '@lezer/highlight';
-import { useDataFieldTypeLabel } from '../../../hooks/useDataFieldTypeLabel';
+import { DataTypeIcon } from './DataTypeIcon';
 
 export interface ExpressionAssistantPanelContext {
   currentExpression: string;
@@ -839,7 +839,6 @@ export function GlassExpressionInput({
   assistantPanel,
 }: GlassExpressionInputProps) {
   const tr = useFormTranslation('expression');
-  const dataTypeLabel = useDataFieldTypeLabel();
   const [open, setOpen] = useState(false);
 
   if (!open) {
@@ -873,7 +872,6 @@ export function GlassExpressionInput({
       functionGroups={functionGroups}
       assistantPanel={assistantPanel}
       tr={tr}
-      dataTypeLabel={dataTypeLabel}
     />
   );
 }
@@ -888,11 +886,9 @@ function ExpressionEditorDialog({
   functionGroups = COMMON_EXPRESSION_FUNCTION_GROUPS,
   assistantPanel,
   tr,
-  dataTypeLabel,
 }: GlassExpressionInputProps & {
   onClose: () => void;
   tr: (key: string) => string;
-  dataTypeLabel: (type: string | null | undefined) => string;
 }) {
   const [draft, setDraft] = useState(value);
   const initialDraftRef = useRef(value);
@@ -1112,12 +1108,10 @@ function ExpressionEditorDialog({
                               }}
                               className="flex min-h-9 w-full cursor-pointer items-center justify-between gap-2 px-3 text-left text-[12px] text-text-secondary transition-colors hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
                             >
-                              <span className="min-w-0 truncate">{col}</span>
-                              {colType && (
-                                <span className="shrink-0 rounded bg-background/60 px-1 py-0.5 text-[10px] leading-none text-text-muted">
-                                  {dataTypeLabel(colType)}
-                                </span>
-                              )}
+                              <span className="flex min-w-0 items-center gap-2">
+                                <DataTypeIcon type={colType} />
+                                <span className="min-w-0 truncate">{col}</span>
+                              </span>
                             </button>
                           );
                         })}

@@ -137,7 +137,6 @@ export default function FormTypeConvert({
         <div className="scrollbar-hover flex-1 space-y-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
           <GlassRowList
             headerClassName=""
-            variant="table"
             items={activeConversions}
             columns={[
               {
@@ -182,7 +181,7 @@ export default function FormTypeConvert({
                         })),
                       },
                     ]}
-                    className="h-6 w-full text-[12px]"
+                    className="h-7 w-full text-[12px]"
                   />
                 ),
               },
@@ -193,8 +192,16 @@ export default function FormTypeConvert({
                   const isDateType = conv.type === 'date' || conv.type === 'datetime';
                   if (isDateType) {
                     const formatOptions = [
-                      { value: '', label: tr('typeConvertAutoParse') },
-                      ...DATE_FORMAT_PRESETS.map((p) => ({ value: p.value, label: p.example })),
+                      {
+                        value: '',
+                        label: tr('typeConvertAutoParse'),
+                        title: tr('typeConvertAutoParseHint'),
+                      },
+                      ...DATE_FORMAT_PRESETS.map((preset) => ({
+                        value: preset.value,
+                        label: preset.value,
+                        title: tr('typeConvertFormatExample', { example: preset.example }),
+                      })),
                     ];
                     return (
                       <GlassOptionSingleSelect
@@ -205,8 +212,8 @@ export default function FormTypeConvert({
                             format: (v || undefined) as DateFormat | undefined,
                           })
                         }
-                        variant="muted"
-                        className="h-6 w-full text-[12px]"
+                        variant="highlight"
+                        className="h-7 w-full text-[12px]"
                       />
                     );
                   }
@@ -231,13 +238,13 @@ export default function FormTypeConvert({
                             scale: parseTypeConversionScale(v),
                           })
                         }
-                        variant="muted"
-                        className="h-6 w-full text-[12px]"
+                        variant="highlight"
+                        className="h-7 w-full text-[12px]"
                       />
                     );
                   }
                   return (
-                    <span className="flex h-7 w-full items-center rounded border border-border-subtle/80 bg-surface-hover/45 px-1.5 text-left text-[12px] text-text-muted">
+                    <span className="flex h-7 w-full items-center rounded border border-transparent bg-[rgb(var(--color-surface-active-rgb))] px-1.5 text-left text-[12px] text-accent-text">
                       {tr('typeConvertNoSettings')}
                     </span>
                   );
@@ -263,7 +270,7 @@ export default function FormTypeConvert({
                         })),
                       },
                     ]}
-                    className="h-6 w-full text-[12px]"
+                    className="h-7 w-full text-[12px]"
                   />
                 ),
               },

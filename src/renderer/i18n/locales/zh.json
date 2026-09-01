@@ -644,7 +644,7 @@
           "conflictLeftSuffix": "左后缀",
           "conflictRightSuffix": "右后缀",
           "joinAsofByHeader": "等值匹配字段",
-          "joinFieldSettingsTip": "设置输出字段：勾选左右表要保留的字段并可重命名；左右表的同名字段冲突时，按所选策略加后缀或前缀"
+          "joinFieldSettingsTip": "设置保留字段、重命名与同名字段冲突策略"
         },
         "aggregate": {
           "aggregateFieldWithGranularity": "{{field}}（{{granularity}}）",
@@ -788,6 +788,8 @@
           "typeConvertAdd": "添加转换",
           "typeConvertRemove": "删除转换",
           "typeConvertAutoParse": "自动解析",
+          "typeConvertAutoParseHint": "自动识别常见的日期和日期时间格式",
+          "typeConvertFormatExample": "示例：{{example}}",
           "typeConvertScaleOption": "保留 {{n}} 位"
         },
         "fieldSelect": {
