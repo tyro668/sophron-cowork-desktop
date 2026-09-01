@@ -31,6 +31,8 @@ Remote channel
 | [`remote-title.ts`](../../src/main/remote/remote-title.ts)                                 | 远程会话标题                                                                   |
 | [`channels/channel-base.ts`](../../src/main/remote/channels/channel-base.ts)               | channel 抽象、长消息切分、错误事件                                             |
 | [`channels/feishu`](../../src/main/remote/channels/feishu)                                 | 飞书 API、webhook、WebSocket 长连接                                            |
+| [`channels/dingtalk`](../../src/main/remote/channels/dingtalk)                             | 钉钉 Stream/Webhook 接收、sessionWebhook 与机器人 OpenAPI                      |
+| [`channels/wecom`](../../src/main/remote/channels/wecom)                                   | 企业微信智能机器人 WebSocket/Webhook、加密回调与流式回复                       |
 | [`channels/slack/slack-channel.ts`](../../src/main/remote/channels/slack/slack-channel.ts) | Slack bot/socket/webhook                                                       |
 
 ### RemoteManager
@@ -127,6 +129,29 @@ Slack：
 - 自动过滤 bot 消息和自身消息。
 - group 需要 mention。
 
+DingTalk：
+
+- 使用官方 `dingtalk-stream` SDK 建立 Stream 长连接，不要求公网回调地址。
+- 也可使用应用内机器人的 HTTP/Webhook 模式，公网入口为 `/webhook/dingtalk`；该模式需要 HTTPS 公网地址，可复用内置 ngrok 隧道。
+- Webhook 按钉钉协议校验 `timestamp` 和 `sign` 请求头：签名为以 AppSecret 为 key、对 `timestamp + "\n" + AppSecret` 计算的 HMAC-SHA256 Base64 值；超过一小时的请求会被拒绝。
+- Webhook 收到合法请求后立即返回空 JSON ACK，异步回复继续复用 `sessionWebhook` 或机器人 OpenAPI，避免等待模型执行导致平台超时。
+- 回调入队后立即 ACK，并按 Stream message ID 与机器人 message ID 去重。
+- 回复优先使用当前会话的 `sessionWebhook`，失效后降级到机器人 OpenAPI。
+- 群聊与私聊目标分别编码为 `group:<conversationId>` 和 `dm:<senderStaffId>`。
+- 当前接收文本消息；图片、文件和互动卡片留待统一媒体管线接入。
+
+WeCom：
+
+- 使用 `@wecom/aibot-node-sdk` 连接企业微信智能机器人的 WebSocket 长连接，配置项为 Bot ID 和长连接 Secret。
+- `start()` 只有在企业微信认证成功后才完成；网络断开由 SDK 自动重连，Channel 状态在重连期间为未连接。
+- Webhook 模式使用 `/webhook/wecom`，配置项为 Token 和 43 位 EncodingAESKey；Gateway 支持企业微信用于 URL 验证的 GET 请求和消息回调 POST 请求。
+- Webhook 回调按 WXBizMsgCrypt 协议做 SHA-1 验签、AES-256-CBC 解密与加密回复，企业内部智能机器人的 ReceiveId 固定为空字符串；超过两小时的请求时间戳会被拒绝。
+- Webhook 收到新任务后先返回未完成的 `stream` 响应，Agent 结果写入对应 stream；企业微信后续的 stream refresh 回调会取得最终内容。最终 stream 已送达后，额外回复可使用一次性 `response_url` 兜底。
+- 单聊与群聊目标分别编码为 `dm:<userid>` 和 `group:<chatid>`，消息按 `msgid` 做有界 TTL 去重。
+- 有 `replyTo` 且原始回调帧仍有效时优先被动回复；Agent 的异步结果或上下文失效时使用主动 Markdown 推送。
+- WebSocket 当前接收文本；Webhook 还可把语音转写和 mixed 消息中的文本部分归一化为远程文本命令。图片、文件下载解密留待统一媒体管线接入。
+- 一个 Bot 同时只能维持一个有效长连接。不要在多个应用实例中复用同一组 Bot ID/Secret。
+
 ### 远程 UI
 
 [`RemoteControlPanel`](../../src/renderer/components/RemoteControlPanel.tsx) 负责：
@@ -134,7 +159,7 @@ Slack：
 - 加载 config/status/paired users/pending pairings/tunnel/webhook URL。
 - 5 秒轮询状态。
 - 启停 gateway。
-- 保存 gateway 和 Feishu 配置。
+- 保存 gateway、Feishu、DingTalk 和 WeCom 配置。
 - 配对 approve/reject/revoke。
 - 拆分配置步骤：
   - [`FeishuConfigStep`](../../src/renderer/components/remote/FeishuConfigStep.tsx)

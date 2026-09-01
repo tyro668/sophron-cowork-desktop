@@ -100,6 +100,11 @@ import type {
   RemoteConfig,
   GatewayConfig,
   FeishuChannelConfig,
+  DingtalkChannelConfig,
+  WecomChannelConfig,
+  ChannelType,
+  ControllableChannelType,
+  RemoteChannelToggleResult,
   PairedUser,
   PairingRequest,
   RemoteSessionMapping,
@@ -599,12 +604,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
       running: boolean;
       port?: number;
       publicUrl?: string;
-      channels: Array<{ type: string; connected: boolean; error?: string }>;
+      channels: Array<{ type: string; enabled: boolean; connected: boolean; error?: string }>;
       activeSessions: number;
       pendingPairings: number;
     }> => ipcRenderer.invoke('remote.getStatus'),
     setEnabled: (enabled: boolean): Promise<{ success: boolean; error?: string }> =>
       ipcRenderer.invoke('remote.setEnabled', enabled),
+    setChannelEnabled: (
+      type: ControllableChannelType,
+      enabled: boolean
+    ): Promise<RemoteChannelToggleResult> =>
+      ipcRenderer.invoke('remote.setChannelEnabled', type, enabled),
     updateGatewayConfig: (
       config: Partial<GatewayConfig>
     ): Promise<{ success: boolean; error?: string }> =>
@@ -613,6 +623,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
       config: FeishuChannelConfig
     ): Promise<{ success: boolean; error?: string }> =>
       ipcRenderer.invoke('remote.updateFeishuConfig', config),
+    updateDingtalkConfig: (
+      config: DingtalkChannelConfig,
+      gatewayConfig?: Partial<GatewayConfig>
+    ): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke('remote.updateDingtalkConfig', config, gatewayConfig),
+    updateWecomConfig: (
+      config: WecomChannelConfig,
+      gatewayConfig?: Partial<GatewayConfig>
+    ): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke('remote.updateWecomConfig', config, gatewayConfig),
     getPairedUsers: (): Promise<PairedUser[]> => ipcRenderer.invoke('remote.getPairedUsers'),
     getPendingPairings: (): Promise<PairingRequest[]> =>
       ipcRenderer.invoke('remote.getPendingPairings'),
@@ -641,7 +661,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       provider: string;
       error?: string;
     }> => ipcRenderer.invoke('remote.getTunnelStatus'),
-    getWebhookUrl: (): Promise<string | null> => ipcRenderer.invoke('remote.getWebhookUrl'),
+    getWebhookUrl: (channelType?: ChannelType): Promise<string | null> =>
+      ipcRenderer.invoke('remote.getWebhookUrl', channelType),
     restart: (): Promise<{ success: boolean; error?: string }> =>
       ipcRenderer.invoke('remote.restart'),
   },
@@ -1020,16 +1041,28 @@ declare global {
           running: boolean;
           port?: number;
           publicUrl?: string;
-          channels: Array<{ type: string; connected: boolean; error?: string }>;
+          channels: Array<{ type: string; enabled: boolean; connected: boolean; error?: string }>;
           activeSessions: number;
           pendingPairings: number;
         }>;
         setEnabled: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
+        setChannelEnabled: (
+          type: ControllableChannelType,
+          enabled: boolean
+        ) => Promise<RemoteChannelToggleResult>;
         updateGatewayConfig: (
           config: Partial<GatewayConfig>
         ) => Promise<{ success: boolean; error?: string }>;
         updateFeishuConfig: (
           config: FeishuChannelConfig
+        ) => Promise<{ success: boolean; error?: string }>;
+        updateDingtalkConfig: (
+          config: DingtalkChannelConfig,
+          gatewayConfig?: Partial<GatewayConfig>
+        ) => Promise<{ success: boolean; error?: string }>;
+        updateWecomConfig: (
+          config: WecomChannelConfig,
+          gatewayConfig?: Partial<GatewayConfig>
         ) => Promise<{ success: boolean; error?: string }>;
         getPairedUsers: () => Promise<PairedUser[]>;
         getPendingPairings: () => Promise<PairingRequest[]>;
@@ -1053,7 +1086,7 @@ declare global {
           provider: string;
           error?: string;
         }>;
-        getWebhookUrl: () => Promise<string | null>;
+        getWebhookUrl: (channelType?: ChannelType) => Promise<string | null>;
         restart: () => Promise<{ success: boolean; error?: string }>;
       };
       schedule: {

@@ -65,16 +65,77 @@ export type McpPresetsMap = Record<
 // ---------------------------------------------------------------------------
 
 /** Slim channel-type union (mirrors ChannelType in remote/types.ts). */
-export type RemoteChannelType = 'feishu' | 'wechat' | 'telegram' | 'dingtalk' | 'websocket';
+export type RemoteChannelType =
+  | 'feishu'
+  | 'wechat'
+  | 'wecom'
+  | 'telegram'
+  | 'dingtalk'
+  | 'websocket';
 
 /** Feishu channel configuration (mirrors FeishuChannelConfig in remote/types.ts). */
 export interface FeishuChannelConfig {
   type: 'feishu';
+  enabled?: boolean;
   appId: string;
   appSecret: string;
   verificationToken?: string;
   encryptKey?: string;
   useWebSocket?: boolean;
+  dm: {
+    policy: 'open' | 'pairing' | 'allowlist';
+    allowFrom?: string[];
+  };
+  groups?: Record<string, { requireMention: boolean; allowFrom?: string[] }>;
+  defaultGroupSettings?: { requireMention: boolean };
+}
+
+/** DingTalk channel configuration (mirrors DingtalkChannelConfig in remote/types.ts). */
+export type ChannelType =
+  | 'feishu'
+  | 'wechat'
+  | 'wecom'
+  | 'telegram'
+  | 'dingtalk'
+  | 'websocket'
+  | 'slack';
+
+export type ControllableChannelType = 'feishu' | 'dingtalk' | 'wecom';
+
+export interface RemoteChannelToggleResult {
+  success: boolean;
+  type?: ControllableChannelType;
+  desiredEnabled?: boolean;
+  connected?: boolean;
+  channelError?: string;
+  error?: string;
+}
+
+export interface DingtalkChannelConfig {
+  type: 'dingtalk';
+  enabled?: boolean;
+  receiveMode?: 'stream' | 'webhook';
+  appKey: string;
+  appSecret: string;
+  robotCode?: string;
+  dm: {
+    policy: 'open' | 'pairing' | 'allowlist';
+    allowFrom?: string[];
+  };
+  groups?: Record<string, { requireMention: boolean; allowFrom?: string[] }>;
+  defaultGroupSettings?: { requireMention: boolean };
+}
+
+/** WeCom AI Bot configuration. */
+export interface WecomChannelConfig {
+  type: 'wecom';
+  enabled?: boolean;
+  receiveMode?: 'websocket' | 'webhook';
+  botId: string;
+  secret: string;
+  wsUrl?: string;
+  webhookToken?: string;
+  webhookEncodingAESKey?: string;
   dm: {
     policy: 'open' | 'pairing' | 'allowlist';
     allowFrom?: string[];
@@ -122,8 +183,9 @@ export interface RemoteConfig {
   channels: {
     feishu?: FeishuChannelConfig;
     wechat?: Record<string, unknown>;
+    wecom?: WecomChannelConfig;
     telegram?: Record<string, unknown>;
-    dingtalk?: Record<string, unknown>;
+    dingtalk?: DingtalkChannelConfig;
     websocket?: Record<string, unknown>;
   };
 }

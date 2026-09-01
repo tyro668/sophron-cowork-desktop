@@ -110,6 +110,7 @@ export class SessionManager {
     string,
     Array<{ prompt: string; content?: ContentBlock[]; options?: SessionRunOptions }>
   > = new Map();
+  private idleWaiters: Map<string, Set<() => void>> = new Map();
   private pendingPermissions: Map<string, (result: PermissionResult) => void> = new Map();
   private pendingSudoPasswords: Map<
     string,
@@ -467,6 +468,24 @@ export class SessionManager {
     }
 
     this.enqueuePrompt(session, prompt, content, options);
+  }
+
+  /**
+   * Wait until all prompts currently queued for a session have finished.
+   * Remote message routing uses this boundary to keep each inbound message
+   * associated with the responses produced by its own agent turn.
+   */
+  waitForSessionIdle(sessionId: string): Promise<void> {
+    const queue = this.promptQueues.get(sessionId);
+    if (!this.activeSessions.has(sessionId) && (!queue || queue.length === 0)) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+      const waiters = this.idleWaiters.get(sessionId) || new Set<() => void>();
+      waiters.add(resolve);
+      this.idleWaiters.set(sessionId, waiters);
+    });
   }
 
   async generateSessionTitleFromPrompt(prompt: string): Promise<string> {
@@ -1040,6 +1059,11 @@ export class SessionManager {
         this.notifySessionCompleted(session.id);
       } else {
         this.suppressedCompletionNotifications.delete(session.id);
+      }
+      const waiters = this.idleWaiters.get(session.id);
+      if (waiters) {
+        this.idleWaiters.delete(session.id);
+        for (const resolve of waiters) resolve();
       }
     }
   }

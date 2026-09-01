@@ -40,6 +40,7 @@ describe('central prompt catalog', () => {
 
     expect(prompt).toContain('Desktop timezone: Asia/Shanghai');
     expect(prompt).toContain('2026-08-20T10:30:00');
+    expect(prompt).toContain('automation_set_enabled');
     expect(prompt).not.toContain('{{');
   });
 
@@ -71,7 +72,7 @@ describe('central prompt catalog', () => {
 
   it('contains prompt copy for every app-owned custom data and automation tool', () => {
     expect(Object.keys(DATA_TOOL_COPY)).toHaveLength(26);
-    expect(Object.keys(AUTOMATION_TOOL_COPY)).toHaveLength(5);
+    expect(Object.keys(AUTOMATION_TOOL_COPY)).toHaveLength(6);
     for (const copy of [...Object.values(DATA_TOOL_COPY), ...Object.values(AUTOMATION_TOOL_COPY)]) {
       expect(copy.label.trim()).not.toBe('');
       expect(copy.description.trim()).not.toBe('');

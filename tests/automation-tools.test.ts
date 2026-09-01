@@ -8,8 +8,10 @@ import { createAutomationCustomTools } from '../src/main/automation/tools';
 import {
   AutomationPrepareParametersSchema,
   AutomationPrepareScheduleUpdateParametersSchema,
+  AutomationSetEnabledInputSchema,
   parseAutomationPrepareScheduleUpdateInput,
   parseAutomationPrepareInput,
+  parseAutomationSetEnabledInput,
 } from '../src/main/automation/tools/contract';
 import { createDefaultAutomationActionRegistry } from '../src/main/automation/default-actions';
 
@@ -81,6 +83,29 @@ function createServiceFixture(options: { now?: () => number } = {}) {
     get: vi.fn((id: string) => automations.find((automation) => automation.id === id) ?? null),
     create,
     update,
+    setEnabled: vi.fn((id: string, enabled: boolean) => {
+      const index = automations.findIndex((automation) => automation.id === id);
+      if (index < 0) return null;
+      const current = automations[index];
+      const now = options.now?.() ?? Date.now();
+      const updated: Automation = {
+        ...current,
+        enabled,
+        status: enabled ? 'enabled' : 'disabled',
+        nextRunAt:
+          enabled && current.trigger.kind === 'once'
+            ? current.trigger.runAt > now
+              ? current.trigger.runAt
+              : null
+            : enabled
+              ? now + 60_000
+              : null,
+        lastError: enabled ? null : current.lastError,
+        updatedAt: now,
+      };
+      automations[index] = updated;
+      return updated;
+    }),
   };
   const task = {
     id: 'task-1',
@@ -122,11 +147,32 @@ describe('automation conversation tools', () => {
     const tools = createAutomationCustomTools(service, { sessionId: 'session-1' });
     expect(tools.map((tool) => tool.name)).toEqual([
       'automation_list',
+      'automation_set_enabled',
       'automation_prepare',
       'automation_create',
       'automation_prepare_schedule_update',
       'automation_update_schedule',
     ]);
+  });
+
+  it('validates enable and disable tool input', () => {
+    expect(
+      Value.Check(AutomationSetEnabledInputSchema, {
+        automationId: 'automation-1',
+        enabled: false,
+        confirmed: true,
+      })
+    ).toBe(true);
+    expect(
+      parseAutomationSetEnabledInput({
+        automationId: 'automation-1',
+        enabled: true,
+        confirmed: true,
+      })
+    ).toEqual({ automationId: 'automation-1', enabled: true, confirmed: true });
+    expect(() =>
+      parseAutomationSetEnabledInput({ automationId: 'automation-1', enabled: false })
+    ).toThrow('Invalid automation_set_enabled arguments');
   });
 
   it('accepts model-serialized schedule and action objects, then validates them with Zod', async () => {
@@ -333,6 +379,119 @@ describe('automation conversation tools', () => {
     expect(onAutomationsChanged).toHaveBeenCalledTimes(1);
     expect(first.details).toMatchObject({ status: 'updated' });
     expect(second.details).toMatchObject({ status: 'already_updated' });
+  });
+
+  it('disables and re-enables an automation, rescheduling only on state changes', () => {
+    const { service, create, automations, onAutomationsChanged } = createServiceFixture();
+    create({
+      name: 'Daily report',
+      enabled: true,
+      trigger: {
+        kind: 'daily',
+        times: ['09:00'],
+        startAt: null,
+        endAt: null,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      },
+      actionGraph: { version: 1, nodes: [], edges: [] },
+    });
+
+    const disabled = service.setEnabled({
+      automationId: 'automation-1',
+      enabled: false,
+      confirmed: true,
+    });
+    const disabledAgain = service.setEnabled({
+      automationId: 'automation-1',
+      enabled: false,
+      confirmed: true,
+    });
+    const enabled = service.setEnabled({
+      automationId: 'automation-1',
+      enabled: true,
+      confirmed: true,
+    });
+
+    expect(disabled.details).toMatchObject({
+      status: 'updated',
+      automation: { enabled: false, status: 'disabled', nextRunAt: null },
+    });
+    expect(disabledAgain.details).toMatchObject({ status: 'unchanged' });
+    expect(enabled.details).toMatchObject({
+      status: 'updated',
+      automation: { enabled: true, status: 'enabled' },
+    });
+    expect(automations[0]?.enabled).toBe(true);
+    expect(onAutomationsChanged).toHaveBeenCalledTimes(2);
+  });
+
+  it('enabling a paused automation makes it active again', () => {
+    const { service, create, automations, onAutomationsChanged } = createServiceFixture();
+    create({
+      name: 'Paused report',
+      enabled: true,
+      trigger: {
+        kind: 'daily',
+        times: ['09:00'],
+        startAt: null,
+        endAt: null,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      },
+      actionGraph: { version: 1, nodes: [], edges: [] },
+    });
+    automations[0] = { ...automations[0], status: 'paused' };
+
+    const result = service.setEnabled({
+      automationId: 'automation-1',
+      enabled: true,
+      confirmed: true,
+    });
+
+    expect(result.details).toMatchObject({
+      status: 'updated',
+      automation: { enabled: true, status: 'enabled' },
+    });
+    expect(onAutomationsChanged).toHaveBeenCalledOnce();
+  });
+
+  it('uses the custom tool to disable the exact automation id', async () => {
+    const { service, create, automations } = createServiceFixture();
+    create({
+      name: 'Daily report',
+      enabled: true,
+      trigger: {
+        kind: 'daily',
+        times: ['09:00'],
+        startAt: null,
+        endAt: null,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      },
+      actionGraph: { version: 1, nodes: [], edges: [] },
+    });
+    const tool = createAutomationCustomTools(service, { sessionId: 'session-1' }).find(
+      (candidate) => candidate.name === 'automation_set_enabled'
+    );
+
+    const result = await Reflect.apply(tool!.execute, tool, [
+      'tool-call-1',
+      { automationId: 'automation-1', enabled: false, confirmed: true },
+    ]);
+
+    expect(result.details).toMatchObject({ status: 'updated' });
+    expect(automations[0]).toMatchObject({ enabled: false, status: 'disabled' });
+  });
+
+  it('rejects enabling or disabling an automation that does not exist', () => {
+    const { service, onAutomationsChanged } = createServiceFixture();
+
+    expect(() =>
+      service.setEnabled({
+        automationId: 'missing',
+        enabled: false,
+        confirmed: true,
+      })
+    ).toThrow('Automation not found: missing');
+    expect(onAutomationsChanged).not.toHaveBeenCalled();
   });
 
   it('does not overwrite a schedule changed after update preparation', () => {

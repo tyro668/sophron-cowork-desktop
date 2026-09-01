@@ -1,50 +1,84 @@
 /**
- * Remote Control Settings Panel
- * Composes sub-components for Feishu/Lark bot remote control configuration.
+ * Multi-channel remote control settings shell.
+ *
+ * Feishu, DingTalk, and WeCom are wired to the remote backend.
  */
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { GatewayControlCard } from './remote/GatewayControlCard';
-import { PairingRequestsSection } from './remote/PairingRequestsSection';
-import { PairingGuideCard } from './remote/PairingGuideCard';
-import { ConfigStepNav } from './remote/ConfigStepNav';
-import { FeishuConfigStep } from './remote/FeishuConfigStep';
-import { ConnectionConfigStep } from './remote/ConnectionConfigStep';
+import { AlertTriangle, Check, CheckCircle2, Info, Loader2, Save, ScrollText } from 'lucide-react';
 import { AdvancedConfigStep } from './remote/AdvancedConfigStep';
 import { AuthorizedUsersSection } from './remote/AuthorizedUsersSection';
-import { QuickStartGuide } from './remote/QuickStartGuide';
+import { ChannelDetailPanel } from './remote/ChannelDetailPanel';
+import { ChannelList } from './remote/ChannelList';
+import { ChannelBrandIcon } from './remote/ChannelBrandIcon';
+import { getChannelState, type RemoteChannelState } from './remote/channel-state';
+import { GatewayControlCard } from './remote/GatewayControlCard';
+import { PairingGuideCard } from './remote/PairingGuideCard';
+import { PairingRequestsSection } from './remote/PairingRequestsSection';
+import { RemoteSectionNav } from './remote/RemoteSectionNav';
 import type {
   GatewayStatus,
+  LocalizedBanner,
   PairedUser,
   PairingRequest,
+  RemoteChannelType,
+  RemoteChannelViewModel,
   RemoteConfig,
+  RemoteSection,
   TunnelStatus,
-  ConfigStep,
-  LocalizedBanner,
 } from './remote/types';
+import type { RemoteChannelToggleResult } from '../../shared/ipc-types';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 
-export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
-  const { i18n, t } = useTranslation();
+const CHANNEL_STATE_DOT_CLASS = {
+  connected: 'bg-success',
+  error: 'bg-error',
+  stopped: 'bg-text-muted',
+  disabled: 'bg-text-muted',
+  unconfigured: 'bg-text-muted',
+  preview: 'bg-text-muted',
+} satisfies Record<RemoteChannelState, string>;
 
-  // Remote state
+interface LoadDataOptions {
+  showLoading?: boolean;
+  reportError?: boolean;
+}
+
+export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
+  const { t } = useTranslation();
+
   const [isLoading, setIsLoading] = useState(true);
   const [status, setStatus] = useState<GatewayStatus | null>(null);
-  const [, setConfig] = useState<RemoteConfig | null>(null);
   const [pairedUsers, setPairedUsers] = useState<PairedUser[]>([]);
   const [pendingPairings, setPendingPairings] = useState<PairingRequest[]>([]);
   const [isTogglingGateway, setIsTogglingGateway] = useState(false);
+  const [togglingChannel, setTogglingChannel] = useState<RemoteChannelType | null>(null);
   const [error, setError] = useState<LocalizedBanner | null>(null);
   const [success, setSuccess] = useState<LocalizedBanner | null>(null);
-  const [activeStep, setActiveStep] = useState<ConfigStep>('feishu');
+  const [activeSection, setActiveSection] = useState<RemoteSection>('channels');
+  const [selectedChannel, setSelectedChannel] = useState<RemoteChannelType>('feishu');
 
-  // Form state
   const [feishuAppId, setFeishuAppId] = useState('');
   const [feishuAppSecret, setFeishuAppSecret] = useState('');
+  const [feishuEnabled, setFeishuEnabled] = useState(true);
   const [feishuDmPolicy, setFeishuDmPolicy] = useState('pairing');
+  const [dingtalkAppKey, setDingtalkAppKey] = useState('');
+  const [dingtalkAppSecret, setDingtalkAppSecret] = useState('');
+  const [dingtalkRobotCode, setDingtalkRobotCode] = useState('');
+  const [dingtalkEnabled, setDingtalkEnabled] = useState(true);
+  const [dingtalkDmPolicy, setDingtalkDmPolicy] = useState('pairing');
+  const [dingtalkRequireMention, setDingtalkRequireMention] = useState(true);
+  const [dingtalkReceiveMode, setDingtalkReceiveMode] = useState<'stream' | 'webhook'>('stream');
+  const [wecomBotId, setWecomBotId] = useState('');
+  const [wecomSecret, setWecomSecret] = useState('');
+  const [wecomWebhookToken, setWecomWebhookToken] = useState('');
+  const [wecomWebhookEncodingAESKey, setWecomWebhookEncodingAESKey] = useState('');
+  const [wecomEnabled, setWecomEnabled] = useState(true);
+  const [wecomReceiveMode, setWecomReceiveMode] = useState<'websocket' | 'webhook'>('websocket');
+  const [wecomDmPolicy, setWecomDmPolicy] = useState('pairing');
+  const [wecomRequireMention, setWecomRequireMention] = useState(true);
   const [gatewayPort, setGatewayPort] = useState(18789);
   const [defaultWorkingDirectory, setDefaultWorkingDirectory] = useState('');
   const [autoApproveSafeTools, setAutoApproveSafeTools] = useState(true);
@@ -55,61 +89,92 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   const [tunnelStatus, setTunnelStatus] = useState<TunnelStatus | null>(null);
   const [webhookUrl, setWebhookUrl] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!isActive) return;
-    loadData();
-    const interval = setInterval(refreshStatus, 5000);
-    return () => clearInterval(interval);
-  }, [isActive]);
+  const applyConfig = useCallback((configResult: RemoteConfig | null) => {
+    if (!configResult) return;
 
-  async function loadData() {
-    if (!isElectron) return;
-    setIsLoading(true);
-    try {
-      const [
-        configResult,
-        statusResult,
-        usersResult,
-        pairingsResult,
-        tunnelStatusResult,
-        webhookUrlResult,
-      ] = await Promise.all([
-        window.electronAPI.remote.getConfig(),
-        window.electronAPI.remote.getStatus(),
-        window.electronAPI.remote.getPairedUsers(),
-        window.electronAPI.remote.getPendingPairings(),
-        window.electronAPI.remote.getTunnelStatus(),
-        window.electronAPI.remote.getWebhookUrl(),
-      ]);
+    setGatewayPort(configResult.gateway?.port || 18789);
+    setDefaultWorkingDirectory(configResult.gateway?.defaultWorkingDirectory || '');
+    setAutoApproveSafeTools(configResult.gateway?.autoApproveSafeTools !== false);
+    setTunnelEnabled(configResult.gateway?.tunnel?.enabled || false);
+    setNgrokAuthToken(configResult.gateway?.tunnel?.ngrok?.authToken || '');
 
-      setConfig(configResult);
-      setStatus(statusResult);
-      setPairedUsers(usersResult);
-      setPendingPairings(pairingsResult);
-      setTunnelStatus(tunnelStatusResult);
-      setWebhookUrl(webhookUrlResult);
-
-      if (configResult) {
-        setGatewayPort(configResult.gateway?.port || 18789);
-        setDefaultWorkingDirectory(configResult.gateway?.defaultWorkingDirectory || '');
-        setAutoApproveSafeTools(configResult.gateway?.autoApproveSafeTools !== false);
-        setTunnelEnabled(configResult.gateway?.tunnel?.enabled || false);
-        setNgrokAuthToken(configResult.gateway?.tunnel?.ngrok?.authToken || '');
-        if (configResult.channels?.feishu) {
-          setFeishuAppId(configResult.channels.feishu.appId || '');
-          setFeishuAppSecret(configResult.channels.feishu.appSecret || '');
-          setFeishuDmPolicy(configResult.channels.feishu.dm?.policy || 'pairing');
-          setUseLongConnection(configResult.channels.feishu.useWebSocket !== false);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to load remote config:', err);
-    } finally {
-      setIsLoading(false);
+    if (configResult.channels?.feishu) {
+      setFeishuEnabled(configResult.channels.feishu.enabled !== false);
+      setFeishuAppId(configResult.channels.feishu.appId || '');
+      setFeishuAppSecret(configResult.channels.feishu.appSecret || '');
+      setFeishuDmPolicy(configResult.channels.feishu.dm?.policy || 'pairing');
+      setUseLongConnection(configResult.channels.feishu.useWebSocket !== false);
     }
-  }
+    if (configResult.channels?.dingtalk) {
+      setDingtalkEnabled(configResult.channels.dingtalk.enabled !== false);
+      setDingtalkAppKey(configResult.channels.dingtalk.appKey || '');
+      setDingtalkAppSecret(configResult.channels.dingtalk.appSecret || '');
+      setDingtalkRobotCode(configResult.channels.dingtalk.robotCode || '');
+      setDingtalkReceiveMode(configResult.channels.dingtalk.receiveMode || 'stream');
+      setDingtalkDmPolicy(configResult.channels.dingtalk.dm?.policy || 'pairing');
+      setDingtalkRequireMention(
+        configResult.channels.dingtalk.defaultGroupSettings?.requireMention !== false
+      );
+    }
+    if (configResult.channels?.wecom) {
+      setWecomEnabled(configResult.channels.wecom.enabled !== false);
+      setWecomBotId(configResult.channels.wecom.botId || '');
+      setWecomSecret(configResult.channels.wecom.secret || '');
+      setWecomWebhookToken(configResult.channels.wecom.webhookToken || '');
+      setWecomWebhookEncodingAESKey(configResult.channels.wecom.webhookEncodingAESKey || '');
+      setWecomReceiveMode(configResult.channels.wecom.receiveMode || 'websocket');
+      setWecomDmPolicy(configResult.channels.wecom.dm?.policy || 'pairing');
+      setWecomRequireMention(
+        configResult.channels.wecom.defaultGroupSettings?.requireMention !== false
+      );
+    }
+  }, []);
 
-  async function refreshStatus() {
+  const loadData = useCallback(
+    async (options: LoadDataOptions = {}): Promise<boolean> => {
+      const { showLoading = true, reportError = true } = options;
+      if (!isElectron) {
+        if (showLoading) setIsLoading(false);
+        return true;
+      }
+
+      if (showLoading) setIsLoading(true);
+      try {
+        const [
+          configResult,
+          statusResult,
+          usersResult,
+          pairingsResult,
+          tunnelStatusResult,
+          webhookUrlResult,
+        ] = await Promise.all([
+          window.electronAPI.remote.getConfig(),
+          window.electronAPI.remote.getStatus(),
+          window.electronAPI.remote.getPairedUsers(),
+          window.electronAPI.remote.getPendingPairings(),
+          window.electronAPI.remote.getTunnelStatus(),
+          window.electronAPI.remote.getWebhookUrl(),
+        ]);
+
+        setStatus(statusResult);
+        setPairedUsers(usersResult);
+        setPendingPairings(pairingsResult);
+        setTunnelStatus(tunnelStatusResult);
+        setWebhookUrl(webhookUrlResult);
+        applyConfig(configResult);
+        return true;
+      } catch (loadError) {
+        console.error('Failed to load remote config:', loadError);
+        if (reportError) setError({ key: 'remote.loadFailed' });
+        return false;
+      } finally {
+        if (showLoading) setIsLoading(false);
+      }
+    },
+    [applyConfig]
+  );
+
+  const refreshStatus = useCallback(async () => {
     if (!isElectron) return;
     try {
       const [statusResult, pairingsResult, tunnelStatusResult, webhookUrlResult] =
@@ -123,10 +188,17 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
       setPendingPairings(pairingsResult);
       setTunnelStatus(tunnelStatusResult);
       setWebhookUrl(webhookUrlResult);
-    } catch (err) {
-      console.error('Failed to refresh status:', err);
+    } catch (refreshError) {
+      console.error('Failed to refresh status:', refreshError);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    if (!isActive) return;
+    void loadData();
+    const interval = setInterval(() => void refreshStatus(), 5000);
+    return () => clearInterval(interval);
+  }, [isActive, loadData, refreshStatus]);
 
   async function toggleGateway() {
     if (!isElectron || isTogglingGateway) return;
@@ -136,48 +208,148 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
       const newEnabled = !status?.running;
       await window.electronAPI.remote.setEnabled(newEnabled);
       await refreshStatus();
-      setSuccess({ key: newEnabled ? 'remote.started' : 'remote.stopped' });
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (err) {
+      showSuccess({ key: newEnabled ? 'remote.started' : 'remote.stopped' });
+    } catch (toggleError) {
+      console.error('Failed to toggle remote gateway:', toggleError);
       setError({ key: 'remote.actionFailed' });
     } finally {
       setIsTogglingGateway(false);
     }
   }
 
-  async function saveConfig() {
+  function gatewayConfigPatch() {
+    return {
+      port: gatewayPort,
+      defaultWorkingDirectory: defaultWorkingDirectory || undefined,
+      autoApproveSafeTools,
+      tunnel:
+        tunnelEnabled && ngrokAuthToken
+          ? {
+              enabled: true as const,
+              type: 'ngrok' as const,
+              ngrok: { authToken: ngrokAuthToken, region: 'us' },
+            }
+          : { enabled: false as const, type: 'ngrok' as const },
+    };
+  }
+
+  async function saveGatewayConfig() {
     if (!isElectron) return;
     setIsSaving(true);
     setError(null);
     try {
-      await window.electronAPI.remote.updateGatewayConfig({
-        port: gatewayPort,
-        defaultWorkingDirectory: defaultWorkingDirectory || undefined,
-        autoApproveSafeTools,
-        tunnel:
-          tunnelEnabled && ngrokAuthToken
-            ? {
-                enabled: true,
-                type: 'ngrok',
-                ngrok: { authToken: ngrokAuthToken, region: 'us' },
-              }
-            : { enabled: false, type: 'ngrok' },
-      });
-
-      if (feishuAppId && feishuAppSecret) {
-        await window.electronAPI.remote.updateFeishuConfig({
-          type: 'feishu',
-          appId: feishuAppId,
-          appSecret: feishuAppSecret,
-          useWebSocket: useLongConnection,
-          dm: { policy: feishuDmPolicy as 'open' | 'pairing' | 'allowlist' },
-        });
-      }
-
-      setSuccess({ key: 'remote.configSaved' });
-      setTimeout(() => setSuccess(null), 3000);
+      await window.electronAPI.remote.updateGatewayConfig(gatewayConfigPatch());
+      showSuccess({ key: 'remote.configSaved' });
       await loadData();
-    } catch (err) {
+    } catch (saveError) {
+      console.error('Failed to save gateway config:', saveError);
+      setError({ key: 'remote.saveFailed' });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function saveFeishuConfig() {
+    if (!isElectron) return;
+    if (!feishuAppId || !feishuAppSecret) {
+      setError({ key: 'remote.feishuCredentialsRequired' });
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+    try {
+      await window.electronAPI.remote.updateFeishuConfig({
+        type: 'feishu',
+        enabled: feishuEnabled,
+        appId: feishuAppId,
+        appSecret: feishuAppSecret,
+        useWebSocket: useLongConnection,
+        dm: { policy: feishuDmPolicy as 'open' | 'pairing' | 'allowlist' },
+      });
+      showSuccess({ key: 'remote.configSaved' });
+      await loadData();
+    } catch (saveError) {
+      console.error('Failed to save Feishu config:', saveError);
+      setError({ key: 'remote.saveFailed' });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function saveDingtalkConfig() {
+    if (!isElectron) return;
+    if (!dingtalkAppKey || !dingtalkAppSecret) {
+      setError({ key: 'remote.dingtalkCredentialsRequired' });
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+    try {
+      const result = await window.electronAPI.remote.updateDingtalkConfig(
+        {
+          type: 'dingtalk',
+          enabled: dingtalkEnabled,
+          receiveMode: dingtalkReceiveMode,
+          appKey: dingtalkAppKey,
+          appSecret: dingtalkAppSecret,
+          robotCode: dingtalkRobotCode || undefined,
+          dm: { policy: dingtalkDmPolicy as 'open' | 'pairing' | 'allowlist' },
+          defaultGroupSettings: { requireMention: dingtalkRequireMention },
+        },
+        dingtalkReceiveMode === 'webhook' ? gatewayConfigPatch() : undefined
+      );
+      if (!result.success) {
+        setError(result.error ? { text: result.error } : { key: 'remote.saveFailed' });
+        return;
+      }
+      showSuccess({ key: 'remote.configSaved' });
+      await loadData();
+    } catch (saveError) {
+      console.error('Failed to save DingTalk config:', saveError);
+      setError({ key: 'remote.saveFailed' });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function saveWecomConfig() {
+    if (!isElectron) return;
+    if (wecomReceiveMode === 'websocket' && (!wecomBotId || !wecomSecret)) {
+      setError({ key: 'remote.wecomCredentialsRequired' });
+      return;
+    }
+    if (wecomReceiveMode === 'webhook' && (!wecomWebhookToken || !wecomWebhookEncodingAESKey)) {
+      setError({ key: 'remote.wecomWebhookCredentialsRequired' });
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+    try {
+      const result = await window.electronAPI.remote.updateWecomConfig(
+        {
+          type: 'wecom',
+          enabled: wecomEnabled,
+          receiveMode: wecomReceiveMode,
+          botId: wecomBotId.trim(),
+          secret: wecomSecret.trim(),
+          webhookToken: wecomWebhookToken.trim() || undefined,
+          webhookEncodingAESKey: wecomWebhookEncodingAESKey.trim() || undefined,
+          dm: { policy: wecomDmPolicy as 'open' | 'pairing' | 'allowlist' },
+          defaultGroupSettings: { requireMention: wecomRequireMention },
+        },
+        wecomReceiveMode === 'webhook' ? gatewayConfigPatch() : undefined
+      );
+      if (!result.success) {
+        setError(result.error ? { text: result.error } : { key: 'remote.saveFailed' });
+        return;
+      }
+      showSuccess({ key: 'remote.configSaved' });
+      await loadData();
+    } catch (saveError) {
+      console.error('Failed to save WeCom config:', saveError);
       setError({ key: 'remote.saveFailed' });
     } finally {
       setIsSaving(false);
@@ -187,11 +359,18 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   async function approvePairing(request: PairingRequest) {
     if (!isElectron) return;
     try {
-      await window.electronAPI.remote.approvePairing(request.channelType, request.userId);
-      setSuccess({ key: 'remote.pairingApproved' });
-      setTimeout(() => setSuccess(null), 3000);
+      const result = await window.electronAPI.remote.approvePairing(
+        request.channelType,
+        request.userId
+      );
+      if (!result.success) {
+        setError(result.error ? { text: result.error } : { key: 'remote.approveFailed' });
+        return;
+      }
+      showSuccess({ key: 'remote.pairingApproved' });
       await loadData();
-    } catch (err) {
+    } catch (approveError) {
+      console.error('Failed to approve pairing:', approveError);
       setError({ key: 'remote.approveFailed' });
     }
   }
@@ -207,10 +386,10 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
         setError(result.error ? { text: result.error } : { key: 'remote.rejectFailed' });
         return;
       }
-      setSuccess({ key: 'remote.pairingRejected' });
-      setTimeout(() => setSuccess(null), 3000);
+      showSuccess({ key: 'remote.pairingRejected' });
       await loadData();
-    } catch (err) {
+    } catch (rejectError) {
+      console.error('Failed to reject pairing:', rejectError);
       setError({ key: 'remote.rejectFailed' });
     }
   }
@@ -219,142 +398,387 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     if (!isElectron) return;
     try {
       await window.electronAPI.remote.revokePairing(user.channelType, user.userId);
-      setSuccess({ key: 'remote.userRemoved' });
-      setTimeout(() => setSuccess(null), 3000);
+      showSuccess({ key: 'remote.userRemoved' });
       await loadData();
-    } catch (err) {
+    } catch (revokeError) {
+      console.error('Failed to revoke pairing:', revokeError);
       setError({ key: 'remote.revokeFailed' });
     }
   }
 
+  function applyChannelToggleResult(
+    type: RemoteChannelType,
+    result: RemoteChannelToggleResult
+  ): void {
+    if (typeof result.desiredEnabled === 'boolean') {
+      if (type === 'feishu') setFeishuEnabled(result.desiredEnabled);
+      if (type === 'dingtalk') setDingtalkEnabled(result.desiredEnabled);
+      if (type === 'wecom') setWecomEnabled(result.desiredEnabled);
+    }
+
+    const connected = result.connected;
+    if (typeof connected !== 'boolean') return;
+    setStatus((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        channels: current.channels.map((channel) =>
+          channel.type === type
+            ? {
+                ...channel,
+                enabled: result.desiredEnabled ?? channel.enabled,
+                connected,
+                error: result.channelError,
+              }
+            : channel
+        ),
+      };
+    });
+  }
+
+  async function toggleChannel(type: RemoteChannelType) {
+    if (!isElectron || togglingChannel) return;
+    const currentlyEnabled =
+      type === 'feishu' ? feishuEnabled : type === 'dingtalk' ? dingtalkEnabled : wecomEnabled;
+    const nextEnabled = !currentlyEnabled;
+
+    setTogglingChannel(type);
+    setError(null);
+    try {
+      const result = await window.electronAPI.remote.setChannelEnabled(type, nextEnabled);
+      applyChannelToggleResult(type, result);
+      if (!result.success) {
+        setError(result.error ? { text: result.error } : { key: 'remote.channelToggleFailed' });
+        await loadData({ showLoading: false, reportError: false });
+        return;
+      }
+      showSuccess({
+        key:
+          (result.desiredEnabled ?? nextEnabled)
+            ? 'remote.channelEnabledSuccess'
+            : 'remote.channelDisabledSuccess',
+      });
+      const refreshed = await loadData({ showLoading: false, reportError: false });
+      if (!refreshed) setError({ key: 'remote.loadFailed' });
+    } catch (toggleError) {
+      console.error('Failed to toggle remote channel:', toggleError);
+      setError({ key: 'remote.channelToggleFailed' });
+      await loadData({ showLoading: false, reportError: false });
+    } finally {
+      setTogglingChannel(null);
+    }
+  }
+
   function copyToClipboard(text: string) {
-    navigator.clipboard.writeText(text);
-    setSuccess({ key: 'remote.copied' });
-    setTimeout(() => setSuccess(null), 2000);
+    void navigator.clipboard.writeText(text);
+    showSuccess({ key: 'remote.copied' }, 2000);
+  }
+
+  function showSuccess(message: LocalizedBanner, duration = 3000) {
+    setSuccess(message);
+    setTimeout(() => setSuccess(null), duration);
   }
 
   const isFeishuConfigured = !!(feishuAppId && feishuAppSecret);
-  const isConnectionConfigured =
-    useLongConnection || (tunnelEnabled && !!ngrokAuthToken) || !!tunnelStatus?.connected;
-  const permissionSeparator = i18n.language.startsWith('zh') ? '、' : ', ';
-  const permissionScopes = [
-    'im:resource',
-    'im:message',
-    'im:message:send_as_bot',
-    'im:message.group_at_msg:readonly',
-    'im:message.p2p_msg:readonly',
-    'contact:user.base:readonly',
-  ];
+  const isFeishuConnected =
+    status?.channels.some((channel) => channel.type === 'feishu' && channel.connected) ?? false;
+  const isDingtalkConfigured = !!(dingtalkAppKey && dingtalkAppSecret);
+  const isDingtalkConnected =
+    status?.channels.some((channel) => channel.type === 'dingtalk' && channel.connected) ?? false;
+  const isWecomConfigured =
+    wecomReceiveMode === 'webhook'
+      ? !!(wecomWebhookToken && wecomWebhookEncodingAESKey)
+      : !!(wecomBotId && wecomSecret);
+  const isWecomConnected =
+    status?.channels.some((channel) => channel.type === 'wecom' && channel.connected) ?? false;
+  const configuredChannelCount =
+    Number(isFeishuConfigured) + Number(isDingtalkConfigured) + Number(isWecomConfigured);
+  const enabledConfiguredChannelCount =
+    Number(isFeishuConfigured && feishuEnabled) +
+    Number(isDingtalkConfigured && dingtalkEnabled) +
+    Number(isWecomConfigured && wecomEnabled);
+  const connectedChannelCount =
+    Number(isFeishuConnected) + Number(isDingtalkConnected) + Number(isWecomConnected);
+  const isPairingEnabled =
+    (feishuEnabled && feishuDmPolicy === 'pairing') ||
+    (dingtalkEnabled && dingtalkDmPolicy === 'pairing') ||
+    (wecomEnabled && wecomDmPolicy === 'pairing');
+
+  const channels = useMemo<RemoteChannelViewModel[]>(
+    () => [
+      {
+        type: 'feishu',
+        name: t('remote.channelName.feishu'),
+        description: isFeishuConfigured
+          ? t('remote.channelDesc.feishuConfigured', {
+              mode: useLongConnection ? t('remote.longConnection') : t('remote.webhookMode'),
+              count: pairedUsers.filter((user) => user.channelType === 'feishu').length,
+            })
+          : t('remote.channelDesc.feishu'),
+        configured: isFeishuConfigured,
+        enabled: feishuEnabled,
+        connected: isFeishuConnected,
+        backendAvailable: true,
+        authorizedUsers: pairedUsers.filter((user) => user.channelType === 'feishu').length,
+        error: status?.channels.find((channel) => channel.type === 'feishu')?.error,
+      },
+      {
+        type: 'dingtalk',
+        name: t('remote.channelName.dingtalk'),
+        description: isDingtalkConfigured
+          ? t('remote.channelDesc.dingtalkConfigured', {
+              mode:
+                dingtalkReceiveMode === 'stream'
+                  ? t('remote.streamConnection')
+                  : t('remote.webhookMode'),
+              count: pairedUsers.filter((user) => user.channelType === 'dingtalk').length,
+            })
+          : t('remote.channelDesc.dingtalk'),
+        configured: isDingtalkConfigured,
+        enabled: dingtalkEnabled,
+        connected: isDingtalkConnected,
+        backendAvailable: true,
+        authorizedUsers: pairedUsers.filter((user) => user.channelType === 'dingtalk').length,
+        error: status?.channels.find((channel) => channel.type === 'dingtalk')?.error,
+      },
+      {
+        type: 'wecom',
+        name: t('remote.channelName.wecom'),
+        description: isWecomConfigured
+          ? t('remote.channelDesc.wecomConfigured', {
+              mode:
+                wecomReceiveMode === 'websocket'
+                  ? t('remote.longConnection')
+                  : t('remote.webhookMode'),
+              count: pairedUsers.filter((user) => user.channelType === 'wecom').length,
+            })
+          : t('remote.channelDesc.wecom'),
+        configured: isWecomConfigured,
+        enabled: wecomEnabled,
+        connected: isWecomConnected,
+        backendAvailable: true,
+        authorizedUsers: pairedUsers.filter((user) => user.channelType === 'wecom').length,
+        error: status?.channels.find((channel) => channel.type === 'wecom')?.error,
+      },
+    ],
+    [
+      isDingtalkConfigured,
+      isDingtalkConnected,
+      dingtalkReceiveMode,
+      dingtalkEnabled,
+      feishuEnabled,
+      isFeishuConfigured,
+      isFeishuConnected,
+      pairedUsers,
+      t,
+      useLongConnection,
+      wecomEnabled,
+      isWecomConfigured,
+      isWecomConnected,
+      wecomReceiveMode,
+      status?.channels,
+    ]
+  );
+
+  const selectedChannelModel =
+    channels.find((channel) => channel.type === selectedChannel) ?? channels[0];
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-accent" />
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-accent" />
       </div>
     );
   }
 
   return (
-    <div className="w-full space-y-4">
-      {/* Notification banners */}
-      {error && (
-        <div className="p-3 bg-error/10 border border-error/30 rounded-lg flex items-center gap-3">
-          <AlertTriangle className="w-5 h-5 text-error flex-shrink-0" />
-          <span className="text-error">{error.key ? t(error.key) : error.text}</span>
-        </div>
-      )}
-      {success && (
-        <div className="p-3 bg-success/10 border border-success/30 rounded-lg flex items-center gap-3">
-          <CheckCircle2 className="w-5 h-5 text-success flex-shrink-0" />
-          <span className="text-success">{success.key ? t(success.key) : success.text}</span>
-        </div>
-      )}
-
-      <GatewayControlCard
-        status={status}
-        pairedUsers={pairedUsers}
-        pendingPairings={pendingPairings}
-        isTogglingGateway={isTogglingGateway}
-        isFeishuConfigured={isFeishuConfigured}
-        onToggle={toggleGateway}
-      />
-
-      {status?.running && feishuDmPolicy === 'pairing' && <PairingGuideCard />}
-
-      <PairingRequestsSection
-        pendingPairings={pendingPairings}
-        showEmpty={status?.running && feishuDmPolicy === 'pairing'}
-        onApprove={approvePairing}
-        onReject={rejectPairing}
-      />
-
-      <ConfigStepNav
-        activeStep={activeStep}
-        isFeishuConfigured={isFeishuConfigured}
-        isConnectionConfigured={isConnectionConfigured}
-        onStepChange={setActiveStep}
-      />
-
-      {/* Configuration content */}
-      <div className="glass-card rounded-xl p-4">
-        {activeStep === 'feishu' && (
-          <FeishuConfigStep
-            feishuAppId={feishuAppId}
-            feishuAppSecret={feishuAppSecret}
-            feishuDmPolicy={feishuDmPolicy}
-            onAppIdChange={setFeishuAppId}
-            onAppSecretChange={setFeishuAppSecret}
-            onDmPolicyChange={setFeishuDmPolicy}
-          />
+    <div className="w-full overflow-hidden rounded-[2rem] border border-border-subtle bg-background/18 shadow-card">
+      <div className="space-y-3 p-4 sm:p-5">
+        {error && (
+          <div className="flex items-center gap-3 rounded-xl border border-error/30 bg-error/10 p-3">
+            <AlertTriangle className="h-5 w-5 shrink-0 text-error" />
+            <span className="text-sm text-error">{error.key ? t(error.key) : error.text}</span>
+          </div>
         )}
-        {activeStep === 'connection' && (
-          <ConnectionConfigStep
-            useLongConnection={useLongConnection}
-            tunnelEnabled={tunnelEnabled}
-            ngrokAuthToken={ngrokAuthToken}
-            gatewayPort={gatewayPort}
-            tunnelStatus={tunnelStatus}
-            webhookUrl={webhookUrl}
-            onLongConnectionChange={setUseLongConnection}
-            onTunnelEnabledChange={setTunnelEnabled}
-            onNgrokAuthTokenChange={setNgrokAuthToken}
-            onCopy={copyToClipboard}
-          />
-        )}
-        {activeStep === 'advanced' && (
-          <AdvancedConfigStep
-            defaultWorkingDirectory={defaultWorkingDirectory}
-            gatewayPort={gatewayPort}
-            autoApproveSafeTools={autoApproveSafeTools}
-            onWorkingDirectoryChange={setDefaultWorkingDirectory}
-            onGatewayPortChange={setGatewayPort}
-            onAutoApproveChange={setAutoApproveSafeTools}
-          />
+        {success && (
+          <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/10 p-3">
+            <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
+            <span className="text-sm text-success">
+              {success.key ? t(success.key) : success.text}
+            </span>
+          </div>
         )}
 
-        {/* Save button */}
-        <div className="flex justify-end mt-4 pt-4 border-t border-border">
-          <button
-            onClick={saveConfig}
-            disabled={isSaving}
-            className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-          >
-            {isSaving ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Check className="w-4 h-4" />
-            )}
-            {t('remote.saveConfig')}
-          </button>
-        </div>
+        <GatewayControlCard
+          status={status}
+          pairedUsers={pairedUsers}
+          pendingPairings={pendingPairings}
+          isTogglingGateway={isTogglingGateway}
+          configuredChannels={configuredChannelCount}
+          connectedChannels={connectedChannelCount}
+          totalChannels={channels.length}
+          canStartService={enabledConfiguredChannelCount > 0}
+          onToggle={toggleGateway}
+        />
       </div>
 
-      <AuthorizedUsersSection pairedUsers={pairedUsers} onRevoke={revokePairing} />
-
-      <QuickStartGuide
-        permissionScopes={permissionScopes}
-        permissionSeparator={permissionSeparator}
+      <RemoteSectionNav
+        activeSection={activeSection}
+        pendingPairings={pendingPairings.length}
+        onSectionChange={setActiveSection}
       />
+
+      <div className="p-4 sm:p-5">
+        {activeSection === 'channels' && (
+          <div className="grid items-start gap-4 xl:grid-cols-[minmax(300px,0.78fr)_minmax(520px,1.5fr)]">
+            <ChannelList
+              channels={channels}
+              selectedChannel={selectedChannel}
+              onSelect={setSelectedChannel}
+            />
+            <ChannelDetailPanel
+              channel={selectedChannelModel}
+              feishuAppId={feishuAppId}
+              feishuAppSecret={feishuAppSecret}
+              feishuDmPolicy={feishuDmPolicy}
+              dingtalkAppKey={dingtalkAppKey}
+              dingtalkAppSecret={dingtalkAppSecret}
+              dingtalkRobotCode={dingtalkRobotCode}
+              dingtalkDmPolicy={dingtalkDmPolicy}
+              dingtalkRequireMention={dingtalkRequireMention}
+              dingtalkReceiveMode={dingtalkReceiveMode}
+              wecomBotId={wecomBotId}
+              wecomSecret={wecomSecret}
+              wecomWebhookToken={wecomWebhookToken}
+              wecomWebhookEncodingAESKey={wecomWebhookEncodingAESKey}
+              wecomReceiveMode={wecomReceiveMode}
+              wecomDmPolicy={wecomDmPolicy}
+              wecomRequireMention={wecomRequireMention}
+              useLongConnection={useLongConnection}
+              gatewayPort={gatewayPort}
+              tunnelEnabled={tunnelEnabled}
+              ngrokAuthToken={ngrokAuthToken}
+              tunnelStatus={tunnelStatus}
+              webhookUrl={webhookUrl}
+              isSaving={isSaving}
+              isTogglingChannel={togglingChannel === selectedChannel}
+              onFeishuAppIdChange={setFeishuAppId}
+              onFeishuAppSecretChange={setFeishuAppSecret}
+              onFeishuDmPolicyChange={setFeishuDmPolicy}
+              onDingtalkAppKeyChange={setDingtalkAppKey}
+              onDingtalkAppSecretChange={setDingtalkAppSecret}
+              onDingtalkRobotCodeChange={setDingtalkRobotCode}
+              onDingtalkDmPolicyChange={setDingtalkDmPolicy}
+              onDingtalkRequireMentionChange={setDingtalkRequireMention}
+              onDingtalkReceiveModeChange={setDingtalkReceiveMode}
+              onWecomBotIdChange={setWecomBotId}
+              onWecomSecretChange={setWecomSecret}
+              onWecomWebhookTokenChange={setWecomWebhookToken}
+              onWecomWebhookEncodingAESKeyChange={setWecomWebhookEncodingAESKey}
+              onWecomReceiveModeChange={setWecomReceiveMode}
+              onWecomDmPolicyChange={setWecomDmPolicy}
+              onWecomRequireMentionChange={setWecomRequireMention}
+              onLongConnectionChange={setUseLongConnection}
+              onTunnelEnabledChange={setTunnelEnabled}
+              onNgrokAuthTokenChange={setNgrokAuthToken}
+              onCopy={copyToClipboard}
+              onSaveFeishu={saveFeishuConfig}
+              onSaveDingtalk={saveDingtalkConfig}
+              onSaveWecom={saveWecomConfig}
+              onToggleChannel={() => void toggleChannel(selectedChannel)}
+            />
+          </div>
+        )}
+
+        {activeSection === 'users' && (
+          <div className="space-y-4">
+            {status?.running && isPairingEnabled && <PairingGuideCard />}
+            <PairingRequestsSection
+              pendingPairings={pendingPairings}
+              showEmpty={status?.running && isPairingEnabled}
+              onApprove={approvePairing}
+              onReject={rejectPairing}
+            />
+            <AuthorizedUsersSection pairedUsers={pairedUsers} onRevoke={revokePairing} />
+          </div>
+        )}
+
+        {activeSection === 'global' && (
+          <section className="glass-card overflow-hidden rounded-2xl border border-border-subtle shadow-card">
+            <div className="p-4 sm:p-5">
+              <AdvancedConfigStep
+                defaultWorkingDirectory={defaultWorkingDirectory}
+                gatewayPort={gatewayPort}
+                autoApproveSafeTools={autoApproveSafeTools}
+                onWorkingDirectoryChange={setDefaultWorkingDirectory}
+                onGatewayPortChange={setGatewayPort}
+                onAutoApproveChange={setAutoApproveSafeTools}
+              />
+              <div className="mt-4 flex items-start gap-2 rounded-xl border border-accent/20 bg-accent/5 p-3 text-xs leading-5 text-text-secondary">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                {t('remote.globalSettingsHint')}
+              </div>
+            </div>
+            <div className="flex justify-end border-t border-border-subtle p-4">
+              <button
+                type="button"
+                onClick={saveGatewayConfig}
+                disabled={isSaving}
+                className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+              >
+                {isSaving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                {t('remote.saveGlobalSettings')}
+              </button>
+            </div>
+          </section>
+        )}
+
+        {activeSection === 'logs' && (
+          <section className="glass-card rounded-2xl border border-border-subtle p-5 shadow-card">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-accent/10 p-2.5">
+                <ScrollText className="h-5 w-5 text-accent" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-text-primary">
+                  {t('remote.runtimeOverview')}
+                </h3>
+                <p className="mt-1 text-xs text-text-muted">{t('remote.runtimeOverviewDesc')}</p>
+              </div>
+            </div>
+            <div className="mt-5 space-y-2">
+              {channels.map((channel) => {
+                const channelState = getChannelState(channel);
+                return (
+                  <div
+                    key={channel.type}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-border-subtle bg-background/34 p-3"
+                  >
+                    <div className="flex items-center gap-2.5 text-sm text-text-secondary">
+                      <ChannelBrandIcon type={channel.type} className="h-7 w-7" />
+                      {channel.name}
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 text-xs text-text-muted">
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${CHANNEL_STATE_DOT_CLASS[channelState]}`}
+                      />
+                      <span>{t(`remote.channelState.${channelState}`)}</span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-4 flex items-center gap-2 rounded-xl border border-dashed border-border p-4 text-xs text-text-muted">
+              <Check className="h-4 w-4" />
+              {t('remote.fullLogsPending')}
+            </div>
+          </section>
+        )}
+      </div>
     </div>
   );
 }

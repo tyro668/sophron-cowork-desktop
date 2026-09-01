@@ -5,6 +5,7 @@
 import ngrok from 'ngrok';
 import { log, logError } from '../utils/logger';
 import { remoteConfigStore } from './remote-config-store';
+import type { ChannelType } from './types';
 
 export interface TunnelStatus {
   connected: boolean;
@@ -103,7 +104,7 @@ class TunnelManager {
 
       this.currentUrl = url;
       this.isConnected = true;
-      
+
       log('[TunnelManager] Ngrok tunnel established:', url);
       this.emitStatus();
 
@@ -145,12 +146,10 @@ class TunnelManager {
     };
   }
 
-  /**
-   * Get webhook URL for Feishu
-   */
-  getWebhookUrl(): string | null {
+  /** Get the public webhook URL for a configured channel. */
+  getWebhookUrl(channelType: ChannelType = 'feishu'): string | null {
     if (!this.currentUrl) return null;
-    return `${this.currentUrl}/webhook/feishu`;
+    return `${this.currentUrl}/webhook/${channelType}`;
   }
 
   /**

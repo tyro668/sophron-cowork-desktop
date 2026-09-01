@@ -8,11 +8,13 @@ import {
   AutomationListInputSchema,
   AutomationPrepareScheduleUpdateParametersSchema,
   AutomationPrepareParametersSchema,
+  AutomationSetEnabledInputSchema,
   AutomationUpdateScheduleInputSchema,
   parseAutomationCreateInput,
   parseAutomationListInput,
   parseAutomationPrepareScheduleUpdateInput,
   parseAutomationPrepareInput,
+  parseAutomationSetEnabledInput,
   parseAutomationUpdateScheduleInput,
 } from './contract';
 import { buildAutomationToolPrompt } from '../../prompts/automation-tools';
@@ -55,6 +57,13 @@ export function createAutomationCustomTools(
       ...AUTOMATION_TOOL_COPY.automation_list,
       parameters: AutomationListInputSchema,
       execute: async (_toolCallId, params) => service.list(parseAutomationListInput(params)),
+    },
+    {
+      name: 'automation_set_enabled',
+      ...AUTOMATION_TOOL_COPY.automation_set_enabled,
+      parameters: AutomationSetEnabledInputSchema,
+      execute: async (_toolCallId, params) =>
+        service.setEnabled(parseAutomationSetEnabledInput(params)),
     },
     {
       name: 'automation_prepare',

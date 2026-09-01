@@ -2606,8 +2606,280 @@
   },
   "remote": {
     "title": "Remote Control",
-    "statusRunning": "Running. Available through Feishu.",
+    "statusRunning": "Remote service is running through connected channels.",
     "statusStopped": "Stopped",
+    "navigationLabel": "Remote control settings",
+    "navChannels": "Channels",
+    "navUsers": "Authorized users",
+    "navGlobal": "Global settings",
+    "navLogs": "Runtime logs",
+    "connectedChannels": "Connected channels",
+    "startRequiresChannel": "Configure and enable at least one bot first",
+    "noConfiguredChannels": "Configure at least one available channel before starting the service.",
+    "channelListTitle": "Connected channels",
+    "channelListDesc": "Configure each bot and inspect its status independently.",
+    "addChannel": "Add channel",
+    "channelAddHint": "Creating multiple instances will be enabled with the backend channel model.",
+    "channelName": {
+      "feishu": "Feishu",
+      "dingtalk": "DingTalk",
+      "wecom": "WeCom"
+    },
+    "channelDesc": {
+      "feishu": "Enter app credentials to enable",
+      "feishuConfigured": "{{mode}} · {{count}} authorized users",
+      "dingtalk": "Enter app credentials to enable Stream or Webhook mode",
+      "dingtalkConfigured": "{{mode}} · {{count}} authorized users",
+      "wecom": "Use either a WebSocket connection or Webhook callback",
+      "wecomConfigured": "{{mode}} · {{count}} authorized users"
+    },
+    "channelState": {
+      "connected": "Connected",
+      "stopped": "Configured",
+      "disabled": "Disabled",
+      "unconfigured": "Not configured",
+      "preview": "UI preview",
+      "error": "Connection error"
+    },
+    "channelTabBasic": "Basic setup",
+    "channelTabAccess": "Access control",
+    "channelTabAdvanced": "Setup guide",
+    "backendAvailable": "Available now",
+    "backendPending": "Backend pending",
+    "enableChannel": "Enable",
+    "disableChannel": "Disable",
+    "channelEnabledSuccess": "Bot enabled",
+    "channelDisabledSuccess": "Bot disabled",
+    "channelToggleFailed": "Failed to change the bot state. Check the runtime logs and try again.",
+    "botMessages": {
+      "processing": "Processing, please wait…",
+      "remoteServiceStoppedCancellation": "⚠️ Remote control has stopped. This pending request was cancelled.",
+      "channelDisabledCancellation": "⚠️ This bot has been disabled. This pending request was cancelled.",
+      "remoteSessionEndedCancellation": "⚠️ This remote session has ended. This pending request was cancelled."
+    },
+    "previewOnlyNotice": "This is a UI preview for a future channel. You can explore the form, but values are not saved and no real connection is created.",
+    "credentialsTitle": "Bot credentials",
+    "credentialsDesc": {
+      "feishu": "Enter the App ID and App Secret from Feishu Open Platform.",
+      "dingtalk": "Enter the Client ID and Client Secret of a DingTalk internal app, then choose Stream or Webhook delivery.",
+      "wecom": "Enter Bot ID and Secret for WebSocket, or Token and EncodingAESKey for Webhook."
+    },
+    "displayName": "Display name",
+    "dingtalkNamePlaceholder": "For example: Internal bot",
+    "wecomNamePlaceholder": "For example: Sales assistant",
+    "optional": "Optional",
+    "receiveMode": "Message delivery mode",
+    "streamConnection": "Stream connection",
+    "longConnectionChannelDesc": {
+      "feishu": "The app connects outward to Feishu without a public endpoint.",
+      "dingtalk": "The local app receives bot messages through Stream mode.",
+      "wecom": "Messages are sent and received through the AI bot WebSocket connection."
+    },
+    "webhookChannelDesc": "The platform pushes messages to a public callback endpoint.",
+    "wecomWebhookChannelDesc": "WeCom pushes encrypted callbacks and refreshes streaming replies.",
+    "ngrokChannelHint": "Expose the local webhook through a public endpoint.",
+    "accessPolicyDesc": "Access policies will be stored per channel and will not affect other channels.",
+    "requireMention": "Require @mention in group chats",
+    "requireMentionDesc": "Prevents the bot from answering ordinary group messages.",
+    "openPlatform": {
+      "feishu": "Open Feishu Open Platform",
+      "dingtalk": "Open DingTalk Open Platform",
+      "wecom": "Open WeCom Admin"
+    },
+    "setupGuide": {
+      "title": "Follow these steps to connect",
+      "beforeStart": "Before you start",
+      "platformPath": "Where to go",
+      "copy": "Copy",
+      "copied": "Copied",
+      "permissionsLabel": "Permissions to enable",
+      "eventLabel": "Event to subscribe to",
+      "webhookUrlLabel": "Callback URL to enter",
+      "completeWhen": "Done when: {{result}}",
+      "testTitle": "Final step: send a test message",
+      "intro": {
+        "feishu": "This usually takes 5–10 minutes. Create and publish a bot app in Feishu first, then return to Sophron, enter the credentials, save, and start the service.",
+        "dingtalk": "Create an internal app in DingTalk, add a bot, choose the same Stream or Webhook mode selected here, then return to Sophron and enter the app credentials.",
+        "wecom": "Create a WeCom AI bot in API mode, choose a long connection or URL callback, then enter the matching credentials in Sophron."
+      },
+      "prerequisite": {
+        "feishu": "You need permission to create a custom app in the current Feishu tenant. Ask an administrator to create the app or grant developer access if needed.",
+        "dingtalk": "You must belong to a DingTalk organization and have app-development access. Contact the organization administrator if you cannot create an app.",
+        "wecom": "Administrators can use WeCom Admin. Members can open Workbench → AI Bot. Ask an administrator to allow bot creation if API mode is unavailable."
+      },
+      "steps": {
+        "feishu": {
+          "createApp": {
+            "title": "Create a custom app",
+            "description": "Sign in to Feishu Open Platform, select your tenant, and create a custom app with a recognizable name, description, and icon.",
+            "path": "Feishu Open Platform → Developer Console → Create custom app",
+            "result": "the new app details page opens"
+          },
+          "addBot": {
+            "title": "Add the bot capability",
+            "description": "Open the new app and add the Bot capability. Without this capability, the app cannot appear in Feishu conversations.",
+            "path": "App details → Add app capability → Bot",
+            "result": "Bot appears in the app capability list"
+          },
+          "credentials": {
+            "title": "Copy the App ID and App Secret",
+            "description": "Copy both app credentials. Return to the Basic setup tab on this page and enter them without leading or trailing spaces.",
+            "path": "App details → Credentials & Basic Info → App credentials",
+            "result": "both credential fields in Sophron are filled"
+          },
+          "permissions": {
+            "title": "Enable the required bot permissions",
+            "description": "Open Permission Management and enable every permission below. If bulk import is available, copy and paste the complete list.",
+            "path": "App details → Permission Management → Enable / Bulk import",
+            "result": "every permission below is enabled"
+          },
+          "eventsLong": {
+            "title": "Subscribe to messages through a long connection",
+            "description": "Choose the long-connection event subscription mode, then add the Receive message event. No public callback URL is required.",
+            "path": "App details → Events & Callbacks → Event configuration → Subscription mode",
+            "result": "long connection is selected and Receive message is listed"
+          },
+          "eventsWebhook": {
+            "title": "Configure the webhook and subscribe to messages",
+            "description": "Choose callback URL mode, enter the public webhook URL below, pass URL verification, and add the Receive message event.",
+            "path": "App details → Events & Callbacks → Event configuration → Request URL",
+            "result": "the callback URL passes verification and Receive message is listed"
+          },
+          "publish": {
+            "title": "Create a version, set availability, and publish",
+            "description": "Create an app version containing the bot, permissions, and event setup. Add the users or departments that may use it, then submit and publish.",
+            "path": "App details → Version Management & Release → Create version",
+            "result": "the version is published and target users are in its availability scope"
+          },
+          "finish": {
+            "title": "Return to Sophron, save, and start",
+            "description": "Review the credentials and connection mode in Basic setup, click Save configuration, then use Start service at the top of the page.",
+            "path": "Sophron → Settings → Remote Control → Feishu",
+            "result": "the Feishu channel status changes to Connected"
+          }
+        },
+        "dingtalk": {
+          "createApp": {
+            "title": "Create an internal app",
+            "description": "Sign in to DingTalk Developer Console, select the organization that will use the bot, and create an internal app with a name and description.",
+            "path": "DingTalk Developer Console → App Development → Create app",
+            "result": "the new app details page opens"
+          },
+          "addBot": {
+            "title": "Add an in-app bot and choose Stream mode",
+            "description": "Do not create a custom group webhook used only for notifications. Add the Bot capability inside the app, enable bot configuration, select Stream as the message mode, and publish the bot configuration.",
+            "path": "App details → Add app capability → Bot → Bot configuration",
+            "result": "the Bot capability is enabled and message mode is Stream"
+          },
+          "addBotWebhook": {
+            "title": "Add an in-app bot and choose HTTP mode",
+            "description": "Add the Bot capability, set message delivery to HTTP/Webhook, and enter the public HTTPS URL below as the receiving endpoint. Do not use a custom group bot that can only push notifications.",
+            "path": "App details → Add app capability → Bot → Bot configuration → Message delivery mode",
+            "result": "HTTP mode is selected and the public callback URL passes validation"
+          },
+          "credentials": {
+            "title": "Copy the Client ID and Client Secret",
+            "description": "Copy the app credentials. Client ID may also be labeled AppKey, and Client Secret may be labeled AppSecret; these are the new and legacy names for the same values.",
+            "path": "App details → Credentials & Basic Info → App credentials",
+            "result": "the Client ID and Client Secret are saved"
+          },
+          "publish": {
+            "title": "Publish an app version and set its availability",
+            "description": "Create and publish an app version, then add the members or departments that can use the bot. Unpublished apps are generally not visible to ordinary members.",
+            "path": "App details → Version Management & Release → Create version",
+            "result": "the version is published and target members are in scope"
+          },
+          "finish": {
+            "title": "Return to Sophron and enter the credentials",
+            "description": "Enter the Client ID and Client Secret in Basic setup. Add the RobotCode for OpenAPI fallback delivery, then save and start the remote service.",
+            "path": "Sophron → Settings → Remote Control → DingTalk → Basic setup",
+            "result": "the channel status changes to Connected"
+          },
+          "test": {
+            "title": "Find the bot in DingTalk",
+            "description": "Open a direct conversation with the app bot, or add it to a group. Group messages must @mention the bot.",
+            "path": "DingTalk client → Workbench / Group settings → Bots",
+            "result": "the bot receives the message and replies"
+          }
+        },
+        "wecom": {
+          "prerequisite": {
+            "title": "Confirm that you can create an AI bot",
+            "description": "Administrators can use WeCom Admin; members can search for AI Bot in Workbench. Ask an administrator to enable bot creation if the button is missing.",
+            "path": "Admin: Security & Management → Management Tools → AI Bot; Member: Workbench → AI Bot",
+            "result": "the Create bot button is visible"
+          },
+          "createBot": {
+            "title": "Create the bot in API mode",
+            "description": "Choose Create bot. If the AI-generated flow opens first, choose Manual creation, then API mode. Do not create a basic group webhook bot.",
+            "path": "AI Bot → Create bot → Manual creation → Create in API mode",
+            "result": "the bot editor displays API configuration"
+          },
+          "longConnection": {
+            "title": "Set the name, visibility, and long connection",
+            "description": "Name the bot, add permitted members, departments, or tags to its visibility scope, and choose Use long connection under API configuration.",
+            "path": "Bot editor → Available members / Visibility → API configuration → Use long connection",
+            "result": "target users are visible and long connection is selected"
+          },
+          "webhookConnection": {
+            "title": "Choose URL callback and enter the public endpoint",
+            "description": "Choose Use URL callback in API configuration and enter the public HTTPS URL below. The Sophron remote service must be running before the bot configuration is saved.",
+            "path": "Bot editor → API configuration → Use URL callback → URL",
+            "result": "WeCom can reach the endpoint and URL verification succeeds"
+          },
+          "credentials": {
+            "title": "Get the Bot ID and Secret, then save",
+            "description": "Copy the Bot ID, click Get next to Secret, store the Secret immediately, and save the bot. The full Secret may not remain visible.",
+            "path": "Bot editor → API configuration → Configuration method → Bot ID / Secret",
+            "result": "the credentials are stored and the bot details page opens"
+          },
+          "webhookCredentials": {
+            "title": "Generate Token and EncodingAESKey",
+            "description": "Generate a Token and EncodingAESKey in the URL callback settings, then copy both values into Basic setup in Sophron. They protect callback signatures and encryption and must remain private.",
+            "path": "Bot editor → API configuration → URL callback → Token / EncodingAESKey",
+            "result": "Token and EncodingAESKey match exactly in WeCom and Sophron"
+          },
+          "finish": {
+            "title": "Return to Sophron and enter the credentials",
+            "description": "Enter the Bot ID and Secret in Basic setup, save, and start the remote control service.",
+            "path": "Sophron → Settings → Remote Control → WeCom → Basic setup",
+            "result": "the WeCom channel status changes to Connected"
+          },
+          "test": {
+            "title": "Add the bot and send a test message",
+            "description": "Find the new bot in WeCom and start a direct conversation, or add it to a group and @mention it before sending a request.",
+            "path": "WeCom client → Contacts / Workbench → AI Bot",
+            "result": "the bot receives the message and replies"
+          }
+        }
+      },
+      "test": {
+        "feishu": "Send “Hello” in a direct bot chat. In a group, add the bot and @mention it before sending “Hello.” Receiving a reply from Sophron confirms the connection.",
+        "dingtalk": "Send “Hello” in a direct bot chat. Group tests must @mention the bot. A Sophron reply confirms the selected delivery mode.",
+        "wecom": "Send “Hello” in a direct bot chat or @mention the bot in a group. A reply confirms the selected delivery mode and visibility scope."
+      },
+      "warning": {
+        "feishu": "Common causes of no response include an unpublished app, a user outside the availability scope, or a missing im.message.receive_v1 subscription. Keep the App Secret private.",
+        "dingtalk": "Use an in-app bot. Webhook mode requires a publicly reachable HTTPS endpoint and Sophron must remain running; it is not the custom group webhook used only to push notifications. DingTalk forwards group messages only when the bot is @mentioned.",
+        "wecom": "A bot can keep only one long connection. Webhook mode requires a publicly reachable HTTPS endpoint and Sophron must remain running. Token, Secret, and EncodingAESKey are sensitive."
+      }
+    },
+    "feishuSaveHint": "Saving continues to use the existing Feishu backend.",
+    "dingtalkSaveHint": "Saving receives DingTalk bot messages through {{mode}}.",
+    "wecomSaveHint": "Saving receives WeCom bot messages through {{mode}}.",
+    "previewSaveHint": "Saving and connection tests will be enabled after the backend API is available.",
+    "globalSettingsHint": "These settings apply to the entire remote service. Configure credentials and access policies inside each channel.",
+    "saveGlobalSettings": "Save global settings",
+    "runtimeOverview": "Channel runtime overview",
+    "runtimeOverviewDesc": "This view currently shows the connection state available from the backend.",
+    "fullLogsPending": "Per-channel filtering, error details, and reconnect history will be connected after the backend status API is available.",
+    "noAuthorizedUsers": "No authorized users",
+    "noAuthorizedUsersDesc": "Users will appear here after pairing or being added to an allowlist.",
+    "loadFailed": "Failed to load remote control configuration",
+    "feishuCredentialsRequired": "Enter the Feishu App ID and App Secret first",
+    "dingtalkCredentialsRequired": "Enter the DingTalk Client ID and Client Secret first",
+    "wecomCredentialsRequired": "Enter the WeCom Bot ID and Secret first",
+    "wecomWebhookCredentialsRequired": "Enter the WeCom Webhook Token and 43-character EncodingAESKey first",
     "startService": "Start service",
     "stopService": "Stop service",
     "activeSessions": "Active sessions",
@@ -2615,7 +2887,7 @@
     "pendingApprovals": "Pending approvals",
     "pairingRequests": "Pairing requests awaiting approval",
     "unknownUser": "Unknown user",
-    "pairingCode": "Pairing code",
+    "pairingCode": "Request code",
     "approve": "Approve",
     "stepFeishu": "Feishu setup",
     "stepConnection": "Connection",
@@ -2623,8 +2895,8 @@
     "feishuTitle": "Feishu bot setup",
     "feishuDesc": "Create an app in Feishu Open Platform, then fill in the credentials here.",
     "dmPolicy": "DM authorization policy",
-    "policyPairing": "Pairing verification",
-    "policyPairingDesc": "Users must enter a pairing code.",
+    "policyPairing": "Administrator approval",
+    "policyPairingDesc": "New users must be approved by an administrator.",
     "policyAllowlist": "Allowlist",
     "policyAllowlistDesc": "Only specific users are allowed.",
     "policyOpen": "Open access",

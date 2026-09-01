@@ -11,8 +11,10 @@ import type {
   GatewayConfig,
   FeishuChannelConfig,
   WechatChannelConfig,
+  WecomChannelConfig,
   TelegramChannelConfig,
   DingtalkChannelConfig,
+  ControllableChannelType,
   WebSocketChannelConfig,
   PairedUser,
 } from './types';
@@ -46,9 +48,6 @@ class RemoteConfigStore {
 
     // Migrate: change pairing mode to allowlist (allow everyone by default)
     this.migrateAuthMode();
-
-    // Migrate: sync gateway auth mode to match Feishu DM policy for existing installs
-    this.migrateFeishuDmPolicySync();
   }
 
   /**
@@ -72,33 +71,6 @@ class RemoteConfigStore {
         allowlist,
         requirePairing: false,
       });
-    }
-  }
-
-  /**
-   * Migrate: sync gateway auth mode to match Feishu DM policy.
-   * Fixes issue #92 for existing installs where channels.feishu.dm.policy was
-   * set to 'open' but gateway.auth.mode remained at default 'allowlist'.
-   * Also handles the case where syncAllowlist() already populated the allowlist
-   * with paired users — if all entries are from paired users, the mode was never
-   * explicitly configured and should still be migrated.
-   */
-  private migrateFeishuDmPolicySync(): void {
-    const feishu = this.store.get('channels.feishu') as FeishuChannelConfig | undefined;
-    if (!feishu?.dm?.policy) return;
-    if (feishu.dm.policy !== 'open' && feishu.dm.policy !== 'pairing') return;
-
-    const gateway = this.store.get('gateway');
-    if (gateway?.auth?.mode !== 'allowlist') return;
-
-    const allowlist = gateway.auth.allowlist ?? [];
-    const pairedEntries = new Set(this.getPairedUsers().map((u) => `${u.channelType}:${u.userId}`));
-    const onlyPairedEntries =
-      allowlist.length === 0 || allowlist.every((e) => pairedEntries.has(e));
-
-    if (onlyPairedEntries) {
-      log('[RemoteConfig] Syncing gateway auth mode to match Feishu DM policy:', feishu.dm.policy);
-      this.store.set('gateway.auth.mode', feishu.dm.policy);
     }
   }
 
@@ -130,6 +102,14 @@ class RemoteConfigStore {
     return filtered;
   }
 
+  /** Preserve an existing channel toggle unless the incoming config explicitly changes it. */
+  private withPreservedChannelEnabled<T extends { enabled?: boolean }>(config: T, current?: T): T {
+    return {
+      ...config,
+      enabled: config.enabled ?? current?.enabled ?? true,
+    };
+  }
+
   /**
    * Update gateway config
    */
@@ -153,7 +133,8 @@ class RemoteConfigStore {
    * Set feishu channel config
    */
   setFeishuConfig(config: FeishuChannelConfig): void {
-    this.store.set('channels.feishu', config);
+    const current = this.getFeishuConfig();
+    this.store.set('channels.feishu', this.withPreservedChannelEnabled(config, current));
     log('[RemoteConfig] Feishu config updated');
   }
 
@@ -170,6 +151,18 @@ class RemoteConfigStore {
   setWechatConfig(config: WechatChannelConfig): void {
     this.store.set('channels.wechat', config);
     log('[RemoteConfig] WeChat config updated');
+  }
+
+  /** Get the WeCom AI Bot channel config. */
+  getWecomConfig(): WecomChannelConfig | undefined {
+    return this.store.get('channels.wecom');
+  }
+
+  /** Persist the WeCom AI Bot channel config. */
+  setWecomConfig(config: WecomChannelConfig): void {
+    const current = this.getWecomConfig();
+    this.store.set('channels.wecom', this.withPreservedChannelEnabled(config, current));
+    log('[RemoteConfig] WeCom config updated');
   }
 
   /**
@@ -198,8 +191,19 @@ class RemoteConfigStore {
    * Set dingtalk channel config
    */
   setDingtalkConfig(config: DingtalkChannelConfig): void {
-    this.store.set('channels.dingtalk', config);
+    const current = this.getDingtalkConfig();
+    this.store.set('channels.dingtalk', this.withPreservedChannelEnabled(config, current));
     log('[RemoteConfig] DingTalk config updated');
+  }
+
+  /** Persist the desired state of a configured, user-controllable channel. */
+  setChannelEnabled(type: ControllableChannelType, enabled: boolean): void {
+    const config = this.store.get(`channels.${type}`);
+    if (!config) {
+      throw new Error(`Channel is not configured: ${type}`);
+    }
+    this.store.set(`channels.${type}.enabled`, enabled);
+    log(`[RemoteConfig] Channel ${type} enabled:`, enabled);
   }
 
   /**

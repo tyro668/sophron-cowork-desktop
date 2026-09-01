@@ -77,7 +77,24 @@ export interface TunnelConfig {
 // Channel Configuration
 // ============================================================================
 
-export type ChannelType = 'feishu' | 'wechat' | 'telegram' | 'dingtalk' | 'websocket' | 'slack';
+export type ChannelType =
+  | 'feishu'
+  | 'wechat'
+  | 'wecom'
+  | 'telegram'
+  | 'dingtalk'
+  | 'websocket'
+  | 'slack';
+
+export type ControllableChannelType = 'feishu' | 'dingtalk' | 'wecom';
+
+/** Authoritative desired and runtime state returned after a per-channel toggle. */
+export interface ControllableChannelState {
+  type: ControllableChannelType;
+  desiredEnabled: boolean;
+  connected: boolean;
+  channelError?: string;
+}
 
 export interface ChannelConfig {
   /** Channel type */
@@ -90,6 +107,7 @@ export interface ChannelConfig {
   config:
     | FeishuChannelConfig
     | WechatChannelConfig
+    | WecomChannelConfig
     | TelegramChannelConfig
     | DingtalkChannelConfig
     | WebSocketChannelConfig
@@ -99,6 +117,9 @@ export interface ChannelConfig {
 // Feishu (飞书) Channel
 export interface FeishuChannelConfig {
   type: 'feishu';
+
+  /** Whether this channel should start with the remote service. Defaults to true. */
+  enabled?: boolean;
 
   /** App ID from Feishu Open Platform */
   appId: string;
@@ -166,6 +187,50 @@ export interface WechatChannelConfig {
   };
 }
 
+// WeCom (企业微信) AI Bot Channel
+export interface WecomChannelConfig {
+  type: 'wecom';
+
+  /** Whether this channel should start with the remote service. Defaults to true. */
+  enabled?: boolean;
+
+  /** Receive through the WebSocket SDK or an encrypted HTTP callback. */
+  receiveMode?: 'websocket' | 'webhook';
+
+  /** Bot ID from the WeCom AI Bot API configuration. */
+  botId: string;
+
+  /** Secret dedicated to the WeCom WebSocket long connection. */
+  secret: string;
+
+  /** Optional WebSocket URL for private WeCom deployments. */
+  wsUrl?: string;
+
+  /** Verification token configured for the WeCom callback URL. */
+  webhookToken?: string;
+
+  /** 43-character EncodingAESKey configured for the WeCom callback URL. */
+  webhookEncodingAESKey?: string;
+
+  /** Direct-message access policy. */
+  dm: {
+    policy: 'open' | 'pairing' | 'allowlist';
+    allowFrom?: string[];
+  };
+
+  /** Per-group access settings, keyed by WeCom chat ID. */
+  groups?: {
+    [chatId: string]: {
+      requireMention: boolean;
+      allowFrom?: string[];
+    };
+  };
+
+  defaultGroupSettings?: {
+    requireMention: boolean;
+  };
+}
+
 // Telegram Channel
 export interface TelegramChannelConfig {
   type: 'telegram';
@@ -195,6 +260,12 @@ export interface TelegramChannelConfig {
 export interface DingtalkChannelConfig {
   type: 'dingtalk';
 
+  /** Whether this channel should start with the remote service. Defaults to true. */
+  enabled?: boolean;
+
+  /** Message receiving mode. Defaults to Stream for existing configurations. */
+  receiveMode?: 'stream' | 'webhook';
+
   /** App Key */
   appKey: string;
 
@@ -216,6 +287,11 @@ export interface DingtalkChannelConfig {
       requireMention: boolean;
       allowFrom?: string[];
     };
+  };
+
+  /** Default group settings (when not specified per-group) */
+  defaultGroupSettings?: {
+    requireMention: boolean;
   };
 }
 
@@ -436,6 +512,8 @@ export type GatewayEventType =
   | 'gateway.error'
   | 'channel.connected'
   | 'channel.disconnected'
+  | 'channel.enabled'
+  | 'channel.disabled'
   | 'channel.error'
   | 'message.received'
   | 'message.sent'
@@ -480,7 +558,7 @@ export interface IChannel {
 // ============================================================================
 
 export interface PairingRequest {
-  /** Pairing code (6 digits) */
+  /** Display-only request correlation code (8 digits) */
   code: string;
 
   /** Channel type */
@@ -533,6 +611,8 @@ export interface GatewayStatus {
   /** Connected channels */
   channels: {
     type: ChannelType;
+    /** Desired per-channel state. Missing legacy values are treated as enabled. */
+    enabled: boolean;
     connected: boolean;
     error?: string;
   }[];
@@ -553,6 +633,7 @@ export interface RemoteConfig {
   channels: {
     feishu?: FeishuChannelConfig;
     wechat?: WechatChannelConfig;
+    wecom?: WecomChannelConfig;
     telegram?: TelegramChannelConfig;
     dingtalk?: DingtalkChannelConfig;
     websocket?: WebSocketChannelConfig;

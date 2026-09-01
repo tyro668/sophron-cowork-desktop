@@ -74,6 +74,7 @@ vi.mock('../src/main/remote/channels/feishu', () => ({
 vi.mock('../src/main/remote/message-router', () => ({
   MessageRouter: class {
     onResponse = vi.fn();
+    onSessionExpired = vi.fn();
     setAgentCallback = vi.fn();
     setWorkingDirectoryValidator = vi.fn();
     setDefaultWorkingDirectory = vi.fn();

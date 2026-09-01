@@ -6,7 +6,7 @@ export interface GatewayStatus {
   running: boolean;
   port?: number;
   publicUrl?: string;
-  channels: Array<{ type: string; connected: boolean; error?: string }>;
+  channels: Array<{ type: string; enabled: boolean; connected: boolean; error?: string }>;
   activeSessions: number;
   pendingPairings: number;
 }
@@ -51,11 +51,40 @@ export interface RemoteConfig {
   };
   channels: {
     feishu?: {
+      enabled?: boolean;
       appId: string;
       appSecret: string;
       useWebSocket?: boolean;
       dm: {
         policy: string;
+      };
+    };
+    dingtalk?: {
+      enabled?: boolean;
+      appKey: string;
+      appSecret: string;
+      robotCode?: string;
+      receiveMode?: 'stream' | 'webhook';
+      dm: {
+        policy: string;
+      };
+      defaultGroupSettings?: {
+        requireMention: boolean;
+      };
+    };
+    wecom?: {
+      enabled?: boolean;
+      receiveMode?: 'websocket' | 'webhook';
+      botId: string;
+      secret: string;
+      wsUrl?: string;
+      webhookToken?: string;
+      webhookEncodingAESKey?: string;
+      dm: {
+        policy: string;
+      };
+      defaultGroupSettings?: {
+        requireMention: boolean;
       };
     };
     slack?: {
@@ -76,6 +105,25 @@ export interface TunnelStatus {
   error?: string;
 }
 
+export type RemoteSection = 'channels' | 'users' | 'global' | 'logs';
+
+export type RemoteChannelType = 'feishu' | 'dingtalk' | 'wecom';
+
+export type ChannelConfigTab = 'basic' | 'access' | 'advanced';
+
+/** @deprecated Kept for the legacy step navigation component. */
 export type ConfigStep = 'feishu' | 'connection' | 'advanced';
+
+export interface RemoteChannelViewModel {
+  type: RemoteChannelType;
+  name: string;
+  description: string;
+  configured: boolean;
+  enabled: boolean;
+  connected: boolean;
+  backendAvailable: boolean;
+  authorizedUsers: number;
+  error?: string;
+}
 
 export type LocalizedBanner = { key?: string; text?: string | null };

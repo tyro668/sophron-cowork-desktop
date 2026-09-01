@@ -18,8 +18,10 @@ import type {
   PairingRequest,
   PairedUser,
   GatewayEvent,
+  RemoteConfig,
 } from './types';
 import { MessageRouter } from './message-router';
+import { NonRetryableChannelError } from './channels/channel-base';
 
 // WebSocket client connection
 interface WSClient {
@@ -38,13 +40,20 @@ interface WSMessage {
   requestId?: string;
 }
 
+const PAIRING_REQUEST_WINDOW_MS = 10 * 60 * 1000;
+const MAX_PAIRING_REQUESTS_PER_WINDOW = 3;
+
 export class RemoteGateway extends EventEmitter {
   private config: GatewayConfig;
   private httpServer?: HttpServer;
   private wss?: WebSocketServer;
   private channels: Map<ChannelType, IChannel> = new Map();
+  private channelEnabled: Map<ChannelType, boolean> = new Map();
+  private channelOperations: Map<ChannelType, Promise<void>> = new Map();
+  private channelErrors: Map<ChannelType, string> = new Map();
   private wsClients: Map<string, WSClient> = new Map();
   private messageRouter: MessageRouter;
+  private channelConfigs: RemoteConfig['channels'];
 
   // Pairing management
   private pairingRequests: Map<string, PairingRequest> = new Map();
@@ -55,10 +64,18 @@ export class RemoteGateway extends EventEmitter {
   // Rate limiting for WebSocket auth
   private authAttempts: Map<string, { count: number; resetTime: number }> = new Map();
 
-  constructor(config: GatewayConfig, messageRouter: MessageRouter) {
+  // Rate limiting for new channel pairing requests (pending requests are reused)
+  private pairingRequestAttempts: Map<string, { count: number; resetTime: number }> = new Map();
+
+  constructor(
+    config: GatewayConfig,
+    messageRouter: MessageRouter,
+    channelConfigs: RemoteConfig['channels'] = {}
+  ) {
     super();
     this.config = config;
     this.messageRouter = messageRouter;
+    this.channelConfigs = channelConfigs;
 
     // Set up message router callback
     this.messageRouter.onResponse(this.handleAgentResponse.bind(this));
@@ -108,17 +125,24 @@ export class RemoteGateway extends EventEmitter {
         });
       });
 
+      // The transport is now accepting traffic. Channel activity is gated by
+      // both this flag and each channel's own connected state.
+      this._running = true;
+
       // Start all registered channels
       for (const [type, channel] of this.channels) {
+        if (!this.isChannelEnabled(type)) {
+          this.channelErrors.delete(type);
+          log(`[Gateway] Channel ${type} is disabled; skipping startup`);
+          continue;
+        }
         try {
-          await channel.start();
-          log(`[Gateway] Channel ${type} started`);
+          await this.enqueueChannelOperation(type, () => this.startChannelTransport(type, channel));
         } catch (error) {
           logError(`[Gateway] Failed to start channel ${type}:`, error);
         }
       }
 
-      this._running = true;
       this.emitEvent('gateway.started', { port: this.config.port });
       log('[Gateway] Gateway started successfully');
     } catch (error) {
@@ -136,12 +160,14 @@ export class RemoteGateway extends EventEmitter {
     }
 
     log('[Gateway] Stopping gateway...');
+    // Reject new inbound, webhook, and outbound work before waiting for any
+    // individual transport to finish shutting down.
+    this._running = false;
 
     // Stop all channels
     for (const [type, channel] of this.channels) {
       try {
-        await channel.stop();
-        log(`[Gateway] Channel ${type} stopped`);
+        await this.enqueueChannelOperation(type, () => this.stopChannelTransport(type, channel));
       } catch (error) {
         logError(`[Gateway] Error stopping channel ${type}:`, error);
       }
@@ -156,6 +182,9 @@ export class RemoteGateway extends EventEmitter {
       }
     }
     this.wsClients.clear();
+    this.authAttempts.clear();
+    this.pairingRequestAttempts.clear();
+    this.channelErrors.clear();
 
     // Close WebSocket server
     if (this.wss) {
@@ -179,7 +208,7 @@ export class RemoteGateway extends EventEmitter {
   /**
    * Register a channel
    */
-  registerChannel(channel: IChannel): void {
+  registerChannel(channel: IChannel, enabled: boolean = true): void {
     if (this.channels.has(channel.type)) {
       logWarn(`[Gateway] Channel ${channel.type} already registered, replacing...`);
     }
@@ -187,16 +216,24 @@ export class RemoteGateway extends EventEmitter {
     // Set up message handler
     channel.onMessage(this.handleChannelMessage.bind(this));
     channel.onError((error) => {
+      if (!this.isChannelEnabled(channel.type)) {
+        logWarn(`[Gateway] Ignoring error from disabled channel ${channel.type}:`, error.message);
+        return;
+      }
+      this.channelErrors.set(channel.type, error.message);
       logError(`[Gateway] Channel ${channel.type} error:`, error);
       this.emitEvent('channel.error', { channel: channel.type, error: error.message });
     });
 
     this.channels.set(channel.type, channel);
+    this.channelEnabled.set(channel.type, enabled);
     log(`[Gateway] Registered channel: ${channel.type}`);
 
     // Start channel if gateway is already running
-    if (this._running) {
-      channel.start().catch((error) => {
+    if (this._running && enabled) {
+      this.enqueueChannelOperation(channel.type, () =>
+        this.startChannelTransport(channel.type, channel)
+      ).catch((error) => {
         logError(`[Gateway] Failed to start channel ${channel.type}:`, error);
       });
     }
@@ -210,7 +247,84 @@ export class RemoteGateway extends EventEmitter {
     if (channel) {
       await channel.stop();
       this.channels.delete(type);
+      this.channelEnabled.delete(type);
+      this.channelOperations.delete(type);
+      this.channelErrors.delete(type);
       log(`[Gateway] Unregistered channel: ${type}`);
+    }
+  }
+
+  /** Enable or disable one registered channel without restarting the gateway. */
+  async setChannelEnabled(type: ChannelType, enabled: boolean): Promise<void> {
+    const channel = this.channels.get(type);
+    if (!channel) throw new Error(`Channel not found: ${type}`);
+
+    await this.enqueueChannelOperation(type, async () => {
+      this.channelEnabled.set(type, enabled);
+      if (!enabled) {
+        // Flip the gate before awaiting transport shutdown so no new inbound,
+        // webhook, or outbound work is accepted during a slow stop.
+        this.channelErrors.delete(type);
+        this.clearPendingPairingsForChannel(type);
+        await this.stopChannelTransport(type, channel);
+        this.emitEvent('channel.disabled', { channel: type });
+        return;
+      }
+
+      if (!this._running) {
+        this.channelErrors.delete(type);
+        this.emitEvent('channel.enabled', { channel: type });
+        return;
+      }
+
+      await this.startChannelTransport(type, channel);
+      this.emitEvent('channel.enabled', { channel: type });
+    });
+  }
+
+  isChannelEnabled(type: ChannelType): boolean {
+    return this.channelEnabled.get(type) !== false;
+  }
+
+  private isChannelActive(type: ChannelType): boolean {
+    return (
+      this._running && this.isChannelEnabled(type) && this.channels.get(type)?.connected === true
+    );
+  }
+
+  private enqueueChannelOperation(
+    type: ChannelType,
+    operation: () => Promise<void>
+  ): Promise<void> {
+    const previous = this.channelOperations.get(type) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(operation);
+    this.channelOperations.set(type, next);
+    return next;
+  }
+
+  private async startChannelTransport(type: ChannelType, channel: IChannel): Promise<void> {
+    try {
+      await channel.start();
+      this.channelErrors.delete(type);
+      log(`[Gateway] Channel ${type} started`);
+    } catch (error) {
+      this.channelErrors.set(type, error instanceof Error ? error.message : String(error));
+      throw error;
+    }
+  }
+
+  private async stopChannelTransport(type: ChannelType, channel: IChannel): Promise<void> {
+    await channel.stop();
+    log(`[Gateway] Channel ${type} stopped`);
+  }
+
+  private clearPendingPairingsForChannel(type: ChannelType): void {
+    const prefix = `${type}:`;
+    for (const key of this.pairingRequests.keys()) {
+      if (key.startsWith(prefix)) this.pairingRequests.delete(key);
+    }
+    for (const key of this.pairingRequestAttempts.keys()) {
+      if (key.startsWith(prefix)) this.pairingRequestAttempts.delete(key);
     }
   }
 
@@ -220,7 +334,12 @@ export class RemoteGateway extends EventEmitter {
   getStatus(): GatewayStatus {
     const channelStatuses = Array.from(this.channels.entries()).map(([type, channel]) => ({
       type,
-      connected: channel.connected,
+      enabled: this.isChannelEnabled(type),
+      connected: this.isChannelActive(type),
+      error:
+        this.isChannelEnabled(type) && !channel.connected
+          ? this.channelErrors.get(type)
+          : undefined,
     }));
 
     return {
@@ -248,6 +367,11 @@ export class RemoteGateway extends EventEmitter {
    * Handle incoming message from a channel
    */
   private async handleChannelMessage(message: RemoteMessage): Promise<void> {
+    if (!this.isChannelActive(message.channelType)) {
+      logWarn(`[Gateway] Ignoring message from inactive channel: ${message.channelType}`);
+      return;
+    }
+
     log('[Gateway] Received message from channel:', {
       type: message.channelType,
       channelId: message.channelId,
@@ -260,7 +384,9 @@ export class RemoteGateway extends EventEmitter {
       log('[Gateway] User not authorized:', message.sender.id);
 
       // Handle pairing if enabled
-      if (this.config.auth.mode === 'pairing') {
+      const effectivePolicy =
+        this.getChannelDmPolicy(message.channelType)?.policy ?? this.config.auth.mode;
+      if (effectivePolicy === 'pairing') {
         await this.handlePairingRequest(message);
       } else {
         // Send unauthorized response
@@ -311,16 +437,31 @@ export class RemoteGateway extends EventEmitter {
    * Send response to channel (public method for RemoteManager)
    */
   async sendResponse(response: RemoteResponse): Promise<void> {
-    await this.sendToChannel(response);
+    await this.sendToChannel(response, true);
   }
 
   /**
    * Send response to channel (internal)
    */
-  private async sendToChannel(response: RemoteResponse): Promise<void> {
+  private async sendToChannel(
+    response: RemoteResponse,
+    propagateError: boolean = false
+  ): Promise<void> {
     const channel = this.channels.get(response.channelType);
     if (!channel) {
-      logError(`[Gateway] Channel not found: ${response.channelType}`);
+      const error = new Error(`Channel not found: ${response.channelType}`);
+      logError(`[Gateway] ${error.message}`);
+      if (propagateError) {
+        throw error;
+      }
+      return;
+    }
+    if (!this.isChannelActive(response.channelType)) {
+      const error = new NonRetryableChannelError(
+        `Channel is disabled or disconnected: ${response.channelType}`
+      );
+      logError(`[Gateway] ${error.message}`);
+      if (propagateError) throw error;
       return;
     }
 
@@ -329,6 +470,9 @@ export class RemoteGateway extends EventEmitter {
       this.emitEvent('message.sent', { response });
     } catch (error) {
       logError(`[Gateway] Failed to send message to channel ${response.channelType}:`, error);
+      if (propagateError) {
+        throw error;
+      }
     }
   }
 
@@ -336,6 +480,25 @@ export class RemoteGateway extends EventEmitter {
    * Check if user is authorized
    */
   private async checkAuthorization(message: RemoteMessage): Promise<boolean> {
+    const channelPolicy = this.getChannelDmPolicy(message.channelType);
+    if (channelPolicy) {
+      switch (channelPolicy.policy) {
+        case 'open':
+          return true;
+        case 'pairing':
+          return this.pairedUsers.has(`${message.channelType}:${message.sender.id}`);
+        case 'allowlist': {
+          const pairedKey = `${message.channelType}:${message.sender.id}`;
+          return (
+            (channelPolicy.allowFrom ?? []).includes(message.sender.id) ||
+            this.pairedUsers.has(pairedKey)
+          );
+        }
+      }
+    }
+
+    // Gateway auth remains the fallback for channels without their own policy
+    // and for compatibility with older configurations.
     const { mode, allowlist } = this.config.auth;
 
     switch (mode) {
@@ -371,14 +534,36 @@ export class RemoteGateway extends EventEmitter {
    * Check if group message should be processed
    */
   private shouldProcessGroupMessage(message: RemoteMessage): boolean {
-    // Always process if explicitly mentioned
-    if (message.isMentioned) {
+    const rawChannelId = message.channelId.replace(/^(group|dm):/, '');
+    const channelConfig = this.channelConfigs[message.channelType];
+    let requireMention = true;
+
+    if (channelConfig && ('groups' in channelConfig || 'defaultGroupSettings' in channelConfig)) {
+      requireMention =
+        channelConfig.groups?.[rawChannelId]?.requireMention ??
+        ('defaultGroupSettings' in channelConfig
+          ? channelConfig.defaultGroupSettings?.requireMention
+          : undefined) ??
+        true;
+    } else if (channelConfig && 'channels' in channelConfig) {
+      requireMention = channelConfig.channels?.[rawChannelId]?.requireMention ?? true;
+    }
+
+    if (!requireMention || message.isMentioned) {
       return true;
     }
 
     // TODO: Check channel-specific group settings
     // For now, require mention in groups by default
     return false;
+  }
+
+  private getChannelDmPolicy(
+    channelType: ChannelType
+  ): { policy: 'open' | 'pairing' | 'allowlist'; allowFrom?: string[] } | undefined {
+    const channelConfig = this.channelConfigs[channelType];
+    if (!channelConfig || !('dm' in channelConfig)) return undefined;
+    return channelConfig.dm;
   }
 
   /**
@@ -391,50 +576,35 @@ export class RemoteGateway extends EventEmitter {
     if (this.pairingRequests.has(userKey)) {
       const existing = this.pairingRequests.get(userKey)!;
 
-      // Check if message contains the pairing code
-      const inputCode = message.content.text?.trim();
-      if (inputCode === existing.code) {
-        // Pairing successful
-        this.pairedUsers.set(userKey, {
-          userId: message.sender.id,
-          userName: message.sender.name,
-          channelType: message.channelType,
-          pairedAt: Date.now(),
-          lastActiveAt: Date.now(),
-        });
-
-        this.pairingRequests.delete(userKey);
-
-        await this.sendToChannel({
-          channelType: message.channelType,
-          channelId: message.channelId,
-          content: {
-            type: 'text',
-            text: '✅ 配对成功！您现在可以开始使用机器人了。',
-          },
-          replyTo: message.id,
-        });
-
-        log('[Gateway] User paired successfully:', userKey);
-        return;
-      }
-
       // Check if expired
       if (Date.now() > existing.expiresAt) {
         this.pairingRequests.delete(userKey);
       } else {
-        // Already has valid pairing request
+        // A requester cannot approve their own access by echoing the code.
         await this.sendToChannel({
           channelType: message.channelType,
           channelId: message.channelId,
           content: {
             type: 'text',
-            text: `请输入配对码进行验证。\n\n您的配对码是: **${existing.code}**\n\n请将此配对码发送给管理员进行确认，或直接回复配对码完成配对。`,
+            text: `您的授权申请正在等待管理员审批。\n\n申请码: **${existing.code}**\n\n请让管理员在九思助理的“授权用户”页面批准。直接回复申请码不会自动获得权限。`,
           },
           replyTo: message.id,
         });
         return;
       }
+    }
+
+    if (!this.checkPairingRequestRateLimit(userKey)) {
+      await this.sendToChannel({
+        channelType: message.channelType,
+        channelId: message.channelId,
+        content: {
+          type: 'text',
+          text: '⚠️ 授权申请过于频繁，请稍后再试或联系管理员。',
+        },
+        replyTo: message.id,
+      });
+      return;
     }
 
     // Generate new pairing code
@@ -445,7 +615,7 @@ export class RemoteGateway extends EventEmitter {
       userId: message.sender.id,
       userName: message.sender.name,
       createdAt: Date.now(),
-      expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
+      expiresAt: Date.now() + PAIRING_REQUEST_WINDOW_MS,
     };
 
     this.pairingRequests.set(userKey, pairingRequest);
@@ -455,7 +625,7 @@ export class RemoteGateway extends EventEmitter {
       channelId: message.channelId,
       content: {
         type: 'text',
-        text: `👋 您好！首次使用需要进行配对验证。\n\n您的配对码是: **${code}**\n\n请将此配对码发送给管理员进行确认。配对码有效期10分钟。`,
+        text: `👋 您好！首次使用需要管理员授权。\n\n申请码: **${code}**\n\n请让管理员在九思助理的“授权用户”页面核对并批准。申请有效期10分钟，直接回复申请码不会自动获得权限。`,
       },
       replyTo: message.id,
     });
@@ -498,6 +668,7 @@ export class RemoteGateway extends EventEmitter {
     });
 
     this.pairingRequests.delete(userKey);
+    this.pairingRequestAttempts.delete(userKey);
     log('[Gateway] Pairing approved:', userKey);
     return true;
   }
@@ -565,11 +736,27 @@ export class RemoteGateway extends EventEmitter {
     return Array.from(this.pairingRequests.values());
   }
 
+  private checkPairingRequestRateLimit(userKey: string): boolean {
+    const now = Date.now();
+    const attempt = this.pairingRequestAttempts.get(userKey);
+    if (!attempt || now > attempt.resetTime) {
+      this.pairingRequestAttempts.set(userKey, {
+        count: 1,
+        resetTime: now + PAIRING_REQUEST_WINDOW_MS,
+      });
+      return true;
+    }
+
+    attempt.count += 1;
+    return attempt.count <= MAX_PAIRING_REQUESTS_PER_WINDOW;
+  }
+
   /**
-   * Generate 6-digit pairing code
+   * Generate an 8-digit request correlation code. It is display-only and is
+   * never accepted as proof of authorization.
    */
   private generatePairingCode(): string {
-    return crypto.randomInt(100000, 999999).toString();
+    return crypto.randomInt(0, 100_000_000).toString().padStart(8, '0');
   }
 
   // ============================================================================
@@ -605,8 +792,14 @@ export class RemoteGateway extends EventEmitter {
   }
 
   private handleWebhook(req: IncomingMessage, res: ServerResponse, url: string): void {
+    if (req.method !== 'GET' && req.method !== 'POST') {
+      res.writeHead(405, { 'Content-Type': 'application/json', Allow: 'GET, POST' });
+      res.end(JSON.stringify({ error: 'Method not allowed' }));
+      return;
+    }
+
     // Extract channel type from URL: /webhook/feishu, /webhook/telegram, etc.
-    const channelType = url.split('/')[2] as ChannelType;
+    const channelType = url.split('?')[0]?.split('/')[2] as ChannelType;
 
     log(`[Gateway] Received webhook for channel: ${channelType}, URL: ${url}`);
 
@@ -617,7 +810,62 @@ export class RemoteGateway extends EventEmitter {
       return;
     }
 
-    // Collect request body
+    if (!this.isChannelActive(channelType)) {
+      log(`[Gateway] Channel ${channelType} is disabled or disconnected`);
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: `Channel ${channelType} is disabled or disconnected` }));
+      return;
+    }
+
+    const dispatch = (body: string) => {
+      try {
+        log(`[Gateway] Webhook body received, length: ${body.length}`);
+
+        const listenerCount = this.listenerCount(`webhook:${channelType}`);
+        log(`[Gateway] Listeners for webhook:${channelType}: ${listenerCount}`);
+
+        if (listenerCount === 0) {
+          log(`[Gateway] No listeners for webhook:${channelType}`);
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: `Webhook handler for ${channelType} is unavailable` }));
+          return;
+        }
+
+        this.emit(`webhook:${channelType}`, {
+          method: req.method || 'GET',
+          url,
+          headers: req.headers,
+          body,
+          respond: (status: number, data: unknown, contentType?: string) => {
+            if (res.writableEnded) return;
+            log(`[Gateway] Webhook response: ${status}`);
+            if (typeof data === 'string' || Buffer.isBuffer(data)) {
+              res.writeHead(status, {
+                'Content-Type': contentType || 'text/plain; charset=utf-8',
+              });
+              res.end(data);
+              return;
+            }
+            res.writeHead(status, { 'Content-Type': contentType || 'application/json' });
+            res.end(JSON.stringify(data));
+          },
+        });
+      } catch (error) {
+        logError('[Gateway] Error processing webhook body:', error);
+        if (!res.writableEnded) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Internal server error' }));
+        }
+      }
+    };
+
+    // WeCom verifies callback URLs with an encrypted GET request.
+    if (req.method === 'GET') {
+      dispatch('');
+      return;
+    }
+
+    // Collect POST request body.
     let body = '';
     const MAX_BODY_SIZE = 1024 * 1024; // 1MB limit
     let bodyTooLarge = false;
@@ -634,35 +882,7 @@ export class RemoteGateway extends EventEmitter {
 
     req.on('end', () => {
       if (bodyTooLarge) return;
-      try {
-        log(`[Gateway] Webhook body received, length: ${body.length}`);
-
-        // Check if there are listeners for this webhook event
-        const listenerCount = this.listenerCount(`webhook:${channelType}`);
-        log(`[Gateway] Listeners for webhook:${channelType}: ${listenerCount}`);
-
-        if (listenerCount === 0) {
-          log(`[Gateway] No listeners for webhook:${channelType}, returning OK`);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ code: 0 }));
-          return;
-        }
-
-        // Emit webhook event for channel to handle
-        this.emit(`webhook:${channelType}`, {
-          headers: req.headers,
-          body,
-          respond: (status: number, data: unknown) => {
-            log(`[Gateway] Webhook response: ${status}`, data);
-            res.writeHead(status, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify(data));
-          },
-        });
-      } catch (error) {
-        logError('[Gateway] Error processing webhook body:', error);
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Internal server error' }));
-      }
+      dispatch(body);
     });
   }
 
