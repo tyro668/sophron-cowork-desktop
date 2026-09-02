@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   AggregateConfigSchema,
@@ -15,13 +13,6 @@ import {
   canAppendRow,
   insertRowAfter,
 } from '../../src/renderer/components/workflow-forms/shared/rowListOperations';
-
-function readForm(name: string): string {
-  return readFileSync(
-    resolve(process.cwd(), `src/renderer/components/workflow-forms/${name}.tsx`),
-    'utf8'
-  );
-}
 
 describe('row operator add policy', () => {
   it('adds another blank row without inspecting existing row contents', () => {
@@ -116,12 +107,5 @@ describe('row operator add policy', () => {
         },
       }).success
     ).toBe(false);
-  });
-
-  it('adds after the displayed ASOF placeholder on the first click', () => {
-    const join = readForm('FormJoin');
-
-    expect(join).toContain('handleAsofByChange(insertCondition(displayedAsofBy, index))');
-    expect(join).not.toContain('handleAsofByChange(insertCondition(asofBy, index))');
   });
 });

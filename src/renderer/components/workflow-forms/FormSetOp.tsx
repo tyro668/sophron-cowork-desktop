@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useId } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import type { OperatorFormProps } from './index';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassFormLabel } from './shared/GlassFormLabel';
+import { VennDiagramIcon, type VennRegion } from './shared/VennDiagramIcon';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import {
@@ -11,88 +12,13 @@ import {
   DEFAULT_MATCH,
 } from '../../../shared/operator-schemas/set-op';
 
-function VennSVG({ type }: { type: 'union' | 'intersect' | 'except' }) {
-  const id = useId();
-  const clipId = `clip-${id}`;
-  const maskId = `mask-${id}`;
+type SetOperation = 'union' | 'intersect' | 'except';
 
-  if (type === 'union') {
-    return (
-      <svg viewBox="0 0 60 40" className="h-5 w-8">
-        <circle cx="22" cy="20" r="14" fill="currentColor" opacity="0.55" />
-        <circle cx="38" cy="20" r="14" fill="currentColor" opacity="0.55" />
-      </svg>
-    );
-  }
-
-  if (type === 'intersect') {
-    return (
-      <svg viewBox="0 0 60 40" className="h-5 w-8">
-        <defs>
-          <clipPath id={clipId}>
-            <circle cx="38" cy="20" r="14" />
-          </clipPath>
-        </defs>
-        <circle
-          cx="22"
-          cy="20"
-          r="14"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          opacity="0.35"
-        />
-        <circle
-          cx="38"
-          cy="20"
-          r="14"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          opacity="0.35"
-        />
-        <circle
-          cx="22"
-          cy="20"
-          r="14"
-          fill="currentColor"
-          opacity="0.55"
-          clipPath={`url(#${clipId})`}
-        />
-      </svg>
-    );
-  }
-
-  return (
-    <svg viewBox="0 0 60 40" className="h-5 w-8">
-      <defs>
-        <mask id={maskId}>
-          <rect width="60" height="40" fill="white" />
-          <circle cx="38" cy="20" r="14" fill="black" />
-        </mask>
-      </defs>
-      <circle
-        cx="22"
-        cy="20"
-        r="14"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        opacity="0.35"
-      />
-      <circle
-        cx="38"
-        cy="20"
-        r="14"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        opacity="0.35"
-      />
-      <circle cx="22" cy="20" r="14" fill="currentColor" opacity="0.55" mask={`url(#${maskId})`} />
-    </svg>
-  );
-}
+const SET_OPERATION_REGIONS: Record<SetOperation, VennRegion> = {
+  union: 'both',
+  intersect: 'overlap',
+  except: 'left-only',
+};
 
 export default function FormSetOp({
   node,
@@ -164,7 +90,12 @@ export default function FormSetOp({
                   : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
               }`}
             >
-              <VennSVG type={option.value} />
+              <VennDiagramIcon
+                region={SET_OPERATION_REGIONS[option.value]}
+                outlineOpacity={0.35}
+                outlineWidth={1.5}
+                showOutlines={option.value !== 'union'}
+              />
               <span>{option.label}</span>
             </button>
           ))}
