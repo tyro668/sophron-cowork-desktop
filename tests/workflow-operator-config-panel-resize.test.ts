@@ -17,7 +17,10 @@ const source = fs.readFileSync(
   'utf8'
 );
 const inspectorSource = fs.readFileSync(
-  path.resolve(process.cwd(), 'src/renderer/components/data-view/data-tasks.tsx'),
+  path.resolve(
+    process.cwd(),
+    'src/renderer/components/data-view/data-tasks/workflow/WorkflowInspector.tsx'
+  ),
   'utf8'
 );
 

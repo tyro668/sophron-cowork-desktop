@@ -1,0 +1,813 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { Connection } from '@xyflow/react';
+import {
+  AlertCircle,
+  ArrowLeft,
+  MoreHorizontal,
+  PencilLine,
+  Play,
+  Save,
+  Upload,
+  Workflow,
+} from 'lucide-react';
+import type {
+  DataCleaningTask,
+  DataDataset,
+  DataOutputTable,
+  DataRunTaskInput,
+  DataTaskWorkflow,
+  DataWorkflowEdge,
+  DataWorkflowNode,
+  DataWorkflowOperatorType,
+} from '../../../../types';
+import {
+  compilePrepWorkflowToFlow,
+  exportPrepWorkflowDsl,
+  parsePrepDsl,
+} from '../../../../../shared/prep-dsl';
+import { GlassDropdownMenu, GlassMenuItem } from '../../../GlassDropdownMenu';
+import { useConfirmDialog } from '../../../ConfirmDialog';
+import { OUTPUT_TABLE_INPUT_CHOICES_LIMIT, makeLocalId } from '../../shared';
+import { incompleteConfigMessageKey } from '../../workflow-config-guards';
+import { getNextWorkflowNodePosition } from './canvas-utils';
+import { OPERATOR_CATALOG, getOperatorCatalog, isWorkflowOperatorType } from './operator-catalog';
+import { WorkflowCanvas } from './WorkflowCanvas';
+import { WorkflowInspector } from './WorkflowInspector';
+import { WorkflowDslDialog, WorkflowOperatorPalette } from './WorkflowUi';
+import { formatPrepDiagnosticForUi } from './workflow-diagnostics';
+import {
+  getWorkflowSaveInputSignature,
+  toWorkflowSaveInput,
+  type WorkflowInspectorTab,
+} from './workflow-model';
+
+export function TaskEditor({
+  task,
+  outputTables,
+  actionId,
+  onBack,
+  onRun,
+  onWorkflowSaved,
+}: {
+  task: DataCleaningTask;
+  outputTables: DataOutputTable[];
+  actionId: string | null;
+  onBack: () => void;
+  onRun: (task: DataCleaningTask, payload?: DataRunTaskInput) => void | Promise<void>;
+  onWorkflowSaved: () => void | Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const { confirmDelete } = useConfirmDialog();
+  const [workflow, setWorkflow] = useState<DataTaskWorkflow | null>(null);
+  const [savedWorkflowSignature, setSavedWorkflowSignature] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [activeInspectorTab, setActiveInspectorTab] = useState<WorkflowInspectorTab>('config');
+  const [saving, setSaving] = useState(false);
+  const [renamingTask, setRenamingTask] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [dslMode, setDslMode] = useState<'import' | 'export' | null>(null);
+  const [dslText, setDslText] = useState('');
+  const [dslError, setDslError] = useState<string | null>(null);
+  const [taskTitle, setTaskTitle] = useState(task.name);
+  const [isEditingTaskTitle, setIsEditingTaskTitle] = useState(false);
+  const [workflowMenuOpen, setWorkflowMenuOpen] = useState(false);
+  const [nodeDataRefreshVersion, setNodeDataRefreshVersion] = useState(0);
+  const [inputTableChoices, setInputTableChoices] = useState<DataDataset[]>([]);
+  const [inputTableChoicesLoading, setInputTableChoicesLoading] = useState(false);
+  const [outputTableChoices, setOutputTableChoices] = useState<DataOutputTable[]>(outputTables);
+  const taskTitleInputRef = useRef<HTMLInputElement | null>(null);
+  const skipTaskTitleSaveRef = useRef(false);
+
+  const loadWorkflow = useCallback(async () => {
+    if (!window.electronAPI?.data) return;
+    setLocalError(null);
+    try {
+      const nextWorkflow = await window.electronAPI.data.getTaskWorkflow(task.id);
+      setWorkflow(nextWorkflow);
+      setSavedWorkflowSignature(getWorkflowSaveInputSignature(nextWorkflow));
+      setSelectedNodeId((current) => current ?? nextWorkflow.nodes[0]?.id ?? null);
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : String(err));
+    }
+  }, [task.id]);
+
+  useEffect(() => {
+    void loadWorkflow();
+  }, [loadWorkflow]);
+
+  useEffect(() => {
+    setTaskTitle(task.name);
+    setIsEditingTaskTitle(false);
+  }, [task.id, task.name]);
+
+  useEffect(() => {
+    if (!isEditingTaskTitle) return;
+    taskTitleInputRef.current?.focus();
+    taskTitleInputRef.current?.select();
+  }, [isEditingTaskTitle]);
+
+  useEffect(() => {
+    setOutputTableChoices(outputTables);
+  }, [outputTables]);
+
+  useEffect(() => {
+    if (!window.electronAPI?.data?.getDashboard) return undefined;
+    let cancelled = false;
+    const loadInputTableChoices = async () => {
+      setInputTableChoicesLoading(true);
+      try {
+        const dashboard = await window.electronAPI.data.getDashboard({
+          includeSummary: false,
+          includeTasks: false,
+          includeDatasets: true,
+          includeOutputTables: false,
+          datasetLimit: OUTPUT_TABLE_INPUT_CHOICES_LIMIT,
+          datasetSourceKind: 'all',
+        });
+        if (!cancelled) {
+          setInputTableChoices(dashboard.datasets);
+        }
+      } catch {
+        if (!cancelled) {
+          setInputTableChoices([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setInputTableChoicesLoading(false);
+        }
+      }
+    };
+    const loadOutputTableChoices = async () => {
+      try {
+        const dashboard = await window.electronAPI.data.getDashboard({
+          includeSummary: false,
+          includeTasks: false,
+          includeDatasets: false,
+          includeOutputTables: true,
+          outputLimit: OUTPUT_TABLE_INPUT_CHOICES_LIMIT,
+        });
+        if (!cancelled) {
+          setOutputTableChoices(dashboard.outputTables);
+        }
+      } catch {
+        // The workflow editor can still run with the already-loaded choices.
+      }
+    };
+    void loadInputTableChoices();
+    void loadOutputTableChoices();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const nodes = useMemo(() => workflow?.nodes ?? [], [workflow?.nodes]);
+  const edges = useMemo(() => workflow?.edges ?? [], [workflow?.edges]);
+  const workflowSaveInput = useMemo(
+    () => (workflow ? toWorkflowSaveInput(workflow) : null),
+    [workflow]
+  );
+  const workflowSignature = useMemo(
+    () => (workflowSaveInput ? JSON.stringify(workflowSaveInput) : null),
+    [workflowSaveInput]
+  );
+  const isWorkflowDirty =
+    Boolean(workflowSignature) &&
+    Boolean(savedWorkflowSignature) &&
+    workflowSignature !== savedWorkflowSignature;
+  const selectedNode = useMemo(
+    () => nodes.find((node) => node.id === selectedNodeId) ?? nodes[0] ?? null,
+    [nodes, selectedNodeId]
+  );
+  const isBusy = saving || renamingTask || actionId === task.id;
+
+  const saveTaskTitle = useCallback(async () => {
+    if (skipTaskTitleSaveRef.current) {
+      skipTaskTitleSaveRef.current = false;
+      return;
+    }
+    if (!isEditingTaskTitle || renamingTask) return;
+    const nextTitle = taskTitle.trim();
+    if (!nextTitle) {
+      setLocalError(t('data.editor.taskNameRequired'));
+      setTaskTitle(task.name);
+      setIsEditingTaskTitle(false);
+      return;
+    }
+    if (nextTitle === task.name) {
+      setTaskTitle(task.name);
+      setIsEditingTaskTitle(false);
+      return;
+    }
+    if (!window.electronAPI?.data?.updateTask) {
+      setIsEditingTaskTitle(false);
+      return;
+    }
+    setRenamingTask(true);
+    setLocalError(null);
+    try {
+      const updated = await window.electronAPI.data.updateTask({ id: task.id, name: nextTitle });
+      setTaskTitle(updated.name);
+      setIsEditingTaskTitle(false);
+      await onWorkflowSaved();
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRenamingTask(false);
+    }
+  }, [isEditingTaskTitle, onWorkflowSaved, renamingTask, t, task.id, task.name, taskTitle]);
+
+  const updateSelectedNode = useCallback(
+    (updater: (node: DataWorkflowNode) => DataWorkflowNode) => {
+      if (!selectedNodeId) return;
+      setWorkflow((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          nodes: current.nodes.map((node) => (node.id === selectedNodeId ? updater(node) : node)),
+        };
+      });
+    },
+    [selectedNodeId]
+  );
+
+  const addOperator = useCallback(
+    (type: DataWorkflowOperatorType, position?: { x: number; y: number }) => {
+      const catalog = getOperatorCatalog(type);
+      const createdAt = Date.now();
+      const id = makeLocalId('node');
+      setSelectedNodeId(id);
+      setWorkflow((current) => {
+        if (!current) return current;
+        const fallbackPosition = getNextWorkflowNodePosition(current.nodes.length);
+        const x = Math.max(0, Math.round(position?.x ?? fallbackPosition.x));
+        const y = Math.max(0, Math.round(position?.y ?? fallbackPosition.y));
+        const nextNode: DataWorkflowNode = {
+          id,
+          taskId: task.id,
+          type,
+          label: t(catalog.labelKey),
+          x,
+          y,
+          config: {},
+          createdAt,
+          updatedAt: createdAt,
+        };
+        return {
+          ...current,
+          nodes: [...current.nodes, nextNode],
+        };
+      });
+    },
+    [t, task.id]
+  );
+
+  const moveNode = useCallback((nodeId: string, x: number, y: number) => {
+    setWorkflow((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        nodes: current.nodes.map((node) =>
+          node.id === nodeId
+            ? {
+                ...node,
+                x,
+                y,
+                updatedAt: Date.now(),
+              }
+            : node
+        ),
+      };
+    });
+  }, []);
+
+  const connectNodes = useCallback(
+    (
+      sourceNodeId: string,
+      targetNodeId: string,
+      sourceHandle = 'output',
+      targetHandle = 'input'
+    ) => {
+      if (sourceNodeId === targetNodeId) return;
+      setWorkflow((current) => {
+        if (!current) return current;
+        const exists = current.edges.some(
+          (edge) =>
+            edge.sourceNodeId === sourceNodeId &&
+            edge.targetNodeId === targetNodeId &&
+            edge.sourceHandle === sourceHandle &&
+            edge.targetHandle === targetHandle
+        );
+        if (exists) return current;
+        // When connecting to a join's right handle, sync the rightInput config
+        let nextNodes = current.nodes;
+        if (targetHandle === 'right') {
+          const sourceNode = current.nodes.find((n) => n.id === sourceNodeId);
+          if (sourceNode) {
+            const alias = (sourceNode.config?.alias as string) || sourceNode.label || '';
+            nextNodes = current.nodes.map((n) =>
+              n.id === targetNodeId
+                ? { ...n, config: { ...n.config, rightInput: alias, rightAlias: alias } }
+                : n
+            );
+          }
+        }
+        return {
+          ...current,
+          nodes: nextNodes,
+          edges: [
+            ...current.edges,
+            {
+              id: makeLocalId('edge'),
+              taskId: task.id,
+              sourceNodeId,
+              targetNodeId,
+              sourceHandle,
+              targetHandle,
+              createdAt: Date.now(),
+            },
+          ],
+        };
+      });
+    },
+    [task.id]
+  );
+  const reconnectWorkflowEdge = useCallback((edgeId: string, connection: Connection) => {
+    if (!connection.source || !connection.target || connection.source === connection.target) return;
+    setWorkflow((current) => {
+      if (!current) return current;
+      const oldEdge = current.edges.find((e) => e.id === edgeId);
+      const duplicate = current.edges.some(
+        (edge) =>
+          edge.id !== edgeId &&
+          edge.sourceNodeId === connection.source &&
+          edge.targetNodeId === connection.target &&
+          edge.sourceHandle === (connection.sourceHandle ?? 'output') &&
+          edge.targetHandle === (connection.targetHandle ?? 'input')
+      );
+      if (duplicate) {
+        // If removing a right-handle edge, clear config.rightInput
+        let nextNodes = current.nodes;
+        if (oldEdge?.targetHandle === 'right') {
+          nextNodes = current.nodes.map((n) =>
+            n.id === oldEdge.targetNodeId
+              ? { ...n, config: { ...n.config, rightInput: undefined, rightAlias: undefined } }
+              : n
+          );
+        }
+        return {
+          ...current,
+          nodes: nextNodes,
+          edges: current.edges.filter((e) => e.id !== edgeId),
+        };
+      }
+      // Sync config when reconnecting to/from right handle
+      let nextNodes = current.nodes;
+      const newTargetHandle = connection.targetHandle ?? 'input';
+      if (newTargetHandle === 'right') {
+        // Reconnecting TO right handle: set config.rightInput
+        const sourceNode = current.nodes.find((n) => n.id === connection.source);
+        if (sourceNode) {
+          const alias = (sourceNode.config?.alias as string) || sourceNode.label || '';
+          nextNodes = current.nodes.map((n) =>
+            n.id === connection.target
+              ? { ...n, config: { ...n.config, rightInput: alias, rightAlias: alias } }
+              : n
+          );
+        }
+      } else if (oldEdge?.targetHandle === 'right' && newTargetHandle !== 'right') {
+        // Reconnecting AWAY from right handle: clear config.rightInput
+        nextNodes = current.nodes.map((n) =>
+          n.id === oldEdge.targetNodeId
+            ? { ...n, config: { ...n.config, rightInput: undefined, rightAlias: undefined } }
+            : n
+        );
+      }
+      return {
+        ...current,
+        nodes: nextNodes,
+        edges: current.edges.map((edge) =>
+          edge.id === edgeId
+            ? {
+                ...edge,
+                sourceNodeId: connection.source,
+                targetNodeId: connection.target,
+                sourceHandle: connection.sourceHandle ?? 'output',
+                targetHandle: newTargetHandle,
+              }
+            : edge
+        ),
+      };
+    });
+  }, []);
+  const removeWorkflowEdge = useCallback((edgeId: string) => {
+    setWorkflow((current) => {
+      if (!current) return current;
+      const removedEdge = current.edges.find((e) => e.id === edgeId);
+      const wasRightEdge = removedEdge?.targetHandle === 'right';
+      let nextNodes = current.nodes;
+      if (wasRightEdge && removedEdge) {
+        nextNodes = current.nodes.map((n) =>
+          n.id === removedEdge.targetNodeId
+            ? { ...n, config: { ...n.config, rightInput: undefined, rightAlias: undefined } }
+            : n
+        );
+      }
+      return {
+        ...current,
+        nodes: nextNodes,
+        edges: current.edges.filter((edge) => edge.id !== edgeId),
+      };
+    });
+  }, []);
+
+  const duplicateSelectedNode = useCallback(() => {
+    if (!selectedNode) return;
+    const now = Date.now();
+    const id = makeLocalId('node');
+    const nextNode: DataWorkflowNode = {
+      ...selectedNode,
+      id,
+      taskId: task.id,
+      label: `${selectedNode.label} ${t('data.workflow.copySuffix')}`,
+      x: selectedNode.x + 48,
+      y: selectedNode.y + 48,
+      config: cloneWorkflowNodeConfig(selectedNode.config),
+      createdAt: now,
+      updatedAt: now,
+    };
+    setWorkflow((current) =>
+      current
+        ? {
+            ...current,
+            nodes: [...current.nodes, nextNode],
+          }
+        : current
+    );
+    setSelectedNodeId(id);
+    setActiveInspectorTab('config');
+  }, [selectedNode, t, task.id]);
+
+  const toggleSelectedNodeDisabled = useCallback(() => {
+    if (!selectedNode) return;
+    const nextDisabled = selectedNode.config.disabled !== true;
+    setWorkflow((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        nodes: current.nodes.map((node) => {
+          if (node.id !== selectedNode.id) return node;
+          const nextConfig = { ...node.config };
+          if (nextDisabled) {
+            nextConfig.disabled = true;
+          } else {
+            delete nextConfig.disabled;
+          }
+          return {
+            ...node,
+            config: nextConfig,
+            updatedAt: Date.now(),
+          };
+        }),
+      };
+    });
+  }, [selectedNode]);
+
+  const deleteSelectedNode = useCallback(async () => {
+    if (!selectedNode) return;
+    const confirmed = await confirmDelete({
+      message: t('data.workflow.deleteOperatorConfirm', { name: selectedNode.label }),
+    });
+    if (!confirmed) return;
+    setWorkflow((current) =>
+      current
+        ? {
+            ...current,
+            nodes: current.nodes.filter((node) => node.id !== selectedNode.id),
+            edges: current.edges.filter(
+              (edge) =>
+                edge.sourceNodeId !== selectedNode.id && edge.targetNodeId !== selectedNode.id
+            ),
+          }
+        : current
+    );
+    setSelectedNodeId((current) => (current === selectedNode.id ? null : current));
+  }, [confirmDelete, selectedNode, t]);
+
+  const saveWorkflow = useCallback(async (): Promise<DataTaskWorkflow | null> => {
+    if (!workflow || !window.electronAPI?.data) return null;
+    setSaving(true);
+    setLocalError(null);
+    try {
+      const saved = await window.electronAPI.data.saveTaskWorkflow(
+        task.id,
+        toWorkflowSaveInput(workflow)
+      );
+      setWorkflow(saved);
+      setSavedWorkflowSignature(getWorkflowSaveInputSignature(saved));
+      setSelectedNodeId((current) => current ?? saved.nodes[0]?.id ?? null);
+      await onWorkflowSaved();
+      return saved;
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : String(err));
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  }, [onWorkflowSaved, task.id, workflow]);
+
+  const handleRun = useCallback(async () => {
+    if (!workflowSaveInput) return;
+    const incompleteMessageKey = nodes.map(incompleteConfigMessageKey).find(Boolean);
+    if (incompleteMessageKey) {
+      setLocalError(t(incompleteMessageKey));
+      return;
+    }
+    setLocalError(null);
+    await onRun(task, {
+      workflow: workflowSaveInput,
+      outputMode: isWorkflowDirty ? 'temporary' : 'persisted',
+    });
+  }, [isWorkflowDirty, nodes, onRun, t, task, workflowSaveInput]);
+
+  const applyAndRunOperatorDsl = useCallback(
+    async (nodeId: string, config: Record<string, unknown>) => {
+      if (!workflow) return;
+      const now = Date.now();
+      const nextWorkflow: DataTaskWorkflow = {
+        ...workflow,
+        nodes: workflow.nodes.map((node) =>
+          node.id === nodeId
+            ? {
+                ...node,
+                config,
+                updatedAt: now,
+              }
+            : node
+        ),
+      };
+      const incompleteMessageKey = nextWorkflow.nodes.map(incompleteConfigMessageKey).find(Boolean);
+      if (incompleteMessageKey) {
+        setLocalError(t(incompleteMessageKey));
+        return;
+      }
+      setLocalError(null);
+      setWorkflow(nextWorkflow);
+      setSelectedNodeId(nodeId);
+      await onRun(task, {
+        workflow: toWorkflowSaveInput(nextWorkflow),
+        outputMode: 'temporary',
+      });
+      setNodeDataRefreshVersion((current) => current + 1);
+    },
+    [onRun, t, task, workflow]
+  );
+
+  const openImportDsl = useCallback(() => {
+    setLocalError(null);
+    setDslError(null);
+    setDslText('');
+    setDslMode('import');
+  }, []);
+
+  const openExportDsl = useCallback(() => {
+    if (!workflow) return;
+    const incompleteMessageKey = workflow.nodes.map(incompleteConfigMessageKey).find(Boolean);
+    if (incompleteMessageKey) {
+      setLocalError(t(incompleteMessageKey));
+      return;
+    }
+    setLocalError(null);
+    setDslError(null);
+    setDslText(exportPrepWorkflowDsl(workflow.nodes, workflow.edges));
+    setDslMode('export');
+  }, [t, workflow]);
+
+  const closeDslDialog = useCallback(() => {
+    setDslMode(null);
+    setDslText('');
+    setDslError(null);
+  }, []);
+
+  const copyDslText = useCallback(() => {
+    if (!dslText) return;
+    void navigator.clipboard?.writeText(dslText);
+  }, [dslText]);
+
+  const updateDslText = useCallback((value: string) => {
+    setDslText(value);
+    setDslError(null);
+  }, []);
+
+  const applyDslImport = useCallback(() => {
+    if (!workflow) return;
+    setDslError(null);
+    const parsed = parsePrepDsl(dslText);
+    const diagnostics = [...parsed.diagnostics];
+    if (parsed.ast) {
+      const compiled = compilePrepWorkflowToFlow(parsed.ast);
+      diagnostics.push(...compiled.diagnostics);
+      const errors = diagnostics.filter((item) => item.severity === 'error');
+      if (errors.length > 0) {
+        setDslError(errors.map((item) => formatPrepDiagnosticForUi(item, t)).join('\n'));
+        return;
+      }
+      const now = Date.now();
+      const nextNodes: DataWorkflowNode[] = compiled.nodes
+        .filter((node) => isWorkflowOperatorType(node.type))
+        .map((node) => ({
+          id: node.id,
+          taskId: task.id,
+          type: node.type as DataWorkflowOperatorType,
+          label: t(getOperatorCatalog(node.type as DataWorkflowOperatorType).labelKey),
+          x: node.x,
+          y: node.y,
+          config: node.config ?? {},
+          createdAt: now,
+          updatedAt: now,
+        }));
+      const nextEdges: DataWorkflowEdge[] = compiled.edges.map((edge) => ({
+        id: edge.id,
+        taskId: task.id,
+        sourceNodeId: edge.sourceNodeId,
+        targetNodeId: edge.targetNodeId,
+        sourceHandle: edge.sourceHandle ?? 'output',
+        targetHandle: edge.targetHandle ?? 'input',
+        createdAt: now,
+      }));
+      setWorkflow({
+        ...workflow,
+        nodes: nextNodes,
+        edges: nextEdges,
+      });
+      setSelectedNodeId(nextNodes[0]?.id ?? null);
+      closeDslDialog();
+      setLocalError(null);
+      return;
+    }
+    setDslError(
+      diagnostics.map((item) => formatPrepDiagnosticForUi(item, t)).join('\n') ||
+        t('data.workflow.dslInvalid')
+    );
+  }, [closeDslDialog, dslText, t, task.id, workflow]);
+
+  return (
+    <section className="flex flex-1 min-h-0 flex-col">
+      <div className="mb-3 flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-center gap-4">
+          <button
+            onClick={onBack}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            {t('data.editor.back')}
+          </button>
+          <div className="flex min-w-0 items-center gap-2">
+            {isEditingTaskTitle ? (
+              <span className="flex h-8 min-w-0 max-w-[22rem] items-center rounded-lg border border-accent/40 bg-background/48 px-2.5 shadow-soft ring-2 ring-accent/15">
+                <input
+                  ref={taskTitleInputRef}
+                  value={taskTitle}
+                  maxLength={80}
+                  onChange={(event) => setTaskTitle(event.target.value)}
+                  onBlur={() => void saveTaskTitle()}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.currentTarget.blur();
+                    }
+                    if (event.key === 'Escape') {
+                      skipTaskTitleSaveRef.current = true;
+                      setTaskTitle(task.name);
+                      setIsEditingTaskTitle(false);
+                    }
+                  }}
+                  className="min-w-0 flex-1 bg-transparent text-[15px] font-medium text-text-secondary outline-none"
+                />
+              </span>
+            ) : (
+              <h1 className="truncate text-[15px] font-medium text-text-secondary">{taskTitle}</h1>
+            )}
+            {!isEditingTaskTitle && (
+              <button
+                onClick={() => setIsEditingTaskTitle(true)}
+                disabled={isBusy}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+                title={t('common.edit')}
+              >
+                <PencilLine className="h-3.5 w-3.5" />
+                <span className="sr-only">{t('common.edit')}</span>
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => void saveWorkflow()}
+            disabled={isBusy || !workflow}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            <Save className="h-3.5 w-3.5" />
+            {saving ? t('common.saving') : t('common.save')}
+          </button>
+          <button
+            onClick={() => void handleRun()}
+            disabled={isBusy || !workflow}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            <Play className="h-3.5 w-3.5" />
+            {t('data.editor.runTask')}
+          </button>
+          <GlassDropdownMenu
+            open={workflowMenuOpen}
+            onOpenChange={setWorkflowMenuOpen}
+            align="end"
+            contentClassName="w-40"
+            trigger={
+              <button
+                type="button"
+                disabled={isBusy || !workflow}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+                title={t('data.actions.more')}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            }
+          >
+            <GlassMenuItem icon={<Upload className="h-3.5 w-3.5" />} onSelect={openImportDsl}>
+              {t('data.workflow.importDsl')}
+            </GlassMenuItem>
+            <GlassMenuItem icon={<Workflow className="h-3.5 w-3.5" />} onSelect={openExportDsl}>
+              {t('data.workflow.exportDsl')}
+            </GlassMenuItem>
+          </GlassDropdownMenu>
+        </div>
+      </div>
+
+      {localError && (
+        <div className="mb-3 flex shrink-0 items-start gap-2 whitespace-pre-line rounded-lg border border-error/20 bg-error/10 px-3.5 py-2.5 text-[13px] text-error">
+          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+          <span>{localError}</span>
+        </div>
+      )}
+
+      {!workflow ? (
+        <div className="flex flex-1 min-h-0 items-center justify-center rounded-xl border border-border-muted bg-background/42 text-xs text-text-muted shadow-card">
+          {t('common.loading')}
+        </div>
+      ) : (
+        <div className="grid flex-1 min-h-0 grid-cols-[13rem_minmax(0,1fr)] items-stretch gap-3">
+          <WorkflowOperatorPalette operators={OPERATOR_CATALOG} onAddOperator={addOperator} />
+          <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_400px] gap-3">
+            <WorkflowCanvas
+              nodes={nodes}
+              edges={edges}
+              selectedNodeId={selectedNode?.id ?? null}
+              onSelectNode={setSelectedNodeId}
+              onDuplicateNode={duplicateSelectedNode}
+              onToggleNodeDisabled={toggleSelectedNodeDisabled}
+              onDeleteNode={deleteSelectedNode}
+              onAddNode={addOperator}
+              onMoveNode={moveNode}
+              onConnectNodes={connectNodes}
+              onReconnectEdge={reconnectWorkflowEdge}
+              onRemoveEdge={removeWorkflowEdge}
+            />
+            <WorkflowInspector
+              node={selectedNode}
+              workflowNodes={nodes}
+              workflowEdges={edges}
+              inputTables={inputTableChoices}
+              isInputTablesLoading={inputTableChoicesLoading}
+              outputTables={outputTableChoices}
+              activeTab={activeInspectorTab}
+              onActiveTabChange={setActiveInspectorTab}
+              onNodeChange={updateSelectedNode}
+              onApplyOperatorDsl={applyAndRunOperatorDsl}
+              isRunningOperatorDsl={actionId === task.id}
+              nodeDataRefreshVersion={nodeDataRefreshVersion}
+            />
+          </div>
+        </div>
+      )}
+      {dslMode && (
+        <WorkflowDslDialog
+          mode={dslMode}
+          value={dslText}
+          error={dslError}
+          onChange={updateDslText}
+          onApply={applyDslImport}
+          onCopy={copyDslText}
+          onClose={closeDslDialog}
+        />
+      )}
+    </section>
+  );
+}
+
+function cloneWorkflowNodeConfig(config: Record<string, unknown>): Record<string, unknown> {
+  try {
+    return structuredClone(config);
+  } catch {
+    return JSON.parse(JSON.stringify(config)) as Record<string, unknown>;
+  }
+}
