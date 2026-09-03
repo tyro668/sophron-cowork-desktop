@@ -604,7 +604,8 @@ export function DataView() {
       setActionId(task.id);
       setError(null);
       try {
-        await window.electronAPI.data.runTask(task.id, payload);
+        const updatedTask = await window.electronAPI.data.runTask(task.id, payload);
+        setFocusedTask((current) => (current?.id === updatedTask.id ? updatedTask : current));
         await loadDashboard();
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -615,6 +616,16 @@ export function DataView() {
     },
     [loadDashboard]
   );
+
+  const handleEditTask = useCallback((task: DataCleaningTask) => {
+    setFocusedTask(task);
+    setEditingTaskId(task.id);
+  }, []);
+
+  const handleCloseTaskEditor = useCallback(() => {
+    setEditingTaskId(null);
+    setFocusedTask(null);
+  }, []);
 
   const handleCreateInputTableDraft = useCallback(() => {
     const now = Date.now();
@@ -1135,7 +1146,7 @@ export function DataView() {
             task={editingTask}
             outputTables={dashboard.outputTables}
             actionId={actionId}
-            onBack={() => setEditingTaskId(null)}
+            onBack={handleCloseTaskEditor}
             onRun={handleRunTask}
             onWorkflowSaved={() => loadDashboard({ preserveError: true })}
           />
@@ -1220,7 +1231,7 @@ export function DataView() {
                   onRefresh={() => loadDashboard({ preserveError: true, tab: 'tasks' })}
                   onPageChange={handleTaskPageChange}
                   onRun={handleRunTask}
-                  onEdit={(task) => setEditingTaskId(task.id)}
+                  onEdit={handleEditTask}
                   onDelete={handleDeleteTask}
                   onDeleteAll={handleDeleteAllTasks}
                 />
