@@ -75,7 +75,7 @@ import * as JoinModule from './join';
 import * as FilterModule from './filter';
 
 export function parseOperatorConfig<T>(schema: ZodType<T>, config: Record<string, unknown>): T {
-  return schema.parse(config);
+  return schema.parse(withoutOperatorMetadata(config));
 }
 
 export const SCHEMA_MAP: Record<string, ZodType> = {
@@ -96,20 +96,40 @@ export const SCHEMA_MAP: Record<string, ZodType> = {
   filter: FilterModule.FilterConfigSchema,
 };
 
+export function getOperatorConfigValidation(
+  type: string,
+  config: Record<string, unknown>
+): ReturnType<ZodType['safeParse']> {
+  const schema = SCHEMA_MAP[type];
+  return schema
+    ? schema.safeParse(withoutOperatorMetadata(config))
+    : { success: true, data: config };
+}
+
+function withoutOperatorMetadata(config: Record<string, unknown>): Record<string, unknown> {
+  const { generatedOrigin: _generatedOrigin, ...operatorConfig } = config;
+  return operatorConfig;
+}
+
 export function validateOperatorConfig(
   type: string,
   config: Record<string, unknown>
 ): PrepDiagnostic[] {
-  const schema = SCHEMA_MAP[type];
-  if (!schema) return [];
-  const result = schema.safeParse(config);
+  const result = getOperatorConfigValidation(type, config);
   if (result.success) return [];
-  return result.error.issues.map((issue) => ({
-    code: 'invalidConfig',
-    severity: 'error' as const,
-    message: `[${type}] ${issue.path.join('.')}: ${issue.message}`,
-    line: 0,
-    column: 0,
-    params: { path: issue.path.join('.'), message: issue.message },
-  }));
+  return result.error.issues.flatMap((issue) => {
+    const parentPath = issue.path.join('.');
+    const paths =
+      issue.code === 'unrecognized_keys'
+        ? issue.keys.map((key) => (parentPath ? `${parentPath}.${key}` : key))
+        : [parentPath];
+    return paths.map((path) => ({
+      code: 'invalidConfig',
+      severity: 'error' as const,
+      message: `[${type}] ${path}: ${issue.message}`,
+      line: 0,
+      column: 0,
+      params: { path, message: issue.message },
+    }));
+  });
 }

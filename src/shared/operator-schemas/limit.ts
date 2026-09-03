@@ -3,7 +3,7 @@ import { SortKeySchema } from './common';
 
 export const LimitConfigSchema = z
   .object({
-    limit: z.number().default(10),
+    limit: z.number().int().min(1),
     mode: z.enum(['fixed', 'random']).default('fixed'),
     unit: z.enum(['rows', 'percent']).default('rows'),
     orderBy: z.array(SortKeySchema).default([]),

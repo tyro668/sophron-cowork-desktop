@@ -520,9 +520,10 @@ describe('compileCalculateFieldSql', () => {
     );
   });
 
-  it('empty calculations', () => {
-    const sql = compileCalculateFieldSql('out', 'inp', {});
-    expect(sql).toBe('CREATE TEMP TABLE out AS SELECT * FROM inp');
+  it('rejects empty calculations', () => {
+    expect(() => compileCalculateFieldSql('out', 'inp', {})).toThrow(
+      'At least one calculated field is required'
+    );
   });
 
   it('if/then/else in calculation', () => {
@@ -553,31 +554,26 @@ describe('compileCalculateFieldSql', () => {
     );
   });
 
-  it('skips calculation with empty field name', () => {
-    const sql = compileCalculateFieldSql('out', 'inp', {
-      calculations: [
-        { field: 'good', expression: '[a] + [b]' },
-        { field: '', expression: '[x]' },
-        { expression: '[y]' },
-        { field: 'also_good', expression: '[c]' },
-      ],
-    });
-    expect(sql).toBe(
-      'CREATE TEMP TABLE out AS SELECT *, "a" + "b" AS "good", "c" AS "also_good" FROM inp'
-    );
+  it('rejects a calculation with an empty field name', () => {
+    expect(() =>
+      compileCalculateFieldSql('out', 'inp', {
+        calculations: [
+          { field: 'good', expression: '[a] + [b]' },
+          { field: '', expression: '[x]' },
+        ],
+      })
+    ).toThrow('Calculated field name is required');
   });
 
-  it('skips calculation with empty expression', () => {
-    const sql = compileCalculateFieldSql('out', 'inp', {
-      calculations: [
-        { field: 'good', expression: '[a] + [b]' },
-        { field: 'blank', expression: '   ' },
-        { field: 'also_good', expression: '[c]' },
-      ],
-    });
-    expect(sql).toBe(
-      'CREATE TEMP TABLE out AS SELECT *, "a" + "b" AS "good", "c" AS "also_good" FROM inp'
-    );
+  it('rejects a calculation with an empty expression', () => {
+    expect(() =>
+      compileCalculateFieldSql('out', 'inp', {
+        calculations: [
+          { field: 'good', expression: '[a] + [b]' },
+          { field: 'blank', expression: '   ' },
+        ],
+      })
+    ).toThrow('Calculation expression is required');
   });
 
   it('rejects a duplicate target field', () => {
@@ -589,11 +585,6 @@ describe('compileCalculateFieldSql', () => {
         ],
       })
     ).toThrow(/configured more than once/);
-  });
-
-  it('calculations as undefined', () => {
-    const sql = compileCalculateFieldSql('out', 'inp', {});
-    expect(sql).toBe('CREATE TEMP TABLE out AS SELECT * FROM inp');
   });
 
   it('field name with Chinese', () => {

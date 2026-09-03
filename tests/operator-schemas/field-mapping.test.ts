@@ -15,6 +15,22 @@ describe('FieldMappingConfigSchema', () => {
     expect(result.mappings[1].targetMode).toBe('prefix');
   });
 
+  it('allows a rename whose source and target names are equal', () => {
+    const result = FieldMappingConfigSchema.parse({
+      mappings: [{ source: 'status', targetMode: 'rename', targetValue: 'status' }],
+    });
+
+    expect(result.mappings[0]).toMatchObject({ source: 'status', targetValue: 'status' });
+  });
+
+  it('validates whitespace without changing field names or affixes', () => {
+    const result = FieldMappingConfigSchema.parse({
+      mappings: [{ source: ' amount ', targetMode: 'suffix', targetValue: ' kg' }],
+    });
+
+    expect(result.mappings[0]).toMatchObject({ source: ' amount ', targetValue: ' kg' });
+  });
+
   it('rejects mappings without an explicit target mode', () => {
     expect(() =>
       FieldMappingConfigSchema.parse({ mappings: [{ source: 'a', target: 'b' }] })

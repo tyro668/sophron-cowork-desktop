@@ -276,7 +276,7 @@ describe('incomplete config guards', () => {
 
     it('accepts an explicit limit count', () => {
       expect(hasInvalidLimitConfig(makeNode('limit', { limit: 10 }))).toBe(false);
-      expect(hasInvalidLimitConfig(makeNode('limit', { limit: 0 }))).toBe(false);
+      expect(hasInvalidLimitConfig(makeNode('limit', { limit: 0 }))).toBe(true);
     });
   });
 

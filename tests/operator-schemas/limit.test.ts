@@ -18,14 +18,14 @@ describe('LimitConfigSchema', () => {
     expect(result.offset).toBe(10);
   });
 
-  it('applies defaults for omitted fields', () => {
-    const result = LimitConfigSchema.parse({});
-    expect(result.limit).toBe(10);
+  it('requires a limit while applying defaults to the other fields', () => {
+    const result = LimitConfigSchema.parse({ limit: 10 });
     expect(result.mode).toBe('fixed');
     expect(result.unit).toBe('rows');
     expect(result.ties).toBe(false);
     expect(result.offset).toBe(0);
     expect(result.method).toBeUndefined();
+    expect(() => LimitConfigSchema.parse({})).toThrow(z.ZodError);
   });
 
   it('parses random mode config with seed', () => {
@@ -72,6 +72,12 @@ describe('LimitConfigSchema', () => {
 
   it('rejects limit with wrong type', () => {
     expect(() => LimitConfigSchema.parse({ limit: 'abc' })).toThrow(z.ZodError);
+  });
+
+  it('requires a positive integer limit', () => {
+    expect(() => LimitConfigSchema.parse({ limit: 0 })).toThrow(z.ZodError);
+    expect(() => LimitConfigSchema.parse({ limit: 1.5 })).toThrow(z.ZodError);
+    expect(LimitConfigSchema.parse({ limit: 1 }).limit).toBe(1);
   });
 
   it('rejects negative offset', () => {

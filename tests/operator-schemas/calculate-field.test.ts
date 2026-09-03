@@ -15,9 +15,17 @@ describe('CalculateFieldConfigSchema', () => {
     expect(result.calculations[1].action).toBe('add');
   });
 
-  it('applies defaults for omitted fields', () => {
-    const result = CalculateFieldConfigSchema.parse({});
-    expect(result.calculations).toEqual([]);
+  it('rejects configs without a calculation', () => {
+    expect(() => CalculateFieldConfigSchema.parse({})).toThrow(z.ZodError);
+  });
+
+  it('rejects calculations with missing required text', () => {
+    expect(() =>
+      CalculateFieldConfigSchema.parse({ calculations: [{ expression: '[price] * 2' }] })
+    ).toThrow(z.ZodError);
+    expect(() => CalculateFieldConfigSchema.parse({ calculations: [{ field: 'total' }] })).toThrow(
+      z.ZodError
+    );
   });
 
   it('rejects legacy structured window fields', () => {

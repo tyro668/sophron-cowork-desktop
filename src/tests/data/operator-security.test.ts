@@ -62,10 +62,9 @@ describe('data operator security boundaries', () => {
     expect(result.success).toBe(false);
   });
 
-  it('defaults missing calculations to an empty list', () => {
+  it('rejects missing calculations', () => {
     const result = CalculateFieldConfigSchema.safeParse({});
-    expect(result.success).toBe(true);
-    expect(result.data?.calculations).toEqual([]);
+    expect(result.success).toBe(false);
   });
 
   it('rejects DSL argument injection in domain functions', () => {

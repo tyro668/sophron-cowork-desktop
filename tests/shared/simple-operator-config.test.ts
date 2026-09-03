@@ -6,6 +6,7 @@ import {
   normalizePivotAxes,
   normalizeFieldMappingEntry,
   parseNonNegativeInteger,
+  parsePositiveInteger,
   parseTypeConversionScale,
   prepareTypeConversion,
   retainSelectedDateGranularity,
@@ -47,6 +48,13 @@ describe('simple operator configuration logic', () => {
     expect(parseNonNegativeInteger('-2')).toBe(0);
     expect(parseNonNegativeInteger('')).toBeUndefined();
     expect(parseNonNegativeInteger('not-a-number')).toBeUndefined();
+  });
+
+  it('normalizes positive limit inputs to at least one', () => {
+    expect(parsePositiveInteger('12.9')).toBe(12);
+    expect(parsePositiveInteger('0')).toBe(1);
+    expect(parsePositiveInteger('-2')).toBe(1);
+    expect(parsePositiveInteger('')).toBeUndefined();
   });
 
   it('selects missing-value methods according to field type', () => {

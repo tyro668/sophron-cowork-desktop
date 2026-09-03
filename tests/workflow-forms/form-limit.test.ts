@@ -150,10 +150,13 @@ describe('FormLimit — new features', () => {
     expect(r.dsl).not.toContain('system');
   });
 
-  it('limit 0 produces limit 0 DSL', () => {
-    const r = ok({ mode: 'fixed', limit: 0, unit: 'rows' });
-    expect(r.dsl).toContain('limit 0');
-    expect(r.config.limit).toBe(0);
+  it('rejects a zero limit', () => {
+    expect(exportPrepOperatorDsl({ id: 'limit-zero', type: 'limit', config: { limit: 0 } })).toBe(
+      ''
+    );
+    expect(parsePrepOperatorDsl('limit 0', 'limit').diagnostics).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidLimit' })])
+    );
   });
 
   it('percent + orderBy + ties preserves the percent unit', () => {
@@ -205,6 +208,10 @@ describe('FormLimit — UI source structure', () => {
   it('mode selection is separate from the detail controls', () => {
     expect(limitSource).toContain("'limitMode'");
     expect(limitSource).toContain('onChange={setMode}');
+  });
+
+  it('clears the persisted limit when the quantity input is cleared', () => {
+    expect(limitSource).toContain('updateConfig((cfg) => ({ ...cfg, limit: undefined }))');
   });
 
   it('sort field tag-input has direction toggles (↑↓)', () => {

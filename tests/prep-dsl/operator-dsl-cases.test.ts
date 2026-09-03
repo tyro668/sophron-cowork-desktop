@@ -154,14 +154,6 @@ const currentOperatorCases: Array<{
     },
   },
   {
-    name: 'aggregate metric with SQL escaped single quote',
-    type: 'aggregate',
-    dsl: "aggregate all metrics concat([name], 'it''s') as [names]",
-    expectedConfig: {
-      metrics: [{ function: 'concat', expression: "[name], 'it''s'", alias: 'names' }],
-    },
-  },
-  {
     name: 'aggregate with multiple metrics using backslash-escaped single quote',
     type: 'aggregate',
     dsl: "aggregate all metrics string_agg([name], 'it\\'s') as [names], count(*) as [rows]",
@@ -179,30 +171,6 @@ const currentOperatorCases: Array<{
     expectedConfig: {
       groupBy: ['商品#编号'],
       metrics: [{ function: 'sum', expression: '[amount]', alias: 'total' }],
-    },
-  },
-  {
-    name: 'pivot metric with single-quoted string containing comma',
-    type: 'pivot',
-    dsl: "pivot on [region] using string_agg([name], ', ') as [names], count(*) as [n]",
-    expectedConfig: {
-      on: [{ field: 'region', values: [] }],
-      using: [
-        { function: 'string_agg', expression: "[name], ', '", alias: 'names' },
-        { function: 'count', expression: '*', alias: 'n' },
-      ],
-    },
-  },
-  {
-    name: 'pivot with multiple metrics using backslash-escaped single quote',
-    type: 'pivot',
-    dsl: "pivot on [region] using string_agg([name], 'it\\'s') as [names], count(*) as [n]",
-    expectedConfig: {
-      on: [{ field: 'region', values: [] }],
-      using: [
-        { function: 'string_agg', expression: "[name], 'it\\'s'", alias: 'names' },
-        { function: 'count', expression: '*', alias: 'n' },
-      ],
     },
   },
   {
@@ -960,6 +928,29 @@ describe('operator DSL executable cases', () => {
     expect(reparsed.operator?.config.rightAlias).toBe('st');
   });
 
+  it('reports schema errors while importing operator DSL', () => {
+    const parsed = parsePrepOperatorDsl(
+      'join asof rates on [orders].[time] nearest [rates].[time]',
+      'join'
+    );
+
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'invalidConfig',
+          params: expect.objectContaining({ path: 'asof.tolerance' }),
+        }),
+      ])
+    );
+  });
+
+  it('does not cascade diagnostics after consuming a zero limit', () => {
+    const parsed = parsePrepOperatorDsl('limit 0', 'limit');
+    const codes = errorsOf(parsed.diagnostics).map((diagnostic) => diagnostic.code);
+
+    expect(codes).toEqual(['invalidLimit', 'invalidConfig']);
+  });
+
   it('does not export a placeholder field for an empty sort config', () => {
     expect(exportPrepOperatorDsl({ id: 'sort-empty', type: 'sort', config: { keys: [] } })).toBe(
       ''
@@ -1027,6 +1018,31 @@ describe('operator DSL executable cases', () => {
     expect(
       exportPrepOperatorDsl({ id: `${type}_case`, type, config: parsed.operator!.config })
     ).toBe(dsl);
+  });
+
+  it.each([
+    {
+      type: 'aggregate' as const,
+      dsl: "aggregate all metrics concat([name], 'it''s') as [names]",
+      functionName: 'concat',
+    },
+    {
+      type: 'pivot' as const,
+      dsl: "pivot on [region] using string_agg([name], ', ') as [names], count(*) as [n]",
+      functionName: 'string_agg',
+    },
+    {
+      type: 'pivot' as const,
+      dsl: "pivot on [region] using string_agg([name], 'it\\'s') as [names], count(*) as [n]",
+      functionName: 'string_agg',
+    },
+  ])('reports unsupported $type function $functionName during import', ({ type, dsl }) => {
+    const parsed = parsePrepOperatorDsl(dsl, type);
+
+    expect(parsed.operator?.type).toBe(type);
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidConfig' })])
+    );
   });
 
   it.each([

@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { SortKeySchema } from './common';
+import { nonEmptyTrimmed, SortKeySchema } from './common';
 
 export const DeduplicateConfigSchema = z
   .object({
-    columns: z.array(z.string()).default([]),
+    columns: z.array(nonEmptyTrimmed('Deduplication field is required')).default([]),
     keep: z.enum(['first', 'last']).default('first'),
     orderBy: z.array(SortKeySchema).default([]),
     strategy: z.enum(['by_columns', 'all_columns']).optional(),

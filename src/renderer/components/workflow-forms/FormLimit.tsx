@@ -8,7 +8,7 @@ import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useClickOutside } from '../../hooks/useClickOutside';
-import { parseNonNegativeInteger } from '../../../shared/operator-config';
+import { parseNonNegativeInteger, parsePositiveInteger } from '../../../shared/operator-config';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import type { SortKey } from '../../../shared/operator-schemas';
 
@@ -45,8 +45,12 @@ export default function FormLimit({ node, fieldCompletions, onNodeChange }: Oper
 
   function pushLimit(value: string) {
     setLocalLimit(value);
-    if (value === '') return;
-    const n = parseNonNegativeInteger(value);
+    if (value === '') {
+      setErrors([]);
+      updateConfig((cfg) => ({ ...cfg, limit: undefined }));
+      return;
+    }
+    const n = parsePositiveInteger(value);
     if (n === undefined) return;
     const clamped = String(n);
     if (clamped !== value) setLocalLimit(clamped);

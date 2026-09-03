@@ -44,7 +44,7 @@ export const AsofConfigSchema = z.object({
     .optional(),
 });
 
-export const JoinConfigSchema = z
+const JoinConfigObjectSchema = z
   .object({
     joinType: z
       .enum(['inner', 'left', 'right', 'full', 'cross', 'semi', 'anti', 'asof'])
@@ -59,14 +59,14 @@ export const JoinConfigSchema = z
     if (data.joinType === 'semi' || data.joinType === 'anti') {
       if (data.keep && data.keep.length > 0) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           message: 'Semi/Anti join outputs all left columns and does not support keep',
           path: ['keep'],
         });
       }
       if (data.conflict) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           message: 'Semi/Anti join does not support conflict resolution',
           path: ['conflict'],
         });
@@ -74,7 +74,7 @@ export const JoinConfigSchema = z
     }
     if (data.conflict?.strategy === 'right_prefix' && !(data.conflict.rightPrefix ?? '').trim()) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         message: 'right_prefix strategy requires a non-empty prefix',
         path: ['conflict', 'rightPrefix'],
       });
@@ -85,7 +85,7 @@ export const JoinConfigSchema = z
       (!data.conditions || data.conditions.length === 0)
     ) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         message: 'Non-cross join requires at least one condition',
         path: ['conditions'],
       });
@@ -94,20 +94,28 @@ export const JoinConfigSchema = z
       const asof = data.asof;
       if (!asof || !asof.leftTime || !asof.rightTime) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           message: 'ASOF join requires leftTime and rightTime',
           path: ['asof'],
         });
       }
       if (asof?.operator === 'nearest' && !asof?.tolerance) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           message: 'ASOF nearest requires tolerance',
           path: ['asof', 'tolerance'],
         });
       }
     }
   });
+
+export const JoinConfigSchema = z.preprocess((value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const config = { ...(value as Record<string, unknown>) };
+  if (config.joinType === 'asof') delete config.conditions;
+  else delete config.asof;
+  return config;
+}, JoinConfigObjectSchema);
 
 function msToParts(ms: number): DurationParts {
   let r = ms;

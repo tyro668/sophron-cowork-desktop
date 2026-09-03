@@ -99,6 +99,21 @@ export class PrepTokenCursor {
     return null;
   }
 
+  expectPositiveInteger(code = 'expectedInteger'): number | null {
+    const token = this.peek();
+    if (token?.tokenType.name === 'NumberLiteral') {
+      const value = Number(token.image);
+      this.consume();
+      if (Number.isSafeInteger(value) && value >= 1) {
+        return value;
+      }
+      this.report(code, `Expected a positive integer but found ${token.image}`);
+      return null;
+    }
+    this.report(code, `Expected a positive integer but found ${this.describeCurrent()}`);
+    return null;
+  }
+
   expectIdentifier(code = 'expectedIdentifier'): string | null {
     const token = this.matchType('Identifier');
     if (token) return token.image;
