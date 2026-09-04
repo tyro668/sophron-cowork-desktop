@@ -5,7 +5,7 @@ import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList } from './shared/GlassRowList';
-import { canAppendRow } from './shared/rowListOperations';
+import { canAppendRow, ensureStableRowIds } from './shared/rowListOperations';
 import { MAX_JOIN_CONDITION_COUNT, type JoinCondition } from '@/shared/operator-schemas';
 import {
   JOIN_CONFLICT_DEFAULTS,
@@ -20,7 +20,7 @@ import { JoinVennSVG, type JoinVennType } from './join/JoinVennIcon';
 import { JoinAsofSection, type JoinAsofPatch } from './join/JoinAsofSection';
 import { JoinFieldSettingsDialog } from './join/JoinFieldSettingsDialog';
 import {
-  DEFAULT_CONDITION,
+  createCondition,
   insertCondition,
   removeCondition,
   type ConditionEntry,
@@ -59,7 +59,10 @@ export default function FormJoin({
 
   const ui = useMemo(() => readJoinUiConfig(node.config), [node.config]);
   const { joinType, keep: keepItems } = ui;
-  const conditions = ui.conditions.length > 0 ? ui.conditions : [DEFAULT_CONDITION];
+  const conditions = useMemo(
+    () => (ui.conditions.length > 0 ? ensureStableRowIds(ui.conditions) : [createCondition()]),
+    [ui.conditions]
+  );
 
   const isAsof = joinType === 'asof';
   const needsConditions = joinType !== 'cross';
@@ -172,7 +175,10 @@ export default function FormJoin({
   );
 
   function handleConditionsChange(next: ConditionEntry[]) {
-    updateConfig((cfg) => ({ ...cfg, conditions: next.length > 0 ? next : undefined }));
+    updateConfig((cfg) => ({
+      ...cfg,
+      conditions: next.length > 0 ? ensureStableRowIds(next) : undefined,
+    }));
   }
 
   function handleCondAdd(index: number) {
@@ -293,6 +299,7 @@ export default function FormJoin({
                 <div className="scrollbar-hover max-h-[280px] overflow-y-auto">
                   <GlassRowList
                     items={conditions}
+                    getKey={(condition, index) => condition.id ?? `condition-${index}`}
                     columns={[
                       {
                         flex: 'flex-[1]',

@@ -1,9 +1,10 @@
 import { z } from 'zod';
-import { nonEmptyTrimmed } from './common';
+import { MAX_ROW_ID_LENGTH, nonEmptyTrimmed } from './common';
 
 const MAX_MAPPING_COUNT = 100;
 
 export const FieldMappingEntrySchema = z.object({
+  id: z.string().max(MAX_ROW_ID_LENGTH).optional(),
   source: nonEmptyTrimmed('Source field is required'),
   targetMode: z.enum(['prefix', 'suffix', 'rename']),
   targetValue: nonEmptyTrimmed('Target value is required'),

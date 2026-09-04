@@ -11,6 +11,8 @@ import {
 } from '../../src/shared/operator-schemas';
 import {
   canAppendRow,
+  createStableRowId,
+  ensureStableRowIds,
   insertRowAfter,
 } from '../../src/renderer/components/workflow-forms/shared/rowListOperations';
 
@@ -20,6 +22,28 @@ describe('row operator add policy', () => {
     const secondBlank = { field: '' };
 
     expect(insertRowAfter([firstBlank], 0, secondBlank)).toEqual([firstBlank, secondBlank]);
+  });
+
+  it('assigns a stable id before an existing row is edited', () => {
+    const initial = ensureStableRowIds([{ alias: '45' }], () => 'metric-1');
+    const edited = ensureStableRowIds(
+      initial.map((metric) => ({ ...metric, alias: '4' })),
+      () => 'metric-2'
+    );
+
+    expect(initial[0].id).toBe('metric-1');
+    expect(edited[0].id).toBe('metric-1');
+  });
+
+  it('repairs missing and duplicate row ids', () => {
+    let sequence = 0;
+    const rows = ensureStableRowIds(
+      [{ id: 'kept' }, { id: 'kept' }, {}],
+      () => `generated-${++sequence}`
+    );
+
+    expect(rows.map((row) => row.id)).toEqual(['kept', 'generated-1', 'generated-2']);
+    expect(createStableRowId()).toBeTruthy();
   });
 
   it('allows additions below a schema limit and rejects them at the limit', () => {

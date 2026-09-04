@@ -4,6 +4,7 @@ import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList, type GlassRowListColumn, type RowAction } from './shared/GlassRowList';
+import { createStableRowId, ensureStableRowIds } from './shared/rowListOperations';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
@@ -29,17 +30,22 @@ export default function FormFieldMapping({
 
   const mappings = useMemo<FieldMappingEntry[]>(
     () =>
-      ((node.config.mappings as Record<string, unknown>[]) ?? []).map(normalizeFieldMappingEntry),
+      ensureStableRowIds(
+        ((node.config.mappings as Record<string, unknown>[]) ?? []).map(normalizeFieldMappingEntry)
+      ),
     [node.config.mappings]
   );
   const editableMappings = useMemo(
-    () => (mappings.length > 0 ? mappings : [{ ...EMPTY_FIELD_MAPPING }]),
+    () => (mappings.length > 0 ? mappings : [{ ...EMPTY_FIELD_MAPPING, id: createStableRowId() }]),
     [mappings]
   );
 
   const commitMappings = useCallback(
     (next: FieldMappingEntry[]) => {
-      updateConfig((cfg) => ({ ...cfg, mappings: next.length > 0 ? next : undefined }));
+      updateConfig((cfg) => ({
+        ...cfg,
+        mappings: next.length > 0 ? ensureStableRowIds(next) : undefined,
+      }));
     },
     [updateConfig]
   );
@@ -76,7 +82,7 @@ export default function FormFieldMapping({
     (index: number) => {
       if (activeMappings.length >= fieldCompletions.length) return;
       const next = [...activeMappings];
-      next.splice(index + 1, 0, { ...EMPTY_FIELD_MAPPING });
+      next.splice(index + 1, 0, { ...EMPTY_FIELD_MAPPING, id: createStableRowId() });
       commitMappings(next);
     },
     [activeMappings, fieldCompletions.length, commitMappings]
@@ -88,6 +94,7 @@ export default function FormFieldMapping({
       const source = activeMappings[index];
       const next = [...activeMappings];
       next.splice(index + 1, 0, {
+        id: createStableRowId(),
         source: '',
         targetMode: source.targetMode,
         targetValue: source.targetValue,
@@ -197,6 +204,7 @@ export default function FormFieldMapping({
           <GlassRowList
             headerClassName=""
             items={activeMappings}
+            getKey={(mapping, index) => mapping.id ?? `mapping-${index}`}
             columns={columns}
             actions={['add', 'copy', 'remove']}
             onAdd={addMappingAfter}

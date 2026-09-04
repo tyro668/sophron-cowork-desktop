@@ -7,6 +7,14 @@ import {
 } from '../../src/shared/operator-schemas';
 
 describe('TypeConvertConfigSchema', () => {
+  it('preserves stable UI row ids', () => {
+    const result = TypeConvertConfigSchema.parse({
+      conversions: [{ id: 'conversion-1', column: 'age', type: 'integer' }],
+    });
+
+    expect(result.conversions[0].id).toBe('conversion-1');
+  });
+
   it('parses valid conversions with all fields', () => {
     const result = TypeConvertConfigSchema.parse({
       conversions: [{ column: 'age', type: 'integer', onError: 'fail' }],

@@ -3,6 +3,14 @@ import { z } from 'zod';
 import { FieldMappingConfigSchema } from '../../src/shared/operator-schemas';
 
 describe('FieldMappingConfigSchema', () => {
+  it('preserves stable UI row ids', () => {
+    const result = FieldMappingConfigSchema.parse({
+      mappings: [{ id: 'mapping-1', source: 'a', targetMode: 'rename', targetValue: 'b' }],
+    });
+
+    expect(result.mappings[0].id).toBe('mapping-1');
+  });
+
   it('parses valid mappings with all fields', () => {
     const result = FieldMappingConfigSchema.parse({
       mappings: [

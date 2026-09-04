@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
+export const MAX_ROW_ID_LENGTH = 64;
+
 export const SortKeySchema = z.object({
+  id: z.string().max(MAX_ROW_ID_LENGTH).optional(),
   field: z.string().trim().min(1),
   direction: z.enum(['asc', 'desc']).default('asc'),
   nulls: z.enum(['first', 'last']).optional(),
@@ -10,6 +13,7 @@ export const nonEmptyTrimmed = (message: string) =>
   z.string().refine((value) => value.trim().length > 0, { message });
 
 export const ConditionSchema = z.object({
+  id: z.string().max(MAX_ROW_ID_LENGTH).optional(),
   left: nonEmptyTrimmed('left field is required'),
   operator: z.string(),
   right: nonEmptyTrimmed('right field is required'),
@@ -65,7 +69,6 @@ export const PivotFunctionSchema = z.enum(PIVOT_AGGREGATE_FUNCTIONS);
 
 const MAX_METRIC_EXPRESSION_LENGTH = 10_000;
 const MAX_METRIC_ALIAS_LENGTH = 256;
-export const MAX_METRIC_ID_LENGTH = 64;
 
 export function createMetricId(): string {
   const globalCrypto = globalThis.crypto;
@@ -77,7 +80,7 @@ export function createMetricId(): string {
 
 // id 仅为前端行标识（稳定 React key），DSL 导出只读取 function/expression/alias。
 export const MetricEntrySchema = z.object({
-  id: z.string().max(MAX_METRIC_ID_LENGTH).optional(),
+  id: z.string().max(MAX_ROW_ID_LENGTH).optional(),
   function: AggregateFunctionSchema,
   expression: z.string().trim().min(1).max(MAX_METRIC_EXPRESSION_LENGTH),
   alias: z.string().trim().min(1).max(MAX_METRIC_ALIAS_LENGTH),

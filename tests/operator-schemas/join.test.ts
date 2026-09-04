@@ -4,6 +4,24 @@ import { JoinConfigSchema } from '../../src/shared/operator-schemas';
 import { parseDuration, normalizeDuration } from '../../src/shared/operator-schemas/join';
 
 describe('JoinConfigSchema', () => {
+  it('preserves stable UI ids for ordinary and ASOF conditions', () => {
+    const ordinary = JoinConfigSchema.parse({
+      joinType: 'inner',
+      conditions: [{ id: 'condition-1', left: '[a]', operator: '=', right: '[b]' }],
+    });
+    const asof = JoinConfigSchema.parse({
+      joinType: 'asof',
+      asof: {
+        leftTime: '[ts]',
+        rightTime: '[ts]',
+        by: [{ id: 'asof-1', left: '[a]', right: '[b]' }],
+      },
+    });
+
+    expect(ordinary.conditions?.[0].id).toBe('condition-1');
+    expect(asof.asof?.by?.[0].id).toBe('asof-1');
+  });
+
   it('parses valid config with conditions', () => {
     const result = JoinConfigSchema.parse({
       joinType: 'inner',

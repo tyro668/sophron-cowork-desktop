@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { ConditionSchema, ConflictSchema, KeepItemSchema, nonEmptyTrimmed } from './common';
+import {
+  ConditionSchema,
+  ConflictSchema,
+  KeepItemSchema,
+  MAX_ROW_ID_LENGTH,
+  nonEmptyTrimmed,
+} from './common';
 
 export const MAX_JOIN_CONDITION_COUNT = 100;
 
@@ -36,6 +42,7 @@ export const AsofConfigSchema = z.object({
   by: z
     .array(
       z.object({
+        id: z.string().max(MAX_ROW_ID_LENGTH).optional(),
         left: nonEmptyTrimmed('left field is required'),
         right: nonEmptyTrimmed('right field is required'),
       })

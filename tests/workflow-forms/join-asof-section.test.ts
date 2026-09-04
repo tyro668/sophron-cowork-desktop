@@ -67,17 +67,22 @@ describe('JoinAsofSection', () => {
     const patches: JoinAsofPatch[] = [];
     const rowList = renderSection([], (patch) => patches.push(patch));
 
-    expect(rowList.items).toEqual([{ left: '', operator: '=', right: '' }]);
+    expect(rowList.items).toEqual([
+      expect.objectContaining({
+        id: expect.any(String),
+        left: '',
+        operator: '=',
+        right: '',
+      }),
+    ]);
     rowList.onAdd?.(0);
 
-    expect(patches).toEqual([
-      {
-        by: [
-          { left: '', operator: '=', right: '' },
-          { left: '', operator: '=', right: '' },
-        ],
-      },
+    expect(patches).toHaveLength(1);
+    expect(patches[0]?.by).toEqual([
+      expect.objectContaining({ id: expect.any(String), left: '', operator: '=', right: '' }),
+      expect.objectContaining({ id: expect.any(String), left: '', operator: '=', right: '' }),
     ]);
+    expect(patches[0]?.by?.[0]?.id).not.toBe(patches[0]?.by?.[1]?.id);
   });
 
   it('removes the selected ASOF condition and emits the remaining rows', () => {
@@ -90,6 +95,14 @@ describe('JoinAsofSection', () => {
 
     rowList.onRemove?.(0);
 
-    expect(patches).toEqual([{ by: [conditions[1]] }]);
+    expect(patches).toHaveLength(1);
+    expect(patches[0]?.by).toEqual([
+      expect.objectContaining({
+        id: expect.any(String),
+        left: conditions[1].left,
+        operator: conditions[1].operator,
+        right: conditions[1].right,
+      }),
+    ]);
   });
 });

@@ -7,6 +7,7 @@ import type { OperatorFormProps } from './index';
 import { GlassFieldTagPicker } from './shared/GlassFieldTagPicker';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
+import { createStableRowId, ensureStableRowIds } from './shared/rowListOperations';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
@@ -27,12 +28,8 @@ import type {
   MissingValueRule,
 } from '../../../shared/operator-schemas/missing-value';
 
-function createRuleId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
 function createEmptyRule(): MissingValueRule {
-  return { id: createRuleId(), column: '', method: 'literal_fill', value: '' };
+  return { id: createStableRowId(), column: '', method: 'literal_fill', value: '' };
 }
 
 interface MissingValueMethodDefinition {
@@ -88,7 +85,7 @@ export default function FormMissingValue({
   const strategy = (node.config.strategy as string) ?? 'by_column';
   const rules = useMemo<MissingValueRule[]>(() => {
     const configuredRules = (node.config.rules as MissingValueRule[] | undefined) ?? [];
-    return configuredRules.length > 0 ? configuredRules : [createEmptyRule()];
+    return configuredRules.length > 0 ? ensureStableRowIds(configuredRules) : [createEmptyRule()];
   }, [node.config.rules]);
   const rowColumns = useMemo<string[]>(
     () => (node.config.columns as string[]) ?? [],
@@ -105,7 +102,7 @@ export default function FormMissingValue({
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const handleRulesChange = useCallback(
     (items: MissingValueRule[]) => {
-      const itemsWithId = items.map((item) => (item.id ? item : { ...item, id: createRuleId() }));
+      const itemsWithId = ensureStableRowIds(items);
       updateConfig((cfg) => ({ ...cfg, rules: itemsWithId.length > 0 ? itemsWithId : undefined }));
     },
     [updateConfig]
@@ -245,7 +242,7 @@ export default function FormMissingValue({
       const next = [...rules];
       next.splice(index + 1, 0, {
         ...source,
-        id: createRuleId(),
+        id: createStableRowId(),
         column: '',
         values: source.values ? [...source.values] : undefined,
       });

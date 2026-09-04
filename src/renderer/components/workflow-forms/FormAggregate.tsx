@@ -5,7 +5,12 @@ import { GlassFieldCompactSelect } from './shared/GlassFieldCompactSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
-import { canAppendRow, insertRowAfter, removeRowAt } from './shared/rowListOperations';
+import {
+  canAppendRow,
+  ensureStableRowIds,
+  insertRowAfter,
+  removeRowAt,
+} from './shared/rowListOperations';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
@@ -32,11 +37,6 @@ const EMPTY_METRIC: Readonly<Omit<MetricEntry, 'id'>> = {
 
 function createEmptyMetric(): MetricEntry {
   return { ...EMPTY_METRIC, id: createMetricId() };
-}
-
-/** Backfill stable row ids so React keys survive row removal and reordering. */
-function withMetricIds(items: MetricEntry[]): MetricEntry[] {
-  return items.map((item) => (item.id ? item : { ...item, id: createMetricId() }));
 }
 
 const GRANULARITY_OPTIONS = [
@@ -69,7 +69,10 @@ export default function FormAggregate({
     [node.config.metrics]
   );
   const metrics = useMemo(
-    () => (rawMetrics.length > 0 ? rawMetrics : [createEmptyMetric()]),
+    () =>
+      rawMetrics.length > 0
+        ? ensureStableRowIds(rawMetrics, createMetricId)
+        : [createEmptyMetric()],
     [rawMetrics]
   );
 
@@ -122,7 +125,7 @@ export default function FormAggregate({
     (items: MetricEntry[]) => {
       updateConfig((cfg) => ({
         ...cfg,
-        metrics: items.length > 0 ? withMetricIds(items) : undefined,
+        metrics: items.length > 0 ? ensureStableRowIds(items, createMetricId) : undefined,
       }));
     },
     [updateConfig]

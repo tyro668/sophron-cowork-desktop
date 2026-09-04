@@ -7,6 +7,7 @@ import { useDragReorder } from '../../../hooks/useDragReorder';
 import { useFormTranslation } from '../../../hooks/useFormTranslation';
 import { computeUsedFields } from '../../../../shared/collections/used-fields';
 import type { SortKey } from '../../../../shared/operator-schemas';
+import { createStableRowId, ensureStableRowIds } from './rowListOperations';
 
 const EMPTY_SORT_KEY: SortKey = { field: '', direction: 'asc' };
 
@@ -31,7 +32,15 @@ export function SortKeysEditor({
   copyable = true,
 }: SortKeysEditorProps) {
   const tr = useFormTranslation('sortKeys');
-  const displayKeys = useMemo(() => (keys.length > 0 ? keys : [{ ...EMPTY_SORT_KEY }]), [keys]);
+  const displayKeys = useMemo(
+    () =>
+      keys.length > 0 ? ensureStableRowIds(keys) : [{ ...EMPTY_SORT_KEY, id: createStableRowId() }],
+    [keys]
+  );
+  const commitKeys = useCallback(
+    (next: SortKey[]) => onChange(ensureStableRowIds(next)),
+    [onChange]
+  );
 
   const {
     activeItems,
@@ -42,7 +51,7 @@ export function SortKeysEditor({
     resetDrag,
     isDragging,
     dragIndexRef,
-  } = useDragReorder(displayKeys, onChange);
+  } = useDragReorder(displayKeys, commitKeys);
 
   useEffect(() => {
     if (!isDragging) resetDrag();
@@ -50,19 +59,19 @@ export function SortKeysEditor({
 
   const updateKey = useCallback(
     (index: number, patch: Partial<SortKey>) => {
-      onChange(activeItems.map((k, i) => (i === index ? { ...k, ...patch } : k)));
+      commitKeys(activeItems.map((k, i) => (i === index ? { ...k, ...patch } : k)));
     },
-    [activeItems, onChange]
+    [activeItems, commitKeys]
   );
 
   const addKeyAfter = useCallback(
     (index: number) => {
       if (activeItems.length >= fieldCompletions.length) return;
       const next = [...activeItems];
-      next.splice(index + 1, 0, { ...EMPTY_SORT_KEY });
-      onChange(next);
+      next.splice(index + 1, 0, { ...EMPTY_SORT_KEY, id: createStableRowId() });
+      commitKeys(next);
     },
-    [activeItems, fieldCompletions.length, onChange]
+    [activeItems, commitKeys, fieldCompletions.length]
   );
 
   const removeKey = useCallback(
@@ -71,9 +80,9 @@ export function SortKeysEditor({
         onChange([]);
         return;
       }
-      onChange(activeItems.filter((_, i) => i !== index));
+      commitKeys(activeItems.filter((_, i) => i !== index));
     },
-    [activeItems, onChange]
+    [activeItems, commitKeys, onChange]
   );
 
   const copyKeyAfter = useCallback(
@@ -82,10 +91,15 @@ export function SortKeysEditor({
       const source = activeItems[index];
       if (!source) return;
       const next = [...activeItems];
-      next.splice(index + 1, 0, { field: '', direction: source.direction, nulls: source.nulls });
-      onChange(next);
+      next.splice(index + 1, 0, {
+        id: createStableRowId(),
+        field: '',
+        direction: source.direction,
+        nulls: source.nulls,
+      });
+      commitKeys(next);
     },
-    [activeItems, fieldCompletions.length, onChange]
+    [activeItems, commitKeys, fieldCompletions.length]
   );
 
   const usedFields = useMemo(() => computeUsedFields(activeItems, (k) => k.field), [activeItems]);
@@ -94,6 +108,7 @@ export function SortKeysEditor({
     <GlassRowList
       headerClassName=""
       items={activeItems}
+      getKey={(item, index) => item.id ?? `sort-key-${index}`}
       columns={[
         {
           flex: 'flex-[2]',

@@ -5,7 +5,12 @@ import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFieldTagPicker } from './shared/GlassFieldTagPicker';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
-import { canAppendRow, insertRowAfter, removeRowAt } from './shared/rowListOperations';
+import {
+  canAppendRow,
+  ensureStableRowIds,
+  insertRowAfter,
+  removeRowAt,
+} from './shared/rowListOperations';
 import { useWorkflowNodeColumnValues } from '../../hooks/useWorkflowNodeColumnValues';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
@@ -40,11 +45,6 @@ function createEmptyMetric(): PivotMetric {
   return { ...EMPTY_METRIC, id: createMetricId() };
 }
 
-/** Backfill stable row ids so React keys survive row removal and reordering. */
-function withMetricIds(items: PivotMetric[]): PivotMetric[] {
-  return items.map((item) => (item.id ? item : { ...item, id: createMetricId() }));
-}
-
 export default function FormPivot({
   node,
   taskId,
@@ -59,7 +59,11 @@ export default function FormPivot({
   const axes = useMemo(() => normalizePivotAxes(node.config.on), [node.config.on]);
 
   const rawUsing = useMemo(() => (node.config.using as PivotMetric[]) ?? [], [node.config?.using]);
-  const using = useMemo(() => (rawUsing.length > 0 ? rawUsing : [createEmptyMetric()]), [rawUsing]);
+  const using = useMemo(
+    () =>
+      rawUsing.length > 0 ? ensureStableRowIds(rawUsing, createMetricId) : [createEmptyMetric()],
+    [rawUsing]
+  );
   const groupBy = useMemo(() => (node.config.groupBy as string[]) ?? [], [node.config?.groupBy]);
 
   const handleAxesChange = useCallback(
@@ -114,7 +118,7 @@ export default function FormPivot({
     (items: PivotMetric[]) => {
       updateConfig((cfg) => ({
         ...cfg,
-        using: items.length > 0 ? withMetricIds(items) : undefined,
+        using: items.length > 0 ? ensureStableRowIds(items, createMetricId) : undefined,
       }));
     },
     [updateConfig]

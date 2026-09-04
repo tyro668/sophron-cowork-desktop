@@ -4,7 +4,7 @@ import { GlassFieldSingleSelect } from '../shared/GlassFieldSingleSelect';
 import { GlassFormLabel } from '../shared/GlassFormLabel';
 import { GlassOptionSingleSelect } from '../shared/GlassOptionSingleSelect';
 import { GlassRowList } from '../shared/GlassRowList';
-import { canAppendRow } from '../shared/rowListOperations';
+import { canAppendRow, ensureStableRowIds } from '../shared/rowListOperations';
 import { isTemporalDataFieldType } from '@/shared/data-field-types';
 import { parseDuration } from '@/shared/operator-schemas/join';
 import { MAX_JOIN_CONDITION_COUNT, type DurationParts } from '@/shared/operator-schemas';
@@ -15,7 +15,7 @@ import {
 } from '@/shared/operator-config';
 import { useFormTranslation } from '../../../hooks/useFormTranslation';
 import {
-  DEFAULT_CONDITION,
+  createCondition,
   insertCondition,
   removeCondition,
   type ConditionEntry,
@@ -54,7 +54,7 @@ export function JoinAsofSection({
   const tr = useFormTranslation('join');
 
   const displayedAsofBy = useMemo(
-    () => (asof.by.length > 0 ? asof.by : [DEFAULT_CONDITION]),
+    () => (asof.by.length > 0 ? ensureStableRowIds(asof.by) : [createCondition()]),
     [asof.by]
   );
 
@@ -65,7 +65,9 @@ export function JoinAsofSection({
   }
 
   function handleAsofByChange(next: ConditionEntry[]) {
-    onAsofChange({ by: next.length > 0 ? next : undefined });
+    onAsofChange({
+      by: next.length > 0 ? ensureStableRowIds(next) : undefined,
+    });
   }
 
   function handleAsofByAdd(index: number) {
@@ -201,6 +203,7 @@ export function JoinAsofSection({
       <div className="scrollbar-hover min-w-0 max-h-[180px] overflow-x-hidden overflow-y-auto">
         <GlassRowList
           items={displayedAsofBy}
+          getKey={(condition, index) => condition.id ?? `asof-condition-${index}`}
           columns={[
             {
               flex: 'flex-[1]',

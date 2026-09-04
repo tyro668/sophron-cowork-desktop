@@ -8,6 +8,7 @@ import {
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
+import { createStableRowId, ensureStableRowIds } from './shared/rowListOperations';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
@@ -44,13 +45,16 @@ export default function FormTypeConvert({
     const configuredConversions =
       (node.config.conversions as TypeConversionEntry[] | undefined) ?? [];
     return configuredConversions.length > 0
-      ? configuredConversions
-      : [{ ...EMPTY_TYPE_CONVERSION }];
+      ? ensureStableRowIds(configuredConversions)
+      : [{ ...EMPTY_TYPE_CONVERSION, id: createStableRowId() }];
   }, [node.config.conversions]);
 
   const commitConversions = useCallback(
     (next: TypeConversionEntry[]) => {
-      updateConfig((cfg) => ({ ...cfg, conversions: next.length > 0 ? next : undefined }));
+      updateConfig((cfg) => ({
+        ...cfg,
+        conversions: next.length > 0 ? ensureStableRowIds(next) : undefined,
+      }));
     },
     [updateConfig]
   );
@@ -82,7 +86,7 @@ export default function FormTypeConvert({
     (index: number) => {
       if (activeConversions.length >= fieldCompletions.length) return;
       const next = [...activeConversions];
-      next.splice(index + 1, 0, { ...EMPTY_TYPE_CONVERSION });
+      next.splice(index + 1, 0, { ...EMPTY_TYPE_CONVERSION, id: createStableRowId() });
       commitConversions(next);
     },
     [activeConversions, fieldCompletions.length, commitConversions]
@@ -105,6 +109,7 @@ export default function FormTypeConvert({
       const source = activeConversions[index];
       const next = [...activeConversions];
       next.splice(index + 1, 0, {
+        id: createStableRowId(),
         column: '',
         type: source.type,
         onError: source.onError,
@@ -138,6 +143,7 @@ export default function FormTypeConvert({
           <GlassRowList
             headerClassName=""
             items={activeConversions}
+            getKey={(conversion, index) => conversion.id ?? `conversion-${index}`}
             columns={[
               {
                 flex: 'flex-[1]',

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MAX_METRIC_ID_LENGTH, PivotFunctionSchema } from './common';
+import { MAX_ROW_ID_LENGTH, PivotFunctionSchema } from './common';
 
 const MAX_FIELD_NAME_LENGTH = 256;
 export const MAX_ON_COUNT = 50;
@@ -24,7 +24,7 @@ export const PivotAxisEntrySchema = z.object({
 });
 
 export const PivotMetricSchema = z.object({
-  id: z.string().max(MAX_METRIC_ID_LENGTH).optional(),
+  id: z.string().max(MAX_ROW_ID_LENGTH).optional(),
   function: PivotFunctionSchema,
   expression: z.string().trim().min(1).max(MAX_EXPRESSION_LENGTH),
   alias: z.string().trim().max(MAX_ALIAS_LENGTH).optional(),

@@ -263,6 +263,21 @@ describe('FormMissingValue — config ↔ DSL', () => {
     expect(source).toContain('MODE_METHODS');
   });
 
+  it('assigns stable rule ids before rendering legacy rules', async () => {
+    const source = await import('node:fs/promises').then((fs) =>
+      fs.readFile(
+        new URL(
+          '../../src/renderer/components/workflow-forms/FormMissingValue.tsx',
+          import.meta.url
+        ),
+        'utf8'
+      )
+    );
+
+    expect(source).toContain('ensureStableRowIds(configuredRules)');
+    expect(source).toContain('ensureStableRowIds(items)');
+  });
+
   it('derives all-null condition from legacy drop_empty_rows graphical config', async () => {
     const source = await import('node:fs/promises').then((fs) =>
       fs.readFile(

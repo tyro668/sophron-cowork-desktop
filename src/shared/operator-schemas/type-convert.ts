@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { nonEmptyTrimmed } from './common';
+import { MAX_ROW_ID_LENGTH, nonEmptyTrimmed } from './common';
 
 export const DATE_FORMAT_VALUES = [
   '%Y-%m-%d',
@@ -42,6 +42,7 @@ export const SCALE_MAX = 18;
 
 export const TypeConversionEntrySchema = z
   .object({
+    id: z.string().max(MAX_ROW_ID_LENGTH).optional(),
     column: nonEmptyTrimmed('Source column is required'),
     type: z
       .enum(['text', 'integer', 'float', 'decimal', 'date', 'datetime', 'boolean'])
